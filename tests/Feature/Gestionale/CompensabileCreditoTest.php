@@ -21,9 +21,14 @@ use Tests\TestCase;
  * Perché non è un numero solo. Il motore preleva il credito dalle quote di UNA rata alla volta
  * (StoreIncassoRateAction:265-271, tetto a :308-312), quindi un «Rossi ha 300 € di credito»
  * esposto come cifra unica non è eseguibile: al salvataggio serve una riga di payload per ogni
- * rata di origine, e senza quella la registrazione risponde «Credito insufficiente» — che oggi
- * arriva all'amministratore come pagina 500. Il compensabile deve quindi portarsi dietro sia le
- * rate che copre sia le rate da cui il credito viene preso.
+ * rata di origine, e senza quella la registrazione risponde «Credito insufficiente». Il
+ * compensabile deve quindi portarsi dietro sia le rate che copre sia le rate da cui il credito
+ * viene preso.
+ *
+ * (Fino alla beta.49 quel rifiuto arrivava all'amministratore come **pagina 500**: ora è un
+ * errore di validazione con l'importo disponibile in chiaro — vedi
+ * `CompensazioneCreditoRifiutataTest`. Resta comunque un rifiuto, e il compensabile serve
+ * esattamente a non incontrarlo.)
  *
  * Le due regole di perimetro, decise e non dedotte:
  *

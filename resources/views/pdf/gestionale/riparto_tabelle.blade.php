@@ -218,7 +218,11 @@
                         'kwatt'     => 'kW',
                         'mtcubi'    => 'mc.',
                     ];
-                    $labelUnita = $etichetteUnita[$tabInfo['quota_tipo']] ?? 'quote';
+                    // Una colonna senza dimensione di riparto (l'addebito diretto) non ha
+                    // quote da intitolare: meglio vuoto che un'etichetta che promette un numero.
+                    $labelUnita = ($tabInfo['senza_quote'] ?? false)
+                        ? ''
+                        : ($etichetteUnita[$tabInfo['quota_tipo']] ?? 'quote');
                 @endphp
                 <th style="padding: 2px 2px; border: 1px solid {{ $navyMid }}; text-align: right; width: {{ $wQuota }}%; opacity: 0.9;">
                     {{ $labelUnita }}
@@ -313,7 +317,7 @@
                             $datiTab  = $soggetto['per_tabella'][$tabId] ?? null;
                             $quota    = $datiTab ? $datiTab['quota'] : null;
                             $importo  = $datiTab ? $datiTab['importo'] : 0;
-                            $decimali = $tabInfo['decimali'] ?? 3;
+                            $decimali = $tabInfo['decimali'] ?? 2;
                             $hasData  = !is_null($quota) && $importo > 0;
                         @endphp
 
@@ -395,11 +399,11 @@
                 @php
                     $totQ = $totQuotaTab[$tabId] ?? 0;
                     $totI = $totPerTab[$tabId] ?? 0;
-                    $decimali = $tabInfo['decimali'] ?? 3;
+                    $decimali = $tabInfo['decimali'] ?? 2;
                 @endphp
                 <td align="right" style="padding: 5px 2px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                             font-size: {{ $fontSmall }}; background-color: #f7f9fb;">
-                    {{ number_format((float)$totQ, $decimali, ',', '.') }}
+                    {{ ($tabInfo['senza_quote'] ?? false) ? '—' : number_format((float)$totQ, $decimali, ',', '.') }}
                 </td>
                 <td align="right" style="padding: 5px 3px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                             font-size: {{ $fontSmall }}; background-color: #f7f9fb;">

@@ -109,6 +109,22 @@ class ImmobileAnagraficaController extends Controller
 
         try {
 
+            // Assegnare un'unità a una persona la rende **condòmina di questo stabile**, e il
+            // pivot `anagrafica_condominio` è dove quel fatto vive: lo leggono le altre parti
+            // del gestionale per sapere chi appartiene al condominio.
+            //
+            // Fino alla beta.48 questa riga non c'era, e `anagrafica_id` è validato **senza**
+            // filtro sul condominio (`CreateImmobileAnagraficaRequest:38`): si poteva quindi
+            // assegnare un'unità a chiunque, ottenendo un proprietario che il gestionale non
+            // considerava del condominio. Sull'incasso questo si traduceva in un pagante
+            // rifiutato — vedi la coda ⑫ in roadmap, e `PaganteDelCondominioTest`.
+            //
+            // `syncWithoutDetaching`: chi possiede unità in più stabili non deve perderli, e
+            // un secondo collegamento non deve produrre una riga doppia.
+            Anagrafica::find($data['anagrafica_id'])
+                ?->condomini()
+                ->syncWithoutDetaching([$condominio->id]);
+
             // Attach the anagrafica to the immobile with pivot data
             $immobile->anagrafiche()->attach($data['anagrafica_id'], [
                 'tipologia'       => $data['tipologia'],

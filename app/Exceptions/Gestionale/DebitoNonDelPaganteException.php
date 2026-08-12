@@ -2,8 +2,6 @@
 
 namespace App\Exceptions\Gestionale;
 
-use Exception;
-
 /**
  * Si sta allocando su una rata il cui debito è intestato a un altro soggetto.
  *
@@ -19,10 +17,10 @@ use Exception;
  * Ripeterlo una release dopo, su una guardia nuova, sarebbe stato il caso più puro di lezione
  * scritta e non applicata.
  *
- * ⚠️ **Le altre `RuntimeException` di `StoreIncassoRateAction` hanno lo stesso problema** — il
- * credito di un soggetto non collegato all'unità (`:281-297`), la quota di credito non trovata,
- * il credito insufficiente. Sono preesistenti e restano fuori da questa beta, ma vanno con la
- * stessa medicina: vedi la coda in roadmap.
+ * Le altre `RuntimeException` dell'azione — credito di un soggetto non collegato all'unità, quota
+ * di credito non trovata, credito insufficiente — avevano lo stesso problema, ed è stato chiuso
+ * nella beta.49 (coda ⑬) **per classe invece che per caso**: da lì viene la base
+ * {@see IncassoNonRegistrabileException}, che il controller cattura in blocco.
  *
  * ## Perché è un conflitto di dominio e non un guasto
  *
@@ -30,7 +28,7 @@ use Exception;
  * recuperare: si torna al modulo con il motivo, e l'amministratore sceglie l'intestatario
  * giusto senza ricompilare.
  */
-class DebitoNonDelPaganteException extends Exception
+class DebitoNonDelPaganteException extends IncassoNonRegistrabileException
 {
     /**
      * @param  int|string  $numeroRata     Il numero della rata su cui si stava allocando.
@@ -52,5 +50,10 @@ class DebitoNonDelPaganteException extends Exception
             $this->numeroRata,
             $this->intestatari !== '' ? "a {$this->intestatari}" : 'a un altro soggetto',
         ));
+    }
+
+    public function campo(): string
+    {
+        return 'pagante_id';
     }
 }

@@ -139,6 +139,45 @@ it('conto multi-tabella 60/40 con comproprietari 50/50: righe legali e nessun ce
     // e le colonne devono avvicinarsi allo split ideale 60/40 (±1 cent)
     expect(abs($matrice['tot_per_tabella'][$tabA->id] - 60001))->toBeLessThanOrEqual(1);
     expect(abs($matrice['tot_per_tabella'][$tabB->id] - 40000))->toBeLessThanOrEqual(1);
+
+    // ─── La rete sullo split penny-perfect, aggiunta nella beta.49 ─────────────
+    //
+    // ⚠️ **Perché serviva.** Fino a qui questo test guardava solo i totali di colonna, con una
+    // tolleranza di un centesimo. Ma questo è **l'unico scenario di tutta la suite con un conto
+    // collegato a due tabelle**: il golden master `RipartoCondominioParRealeTest`, che si crede
+    // la rete del riparto, ha un solo `conto_tabella_millesimale` per conto e quindi prende
+    // sempre la scorciatoia mono-tabella. Lo split fra tabelle — l'aritmetica più delicata dei
+    // due servizi — non era verificato **da nessuna parte**, e un errore che lascia giuste le
+    // righe (il tipo di errore che ci si aspetta, perché il riallineamento le forza) sarebbe
+    // passato liscio.
+    //
+    // I numeri sono l'esito misurato del codice corretto, non un desiderio: colonna A € 600,00 e
+    // colonna B € 400,01 (il centesimo dispari finisce su B), l'unità 1 al 61,333% di A e i suoi
+    // due comproprietari a metà ciascuno, l'unità 2 con 2 quote su 3 di B.
+    $cella = function (int $iid, string $nome, int $tabId) use ($matrice) {
+        foreach ($matrice['righe'][$iid]['soggetti'] as $sogg) {
+            if ($sogg['nome'] === $nome) return $sogg['per_tabella'][$tabId]['importo'] ?? null;
+        }
+        return null;
+    };
+
+    $nomi = array_column($matrice['righe'][$immobili[1]->id]['soggetti'], 'nome');
+    sort($nomi);
+
+    // Unità 1, due comproprietari 50/50: 36.800 su A e 13.334 su B, spaccati a metà.
+    foreach ($nomi as $comproprietario) {
+        expect($cella($immobili[1]->id, $comproprietario, $tabA->id))->toBe(18400)
+            ->and($cella($immobili[1]->id, $comproprietario, $tabB->id))->toBe(6667);
+    }
+
+    // Unità 2, proprietario unico.
+    $solo = array_values($matrice['righe'][$immobili[2]->id]['soggetti'])[0];
+    expect($solo['per_tabella'][$tabA->id]['importo'])->toBe(23200)
+        ->and($solo['per_tabella'][$tabB->id]['importo'])->toBe(26667);
+
+    // E le colonne, al centesimo esatto invece che a ±1.
+    expect($matrice['tot_per_tabella'][$tabA->id])->toBe(60000)
+        ->and($matrice['tot_per_tabella'][$tabB->id])->toBe(40001);
 });
 
 it('ripartizione 60% proprietario / 40% inquilino sullo stesso conto: colonna esatta e righe legali', function () {

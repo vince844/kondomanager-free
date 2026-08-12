@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
-use App\Exceptions\Gestionale\DebitoNonDelPaganteException;
-use App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException;
+use App\Exceptions\Gestionale\IncassoNonRegistrabileException;
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
 use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
@@ -162,18 +161,18 @@ class IncassoRateController extends Controller
     {
         try {
             $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
-        } catch (TotaleIncassoNonCorrispondenteException $e) {
-            // Conflitto di dominio, non guasto: la guardia ha fermato tutto **prima** della
-            // transazione, quindi non c'è niente di scritto da recuperare. Torna indietro con
-            // il modulo compilato e il motivo, invece della pagina 500 che l'amministratore si
-            // prendeva finora — perdendo la distribuzione appena fatta a mano.
-            return back()->withInput()->withErrors(['importo_totale' => $e->getMessage()]);
-        } catch (DebitoNonDelPaganteException $e) {
-            // Stesso trattamento, e per la stessa ragione: la guardia della beta.48 scatta anche
-            // lei prima della transazione. L'errore va su `pagante_id` e non sull'importo, perché
-            // è **quello** il campo da cambiare — il rimedio è scegliere l'intestatario giusto,
-            // non correggere una cifra.
-            return back()->withInput()->withErrors(['pagante_id' => $e->getMessage()]);
+        } catch (IncassoNonRegistrabileException $e) {
+            // Conflitto di dominio, non guasto: l'incasso **non si poteva registrare**, e niente è
+            // stato scritto. Si torna al modulo compilato con il motivo, invece della pagina 500
+            // che l'amministratore si prendeva — perdendo la distribuzione appena fatta a mano.
+            //
+            // ⚠️ Si cattura **la famiglia, non il caso**. Questo `catch` era per tipo, e ogni
+            // guardia nuova che sollevava un tipo non elencato tornava a produrre la 500: è
+            // successo nella beta.43, di nuovo nella beta.48, e le tre guardie sulle
+            // compensazioni a credito ci sono rimaste dentro fino alla beta.49. Con la base
+            // comune una guardia nuova è coperta senza toccare questo file — ed è l'eccezione
+            // stessa a dire, con `campo()`, su quale casella mostrare il messaggio.
+            return back()->withInput()->withErrors([$e->campo() => $e->getMessage()]);
         }
 
         // --- AGGIORNAMENTO EVENTI SCADENZIARIO ---

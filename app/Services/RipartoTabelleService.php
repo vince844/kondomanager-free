@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Tabella;
@@ -62,6 +63,13 @@ use Illuminate\Support\Facades\Log;
 class RipartoTabelleService
 {
     /**
+     * Chiave della pseudo-colonna che ospita gli addebiti ad personam.
+     *
+     * Non è l'id di nessuna tabella — è una stringa proprio per non poter collidere con uno.
+     */
+    public const COLONNA_DIRETTO = 'diretto';
+
+    /**
      * Costruisce la matrice completa per la stampa.
      *
      * @param PianoRate $pianoRate
@@ -80,44 +88,47 @@ class RipartoTabelleService
             return $this->empty();
         }
 
-        // Override importi: se straordinario su fatture, aggrega righe_fattura; altrimenti usa pivot capitoli
-        $pivotOverrides = [];
-        $hasFatture = false;
+        // ─── Quanto va su ogni capitolo: **lo dice il motore** ─────────────────────────
+        //
+        // ⚠️ Qui c'erano venti righe che se lo ricalcolavano da sole, leggendo `righe_fattura`.
+        // Erano un rimpiazzo ingenuo di `calcolaDaFattureStraordinarie()`, e sbagliavano quattro
+        // cose — tutte visibili sul documento che va in assemblea:
+        //
+        // - prendevano **tutte** le righe con un conto, comprese le ordinarie, che dello
+        //   straordinario non fanno parte: il PDF mostrava capitoli che le rate non contenevano;
+        // - sommavano `imponibile + iva`, ignorando `importo_collegato`: un piano che finanzia
+        //   € 400,00 di una fattura da € 1.000,00 stampava il riparto di tutti e mille;
+        // - non conoscevano `fattura_coperture`, e una fattura **pregressa** — che non ha righe —
+        //   produceva un **foglio bianco** a fronte di rate emesse correttamente. È lo scenario
+        //   della migrazione dello storico;
+        // - scartavano le righe **ad personam**, o peggio, se avevano anche un conto, le
+        //   spalmavano su tutta la tabella millesimale.
+        //
+        // Il confine ora è netto: il motore risponde a «quanto», questo servizio solo a «a chi»,
+        // che è la parte che deve saper spaccare per colonna — cosa che il motore non fa mai,
+        // perché aggrega tutto per anagrafica e immobile.
+        //
+        // `soloLettura`: la stampa non deve poter essere bloccata da una guardia di
+        // *generazione*. Un riparto già emesso si ristampa anche se i dati sono cambiati dopo.
+        $motore = app(CalcoloQuoteService::class);
 
         if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture()->exists()) {
-            $hasFatture = true;
-            $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
-            $righe = \Illuminate\Support\Facades\DB::table('righe_fattura')
-                ->whereIn('fattura_passiva_id', $fattureIds)
-                ->whereNotNull('conto_id')
-                ->get();
-
-            foreach ($righe as $riga) {
-                $contoId = $riga->conto_id;
-                if (!isset($pivotOverrides[$contoId])) {
-                    $pivotOverrides[$contoId] = 0;
-                }
-                // Importo riga (imponibile + IVA)
-                $pivotOverrides[$contoId] += abs($riga->importo_imponibile + $riga->importo_iva);
-            }
-            $capitoliIds = array_keys($pivotOverrides);
-
-            // Se tutte le righe sono addebiti diretti a immobile (nessun conto_id)
-            if (empty($capitoliIds) && $pianoRate->capitoli->isEmpty()) {
-                return $this->empty();
-            }
+            $motore->calcolaDaFattureStraordinarie($pianoRate);
+        } else {
+            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true);
         }
 
-        // Sempre, aggiungi anche i capitoli espliciti se ci sono (gestisce i piani "misti")
-        foreach ($pianoRate->capitoli as $cap) {
-            if (!is_null($cap->pivot->importo)) {
-                if (!isset($pivotOverrides[$cap->id])) {
-                    $pivotOverrides[$cap->id] = 0;
-                }
-                $pivotOverrides[$cap->id] += (int) round($cap->pivot->importo);
-            }
+        // Già al netto della decurtazione degli scoperti: è la ragione per cui più sotto questo
+        // servizio non la rifà. Mantenerne una seconda copia è il difetto da cui nasce la voce ⑩.
+        $pivotOverrides = $motore->getImportiPerConto();
+        $capitoliIds    = array_keys($pivotOverrides);
+
+        // Gli addebiti ad personam non appartengono a nessuna tabella: viaggiano a parte.
+        $addebitiDiretti = $motore->getAddebitiDiretti();
+
+        if (empty($capitoliIds) && empty($addebitiDiretti)) {
+            return $this->empty();
         }
-        $capitoliIds = array_keys($pivotOverrides);
 
         // ─── 2. Carica tutti i conti foglia con tabelle ───────────────────────
         $queryConti = Conto::with([
@@ -127,25 +138,18 @@ class RipartoTabelleService
             'sottoconti.tabelleMillesimali.ripartizioni',
         ])->where('piano_conto_id', $pianoConto->id);
 
+        // Si disegnano **esattamente** i conti che il motore ha distribuito, e nessun altro.
+        //
+        // Prima qui c'erano due rami: uno per il piano con capitoli espliciti e uno «catch-all»
+        // che ricaricava tutti i conti radice e riescludeva a mano quelli impegnati da altri
+        // piani attivi — cioè una terza copia di una regola che il motore applica già
+        // (`CalcoloQuoteService:117-131`). Ora il registro porta solo i conti realmente
+        // ripartiti, quindi la selezione è una sola riga e non c'è più niente da tenere
+        // allineato. Con il registro vuoto siamo già usciti sopra.
         $contiImpegnatiIds = [];
-        if (!empty($capitoliIds)) {
-            // Piano specifico: filtra per capitoli inclusi
-            $queryConti->whereIn('id', $capitoliIds);
-        } else {
-            $queryConti->whereNull('parent_id');
-            if (!$hasFatture) {
-                // Piano rate generale (catch-all): escludiamo i capitoli già assegnati ad ALTRI piani rate attivi
-                $contiImpegnatiIds = \Illuminate\Support\Facades\DB::table('piano_rate_capitoli')
-                    ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
-                    ->where('piani_rate.gestione_id', $pianoRate->gestione_id)
-                    ->where('piani_rate.attivo', true)
-                    ->where('piani_rate.id', '!=', $pianoRate->id)
-                    ->pluck('conto_id')
-                    ->toArray();
-            }
-        }
-
-        $conti = $queryConti->get();
+        $conti = empty($capitoliIds)
+            ? new Collection()
+            : $queryConti->whereIn('id', $capitoliIds)->get();
 
         // ─── 3. Ricostruisce le allocazioni esatte per (tabella, soggetto) ────
         // cells[tabella_id][aid|iid]   = int cents (stesse allocazioni del motore rate)
@@ -159,7 +163,36 @@ class RipartoTabelleService
 
         $this->processaConti($conti, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at, $contiImpegnatiIds, $processatiIds);
 
-        if (empty($weights)) {
+        // ─── Gli addebiti ad personam, che nessuna tabella può ospitare ────────────────
+        //
+        // Una spesa con `immobile_id` non passa dai millesimi: la paga chi ha quell'unità. Non ha
+        // quindi una colonna «tabella», e prima veniva semplicemente **persa** — o, se la riga
+        // aveva anche un conto, spalmata su tutti.
+        //
+        // Vive in una pseudo-colonna con chiave `'diretto'`, che il resto del codice tratta come
+        // una tabella qualunque: così le due invarianti del documento (le celle sommano alla
+        // riga, le colonne sommano al gran totale) restano vere senza casi speciali.
+        $cellePerSoggetto = [];
+        foreach ($addebitiDiretti as $addebito) {
+            $chiave = $addebito['anagrafica_id'] . '|' . $addebito['immobile_id'];
+            $cellePerSoggetto[$chiave] = ($cellePerSoggetto[$chiave] ?? 0) + $addebito['importo'];
+        }
+
+        if (! empty($cellePerSoggetto)) {
+            $cells[self::COLONNA_DIRETTO] = $cellePerSoggetto;
+            $tabelleInfo[self::COLONNA_DIRETTO] = [
+                'nome'        => 'Addebito diretto',
+                'quota_label' => '—',
+                'quota_tipo'  => null,
+                'decimali'    => 0,
+                // Non ha una dimensione di riparto: la sotto-colonna delle quote resta vuota
+                // invece di mostrare «quote» e un totale «0», che sarebbero due numeri finti su
+                // un documento che va in assemblea.
+                'senza_quote' => true,
+            ];
+        }
+
+        if (empty($weights) && empty($cellePerSoggetto)) {
             return $this->empty();
         }
 
@@ -187,9 +220,14 @@ class RipartoTabelleService
         $totPerTab   = array_fill_keys(array_keys($tabelleInfo), 0);
         $granTotale  = 0;
 
-        // Mappa ruolo → sigla
+        // Mappa ruolo → sigla.
+        //
+        // `nuda_proprietario` mancava, e il ripiego `strtoupper(substr(..., 0, 1))` di :221 lo
+        // rendeva **«N»**: una sigla che nella legenda del documento non esiste. Da quando il
+        // ruolo è registrabile (beta.43) può comparire davvero in assemblea.
         $sigleRuolo = [
             'proprietario'      => 'P',
+            'nuda_proprietario' => 'NP',
             'inquilino'         => 'I',
             'usufruttuario'     => 'U',
         ];
@@ -299,8 +337,12 @@ class RipartoTabelleService
         // Ordina righe per interno
         uasort($righe, fn($a, $b) => ($a['interno'] ?? '') <=> ($b['interno'] ?? ''));
 
-        // Ordina soggetti per ruolo (proprietario prima)
-        $ordineRuoli = ['proprietario' => 0, 'usufruttuario' => 1, 'inquilino' => 2];
+        // Ordina soggetti per ruolo (proprietario prima).
+        //
+        // `nuda_proprietario` cadeva sul `?? 9` e finiva **dopo l'inquilino**. Sta invece
+        // accanto al proprietario: è lo stesso soggetto economico con l'usufrutto staccato,
+        // ed è la lettura che l'enum già dichiara facendoli terminale l'uno dell'altro.
+        $ordineRuoli = ['proprietario' => 0, 'nuda_proprietario' => 1, 'usufruttuario' => 2, 'inquilino' => 3];
         foreach ($righe as &$riga) {
             uasort($riga['soggetti'], fn($a, $b) =>
                 ($ordineRuoli[$a['ruolo_raw']] ?? 9) <=> ($ordineRuoli[$b['ruolo_raw']] ?? 9)
@@ -443,7 +485,7 @@ class RipartoTabelleService
                     'nome'        => $tabella->nome,
                     'quota_label' => $tabella->quota_label ?? ucfirst($tabella->quota ?? 'mill.'),
                     'quota_tipo'  => $tabella->quota ?? 'millesimi',
-                    'decimali'    => $tabella->numero_decimali ?? 3,
+                    'decimali'    => $tabella->numero_decimali ?? 2,
                 ];
             }
 
@@ -475,20 +517,32 @@ class RipartoTabelleService
                         ->where('pivot.attivo', true)
                         ->where('pivot.tipologia', $rip->soggetto);
 
-                    // Cascata ruolo (identica a CalcoloQuoteService)
-                    if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
-                        $catenaGodimento = ['inquilino', 'usufruttuario', 'proprietario'];
-                        $catenaCapitale  = ['nuda_proprietario', 'proprietario'];
-                        $catena = in_array($rip->soggetto, $catenaCapitale, true)
-                            ? $catenaCapitale : $catenaGodimento;
-
-                        $start     = array_search($rip->soggetto, $catena, true);
-                        $candidati = $start === false ? $catena : array_slice($catena, $start + 1);
+                    // Cascata ruolo — **la stessa catena del motore**, dall'enum.
+                    //
+                    // ⚠️ Fino alla beta.49 qui c'erano due catene riscritte a mano e la condizione
+                    // `&& $rip->soggetto !== 'proprietario'`, che `CalcoloQuoteService` aveva
+                    // perso con la beta.43. Il commento sopra dichiarava «identica a
+                    // CalcoloQuoteService» ed era falso da undici giorni — la lezione è che un
+                    // commento non tiene allineate due copie: le tiene allineate una funzione
+                    // sola, e infatti ora la catena la scrive solo `catenaRiparto()`.
+                    //
+                    // Cosa cambiava a video: su un'unità con nuda proprietà e usufrutto, senza
+                    // proprietario attivo e con il coefficiente sul `proprietario`, il motore
+                    // risolveva la cascata e **addebitava il nudo proprietario**, mentre la
+                    // stampa cadeva nel ramo scoperto e lo mostrava a zero. Il riparto portato in
+                    // assemblea non coincideva con quello addebitato.
+                    //
+                    // Le due catene scritte a mano erano anche incomplete per conto loro: quella
+                    // di godimento finiva su `proprietario` e non arrivava mai a
+                    // `nuda_proprietario`, e per un `soggetto` fuori catalogo ripiegava
+                    // sull'intera catena di godimento invece che sul terminale legale.
+                    if ($anagrafiche->isEmpty()) {
+                        $candidati = RuoloAnagraficaImmobile::catenaRipiego($rip->soggetto);
 
                         foreach ($candidati as $ruoloFallback) {
                             $anagrafiche = $immobile->anagrafiche
                                 ->where('pivot.attivo', true)
-                                ->where('pivot.tipologia', $ruoloFallback);
+                                ->where('pivot.tipologia', $ruoloFallback->value);
                             if ($anagrafiche->isNotEmpty()) break;
                         }
                     }
@@ -522,17 +576,17 @@ class RipartoTabelleService
 
         if (empty($wMerged)) return;
 
-        // Decurtazione scoperti — identica a CalcoloQuoteService
+        // ⚠️ **Qui c'era la decurtazione degli scoperti, ed è stata cancellata**: l'importo che
+        // arriva dal registro del motore è già al netto. Rifarla significherebbe applicarla due
+        // volte, e soprattutto significherebbe mantenere allineata una seconda copia
+        // dell'aritmetica — che è precisamente il difetto da cui nasce la coda ⑩.
+        //
+        // Resta invece la raccolta di `$pesoScopertoTotale` qui sopra: serve a normalizzare i
+        // pesi sui soli soggetti reali, non a togliere denaro.
         $pesoSoggetti = array_sum($wMerged);
-        $pesoTotaleInclScoperto = $pesoSoggetti + $pesoScopertoTotale;
-        if ($pesoTotaleInclScoperto <= 0.0) return;
+        if ($pesoSoggetti <= 0.0) return;
 
-        $importoDaDistribuire = abs($importoConto);
-        if ($pesoScopertoTotale > 0.0) {
-            $totaleScopertoInt = (int) round(abs($importoConto) * ($pesoScopertoTotale / $pesoTotaleInclScoperto));
-            $importoDaDistribuire = abs($importoConto) - $totaleScopertoInt;
-        }
-        $importoContoSegno = $importoConto < 0 ? -$importoDaDistribuire : $importoDaDistribuire;
+        $importoContoSegno = $importoConto;
 
         $wMergedNorm = [];
         foreach ($wMerged as $key => $w) {

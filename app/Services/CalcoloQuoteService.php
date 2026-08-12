@@ -37,6 +37,24 @@ class CalcoloQuoteService
     /** Unità che hanno versato più di quanto la spesa richiedeva loro. */
     private array $eccedenzeCopertura = [];
 
+    /**
+     * Registro motore → stampa (beta.49, coda ⑩): quanto è stato **davvero** portato a riparto,
+     * per capitolo. `conto_id => centesimi con segno`, già al netto della decurtazione scoperti.
+     *
+     * Esiste perché `RipartoTabelleService` — il servizio che costruisce il PDF del riparto — se
+     * lo ricalcolava da solo, e sbagliava: sullo straordinario leggeva `righe_fattura` con venti
+     * righe che ignoravano `importo_collegato`, le coperture delle pregresse e la distinzione fra
+     * righe ordinarie e sopravvenienze. Il documento che va in assemblea non coincideva con gli
+     * addebiti.
+     */
+    private array $importiRipartiti = [];
+
+    /**
+     * Gli addebiti ad personam: spese di una sola unità, che **non appartengono a nessuna tabella
+     * millesimale** e quindi non possono stare in una colonna del riparto.
+     */
+    private array $addebitiDiretti = [];
+
     // =========================================================================
     // MOTORE ORDINARIO
     // =========================================================================
@@ -48,13 +66,23 @@ class CalcoloQuoteService
      * @param PianoRate|null $pianoRate Opzionale piano rate per determinare il momento di validità degli overrides
      * @return array Quote calcolate, raggruppate per anagrafica_id e immobile_id
      */
-    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null): array
+    /**
+     * @param bool $soloLettura Invocazione dalla **stampa**, non dalla generazione: salta la
+     *                          guardia di sovra-finanziamento. Un riparto già generato deve poter
+     *                          essere ristampato anche se nel frattempo i dati sono cambiati — la
+     *                          guardia serve a impedire di *generare* male, non a impedire di
+     *                          rileggere. Senza questo, un documento d'assemblea diventerebbe un
+     *                          foglio bianco per una modifica avvenuta dopo l'emissione.
+     */
+    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false): array
     {
         $this->gestioneCorrente = $gestione;
         $this->pivotOverrides   = [];
         $this->pianoRateCreatedAt = $pianoRate?->created_at;
         $this->scopertiAccumulati = [];
         $this->eccedenzeCopertura = [];
+        $this->importiRipartiti = [];
+        $this->addebitiDiretti  = [];
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
@@ -73,7 +101,9 @@ class CalcoloQuoteService
                 }
             }
 
-            $this->guardiaSovraFinanziamentoGiaVersato($pianoRate);
+            if (! $soloLettura) {
+                $this->guardiaSovraFinanziamentoGiaVersato($pianoRate);
+            }
 
             // [DIAG] Log capitoli senza override (importo pivot NULL)
             $senzaOverride = $pianoRate->capitoli->filter(fn($c) => is_null($c->pivot->importo));
@@ -269,6 +299,8 @@ class CalcoloQuoteService
     {
         $this->scopertiAccumulati = [];
         $this->eccedenzeCopertura = [];
+        $this->importiRipartiti = [];
+        $this->addebitiDiretti  = [];
 
         // Carichiamo le fatture col pivot: importo_collegato è la quota della
         // fattura effettivamente finanziata da QUESTO piano (residuo/split).
@@ -440,6 +472,33 @@ class CalcoloQuoteService
         return $this->scopertiAccumulati;
     }
 
+    /**
+     * Quanto è stato davvero portato a riparto, per capitolo: `conto_id => centesimi con segno`.
+     *
+     * **Già al netto della decurtazione degli scoperti, ancora al lordo del netting** del
+     * già-versato. La distinzione non è pedanteria: la colonna di una tabella deve continuare a
+     * valere il budget deliberato, mentre lo sconto a un'unità che aveva già versato è una
+     * grandezza per immobile e vive in una colonna sua — vedi `getNettingApplicato()`.
+     *
+     * Vuoto finché non si è chiamato `calcolaPerGestione()` o `calcolaDaFattureStraordinarie()`.
+     *
+     * @return array<int,int>
+     */
+    public function getImportiPerConto(): array
+    {
+        return $this->importiRipartiti;
+    }
+
+    /**
+     * Gli addebiti ad personam, che non appartengono a nessuna tabella millesimale.
+     *
+     * @return array<int,array{immobile_id:int,anagrafica_id:int,importo:int}>
+     */
+    public function getAddebitiDiretti(): array
+    {
+        return $this->addebitiDiretti;
+    }
+
     // =========================================================================
     // METODI PRIVATI
     // =========================================================================
@@ -497,6 +556,17 @@ class CalcoloQuoteService
             if (!isset($totali[$destinatario->anagrafica_id][$immobileId])) $totali[$destinatario->anagrafica_id][$immobileId] = 0;
 
             $totali[$destinatario->anagrafica_id][$immobileId] += $quotaDaPagare;
+
+            // Registro per la stampa: questa spesa è di una sola unità e non passa da nessuna
+            // tabella millesimale. La stampa la escludeva del tutto (documento vuoto quando la
+            // fattura era tutta ad personam) oppure, se la riga aveva anche un conto, la
+            // spalmava sulla tabella — cioè la riparazione del balcone dell'interno 4 risultava
+            // ripartita su tutti. Vive in una colonna sua, fuori dalle tabelle.
+            $this->addebitiDiretti[] = [
+                'immobile_id'   => $immobileId,
+                'anagrafica_id' => (int) $destinatario->anagrafica_id,
+                'importo'       => $quotaDaPagare,
+            ];
         }
     }
 
@@ -758,7 +828,11 @@ class CalcoloQuoteService
                     // caduto con la beta.43: da quando `nuda_proprietario` è registrabile,
                     // anche un coefficiente sul proprietario ha un ripiego da cercare.
                     if ($anagrafiche->isEmpty()) {
-                        $candidati = array_slice(RuoloAnagraficaImmobile::catenaRiparto($rip->soggetto), 1);
+                        // `catenaRipiego` e non `array_slice(catenaRiparto(), 1)`: su un soggetto
+                        // fuori catalogo la catena non comincia con il ruolo richiesto, e tagliare
+                        // la testa buttava via `proprietario` — il terminale che l'enum dichiara
+                        // di garantire proprio per i dati sporchi. Vedi la nota sul metodo.
+                        $candidati = RuoloAnagraficaImmobile::catenaRipiego($rip->soggetto);
 
                         foreach ($candidati as $ruoloFallback) {
                             $anagrafiche = $immobile->anagrafiche
@@ -855,6 +929,25 @@ class CalcoloQuoteService
         }
 
         $importoContoSegno = $importoConto < 0 ? -$importoDaDistribuirePennyPerfect : $importoDaDistribuirePennyPerfect;
+
+        // ─── Giuntura motore → stampa (beta.49, coda ⑩) ────────────────────────────────
+        //
+        // Da qui in poi «quanto va su questo conto» è deciso, e `RipartoTabelleService` legge
+        // questo registro invece di ricostruirselo da sé leggendo `righe_fattura`. Quelle venti
+        // righe erano un rimpiazzo ingenuo di `calcolaDaFattureStraordinarie()` e ne sbagliavano
+        // quattro cose: prendevano anche le righe ordinarie, ignoravano `importo_collegato`, non
+        // conoscevano le coperture delle pregresse (documento bianco) e spalmavano su tutti gli
+        // addebiti ad personam.
+        //
+        // ⚠️ **Il punto è qui e non prima della decurtazione**, ed è la correzione che la
+        // revisione avversariale ha imposto al primo progetto: registrando `$importoConto` grezzo
+        // la stampa avrebbe dovuto rifare per conto suo il calcolo degli scoperti — cioè
+        // mantenere allineata una seconda copia, che è esattamente il difetto da cui nasce questa
+        // voce. `$importoContoSegno` è già al netto: la stampa può cancellare la sua.
+        if ($importoContoSegno !== 0) {
+            $this->importiRipartiti[$conto->id] =
+                ($this->importiRipartiti[$conto->id] ?? 0) + $importoContoSegno;
+        }
 
         foreach ($weights as $key => $w) {
             $weights[$key] = $w / $pesoSoggetti; // Qui normalizziamo a 1 per il penny-perfect sull'importo decurtato

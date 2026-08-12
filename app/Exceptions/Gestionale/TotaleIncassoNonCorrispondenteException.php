@@ -3,7 +3,6 @@
 namespace App\Exceptions\Gestionale;
 
 use App\Helpers\MoneyHelper;
-use Exception;
 
 /**
  * L'incasso non quadra: `importo_totale ≠ somma delle righe + eccedenza`.
@@ -20,7 +19,7 @@ use Exception;
  * si presenta come un errore di validazione e porta con sé i tre numeri, così se scatta di
  * nuovo si sa subito da che parte guardare.
  */
-class TotaleIncassoNonCorrispondenteException extends Exception
+class TotaleIncassoNonCorrispondenteException extends IncassoNonRegistrabileException
 {
     public function __construct(
         protected int $importoTotaleCents,
@@ -46,8 +45,8 @@ class TotaleIncassoNonCorrispondenteException extends Exception
         return $this->importoTotaleCents - ($this->sommaRigheCents + $this->eccedenzaCents);
     }
 
-    public function report(): bool
+    public function campo(): string
     {
-        return false;
+        return 'importo_totale';
     }
 }

@@ -15,13 +15,44 @@ class StoreIncassoRateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // L'anagrafica è legata al condominio dal pivot anagrafica_condominio.
+            // È condòmino di questo stabile chi è **nel pivot** `anagrafica_condominio`
+            // **oppure** chi **possiede un'unità** qui. Servono entrambi i criteri, e
+            // nessuno dei due basta da solo.
+            //
+            // ## Perché il solo pivot non bastava
+            //
+            // La schermata **propone** i paganti con l'altro criterio
+            // (`IncassoRateController:125`, `whereHas('immobili')`): il modulo offriva una
+            // persona che poi il server rifiutava, con un messaggio incomprensibile a chi
+            // aveva scelto un nome dall'elenco che il gestionale stesso gli aveva dato.
+            //
+            // Sull'**importato** le due divergevano sempre, perché l'importatore popola le
+            // unità e non il pivot: misurato l'11/08/2026 su «Le Terrazze», 16 anagrafiche con
+            // unità e 0 nel pivot. Un amministratore importava lo stabile e **non poteva
+            // registrare un solo incasso** — vedi la coda ⑫ in roadmap.
+            //
+            // ## Perché le sole unità non bastano
+            //
+            // Il pivot copre un caso che le unità non danno: una persona associata al
+            // condominio che **non possiede niente** — accesso al portale, consiglieri. A
+            // database esiste davvero. Toglierlo le leverebbe un diritto che aveva.
+            //
+            // ⚠️ **Quello che la regola continua a impedire, ed è la ragione per cui esiste:**
+            // intestare un incasso a un'anagrafica di un **altro** condominio. Allargare il
+            // criterio non apre quella porta — è blindato da
+            // `tests/Feature/Gestionale/PaganteDelCondominioTest.php`, dove il test
+            // sull'estraneo conta quanto quelli sui casi ammessi.
             'pagante_id' => [
                 'required',
-                \Illuminate\Validation\Rule::exists('anagrafiche', 'id')->whereIn(
-                    'id',
-                    fn ($q) => $q->select('anagrafica_id')->from('anagrafica_condominio')
-                        ->where('condominio_id', $this->route('condominio')?->id)
+                \Illuminate\Validation\Rule::exists('anagrafiche', 'id')->where(
+                    fn ($q) => $q
+                        ->whereIn('id', fn ($sub) => $sub->select('anagrafica_id')
+                            ->from('anagrafica_condominio')
+                            ->where('condominio_id', $this->route('condominio')?->id))
+                        ->orWhereIn('id', fn ($sub) => $sub->select('anagrafica_immobile.anagrafica_id')
+                            ->from('anagrafica_immobile')
+                            ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')
+                            ->where('immobili.condominio_id', $this->route('condominio')?->id))
                 ),
             ],
 

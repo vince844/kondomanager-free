@@ -24,9 +24,12 @@ uses(RefreshDatabase::class);
  * di una riga a saldo misto. Cercando per unità immobiliare il gruppo raccoglie le quote di
  * tutti i comproprietari, quindi una riga può portare il credito di una persona e il debito
  * di un'altra; senza questo campo il pulsante «Usa credito» offrirebbe il credito altrui a
- * chi sta incassando, e il salvataggio finirebbe in `RuntimeException` non catturata — pagina
- * 500 — oppure pagherebbe il debito di uno con il credito di un altro, a seconda dell'ordine
- * di inserimento delle quote.
+ * chi sta incassando, e il salvataggio verrebbe rifiutato — oppure pagherebbe il debito di uno
+ * con il credito di un altro, a seconda dell'ordine di inserimento delle quote.
+ *
+ * (Quel rifiuto era una `RuntimeException` non catturata, cioè una pagina 500, fino alla
+ * beta.49: ora è `CreditoDiAltroSoggettoException` e torna al modulo compilato. Il campo qui
+ * resta necessario lo stesso — serve a non arrivarci.)
  *
  * Perché questo test esiste accanto a quello del componente: il test JS lavora su una
  * fixture che il campo ce l'ha. Se il server smettesse di mandarlo, quel test resterebbe

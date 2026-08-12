@@ -7,6 +7,105 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.49] - Quello Che il Programma Sapeva e Non Diceva
+
+**Nessuna migrazione.** Da questa versione, però, assegnare un'unità a una persona la registra
+anche come **condòmina di quello stabile** — un collegamento che prima non veniva scritto. Vale
+per gli inserimenti nuovi, non modifica nulla di esistente.
+
+Il filo di questa beta è uno solo: **il gestionale sapeva, e non lo diceva.** Ogni difetto qui
+sotto è un controllo che funzionava, si attivava, rifiutava l'operazione — e all'amministratore
+arrivava una schermata muta, o un numero sbagliato su un documento.
+
+### Sul condominio importato non si poteva incassare
+
+Si importava lo stabile — persone, unità, millesimi, saldi quadrati al centesimo — e poi **non si
+registrava un solo incasso**. Misurato su un condominio entrato con la beta.47: 16 persone con
+un'unità, zero riconosciute come condòmini.
+
+La causa erano due risposte diverse alla stessa domanda. La schermata proponeva i paganti fra chi
+**possiede un'unità**; il controllo al salvataggio pretendeva invece un collegamento diverso, che
+l'importatore non scriveva. Il modulo offriva un nome e il server lo rifiutava.
+
+Ora i due criteri coincidono, e il collegamento viene scritto sia dall'importazione sia
+dall'assegnazione manuale di un'unità. **Chi ha già importato non deve fare niente:** i condomìni
+esistenti si sbloccano da soli, senza toccarne i dati.
+
+### Il motivo del rifiuto adesso si legge
+
+Tre situazioni della registrazione incassi finivano in una **pagina di errore**, buttando via la
+distribuzione appena fatta a mano su decine di rate: il credito di un soggetto estraneo all'unità,
+il credito già speso altrove, il credito insufficiente. Ora tornano al modulo compilato con il
+motivo scritto.
+
+Correggendo è emerso che mancava anche il posto dove leggerlo: quella schermata mostrava gli
+errori **solo** per la cassa e la data. Tutti gli altri — compresi i controlli aggiunti nelle due
+versioni precedenti — arrivavano al browser e non comparivano da nessuna parte. Il pulsante
+sembrava semplicemente non funzionare. C'è ora una fascia sopra «Conferma incasso» che elenca
+**tutti** i motivi.
+
+I messaggi dicono anche cosa fare: «il credito che hai scelto non è più disponibile: ricarica la
+pagina» al posto di un codice interno, e sul credito insufficiente compaiono sia quanto ce n'è sia
+quanto ne serve.
+
+### Anche il pagamento fornitore rifiutava in silenzio
+
+Stessa famiglia, altra pagina. La registrazione di un pagamento gestisce gli esiti con un elenco
+di casi previsti, e tutto ciò che non era in quell'elenco spariva. Ci finiva dentro il controllo
+sulla **ritenuta incoerente** — un dato fiscale — e, più in generale, **ogni** controllo ordinario:
+fornitore non scelto, data futura, nessuna fattura selezionata. Nessuno di questi era visibile.
+
+Ora l'elenco è rovesciato: si mostra tutto ciò che non ha già una finestra propria. C'è anche una
+finestra distinta per i rifiuti, separata da quella dei guasti tecnici: quella diceva «riprova», e
+riprovare identico non serviva a niente.
+
+### Il riparto stampato ora coincide con quello addebitato
+
+Il documento che si porta in assemblea era calcolato da un secondo motore, rimasto indietro
+rispetto a quello che produce gli addebiti veri. Su un'unità con **nuda proprietà e usufrutto** il
+sistema addebitava il nudo proprietario e la stampa lo mostrava a zero: la riga non tornava con il
+suo totale, e le colonne non tornavano con il totale generale. Sullo stesso foglio.
+
+Sui **piani straordinari** era peggio, e su cinque fronti insieme: il riparto di una fattura
+finanziata solo in parte veniva stampato per intero; le fatture **pregresse** producevano un
+foglio bianco a fronte di rate emesse correttamente; le righe ordinarie di una fattura mista
+gonfiavano il documento; e una spesa addebitata a una singola unità — la riparazione di un balcone
+— compariva **ripartita su tutti**.
+
+La correzione non è stata allineare la seconda copia: è stato **toglierle il compito di
+calcolare**. Adesso è il motore a dire quanto va su ogni capitolo, e la stampa si occupa solo di
+distribuirlo sulle colonne. Le spese addebitate a una singola unità hanno una colonna propria,
+«Addebito diretto», perché non appartengono a nessuna tabella millesimale.
+
+### La registrazione incassi è più leggibile
+
+La pagina non si adattava all'altezza dello schermo: era fissata a un'altezza che quasi nessun
+portatile ha, e ne risultavano tre barre di scorrimento annidate per mostrare meno di quanto
+c'era. Un monitor grande vedeva esattamente quanto un portatile.
+
+Ora il modulo a sinistra è sempre intero, senza barra, e l'elenco delle rate scorre dentro la sua
+scheda. Sullo stesso schermo l'elenco è passato da **due rate visibili a quattro**, e su un
+monitor grande cresce ancora. L'anteprima della registrazione, che teneva uno spazio fisso anche
+da vuota, ora lo occupa solo quando ha qualcosa da mostrare.
+
+C'è una **guida completa** apribile dall'intestazione, con le trenta operazioni della schermata e
+i comportamenti che dal nome non si deducono: «Paga tutto» opera solo sulle righe visibili,
+«Mostra scadute» nasconde invece di evidenziare, «Resetta» lascia la pagina in manuale.
+
+**Corretto** — cancellando il nome dal menu di ricerca, l'elenco a destra restava quello di prima.
+Cercando per unità immobiliare era peggio: togliendo l'unità non succedeva **niente** e il
+pulsante di conferma restava attivo sopra le rate di un'unità non più selezionata.
+
+### Sotto il cofano
+
+Ventisei test nuovi. Fra questi uno che legge il codice sorgente e fallisce se ricompare un tipo
+di errore generico nella registrazione incassi, e le prime verifiche di **concordanza fra il
+motore e la stampa** del riparto, che non esistevano in nessuna forma — ed è la ragione per cui la
+divergenza era sopravvissuta. È stata aggiunta anche la rete che mancava sulla ripartizione di un
+capitolo fra più tabelle millesimali: nessun test la verificava al centesimo.
+
+---
+
 ## [1.10.0-beta.48] - Quello Che Spariva Senza Dirlo
 
 **Nessuna migrazione**, e nessun dato cambia da solo.

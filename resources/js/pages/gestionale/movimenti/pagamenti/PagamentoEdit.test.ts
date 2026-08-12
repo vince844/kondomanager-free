@@ -150,3 +150,82 @@ describe('riapertura in modifica di un pagamento con commissioni bancarie', () =
         expect(rispedito).toBe(pagamento.importo_commissione);
     });
 });
+
+/**
+ * Il rifiuto che non si vedeva (beta.49, coda ⑮).
+ *
+ * ## Il difetto
+ *
+ * `handleSubmit` gestiva gli esiti del server con una catena di `if (errors.<chiave>)`, ciascuno
+ * con la sua finestra, e in fondo un ripiego sul solo `errors.error`. Su undici chiavi che i
+ * controller restituiscono, dieci avevano una finestra e **una no**: `ritenuta_incoerente`.
+ * Quella tornava dal server, non entrava nella catena, non era `error`, e spariva.
+ *
+ * Il commento del controller su quella guardia dice *«non è bypassabile: la ritenuta discende
+ * dalle fatture pagate»*. È una guardia giusta, su un dato fiscale — e l'amministratore non aveva
+ * modo di sapere che era scattata: vedeva solo un pagamento che non si registrava.
+ *
+ * Verificando è emerso che il buco era più largo della singola chiave: questa schermata **non
+ * mostra nessun errore accanto ai campi** (zero `form.errors` nel template), quindi anche le
+ * validazioni ordinarie — fornitore mancante, data futura, allocazioni vuote — non avevano un
+ * posto dove comparire.
+ *
+ * ## Perché il ripiego è per esclusione e non per inclusione
+ *
+ * Il difetto non era «manca un `if`»: era che l'elenco fosse **di inclusione**, cioè giusto il
+ * giorno in cui è stato scritto e silenzioso alla prima chiave nuova. Ora si mostra tutto ciò che
+ * non ha già una finestra propria. Sbagliando l'elenco si vede un messaggio due volte, invece di
+ * non vederlo affatto: è il verso giusto in cui sbagliare.
+ */
+describe('il rifiuto senza finestra dedicata', () => {
+    const motivi = (wrapper: ReturnType<typeof render>, errori: Record<string, string>) =>
+        (wrapper.vm as any).motiviSenzaFinestra(errori);
+
+    test('la ritenuta incoerente entra nel ripiego', () => {
+        const wrapper = render();
+
+        expect(motivi(wrapper, { ritenuta_incoerente: 'La ritenuta non corrisponde alle fatture.' }))
+            .toEqual(['La ritenuta non corrisponde alle fatture.']);
+    });
+
+    test('anche una validazione ordinaria entra nel ripiego', () => {
+        // Non era previsto da nessuno, ed è il caso più frequente dei due.
+        const wrapper = render();
+
+        expect(motivi(wrapper, { data_pagamento: 'La data non può essere futura.' }))
+            .toEqual(['La data non può essere futura.']);
+    });
+
+    test('chi ha già la sua finestra non viene mostrato due volte', () => {
+        const wrapper = render();
+
+        expect(motivi(wrapper, {
+            illegal_cash: 'Contante oltre soglia.',
+            fiscal_year_closed: 'Esercizio chiuso.',
+            modifica_vietata: 'Non modificabile.',
+            error: 'Guasto.',
+        })).toEqual([]);
+    });
+
+    test('una chiave che nessuno ha previsto viene mostrata lo stesso', () => {
+        // ⚠️ La garanzia vera: `guardia_del_futuro` non esiste da nessuna parte. Se questo test
+        // si rompe perché il ripiego è tornato a filtrare per inclusione, è tornato il silenzio.
+        const wrapper = render();
+
+        expect(motivi(wrapper, { guardia_del_futuro: 'Motivo che nessuno ha previsto.' }))
+            .toEqual(['Motivo che nessuno ha previsto.']);
+    });
+
+    test('i motivi arrivano davvero a schermo', async () => {
+        const wrapper = render();
+
+        (wrapper.vm as any).rifiutoMotivi = ['La ritenuta non corrisponde alle fatture.'];
+        (wrapper.vm as any).showRifiutoModal = true;
+        await wrapper.vm.$nextTick();
+
+        // `document.body` e non `wrapper.text()`: ogni finestra di questa schermata è dentro
+        // un `<Teleport to="body">`, quindi il markup esce dall'albero del componente.
+        expect(document.body.textContent).toContain('Modifica non registrata');
+        expect(document.body.textContent).toContain('La ritenuta non corrisponde alle fatture.');
+    });
+});

@@ -165,6 +165,41 @@ const allocazioniInconsistentiMsg = ref('');
 const showGenericErrorModal = ref(false);
 const genericErrorMsg = ref('');
 
+/**
+ * Il rifiuto senza finestra dedicata (beta.49, coda ⑮). Gemello di quello in `PagamentoNew`,
+ * stessa ragione: la catena di `if (errors.<chiave>)` copriva dieci chiavi su undici, e tutto il
+ * resto — `ritenuta_incoerente`, e ogni validazione ordinaria di
+ * `UpdatePagamentoFornitoreRequest` — tornava dal server senza comparire da nessuna parte.
+ *
+ * In modifica il caso della ritenuta è ancora più stretto: le allocazioni sono immutabili, quindi
+ * la ritenuta non può cambiare, e un valore diverso da quello registrato è **sempre** un errore.
+ * Una guardia che non sbaglia mai, e che finora non riusciva a dirlo.
+ */
+const showRifiutoModal = ref(false);
+const rifiutoMotivi = ref<string[]>([]);
+
+/**
+ * Le chiavi già servite da una finestra dedicata. Elenco di **esclusione**: dimenticarne una fa
+ * vedere il messaggio due volte, mentre l'elenco di inclusione che c'era prima lo faceva sparire.
+ * Fra i due errori possibili si sceglie quello che si vede.
+ *
+ * Rispetto a `PagamentoNew` c'è in più `modifica_vietata`, che esiste solo in modifica.
+ */
+const CHIAVI_CON_FINESTRA_PROPRIA = [
+    'iban_discrepanza', 'possibile_duplicato',
+    'insufficient_funds', 'insufficient_funds_data',
+    'overpayment', 'overpayment_data',
+    'fiscal_year_closed', 'illegal_cash',
+    'fattura_non_approvata', 'allocazioni_inconsistenti',
+    'modifica_vietata', 'error',
+];
+
+/** I motivi del rifiuto che nessuna finestra dedicata mostrerebbe. */
+const motiviSenzaFinestra = (errors: Record<string, string>): string[] =>
+    Object.entries(errors)
+        .filter(([chiave, messaggio]) => messaggio && !CHIAVI_CON_FINESTRA_PROPRIA.includes(chiave))
+        .map(([, messaggio]) => messaggio);
+
 const selectedFornitore = computed(() => props.fornitori?.find(f => f.id === form.fornitore_id));
 
 // Metodi pagamento disponibili (porta aperta per futuri)
@@ -297,10 +332,18 @@ const handleSubmit = () => {
                 showAllocazioniInconsistentiModal.value = true;
                 return;
             }
-            // ── Fallback tecnico ──
+            // ── Fallback tecnico: un guasto vero, con «Riprova» ──
             if (errors.error) {
                 genericErrorMsg.value = errors.error;
                 showGenericErrorModal.value = true;
+                return;
+            }
+
+            // ── Ripiego per tutto il resto: rifiuto, non guasto ──
+            const motivi = motiviSenzaFinestra(errors as Record<string, string>);
+            if (motivi.length) {
+                rifiutoMotivi.value = motivi;
+                showRifiutoModal.value = true;
             }
         },
     });
@@ -1157,6 +1200,50 @@ const pageGuides: never[] = [];
         </Teleport>
 
         <!-- ── 8. ERRORE TECNICO GENERICO — fallback ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <!--
+                    Il rifiuto che prima non si vedeva (coda ⑮). Distinta dalla finestra
+                    «Errore tecnico» qui sotto: là c'è il bug e «Riprova», qui c'è il motivo e
+                    solo «Chiudi», perché riprovare senza cambiare niente fallirebbe uguale.
+                -->
+                <div v-if="showRifiutoModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-amber-500 to-amber-600 px-8 pt-8 pb-6 text-center">
+                            <div class="w-16 h-16 bg-white/15 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/25">
+                                <AlertTriangle class="w-8 h-8 text-white" />
+                            </div>
+                            <h3 class="font-black text-white text-xl mb-1">Modifica non registrata</h3>
+                            <p class="text-amber-100 text-sm">C'è qualcosa da correggere prima di riprovare</p>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <ul class="space-y-3">
+                                <li v-for="(motivo, i) in rifiutoMotivi" :key="i"
+                                    class="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                                    <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <p class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{{ motivo }}</p>
+                                </li>
+                            </ul>
+
+                            <div class="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4">
+                                <CheckCircle class="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                <p class="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                                    Non è stato scritto nulla, e la compilazione è rimasta com'era: correggi
+                                    quanto sopra e riprova senza rifare tutto.
+                                </p>
+                            </div>
+
+                            <Button @click="showRifiutoModal = false"
+                                class="w-full h-12 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-black uppercase tracking-widest text-[11px]">
+                                Chiudi
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
         <Teleport to="body">
             <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
                 <div v-if="showGenericErrorModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">

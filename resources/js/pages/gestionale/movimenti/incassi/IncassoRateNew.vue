@@ -9,11 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock, Wallet, Search } from 'lucide-vue-next';
+import { AlertCircle, BookOpen, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock, Wallet } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import IncassoRateGuide from '@/components/guides/IncassoRateGuide.vue';
 import { useDebitiLoader } from '@/composables/useDebitiLoader';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -37,23 +38,40 @@ const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Nuovo incasso' },
 ]);
 
+const mostraGuida = ref(false);
+
+/**
+ * Le tre schede in testata, riscritte corte nella beta.49.
+ *
+ * Prima erano il blocco più lungo di tutto il gestionale — 624 caratteri contro una mediana di
+ * 93 — e da sole occupavano **240 px sempre aperti** sopra la griglia: più della card che elenca
+ * le rate, che ne aveva 286. Su un portatile si vedevano due rate.
+ *
+ * Ora sono 308 caratteri in tutto, allineati a `FatturaRegisterNew` (290), e la banda scende a
+ * ~134 px. Il testo che è stato tolto non è andato perso: sta in `IncassoRateGuide`, che si apre
+ * dal pulsante «Guida completa» e non costa un pixel.
+ *
+ * **La divisione del lavoro fra i due**, che è la regola per aggiornarli: la scheda dice *dove
+ * sta una cosa* e *una sola sorpresa*, in una riga; la guida dice il perché e le conseguenze. Se
+ * una scheda cresce oltre le due righe, quel testo appartiene alla guida.
+ */
 const pageGuides = [
     {
-        title: 'Modalità auto/manuale',
-        description: 'In modalità automatica il sistema distribuisce l\'importo versato sulle rate più urgenti. Passa in manuale per personalizzare riga per riga.',
-        icon: ArrowRightLeft,
+        title: 'Persona o immobile',
+        description: 'Per immobile la riga somma tutti gli intestatari: il pagante lo scegli in «Intestatario della ricevuta».',
+        icon: User,
         colorVariant: 'blue' as const
     },
     {
-        title: 'Credito disponibile',
-        description: 'Se il condòmino ha un credito (saldo iniziale a credito, anticipo o rata strapagata), la riga appare in blu con residuo negativo. Il pulsante "Usa credito" compare anche sulle righe marcate SALDO MISTO, dove un credito e un debito della stessa rata si annullano a zero: quel credito è spendibile sulle altre rate. Compensa anche a cassa zero.',
-        icon: Wallet,
+        title: 'Automatico o manuale',
+        description: 'In automatico l\'importo parte dalla rata più vecchia; in manuale «Importo versato» segue le righe.',
+        icon: ArrowRightLeft,
         colorVariant: 'amber' as const
     },
     {
-        title: 'Ricerca flessibile',
-        description: 'Cerca i debiti per anagrafica (persona) o per unità immobiliare. In modalità immobile puoi specificare un intestatario diverso per la ricevuta.',
-        icon: Search,
+        title: 'Il credito si applica a mano',
+        description: 'Nessun credito viene usato finché non premi «Usa credito» sulla riga che lo porta. Il resto è nella guida.',
+        icon: Wallet,
         colorVariant: 'emerald' as const
     },
 ];
@@ -362,7 +380,20 @@ const previewContabile = computed(() => {
     };
 });
 
+/**
+ * Numero di serie della ricerca in corso.
+ *
+ * Serve perché `svuotaRicerca()` da sola non basta: azzera `rawRateList`, ma una richiesta
+ * partita un istante prima per la persona precedente **non è annullata**, e quando risponde
+ * riscrive l'elenco appena svuotato. Senza questo contatore la correzione trasformerebbe un
+ * difetto permanente — l'elenco che non si svuota mai — in uno **intermittente**, che è la
+ * versione peggiore: dipende dalla latenza, non si riproduce a comando, e chi lo segnala non
+ * viene creduto.
+ */
+let ricercaCorrente = 0;
+
 const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?: number | null }) => {
+    const mia = ++ricercaCorrente;
     loadingRate.value = true;
     try {
         const result = await fetchDebitiAPI(
@@ -371,10 +402,60 @@ const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?
             params,
             isScaduta
         );
+
+        // Una ricerca più recente ha già vinto: questa risposta descrive una persona o un'unità
+        // che non è più a schermo, e assegnarla farebbe ricomparire da sola la lista svuotata.
+        if (mia !== ricercaCorrente) return;
+
         rawRateList.value = result as Rata[];
     } finally {
-        loadingRate.value = false;
+        if (mia === ricercaCorrente) loadingRate.value = false;
     }
+};
+
+/**
+ * Riporta la ricerca allo stato «nessuno selezionato».
+ *
+ * Nasce nella beta.49 dalla segnalazione «se cancelli l'anagrafica con la x, la card di destra
+ * non si resetta». La causa: l'unica riga che sa svuotare l'elenco è `fetchDebiti`, e i due
+ * watcher che la chiamano hanno una guardia sul valore non nullo (`&& newVal`). Con la x il
+ * watcher parte, azzera l'allocazione e **ridistribuisce l'importo ancora digitato sulle righe
+ * dell'ex pagante** — ma non ricarica niente, e `rawRateList` resta quella di prima.
+ *
+ * I casi rotti erano quattro, non uno, e il segnalato non era il peggiore:
+ *
+ * - **x sull'unità immobiliare**: il watcher era un no-op assoluto. `pagante_id` resta
+ *   valorizzato, quindi «Conferma incasso» **resta acceso** e si può inviare un payload con le
+ *   rate di un'unità che non è più a schermo.
+ * - **x sull'intestatario** (modalità immobile): l'elenco deve restare — è dell'unità, non della
+ *   persona — ma `creditiRifiutati` sopravviveva al cambio di intestatario, contro quanto
+ *   dichiara il commento di `toggleCredito`.
+ * - **x sul filtro gestione**: la lista viene riclonata e l'allocazione a schermo torna a zero,
+ *   ma `syncForm()` vive dentro `runDistribution()`, che parte solo con importo maggiore di zero.
+ *   Su una compensazione a solo credito il payload conservava le righe della lista precedente.
+ *
+ * ⚠️ Non azzera `pagante_id` né `selectedImmobileId`: la scelta di quale dei due togliere resta a
+ * chi chiama, ed è ciò che permette di svuotare l'intestatario **senza** perdere l'elenco
+ * dell'unità. Restano fuori anche cassa, data, causale, `related_task_id`, il filtro gestione,
+ * «Mostra scadute» e `mode`: descrivono il movimento o una preferenza dell'operatore, non la
+ * persona, e perderli a ogni x sarebbe un fastidio quotidiano.
+ */
+const svuotaRicerca = () => {
+    ricercaCorrente++;
+    dimenticaRichiestaCompensazione();
+    setPriorityRataId(null);
+    creditoSenzaScoperto.value = false;
+    creditiRifiutati.value.clear();
+    rawRateList.value = [];
+
+    // L'importo si azzera per **sicurezza**, non per pulizia. Lasciandolo, in modalità immobile
+    // togliere l'unità lascerebbe `pagante_id` valorizzato e `previewContabile.hasData` vero
+    // (basta importo maggiore di zero): «Conferma incasso» acceso sopra un elenco vuoto.
+    // Il prezzo è che si perde anche `prefill_importo` arrivato dal link della segnalazione —
+    // riselezionando la stessa persona l'elenco torna, l'importo no.
+    form.importo_totale = '';
+    form.dettaglio_pagamenti = [];
+    form.eccedenza = 0;
 };
 
 /**
@@ -646,14 +727,39 @@ const syncForm = () => {
 const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
     if (searchMode.value !== newMode) {
         searchMode.value = newMode;
-        dimenticaRichiestaCompensazione();
-        creditiRifiutati.value.clear();
-        rawRateList.value = [];
+
+        // Passa per `svuotaRicerca()` invece di ripetere l'elenco a mano: questo blocco aveva
+        // già lo stesso buco parziale — azzerava l'importo ma **non** `dettaglio_pagamenti`,
+        // quindi il payload sopravviveva al cambio di modalità.
+        svuotaRicerca();
         selectedImmobileId.value = null;
         form.pagante_id = null;
-        form.importo_totale = '';
     }
 };
+
+/**
+ * Tutti i motivi per cui l'incasso è stato rifiutato, per la fascia sopra «Conferma incasso».
+ *
+ * ## Perché serve una fascia, e non bastano gli errori accanto ai campi
+ *
+ * Questa schermata mostrava `InputError` **solo** per `cassa_id` e `data_pagamento`. Tutto il
+ * resto — la guardia di quadratura della beta.43, quella sul debito altrui della beta.48, le tre
+ * sulle compensazioni a credito — tornava dal server, finiva in `form.errors` e **non compariva
+ * da nessuna parte**: il pulsante sembrava semplicemente non funzionare.
+ *
+ * È costato mezz'ora di diagnosi con gli strumenti di sviluppo aperti, l'11/08/2026, a chi aveva
+ * scritto la guardia il giorno prima. Un amministratore non ha quegli strumenti: per lui il
+ * gestionale è rotto e l'incasso non si registra, senza una riga di spiegazione.
+ *
+ * ⚠️ Si mostra **tutto** `form.errors`, non un elenco scelto di chiavi. Un elenco scelto è
+ * esattamente il meccanismo che ha prodotto il silenzio: era giusto quando è stato scritto e ha
+ * smesso di esserlo alla prima guardia nuova. Qui una guardia nuova è visibile da subito, senza
+ * che nessuno si ricordi di aggiungerla. Il prezzo è che i due campi con errore in linea lo
+ * mostrano anche nel riepilogo: una ripetizione, contro il rischio di un rifiuto muto.
+ */
+const erroriIncasso = computed<string[]>(() =>
+    Object.values(form.errors).filter((m): m is string => typeof m === 'string' && m.length > 0)
+);
 
 const submit = () => {
     // 🟢 FIX: Clean total prima dell'invio
@@ -667,7 +773,9 @@ const submit = () => {
     payload.post(route(generateRoute('gestionale.movimenti-rate.store'), props.condominio.id), {
         preserveScroll: true,
         onSuccess: () => {
-            rawRateList.value = [];
+            // `svuotaRicerca()` anche qui: i crediti rifiutati del condòmino appena incassato
+            // restavano validi per il successivo, se gli id delle righe coincidevano.
+            svuotaRicerca();
             form.reset();
             mode.value = 'auto';
             searchMode.value = 'persona';
@@ -682,6 +790,14 @@ watch(() => form.pagante_id, (newVal) => {
         // La richiesta arrivata dal portale vale per il condòmino di quella segnalazione: se
         // l'amministratore cambia persona, l'avviso deve spegnersi invece di seguirlo.
         dimenticaRichiestaCompensazione();
+
+        // E con l'avviso va spenta anche la **rata bersaglio**, che è l'altra metà di quella
+        // segnalazione. `prefill_rata_id` è l'id della rata PADRE, condominiale: la lista di un
+        // altro condòmino contiene quasi sempre una quota della stessa rata, quindi senza questa
+        // riga `isInboxMode` resterebbe acceso e includerebbe da sé il credito del **nuovo**
+        // intestatario su quella gestione, senza un clic — proprio mentre il banner che lo
+        // avrebbe spiegato è appena stato spento.
+        setPriorityRataId(null);
 
         // E soprattutto va buttata via l'allocazione: era costruita per un'altra persona.
         // Senza questo, cercando per immobile, restava una riga a importo negativo dentro
@@ -703,11 +819,37 @@ watch(() => form.pagante_id, (newVal) => {
         // avviene, e la distribuzione restava spenta in silenzio.
         runDistribution();
     }
-    paganteIniziale = newVal;
 
-    if (searchMode.value === 'persona' && newVal) fetchDebiti({ anagrafica_id: newVal });
+    // Solo i valori veri aggiornano il riferimento. Prima ci finiva anche `null`, e questo
+    // **disarmava il blocco qui sopra per la selezione successiva**: dopo una x, il nominativo
+    // scelto dopo veniva trattato come il primo della schermata — quello che arriva dal link
+    // precompilato — e saltava del tutto il reset dell'allocazione.
+    if (newVal !== null && newVal !== undefined) paganteIniziale = newVal;
+
+    if (searchMode.value !== 'persona') return;
+
+    if (newVal) {
+        fetchDebiti({ anagrafica_id: newVal });
+    } else {
+        // Il caso segnalato: la x sull'anagrafica. Cercando per persona l'elenco È della
+        // persona, quindi togliendola non resta niente da mostrare.
+        svuotaRicerca();
+    }
 });
-watch(selectedImmobileId, (newVal) => { if (searchMode.value === 'immobile' && newVal) fetchDebiti({ immobile_id: newVal }); });
+
+watch(selectedImmobileId, (newVal) => {
+    if (searchMode.value !== 'immobile') return;
+
+    if (newVal) {
+        fetchDebiti({ immobile_id: newVal });
+    } else {
+        // Simmetrico, ed era il caso più grave: qui il watcher non faceva assolutamente nulla,
+        // e siccome l'intestatario è un altro campo `pagante_id` restava valorizzato — con
+        // «Conferma incasso» acceso sopra le rate di un'unità non più selezionata.
+        svuotaRicerca();
+        form.pagante_id = null;
+    }
+});
 watch(importoNumerico, () => { if (rateList.value.length > 0) runDistribution(); });
 
 watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
@@ -732,6 +874,13 @@ watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
     // 🟢 FIX: Triggeriamo solo se c'è un motivo valido per evitare reset non voluti
     if (importoNumerico.value > 0 || priorityRataId.value) {
         runDistribution();
+    } else {
+        // La lista è appena stata riclonata da `rawRateList`, quindi a schermo ogni allocazione
+        // è tornata a zero: il payload deve dire la stessa cosa. `syncForm()` viveva solo dentro
+        // `runDistribution()`, che qui non parte — così cambiare il filtro «Gestione» durante una
+        // compensazione a solo credito (importo versato zero) lasciava dentro
+        // `dettaglio_pagamenti` le righe della lista precedente, mentre la tabella le negava.
+        syncForm();
     }
 }, { deep: true, immediate: true });
 
@@ -756,29 +905,91 @@ onMounted(async () => {
 </script>
 
 <template>
-    <Head title="Registra Incasso" />
+    <Head title="Nuovo incasso rate" />
 
     <GestionaleLayout>
-        <div class="px-6 py-6 w-full flex flex-col gap-4 h-[calc(100vh-40px)] min-h-[950px]">
+        <!--
+            Altezza agganciata al viewport, non a un numero fisso.
+
+            Prima era `h-[calc(100vh-40px)] min-h-[950px]`, e quel pavimento era il difetto: sotto
+            i 990 px di schermo vinceva lui, la pagina veniva inchiodata a 950 px e cominciava a
+            scorrere. Su un portatile si finiva con **tre barre di scorrimento annidate** — il
+            documento, la colonna sinistra e l'elenco rate — per ottenere meno spazio utile di
+            quello disponibile. E un monitor da 1080p mostrava esattamente quanto un portatile,
+            perché nessuno dei due poteva superare i 950 px.
+
+            **`h` e non `min-h`, ed è un vincolo tecnico prima che estetico.** Le due colonne
+            usano `lg:h-full`, cioè `height: 100%`: una percentuale contro un genitore ad altezza
+            **indefinita** si risolve in `auto`. Con `min-h` le colonne smettevano quindi di
+            essere limitate e crescevano a contenuto — misurato con 12 rate: la card delle rate
+            arrivava a **1084 px**, la pagina a 1555, e l'elenco **non scorreva più**. Cioè
+            l'opposto dell'obiettivo: invece di una finestra scorrevole sulle rate, un lenzuolo.
+
+            Con l'altezza definita l'elenco torna a scorrere dentro la sua card, che è il
+            comportamento voluto: si vedono le prime rate e si scorre lì dentro, senza muovere il
+            resto della pagina. Il prezzo è che quando il **modulo** a sinistra non ci sta viene
+            ritagliato e scorre lui — in ricerca per immobile, che ha un campo in più. È il male
+            minore: un modulo si scorre, un elenco di rate lungo due schermi no.
+
+            I 126 px sottratti sono misurati a video, non stimati: 64 di barra applicativa, 16 di
+            spaziatura di `main`, 45 di piè di pagina, 1 di margine. Il prefisso `lg:` limita il
+            vincolo al layout a due colonne;
+            sotto, dove le colonne si impilano, la pagina torna a scorrere normalmente ed è giusto
+            così.
+        -->
+        <div class="px-6 py-3 w-full flex flex-col gap-3 lg:min-h-[calc(100vh-126px)]">
 
             <div class="shrink-0">
+                <!--
+                    Senza `page-subtitle`. Diceva «registra il pagamento delle rate condominiali
+                    con distribuzione automatica o manuale»: la prima metà la dice il titolo, la
+                    seconda è il titolo della scheda accanto. Valeva 31 px — mezza riga di rata —
+                    per ripetere due cose già scritte a dieci centimetri di distanza.
+                -->
                 <PageHeaderGuide
                     page-title="Nuovo incasso rate"
-                    page-subtitle="Registra il pagamento delle rate condominiali con distribuzione automatica o manuale."
                     :guides="pageGuides"
                     :breadcrumbs="(breadcrumbs as any)"
                     :back-url="route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id })"
                     back-text="Indietro"
-                />
+                >
+                    <template #actions>
+                        <!--
+                            «Guida completa» e non «Guida»: è il nome che usa
+                            `FatturaRegisterNew`, la pagina di riferimento, e distingue questo
+                            pannello dalle tre schede qui sotto — che sono anch'esse una guida,
+                            ma di un'altra scala.
+                        -->
+                        <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
+                            <BookOpen class="h-4 w-4" /> Guida completa
+                        </Button>
+                    </template>
+                </PageHeaderGuide>
             </div>
+
+            <IncassoRateGuide v-model:open="mostraGuida" />
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
 
-                <div class="lg:col-span-4 h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden">
-                    <div class="p-4 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
+                <!--
+                    La colonna sinistra **detta l'altezza della riga**: niente `h-full`, niente
+                    ritaglio. Il modulo è alto quanto serve e non scorre mai per conto suo.
+                -->
+                <div class="lg:col-span-4 flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <!--
+                        `lg:overflow-y-auto` e non `overflow-y-auto`: da lg in su resta la valvola
+                        Nessun `overflow` qui: il corpo del modulo è alto quanto il suo contenuto
+                        e non ha una barra propria. L'obiettivo non era nascondere la barra —
+                        era non averne bisogno.
+                    -->
+                    <div class="p-3 space-y-2">
 
-                        <div class="space-y-2">
-                            <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Cerca debiti per anagrafica o immobile</Label>
+                        <!--
+                            L'etichetta «Cerca debiti per anagrafica o immobile» era ridondante due
+                            volte: la dicono già il selettore Persona/Immobile qui sotto e
+                            l'etichetta del campo successivo. Valeva 27 px, mezza riga di rata.
+                        -->
+                        <div>
                             <div class="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg">
                                 <button @click="toggleSearchMode('persona')" class="flex items-center justify-center py-1 text-xs font-medium rounded-md transition-all" :class="searchMode === 'persona' ? 'bg-white text-primary shadow-sm font-bold' : 'text-slate-500 hover:text-slate-700'">
                                     <User class="w-3.5 h-3.5 mr-1.5"/> Persona
@@ -788,7 +999,7 @@ onMounted(async () => {
                                 </button>
                             </div>
 
-                            <div class="mt-3">
+                            <div class="mt-2">
                                 <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">
                                     {{ searchMode === 'persona' ? 'Seleziona anagrafica' : 'Seleziona unità immobiliare' }}
                                 </Label>
@@ -810,7 +1021,7 @@ onMounted(async () => {
                                     </template>
                                 </v-select>
 
-                                <div v-else class="space-y-3">
+                                <div v-else class="space-y-2">
                                     <v-select
                                         :options="immobili"
                                         v-model="selectedImmobileId"
@@ -852,19 +1063,25 @@ onMounted(async () => {
                             </div>
                         </div>
 
-                        <div class="space-y-3">
+                        <!--
+                            Senza `space-y-3`: l'etichetta ha già il suo `mb-1`, come tutte le
+                            altre della colonna. I 12 px in più qui erano un'eccezione non voluta,
+                            non l'enfasi sul campo principale — quella la fanno `h-10` e
+                            `text-lg`, che restano.
+                        -->
+                        <div>
                             <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Importo versato</Label>
                             <MoneyInput
                                 id="importo_totale"
                                 v-model="form.importo_totale"
                                 :money-options="moneyOptions"
                                 :lazy="false"
-                                class="h-10 text-lg font-bold shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2"
+                                class="h-9 text-base font-bold shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2"
                                 placeholder="0,00"
                             />
                         </div>
 
-                        <div class="space-y-3">
+                        <div class="space-y-2">
                             <div>
                                 <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Risorsa finanziaria</Label>
                                 <v-select
@@ -925,8 +1142,19 @@ onMounted(async () => {
                         </div>
                     </div>
 
-                    <div class="p-4 bg-slate-50 border-t border-slate-200 shrink-0">
-                        <div class="flex justify-between items-center text-xs mb-3 px-1">
+                    <div class="p-3 bg-slate-50 border-t border-slate-200 shrink-0">
+                        <div v-if="erroriIncasso.length" class="mb-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                            <div class="flex items-center gap-2 mb-1.5">
+                                <AlertCircle class="w-4 h-4 text-red-600 shrink-0" />
+                                <span class="text-xs font-bold text-red-800 uppercase tracking-wider">Incasso non registrato</span>
+                            </div>
+                            <ul class="space-y-1.5 pl-6">
+                                <li v-for="(errore, i) in erroriIncasso" :key="i" class="text-xs text-red-700 leading-relaxed list-disc">
+                                    {{ errore }}
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="flex justify-between items-center text-xs mb-2 px-1">
                             <span class="text-slate-500 uppercase tracking-wider font-semibold">Totale allocato:</span>
                             <span class="font-bold text-slate-800 text-sm">{{ euro(totalAllocato) }}</span>
                         </div>
@@ -940,7 +1168,26 @@ onMounted(async () => {
                     </div>
                 </div>
 
-                <div class="lg:col-span-8 h-full flex flex-col gap-4 overflow-hidden">
+                <!--
+                    ## Come si ottengono insieme le due cose che sembravano escludersi
+                    #
+                    # Servono un modulo che non scorre **e** un elenco rate che scorre dentro la
+                    # sua card. Con le regole normali del CSS sono incompatibili: se la riga ha
+                    # altezza definita l'elenco scorre ma il modulo viene ritagliato; se ha
+                    # altezza automatica il modulo respira ma `h-full` si risolve in `auto` e
+                    # l'elenco diventa un lenzuolo da 1084 px (misurato, con 12 rate).
+                    #
+                    # La via d'uscita: la colonna sinistra **detta** l'altezza della riga, questa
+                    # la **riempie senza contribuirvi**. `lg:absolute inset-0` la toglie dal
+                    # calcolo dell'altezza e le dà come riferimento la cella `relative`, che è
+                    # alta quanto il modulo. Da lì `flex-1 min-h-0` sulla card delle rate torna a
+                    # funzionare e l'elenco scorre al suo interno.
+                    #
+                    # Sotto `lg` niente di tutto questo: le colonne si impilano e scorre la
+                    # pagina, che è il comportamento giusto su uno schermo stretto.
+                -->
+                <div class="lg:col-span-8 lg:relative">
+                    <div class="flex flex-col gap-3 lg:absolute lg:inset-0 lg:overflow-hidden">
 
                     <div class="bg-white rounded-xl border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
                         <div class="p-3 border-b bg-gray-50 flex justify-between items-center shrink-0">
@@ -1272,7 +1519,25 @@ onMounted(async () => {
                         </div>
                     </div>
 
-                    <div class="bg-slate-900 text-white rounded-xl border border-slate-700 shadow-sm flex flex-col h-[200px] shrink-0 overflow-hidden">
+                    <!--
+                        L'anteprima occupa spazio solo quando ha qualcosa da dire.
+
+                        Prima erano 200 px fissi, dovuti sempre — anche mentre il riquadro diceva
+                        soltanto «inserisci un importo per vedere l'anteprima». Cioè per tutta la
+                        prima metà del lavoro, quando l'unica cosa che conta è scorrere le rate,
+                        il 40% della colonna destra era tenuto da un pannello vuoto.
+
+                        Ora ha due stati. **Vuoto**: resta la sola barra del titolo, e i ~140 px
+                        risparmiati vanno all'elenco rate proprio quando servono. **Con dati**:
+                        `lg:h-[30%]` la fa crescere insieme alla colonna invece di ritagliarne una
+                        fetta fissa — su un monitor grande arriva oltre i 200 px di prima, su un
+                        portatile scende senza schiacciare le rate. Il pavimento a 140 px tiene
+                        leggibili l'intestazione e le prime voci.
+                    -->
+                    <div
+                        class="bg-slate-900 text-white rounded-xl border border-slate-700 shadow-sm flex flex-col shrink-0 overflow-hidden transition-all"
+                        :class="previewContabile.hasData ? 'h-[200px] lg:h-[30%] lg:min-h-[140px]' : 'h-auto'"
+                    >
                         <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 shrink-0">
                             <h3 class="font-semibold text-sm flex items-center">
                                 <Receipt class="w-4 h-4 mr-2 text-emerald-400"/> Anteprima registrazione
@@ -1289,8 +1554,14 @@ onMounted(async () => {
                             </div>
                         </div>
 
-                        <div class="flex-1 overflow-y-auto p-4 custom-scrollbar-dark">
-                            <div v-if="previewContabile.hasData" class="space-y-2">
+                        <!--
+                            `v-if` e non `v-show`: da vuoto il corpo non deve occupare nemmeno il
+                            proprio padding. Il messaggio «inserisci un importo» scompare con lui —
+                            non serviva: la barra del titolo resta, e dice già che quello è il
+                            posto dove comparirà l'anteprima.
+                        -->
+                        <div v-if="previewContabile.hasData" class="flex-1 overflow-y-auto p-4 custom-scrollbar-dark">
+                            <div class="space-y-2">
                                 <div v-for="riga in previewContabile.righe" :key="riga.id" class="flex justify-between items-start text-xs border-b border-slate-800 pb-2 last:border-0 last:pb-0">
                                     <div class="flex-1 mr-4">
                                         <div class="font-medium text-slate-200">{{ riga.descrizione }}</div>
@@ -1321,13 +1592,10 @@ onMounted(async () => {
                                 </div>
                             </div>
 
-                            <div v-else class="flex flex-col items-center justify-center h-full text-slate-600 text-xs gap-2">
-                                <Receipt class="w-8 h-8 opacity-20" />
-                                <p>Inserisci un importo per vedere l'anteprima</p>
-                            </div>
                         </div>
                     </div>
 
+                    </div>
                 </div>
             </div>
         </div>

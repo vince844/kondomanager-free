@@ -124,4 +124,32 @@ enum RuoloAnagraficaImmobile: string
             default => [self::PROPRIETARIO, self::NUDA_PROPRIETA],
         };
     }
+
+    /**
+     * I ripieghi da provare quando il ruolo richiesto non c'è su quell'unità — cioè la catena
+     * **senza il ruolo richiesto**, che è già stato cercato e non trovato.
+     *
+     * ## Perché non basta `array_slice(catenaRiparto(...), 1)`
+     *
+     * Era così che facevano i due chiamanti, e su un `soggetto` **fuori catalogo** buttava via un
+     * candidato vero: il `default` qui sopra restituisce `[PROPRIETARIO, NUDA_PROPRIETA]`, una
+     * catena che **non comincia** con il ruolo richiesto perché quel ruolo non esiste. Tagliare
+     * la testa toglieva `proprietario`, cioè proprio il terminale legale che il commento del
+     * `default` dichiara di garantire: «un dato sporco non deve far sparire un addebito», e
+     * invece lo faceva sparire a metà.
+     *
+     * Il taglio va fatto solo quando la testa è davvero il ruolo richiesto. Metterlo qui, e non
+     * nei chiamanti, è la stessa ragione per cui la catena vive in questa classe: la trappola era
+     * identica in `CalcoloQuoteService` e in `RipartoTabelleService`, scritta due volte.
+     *
+     * @return array<int, self>
+     */
+    public static function catenaRipiego(?string $soggettoRichiesto): array
+    {
+        $catena = self::catenaRiparto($soggettoRichiesto);
+
+        return ($catena[0]->value === $soggettoRichiesto)
+            ? array_slice($catena, 1)
+            : $catena;
+    }
 }

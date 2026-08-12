@@ -40,13 +40,24 @@ import { flushPromises, mount } from '@vue/test-utils';
  * `vi.mock` viene issata sopra il corpo del modulo: una `const` normale sarebbe ancora
  * nella zona morta quando il mock viene costruito.
  */
-const server = vi.hoisted(() => ({ rate: [] as any[] }));
+const server = vi.hoisted(() => ({
+    rate: [] as any[],
+    // Cancello per trattenere una risposta a metà volo. Serve solo al test sulla corsa fra la
+    // «x» e una richiesta già partita; resta `null` in tutti gli altri, dove la risposta è
+    // immediata. Va sempre riportato a `null`, o i test successivi restano appesi.
+    freno: null as null | Promise<void>,
+}));
 
 // I debiti arrivano via `useDebitiLoader`, che è un `axios.get`. Mockare il trasporto e non
 // il composable lascia in piedi la mappatura vera (`da_pagare: 0`, `selezionata: false`,
 // `scaduta`), che è parte di ciò che il watcher poi legge.
 vi.mock('axios', () => ({
-    default: { get: vi.fn(async () => ({ data: { rate: server.rate } })) },
+    default: {
+        get: vi.fn(async () => {
+            if (server.freno) await server.freno;
+            return { data: { rate: server.rate } };
+        }),
+    },
 }));
 
 /**
@@ -439,5 +450,196 @@ describe('cambiare intestatario non spegne la distribuzione', () => {
             (wrapper.vm as any).form.dettaglio_pagamenti.length,
             'L\'importo è ancora lì e le rate pure: la distribuzione va rifatta, non spenta.',
         ).toBeGreaterThan(0);
+    });
+});
+
+/**
+ * La fascia che dice **perché** l'incasso non è stato registrato (beta.49, coda ⑬).
+ *
+ * ## Il difetto: un rifiuto muto
+ *
+ * Questa schermata mostrava `InputError` solo per `cassa_id` e `data_pagamento`. Tutte le
+ * guardie di dominio del server — la quadratura (beta.43), il debito altrui (beta.48), le tre
+ * sulle compensazioni a credito (beta.49) — tornano invece su altri campi: `importo_totale`,
+ * `pagante_id`, `dettaglio_pagamenti`. Il messaggio arrivava, finiva in `form.errors` e **non
+ * compariva da nessuna parte**.
+ *
+ * Per l'amministratore: clicca «Conferma incasso» e non succede niente. Nessun errore, nessuna
+ * conferma, la distribuzione ancora a schermo. È stato diagnosticato l'11/08/2026 solo aprendo
+ * gli strumenti di sviluppo — cioè da nessuno, in condizioni reali.
+ *
+ * Da qui la scelta di mostrare **tutto** `form.errors` invece di un elenco scelto di chiavi:
+ * l'elenco scelto è precisamente il meccanismo che ha prodotto il silenzio, ed è giusto solo
+ * finché nessuno aggiunge una guardia.
+ */
+describe('la fascia dei motivi di rifiuto', () => {
+    async function conErrori(errori: Record<string, string>) {
+        const wrapper = await apriDaSegnalazione([DEBITO], '?prefill_anagrafica_id=5');
+        (wrapper.vm as any).form.setError(errori);
+        await flushPromises();
+        return wrapper;
+    }
+
+    test('il motivo del server compare a schermo', async () => {
+        const wrapper = await conErrori({
+            dettaglio_pagamenti: 'Il credito disponibile non basta per questa compensazione: puoi utilizzarne al massimo € 50,00.',
+        });
+
+        expect(wrapper.text()).toContain('al massimo € 50,00');
+        expect(wrapper.text()).toContain('Incasso non registrato');
+    });
+
+    test('un campo mai previsto qui compare lo stesso', async () => {
+        // ⚠️ È la garanzia vera. `guardia_inventata` non esiste in nessuna parte di questa
+        // schermata: rappresenta la guardia che qualcuno scriverà il mese prossimo. Se questo
+        // test si rompe perché la fascia è tornata a filtrare per chiave, è tornato anche il
+        // rifiuto muto.
+        const wrapper = await conErrori({ guardia_inventata: 'Motivo che nessuno ha previsto.' });
+
+        expect(wrapper.text()).toContain('Motivo che nessuno ha previsto.');
+    });
+
+    test('più motivi insieme si vedono tutti', async () => {
+        const wrapper = await conErrori({
+            importo_totale: 'La registrazione non quadra.',
+            pagante_id: 'Quel debito è di un altro.',
+        });
+
+        expect(wrapper.text()).toContain('La registrazione non quadra.');
+        expect(wrapper.text()).toContain('Quel debito è di un altro.');
+    });
+
+    test('senza errori la fascia non c\'è', async () => {
+        const wrapper = await apriDaSegnalazione([DEBITO], '?prefill_anagrafica_id=5');
+
+        // Controprova: una fascia sempre presente sarebbe un allarme che nessuno legge più.
+        expect(wrapper.text()).not.toContain('Incasso non registrato');
+    });
+});
+
+/**
+ * Svuotare la ricerca con la «x» (beta.49).
+ *
+ * ## Il difetto segnalato, e i tre che stavano dietro
+ *
+ * Segnalazione di Vincenzo: *«se selezioni l'anagrafica dal dropdown e poi la cancelli cliccando
+ * sulla x, la card di destra che mostra le rate non si resetta»*. La causa: l'unica riga che sa
+ * svuotare l'elenco è `fetchDebiti`, e i watcher che la chiamano avevano una guardia sul valore
+ * non nullo (`&& newVal`). Con la «x» il watcher parte, azzera l'allocazione e ridistribuisce
+ * l'importo ancora digitato **sulle righe dell'ex pagante**, ma non ricarica niente.
+ *
+ * Cercando gli altri modi di svuotare sono venuti fuori tre casi peggiori del segnalato:
+ *
+ * - la **x sull'unità immobiliare** non faceva assolutamente nulla, e siccome l'intestatario è un
+ *   campo a parte `pagante_id` restava: «Conferma incasso» acceso sopra le rate di un'unità non
+ *   più a schermo;
+ * - la **x sull'intestatario** lasciava vivi i crediti rifiutati, che valevano per la persona
+ *   successiva;
+ * - e in tutti i casi `paganteIniziale` finiva a `null`, il che **disarmava il reset per la
+ *   selezione dopo**: il nominativo scelto in seguito veniva trattato come il primo della
+ *   schermata e saltava la pulizia dell'allocazione.
+ *
+ * ## Perché il test sulla corsa è il più importante del gruppo
+ *
+ * Svuotare `rawRateList` non basta: la richiesta partita un istante prima **non è annullata**, e
+ * quando risponde riscrive l'elenco appena svuotato. Senza il contatore di serie la correzione
+ * trasformerebbe un difetto permanente in uno **intermittente** — dipendente dalla latenza, non
+ * riproducibile a comando, e di cui chi lo segnala non viene creduto.
+ */
+describe('svuotare la ricerca con la x', () => {
+    const DUE = [rata({ id: 1, residuo: 300 }), rata({ id: 2, residuo: 200 })];
+
+    test('la x sull\'anagrafica svuota l\'elenco di destra', async () => {
+        const wrapper = await apriDaSegnalazione(DUE, '?prefill_anagrafica_id=5');
+        expect((wrapper.vm as any).rateList.length).toBeGreaterThan(0);
+
+        (wrapper.vm as any).form.pagante_id = null;
+        await flushPromises();
+        await flushPromises();
+
+        expect((wrapper.vm as any).rateList.length).toBe(0);
+    });
+
+    test('svuotando resta vuoto anche il payload, non solo lo schermo', async () => {
+        // La parte che non si vede, ed è quella che poteva registrare un incasso sbagliato:
+        // `dettaglio_pagamenti` veniva **riscritto** dalla ridistribuzione con le rate dell'ex
+        // pagante e l'importo ancora digitato.
+        const wrapper = await apriDaSegnalazione(DUE, '?prefill_anagrafica_id=5');
+        (wrapper.vm as any).form.importo_totale = 500;
+        await flushPromises();
+        expect((wrapper.vm as any).form.dettaglio_pagamenti.length).toBeGreaterThan(0);
+
+        (wrapper.vm as any).form.pagante_id = null;
+        await flushPromises();
+        await flushPromises();
+
+        expect((wrapper.vm as any).form.dettaglio_pagamenti).toEqual([]);
+        expect((wrapper.vm as any).form.importo_totale).toBe('');
+    });
+
+    test('la x sull\'unità immobiliare svuota l\'elenco e toglie il pagante', async () => {
+        // Era il caso più grave: il watcher non faceva nulla e «Conferma incasso» restava
+        // acceso, perché il pagante è un campo separato e sopravviveva.
+        const wrapper = await apriDaSegnalazione(DUE, '');
+        (wrapper.vm as any).searchMode = 'immobile';
+        (wrapper.vm as any).selectedImmobileId = 1;
+        await flushPromises();
+        (wrapper.vm as any).form.pagante_id = 5;
+        await flushPromises();
+        expect((wrapper.vm as any).rateList.length).toBeGreaterThan(0);
+
+        (wrapper.vm as any).selectedImmobileId = null;
+        await flushPromises();
+        await flushPromises();
+
+        expect((wrapper.vm as any).rateList.length).toBe(0);
+        expect((wrapper.vm as any).form.pagante_id).toBeNull();
+    });
+
+    test('la x sull\'intestatario NON svuota l\'elenco dell\'unità', async () => {
+        // Controprova obbligatoria: cercando per immobile l'elenco è dell'**unità**, non della
+        // persona. Svuotarlo qui sarebbe una correzione che rompe più di quanto aggiusta.
+        const wrapper = await apriDaSegnalazione(DUE, '');
+        (wrapper.vm as any).searchMode = 'immobile';
+        (wrapper.vm as any).selectedImmobileId = 1;
+        await flushPromises();
+        (wrapper.vm as any).form.pagante_id = 5;
+        await flushPromises();
+
+        (wrapper.vm as any).form.pagante_id = null;
+        await flushPromises();
+        await flushPromises();
+
+        expect((wrapper.vm as any).rateList.length).toBeGreaterThan(0);
+        expect((wrapper.vm as any).selectedImmobileId).toBe(1);
+    });
+
+    test('una risposta in ritardo non fa ricomparire l\'elenco svuotato', async () => {
+        // ⚠️ Il test che presidia il contatore di serie. Senza, la correzione funziona quando la
+        // rete è veloce e fallisce quando è lenta — cioè si rompe solo dai clienti.
+        const wrapper = await apriDaSegnalazione(DUE, '?prefill_anagrafica_id=5');
+        expect((wrapper.vm as any).rateList.length).toBeGreaterThan(0);
+
+        let sblocca!: () => void;
+        server.freno = new Promise<void>(r => { sblocca = r; });
+
+        try {
+            // Nuova ricerca che resta in volo, poi la «x» prima che risponda.
+            (wrapper.vm as any).form.pagante_id = 7;
+            await flushPromises();
+
+            (wrapper.vm as any).form.pagante_id = null;
+            await flushPromises();
+            expect((wrapper.vm as any).rateList.length).toBe(0);
+
+            // Ora la risposta vecchia arriva. Non deve rimettere niente a schermo.
+            sblocca();
+            await flushPromises();
+            await flushPromises();
+
+            expect((wrapper.vm as any).rateList.length).toBe(0);
+        } finally {
+            server.freno = null;
+        }
     });
 });

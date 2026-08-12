@@ -2,6 +2,9 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Exceptions\Gestionale\CreditoDiAltroSoggettoException;
+use App\Exceptions\Gestionale\CreditoInsufficienteException;
+use App\Exceptions\Gestionale\CreditoNonPiuDisponibileException;
 use App\Exceptions\Gestionale\DebitoNonDelPaganteException;
 use App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException;
 use App\Models\Condominio;
@@ -366,11 +369,7 @@ class StoreIncassoRateAction
                             ->exists();
 
                         if (! $condividonoUnita) {
-                            throw new \RuntimeException(
-                                'Il credito selezionato è intestato a un altro soggetto che non risulta collegato '
-                                . "a quell'unità immobiliare: non può essere usato per pagare questo debito. "
-                                . 'Seleziona un credito del pagante, oppure registra separatamente il rimborso fra i due soggetti.'
-                            );
+                            throw new CreditoDiAltroSoggettoException;
                         }
 
                         $creditoDaAltroSoggetto = true;
@@ -378,7 +377,7 @@ class StoreIncassoRateAction
                     }
 
                     if ($quoteCredito->isEmpty()) {
-                        throw new \RuntimeException('Quota credito non trovata per rata_id: ' . $pagamentoCredito['rata_id']);
+                        throw new CreditoNonPiuDisponibileException($pagamentoCredito['rata_id']);
                     }
 
                     // Tutte le quote di $quoteCredito condividono la stessa rata,
@@ -389,7 +388,7 @@ class StoreIncassoRateAction
                     $creditoResiduo = $quoteCredito->sum(fn($q) => $q->credito_disponibile);
 
                     if ($creditoDaConsumareCents > $creditoResiduo) {
-                        throw new \RuntimeException('Credito insufficiente. Disponibile: ' . MoneyHelper::format($creditoResiduo) . ', richiesto: ' . MoneyHelper::format($creditoDaConsumareCents));
+                        throw new CreditoInsufficienteException($creditoResiduo, $creditoDaConsumareCents);
                     }
 
                     // --- LATO DARE (Svuotiamo il Salvadanaio / lo strapagamento) ---

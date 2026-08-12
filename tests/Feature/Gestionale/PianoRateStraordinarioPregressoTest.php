@@ -356,3 +356,109 @@ test('E2E — finanziamento parziale di fattura corrente: le rate generate somma
 
     expect($totaleQuote)->toBe(40000);
 });
+
+// =============================================================================
+// CONCORDANZA CON LA STAMPA — coda ⑩, beta.49
+// =============================================================================
+
+/**
+ * Il riparto **stampato** di un piano straordinario coincide con quello **addebitato**.
+ *
+ * ## Perché questi test stanno qui
+ *
+ * Le quattro scene che servono sono già montate in questo file — pregressa, finanziamento
+ * parziale, fattura mista, addebito ad personam — e sono le stesse quattro su cui la stampa
+ * sbaglia. Mancava solo puntarle sull'altra metà: **ogni test qui sopra interroga il motore e
+ * nessuno ha mai aperto il PDF.** È esattamente per questo che le divergenze sono sopravvissute.
+ *
+ * ## Cosa sbaglia la stampa, e perché è la stessa causa quattro volte
+ *
+ * `RipartoTabelleService` non chiede al motore quanto ha distribuito: se lo ricostruisce da sé,
+ * con venti righe che leggono `righe_fattura`. Quelle venti righe sono un rimpiazzo ingenuo di
+ * `calcolaDaFattureStraordinarie()`, e ne sbagliano quattro cose:
+ *
+ * - prendono **tutte** le righe con un conto, comprese le ordinarie che dello straordinario non
+ *   fanno parte;
+ * - sommano il totale naturale della fattura, ignorando `importo_collegato`, cioè la parte che
+ *   *questo* piano finanzia;
+ * - non conoscono `fattura_coperture`, quindi su una **pregressa** — che non ha righe — il
+ *   documento esce bianco;
+ * - scartano le righe ad personam, oppure, se hanno anche un conto, le **spalmano su tutti**.
+ *
+ * L'invariante che li accomuna è uno solo, ed è quello che asseriscono: *il gran totale del
+ * documento è quanto il condominio deve davvero*.
+ */
+function granTotaleStampa(PianoRate $piano): int
+{
+    return (new \App\Services\RipartoTabelleService())->buildMatrice($piano)['gran_totale'];
+}
+
+test('concordanza pregressa: il riparto stampato non è un foglio bianco', function () {
+    $base  = baseStraordinario();
+    $piano = pianoStraordinario($base, registraPregresso($base), 100000);
+    app(GeneratePianoRateAction::class)->execute($piano);
+
+    // Una pregressa non ha `righe_fattura`: la stampa restituiva `empty()` e il PDF usciva
+    // completamente vuoto, mentre le rate erano state emesse correttamente. È lo scenario della
+    // migrazione dello storico, cioè la funzione su cui si gioca l'importatore.
+    expect(granTotaleStampa($piano))->toBe(100000);
+
+    // E il denaro sta nella colonna della tabella, non in una pseudo-colonna: la pregressa è una
+    // spesa comune ripartita a millesimi, non un addebito personale.
+    $matrice  = (new \App\Services\RipartoTabelleService())->buildMatrice($piano);
+    $soggetto = array_values($matrice['righe'][$base['immobileId']]['soggetti'])[0];
+
+    expect($soggetto['per_tabella'][$base['tabella']->id]['importo'] ?? null)->toBe(100000);
+});
+
+test('concordanza finanziamento parziale: si stampa la parte finanziata, non l\'intera fattura', function () {
+    $base  = baseStraordinario();
+    $piano = pianoStraordinario($base, registraPregresso($base), 40000);
+    app(GeneratePianoRateAction::class)->execute($piano);
+
+    // La stampa sommava `imponibile + iva` senza guardare `importo_collegato`: su una fattura da
+    // € 1.000,00 finanziata per € 400,00 mostrava il riparto di tutti e mille.
+    expect(granTotaleStampa($piano))->toBe(40000);
+});
+
+test('concordanza fattura mista: le righe ordinarie restano fuori dallo straordinario', function () {
+    $base    = baseStraordinario();
+    $fattura = fatturaCorrente($base);
+    inserisciRighe($fattura->id, [
+        ['conto_id' => $base['capitolo']->id, 'is_sopravvenienza' => true,  'immobile_id' => null, 'importo' => 100000],
+        ['conto_id' => $base['capitolo']->id, 'is_sopravvenienza' => false, 'immobile_id' => null, 'importo' => 50000],
+    ]);
+
+    $piano = pianoStraordinario($base, $fattura, 100000);
+    app(GeneratePianoRateAction::class)->execute($piano);
+
+    // Il motore filtra `is_sopravvenienza = true OR immobile_id NOT NULL`; la stampa prendeva
+    // tutte le righe con un conto, e i € 500,00 ordinari gonfiavano il documento.
+    expect(granTotaleStampa($piano))->toBe(100000);
+});
+
+test('concordanza ad personam: la spesa personale non finisce addosso a tutti', function () {
+    $base    = baseStraordinario();
+    $fattura = fatturaCorrente($base);
+    inserisciRighe($fattura->id, [
+        ['conto_id' => $base['capitolo']->id, 'is_sopravvenienza' => false, 'immobile_id' => $base['immobileId'], 'importo' => 100000],
+    ]);
+
+    $piano = pianoStraordinario($base, $fattura, 100000);
+    app(GeneratePianoRateAction::class)->execute($piano);
+
+    // Il motore manda la riga ad `addebitaDiretto()`: la paga chi ha quell'unità. La stampa la
+    // trattava come importo di capitolo e la spalmava sulla tabella millesimale — su un
+    // condominio vero, la riparazione del balcone dell'interno 4 la vedevano ripartita tutti.
+    expect(granTotaleStampa($piano))->toBe(100000);
+
+    // ⚠️ Il gran totale da solo non basterebbe: viene da `rate_quote` e sarebbe giusto anche con
+    // le celle vuote. Questa dice che il documento **mostra** l'addebito nella sua colonna, e che
+    // non è finito sulla tabella millesimale.
+    $matrice  = (new \App\Services\RipartoTabelleService())->buildMatrice($piano);
+    $soggetto = array_values($matrice['righe'][$base['immobileId']]['soggetti'])[0];
+
+    expect($soggetto['per_tabella'][\App\Services\RipartoTabelleService::COLONNA_DIRETTO]['importo'] ?? null)
+        ->toBe(100000)
+        ->and($soggetto['per_tabella'][$base['tabella']->id]['importo'] ?? 0)->toBe(0);
+});
