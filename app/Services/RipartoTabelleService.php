@@ -180,16 +180,7 @@ class RipartoTabelleService
 
         if (! empty($cellePerSoggetto)) {
             $cells[self::COLONNA_DIRETTO] = $cellePerSoggetto;
-            $tabelleInfo[self::COLONNA_DIRETTO] = [
-                'nome'        => 'Addebito diretto',
-                'quota_label' => '—',
-                'quota_tipo'  => null,
-                'decimali'    => 0,
-                // Non ha una dimensione di riparto: la sotto-colonna delle quote resta vuota
-                // invece di mostrare «quote» e un totale «0», che sarebbero due numeri finti su
-                // un documento che va in assemblea.
-                'senza_quote' => true,
-            ];
+            $this->dichiaraColonnaDiretto($tabelleInfo);
         }
 
         if (empty($weights) && empty($cellePerSoggetto)) {
@@ -284,6 +275,37 @@ class RipartoTabelleService
                     $tabMax = array_key_first($pesPerTab);
                     $importiPerTab[$tabMax] += $residuo;
                     Log::debug("RipartoTabelleService: residuo di {$residuo} cent riallineato a rate_quote.", [
+                        'piano_rate_id' => $pianoRate->id,
+                        'anagrafica_id' => $anagraficaId,
+                        'immobile_id'   => $immobileId,
+                    ]);
+                } elseif ($residuo !== 0) {
+                    // ⚠️ **Il soggetto non ha peso in nessuna tabella**, e il riallineamento qui
+                    // sopra non poteva scattare: `arsort` su un vettore di zeri non ha una
+                    // «tabella a peso maggiore» a cui appoggiare il residuo.
+                    //
+                    // Non è un caso di laboratorio: succede **con il rimedio che gli
+                    // amministratori usano oggi per il subentro** — genero le rate, stacco il
+                    // vecchio proprietario dalla pivot, ristampo. Le sue quote restano in
+                    // `rate_quote`, ma nella pivot non c'è più, quindi tutte le sue celle valgono
+                    // zero mentre il totale di riga resta quello addebitato.
+                    //
+                    // Il risultato era un documento che si contraddice: la riga non somma alle
+                    // sue celle e `tot_per_tabella` non somma più a `gran_totale` — cioè cade
+                    // l'invariante che l'intestazione di questo file dichiara come **garanzia
+                    // legale**, sul foglio che va in assemblea.
+                    //
+                    // Il residuo va nella pseudo-colonna degli addebiti diretti: non appartiene a
+                    // nessuna tabella millesimale, ed è esattamente ciò che quella colonna
+                    // significa — denaro dovuto da questo soggetto che i millesimi non spiegano.
+                    $importiPerTab[self::COLONNA_DIRETTO] =
+                        ($importiPerTab[self::COLONNA_DIRETTO] ?? 0) + $residuo;
+
+                    $this->dichiaraColonnaDiretto($tabelleInfo);
+
+                    Log::warning("RipartoTabelleService: soggetto senza peso in tabella, residuo di "
+                        . "{$residuo} cent portato in colonna «addebito diretto». Probabile "
+                        . "titolare staccato dalla pivot dopo la generazione delle rate.", [
                         'piano_rate_id' => $pianoRate->id,
                         'anagrafica_id' => $anagraficaId,
                         'immobile_id'   => $immobileId,
@@ -643,6 +665,32 @@ class RipartoTabelleService
      * @param int $importoTotale Importo totale da distribuire in centesimi
      * @return array Importi penny-perfect calcolati
      */
+    /**
+     * Dichiara la pseudo-colonna degli addebiti diretti, se non c'è già.
+     *
+     * Serve da due punti che non si conoscono — le spese ad personam del motore e il residuo di
+     * un soggetto senza peso in tabella — e in entrambi i casi il significato è lo stesso: denaro
+     * dovuto da quel soggetto che i millesimi non spiegano. Una funzione sola perché la colonna
+     * resti identica, comunque ci si arrivi.
+     */
+    private function dichiaraColonnaDiretto(array &$tabelleInfo): void
+    {
+        if (isset($tabelleInfo[self::COLONNA_DIRETTO])) {
+            return;
+        }
+
+        $tabelleInfo[self::COLONNA_DIRETTO] = [
+            'nome'        => 'Addebito diretto',
+            'quota_label' => '—',
+            'quota_tipo'  => null,
+            'decimali'    => 0,
+            // Non ha una dimensione di riparto: la sotto-colonna delle quote resta vuota invece
+            // di mostrare «quote» e un totale «0», che sarebbero due numeri finti su un documento
+            // che va in assemblea.
+            'senza_quote' => true,
+        ];
+    }
+
     private function distribuisciImporto(array $weights, int $importoTotale): array
     {
         $result = [];

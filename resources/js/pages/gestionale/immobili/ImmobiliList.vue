@@ -44,8 +44,8 @@ const pageGuides = [
     colorVariant: 'blue' as const
   },
   {
-    title: 'Gestione Subentri',
-    description: 'Tieni traccia dei cambi di proprietà o inquilino. Il sistema gestirà le successioni calcolando i saldi di competenza per ogni periodo.',
+    title: 'Date di competenza',
+    description: 'Tieni traccia dei cambi di proprietà o inquilino. Sono per ora un\'annotazione: il calcolo dei saldi per periodo non c\'è ancora.',
     icon: UsersRound,
     colorVariant: 'amber' as const
   },

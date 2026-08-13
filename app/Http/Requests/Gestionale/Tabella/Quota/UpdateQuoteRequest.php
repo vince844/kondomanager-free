@@ -30,11 +30,9 @@ class UpdateQuoteRequest extends FormRequest
             'quote'                       => ['array'],
             'quote.*.immobile.id'         => ['required', 'exists:immobili,id'],
             'quote.*.valore'              => ['required', 'numeric'],
-            'quote.*.has_contatore'       => ['boolean'],
-            'quote.*.ultima_lettura'      => ['nullable', 'numeric'],
-            'quote.*.coeff_dispersione'   => ['nullable', 'numeric'],
-            'quote.*.quota_fissa'         => ['nullable', 'numeric'],
-            'quote.*.quota_variabile'     => ['nullable', 'numeric'],
+            // I cinque coefficienti di acqua e riscaldamento sono stati tolti nella beta.50:
+            // venivano validati e salvati, e nessun calcolo li leggeva. Vedi la nota in
+            // `TabellaQuotaController`. Il modulo contatori è previsto per la v1.15.
             'created_by'                  => 'required|exists:users,id',
             'updated_by'                  => 'required|exists:users,id',
         ];

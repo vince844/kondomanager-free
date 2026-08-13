@@ -37,7 +37,6 @@ class PianoRate extends Model
         'numero_rate',
         'giorno_scadenza',
         'data_prima_scadenza',
-        'data_inizio',
         'attivo',
         'note',
         'nota_scoperti',
@@ -56,7 +55,6 @@ class PianoRate extends Model
 
     protected $casts = [
         'stato'                   => StatoPianoRate::class,
-        'data_inizio'             => 'date',
         // NULL = «parte dall'inizio della gestione», che è il comportamento di sempre.
         'data_prima_scadenza'     => 'date',
         'data_delibera_assemblea' => 'date',      // Cast automatico a Carbon per formattazione agevole

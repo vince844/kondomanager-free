@@ -25,8 +25,10 @@
  * ## Cosa questo file NON copre
  *
  * - Il salvataggio: il totale è un indicatore e non tocca il `submit`.
- * - Le tabelle `acqua` e `riscaldamento`, che hanno colonne in più: la riga di totale le
- *   attraversa con celle vuote, ma nessun caso qui monta quelle varianti.
+ * - Le varianti per tipo di tabella: **non esistono più dalla beta.50**. Le tabelle `acqua` e
+ *   `riscaldamento` avevano cinque colonne in più — contatore, ultima lettura, quota fissa,
+ *   quota variabile, coefficiente di dispersione — che si compilavano e si salvavano mentre
+ *   nessun calcolo le leggeva. Il modulo ora è uno solo per tutti i tipi.
  */
 
 import { describe, expect, test, vi } from 'vitest';

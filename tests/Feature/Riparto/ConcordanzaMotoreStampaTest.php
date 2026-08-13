@@ -237,3 +237,37 @@ it('il ripiego non butta via il terminale quando il ruolo richiesto non è in ca
     expect(array_map(fn ($r) => $r->value, \App\Enums\RuoloAnagraficaImmobile::catenaRipiego('proprietario')))
         ->toBe(['nuda_proprietario']);
 });
+
+it('un titolare staccato dopo la generazione non rompe la quadratura del documento', function () {
+    // ⚠️ **Il caso non è di laboratorio: è il rimedio che gli amministratori usano oggi per il
+    // subentro**, perché il motore non legge le date di competenza — genero le rate, stacco il
+    // vecchio proprietario dalla pivot, ristampo.
+    //
+    // Le sue quote restano in `rate_quote`, ma nella pivot non c'è più: tutte le sue celle
+    // valgono zero mentre il totale di riga resta quello addebitato. Il riallineamento di
+    // sicurezza non poteva soccorrere, perché è guardato da `$peseTot > 0.0` e per un soggetto
+    // sparito i pesi sono tutti zero: non esiste una «tabella a peso maggiore» su cui appoggiare
+    // il residuo.
+    //
+    // Risultato prima della beta.50: la riga non sommava alle sue celle e le colonne non
+    // sommavano al gran totale — cioè cadeva l'invariante che `RipartoTabelleService` dichiara
+    // nella propria intestazione come **garanzia legale**, sul foglio che va in assemblea.
+    [$pianoRate, $tabella, $nudoProprietario, , $immobili] = scenarioNudaProprieta();
+
+    // Il distacco: la riga della pivot sparisce, le rate no.
+    DB::table('anagrafica_immobile')
+        ->where('anagrafica_id', $nudoProprietario->id)
+        ->where('immobile_id', $immobili[1]->id)
+        ->delete();
+
+    $matrice = (new RipartoTabelleService())->buildMatrice($pianoRate->fresh());
+
+    // La garanzia legale regge: riga = addebitato, celle = riga, colonne = gran totale.
+    verificaConcordanza($pianoRate, $matrice);
+
+    // E il residuo è finito dove ha un significato — la colonna che non appartiene a nessuna
+    // tabella millesimale — non spalmato su una tabella a caso.
+    $sogg = $matrice['righe'][$immobili[1]->id]['soggetti'][$nudoProprietario->id];
+    expect($sogg['per_tabella'][RipartoTabelleService::COLONNA_DIRETTO]['importo'] ?? null)->toBe(60000)
+        ->and($sogg['per_tabella'][$tabella->id]['importo'] ?? 0)->toBe(0);
+});

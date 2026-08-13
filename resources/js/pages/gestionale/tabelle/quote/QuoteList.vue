@@ -127,30 +127,22 @@ const onInputValore = (evento: Event, quota: { valore: string }): void => {
   quota.valore = pulito;
 };
 
-// Form separato a seconda del tipo tabella
+/**
+ * Un modulo solo per tutte le tabelle.
+ *
+ * ⚠️ Fino alla beta.50 le tabelle di tipo `acqua` e `riscaldamento` avevano cinque campi in più —
+ * `has_contatore`, `ultima_lettura`, `coeff_dispersione`, `quota_fissa`, `quota_variabile` — che
+ * si compilavano, si validavano e si salvavano nella colonna `coefficienti`. **Nessun calcolo li
+ * leggeva:** il motore ripartisce su `valore`, come per qualunque altra tabella. Chi li compilava
+ * credeva di ripartire a consumo e ripartiva a millesimi.
+ *
+ * ⚠️ **I due tipi di tabella non sono stati tolti, e non erano il difetto.** Una tabella di tipo
+ * `acqua` con unità di misura «metri cubi», dove si scrivono i consumi di ciascuna unità, è già
+ * una ripartizione a consumo che funziona. Mancava la gestione dei **contatori** e la quota
+ * fissa/variabile della UNI 10200: quello è il modulo previsto per la v1.15.
+ */
 const form = useForm({
   quote: rawMillesimi.map((q: Millesimo) => {
-    if (props.tabella.tipo === "acqua") {
-      return {
-        id: q.id as number | null,
-        immobile: q.immobile as Immobile | null, 
-        valore: normalizzaAllaPrecisione(q.valore),
-        has_contatore: q.coefficienti?.has_contatore ?? false,
-        ultima_lettura: q.coefficienti?.ultima_lettura ?? ""
-      }
-    }
-
-    if (props.tabella.tipo === "riscaldamento") {
-      return {
-        id: q.id as number | null,
-        immobile: q.immobile as Immobile | null, 
-        valore: normalizzaAllaPrecisione(q.valore),
-        coeff_dispersione: q.coefficienti?.coeff_dispersione ?? "",
-        quota_fissa: q.coefficienti?.quota_fissa ?? "",
-        quota_variabile: q.coefficienti?.quota_variabile ?? ""
-      }
-    }
-
     return {
       id: q.id as number | null,
       immobile: q.immobile as Immobile | null, 
@@ -177,8 +169,8 @@ const pageGuides = computed(() => [
     colorVariant: 'blue' as const
   },
   {
-    title: 'Parametri Specifici',
-    description: "Configura campi aggiuntivi per tabelle di tipo acqua o riscaldamento.",
+    title: 'Ripartire a consumo',
+    description: "Scegli «metri cubi» o «persone» come unità di misura e scrivi qui i consumi: il riparto li usa come i millesimi.",
     icon: Info,
     colorVariant: 'emerald' as const
   },
@@ -209,26 +201,10 @@ const addImmobile = () => {
     return;
   }
 
+  // Una riga sola per tutti i tipi: vedi la nota sul modulo qui sopra.
   let nuovoImmobile: any = {};
 
-  if (props.tabella.tipo === "acqua") {
-    nuovoImmobile = {
-      id: null,
-      valore: "",
-      immobile: null,
-      has_contatore: false,
-      ultima_lettura: ""
-    };
-  } else if (props.tabella.tipo === "riscaldamento") {
-    nuovoImmobile = {
-      id: null,
-      valore: "",
-      immobile: null,
-      coeff_dispersione: "",
-      quota_fissa: "",
-      quota_variabile: ""
-    };
-  } else {
+  {
     nuovoImmobile = {
       id: null,
       valore: "",
@@ -363,13 +339,8 @@ const submit = () => {
                     <TableHead>{{ props.tabella.quota.charAt(0).toUpperCase() + props.tabella.quota.slice(1) }}</TableHead>
 
                     <!-- Acqua -->
-                    <TableHead v-if="props.tabella.tipo === 'acqua'" class="text-center">Contatore?</TableHead>
-                    <TableHead v-if="props.tabella.tipo === 'acqua'">Ultima lettura (m³)</TableHead>
 
                     <!-- Riscaldamento -->
-                    <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Quota fissa (%)</TableHead>
-                    <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Quota variabile (%)</TableHead>
-                    <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Coeff. dispersione</TableHead>
 
                     <TableHead class="text-center w-[80px]">Azioni</TableHead>
                   </TableRow>
@@ -445,25 +416,7 @@ const submit = () => {
                       <InputError :message="(form.errors as Record<string, string>)[`quote.${idx}.valore`]" />
                     </TableCell>
 
-                    <!-- Solo acqua -->
-                    <TableCell v-if="props.tabella.tipo === 'acqua'" class="text-center">
-                      <input type="checkbox" v-model="q.has_contatore" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
-                    </TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'acqua'">
-                      <Input v-if="q.has_contatore" v-model="q.ultima_lettura" class="w-28 bg-white dark:bg-slate-950" placeholder="m³" />
-                      <Input v-else class="w-28 bg-slate-100 text-gray-400" value="—" disabled />
-                    </TableCell>
 
-                    <!-- Solo riscaldamento -->
-                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'">
-                      <Input v-model="q.quota_fissa" class="w-28 bg-white dark:bg-slate-950" placeholder="%" />
-                    </TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'">
-                      <Input v-model="q.quota_variabile" class="w-28 bg-white dark:bg-slate-950" placeholder="%" />
-                    </TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'">
-                      <Input v-model="q.coeff_dispersione" class="w-28 bg-white dark:bg-slate-950" placeholder="Coeff." />
-                    </TableCell>
 
                     <!-- Azioni -->
                     <TableCell class="text-center">
@@ -512,11 +465,6 @@ const submit = () => {
                       </div>
                     </TableCell>
 
-                    <TableCell v-if="props.tabella.tipo === 'acqua'"></TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'acqua'"></TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'"></TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'"></TableCell>
-                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'"></TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                 </TableFooter>

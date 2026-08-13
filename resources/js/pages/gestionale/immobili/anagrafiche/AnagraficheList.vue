@@ -47,8 +47,8 @@ const pageGuides = computed(() => [
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Storico Subentri',
-    description: "Registra un cambio di inquilino inserendo la data di fine per calcolare i riparti.",
+    title: 'Date di competenza',
+    description: "Annota il periodo di ciascuna associazione. Il riparto non usa ancora queste date: un subentro va calcolato a mano.",
     icon: ArrowRightLeft,
     colorVariant: 'amber' as const
   }

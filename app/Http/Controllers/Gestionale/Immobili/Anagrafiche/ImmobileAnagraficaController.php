@@ -125,11 +125,14 @@ class ImmobileAnagraficaController extends Controller
                 ?->condomini()
                 ->syncWithoutDetaching([$condominio->id]);
 
-            // Attach the anagrafica to the immobile with pivot data
+            // ⚠️ `tipologie_spese` non viene più scritta (beta.50). Era presa da `validated()`
+            // ma **nessuna FormRequest la valida**, quindi arrivava sempre `null`: verificato,
+            // 0 righe valorizzate su 60. Nessun calcolo la legge. La colonna resta finché non
+            // cade con le altre migrazioni della 1.11; la `Resource` continua a esporla — oggi
+            // restituisce `null` come sempre, e toglierla cambierebbe ciò che il frontend riceve.
             $immobile->anagrafiche()->attach($data['anagrafica_id'], [
                 'tipologia'       => $data['tipologia'],
                 'quota'           => $data['quota'],
-                'tipologie_spese' => $data['tipologie_spese'] ?? null,
                 'data_inizio'     => $data['data_inizio'],
                 'data_fine'       => $data['data_fine'] ?? null,
                 'attivo'          => true,
@@ -215,7 +218,6 @@ class ImmobileAnagraficaController extends Controller
                 $immobile->anagrafiche()->attach($nuovoAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
-                    'tipologie_spese' => $data['tipologie_spese'] ?? null,
                     'data_inizio'     => $data['data_inizio'],
                     'data_fine'       => $data['data_fine'] ?? null,
                     'note'            => $data['note'] ?? null,
@@ -226,7 +228,6 @@ class ImmobileAnagraficaController extends Controller
                 $immobile->anagrafiche()->updateExistingPivot($vecchioAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
-                    'tipologie_spese' => $data['tipologie_spese'] ?? null,
                     'data_inizio'     => $data['data_inizio'],
                     'data_fine'       => $data['data_fine'] ?? null,
                     'note'            => $data['note'] ?? null,

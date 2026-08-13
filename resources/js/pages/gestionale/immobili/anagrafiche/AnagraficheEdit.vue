@@ -57,7 +57,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Gestione Periodo',
-    description: "Imposta o varia le date di validità per gestire correttamente i subentri.",
+    description: "Imposta o varia le date di validità. Sono un'annotazione: il riparto non le legge ancora.",
     icon: CalendarDays,
     colorVariant: 'amber' as const
   }
@@ -220,7 +220,7 @@ const submit = () => {
                           </button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50 font-sans tracking-normal lowercase first-letter:uppercase">
-                          <p class="text-sm">Fondamentale per i <strong>subentri</strong>. Se inserita, il sistema interromperà gli addebiti a questa data.</p>
+                          <p class="text-sm">Documenta la fine del periodo. <strong>Non interrompe gli addebiti:</strong> il riparto guarda chi è attivo alla generazione, non le date.</p>
                         </HoverCardContent>
                       </HoverCard>
                     </div>

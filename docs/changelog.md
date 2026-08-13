@@ -7,6 +7,79 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.50] - Le Cose Che il Programma Diceva di Fare
+
+**Nessuna migrazione**, nessun cambio al motore di calcolo, nessuna funzione nuova.
+
+Questa versione non aggiunge niente: **toglie promesse che il programma non manteneva**. Il criterio
+con cui è stata scelta è uno solo — la 1.10 riceve soltanto ciò che è già rotto — e nasce da una
+domanda precisa di un amministratore sul forum, che ha chiesto come il gestionale tratta una spesa
+deliberata prima di una compravendita e il riscaldamento maturato prima di un cambio inquilino.
+La verifica ha dato una risposta scomoda: **non le tratta**, e in sette punti diceva il contrario.
+
+### Le date di competenza non fanno quello che le schermate promettevano
+
+Sulla scheda di una titolarità si registrano una data di inizio e una di fine. Sono salvate,
+mostrate in elenco, e **nessun calcolo le legge**: quando il riparto decide a chi addebitare guarda
+il ruolo e un contrassegno «attivo», e basta. Non esiste un calcolo per giorni in nessun punto del
+programma.
+
+Il difetto non era la funzione mancante — quella è progettata e pianificata — ma le **frasi** che
+la davano per esistente. «Il sistema saprà esattamente quando interrompere l'addebito delle rate»,
+«far subentrare automaticamente i nuovi soggetti», «calcolando i saldi di competenza per ogni
+periodo». Un amministratore che si fidava stava addebitando il venditore da mesi senza saperlo.
+
+Sette testi riscritti: dicono che le date si registrano, che il riparto non le usa, e che finché è
+così **un subentro a metà anno va calcolato a mano**. Una promessa che non aveva nemmeno una fase
+di progetto — «comunicazioni di subentro» — è stata tolta invece che riscritta.
+
+### Un comando per sapere se è successo a te
+
+Correggere la scritta non dice a nessuno se ci è cascato. Il nuovo comando
+`php artisan kondomanager:verifica-titolarita` elenca, condominio per condominio, tre cose: chi ha
+compilato una data di fine credendo che interrompesse l'addebito, le associazioni disattivate che
+nessuna schermata può riaccendere, e — la più importante — le unità in cui **le quote non fanno
+100**.
+
+Quest'ultima misura un danno in euro: due titolari al 100 % sulla stessa unità si normalizzano a
+200 e pagano metà ciascuno, **identico per un rogito di gennaio e uno di dicembre**. È il modo in
+cui un subentro viene registrato oggi, perché è l'unico che l'interfaccia consente. Il comando è in
+sola lettura: dice dove guardare, non tocca niente.
+
+### La tabella dell'acqua raccoglieva letture che nessuno usava
+
+Scegliendo «Acqua» o «Riscaldamento» come tipo di tabella comparivano cinque campi in più —
+contatore, ultima lettura, coefficiente di dispersione, quota fissa, quota variabile. Si
+compilavano, si salvavano, e **il riparto non li apriva mai**: divideva sui valori della colonna
+come per qualunque altra tabella. Chi li riempiva credeva di ripartire a consumo e ripartiva a
+millesimi.
+
+I cinque campi sono stati tolti. **I due tipi di tabella restano**, perché non erano loro il
+problema: una tabella «Acqua» con unità di misura «metri cubi», dove si scrivono i consumi di
+ciascuna unità, è già una ripartizione a consumo che funziona. Quello che mancava — la gestione dei
+contatori e la quota fissa/variabile della UNI 10200 — è un modulo previsto più avanti, e adesso
+il programma non fa più finta di averlo.
+
+### Il riparto stampato non si contraddice più nemmeno dopo un subentro
+
+Il rimedio che gli amministratori usano oggi per un cambio di proprietario è: genero le rate,
+stacco il vecchio titolare, ristampo. Le sue quote restano negli addebiti, ma nella tabella
+millesimale non c'è più — e sul documento le sue celle uscivano tutte a zero mentre il totale di
+riga restava quello vero. La riga non sommava alle proprie celle e le colonne non sommavano al
+totale generale, **sullo stesso foglio che va in assemblea**.
+
+Ora quel residuo finisce nella colonna «addebito diretto», la stessa introdotta nella versione
+precedente per le spese di una singola unità: denaro dovuto da quel soggetto che i millesimi non
+spiegano.
+
+### Sotto il cofano
+
+Sette test nuovi. Sono stati tolti anche due campi che non esistevano davvero: una colonna dichiarata
+nel codice e assente dal database, e un dato scritto a ogni salvataggio che nessuna schermata
+leggeva e che risultava vuoto su tutte le righe.
+
+---
+
 ## [1.10.0-beta.49] - Quello Che il Programma Sapeva e Non Diceva
 
 **Nessuna migrazione.** Da questa versione, però, assegnare un'unità a una persona la registra

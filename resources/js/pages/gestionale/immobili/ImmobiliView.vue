@@ -147,7 +147,7 @@ const pageGuides = computed(() => [
               <div class="sm:col-span-2 pt-2">
                  <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-lg p-3 flex gap-3">
                     <p class="text-[11px] text-amber-700 dark:text-amber-400 leading-tight">
-                      Assicurati che questi dati siano corretti per la generazione automatica dei modelli fiscali e delle comunicazioni di subentro.
+                      Assicurati che questi dati siano corretti per la generazione automatica dei modelli fiscali.
                     </p>
                  </div>
               </div>

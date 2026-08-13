@@ -110,22 +110,24 @@ class TabellaQuotaController extends Controller
                     'updated_by'  => $updatedBy,
                 ];
 
-                // Coefficienti acqua
-                if ($tabella->tipo === 'acqua') {
-                    $data['coefficienti'] = [
-                        'has_contatore'  => $q['has_contatore'] ?? false,
-                        'ultima_lettura' => ($q['has_contatore'] ?? false) ? ($q['ultima_lettura'] ?? 0) : null,
-                    ];
-                }
-
-                // Coefficienti riscaldamento
-                if ($tabella->tipo === 'riscaldamento') {
-                    $data['coefficienti'] = [
-                        'coeff_dispersione' => $q['coeff_dispersione'] ?? 0,
-                        'quota_fissa'       => $q['quota_fissa'] ?? null,
-                        'quota_variabile'   => $q['quota_variabile'] ?? null,
-                    ];
-                }
+                // ⚠️ **Qui si scrivevano cinque coefficienti che nessuno leggeva** (tolti nella
+                // beta.50). Sulle tabelle di tipo `acqua` il modulo chiedeva `has_contatore` e
+                // `ultima_lettura`; su quelle di tipo `riscaldamento` `coeff_dispersione`,
+                // `quota_fissa` e `quota_variabile`. Venivano validati, salvati nella colonna
+                // `coefficienti` — e **il motore di riparto non li apriva mai**: zero occorrenze
+                // in `CalcoloQuoteService` e `RipartoTabelleService`, che ripartiscono su
+                // `valore` come per qualunque altra tabella.
+                //
+                // Non era un'etichetta che mente: era un modulo che raccoglieva letture dei
+                // contatori e ripartiva ignorandole. Un amministratore che le compilava credeva
+                // di ripartire a consumo e ripartiva a millesimi.
+                //
+                // ⚠️ **I due tipi di tabella restano, e non sono il difetto.** Una tabella
+                // `tipo = acqua` con unità di misura `mtcubi`, dove si scrivono i metri cubi di
+                // ciascuna unità, **è già una ripartizione a consumo che funziona** — il motore
+                // normalizza su `valore / somma dei valori`. Ciò che mancava era la gestione dei
+                // contatori e la quota fissa/variabile della UNI 10200, cioè il modulo previsto
+                // per la v1.15 (`water_metering_module.md`).
 
                 // Aggiornamento o creazione
                 if (!empty($q['id'])) {

@@ -106,9 +106,10 @@ defineEmits(['update:open']);
                             <div class="space-y-3">
                                 <p>
                                     <strong class="text-emerald-700 dark:text-emerald-400">Rata separata (Rata 0)</strong> —
-                                    consigliata. I pregressi restano una riga a sé, distinta dalle rate dell'anno.
-                                    È l'unica che regge un <strong>subentro</strong>: se un appartamento cambia
-                                    proprietario a metà anno si vede subito cosa spetta a chi.
+                                    consigliata. I pregressi restano una riga a sé, distinta dalle rate dell'anno,
+                                    e si vede a colpo d'occhio cosa viene da prima: è la scelta migliore quando c'è
+                                    stato un <strong>subentro</strong>. Il riparto però non calcola le competenze
+                                    per periodo — quella parte va fatta a mano.
                                 </p>
                                 <p>
                                     <strong>Somma alla prima rata</strong> — metodo tradizionale. La prima rata

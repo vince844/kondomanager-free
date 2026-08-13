@@ -60,7 +60,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Periodo Validità',
-    description: "Definisci le date di competenza per far subentrare automaticamente i nuovi soggetti.",
+    description: "Registra le date di competenza dell'associazione. Il riparto non le legge ancora: un subentro va calcolato a mano.",
     icon: CalendarDays,
     colorVariant: 'amber' as const
   }
@@ -272,14 +272,14 @@ const submit = () => {
                         <HoverCardContent class="w-80 z-50">
                           <div class="space-y-3">
                             <h4 class="text-sm font-semibold flex items-center gap-2">
-                              <Info class="w-4 h-4" /> Gestione Subentri
+                              <Info class="w-4 h-4" /> Date di competenza
                             </h4>
                             <div class="text-sm space-y-2 text-slate-500">
                               <p>
-                                Questo campo è fondamentale per i <strong>Subentri</strong> (es. compravendite o cambi inquilino).
+                                Le date servono a documentare il periodo di questa associazione — una compravendita, un cambio inquilino.
                               </p>
                               <p>
-                                Inserendo la data di uscita, il sistema saprà esattamente quando <strong>interrompere l'addebito delle rate</strong> e come calcolare i riparti per questo soggetto.
+                                <strong>Il riparto non le legge ancora:</strong> ripartisce su chi risulta attivo nel momento in cui generi. Finché è così, un subentro a metà anno va calcolato a mano.
                               </p>
                               <Separator class="my-2"/>
                               <div class="text-xs text-slate-400 italic">
