@@ -33,7 +33,10 @@ class CreateImmobileAnagraficaRequest extends FormRequest
     public function rules(): array
     {
           return [
-            'quota'               => 'required|numeric', 
+            // Vedi la nota gemella in `UpdateImmobileAnagraficaRequest`: il limite è sul valore
+            // della singola riga, non sulla somma, che è presidiata da
+            // `ValidatesImmobileAnagraficaPivot`.
+            'quota'               => 'required|numeric|min:0|max:100',
             'note'                => 'sometimes|nullable|string',
             'anagrafica_id'       => ['required', 'integer', Rule::exists('anagrafiche', 'id')],
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],

@@ -314,3 +314,154 @@ it('la stampa per capitolo quadra con quella per tabella, sullo stesso piano', f
     expect($perCapitolo['gran_totale'])->toBe($perTabella['gran_totale'])
         ->and($perCapitolo['gran_totale'])->toBe(100000);
 });
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * A6 — l'incrocio che non era di nessuno dei due test qui sopra.
+ *
+ * I due casi esistevano già separati e passavano entrambi: quello a `:241` dissocia ma verifica
+ * **solo** la stampa per tabelle; quello qui sopra confronta le due stampe ma **non** dissocia.
+ * Il difetto vive esattamente nella combinazione, ed è per questo che è sopravvissuto alla beta.50
+ * — che ha chiuso lo stesso scenario (A3) su una stampa sola — e alla beta.51.
+ *
+ * La causa è strutturale, non un caso limite. `RipartoTabelleService` costruisce le righe iterando
+ * `$totaliReali`, cioè le quote **realmente emesse** in `rate_quote`; `RipartoCapitoliService` le
+ * costruisce da `$importiAssegnati`, cioè dai pesi **ricalcolati dal vivo sulla pivot**, e usa
+ * `rate_quote` solo per riallineare righe che esistono già. Un soggetto dissociato dopo la
+ * generazione ha le sue quote in `rate_quote` e non ha più pesi: **compare nella prima e sparisce
+ * dalla seconda.** Non a zero — proprio assente, quindi le colonne quadrano fra loro e nessuna
+ * invariante interna della stampa se ne accorge.
+ *
+ * ⚠️ **Non è un caso di laboratorio, ed è lo stesso di `:241`:** è il rimedio che gli
+ * amministratori usano oggi per il subentro, perché il motore non legge le date di competenza —
+ * genero le rate, stacco il vecchio proprietario, ristampo.
+ * ───────────────────────────────────────────────────────────────────────────── */
+it('un titolare staccato dopo la generazione non fa sparire il suo importo dalla stampa per capitoli', function () {
+    [$pianoRate, , $nudoProprietario, , $immobili] = scenarioNudaProprieta();
+
+    // Il distacco: la riga della pivot sparisce, le rate no. Identico a quello del test a `:241`.
+    DB::table('anagrafica_immobile')
+        ->where('anagrafica_id', $nudoProprietario->id)
+        ->where('immobile_id', $immobili[1]->id)
+        ->delete();
+
+    $perCapitolo = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate->fresh());
+    $perTabella  = (new RipartoTabelleService())->buildMatrice($pianoRate->fresh());
+
+    // Il soggetto staccato vale 60000 su 100000 — lo fissa il test a `:241`. Se la stampa per
+    // capitoli lo perde, il gran totale scende a 40000: **sei euro su dieci fuori dal foglio che
+    // va in assemblea**, su un documento che nessuna invariante interna segnala come incompleto.
+    expect($perCapitolo['gran_totale'])->toBe($perTabella['gran_totale'])
+        ->and($perCapitolo['gran_totale'])->toBe(100000);
+
+    // E non basta che il totale torni: il soggetto deve avere una riga propria, altrimenti il
+    // documento quadra facendo pagare a qualcun altro.
+    $riga = $perCapitolo['righe'][$immobili[1]->id]['soggetti'][$nudoProprietario->id] ?? null;
+
+    expect($riga)->not->toBeNull()
+        ->and($riga['totale'])->toBe(60000);
+});
+
+it('l\'importo del titolare staccato finisce nella colonna «Fuori riparto», non su un capitolo a caso', function () {
+    [$pianoRate, , $nudoProprietario, , $immobili] = scenarioNudaProprieta();
+
+    DB::table('anagrafica_immobile')
+        ->where('anagrafica_id', $nudoProprietario->id)
+        ->where('immobile_id', $immobili[1]->id)
+        ->delete();
+
+    $matrice = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate->fresh());
+    $colonna = \App\Services\RipartoCapitoliService::COLONNA_FUORI_RIPARTO;
+
+    // ⚠️ **Perché non su un capitolo vero.** Il dettaglio per capitolo di un soggetto dissociato
+    // non è ricostruibile: `rate_quote.regole_calcolo` conserva `audit`, `importi`, `origine`,
+    // `parametri` e `dettagli_saldo`, e in `importi` solo `saldo_usato`, `totale_calcolato` e
+    // `quota_pura_gestione`. Attribuire l'importo a un capitolo sarebbe inventare un dato su un
+    // documento che va in assemblea.
+    expect($matrice['capitoli'])->toHaveKey($colonna)
+        ->and($matrice['capitoli'][$colonna]['nome'])->toBe('Fuori riparto')
+        // Nessuna dimensione di riparto: la sotto-colonna delle quote resta vuota invece di
+        // mostrare un totale «0», che sarebbe un numero finto.
+        ->and($matrice['capitoli'][$colonna]['senza_quote'])->toBeTrue()
+        ->and($matrice['tot_per_capitolo'][$colonna])->toBe(60000);
+
+    $perCapitolo = $matrice['righe'][$immobili[1]->id]['soggetti'][$nudoProprietario->id]['per_capitolo'];
+
+    expect($perCapitolo[$colonna]['importo'])->toBe(60000)
+        // La quota resta nulla: il template stampa «—» invece di un millesimo che non esiste.
+        ->and($perCapitolo[$colonna]['quota'])->toBeNull();
+});
+
+it('il subentro fatto per intero non gonfia il documento', function () {
+    // ⚠️ **Reperto della revisione avversariale della beta.52, e i tre test qui sopra non lo
+    // prendevano:** staccano il vecchio titolare e si fermano lì. Nessuno **riattacca** un
+    // subentrante, che è il passo successivo e obbligato del rimedio che gli amministratori usano
+    // — stacco chi è uscito, attacco chi è entrato.
+    //
+    // Il subentrante ha pesi vivi sulla pivot e **zero quote in `rate_quote`**, perché il piano
+    // era già stato generato. Il riallineamento lo saltava e gli lasciava il lordo ricalcolato dal
+    // vivo: € 600,00 che nessuno deve. Misurato prima della correzione: gran totale 160000 contro
+    // 100000 di rate emesse.
+    //
+    // ⚠️ Il difetto **preesisteva alla beta.52** ed era mascherato: il lordo fantasma era
+    // compensato dall'assenza della riga dell'orfano, e i due errori si annullavano. Aggiungendo
+    // la riga dell'orfano si sono sommati.
+    [$pianoRate, , $nudoProprietario, , $immobili] = scenarioNudaProprieta();
+
+    DB::table('anagrafica_immobile')->where('immobile_id', $immobili[1]->id)->delete();
+
+    $subentrante = Anagrafica::factory()->create(['nome' => 'Subentrante']);
+    DB::table('anagrafica_immobile')->insert([
+        'anagrafica_id' => $subentrante->id, 'immobile_id' => $immobili[1]->id,
+        'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now(),
+    ]);
+
+    $perCapitolo = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate->fresh());
+    $perTabella  = (new RipartoTabelleService())->buildMatrice($pianoRate->fresh());
+
+    expect($perCapitolo['gran_totale'])->toBe($perTabella['gran_totale'])
+        ->and($perCapitolo['gran_totale'])->toBe(100000);
+
+    // L'importo dell'uscente resta visibile dove ha un significato, e il subentrante non porta
+    // niente: non gli è stato addebitato niente.
+    $colonna = \App\Services\RipartoCapitoliService::COLONNA_FUORI_RIPARTO;
+    expect($perCapitolo['tot_per_capitolo'][$colonna])->toBe(60000);
+});
+
+it('IL PRESIDIO CHE MANCAVA: la matrice per capitoli quadra con rate_quote, non solo con la gemella', function () {
+    // ⚠️ I test A6 confrontavano le due stampe fra loro — `perCapitolo === perTabella` — che regge
+    // finché sbagliano **insieme**. `verificaConcordanza()` è l'unica funzione che asserisce
+    // «gran totale = somma di `rate_quote`», e nessuno la puntava su questa matrice.
+    //
+    // È il difetto di metodo che la revisione ha trovato: un test il cui nome promette più di
+    // quanto il corpo verifichi.
+    [$pianoRate, , $nudoProprietario, , $immobili] = scenarioNudaProprieta();
+
+    DB::table('anagrafica_immobile')->where('immobile_id', $immobili[1]->id)->delete();
+    $subentrante = Anagrafica::factory()->create(['nome' => 'Subentrante']);
+    DB::table('anagrafica_immobile')->insert([
+        'anagrafica_id' => $subentrante->id, 'immobile_id' => $immobili[1]->id,
+        'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now(),
+    ]);
+
+    $matrice = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate->fresh());
+
+    $reali = 0;
+    foreach ($pianoRate->fresh()->rate as $rata) {
+        foreach ($rata->rateQuote as $rq) {
+            $reali += (int) round($rq->importo);
+        }
+    }
+
+    expect($matrice['gran_totale'])->toBe($reali)
+        ->and(array_sum($matrice['tot_per_capitolo']))->toBe($matrice['gran_totale']);
+});
+
+it('la colonna «Fuori riparto» non compare quando non serve', function () {
+    // La controprova, che vale quanto il caso positivo: una pseudo-colonna che comparisse sempre
+    // aggiungerebbe una colonna vuota a ogni riparto stampato dal gestionale.
+    [$pianoRate] = scenarioNudaProprieta();
+
+    $matrice = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate);
+
+    expect($matrice['capitoli'])->not->toHaveKey(\App\Services\RipartoCapitoliService::COLONNA_FUORI_RIPARTO);
+});

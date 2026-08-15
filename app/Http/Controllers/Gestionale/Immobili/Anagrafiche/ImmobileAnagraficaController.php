@@ -56,10 +56,34 @@ class ImmobileAnagraficaController extends Controller
                 ->with('esercizio');
         }]);
 
+        // ⚠️ **Chi ha già quote emesse su questa unità.**
+        //
+        // «Dissocia» faceva un `detach()` dietro una conferma generica — «questa azione non è
+        // reversibile» — che non diceva la cosa che conta: se quel soggetto ha già rate emesse,
+        // le sue quote restano in `rate_quote` mentre lui sparisce dalla pivot, e i documenti
+        // cominciano a raccontare due storie diverse.
+        //
+        // Non è un caso di laboratorio: **è il rimedio che gli amministratori usano oggi per il
+        // subentro**, perché il motore non legge le date di competenza. Genero le rate, stacco il
+        // vecchio proprietario, ristampo. È lo stesso scenario che ha prodotto il difetto A6
+        // chiuso in questa beta, e finché il subentro vero non esiste (blocco B2, 1.11) la strada
+        // resta praticata: tanto vale dire all'amministratore cosa comporta, invece di lasciarlo
+        // scoprire dal riparto.
+        //
+        // Si guarda `rate_quote` e non i saldi: è lì che vive la quota emessa, ed è la tabella
+        // che il documento di riparto legge.
+        $anagraficheConQuoteEmesse = DB::table('rate_quote')
+            ->where('immobile_id', $immobile->id)
+            ->whereNotNull('anagrafica_id')
+            ->distinct()
+            ->pluck('anagrafica_id')
+            ->all();
+
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheList', [
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
-            'immobile'   => new ImmobileResource($immobile)
+            'immobile'   => new ImmobileResource($immobile),
+            'anagraficheConQuoteEmesse' => $anagraficheConQuoteEmesse,
         ]);
     }
 

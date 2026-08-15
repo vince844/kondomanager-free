@@ -1385,7 +1385,9 @@ return [
         'breadcrumb_quotes' => 'Shares',
         'heading_title' => 'Link properties to the allocation table',
         'heading_description' => 'Below you can specify the shares for each property linked to the table - :table',
-        'max_rows_reached' => 'You have already reached the maximum number of allowed rows.',
+        // Era in inglese dentro il file spagnolo, come diverse voci di questa sezione: tradotta
+        // nella beta.52 insieme alla riscrittura del messaggio.
+        'max_rows_reached' => 'Ya has asociado todas las :count unidades inmobiliarias de esta comunidad. Para añadir más, créalas primero en la sección «Unidades inmobiliarias».',
         'actions' => [
             'add_property' => 'Add property',
         ],

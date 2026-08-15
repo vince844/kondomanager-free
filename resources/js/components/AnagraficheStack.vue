@@ -5,21 +5,61 @@ import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerT
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Users, MapPin, ChevronRight, User } from 'lucide-vue-next';
+import { Users, MapPin, ChevronRight, User, Percent } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
-    anagrafiche: Array<{ 
+    anagrafiche: Array<{
         id?: number | string;
-        nome: string; 
-        indirizzo?: string; 
-        email?: string; 
+        nome: string;
+        indirizzo?: string;
+        email?: string;
         telefono?: string;
         url?: string; // 2. Aggiunta la prop opzionale url
+        /**
+         * Ruolo e quota, **facoltativi**: li passa chi li ha.
+         *
+         * Questo componente è condiviso con l'elenco condomini, dove il legame persona-condominio
+         * non ha né ruolo né quota. Renderli obbligatori avrebbe costretto quella pagina a
+         * inventarsi due valori, che è il modo in cui nascono i dati finti. Chi non li passa
+         * continua a vedere esattamente ciò che vedeva prima.
+         */
+        ruolo?: string | null;
+        quota?: number | string | null;
+        /**
+         * Postilla sul periodo, quando c'è qualcosa da dire. Oggi la valorizza solo l'elenco
+         * unità, con «fino al …» per chi ha una data di fine passata **e** la riga ancora attiva:
+         * il motore lo addebita comunque, e nasconderlo renderebbe invisibile ciò che costa.
+         */
+        nota?: string | null;
     }>;
     title?: string;
     description?: string;
 }>();
+
+/**
+ * Colori dei ruoli, identici a quelli di `gestionale/immobili/anagrafiche/columns.ts`: chi apre
+ * il pannello dall'elenco unità e poi entra nella scheda deve ritrovare gli stessi colori, o sono
+ * due dialetti per la stessa cosa.
+ *
+ * ⚠️ **`nuda_proprietario` c'è qui e manca là**, dove ricade nel grigio dei ruoli sconosciuti. Non
+ * lo correggo in questo passaggio: l'unificazione dei tre punti in un `BadgeRuolo.vue` è già
+ * collocata nella coda ⑲ della roadmap, e farla a metà qui significherebbe lasciarne due su tre
+ * allineati.
+ */
+const coloreRuolo = (ruolo?: string | null) => {
+    switch (ruolo) {
+        case 'proprietario':      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+        case 'nuda_proprietario': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+        case 'inquilino':         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+        case 'usufruttuario':     return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+        default:                  return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+    }
+};
+
+/** `nuda_proprietario` a schermo è «nudo proprietario»: il valore di colonna non è una parola. */
+const etichettaRuolo = (ruolo?: string | null) =>
+    ruolo === 'nuda_proprietario' ? 'nudo proprietario' : (ruolo ?? '');
 
 const maxAvatars = 3; 
 
@@ -118,13 +158,66 @@ const finalWidth = computed(() => {
                 </div>
                 
                 <div class="flex flex-col flex-1 min-w-0 text-left">
-                  <span class="text-base font-bold text-slate-900 dark:text-white leading-tight truncate transition-colors" :class="person.url ? 'group-hover/item:text-primary' : ''">
-                    {{ person.nome }}
-                  </span>
-                  
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-base font-bold text-slate-900 dark:text-white leading-tight truncate transition-colors" :class="person.url ? 'group-hover/item:text-primary' : ''">
+                      {{ person.nome }}
+                    </span>
+
+                    <!--
+                      Ruolo e quota accanto al nome, non sotto: sono **il motivo per cui si apre
+                      questo pannello** da un elenco di unità — «chi è, a che titolo, per quanto».
+                      L'indirizzo resta la riga di sotto, che è contesto e non risposta.
+
+                      La quota compare solo quando c'è **e quando c'è anche un ruolo**: sul
+                      legame persona-condominio dell'elenco condomini non esiste, e un «100 %»
+                      comparso dal nulla sarebbe un numero inventato.
+                    -->
+                    <span
+                      v-if="person.ruolo"
+                      class="shrink-0 px-2 py-1 rounded-md uppercase tracking-widest text-[10px] font-bold"
+                      :class="coloreRuolo(person.ruolo)"
+                    >
+                      {{ etichettaRuolo(person.ruolo) }}
+                    </span>
+
+                    <span
+                      v-if="person.ruolo && person.quota !== null && person.quota !== undefined"
+                      class="shrink-0 inline-flex items-center gap-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400 tabular-nums"
+                    >
+                      {{ person.quota }}<Percent class="w-3 h-3 text-slate-400" />
+                    </span>
+
+                    <!--
+                      La postilla è **ambra e non grigia**: non è un dettaglio anagrafico, è un
+                      avviso. Un titolare con la data di fine passata continua a essere addebitato
+                      dal motore, che le date non le legge — e chi guarda questo pannello deve
+                      poterlo vedere senza aprire altro.
+                    -->
+                    <span
+                      v-if="person.nota"
+                      class="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                    >
+                      {{ person.nota }}
+                    </span>
+                  </div>
+
                   <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 truncate mt-1">
                     <MapPin class="w-3.5 h-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
-                    <span class="truncate font-medium italic">
+                    <!--
+                      ⚠️ **`pr-0.5` non è una spaziatura: tiene l'ultima lettera dentro la scatola.**
+                      Il testo è in corsivo dentro un contenitore `truncate`, cioè
+                      `overflow: hidden`. I glifi corsivi sbordano a destra oltre la propria
+                      larghezza di avanzamento — misurato su «via roma 12»: avanzamento 71,23 px e
+                      **1,65 px di sbalzo** — e quel pezzo finisce fuori dalla scatola e viene
+                      tagliato. L'ultima cifra si vede rasata.
+
+                      Il difetto è invisibile a `scrollWidth === clientWidth`, che è il controllo
+                      istintivo: `scrollWidth` è un intero e **non conta lo sbalzo del corsivo**,
+                      quindi dichiara che va tutto bene mentre a schermo manca un pezzo di lettera.
+                      Segnalato da Vincenzo guardando la pagina, dopo che una mia verifica
+                      programmatica aveva detto il contrario.
+                    -->
+                    <span class="truncate pr-0.5 font-medium italic">
                       {{ person.indirizzo || trans('condomini.placeholder.no_address') }}
                     </span>
                   </div>

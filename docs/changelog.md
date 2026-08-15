@@ -7,6 +7,85 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.52] - Il Limite Che Non C'Era
+
+**Nessuna migrazione**, nessuna modifica al motore di calcolo. Il database non viene toccato.
+
+Parte da una segnalazione sul forum e finisce su un documento d'assemblea. L'amministratore
+chiedeva perché il programma si fermasse a 40 unità immobiliari; la risposta è che non si fermava
+affatto, e cercandone la ragione è saltato fuori un difetto che faceva sparire denaro da una
+stampa.
+
+### Il limite che non esisteva, e un messaggio che lo faceva credere
+
+Un amministratore con 67 unità si è fermato a 40 e ha scritto: *«perché questo limite così
+stringente?»*. Non c'era nessun limite. La pagina dei millesimi **associa** le unità, non le crea:
+può fare una riga per ogni unità presente nel condominio, e quel condominio ne aveva 40 inserite.
+
+Il difetto era il messaggio. «Hai già raggiunto il numero massimo di righe consentite» si legge
+come un tetto imposto dal programma, e chi lo leggeva concludeva che il gestionale non reggesse il
+suo stabile. Ora dice la causa e dove si rimedia, in tutte e quattro le lingue — lo spagnolo era
+rimasto in inglese.
+
+Accanto al pulsante compare adesso quante unità restano da associare, così il limite si capisce
+**prima** di sbatterci contro invece che dopo. E il conteggio è stato corretto: confrontava il
+numero di *righe* con il numero di *unità*, e una riga appena aggiunta e non ancora compilata
+occupava un posto senza consumare nessuna unità — con 40 unità, 39 righe piene più una vuota
+bloccavano l'aggiunta mentre un'unità era ancora libera.
+
+### Sei euro su dieci che sparivano dal riparto per capitolo
+
+È il difetto grave di questa versione, e non era stato segnalato da nessuno.
+
+Il gestionale stampa lo stesso riparto in due documenti: per tabella e per capitolo. Il primo
+costruisce le righe dalle quote **realmente emesse**; il secondo le ricalcolava dal vivo sulle
+associazioni correnti. Se un titolare veniva staccato dall'unità dopo l'emissione delle rate — che
+è il modo in cui oggi si registra un passaggio di proprietà, perché il riparto non legge ancora le
+date — compariva nel primo documento e **spariva dal secondo**. Non a zero: proprio assente, con le
+colonne che quadravano fra loro e nessun controllo che segnalasse niente. Su un riparto da
+€ 1.000,00 con un titolare staccato da € 600,00, il documento per capitolo ne mostrava € 400,00.
+
+Ora quell'importo compare in una colonna «Fuori riparto», che dichiara ciò che è davvero: denaro
+addebitato a un soggetto che l'unità non ha più, e che nessun capitolo può spiegare. Il dettaglio
+per capitolo di quel soggetto non è ricostruibile — non viene conservato — e inventarlo su un
+foglio che va in assemblea sarebbe stato peggio del difetto.
+
+Nella stessa stampa sono state corrette altre due cose che la gemella aveva già: la sigla del nudo
+proprietario, che compariva come «N» e la legenda non la conosceva, e il tracciamento delle quote
+che nessun soggetto può ricevere — prima sparivano in silenzio.
+
+### Chi possiede cosa, dall'elenco delle unità
+
+L'unica funzione nuova. L'elenco delle unità immobiliari mostrava palazzina, dati catastali e metri
+quadri, e **non chi possiede o abita l'unità** — cioè il dato per cui quell'elenco si apre.
+
+Ora c'è una colonna «Soggetti» con le iniziali di ciascuno e, al clic, un pannello con nome, ruolo,
+quota e indirizzo. È lo stesso componente dell'elenco condomini: stessa grafica, stesse regole.
+Un titolare con una data di fine già passata resta visibile con la postilla «fino al …», perché il
+riparto continua ad addebitarlo e nasconderlo renderebbe invisibile proprio ciò che costa.
+
+### Dissociare un titolare dice cosa comporta
+
+Staccare un soggetto da un'unità chiedeva una conferma generica. Se quel soggetto ha già quote
+emesse, ora il messaggio spiega cosa succede davvero: le quote restano a suo carico nel piano rate,
+lui sparisce dalla scheda dell'unità, i documenti di riparto continuano a mostrarlo e l'elenco dei
+titolari no. E ricorda che il riparto non tiene ancora conto delle date di competenza.
+
+### Quello che questa versione **non** fa, e va detto
+
+Una correzione all'importatore è stata scritta e **ritirata prima del rilascio**. Reimportare un
+file corretto duplica le titolarità — l'archivio tiene sia la coppia come soggetto unico sia i due
+coniugi separati, e l'unità arriva al 200 % — ed è un difetto reale, accertato sui dati. La
+correzione però chiedeva all'amministratore una decisione che **nessuna schermata gli permetteva di
+prendere**: l'importazione si sarebbe fermata a metà senza via d'uscita, che è peggio del problema.
+Il difetto resta aperto e documentato; la correzione tornerà quando sarà completa.
+
+Restano fuori anche il riparto che legge le date di competenza e l'operazione di subentro vera: la
+dissociazione è un rimedio manuale, non una funzione, e questa versione si limita a dirlo invece di
+lasciarlo scoprire.
+
+---
+
 ## [1.10.0-beta.51] - La Voce Che C'Era e Non Si Vedeva
 
 **Nessuna migrazione**, nessuna modifica al motore di calcolo, nessuna funzione nuova. Il database

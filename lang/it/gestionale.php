@@ -1385,7 +1385,18 @@ return [
         'breadcrumb_quotes' => 'Millesimi',
         'heading_title' => 'Associa immobili alla tabella millesimale',
         'heading_description' => 'Di seguito puoi specificare i millesimi per ogni immobile associato alla tabella - :table',
-        'max_rows_reached' => 'Hai già raggiunto il numero massimo di righe consentite.',
+        // ⚠️ Il testo precedente — «hai già raggiunto il numero massimo di righe consentite» —
+        // ha prodotto una segnalazione sul forum il 15/08/2026: si legge come un tetto imposto
+        // dal programma, e non esiste nessun tetto. Il limite è il numero di unità in anagrafica,
+        // perché la pagina dei millesimi le associa e non le crea. La chiave, per giunta, non era
+        // usata da nessuno: il messaggio era cablato in italiano dentro `QuoteList.vue`.
+        // ⚠️ **La parola «anagrafica» non si usa qui, e la correzione è del 15/08/2026.** In
+        // KondoManager `Anagrafica` è il *soggetto* — proprietari, inquilini, usufruttuari — e
+        // «anagrafiche» è l'etichetta che l'amministratore vede nella scheda dell'unità. Scritta
+        // in questo messaggio per intendere «l'elenco delle unità», produceva la frase «unità
+        // presenti in anagrafica», che a chi conosce il gestionale si legge come «unità presenti
+        // nell'elenco delle persone». Segnalato da Vincenzo guardando la pagina a video.
+        'max_rows_reached' => 'Hai già associato tutte le :count unità immobiliari di questo condominio. Per aggiungerne altre, creale prima nella sezione «Unità immobiliari».',
         'actions' => [
             'add_property' => 'Aggiungi immobile',
         ],

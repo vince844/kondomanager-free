@@ -1760,7 +1760,7 @@ return [
         'breadcrumb_quotes' => 'Permilagens',
         'heading_title' => 'Associar imóveis à tabela de permilagens',
         'heading_description' => 'Abaixo pode definir as permilagens de cada imóvel associado à tabela - :table',
-        'max_rows_reached' => 'Já atingiu o número máximo de linhas permitidas.',
+        'max_rows_reached' => 'Já associou todas as :count unidades imobiliárias deste condomínio. Para acrescentar mais, crie-as primeiro na secção «Unidades imobiliárias».',
         'actions' => [
             'add_property' => 'Adicionar imóvel',
         ],

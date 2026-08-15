@@ -98,7 +98,16 @@ class VerificaTitolaritaCommand extends Command
 
             if ($sospette->isNotEmpty()) {
                 $this->line('');
-                $this->line("  <fg=red>Quote che non fanno 100 ({$sospette->count()}):</> probabile subentro registrato come comproprietà — la spesa si divide fra chi è titolare e chi non lo è più.");
+                // ⚠️ **Le cause sono due, e nominarne una sola manda fuori strada.** Fino alla
+                // beta.52 qui si leggeva solo «probabile subentro registrato come comproprietà».
+                // Poi si è scoperto che sul condominio 33 le due unità con somma 200 venivano da
+                // **importazioni ripetute** — la prima aveva scritto i coniugi separati, la
+                // seconda la coppia come soggetto unico — e chi leggeva il messaggio andava a
+                // cercare un subentro che non c'era mai stato.
+                $this->line("  <fg=red>Quote che non fanno 100 ({$sospette->count()}):</> la spesa si divide fra più soggetti di quanti ne abbia davvero l'unità.");
+                $this->line('  <fg=gray>Due cause tipiche: un subentro registrato come comproprietà — chi è uscito continua a pagare —</>');
+                $this->line("  <fg=gray>oppure due importazioni che hanno portato la stessa proprietà in forme diverse (la coppia come</>");
+                $this->line('  <fg=gray>soggetto unico e i due coniugi separati). Guarda le date di creazione delle righe per distinguerle.</>');
                 $this->table(
                     ['Unità', 'Ruolo', 'Titolari', 'Somma quote'],
                     $sospette->map(fn ($r) => [$r->unita ?? '—', $r->tipologia, $r->n, $r->somma . ' %'])->all()

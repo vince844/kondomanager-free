@@ -235,3 +235,89 @@ describe('il totale non giudica', () => {
         expect(w.text()).not.toContain('/ 1000');
     });
 });
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * beta.52 — Il tetto che non era un tetto.
+ *
+ * Segnalazione forum del 15/08/2026: un amministratore con 67 unità immobiliari si ferma a 40 e
+ * chiede «perché questo limite così stringente?». Non c'era nessun limite: quel condominio aveva
+ * 40 unità inserite in anagrafica, e questa pagina le associa soltanto, non le crea.
+ *
+ * Il difetto era doppio, e la seconda metà non è cosmetica: il messaggio mentiva sulla causa, e
+ * la guardia contava **le righe** invece delle **unità ancora libere**.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/** Come `monta()`, ma con più unità in anagrafica che righe già associate. */
+function montaConLibere(nAssociate: number, nInAnagrafica: number, decimali = 2) {
+    return mount(QuoteList, {
+        props: {
+            condominio: CONDOMINIO as never,
+            tabella: {
+                id: 74, condominio_id: 28, nome: 'Millesimi generali', tipo: 'standard',
+                quota: 'millesimi', attiva: true, numero_decimali: decimali,
+            } as never,
+            millesimi: Array.from({ length: nAssociate }, (_, i) => ({
+                id: i + 1, immobile: immobile(i + 1), valore: '100', coefficienti: null,
+            })) as never,
+            immobili: Array.from({ length: nInAnagrafica }, (_, i) => immobile(i + 1)) as never,
+        },
+        global: {
+            mocks: { route: (name: string) => `/${name}` },
+            stubs: {
+                GestionaleLayout: { template: '<div><slot /></div>' },
+                PageHeaderGuide: { template: '<div />' },
+                Link: { template: '<a><slot /></a>' },
+                'v-select': true,
+            },
+        },
+    });
+}
+
+const bottoneAggiungi = (w: ReturnType<typeof monta>) =>
+    w.findAll('button').find((b) => b.text().toLowerCase().includes('aggiungi immobile'));
+
+describe('il limite è il numero di unità in anagrafica, e si vede prima di sbatterci contro', () => {
+    test('il contatore dice quante unità restano da associare', () => {
+        // 40 unità in anagrafica, 38 già associate: ne restano 2, e si leggono senza cliccare
+        // niente. È la riga che avrebbe evitato la segnalazione.
+        const w = montaConLibere(38, 40);
+
+        expect(w.text()).toContain('2 da associare');
+    });
+
+    test('quando sono tutte associate lo dice, invece di aspettare il clic', () => {
+        const w = montaConLibere(40, 40);
+
+        expect(w.text()).toContain('Tutte associate');
+    });
+
+    test('UNA RIGA VUOTA NON CONSUMA UN\'UNITÀ — è la regressione da cui nasce questa beta', async () => {
+        // La guardia vecchia confrontava `form.quote.length` con `rawImmobili.length`: con 3 unità
+        // in anagrafica e 2 associate, la riga vuota appena aggiunta portava le righe a 3 e
+        // bloccava l'aggiunta **mentre un'unità era ancora libera**.
+        //
+        // Il conteggio giusto non è «quante righe ho», è «c'è ancora un'unità da associare».
+        const w = montaConLibere(2, 3);
+
+        await bottoneAggiungi(w)?.trigger('click');   // riga vuota: le righe diventano 3
+
+        // Resta una sola unità libera, e la riga vuota non l'ha consumata.
+        expect(w.text()).toContain('1 da associare');
+
+        // Con la guardia vecchia (righe ≥ unità) qui l'avviso sarebbe già scattato.
+        await bottoneAggiungi(w)?.trigger('click');
+        expect(w.text().toLowerCase()).not.toContain('numero massimo');
+    });
+
+    test('il dialogo si raggiunge, e non parla di righe né di massimi consentiti', async () => {
+        // Il pulsante resta attivo anche a zero **di proposito**: è così che l'amministratore
+        // arriva alla spiegazione e al collegamento verso l'anagrafica. Un pulsante spento
+        // renderebbe irraggiungibile il messaggio, cioè proprio ciò che mancava.
+        const w = montaConLibere(3, 3);
+
+        await bottoneAggiungi(w)?.trigger('click');
+
+        expect(w.text().toLowerCase()).not.toContain('numero massimo');
+        expect(w.text().toLowerCase()).not.toContain('righe consentite');
+    });
+});

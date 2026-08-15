@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Head, useForm, Link } from "@inertiajs/vue3";
+import { Head, useForm, Link, router } from "@inertiajs/vue3";
 import GestionaleLayout from "@/layouts/GestionaleLayout.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Plus, LoaderCircle, Trash2, Table as TableIcon, Info, Hash } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Trash2, Table as TableIcon, Info, Hash, Home, Check } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
+import { trans } from "laravel-vue-i18n";
 import type { BreadcrumbItem } from "@/types";
 import type { Tabella } from "@/types/gestionale/tabelle";
 import type { Building } from "@/types/buildings";
@@ -192,11 +193,72 @@ const immobiliDisponibili = computed(() => {
   return rawImmobili.filter((i: Immobile) => !usedIds.includes(i.id));
 });
 
-const addImmobile = () => {
-  const maxRows = rawImmobili.length;
+/**
+ * Quante unità dell'anagrafica non sono ancora state associate a questa tabella.
+ *
+ * Sta a video accanto al pulsante, e non solo dentro l'avviso: il limite di questa pagina si
+ * capisce **prima** di sbatterci contro, non dopo.
+ */
+const unitaDisponibili = computed(() => immobiliDisponibili.value.length);
 
-  if (form.quote.length >= maxRows) {
-    alertMessage.value = "Hai già raggiunto il numero massimo di righe consentite.";
+const urlAnagraficaUnita = computed(() =>
+  route(generateRoute('gestionale.immobili.index'), { condominio: props.condominio.id })
+);
+
+/**
+ * ⚠️ **Era un `<a href>`, e buttava via il lavoro senza chiedere niente.** Reperto della revisione
+ * avversariale della beta.52.
+ *
+ * Questo modulo vive tutto nel client — `form.quote`, nessun salvataggio automatico, si scrive
+ * solo al `submit`. Un amministratore che compila quaranta righe di millesimi, si accorge che
+ * un'unità manca e preme il pulsante **che il dialogo stesso lo invita a premere** perdeva le
+ * quaranta righe con un caricamento completo di pagina. E il tasto «indietro» del browser
+ * rifaceva la richiesta al server, restituendo i valori vecchi: il lavoro non era nemmeno
+ * recuperabile.
+ *
+ * Prima di questa beta dal dialogo si poteva solo chiudere, quindi il percorso non esisteva:
+ * **è il collegamento nuovo ad aver reso raggiungibile la perdita**. È esattamente ciò che la
+ * Fase 1-bis prescrive di chiedersi prima di aggiungere un comando dove non ce n'era uno.
+ *
+ * La guardia è quella già in uso nel progetto (`GirocontoNew.vue:251`), e la navigazione passa da
+ * Inertia invece che dal browser.
+ */
+const vaiAlleUnita = () => {
+  if (form.isDirty && !confirm('Uscire senza salvare? I millesimi inseriti andranno persi.')) return;
+  router.visit(urlAnagraficaUnita.value);
+};
+
+/**
+ * ⚠️ **Il messaggio di questa pagina è costato una segnalazione sul forum** (15/08/2026): un
+ * amministratore con 67 unità si è fermato a 40 e ha chiesto «perché questo limite così
+ * stringente?».
+ *
+ * Non c'era nessun limite. Il tetto è — ed è sempre stato — **il numero di unità immobiliari
+ * presenti in anagrafica**, perché questa pagina non le crea, le associa soltanto: quel
+ * condominio ne aveva 40 inserite. Ma il testo diceva «hai già raggiunto il numero massimo di
+ * righe consentite», che si legge come un tetto imposto dal programma, e l'amministratore ha
+ * concluso che il gestionale non reggesse il suo condominio.
+ *
+ * Il difetto non era il comportamento: era che il programma sapeva la ragione e non la diceva.
+ *
+ * ## Due correzioni, e la seconda non è cosmetica
+ *
+ * La guardia confrontava `form.quote.length` con `rawImmobili.length` — cioè **il numero di
+ * righe** con il numero di unità. Coincidono finché ogni riga ha il suo immobile, ma una riga
+ * appena aggiunta e non ancora compilata occupa un posto nel conteggio senza consumare nessuna
+ * unità: con 40 unità, 39 righe piene più una vuota bloccavano l'aggiunta mentre un'unità era
+ * ancora libera. La domanda giusta non è «quante righe ho», è «c'è ancora un'unità da
+ * associare», e adesso è quella che si pone.
+ *
+ * Il testo, poi, viene dal file di lingua e non è più cablato qui: la chiave
+ * `gestionale.tabelle_quote.max_rows_reached` **esisteva già in quattro lingue e non la usava
+ * nessuno**, quindi un amministratore portoghese leggeva l'avviso in italiano.
+ */
+const addImmobile = () => {
+  if (unitaDisponibili.value === 0) {
+    alertMessage.value = trans('gestionale.tabelle_quote.max_rows_reached', {
+      count: String(rawImmobili.length),
+    });
     showNoImmobiliDialog.value = true;
     return;
   }
@@ -320,14 +382,59 @@ const submit = () => {
               <CardTitle class="text-base font-semibold">Elenco Unità Associate</CardTitle>
               <CardDescription>Specifica i valori millesimali per ogni unità immobiliare.</CardDescription>
             </div>
-            <Button 
-              type="button" 
-              @click="addImmobile" 
-              class="h-8 px-4 text-[10px] font-bold uppercase tracking-widest gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 shadow-sm"
-            >
-              <Plus class="w-3.5 h-3.5" />
-              Aggiungi Immobile
-            </Button>
+            <!--
+              Il contatore sta **accanto al pulsante e non dentro l'avviso**: il limite di questa
+              pagina — una riga per ogni unità presente in anagrafica — si deve capire prima di
+              sbatterci contro. Un avviso che arriva al clic spiega un blocco già avvenuto; un
+              numero a vista lo previene.
+
+              ⚠️ **Il pulsante resta attivo anche a zero, ed è una scelta.** Disabilitarlo era la
+              prima idea e sembrava più pulita, ma lascia l'amministratore davanti a un pulsante
+              spento senza dirgli dove si rimedia — e rende irraggiungibile il messaggio che
+              spiega la ragione, cioè proprio ciò che mancava a chi ha aperto la segnalazione.
+              Il contatore previene il clic inutile; il dialogo, quando il clic arriva lo stesso,
+              spiega e porta all'anagrafica.
+            -->
+            <div class="flex items-center gap-3">
+              <!--
+                ⚠️ **Il `Badge` a pillola stonava accanto al pulsante**, e la ragione è che erano
+                due linguaggi diversi affiancati: pillola tonda con testo minuscolo contro
+                rettangolo squadrato con maiuscoletto spaziato. Segnalato da Vincenzo guardando
+                la pagina.
+
+                Qui la geometria è quella del pulsante — stessa altezza, stesso `rounded-md`,
+                stesso `text-[10px]` maiuscoletto spaziato — così i due oggetti si leggono come
+                una coppia. A distinguerli è il **bordo tratteggiato e l'assenza di ombra**, che
+                su questa pagina significano già «valore calcolato, non cliccabile»: è
+                esattamente il trattamento della casella del totale in fondo all'elenco.
+
+                La stessa forma per entrambi gli stati: cambia solo l'icona, verde quando non
+                resta niente da fare. Due forme diverse per due stati dello stesso dato
+                farebbero saltare l'occhio a ogni ricalcolo.
+              -->
+              <div
+                class="inline-flex h-8 items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400"
+              >
+                <template v-if="unitaDisponibili > 0">
+                  <Home class="w-3 h-3 shrink-0" />
+                  <!-- «unità» è invariabile: nessun plurale da gestire, a differenza della riga del totale. -->
+                  <span class="tabular-nums">{{ unitaDisponibili }} da associare</span>
+                </template>
+                <template v-else>
+                  <Check class="w-3 h-3 shrink-0 text-emerald-600 dark:text-emerald-500" />
+                  <span>Tutte associate</span>
+                </template>
+              </div>
+
+              <Button
+                type="button"
+                @click="addImmobile"
+                class="h-8 px-4 text-[10px] font-bold uppercase tracking-widest gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 shadow-sm"
+              >
+                <Plus class="w-3.5 h-3.5" />
+                Aggiungi immobile
+              </Button>
+            </div>
           </CardHeader>
           <CardContent class="p-0">
             <div class="overflow-x-auto">
@@ -497,16 +604,37 @@ const submit = () => {
     </div>
   </GestionaleLayout>
 
-  <!-- Dialog se non ci sono immobili disponibili -->
+  <!--
+    L'avviso quando non resta nessuna unità da associare.
+
+    Il titolo non è più «Attenzione»: non è successo niente di preoccupante, e chiamare
+    attenzione su un fatto normale è metà del motivo per cui la segnalazione è arrivata sul
+    forum. Il dialogo dice cosa manca e **dove si rimedia**, con il collegamento all'anagrafica:
+    l'amministratore che sbatte qui deve poter uscire dalla pagina che gli sta dicendo di no.
+  -->
   <AlertDialog v-model:open="showNoImmobiliDialog">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Attenzione</AlertDialogTitle>
+        <AlertDialogTitle>Non ci sono altre unità da associare</AlertDialogTitle>
         <AlertDialogDescription>
           {{ alertMessage }}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
+        <!--
+          ⚠️ **`Button variant="outline"` e non lo stile in maiuscoletto della pagina.** La prima
+          stesura aveva copiato il trattamento del pulsante «Aggiungi immobile» —
+          `text-[10px] uppercase tracking-widest` — e accanto ad «Chiudi», che è
+          `AlertDialogCancel` in tondo, i due si leggevano come due linguaggi diversi.
+
+          La convenzione dei footer delle modali in questo progetto è il `Button` standard in
+          tondo: «Annulla» / «Conferma rifiuto» in `Dashboard.vue`, «Annulla» / «Continua» in
+          `ConfirmDialog.vue`. Il maiuscoletto è il vocabolario delle **azioni di pagina**, non
+          delle modali — e questo era l'unico pulsante del progetto che lo portava dentro una.
+        -->
+        <Button type="button" variant="outline" @click="vaiAlleUnita">
+          Vai alle unità immobiliari
+        </Button>
         <AlertDialogCancel>Chiudi</AlertDialogCancel>
       </AlertDialogFooter>
     </AlertDialogContent>

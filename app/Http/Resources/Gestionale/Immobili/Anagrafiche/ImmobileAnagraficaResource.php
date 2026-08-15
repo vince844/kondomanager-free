@@ -17,9 +17,22 @@ class ImmobileAnagraficaResource extends JsonResource
     public function toArray(Request $request): array
     {
 
-       $saldo = $this->whenLoaded('saldi') 
-            ? $this->saldi->first() 
-            : null; 
+        // ⚠️ **`whenLoaded()` con un solo argomento non è un booleano.** Su una relazione non
+        // caricata restituisce `MissingValue`, che è un **oggetto** e quindi sempre truthy: il
+        // ramo `null` era irraggiungibile e `$this->saldi->first()` faceva un lazy load a ogni
+        // riga. Il metodo esiste per essere *restituito* dentro l'array della Resource — dove il
+        // serializzatore lo toglie — non per essere messo in una condizione.
+        //
+        // Il difetto era latente finché questa Resource la risolveva solo
+        // `ImmobileAnagraficaController::index()`, che carica i saldi con `loadMissing()`. La
+        // beta.52 ha aggiunto l'eager load di `anagrafiche` all'elenco unità e lo ha svegliato:
+        // **86 query, di cui 40 su `saldi`** su una pagina da dieci unità con quattro soggetti
+        // ciascuna. Trovato dalla revisione avversariale.
+        //
+        // `relationLoaded()` è la domanda che si voleva porre, e restituisce un booleano vero.
+        $saldo = $this->relationLoaded('saldi')
+            ? $this->saldi->first()
+            : null;
 
         return [
             'id'             => $this->id,

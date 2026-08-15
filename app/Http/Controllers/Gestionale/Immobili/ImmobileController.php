@@ -68,7 +68,10 @@ class ImmobileController extends Controller
         // Get a list of all the esercizi create to show in the datatable
         $immobili = $condominio
             ->immobili()
-            ->with(['palazzina', 'scala', 'tipologiaImmobile'])
+            // `anagrafiche` serve alla colonna dei soggetti collegati, che riusa lo stesso
+            // `AnagraficheStack` dell'elenco condomini. È un eager load e non una query per riga:
+            // la pagina è paginata a dieci elementi e la pivot è piccola.
+            ->with(['palazzina', 'scala', 'tipologiaImmobile', 'anagrafiche'])
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
