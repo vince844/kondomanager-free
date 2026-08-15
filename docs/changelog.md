@@ -7,6 +7,92 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.51] - La Voce Che C'Era e Non Si Vedeva
+
+**Nessuna migrazione**, nessuna modifica al motore di calcolo, nessuna funzione nuova. Il database
+non viene toccato.
+
+Due difetti indipendenti, tenuti insieme solo dal fatto di essere emersi guardando lo stesso
+punto. Il primo nasce da una segnalazione sul forum; il secondo l'abbiamo trovato mentre
+verificavamo il primo, e riguarda molte più persone.
+
+### Una voce di spesa che esisteva, non si vedeva, e non si lasciava cancellare
+
+Il piano dei conti è pensato su **due** livelli: il capitolo raggruppa, il sottoconto porta
+l'importo e la tabella millesimale. Dalla beta.16 crearne un terzo è vietato. Ma fino alla 1.9.1 il
+menu «capitolo padre» elencava ogni voce con importo zero — e un sottoconto non ancora budgetato ha
+importo zero: compariva quindi in quel menu indistinguibile da un capitolo vero, e sceglierlo creava
+un terzo livello **con due clic**. Chi l'ha fatto non ha forzato niente: ha usato il programma come
+gliel'abbiamo dato.
+
+Da quel momento la voce esisteva nel database ma l'albero a video si fermava al secondo livello e
+non la mostrava. Restava selezionabile come padre, invisibile in elenco, e impediva di cancellare
+il capitolo che la conteneva con un messaggio che parlava di sottoconti introvabili. Un vicolo
+cieco senza uscita, perché per uscirne bisognava vedere la voce.
+
+Ora si vede, rientrata sotto il suo padre, con un contrassegno ambra che spiega cosa fare. La si
+può aprire, spostare sotto un capitolo di primo livello, o eliminare. Il messaggio di errore che
+compare salvandola non accusa più di una scelta mai fatta — quel padre era già lì — e la scheda
+guida in testa alla pagina non promette più «Mastro, Conto e Sottoconto», tre livelli, nella stessa
+pagina in cui da un mese ne sono ammessi due.
+
+### Quello che questa versione **non** corregge, e va detto
+
+Finché una voce sta al terzo livello, **un piano rate generato includendo tutte le voci non la
+addebita**: il ramo viene finanziato per € 0,00 senza errori e senza avvisi. Non è stato corretto,
+ed è una scelta.
+
+La correzione era pronta e i test la coprivano, ma due giri di revisione hanno mostrato che
+toccare il modo in cui il piano rate sceglie cosa finanziare apriva ogni volta difetti nuovi su
+installazioni **sane** — quelle che il terzo livello non l'hanno mai avuto. Fra rischiare la
+ripartizione di chi non c'entra e lasciare un difetto che ora è visibile, segnalato e
+diagnosticabile, abbiamo scelto il secondo. Il rimedio è appiattire la struttura, e il programma
+adesso dice come.
+
+Per lo stesso motivo restano fuori la stampa della distinta e i piani rate già generati a zero:
+il comando qui sotto serve a trovarli.
+
+### Un comando per sapere se riguarda te
+
+`php artisan kondomanager:verifica-struttura-conti` elenca due cose: le voci oltre il secondo
+livello, con il ramo in cui si trovano, e le voci che un piano rate ha congelato a € 0,00 pur
+avendo un preventivo sotto. Distingue lo zero **patologico** da quello legittimo — un capitolo
+davvero vuoto, o una voce svuotata con «sposta spesa», non compaiono. È in sola lettura.
+
+Il ricalcolo di un piano, poi, non dichiara più «completato con successo» quando non ha incluso
+nessuna delle voci richieste: la sincronizzazione automatica raggiunge solo i capitoli di primo
+livello, e prima rispondeva comunque di sì. Una conferma che mente è peggio di un difetto che tace.
+
+### Il documento d'assemblea che perdeva un condòmino intero
+
+Questo non c'entra con i tre livelli e riguarda **chiunque abbia un usufrutto**, anche con un piano
+dei conti perfetto.
+
+Su un'unità in nuda proprietà, con un usufruttuario e nessun «proprietario» attivo, e con la spesa
+ripartita sul proprietario, il motore risolve la cascata dei ruoli e **addebita il nudo
+proprietario**. Il PDF «Riparto per capitolo» invece lo saltava: la cascata era scritta con una
+condizione che la escludeva **proprio per il proprietario**, cioè esattamente in quel caso. Il
+condòmino spariva dal documento e il totale di colonna non tornava con il totale generale, sullo
+stesso foglio portato in assemblea — nella prova, € 400,00 contro € 1.000,00 realmente addebitati.
+
+La beta.49 aveva corretto lo stesso difetto nella stampa gemella, «Riparto per tabella», e aveva
+lasciato indietro questa: delle due ne era stata sistemata una sola, e il test che presidiava la
+concordanza guardava solo quella. Ora entrambe usano la stessa regola del motore, e il test copre
+tutte e due.
+
+### Sotto il cofano
+
+Il totale «Preventivo» della pagina del piano dei conti ora comprende anche le voci oltre il
+secondo livello: prima le escludeva, e finché erano invisibili nessuno poteva accorgersene — da
+questa versione la riga si vede, e un badge che non la conta sarebbe una contraddizione sulla
+stessa schermata.
+
+Undici test nuovi, ognuno verificato anche al contrario: rimettendo il codice precedente devono
+tornare rossi. E la revisione avversariale ha girato due volte invece di una, perché la prima ha
+demolito la correzione iniziale.
+
+---
+
 ## [1.10.0-beta.50] - Le Cose Che il Programma Diceva di Fare
 
 **Nessuna migrazione**, nessun cambio al motore di calcolo, nessuna funzione nuova.

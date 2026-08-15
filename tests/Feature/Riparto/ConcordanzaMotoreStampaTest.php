@@ -271,3 +271,46 @@ it('un titolare staccato dopo la generazione non rompe la quadratura del documen
     expect($sogg['per_tabella'][RipartoTabelleService::COLONNA_DIRETTO]['importo'] ?? null)->toBe(60000)
         ->and($sogg['per_tabella'][$tabella->id]['importo'] ?? 0)->toBe(0);
 });
+
+/**
+ * beta.51 — La stessa prova sull'ALTRA stampa.
+ *
+ * La beta.49 ha corretto la cascata dei ruoli in `RipartoTabelleService` e ha lasciato indietro
+ * il gemello `RipartoCapitoliService`: delle due stampe che finiscono in assemblea ne è stata
+ * sistemata una sola, e questo file presidiava solo quella. È il difetto che la revisione della
+ * beta.51 ha trovato guardando la concordanza fra i motori invece che il diff.
+ *
+ * In `RipartoCapitoliService` la condizione era `if ($anagrafiche->isEmpty() && $rip->soggetto
+ * !== 'proprietario')`: la cascata veniva saltata **proprio per il proprietario**, cioè
+ * esattamente il caso della nuda proprietà. Con lo scenario qui sopra — coefficiente sul
+ * proprietario, unità senza proprietario attivo — il motore addebitava € 600,00 al nudo
+ * proprietario e questa stampa lo faceva sparire dal documento.
+ *
+ * Cosa questi due test NON coprono: `RipartoCapitoliService` non ha alcuna nozione di peso
+ * scoperto (in tutto il file non compare il termine), quindi quando la cascata si esaurisce
+ * davvero l'importo viene ancora scartato in silenzio con un `continue`, senza il riallineamento
+ * che l'altra stampa possiede. È una differenza residua fra i due documenti, non toccata qui.
+ */
+it('anche la stampa per capitolo mostra il nudo proprietario addebitato dal motore', function () {
+    [$pianoRate, , $nudoProprietario, , $immobili] = scenarioNudaProprieta();
+
+    $matrice = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate);
+
+    $totaleSoggetto = $matrice['righe'][$immobili[1]->id]['soggetti'][$nudoProprietario->id]['totale'] ?? null;
+
+    // Prima della beta.51 il soggetto non compariva affatto in questa matrice: la cascata era
+    // esclusa per il `proprietario` e il `continue` lo saltava del tutto.
+    expect($totaleSoggetto)->toBe(60000);
+});
+
+it('la stampa per capitolo quadra con quella per tabella, sullo stesso piano', function () {
+    [$pianoRate] = scenarioNudaProprieta();
+
+    $perCapitolo = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate);
+    $perTabella  = (new RipartoTabelleService())->buildMatrice($pianoRate);
+
+    // Due documenti che raccontano lo stesso riparto in due modi: se i gran totali divergono,
+    // uno dei due è sbagliato e l'amministratore non ha modo di sapere quale.
+    expect($perCapitolo['gran_totale'])->toBe($perTabella['gran_totale'])
+        ->and($perCapitolo['gran_totale'])->toBe(100000);
+});

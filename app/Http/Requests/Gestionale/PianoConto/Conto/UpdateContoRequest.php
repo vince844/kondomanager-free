@@ -130,9 +130,20 @@ class UpdateContoRequest extends FormRequest
                 $parent = Conto::find($this->parent_id);
 
                 if ($parent && $parent->parent_id !== null) {
+                    // Due situazioni diverse dietro allo stesso rifiuto, e vanno dette in modo
+                    // diverso. Se il padre non è cambiato, l'amministratore non ha scelto niente:
+                    // sta modificando una voce che si trovava già al terzo livello, creata quando
+                    // il menu lo consentiva. Dirgli «il padre selezionato» lo manda a cercare un
+                    // errore che non ha commesso.
+                    $padreInvariato = $conto && (int) $conto->parent_id === (int) $this->parent_id;
+
                     $validator->errors()->add(
                         'parent_id',
-                        'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
+                        $padreInvariato
+                            ? 'Questa voce si trova al terzo livello, che il piano dei conti non prevede: '
+                              . 'è un residuo delle versioni precedenti. Per salvare, scegli come capitolo padre una '
+                              . 'voce di primo livello — oppure elimina la voce se non ti serve più.'
+                            : 'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
                     );
                 }
 

@@ -150,12 +150,24 @@ class PianoContiController extends Controller
         // caricata, PianoDeiContiResource la omette (whenLoaded) e il link non si forma.
         $pianoConto->loadMissing(['gestione']);
 
+        // Il caricamento scende di DUE livelli di discendenza, non di uno. Il piano dei conti
+        // ne prevede due in tutto — capitolo e sottoconto — ma fino alla 1.9.1 il menu del
+        // capitolo padre lasciava creare un terzo livello, e quei dati arrivano intatti qui.
+        // Con un livello solo `ContoResource` ometteva la chiave `sottoconti` del nipote
+        // (whenLoaded), quindi la voce esisteva nel database, bloccava la cancellazione del
+        // padre e non compariva da nessuna parte: invisibile e non eliminabile.
+        // Caricarla è ciò che dà all'amministratore la via d'uscita.
         $conti = Conto::with([
             'sottoconti' => function ($query) {
                 $query->with([
                     'tabelleMillesimali.tabella',
                     'tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
-                    'pianiRate' 
+                    'pianiRate',
+                    'sottoconti' => fn($q) => $q->with([
+                        'tabelleMillesimali.tabella',
+                        'tabelleMillesimali.ripartizioni' => fn($q2) => $q2->orderBy('soggetto'),
+                        'pianiRate',
+                    ]),
                 ]);
             },
             'tabelleMillesimali.tabella',
@@ -426,27 +438,32 @@ class PianoContiController extends Controller
         $preventivoDi = fn ($c) => (int) ($budgetOriginaliMap[$c->id] ?? $c->importo);
         $spesoDi = fn ($c) => (int) ($fatturatoMap[$c->id] ?? 0);
 
-        foreach ($conti as $conto) {
+        // I cicli scendono a QUALSIASI profondità, non a due livelli.
+        //
+        // Finché il terzo livello era invisibile, escluderlo dai totali era un difetto che non
+        // si vedeva: la riga non c'era e il badge sembrava coerente con l'elenco. Da questa beta
+        // la riga c'è, e un preventivo di € 2.400,00 a video accanto a un badge che non lo
+        // comprende è una contraddizione sulla stessa schermata — nata qui, quindi da chiudere qui.
+        $sommaRamo = function ($conto, bool $dentroTecnico) use (&$sommaRamo, &$totalePreventivo, &$totaleSopravvenienze, &$totaleConsuntivo, $preventivoDi, $spesoDi) {
             $totaleConsuntivo += $spesoDi($conto);
 
-            if ($conto->is_tecnico) {
+            // Il flag `is_tecnico` si eredita lungo il ramo: un figlio di una sopravvenienza è
+            // una sopravvenienza, che lo dichiari o no.
+            $tecnico = $dentroTecnico || $conto->is_tecnico;
+
+            if ($tecnico) {
                 $totaleSopravvenienze += (int) $conto->importo;
-                foreach ($conto->sottoconti as $sottoconto) {
-                    $totaleSopravvenienze += (int) $sottoconto->importo;
-                    $totaleConsuntivo += $spesoDi($sottoconto);
-                }
             } else {
                 $totalePreventivo += $preventivoDi($conto);
-                foreach ($conto->sottoconti as $sottoconto) {
-                    $totaleConsuntivo += $spesoDi($sottoconto);
-
-                    if ($sottoconto->is_tecnico) {
-                        $totaleSopravvenienze += (int) $sottoconto->importo;
-                    } else {
-                        $totalePreventivo += $preventivoDi($sottoconto);
-                    }
-                }
             }
+
+            foreach ($conto->sottoconti as $sottoconto) {
+                $sommaRamo($sottoconto, $tecnico);
+            }
+        };
+
+        foreach ($conti as $conto) {
+            $sommaRamo($conto, false);
         }
         // -----------------------------------------------------------------
 

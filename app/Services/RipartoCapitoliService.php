@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoRate;
 use Illuminate\Support\Collection;
@@ -476,20 +477,31 @@ class RipartoCapitoliService
                         ->where('pivot.attivo', true)
                         ->where('pivot.tipologia', $rip->soggetto);
 
-                    // Gestione "Cascata di Ruoli": se manca l'inquilino, ricade su usufruttuario/proprietario
-                    if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
-                        $catenaGodimento = ['inquilino', 'usufruttuario', 'proprietario'];
-                        $catenaCapitale  = ['proprietario'];
-                        $catena = in_array($rip->soggetto, $catenaCapitale, true)
-                            ? $catenaCapitale : $catenaGodimento;
-
-                        $start     = array_search($rip->soggetto, $catena, true);
-                        $candidati = $start === false ? $catena : array_slice($catena, $start + 1);
+                    // Cascata dei ruoli, allineata al motore e all'altra stampa (beta.51).
+                    //
+                    // La beta.49 aveva corretto questo stesso difetto in RipartoTabelleService e
+                    // aveva lasciato indietro il gemello: delle due stampe che vanno in assemblea
+                    // ne è stata sistemata una sola. Qui la condizione era
+                    // `if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario')`, cioè la
+                    // cascata veniva saltata **proprio per il proprietario** — che è il caso della
+                    // nuda proprietà. Su un'unità con nudo proprietario e usufruttuario, e senza
+                    // `proprietario` attivo, il motore risolveva la cascata e addebitava il nudo
+                    // proprietario, mentre questa stampa cadeva sul `continue` qui sotto e faceva
+                    // sparire l'unità dal documento: il riparto portato in assemblea non
+                    // coincideva con quello addebitato.
+                    //
+                    // Le due catene scritte a mano erano anche incomplete per conto loro: quella
+                    // di godimento finiva su `proprietario` e non arrivava mai a
+                    // `nuda_proprietario`. `catenaRipiego` è la stessa sorgente che usano
+                    // CalcoloQuoteService:835 e RipartoTabelleService:562 — tre copie della regola
+                    // erano già due di troppo.
+                    if ($anagrafiche->isEmpty()) {
+                        $candidati = RuoloAnagraficaImmobile::catenaRipiego($rip->soggetto);
 
                         foreach ($candidati as $ruoloFallback) {
                             $anagrafiche = $immobile->anagrafiche
                                 ->where('pivot.attivo', true)
-                                ->where('pivot.tipologia', $ruoloFallback);
+                                ->where('pivot.tipologia', $ruoloFallback->value);
                             if ($anagrafiche->isNotEmpty()) break;
                         }
                     }

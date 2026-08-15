@@ -12,13 +12,36 @@ interface Props {
   selectedId?: number | string | null
   /** 'nome' (default storico) oppure 'codice'. Deve restare allineato a App\Support\OrdinamentoConti. */
   ordinamento?: 'nome' | 'codice'
+  /**
+   * Profondità di annidamento, 1 per i capitoli di primo livello. Serve solo a riconoscere
+   * le voci **fuori struttura**: il piano dei conti ne prevede due, capitolo e sottoconto,
+   * ma fino alla 1.9.1 il menu del capitolo padre lasciava creare un terzo livello e quei
+   * dati esistono ancora. Dal livello 3 in giù la voce va segnalata, non nascosta.
+   */
+  livello?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isParentLocked: false,
   selectedId: null,
-  ordinamento: 'nome'
+  ordinamento: 'nome',
+  livello: 1
 })
+
+/** Il piano dei conti prevede due livelli: dal terzo in giù la voce è un residuo da smaltire. */
+const fuoriStruttura = computed(() => props.livello >= 3)
+
+// Il messaggio passa dal tooltip del prodotto, non dall'attributo `title`. Due ragioni, trovate
+// verificando a video il 14/08/2026: su un elemento SVG il tooltip nativo non compare affatto, e
+// anche su uno `<span>` resta un widget di sistema — non se ne può fare una prova. Senza la
+// spiegazione il triangolo giallo è un allarme che non dice cosa fare, che è il difetto peggiore
+// di un avviso. L'`aria-label` porta lo stesso testo dove il tooltip non arriva.
+// La motivazione nomina la conseguenza che costa denaro, perché è quella che fa agire: un
+// avviso puramente strutturale («questa voce è nel posto sbagliato») si rimanda a domani.
+const AVVISO_FUORI_STRUTTURA =
+  'Voce fuori struttura — il piano dei conti prevede due livelli, capitolo e sottoconto. '
+  + 'Finché resta qui, un piano rate generato includendo tutte le voci NON la addebita: le rate '
+  + 'chiedono meno del dovuto. Spostala sotto un capitolo di primo livello, oppure eliminala.'
 
 interface Emits {
   (e: 'seleziona', conto: Conto): void
@@ -172,6 +195,18 @@ const getTextColor = (conto: Conto) => {
               <History v-if="!isCapitolo(conto) && conto.richiede_gia_versato"
                         class="w-3.5 h-3.5 text-indigo-500 shrink-0"
                         title="Voce da esercizio precedente — richiede il già versato" />
+              <TooltipProvider v-if="fuoriStruttura" :delay-duration="150">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <span class="shrink-0 inline-flex" :aria-label="AVVISO_FUORI_STRUTTURA">
+                      <AlertTriangle class="w-3.5 h-3.5 text-amber-500" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent class="max-w-xs text-left">
+                    {{ AVVISO_FUORI_STRUTTURA }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
 
             <div class="flex items-center gap-1.5">
@@ -237,13 +272,17 @@ const getTextColor = (conto: Conto) => {
           </div>
         </div>
 
-        <div v-if="isCapitolo(conto)">
+        <!-- La discesa non si appoggia al solo `is_capitolo`: una voce fuori struttura può
+             avere figli senza essere marcata capitolo, e in quel caso i figli resterebbero
+             invisibili — che è esattamente il difetto da cui veniamo. Chi ha figli li mostra. -->
+        <div v-if="isCapitolo(conto) || hasSottoconti(conto)">
           <div v-if="hasSottoconti(conto)" class="sottoconti border-l border-slate-200 dark:border-slate-800 ml-4">
             <AlberoDeiConti
               :conti="conto.sottoconti || []"
               :selected-id="props.selectedId"
               :is-parent-locked="false"
               :ordinamento="props.ordinamento"
+              :livello="props.livello + 1"
               @seleziona="selezionaConto"
               @apri-movimenti="emit('apriMovimenti', $event)"
             />

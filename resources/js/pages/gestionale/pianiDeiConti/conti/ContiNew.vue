@@ -90,8 +90,11 @@ const headerBreadcrumbs = computed<BreadcrumbItem[]>(() => [
 
 const pageGuides = [
   {
-    title: 'Struttura ad Albero',
-    description: 'Organizza le spese in Mastro, Conto e Sottoconto per una maggiore granularità e precisione nel bilancio.',
+    title: 'Struttura ad albero',
+    // Prometteva «Mastro, Conto e Sottoconto», cioè tre livelli, nella stessa pagina in cui
+    // la validazione ne consente due dalla beta.16. È il testo che ha legittimato le voci di
+    // terzo livello che ora vanno smaltite.
+    description: 'Organizza le spese su due livelli: il capitolo raggruppa, il sottoconto porta l\'importo e la tabella millesimale.',
     icon: FolderTree,
     colorVariant: 'blue' as const
   },

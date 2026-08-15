@@ -43,6 +43,13 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Due livelli, non tre:</strong> il capitolo raggruppa, il sottoconto porta l'importo e la tabella millesimale. Come <em>capitolo padre</em> si può scegliere solo una voce di primo livello — un sottoconto non può averne altri sotto di sé.
+                  <br />
+                  Se aggiornando da una versione precedente trovi una voce con un <strong>triangolo ambra</strong>, è finita al terzo livello quando era ancora possibile: finché resta lì, un piano rate generato includendo tutte le voci <strong>non la addebita</strong>. Spostala sotto un capitolo di primo livello, oppure eliminala. Per trovarle tutte:
+                  <code class="text-xs">php artisan kondomanager:verifica-struttura-conti</code>.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                   <span><strong>Due blocchi distinti:</strong> in alto (icona lucchetto) le spese del <em>preventivo deliberato</em>; sotto (icona arancione) le <em>sopravvenienze e imprevisti</em>, cioè le spese nate fuori preventivo durante la gestione. Le seconde non hanno un preventivo per definizione: nella colonna Preventivo mostrano un trattino, non zero.</span>
                 </li>
               </ul>

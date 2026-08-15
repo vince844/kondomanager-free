@@ -276,8 +276,70 @@ test('Update: un sotto-conto non può essere scelto come capitolo padre', functi
 
     $response->assertSessionHasErrors('parent_id');
 
+    // Qui la scelta l'ha fatta l'amministratore adesso, quindi il messaggio la nomina.
+    expect(session('errors')->getBag('default')->get('parent_id')[0])
+        ->toContain('Il padre selezionato è un sotto-conto');
+
     $altroSottoconto->refresh();
     expect($altroSottoconto->parent_id)->toBe($capitolo->id); // padre invariato
+});
+
+/**
+ * beta.51 — Lo stesso rifiuto, ma detto a chi non ha scelto niente.
+ *
+ * Una voce di terzo livello creata prima della beta.16 arriva intatta sulla 1.10. Il form di
+ * modifica precarica `parent_id` con il padre che la voce ha già, quindi **qualunque**
+ * salvataggio — anche solo rinominarla — riattiva la guardia sulla profondità. Fin qui è
+ * voluto: vogliamo che venga spostata. Ma il messaggio diceva «il padre selezionato è un
+ * sotto-conto», e l'amministratore non ha selezionato nessun padre: quello era già lì.
+ * Lo mandava a cercare un errore che non aveva commesso.
+ *
+ * Cosa questo test NON copre: la creazione (`CreateContoRequest`), dove il messaggio storico
+ * resta corretto perché lì un padre lo si sceglie sempre; e il caso in cui la voce venga
+ * spostata correttamente sotto un capitolo di primo livello, che è il percorso di uscita e
+ * non passa da questa guardia.
+ */
+test('Update: modificare una voce di terzo livello non accusa di una scelta mai fatta', function () {
+    $condominio = Condominio::factory()->create();
+    $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
+    $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+
+    $capitolo = Conto::factory()->create([
+        'piano_conto_id' => $pianoConti->id, 'parent_id' => null,
+        'importo' => 0, 'nome' => 'SPESE ORDINARIE', 'tipo' => 'spesa',
+    ]);
+    $contenitore = Conto::factory()->create([
+        'piano_conto_id' => $pianoConti->id, 'parent_id' => $capitolo->id,
+        'importo' => 0, 'nome' => 'SPESE AMMINISTRATIVE', 'tipo' => 'spesa',
+    ]);
+    // Il terzo livello: creato scavalcando la FormRequest, perché dalla beta.16 l'applicazione
+    // lo vieta. Qui simuliamo dati preesistenti, non un percorso d'uso.
+    $nipote = Conto::factory()->create([
+        'piano_conto_id' => $pianoConti->id, 'parent_id' => $contenitore->id,
+        'importo' => 240000, 'nome' => 'COMPENSO AMMINISTRATORE', 'tipo' => 'spesa',
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->put(route('admin.gestionale.esercizi.piani-conti.conti.update', [$condominio, $esercizio, $pianoConti, $nipote]), [
+            'parent_id'    => $contenitore->id, // invariato: è quello che il form precarica
+            'nome'         => 'COMPENSO AMMINISTRATORE 2026',
+            'tipo'         => 'spesa',
+            'isCapitolo'   => false,
+            'isSottoConto' => true,
+            'importo'      => '2400',
+        ]);
+
+    $response->assertSessionHasErrors('parent_id');
+
+    $messaggio = session('errors')->getBag('default')->get('parent_id')[0];
+
+    // Dice dov'è la voce, non cosa avrebbe scelto...
+    expect($messaggio)->toContain('terzo livello')
+        // ...e dice cosa fare, con l'alternativa: non tutti quei residui vanno salvati.
+        ->and($messaggio)->toContain('primo livello')
+        ->and($messaggio)->toContain('elimina')
+        // ...e soprattutto non accusa di una selezione mai avvenuta.
+        ->and($messaggio)->not->toContain('Il padre selezionato');
 });
 
 test('Update: un conto non può essere il padre di sé stesso', function () {
