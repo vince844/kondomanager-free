@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Users, MapPin, ChevronRight, User, Percent } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
+import { coloreRuolo, etichettaRuolo } from '@/lib/gestionale/ruoli-immobile';
 
 const props = defineProps<{
     anagrafiche: Array<{
@@ -38,28 +39,12 @@ const props = defineProps<{
 }>();
 
 /**
- * Colori dei ruoli, identici a quelli di `gestionale/immobili/anagrafiche/columns.ts`: chi apre
- * il pannello dall'elenco unità e poi entra nella scheda deve ritrovare gli stessi colori, o sono
- * due dialetti per la stessa cosa.
- *
- * ⚠️ **`nuda_proprietario` c'è qui e manca là**, dove ricade nel grigio dei ruoli sconosciuti. Non
- * lo correggo in questo passaggio: l'unificazione dei tre punti in un `BadgeRuolo.vue` è già
- * collocata nella coda ⑲ della roadmap, e farla a metà qui significherebbe lasciarne due su tre
- * allineati.
+ * ⚠️ **Colori ed etichette venivano da una copia locale, tolta nella beta.53.** La stessa mappa
+ * era scritta a mano in tre punti dell'interfaccia e nessuno dei tre era d'accordo con gli altri.
+ * Ora vengono da `@/lib/gestionale/ruoli-immobile`, che è la fonte unica: chi apre il pannello da
+ * un elenco e poi entra nella scheda ritrova gli stessi colori, perché sono letteralmente gli
+ * stessi.
  */
-const coloreRuolo = (ruolo?: string | null) => {
-    switch (ruolo) {
-        case 'proprietario':      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-        case 'nuda_proprietario': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-        case 'inquilino':         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
-        case 'usufruttuario':     return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-        default:                  return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
-    }
-};
-
-/** `nuda_proprietario` a schermo è «nudo proprietario»: il valore di colonna non è una parola. */
-const etichettaRuolo = (ruolo?: string | null) =>
-    ruolo === 'nuda_proprietario' ? 'nudo proprietario' : (ruolo ?? '');
 
 const maxAvatars = 3; 
 

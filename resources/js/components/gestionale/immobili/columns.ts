@@ -12,6 +12,66 @@ import type { Building } from '@/types/buildings'
 
 const { generateRoute } = usePermission();
 
+/**
+ * Il legame di pertinenza, **accanto al badge della tipologia** e non sotto il nome.
+ *
+ * ⚠️ **La prima stesura lo metteva su una riga a sé, e appiattiva la gerarchia.** Sotto il nome
+ * c'era già «VISUALIZZA INTERNO N →», e con il sottorigo i livelli diventavano tre. Guardando la
+ * pagina si vede il problema: quella riga è un **affordance** — dice che la riga si clicca — mentre
+ * la pertinenza è un **dato**, e un dato non deve stare sotto un affordance.
+ *
+ * Qui sta sulla prima riga, dove vive il «che cosa è questa unità»: `[BOX] Box 8 · ↳ Int. 1` si
+ * legge come una frase sola. Testo semplice e non un secondo badge, perché due riquadri affiancati
+ * competerebbero fra loro e nessuno dei due vincerebbe.
+ *
+ * Restituisce un array — vuoto quando non c'è niente da dire — così la riga di un'unità senza
+ * legame resta identica a com'era prima di questa beta.
+ */
+function segnoPertinenza(immobile: Immobile) {
+  const segno = (testo: string, classe: string, titolo?: string) =>
+    h('span', {
+      class: `text-[10px] leading-none whitespace-nowrap ${classe}`,
+      title: titolo,
+    }, testo)
+
+  // È una pertinenza di un'unità di questo condominio. Il nome dell'unità principale sta nel
+  // `title`: nella riga ci sta l'interno, che è la chiave con cui gli amministratori le chiamano.
+  if (immobile.pertinenza_di) {
+    const p = immobile.pertinenza_di
+    return [segno(
+      `↳ ${p.interno ? `Int. ${p.interno}` : p.nome}`,
+      'text-slate-500 dark:text-slate-400',
+      `Pertinenza di ${p.nome}${p.interno ? ` (int. ${p.interno})` : ''}`,
+    )]
+  }
+
+  // È una pertinenza di un'unità che sta fuori: il caso Tognoli. Il testo dichiarato
+  // dall'amministratore va nel `title`, perché è lungo e in riga non ci starebbe.
+  if (immobile.pertinenza_di_esterna) {
+    return [segno('↳ unità esterna', 'text-slate-500 dark:text-slate-400', `Pertinenza di ${immobile.pertinenza_di_esterna}`)]
+  }
+
+  // Ha pertinenze collegate: lo dice il principale, non le pertinenze.
+  if ((immobile.pertinenze_count ?? 0) > 0) {
+    const n = immobile.pertinenze_count as number
+    return [segno(
+      `+${n}`,
+      'px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 font-semibold',
+      `${n} ${n === 1 ? 'pertinenza collegata' : 'pertinenze collegate'}`,
+    )]
+  }
+
+  // ⚠️ Tipologia pertinenziale e nessun legame: **dato incompleto, non errore**. Grigio chiaro e
+  // corsivo, mai ambra e mai rosso. L'assenza del legame è uno stato legittimo e frequente — box
+  // venduto a terzi, unità principale non gestita dal programma — e trattarla come un problema
+  // riempirebbe l'elenco di allarmi che non lo sono.
+  if (immobile.tipologia?.categoria === 'pertinenza') {
+    return [segno('↳ da collegare', 'text-slate-400 dark:text-slate-500 italic', 'Pertinenza non collegata a nessuna unità principale')]
+  }
+
+  return []
+}
+
 export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
   return [
     {
@@ -41,15 +101,18 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
                       // Sostituito group-hover:text-primary con group-hover:text-indigo-600
                       class: 'font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate',
                   }, immobile.nome),
+
+                  // Il legame di pertinenza, accanto alla tipologia: vedi la nota su `segnoPertinenza`.
+                  ...segnoPertinenza(immobile),
               ]),
-              h('span', { 
+              h('span', {
                   // Sostituito group-hover:text-slate-500 con group-hover:text-indigo-500
-                  class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors' 
+                  class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors'
               }, [
                   `Visualizza Interno ${immobile.interno || '-'}`,
                   // Sostituito text-primary/60 con text-indigo-500/60
                   h(ArrowRight, { class: 'w-3 h-3 animate-pulse text-indigo-500/60' })
-              ])
+              ]),
           ])
         ]);
       }

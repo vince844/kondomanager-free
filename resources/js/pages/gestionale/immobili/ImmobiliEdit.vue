@@ -9,6 +9,7 @@ import { List, Save, LoaderCircle, Home, Hash, Info, MapPin } from 'lucide-vue-n
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import PertinenzaField from '@/components/gestionale/immobili/PertinenzaField.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -25,7 +26,8 @@ const props = defineProps<{
   immobile: Immobile;
   palazzine: Palazzina[];
   scale: Scala[];
-  tipologie: TipologiaImmobile[]
+  tipologie: TipologiaImmobile[];
+  unitaPrincipali: { id: number; etichetta: string }[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -76,7 +78,19 @@ const form = useForm({
   palazzina_id: props.immobile.palazzina ? props.immobile.palazzina.id : '',
   scala_id: props.immobile.scala ? props.immobile.scala.id : '',
   tipologia_id: props.immobile.tipologia ? props.immobile.tipologia.id : '',
+  pertinenza_di_immobile_id: props.immobile.pertinenza_di_immobile_id ?? null,
+  pertinenza_di_esterna: props.immobile.pertinenza_di_esterna ?? null,
 });
+
+/**
+ * La categoria della tipologia scelta, che decide **solo l'evidenza** del campo «Pertinenza di» —
+ * mai la sua disponibilità. Vedi la nota estesa in `PertinenzaField.vue`.
+ */
+const categoriaTipologiaScelta = computed(
+  // `form.tipologia_id` parte come stringa vuota e diventa un numero alla selezione: il
+  // confronto va normalizzato, o non trova mai niente.
+  () => props.tipologie.find((t) => String(t.id) === String(form.tipologia_id))?.categoria ?? null,
+);
 
 const submit = () => {
     form.put(route(...generateRoute('gestionale.immobili.update', { condominio: props.condominio.id, immobile: props.immobile.id })), {
@@ -132,6 +146,15 @@ const submit = () => {
                 />
                 <InputError :message="form.errors.tipologia_id" />
               </div>
+
+              <PertinenzaField
+                :unita-principali="unitaPrincipali"
+                :categoria-tipologia="categoriaTipologiaScelta"
+                v-model:immobile-id="form.pertinenza_di_immobile_id"
+                v-model:esterna="form.pertinenza_di_esterna"
+                :errore-immobile="form.errors.pertinenza_di_immobile_id"
+                :errore-esterna="form.errors.pertinenza_di_esterna"
+              />
 
               <div class="sm:col-span-6">
                 <Label for="descrizione">Descrizione</Label>

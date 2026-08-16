@@ -50,7 +50,41 @@ class CreateImmobileRequest extends FormRequest
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
             'palazzina_id'        => ['sometimes', 'nullable', 'integer', Rule::exists('palazzine', 'id')],
             'scala_id'            => ['sometimes', 'nullable', 'integer', Rule::exists('scale', 'id')],
-            'tipologia_id'        => ['required', 'integer', Rule::exists('tipologie_immobili', 'id')]
+            'tipologia_id'        => ['required', 'integer', Rule::exists('tipologie_immobili', 'id')],
+
+            /*
+             * Il legame «Pertinenza di». Tre regole che lo schema **non** presidia di proposito:
+             * si spiegano meglio con un messaggio che con un errore SQL, e una foreign key
+             * composita irrigidirebbe la tabella per due vincoli applicativi.
+             *
+             * 1. Il principale sta **nello stesso condominio**. Il caso legittimo di un principale
+             *    altrove — il parcheggio Tognoli, art. 9 co. 5 L. 122/1989 — si dichiara nel campo
+             *    di testo libero, non qui.
+             * 2. Non è **l'unità stessa**: una cosa non è pertinenza di se stessa.
+             * 3. Non è a sua volta una pertinenza: il legame ha **profondità uno**. Le catene non
+             *    hanno corrispettivo in diritto e renderebbero ambigua qualunque lettura.
+             *
+             * Le due forme sono **alternative**: o il principale è qui, o è fuori. Averle
+             * entrambe significherebbe due principali, che è la cardinalità appena tolta.
+             */
+            'pertinenza_di_immobile_id' => [
+                'sometimes', 'nullable', 'integer',
+                Rule::exists('immobili', 'id')->where(
+                    fn ($q) => $q->where('condominio_id', $this->route('condominio')?->id)
+                        // ⚠️ **Due colonne, non una.** Una pertinenza lo è in entrambe le sue
+                        // forme: un box già legato a un appartamento fuori dal condominio — il
+                        // caso Tognoli — è una pertinenza tanto quanto uno legato qui dentro.
+                        // Guardando la sola chiave esterna, sceglierlo come principale passava
+                        // la validazione e costruiva la catena che la regola 3 vieta.
+                        ->whereNull('pertinenza_di_immobile_id')
+                        ->whereNull('pertinenza_di_esterna')
+                ),
+
+            ],
+            'pertinenza_di_esterna' => [
+                'sometimes', 'nullable', 'string', 'max:255',
+                'prohibited_unless:pertinenza_di_immobile_id,null',
+            ],
         ];
     }
 

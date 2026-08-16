@@ -17,13 +17,26 @@ class Immobile extends Model
         'palazzina_id',
         'scala_id',
         'tipologia_id',
+        // ⚠️ Assegnabili in massa, ma **non liberi**: che il principale stia nello stesso
+        // condominio, che non sia l'unità stessa e che non sia a sua volta una pertinenza lo
+        // verifica la FormRequest. Sono regole che si spiegano meglio con un messaggio che con un
+        // errore SQL, ed è la ragione per cui non stanno nello schema.
+        'pertinenza_di_immobile_id',
+        'pertinenza_di_esterna',
         'nome',
         'descrizione',
         'interno',
         'piano',
         'superficie',
         'numero_vani',
-        'codice_unita',
+        // ⚠️ `codice_unita` era qui e **la colonna non esiste**: sullo schema ci sono
+        // `codice_immobile` e `codice_catasto`. Una chiave fillable che non corrisponde a una
+        // colonna non dà errore — viene semplicemente ignorata al `create()` — quindi è il tipo di
+        // riga che sopravvive per anni facendo credere che quel campo si possa valorizzare.
+        //
+        // `codice_immobile` resta fuori dal fillable **di proposito**: è NOT NULL, univoco a
+        // livello globale, e lo genera `Immobile::booted()`. Renderlo assegnabile dall'esterno
+        // significherebbe poter creare due unità con lo stesso codice da una richiesta HTTP.
         'comune_catasto',
         'sezione_catasto',
         'foglio_catasto',
@@ -94,26 +107,45 @@ class Immobile extends Model
             ->withTimestamps();
     }
 
-    // Immobile → pertinenze collegate (es. l’appartamento ha box e cantina)
-    public function pertinenze()
+    /**
+     * L'unità di cui questa è pertinenza — il box che punta al suo appartamento.
+     *
+     * ⚠️ **Sostituisce le due `belongsToMany` su `immobile_pertinenza`, tolte nella beta.53.** La
+     * cardinalità molti-a-molti modellava una cosa che il diritto non consente: l'art. 817 c.c.
+     * chiede che i due beni appartengano allo **stesso proprietario**, e da lì discende che una
+     * pertinenza ha un solo bene principale. Il caso che il commento invocava — «il box è condiviso
+     * da 2 unità» — è comproprietà del box fra due persone, e vive in `anagrafica_immobile`; se
+     * invece il box è comune a un gruppo di unità non è una pertinenza, è un bene ex art. 1117 c.c.
+     *
+     * **Nulla nel motore la legge, ed è deliberato:** il legame non sposta millesimi, riparto,
+     * saldi, rate né quorum. È presentazione.
+     */
+    public function pertinenzaDi()
     {
-        return $this->belongsToMany(
-            Immobile::class,
-            'immobile_pertinenza',
-            'immobile_id',
-            'pertinenza_id'
-        )->withPivot('quota_possesso')->withTimestamps();
+        return $this->belongsTo(Immobile::class, 'pertinenza_di_immobile_id');
     }
 
-    // Pertinenza → immobili collegati (es. il box è condiviso da 2 unità)
-    public function immobiliPrincipali()
+    /**
+     * Le pertinenze di questa unità — l'appartamento che raccoglie box, cantina e soffitta.
+     *
+     * È il lato «uno-a-molti» del legame: un principale ne ha quante ne ha, ciascuna ne ha uno.
+     */
+    public function pertinenze()
     {
-        return $this->belongsToMany(
-            Immobile::class,
-            'immobile_pertinenza',
-            'pertinenza_id',
-            'immobile_id'
-        )->withPivot('quota_possesso')->withTimestamps();
+        return $this->hasMany(Immobile::class, 'pertinenza_di_immobile_id');
+    }
+
+    /**
+     * Questa unità è dichiarata pertinenza di qualcosa? Anche di un'unità fuori dal condominio.
+     *
+     * Le due colonne sono alternative: `pertinenza_di_immobile_id` quando il principale è qui,
+     * `pertinenza_di_esterna` per il caso Tognoli, dove l'art. 9 co. 5 L. 122/1989 impone la
+     * destinazione a un'unità nello stesso **comune** — che può stare in un altro condominio.
+     */
+    public function haUnPrincipale(): bool
+    {
+        return $this->pertinenza_di_immobile_id !== null
+            || filled($this->pertinenza_di_esterna);
     }
 
     public function documenti()

@@ -25,6 +25,10 @@ class ImmobileIndexRequest extends FormRequest
             'page'       => ['sometimes', 'integer', 'min:1'],
             'per_page'   => ['sometimes', 'integer'],
             'nome'       => ['sometimes', 'string', 'max:255'],
+            // Il filtro sulle pertinenze. `da_collegare` è quello che serve davvero: apri
+            // l'elenco, filtri, e vedi solo ciò che manca — la bonifica quando si ha voglia,
+            // invece di un allarme che insegue riga per riga.
+            'pertinenze' => ['sometimes', 'string', 'in:principali,collegate,da_collegare'],
             'search'     => ['nullable', 'string'],
         ];
     }

@@ -125,6 +125,12 @@ Route::prefix('/gestionale/{condominio}')
             'immobili'  => 'immobile',
             'documenti' => 'documento'
         ]);
+
+    // Le pertinenze di un'unità: sola lettura. Il legame si dichiara dalla scheda della
+    // **pertinenza**, non da qui — è la pertinenza che punta al principale, e un secondo punto di
+    // scrittura sullo stesso dato sarebbe due verità con due regole.
+    Route::get('immobili/{immobile}/pertinenze', [ImmobileController::class, 'pertinenze'])
+        ->name('immobili.pertinenze.index');
     
     // --- CASSE ---
     Route::resource('casse', CassaController::class)

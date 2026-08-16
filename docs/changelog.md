@@ -7,6 +7,171 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.53] - Il Legame Che Non Sposta Niente
+
+**Due migrazioni: il database viene toccato.** Una aggiunge due colonne a `immobili` e rimuove una
+tabella pivot rimasta sempre vuota; l'altra corregge la categoria della tipologia «Ufficio». Il
+motore di calcolo non è toccato: nessun importo cambia in nessun documento.
+
+Il box e l'appartamento a cui appartiene erano due unità qualsiasi, senza nulla che dicesse che
+sono la stessa cosa. Da questa versione il legame si dichiara — e la ricerca che l'ha preceduta
+serve soprattutto a dire cosa quel legame **non** deve fare.
+
+### Il risultato che ha dimensionato tutto il lavoro
+
+Prima di scrivere una riga è stata fatta una ricerca sulle pertinenze — civilistica, contabile e
+d'interfaccia — e ha prodotto un risultato che vale più della funzione: **il legame di pertinenza
+non cambia nessun numero**. Non i millesimi, non il riparto, non i saldi, non le rate. Nemmeno i
+quorum, che si contano per persona e si risolvono sull'anagrafica dei soggetti, non sul legame fra
+unità (Cass. civ. sez. II, ord. 12 novembre 2020 n. 25558).
+
+Il caso che di solito si porta a sostegno — «il box non deve pagare le scale» — non si risolve con
+le pertinenze e non si è mai risolto così: si risolve con una tabella a perimetro ristretto, ex
+art. 1123 co. 2 e 3 c.c., che il gestionale sa già fare.
+
+Quindi il legame è **presentazione**, ed è stato costruito come tale. Sotto il campo c'è scritto,
+in chiaro e non solo in guida: *il collegamento è descrittivo, millesimi, riparto e rate del box
+restano suoi*. È la lezione della beta.50, che ha dovuto riscrivere sette testi che promettevano un
+subentro inesistente.
+
+### Una chiave esterna, non la tabella molti-a-molti che c'era già
+
+Nel database esisteva dal 2025 una tabella `immobile_pertinenza` con `immobile_id`,
+`pertinenza_id` e `quota_possesso`. Era **vuota**: nessun controller, nessuna vista, nessun test,
+nessun seeder l'aveva mai toccata. Non è stata riusata, ed è una scelta di dominio prima che di
+codice.
+
+La cardinalità molti-a-molti modella una cosa che non può esistere. L'art. 817 c.c. chiede il
+requisito soggettivo — i due beni allo **stesso** proprietario — e da lì discende che una pertinenza
+ha un solo bene principale. Il caso che quella tabella invocava, «il box condiviso da due unità», si
+scioglie in tre letture e nessuna è una molti-a-molti: o è comproprietà del box fra due persone, e
+si scrive già nell'anagrafica dell'unità; o i due appartamenti sono della stessa persona, e la
+destinazione la si dichiara a uno; o il box è bene comune a un gruppo di unità ex art. 1117 c.c., e
+allora non è una pertinenza affatto.
+
+Anche `quota_possesso` se ne va con la tabella: fra un'unità e la sua pertinenza non esiste nessuna
+«quota di possesso»: la quota esiste fra **persone** e unità, e ha già il suo posto.
+
+### Il caso Tognoli, che è il motivo della seconda colonna
+
+L'art. 9 co. 5 della L. 122/1989 consente di cedere un parcheggio **solo con contestuale
+destinazione a pertinenza di altra unità sita nello stesso comune** — che può stare in un altro
+condominio, o non essere gestita dal programma. Una chiave esterna lì non arriva.
+
+Per questo il campo ha due forme alternative: l'unità principale scelta da un elenco, quando è in
+questo condominio, oppure scritta in chiaro quando non lo è. Senza la seconda, l'amministratore
+avrebbe lasciato vuoto — che è l'informazione opposta a quella vera.
+
+### Il campo c'è su tutte le unità, di proposito
+
+Il programma non decide chi può essere una pertinenza. Un magazzino, un negozio, una soffitta
+possono esserlo o non esserlo, e la tipologia registrata è un indizio, non un fatto: una
+classificazione approssimativa non deve rendere una funzione **irraggiungibile**.
+
+La classificazione serve invece dove non fa danni: il filtro «Da collegare» propone le unità di
+tipologia pertinenziale che non hanno ancora un legame dichiarato. È un suggerimento su dove
+guardare — su un condominio da 67 unità è l'unico modo per vedere in un colpo cosa manca — e non
+una regola su cosa si può fare.
+
+### Dove il legame si vede
+
+Nell'elenco delle unità ogni riga porta il suo stato: «↳ int. 3» su chi è pertinenza di
+un'altra unità, «↳ unità esterna» sul caso Tognoli, un contatore «+2 pertinenze» su chi le ha,
+e un «↳ da collegare» in corsivo su un'unità pertinenziale che non ha ancora detto di chi è.
+
+Sulla scheda dell'unità compare una tab «Pertinenze» — **solo quando c'è qualcosa da mostrare**,
+perché una voce di menù sempre presente e quasi sempre vuota costa attenzione su ogni unità per
+servirne poche. Da lì non si collega e non si scollega: il campo sta nella scheda della pertinenza,
+perché è la pertinenza che dichiara a chi appartiene. Un solo punto di scrittura, non due da tenere
+allineati.
+
+### L'avviso che non blocca
+
+Se il box e l'appartamento hanno titolari diversi, il programma lo dice e basta. Non impedisce di
+salvare.
+
+L'art. 817 c.c. chiede lo stesso proprietario, ma le due situazioni che violano quel requisito sono
+entrambe legittime e frequenti: il rogito del box registrato prima di quello dell'appartamento, e
+la vendita separata che ha sciolto il vincolo senza che nessuno l'abbia comunicato
+all'amministratore. Bloccare avrebbe impedito di registrare la realtà; tacere avrebbe lasciato
+credere che sia tutto a posto. L'avviso confronta solo i titolari reali e ignora l'inquilino, che
+non c'entra con il requisito soggettivo.
+
+### Il nudo proprietario aveva il colore di «non so cosa sei»
+
+La mappa colore-ruolo era scritta a mano in tre punti dell'interfaccia, e **nessuno dei tre era
+d'accordo con gli altri**: due ne conoscevano tre casi, uno quattro. Il ruolo di nudo proprietario è
+registrabile dalla beta.43, e da allora ha viaggiato per metà del gestionale con il grigio riservato
+ai valori sconosciuti.
+
+Ora i quattro ruoli hanno un colore solo, da un posto solo, e il nudo proprietario ha l'ambra —
+perché è il ruolo che l'amministratore deve notare: su un'unità con usufrutto le spese si dividono
+per legge, ordinaria all'usufruttuario (art. 1004 c.c.) e straordinaria al nudo proprietario
+(art. 1005), e vederlo a colpo d'occhio evita di addebitare alla persona sbagliata.
+
+### La tipologia «Ufficio» era classificata come abitazione
+
+Il seeder delle tipologie dichiarava quattro nomi due volte — `Ufficio`, `Negozio`, `Magazzino`,
+`Deposito` — e la chiave era sul solo nome: vinceva la prima dichiarazione e la seconda non veniva
+mai letta.
+
+Per `Negozio` le due righe dicevano la stessa cosa, e il duplicato era solo disordine. Per
+`Magazzino` e `Deposito` divergevano — «unità non abitativa» contro «pertinenza» — ma ha vinto la
+prima, che è la lettura difendibile: un deposito può legittimamente essere l'una cosa o l'altra, e
+quale sia lo dice il singolo caso, non il catalogo.
+
+Per `Ufficio` no. La prima diceva `unita_abitativa`, la seconda `unita_non_abitativa`, e sul
+database è rimasta la prima: un ufficio registrato come abitazione.
+
+Una migrazione la corregge, e i duplicati sono stati tolti dal seeder. Nessun calcolo leggeva quella
+categoria — è per questo che l'errore è potuto restare — ma la lettura arriverà, e un dato falso che
+oggi non serve a nessuno diventa un difetto il giorno che qualcuno lo usa.
+
+### Il codice morto che stava intorno
+
+Tolti insieme alla tabella pivot: il model `Pertinenza`, le due relazioni `belongsToMany` che
+nessuno chiamava, una chiave esterna dichiarata su una colonna `tipologia` che non esiste — la
+colonna vera è `tipologia_id` — e `codice_unita` nella lista dei campi compilabili dell'unità, altra
+colonna inesistente, mentre `codice_immobile`, che esiste, non era compilabile.
+
+### Quello che questa versione **non** fa
+
+**Il campo nasce senza date di validità**, e non è una dimenticanza. L'art. 818 co. 3 c.c. rende la
+cessazione del vincolo un fatto con una data opponibile, quindi le date serviranno; ma arriveranno
+**con il primo calcolo che le legge**, per una regola che questo progetto si è dato dopo averne
+pagato il prezzo: ogni nuova data deve nascere con il suo lettore, o non nascere. Ci sono già
+quattro famiglie di date scritte e mai lette.
+
+**Non c'è l'operazione di passaggio di titolarità**, né lo storico, né il conguaglio. Quando un box
+viene venduto separatamente il vincolo si scioglie, e trattarlo qui avrebbe prodotto un'operazione
+che *sembra* gestire il subentro dividendo l'anno a metà — identica per un rogito di gennaio e per
+uno di dicembre. È materia della 1.11, dove il tempo entra nel calcolo per davvero.
+
+### Quello che la revisione ha trovato prima del rilascio
+
+Nove reperti distinti: **otto difetti reali, tutti corretti**, e uno che alla verifica non lo era —
+una regola di validazione sospettata di non proteggere, provata nei tre casi e trovata corretta.
+I quattro che valeva la pena raccontare:
+
+La migrazione **moriva su MySQL** proprio nell'unico stato parziale che MySQL sa produrre — colonna
+aggiunta, vincolo no, processo interrotto in mezzo — e da lì in poi *ogni* aggiornamento successivo
+di quell'installazione si sarebbe fermato sullo stesso punto, bloccando anche le migrazioni delle
+versioni a venire. Uscirne avrebbe richiesto phpMyAdmin.
+
+La profondità uno del legame era presidiata **da un lato solo**: si poteva costruire la catena
+partendo dall'altro capo, dichiarando pertinenza un'unità che ne aveva già. E la stessa regola
+guardava una sola delle due colonne, così un box già legato via Tognoli veniva offerto come unità
+principale.
+
+Il filtro si perdeva **alla seconda pagina** mentre il selettore continuava a dichiararlo attivo: un
+elenco che non dice «non ho trovato niente» ma mostra il falso.
+
+E il badge del ruolo, appena unificato, portava con sé le varianti per il tema scuro dentro un
+pannello che il tema scuro non ce l'ha: verde chiaro su fondo chiaro, illeggibile. Era una
+regressione nata dalla correzione precedente.
+
+---
+
 ## [1.10.0-beta.52] - Il Limite Che Non C'Era
 
 **Nessuna migrazione**, nessuna modifica al motore di calcolo. Il database non viene toccato.

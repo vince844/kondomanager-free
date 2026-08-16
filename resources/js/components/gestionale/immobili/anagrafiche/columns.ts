@@ -5,6 +5,7 @@ import type { Building } from '@/types/buildings'
 import type { Immobile } from '@/types/gestionale/immobili'
 import DropdownAction from '@/components/gestionale/immobili/anagrafiche/DataTableRowActions.vue'
 import { User, Calendar, Percent } from 'lucide-vue-next'
+import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue'
 import { useDateConverter } from '@/composables/useDateConverter'
 
 export const createColumns = (condominio: Building, immobile: Immobile): ColumnDef<AnagraficaWithPivot>[] => {
@@ -47,25 +48,11 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
         const anagrafica = row.original as AnagraficaWithPivot
         const tipologia = anagrafica.pivot.tipologia
 
-        // Stile base della "pillola"
-        let colorClasses = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-        
-        switch (tipologia) {
-          case 'proprietario':
-            colorClasses = 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-            break
-          case 'inquilino':
-            colorClasses = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-            break
-          case 'usufruttuario':
-            colorClasses = 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-            break
-        }
-
-        // Semplice span con bordi arrotondati al posto del Badge
-        return h('span', { 
-          class: `px-2 py-1 rounded-md uppercase tracking-widest text-[10px] font-bold ${colorClasses}` 
-        }, tipologia)
+        // ⚠️ Qui c'era uno `switch` con **tre** casi, e `nuda_proprietario` — registrabile dalla
+        // beta.43 — cadeva nel grigio dei ruoli sconosciuti. Colori ed etichette stanno ora in
+        // `@/lib/gestionale/ruoli-immobile`, che è la fonte unica: erano scritti a mano in tre
+        // punti dell'interfaccia e nessuno dei tre era d'accordo con gli altri.
+        return h(BadgeRuolo, { ruolo: tipologia, taglia: 'md' })
       },
     },
     {

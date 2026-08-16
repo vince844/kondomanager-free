@@ -71,9 +71,43 @@ class ImmobileController extends Controller
             // `anagrafiche` serve alla colonna dei soggetti collegati, che riusa lo stesso
             // `AnagraficheStack` dell'elenco condomini. È un eager load e non una query per riga:
             // la pagina è paginata a dieci elementi e la pivot è piccola.
-            ->with(['palazzina', 'scala', 'tipologiaImmobile', 'anagrafiche'])
+            //
+            // `pertinenzaDi` e il conteggio delle `pertinenze` servono al sottorigo dell'elenco:
+            // «↳ pertinenza di Int. 3» su chi è pertinenza, «+2 pertinenze» su chi le ha. Il
+            // conteggio con `withCount` e non caricando le righe: serve un numero, non una lista.
+            ->with(['palazzina', 'scala', 'tipologiaImmobile', 'anagrafiche', 'pertinenzaDi'])
+            ->withCount('pertinenze')
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
+            })
+            /**
+             * Il filtro sulle pertinenze, tre stati.
+             *
+             * `da_collegare` è quello per cui il filtro esiste: un'unità di **tipologia
+             * pertinenziale** senza nessun legame dichiarato, né interno né esterno. Su un
+             * condominio da 67 unità è l'unico modo per vedere in un colpo cosa manca, invece di
+             * scorrere l'elenco cercando i corsivi.
+             *
+             * Nota che si guarda la **categoria della tipologia** e non il legame: la domanda è
+             * «quali unità *dovrebbero* averlo e non ce l'hanno», e la categoria è l'unico
+             * indizio che il programma possiede. È un suggerimento, non una verità — un magazzino
+             * classificato come unità autonoma ma pertinenziale davvero non comparirà qui, ed è
+             * accettabile: il campo resta disponibile su tutte le unità.
+             */
+            ->when($validated['pertinenze'] ?? false, function ($query, $filtro) {
+                match ($filtro) {
+                    'principali' => $query->whereNull('pertinenza_di_immobile_id')
+                        ->whereNull('pertinenza_di_esterna'),
+
+                    'collegate' => $query->where(fn ($q) => $q
+                        ->whereNotNull('pertinenza_di_immobile_id')
+                        ->orWhereNotNull('pertinenza_di_esterna')),
+
+                    'da_collegare' => $query
+                        ->whereNull('pertinenza_di_immobile_id')
+                        ->whereNull('pertinenza_di_esterna')
+                        ->whereHas('tipologiaImmobile', fn ($q) => $q->where('categoria', 'pertinenza')),
+                };
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
 
@@ -94,7 +128,7 @@ class ImmobileController extends Controller
                 'per_page'     => $immobili->perPage(),
                 'total'        => $immobili->total(),
             ],
-            'filters' => $request->only(['nome']), 
+            'filters' => $request->only(['nome', 'pertinenze']), 
         ]);
     }
 
@@ -140,7 +174,10 @@ class ImmobileController extends Controller
             'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
-            'tipologie'  => TipologiaImmobile::all(),
+            // La Resource anche qui: `TipologiaImmobile::all()` grezzo passava il model intero, e
+            // le due schermate del modulo ricevevano la stessa cosa in due forme diverse.
+            'tipologie'  => TipologiaImmobileResource::collection(TipologiaImmobile::all()),
+            'unitaPrincipali' => $this->unitaPrincipaliCandidate($condominio),
         ]);
     }
 
@@ -237,7 +274,10 @@ class ImmobileController extends Controller
      */
     public function show(Condominio $condominio, Immobile $immobile): Response
     {
-        $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
+        // `pertinenzaDi` e il conteggio servono al layout, che mostra la tab «Pertinenze» solo
+        // quando c'è qualcosa da mostrare — e alla riga del legame nella scheda.
+        $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile', 'pertinenzaDi'])
+            ->loadCount('pertinenze');
 
         // Get the current active and open esercizio 
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -305,7 +345,85 @@ class ImmobileController extends Controller
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
             'tipologie'  => TipologiaImmobileResource::collection(TipologiaImmobile::all()),
+            'unitaPrincipali' => $this->unitaPrincipaliCandidate($condominio, $immobile),
         ]);
+    }
+
+    /**
+     * Le pertinenze di un'unità, e — se lo è — l'unità di cui questa è pertinenza.
+     *
+     * **Sola lettura, di proposito.** Il legame si dichiara dalla scheda della *pertinenza*, dove
+     * sta il campo: è la pertinenza che punta al principale. Offrire qui un secondo punto di
+     * scrittura significherebbe due percorsi per lo stesso dato, con due regole da tenere
+     * allineate — e la revisione di ieri ha già mostrato cosa costa una regola applicata a metà.
+     */
+    public function pertinenze(Condominio $condominio, Immobile $immobile): Response
+    {
+        $immobile->load([
+            // `pertinenzaDi.anagrafiche` serve al confronto dei titolari: l'avviso di divergenza
+            // mette a fianco chi possiede la pertinenza e chi possiede il principale, e senza i
+            // secondi non c'è confronto da fare.
+            'pertinenzaDi.anagrafiche',
+            'anagrafiche',
+            'pertinenze.tipologiaImmobile',
+            'pertinenze.anagrafiche',
+        ]);
+
+        // ⚠️ **`loadCount` serve anche qui, e non è ridondante rispetto al `load` qui sopra.**
+        // Il layout decide se mostrare la tab «Pertinenze» guardando `pertinenze_count`, che la
+        // Resource emette con `whenCounted`: caricare la *relazione* non popola il *conteggio*, e
+        // senza questa riga la tab spariva **proprio sulla pagina a cui punta**. Trovato guardando
+        // la schermata, non leggendo il codice.
+        $immobile->loadCount('pertinenze');
+
+        return Inertia::render('gestionale/immobili/pertinenze/PertinenzeList', [
+            'condominio' => $condominio,
+            'esercizio'  => $this->getEsercizioCorrente($condominio),
+            'immobile'   => new ImmobileResource($immobile),
+            'pertinenze' => ImmobileResource::collection($immobile->pertinenze),
+        ]);
+    }
+
+    /**
+     * Le unità che possono fare da **principale** a una pertinenza.
+     *
+     * Tre esclusioni, e ognuna corrisponde a una regola che lo schema non presidia di proposito —
+     * si spiegano meglio con un elenco che non le contiene che con un errore SQL:
+     *
+     * 1. **L'unità stessa**, in modifica: una cosa non è pertinenza di se stessa.
+     * 2. **Le unità che sono già pertinenze di altro**, perché il legame ha profondità uno. Un box
+     *    pertinenza di un appartamento non può a sua volta avere pertinenze: le catene non hanno
+     *    corrispettivo in diritto e renderebbero ambigua qualunque lettura del legame.
+     * 3. **Le unità di altri condomìni**, che non compaiono perché la query parte dal condominio.
+     *    Il caso legittimo di un principale altrove — il parcheggio Tognoli, art. 9 co. 5
+     *    L. 122/1989 — si dichiara nel campo di testo libero, non qui.
+     */
+    private function unitaPrincipaliCandidate(Condominio $condominio, ?Immobile $escluso = null): \Illuminate\Support\Collection
+    {
+        // Il perimetro lo detta l'unità che si sta modificando, non il condominio dell'indirizzo:
+        // la rotta non ha binding vincolato e i due possono divergere. In creazione l'unità non
+        // c'è ancora, e allora l'indirizzo è l'unica fonte — ed è quella giusta.
+        $perimetro = $escluso?->condominio_id ?? $condominio->id;
+
+        return Immobile::where('condominio_id', $perimetro)
+            // ⚠️ **Le colonne da guardare sono due, non una.** La profondità uno vale per il
+            // legame, non per una delle sue due forme: un box già dichiarato pertinenza di un
+            // appartamento in un altro condominio — il caso Tognoli, che è il motivo per cui
+            // `pertinenza_di_esterna` esiste — è a tutti gli effetti una pertinenza, e filtrando
+            // solo sulla chiave esterna compariva fra i principali proponibili. Sceglierlo
+            // produceva la catena che la regola dice di vietare, senza che nulla protestasse.
+            ->whereNull('pertinenza_di_immobile_id')
+            ->whereNull('pertinenza_di_esterna')
+            // Un'unità che **ha** pertinenze può fare da principale: è il caso normale. Qui si
+            // esclude solo sé stessa; che non possa a sua volta diventare pertinenza lo presidia
+            // la richiesta di aggiornamento, perché è una regola sul soggetto, non sul bersaglio.
+            ->when($escluso, fn ($q) => $q->whereKeyNot($escluso->getKey()))
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'interno'])
+            ->map(fn (Immobile $i) => [
+                'id'        => $i->id,
+                'etichetta' => $i->interno ? "{$i->nome} (int. {$i->interno})" : $i->nome,
+            ]);
     }
 
     /**

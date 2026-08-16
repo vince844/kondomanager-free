@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
 import { AlertTriangle, ExternalLink } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -151,15 +152,12 @@ const handleProcedi = () => {
             <td class="px-4 py-2">
               <!-- Il ruolo esiste solo per la quota orfana: sulle altre due forme il badge
                    sarebbe una cornice vuota, che si legge come un dato mancante. -->
-              <span v-if="scoperto.ruolo_richiesto"
-                    class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border"
-                    :class="{
-                      'bg-blue-50 text-blue-700 border-blue-200': scoperto.ruolo_richiesto === 'inquilino',
-                      'bg-purple-50 text-purple-700 border-purple-200': scoperto.ruolo_richiesto === 'usufruttuario',
-                      'bg-slate-50 text-slate-700 border-slate-200': scoperto.ruolo_richiesto !== 'inquilino' && scoperto.ruolo_richiesto !== 'usufruttuario'
-                    }">
-                {{ scoperto.ruolo_richiesto }}
-              </span>
+              <!-- ⚠️ Qui i colori erano una terza copia della stessa mappa, e **in disaccordo con
+                   le altre due**: l'inquilino era blu qui e verde nella scheda dell'unità, e
+                   `nuda_proprietario` non c'era affatto. Un amministratore che legge lo stesso
+                   ruolo in due colori diversi deve reimparare il vocabolario a ogni schermata.
+                   Ora è lo stesso componente del resto del gestionale. -->
+              <BadgeRuolo v-if="scoperto.ruolo_richiesto" :ruolo="scoperto.ruolo_richiesto" taglia="md" tema="chiaro" />
               <span v-else class="text-slate-400 text-xs">—</span>
             </td>
             <!-- `euro()` ha `fromCents: true` come default e la conversione la fa da sé: qui

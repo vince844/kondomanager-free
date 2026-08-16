@@ -73,4 +73,16 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // valgono anche per loro le regole del salto, e una migrazione fuori da questo dataset
     // smette di essere presidiata (lezione della beta.31).
     '2026_08_06_090000_create_import_tables',
+    // Aggiunta nella beta.53: riclassifica la tipologia «Ufficio» da `unita_abitativa` a
+    // `unita_non_abitativa`. È un `UPDATE` su dati esistenti — non uno schema change — e la sua
+    // idempotenza sta tutta nella `WHERE` sulla categoria vecchia: al secondo giro non trova
+    // righe. Proprio perché tocca **dati** e non struttura vale la pena presidiarla: uno schema
+    // change fallisce rumorosamente, un update rieseguito male no.
+    '2026_08_15_090000_correggi_categoria_ufficio',
+    // Aggiunta nella beta.53: le due colonne di «Pertinenza di» su `immobili`, più il drop della
+    // pivot `immobile_pertinenza`. È la categoria a rischio più alto del dataset — un `ALTER` con
+    // chiave esterna su una tabella popolata, più un `DROP TABLE` — e su MySQL colonna e vincolo
+    // sono due statement distinti, quindi un'interruzione a metà lascia esattamente lo stato che
+    // `cleanupPartialMigration()` deve saper riconoscere.
+    '2026_08_15_100000_add_pertinenza_di_to_immobili',
 ]);
