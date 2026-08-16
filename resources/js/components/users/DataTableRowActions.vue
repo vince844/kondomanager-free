@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -9,8 +9,28 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { trans } from 'laravel-vue-i18n'
 import { Trash2, FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
 import type { User } from '@/types/users';
+import { usePermission } from '@/composables/permissions'
 
-defineProps<{ user: User }>()
+const props = defineProps<{ user: User }>()
+
+const { hasPermission } = usePermission()
+
+/**
+ * Il menù offre solo ciò che il server accetterebbe.
+ *
+ * Sospendere ed eliminare hanno due invarianti oltre al permesso — non sé stessi, non l'ultimo
+ * amministratore attivo — e il server le fa rispettare comunque: qui si evita di proporre un
+ * comando che finirebbe in un errore, che è la trappola descritta nella lezione della beta.53.
+ */
+const puoSospendere = computed(
+  () => hasPermission(['Sospendi utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
+)
+
+const puoRiattivare = computed(() => hasPermission(['Sospendi utenti']))
+
+const puoEliminare = computed(
+  () => hasPermission(['Elimina utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
+)
 
 const userID = ref('');
 const userEmail = ref('');
@@ -90,22 +110,22 @@ const reinviteUser = () => {
         {{ trans('users.actions.edit_user') }}
       </DropdownMenuItem>
 
-      <DropdownMenuItem  v-if="!user.suspended_at" @click="suspendUser(user)">
+      <DropdownMenuItem v-if="!user.suspended_at && puoSospendere" @click="suspendUser(user)">
         <MonitorX class="w-4 h-4 text-xs" />
-        {{ trans('users.actions.suspend_user') }} 
+        {{ trans('users.actions.suspend_user') }}
       </DropdownMenuItem>
 
-      <DropdownMenuItem v-else @click="unsuspendUser(user)" >
+      <DropdownMenuItem v-else-if="user.suspended_at && puoRiattivare" @click="unsuspendUser(user)" >
         <MonitorCheck class="w-4 h-4 text-xs" />
-        {{ trans('users.actions.activate_user') }} 
+        {{ trans('users.actions.activate_user') }}
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleReinvite(user)" >
         <Send class="w-4 h-4 text-xs" />
-        {{ trans('users.actions.invite_user') }} 
+        {{ trans('users.actions.invite_user') }}
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="handleDelete(user)" >
+      <DropdownMenuItem v-if="puoEliminare" @click="handleDelete(user)" >
         <Trash2 class="w-4 h-4 text-xs" />
         {{ trans('users.actions.delete_user') }}
       </DropdownMenuItem>

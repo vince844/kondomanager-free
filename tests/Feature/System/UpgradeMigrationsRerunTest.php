@@ -89,4 +89,5 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // `CREATE TABLE` pura — la categoria a rischio più basso — ma vale la regola del salto: una
     // migrazione fuori da questo dataset smette di essere presidiata (lezione della beta.31).
     '2026_08_16_100000_create_preferenze_tabelle_utente',
+    '2026_08_16_120000_add_last_login_at_to_users_table',
 ]);

@@ -94,6 +94,11 @@ class AppServiceProvider extends ServiceProvider
         // GESTIONE PROXY (Spostata in bootstrap/app.php per standard Laravel 11)
         // ====================================================================
 
+        // L'ultimo accesso di ogni utente. Un solo ascoltatore copre tutte e tre le porte —
+        // modulo, doppia autenticazione e cookie *remember me* — perché passano tutte da
+        // `SessionGuard`, che emette questo evento.
+        Event::listen(\Illuminate\Auth\Events\Login::class, \App\Listeners\AggiornaUltimoAccesso::class);
+
         // Sincronizza la versione dopo ogni migrazione
         Event::listen(MigrationsEnded::class, function () {
             try {

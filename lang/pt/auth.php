@@ -13,6 +13,7 @@ return [
     */
 
     'failed'                    => 'As credenciais inseridas estão incorretas.',
+    'suspended'                 => 'A tua conta foi suspensa. Contacta o administrador do condomínio.',
     'password'                  => 'A senha inserida está incorreta.',
     'throttle'                  => 'Muitas tentativas falhadas. Por favor, tente novamente em :seconds segundos.',
     'reset_link_sent'           => 'Um link de redefinição será enviado para o endereço de email se existir uma conta associada.',

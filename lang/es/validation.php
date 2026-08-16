@@ -166,6 +166,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'No puedes asignar este rol: los roles administrativos los concede un administrador.',
+            'last_admin' => 'Este es el último administrador activo: cambiar su rol dejaría la instalación sin nadie que pueda gestionarla.',
+        ],
+        'permissions' => [
+            'not_allowed' => 'No puedes conceder un permiso que tú mismo no tienes.',
+        ],
         'email' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',

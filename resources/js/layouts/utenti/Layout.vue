@@ -1,6 +1,9 @@
 <script setup lang="ts">
 
+import { computed, ref } from 'vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import UtentiGuide from '@/components/guides/UtentiGuide.vue';
+import NavSezione from '@/components/NavSezione.vue';
 import { Button } from '@/components/ui/button';
 import { Link } from '@inertiajs/vue3';
 import { UsersRound, Drama, KeyRound, Mails, ShieldCheck, Mail, Users } from 'lucide-vue-next';
@@ -42,7 +45,21 @@ const sidebarNavItems: LinkItem[] = [
 
 const currentPath = window.location.pathname;
 
-const pageGuides = [
+// La guida di sezione sta nel layout e non nella singola pagina: le quattro schermate — utenti,
+// ruoli, permessi, inviti — raccontano la stessa storia, e chi arriva sui permessi ha le stesse
+// domande di chi arriva sugli utenti.
+const mostraGuida = ref(false);
+
+/** I titoli qui sono chiavi di lingua: il componente mostra il testo che riceve, quindi si traduce prima. */
+const vociNav = computed(() => sidebarNavItems.map(item => ({ ...item, title: trans(item.title) })));
+
+/**
+ * ⚠️ **`computed`, non `const`.** Le tre schede mostravano `users.guides.users_title` al posto del
+ * testo: le `trans()` venivano risolte una volta sola alla creazione del componente, prima che le
+ * traduzioni fossero caricate, e il valore grezzo restava lì. Nel template la stessa chiamata
+ * funziona perché il template si rivaluta; qui serve dirlo. Difetto presente dalla 1.9.1-beta.8.
+ */
+const pageGuides = computed(() => [
   {
     title: trans('users.guides.users_title'),
     description: trans('users.guides.users_desc'),
@@ -61,7 +78,7 @@ const pageGuides = [
     icon: Mail,
     colorVariant: 'amber' as const
   }
-];
+]);
 
 </script>
 
@@ -76,26 +93,28 @@ const pageGuides = [
             back-url="/impostazioni"
             :back-text="trans('impostazioni.label.settings') || 'Impostazioni'"
             :video-url="null"
+            has-text-guide
+            :text-guide-title="trans('users.guides.button')"
+            @open-text-guide="mostraGuida = true"
         />
 
-        <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
-            <aside class="w-full max-w-xl lg:w-48">
-                <nav class="flex flex-col space-x-0 space-y-1 shadow ring-1 ring-black/5 md:rounded-lg p-2">
-                    <Button
-                        v-for="item in sidebarNavItems"
-                        :key="item.href"
-                        variant="ghost"
-                        :class="['w-full justify-start', { 'bg-muted': currentPath.startsWith(item.href) }]"
-                        as-child
-                    >
-                        <Link :href="item.href">
-                            <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
-                            {{ trans(item.title) }}
-                        </Link>
-                    </Button>
-                </nav>
-            </aside>
-            
+        <!--
+            La barra sta **in alto** e non a sinistra, come nella sezione movimenti del gestionale.
+            Il criterio non è estetico: la barra va in alto quando il contenuto della sezione ha
+            bisogno di **larghezza**. Qui sotto ci sono quattro elenchi, e quello degli utenti ha
+            sette colonne — con la barra a fianco, che si prende 12rem fisse, l'ultima usciva dallo
+            schermo su un portatile.
+
+            Le impostazioni personali (`layouts/settings/Layout.vue`) tengono la barra a sinistra, e
+            non è un'incoerenza: lì il contenuto sono moduli stretti, e la larghezza non serve.
+
+            `flex-wrap` + `max-w-full` sono ripresi dal gemello dei movimenti, dove sono nati
+            quando la sesta voce ha fatto sforare la barra: con quattro ci sta comoda, ma la
+            quinta non deve rompere niente.
+        -->
+        <div class="space-y-4">
+            <NavSezione :items="vociNav" />
+
             <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
                 <section class="w-full">
                     <slot />
@@ -103,4 +122,5 @@ const pageGuides = [
             </div>
         </div>
     </div>
+  <UtentiGuide v-model:open="mostraGuida" />
 </template>

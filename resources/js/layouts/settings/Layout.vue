@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
 import Heading from '@/components/Heading.vue';
+import NavSezione from '@/components/NavSezione.vue';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Link } from '@inertiajs/vue3';
@@ -56,32 +57,23 @@ const currentPath = window.location.pathname;
     <div class="px-4 py-6">
         <Heading :title="trans('settings.layout.title')" :description="trans('settings.layout.description')" />
 
-        <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
-            <aside class="w-full max-w-xl lg:w-48">
-  
-                <nav class="flex flex-col gap-y-1 p-2 shadow ring-1 ring-black/5 md:rounded-lg">
-                    <Button
-                        v-for="item in sidebarNavItems"
-                        :key="item.href"
-                        variant="ghost"
-                        :class="['w-full justify-start', { 'bg-muted': currentPath === item.href }]"
-                        as-child
-                    >
-                        <Link :href="item.href">
-                            <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
-                            {{ item.title }}
-                        </Link>
-                    </Button>
-                </nav>
-            </aside>
+        <!--
+            Barra in alto come nel resto del programma, deciso il 16/08/2026: qui il contenuto
+            sono moduli stretti e la larghezza non servirebbe, ma **l'uniformità sì**. Con la barra
+            a sinistra queste cinque pagine erano le uniche a navigare in un modo tutto loro, e chi
+            arriva dalle impostazioni del condominio doveva cambiare gesto per fare la stessa cosa.
 
-            <Separator class="my-6 md:hidden" />
+            Il modulo resta stretto — `contentClass`, `max-w-xl` di default — perché un campo largo
+            quanto lo schermo si legge peggio: cambia la navigazione, non la misura del contenuto.
+        -->
+        <div class="space-y-4">
+            <NavSezione :items="sidebarNavItems" :esatte="true" />
 
             <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
                 <section :class="contentClass">
                     <slot />
                 </section>
-            </div> 
+            </div>
         </div>
     </div>
 </template>

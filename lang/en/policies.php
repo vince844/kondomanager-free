@@ -27,6 +27,9 @@ return [
     'create_users'              => "You don't have sufficient permissions to create users.",
     'edit_users'                => "You don't have sufficient permissions to edit users.",
     'delete_users'              => "You don't have sufficient permissions to delete users.",
+    'suspend_users'             => "You don't have sufficient permissions to suspend users.",
+    'users_self_action'         => "You cannot suspend or delete your own account.",
+    'users_last_admin'          => "This is the last active administrator: without them nobody could manage this installation.",
     // Roles
     'view_roles'                => "You don't have sufficient permissions to view roles.",
     'create_roles'              => "You don't have sufficient permissions to create a new role.",

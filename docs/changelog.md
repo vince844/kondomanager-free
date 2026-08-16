@@ -7,6 +7,150 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.55] - Le Porte Che Nessuno Aveva Contato
+
+**Una migrazione: il database viene toccato.** Aggiunge alla tabella degli utenti la colonna
+dell'ultimo accesso. È un'aggiunta: nessuna tabella esistente viene modificata, nessun dato
+riscritto, nessun importo cambia.
+
+**Questa versione riallinea anche i permessi.** Da qui in avanti l'aggiornamento porta a database i
+permessi e la mappa dei ruoli che vivono nel codice — prima li portava solo l'installazione da zero.
+Serve al permesso nuovo di questa versione, e ripara una conseguenza che durava da mesi: vedi
+«Quello che non era mai arrivato a destinazione».
+
+Sospendendo un utente amministratore, quell'utente continuava a entrare. Verificando, il difetto era
+più largo della segnalazione: **la sospensione non aveva effetto su nessuno**, di nessun ruolo, da
+sedici mesi.
+
+### Come è stato trovato
+
+Da Vincenzo, provando la funzione: *«sospendo un utente e riesce comunque a fare l'accesso»*. Il
+sospetto era che c'entrasse il ruolo amministratore. Non c'entrava: un condòmino sospeso entrava
+esattamente come un amministratore sospeso.
+
+Il controllo esisteva, era scritto bene, e non era agganciato a niente. Nell'aprile 2025 era stato
+messo su una sola schermata; quando quella schermata è stata sostituita, il controllo è rimasto
+senza casa. Da quel momento la sospensione è stata **soltanto un'etichetta rossa** nell'elenco
+utenti: cambiava il colore, non cambiava niente.
+
+### Adesso sospendere chiude la porta
+
+E la chiude subito. Chi è collegato in quel momento si ritrova alla schermata di accesso alla prima
+pagina che apre, e da lì non rientra finché non lo si riattiva. Vale su tutte e tre le strade che
+portano dentro: l'accesso normale, la doppia autenticazione — che salta il controllo del modulo, ed
+è la strada che usano prevedibilmente gli amministratori — e la sessione già aperta.
+
+Non cancella niente: anagrafica, documenti, segnalazioni e storico restano al loro posto. È una
+porta chiusa, non una gomma.
+
+### Chi può concedere cosa
+
+Cercando il perimetro del difetto ne è emerso uno più grave, e raggiungibile **dall'interfaccia**:
+chi aveva il permesso «Modifica utenti» — cioè ogni collaboratore — poteva assegnarsi il ruolo
+amministratore scegliendolo dalla tendina. Tre clic.
+
+Ora i ruoli che governano l'installazione, amministratore e collaboratore, li assegna solo un
+amministratore. Il collaboratore continua a creare e correggere le utenze dei condòmini, che è il suo
+mestiere. E nessuno può concedere un permesso che non possiede: vale per i permessi singoli, per i
+ruoli costruiti su misura — la strada laterale era crearsi un ruolo con dentro ciò che non si poteva
+avere, e poi indossarlo — e vale anche al contrario, perché salvare la scheda di qualcuno non gli
+toglie più in silenzio i permessi che chi salva non può vedere.
+
+### Otto porte, e cinque servivano a togliere
+
+La verifica sistematica delle azioni che toccano utenti, ruoli e permessi ha trovato **otto punti
+senza controllo**. Tre servivano a prendersi poteri; gli altri cinque, più insidiosi, a toglierli:
+
+- **revocare un permesso a un ruolo** non passava da nessun controllo: un condòmino poteva svuotare
+  il ruolo amministratore un permesso alla volta, fino a un'installazione che nessuno può più
+  governare;
+- **revocare un permesso a un utente**, idem;
+- **togliere la verifica email** a un amministratore, che equivale a chiuderlo fuori dal programma,
+  era alla portata di un collaboratore;
+- **sospendere e riattivare** chiunque erano azioni senza alcun permesso richiesto;
+- **il reinvito**, che azzera la password del destinatario, era raggiungibile **senza nemmeno
+  essere collegati**.
+
+Tutte chiuse, ciascuna con il suo test. Chi lavora legittimamente non se ne accorge: le controprove
+verificano che il collaboratore continui a fare esattamente quello che faceva prima.
+
+### Due regole che nessun permesso può sbloccare
+
+Nessuno può sospendere, eliminare o cambiare ruolo **a sé stesso**, e nessuno può farlo
+**all'ultimo amministratore attivo**. Non sono permessi: sono la rete che impedisce di chiudersi
+fuori di casa. Da un'installazione senza amministratori non si esce dall'interfaccia — e senza
+amministratori nessuno può più nominarne uno, perché è il ruolo a poterlo concedere.
+
+Chi deve passare la mano crea o promuove il nuovo amministratore **prima**, e solo dopo toglie i
+poteri al vecchio.
+
+Sospendere è ora un potere a sé, con il permesso dedicato **«Sospendi utenti»**: di partenza ce l'ha
+solo l'amministratore, ma è delegabile dal pannello permessi come tutti gli altri. Chi non ce l'ha
+non vede nemmeno la voce nel menù.
+
+### Quello che non era mai arrivato a destinazione
+
+Permessi e ruoli vivono nel codice, e a database li portava **solo l'installazione da zero**:
+l'aggiornamento eseguiva le migrazioni e nient'altro. Ogni modifica fatta dopo l'installazione
+restava quindi nel codice e non arrivava mai — senza errori, senza segnali.
+
+Non è teoria. La `1.9.1-beta.8` aveva dato a condòmini e fornitori il diritto di pubblicare,
+modificare ed eliminare i **propri commenti** sulle segnalazioni. Chi ha aggiornato dal pannello non
+l'ha mai ricevuto: quei commenti hanno continuato ad andare in moderazione, e la funzione annunciata
+non si è mai vista. Le note di quella versione chiedevano di lanciare un comando da terminale — cosa
+sensata per chi installa a mano, inapplicabile per chi aggiorna con un pulsante.
+
+Da questa versione l'aggiornamento riallinea da sé permessi e mappa dei ruoli. **Per chi era rimasto
+indietro è un cambio di comportamento, non una funzione nuova:** i commenti dei condòmini
+smetteranno di passare dalla moderazione, perché è così che dovevano comportarsi da giugno.
+
+### L'ultimo accesso di ogni utente
+
+L'elenco utenti ha una colonna nuova, ordinabile, con la data dell'ultimo ingresso — e **«mai»** per
+chi non è mai entrato, che è l'informazione più utile della colonna: dice a chi la convocazione va
+mandata su carta. Un tentativo respinto non lascia traccia, compreso quello di un utente sospeso.
+
+Non è un registro degli accessi: non conserva indirizzi IP né altro. Il registro completo, con la
+sua conservazione a termine, resta materia della versione dedicata a privacy e GDPR.
+
+### Trovare qualcuno nell'elenco
+
+Due filtri nuovi accanto alla ricerca per nome, **ruolo** e **stato**, che si combinano fra loro e
+lavorano sull'archivio intero: «tutti i sospesi» sono tutti, anche quelli che stanno a pagina otto.
+Selezionare entrambi gli stati non dà «nessun risultato» ma «tutti», perché due caselle su due
+possibili sono l'assenza di filtro.
+
+### La guida della sezione, e la navigazione uguale ovunque
+
+La sezione utenti ha ora la sua guida nell'header, come le altre: cosa distingue un utente da
+un'anagrafica, cosa possono i quattro ruoli, chi concede cosa, cosa succede davvero quando sospendi,
+perché l'ultimo amministratore non si tocca, e perché reinvitare azzera la password.
+
+La barra delle sezioni è passata **in alto**, come nei movimenti del gestionale, e su telefono
+diventa una tendina che dice dove sei. Vale per utenti, ruoli, permessi, inviti, struttura,
+immobile, fornitore, movimenti e impostazioni personali: un solo componente al posto di sei copie.
+Tre di quelle barre, su telefono, **sforavano lo schermo** invece di andare a capo — un difetto che
+c'era già e che nessuno aveva guardato.
+
+### Correzioni minori nella stessa area
+
+- Le tre schede in cima alla sezione utenti mostravano il nome interno del testo invece del testo
+  («USERS.GUIDES.USERS_TITLE»): succedeva dalla `1.9.1-beta.8`.
+- L'elenco utenti calcolava una volta per riga un'informazione che basta calcolare una volta per
+  pagina: cinquanta righe erano cinquanta interrogazioni al database per un sì o un no.
+
+### Quello che questa versione non fa
+
+Non introduce il registro di chi ha creato, promosso o sospeso chi: è stato costruito e poi
+**ritirato**, perché la richiesta era l'ultimo accesso e non un registro di atti. Resta pronto, con
+le sue decisioni prese, per la versione che si occuperà di privacy e conservazione dei dati.
+
+Non tocca il passaggio di consegne fra amministratore uscente ed entrante: questa versione ne mette
+le fondamenta — l'installazione non può più restare senza amministratori, e chi concede i poteri è
+scritto — ma il gesto unico che trasferisce tutto arriverà con il fascicolo di consegna.
+
+---
+
 ## [1.10.0-beta.54] - L'Ordine Che Valeva Solo per Dieci
 
 **Due migrazioni: il database viene toccato.** Una crea la tabella `preferenze_tabelle_utente`, che

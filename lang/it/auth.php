@@ -13,6 +13,7 @@ return [
     */
 
     'failed'                    => 'Le credenziali che hai inserito non sono corrette.',
+    'suspended'                 => 'Il tuo account è stato sospeso. Contatta l\'amministratore del condominio.',
     'password'                  => 'La password che hai inserito non è corretta.',
     'throttle'                  => 'Troppi tentativi falliti. Ti preghiamo di riprovare tra :seconds secondi.',
     'reset_link_sent'           => 'Un link di ripristino verrà inviato all\'indirizzo email se esiste un account associato.',

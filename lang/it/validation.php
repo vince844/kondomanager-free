@@ -171,6 +171,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'Non puoi assegnare questo ruolo: i ruoli amministrativi li concede un amministratore.',
+            'last_admin' => "Questo è l'ultimo amministratore attivo: cambiargli ruolo lascerebbe l'installazione senza nessuno che possa governarla.",
+        ],
+        'permissions' => [
+            'not_allowed' => 'Non puoi concedere un permesso che tu stesso non hai.',
+        ],
         'email' => [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',

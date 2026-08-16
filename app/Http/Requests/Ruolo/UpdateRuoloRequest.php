@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\Ruolo;
 
+use App\Traits\ValidaConcessioneRuoli;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateRuoloRequest extends FormRequest
 {
+    use ValidaConcessioneRuoli;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -25,7 +28,11 @@ class UpdateRuoloRequest extends FormRequest
         return [
             'name'        => ['required','string','max:255', Rule::unique('roles')->ignore($this->ruoli, 'name')],
             'description' => 'required|string|max:255',
-            'permissions' => ['sometimes', 'array'],
+            // ⚠️ **La stessa regola dei permessi sull'utente, applicata al ruolo.** Senza,
+            // resta aperta la porta laterale: chi non può concedersi «Elimina utenti» si crea un
+            // ruolo su misura che lo contiene — i ruoli creati a mano non sono privilegiati — e
+            // poi lo indossa. Chiudere due porte su tre non chiude niente.
+            'permissions' => ['sometimes', 'array', $this->regolaPermessiConcedibili()],
             'accessAdmin' => 'nullable|boolean'
         ];
     }

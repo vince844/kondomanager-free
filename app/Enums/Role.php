@@ -19,6 +19,23 @@ enum Role: string
     case UTENTE = 'utente';
 
     /**
+     * I ruoli che solo un amministratore può concedere.
+     *
+     * Governano l'installazione — pannello amministratore, gestione utenti — quindi assegnarli è
+     * un atto di governo, non una modifica anagrafica. Il collaboratore continua a creare le
+     * utenze dei condòmini con `utente` e `fornitore`, che è il suo mestiere.
+     *
+     * @return array<int, string>
+     */
+    public static function privilegiati(): array
+    {
+        return [
+            self::AMMINISTRATORE->value,
+            self::COLLABORATORE->value,
+        ];
+    }
+
+    /**
      * Get a textual description of the role.
      *
      * @return string A human-readable description for this role.

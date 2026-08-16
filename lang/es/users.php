@@ -56,10 +56,16 @@ return [
         'anagrafica'         => 'Resident record',
         'no_anagrafica'      => 'No resident record',
         'status'             => 'Status',
+        'last_login'         => 'Último acceso',
+        'never_logged_in'    => 'nunca',
         'suspended'          => 'Suspended',
         'active'             => 'Active',
         'actions'            => 'Actions',
         'filter'             => 'Filter by name...',
+        'selected'           => 'seleccionados',
+        'loading'            => 'Cargando...',
+        'no_results'         => 'Sin resultados.',
+        'clear_all_filters'  => 'Quitar filtros',
         'no_permissions'     => 'No permissions',
         'verified_tooltip'   => 'User verified - click to revoke verification',
         'unverified_tooltip' => 'User not verified - click to verify',
@@ -160,6 +166,7 @@ return [
      | Guides
      | ------------------------------------------------------------------ */
     'guides' => [
+        'button'        => 'Guía',
         'users_title' => 'Users and Access',
         'users_desc'  => 'Manage who has access to the platform and their related records.',
         'roles_title' => 'Roles and Permissions',

@@ -31,6 +31,15 @@ class TwoFactorAuthChallengeController extends Controller
         // If we made it here, user is available via the EnsureTwoFactorChallengeSession middleware
         $user = $request->two_factor_auth_user;
 
+        // Terza porta d'ingresso, e la più facile da dimenticare: la sfida può essere aperta da
+        // una sessione iniziata **prima** della sospensione, quindi la guardia del login non la
+        // copre. Un codice giusto su un account sospeso resta un accesso negato.
+        if ($user->suspended()) {
+            $request->session()->forget(['login.id', 'login.remember']);
+
+            return to_route('login')->withErrors(['email' => __('auth.suspended')]);
+        }
+
         // Ensure the 2FA challenge is not rate limited
         $this->ensureIsNotRateLimited($user);
 

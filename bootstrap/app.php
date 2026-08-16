@@ -46,7 +46,13 @@ return Application::configure(basePath: dirname(__DIR__))
             CheckRestoreMode::class,
         ]);
 
+        // CheckSuspendedUser sta nel gruppo `web` e non sulle singole rotte: agganciato rotta per
+        // rotta è già stato perso una volta — montava solo `dashboard`, quella rotta è stata
+        // sostituita nel 2025 e per sedici mesi la sospensione non ha avuto alcun effetto su
+        // nessuno. La guardia `Auth::check()` interna lo rende innocuo su rotte per ospiti e
+        // installer.
         $middleware->web(append: [
+            CheckSuspendedUser::class,
             CheckForPendingUpdates::class,
             SetLocaleMiddleware::class,
             SetAppNameMiddleware::class,

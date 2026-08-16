@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Inviti\InvitoResource;
 use App\Models\Condominio;
 use App\Models\Invito;
+use App\Models\User;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Notifications\InviteUserNotification;
@@ -31,6 +33,10 @@ class InvitoController extends Controller
      */
     public function index(): Response
     {
+        // Un invito in sospeso è l'indirizzo email di una persona in ingresso: leggerlo è vedere
+        // gli utenti, e serve lo stesso permesso.
+        Gate::authorize('view', User::class);
+
         return Inertia::render('inviti/ElencoInviti', [
             'inviti' => InvitoResource::collection(Invito::all())
         ]); 
@@ -47,6 +53,8 @@ class InvitoController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', User::class);
+
         return Inertia::render('inviti/NuovoInvito',[
             'buildings' => Condominio::all()
         ]);
@@ -66,6 +74,14 @@ class InvitoController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // ⚠️ **Fuori dal `try`**, come in tutte le guardie di questa famiglia: il `catch` qui
+        // sotto trasformerebbe un divieto in un messaggio d'errore generico.
+        //
+        // Invitare **è** creare un utente, spostato nel tempo: l'invito parte come email a un
+        // indirizzo scelto da chi preme, e chi accetta entra nell'installazione. Senza guardia
+        // chiunque poteva spedire inviti con il nostro dominio.
+        Gate::authorize('create', User::class);
+
         try {
 
             DB::beginTransaction();
@@ -124,6 +140,9 @@ class InvitoController extends Controller
      */
     public function destroy(Invito $inviti): RedirectResponse
     {
+        // Chi può invitare può revocare l'invito. Senza guardia, cancellarlo era sabotaggio
+        // dell'accoglienza alla portata di chiunque.
+        Gate::authorize('create', User::class);
 
         try {
 

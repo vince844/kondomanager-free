@@ -8,6 +8,7 @@ import { UsersRound, Folders, TextSearch, Link2 } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
+import NavSezione from '@/components/NavSezione.vue';
 
 const page = usePage<{
   condominio: Building;
@@ -77,29 +78,7 @@ const currentPath = window.location.pathname;
 
 <template>
   <div>
-    <!-- Topbar -->
-    <nav class="inline-flex items-center space-x-2 shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4">
-      <Button
-        v-for="item in vociVisibili"
-        :key="item.href"
-        variant="ghost"
-        :class="[
-          'justify-start',
-          {
-            'bg-muted':
-              item.href === generatePath('gestionale/:condominio/immobili/:immobile', { condominio: condominio.id, immobile: immobile.id })
-                ? currentPath === item.href
-                : currentPath === item.href || currentPath.startsWith(item.href + '/')
-          }
-        ]"
-        as-child
-      >
-        <Link :href="item.href">
-          <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
-          {{ item.title }}
-        </Link>
-      </Button>
-    </nav>
+    <NavSezione :items="vociVisibili" class="mb-4" />
 
     <!-- Main content -->
     <div class="w-full">

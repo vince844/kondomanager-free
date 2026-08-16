@@ -3,6 +3,7 @@
 namespace App\Services\System;
 
 use App\Services\UpdateService;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Exception;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -38,6 +39,7 @@ class SystemFinalizer
         @ini_set('max_execution_time', '0');
 
         $this->runMigrationsWithRetry();
+        $this->sincronizzaRuoliEPermessi();
         $this->alignDatabaseVersion();
         $this->clearSystemCaches();
         $this->ensureStorageLink();
@@ -72,6 +74,37 @@ class SystemFinalizer
 
                 sleep(2);
             }
+        }
+    }
+
+    /**
+     * Porta a database i permessi e la mappa dei ruoli che vivono nel codice.
+     *
+     * Permessi e assegnazioni stanno in `App\Enums\Permission` e `Role::permissions()`, e a
+     * database ce li porta solo `RolesAndPermissionsSeeder` — che fino alla beta.55 girava
+     * **soltanto dall'installer**. L'aggiornamento eseguiva le sole migrazioni, quindi ogni
+     * permesso nuovo e ogni modifica alla mappa restavano nel codice: la 1.9.1-beta.8 aggiunse
+     * tre assegnazioni ai ruoli `fornitore` e `utente` e chi aggiornava dal pannello non le ha
+     * mai ricevute — senza errori, solo commenti che continuavano ad andare in moderazione.
+     *
+     * **Mirato, mai `db:seed` intero:** `DatabaseSeeder` chiama anche i quattro seeder delle
+     * tabelle master, che con `firstOrCreate` farebbero risorgere le categorie che
+     * l'amministratore ha cancellato di proposito.
+     *
+     * Non solleva: un aggiornamento non deve fallire perché i permessi non si sono riallineati.
+     * Il difetto che ne resta è quello di prima, non uno nuovo.
+     */
+    public function sincronizzaRuoliEPermessi(): void
+    {
+        try {
+            Artisan::call('db:seed', [
+                '--class' => RolesAndPermissionsSeeder::class,
+                '--force' => true,
+            ]);
+
+            Log::info('Roles and permissions synchronised');
+        } catch (Exception $e) {
+            Log::warning('Roles and permissions sync failed', ['error' => $e->getMessage()]);
         }
     }
 

@@ -43,6 +43,7 @@ Route::put('/utenti/{user}/unsuspend', [UserStatusController::class, 'unsuspend'
     ->name('utenti.unsuspend');
 
 Route::post('/utenti/reinvite/{email}', [UserReinviteController::class, 'reinviteUser'])
+    ->middleware(['auth', 'verified'])
     ->name('utenti.reinvite');
 
 Route::delete('users/{user}/permissions/{permission}', RevokePermissionFromUserController::class)

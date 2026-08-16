@@ -172,6 +172,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'Não podes atribuir este perfil: os perfis administrativos são concedidos por um administrador.',
+            'last_admin' => 'Este é o último administrador ativo: mudar o perfil deixaria a instalação sem ninguém que a possa gerir.',
+        ],
+        'permissions' => [
+            'not_allowed' => 'Não podes conceder uma permissão que tu próprio não tens.',
+        ],
         'email' => [
             'required' => 'O campo :attribute é obrigatório',
             'unique' => 'O campo :attribute já está em uso',

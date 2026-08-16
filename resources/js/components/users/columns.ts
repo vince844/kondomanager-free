@@ -12,6 +12,8 @@ import AnagraficheStack from '@/components/AnagraficheStack.vue'
 import { Badge } from '@/components/ui/badge'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
+import { format, formatDistanceToNow } from 'date-fns';
+import { it } from 'date-fns/locale';
 
 const ROLE_I18N_KEY_BY_NAME: Record<string, string> = {
   amministratore: 'admin',
@@ -211,6 +213,29 @@ export const columns: ColumnDef<User>[] = [
         h('span', { class: badgeClass }, label)
       ]) 
       
+    }
+  },
+  {
+    accessorKey: 'last_login_at',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.last_login') }),
+    cell: ({ getValue }) => {
+
+      const quando = getValue() as string | null
+
+      // ⚠️ Il valore più utile di questa colonna è **«mai»**: è la riga che dice che il condòmino
+      // non ha mai aperto il portale, e quindi che la convocazione va mandata cartacea.
+      if (!quando) {
+        return h('span', { class: 'text-xs text-slate-400 italic' }, trans('users.table.never_logged_in'))
+      }
+
+      const data = new Date(quando)
+
+      return h('span', {
+        class: 'text-xs text-slate-600 dark:text-slate-300',
+        // La data esatta resta a portata di mouse: il relativo si legge in fretta, l'assoluto
+        // serve quando qualcuno contesta.
+        title: formatDistanceToNow(data, { addSuffix: true, locale: it }),
+      }, format(data, 'dd/MM/yyyy HH:mm'))
     }
   },
   {

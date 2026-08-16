@@ -166,6 +166,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'You cannot assign this role: administrative roles are granted by an administrator.',
+            'last_admin' => 'This is the last active administrator: changing this role would leave the installation with nobody able to manage it.',
+        ],
+        'permissions' => [
+            'not_allowed' => 'You cannot grant a permission you do not have yourself.',
+        ],
         'email' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',

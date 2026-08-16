@@ -54,10 +54,16 @@ return [
         'anagrafica'         => 'Anagrafica',
         'no_anagrafica'      => 'Nessuna anagrafica',
         'status'             => 'Stato',
+        'last_login'         => 'Ultimo accesso',
+        'never_logged_in'    => 'mai',
         'suspended'          => 'Sospeso',
         'active'             => 'Attivo',
         'actions'            => 'Azioni',
         'filter'             => 'Filtra per nome...',
+        'selected'           => 'selezionati',
+        'loading'            => 'Caricamento...',
+        'no_results'         => 'Nessun risultato.',
+        'clear_all_filters'  => 'Rimuovi filtri',
         'no_permissions'     => 'Nessun permesso',
         'verified_tooltip'   => 'Utente verificato - clicca per revocare verifica',
         'unverified_tooltip' => 'Utente non verificato - clicca per verificare',
@@ -151,6 +157,7 @@ return [
      | Guides
      | ------------------------------------------------------------------ */
     'guides' => [
+        'button'        => 'Guida',
         'users_title' => 'Utenti e Accessi',
         'users_desc'  => 'Gestisci chi ha accesso alla piattaforma e le relative anagrafiche.',
         'roles_title' => 'Ruoli e Permessi',

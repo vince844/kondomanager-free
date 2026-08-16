@@ -6,8 +6,10 @@ use App\Models\Anagrafica;
 use App\Repositories\UserRepository;
 use App\Notifications\NewUserEmailNotification;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
+use Spatie\Permission\Models\Permission;
 
 class UserService
 {
@@ -58,11 +60,11 @@ class UserService
     {
     
         return DB::transaction(function () use ($user, $validatedData) {
-        
+
             $this->userRepository->update($user, $validatedData);
 
             $user->syncRoles($validatedData['roles']);
-            $user->syncPermissions($validatedData['permissions']);
+            $user->syncPermissions($this->permessiDaSincronizzare($user, $validatedData['permissions'] ?? []));
 
             if (!empty($validatedData['anagrafica'])) {
                 $this->dissociateAnagrafica($user);
@@ -74,6 +76,38 @@ class UserService
             return $user;
 
         });
+    }
+
+    /**
+     * I permessi diretti da scrivere: quelli mandati dal modulo, più quelli che chi sta
+     * salvando **non poteva vedere**.
+     *
+     * `syncPermissions()` sostituisce l'intero insieme, e dalla beta.55 l'elenco proposto è
+     * filtrato su ciò che l'attore possiede. Senza questa unione, un collaboratore che corregge
+     * l'email di un amministratore gli **toglierebbe in silenzio** i permessi che lui stesso non
+     * ha — un salvataggio che non riguardava i permessi, e che li perde.
+     *
+     * @param  array<int, mixed>  $mandati
+     * @return array<int, string> Nomi dei permessi da sincronizzare.
+     */
+    private function permessiDaSincronizzare(User $user, array $mandati): array
+    {
+        $attore = Auth::user();
+
+        $conservati = $user->getDirectPermissions()
+            ->reject(fn ($permesso) => $attore?->hasPermissionTo($permesso->name))
+            ->pluck('name');
+
+        $nomiMandati = Permission::query()
+            ->when(true, function ($query) use ($mandati) {
+                $ids   = array_filter($mandati, 'is_numeric');
+                $nomi  = array_filter($mandati, fn ($v) => is_string($v) && ! is_numeric($v));
+
+                $query->whereIn('id', $ids)->orWhereIn('name', $nomi);
+            })
+            ->pluck('name');
+
+        return $nomiMandati->merge($conservati)->unique()->values()->all();
     }
 
     /**

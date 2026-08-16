@@ -24,6 +24,7 @@ enum Permission: string
     case EDIT_USERS = 'Modifica utenti';
     case DELETE_USERS = 'Elimina utenti';
     case VIEW_USERS = 'Visualizza utenti';
+    case SUSPEND_USERS = 'Sospendi utenti';
 
     // Anagrafiche
     case CREATE_ANAGRAFICHE = 'Crea anagrafiche';
@@ -117,6 +118,7 @@ enum Permission: string
             self::EDIT_USERS => 'Permette di modificare gli utenti registrati',
             self::DELETE_USERS => 'Permette di eliminare gli utenti registrati',
             self::VIEW_USERS => 'Permette di visualizzare gli utenti registrati',
+            self::SUSPEND_USERS => 'Permette di sospendere e riattivare gli utenti registrati',
 
             // Anagrafiche
             self::CREATE_ANAGRAFICHE => 'Permette di creare nuove anagrafiche',

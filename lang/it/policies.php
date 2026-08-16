@@ -27,6 +27,9 @@ return [
     'create_users'              => "Non hai permessi sufficienti per creare nuovi utenti!",
     'edit_users'                => "Non hai permessi sufficienti per modificare gli utenti!",
     'delete_users'              => "Non hai permessi sufficienti per eliminare gli utenti!",
+    'suspend_users'             => "Non hai permessi sufficienti per sospendere gli utenti!",
+    'users_self_action'         => "Non puoi sospendere o eliminare il tuo stesso account.",
+    'users_last_admin'          => "Questo è l'ultimo amministratore attivo: senza, nessuno potrebbe più governare l'installazione.",
     // Roles
     'view_roles'                => "Non hai permessi sufficienti per visualizzare i ruoli utente!",
     'create_roles'              => "Non hai permessi sufficienti per creare un nuovo ruolo!",
