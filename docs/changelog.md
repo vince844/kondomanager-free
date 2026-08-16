@@ -7,6 +7,60 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.56] - Le Quote Che Diventavano Duecento
+
+**Nessuna migrazione: il database non viene toccato.** Cambia però cosa l'importazione scrive: da
+questa versione, in un caso preciso, scrive **meno** di prima e lo dice.
+
+Reimportare un file corretto è il gesto normale di una migrazione — si vede che i coniugi sono
+entrati come soggetto unico, si spacchetta la coppia nel file, si reimporta aspettandosi che la
+correzione prenda il posto del dato vecchio. Invece i due dati convivevano, e sull'unità la somma
+delle quote diventava **200 %**.
+
+### Perché la guardia che c'era non poteva bastare
+
+Il controllo di idempotenza esisteva e funzionava: confrontava la terna *unità, persona, ruolo* e
+si rifiutava di riscrivere la stessa riga. Ma alla seconda importazione la persona è **diversa** —
+la coppia come soggetto unico e i due coniugi separati sono tre anagrafiche distinte — quindi
+nessuna terna coincideva, tutte le righe entravano, e nessun punto dell'importatore guardava la
+somma delle quote già presenti sull'unità.
+
+Accertato sul database di prova: un condominio che aveva ricevuto tre importazioni aveva **due
+unità su undici** al 200 %.
+
+### Cosa fa adesso, e cosa continua a non fare
+
+Quando il file e l'archivio non concordano su chi è collegato a un'unità, l'importazione **salta
+quell'unità** e lo scrive nel rapporto, con il nome dell'unità e il ruolo di cui si tratta —
+proprietario o inquilino, perché il file porta anche i conduttori e mandare a guardare i
+proprietari per un conflitto sull'affitto è mandare a guardare la cosa sbagliata. In archivio non
+cambia niente, e il conflitto compare fra le cose «da controllare» con il pulsante che porta alle
+unità.
+
+Non cancella, non sostituisce e non chiede niente. La strada che chiedeva *sostituisci o salta* era
+stata scritta e poi ritirata dalla revisione: la domanda non era raggiungibile da nessuna
+schermata, e l'importazione restava ferma per sempre con metà del lavoro già scritto. Chi deve
+correggere una titolarità lo fa sulla scheda dell'unità, dove vede le quote mentre le cambia.
+
+### Una porta chiusa che non si riapriva
+
+La revisione di questa versione ha trovato un difetto vicino e silenzioso: se su un'unità c'era una
+titolarità **cessata** con la stessa terna, il controllo la contava come esistente e la riga del
+file non entrava. Nessun avviso lo diceva. L'unità restava senza titolare attivo — che è
+esattamente lo stato in cui non riceve rate, non compare in morosità e non entra in nessun
+riparto. Ora le tre letture che guardano le titolarità concordano tutte sullo stesso filtro.
+
+### Il resto
+
+La pagina «Da controllare dopo l'importazione» non aveva la traccia di navigazione in alto: adesso
+c'è, con le stesse due voci delle pagine vicine del gestionale.
+
+Fuori dal programma, questa versione porta un comando interno che misura lo stato della
+documentazione — età, riferimenti che non risolvono più, voci di lavoro che l'indice non elenca —
+e archivia i documenti conclusi invece di lasciarli fra quelli vivi.
+
+---
+
 ## [1.10.0-beta.55] - Le Porte Che Nessuno Aveva Contato
 
 **Una migrazione: il database viene toccato.** Aggiunge alla tabella degli utenti la colonna

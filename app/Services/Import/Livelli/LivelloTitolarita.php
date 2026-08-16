@@ -11,6 +11,7 @@ use App\Services\Import\ImportContext;
 use App\Services\Import\LivelloImport;
 use App\Services\Import\PrerequisitoMancante;
 use App\Services\Import\Rilievo;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -141,16 +142,56 @@ final class LivelloTitolarita implements LivelloImport
         $saltati = 0;
         $vistiInQuestoGiro = [];
 
+        // ── Il conflitto della seconda importazione (coda ㉔) ──────────────────────────────
+        //
+        // La guardia sulla tripla `(immobile, anagrafica, ruolo)` impedisce di riscrivere la
+        // **stessa** riga, e fa il suo lavoro. Non vede però il caso vero di una reimportazione:
+        // l'anagrafica è **diversa** — la coppia come soggetto unico e i due coniugi separati
+        // sono tre `anagrafica_id` distinti — quindi nessuna tripla collide, tutte le righe
+        // entrano, e sull'unità la somma delle quote diventa 200. Accertato sul condominio 33:
+        // due unità su undici.
+        //
+        // **Cosa fa questa guardia, e cosa non fa.** Salta l'unità e lo scrive nel rapporto.
+        // Non cancella, non sostituisce e non chiede niente: la strada con la scelta
+        // *sostituisci/salta* è stata scritta nella beta.52 e ritirata dalla revisione con
+        // quattro reperti «alta», il primo dei quali era che la decisione richiesta non era
+        // raggiungibile da nessuna schermata. Chi deve correggere una titolarità lo fa sulla
+        // scheda dell'unità, dove vede cosa sta cambiando.
+        $inConflitto = $this->unitaInConflitto($daScrivere, $soggetti, $unita);
+
         foreach ($daScrivere as $t) {
             $soggetto = $soggetti[$t->soggettoRef];
             $immobile = $unita[$t->immobileRef];
 
+            $gruppo = $immobile->getKey().':'.$t->ruolo->value;
+
+            if (isset($inConflitto[$gruppo])) {
+                $saltati++;
+
+                // `registra()` prende un'entità, non un testo: il perché del salto sta
+                // nell'avviso aggregato, che l'amministratore legge una volta invece di
+                // ritrovarselo ripetuto riga per riga.
+                $ctx->registra(
+                    self::CHIAVE,
+                    ImportBatchItem::AZIONE_SALTATO,
+                    null,
+                    $t->rigaSorgente,
+                );
+
+                continue;
+            }
+
             $tripla = $immobile->getKey().':'.$soggetto->getKey().':'.$t->ruolo->value;
 
+            // `attivo` va filtrato anche qui. Senza, una titolarità **cessata** con la stessa
+            // terna faceva dire «esiste già» e la riga del file non entrava: l'unità restava
+            // senza titolare attivo, in silenzio. La lettura sopra e la guardia sui conflitti
+            // guardano entrambe le sole righe attive: questa è la terza, e devono concordare.
             $esiste = isset($vistiInQuestoGiro[$tripla]) || DB::table('anagrafica_immobile')
                 ->where('immobile_id', $immobile->getKey())
                 ->where('anagrafica_id', $soggetto->getKey())
                 ->where('tipologia', $t->ruolo->value)
+                ->where('attivo', true)
                 ->exists();
 
             if ($esiste) {
@@ -188,6 +229,23 @@ final class LivelloTitolarita implements LivelloImport
         // aver scritto tutto restano unità senza nessun titolare, l'importazione è riuscita e
         // **inutile**. Non blocca — l'amministratore può volerlo sapere e proseguire — ma è
         // l'avviso che la schermata di conferma mostra per primo, in rosso.
+        if ($inConflitto !== []) {
+            $etichette = collect($inConflitto)->unique()->sort()->values()->all();
+
+            $avvisi[] = Rilievo::avviso(
+                'titolarita.conflitto_con_archivio',
+                sprintf(
+                    '%d %s già qualcuno collegato in archivio: %s.',
+                    count($etichette),
+                    count($etichette) === 1 ? 'unità aveva' : 'unità avevano',
+                    implode(', ', $etichette),
+                ),
+                'Le righe del file non sono entrate e in archivio non è cambiato niente. '
+                .'Correggi la titolarità sulla scheda dell\'unità, dove vedi le quote mentre '
+                .'le cambi.',
+            );
+        }
+
         $senzaTitolare = $this->unitaSenzaTitolare($unita);
 
         if ($senzaTitolare > 0) {
@@ -209,6 +267,77 @@ final class LivelloTitolarita implements LivelloImport
     }
 
     /**
+     * Le unità che il file vorrebbe intestare a qualcuno **mentre l'archivio ha già un titolare
+     * diverso** per lo stesso ruolo.
+     *
+     * Il confronto è per **insieme**, non per riga: se le anagrafiche del file per quell'unità e
+     * quel ruolo sono tutte già in archivio, non c'è conflitto — è la reimportazione dello stesso
+     * file, che deve restare un no-op silenzioso. Basta una sola anagrafica nuova su un'unità già
+     * intestata perché il gruppo venga saltato per intero: intestarne metà sarebbe peggio che non
+     * intestarne nessuna.
+     *
+     * Guarda solo le righe **attive**: una titolarità cessata non tiene occupata l'unità. È lo
+     * stesso filtro che usa la lettura, e la coerenza fra i due era il quarto reperto della
+     * revisione che ritirò la prima versione di questa correzione.
+     *
+     * @param  list<CanonicalTitolarita>  $daScrivere
+     * @param  array<string, Model>  $soggetti
+     * @param  array<string, Model>  $unita
+     * @return array<string, string> chiave «immobile:ruolo» → etichetta dell'unità
+     */
+    private function unitaInConflitto(array $daScrivere, array $soggetti, array $unita): array
+    {
+        if ($daScrivere === []) {
+            return [];
+        }
+
+        // Cosa chiede il file, raggruppato per unità e ruolo.
+        $richieste = [];
+        foreach ($daScrivere as $t) {
+            $immobile = $unita[$t->immobileRef];
+            $gruppo = $immobile->getKey().':'.$t->ruolo->value;
+            $richieste[$gruppo]['immobile'] = $immobile;
+            $richieste[$gruppo]['ruolo'] = $t->ruolo;
+            $richieste[$gruppo]['anagrafiche'][] = $soggetti[$t->soggettoRef]->getKey();
+        }
+
+        // Cosa c'è già, in una query sola: una per unità sarebbe una query per riga di file.
+        $ids = collect($richieste)->map(fn ($r) => $r['immobile']->getKey())->unique()->values()->all();
+
+        $archivio = DB::table('anagrafica_immobile')
+            ->whereIn('immobile_id', $ids)
+            ->where('attivo', true)
+            ->get(['immobile_id', 'anagrafica_id', 'tipologia'])
+            ->groupBy(fn ($r) => $r->immobile_id.':'.$r->tipologia)
+            ->map(fn ($righe) => $righe->pluck('anagrafica_id')->all());
+
+        $conflitti = [];
+
+        foreach ($richieste as $gruppo => $richiesta) {
+            $giaPresenti = $archivio[$gruppo] ?? [];
+
+            if ($giaPresenti === []) {
+                continue;
+            }
+
+            $nuove = array_diff($richiesta['anagrafiche'], $giaPresenti);
+
+            if ($nuove === []) {
+                continue; // stesso file, stesse persone: no-op, non conflitto
+            }
+
+            // Il ruolo entra nell'etichetta perché il file porta anche gli inquilini: senza,
+            // «Appartamento 1 aveva già un titolare» mandava a guardare i proprietari quando
+            // a non concordare era il conduttore, e la scheda dell'unità li tiene separati.
+            $immobile = $richiesta['immobile'];
+            $unitaEtichetta = trim(($immobile->nome ?? 'Unità').' '.($immobile->interno ? 'int. '.$immobile->interno : ''));
+            $conflitti[$gruppo] = $unitaEtichetta.' ('.mb_strtolower($richiesta['ruolo']->label()).')';
+        }
+
+        return $conflitti;
+    }
+
+    /**
      * Quante unità restano senza **un titolare di diritto reale**.
      *
      * Non «senza una riga qualsiasi nella pivot»: il conteggio guardava ogni riga di
@@ -221,7 +350,7 @@ final class LivelloTitolarita implements LivelloImport
      * La regola sta in `RuoloAnagraficaImmobile::titolariDiDirittoReale()` dalla beta.43, ed è
      * l'unico posto in cui è scritta: qui la si usa, non la si riscrive.
      *
-     * @param  array<string, \Illuminate\Database\Eloquent\Model>  $unita
+     * @param  array<string, Model>  $unita
      */
     private function unitaSenzaTitolare(array $unita): int
     {

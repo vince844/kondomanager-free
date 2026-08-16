@@ -131,6 +131,15 @@ final class CatalogoControlli
                 perche: 'Quale delle due persone debba tenere quel recapito il file non lo dice, e '
                     .'una query risponderebbe a una domanda diversa.',
             ),
+            // Coda ㉔: la reimportazione ha trovato l'unità già intestata e non ha toccato niente.
+            // Non è ricontrollabile da sola — «chi possiede cosa» ha due versioni e sceglierne
+            // una al posto dell'amministratore è esattamente ciò che questa correzione evita.
+            'titolarita.conflitto_con_archivio' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Il file e l\'archivio non concordano su chi è collegato a quell\'unità, e '
+                    .'quale delle due versioni sia quella giusta lo sai solo tu.',
+            ),
             'titolarita.quota_solo_nelle_note' => new VoceCatalogo(
                 rotta: $immobili,
                 etichettaAzione: 'Vai alle unità',

@@ -22,8 +22,11 @@ export const guideImport: GuideItem[] = [
     colorVariant: 'blue',
   },
   {
+    // La seconda frase è arrivata con la beta.56, quando il livello delle titolarità ha smesso di
+    // scrivere sulle unità in conflitto: senza, la card prometteva una domanda che in quel caso
+    // non arriva, ed era la promessa più facile da smentire con i fatti.
     title: 'Le scelte le fai tu',
-    description: 'Duplicati e nomi doppi te li chiedo prima di scrivere, non dopo.',
+    description: 'Duplicati e nomi doppi te li chiedo prima di scrivere. Dove il file e l\'archivio non concordano, non tocco niente e te lo segnalo.',
     icon: Users,
     colorVariant: 'amber',
   },

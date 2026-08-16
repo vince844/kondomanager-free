@@ -16,6 +16,8 @@
 import { computed, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import { guideImport } from '@/pages/import/intestazione';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -44,10 +46,27 @@ const props = defineProps<{
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: props.condominio.nome, href: '#' },
-  { title: 'Da controllare', href: '#' },
-];
+/**
+ * ⚠️ **Le briciole di pane portano da qualche parte.** Prima erano due voci con `href: '#'`, cioè
+ * scritte e morte: chi arriva qui dal widget della dashboard non aveva modo di tornare al
+ * condominio se non con il tasto indietro del browser. E il nome del condominio da solo non dice
+ * *dove* si è: la radice della sezione è il gestionale, come in tutte le pagine sorelle.
+ */
+// Due voci, come le pagine vicine del gestionale. La terza — il nome del condominio — puntava
+// allo stesso indirizzo di «Gestionale»: un passo che non porta da nessuna parte, e il nome
+// compare già nel sottotitolo e nel pulsante di ritorno.
+const headerBreadcrumbs = computed<BreadcrumbItem[]>(() => [
+  { title: 'Gestionale', href: route('admin.gestionale.index', props.condominio.id) },
+  { title: 'Da controllare' },
+]);
+
+const sottotitolo = computed(() => {
+  const quante = props.aperte
+    ? `${props.aperte} ${props.aperte === 1 ? 'cosa ancora da sistemare' : 'cose ancora da sistemare'}`
+    : 'niente in sospeso';
+
+  return `${props.condominio.nome} · ${quante}`;
+});
 
 const mostraChiuse = ref(false);
 
@@ -79,18 +98,17 @@ function agisci(v: Voce, azione: 'spunta' | 'metti_da_parte' | 'riapri') {
 <template>
   <Head title="Da controllare dopo l'importazione" />
 
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout :breadcrumbs="[]">
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
-      <div>
-        <h1 class="text-xl font-semibold tracking-tight">Da controllare dopo l'importazione</h1>
-        <p class="text-sm text-muted-foreground">
-          {{ props.condominio.nome }} ·
-          <template v-if="props.aperte">
-            {{ props.aperte }} {{ props.aperte === 1 ? 'cosa ancora da sistemare' : 'cose ancora da sistemare' }}
-          </template>
-          <template v-else>niente in sospeso</template>
-        </p>
-      </div>
+      <PageHeaderGuide
+        page-title="Da controllare dopo l'importazione"
+        :page-subtitle="sottotitolo"
+        :guides="guideImport"
+        :breadcrumbs="headerBreadcrumbs"
+        :back-url="route('admin.gestionale.index', props.condominio.id)"
+        :back-text="props.condominio.nome"
+        :video-url="null"
+      />
 
       <Alert v-if="flashMessage" :message="flashMessage.message" :type="flashMessage.type" />
 
