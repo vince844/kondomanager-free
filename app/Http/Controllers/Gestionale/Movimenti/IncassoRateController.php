@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Exceptions\Gestionale\IncassoNonRegistrabileException;
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
 use App\Enums\TipoMovimentoContabile;
@@ -21,13 +23,31 @@ use App\Services\Gestionale\IncassoRateService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class IncassoRateController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, HasCondomini;
+    use OrdinaElenco;
+
+    /**
+     * Le colonne ordinabili dell'elenco incassi, che poggia su `scritture_contabili`.
+     *
+     * ⚠️ Fuori «Soggetto» e «Importo»: il primo è una relazione risolta a video riga per riga,
+     * il secondo è un totale ricomposto dalle righe della scrittura. Entrambi richiedono una
+     * decisione sulla chiave, non un default.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'causale' => 'causale',
+            'stato'   => 'stato',
+        ];
+    }
+
+    use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco;
 
     /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
     private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
@@ -50,6 +70,16 @@ class IncassoRateController extends Controller
      */
     public function index(Request $request, Condominio $condominio)
     {
+        // I due parametri dell'ordinamento si validano qui: questo elenco non ha una
+        // FormRequest, e il nome della colonna finisce dentro `orderBy()`.
+        $ordinamento = $request->validate(self::regoleOrdinamento(array_keys(self::colonneOrdinabili())) + [
+            'per_page' => ['sometimes', 'integer'],
+        ]);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $ordinamento['per_page'] = $this->righePerPagina($request);
+
         $query = $this->incassoService->getIncassiQuery(
             $condominio,
             $request->input('search'),
@@ -58,7 +88,9 @@ class IncassoRateController extends Controller
             $request->input('data_a')
         );
 
-        $movimenti = $query->paginate(config('pagination.default_per_page'))
+        $movimenti = $query
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_registrazione', versoPredefinito: 'desc'))
+            ->paginate($ordinamento['per_page'])
             ->withQueryString()
             ->through(fn($mov) => $this->incassoService->formatMovimentoForFrontend($mov));
 
@@ -93,6 +125,8 @@ class IncassoRateController extends Controller
         ];
 
         return Inertia::render('gestionale/movimenti/incassi/IncassoRateList', [
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             'condominio' => $condominio,
             'movimenti'  => $movimenti,
             'condomini'  => $listaPalazzi, 

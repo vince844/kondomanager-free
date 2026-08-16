@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Comunicazioni;
 use App\Events\Comunicazioni\NotifyUserOfCreatedComunicazione;
 use App\Http\Controllers\Controller;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Requests\Comunicazione\CreateComunicazioneRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\Gate;
 
 class ComunicazioneController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, PaginaElenco;
 
     /**
      * Create a new controller instance.
@@ -58,6 +59,10 @@ class ComunicazioneController extends Controller
 
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $comunicazioni = $this->comunicazioneService->getComunicazioni(  
             anagrafica: null,
             condominioIds: null, // Questo era il parametro fisso per la visualizzazione dell'utente, lo lasciamo a null
@@ -76,7 +81,9 @@ class ComunicazioneController extends Controller
                 'total'        => $comunicazioni->total(),
             ],
             // AGGIUNTA: Passiamo anche condominio_id al frontend per ripristinare lo stato
-            'filters' => Arr::only($validated, ['subject', 'priority', 'condominio_id'])
+            'filters' => Arr::only($validated, ['subject', 'priority', 'condominio_id']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
@@ -27,6 +29,7 @@ use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
@@ -47,7 +50,26 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  */
 class FatturaPassivaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use OrdinaElenco;
+
+    /**
+     * Le colonne ordinabili dell'elenco fatture passive.
+     *
+     * ⚠️ **«Fornitore & Documento» non c'è**, perché a video quella intestazione è dichiarata
+     * `enableSorting: false` da prima di questa beta. Ammetterla qui sarebbe configurazione
+     * morta: il server accetterebbe una chiave che nessuno può chiedere.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'data_documento'     => 'data_documento',
+            'stato_approvazione' => 'stato_approvazione',
+            'stato_pagamento'    => 'stato_pagamento',
+            'totale_documento'   => 'totale_documento',
+        ];
+    }
+
+    use HandleFlashMessages, HasCondomini, HasEsercizio, PaginaElenco;
 
     /**
      * Inizializza il controller iniettando il service per le fatture passive.
@@ -71,6 +93,16 @@ class FatturaPassivaController extends Controller
      */
     public function index(Request $request, Condominio $condominio): Response
     {
+        // I due parametri dell'ordinamento si validano qui: questo elenco non ha una
+        // FormRequest, e il nome della colonna finisce dentro `orderBy()`.
+        $ordinamento = $request->validate(self::regoleOrdinamento(array_keys(self::colonneOrdinabili())) + [
+            'per_page' => ['sometimes', 'integer'],
+        ]);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $ordinamento['per_page'] = $this->righePerPagina($request);
+
         $fatture = FatturaPassiva::where('condominio_id', $condominio->id)
             // `coperture`, `pianiRate`, `scritture` ed `esercizio` servono a
             // motivoBloccoEliminazione(): caricate qui una volta, invece di
@@ -83,8 +115,11 @@ class FatturaPassivaController extends Controller
             )
             ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_documento', '>=', $v))
             ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_documento', '<=', $v))
-            ->orderByDesc('data_documento')
-            ->paginate(20)
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_documento', versoPredefinito: 'desc'))
+            // ⚠️ **`per_page` era cablato a 20**: il selettore delle righe cambiava e l'elenco
+            // restava fermo. È la variante più muta dei difetti segnalati sul forum — il
+            // valore non si perde per strada, non viene proprio letto.
+            ->paginate($ordinamento['per_page'])
             ->withQueryString();
 
         // Il motivo del divieto viaggia col dato, non ricostruito dal frontend:
@@ -118,6 +153,8 @@ class FatturaPassivaController extends Controller
         ];
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterList', [
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             'condominio' => $condominio,
             'fatture' => $fatture,
             'stats' => $stats,

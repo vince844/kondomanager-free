@@ -10,6 +10,8 @@ use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Models\Condominio;
 use App\Models\Palazzina;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -26,7 +28,7 @@ use Illuminate\Support\Facades\Log;
 
 class PalazzinaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a listing of the palazzine with optional name filter.
@@ -40,11 +42,16 @@ class PalazzinaController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $palazzine = $condominio->palazzine()
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, PalazzinaIndexRequest::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page'])
             ->appends($request->all());
         
          // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcrumb
@@ -65,6 +72,8 @@ class PalazzinaController extends Controller
                 'total'        => $palazzine->total(),
             ],
             'filters' => $request->only(['name']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

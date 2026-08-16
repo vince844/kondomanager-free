@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from './DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
@@ -28,8 +28,8 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
-const sorting = ref<SortingState>([])
-const isPending = ref(false)
+const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
+  useTabellaServer(() => route(generateRoute('gestionale.esercizi.scritture.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id, }));
 
 const table = useVueTable({
   get data() { return props.data ?? [] },
@@ -40,44 +40,18 @@ const table = useVueTable({
       pageIndex: props.meta.current_page - 1,
       pageSize: props.meta.per_page,
     },
-    get sorting() { return sorting.value },
+    get sorting() { return ordinamento.value },
   },
   manualPagination: true,
+  // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
+  manualSorting: true,
   onPaginationChange: updater => {
-    if (isPending.value) return
-    isPending.value = true
-
-    const nextPage = typeof updater === 'function'
-      ? updater(table.getState().pagination).pageIndex
-      : updater.pageIndex;
-
-    const nextPageSize = table.getState().pagination.pageSize;
-
-    // I filtri attivi viaggiano con la pagina: senza, cambiare pagina li azzererebbe.
-    const currentParams = new URLSearchParams(window.location.search);
-    const filtriAttivi: Record<string, string> = {};
-    ['search', 'tipo_movimento', 'stato', 'data_da', 'data_a'].forEach((key) => {
-      const value = currentParams.get(key);
-      if (value) filtriAttivi[key] = value;
-    });
-
-    router.get(route(generateRoute('gestionale.esercizi.scritture.index'), {
-      condominio: props.condominio.id,
-      esercizio: props.esercizio.id,
-    }), {
-      page: nextPage + 1,
-      per_page: nextPageSize,
-      ...filtriAttivi,
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      onFinish: () => { isPending.value = false }
-    });
+    const stato = table.getState().pagination
+    const p = typeof updater === 'function' ? updater(stato) : updater
+    suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
   },
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  onSortingChange: suOrdinamento,
   getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
 })
 </script>
 

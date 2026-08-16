@@ -2,11 +2,12 @@
 
 import { ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { router, Link } from '@inertiajs/vue3'
+import { Link } from '@inertiajs/vue3'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Settings, UserPlus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
@@ -19,21 +20,15 @@ interface DataTableToolbarProps {
 
 const nameFilter = ref('')
 
+const { filtra } = useTabellaServer(() => route('utenti.index'));
+
 // Debounce search input (300ms delay)
 watchDebounced(
   nameFilter,
   (newValue) => {
-    // Reset filters if empty, otherwise filter
-    router.get(
-      route('utenti.index'),
-      newValue
-        ? { name: newValue, page: 1 }
-        : { page: 1 }, // Clear the filter
-      {
-        preserveState: true,
-        replace: true,
-      }
-    )
+    // Il filtro svuotato va passato come `null`, non omesso: la richiesta riparte da ciò che c'è
+    // nell'URL, e un filtro omesso resterebbe quello di prima.
+    filtra({ name: newValue || null })
   },
   { debounce: 300 }
 )

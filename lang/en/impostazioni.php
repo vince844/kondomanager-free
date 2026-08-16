@@ -232,6 +232,8 @@ return [
         'user_registration_description' => 'If enabled, users can register from the home page.',
         'default_role_title' => 'Default role for new users',
         'default_role_description' => 'Choose which role to automatically assign to users who register from the frontend.',
+        'default_per_page_title' => 'Rows per page in lists',
+        'default_per_page_description' => 'How many rows tables show to those who have not chosen yet. Each person keeps their own choice, list by list: whoever changes it finds it again on their return.',
         'force_comment_moderation_title' => 'Force comment moderation',
         'force_comment_moderation_description' => 'If enabled, all comments from regular users will require admin approval before being published and visible.',
 

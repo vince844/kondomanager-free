@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -13,6 +15,7 @@ use App\Services\Gestionale\StatoPatrimonialeService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,14 +35,21 @@ use Inertia\Response;
  */
 class ScritturaContabileController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, HasCondomini;
+    use OrdinaElenco;
+
+    /**
+     * L'elenco scritture ha **tutte** le intestazioni già non ordinabili in `columns.ts`: qui non
+     * c'è nulla da consentire, e la lista vuota lo dichiara invece di lasciarlo dedurre.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [];
+    }
+
+    use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco;
 
     /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
     private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
-
-    /** Opzioni esposte dal selettore righe-per-pagina in Datatable.vue. */
-    private const PER_PAGE_AMMESSI = [15, 20, 30, 40, 50];
-    private const PER_PAGE_DEFAULT = 20;
 
     /**
      * Elenco paginato delle scritture contabili di un esercizio (Libro Giornale).
@@ -56,10 +66,14 @@ class ScritturaContabileController extends Controller
 
         $this->applyFiltri($query, $request);
 
-        // per_page: solo i valori esposti dal selettore in Datatable.vue.
-        $perPage = in_array((int) $request->input('per_page'), self::PER_PAGE_AMMESSI, true)
-            ? (int) $request->input('per_page')
-            : self::PER_PAGE_DEFAULT;
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        // ⚠️ **Venti e non dieci**, ed è una scelta di questo elenco. Le scritture del libro
+        // giornale sono dense — protocollo, data, gestione, causale, tipo, importo, stato — e una
+        // giornata di lavoro ne produce facilmente più di dieci: vederne dieci significa non
+        // vedere la giornata. Resta comunque un valore di partenza: chi ne sceglie un altro qui
+        // sopra se lo ritrova al rientro, e da lì in poi comanda la sua scelta.
+        $perPage = $this->righePerPagina($request, predefinito: 20);
 
         // Il "page" in query string può arrivare da un altro esercizio (lo porta con sé lo
         // switcher di PageHeaderGuide, che riscrive solo il segmento URL): senza clamp, un

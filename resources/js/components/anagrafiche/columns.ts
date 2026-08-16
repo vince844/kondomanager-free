@@ -56,6 +56,13 @@ export const columns: ColumnDef<Anagrafica>[] = [
   },
   {
     id: 'contatti',
+      /**
+       * ⚠️ **Non ordinabile, e non è una mancanza.** La cella contiene un **elenco** di contatti,
+       * non un valore: senza scegliere quale faccia da chiave, l'intestazione ordinava per
+       * **quanti** contatti ci sono nella cella — che è ciò che la libreria fa quando il valore è
+       * un array e nessuno dichiara un criterio.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.contacts') || 'Contatti' }),
     cell: ({ row }) => {
       const a = row.original;
@@ -103,6 +110,20 @@ export const columns: ColumnDef<Anagrafica>[] = [
   },
   {
     accessorKey: 'condomini',
+      /**
+       * ⚠️ **Non ordinabile, e non è una mancanza.** La cella contiene un **elenco** di soggetti,
+       * non un valore: un'unità con «Esposito + Russo» non ha una posizione in un ordinamento
+       * alfabetico finché qualcuno non decide *quale dei due* faccia da chiave.
+       *
+       * Finché quella decisione non è presa, l'intestazione ordinava per **quante** persone ci
+       * sono nella cella — che è ciò che la libreria fa quando il valore è un array e nessuno
+       * dichiara un criterio. Nessuno che clicca lì si aspetta quello: era un reperto aperto
+       * della revisione della beta.52.
+       *
+       * Se un giorno serve, si sceglie la chiave (per esempio «il primo proprietario in ordine
+       * alfabetico») e si ordina sul server. Una decisione presa, non un default ereditato.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.buildings') }),
     
     cell: ({ row }) => {

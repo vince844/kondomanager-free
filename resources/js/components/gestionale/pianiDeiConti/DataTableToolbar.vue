@@ -1,11 +1,12 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage, Link } from '@inertiajs/vue3';
+import { usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
@@ -23,28 +24,22 @@ const { generateRoute } = usePermission();
 // Filters
 const nameFilter = ref('')
 
-// Computed params for router
-const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
-  if (nameFilter.value) params.nome = nameFilter.value
-  return params
-})
+// Richiesta condivisa: riparte da ciò che c'è nell'URL invece di ricostruirlo
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.esercizi.piani-conti.index'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id  }),
+)
 
 // Watch filters with debounce
 watchDebounced(
   [nameFilter],
   () => {
-    router.get(
-      route(generateRoute('gestionale.esercizi.conti.index'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id  }),
-      filterParams.value,
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!nameFilter.value) props.table.reset()
-        }
-      }
+        nome: nameFilter.value || null,
+      },
+      () => {
+        if (!nameFilter.value) props.table.reset()
+      },
     )
   },
   { debounce: 300 }

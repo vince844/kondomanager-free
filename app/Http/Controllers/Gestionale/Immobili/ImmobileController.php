@@ -16,6 +16,8 @@ use App\Models\Esercizio;
 use App\Models\Immobile;
 use App\Models\TipologiaImmobile;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -41,7 +43,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ImmobileController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a paginated listing of immobili (properties) for a specific condominio and esercizio.
@@ -64,6 +66,10 @@ class ImmobileController extends Controller
     public function index(ImmobileIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         $validated = $request->validated();
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
 
         // Get a list of all the esercizi create to show in the datatable
         $immobili = $condominio
@@ -109,7 +115,17 @@ class ImmobileController extends Controller
                         ->whereHas('tipologiaImmobile', fn ($q) => $q->where('categoria', 'pertinenza')),
                 };
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina(
+                $q,
+                $validated,
+                ImmobileIndexRequest::colonneOrdinabili(),
+                // Senza una scelta dell'utente si ordina per nome: è l'ordine in cui un
+                // amministratore si aspetta di trovare le proprie unità, e soprattutto è
+                // **stabile** — senza `orderBy` MySQL non garantisce nulla, e la stessa riga
+                // può comparire a pagina 1 e a pagina 2 mentre un'altra non compare affatto.
+                predefinita: 'nome',
+            ))
+            ->paginate($validated['per_page']);
 
         // Get a list of all the registered condomini 
         $condomini = $this->getCondomini();
@@ -128,7 +144,13 @@ class ImmobileController extends Controller
                 'per_page'     => $immobili->perPage(),
                 'total'        => $immobili->total(),
             ],
-            'filters' => $request->only(['nome', 'pertinenze']), 
+            // ⚠️ `sort` e `direction` escono **separati** dai filtri: il composable li tratta
+            // diversamente — i filtri viaggiano sempre, l'ordinamento si può togliere — e
+            // soprattutto la freccetta nell'intestazione deve leggere ciò che il server ha
+            // applicato davvero, non ciò che il componente crede di aver chiesto.
+            'filters'   => $request->only(['nome', 'pertinenze']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

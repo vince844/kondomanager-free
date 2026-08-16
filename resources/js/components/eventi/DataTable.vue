@@ -1,10 +1,10 @@
 <script setup lang="ts" generic="TData, TValue">
 
 import { ref } from 'vue';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
-import { valueUpdater } from '@/lib/utils';
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/eventi/DataTableToolbar.vue';
 import { usePermission } from '@/composables/permissions';
@@ -23,8 +23,8 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission()
-const sorting = ref<SortingState>([])
-const isPending = ref(false) 
+const { inCorso, suPaginazione } =
+  useTabellaServer(() => route(generateRoute('eventi.index')));
 
 const table = useVueTable({
   get data() {
@@ -39,48 +39,20 @@ const table = useVueTable({
       pageIndex: props.meta.current_page - 1,
       pageSize: props.meta.per_page,
     },
-    get sorting() {
-      return sorting.value
-    },
   },
   manualPagination: true,
-  onPaginationChange: (updater) => {
-  if (isPending.value) return
-  isPending.value = true
-
-  const nextPage = typeof updater === 'function'
-    ? updater(table.getState().pagination).pageIndex + 1
-    : updater.pageIndex + 1
-
-  const nextPageSize = typeof updater === 'function'
-    ? updater(table.getState().pagination).pageSize
-    : updater.pageSize
-
-  const currentQuery = new URLSearchParams(window.location.search)
-  const queryParams: Record<string, any> = {}
-
-  for (const [key, value] of currentQuery.entries()) {
-    // Filter out duplicate pagination if present
-    if (key !== 'page' && key !== 'per_page') {
-      queryParams[key] = value
-    }
-  }
-
-  queryParams.page = nextPage
-  queryParams.per_page = nextPageSize
-
-  router.get(route(generateRoute('eventi.index')), queryParams, {
-    preserveState: true,
-    preserveScroll: true,
-    replace: true,
-    onFinish: () => {
-      isPending.value = false
-    },
-  })
-},
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  // ⚠️ **Nessun ordinamento, ed è deliberato.** Questo elenco non nasce da una query sola:
+  // `RecurrenceService` combina gli eventi singoli con le occorrenze generate in PHP dalle
+  // ricorrenze, e solo dopo pagina la collezione. Non c'è un `ORDER BY` a cui appoggiarsi, e
+  // `manualSorting: true` senza nulla dietro rendeva le intestazioni cliccabili a vuoto: la
+  // freccetta si accendeva, le righe restavano dov'erano. Le colonne sono `enableSorting: false`
+  // in `columns.ts`, dove è scritto anche il perché e cosa servirebbe per farlo davvero.
+  onPaginationChange: updater => {
+    const stato = table.getState().pagination
+    const p = typeof updater === 'function' ? updater(stato) : updater
+    suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
+  },
   getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
 
 })
 

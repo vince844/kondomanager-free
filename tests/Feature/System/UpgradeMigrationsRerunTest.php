@@ -85,4 +85,8 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // sono due statement distinti, quindi un'interruzione a metà lascia esattamente lo stato che
     // `cleanupPartialMigration()` deve saper riconoscere.
     '2026_08_15_100000_add_pertinenza_di_to_immobili',
+    // Aggiunta nella beta.54: la tabella delle righe-per-pagina scelte da ciascuno. È una
+    // `CREATE TABLE` pura — la categoria a rischio più basso — ma vale la regola del salto: una
+    // migrazione fuori da questo dataset smette di essere presidiata (lezione della beta.31).
+    '2026_08_16_100000_create_preferenze_tabelle_utente',
 ]);

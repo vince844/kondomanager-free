@@ -2,10 +2,11 @@
 
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { trans } from 'laravel-vue-i18n';
@@ -44,29 +45,24 @@ const condominioFilter = computed(() => {
 // Filtro Testo
 const nameFilter = ref('')
 
+// Una sola richiesta che porta tutto: filtri, pagina, righe per pagina, ordinamento
+const { filtra } = useTabellaServer(() => route(generateRoute('comunicazioni.index')))
+
 // DEBOUNCE AGGIORNATO (Ora osserva 3 filtri)
 watchDebounced(
   [nameFilter, priorityFilter, condominioFilter],
   ([subject, priority, condominio_id]) => {
-    const params: Record<string, any> = { page: 1 }
-
-    if (subject) params.subject = subject
-    if (priority.length > 0) params.priority = priority
-    if (condominio_id.length > 0) params.condominio_id = condominio_id
-
-    router.get(
-      route(generateRoute('comunicazioni.index')),
-      params,
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!subject && priority.length === 0 && condominio_id.length === 0) {
-            table.reset()
-          }
+        subject: subject || null,
+        priority: priority.length > 0 ? priority : null,
+        condominio_id: condominio_id.length > 0 ? condominio_id : null,
+      },
+      () => {
+        if (!subject && priority.length === 0 && condominio_id.length === 0) {
+          table.reset()
         }
-      }
+      },
     )
   },
   { debounce: 300 }

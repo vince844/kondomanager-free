@@ -9,6 +9,7 @@ import { Plus, Calendar as CalendarIcon , X} from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { Permission }  from "@/enums/Permission";
 import { useCategorieEventi } from '@/composables/useCategorieEventi';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RangeCalendar } from '@/components/ui/range-calendar';
@@ -41,40 +42,19 @@ const convertCalendarDateToString = (date: any): string | undefined => {
   return jsDate.toISOString().split('T')[0]
 }
 
-const getCurrentQuery = () => {
-  const urlParams = new URLSearchParams(window.location.search)
-  const query: Record<string, any> = {}
-  for (const [key, value] of urlParams.entries()) {
-    query[key] = value
-  }
-  return query
-}
+const { filtra } = useTabellaServer(() => route(generateRoute('eventi.index')))
 
 watchDebounced(
   [nameFilter, categoriaFilter, dateRange],
   ([title, category_id, range]) => {
-    const currentQuery = getCurrentQuery()
-    const params: Record<string, any> = {
-      ...currentQuery,
-      page: 1, // reset to first page on filter
-    }
-
-    if (title) params.title = title
-    else delete params.title
-
-    if (category_id.length > 0) params.category_id = category_id
-    else delete params.category_id
-
-    if (range?.start) params.date_from = convertCalendarDateToString(range.start)
-    else delete params.date_from
-
-    if (range?.end) params.date_to = convertCalendarDateToString(range.end)
-    else delete params.date_to
-
-    router.get(route(generateRoute('eventi.index')), params, {
-      preserveState: true,
-      replace: true,
-      preserveScroll: true,
+    // ⚠️ `category_id` è a selezione multipla e viaggia come array. Un array **vuoto** va passato
+    // come `null`: `[]` è truthy in JavaScript, quindi `category_id || null` non basterebbe, e un
+    // array vuoto che arrivasse fino all'indirizzo resterebbe lì come filtro attivo su niente.
+    filtra({
+      title: title || null,
+      category_id: category_id.length > 0 ? category_id : null,
+      date_from: range?.start ? convertCalendarDateToString(range.start) ?? null : null,
+      date_to: range?.end ? convertCalendarDateToString(range.end) ?? null : null,
     })
   },
   { debounce: 300 }

@@ -177,6 +177,10 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
   // ── 4. AUTORE ─────────────────────────────────────────────────────────────
   {
     id: 'uploaded_by',
+      /**
+       * ⚠️ **Non ordinabile.** «Autore» è un utente raggiunto attraverso l'anagrafica che ha caricato il file: due salti, e quale faccia da chiave è una decisione.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Autore' }),
     cell: ({ row }) => {
       const documento = row.original;

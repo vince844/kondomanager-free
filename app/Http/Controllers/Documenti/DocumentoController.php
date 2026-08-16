@@ -18,6 +18,7 @@ use App\Models\Condominio;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,7 +30,7 @@ use Illuminate\Support\Facades\Storage;
 
 class DocumentoController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, PaginaElenco;
 
     /**
      * Create a new controller instance.
@@ -54,6 +55,10 @@ class DocumentoController extends Controller
 
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $documenti = $this->documentoService->getDocumenti(  
             anagrafica: null,
             condominioIds: null,
@@ -72,7 +77,9 @@ class DocumentoController extends Controller
                 'per_page'     => $documenti->perPage(),
                 'total'        => $documenti->total(),
             ],
-            'filters' => Arr::only($validated, ['name', 'category_id', 'condominio_id'])
+            'filters' => Arr::only($validated, ['name', 'category_id', 'condominio_id']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Actions\Gestionale\Movimenti\ConfermaVersamentoF24Action;
 use App\Actions\Gestionale\Movimenti\GeneraDelegheF24Action;
 use App\Actions\Gestionale\Movimenti\StornaVersamentoF24Action;
@@ -13,6 +15,7 @@ use App\Services\Gestionale\ModelloF24Service;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,9 +34,28 @@ use Inertia\Response;
  */
 class DelegaF24Controller extends Controller
 {
+    use OrdinaElenco;
+
+    /**
+     * Le colonne ordinabili dell'elenco deleghe F24.
+     *
+     * ⚠️ Fuori «Codici tributo», che è un elenco di righe: stessa famiglia delle colonne con
+     * array spente nell'elenco unità.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'data_scadenza' => 'data_scadenza',
+            'plafond'       => 'plafond',
+            'totale_debito' => 'totale_debito',
+            'stato'         => 'stato',
+        ];
+    }
+
     use HandleFlashMessages;
     use HasCondomini;
     use HasEsercizio;
+    use PaginaElenco;
 
     public function __construct(
         private GeneraDelegheF24Action $genera,
@@ -43,6 +65,14 @@ class DelegaF24Controller extends Controller
 
     public function index(Request $request, Condominio $condominio): Response
     {
+        // ⚠️ Questo elenco dichiarava `colonneOrdinabili()`, rendeva cliccabili quattro
+        // intestazioni e **non chiamava mai `ordina()`**: i clic non producevano alcun effetto.
+        // Le due chiavi vanno anche validate, perché il nome della colonna finisce dentro
+        // `orderBy()` e la lista delle ammesse è il confine contro l'iniezione.
+        $ordinamento = $request->validate(
+            self::regoleOrdinamento(array_keys(self::colonneOrdinabili()))
+        );
+
         $esercizio = $this->esercizioCorrente($condominio);
 
         $base = DelegaF24::delCondominio($condominio->id)
@@ -83,13 +113,24 @@ class DelegaF24Controller extends Controller
         // totale «da versare» che cambia sfogliando sarebbe un numero senza significato.
         $riepilogo = $this->riepilogo((clone $base)->get());
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $perPage = $this->righePerPagina($request);
+
         $deleghe = $filtrata
             ->with('righe')
             // Le scadenze aperte per prime, e fra queste la più vicina in cima: è l'ordine
             // in cui vanno affrontate. Lo storico viene dopo, dalla più recente.
+            //
+            // ⚠️ Resta l'ordine **finché nessuno chiede altro**: `ordina()` azzera ciò che trova
+            // (`reorder()`) proprio perché un ordinamento chiesto dev'essere il criterio primario e
+            // non uno spareggio dietro questo `CASE`. Senza `predefinita`, una richiesta senza
+            // `sort` lascia la query com'è e l'ordine di lavoro sopravvive.
             ->orderByRaw("CASE WHEN stato IN ('bozza','confermata') THEN 0 ELSE 1 END")
             ->orderBy('data_scadenza')
-            ->paginate((int) $request->input('per_page', 15))
+            ->orderBy('id')
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili()))
+            ->paginate($perPage)
             ->withQueryString();
 
         // Il paginatore di Laravel serializza i suoi contatori in piatto; il `Datatable`
@@ -113,6 +154,10 @@ class DelegaF24Controller extends Controller
             'banche' => $this->banche($condominio),
             'riepilogo' => $riepilogo,
             'filters' => $filtri,
+            // La freccetta nell'intestazione legge questi, non uno stato locale del componente:
+            // così non può dichiarare un ordinamento diverso da quello davvero applicato.
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             // Le soglie arrivano da `config/fiscale.php`, non riscritte a mano nel testo
             // della guida: se il legislatore le cambia, si tocca un posto solo e la
             // schermata smette di raccontare un numero che non è più quello.

@@ -80,6 +80,8 @@ const {
   condomini,
   default_user_role,
   roles,
+  default_per_page,
+  per_page_disponibili,
 } = page.props
 
 /* -------------------------------------------------
@@ -93,6 +95,7 @@ const form = useForm({
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
   force_comment_moderation: Boolean(page.props.force_comment_moderation),
+  default_per_page: Number(default_per_page) || 10,
 })
 
 /* -------------------------------------------------
@@ -287,6 +290,34 @@ const submit = () => {
                 </Select>
                 <p v-if="form.errors.default_user_role" class="text-sm text-red-500 mt-1">
                   {{ form.errors.default_user_role }}
+                </p>
+              </div>
+            </div>
+
+            <!-- RIGHE PER PAGINA -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.default_per_page_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.default_per_page_description') }}
+                </p>
+              </div>
+
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Select v-model="form.default_per_page">
+                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_per_page }">
+                    <SelectValue :placeholder="`${form.default_per_page}`" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="n in per_page_disponibili" :key="n" :value="n">
+                      {{ n }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p v-if="form.errors.default_per_page" class="text-sm text-red-500 mt-1">
+                  {{ form.errors.default_per_page }}
                 </p>
               </div>
             </div>

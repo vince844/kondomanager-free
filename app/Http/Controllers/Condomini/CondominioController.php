@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Condomini;
 
+use App\Traits\OrdinaElenco;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Condominio\CreateCondominioRequest;
 use App\Http\Requests\Condominio\UpdateCondominioRequest;
@@ -10,6 +12,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Services\CondominioService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -20,7 +23,19 @@ use Inertia\Response;
 
 class CondominioController extends Controller
 {
+    use OrdinaElenco;
+
+    /** ⚠️ Fuori «Anagrafiche», che contiene un elenco di soggetti. */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'nome'      => 'nome',
+            'indirizzo' => 'indirizzo',
+        ];
+    }
+
     use HandleFlashMessages;
+    use PaginaElenco;
 
     /**
      * Create a new controller instance.
@@ -47,18 +62,28 @@ class CondominioController extends Controller
     {
         Gate::authorize('view', $condominio);
 
-        $validated = $request->validate([
+        // ⚠️ `sort` e `direction` vanno **validati**, non solo letti. Questo elenco non ha una
+        // FormRequest: finché le due chiavi non comparivano qui, `$request->validate()` non le
+        // restituiva, `$validated['sort']` non esisteva e l'ordinamento non veniva mai applicato —
+        // le frecce nelle intestazioni erano cliccabili e non facevano niente, senza dare errore.
+        // Il nome della colonna finisce dentro `orderBy()`, quindi la lista è anche il confine.
+        $validated = $request->validate(array_merge([
             'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'nome' => ['sometimes', 'string', 'max:255'], 
-        ]);
-    
+            'per_page' => ['sometimes', 'integer'],
+            'nome' => ['sometimes', 'string', 'max:255'],
+        ], self::regoleOrdinamento(array_keys(self::colonneOrdinabili()))));
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $condomini = Condominio::query()
             ->with('anagrafiche') 
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, self::colonneOrdinabili(), predefinita: 'nome', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page']);
     
         return Inertia::render('buildings/BuildingsList', [
             'buildings' => CondominioResource::collection($condomini)->response()->getData(true)['data'],
@@ -68,7 +93,9 @@ class CondominioController extends Controller
                 'per_page'     => $condomini->perPage(),
                 'total'        => $condomini->total(),
             ],
-            'filters' => $request->only(['nome']) 
+            'filters' => $request->only(['nome']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

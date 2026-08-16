@@ -226,6 +226,10 @@ test('per_page rispetta la whitelist del selettore e ignora valori non ammessi',
         creaScritturaGiornale($ctx, ['causale' => "Scrittura $i"]);
     }
 
+    // ⚠️ **Venti resta venti.** La lista dei valori ammessi è passata a `config('pagination.consentite')`,
+    // uguale per tutto il programma, ma il valore di partenza di *questo* elenco è rimasto il suo:
+    // le scritture sono dense e dieci righe non fanno una giornata. Il controller lo dichiara con
+    // `righePerPagina($request, predefinito: 20)`, che è il gradino sopra le impostazioni generali.
     $this->actingAs($user)
         ->get(route('admin.gestionale.esercizi.scritture.index', [$condominio, $esercizio]).'?per_page=999999')
         ->assertOk()

@@ -2,10 +2,11 @@
 
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission } from "@/enums/Permission";
 import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
@@ -21,21 +22,17 @@ const nameFilter = ref('')
 
 const { hasPermission } = usePermission();
 
+// Una sola richiesta che porta tutto: filtri, pagina, righe per pagina, ordinamento
+const { filtra } = useTabellaServer(() => route('condomini.index'))
+
 // Debounce search input (300ms delay)
 watchDebounced(
   nameFilter,
   (newValue) => {
     // Reset filters if empty, otherwise filter
-    router.get(
-      route('condomini.index'),
-      newValue
-        ? { nome: newValue, page: 1 }
-        : { page: 1 },
-      {
-        preserveState: true,
-        replace: true,
-      }
-    )
+    filtra({
+      nome: newValue || null,
+    })
   },
   { debounce: 300 }
 )

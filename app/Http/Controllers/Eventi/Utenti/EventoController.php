@@ -20,7 +20,8 @@ use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
-use App\Traits\CalculatesFinancialWaterfall; 
+use App\Traits\CalculatesFinancialWaterfall;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -35,7 +36,7 @@ use Illuminate\Support\Facades\DB;
 
 class EventoController extends Controller
 {
-    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData, CalculatesFinancialWaterfall;
+    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData, CalculatesFinancialWaterfall, PaginaElenco;
 
     public function __construct(
         private RecurrenceService $recurrenceService,
@@ -50,7 +51,9 @@ class EventoController extends Controller
         Gate::authorize('view', $evento);
 
         $validated = $request->validated();
-        $perPage = min((int) ($validated['per_page'] ?? config('pagination.default_per_page')), 100);
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $perPage = $this->righePerPagina($request);
         $page = (int) ($validated['page'] ?? 1);
 
         try {

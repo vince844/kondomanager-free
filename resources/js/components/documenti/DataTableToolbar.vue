@@ -8,6 +8,7 @@ import { Plus, List, X } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission } from '@/enums/Permission';
 import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 import { trans } from 'laravel-vue-i18n';
@@ -50,29 +51,25 @@ const condominioFilter = computed(() => {
   return Array.isArray(val) ? val : [];
 });
 
+const { filtra } = useTabellaServer(() => route(generateRoute('documenti.index')));
+
 watchDebounced(
   [nameFilter, categoriaFilter, condominioFilter],
   ([name, category_id, condominio_id]) => {
-    const params: Record<string, any> = { page: 1 };
+    // Ogni filtro che può essere vuoto viaggia come `null`, mai omesso: la richiesta riparte da ciò
+    // che c'è nell'URL, e un filtro omesso resterebbe quello di prima. Per i filtri sfaccettati
+    // (categoria, condomìni) il «vuoto» è la lista senza elementi.
+    const filtri: Record<string, any> = {
+      name: name || null,
+      category_id: category_id.length > 0 ? category_id : null,
+      condominio_id: condominio_id.length > 0 ? condominio_id : null,
+    };
 
-    if (name) params.name = name;
-    if (category_id.length > 0) params.category_id = category_id;
-    if (condominio_id.length > 0) params.condominio_id = condominio_id;
-
-    router.get(
-      route(generateRoute('documenti.index')),
-      params,
-      {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!name && category_id.length === 0 && condominio_id.length === 0) {
-            table.reset();
-          }
-        }
+    filtra(filtri, () => {
+      if (!name && category_id.length === 0 && condominio_id.length === 0) {
+        table.reset();
       }
-    );
+    });
   },
   { debounce: 300 }
 );

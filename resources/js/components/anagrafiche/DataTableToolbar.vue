@@ -2,10 +2,11 @@
 
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission } from "@/enums/Permission";
 import { trans } from 'laravel-vue-i18n';
 import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
@@ -35,28 +36,24 @@ const condominioFilter = computed(() => {
 })
 
 // DEBOUNCE E ROUTING SERVER-SIDE
+const { filtra } = useTabellaServer(() => route(generateRoute('anagrafiche.index')))
+
 watchDebounced(
   [nomeFilter, condominioFilter],
   ([nome, condominio_id]) => {
-    const params: Record<string, any> = { page: 1 }
+    // Ogni filtro che può essere vuoto viaggia come `null`, mai omesso: la richiesta riparte da ciò
+    // che c'è nell'URL, e un filtro omesso resterebbe quello di prima. Per il filtro sfaccettato
+    // dei condomìni il «vuoto» è la lista senza elementi.
+    const filtri: Record<string, any> = {
+      nome: nome || null,
+      condominio_id: condominio_id.length > 0 ? condominio_id : null,
+    }
 
-    if (nome) params.nome = nome
-    if (condominio_id.length > 0) params.condominio_id = condominio_id
-
-    router.get(
-      route(generateRoute('anagrafiche.index')),
-      params,
-      {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!nome && condominio_id.length === 0) {
-            props.table.reset()
-          }
-        }
+    filtra(filtri, () => {
+      if (!nome && condominio_id.length === 0) {
+        props.table.reset()
       }
-    )
+    })
   },
   { debounce: 300 }
 )

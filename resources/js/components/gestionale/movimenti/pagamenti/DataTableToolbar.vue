@@ -1,12 +1,13 @@
 <script setup lang="ts" generic="TData">
 import { ref, computed } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { router, usePage, Link } from '@inertiajs/vue3'
+import { usePage, Link } from '@inertiajs/vue3'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Search, X, Plus } from 'lucide-vue-next'
 import type { Table } from '@tanstack/vue-table'
 import { usePermission } from '@/composables/permissions'
+import { useTabellaServer } from '@/composables/useTabellaServer'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Building } from '@/types/buildings'
 
@@ -36,28 +37,21 @@ const metodiOpzioni = [
   { value: 'f24', label: 'Modello F24' },
 ]
 
-// Costruzione dinamica dei parametri da inviare
-const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
-
-  if (globalFilter.value) params.search = globalFilter.value
-  if (selectedMetodo.value && selectedMetodo.value !== 'all') params.metodo_pagamento = selectedMetodo.value
-  if (selectedStato.value && selectedStato.value !== 'all') params.stato = selectedStato.value
-  if (dataDa.value) params.data_da = dataDa.value
-  if (dataA.value) params.data_a = dataA.value
-
-  return params
-})
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: condominioId.value }),
+)
 
 // Osservatore con debounce che scatta quando cambia search, metodo, stato o intervallo date
 watchDebounced(
   [globalFilter, selectedMetodo, selectedStato, dataDa, dataA],
   () => {
-    router.get(
-      route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: condominioId.value }),
-      filterParams.value,
-      { preserveState: true, replace: true, preserveScroll: true }
-    )
+    filtra({
+      search: globalFilter.value || null,
+      metodo_pagamento: selectedMetodo.value && selectedMetodo.value !== 'all' ? selectedMetodo.value : null,
+      stato: selectedStato.value && selectedStato.value !== 'all' ? selectedStato.value : null,
+      data_da: dataDa.value || null,
+      data_a: dataA.value || null,
+    })
   },
   { debounce: 300 }
 )

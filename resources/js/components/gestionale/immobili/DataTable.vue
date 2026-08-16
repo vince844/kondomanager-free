@@ -1,10 +1,10 @@
 <script setup lang="ts" generic="TData, TValue">
 
 import { ref } from 'vue';
-import { router, usePage } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
-import { valueUpdater } from '@/lib/utils';
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/immobili/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
@@ -27,8 +27,9 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
-const sorting = ref<SortingState>([])
-const isPending = ref(false) 
+// L'ordinamento non è più uno stato locale: lo detta il server, e il composable lo rilegge da lì.
+const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
+  useTabellaServer(() => route(generateRoute('gestionale.immobili.index'), { condominio: props.condominio.id }));
 
 const table = useVueTable({
   get data() {
@@ -44,49 +45,20 @@ const table = useVueTable({
       pageSize: props.meta.per_page,
     },
     get sorting() {
-      return sorting.value
+      return ordinamento.value
     },
   },
   manualPagination: true,
+  // ⚠️ Senza questo la libreria ordina **le righe che ha**, cioè la pagina visibile.
+  manualSorting: true,
   onPaginationChange: updater => {
-
-    // Prevent concurrent requests
-    if (isPending.value) return 
-    
-    isPending.value = true
-    
-    const nextPage = typeof updater === 'function'
-      ? updater(table.getState().pagination).pageIndex
-      : updater.pageIndex;
-
-    const nextPageSize = table.getState().pagination.pageSize;
-
-    // ⚠️ **I filtri viaggiano con la pagina.** Senza, cambiare pagina li perdeva: si filtrava
-    // «da collegare», si andava alla pagina 2 e tornava l'elenco intero mentre il selettore
-    // continuava a dichiarare il filtro attivo. È la forma peggiore di un difetto di filtro —
-    // non dice «non ho trovato niente», dice il falso — e su un condominio da 67 unità, dove
-    // quel filtro è l'unico modo per vedere cosa manca, arriva sempre alla seconda pagina.
-    //
-    // La fonte è la stessa che riempie il selettore: i filtri validati che il controller
-    // rimanda indietro, non uno stato locale da tenere allineato a mano.
-    const filtriAttivi = (usePage<{ filters?: Record<string, string | null> }>().props.filters ?? {});
-
-    router.get(route(generateRoute('gestionale.immobili.index'), { condominio: props.condominio.id}), {
-      ...Object.fromEntries(Object.entries(filtriAttivi).filter(([, v]) => v !== null && v !== '')),
-      page: nextPage + 1,
-      per_page: nextPageSize,
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      onFinish: () => {
-        isPending.value = false
-      }
-    });
+    const stato = table.getState().pagination
+    const prossima = typeof updater === 'function' ? updater(stato).pageIndex : updater.pageIndex
+    const righe = typeof updater === 'function' ? updater(stato).pageSize : updater.pageSize
+    suPaginazione(prossima + 1, righe, stato.pageSize)
   },
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  onSortingChange: suOrdinamento,
   getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
 
 })
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Users;
 
+use App\Traits\OrdinaElenco;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\CreateUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
@@ -23,10 +25,42 @@ use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
+    use OrdinaElenco, PaginaElenco;
+
+    /**
+     * ⚠️ Fuori «Ruoli» e «Permessi», che sono elenchi.
+     *
+     * «Anagrafica» è una relazione singola e si ordina per il nome della persona collegata.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'name'         => 'name',
+            // ⚠️ **`limit(1)` non è un ornamento: senza, questo elenco va in errore 500.**
+            //
+            // È l'unica sottoquery di ordinamento del progetto che va nel verso «uno a molti».
+            // Tutte le altre — gestione, palazzina, condominio, categoria — agganciano la chiave
+            // primaria della tabella collegata (`gestioni.id = piani_rate.gestione_id`), quindi una
+            // riga al massimo per costruzione. Qui il confronto è `anagrafiche.user_id = users.id`,
+            // e su `anagrafiche.user_id` non c'è alcun vincolo di unicità: un utente con due
+            // anagrafiche fa restituire due righe alla sottoquery, e MySQL risponde con l'errore
+            // 1242 «Subquery returns more than 1 row», che a video è una schermata di errore.
+            //
+            // Oggi nessun utente ne ha due — verificato sul database — ma è uno stato che il
+            // programma non impedisce, e il difetto si manifesterebbe la prima volta che accade.
+            'anagrafica'   => fn () => \App\Models\Anagrafica::select('nome')
+                ->whereColumn('anagrafiche.user_id', 'users.id')
+                ->orderBy('id')
+                ->limit(1),
+            'suspended_at' => 'suspended_at',
+        ];
+    }
+
     use HandleFlashMessages;
 
     /**
@@ -45,7 +79,7 @@ class UserController extends Controller
      * - Authorizes the request using the 'view' gate for the User model.
      * - Validates optional query parameters:
      *   - `page`: The page number for pagination (must be >= 1).
-     *   - `per_page`: Number of users per page (between 10 and 100).
+     *   - `per_page`: Number of users per page (normalizzato dal trait PaginaElenco).
      *   - `name`: A string used to filter users by name.
      * - Queries the User model applying name filtering if provided.
      * - Paginates the results.
@@ -64,17 +98,26 @@ class UserController extends Controller
     {
         Gate::authorize('view', User::class);
 
-        $validated = $request->validate([
+        // ⚠️ `sort` e `direction` vanno **validati**, non solo letti: senza queste due chiavi
+        // `$request->validate()` non le restituisce, `$validated['sort']` non esiste e le frecce
+        // nelle intestazioni restano cliccabili senza fare niente. Il nome della colonna finisce
+        // dentro `orderBy()`, quindi la lista delle ammesse è anche il confine contro l'iniezione.
+        $validated = $request->validate(array_merge([
             'page'     => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            'name'     => ['sometimes', 'string', 'max:255'], 
-        ]);
-    
+            'per_page' => ['sometimes', 'integer'],
+            'name'     => ['sometimes', 'string', 'max:255'],
+        ], self::regoleOrdinamento(array_keys(self::colonneOrdinabili()))));
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'e', altrimenti
+        // quella che l'utente aveva gia' fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $users = User::with('anagrafica')
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, self::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page']);
     
         return Inertia::render('utenti/ElencoUtenti', [
             'users' => IndexUserResource::collection($users)->response()->getData(true)['data'],
@@ -84,7 +127,9 @@ class UserController extends Controller
                 'per_page' => $users->perPage(),
                 'total' => $users->total(),
             ],
-            'filters' => $request->only(['name']) 
+            'filters' => $request->only(['name']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
         
     }

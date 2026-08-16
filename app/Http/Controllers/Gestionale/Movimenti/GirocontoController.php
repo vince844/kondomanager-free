@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Actions\Gestionale\Movimenti\RegistraGirocontoAction;
 use App\Actions\Gestionale\Movimenti\StornaGirocontoAction;
 use App\Enums\TipoMovimentoContabile;
@@ -18,6 +20,7 @@ use App\Services\Gestionale\SaldoCassaService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,15 +42,37 @@ use Inertia\Response;
  */
 class GirocontoController extends Controller
 {
+    use OrdinaElenco;
+
+    /** Le colonne ordinabili dei giroconti, che poggiano su `scritture_contabili`. */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'data'    => 'data_registrazione',
+            'importo' => 'id',
+        ];
+    }
+
     use HandleFlashMessages;
     use HasCondomini;
     use HasEsercizio;
+    use PaginaElenco;
 
     /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
     private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
 
     public function index(Request $request, Condominio $condominio, RiallineaFondiService $riallinea): Response
     {
+        // I due parametri dell'ordinamento si validano qui: questo elenco non ha una
+        // FormRequest, e il nome della colonna finisce dentro `orderBy()`.
+        $ordinamento = $request->validate(self::regoleOrdinamento(array_keys(self::colonneOrdinabili())) + [
+            'per_page' => ['sometimes', 'integer'],
+        ]);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $ordinamento['per_page'] = $this->righePerPagina($request);
+
         $scritture = ScritturaContabile::where('condominio_id', $condominio->id)
             ->whereIn('tipo_movimento', [
                 TipoMovimentoContabile::GIROCONTO->value,
@@ -65,7 +90,11 @@ class GirocontoController extends Controller
             ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_competenza', '<=', $v))
             ->orderByDesc('data_competenza')
             ->orderByDesc('id')
-            ->paginate(20)
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_registrazione', versoPredefinito: 'desc'))
+            // ⚠️ **`per_page` era cablato a 20**: il selettore delle righe cambiava e l'elenco
+            // restava fermo. È la variante più muta dei difetti segnalati sul forum — il
+            // valore non si perde per strada, non viene proprio letto.
+            ->paginate($ordinamento['per_page'])
             ->withQueryString();
 
         // Un giroconto è stornabile se non ha già uno storno figlio.
@@ -114,6 +143,8 @@ class GirocontoController extends Controller
         ];
 
         return Inertia::render('gestionale/movimenti/giroconti/GirocontiList', [
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             'condominio' => $condominio,
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
             'esercizio' => $this->getEsercizioCorrente($condominio),

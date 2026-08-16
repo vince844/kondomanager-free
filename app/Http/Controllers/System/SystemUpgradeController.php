@@ -70,7 +70,9 @@ class SystemUpgradeController extends Controller
             $bridge = $service->prepareForUpgrade($release);
 
             return Inertia::render('system/upgrade/Launch', [
-                'actionUrl' => url('/index.php'),
+                // L'indirizzo lo decide il service insieme alla posizione del
+                // file: qui non si ricostruisce a mano, o le due cose divergono.
+                'actionUrl' => $bridge['url'],
                 'token' => $bridge['token'],
                 'version' => $release['version'],
             ]);
@@ -275,17 +277,34 @@ class SystemUpgradeController extends Controller
     private function cleanupInstallerJunk(): void
     {
         $paths = [
+            // Posizione attuale del bridge (dalla 1.10).
+            public_path('km-update.php'),
+            // Posizioni storiche: il bridge fino alla 1.9 veniva copiato nella
+            // radice, e il setup standalone si carica ancora lì.
             base_path('index.php'),
             public_path('index.php'),
         ];
 
+        // 'Auto-Update Engine' è l'intestazione del bridge, '410 Gone' il
+        // segnaposto che il setup standalone lascia quando non riesce a
+        // cancellarsi. Prima c'era 'Bridge-Only', che il bridge non ha mai
+        // contenuto: la pulizia non lo riconosceva e una copia rimasta indietro
+        // restava lì per sempre — nella radice di un hosting condiviso, per
+        // giunta, dove ha la precedenza su Laravel e manda in errore il sito.
+        $firme = ['Auto-Update Engine', '410 Gone', 'Bridge-Only'];
+
         foreach ($paths as $path) {
-            if (file_exists($path)) {
-                $content = @file_get_contents($path);
-                // Cerca la firma del bridge o il comando di autodistruzione
-                if (strpos($content, '410 Gone') !== false || strpos($content, 'Bridge-Only') !== false) {
+            if (! file_exists($path)) {
+                continue;
+            }
+
+            $content = (string) @file_get_contents($path);
+
+            foreach ($firme as $firma) {
+                if (str_contains($content, $firma)) {
                     @unlink($path);
                     Log::info('Installer junk removed: '.$path);
+                    break;
                 }
             }
         }

@@ -17,6 +17,7 @@ use App\Models\Evento;
 use App\Models\Segnalazione;
 use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -27,7 +28,7 @@ use Illuminate\Support\Arr;
 
 class SegnalazioneController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, PaginaElenco;
 
     /**
      * SegnalazioneController constructor.
@@ -55,6 +56,10 @@ class SegnalazioneController extends Controller
 
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $segnalazioni = $this->segnalazioneService->getSegnalazioni(  
             anagrafica: null,
             condominioIds: null,
@@ -74,7 +79,9 @@ class SegnalazioneController extends Controller
                 'total'        => $segnalazioni->total(),
             ],
             // AGGIUNTO: condominio_id per ripristinare lo stato del filtro nel frontend
-            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id'])
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
   

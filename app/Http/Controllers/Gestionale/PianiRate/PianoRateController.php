@@ -27,6 +27,8 @@ use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\PianoRateCreatorService;
 use App\Services\PianoRateQuoteService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +40,7 @@ use Inertia\Response;
 
 class PianoRateController extends Controller
 {
-    use HandleFlashMessages, HasCondomini;
+    use HandleFlashMessages, HasCondomini, OrdinaElenco, PaginaElenco;
 
     /**
      * Costruttore del controller.
@@ -66,11 +68,16 @@ class PianoRateController extends Controller
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         $validated = $request->validated();
-        
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
             ->whereHas('gestione.esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, PianoRateIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
 
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
@@ -89,6 +96,8 @@ class PianoRateController extends Controller
                 'total' => $pianiRate->total()
             ],
             'filters' => $request->only(['nome']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

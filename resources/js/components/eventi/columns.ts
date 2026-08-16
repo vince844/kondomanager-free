@@ -16,6 +16,16 @@ const { hasPermission, generateRoute } = usePermission();
 export const columns: ColumnDef<Evento>[] = [
   {
     accessorKey: 'occurs_at',
+    // ⚠️ **Non ordinabile, e non per dimenticanza.** L'elenco eventi non nasce da una query sola:
+    // `RecurrenceService` combina gli eventi singoli con le occorrenze generate in PHP dalle
+    // ricorrenze, e solo dopo pagina la collezione. Non esiste un `ORDER BY` a cui appoggiarsi, e
+    // fino alla beta.54 queste intestazioni erano cliccabili senza produrre alcun effetto: il
+    // server rimandava l'ordinamento fra le props, la freccetta si accendeva, le righe non si
+    // muovevano. Un'intestazione che non ordina non deve sembrare cliccabile.
+    //
+    // Ordinare davvero si può — sulla collezione, prima di paginarla — ma è una funzione da
+    // progettare, non una riga da aggiungere: si farà nella release che tocca l'agenda.
+    enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Data scadenza' }),
     cell: ({ row }) => {
       // No color, just the date
@@ -24,6 +34,16 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'title',
+    // ⚠️ **Non ordinabile, e non per dimenticanza.** L'elenco eventi non nasce da una query sola:
+    // `RecurrenceService` combina gli eventi singoli con le occorrenze generate in PHP dalle
+    // ricorrenze, e solo dopo pagina la collezione. Non esiste un `ORDER BY` a cui appoggiarsi, e
+    // fino alla beta.54 queste intestazioni erano cliccabili senza produrre alcun effetto: il
+    // server rimandava l'ordinamento fra le props, la freccetta si accendeva, le righe non si
+    // muovevano. Un'intestazione che non ordina non deve sembrare cliccabile.
+    //
+    // Ordinare davvero si può — sulla collezione, prima di paginarla — ma è una funzione da
+    // progettare, non una riga da aggiungere: si farà nella release che tocca l'agenda.
+    enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
 
     cell: ({ row, table }) => {
@@ -86,6 +106,16 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'categoria',
+    // ⚠️ **Non ordinabile, e non per dimenticanza.** L'elenco eventi non nasce da una query sola:
+    // `RecurrenceService` combina gli eventi singoli con le occorrenze generate in PHP dalle
+    // ricorrenze, e solo dopo pagina la collezione. Non esiste un `ORDER BY` a cui appoggiarsi, e
+    // fino alla beta.54 queste intestazioni erano cliccabili senza produrre alcun effetto: il
+    // server rimandava l'ordinamento fra le props, la freccetta si accendeva, le righe non si
+    // muovevano. Un'intestazione che non ordina non deve sembrare cliccabile.
+    //
+    // Ordinare davvero si può — sulla collezione, prima di paginarla — ma è una funzione da
+    // progettare, non una riga da aggiungere: si farà nella release che tocca l'agenda.
+    enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Categoria' }),
     cell: ({ row }) => {
       const categoria = row.original.categoria;
@@ -99,6 +129,20 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'condomini',
+      /**
+       * ⚠️ **Non ordinabile, e non è una mancanza.** La cella contiene un **elenco** di soggetti,
+       * non un valore: un'unità con «Esposito + Russo» non ha una posizione in un ordinamento
+       * alfabetico finché qualcuno non decide *quale dei due* faccia da chiave.
+       *
+       * Finché quella decisione non è presa, l'intestazione ordinava per **quante** persone ci
+       * sono nella cella — che è ciò che la libreria fa quando il valore è un array e nessuno
+       * dichiara un criterio. Nessuno che clicca lì si aspetta quello: era un reperto aperto
+       * della revisione della beta.52.
+       *
+       * Se un giorno serve, si sceglie la chiave (per esempio «il primo proprietario in ordine
+       * alfabetico») e si ordina sul server. Una decisione presa, non un default ereditato.
+       */
+      enableSorting: false,
     header: ({ column }) =>
       h(DataTableColumnHeader, { column, title: 'Condomini' }),
 
@@ -171,6 +215,20 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'anagrafiche',
+      /**
+       * ⚠️ **Non ordinabile, e non è una mancanza.** La cella contiene un **elenco** di soggetti,
+       * non un valore: un'unità con «Esposito + Russo» non ha una posizione in un ordinamento
+       * alfabetico finché qualcuno non decide *quale dei due* faccia da chiave.
+       *
+       * Finché quella decisione non è presa, l'intestazione ordinava per **quante** persone ci
+       * sono nella cella — che è ciò che la libreria fa quando il valore è un array e nessuno
+       * dichiara un criterio. Nessuno che clicca lì si aspetta quello: era un reperto aperto
+       * della revisione della beta.52.
+       *
+       * Se un giorno serve, si sceglie la chiave (per esempio «il primo proprietario in ordine
+       * alfabetico») e si ordina sul server. Una decisione presa, non un default ereditato.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Anagrafiche' }),
   
     cell: ({ row }) => {
@@ -236,6 +294,16 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'visibility',
+    // ⚠️ **Non ordinabile, e non per dimenticanza.** L'elenco eventi non nasce da una query sola:
+    // `RecurrenceService` combina gli eventi singoli con le occorrenze generate in PHP dalle
+    // ricorrenze, e solo dopo pagina la collezione. Non esiste un `ORDER BY` a cui appoggiarsi, e
+    // fino alla beta.54 queste intestazioni erano cliccabili senza produrre alcun effetto: il
+    // server rimandava l'ordinamento fra le props, la freccetta si accendeva, le righe non si
+    // muovevano. Un'intestazione che non ordina non deve sembrare cliccabile.
+    //
+    // Ordinare davvero si può — sulla collezione, prima di paginarla — ma è una funzione da
+    // progettare, non una riga da aggiungere: si farà nella release che tocca l'agenda.
+    enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
     cell: ({ row }) => {
 

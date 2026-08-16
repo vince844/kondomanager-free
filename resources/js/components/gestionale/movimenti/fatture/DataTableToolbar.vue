@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,26 +31,21 @@ const statoPagamento = ref(page.props.filters?.stato_pagamento || '');
 const dataDa = ref(page.props.filters?.data_da || '');
 const dataA = ref(page.props.filters?.data_a || '');
 
-const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
-  if (globalFilter.value) params.search = globalFilter.value
-  if (statoPagamento.value) params.stato_pagamento = statoPagamento.value
-  if (dataDa.value) params.data_da = dataDa.value
-  if (dataA.value) params.data_a = dataA.value
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
+)
 
-  // Mantieni eventuali filtri attivi (es. sforo_motivato cliccato dalla card)
-  if (page.props.filters?.stato_approvazione) {
-      params.stato_approvazione = page.props.filters.stato_approvazione;
-  }
-  return params
-})
-
+// Ogni filtro viaggia sempre, anche vuoto: `null` significa **togli**, mentre ometterlo
+// lascerebbe in piedi quello di prima e non ci sarebbe più modo di svuotarlo.
+// `stato_approvazione` non ha un controllo qui (arriva dalla card «sfori motivati»):
+// non si passa, così il composable lo riporta com'è insieme a righe per pagina e ordinamento.
 const applyFilters = () => {
-  router.get(
-    route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
-    filterParams.value,
-    { preserveState: true, replace: true, preserveScroll: true }
-  )
+  filtra({
+    search: globalFilter.value || null,
+    stato_pagamento: statoPagamento.value || null,
+    data_da: dataDa.value || null,
+    data_a: dataA.value || null,
+  })
 }
 
 watchDebounced(globalFilter, applyFilters, { debounce: 300 })

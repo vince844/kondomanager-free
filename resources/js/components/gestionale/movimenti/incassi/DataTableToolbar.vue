@@ -2,7 +2,8 @@
 
 import { ref, computed, watch } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage, Link } from '@inertiajs/vue3';
+import { usePage, Link } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Plus, X } from 'lucide-vue-next';
@@ -25,22 +26,17 @@ const stato = ref(page.props.filters?.stato || '')
 const dataDa = ref(page.props.filters?.data_da || '')
 const dataA = ref(page.props.filters?.data_a || '')
 
-const applyFilters = () => {
-  const params: Record<string, any> = { page: 1 }
-  if (globalFilter.value) params.search = globalFilter.value
-  if (stato.value) params.stato = stato.value
-  if (dataDa.value) params.data_da = dataDa.value
-  if (dataA.value) params.data_a = dataA.value
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.movimenti-rate.index'), { condominio: condominioId.value }),
+)
 
-  router.get(
-    route(generateRoute('gestionale.movimenti-rate.index'), { condominio: condominioId.value }),
-    params,
-    {
-      preserveState: true,
-      replace: true,
-      preserveScroll: true,
-    }
-  )
+const applyFilters = () => {
+  filtra({
+    search: globalFilter.value || null,
+    stato: stato.value || null,
+    data_da: dataDa.value || null,
+    data_a: dataA.value || null,
+  })
 }
 
 watchDebounced(globalFilter, applyFilters, { debounce: 300 })

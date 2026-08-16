@@ -15,6 +15,8 @@ use App\Http\Resources\Gestionale\Casse\UpdateCassaResource;
 use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -25,7 +27,7 @@ use Illuminate\Support\Facades\DB;
 
 class CassaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     public function __construct(
         private CreateCassaAction $createCassaAction,
@@ -72,6 +74,10 @@ class CassaController extends Controller
     {
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $query = $condominio
             ->casse()
             ->with(['contoCorrente'])
@@ -87,7 +93,8 @@ class CassaController extends Controller
                 $q->where('tipo_riga', 'avere');
             }], 'importo');
 
-        $casse = $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+        $casse = $query->tap(fn ($q) => $this->ordina($q, $validated, CassaIndexRequest::colonneOrdinabili(), predefinita: 'nome', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page']);
 
         return Inertia::render('gestionale/casse/CasseList', [
             'condominio' => $condominio,
@@ -101,6 +108,8 @@ class CassaController extends Controller
                 'total'        => $casse->total(),
             ],
             'filters'    => $request->only(['nome']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

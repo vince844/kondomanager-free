@@ -20,6 +20,8 @@ use App\Models\Gestione;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
@@ -30,11 +32,15 @@ use Illuminate\Support\Facades\Log;
 
 class PianoContiController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     public function index(PianoContoIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         $validated = $request->validated();
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
 
         $pianiDeiConti = $condominio->pianiDeiConti()
             ->whereHas('gestione.esercizi', function ($q) use ($esercizio) {
@@ -46,7 +52,8 @@ class PianoContiController extends Controller
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, PianoContoIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
 
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
@@ -65,6 +72,8 @@ class PianoContiController extends Controller
                 'total'        => $pianiDeiConti->total(),
             ],
             'filters' => $request->only(['nome']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

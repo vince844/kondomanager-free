@@ -15,7 +15,7 @@ class EventoIndexRequest extends FormRequest
     {
         return [
             'page'          => ['sometimes', 'integer', 'min:1'],
-            'per_page'      => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'per_page'      => ['sometimes', 'integer'],
             'title'         => ['sometimes', 'string', 'max:255'],
             'category_id'   => ['sometimes', 'array'],
             'category_id.*' => ['integer', 'exists:categorie_evento,id'],

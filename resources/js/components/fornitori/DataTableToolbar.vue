@@ -2,10 +2,11 @@
 
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Fornitore } from '@/types/fornitori';
@@ -19,21 +20,15 @@ defineProps<DataTableToolbarProps>();
 const ragioneSocialeFilter = ref('')
 const { hasPermission, generateRoute } = usePermission();
 
+const { filtra } = useTabellaServer(() => route(generateRoute('fornitori.index')));
+
 // Debounce search input (300ms delay)
 watchDebounced(
   ragioneSocialeFilter,
   (newValue) => {
-    // Reset filters if empty, otherwise filter
-    router.get(
-      route(generateRoute('fornitori.index')),
-      newValue
-        ? { ragione_sociale: newValue, page: 1 }
-        : { page: 1 }, // Clear the filter
-      {
-        preserveState: true,
-        replace: true,
-      }
-    )
+    // Il filtro svuotato va passato come `null`, non omesso: la richiesta riparte da ciò che c'è
+    // nell'URL, e un filtro omesso resterebbe quello di prima.
+    filtra({ ragione_sociale: newValue || null })
   },
   { debounce: 300 }
 )

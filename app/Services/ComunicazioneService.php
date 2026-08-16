@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Traits\OrdinaElenco;
+use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
+
 use App\Enums\Permission;
 use App\Enums\Role;
 use App\Models\Anagrafica;
@@ -14,6 +17,10 @@ use Illuminate\Support\Facades\Log;
 
 class ComunicazioneService
 {
+    // L'ordinamento si applica **qui** e non nel controller: la query la costruisce
+    // questo servizio, e applicarlo altrove significherebbe due punti da tenere allineati.
+    use OrdinaElenco;
+
     /**
      * Get paginated or limited comunicazioni based on user role.
      *
@@ -60,6 +67,11 @@ class ComunicazioneService
         }
 
         return $query
+            ->tap(fn ($q) => $this->ordina($q, $validated, ComunicazioneIndexRequest::colonneOrdinabili(), predefinita: 'subject', versoPredefinito: 'asc'))
+            // ⚠️ Il ripiego non è più la catena: `per_page` arriva **già risolto** dal controller
+            // (`App\Traits\PaginaElenco`), che tiene conto della scelta salvata dall'utente e delle
+            // impostazioni generali. Resta qui come rete per un chiamante futuro che se ne dimenticasse,
+            // perché un elenco che ripiega su dieci righe è meglio di un elenco che va in errore.
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }
@@ -84,6 +96,11 @@ class ComunicazioneService
         }
 
         return $query
+            ->tap(fn ($q) => $this->ordina($q, $validated, ComunicazioneIndexRequest::colonneOrdinabili(), predefinita: 'subject', versoPredefinito: 'asc'))
+            // ⚠️ Il ripiego non è più la catena: `per_page` arriva **già risolto** dal controller
+            // (`App\Traits\PaginaElenco`), che tiene conto della scelta salvata dall'utente e delle
+            // impostazioni generali. Resta qui come rete per un chiamante futuro che se ne dimenticasse,
+            // perché un elenco che ripiega su dieci righe è meglio di un elenco che va in errore.
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission }  from "@/enums/Permission";
 import { trans } from 'laravel-vue-i18n';
 
@@ -22,6 +23,8 @@ const { generateRoute, hasPermission } = usePermission();
 const { table } = defineProps<{
   table: Table<Segnalazione>
 }>();
+
+const { filtra } = useTabellaServer(() => route(generateRoute('segnalazioni.index')));
 
 // Read current filters from column state
 const priorityColumn = table.getColumn('priority');
@@ -55,26 +58,21 @@ const condominioFilter = computed(() => {
 watchDebounced(
   [subjectFilter, priorityFilter, statoFilter, condominioFilter],
   ([subject, priority, stato, condominio_id]) => {
-    const params: Record<string, any> = { page: 1 };
-
-    if (subject) params.subject = subject;
-    if (priority.length > 0) params.priority = priority;
-    if (stato.length > 0) params.stato = stato;
-    if (condominio_id.length > 0) params.condominio_id = condominio_id;
-
-    router.get(
-      route(generateRoute('segnalazioni.index')),
-      params,
+    // Ogni filtro va passato anche quando è vuoto: `null` significa **togli**. La richiesta riparte
+    // da ciò che c'è nell'URL, quindi un filtro omesso resterebbe quello di prima e non si potrebbe
+    // più svuotare. Per i filtri a scelta multipla il vuoto è l'array senza elementi.
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0) {
-            table.reset();
-          }
+        subject: subject || null,
+        priority: priority.length > 0 ? priority : null,
+        stato: stato.length > 0 ? stato : null,
+        condominio_id: condominio_id.length > 0 ? condominio_id : null,
+      },
+      () => {
+        if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0) {
+          table.reset();
         }
-      }
+      },
     );
   },
   { debounce: 300 }

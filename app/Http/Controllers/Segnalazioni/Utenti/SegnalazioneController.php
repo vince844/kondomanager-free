@@ -14,6 +14,7 @@ use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
+use App\Traits\PaginaElenco;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
@@ -24,7 +25,7 @@ use Illuminate\Support\Facades\DB;
 
 class SegnalazioneController extends Controller
 {
-    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
+    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData, PaginaElenco;
 
     /**
      * Create a new controller instance.
@@ -54,6 +55,10 @@ class SegnalazioneController extends Controller
         Gate::authorize('view', $segnalazione);  
 
         $validated = $request->validated();
+
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
     
         try {
 

@@ -34,6 +34,10 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
   // ── 2. SOGGETTO (invariato) ────────────────────────────────────────
   {
     accessorKey: 'pagante',
+      /**
+       * ⚠️ **Non ordinabile.** «Soggetto» è una relazione risolta a video riga per riga: senza scegliere la chiave non ha un ordine.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Soggetto' }),
     size: 180,
     cell: ({ row }) => {
@@ -152,6 +156,10 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
   // ── 4. IMPORTO + RISORSA accorpati ────────────────────────────────
   {
     accessorKey: 'importo_totale_raw',
+      /**
+       * ⚠️ **Non ordinabile.** «Importo» è un totale ricomposto dalle righe della scrittura, non un campo.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importo' }),
     size: 150,
     cell: ({ row }) => {

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\StatoPagamentoFornitore;
 use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
@@ -30,6 +32,7 @@ use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,7 +54,23 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PagamentoFornitoreController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use OrdinaElenco;
+
+    /**
+     * Le colonne ordinabili dell'elenco pagamenti a fornitore.
+     *
+     * ⚠️ Fuori «Importi», che monta lordo, ritenuta e netto in una cella, e fuori «Fornitore»,
+     * che a video non è cliccabile: ammetterla sarebbe configurazione morta.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'data_pagamento' => 'data_pagamento',
+            'stato'          => 'stato',
+        ];
+    }
+
+    use HandleFlashMessages, HasCondomini, HasEsercizio, PaginaElenco;
 
     public function __construct(private PagamentoFornitoreService $service) {}
 
@@ -60,6 +79,16 @@ class PagamentoFornitoreController extends Controller
      */
     public function index(Request $request, Condominio $condominio): Response
     {
+        // I due parametri dell'ordinamento si validano qui: questo elenco non ha una
+        // FormRequest, e il nome della colonna finisce dentro `orderBy()`.
+        $ordinamento = $request->validate(self::regoleOrdinamento(array_keys(self::colonneOrdinabili())) + [
+            'per_page' => ['sometimes', 'integer'],
+        ]);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $ordinamento['per_page'] = $this->righePerPagina($request);
+
         $pagamenti = PagamentoFornitore::where('condominio_id', $condominio->id)
             ->with(['fornitore', 'contoCorrente', 'scrittura'])
             ->when($request->search, function ($q, $v) {
@@ -75,7 +104,11 @@ class PagamentoFornitoreController extends Controller
             ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_pagamento', '<=', $v))
             ->orderByDesc('data_pagamento')
             ->orderByDesc('id')
-            ->paginate(20)
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_pagamento', versoPredefinito: 'desc'))
+            // ⚠️ **`per_page` era cablato a 20**: il selettore delle righe cambiava e l'elenco
+            // restava fermo. È la variante più muta dei difetti segnalati sul forum — il
+            // valore non si perde per strada, non viene proprio letto.
+            ->paginate($ordinamento['per_page'])
             ->withQueryString();
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
@@ -99,6 +132,8 @@ class PagamentoFornitoreController extends Controller
         ];
 
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentiList', [
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             'condominio' => $condominio,
             'condomini' => $listaCondomini,
             'esercizio' => $esercizio,

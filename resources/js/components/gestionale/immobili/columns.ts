@@ -119,6 +119,16 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
     },
     {
       accessorKey: 'struttura',
+      /**
+       * ⚠️ **Non ordinabile finché non si decide su cosa.** La cella monta palazzina, scala e
+       * piano in una riga sola: ordinarla vuol dire scegliere quale dei tre faccia da chiave, e
+       * la scelta più difendibile — il nome della palazzina — richiede una join che oggi non c'è.
+       *
+       * L'alternativa era lasciarla cliccabile: ma il server accetta solo le colonne dichiarate
+       * in `ImmobileIndexRequest::COLONNE_ORDINABILI`, quindi il clic sarebbe finito in un errore
+       * di validazione. Un'intestazione che offre ciò che il server rifiuta è una trappola.
+       */
+      enableSorting: false,
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ubicazione' }),
       cell: ({ row }) => {
         const immobile = row.original
@@ -154,6 +164,12 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
     },
     {
       accessorKey: 'dati_tecnici',
+      /**
+       * ⚠️ **Non ordinabile: la cella contiene due misure diverse.** Superficie e numero di vani
+       * non hanno un ordine comune, e sceglierne una al posto dell'amministratore significherebbe
+       * ordinare per un criterio che non ha chiesto.
+       */
+      enableSorting: false,
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Dati tecnici' }),
       cell: ({ row }) => {
         const immobile = row.original
@@ -180,6 +196,20 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
        * solo una vetrina: da lì si arriva dove si modifica.
        */
       accessorKey: 'anagrafiche',
+      /**
+       * ⚠️ **Non ordinabile, e non è una mancanza.** La cella contiene un **elenco** di soggetti,
+       * non un valore: un'unità con «Esposito + Russo» non ha una posizione in un ordinamento
+       * alfabetico finché qualcuno non decide *quale dei due* faccia da chiave.
+       *
+       * Finché quella decisione non è presa, l'intestazione ordinava per **quante** persone ci
+       * sono nella cella — che è ciò che la libreria fa quando il valore è un array e nessuno
+       * dichiara un criterio. Nessuno che clicca lì si aspetta quello: era un reperto aperto
+       * della revisione della beta.52.
+       *
+       * Se un giorno serve, si sceglie la chiave (per esempio «il primo proprietario in ordine
+       * alfabetico») e si ordina sul server. Una decisione presa, non un default ereditato.
+       */
+      enableSorting: false,
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Soggetti' }),
       cell: ({ row }) => {
         const immobile = row.original

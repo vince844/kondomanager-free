@@ -232,6 +232,8 @@ return [
         'user_registration_description' => 'Se ativado, os utilizadores podem registar-se a partir da página inicial.',
         'default_role_title' => 'Função padrão para novos usuários',
         'default_role_description' => 'Escolha qual função atribuir automaticamente aos usuários que se registram pelo frontend.',
+        'default_per_page_title' => 'Linhas por página nas listas',
+        'default_per_page_description' => 'Quantas linhas as tabelas mostram a quem ainda não escolheu. A escolha de cada um continua a valer, lista a lista: quem a alterar volta a encontrá-la ao regressar.',
         'force_comment_moderation_title' => 'Forçar moderação de comentários',
         'force_comment_moderation_description' => 'Se ativado, todos os comentários de usuários normais exigirão aprovação de um administrador antes de serem publicados e visíveis.',
 

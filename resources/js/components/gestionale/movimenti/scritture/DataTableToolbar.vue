@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { router, usePage } from '@inertiajs/vue3'
+import { usePage } from '@inertiajs/vue3'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Search, X } from 'lucide-vue-next'
 import type { Table } from '@tanstack/vue-table'
 import { usePermission } from '@/composables/permissions'
+import { useTabellaServer } from '@/composables/useTabellaServer'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { ScritturaRow } from './columns'
@@ -40,20 +41,18 @@ const stato = ref(page.props.filters?.stato || '')
 const dataDa = ref(page.props.filters?.data_da || '')
 const dataA = ref(page.props.filters?.data_a || '')
 
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.esercizi.scritture.index'), { condominio: condominioId.value, esercizio: esercizioId.value }),
+)
+
 const applyFilters = () => {
-  const params: Record<string, string | number> = { page: 1 }
-
-  if (search.value) params.search = search.value
-  if (tipoMovimento.value) params.tipo_movimento = tipoMovimento.value
-  if (stato.value) params.stato = stato.value
-  if (dataDa.value) params.data_da = dataDa.value
-  if (dataA.value) params.data_a = dataA.value
-
-  router.get(
-    route(generateRoute('gestionale.esercizi.scritture.index'), { condominio: condominioId.value, esercizio: esercizioId.value }),
-    params,
-    { preserveState: true, replace: true, preserveScroll: true }
-  )
+  filtra({
+    search: search.value || null,
+    tipo_movimento: tipoMovimento.value || null,
+    stato: stato.value || null,
+    data_da: dataDa.value || null,
+    data_a: dataA.value || null,
+  })
 }
 
 watchDebounced(search, applyFilters, { debounce: 300 })

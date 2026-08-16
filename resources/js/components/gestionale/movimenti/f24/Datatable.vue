@@ -7,11 +7,11 @@
  * intera porta alla scheda, come nel resto del gestionale.
  */
 import { ref } from 'vue';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FlexRender, getCoreRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table';
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/movimenti/f24/DataTableToolbar.vue';
 import { usePermission } from '@/composables/permissions';
@@ -27,8 +27,8 @@ const props = defineProps<{
 }>();
 
 const { generateRoute } = usePermission();
-const sorting = ref<SortingState>([]);
-const isPending = ref(false);
+const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
+  useTabellaServer(() => route(generateRoute('gestionale.f24.index'), { condominio: props.condominio.id }));
 
 const table = useVueTable({
     get data() { return props.data ?? []; },
@@ -39,31 +39,18 @@ const table = useVueTable({
             pageIndex: props.meta.current_page - 1,
             pageSize: props.meta.per_page,
         },
-        get sorting() { return sorting.value; },
+        get sorting() { return ordinamento.value; },
     },
     manualPagination: true,
-    onPaginationChange: (updater) => {
-        if (isPending.value) return;
-        isPending.value = true;
-
-        const nextPage = typeof updater === 'function'
-            ? updater(table.getState().pagination).pageIndex
-            : updater.pageIndex;
-
-        router.get(
-            route(generateRoute('gestionale.f24.index'), { condominio: props.condominio.id }),
-            { page: nextPage + 1, per_page: table.getState().pagination.pageSize },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-                onFinish: () => { isPending.value = false; },
-            },
-        );
+    // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
+    manualSorting: true,
+    onPaginationChange: updater => {
+        const stato = table.getState().pagination
+        const p = typeof updater === 'function' ? updater(stato) : updater
+        suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
     },
-    onSortingChange: (updaterOrValue) => valueUpdater(updaterOrValue, sorting),
+    onSortingChange: suOrdinamento,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
 });
 
 const apriDelega = (id: number) => {

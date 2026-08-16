@@ -87,6 +87,13 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     accessorKey: 'dettagli_rate',
+      /**
+       * ⚠️ **Non ordinabile.** «Emissione» monta numero di rate e stato in una cella: due domande, non una.
+       *
+       * Il server accetta solo le chiavi dichiarate nella richiesta: lasciarla cliccabile
+       * manderebbe l'amministratore in un errore di validazione al primo clic.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Emissione' }),
     cell: ({ row }) => {
       const pianoRate = row.original
@@ -99,6 +106,13 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     accessorKey: 'totale_capitoli',
+      /**
+       * ⚠️ **Non ordinabile.** «Importo totale» è aggregato dai capitoli: ordinarlo richiede una somma in sottoquery, che è una scelta sul costo della query.
+       *
+       * Il server accetta solo le chiavi dichiarate nella richiesta: lasciarla cliccabile
+       * manderebbe l'amministratore in un errore di validazione al primo clic.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importo totale' }),
     cell: ({ row }) => {
       // Usiamo la funzione euro della tua composable

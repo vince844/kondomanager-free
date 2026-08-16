@@ -7,6 +7,203 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.54] - L'Ordine Che Valeva Solo per Dieci
+
+**Due migrazioni: il database viene toccato.** Una crea la tabella `preferenze_tabelle_utente`, che
+conserva quante righe ciascuno vuole vedere su ciascun elenco; l'altra aggiunge l'impostazione
+generale `default_per_page`. Sono entrambe aggiunte: nessuna tabella esistente viene modificata,
+nessun dato viene riscritto, nessun importo cambia.
+
+Con cinquanta unità mostrate dieci alla volta, cliccando «Importo ↓» l'amministratore vedeva il più
+alto **dei primi dieci** presentato come il più alto dell'elenco. È un difetto che non dà errore e
+non lascia traccia: la schermata è coerente con sé stessa e risponde il falso.
+
+### Come è stato trovato
+
+Da un amministratore, sul forum, il 16 agosto 2026, che ci era arrivato da solo:
+
+> se ho 50 record ma la visualizzazione è filtrata per 10 alla volta l'ordinamento si applica
+> soltanto su quei 10
+
+La verifica ha confermato la portata: **ventisei tabelle** con paginazione lato server, **zero** che
+mandassero l'ordinamento al server. Tutte ordinavano le righe che avevano già in mano.
+
+Un secondo amministratore aveva segnalato l'altra metà, senza che le due cose sembrassero
+imparentate: *«nell'anagrafica condomini faccio una ricerca avendo impostato 40 elementi per pagina,
+me ne vengono fuori solo 10»*. Erano lo stesso difetto visto da due lati — le richieste della
+tabella si costruivano una per una, ognuna ricordandosi solo di ciò che le serviva.
+
+### L'ordinamento adesso lo decide il database
+
+Ogni elenco dichiara quali colonne si possono ordinare, e il nome della colonna che arriva dal
+browser deve essere in quella lista prima di finire in una query. Non è una comodità: `orderBy()`
+interpola il nome della colonna, e un valore che arriva dalla richiesta e finisce lì dentro è
+un'iniezione.
+
+Serve anche a un secondo scopo. Molte colonne dell'interfaccia **non sono campi**: «Ubicazione»
+monta palazzina, scala e piano; «Soggetti» contiene un elenco di persone. Ordinare per una cella che
+contiene un elenco significherebbe ordinare per **quante** persone ci sono, che non è quello che
+chiede chi clicca. Quelle intestazioni non sono più cliccabili, e il server non accetta comunque
+quelle chiavi.
+
+Ogni ordinamento porta con sé la chiave primaria come secondo criterio. Non è un dettaglio estetico:
+ordinando per un campo con valori ripetuti — uno stato, una tipologia — il database non garantisce
+l'ordine fra le righe pari merito, e può restituirle in ordine diverso a ogni pagina. La stessa riga
+comparirebbe a pagina 1 e a pagina 2, e un'altra da nessuna parte.
+
+### Le tabelle si ricordano di chi le usa
+
+Le righe per pagina scelte su un elenco si ritrovano al rientro, per ciascun utente e per ciascun
+elenco. Chi imposta 50 sulle fatture e 10 sui documenti trova 50 sulle fatture e 10 sui documenti,
+e la scelta non finisce addosso a nessun altro.
+
+Nelle impostazioni generali c'è ora **«Righe per pagina negli elenchi»**: il valore di partenza per
+chi non ha ancora scelto. Si ferma a 50 e non arriva a 100, perché il portale del condòmino non ha
+un selettore delle righe e un valore globale così alto gli darebbe cento schede da scorrere senza
+un comando per ridurle.
+
+**L'ordinamento invece non si memorizza, ed è una scelta.** Il terzo clic su un'intestazione è
+quello che riporta l'elenco all'ordine naturale, e arriva al server come una richiesta che di
+ordinamento non parla — indistinguibile da «non ne ho parlato». Con un ordinamento in memoria quel
+clic smetterebbe di funzionare su tutte le tabelle, senza dare errore. Ricordarlo costerebbe la
+possibilità di toglierlo.
+
+**Nemmeno i filtri si memorizzano**, per una ragione più semplice: un filtro ricordato fa sparire
+delle righe senza che nessuno abbia chiesto niente, e chi rientra su un elenco vede un
+sottoinsieme credendolo il tutto.
+
+### Il numero di righe aveva sei regole diverse e nessun tetto
+
+Lo stesso parametro era validato in sei modi: senza limite in quindici richieste, `max:100` in tre,
+`max:200` su quattro elenchi dei movimenti, `between:10,100` sui condomini, `between:1,100` sugli
+utenti, e nelle deleghe F24 non era validato affatto. Un `?per_page=1000000` passava e finiva dritto
+in un `LIMIT`: non serviva malizia, bastava un dito su uno zero.
+
+Ora la lista dei valori ammessi è una sola — 10, 15, 20, 30, 40, 50, 100 — ed è anche quella che il
+selettore mostra. Un valore fuori lista non è un errore: viene ignorato e si passa al valore
+successivo della catena. Rifiutarlo avrebbe trasformato un segnalibro `?per_page=200`, legittimo
+fino a ieri sugli elenchi dei movimenti, in un errore che rimanda indietro senza spiegare niente.
+
+Il selettore, per parte sua, offriva 15, 20, 30, 40 e 50 mentre il valore predefinito era 10: chi si
+spostava a 50 non trovava più l'opzione per tornare indietro, perché nel menu non c'era mai stata.
+
+Il libro giornale mantiene il suo valore di partenza a venti righe: le scritture sono dense e una
+giornata di lavoro ne produce facilmente più di dieci.
+
+### Quello che la revisione ha trovato prima del rilascio
+
+Sono emersi otto difetti, tutti corretti. Il più istruttivo è che **cinque erano lo stesso difetto
+della segnalazione originale**, in forme che nessuno avrebbe cercato: un'intestazione che si accende
+su un ordinamento che non è stato applicato.
+
+**Sei elenchi ordinavano per data, qualunque colonna si chiedesse.** Comunicazioni, segnalazioni e
+documenti — ciascuno in versione amministratore e portale — passano da un servizio condiviso che
+applicava `ORDER BY created_at DESC` **prima** dell'ordinamento chiesto. Ne usciva `created_at DESC,
+subject ASC`: con date distinte, cioè sempre, il primo criterio decideva da solo. La correzione non
+sta nei sei punti ma nel trait, che ora azzera qualunque ordinamento trovi: chi chiede di ordinare
+sta dicendo «l'ordine lo decidi tu», e un ordine precedente lo rende una risposta a metà.
+
+**L'agenda non poteva ordinare, e fingeva di poterlo fare.** L'elenco eventi non nasce da una query
+sola — le occorrenze delle ricorrenze si generano in PHP e si impaginano dopo — quindi non c'è un
+`ORDER BY` a cui appoggiarsi. Quattro intestazioni erano cliccabili a vuoto. Sono state rese non
+cliccabili: ordinare davvero si può, ma sulla collezione e prima di impaginarla, ed è una funzione
+da progettare invece che una riga da aggiungere.
+
+**Le deleghe F24 dichiaravano quattro colonne ordinabili e non ordinavano.** Ora lo fanno, e senza
+perdere l'ordine di lavoro — scadenze aperte per prime, la più vicina in cima — che resta finché
+nessuno chiede altro.
+
+**Piani rate e piani dei conti non paginavano affatto.** Le due tabelle chiamavano una rotta che non
+esiste, e la libreria degli indirizzi lancia sui nomi che non conosce: ogni cambio di pagina moriva
+in un errore JavaScript. È un difetto **precedente a questa versione** — la riga vecchia aveva lo
+stesso nome sbagliato — emerso solo ora perché è la prima volta che qualcuno verifica che quelle due
+tabelle paginino davvero.
+
+**L'elenco utenti sarebbe andato in errore ordinando per anagrafica**, il giorno in cui un utente ne
+avesse avute due: la sottoquery ne restituiva due righe e il database rifiuta. Oggi non capita a
+nessuno, ma è uno stato che il programma non impedisce.
+
+**La memoria si riempiva da sola.** Poiché il browser rimanda le righe per pagina a ogni azione,
+anche un semplice «pagina 2» veniva registrato come una scelta: da lì in poi l'impostazione generale
+non avrebbe più spostato nulla per chi avesse cambiato pagina almeno una volta. Ora si registra solo
+ciò che è diverso da quello che sarebbe uscito comunque.
+
+**L'elenco delle gestioni non si apriva**, per un trait richiamato senza essere innestato nella
+classe — due cose diverse che si scrivono uguali, che il controllo di sintassi non distingue.
+**Su condomini e utenti le frecce non facevano niente**, perché nelle regole di validazione
+mancavano le due chiavi dell'ordinamento. Entrambi hanno ora un controllo che li riprende da solo,
+e che cerca i chiamanti invece di una lista scritta a mano.
+
+Una nota sul metodo, perché è la lezione che resta: **il primo test scritto per il difetto dei sei
+elenchi passava anche con il difetto in piedi.** Le date di prova venivano assegnate con
+`create()`, che le ignora perché non sono modificabili in massa: le tre righe nascevano nello stesso
+istante, il criterio sbagliato non discriminava e il test si dichiarava verde. Ogni presidio nuovo
+di questa versione è stato verificato rimettendo il difetto e controllando che diventasse rosso.
+
+### Aggiornare e installare su un server proprio
+
+Due segnalazioni dal forum nella stessa settimana — una macchina Ubuntu con NGINX, un container LXC
+con Debian — hanno messo in luce la stessa cosa, e non riguardava il gestionale ma il modo in cui lo
+si installa.
+
+Tutta la procedura era stata pensata sugli **hosting condivisi**, dove la cartella pubblica del
+server e la radice del progetto coincidono grazie alle regole che l'installer stesso scrive. Su un
+server configurato correttamente, con il web che punta a `public/`, il file di aggiornamento era
+semplicemente irraggiungibile dal browser: per aggiornare bisognava spostare la radice del server
+avanti e indietro ogni volta. Non è solo scomodo — per quei minuti **l'intera cartella del progetto,
+`.env` compreso, resta servita al web**, e su NGINX non esiste l'`.htaccess` a proteggerla.
+
+Il file di setup ora **riconosce da solo dove si trova**: funziona sia caricato nella radice del
+progetto — come ha sempre fatto, e per chi è su hosting condiviso non cambia nulla — sia caricato
+dentro `public/`. La radice viene dedotta con una scala di regole in ordine, e nell'unico caso
+davvero ambiguo — un'installazione nuova dentro una cartella vuota chiamata `public` — **chiede quale
+delle due cartelle usare mostrando i percorsi per esteso, invece di indovinare**. Si rifiuta inoltre
+di partire se prenderebbe il posto del file principale di Laravel: verrebbe sovrascritto durante
+l'aggiornamento e cancellato subito dopo, lasciando il sito irraggiungibile.
+
+Vale anche per la **prima installazione**, non solo per gli aggiornamenti: era lo stesso ostacolo, e
+finora si superava solo sapendo già cosa fare.
+
+### Il pulsante «aggiorna ora», e da quando la correzione vale
+
+Aveva lo stesso limite ed è stato corretto: il motore di aggiornamento viene ora collocato dentro la
+cartella pubblica e **riceve da Laravel il percorso del progetto**, invece di dedurlo dalla propria
+posizione.
+
+**Attenzione a quando la correzione entra in funzione, perché non è quello che sembra.** Durante un
+aggiornamento gira sempre il codice della versione che si sta *lasciando*, non di quella che si sta
+prendendo. Chi arriverà alla 1.10 partendo da una 1.9.x userà quindi ancora il vecchio meccanismo:
+su un server con il web su `public/` dovrà aggiornare con il file di setup. **Dalla 1.10 in poi il
+pulsante funziona ovunque.**
+
+Corretti nello stesso punto due difetti minori dello stesso meccanismo: la pagina degli aggiornamenti
+non resta più bloccata su «aggiornamento in corso» quando un avvio non va a buon fine — il file di
+scambio ha una scadenza dichiarata e ora viene rispettata — e le copie del motore rimaste indietro
+vengono finalmente riconosciute e rimosse, perché la pulizia cercava una firma che quel file non ha
+mai contenuto.
+
+### Gli assets della versione precedente non si accumulano più
+
+I file compilati dell'interfaccia hanno l'impronta del contenuto nel nome, quindi quelli vecchi non
+venivano sovrascritti dai nuovi e nessuno li toglieva: un aggiornamento reale fra due beta ne ha
+lasciati indietro **trecentosettantacinque**, e succedeva a ogni aggiornamento.
+
+Ora vengono rimossi, ma soltanto **dopo il controllo di integrità del sistema**: mai prima, perché un
+aggiornamento interrotto a metà lascerebbe il sito senza alcun file di interfaccia — una pagina
+bianca al posto di una versione vecchia ma funzionante.
+
+### Quello che questa versione non fa
+
+Il portale del condòmino **non ha tabelle**: comunicazioni, eventi, segnalazioni e documenti si
+mostrano a schede, senza intestazioni ordinabili e senza selettore delle righe. Là il difetto non
+esisteva e non c'era niente da correggere.
+
+Resta fuori il riporto della pagina all'ultima disponibile: un segnalibro `?page=7` su un elenco che
+ne ha tre dà ancora una tabella vuota. È un difetto reale ma precedente, non peggiorato da questa
+versione, e il libro giornale è l'unico elenco che già lo gestisce.
+
+---
+
 ## [1.10.0-beta.53] - Il Legame Che Non Sposta Niente
 
 **Due migrazioni: il database viene toccato.** Una aggiunge due colonne a `immobili` e rimuove una

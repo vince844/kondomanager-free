@@ -1,13 +1,34 @@
 <?php
 /**
- * KondoManager Auto-Update Engine - v13.2 Bridge (Proxy Aware)
+ * KondoManager Auto-Update Engine - v14.0 Bridge (Root Aware)
  * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
  * Funziona SOLO in modalità aggiornamento automatico via Laravel bridge
  * Posizione: resources/installer/index.php
- * Attivazione: Copiato in root da UpdateService quando necessario
- * @version 13.2.0
+ * Attivazione: copiato in public/km-update.php da UpdateService quando necessario
+ * @version 14.0.0
  * @author KondoManager Team
- * @date 11 Febbraio 2026
+ * @date 16 Agosto 2026
+ *
+ * NOVITÀ v14.0 (rispetto alla v13.2 "Proxy Aware")
+ * 1. La radice del progetto non è più __DIR__ ma arriva da paths.base dentro
+ *    update_bridge.json, che Laravel scrive conoscendola con certezza. Fino alla
+ *    v13.2 il bridge veniva copiato in base_path('index.php') e ogni percorso
+ *    pendeva dalla cartella in cui si trovava: funziona solo dove la cartella
+ *    pubblica coincide con la radice del progetto — gli hosting condivisi, grazie
+ *    all'.htaccess. Su ogni installazione con il document root su public/ (VPS,
+ *    container, vhost Apache, l'immagine Docker standard) il POST di avvio
+ *    finiva sul front controller di Laravel e l'aggiornamento non partiva.
+ *    Ora il file vive in public/km-update.php e sa dove sta il progetto.
+ * 2. Il JSON viene cercato accanto al file e poi un livello sopra, perché è
+ *    scritto nella radice e deve restare fuori dal web (contiene il token).
+ * 3. Eliminati i percorsi relativi: backup, ripristino e patch del .env usavano
+ *    la cartella di lavoro del processo, che ora non è più la radice — con il
+ *    file in public/ avrebbero lavorato in silenzio sulla cartella sbagliata.
+ * 4. Rimozione degli assets compilati della versione precedente da public/build,
+ *    dopo l'health check (vedi il commento alla fase 6-bis per il perché
+ *    dell'ordine).
+ * 5. Autodistruzione con ripiego: se la cancellazione non riesce, il file si
+ *    riscrive come 410 Gone con una firma che la finalizzazione riconosce.
  */
 
 // ============================================================================
@@ -99,11 +120,28 @@ CSS;
 // ============================================================================
 
 function logTech(string $msg) {
-    @file_put_contents(__DIR__ . '/install.log', '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL, FILE_APPEND);
+    // Finché la radice non è nota si scrive accanto al file: serve a registrare
+    // anche i guasti che avvengono PRIMA di sapere dove sia il progetto.
+    $dir = defined('KM_ROOT') ? KM_ROOT : __DIR__;
+    @file_put_contents($dir . '/install.log', '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL, FILE_APPEND);
 }
 
-// CRITICAL: This file REQUIRES a bridge to operate
-$bridgeFile = __DIR__ . '/update_bridge.json';
+// CRITICAL: This file REQUIRES a bridge to operate.
+// Il file JSON lo scrive Laravel nella radice del progetto (fuori dal web), e
+// questo file dalla 1.10 vive dentro public/: lo si cerca quindi prima accanto
+// a sé (installazioni dove le due cartelle coincidono, cioè gli hosting
+// condivisi) e poi un livello sopra. Nessun'altra posizione: due tentativi
+// espliciti, non una ricerca.
+$bridgeFile = null;
+
+foreach ([__DIR__ . '/update_bridge.json', dirname(__DIR__) . '/update_bridge.json'] as $candidato) {
+    if (file_exists($candidato)) {
+        $bridgeFile = $candidato;
+        break;
+    }
+}
+
+$bridgeFile = $bridgeFile ?? __DIR__ . '/update_bridge.json';
 
 if (!file_exists($bridgeFile)) {
     logTech("FATAL: Bridge file missing - cannot proceed");
@@ -161,6 +199,24 @@ if (empty($bridge['package']['version'])) {
 // 3. CONFIGURATION (From Bridge)
 // ============================================================================
 
+// --- RADICE DEL PROGETTO ---------------------------------------------------
+// Non si deduce e non si indovina: la scrive Laravel dentro il JSON, che è
+// l'unico a saperla con certezza (base_path()). Le altre due possibilità sono
+// ripieghi in ordine di attendibilità:
+//   1. paths.base dal JSON, se punta ancora a un'installazione vera
+//   2. la cartella che contiene il JSON — che Laravel scrive nella radice
+// Il controllo su artisan serve al caso in cui l'installazione sia stata
+// spostata dopo che il bridge era già stato preparato: meglio la posizione
+// reale di un percorso assoluto ormai vecchio.
+$rootFromBridge = $bridge['paths']['base'] ?? null;
+$rootFromJson   = dirname($bridgeFile);
+
+if (is_string($rootFromBridge) && is_file(rtrim($rootFromBridge, '/') . '/artisan')) {
+    define('KM_ROOT', rtrim($rootFromBridge, '/'));
+} else {
+    define('KM_ROOT', $rootFromJson);
+}
+
 define('PACKAGE_URL',     $bridge['package']['url']);
 define('PACKAGE_HASH',    $bridge['package']['hash']);
 define('APP_VERSION',     $bridge['package']['version']);
@@ -178,14 +234,15 @@ $excludeItems = $bridge['package']['exclude'] ?? [
     '_km_safe_zone'
 ];
 
-define('LOG_FILE', __DIR__ . '/install.log');
-define('ZIP_FILE', __DIR__ . '/update_temp.zip');
-define('TEMP_DIR', __DIR__ . '/_update_temp_' . time());
-define('BACKUP_DIR', __DIR__ . '/_km_safe_zone');
+define('LOG_FILE', KM_ROOT . '/install.log');
+define('ZIP_FILE', KM_ROOT . '/update_temp.zip');
+define('TEMP_DIR', KM_ROOT . '/_update_temp_' . time());
+define('BACKUP_DIR', KM_ROOT . '/_km_safe_zone');
 
 $bridgeToken = $bridge['security']['token'] ?? null;
 
-logTech("=== AUTO-UPDATE ENGINE v13.2 ===");
+logTech("=== AUTO-UPDATE ENGINE v14.0 ===");
+logTech("Project root: " . KM_ROOT);
 logTech("Target version: " . APP_VERSION);
 logTech("Package URL: " . PACKAGE_URL);
 logTech("Package hash: " . substr(PACKAGE_HASH, 0, 16) . '...');
@@ -311,7 +368,7 @@ function performRollback() {
     
     foreach ($items as $item) {
         $rel = substr($item->getPathname(), strlen(BACKUP_DIR) + 1);
-        $target = __DIR__ . '/' . $rel;
+        $target = KM_ROOT . '/' . $rel;
         
         if ($item->isDir()) {
             if (!is_dir($target)) @mkdir($target, 0755, true);
@@ -535,9 +592,13 @@ try {
     
     @mkdir(BACKUP_DIR, 0755, true);
     
-    if (file_exists('.env')) {
-        @copy('.env', BACKUP_DIR . '/.env');
-        logTech("Backed up: .env (" . filesize('.env') . " bytes)");
+    // Percorsi espliciti, non relativi: la cartella di lavoro del processo e'
+    // quella di QUESTO file, che dalla 1.10 sta dentro public/ e quindi non e'
+    // la radice. Con i percorsi relativi il backup del .env non veniva fatto e
+    // il ripristino piu' sotto non trovava nulla, in silenzio.
+    if (file_exists(KM_ROOT . '/.env')) {
+        @copy(KM_ROOT . '/.env', BACKUP_DIR . '/.env');
+        logTech("Backed up: .env (" . filesize(KM_ROOT . '/.env') . " bytes)");
     }
     
     $backupCreated = true;
@@ -602,7 +663,7 @@ try {
             continue;
         }
         
-        $targetPath = __DIR__ . '/' . $relativePath;
+        $targetPath = KM_ROOT . '/' . $relativePath;
         
         if ($item->isDir()) {
             if (!is_dir($targetPath)) @mkdir($targetPath, 0755, true);
@@ -643,7 +704,7 @@ try {
     $missing = [];
     
     foreach ($criticalFiles as $file) {
-        if (!file_exists(__DIR__ . '/' . $file)) {
+        if (!file_exists(KM_ROOT . '/' . $file)) {
             $missing[] = $file;
         }
     }
@@ -653,6 +714,55 @@ try {
     }
     
     logTech("Health check passed");
+
+    // ============================================================================
+    // PHASE 6-bis: ASSETS DELLA VERSIONE PRECEDENTE
+    // ============================================================================
+    // Vite mette l'hash del contenuto nel nome dei file compilati: quelli della
+    // versione precedente non vengono sovrascritti da quelli nuovi e nessuno li
+    // toglie. Il sito serve comunque quelli giusti — il manifest è aggiornato —
+    // ma la cartella cresce a ogni aggiornamento (su un caso reale beta.46 →
+    // beta.50 erano 375 file morti).
+    //
+    // Gira QUI, dopo l'health check, e non prima del deploy: svuotare
+    // public/build in anticipo significherebbe che un aggiornamento interrotto a
+    // metà lascia il sito senza alcun asset, cioè una pagina bianca al posto di
+    // una versione vecchia ma funzionante. Le tre guardie (il pacchetto deve
+    // avere la sua public/build col manifest, e il manifest dev'essere arrivato)
+    // fanno sì che nel dubbio non si cancelli niente.
+    $buildSrc = $sourceDir . '/public/build';
+    $buildDst = KM_ROOT . '/public/build';
+
+    if (is_dir($buildSrc) && is_file($buildSrc . '/manifest.json') && is_file($buildDst . '/manifest.json')) {
+        $attesi = [];
+        foreach (new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($buildSrc, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        ) as $f) {
+            if ($f->isFile()) $attesi[substr($f->getPathname(), strlen($buildSrc) + 1)] = true;
+        }
+
+        // Prima si elenca, poi si cancella: modificare l'albero mentre lo si
+        // percorre è il modo classico per saltare qualche voce.
+        $daRimuovere = [];
+        $cartelle = [];
+        foreach (new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($buildDst, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        ) as $f) {
+            if ($f->isDir()) { $cartelle[] = $f->getPathname(); continue; }
+            $rel = substr($f->getPathname(), strlen($buildDst) + 1);
+            if (!isset($attesi[$rel])) $daRimuovere[] = $f->getPathname();
+        }
+
+        $rimossi = 0;
+        foreach ($daRimuovere as $p) if (@unlink($p)) $rimossi++;
+        foreach ($cartelle as $d) @rmdir($d); // fallisce da sé se non è vuota
+
+        logTech("Stale assets removed from public/build: {$rimossi}");
+    } else {
+        logTech("Stale asset cleanup skipped: build folder or manifest missing");
+    }
 
     // ============================================================================
     // PHASE 7: CLEANUP
@@ -665,10 +775,10 @@ try {
 
     // PULIZIA FILE OBSOLETI (Vecchie versioni)
     $obsoletePaths = [
-        __DIR__ . '/tests',
-        __DIR__ . '/docs',
-        __DIR__ . '/docker',
-        __DIR__ . '/index.php.installed',
+        KM_ROOT . '/tests',
+        KM_ROOT . '/docs',
+        KM_ROOT . '/docker',
+        KM_ROOT . '/index.php.installed',
     ];
 
     foreach ($obsoletePaths as $path) {
@@ -682,7 +792,7 @@ try {
     }
     
     // Laravel cache clearing
-    $cacheDir = __DIR__ . '/bootstrap/cache';
+    $cacheDir = KM_ROOT . '/bootstrap/cache';
     $cleared = 0;
     
     foreach (['config.php', 'routes.php', 'packages.php', 'services.php'] as $file) {
@@ -695,7 +805,7 @@ try {
     logTech("Cleared {$cleared} Laravel cache files");
     
     // View cache
-    $viewDir = __DIR__ . '/storage/framework/views';
+    $viewDir = KM_ROOT . '/storage/framework/views';
     if (is_dir($viewDir)) {
         $viewsCleared = 0;
         foreach (glob("{$viewDir}/*.php") as $view) {
@@ -706,7 +816,7 @@ try {
     
     // Restore .env
     if (file_exists(BACKUP_DIR . '/.env')) {
-        @copy(BACKUP_DIR . '/.env', '.env');
+        @copy(BACKUP_DIR . '/.env', KM_ROOT . '/.env');
         logTech("Restored: .env");
 
         // ------------------------------------------------------------------
@@ -715,14 +825,14 @@ try {
         // Poiché stiamo aggiornando da v1.8, il .env non ha TRUSTED_PROXIES.
         // Dobbiamo rilevarlo e aggiungerlo se necessario.
         
-        $envContent = file_get_contents('.env');
+        $envContent = file_get_contents(KM_ROOT . '/.env');
         
         // Verifica se la variabile manca (evita duplicati)
         if (strpos($envContent, 'TRUSTED_PROXIES') === false) {
             
             // 1. Rilevamento Nome (Altervista, ecc.)
             $host = $_SERVER['HTTP_HOST'] ?? '';
-            $isRestricted = (@disk_free_space(__DIR__) === false) || 
+            $isRestricted = (@disk_free_space(KM_ROOT) === false) || 
                             (strpos($host, 'altervista') !== false) ||
                             (strpos($host, '.av') !== false) ||
                             (strpos($host, 'infinityfree') !== false) ||
@@ -746,7 +856,7 @@ try {
                     $patch .= "DB_CHARSET=utf8\nDB_COLLATION=utf8_unicode_ci\nDB_ENGINE=\"InnoDB ROW_FORMAT=DYNAMIC\"\n";
                 }
 
-                file_put_contents('.env', $patch, FILE_APPEND);
+                file_put_contents(KM_ROOT . '/.env', $patch, FILE_APPEND);
             } else {
                 logTech("Upgrade Patch: Standard environment - No changes needed to .env");
             }
@@ -768,8 +878,18 @@ try {
     // ============================================================================
     
     register_shutdown_function(function() {
-        @unlink(__FILE__);
-        logTech("Installer self-destructed");
+        if (@unlink(__FILE__)) {
+            logTech("Installer self-destructed");
+            return;
+        }
+
+        // Se i permessi non consentono la cancellazione, il file resta
+        // raggiungibile dal web: senza più il JSON mostrerebbe per sempre la
+        // schermata "bridge mancante". Lo si neutralizza sul posto, e la firma
+        // qui sotto è quella che SystemUpgradeController::cleanupInstallerJunk()
+        // cerca per rimuoverlo alla finalizzazione.
+        @file_put_contents(__FILE__, "<?php // KondoManager Auto-Update Engine\nheader('HTTP/1.1 410 Gone');\n");
+        logTech("Installer self-destruct failed: neutralised in place (410 Gone)");
     });
 
     sendProgress(100, t('step_done'), 'success');

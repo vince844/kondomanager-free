@@ -69,6 +69,13 @@ export function getColumns(condominio: Building): ColumnDef<Tabella>[] {
     },
     {
       id: 'edificio',
+      /**
+       * ⚠️ **Non ordinabile: la cella monta due relazioni.** «Palazzina / Scala» non ha un ordine
+       * finché non si decide se conta la palazzina o la scala — e sono due domande diverse.
+       * Il server accetta solo le chiavi di `TabellaIndexRequest::COLONNE_ORDINABILI`, quindi
+       * lasciarla cliccabile manderebbe in un errore di validazione al primo clic.
+       */
+      enableSorting: false,
       accessorFn: row => `${row.palazzina?.name ?? ''} ${row.scala?.name ?? ''}`,
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Palazzina / Scala' }),
       cell: ({ row }) => {

@@ -39,6 +39,14 @@ class ImpostazioniGeneraliController extends Controller
             'condomini'                => Condominio::select('id','nome')->get(),
             'default_user_role'        => (string) $settings->default_user_role,
             'force_comment_moderation' => (bool) $settings->force_comment_moderation,
+            'default_per_page'         => (int) $settings->default_per_page,
+            // Il 100 resta fuori: il portale condòmino non ha un selettore per le righe, quindi un
+            // valore globale così alto gli darebbe cento schede da scorrere e nessun comando per
+            // ridurle. Chi lavora sul gestionale può comunque sceglierlo tabella per tabella.
+            'per_page_disponibili'     => array_values(array_filter(
+                config('pagination.consentite'),
+                fn (int $v) => $v <= 50,
+            )),
             'roles'                    => $roles,
         ]);
     }
@@ -62,6 +70,7 @@ class ImpostazioniGeneraliController extends Controller
             $settings->app_name = $validated['app_name'];
             $settings->default_user_role = $validated['default_user_role'];
             $settings->force_comment_moderation = $validated['force_comment_moderation'];
+            $settings->default_per_page = $validated['default_per_page'];
             $settings->save();
 
             $userPreferences = $user->userPreferences;

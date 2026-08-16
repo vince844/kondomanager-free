@@ -2,10 +2,11 @@
 
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link, usePage} from '@inertiajs/vue3';
+import { Link, usePage} from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus, List } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission } from '@/enums/Permission';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
@@ -23,26 +24,20 @@ const page = usePage<{ fornitore: Fornitore }>()
 
 const nameFilter = ref('')
 
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('fornitori.documenti.index'), { fornitore: page.props.fornitore.id }),
+)
+
 watchDebounced(
   [nameFilter],
   ([name]) => {
-    const params: Record<string, any> = { page: 1 }
-
-    if (name) params.name = name
-
-    router.get(
-      route(generateRoute('fornitori.documenti.index'), { fornitore: page.props.fornitore.id }),
-      params,
-      {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!name) {
-            table.reset()
-          }
+    filtra(
+      { name: name || null },
+      () => {
+        if (!name) {
+          table.reset()
         }
-      }
+      },
     )
   },
   { debounce: 300 }

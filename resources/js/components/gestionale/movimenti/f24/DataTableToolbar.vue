@@ -13,7 +13,8 @@
  */
 import { computed, ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage } from '@inertiajs/vue3';
+import { usePage } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -54,24 +55,18 @@ const filtriAttivi = computed(() =>
     !!ricerca.value || stato.value !== 'all' || plafond.value !== 'all'
 );
 
-const parametri = computed(() => {
-    const p: Record<string, any> = { page: 1 };
-
-    if (ricerca.value) p.search = ricerca.value;
-    if (stato.value !== 'all') p.stato = stato.value;
-    if (plafond.value !== 'all') p.plafond = plafond.value;
-
-    return p;
-});
+const { filtra } = useTabellaServer(() =>
+    route(generateRoute('gestionale.f24.index'), { condominio: condominioId.value }),
+);
 
 watchDebounced(
     [ricerca, stato, plafond],
     () => {
-        router.get(
-            route(generateRoute('gestionale.f24.index'), { condominio: condominioId.value }),
-            parametri.value,
-            { preserveState: true, replace: true, preserveScroll: true },
-        );
+        filtra({
+            search: ricerca.value || null,
+            stato: stato.value === 'all' ? null : stato.value,
+            plafond: plafond.value === 'all' ? null : plafond.value,
+        });
     },
     { debounce: 350 },
 );

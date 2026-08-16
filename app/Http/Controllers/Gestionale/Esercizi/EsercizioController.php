@@ -12,6 +12,8 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -21,7 +23,7 @@ use Illuminate\Support\Facades\Log;
 
 class EsercizioController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a paginated list of exercises for a specific condominium.
@@ -54,12 +56,17 @@ class EsercizioController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         // Get a list of all the esercizi create to show in the datatable
         $esercizi = $condominio->esercizi()
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, EsercizioIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
 
         // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -76,6 +83,8 @@ class EsercizioController extends Controller
                 'total'        => $esercizi->total(),
             ],
             'filters' => $request->only(['nome']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

@@ -12,6 +12,8 @@ use App\Models\Condominio;
 use App\Models\Documento;
 use App\Models\Immobile;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasEsercizio;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -22,7 +24,7 @@ use Illuminate\Support\Facades\Storage;
 
 class ImmobileDocumentoController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio;
+    use HandleFlashMessages, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a paginated listing of documents for the specified immobile.
@@ -54,12 +56,17 @@ class ImmobileDocumentoController extends Controller
     {
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $documenti = $immobile->documenti()
             ->with(['condomini', 'createdBy.anagrafica'])
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, ImmobileDocumentoIndexRequest::colonneOrdinabili(), predefinita: 'created_at', versoPredefinito: 'desc'))
+            ->paginate($validated['per_page'])
             ->appends($request->all());
         
         // Get the current active and open esercizio this is important to navigate gestioni menu
@@ -77,6 +84,8 @@ class ImmobileDocumentoController extends Controller
                 'total'        => $documenti->total(),
             ],
             'filters' => $request->only(['name']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

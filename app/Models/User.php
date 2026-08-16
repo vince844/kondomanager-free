@@ -106,4 +106,17 @@ class User extends Authenticatable implements MustVerifyEmail
         ]);
     }
 
+    /**
+     * Le righe-per-pagina scelte elenco per elenco.
+     *
+     * ⚠️ Deliberatamente **non** caricata di default e non esposta da `UserResource`: sono dati che
+     * servono al controller nel momento in cui pagina, e a nessun altro. `auth.user` viaggia in
+     * ogni risposta Inertia, e appenderci una lista che cresce a ogni elenco visitato si
+     * pagherebbe su tutte le pagine del programma, comprese quelle senza tabelle.
+     */
+    public function preferenzeTabelle()
+    {
+        return $this->hasMany(PreferenzaTabellaUtente::class);
+    }
+
 }

@@ -14,6 +14,8 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,7 +25,7 @@ use Illuminate\Support\Facades\DB;
 
 class GestioneController extends Controller
 {
-     use HandleFlashMessages, HasCondomini;
+     use HandleFlashMessages, HasCondomini, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a listing of the management entities for a specific condominium and fiscal year.
@@ -53,6 +55,10 @@ class GestioneController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
@@ -64,7 +70,8 @@ class GestioneController extends Controller
             ->with(['esercizi' => function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
             }])
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, GestioneIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
 
         return Inertia::render('gestionale/gestioni/GestioniList', [
             'condominio' => $condominio,
@@ -79,6 +86,8 @@ class GestioneController extends Controller
                 'total'        => $gestioni->total(),
             ],
             'filters' => $request->only(['nome']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

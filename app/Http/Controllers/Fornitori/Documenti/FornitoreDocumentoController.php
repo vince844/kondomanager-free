@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Fornitori\Documenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\Documento\CreateFornitoreDocumentoRequest;
 use App\Http\Requests\Fornitore\Documento\FornitoreDocumentoIndexRequest;
@@ -11,6 +13,7 @@ use App\Http\Resources\Fornitore\FornitoreResource;
 use App\Models\Documento;
 use App\Models\Fornitore;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -20,7 +23,9 @@ use Illuminate\Support\Facades\Storage;
 
 class FornitoreDocumentoController extends Controller
 {
+    use OrdinaElenco;
     use HandleFlashMessages;
+    use PaginaElenco;
 
     /**
      * Display a listing of the resource.
@@ -29,12 +34,17 @@ class FornitoreDocumentoController extends Controller
     {
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $documenti = $fornitore->documenti()
             ->with(['condomini', 'createdBy.anagrafica'])
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, FornitoreDocumentoIndexRequest::colonneOrdinabili(), predefinita: 'created_at', versoPredefinito: 'desc'))
+            ->paginate($validated['per_page'])
             ->appends($request->all());
 
         return Inertia::render('fornitori/documenti/DocumentiList', [
@@ -47,6 +57,8 @@ class FornitoreDocumentoController extends Controller
                 'total'        => $documenti->total(),
             ],
             'filters' => $request->only(['name']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

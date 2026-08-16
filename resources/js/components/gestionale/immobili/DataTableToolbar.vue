@@ -1,8 +1,9 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage, Link } from '@inertiajs/vue3';
+import { usePage, Link } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus } from 'lucide-vue-next';
@@ -40,29 +41,30 @@ const nameFilter = ref('')
 const page2 = usePage<{ filters?: { pertinenze?: string } }>()
 const pertinenzeFilter = ref(page2.props.filters?.pertinenze ?? 'tutte')
 
-// Computed params for router
-const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
-  if (nameFilter.value) params.nome = nameFilter.value
-  if (pertinenzeFilter.value !== 'tutte') params.pertinenze = pertinenzeFilter.value
-  return params
-})
+/**
+ * La richiesta la costruisce il composable, non questa barra.
+ *
+ * ⚠️ **Prima la costruiva da zero**, con i soli filtri valorizzati: `{ page: 1, nome, pertinenze }`.
+ * Ne uscivano fuori `per_page` e `sort`, che non erano «vuoti» — erano solo di qualcun altro. Chi
+ * aveva impostato 40 righe e cercava qualcosa tornava a dieci, e l'ordinamento che aveva scelto
+ * spariva. È la segnalazione arrivata dal forum, e la ragione per cui qui non si nomina più
+ * `router.get`: chi cambia una cosa cambia una cosa sola.
+ *
+ * I filtri svuotati vanno passati come `null` — «togli» — e non omessi: si riparte da ciò che c'è.
+ */
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.immobili.index'), { condominio: page.props.condominio.id }),
+)
 
-// Watch filters with debounce
 watchDebounced(
   [nameFilter, pertinenzeFilter],
   () => {
-    router.get(
-      route(generateRoute('gestionale.immobili.index'), { condominio: page.props.condominio.id }),
-      filterParams.value,
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!nameFilter.value) props.table.reset()
-        }
-      }
+        nome: nameFilter.value || null,
+        pertinenze: pertinenzeFilter.value === 'tutte' ? null : pertinenzeFilter.value,
+      },
+      () => { if (!nameFilter.value) props.table.reset() },
     )
   },
   { debounce: 300 }

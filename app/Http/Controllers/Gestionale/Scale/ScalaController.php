@@ -11,6 +11,8 @@ use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Models\Condominio;
 use App\Models\Scala;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
@@ -29,7 +31,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ScalaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a paginated listing of scale for a given condominium.
@@ -43,12 +45,17 @@ class ScalaController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $scale = $condominio->scale()
             ->when($validated['name'] ?? false, fn ($query, $name) =>
                 $query->where('name', 'like', "%{$name}%")
             )
             ->with(['palazzina']) 
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, ScalaIndexRequest::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page'])
             ->appends($request->all());
         
         $condomini = $this->getCondomini();
@@ -68,6 +75,8 @@ class ScalaController extends Controller
                 'total'        => $scale->total(),
             ],
             'filters'    => $request->only(['name']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { router, usePage, Link } from '@inertiajs/vue3'
+import { usePage, Link } from '@inertiajs/vue3'
+import { useTabellaServer } from '@/composables/useTabellaServer'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -34,24 +35,20 @@ const stato = ref(page.props.filters?.stato || '')
 const dataDa = ref(page.props.filters?.data_da || '')
 const dataA = ref(page.props.filters?.data_a || '')
 
-// Costruzione dinamica dei parametri da inviare
-const filterParams = computed(() => {
-  const params: Record<string, string | number> = { page: 1 }
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.giroconti.index'), { condominio: condominioId.value }),
+)
 
-  if (globalFilter.value) params.search = globalFilter.value
-  if (stato.value) params.stato = stato.value
-  if (dataDa.value) params.data_da = dataDa.value
-  if (dataA.value) params.data_a = dataA.value
-
-  return params
-})
-
+// Ogni filtro viaggia sempre, anche vuoto: `null` significa **togli**, mentre ometterlo
+// lascerebbe in piedi quello di prima e non ci sarebbe più modo di svuotarlo. Il resto
+// dello stato — pagina, righe per pagina, ordinamento — lo riporta il composable.
 const applyFilters = () => {
-  router.get(
-    route(generateRoute('gestionale.giroconti.index'), { condominio: condominioId.value }),
-    filterParams.value,
-    { preserveState: true, replace: true, preserveScroll: true }
-  )
+  filtra({
+    search: globalFilter.value || null,
+    stato: stato.value || null,
+    data_da: dataDa.value || null,
+    data_a: dataA.value || null,
+  })
 }
 
 // Osservatore con debounce che scatta quando cambia la ricerca

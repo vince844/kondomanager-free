@@ -12,6 +12,8 @@ use App\Http\Resources\Gestionale\Tabelle\TabellaResource;
 use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +24,7 @@ use Illuminate\Support\Facades\DB;
 
 class TabellaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a listing of the resource.
@@ -32,6 +34,16 @@ class TabellaController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        //
+        // ⚠️ **Qui `per_page` era validato e poi buttato via.** La richiesta lo accettava, il
+        // controller paginava con il valore di configurazione: chi sceglieva 40 righe vedeva il
+        // selettore cambiare e l'elenco restare a dieci. È la stessa famiglia dei difetti segnalati
+        // sul forum, nella variante più muta — il valore non si perdeva per strada, non veniva
+        // proprio letto.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $tabelle = $condominio
             ->tabelle()
             ->with(['palazzina', 'scala'])
@@ -39,7 +51,8 @@ class TabellaController extends Controller
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
-            ->paginate(config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, TabellaIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
         
         // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
@@ -52,6 +65,8 @@ class TabellaController extends Controller
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'tabelle'    => TabellaResource::collection($tabelle)->resolve(),
+            'sort'       => $validated['sort'] ?? null,
+            'direction'  => $validated['direction'] ?? null,
             'meta'       => [
                 'current_page' => $tabelle->currentPage(),
                 'last_page'    => $tabelle->lastPage(),
