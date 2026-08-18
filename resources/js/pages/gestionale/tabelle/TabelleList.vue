@@ -50,7 +50,7 @@ const pageGuides = [
   },
   {
     title: 'Ripartizione Mista',
-    description: 'Crea tabelle specifiche per scale, ascensori, riscaldamento o box per gestire le ripartizioni di spesa più complesse in futuro.',
+    description: 'Crea tabelle specifiche per scale, ascensori, riscaldamento o lastrico solare per gestire le ripartizioni di spesa più complesse.',
     icon: TableProperties,
     colorVariant: 'amber' as const
   }

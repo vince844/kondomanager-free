@@ -88,14 +88,14 @@ defineEmits(['update:open']);
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                 <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Standard</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  La tipologia principale per le ripartizioni classiche (Proprietà Generale, Scale, ecc.). Non ha comportamenti speciali.
+                  La tipologia principale per le ripartizioni classiche, come la Proprietà Generale. Non ha comportamenti speciali.
                 </p>
               </div>
 
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
-                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Ascensore (Art. 1124)</h4>
+                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Ascensore e Scale (Art. 1124)</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  La legge prevede che l'ascensore sia ripartito per il 50% in base ai millesimi di proprietà e per il 50% in base all'altezza del piano. In Kondomanager <strong>non applichiamo questa complessa miscelazione automaticamente</strong>. Devi calcolare le frazioni risultanti (es. col tuo geometra) ed inserirle come "Quote" proporzionali. Ecco perché selezionando "Ascensore", il sistema preseleziona la voce Quote per comodità.
+                  La legge prevede che l'ascensore sia ripartito per il 50% in base ai millesimi di proprietà e per il 50% in base all'altezza del piano. In Kondomanager <strong>non applichiamo questa complessa miscelazione automaticamente</strong>. Devi calcolare le frazioni risultanti (es. col tuo geometra) ed inserirle come "Quote" proporzionali. Ecco perché selezionando "Ascensore", il sistema preseleziona la voce Quote per comodità. Lo stesso articolo governa le <strong>scale</strong>, che hanno un tipo dedicato: sceglilo per tenerle distinte dalla tabella generale di proprietà.
                 </p>
               </div>
 

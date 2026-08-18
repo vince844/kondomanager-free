@@ -7,6 +7,54 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.57] - La Tabella Che Si Poteva Creare e Non Salvare
+
+**Nessuna migrazione: il database non viene toccato.** Anzi, il difetto principale di questa versione
+nasce proprio dal fatto che il database era già a posto e nessun altro se ne era accorto.
+
+### Il tipo che il programma sapeva scrivere e non sapeva più leggere
+
+Le tabelle millesimali hanno otto tipi, e uno di questi è «Scale». È nell'archivio dal primo giorno,
+l'elenco delle tabelle lo mostra con la sua icona, e **l'importatore lo assegna da sé**: una tabella
+che nel file di Danea si chiama «SCALE A» entra come tabella di tipo scale.
+
+Nella tendina, però, di tipi ce n'erano sette. Scale non c'era — né in creazione né in modifica — e
+non c'era nemmeno nel controllo che il programma fa prima di salvare. Il risultato è una tabella che
+**il programma sa creare e non sa più salvare**: si importa lo stabile, si apre quella tabella per
+cambiarle una descrizione, e il salvataggio viene rifiutato. Anche senza toccare il tipo, perché il
+controllo passa da lì a ogni modifica.
+
+Adesso «Scale» si sceglie dalla tendina come gli altri sette, e una tabella importata si risalva
+senza dover prima cambiarle natura. Il riquadro informativo accanto al campo e la guida della pagina
+lo dicono nel posto giusto: **scale e ascensori li governa lo stesso articolo di legge**, l'art. 1124,
+e il programma non applica da sé il 50/50 fra millesimi e altezza di piano — le frazioni le calcola
+il tecnico e si inseriscono come quote.
+
+Corretti nella stessa pagina due testi che promettevano cose inesistenti: la guida mandava a
+classificare le scale come «Standard», e l'invito a creare tabelle «per scale, ascensori,
+riscaldamento o box» nominava un tipo, «box», che non è mai esistito.
+
+### Quello che il programma diceva di sé stesso, e non era vero
+
+Il modulo dei pagamenti ai fornitori porta in testa l'elenco di ciò che *non* fa. Due delle quattro
+righe erano false: dichiarava non implementata la compensazione di una nota di credito senza
+movimento di cassa — che il motore invece esegue — e rimandava a una versione, la 1.9.2, che non è
+mai uscita.
+
+Non cambia niente per chi usa il programma: è documentazione che vive dentro il codice, ed è il
+posto dove si va a cercare la risposta prima di scrivere qualcosa. Un elenco che dichiara mancante
+una funzione che c'è la fa ricostruire da capo, o promettere per una versione futura mentre è già
+dentro.
+
+### Il resto
+
+Sulla schermata della registrazione a regolazione immediata i campi avevano tre altezze diverse:
+adesso ne hanno una. E una nota di servizio: durante questa versione è stato tentato un intervento
+sui colori del tema scuro, poi **ritirato per intero**. Ne restano le misure, che serviranno al
+restyling della 2.0, e nessuna riga di codice.
+
+---
+
 ## [1.10.0-beta.56] - Le Quote Che Diventavano Duecento
 
 **Nessuna migrazione: il database non viene toccato.** Cambia però cosa l'importazione scrive: da

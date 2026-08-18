@@ -37,6 +37,10 @@ type TabellaType = {
 const tipologieTabelle = [
   { label: 'Standard', id: 'standard' },
   { label: "Ascensore", id: 'ascensore' },
+  // `scale` c'è nell'enum del database dal primo giorno e l'importatore lo produce
+  // (LivelloTabelle mappa «scala» e «scale»), ma mancava qui e nella regola `in:`:
+  // una tabella importata «SCALE A» non si poteva più salvare. Coda ㊱.
+  { label: "Scale", id: 'scale' },
   { label: "Riscaldamento", id: 'riscaldamento' },
   { label: "Acqua", id: 'acqua' },
   { label: "Lastrico", id: 'lastrico' },
@@ -167,8 +171,8 @@ watch(() => form.tipologia, (newVal) => {
                         </h4>
                         <div class="text-sm space-y-2 text-slate-500">
                           <ul class="list-disc pl-4 space-y-1 text-xs">
-                            <li><strong>Standard:</strong> La tipica tabella generale, di proprietà o scale.</li>
-                            <li><strong>Ascensore:</strong> Il 50/50 (Art. 1124) non è calcolato in automatico. Inserisci i valori finali. (Consigliato: Quote).</li>
+                            <li><strong>Standard:</strong> La tipica tabella generale, di proprietà.</li>
+                            <li><strong>Ascensore / Scale:</strong> Il 50/50 (Art. 1124) non è calcolato in automatico. Inserisci i valori finali. (Consigliato: Quote).</li>
                             <li><strong>Riscaldamento / Acqua:</strong> Per le spese termiche e idriche.</li>
                             <li><strong>Lastrico / Speciale:</strong> Per organizzare ripartizioni particolari (es. 1/3 e 2/3, oppure tetti, corselli box).</li>
                           </ul>

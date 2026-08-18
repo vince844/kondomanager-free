@@ -29,7 +29,7 @@ class UpdateTabellaRequest extends FormRequest
     {
         return [
             'nome'            => 'required|string|max:255',
-            'tipo'            => 'required|string|in:standard,ascensore,riscaldamento,acqua,lastrico,speciale,altro',
+            'tipo'            => 'required|string|in:standard,ascensore,scale,riscaldamento,acqua,lastrico,speciale,altro',
             'quota'           => 'required|string|in:millesimi,persone,kwatt,mtcubi,quote',
             // `max:5` e non 6: `quote_tabella.valore` è un `decimal(12,5)`, quindi un sesto
             // decimale il database non lo può conservare — verrebbe troncato in silenzio.

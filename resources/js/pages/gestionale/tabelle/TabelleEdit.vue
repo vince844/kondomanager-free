@@ -33,6 +33,10 @@ type TabellaType = {
 const tipologieTabelle = [
   { label: 'Standard', id: 'standard' },
   { label: "Ascensore", id: 'ascensore' },
+  // `scale` c'è nell'enum del database dal primo giorno e l'importatore lo produce
+  // (LivelloTabelle mappa «scala» e «scale»), ma mancava qui e nella regola `in:`:
+  // una tabella importata «SCALE A» non si poteva più salvare. Coda ㊱.
+  { label: "Scale", id: 'scale' },
   { label: "Riscaldamento", id: 'riscaldamento' },
   { label: "Acqua", id: 'acqua' },
   { label: "Lastrico", id: 'lastrico' },

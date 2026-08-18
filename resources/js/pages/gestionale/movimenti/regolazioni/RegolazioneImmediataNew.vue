@@ -236,7 +236,7 @@ function onKeydown(e: KeyboardEvent) {
                             <div class="space-y-1.5">
                                 <Label for="protocollo_previsto">Protocollo previsto</Label>
                                 <div id="protocollo_previsto"
-                                     class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                     class="flex h-9 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
                                      title="Numero previsto: diventa definitivo al salvataggio">
                                     {{ props.prossimo_protocollo }}
                                 </div>
@@ -250,7 +250,7 @@ function onKeydown(e: KeyboardEvent) {
                             <div class="space-y-1.5">
                                 <Label for="esercizio">Esercizio *</Label>
                                 <div v-if="props.esercizi.length === 1"
-                                     class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                     class="flex h-9 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                                     {{ props.esercizi[0].nome }}
                                 </div>
                                 <vSelect
@@ -291,7 +291,7 @@ function onKeydown(e: KeyboardEvent) {
 
                             <div class="space-y-1.5">
                                 <Label for="importo">Importo *</Label>
-                                <MoneyInput id="importo" v-model="form.importo" />
+                                <MoneyInput id="importo" v-model="form.importo" class="h-9 py-1" />
                                 <InputError :message="form.errors.importo" />
                             </div>
                         </div>
@@ -448,3 +448,33 @@ function onKeydown(e: KeyboardEvent) {
         <RegolazioneImmediataGuide v-model:open="showGuideCompleta" />
     </GestionaleLayout>
 </template>
+
+<style scoped>
+/*
+ * Uniformità dei campi di QUESTA pagina, chiesta da Vincenzo il 17/08/2026.
+ *
+ * Sta qui e non in `resources/css/custom.css` di proposito: una correzione globale sul tema è stata
+ * scritta e ritirata lo stesso giorno (coda ㊳), perché sistemare un componente dentro pagine che
+ * restano sbagliate intorno sposta l'incoerenza invece di toglierla. Qui l'intervento è chiuso
+ * dentro una schermata: `scoped` aggiunge l'attributo del componente al selettore, quindi nessuna
+ * altra pagina viene toccata.
+ */
+
+/* Le tendine misuravano 35px contro i 36 dei campi nativi, con raggio 4px invece di 6. */
+:deep(.vs__dropdown-toggle) {
+    min-height: 2.25rem;
+    border-radius: 0.375rem;
+}
+
+:deep(.vs__selected),
+:deep(.vs__search) {
+    font-size: 0.875rem;
+}
+
+/*
+ * ⚠️ L'icona del calendario in tema scuro NON è corretta: la disegna il browser
+ * (`color-scheme: normal`) per un fondo chiaro, quindi resta scura su scuro. La correzione era
+ * stata scritta e poi ripristinata insieme al resto del lavoro sul tema: qui restano solo le
+ * dimensioni dei campi.
+ */
+</style>

@@ -59,10 +59,36 @@ use Illuminate\Support\Str;
  *  - ricalcolaStatoFattura() è detection, non validation: non lancia mai eccezioni
  *
  * Cosa NON fa questo service (rimandato):
- *  - Acconti, anticipi admin, assegni, RID/SDD → v1.9.2
- *  - Netting NC > Fattura (compensazione pura senza cassa) → v1.9.2
+ *  - Acconti a fornitori, anticipi dell'amministratore, assegni con doppia data, abbuoni
+ *    passivi, RID/SDD → v1.16, insieme alla riconciliazione bancaria che li regge
  *  - Riconciliazione bancaria → v1.16
  *  - Scoring completo duplicati (CRO/TRN + 7gg) → v1.16
+ *
+ * Cosa questo service FA, e questo blocco ha dichiarato per mesi che non facesse:
+ *  - **Netting NC > Fattura, cioè la compensazione pura senza movimento di cassa.** Un pagamento
+ *    di sole righe `compensazione` viene accettato, la fattura si chiude a «pagata» con importo
+ *    lordo 0 e la scrittura quadra; la riga AVERE della liquidità non viene creata affatto, perché
+ *    è dentro `if ($totali['uscitaCassa'] > 0)` — è una conseguenza dell'uscita a zero, non la
+ *    ragione per cui i conti tornano.
+ *    ⚠️ **Nessun test copre oggi questo caso.** `PagamentoFornitoreControllerTest` ha un test di
+ *    netting, ma è quello **misto**: porta un bonifico e una riga di liquidità, quindi non dimostra
+ *    la compensazione a zero cassa. La prova è stata fatta a mano con una sonda temporanea in Fase
+ *    1-bis (17/08/2026) e non è rimasta: chi tocca quella guardia non ha una rete. Ciò che manca
+ *    all'utente è **la schermata** — e va detto con precisione, perché non è che manchi del tutto:
+ *    `PagamentoNew.vue` la nota di credito la sa selezionare e ne mostra il totale compensato, ma
+ *    emette **una riga per documento**, quindi la coppia FT+NC non si costruisce e il tentativo
+ *    muore in un errore di quadratura. All'utente non appare una funzione assente: appare una
+ *    funzione che rifiuta.
+ *  - ⚠️ Prima di aprirla dall'interfaccia va chiusa la **coda ㉘**: il residuo di una nota di
+ *    credito è `netto_a_pagare − totale_allocato`, e su una NC il netto è negativo mentre
+ *    l'allocato è positivo, quindi ogni compensazione parziale **gonfia** il credito invece di
+ *    consumarlo. **Non è latente sul motore**: misurato in Fase 1-bis, tre richieste separate da
+ *    € 1.220,00 contro una NC da € 2.440,00 sono state accettate tutte e tre. È irraggiungibile
+ *    dalla schermata, non dalla rotta.
+ *
+ * *Le due righe corrette il 17/08/2026 (coda ㉝) rimandavano a una **v1.9.2 che non esiste**: quel
+ * piano è stato assorbito nella 1.10 e poi disperso. La sorgente di questo elenco è il §14 di
+ * `docs/pagamenti_fatture.md`, rettificato lo stesso giorno.*
  */
 class PagamentoFornitoreService
 {
