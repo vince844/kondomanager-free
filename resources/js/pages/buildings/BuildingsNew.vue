@@ -14,7 +14,7 @@ import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('condomini.header.list_buildings_title'),
       href: route('condomini.index') 
@@ -23,7 +23,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('condomini.header.new_building_title'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {

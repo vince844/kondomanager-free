@@ -68,7 +68,9 @@ class FornitoreDocumentoController extends Controller
     public function create(Fornitore $fornitore): Response
     {
          return Inertia::render('fornitori/documenti/DocumentiNew', [
-            'fornitore'  => $fornitore
+            'fornitore'  => $fornitore,
+            // Il limite lo decide il server, non noi.
+            'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]);
     }
 
@@ -136,6 +138,8 @@ class FornitoreDocumentoController extends Controller
         return Inertia::render('fornitori/documenti/DocumentiEdit', [
             'documento'   => new DocumentoResource($documento),
             'fornitore'  => $fornitore,
+            // Il limite lo decide il server, non noi.
+            'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]); 
     }
 

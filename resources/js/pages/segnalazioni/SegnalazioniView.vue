@@ -39,7 +39,7 @@ const statusItem = computed(() => {
   return statoConstants.find(p => p.value === props.segnalazione.stato);
 });
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('segnalazioni.breadcrumbs.list'), 
       href: route(generateRoute('segnalazioni.index'))
@@ -48,7 +48,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('segnalazioni.breadcrumbs.view'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {

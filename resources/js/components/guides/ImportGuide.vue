@@ -78,7 +78,11 @@ defineEmits(['update:open']);
               </li>
             </ul>
             <p class="mt-3 text-slate-600 dark:text-slate-400">
-              Accetto <strong>.xls, .xlsx e .csv</strong>, fino a 25 MB per file. Se il tuo
+              <!-- Il limite non si scrive qui: dipende dal server e la schermata lo dichiara. Un
+                   numero scritto a mano in una guida è la stessa bugia di un numero scritto a mano
+                   in una schermata, solo più difficile da trovare. -->
+              Accetto <strong>.xls, .xlsx e .csv</strong>. Il limite di dimensione per file lo trovi
+              scritto sulla schermata di caricamento: dipende dal tuo server. Se il tuo
               gestionale esporta in un altro formato, aprilo in Excel e salvalo come .xls.
             </p>
           </section>

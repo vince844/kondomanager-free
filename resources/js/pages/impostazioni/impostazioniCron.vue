@@ -36,20 +36,20 @@ const breadcrumbs = computed(() => [
 
 const pageGuides = computed(() => [
   {
-    title: trans('impostazioni.dialogs.cron_guide_1_title') || 'Il Motore Invisibile',
-    description: trans('impostazioni.dialogs.cron_guide_1_desc') || 'Il demone esegue automaticamente i task in background: controlla le scadenze, emette le rate e gestisce gli alert senza intervento manuale.',
+    title: trans('impostazioni.dialogs.cron_guide_1_title'),
+    description: trans('impostazioni.dialogs.cron_guide_1_desc'),
     icon: Info,
     colorVariant: 'blue'
   },
   {
-    title: trans('impostazioni.dialogs.cron_guide_2_title') || 'Webhook (Esterno)',
-    description: trans('impostazioni.dialogs.cron_guide_2_desc') || 'Identificato dal pallino arancione. Permette di attivare lo scheduler tramite un URL criptato chiamato da servizi esterni (es. cron-job.org).',
+    title: trans('impostazioni.dialogs.cron_guide_2_title'),
+    description: trans('impostazioni.dialogs.cron_guide_2_desc'),
     icon: Globe,
     colorVariant: 'amber'
   },
   {
-    title: trans('impostazioni.dialogs.cron_guide_3_title') || 'System Cron (Nativo)',
-    description: trans('impostazioni.dialogs.cron_guide_3_desc') || 'Identificato dal pallino grigio. Indica che lo scheduler gira in modo ultra-veloce direttamente sul sistema operativo (es. Crontab o Plesk).',
+    title: trans('impostazioni.dialogs.cron_guide_3_title'),
+    description: trans('impostazioni.dialogs.cron_guide_3_desc'),
     icon: Terminal,
     colorVariant: 'emerald'
   }
@@ -110,12 +110,12 @@ const isCronActive = computed(() => {
 });
 
 const lastHeartbeatRelative = computed(() => {
-    if (!props.lastHeartbeat) return trans('impostazioni.dialogs.cron_status_never_run') || 'Mai eseguito';
+    if (!props.lastHeartbeat) return trans('impostazioni.dialogs.cron_status_never_run');
     const seconds = currentTime.value - props.lastHeartbeat;
-    if (seconds < 0) return trans('impostazioni.dialogs.cron_status_now') || 'Ora';
-    if (seconds < 60) return trans('impostazioni.dialogs.cron_status_seconds_ago', { seconds }) || `${seconds} sec fa`;
+    if (seconds < 0) return trans('impostazioni.dialogs.cron_status_now');
+    if (seconds < 60) return trans('impostazioni.dialogs.cron_status_seconds_ago', { seconds });
     const mins = Math.floor(seconds / 60);
-    return trans('impostazioni.dialogs.cron_status_minutes_ago', { minutes: mins }) || `${mins} min fa`;
+    return trans('impostazioni.dialogs.cron_status_minutes_ago', { minutes: mins });
 });
 </script>
 
@@ -125,13 +125,13 @@ const lastHeartbeatRelative = computed(() => {
 
         <div class="px-4 py-6 space-y-6">
             <PageHeaderGuide
-                :page-title="trans('impostazioni.header.cron_settings_title') || 'Automazioni e Sincronizzazione'"
-                :page-subtitle="trans('impostazioni.header.cron_settings_description') || 'Configura e monitora l\'esecuzione automatica in background dei task di sistema, come la verifica degli scoperti e l\'emissione delle rate.'"
+                :page-title="trans('impostazioni.header.cron_settings_title')"
+                :page-subtitle="trans('impostazioni.header.cron_settings_description')"
                 :icon="Settings"
                 :guides="pageGuides"
                 :breadcrumbs="breadcrumbs"
                 back-url="/impostazioni"
-                :back-text="trans('impostazioni.label.settings') || 'Impostazioni'"
+                :back-text="trans('impostazioni.label.settings')"
             >
                 <template #actions>
                     <Button variant="outline" size="sm" @click="showPleskGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200">
@@ -150,9 +150,9 @@ const lastHeartbeatRelative = computed(() => {
                             <span class="relative inline-flex rounded-full h-3 w-3" :class="isCronActive ? 'bg-green-500' : 'bg-red-500'"></span>
                         </div>
                         <div class="text-sm flex items-center">
-                            <span class="font-medium text-foreground mr-1">{{ trans('impostazioni.dialogs.cron_label_daemon') || 'Demone Cron:' }}</span>
+                            <span class="font-medium text-foreground mr-1">{{ trans('impostazioni.dialogs.cron_label_daemon') }}</span>
                             <span :class="isCronActive ? 'text-green-600' : 'text-red-600 font-semibold'">
-                                {{ isCronActive ? trans('impostazioni.dialogs.cron_status_active') || 'Attivo' : trans('impostazioni.dialogs.cron_status_error') || 'Fermo/Errore' }}
+                                {{ isCronActive ? trans('impostazioni.dialogs.cron_status_active') : trans('impostazioni.dialogs.cron_status_error') }}
                             </span>
                             
                             <!-- SOURCE INDICATOR -->
@@ -162,7 +162,7 @@ const lastHeartbeatRelative = computed(() => {
                             </div>
 
                             <span class="text-xs text-muted-foreground ml-2">
-                                {{ trans('impostazioni.dialogs.cron_label_last_check') || '(Ultimo check:' }} {{ lastHeartbeatRelative }})
+                                {{ trans('impostazioni.dialogs.cron_label_last_check') }} {{ lastHeartbeatRelative }})
                             </span>
                         </div>
                     </div>

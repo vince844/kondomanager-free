@@ -39,7 +39,8 @@ const props = defineProps<{
     ha_scritto: boolean;
   };
   formati: string[];
-  dimensione_massima_mb: number;
+  /** Limite già scritto per l'utente («2 MB»), calcolato dal server: non è più il nostro tetto. */
+  dimensione_massima: string;
 }>();
 
 // Lo scarto chiede conferma in linea invece di un dialogo: la domanda è breve, la risposta è
@@ -189,7 +190,7 @@ const etichettaLivello = (chiave: string | null) => ({
               Tutti insieme — ci pensiamo noi a capire cos'è ciascuno.
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
-              {{ props.formati.join(', ').toUpperCase() }} · massimo {{ props.dimensione_massima_mb }} MB per file
+              {{ props.formati.join(', ').toUpperCase() }} · massimo {{ props.dimensione_massima }} per file
             </p>
 
             <input

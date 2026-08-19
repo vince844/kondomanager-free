@@ -24,6 +24,8 @@ import type { BaseDocumentForm } from '@/types/documenti';
 import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
   fornitore: Fornitore;
 }>()
 
@@ -191,7 +193,7 @@ const submit = (): void => {
                                     <EmptyDescription>
                                         Trascina qui il file oppure clicca per selezionarlo.
                                         <div class="text-xs text-muted-foreground mt-1">
-                                            Formati supportati: PDF, Immagini
+                                            Solo PDF (max {{ limiteFile }})
                                         </div>
                                     </EmptyDescription>
                                 </EmptyHeader>
@@ -201,7 +203,7 @@ const submit = (): void => {
                                 id="file-upload"
                                 type="file"
                                 class="hidden"
-                                accept="application/pdf,image/*"
+                                accept="application/pdf"
                                 @change="handleFileChange"
                                 ref="fileInputRef"
                             />

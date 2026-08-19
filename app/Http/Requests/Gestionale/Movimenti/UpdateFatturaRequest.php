@@ -6,6 +6,7 @@ use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Support\LimiteCaricamento;
 
 /**
  * Valida i dati per la modifica di una fattura passiva aperta.
@@ -61,7 +62,11 @@ class UpdateFatturaRequest extends FormRequest
                 'nullable', 'string', Rule::in(array_column(NaturaRigaRitenuta::cases(), 'value')),
             ],
 
-            'file' => 'nullable|file|mimes:pdf,xml,p7m,jpg,png|max:10240',
+            'file' => ['nullable', 'file', 'mimes:pdf,xml,p7m,jpg,png',
+                // Il tetto di questa porta resta **10 MB, il suo**: un allegato di fattura è un
+                // documento singolo, non un archivio. Quello che cambia è che adesso non promette
+                // mai più di quanto il server accetti davvero.
+                'max:'.LimiteCaricamento::regolaMax(10.0)],
         ];
     }
 

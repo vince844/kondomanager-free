@@ -17,20 +17,22 @@ import PrintSetupGuide from '@/components/guides/PrintSetupGuide.vue'
 
 const page = usePage()
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
-    title: trans('impostazioni.label.settings') || 'Impostazioni',
+    title: trans('impostazioni.label.settings'),
     href: '/impostazioni',
   },
   {
-    title: trans('impostazioni.dialogs.print_settings_title') || 'Stampe PDF',
+    title: trans('impostazioni.dialogs.print_settings_title'),
     href: '/impostazioni/stampe',
   },
-]
+])
 
 const {
   nota_legale_stampe,
   firma_stampe_url,
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server. */
+  limiteFirma,
 } = page.props
 
 const flashMessage = computed(() => (page.props as any).flash?.message)
@@ -93,12 +95,12 @@ const submit = () => {
 
 <template>
   <AppLayout :breadcrumbs="[]">
-    <Head :title="trans('impostazioni.dialogs.print_settings_title') || 'Impostazioni Stampe PDF'" />
+    <Head :title="trans('impostazioni.dialogs.print_settings_title')" />
 
     <div class="px-4 py-6 space-y-6">
       <PageHeaderGuide
-        :page-title="trans('impostazioni.dialogs.print_settings_title') || 'Impostazioni Stampe PDF'"
-        :page-description="trans('impostazioni.dialogs.print_settings_description') || 'Configura l\'aspetto e i dati predefiniti che appariranno in fondo a tutti i documenti generati dal sistema.'"
+        :page-title="trans('impostazioni.dialogs.print_settings_title')"
+        :page-description="trans('impostazioni.dialogs.print_settings_description')"
         :icon="Printer"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
@@ -125,7 +127,7 @@ const submit = () => {
             <div class="space-y-4">
               <div>
                 <div class="flex items-center gap-2 mb-1 min-h-[24px]">
-                  <label class="block text-sm font-medium text-gray-700">{{ trans('impostazioni.label.print_legal_note') || 'Nota Legale / Footer' }}</label>
+                  <label class="block text-sm font-medium text-gray-700">{{ trans('impostazioni.label.print_legal_note') }}</label>
                   <HoverCard>
                     <HoverCardTrigger as-child>
                       <button type="button" class="text-slate-400 hover:text-primary outline-none">
@@ -133,18 +135,18 @@ const submit = () => {
                       </button>
                     </HoverCardTrigger>
                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
-                      <h4 class="text-sm font-bold mb-2">{{ trans('impostazioni.label.print_legal_note') || 'Nota Legale / Footer' }}</h4>
-                      <p class="text-xs text-slate-500 leading-relaxed" v-html="trans('impostazioni.label.print_legal_note_tooltip') || 'Puoi premere &quot;Invio&quot; per andare a capo e inserire spazi multipli per allineare il testo. La formattazione verrà mantenuta fedelmente in stampa nel PDF.'"></p>
+                      <h4 class="text-sm font-bold mb-2">{{ trans('impostazioni.label.print_legal_note') }}</h4>
+                      <p class="text-xs text-slate-500 leading-relaxed" v-html="trans('impostazioni.label.print_legal_note_tooltip')"></p>
                     </HoverCardContent>
                   </HoverCard>
                 </div>
                 <Textarea 
                   v-model="form.nota_legale_stampe" 
                   rows="3" 
-                  :placeholder="trans('impostazioni.placeholder.print_legal_note') || 'Es: Professione esercitata ai sensi della legge 14 gennaio 2013, n.4 - P.IVA 01234567890 - Polizza RC n. XYZ'" 
+                  :placeholder="trans('impostazioni.placeholder.print_legal_note')" 
                 />
                 <p class="text-sm text-muted-foreground mt-1">
-                  {{ trans('impostazioni.label.print_legal_note_help') || 'Questo testo apparirà nel footer (piè di pagina) di ogni prospetto, assieme al numero di pagina.' }}
+                  {{ trans('impostazioni.label.print_legal_note_help') }}
                 </p>
                 <p v-if="form.errors.nota_legale_stampe" class="text-sm text-red-500 mt-1">
                   {{ form.errors.nota_legale_stampe }}
@@ -153,7 +155,7 @@ const submit = () => {
 
               <div class="pt-4">
                 <div class="flex items-center gap-2 mb-1 min-h-[24px]">
-                  <label class="block text-sm font-medium text-gray-700">{{ trans('impostazioni.label.print_admin_signature') || 'Firma Amministratore' }}</label>
+                  <label class="block text-sm font-medium text-gray-700">{{ trans('impostazioni.label.print_admin_signature') }}</label>
                   <HoverCard>
                     <HoverCardTrigger as-child>
                       <button type="button" class="text-slate-400 hover:text-primary outline-none">
@@ -161,8 +163,8 @@ const submit = () => {
                       </button>
                     </HoverCardTrigger>
                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
-                      <h4 class="text-sm font-bold mb-2">{{ trans('impostazioni.label.print_admin_signature') || 'Firma Amministratore' }}</h4>
-                      <p class="text-xs text-slate-500 leading-relaxed" v-html="trans('impostazioni.label.print_admin_signature_tooltip') || '<strong>Dimensioni ottimali:</strong> ~400x150 pixel.<br>Consigliato formato PNG con sfondo trasparente e ritagliato senza margini bianchi eccessivi attorno alla firma.'"></p>
+                      <h4 class="text-sm font-bold mb-2">{{ trans('impostazioni.label.print_admin_signature') }}</h4>
+                      <p class="text-xs text-slate-500 leading-relaxed" v-html="trans('impostazioni.label.print_admin_signature_tooltip')"></p>
                     </HoverCardContent>
                   </HoverCard>
                 </div>
@@ -174,25 +176,33 @@ const submit = () => {
                     <img v-if="signaturePreviewUrl" :src="signaturePreviewUrl" class="max-h-full max-w-full object-contain" />
                     <div v-else class="text-center p-4">
                       <Upload class="w-6 h-6 mx-auto text-gray-400 mb-1" />
-                      <span class="text-xs text-gray-500">{{ trans('impostazioni.label.print_no_signature') || 'Nessuna firma' }}</span>
+                      <span class="text-xs text-gray-500">{{ trans('impostazioni.label.print_no_signature') }}</span>
                     </div>
                   </div>
                   
                   <div class="flex flex-col gap-2">
                     <div>
-                      <input type="file" id="firma-stampe-upload" accept="image/*" class="hidden" @change="handleSignatureUpload" />
+                      <!-- ⚠️ `image/*` comprende GIF, BMP, WEBP **e SVG**: il selettore lasciava scegliere
+                           proprio l'SVG che la regola respinge, cioè lo stesso difetto appena tolto
+                           dalle quattro schermate dei documenti, spostato di una schermata. -->
+                      <input type="file" id="firma-stampe-upload" accept="image/jpeg,image/png" class="hidden" @change="handleSignatureUpload" />
                       <label for="firma-stampe-upload" class="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
-                        {{ trans('impostazioni.label.print_upload_image') || 'Carica Immagine' }}
+                        {{ trans('impostazioni.label.print_upload_image') }}
                       </label>
                     </div>
                     <Button v-if="signaturePreviewUrl" type="button" variant="destructive" size="sm" @click="removeSignature" class="w-full">
                       <Trash class="w-4 h-4 mr-2" />
-                      {{ trans('impostazioni.label.print_remove_signature') || 'Rimuovi' }}
+                      {{ trans('impostazioni.label.print_remove_signature') }}
                     </Button>
                   </div>
                 </div>
                 <p class="text-sm text-muted-foreground mt-2">
-                  {{ trans('impostazioni.label.print_signature_help') || 'Usa un\'immagine PNG o JPG con sfondo bianco o trasparente (max 2MB). L\'immagine verrà stampata alla fine dell\'ultimo foglio di prospetti e rendiconti.' }}
+                  <!-- ⚠️ Qui c'era `print_signature_help`, che esiste **solo in spagnolo**: in italiano
+                       `trans()` restituiva la chiave, e siccome una stringa non vuota è truthy il
+                       ripiego scritto accanto non scattava mai — a video compariva
+                       «impostazioni.label.print_signature_help». La chiave buona è questa, ed esiste
+                       in tutte e quattro le lingue. -->
+                  {{ trans('impostazioni.label.print_admin_signature_help', { limite: String(limiteFirma ?? '') }) }}
                 </p>
                 <p v-if="form.errors.firma_stampe" class="text-sm text-red-500 mt-1">
                   {{ form.errors.firma_stampe }}
@@ -205,7 +215,7 @@ const submit = () => {
           <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
             <Button :disabled="form.processing">
               <span v-if="form.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
-              {{ trans('impostazioni.actions.save_settings') || 'Salva Impostazioni' }}
+              {{ trans('impostazioni.actions.save_settings') }}
             </Button>
           </CardFooter>
         </Card>

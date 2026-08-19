@@ -6,6 +6,7 @@ use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
+use App\Support\LimiteCaricamento;
 
 /**
  * @method bool merge(string $key)
@@ -34,7 +35,7 @@ class UpdateDocumentoRequest extends FormRequest
             'is_approved'     => ['sometimes', 'required', 'boolean'],
             'is_published'    => ['sometimes', 'required', 'boolean'],
             'category_id'     => ['sometimes', 'required', 'integer', Rule::exists('categorie_documento', 'id')],
-            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
+            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:'.LimiteCaricamento::regolaMax()],
         ];
     }
 

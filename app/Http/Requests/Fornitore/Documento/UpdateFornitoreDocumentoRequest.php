@@ -5,6 +5,7 @@ namespace App\Http\Requests\Fornitore\Documento;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use App\Enums\Permission;
+use App\Support\LimiteCaricamento;
 
 class UpdateFornitoreDocumentoRequest extends FormRequest
 {
@@ -29,7 +30,7 @@ class UpdateFornitoreDocumentoRequest extends FormRequest
             'created_by'      => ['sometimes', 'required', 'exists:users,id'],
             'is_approved'     => ['sometimes', 'required', 'boolean'],
             'is_published'    => ['sometimes', 'required', 'boolean'],
-            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
+            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:'.LimiteCaricamento::regolaMax()],
         ];
     }
 

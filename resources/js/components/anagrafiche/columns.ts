@@ -47,7 +47,7 @@ export const columns: ColumnDef<Anagrafica>[] = [
       /*       h('span', { 
                 class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors mt-1.5' 
             }, [
-                trans('anagrafiche.table.click_to_view') || 'Visualizza Scheda', 
+                trans('anagrafiche.table.click_to_view'), 
                 h(ArrowRight, { class: 'w-3 h-3 text-indigo-500/60' })
             ]) */
         ])
@@ -63,7 +63,7 @@ export const columns: ColumnDef<Anagrafica>[] = [
        * un array e nessuno dichiara un criterio.
        */
       enableSorting: false,
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.contacts') || 'Contatti' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.contacts') }),
     cell: ({ row }) => {
       const a = row.original;
       

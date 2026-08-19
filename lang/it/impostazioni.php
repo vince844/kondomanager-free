@@ -155,7 +155,7 @@ return [
         'print_no_signature' => 'Nessuna firma',
         'print_upload_image' => 'Carica Immagine',
         'print_remove_signature' => 'Rimuovi',
-        'print_admin_signature_help' => 'Usa un\'immagine PNG o JPG con sfondo bianco o trasparente (max 2MB). L\'immagine verrà stampata alla fine dell\'ultimo foglio di prospetti e rendiconti.',
+        'print_admin_signature_help' => 'Usa un\'immagine PNG o JPG con sfondo bianco o trasparente (max :limite). L\'immagine verrà stampata alla fine dell\'ultimo foglio di prospetti e rendiconti.',
         'print_admin_signature_tooltip' => '<strong>Dimensioni ottimali:</strong> ~400x150 pixel.<br>Consigliato formato PNG con sfondo trasparente e ritagliato senza margini bianchi eccessivi attorno alla firma.',
         'backup_preflight_title' => 'Requisiti di sistema',
         'backup_estimated_size' => 'Dimensione stimata',

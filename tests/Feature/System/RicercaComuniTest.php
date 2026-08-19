@@ -12,7 +12,7 @@
  *
  * ## I casi che la fonte impone e che nessuno indovina
  *
- * - **124 comuni bilingui** («Aldino/Aldein»): chi cerca in tedesco deve trovarli, o l'aiuto non
+ * - **121 comuni bilingui** («Aldino/Aldein»): chi cerca in tedesco deve trovarli, o l'aiuto non
  *   serve proprio dove serve di più.
  * - Si cerca **anche per codice**: chi ha il codice sotto mano e vuole il nome fa il giro inverso.
  * - Le denominazioni portano accenti e apostrofi («Romano d'Ezzelino»): la ricerca non può

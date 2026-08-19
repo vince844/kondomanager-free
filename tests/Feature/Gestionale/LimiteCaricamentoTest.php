@@ -28,6 +28,7 @@
  */
 
 use App\Support\LimiteCaricamento;
+use Illuminate\Support\Facades\Validator;
 
 it('il limite effettivo è il più basso dei tre, non quello scritto nel testo', function () {
     $effettivo = LimiteCaricamento::megabyte();
@@ -172,5 +173,137 @@ describe('il limite arriva a tutte e due le schermate del documento', function (
                 'documento'  => $documento->id,
             ]))
             ->assertInertia(fn ($page) => $page->where('limiteFile', LimiteCaricamento::etichetta()));
+    });
+});
+
+/**
+ * ## Il tetto non è uno solo: ogni porta ha il suo, e nessuna deve promettere più del server
+ *
+ * Aggiunto nella beta.60, chiudendo la coda ㊺. Fino alla .59 la classe aveva **un tetto solo**,
+ * 20 MB, scritto in una costante privata — perfetto per i documenti, sbagliato per tutti gli altri:
+ *
+ * | Porta | Tetto suo | Applicando il tetto unico |
+ * | :--- | :--- | :--- |
+ * | documenti (PDF) | 20 MB | — |
+ * | allegato fattura (PDF, XML, P7M da scanner) | 10 MB | lo **alzerebbe** a 20 |
+ * | importatore (fogli di calcolo) | 25 MB | lo **abbasserebbe** a 20, −20% |
+ * | firma di stampa (immagine 180×80 pt) | 2 MB | lo **alzerebbe** a 20 |
+ *
+ * Il difetto da chiudere non era «tutti a 20»: era **«nessuno promette più di quanto il server
+ * accetti»**. Sono due cose diverse, e confonderle avrebbe rotto l'importatore — la voce di punta
+ * della 1.10 — per correggere un difetto di forma.
+ */
+describe('ogni porta porta il suo tetto', function () {
+    it('senza argomenti resta il tetto dei documenti, cioè quello di prima', function () {
+        expect(LimiteCaricamento::regolaMax())->toBe(LimiteCaricamento::regolaMax(20.0));
+    });
+
+    it('un tetto più basso del server vince: la porta non promette più di quanto vuole', function () {
+        // Il server di sviluppo è generoso; una porta che si dà 2 MB deve restare a 2.
+        expect(LimiteCaricamento::regolaMax(2.0))->toBeLessThanOrEqual(2 * 1024)
+            ->and(LimiteCaricamento::regolaMax(10.0))->toBeLessThanOrEqual(10 * 1024);
+    });
+
+    it('un tetto più alto NON scavalca il server, che è tutto il senso della classe', function () {
+        // È l'invariante che non deve rompersi allargando: l'importatore chiede 25 MB, ma su un
+        // server che ne accetta 2 il limite resta 2.
+        $server = min(
+            LimiteCaricamento::daIni('upload_max_filesize'),
+            LimiteCaricamento::daIni('post_max_size'),
+        );
+
+        expect(LimiteCaricamento::regolaMax(25.0) * 1024)->toBeLessThanOrEqual($server);
+    });
+
+    it('l\'etichetta e la regola dicono lo stesso numero, su ogni tetto', function () {
+        // ⚠️ Questo test esisteva già e **nascondeva il difetto**: usava una tolleranza di 0,1 MB,
+        // che è esattamente la misura dello scarto che doveva prendere. La revisione della .60 ha
+        // misurato che l'etichetta dissentiva dalla regola su **209 valori su 299**, e in uno
+        // scenario reale l'utente vedeva tre numeri per lo stesso limite.
+        //
+        // Adesso il confronto è esatto e gira su tutta la scala, non su un valore comodo.
+        $diversi = [];
+
+        for ($mb = 0.1; $mb <= 30.0; $mb += 0.1) {
+            $tetto = round($mb, 1);
+            $etichetta = (float) str_replace(',', '.', str_replace(' MB', '', LimiteCaricamento::etichetta($tetto)));
+            $regola = LimiteCaricamento::regolaMax($tetto) / 1024;
+
+            if (abs($etichetta - $regola) > 0.05) {
+                $diversi[] = sprintf('tetto %.1f → schermata %.1f, regola %.3f', $tetto, $etichetta, $regola);
+            }
+        }
+
+        expect($diversi)->toBe([],
+            'la schermata e la regola direbbero all\'utente due numeri diversi per lo stesso limite');
+    });
+
+    it('il tetto dell\'importatore non viene abbassato dalla nostra costante', function () {
+        // Su un server generoso l'importatore deve restare a 25 MB: applicargli il tetto dei
+        // documenti gli toglierebbe un quinto della capienza senza che nessuno l'abbia deciso.
+        $server = min(
+            LimiteCaricamento::daIni('upload_max_filesize'),
+            LimiteCaricamento::daIni('post_max_size'),
+        );
+
+        if ($server < 25 * 1024 * 1024) {
+            expect(true)->toBeTrue(); // su un server stretto vince il server, ed è giusto così
+
+            return;
+        }
+
+        expect(LimiteCaricamento::regolaMax(25.0))->toBe(25 * 1024);
+    });
+});
+
+/**
+ * ## Il messaggio della NOSTRA regola, che era l'altra metà della segnalazione
+ *
+ * La segnalazione del forum aveva due facce: la schermata prometteva più del server (chiusa nella
+ * .58 e allargata alle altre nove porte nella .60) e il messaggio d'errore era incomprensibile.
+ * La seconda faccia era rimasta aperta: quando scatta la nostra `max:`, Laravel usa il testo
+ * predefinito e dice **«non può essere più grande di 20480 kilobytes»** — il numero giusto, detto
+ * in un'unità che nessuno usa e diversa da quella che la schermata accanto ha appena scritto.
+ *
+ * ⚠️ Il sostitutore vive in `AppServiceProvider` e non in nove `messages()`, per la ragione di
+ * sempre: una porta nuova nasce già corretta.
+ */
+describe('il messaggio della nostra regola parla come una persona', function () {
+    it('su un file dice i megabyte, non i kilobyte', function () {
+        $v = Validator::make(
+            ['file' => \Illuminate\Http\UploadedFile::fake()->create('x.pdf', 999999, 'application/pdf')],
+            ['file' => 'file|mimes:pdf|max:'.LimiteCaricamento::regolaMax()]
+        );
+
+        $messaggio = $v->errors()->first('file');
+
+        expect($messaggio)->toContain('MB')
+            ->and($messaggio)->not->toContain('kilobyte')
+            ->and($messaggio)->not->toContain((string) LimiteCaricamento::regolaMax());
+    });
+
+    it('dice lo stesso numero che la schermata ha promesso', function () {
+        // ⚠️ È la coppia che conta: se la schermata dice «2 MB» e l'errore dice «1,9 MB», l'utente
+        // pensa di aver trovato un difetto — e ha ragione.
+        $v = Validator::make(
+            ['file' => \Illuminate\Http\UploadedFile::fake()->create('x.pdf', 999999, 'application/pdf')],
+            ['file' => 'file|max:'.LimiteCaricamento::regolaMax(2.0)]
+        );
+
+        expect($v->errors()->first('file'))->toContain(LimiteCaricamento::etichetta(2.0));
+    });
+
+    it('non tocca i max: che non riguardano file', function () {
+        // ⚠️ Questo test esiste per una regressione vera, introdotta e corretta durante la revisione
+        // della .60: un `replacer` **sostituisce** la sostituzione predefinita di Laravel invece di
+        // affiancarla, e restituire il messaggio intatto lasciava «:max» scritto in pagina su ogni
+        // stringa e ogni numero del programma.
+        $stringa = Validator::make(['nome' => str_repeat('a', 300)], ['nome' => 'string|max:255']);
+        $numero = Validator::make(['n' => 99], ['n' => 'integer|max:10']);
+        $lista = Validator::make(['a' => [1, 2, 3]], ['a' => 'array|max:2']);
+
+        expect($stringa->errors()->first('nome'))->toContain('255')->not->toContain(':max')
+            ->and($numero->errors()->first('n'))->toContain('10')->not->toContain(':max')
+            ->and($lista->errors()->first('a'))->toContain('2')->not->toContain(':max');
     });
 });

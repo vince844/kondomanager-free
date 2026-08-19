@@ -155,7 +155,7 @@ return [
         'print_no_signature' => 'No signature',
         'print_upload_image' => 'Upload Image',
         'print_remove_signature' => 'Remove',
-        'print_admin_signature_help' => 'Use a PNG or JPG image with a white or transparent background (max 2MB). The image will be printed at the end of the last page of statements and reports.',
+        'print_admin_signature_help' => 'Use a PNG or JPG image with a white or transparent background (max :limite). The image will be printed at the end of the last page of statements and reports.',
         'print_admin_signature_tooltip' => '<strong>Optimal dimensions:</strong> ~400x150 pixels.<br>A PNG format with a transparent background is recommended, cropped without excessive white margins around the signature.',
         'backup_preflight_title' => 'System requirements',
         'backup_estimated_size' => 'Estimated size',

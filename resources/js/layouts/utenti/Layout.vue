@@ -91,7 +91,7 @@ const pageGuides = computed(() => [
             :guides="pageGuides"
             :breadcrumbs="props.breadcrumbs || []"
             back-url="/impostazioni"
-            :back-text="trans('impostazioni.label.settings') || 'Impostazioni'"
+            :back-text="trans('impostazioni.label.settings')"
             :video-url="null"
             has-text-guide
             :text-guide-title="trans('users.guides.button')"

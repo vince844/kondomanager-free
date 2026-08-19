@@ -61,7 +61,7 @@ const pageGuides = computed(() => [
   }
 ]);
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('fornitori.header.list_fornitori_head'),
       href: route(generateRoute('fornitori.index'))
@@ -70,7 +70,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('fornitori.header.edit_fornitore_head'),
       href: '#',
   }
-]; 
+]); 
 
 // Popolamento form con i dati del fornitore, incluso lo stato
 const form = useForm({

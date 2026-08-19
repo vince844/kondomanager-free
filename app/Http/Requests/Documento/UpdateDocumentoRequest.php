@@ -6,6 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use App\Enums\Permission;
+use App\Support\LimiteCaricamento;
 
 /**
  * @method bool merge(string $key)
@@ -38,7 +39,7 @@ class UpdateDocumentoRequest extends FormRequest
             'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
             'anagrafiche'     => ['sometimes', 'nullable', 'array'],
             'anagrafiche.*'   => ['integer', Rule::exists('anagrafiche', 'id')],
-            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
+            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:'.LimiteCaricamento::regolaMax()],
         ];
     }
 

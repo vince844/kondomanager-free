@@ -18,6 +18,8 @@ import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
   categoria: number;
   condomini: Building[];
 }>()
@@ -156,6 +158,9 @@ const submit = () => {
                           <UploadCloud class="w-10 h-10 mb-2 text-gray-400" />
                           <span class="text-gray-500 dark:text-gray-400 text-center">
                             <strong>Clicca qui per selezionare il documento</strong>
+                            <!-- Il limite lo dice il server: queste due schermate prima non lo
+                                 dicevano affatto, e l'utente lo scopriva solo fallendo. -->
+                            <span class="mt-1 block text-xs">Solo PDF (max {{ props.limiteFile }})</span>
                           </span>
                           <input
                             id="file-upload"

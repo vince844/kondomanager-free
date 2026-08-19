@@ -36,7 +36,7 @@ const regimiProvvigioni = ['provvigioni_base_50', 'provvigioni_base_20'];
 
 const { generateRoute } = usePermission();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('fornitori.header.list_fornitori_head'),
       href: route(generateRoute('fornitori.index'))
@@ -45,7 +45,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('fornitori.header.new_fornitore_head'),
       href: '#',
   }
-]; 
+]); 
 
 const pageGuides = computed(() => [
   {

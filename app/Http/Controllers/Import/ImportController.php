@@ -21,6 +21,7 @@ use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Support\LimiteCaricamento;
 
 /**
  * L'importazione dati — le schermate S1 e S2 del §14.1.
@@ -35,6 +36,18 @@ use Inertia\Response;
 class ImportController extends Controller
 {
     use HandleFlashMessages;
+
+    /**
+     * Il tetto che l'importatore si dà, in megabyte.
+     *
+     * Vive accanto alla costante che lo definisce e non sparso nelle chiamate: la costante è in byte
+     * perché serve anche a `SpreadsheetReader`, qui serve in megabyte perché è l'unità di
+     * `LimiteCaricamento`.
+     */
+    private static function tettoImportMb(): float
+    {
+        return SpreadsheetReader::DIMENSIONE_MASSIMA_BYTE / 1048576;
+    }
 
     public function __construct(
         private readonly ImportUploadService $upload,
@@ -73,8 +86,12 @@ class ImportController extends Controller
                 'ha_scritto' => $interrotto->stato === ImportBatch::STATO_PARZIALE,
             ],
             'formati' => SpreadsheetReader::ESTENSIONI_AMMESSE,
-            // Il limite si dichiara **prima** del caricamento, non si scopre dopo (§7).
-            'dimensione_massima_mb' => (int) round(SpreadsheetReader::DIMENSIONE_MASSIMA_BYTE / 1024 / 1024),
+            // Il limite si dichiara **prima** del caricamento, non si scopre dopo (§7) — e dalla
+            // beta.60 è **quello vero del server**, non più solo il nostro tetto. Erano due numeri
+            // diversi: la schermata annunciava 25 MB anche su uno spazio web che ne accetta 2, e
+            // questa è la porta che la scheda ㊺ chiamava «la più esposta», perché l'importatore è
+            // la voce di punta della 1.10.
+            'dimensione_massima' => LimiteCaricamento::etichetta(self::tettoImportMb()),
         ]);
     }
 
@@ -200,11 +217,14 @@ class ImportController extends Controller
             'file.*' => [
                 'file',
                 'mimes:'.implode(',', SpreadsheetReader::ESTENSIONI_AMMESSE),
-                'max:'.(int) (SpreadsheetReader::DIMENSIONE_MASSIMA_BYTE / 1024),
+                // Il tetto dell'importatore resta **25 MB, il suo** — un export di più esercizi è
+                // grosso per natura — ma non promette mai più di quanto il server accetti.
+                'max:'.LimiteCaricamento::regolaMax(self::tettoImportMb()),
             ],
         ], [
             'file.*.mimes' => 'Accetto solo file :values. Se il tuo gestionale esporta in un altro formato, aprilo in Excel e salvalo come .xls.',
-            'file.*.max' => 'Un file supera il limite. Esporta un esercizio alla volta, oppure scrivici.',
+            'file.*.max' => 'Un file supera il limite di '.LimiteCaricamento::etichetta(self::tettoImportMb())
+                .'. Esporta un esercizio alla volta, oppure scrivici.',
         ]);
 
         $batch = $this->upload->creaLotto(

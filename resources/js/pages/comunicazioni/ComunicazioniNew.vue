@@ -33,7 +33,7 @@ const props = defineProps<{
 
 const anagraficheOptions = ref<Anagrafica[]>([]);
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('comunicazioni.breadcrumbs.list'), 
       href: route(generateRoute('comunicazioni.index'))
@@ -42,24 +42,24 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('comunicazioni.breadcrumbs.new'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
-    title: trans('comunicazioni.guides.message_title') || 'Messaggio',
-    description: trans('comunicazioni.guides.message_desc') || 'Scrivi una comunicazione chiara e concisa.',
+    title: trans('comunicazioni.guides.message_title'),
+    description: trans('comunicazioni.guides.message_desc'),
     icon: Megaphone,
     colorVariant: 'blue' as const
   },
   {
-    title: trans('comunicazioni.guides.audience_title') || 'Destinatari',
-    description: trans('comunicazioni.guides.audience_desc') || 'Scegli con precisione a chi inviare il messaggio.',
+    title: trans('comunicazioni.guides.audience_title'),
+    description: trans('comunicazioni.guides.audience_desc'),
     icon: Users,
     colorVariant: 'amber' as const
   },
   {
-    title: trans('comunicazioni.guides.priority_title') || 'Priorità',
-    description: trans('comunicazioni.guides.priority_desc') || 'Imposta urgenza e visibilità del comunicato.',
+    title: trans('comunicazioni.guides.priority_title'),
+    description: trans('comunicazioni.guides.priority_desc'),
     icon: BellRing,
     colorVariant: 'emerald' as const
   }
@@ -126,8 +126,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('comunicazioni.section.content_title') || 'Contenuto della Comunicazione' }}</CardTitle>
-                    <CardDescription>{{ trans('comunicazioni.section.content_desc') || 'Dettagli principali del messaggio.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('comunicazioni.section.content_title') }}</CardTitle>
+                    <CardDescription>{{ trans('comunicazioni.section.content_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -161,8 +161,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('comunicazioni.section.recipients_title') || 'Destinatari' }}</CardTitle>
-                    <CardDescription>{{ trans('comunicazioni.section.recipients_desc') || 'Seleziona i condomini e le anagrafiche a cui inviare la comunicazione.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('comunicazioni.section.recipients_title') }}</CardTitle>
+                    <CardDescription>{{ trans('comunicazioni.section.recipients_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -205,8 +205,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('comunicazioni.section.settings_title') || 'Impostazioni di pubblicazione' }}</CardTitle>
-                    <CardDescription>{{ trans('comunicazioni.section.settings_desc') || 'Gestisci lo stato, la priorità e i permessi del comunicato.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('comunicazioni.section.settings_title') }}</CardTitle>
+                    <CardDescription>{{ trans('comunicazioni.section.settings_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">

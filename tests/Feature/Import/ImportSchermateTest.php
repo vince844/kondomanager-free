@@ -64,8 +64,11 @@ it('la pagina di ingresso è raggiungibile da chi può creare condomìni', funct
             ->component('import/ImportHub')
             ->has('formati')
             // Il limite di dimensione si dichiara **prima** del caricamento (§7): scoprirlo
-            // dopo è il momento peggiore per scoprirlo.
-            ->has('dimensione_massima_mb')
+            // dopo è il momento peggiore per scoprirlo. Dalla beta.60 è **quello vero del server**
+            // e non più solo il nostro tetto, quindi arriva già scritto per l'utente («25 MB»).
+            ->where('dimensione_massima', \App\Support\LimiteCaricamento::etichetta(
+                \App\Services\Import\SpreadsheetReader::DIMENSIONE_MASSIMA_BYTE / 1048576
+            ))
         );
 });
 

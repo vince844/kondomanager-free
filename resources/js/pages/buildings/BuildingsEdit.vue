@@ -17,7 +17,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 
 const props = defineProps<{ building: Building }>();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('condomini.header.list_buildings_title'),
       href: route('condomini.index') 
@@ -26,7 +26,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('condomini.header.edit_building_title'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {

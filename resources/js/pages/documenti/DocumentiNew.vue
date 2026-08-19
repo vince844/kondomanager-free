@@ -30,6 +30,8 @@ import type { Categoria } from '@/types/categorie';
 import type { AdminDocumentForm } from '@/types/documenti';
 
 const props = defineProps<{
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
   condomini: Building[];
   categories: Categoria[];
   anagrafiche: Anagrafica[];
@@ -44,7 +46,7 @@ const newCategoryDescription = ref('')
 const localCategories = ref<Categoria[]>([...props.categories])
 const anagraficheOptions = ref<Anagrafica[]>([]);
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('documenti.breadcrumbs.list'), 
       href: route('admin.documenti.index')
@@ -53,7 +55,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('documenti.breadcrumbs.new'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
@@ -249,7 +251,7 @@ const submit = (): void => {
                                     <EmptyDescription>
                                         {{ trans('documenti.dialogs.select_document_description') }}
                                         <div class="text-xs text-muted-foreground mt-1">
-                                            {{ trans('documenti.dialogs.document_supported_types') }}
+                                            {{ trans('documenti.dialogs.document_supported_types') }} (max {{ props.limiteFile }})
                                         </div>
                                     </EmptyDescription>
                                 </EmptyHeader>
@@ -259,7 +261,7 @@ const submit = (): void => {
                                 id="file-upload"
                                 type="file"
                                 class="hidden"
-                                accept="application/pdf,image/*"
+                                accept="application/pdf"
                                 @change="handleFileChange"
                             />
                         </label>

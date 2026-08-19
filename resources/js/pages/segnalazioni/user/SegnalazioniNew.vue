@@ -27,7 +27,7 @@ const props = defineProps<{
 
 const { generateRoute } = usePermission();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('segnalazioni.breadcrumbs.list'), 
       href: route(generateRoute('segnalazioni.index'))
@@ -36,7 +36,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('segnalazioni.breadcrumbs.new'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
@@ -98,8 +98,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.content_title') || 'Dettagli Segnalazione' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.content_desc') || 'Inserisci le informazioni relative al problema da segnalare.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.content_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.content_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -133,7 +133,7 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.location_title') || 'Riferimenti Geografici e Privacy' }}</CardTitle>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.location_title') }}</CardTitle>
                     <CardDescription>{{ 'Indica il condominio e decidi se nascondere questa segnalazione agli altri condomini.' }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
@@ -188,8 +188,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.settings_title') || 'Dettagli di Servizio' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.settings_desc') || 'Imposta lo stato e la priorità della tua segnalazione.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.settings_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.settings_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">

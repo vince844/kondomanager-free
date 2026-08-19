@@ -763,8 +763,6 @@ return [
                     'description_optional' => 'Descrizione (Opzionale)',
                     'pdf_only' => 'Sono consentiti solo file PDF.',
                     'pdf_short' => 'Solo PDF',
-                    'max_size_20mb' => 'Il file non può superare i 20MB.',
-                    'pdf_max_20mb' => 'Solo PDF (Max 20MB)',
                     'click_to_upload' => 'Clicca per caricare',
                     'or_drag_file' => 'oppure trascina il file qui',
                     'or_drag_new_file' => 'oppure trascina il nuovo file qui',

@@ -41,6 +41,8 @@ use App\Models\Comune;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 
+require_once __DIR__.'/../../Support/fogliettoIstat.php';
+
 uses(RefreshDatabase::class);
 
 /** Il percorso del file che viaggia col codice. */
@@ -134,10 +136,11 @@ it('scrive su ogni riga la data della fonte da cui viene, così la schermata pu�
         ->toBe(elencoSpedito()['aggiornato_al']);
 });
 
-it('con --da legge un file ISTAT locale, che è la via d\'uscita per chi non vuole aspettare una release', function () {
-    // La fonte cambia una volta l'anno e l'elenco viaggia col codice: chi ha bisogno di un
-    // aggiornamento fuori ciclo scarica il file da ISTAT e lo passa qui, senza che il prodotto
-    // dipenda dalla rete a regime.
+it('con --da legge un elenco convertito diverso da quello spedito', function () {
+    // ⚠️ Questo test si chiamava «legge un file ISTAT locale» e gli passava un JSON nostro: il nome
+    // prometteva più di quanto il corpo verificasse, che è il segnale d'allarme della Fase 1-bis. Il
+    // caso vero — l'XLSX come lo pubblica ISTAT — ha il suo test più sotto, ed è arrivato con la
+    // beta.60; questo resta a coprire l'altro formato.
     $percorso = sys_get_temp_dir().'/comuni-prova-'.getmypid().'.json';
     file_put_contents($percorso, json_encode([
         'fonte'         => 'prova',
@@ -167,4 +170,120 @@ it('rifiuta un file che non è un elenco di comuni, invece di svuotare la tabell
 
     expect($esito)->not->toBe(0)
         ->and(Comune::count())->toBe($prima);
+});
+
+/**
+ * ## La via d'uscita, che fino alla beta.59 non si poteva percorrere
+ *
+ * Il changelog della .59 prometteva a un amministratore di aggiornarsi da sé con `--da`, ma `--da`
+ * accettava **solo il nostro JSON già convertito** — e la ricetta per produrlo dall'XLSX di ISTAT
+ * non esisteva in nessun file del repository: era stata eseguita una volta a mano.
+ *
+ * Da qui in avanti `--da` accetta il file **come lo pubblica ISTAT**, e `--scrivi-file` rigenera
+ * quello che spediamo. È la differenza fra una promessa e un comando.
+ */
+describe('la via d\'uscita accetta il file come lo pubblica ISTAT', function () {
+    it('con --da su un XLSX converte e carica, senza passare da noi', function () {
+        $percorso = fogliettoIstat('CODICI al 01_01_2030', [
+            ['Comune Di Prova', null, 'Prova', 'Prova', 'ZZ', 'Z999'],
+        ]);
+
+        $esito = Artisan::call('kondomanager:aggiorna-comuni', ['--da' => $percorso]);
+        unlink($percorso);
+
+        expect($esito)->toBe(0)
+            ->and(Comune::where('codice_catasto', 'Z999')->value('nome'))->toBe('Comune Di Prova')
+            ->and(Comune::where('codice_catasto', 'Z999')->value('fonte_al')->toDateString())->toBe('2030-01-01');
+    });
+
+    it('con --scrivi-file rigenera l\'elenco che spediamo, senza toccare il database', function () {
+        // ⚠️ Scrive in un file temporaneo, **non** in quello spedito col codice. La prima stesura
+        // riscriveva quello vero e lo ripristinava in un `finally`: la revisione della .60 ha
+        // mostrato che un `finally` non scatta su un errore fatale, e che bastava un test
+        // interrotto per lasciare nel repository un elenco con **un comune al posto di 7.894**.
+        $destinazione = sys_get_temp_dir().'/comuni-scritti-'.getmypid().'.json';
+
+        $percorso = fogliettoIstat('CODICI al 01_01_2030', [
+            ['Comune Di Prova', null, 'Prova', 'Prova', 'ZZ', 'Z999'],
+        ]);
+
+        try {
+            $esito = Artisan::call('kondomanager:aggiorna-comuni', [
+                '--da'          => $percorso,
+                '--scrivi-file' => true,
+                '--in'          => $destinazione,
+            ]);
+
+            expect($esito)->toBe(0);
+
+            $scritto = json_decode(file_get_contents($destinazione), true);
+
+            expect($scritto['aggiornato_al'])->toBe('2030-01-01')
+                ->and($scritto['comuni'])->toHaveCount(1)
+                // ⚠️ Una riga per comune, come il file vero: si aggiorna una volta l'anno e il diff
+                // deve restare leggibile. Un JSON su una riga sola sarebbe illeggibile in revisione.
+                ->and(substr_count(file_get_contents($destinazione), "\n"))->toBeGreaterThan(5)
+                // Con `--scrivi-file` si riscrive il file e **non** si tocca il database: sono due
+                // operazioni diverse e confonderle vorrebbe dire cambiare i dati di chi lo lancia.
+                ->and(Comune::where('codice_catasto', 'Z999')->exists())->toBeFalse()
+                // E l'elenco spedito col codice non è stato sfiorato.
+                ->and(json_decode(file_get_contents(fileComuni()), true)['comuni'])->toHaveCount(7894);
+        } finally {
+            @unlink($destinazione);
+            unlink($percorso);
+        }
+    });
+
+    it('il file rigenerato è rileggibile dal comando stesso: il giro si chiude', function () {
+        $destinazione = sys_get_temp_dir().'/comuni-giro-'.getmypid().'.json';
+        $percorso = fogliettoIstat('CODICI al 01_01_2030', [
+            ['Comune Di Prova', null, 'Prova', 'Prova', 'ZZ', 'Z999'],
+        ]);
+
+        try {
+            Artisan::call('kondomanager:aggiorna-comuni', [
+                '--da' => $percorso, '--scrivi-file' => true, '--in' => $destinazione,
+            ]);
+
+            // Rilanciato con `--da` su quello appena scritto, deve rileggerlo e caricarlo: è il giro
+            // completo, XLSX → nostro formato → database.
+            expect(Artisan::call('kondomanager:aggiorna-comuni', ['--da' => $destinazione]))->toBe(0)
+                ->and(Comune::where('codice_catasto', 'Z999')->value('nome'))->toBe('Comune Di Prova');
+        } finally {
+            @unlink($destinazione);
+            unlink($percorso);
+        }
+    });
+
+    it('se la scrittura non riesce, l\'elenco spedito resta quello di prima', function () {
+        // ⚠️ Il caso che la revisione ha trovato: aprire il file vero in `w` lo tronca **prima** di
+        // avere il contenuto nuovo. Adesso si scrive accanto e si sposta, quindi una destinazione
+        // impossibile non tocca niente.
+        $prima = file_get_contents(fileComuni());
+        $percorso = fogliettoIstat('CODICI al 01_01_2030', [
+            ['Comune Di Prova', null, 'Prova', 'Prova', 'ZZ', 'Z999'],
+        ]);
+
+        try {
+            $esito = Artisan::call('kondomanager:aggiorna-comuni', [
+                '--da' => $percorso, '--scrivi-file' => true,
+                '--in' => '/cartella/che/non/esiste/comuni.json',
+            ]);
+
+            expect($esito)->not->toBe(0)
+                ->and(file_get_contents(fileComuni()))->toBe($prima);
+        } finally {
+            unlink($percorso);
+        }
+    });
+
+    it('un file che non è né un nostro JSON né un XLSX di ISTAT si rifiuta', function () {
+        $percorso = sys_get_temp_dir().'/niente-'.getmypid().'.xlsx';
+        file_put_contents($percorso, 'questo non è uno zip');
+
+        $esito = Artisan::call('kondomanager:aggiorna-comuni', ['--da' => $percorso]);
+        unlink($percorso);
+
+        expect($esito)->not->toBe(0);
+    });
 });

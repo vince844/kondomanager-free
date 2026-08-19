@@ -29,6 +29,9 @@ class ImpostazioniStampeController extends Controller
         return Inertia::render('impostazioni/impostazioniStampe', [
             'nota_legale_stampe' => (string) $settings->nota_legale_stampe,
             'firma_stampe_url'   => $settings->firma_stampe_path ? $disk->url($settings->firma_stampe_path) : null,
+            // Il limite lo decide il server, non noi: il testo d'aiuto scriveva «max 2MB» a mano in
+            // quattro lingue, e su uno spazio web che ne accetta uno prometteva il doppio.
+            'limiteFirma'        => \App\Support\LimiteCaricamento::etichetta(2.0),
         ]);
     }
 

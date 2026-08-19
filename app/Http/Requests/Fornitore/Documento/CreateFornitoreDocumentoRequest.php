@@ -5,6 +5,7 @@ namespace App\Http\Requests\Fornitore\Documento;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use App\Enums\Permission;
+use App\Support\LimiteCaricamento;
 
 class CreateFornitoreDocumentoRequest extends FormRequest
 {
@@ -29,7 +30,7 @@ class CreateFornitoreDocumentoRequest extends FormRequest
             'created_by'      => 'required|exists:users,id',
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
-            'file'            => 'required|file|mimes:pdf|max:20480',
+            'file'            => 'required|file|mimes:pdf|max:'.LimiteCaricamento::regolaMax(),
         ];
     }
 

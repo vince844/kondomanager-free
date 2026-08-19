@@ -151,8 +151,7 @@ return [
         'delete_document_description'   => 'Esta ação é irreversível. Eliminará o documento e todos os dados associados.',
         'select_document_title'         => 'Arraste o seu documento aqui',
         'select_document_description'   => 'Ou clique para o selecionar do seu dispositivo.',
-        'document_supported_types'      => 'Apenas são permitidos os formatos PDF, JPEG, PNG.',
-        'max_document_size'             => 'O ficheiro não pode exceder 20 MB',
+        'document_supported_types'      => 'Apenas é permitido o formato PDF.',
         'categories' => [
             'delete_category_title'       => 'Tem a certeza de que pretende eliminar esta categoria?',
             'delete_category_description' => 'Esta ação é irreversível. Eliminará a categoria e todos os documentos associados.',

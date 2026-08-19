@@ -763,8 +763,6 @@ return [
                     'description_optional' => 'Description (Optional)',
                     'pdf_only' => 'Only PDF files are allowed.',
                     'pdf_short' => 'PDF only',
-                    'max_size_20mb' => 'File cannot exceed 20MB.',
-                    'pdf_max_20mb' => 'PDF only (Max 20MB)',
                     'click_to_upload' => 'Click to upload',
                     'or_drag_file' => 'or drag file here',
                     'or_drag_new_file' => 'or drag new file here',

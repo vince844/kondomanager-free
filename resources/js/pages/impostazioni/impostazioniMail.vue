@@ -56,11 +56,11 @@ const errorMessage   = ref('');
 
 const breadcrumbs = computed(() => [
     {
-        title: trans('impostazioni.label.settings') || 'Impostazioni',
+        title: trans('impostazioni.label.settings'),
         href: '/impostazioni',
     },
     {
-        title: trans('impostazioni.header.mail_settings_title') || 'Configurazione Email',
+        title: trans('impostazioni.header.mail_settings_title'),
         href: '/impostazioni/mail',
     },
 ]);
@@ -87,7 +87,7 @@ const pageGuides = computed(() => [
 ]);
 
 // ─── Driver options ───────────────────────────────────────────────────────────
-const drivers = [
+const drivers = computed(() => [
     {
         value: 'smtp',
         label: 'SMTP',
@@ -100,7 +100,7 @@ const drivers = [
         description: trans('impostazioni.driver.sendmail_description'),
         icon: Terminal,
     },
-];
+]);
 
 // ─── Computed ────────────────────────────────────────────────────────────────
 const isSmtp     = computed(() => form.mail_driver === 'smtp');
@@ -124,9 +124,9 @@ const mailStatus = computed(() => {
         };
     }
     if (props.mail_host_env && !['127.0.0.1', 'localhost'].includes(props.mail_host_env)) {
-        return { label: trans('impostazioni.mail_status.env') || 'ENV', color: 'text-blue-700 bg-blue-100 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300' };
+        return { label: trans('impostazioni.mail_status.env'), color: 'text-blue-700 bg-blue-100 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300' };
     }
-    return { label: trans('impostazioni.mail_status.log') || 'Log (Disabilitato)', color: 'text-slate-600 bg-slate-100 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400' };
+    return { label: trans('impostazioni.mail_status.log'), color: 'text-slate-600 bg-slate-100 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400' };
 });
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
@@ -166,13 +166,13 @@ const runTest = async () => {
 
             <!-- Header con guida e breadcrumbs integrati -->
             <PageHeaderGuide
-                :page-title="trans('impostazioni.header.mail_settings_title') || 'Configurazione Mail'"
-                :page-subtitle="trans('impostazioni.header.mail_settings_description') || 'Configura il server SMTP o Sendmail per l\'invio di avvisi, solleciti e comunicazioni alle famiglie e ai fornitori.'"
+                :page-title="trans('impostazioni.header.mail_settings_title')"
+                :page-subtitle="trans('impostazioni.header.mail_settings_description')"
                 :icon="Mail"
                 :guides="pageGuides"
                 :breadcrumbs="breadcrumbs"
                 back-url="/impostazioni"
-                :back-text="trans('impostazioni.label.settings') || 'Impostazioni'"
+                :back-text="trans('impostazioni.label.settings')"
             >
                 <template #actions>
                     <Button variant="outline" size="sm" @click="showGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200 shadow-sm">
@@ -432,7 +432,7 @@ const runTest = async () => {
                         </span>
                         <Button type="submit" :disabled="form.processing" class="w-full sm:w-auto gap-2">
                             <Save class="w-4 h-4" />
-                            {{ trans('impostazioni.label.save_settings') || 'Salva Impostazioni' }}
+                            {{ trans('impostazioni.label.save_settings') }}
                         </Button>
                     </CardFooter>
                 </Card>

@@ -41,11 +41,11 @@ const flashMessage = computed(() => (page.props as any).flash?.message)
 // ancora caricate e trans() restituirebbe la chiave raw
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
-    title: trans('impostazioni.label.settings') || 'Impostazioni',
+    title: trans('impostazioni.label.settings'),
     href: '/impostazioni',
   },
   {
-    title: trans('impostazioni.dialogs.backups_settings_title') || 'Gestione backups',
+    title: trans('impostazioni.dialogs.backups_settings_title'),
     href: '/impostazioni/backups',
   },
 ])
@@ -187,7 +187,15 @@ const tableBackups = computed(() => {
   return rows.filter((backup: BackupItem) => backup.uuid !== running.value!.uuid)
 })
 
-const phaseLabel = (status: string) => trans(`impostazioni.backup_phase.${status}`) || status
+// ⚠️ Qui il ripiego serve davvero — la chiave è dinamica e uno stato nuovo può non averla — ma
+// `||` non basta: `trans()` su una chiave mancante restituisce **la chiave**, che è truthy, quindi
+// l'utente leggerebbe «impostazioni.backup_phase.running» invece di «running». Si confronta.
+const phaseLabel = (status: string) => {
+  const chiave = `impostazioni.backup_phase.${status}`
+  const tradotto = trans(chiave)
+
+  return tradotto === chiave ? status : tradotto
+}
 
 /* ------------------------------------------------------------------
  | Eliminazione / annullamento
@@ -503,7 +511,13 @@ const copyChecksum = async (checksum: string) => {
   }
 }
 
-const preflightLabel = (key: string) => trans(`impostazioni.backup_preflight.${key}`) || key
+// Stessa ragione della `phaseLabel` qui sopra.
+const preflightLabel = (key: string) => {
+  const chiave = `impostazioni.backup_preflight.${key}`
+  const tradotto = trans(chiave)
+
+  return tradotto === chiave ? key : tradotto
+}
 
 const statusBadgeClass = (status: string) => {
   if (status === 'completed') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
@@ -514,11 +528,11 @@ const statusBadgeClass = (status: string) => {
 
 <template>
   <AppLayout :breadcrumbs="[]">
-    <Head :title="trans('impostazioni.dialogs.backups_settings_title') || 'Gestione backups'" />
+    <Head :title="trans('impostazioni.dialogs.backups_settings_title')" />
 
     <div class="px-4 py-6 space-y-6">
       <PageHeaderGuide
-        :page-title="trans('impostazioni.dialogs.backups_settings_title') || 'Gestione backups'"
+        :page-title="trans('impostazioni.dialogs.backups_settings_title')"
         :page-subtitle="trans('impostazioni.header.backups_settings_description')"
         :icon="DatabaseBackup"
         :guides="pageGuides"

@@ -29,33 +29,33 @@ const props = defineProps<{
 
 const { generateRoute } = usePermission();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
-      title: trans('segnalazioni.breadcrumbs.list') || 'Segnalazioni', 
+      title: trans('segnalazioni.breadcrumbs.list'), 
       href: route(generateRoute('segnalazioni.index'))
   },
   {
-      title: trans('segnalazioni.breadcrumbs.new') || 'Nuova segnalazione',
+      title: trans('segnalazioni.breadcrumbs.new'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
-    title: trans('segnalazioni.guides.issue_title') || 'Problema',
-    description: trans('segnalazioni.guides.issue_desc') || 'Descrivi dettagliatamente il problema o guasto riscontrato.',
+    title: trans('segnalazioni.guides.issue_title'),
+    description: trans('segnalazioni.guides.issue_desc'),
     icon: AlertTriangle,
     colorVariant: 'blue' as const
   },
   {
-    title: trans('segnalazioni.guides.location_title') || 'Luogo',
-    description: trans('segnalazioni.guides.location_desc') || 'Collega la segnalazione al condominio e ai residenti coinvolti.',
+    title: trans('segnalazioni.guides.location_title'),
+    description: trans('segnalazioni.guides.location_desc'),
     icon: Building2,
     colorVariant: 'amber' as const
   },
   {
-    title: trans('segnalazioni.guides.settings_title') || 'Gestione',
-    description: trans('segnalazioni.guides.settings_desc') || 'Imposta stato di avanzamento, priorità e opzioni di visibilità.',
+    title: trans('segnalazioni.guides.settings_title'),
+    description: trans('segnalazioni.guides.settings_desc'),
     icon: SlidersHorizontal,
     colorVariant: 'emerald' as const
   }
@@ -103,8 +103,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.content_title') || 'Dettagli Segnalazione' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.content_desc') || 'Inserisci le informazioni relative al problema da segnalare.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.content_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.content_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -138,8 +138,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.location_title') || 'Riferimenti Geografici' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.location_desc') || 'Indica il condominio e le anagrafiche legate a questa segnalazione.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.location_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.location_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -181,8 +181,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.settings_title') || 'Gestione Operativa' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.settings_desc') || 'Imposta lo stato di lavorazione, la priorità e la visibilità della segnalazione.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.settings_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.settings_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">

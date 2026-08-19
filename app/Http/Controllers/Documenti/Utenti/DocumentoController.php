@@ -58,6 +58,8 @@ class DocumentoController extends Controller
         return Inertia::render('documenti/user/DocumentiNew', [
             'condomini' => CondominioResource::collection($condomini),
             'categoria' => (int) $validated['categoria'],
+            // Il limite lo decide il server, non noi.
+            'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]);
     }
 
@@ -155,7 +157,9 @@ class DocumentoController extends Controller
             'documento'   => new DocumentoResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            // Il limite lo decide il server, non noi.
+            'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]); 
     }
 

@@ -69,6 +69,34 @@ class AppServiceProvider extends ServiceProvider
             return str_replace(':limite', \App\Support\LimiteCaricamento::etichettaServer(), $messaggio);
         });
 
+        // La regola `uploaded` scatta quando è **PHP** a scartare il file. Quando invece scatta la
+        // **nostra** `max:`, Laravel usa il testo predefinito di `validation.max.file`, che parla in
+        // kilobyte: «il file non può essere più grande di 20480 kilobytes». È il numero giusto detto
+        // nel modo in cui un limite non si dice a una persona — e la schermata accanto, nello stesso
+        // momento, lo scrive in megabyte.
+        //
+        // Sta qui e non in nove `messages()` per la ragione di sempre: una porta nuova nasce già
+        // corretta, senza che chi la scrive debba ricordarsene.
+        Validator::replacer('max', function ($messaggio, $attributo, $regola, $parametri, $validatore) {
+            $valore = data_get($validatore?->getData() ?? [], $attributo);
+            $kilobyte = (int) ($parametri[0] ?? 0);
+
+            // ⚠️ Un `replacer` **sostituisce** la sostituzione predefinita di Laravel, non la
+            // affianca: restituire il messaggio intatto lascerebbe `:max` scritto in pagina su ogni
+            // stringa e ogni numero del programma. Il ramo non-file deve rifare il lavoro che
+            // Laravel avrebbe fatto. (Rotto e corretto durante la revisione della .60: il primo
+            // giro produceva «nome non può essere più lungo di :max caratteri».)
+            if (! $valore instanceof \Illuminate\Http\UploadedFile) {
+                return str_replace(':max', (string) ($parametri[0] ?? ''), $messaggio);
+            }
+
+            return str_replace(
+                [':max kilobytes', ':max kilobyte', ':max'],
+                \App\Support\LimiteCaricamento::daKilobyte($kilobyte),
+                $messaggio
+            );
+        });
+
         // ====================================================================
         // ROTTE INSTALLER
         // ====================================================================

@@ -7,6 +7,94 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.60] - Il Numero Che Nessuno Aveva Chiesto al Server
+
+**Nessuna migrazione: il database non viene toccato.**
+
+La beta.58 nasceva da una segnalazione precisa — *«un file da 4376 KB non passa, e sopra c'è scritto
+Max 10MB»* — e la chiudeva **dove era stata fatta**. La misura di allora aveva trovato altre sei
+porte identiche; questa versione le chiude tutte e aggiunge quello che impedisce alla settima di
+nascere.
+
+### Dieci porte, ognuna col limite del suo server
+
+Ogni punto in cui si carica un file ora chiede al server quanto può accettare, invece di annunciare
+un numero deciso da noi. Sono dieci: i documenti dell'archivio, quelli dell'area utenti, quelli dei
+fornitori, l'allegato di una fattura, la firma per le stampe e l'importatore.
+
+**Non vuol dire che adesso siano tutti uguali**, ed è la parte che conta: ogni porta tiene il tetto
+che ha senso per lei — 20 MB per un documento, 10 per l'allegato di una fattura, 2 per una firma,
+**25 per l'importatore**, che riceve l'export di un gestionale intero. Quello che è cambiato è che
+nessuna promette più di quanto la macchina accetti davvero. Su uno spazio web che si ferma a 2 MB,
+tutte e dieci scrivono 2 MB.
+
+⚠️ **L'importatore era il caso peggiore**, e non l'aveva segnalato nessuno: annunciava 25 MB a
+chiunque, anche a chi ne aveva due. È il canale da cui si porta dentro un condominio intero, cioè
+esattamente il momento in cui scoprire un limite dopo è più costoso.
+
+### «20480 kilobytes»
+
+L'altra metà della segnalazione del forum era il messaggio d'errore, e fin qui era rimasta aperta.
+Quando il file supera **il nostro** limite il programma diceva *«il file non può essere più grande di
+20480 kilobytes»*: il numero giusto, in un'unità che nessuno usa e diversa da quella che la schermata
+accanto aveva appena scritto. Adesso dice **«20 MB»**, e dice lo stesso numero della schermata.
+
+### Quello che le schermate offrivano e il programma rifiutava
+
+Quattro schermate lasciavano scegliere immagini JPG e PNG mentre il programma accetta solo PDF: si
+sceglieva il file, si aspettava il caricamento e lo si vedeva respingere. Ora l'elenco dei formati è
+lo stesso da tutte e due le parti.
+
+Stessa cosa sulla **firma per le stampe**, dove convivevano due difetti: il selettore offriva anche i
+file vettoriali — che la regola ha sempre respinto — e sotto al campo compariva, invece del testo
+d'aiuto, **il nome tecnico della traduzione mancante**. Un amministratore italiano leggeva
+`impostazioni.label.print_signature_help` stampato in pagina.
+
+### L'elenco dei Comuni, che ora si può aggiornare davvero
+
+La beta.59 ha portato l'elenco ISTAT dei Comuni dentro il programma e prometteva a chi ha fretta di
+aggiornarselo da sé. **Non si poteva**: il comando accettava solo il formato già convertito da noi, e
+la ricetta per convertirlo non stava da nessuna parte. Adesso legge il file **come lo pubblica
+ISTAT**, e serve un comando solo:
+
+```
+php artisan kondomanager:aggiorna-comuni --da=Elenco-comuni-italiani.xlsx
+```
+
+Costa 74 MB di memoria e due secondi, e **funziona anche sugli spazi web più stretti** — provato a
+128 MB, che è il limite tipico dell'hosting condiviso.
+
+C'è anche un modo per sapere **quando** vale la pena farlo:
+
+```
+php artisan kondomanager:verifica-fonte-comuni
+```
+
+Chiede a ISTAT e confronta con l'elenco in uso. ⚠️ **Non gira da solo e non girerà mai**: l'elenco
+viaggia dentro il programma proprio perché nessuna installazione debba dipendere da una connessione.
+Lo si lancia quando si vuole — a gennaio, quando le fusioni di Comuni decorrono per legge.
+
+### Il nome tecnico della traduzione al posto della parola
+
+Su una ventina di schermate, il percorso in cima alla pagina mostrava qualcosa come
+`IMPOSTAZIONI.LABEL.SETTINGS › IMPOSTAZIONI.DIALOGS.PRINT_SETTINGS_TITLE` invece di
+«Impostazioni › Impostazioni Stampe PDF». Succedeva sulle schermate di creazione e modifica di
+condomìni, anagrafiche, fornitori, documenti, comunicazioni e segnalazioni.
+
+Il motivo è che le traduzioni arrivano al programma **poco dopo la pagina**, e quei testi venivano
+scritti una volta sola, troppo presto. Ora si riscrivono da soli quando le traduzioni arrivano.
+
+Insieme sono stati tolti **cento ripieghi che non funzionavano**: righe scritte per mostrare un testo
+di riserva quando una traduzione manca, che non entravano mai in funzione. Davano l'impressione che
+ci fosse una rete e non c'era — ed è il motivo per cui il difetto è rimasto invisibile a lungo.
+
+### Il resto
+
+Il numero dei Comuni bilingui annunciato nella versione precedente era sbagliato: **121**, non 124.
+Il numero vecchio contava una colonna diversa da quella che il programma usa per cercarli.
+
+---
+
 ## [1.10.0-beta.59] - Il Codice Che Nessuno Ricorda a Memoria
 
 **Una migrazione: il database viene toccato.** Aggiunge una tabella nuova, l'elenco dei Comuni
@@ -55,7 +143,7 @@ cercando «Roma» ci sono 42 Comuni che contengono quelle lettere — Barbarano 
 Roma è il primo. Se i risultati sono troppi la finestra lo dice, invece di mostrarne venti in
 silenzio: *«Mostrati i primi 20 di 214»*.
 
-I **124 Comuni bilingui** si trovano in tutte e due le lingue: chi cerca «Aldein» trova Aldino.
+I **121 Comuni bilingui** si trovano in tutte e due le lingue: chi cerca «Aldein» trova Aldino.
 
 ### Da dove viene l'elenco, e come si aggiorna
 

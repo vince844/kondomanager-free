@@ -30,6 +30,8 @@ import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 
 const props = defineProps<{
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
   documento: Documento | any; 
   condomini: Building[];
   categories: Categoria[];
@@ -47,7 +49,7 @@ const file = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const showFileInput = ref(false)
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('documenti.breadcrumbs.list'), 
       href: route(generateRoute('documenti.index'))
@@ -56,7 +58,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('documenti.breadcrumbs.edit'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
@@ -99,20 +101,21 @@ const form = useForm({
 });
 
 // Validazione file
+//
+// ⚠️ Il controllo sulla **dimensione** non si fa più qui: era un secondo limite scritto in un posto
+// dove nessuno lo cercava, e rifiutava file che il server avrebbe accettato mentre ne lasciava
+// partire altri che il server rifiutava. Il limite è uno solo ed è quello del server.
+//
+// ⚠️ E i formati: la regola a server è `mimes:pdf`, quindi JPEG e PNG non sono mai passati. Offrirli
+// qui voleva dire far scegliere un file e respingerlo dopo il caricamento.
 const validateFile = (selectedFile: File): boolean => {
-  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-  const maxSize = 20 * 1024 * 1024; // 20MB
-  
+  const allowedTypes = ['application/pdf'];
+
   if (!allowedTypes.includes(selectedFile.type)) {
     form.setError('file', trans('documenti.dialogs.document_supported_types'));
     return false;
   }
-  
-  if (selectedFile.size > maxSize) {
-    form.setError('file', trans('documenti.dialogs.max_document_size'));
-    return false;
-  }
-  
+
   return true;
 }
 
@@ -352,7 +355,7 @@ const submit = (): void => {
                                         <EmptyDescription>
                                             {{ trans('documenti.dialogs.select_document_description') }}
                                             <div class="text-xs text-muted-foreground mt-1">
-                                                {{ trans('documenti.dialogs.document_supported_types') }}
+                                                {{ trans('documenti.dialogs.document_supported_types') }} (max {{ props.limiteFile }})
                                             </div>
                                         </EmptyDescription>
                                     </EmptyHeader>
@@ -362,7 +365,7 @@ const submit = (): void => {
                                     id="file-upload"
                                     type="file"
                                     class="hidden"
-                                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,image/jpg"
+                                    accept="application/pdf"
                                     @change="handleFileChange"
                                     ref="fileInputRef"
                                 />

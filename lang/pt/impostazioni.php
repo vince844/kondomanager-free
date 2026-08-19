@@ -155,7 +155,7 @@ return [
         'print_no_signature' => 'Sem assinatura',
         'print_upload_image' => 'Enviar Imagem',
         'print_remove_signature' => 'Remover',
-        'print_admin_signature_help' => 'Use uma imagem PNG ou JPG com fundo branco ou transparente (máx. 2 MB). A imagem será impressa no final da última folha de demonstrativos e relatórios.',
+        'print_admin_signature_help' => 'Use uma imagem PNG ou JPG com fundo branco ou transparente (máx. :limite). A imagem será impressa no final da última folha de demonstrativos e relatórios.',
         'print_admin_signature_tooltip' => '<strong>Dimensões ideais:</strong> ~400x150 pixels.<br>Recomenda-se o formato PNG com fundo transparente e cortado sem margens brancas excessivas ao redor da assinatura.',
         'backup_preflight_title' => 'Requisitos do sistema',
         'backup_estimated_size' => 'Tamanho estimado',

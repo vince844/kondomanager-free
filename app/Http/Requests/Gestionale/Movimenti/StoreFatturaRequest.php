@@ -7,6 +7,7 @@ use App\Enums\Fiscale\NaturaRigaRitenuta;
 use App\Models\Fornitore;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Support\LimiteCaricamento;
 
 class StoreFatturaRequest extends FormRequest
 {
@@ -50,7 +51,11 @@ class StoreFatturaRequest extends FormRequest
             
             'iban_fornitore'     => 'nullable|string',
             'dati_extra'         => 'nullable|array',
-            'file'               => 'nullable|file|mimes:pdf,xml,p7m,jpg,png|max:10240',
+            'file'               => ['nullable', 'file', 'mimes:pdf,xml,p7m,jpg,png',
+                // Il tetto di questa porta resta **10 MB, il suo**: un allegato di fattura è un
+                // documento singolo, non un archivio. Quello che cambia è che adesso non promette
+                // mai più di quanto il server accetti davvero.
+                'max:'.LimiteCaricamento::regolaMax(10.0)],
 
             // ── REGOLE RITENUTA D'ACCONTO (Fase 1) ──
             // Difetto corretto (design §8 punto 1): la chiave non era validata,
