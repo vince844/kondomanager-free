@@ -21,6 +21,7 @@ use App\Http\Middleware\CheckExternalCron;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use App\Http\Controllers\Comuni\CercaComuniController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', WelcomeController::class)
@@ -77,6 +78,28 @@ Route::get('/permessi', [PermissionController::class, 'index'])
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)
     ->middleware(['auth', 'verified'])
     ->name('segnalazioni.stats');
+
+/*
+|--------------------------------------------------------------------------
+| Ricerca dei Comuni italiani — l'aiuto accanto al campo, che resta libero
+|--------------------------------------------------------------------------
+|
+| ⚠️ Sta qui e non sotto `/admin` per una ragione misurata: il pulsante che la chiama vive su
+| quattro schermate governate da **due sbarramenti diversi** — le due del condominio chiedono
+| «Visualizza condomini» (routes/web.php, poco sotto), le due dell'unità l'accesso al pannello.
+| Registrata dentro il gruppo `/admin` con il solo accesso al pannello, il pulsante compariva a chi
+| poi riceveva un 403: una funzione visibile e rotta per un ruolo costruito a mano.
+|
+| L'elenco è dato pubblico ISTAT e non contiene niente dell'installazione: il filtro serve a
+| rispettare la convenzione di casa, non a proteggere un segreto.
+*/
+Route::get('/comuni/cerca', CercaComuniController::class)
+    ->middleware([
+        'auth',
+        'verified',
+        'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore|Visualizza condomini',
+    ])
+    ->name('comuni.cerca');
 
 /*
 |--------------------------------------------------------------------------

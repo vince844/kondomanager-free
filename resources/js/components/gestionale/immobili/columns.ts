@@ -153,11 +153,11 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
         return h('div', { class: 'flex flex-col text-[11px] space-y-1' }, [
           h('div', { class: 'flex items-center gap-1.5 text-slate-600 dark:text-slate-400' }, [
             h(FileSearch, { class: 'w-3 h-3 text-slate-400' }),
-            h('span', { class: 'font-mono' }, `Foglio: ${immobile.foglio_catasto ?? '-'} | Particella: ${immobile.particella_catasto ?? '-'}`)
+            h('span', {}, `Foglio: ${immobile.foglio_catasto ?? '-'} | Particella: ${immobile.particella_catasto ?? '-'}`)
           ]),
           h('div', { class: 'flex items-center gap-1.5 text-slate-600 dark:text-slate-400' }, [
             h(Hash, { class: 'w-3 h-3 text-slate-400' }),
-            h('span', { class: 'font-mono' }, `Subalterno: ${immobile.subalterno_catasto ?? '-'}`)
+            h('span', {}, `Subalterno: ${immobile.subalterno_catasto ?? '-'}`)
           ])
         ])
       }

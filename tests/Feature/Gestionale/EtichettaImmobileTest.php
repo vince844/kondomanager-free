@@ -55,7 +55,22 @@ it('con soli spazi ripiega comunque: uno spazio non identifica niente', function
     expect($i->etichetta)->toBe('Posto auto 3');
 });
 
-it('senza interno e senza nome resta il codice, che è l\'ultima rete', function () {
+it('senza interno e senza nome resta il codice dell\'unità, che è l\'ultima rete', function () {
+    // ⚠️ Questo test si chiamava così e asseriva `Unità #613`, cioè l'**id**: il nome prometteva più
+    // di quanto il corpo verificasse, che è il segnale d'allarme elencato dalla Fase 1-bis. Il
+    // docblock del model dichiarava la stessa cosa. La colonna esiste — `codice_immobile`, NOT NULL,
+    // univoca, generata dal model come «C16-0002» — quindi il ripiego non era impossibile: era mai
+    // stato scritto. Corretto nella beta.59 (coda ㊼).
+    $i = new Immobile(['interno' => '', 'nome' => '']);
+    $i->codice_immobile = 'C16-0002';
+    $i->id = 613;
+
+    expect($i->etichetta)->toBe('C16-0002');
+});
+
+it('senza nemmeno il codice ripiega sull\'id, e non resta mai vuota', function () {
+    // `codice_immobile` è NOT NULL a database, quindi in produzione non manca mai. Manca però su un
+    // model appena costruito in memoria, ed è l'unico caso in cui questo ramo si vede.
     $i = new Immobile(['interno' => '', 'nome' => '']);
     $i->id = 613;
 

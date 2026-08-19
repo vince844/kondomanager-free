@@ -7,6 +7,90 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.59] - Il Codice Che Nessuno Ricorda a Memoria
+
+**Una migrazione: il database viene toccato.** Aggiunge una tabella nuova, l'elenco dei Comuni
+italiani, e non tocca nessun dato esistente. **Nessuna colonna del programma viene collegata a
+quell'elenco**: è un aiuto, non un vincolo, e il perché sta più sotto.
+
+Questa versione chiude la quinta e ultima segnalazione della serie arrivata sul forum il 18 agosto —
+l'unica che non era un difetto: *«i codici catastali dei Comuni potrebbero essere precaricati»*.
+
+### Quattro campi battuti a mano ogni volta
+
+Il codice catastale di un Comune — «H501» per Roma, «E602» per Linguaglossa — è esattamente il dato
+che nessuno ricorda e che si va a cercare altrove ogni volta. Adesso accanto al campo «Comune
+catastale» c'è un piccolo pulsante: si scrive il nome, si sceglie dall'elenco, e si riempiono **due**
+campi invece di uno. Funziona anche al contrario: chi ha il codice sotto mano e vuole il nome scrive
+il codice.
+
+Il pulsante sta dove il codice catastale ha un posto dove andare, cioè sulla scheda del condominio e
+su quella dell'unità immobiliare.
+
+### Il campo resta libero, ed è la parte importante
+
+**Non è una tendina.** L'elenco dei Comuni non è una tabella immobile: i Comuni si fondono, cambiano
+nome, qualcuno cambia codice. Un elenco caricato una volta e dimenticato, fra due anni, suggerisce
+codici di Comuni che non esistono più — e **un dato sbagliato suggerito dal programma è peggio di un
+campo vuoto**, perché chi lo inserisce si fida.
+
+Per questo il campo continua ad accettare qualunque cosa si scriva, la finestra lo dice a chiare
+lettere, e in fondo c'è **la data a cui l'elenco è aggiornato**. Se un Comune non si trova, il
+programma non insiste: dice che può essere stato fuso o rinominato dopo quella data e invita a
+scriverlo a mano.
+
+### Trovare i Comuni come si chiamano davvero
+
+La ricerca è stata rifatta due volte, perché la prima versione cercava solo dall'inizio del nome e
+falliva su come la gente scrive:
+
+- **«Spezia»** non trovava La Spezia, **«Reggio Emilia»** non trovava Reggio nell'Emilia. Sono
+  **2.687 Comuni su 7.894** ad avere un nome di più parole.
+- **«Sant'Agata»** scritto con l'apostrofo curvo del telefono non trovava niente, e nemmeno «Sant
+  Agata» senza apostrofo. Sono **314 Comuni** con l'apostrofo nel nome.
+- **«Forli»** senza accento non trovava Forlì.
+
+Adesso tutte queste forme funzionano, e quello che si è scritto per esteso compare **in cima**:
+cercando «Roma» ci sono 42 Comuni che contengono quelle lettere — Barbarano Romano, Roccaromana — e
+Roma è il primo. Se i risultati sono troppi la finestra lo dice, invece di mostrarne venti in
+silenzio: *«Mostrati i primi 20 di 214»*.
+
+I **124 Comuni bilingui** si trovano in tutte e due le lingue: chi cerca «Aldein» trova Aldino.
+
+### Da dove viene l'elenco, e come si aggiorna
+
+Viene da ISTAT, ed è la parte in cui c'era una trappola. Allo stesso indirizzo l'istituto pubblica
+due file che **non sono lo stesso elenco**: quello che si trova per primo è fermo al **gennaio
+2024**, l'altro è aggiornato ma per aprirlo servono 142 MB di memoria — cioè muore sulla maggior
+parte degli spazi web condivisi. Abbiamo convertito noi quello giusto, una volta, e l'elenco viaggia
+già pronto dentro il programma: nessuna installazione paga quel costo e nessuna dipende da una
+connessione per una funzione che deve esserci sempre.
+
+Chi non vuole aspettare una versione nuova può aggiornarlo da sé:
+
+```
+php artisan kondomanager:aggiorna-comuni --da=elenco.json
+```
+
+⚠️ **L'elenco ISTAT non contiene il CAP**, in nessuna delle sue forme: quel campo resta da scrivere
+a mano, e valeva la pena dirlo invece di lasciarlo scoprire.
+
+### Il resto
+
+Il nome di un Comune adesso si mostra **come è scritto**. Prima passava da una funzione che mette la
+maiuscola a ogni parola, e sui nomi italiani non funziona: «Reggio nell'Emilia» diventava «Reggio
+Nell'emilia» e «L'Aquila» diventava «L'aquila». Sono **1.145 nomi su 7.894**, e il giro si chiudeva
+male — il programma forniva il nome giusto e poi lo riscriveva storto al primo salvataggio.
+
+Nella scheda di un'unità immobiliare, quando mancano sia l'interno sia il nome, adesso compare il
+**codice dell'unità** invece del suo numero interno di archivio: era già quello che il programma
+dichiarava di fare, e non lo faceva.
+
+Via il carattere a spaziatura fissa dai dati catastali dell'unità, in elenco, in scheda e in
+modifica.
+
+---
+
 ## [1.10.0-beta.58] - I Campi Che Chiedevano Quello Che Non Serviva
 
 **Una migrazione: il database viene toccato.** Rende facoltative tre colonne che erano obbligatorie —

@@ -24,13 +24,17 @@ class CondominioResource extends JsonResource
             'email'                 => $this->email,
             'note'                  => $this->note,
             'indirizzo'             => $this->indirizzo ? Str::ucfirst($this->indirizzo) : null,
-            'comune'                => $this->comune ? Str::title($this->comune) : null,
+            // ⚠️ Niente `Str::title()`: spezza le particelle dei nomi italiani — «Reggio
+            // nell'Emilia» diventava «Reggio Nell'emilia», «L'Aquila» diventava «L'aquila», e
+            // sono 1.145 comuni su 7.894. Da quando il pulsante di ricerca pesca il nome
+            // autorevole da ISTAT, questa riga lo distruggeva al primo salvataggio.
+            'comune'                => $this->comune,
             'provincia'             => $this->provincia ? Str::upper($this->provincia) : null,
             'cap'                   => $this->cap,
             'anno_costruzione'      => $this->anno_costruzione,
             'anno_acquisizione'     => $this->anno_acquisizione,
             'numero_piani'          => $this->numero_piani,
-            'comune_catasto'        => $this->comune_catasto ? Str::title($this->comune_catasto) : null,
+            'comune_catasto'        => $this->comune_catasto,   // vedi la nota su `comune`
             'codice_catasto'        => $this->codice_catasto ? Str::upper($this->codice_catasto) : null,
             'sezione_catasto'       => $this->sezione_catasto ? Str::upper($this->sezione_catasto) : null,
             'foglio_catasto'        => $this->foglio_catasto ? Str::upper($this->foglio_catasto) : null,

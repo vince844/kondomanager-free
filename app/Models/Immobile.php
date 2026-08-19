@@ -25,7 +25,13 @@ class Immobile extends Model
      * L'ordine dei ripieghi non è arbitrario:
      * 1. **l'interno**, perché è come gli amministratori chiamano le unità fra loro;
      * 2. **il nome**, che è obbligatorio in creazione — quindi il ripiego esiste sempre;
-     * 3. **il codice**, ultima rete se un giorno anche il nome diventasse facoltativo.
+     * 3. **il codice dell'unità** (`codice_immobile`: `NOT NULL`, univoco, generato qui sotto — «C16-0002»),
+     *    ultima rete se un giorno anche il nome diventasse facoltativo.
+     *
+     * ⚠️ Il terzo ripiego era **dichiarato qui e mai scritto**: il codice restituiva `Unità #<id>`,
+     * cioè la chiave primaria, che non significa niente per un amministratore. Corretto nella
+     * beta.59 (coda ㊼). L'id resta come rete della rete, per il solo caso di un model costruito in
+     * memoria e mai salvato.
      */
     public function getEtichettaAttribute(): string
     {
@@ -39,6 +45,12 @@ class Immobile extends Model
 
         if ($nome !== '') {
             return $nome;
+        }
+
+        $codice = trim((string) ($this->attributes['codice_immobile'] ?? ''));
+
+        if ($codice !== '') {
+            return $codice;
         }
 
         return 'Unità #'.($this->attributes['id'] ?? '—');

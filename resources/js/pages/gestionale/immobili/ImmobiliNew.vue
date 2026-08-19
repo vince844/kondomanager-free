@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
+import CercaComune from '@/components/comuni/CercaComune.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
@@ -89,6 +90,15 @@ const categoriaTipologiaScelta = computed(
   // confronto va normalizzato, o non trova mai niente.
   () => props.tipologie.find((t) => String(t.id) === String(form.tipologia_id))?.categoria ?? null,
 );
+
+/**
+ * Il Comune scelto dall'elenco riempie **due** campi, non uno: senza il codice catastale accanto al
+ * nome, l'aiuto avrebbe risparmiato la parte facile e lasciato quella che nessuno ricorda.
+ */
+const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
+  form.comune_catasto = c.nome;
+  form.codice_catasto = c.codice_catasto;
+};
 
 const submit = () => {
     form.post(route(...generateRoute('gestionale.immobili.store', { condominio: props.condominio.id })), {
@@ -262,12 +272,15 @@ const submit = () => {
             <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4">
               <div class="sm:col-span-3 font-sans">
                 <Label for="comune_catasto">Comune catastale</Label>
-                <Input 
-                  id="comune_catasto" 
-                  v-model="form.comune_catasto" 
-                  class="mt-1 bg-white dark:bg-slate-950" 
-                  placeholder="es. Milano, Roma..."
-                />
+                <div class="mt-1 flex items-center gap-2">
+                  <Input 
+                    id="comune_catasto" 
+                    v-model="form.comune_catasto" 
+                    class="bg-white dark:bg-slate-950" 
+                    placeholder="es. Milano, Roma..."
+                  />
+                  <CercaComune @scelto="comuneScelto" />
+                </div>
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="codice_catasto">Codice</Label>
@@ -275,7 +288,7 @@ const submit = () => {
                   id="codice_catasto" 
                   v-model="form.codice_catasto" 
                   class="mt-1 bg-white dark:bg-slate-950" 
-                  placeholder="es. 12345"
+                  placeholder="es. H501"
                 />
               </div>
               

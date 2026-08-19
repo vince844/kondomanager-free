@@ -15,6 +15,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
+import CercaComune from '@/components/comuni/CercaComune.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
@@ -91,6 +92,15 @@ const categoriaTipologiaScelta = computed(
   // confronto va normalizzato, o non trova mai niente.
   () => props.tipologie.find((t) => String(t.id) === String(form.tipologia_id))?.categoria ?? null,
 );
+
+/**
+ * Il Comune scelto dall'elenco riempie **due** campi, non uno: senza il codice catastale accanto al
+ * nome, l'aiuto avrebbe risparmiato la parte facile e lasciato quella che nessuno ricorda.
+ */
+const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
+  form.comune_catasto = c.nome;
+  form.codice_catasto = c.codice_catasto;
+};
 
 const submit = () => {
     form.put(route(...generateRoute('gestionale.immobili.update', { condominio: props.condominio.id, immobile: props.immobile.id })), {
@@ -205,7 +215,7 @@ const submit = () => {
                 <Input 
                     id="interno" 
                     v-model="form.interno" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
                     v-on:focus="form.clearErrors('interno')"
                 />
                 <InputError :message="form.errors.interno" />
@@ -216,7 +226,7 @@ const submit = () => {
                 <Input 
                     id="piano" 
                     v-model="form.piano" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
                 />
               </div>
               
@@ -261,11 +271,14 @@ const submit = () => {
               
               <div class="sm:col-span-3 font-sans">
                 <Label for="comune_catasto">Comune catastale</Label>
-                <Input 
-                    id="comune_catasto" 
-                    v-model="form.comune_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950" 
-                />
+                <div class="mt-1 flex items-center gap-2">
+                  <Input 
+                      id="comune_catasto" 
+                      v-model="form.comune_catasto" 
+                      class="bg-white dark:bg-slate-950" 
+                  />
+                  <CercaComune @scelto="comuneScelto" />
+                </div>
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -273,7 +286,7 @@ const submit = () => {
                 <Input 
                     id="codice_catasto" 
                     v-model="form.codice_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
               </div>
               
@@ -282,7 +295,7 @@ const submit = () => {
                 <Input 
                     id="sezione_catasto" 
                     v-model="form.sezione_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
               </div>
               
@@ -291,7 +304,7 @@ const submit = () => {
                 <Input 
                     id="foglio_catasto" 
                     v-model="form.foglio_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
               </div>
               
@@ -300,7 +313,7 @@ const submit = () => {
                 <Input 
                     id="particella_catasto" 
                     v-model="form.particella_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
               </div>
               
@@ -309,7 +322,7 @@ const submit = () => {
                 <Input 
                     id="subalterno_catasto" 
                     v-model="form.subalterno_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
               </div>
 

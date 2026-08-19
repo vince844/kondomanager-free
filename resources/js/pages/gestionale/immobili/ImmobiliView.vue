@@ -138,11 +138,11 @@ const pageGuides = computed(() => [
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Sezione / Foglio</p>
-                <p class="text-sm font-mono">{{ immobile.sezione_catasto ?? '-' }} / {{ immobile.foglio_catasto ?? '-' }}</p>
+                <p class="text-sm">{{ immobile.sezione_catasto ?? '-' }} / {{ immobile.foglio_catasto ?? '-' }}</p>
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Particella / Sub</p>
-                <p class="text-sm font-mono">{{ immobile.particella_catasto ?? '-' }} / {{ immobile.subalterno_catasto ?? '-' }}</p>
+                <p class="text-sm">{{ immobile.particella_catasto ?? '-' }} / {{ immobile.subalterno_catasto ?? '-' }}</p>
               </div>
               <div class="sm:col-span-2 pt-2">
                  <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-lg p-3 flex gap-3">

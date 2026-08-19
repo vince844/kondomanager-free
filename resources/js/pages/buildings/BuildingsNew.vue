@@ -8,6 +8,7 @@ import { Plus, LoaderCircle, Building2, MapPin, Info } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import CercaComune from '@/components/comuni/CercaComune.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
@@ -63,6 +64,15 @@ const form = useForm({
     foglio_catasto: '',
     particella_catasto: '',
 });
+
+/**
+ * Il Comune scelto dall'elenco riempie **due** campi, non uno: senza il codice catastale accanto al
+ * nome, l'aiuto avrebbe risparmiato la parte facile e lasciato quella che nessuno ricorda.
+ */
+const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
+  form.comune_catasto = c.nome;
+  form.codice_catasto = c.codice_catasto;
+};
 
 const submit = () => {
     form.post(route("condomini.store"), {
@@ -253,12 +263,15 @@ const submit = () => {
 
                     <div class="sm:col-span-4">
                         <Label for="comune_catasto">{{ trans('condomini.label.municipality') }}</Label>
-                        <Input 
-                          id="comune_catasto" 
-                          v-model="form.comune_catasto" 
-                          :placeholder="trans('condomini.placeholder.municipality')" 
-                          class="mt-1 bg-white" 
-                        />
+                        <div class="mt-1 flex items-center gap-2">
+                          <Input 
+                            id="comune_catasto" 
+                            v-model="form.comune_catasto" 
+                            :placeholder="trans('condomini.placeholder.municipality')" 
+                            class="bg-white" 
+                          />
+                          <CercaComune @scelto="comuneScelto" />
+                        </div>
                         <InputError :message="form.errors.comune_catasto" />
                     </div>
                     

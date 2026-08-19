@@ -96,4 +96,9 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // `add_pertinenza_di_to_immobili` — ed è idempotente per costruzione, perché ripetere un
     // `change()` che rende nullable una colonna già nullable la riscrive identica.
     '2026_08_18_100000_rendi_facoltativi_descrizione_e_interno',
+
+    // Aggiunta nella beta.59: crea la tabella dei Comuni italiani. È un `CREATE` puro con guardia
+    // su `hasTable`, quindi la categoria meno rischiosa — ma sta qui lo stesso, perché una
+    // migrazione fuori da questo dataset smette di essere presidiata.
+    '2026_08_19_100000_create_comuni_table',
 ]);

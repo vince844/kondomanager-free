@@ -3,6 +3,7 @@
 namespace App\Services\System;
 
 use App\Services\UpdateService;
+use Database\Seeders\ComuniSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Exception;
 use Illuminate\Support\Facades\Artisan;
@@ -40,6 +41,7 @@ class SystemFinalizer
 
         $this->runMigrationsWithRetry();
         $this->sincronizzaRuoliEPermessi();
+        $this->caricaElencoComuni();
         $this->alignDatabaseVersion();
         $this->clearSystemCaches();
         $this->ensureStorageLink();
@@ -105,6 +107,36 @@ class SystemFinalizer
             Log::info('Roles and permissions synchronised');
         } catch (Exception $e) {
             Log::warning('Roles and permissions sync failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Porta a database l'elenco dei Comuni italiani, che viaggia come file nel repository.
+     *
+     * **Perché sta qui e non basta il seeder.** Questo metodo è *l'aggiornamento*: `db:seed` intero
+     * non viene mai eseguito (vedi il metodo sopra), e `ComuniSeeder` è agganciato solo a
+     * `DatabaseSeeder`, cioè alla **prima installazione**. Senza questa riga la migrazione della
+     * beta.59 creerebbe la tabella `comuni` e la lascerebbe **vuota su ogni installazione
+     * aggiornata**: il pulsante di ricerca accanto al campo del Comune non troverebbe mai niente,
+     * per nessuno, senza un errore e senza un log. È lo stesso guasto silenzioso dei permessi
+     * corretto nella beta.55, sulla funzione principale di questa.
+     *
+     * **Mirato, come sopra.** Si chiama la sola classe che serve, non `db:seed` intero.
+     *
+     * Non solleva: un aggiornamento non deve fallire perché un aiuto alla compilazione non si è
+     * popolato. Il difetto che resterebbe è un campo da riempire a mano, cioè come si faceva prima.
+     */
+    public function caricaElencoComuni(): void
+    {
+        try {
+            Artisan::call('db:seed', [
+                '--class' => ComuniSeeder::class,
+                '--force' => true,
+            ]);
+
+            Log::info('Elenco comuni allineato');
+        } catch (Exception $e) {
+            Log::warning('Caricamento elenco comuni fallito', ['error' => $e->getMessage()]);
         }
     }
 
