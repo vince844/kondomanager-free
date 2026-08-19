@@ -126,7 +126,7 @@ const pageGuides = [
                     :class="selectedId === imm.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-slate-200'"
                   >
                     {{ imm.nome }}
-                    <span class="font-normal text-slate-400 dark:text-slate-500"> · Int. {{ imm.interno }}</span>
+                    <span v-if="imm.interno" class="font-normal text-slate-400 dark:text-slate-500"> · Int. {{ imm.interno }}</span>
                   </p>
                   <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1">
                     <Building2 class="w-3 h-3 shrink-0" />

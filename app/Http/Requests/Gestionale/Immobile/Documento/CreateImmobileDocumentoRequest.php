@@ -28,11 +28,17 @@ class CreateImmobileDocumentoRequest extends FormRequest
     {
         return [
             'name'            => 'required|string|max:255',
-            'description'     => 'required|string',
+            // L'etichetta a video dice «Descrizione (Opzionale)» e la richiesta di modifica la
+            // dichiara già `nullable`: era la creazione a pretenderla, e le tre cose non si
+            // erano mai guardate in faccia. Segnalata sul forum il 18/08/2026.
+            'description'     => 'nullable|string',
             'created_by'      => 'required|exists:users,id',
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
-            'file'            => 'required|file|mimes:pdf|max:20480',
+            // Il tetto non è più un numero fisso: `max:20480` prometteva 20 MB su qualunque
+            // installazione, anche dove il server ne accetta 2. Ora è il minimo fra i limiti di
+            // PHP e il nostro, letto a ogni richiesta.
+            'file'            => 'required|file|mimes:pdf|max:'.\App\Support\LimiteCaricamento::regolaMax(),
         ];
     }
 

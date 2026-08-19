@@ -17,6 +17,7 @@ return [
         'invalid_signature' => 'The link you are trying to use is expired or invalid.',
         'account_suspended' => 'Your account is temporarily suspended. Please contact the system administrator to reactivate it.',
     ],
+    '413_title' => 'O ficheiro é demasiado grande',
 
     '403_title'         => '403 - Access Denied',
     '403_heading'       => '403 - Access Denied',

@@ -26,6 +26,8 @@ import type { BaseDocumentForm } from '@/types/documenti'
 const props = defineProps<{
   condominio: Building;
   immobile: Immobile;
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -205,7 +207,7 @@ const submit = (): void => {
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Allega file</CardTitle>
-                <CardDescription>Carica il documento in formato PDF (Max 10MB).</CardDescription>
+                <CardDescription>Carica il documento in formato PDF (max {{ props.limiteFile }}).</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">

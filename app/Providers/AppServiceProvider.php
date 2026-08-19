@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use Illuminate\Support\Facades\Validator;
+
 use App\Models\Segnalazione;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
@@ -39,6 +41,33 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->suppressReadonlyTouchWarning();
+
+        // ====================================================================
+        // IL LIMITE VERO DI CARICAMENTO NEL MESSAGGIO D'ERRORE
+        // ====================================================================
+        // La regola `uploaded` scatta quando è PHP ad aver scartato il file, prima che Laravel lo
+        // veda: il messaggio non poteva sapere quale fosse il limite, e diceva soltanto che il
+        // caricamento «è fallito». Segnalato dal forum il 18/08/2026 da chi provava con un file da
+        // 4.376 KB su un server che ne accetta 2 MB. `:limite` lo riempie qui, letto dal server e
+        // non scritto a mano da nessuna parte.
+        // ⚠️ `etichettaServer()` e non `etichetta()`: quando questa regola scatta è **PHP** ad aver
+        // scartato il file, e il nostro tetto di 20 MB non è mai entrato in gioco. Dichiararlo qui
+        // portava il limite dei documenti su schermate che ne hanno altri — l'importatore ne annuncia
+        // 25 — cioè sostituiva una bugia generica con una bugia informata (revisione della .58).
+        //
+        // La regola `uploaded` copre però **cinque** codici d'errore di PHP, non solo la dimensione:
+        // se il disco è pieno o `upload_tmp_dir` è sparita, dire «il file è troppo grande» manda
+        // l'utente a rimpicciolire un file che va benissimo. Il codice vero si legge dal file stesso.
+        Validator::replacer('uploaded', function ($messaggio, $attributo, $regola, $parametri, $validatore) {
+            $file = data_get($validatore?->getData() ?? [], $attributo);
+            $codice = $file instanceof \Illuminate\Http\UploadedFile ? $file->getError() : UPLOAD_ERR_INI_SIZE;
+
+            if (! in_array($codice, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                return __('validation.caricamento_interrotto');
+            }
+
+            return str_replace(':limite', \App\Support\LimiteCaricamento::etichettaServer(), $messaggio);
+        });
 
         // ====================================================================
         // ROTTE INSTALLER

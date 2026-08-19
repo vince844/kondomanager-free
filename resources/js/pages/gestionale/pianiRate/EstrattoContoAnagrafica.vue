@@ -59,7 +59,12 @@ const printPDF = () => {
 };
 
 const formatIndirizzoImmobile = (immobile: any) => {
-    let base = `Int. ${immobile.interno}`; 
+    // ⚠️ Ripasso della beta.58: il PDF di questa stessa pagina era stato corretto e la card no.
+    // Con l'interno facoltativo restava «Int. » da solo — e due unità così erano indistinguibili
+    // proprio nella schermata da cui si stampa il documento che le nomina.
+    // Non si può leggere `immobile.etichetta`: il modello non ha `$appends` e la risorsa non
+    // espone l'accessore, quindi la stessa regola va ripetuta qui in una riga.
+    let base = immobile.interno ? `Int. ${immobile.interno}` : (immobile.nome || 'Unità');
     if (immobile.piano) base += ` - P. ${immobile.piano}`;
     return base;
 };

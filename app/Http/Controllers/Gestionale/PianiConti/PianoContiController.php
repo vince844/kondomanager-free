@@ -240,7 +240,11 @@ class PianoContiController extends Controller
                 // È uno spesa privata
                 $addebitiMap[$contoId][] = [
                     'tipo' => 'privato',
-                    'immobile' => $riga->imm_nome . ' (Int. ' . $riga->imm_int . ')',
+                    // L'interno è facoltativo dalla beta.58: senza guardia questa riga scriveva
+                    // «Posto auto 3 (Int. )», parentesi vuota compresa.
+                    'immobile' => trim((string) $riga->imm_int) !== ''
+                        ? $riga->imm_nome.' (Int. '.$riga->imm_int.')'
+                        : $riga->imm_nome,
                     'proprietario' => $riga->ana_nome ?? 'N/D',
                     'importo' => (int) $riga->riga_tot
                 ];

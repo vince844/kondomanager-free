@@ -26,6 +26,8 @@ const props = defineProps<{
   condominio: Building;
   immobile: Immobile;
   documento: Documento;
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -88,16 +90,14 @@ const form = useForm<EditDocumentForm>({
   _method: 'PUT' // Fake PUT per Laravel quando si inviano file
 });
 
+// Il controllo sulla dimensione non si fa più qui: il tetto lo decide il server e cambia da
+// installazione a installazione. Un `20 * 1024 * 1024` scritto a mano rifiutava file che il server
+// avrebbe accettato, e ne lasciava partire altri che rifiutava lui — con un messaggio generico.
 const validateFile = (selectedFile: File): boolean => {
   const allowedTypes = ['application/pdf'];
-  const maxSize = 20 * 1024 * 1024; 
-  
+
   if (!allowedTypes.includes(selectedFile.type)) {
     form.setError('file', 'Sono ammessi solo file PDF');
-    return false;
-  }
-  if (selectedFile.size > maxSize) {
-    form.setError('file', 'Il file non può superare i 20MB');
     return false;
   }
   return true;
@@ -325,7 +325,7 @@ const submit = (): void => {
                           <p class="mb-2 text-sm text-slate-500 dark:text-slate-400">
                             <span class="font-semibold text-indigo-600 dark:text-indigo-400">Clicca per caricare</span> o trascina il nuovo file qui
                           </p>
-                          <p class="text-xs text-slate-400 dark:text-slate-500">Solo PDF (Max 20MB)</p>
+                          <p class="text-xs text-slate-400 dark:text-slate-500">Solo PDF (max {{ props.limiteFile }})</p>
                         </div>
                         <input
                           id="file-upload"

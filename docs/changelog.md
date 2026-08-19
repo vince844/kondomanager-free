@@ -7,6 +7,80 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.58] - I Campi Che Chiedevano Quello Che Non Serviva
+
+**Una migrazione: il database viene toccato.** Rende facoltative tre colonne che erano obbligatorie —
+la descrizione di un'unità, il suo interno, la descrizione di un documento. **Nessun dato viene
+modificato**: chi ha già una descrizione la tiene, chi ha un interno lo tiene. La migrazione allenta
+un vincolo e basta.
+
+Questa versione nasce da quattro segnalazioni di un amministratore sul forum, arrivate lo stesso
+giorno e tutte sulla stessa schermata.
+
+### «Descrizione (Opzionale)», e poi era obbligatoria
+
+L'etichetta lo diceva e il programma non lo faceva: caricando un documento di un'unità, lasciare
+vuota la descrizione produceva un errore. Erano due testi scritti in momenti diversi che nessuno
+aveva messo a confronto — la stessa schermata di modifica, del resto, la dichiarava già facoltativa.
+
+Lo stesso valeva creando un'unità: **descrizione obbligatoria senza una ragione**, con la colonna che
+a database accettava tranquillamente il vuoto e nessun calcolo che la leggesse.
+
+### L'interno, e il posto auto che non ne ha
+
+*«Nel caso di un posto auto esterno non collegato a un immobile non credo abbia senso riportare
+questo dato.»* L'osservazione era giusta e adesso l'interno è facoltativo.
+
+Qui però c'era una conseguenza che la segnalazione non poteva prevedere: **in dieci punti del
+programma l'interno era l'unico modo con cui l'unità veniva nominata**. Il peggiore era l'estratto
+conto in PDF, cioè il documento che si consegna al condòmino, dove un'unità senza interno compariva
+come «Int. » e nient'altro. Ora ogni punto ripiega sul nome dell'unità — che resta obbligatorio, ed è
+per questo che il ripiego esiste sempre. Nella registrazione di un incasso, dove la ricerca filtrava
+sull'interno, adesso si cerca anche per nome.
+
+### Il file da 4 MB rifiutato su una schermata che ne dichiarava 10
+
+I numeri in gioco erano tre e a vincere era sempre quello che non dichiaravamo: la schermata diceva
+10 MB, il controllo ne accettava 20, e il server di chi ha segnalato si fermava a 2. Quando il file
+supera il limite di PHP **non arriva mai al programma**, e restava solo un «l'upload è fallito» che
+non permetteva di capire dove fosse il problema.
+
+Adesso il limite è **uno solo, letto dal server**, e le due schermate del documento di un'unità —
+quella che lo carica e quella che lo sostituisce — scrivono quello. *Gli altri sei caricamenti di
+documenti del programma (archivio generale, area utenti, fornitori) hanno ancora il numero fisso: la
+misura è in roadmap alla coda ㊺ e va nella 1.10.1, perché allargarla qui avrebbe voluto dire rifare
+la revisione su tre funzioni che la segnalazione non nominava.* I due limiti di PHP
+hanno messaggi diversi perché sono problemi diversi: superare quello del singolo file dà un errore
+sotto il campo; superare quello dell'intera richiesta faceva comparire una pagina di «sessione
+scaduta», e adesso dice che il file è troppo grande. E quando il caricamento fallisce per altre
+ragioni — disco pieno, cartella temporanea non scrivibile — il messaggio non dice più di rimpicciolire
+un file che va benissimo.
+
+**Le immagini Docker ufficiali erano il caso peggiore**: nessuna dichiarava un limite, quindi valeva
+il default di nginx — **1 MB**. Chi installava con la nostra immagine non caricava nemmeno un PDF da
+1,5 MB, mentre la schermata gliene prometteva 20. Ora tutte e tre le immagini portano gli stessi
+valori, coerenti fra loro.
+
+### Cosa non sopravvive a un aggiornamento del contenitore
+
+Chi usa Docker può ora chiedere al programma se i documenti caricati sono al sicuro:
+
+```
+php artisan kondomanager:verifica-persistenza
+```
+
+Risponde dicendo quanti file e quanti megabyte sono in gioco, e se la cartella vive dentro il
+contenitore — dove sparirebbe alla prossima ricreazione — spiega dove dichiarare il volume.
+
+### Il resto
+
+Nel menù di un'unità e di un fornitore restavano accese due voci insieme, perché l'indirizzo della
+prima è il prefisso di tutte le altre. E quando una scrittura fallisce, il messaggio d'errore porta
+ora un riferimento di sei caratteri che si ritrova nel registro del server: «non funziona» diventa
+«non funziona, rif. 4F2A1C».
+
+---
+
 ## [1.10.0-beta.57] - La Tabella Che Si Poteva Creare e Non Salvare
 
 **Nessuna migrazione: il database non viene toccato.** Anzi, il difetto principale di questa versione

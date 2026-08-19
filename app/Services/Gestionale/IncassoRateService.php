@@ -128,7 +128,10 @@ class IncassoRateService
             $dettagli->push([
                 'numero'            => $quota->rata->numero_rata ?? '-',
                 'scadenza'          => $quota->rata->data_scadenza?->format('d/m/Y') ?? '-',
-                'immobile'          => $quota->immobile?->interno ?? null,
+                // `etichetta` e non `interno ?? null`: il `??` non scatta su stringa vuota, quindi
+                    // con l'interno facoltativo passava `''` e la schermata scriveva «Int. N/D»
+                    // su un'unità che esiste e ha un nome (ripasso della .58).
+                    'immobile'          => $quota->immobile?->etichetta,
                 'importo_formatted' => MoneyHelper::format($quota->pivot->importo_pagato),
                 'tipo'              => 'contanti', // icona banconota
             ]);
@@ -149,7 +152,10 @@ class IncassoRateService
                 $dettagli->push([
                     'numero'            => $quota->rata->numero_rata ?? '-',
                     'scadenza'          => $quota->rata->data_scadenza?->format('d/m/Y') ?? '-',
-                    'immobile'          => $quota->immobile?->interno ?? null,
+                    // `etichetta` e non `interno ?? null`: il `??` non scatta su stringa vuota, quindi
+                    // con l'interno facoltativo passava `''` e la schermata scriveva «Int. N/D»
+                    // su un'unità che esiste e ha un nome (ripasso della .58).
+                    'immobile'          => $quota->immobile?->etichetta,
                     'importo_formatted' => MoneyHelper::format($quota->pivot->importo_pagato),
                     'tipo'              => 'credito', // icona monete
                 ]);

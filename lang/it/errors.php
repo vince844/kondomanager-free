@@ -16,6 +16,7 @@ return [
         'invalid_signature' => 'Il link che stai utilizzando potrebbe essere scaduto o non più valido.',
         'account_suspended' => "Il tuo account è stato temporaneamente sospeso. Per favore contatta l'amministratore di condominio per riattivarlo.",
     ],
+    '413_title' => 'Il file è troppo grande',
     '403_title'         => '403 - Accesso negato',
     '403_heading'       => '403 - Accesso negato',
     '403_message'       => 'Non hai i permessi necessari per accedere a questa pagina.',

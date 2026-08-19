@@ -1022,18 +1022,21 @@ onMounted(async () => {
                                 </v-select>
 
                                 <div v-else class="space-y-2">
+                                    <!-- Etichetta e ricerca: senza interno mostravano «Int. » e filtravano su quella
+                                         stringa, quindi cercando il nome dell'unità la tendina rispondeva «nessun
+                                         risultato». Ora ripiegano sul nome. Reperto della revisione della beta.58. -->
                                     <v-select
                                         :options="immobili"
                                         v-model="selectedImmobileId"
-                                        :getOptionLabel="(i: any) => `Int. ${i.interno}${i.descrizione ? ' - ' + i.descrizione : ''}`"
+                                        :getOptionLabel="(i: any) => [i.interno ? `Int. ${i.interno}` : (i.nome || 'Unità'), i.descrizione].filter(Boolean).join(' - ')"
                                         :reduce="(i: any) => i.id"
                                         class="w-full bg-white text-sm"
-                                        placeholder="Cerca per interno o descrizione..."
+                                        placeholder="Cerca per interno, nome o descrizione..."
                                     >
                                         <template #option="{ interno, descrizione, nome }">
                                             <div class="flex flex-col py-0.5">
                                                 <span class="font-medium text-sm text-slate-800">
-                                                    Interno {{ interno }}
+                                                    {{ interno ? `Interno ${interno}` : (nome || 'Unità') }}
                                                     <span v-if="descrizione" class="text-slate-500 font-normal">- {{ descrizione }}</span>
                                                 </span>
                                                 <span class="text-[11px] text-slate-400 truncate">{{ nome || 'Unità immobiliare' }}</span>

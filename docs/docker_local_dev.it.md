@@ -1,7 +1,7 @@
 # 🐳 Sviluppo Locale con Docker
 
 <!-- verifica-documentazione -->
-> **Stato:** Descrive il codice — verificato e corretto il 31/07/2026 su 1.10.0-beta.32
+> **Stato:** Descrive il codice — verificato e corretto il 31/07/2026 su 1.10.0-beta.32, ampliato il **18/08/2026 su 1.10.0-beta.58** con la sezione «Caricamento file e persistenza dei documenti»
 > Le quattro affermazioni sbagliate trovate nell'audit sono state corrette: branch di clone (era `v1.9.1-beta`, che non esiste), `chmod` mancante su `docker/frankenphp/worker-entrypoint.sh`, la riscrittura di APP_URL (è condizionata) e l'estratto di supervisord.conf, ora completo di `[inet_http_server]` e dello scheduler.
 <!-- /verifica-documentazione -->
 
@@ -271,6 +271,45 @@ docker compose exec app npm run build
 # Forzare la ri-esecuzione dei seeder (utile durante lo sviluppo)
 docker compose exec app php artisan db:seed --force
 ```
+
+---
+
+## Caricamento file e persistenza dei documenti
+
+*Sezione aggiunta il 18/08/2026 con la 1.10.0-beta.58.*
+
+### I limiti di caricamento sono dichiarati nelle immagini
+
+Fino alla beta.57 nessuna delle tre immagini dichiarava un limite, quindi valeva il default di
+nginx — **1 MB** — e un PDF da 1,5 MB veniva rifiutato mentre l'applicazione ne prometteva 20.
+Adesso i valori sono scritti nei `Dockerfile` e sono coerenti fra loro:
+
+| | Valore |
+| :--- | :--- |
+| `upload_max_filesize` (PHP) | 20M |
+| `post_max_size` (PHP) | 25M |
+| `client_max_body_size` (nginx) | 30M |
+
+L'ordine non è casuale: nginx è il più alto, così a rifiutare è **PHP**, che sa dirlo con un
+messaggio comprensibile invece che con un errore del server web. L'applicazione non ha un limite
+proprio: legge quello di PHP e scrive quello sulla schermata.
+
+### Cosa non sopravvive alla ricreazione di un contenitore
+
+`storage/app` tiene i documenti caricati, i backup e gli allegati. In questo compose la cartella
+arriva dal bind mount `./:/var/www`, quindi vive sull'host ed è al sicuro. **In un deploy vero
+non è detto**: senza un volume dichiarato quella cartella sta nel livello scrivibile del
+contenitore e sparisce alla prima ricreazione, senza che niente lo dica prima.
+
+Per saperlo prima invece che dopo:
+
+```bash
+docker compose exec app php artisan kondomanager:verifica-persistenza
+```
+
+Risponde con quanti file e quanti megabyte sono in gioco, e se la cartella è dentro il contenitore
+spiega dove dichiarare il volume. Con `--rigoroso` esce con codice di errore, così si può mettere
+in una pipeline di deploy.
 
 ---
 

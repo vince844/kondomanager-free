@@ -1,7 +1,7 @@
 # 🐳 Local Development with Docker
 
 <!-- verifica-documentazione -->
-> **Status:** Matches the code — verified and corrected on 31/07/2026 against 1.10.0-beta.32
+> **Status:** Matches the code — verified and corrected on 31/07/2026 against 1.10.0-beta.32, extended on **18/08/2026 against 1.10.0-beta.58** with the «File uploads and document persistence» section
 > The four wrong statements found in the audit have been fixed: the clone branch (was `v1.9.1-beta`, which does not exist), the missing `chmod` on `docker/frankenphp/worker-entrypoint.sh`, the APP_URL rewrite (it is conditional) and the supervisord.conf excerpt, now including `[inet_http_server]` and the scheduler.
 <!-- /verifica-documentazione -->
 
@@ -271,6 +271,45 @@ docker compose exec app npm run build
 # Force re-run seeders (useful during development)
 docker compose exec app php artisan db:seed --force
 ```
+
+---
+
+## File uploads and document persistence
+
+*Section added on 18/08/2026 with 1.10.0-beta.58.*
+
+### Upload limits are declared in the images
+
+Up to beta.57 none of the three images declared a limit, so nginx's default applied — **1 MB** —
+and a 1.5 MB PDF was refused while the application promised 20. The values are now written in the
+`Dockerfile`s and are consistent with each other:
+
+| | Value |
+| :--- | :--- |
+| `upload_max_filesize` (PHP) | 20M |
+| `post_max_size` (PHP) | 25M |
+| `client_max_body_size` (nginx) | 30M |
+
+The order is deliberate: nginx is the highest, so the one that refuses is **PHP**, which can say so
+with an understandable message instead of a web-server error. The application has no limit of its
+own: it reads PHP's and writes that on screen.
+
+### What does not survive recreating a container
+
+`storage/app` holds uploaded documents, backups and attachments. In this compose the folder comes
+from the `./:/var/www` bind mount, so it lives on the host and is safe. **In a real deployment that
+is not a given**: without a declared volume that folder sits in the container's writable layer and
+disappears the first time it is recreated, with nothing saying so beforehand.
+
+To find out before rather than after:
+
+```bash
+docker compose exec app php artisan kondomanager:verifica-persistenza
+```
+
+It answers with how many files and how many megabytes are at stake, and if the folder is inside the
+container it explains where to declare the volume. With `--rigoroso` it exits with an error code, so
+it can go into a deployment pipeline.
 
 ---
 

@@ -168,7 +168,10 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     
                     $dettaglioQuote = $quote->map(function($q) use (&$importoVal) {
                         $immobile = $q->immobile;
-                        $desc = $immobile ? "Int. {$immobile->interno} ({$immobile->nome})" : "Unità";
+                        // `etichetta`: senza interno restava «Int.  (Posto auto 3)», con la parentesi orfana.
+            // `etichettaEstesa`: qui prima si mostravano interno **e** nome, e applicare la sola
+            // `etichetta` avrebbe tolto il nome a ogni installazione esistente (ripasso .58).
+            $desc = $immobile ? $immobile->etichettaEstesa : "Unità";
                         
                         $componenteSpesa = $q->importo;
                         $componenteSaldo = 0;

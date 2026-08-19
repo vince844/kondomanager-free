@@ -368,6 +368,11 @@ class RipartoCapitoliService
             if (!isset($righe[$iid])) {
                 $righe[$iid] = [
                     'interno'          => $immobile->interno ?? '',
+                    // Il nome serve alla stampa come ripiego quando l'interno non c'è: senza, la
+                    // colonna dell'unità conteneva un solo trattino, e due posti auto dello stesso
+                    // proprietario producevano due righe indistinguibili con importi diversi.
+                    // La stampa per tabelle lo passava già (`nome_immobile`): questa no.
+                    'nome_immobile'    => $immobile->nome ?: ($immobile->codice_immobile ?? ''),
                     'piano'            => $immobile->piano   ?? '',
                     'soggetti'         => [],
                     'totale_immobile'  => 0,

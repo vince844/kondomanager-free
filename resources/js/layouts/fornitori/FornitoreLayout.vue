@@ -21,6 +21,9 @@ const topbarNavItems: LinkItem[] = [
     type: 'link',
     icon: TextSearch,
     title: 'Dettagli',
+    // `exact`: stessa ragione dell'immobile — è il prefisso di `/anagrafiche`,
+    // `/situazione-debitoria` e `/documenti`.
+    exact: true,
     href:  generatePath('fornitori/:fornitore', { fornitore: fornitore.value.id }),
   },
   {

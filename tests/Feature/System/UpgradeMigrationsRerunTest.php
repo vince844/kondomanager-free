@@ -90,4 +90,10 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // migrazione fuori da questo dataset smette di essere presidiata (lezione della beta.31).
     '2026_08_16_100000_create_preferenze_tabelle_utente',
     '2026_08_16_120000_add_last_login_at_to_users_table',
+
+    // Aggiunta nella beta.58: allenta il vincolo NOT NULL su tre colonne esistenti. È un `MODIFY`
+    // su tabelle vive e non un `CREATE`, quindi sta nella categoria a rischio più alto insieme a
+    // `add_pertinenza_di_to_immobili` — ed è idempotente per costruzione, perché ripetere un
+    // `change()` che rende nullable una colonna già nullable la riscrive identica.
+    '2026_08_18_100000_rendi_facoltativi_descrizione_e_interno',
 ]);

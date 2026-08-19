@@ -35,7 +35,10 @@
             <div style="font-size: 7pt; font-weight: bold; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 3px;">Unità Immobiliari</div>
             @foreach($anagrafica->immobili as $imm)
                 <div style="font-size: 8pt; color: #333; margin-bottom: 1px;">
-                    Int. {{ $imm->interno }}{{ $imm->piano ? ' — P. ' . $imm->piano : '' }}
+                    {{-- `etichetta` e non «Int. {interno}»: con l'interno facoltativo questa riga stampava
+                         «Int. » e nient'altro su un documento consegnato al condòmino. L'accessore ripiega
+                         sul nome dell'unità, che è obbligatorio. Reperto «alta» della revisione della .58. --}}
+                    {{ $imm->etichetta }}{{ $imm->piano ? ' — P. ' . $imm->piano : '' }}
                     <span style="color: #888; font-size: 7pt;">({{ $imm->pivot->tipologia ?? '' }} · {{ $imm->pivot->quota ?? '' }}%)</span>
                 </div>
             @endforeach

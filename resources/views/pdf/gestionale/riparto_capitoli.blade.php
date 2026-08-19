@@ -252,7 +252,9 @@
                                    background-color: {{ $iceBlue }}; vertical-align: middle;
                                    font-size: {{ $fontBase }};
                                    border-left: 3px solid {{ $navy }};">
-                            {{ $rigaImmobile['interno'] ?? '—' }}
+                            {{-- `?:` e non `??`: con l'interno facoltativo il valore assente arriva come stringa vuota,
+                                 che `??` lascerebbe passare stampando una cella vuota invece del trattino. --}}
+                            {{ $rigaImmobile['interno'] ?: ($rigaImmobile['nome_immobile'] ?? '—') }}
                             @if($rigaImmobile['piano'])
                                 <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #888;">
                                     Piano {{ $rigaImmobile['piano'] }}

@@ -743,7 +743,8 @@ class PianoRateController extends Controller
                     'anagrafica_id' => $s->anagrafica_id,
                     'tipo' => $s->anagrafica_id ? 'nominale' : 'solidale',
                     'soggetto_nome' => $s->anagrafica_id ? $s->anagrafica->nome : "Unità " . ($s->immobile->nome ?? 'Sconosciuta'),
-                    'immobile_nome' => $s->immobile ? $s->immobile->nome . " (Int. " . $s->immobile->interno . ")" : 'N/D',
+                    // `etichettaEstesa`: senza interno restava «Posto auto 3 (Int. )», con la parentesi vuota.
+                    'immobile_nome' => $s->immobile ? $s->immobile->etichettaEstesa : 'N/D',
                     'ruolo' => $ruolo ?? ($s->anagrafica_id ? 'Anagrafica' : 'Condominio'),
                     'importo' => $s->saldo_iniziale,
                     'is_debito' => $s->saldo_iniziale > 0,

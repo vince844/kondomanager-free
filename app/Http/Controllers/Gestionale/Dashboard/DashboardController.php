@@ -129,7 +129,8 @@ class DashboardController extends Controller
                             ? "Addebito personale (Art. 63)" 
                             : "Parte comune (millesimale)",
                         'dettaglio'   => $riga->immobile_id
-                            ? "Int. {$riga->immobile->interno}"
+                            // `etichetta`: ripiega sul nome quando l'interno non c'è (beta.58).
+                    ? $riga->immobile->etichetta
                             : ($riga->conto ? "Voce: {$riga->conto->nome}" : "Imprevisto")
                     ];
                 }

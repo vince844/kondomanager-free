@@ -119,6 +119,9 @@ class ImmobileDocumentoController extends Controller
             'condominio'  => $condominio,
             'esercizio'   => $esercizio,
             'immobile'    => $immobile,
+            // Il limite lo decide il server, non noi: la schermata scriveva «Max 10MB» mentre la
+            // validazione ne accettava 20 e il server dell'utente 2. Ora è un numero solo.
+            'limiteFile'  => \App\Support\LimiteCaricamento::etichetta(),
         ]);
     }
 
@@ -187,7 +190,10 @@ class ImmobileDocumentoController extends Controller
 
             $documento = $immobile->documenti()->create([
                 'name'         => $validated['name'],
-                'description'  => $validated['description'],
+                // `?? null` e non accesso diretto: da quando la descrizione è facoltativa la chiave
+                // può non esserci affatto in `validated()`, e l'accesso secco sollevava un errore
+                // che il `catch` qui sotto trasformava in un messaggio generico.
+                'description'  => $validated['description'] ?? null,
                 'path'         => $path,
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
@@ -201,13 +207,16 @@ class ImmobileDocumentoController extends Controller
         } catch (\Exception $e) {
             
             DB::rollback();
-            
-            Log::error('Error creating documento immobile: ' . $e->getMessage());
+
+            $riferimento = \App\Support\ErroriDiagnosticabili::registra($e, 'Errore creando il documento di un\'immobile', [
+                'condominio_id' => $condominio->id,
+                'immobile_id'   => $immobile->id,
+            ]);
 
             return to_route('admin.gestionale.immobili.documenti.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
-            ])->with($this->flashError(__('documenti.error_create_document')));
+            ])->with($this->flashError(__('documenti.error_create_document').' (rif. '.$riferimento.')'));
 
         }
 
@@ -261,6 +270,10 @@ class ImmobileDocumentoController extends Controller
             'condominio'  => $condominio,
             'esercizio'   => $esercizio,
             'immobile'    => new ImmobileResource($immobile),
+            // Stessa ragione della `create()`: `update()` valida con `LimiteCaricamento::regolaMax()`,
+            // e senza questa riga la schermata di modifica continuerebbe a promettere «Max 20MB» —
+            // cioè il difetto segnalato, sulla schermata accanto.
+            'limiteFile'  => \App\Support\LimiteCaricamento::etichetta(),
         ]); 
     }
 

@@ -35,14 +35,20 @@ class CreateImmobileRequest extends FormRequest
     {
         return [
             'nome'                => 'required|string|max:255', 
-            'descrizione'         => 'required|string|max:255',
+            'descrizione'         => 'nullable|string|max:255',
             'comune_catasto'      => 'sometimes|nullable|string|max:255',
             'codice_catasto'      => 'sometimes|nullable|string|max:255',
             'sezione_catasto'     => 'sometimes|nullable|string|max:255',
             'foglio_catasto'      => 'sometimes|nullable|string|max:255',
             'particella_catasto'  => 'sometimes|nullable|string|max:255',
             'subalterno_catasto'  => 'sometimes|nullable|string|max:255',
-            'interno'             => 'required|string|max:255',
+            // Facoltativo dal 18/08/2026, su segnalazione dal forum: «nel caso di un posto auto
+            // esterno non collegato a un immobile non credo abbia senso riportare questo dato».
+            // Non serve una migrazione: `prepareForValidation()` converte con `(string)`, quindi
+            // un valore assente diventa stringa vuota e il vincolo NOT NULL della colonna regge.
+            // L'unità resta identificabile perché `nome` è obbligatorio ed è ciò che le stampe
+            // mettono in testa.
+            'interno'             => 'nullable|string|max:255',
             'piano'               => 'sometimes|nullable|string|max:255',
             'superficie'          => 'sometimes|nullable|numeric',
             'numero_vani'         => 'sometimes|nullable|integer',

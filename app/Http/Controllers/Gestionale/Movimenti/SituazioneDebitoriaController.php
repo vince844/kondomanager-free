@@ -82,7 +82,9 @@ class SituazioneDebitoriaController extends Controller
             $dettaglioTooltip = $gruppoQuotes->map(function($q) use ($condominio, &$esercizioId, $metodoDist, $numeroRata, $totaleRatePiano, $first) {
                 
                 $residuoNettoQuota = ($q->importo - $q->importo_pagato); 
-                $unita = $q->immobile ? "Int. {$q->immobile->interno}" : 'Generico';
+                // `etichetta`: con l'interno facoltativo questa riga diceva «Int. » e non identificava
+            // niente, proprio nella schermata dove si sta per incassare da qualcuno.
+            $unita = $q->immobile ? $q->immobile->etichetta : 'Generico';
 
                 // 1. RECUPERO RUOLO DALLA TUA TABELLA PIVOT
                 $ruoloIniziale = 'P'; // Default fallback
@@ -186,7 +188,9 @@ class SituazioneDebitoriaController extends Controller
             }
 
             $unitaCoinvolte = $gruppoQuotes->map(function($q) {
-                return $q->immobile ? "Int. {$q->immobile->interno} ({$q->immobile->nome})" : null;
+                // `etichetta`: senza interno restava «Int.  (Posto auto 3)», con la parentesi orfana
+                    // e nessun numero davanti. Reperto della revisione della beta.58.
+                    return $q->immobile ? $q->immobile->etichettaEstesa : null;
             })->filter()->unique()->join(', ');
 
             $isEmitted = $gruppoQuotes->contains(fn($q) => !is_null($q->scrittura_contabile_id));

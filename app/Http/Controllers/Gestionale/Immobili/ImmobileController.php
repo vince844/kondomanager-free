@@ -246,14 +246,12 @@ class ImmobileController extends Controller
 
         } catch (\Throwable $e) {
             
-            Log::error('Error creating immobile', [
+            $riferimento = \App\Support\ErroriDiagnosticabili::registra($e, 'Errore creando un immobile', [
                 'condominio_id' => $condominio->id,
-                'message'       => $e->getMessage(),
-                'trace'         => $e->getTraceAsString(),
             ]);
 
             return to_route('admin.gestionale.immobili.index', $condominio)
-                ->with($this->flashError(__('gestionale.error_create_immobile')));
+                ->with($this->flashError(__('gestionale.error_create_immobile').' (rif. '.$riferimento.')'));
         }
     }
 

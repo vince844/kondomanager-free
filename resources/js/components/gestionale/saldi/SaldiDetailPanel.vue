@@ -257,7 +257,7 @@ function submitAddModal() {
       <div>
         <h2 class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
           {{ immobile.nome }}
-          <span class="font-normal text-slate-400 dark:text-slate-500 text-base"> · Int. {{ immobile.interno }}</span>
+          <span v-if="immobile.interno" class="font-normal text-slate-400 dark:text-slate-500 text-base"> · Int. {{ immobile.interno }}</span>
         </h2>
         <p class="text-xs text-slate-400 mt-0.5">
           <span v-if="immobile.palazzina">Palazzina {{ immobile.palazzina.name }}</span>
@@ -534,7 +534,7 @@ function submitAddModal() {
                 Aggiungi {{ modalForm.tipo === 'credito' ? 'Credito' : 'Debito' }}
               </h3>
               <p class="text-xs font-medium opacity-80" :class="modalForm.tipo === 'credito' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'">
-                Int. {{ immobile.interno }}
+                {{ immobile.interno ? `Int. ${immobile.interno}` : (immobile.nome || 'Unità') }}
               </p>
             </div>
             <button @click="closeAddModal" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/50 dark:bg-slate-800/50 p-1.5 rounded-full"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>

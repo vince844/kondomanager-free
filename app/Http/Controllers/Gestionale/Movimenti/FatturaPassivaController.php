@@ -254,7 +254,8 @@ class FatturaPassivaController extends Controller
                 ->map(function ($imm) {
                     return [
                         'id' => $imm->id,
-                        'label' => 'Int. '.$imm->interno.' — '.$imm->nome,
+                        // `etichetta`: senza interno restava «Int.  — Nome», col trattino orfano (beta.58).
+                        'label' => $imm->etichetta.($imm->nome && $imm->interno ? ' — '.$imm->nome : ''),
                     ];
                 }),
         ]);
@@ -519,7 +520,7 @@ class FatturaPassivaController extends Controller
                 ->get()
                 ->map(fn ($i) => [
                     'id' => $i->id,
-                    'label' => 'Int. '.$i->interno.' — '.$i->nome,
+                    'label' => $i->etichetta.($i->nome && $i->interno ? ' — '.$i->nome : ''),
                 ]),
         ]);
     }

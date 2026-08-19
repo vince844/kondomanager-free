@@ -25,6 +25,10 @@ const topbarNavItems: LinkItem[] = [
     type: 'link',
     icon: TextSearch,
     title: 'Dettagli',
+    // `exact`: questo indirizzo è il **prefisso** di tutte le voci sorelle
+    // (`/anagrafiche`, `/documenti`, …), quindi senza confronto esatto resterebbe acceso
+    // anche stando altrove — e a video si vedrebbero due voci attive insieme.
+    exact: true,
     href:  generatePath('gestionale/:condominio/immobili/:immobile', { condominio: condominio.value.id, immobile: immobile.value.id }),
   },
   {

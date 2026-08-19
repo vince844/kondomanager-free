@@ -12,6 +12,62 @@ class Immobile extends Model
 
     protected $table = 'immobili';
 
+    /**
+     * Come si chiama questa unità quando bisogna nominarla in una riga sola.
+     *
+     * Reperto «alta» della revisione della beta.58: rendendo l'interno facoltativo è emerso che in
+     * sei punti — fra cui il **PDF dell'estratto conto consegnato al condòmino** — l'interno era
+     * l'unico identificativo, e senza di lui restava «Int. » e nient'altro.
+     *
+     * La regola sta qui e non nei ventiquattro punti che costruivano l'etichetta a mano: è la stessa
+     * divergenza del campo importo trovata il giorno prima, e nasce sempre dalle copie.
+     *
+     * L'ordine dei ripieghi non è arbitrario:
+     * 1. **l'interno**, perché è come gli amministratori chiamano le unità fra loro;
+     * 2. **il nome**, che è obbligatorio in creazione — quindi il ripiego esiste sempre;
+     * 3. **il codice**, ultima rete se un giorno anche il nome diventasse facoltativo.
+     */
+    public function getEtichettaAttribute(): string
+    {
+        $interno = trim((string) ($this->attributes['interno'] ?? ''));
+
+        if ($interno !== '') {
+            return 'Int. '.$interno;
+        }
+
+        $nome = trim((string) ($this->attributes['nome'] ?? ''));
+
+        if ($nome !== '') {
+            return $nome;
+        }
+
+        return 'Unità #'.($this->attributes['id'] ?? '—');
+    }
+
+    /**
+     * L'etichetta **estesa**: interno e nome insieme, quando ci sono entrambi.
+     *
+     * ⚠️ Nata da una regressione mia, trovata dal ripasso della beta.58. Applicando ovunque
+     * `etichetta` avevo **tolto informazione** dove prima ce n'era di più: lo scadenziario scriveva
+     * «Int. 5 (Posto auto 3)» e ha iniziato a scrivere «Int. 5». Su ogni installazione esistente —
+     * dove l'interno c'è quasi sempre, perché fino a ieri era obbligatorio — la correzione del caso
+     * raro peggiorava il caso comune.
+     *
+     * La regola: `etichetta` quando il posto è stretto o l'interno basta, `etichettaEstesa` dove
+     * prima si mostravano entrambi.
+     */
+    public function getEtichettaEstesaAttribute(): string
+    {
+        $interno = trim((string) ($this->attributes['interno'] ?? ''));
+        $nome = trim((string) ($this->attributes['nome'] ?? ''));
+
+        if ($interno !== '' && $nome !== '') {
+            return 'Int. '.$interno.' ('.$nome.')';
+        }
+
+        return $this->etichetta;
+    }
+
     protected $fillable = [
         'condominio_id',
         'palazzina_id',
