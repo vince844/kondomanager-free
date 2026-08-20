@@ -133,9 +133,17 @@ class TabellaController extends Controller
                 foreach ($immobili as $immobile) {
                     $tabella->quote()->create([
                         'immobile_id'  => $immobile->id,
+                        // `valore` nullo significa **«da compilare»**, e dalla beta.61 è uno stato
+                        // dichiarato invece che una scappatoia: la pagina delle quote lo sa dire, e
+                        // la generazione del piano rate si ferma a chiederlo. Prima di allora
+                        // questa riga produceva una tabella **non più salvabile** finché ogni
+                        // casella non era piena.
                         'valore'       => null,
                         'coefficienti' => null,
-                        'created_by'   => null,
+                        // ⚠️ Era `null`, con l'autore disponibile due righe sopra in
+                        // `$data['created_by']`: le quote create qui non avevano firma, e
+                        // risultavano di nessuno.
+                        'created_by'   => $data['created_by'],
                     ]);
                 }
             }
@@ -228,6 +236,14 @@ class TabellaController extends Controller
      */
     public function destroy(Condominio $condominio, Tabella $tabella): RedirectResponse
     {
+        // ⚠️ La tabella dell'indirizzo deve essere di **questo** condominio: il binding implicito
+        // risolve i due modelli per id, ciascuno per conto suo. Senza questa riga, cancellare la
+        // tabella di un altro condominio riusciva — e portava via in cascata tutte le sue quote
+        // (`ON DELETE CASCADE` su `quote_tabella.tabella_id`) — chiudendo con un **messaggio verde
+        // di successo** sulla schermata del condominio sbagliato. Vedi la coda ㊷ in
+        // `docs/roadmap.md` e la guardia gemella in `TabellaQuotaController`.
+        abort_unless($tabella->condominio_id === $condominio->id, 404);
+
          try {
 
             if ($tabella->conti()->exists()) {

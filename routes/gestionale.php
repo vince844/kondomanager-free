@@ -91,7 +91,13 @@ Route::prefix('/gestionale/{condominio}')
     Route::resource('scale', ScalaController::class)
         ->parameters(['scale' => 'scala']);
     
+    // `only()` e non un `resource` intero: `SaldoInizialeController` implementa **solo** queste
+    // quattro azioni. `create`, `show` ed `edit` puntavano a metodi inesistenti e rispondevano
+    // **500** a chiunque ci arrivasse per URL — i saldi iniziali si dichiarano tutti dalla pagina
+    // di elenco, e quelle tre schermate non sono mai state volute. Rimosse nella beta.61, stesso
+    // difetto e stesso rimedio delle quattro di `ContoController` nella beta.48.
     Route::resource('saldi', SaldoInizialeController::class)
+        ->only(['index', 'store', 'update', 'destroy'])
         ->parameters(['saldi' => 'saldo']);
 
     // Sblocco manuale di un lucchetto senza titolare (dati storici anteriori alla
@@ -120,7 +126,11 @@ Route::prefix('/gestionale/{condominio}')
             'anagrafiche' => 'anagrafica'
         ]);
     
+    // `except(['show'])`: `ImmobileDocumentoController` non implementa `show` — un documento si
+    // scarica, non si "apre in una scheda". La rotta generata rispondeva **500**. Rimossa nella
+    // beta.61.
     Route::resource('immobili.documenti', ImmobileDocumentoController::class)
+        ->except(['show'])
         ->parameters([
             'immobili'  => 'immobile',
             'documenti' => 'documento'
@@ -200,7 +210,12 @@ Route::prefix('/gestionale/{condominio}')
     Route::put('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/aggiorna-tabella/{tabella}', AggiornaTabellaController::class)
         ->name('esercizi.piani-conti.conti.aggiorna-tabella');
 
+    // `only()` e non un `resource` intero: `PianoRateController` non implementa `edit` né
+    // `update` — un piano rate non si modifica in quel modo, si rigenera (`regenerate`) o se ne
+    // cambia lo stato (`update-stato`). Le due rotte generate rispondevano **500**. Rimosse nella
+    // beta.61.
     Route::resource('esercizi.piani-rate', PianoRateController::class)
+        ->only(['index', 'create', 'store', 'show', 'destroy'])
         ->parameters([
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
@@ -254,7 +269,13 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
     
+    // `only()` e non un `resource` intero: `IncassoRateController` implementa **solo** queste
+    // quattro azioni. Un incasso non si modifica e non si cancella: si **storna** (la rotta qui
+    // sotto), perché la partita doppia non ammette la riscrittura di una scrittura registrata.
+    // `edit`, `update` e `destroy` puntavano a metodi inesistenti e rispondevano **500**. Rimosse
+    // nella beta.61.
     Route::resource('movimenti-rate', IncassoRateController::class)
+        ->only(['index', 'create', 'store', 'show'])
         ->parameters(['movimenti-rate' => 'scrittura']);
 
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)

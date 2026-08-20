@@ -545,6 +545,10 @@ class ImmobileController extends Controller
      */
     public function destroy(Condominio $condominio, Immobile $immobile): RedirectResponse
     {
+        // ⚠️ Stessa ragione della guardia gemella su `TabellaController@destroy`: senza, si
+        // cancellava l'unità di un altro condominio, e con lei le sue quote in ogni tabella.
+        abort_unless($immobile->condominio_id === $condominio->id, 404);
+
         try {
 
             $immobile->delete();

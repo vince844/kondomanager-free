@@ -45,7 +45,22 @@ const nota = ref('');
 const { euro } = useCurrencyFormatter();
 const { generatePath } = usePermission();
 
-const totaleScoperto = computed(() => props.scoperti.reduce((acc, curr) => acc + curr.importo, 0));
+/**
+ * ⚠️ **Due famiglie, in un avviso solo.** Le righe con `millesimo_non_compilato` non sono importi
+ * non ripartibili: sono unità che hanno una riga in tabella e non hanno ancora un millesimo. Non
+ * portano una cifra — quanto avrebbero dovuto pagare **non è calcolabile**, perché il numero che
+ * serve è proprio quello che manca — e soprattutto la loro conseguenza è **opposta** a quella
+ * degli scoperti veri.
+ *
+ * Scoperto vero: se procedi, quell'importo non entra nel piano e **le quote degli altri restano
+ * corrette**. Millesimo non compilato: se procedi, quell'unità sparisce dal piano e **la sua
+ * quota la pagano gli altri**. Dirlo con la stessa frase sarebbe una bugia, ed è la ragione per
+ * cui l'intestazione qui sotto si sdoppia.
+ */
+const nonRipartibili = computed(() => props.scoperti.filter((s) => s.motivo !== 'millesimo_non_compilato'));
+const senzaMillesimo = computed(() => props.scoperti.filter((s) => s.motivo === 'millesimo_non_compilato'));
+
+const totaleScoperto = computed(() => nonRipartibili.value.reduce((acc, curr) => acc + curr.importo, 0));
 
 /**
  * Cosa manca, in una riga, e cosa si deve fare per toglierlo di mezzo.
@@ -54,6 +69,15 @@ const totaleScoperto = computed(() => props.scoperti.reduce((acc, curr) => acc +
  * deve nominare i capitoli e dire cosa fare, altrimenti la telefonata si sposta, non si toglie»*.
  */
 const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
+    if (s.motivo === 'millesimo_non_compilato') {
+        return {
+            cosa: s.tabella_nome
+                ? `${s.immobile_nome ?? 'Un\'unità'} non ha ancora un millesimo nella tabella «${s.tabella_nome}»`
+                : `${s.immobile_nome ?? 'Un\'unità'} non ha ancora un millesimo`,
+            azione: 'Compila il millesimo, oppure togli la riga se questa unità non partecipa',
+        };
+    }
+
     if (s.motivo === 'conto_senza_tabella') {
         return {
             cosa: 'Nessuna tabella millesimale collegata al capitolo',
@@ -89,7 +113,7 @@ const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
  * `docs/validatore_coerenza_millesimi.md`): quella schermata quegli id ce li ha già.
  */
 const destinazione = (s: ScopertoCents): string | null => {
-    if (s.motivo === 'tabella_senza_millesimi') {
+    if (s.motivo === 'millesimo_non_compilato' || s.motivo === 'tabella_senza_millesimi') {
         return s.tabella_id
             ? generatePath('gestionale/:condominio/tabelle/' + s.tabella_id + '/quote')
             : null;
@@ -105,7 +129,9 @@ const destinazione = (s: ScopertoCents): string | null => {
 };
 
 const etichettaDestinazione = (s: ScopertoCents): string =>
-    s.motivo === 'tabella_senza_millesimi' ? 'Millesimi' : 'Anagrafiche';
+    s.motivo === 'tabella_senza_millesimi' || s.motivo === 'millesimo_non_compilato'
+        ? 'Millesimi'
+        : 'Anagrafiche';
 
 const canProceed = computed(() => nota.value.trim().length >= 10);
 
@@ -122,11 +148,26 @@ const handleProcedi = () => {
       <AlertTriangle class="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
       <div>
         <h3 class="font-bold text-amber-900 text-base">
-          Attenzione: {{ scoperti.length }} {{ scoperti.length === 1 ? 'importo non ripartibile' : 'importi non ripartibili' }} (totale {{ euro(totaleScoperto) }})
+          Attenzione: c'è qualcosa da sistemare prima di generare il piano
         </h3>
-        <p class="text-sm text-amber-800 mt-1">
-          Questi importi non sono addebitabili a nessuno: manca il soggetto, la tabella millesimale o i millesimi.
-          Se procedi, il piano rate <strong>non li conterrà</strong> — le quote degli altri condòmini restano corrette.
+
+        <!--
+          ⚠️ Due paragrafi e non uno, perché le due conseguenze sono **opposte** e una frase sola
+          sarebbe falsa per metà delle righe. Vedi la nota su `nonRipartibili` / `senzaMillesimo`.
+        -->
+        <p v-if="nonRipartibili.length" class="text-sm text-amber-800 mt-1">
+          <strong>{{ nonRipartibili.length }} {{ nonRipartibili.length === 1 ? 'importo non ripartibile' : 'importi non ripartibili' }}</strong>
+          (totale {{ euro(totaleScoperto) }}): non sono addebitabili a nessuno perché manca il soggetto,
+          la tabella millesimale o i millesimi. Se procedi, il piano rate <strong>non li conterrà</strong>
+          — le quote degli altri condòmini restano corrette.
+        </p>
+
+        <p v-if="senzaMillesimo.length" class="text-sm text-amber-800 mt-1">
+          <strong>{{ senzaMillesimo.length }} {{ senzaMillesimo.length === 1 ? 'unità senza millesimo' : 'unità senza millesimo' }}</strong>:
+          {{ senzaMillesimo.length === 1 ? 'ha' : 'hanno' }} una riga nella tabella millesimale ma il valore
+          è ancora vuoto. Se procedi, {{ senzaMillesimo.length === 1 ? 'quell\'unità sparisce' : 'quelle unità spariscono' }}
+          dal piano — non {{ senzaMillesimo.length === 1 ? 'riceve' : 'ricevono' }} nemmeno una riga da € 0,00 —
+          e <strong>la {{ senzaMillesimo.length === 1 ? 'sua quota la pagano' : 'loro quota la pagano' }} gli altri condòmini</strong>.
         </p>
       </div>
     </div>
@@ -165,7 +206,15 @@ const handleProcedi = () => {
                  comparivano come € 247,42. Preesistente, trovato dal primo test di questo
                  componente. Gli altri due chiamanti che pre-dividono — PianiRateNew ed
                  EstrattoContoAnagrafica — istanziano `fromCents: false` e sono corretti. -->
-            <td class="px-4 py-2 text-right font-medium text-amber-700">{{ euro(scoperto.importo) }}</td>
+            <!--
+              ⚠️ Un trattino e non «€ 0,00»: zero euro è un importo, e qui l'importo **non esiste**
+              — dipende dal millesimo che manca. Scrivere una cifra darebbe per calcolato ciò che
+              non lo è.
+            -->
+            <td class="px-4 py-2 text-right font-medium text-amber-700">
+              <span v-if="scoperto.motivo === 'millesimo_non_compilato'" class="text-slate-400">—</span>
+              <span v-else>{{ euro(scoperto.importo) }}</span>
+            </td>
             <td class="px-4 py-2 text-center">
               <a v-if="destinazione(scoperto)" :href="destinazione(scoperto)!" target="_blank"
                  class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">

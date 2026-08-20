@@ -47,7 +47,9 @@ use Illuminate\Support\Facades\File;
  *
  * ⚠️ Il valore si ritaglia **bilanciando le parentesi**, non con un'espressione regolare fino alla
  * `const` successiva: la prima stesura di questa guardia usava quella forma e segnalava **85** punti
- * invece di 27, perché si portava dietro tutto il codice fra una costante e l'altra. Una guardia che
+ * invece di **19**, perché si portava dietro tutto il codice fra una costante e l'altra. (Il «27» che
+ * questa riga dichiarava fino al 19/08 non è mai stato misurato: rieseguendo la logica vera sull'albero
+ * della .59 le costanti congelate erano 19 — 18 briciole più l'elenco dei driver di posta.) Una guardia che
  * grida troppo si spegne, ed è peggio di una che non c'è.
  *
  * Le `const` **dentro una funzione** sono indentate e non vengono raccolte: quelle sono valutate

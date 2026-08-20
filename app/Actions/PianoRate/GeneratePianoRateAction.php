@@ -15,6 +15,7 @@ use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\SaldoEsercizioService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -78,6 +79,30 @@ class GeneratePianoRateAction
         // =========================================================================
 
         $scoperti = $this->calcolatore->getScoperti();
+
+        // ⚠️ **Le righe senza millesimo entrano nello stesso cancello degli scoperti, ma non sono
+        // scoperti.** Un'unità associata a una tabella e lasciata senza valore oggi sparisce dal
+        // piano — non riceve nemmeno una riga da € 0,00 — e la sua quota la pagano le altre, in
+        // silenzio, perché il motore normalizza sulla somma reale e il totale del piano resta
+        // identico al preventivo. Misurato: dieci unità con una dimenticata, e ciascuna delle nove
+        // paga **€ 1.111,11 invece di € 1.000,00**, col centesimo di resto su uno solo.
+        //
+        // `importo => 0` è dichiarato, non un ripiego: quanto avrebbe dovuto pagare quell'unità
+        // **non è calcolabile**, perché il numero che serve è proprio quello che manca. La riga
+        // dice chi e dove, non quanto — e la schermata la rende senza cifra.
+        //
+        // Accettando, l'aritmetica resta quella di sempre: non si corregge niente, si mette agli
+        // atti che si è scelto di procedere sapendolo.
+        foreach ($this->calcolatore->getMillesimiNonCompilati() as $riga) {
+            $scoperti[] = [
+                'immobile_id'     => $riga['immobile_id'],
+                'conto_id'        => $riga['conto_id'],
+                'tabella_id'      => $riga['tabella_id'],
+                'ruolo_richiesto' => null,
+                'importo'         => 0,
+                'motivo'          => 'millesimo_non_compilato',
+            ];
+        }
 
         // Eccedenze del netting "già versato" (beta.26): unità che avevano versato
         // più del dovuto per una voce. Non bloccano la generazione — è denaro dei
@@ -205,30 +230,60 @@ class GeneratePianoRateAction
             $importoScopertiCents = array_sum(array_column($scoperti, 'importo'));
             $importoFormattato    = '€ ' . number_format($importoScopertiCents / 100, 2, ',', '.');
 
-            // Trova il condominio attraverso la catena di relazioni
-            $condominioId = $pianoRate->gestione?->esercizio?->condominio_id
-                ?? $pianoRate->gestione?->esercizio?->condominio?->id;
+            // ⚠️ **Questo task non nasceva mai**, e il difetto è stato trovato dalla revisione
+            // avversariale della beta.61. La riga era `loadMissing('gestione.esercizio')`, ma
+            // `Gestione` ha solo `esercizi()` al plurale: `loadMissing` solleva
+            // `RelationNotFoundException`, che il `catch (\Throwable)` qui sotto inghiotte in un
+            // `Log::warning`. Il promemoria che doveva riportare l'amministratore a sistemare gli
+            // scoperti non è mai comparso in Inbox. Lo stesso file lo sapeva già: il commento a
+            // riga 134-136, nel blocco delle eccedenze, dice esattamente «Gestione ha solo
+            // esercizi(), plurale: un ->esercizio singolare non esiste».
+            //
+            // `condominio_id` è una colonna diretta su `piani_rate`, quindi non serve nessuna
+            // catena di relazioni; per l'esercizio si riusa il fallback già collaudato sopra.
+            $condominioId = $pianoRate->condominio_id;
+
+            $esercizioIdScoperti = $pianoRate->gestione
+                ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
+                ?? $pianoRate->gestione?->esercizi()->first()?->id;
+
+            // ⚠️ Il testo diceva una causa sola — «unità senza anagrafiche attive» — che dalla
+            // beta.48 non è più l'unica, e dalla .61 nemmeno la più frequente. Ora nomina le cause
+            // che ci sono davvero, e **tace sull'importo quando l'importo non esiste**: per un
+            // millesimo non compilato la cifra è zero per costruzione, e scrivere «€ 0,00 in quote
+            // non assegnabili» sarebbe una riga che si legge come un non-problema.
+            $senzaMillesimo = count(array_filter($scoperti, fn ($s) => ($s['motivo'] ?? null) === 'millesimo_non_compilato'));
+            $nonRipartibili = count($scoperti) - $senzaMillesimo;
+
+            $causa = implode(' ', array_filter([
+                $nonRipartibili > 0
+                    ? "{$importoFormattato} in quote non ripartibili su {$nonRipartibili} " . ($nonRipartibili === 1 ? 'voce' : 'voci') . '.'
+                    : null,
+                $senzaMillesimo > 0
+                    ? "{$senzaMillesimo} " . ($senzaMillesimo === 1 ? 'unità è associata a una tabella millesimale senza avere un millesimo' : 'unità sono associate a una tabella millesimale senza avere un millesimo')
+                        . ' e ' . ($senzaMillesimo === 1 ? 'non compare' : 'non compaiono') . ' nel piano: la ' . ($senzaMillesimo === 1 ? 'sua quota è stata ripartita' : 'loro quota è stata ripartita') . ' fra le altre.'
+                    : null,
+            ]));
 
             // Crea il task inbox — rimane aperto finché l'admin non lo chiude manualmente
             try {
-                $pianoRate->loadMissing('gestione.esercizio');
-                $condominioId = $pianoRate->gestione?->esercizio?->condominio_id;
-
                 InboxService::createTask(
                     tipo: EventoTipo::SCOPERTO_DOCUMENTATO,
                     title: "Quote non assegnate — {$pianoRate->nome}",
-                    description: "{$importoFormattato} in quote non assegnabili per unità senza anagrafiche attive. "
-                        . "Motivazione registrata: \"{$notaScoperti}\". "
-                        . "Azione: censire le anagrafiche mancanti. Il recupero avverrà con addebito manuale o a conguaglio.",
+                    description: $causa
+                        . " Motivazione registrata: \"{$notaScoperti}\"."
+                        . ' Azione: compilare i millesimi mancanti o censire le anagrafiche, poi rigenerare il piano.',
                     scadenza: now(),
-                    createdByUserId: $pianoRate->created_by ?? 1,
+                    createdByUserId: Auth::id() ?? 1,
                     condominioId: $condominioId,
                     context: [
-                        'piano_rate_id'   => $pianoRate->id,
-                        'piano_rate_nome' => $pianoRate->nome,
-                        'importo_cents'   => $importoScopertiCents,
+                        'piano_rate_id'      => $pianoRate->id,
+                        'piano_rate_nome'    => $pianoRate->nome,
+                        'importo_cents'      => $importoScopertiCents,
+                        'senza_millesimo'    => $senzaMillesimo,
+                        'non_ripartibili'    => $nonRipartibili,
                     ],
-                    actionUrl: '/gestionale/' . ($condominioId ?? '') . '/esercizi/' . ($pianoRate->gestione?->esercizio?->id ?? '') . '/piani-rate/' . $pianoRate->id,
+                    actionUrl: '/gestionale/' . ($condominioId ?? '') . '/esercizi/' . ($esercizioIdScoperti ?? '') . '/piani-rate/' . $pianoRate->id,
                     priorita: 'alta'
                 );
 

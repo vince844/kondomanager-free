@@ -7,6 +7,145 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.61] - Il Millesimo Che Nessuno Aveva Compilato
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Una tabella millesimale in cui un'unità è associata ma il valore è ancora vuoto produceva un piano
+rate che **quell'unità non conteneva affatto**. Non una riga da € 0,00 da spiegare: proprio niente.
+E siccome il motore ripartisce sempre il 100% della spesa dividendola sulla somma effettiva della
+tabella — non su 1000 — la sua quota la pagavano le altre.
+
+Misurato: dieci unità, nove compilate e una dimenticata, ciascuno dei nove paga **€ 1.111,11 invece
+di € 1.000,00**, e il centesimo di resto cade su uno solo. Il totale del piano resta identico al preventivo, quindi nessun controllo contabile
+aveva niente da segnalare.
+
+Adesso la generazione **si ferma**, dice quale unità e in quale tabella, e porta alla pagina dei
+millesimi. Si può procedere lo stesso — la decisione resta dell'amministratore — ma scrivendo il
+perché, che resta agli atti del piano e apre un promemoria in Inbox.
+
+⚠️ **L'avviso non corregge, avverte.** Chi procede si prende il riparto di prima. Il rimedio è
+compilare il millesimo.
+
+### Perché prima non si vedeva, e perché la difesa non difendeva
+
+Il campo dei millesimi era obbligatorio, quindi una casella vuota non si poteva salvare. Sembrava
+una difesa. Non lo era: chi spuntava **«associa tutti gli immobili esistenti»** creando una tabella
+si ritrovava tutte le righe vuote e **una pagina che non si poteva più salvare** finché non aveva
+compilato ogni singola casella — e la via d'uscita più rapida era scrivere `0` dove il valore ancora
+non lo sapeva.
+
+Ma `0` per il programma significa **«questa unità non partecipa»**: è così che funzionano le tabelle
+parziali vere, l'ascensore senza i piani terra o le scale senza i negozi con ingresso su strada.
+L'obbligo non impediva l'errore: lo convogliava in una forma indistinguibile da una scelta voluta.
+
+Da questa versione il millesimo **si può lasciare vuoto**: si associano le unità oggi e si compilano
+i valori quando arrivano dal tecnico, anche in più sedute. E vuoto significa vuoto — non zero.
+
+- **riga assente** → l'unità non partecipa;
+- **valore zero** → l'unità non partecipa, detto esplicitamente. Legittimo, e nessun avviso;
+- **valore vuoto** → non ancora compilato. È l'unico caso che avvisa.
+
+### La pagina non si dichiara più finita quando non lo è
+
+Con tutte le unità associate e nessun millesimo scritto, l'intestazione diceva **«Tutte associate»**
+e il totale diceva `0.00` senza commentarlo: la schermata si presentava come completa. Ora, quando
+non resta più niente da associare ma dei valori mancano, il contatore dice **quante righe restano da
+compilare**. E il piè di pagina conta le unità, non le righe: prima una riga vuota figurava fra le
+«unità associate».
+
+### Associare più unità insieme
+
+Da una segnalazione sul forum: *«con 67 immobili, ogni volta devo risalire in cima»*.
+
+Il pulsante **«Associa in blocco»** aggiunge molte unità in una volta — tutte quelle mancanti, o
+raggruppate per palazzina, scala o tipologia. Compaiono **solo i criteri che in quel condominio
+hanno davvero dei dati**: dove nessuna unità ha una scala, il criterio non si vede, perché una voce
+di menu che restituisce sempre un elenco vuoto insegna a non fidarsi del menu.
+
+Prima di confermare si vede **l'elenco delle unità**, non solo il loro numero: «Abitazione 7» dice
+quante, non quali. Le caselle nascono già spuntate, così il caso normale resta un clic solo, e chi
+vuole escluderne una la toglie — il pulsante dice quante ne entreranno.
+
+E accanto al cestino dell'**ultima riga** c'è un «+» che ne aggiunge un'altra lì dove si sta
+lavorando, senza risalire in cima.
+
+### Cercare e ordinare, su tabelle da settanta unità
+
+Da nove righe in su compare una casella di ricerca — nome, interno, piano, palazzina — e le
+intestazioni «Immobile» e «Millesimi» ordinano l'elenco: un clic crescente, due decrescente, tre
+torna all'ordine originale.
+
+⚠️ **La ricerca nasconde, non toglie.** Le righe filtrate restano nel salvataggio, e la pagina lo
+scrive accanto alla casella. È il vincolo che regge tutto: questa pagina si salva in un colpo solo,
+e una riga uscita dal modulo sarebbe una riga cancellata a database. Se una riga nascosta ha un
+errore che blocca il salvataggio, un avviso accanto a «Salva quote» dice di mostrarle tutte.
+
+### I decimali dichiarati non accorciano più i valori
+
+Il numero di decimali di una tabella governa **come il valore si mostra**, non cosa viene
+conservato. Prima aprire una pagina e salvarla riscriveva i valori arrotondati: un millesimo
+importato da un altro gestionale con quattro decimali ne perdeva due, e un valore molto piccolo
+poteva diventare **zero** — cioè «non partecipa» — senza che nessuno toccasse niente.
+
+Ora un valore più preciso resta intatto e si vede per intero. Da tastiera il limite resta quello
+dichiarato dalla tabella: se dichiara tre decimali, il quarto non entra. Chi ha bisogno di scriverne
+di più fini alza l'impostazione.
+
+*(Sui dati esistenti non cambia nulla: nessun valore eccedeva la precisione dichiarata.)*
+
+### Una guida dentro la pagina
+
+La schermata dei millesimi ha ora il suo pannello di guida, come le altre. Metà spiega le tre
+distinzioni fra riga assente, zero e valore vuoto: si somigliano a schermo e il programma le tratta
+in modo diverso, ed è il genere di cosa che, non detta, si scopre al primo riparto sbagliato.
+
+### Nove indirizzi che rispondevano 500
+
+Nove rotte del gestionale puntavano a funzioni che non esistono: chiunque ci arrivasse per URL — un
+segnalibro, un link vecchio — riceveva un errore del server invece di una pagina. Nessuna era
+raggiungibile dall'interfaccia. Rimosse.
+
+⚠️ **Se hai un segnalibro su uno di questi indirizzi**, ora troverai una pagina non trovata invece
+di un errore: `saldi/…/edit`, `piani-rate/…/edit`, `movimenti-rate/…/edit` e le altre sei. Sono
+schermate che non sono mai esistite.
+
+### Le cose di un condominio non si toccano da un altro
+
+Aprendo la pagina dei millesimi di una tabella **sotto l'indirizzo di un altro condominio**, la
+pagina mostrava le quote vere di quella tabella e l'elenco delle unità dell'altro: salvando si
+cancellavano le quote reali e ci si scrivevano sopra unità estranee.
+
+Lo stesso valeva, in peggio, per le due funzioni che **cancellano**: si eliminava la tabella
+millesimale di un altro condominio — con tutte le sue quote — o una sua unità immobiliare, e
+l'operazione si chiudeva con un **messaggio verde di successo** sulla schermata sbagliata.
+
+Corretto in tutti e tre i punti, insieme alla convalida che accettava l'unità di un condominio
+qualunque. Stesso difetto e stessa correzione nello spostamento di budget fra voci di spesa.
+
+### Sotto il cofano
+
+- **Il cestino di una riga era un pulsante «invia».** Toglierlo non toglieva solo la riga: faceva
+  partire il salvataggio dell'intera tabella, e a server il salvataggio comincia cancellando le
+  righe non presenti. Il difetto era più vecchio di questa versione, ma aveva un freno per caso —
+  il millesimo obbligatorio — che rendendo il valore facoltativo sarebbe saltato.
+- **Ogni salvataggio cancellava e ricreava tutte le righe**, invece di aggiornare quelle esistenti:
+  l'identificativo della riga veniva scartato dalla convalida, e la cancellazione «delle righe non
+  presenti» le prendeva tutte. Gli identificativi cambiavano a ogni salvataggio e l'autore della
+  riga veniva riscritto con l'ultimo che aveva premuto «Salva».
+- **Un millesimo negativo** non era né vuoto né zero: il motore lo saltava come uno zero ma lo
+  contava nel divisore, spostando la spesa fra tabelle. Ora è rifiutato.
+- **Il promemoria in Inbox degli scoperti accettati non nasceva mai**, per una relazione chiamata al
+  singolare dove esiste solo al plurale. L'eccezione finiva in un log e il promemoria non compariva.
+- **Una guardia strutturale nuova** congela il perimetro delle rotte annidate: 112 metodi, 29 con
+  una guardia riconoscibile. Se ne nasce una senza, il test diventa rosso; se una dell'elenco
+  acquista la guardia, il test chiede di accorciare l'elenco. I suoi cinque punti ciechi sono
+  dichiarati e **provati con dei test**, non solo scritti in prosa.
+- Una revisione critica condotta prima del rilascio ha trovato **nove difetti a suite verde**, di
+  cui due nel codice che questa versione aveva appena scritto. Sono tutti corretti qui.
+
+---
+
 ## [1.10.0-beta.60] - Il Numero Che Nessuno Aveva Chiesto al Server
 
 **Nessuna migrazione: il database non viene toccato.**

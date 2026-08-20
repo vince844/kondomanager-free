@@ -34,6 +34,40 @@ class CalcoloQuoteService
     /** @var array Accumulatore per le quote non assegnabili per mancanza di anagrafiche attive */
     private array $scopertiAccumulati = [];
 
+    /**
+     * Le righe di tabella millesimale che esistono ma **non hanno ancora un valore**.
+     *
+     * ⚠️ Non sono scoperti, e tenerle separate è deliberato. Uno scoperto è denaro che non si
+     * riesce ad attribuire, e porta con sé un importo; qui l'importo è **esattamente il numero
+     * che manca**, quindi non è calcolabile senza inventarlo. Registrarle nel secchio degli
+     * scoperti avrebbe voluto dire scrivere un euro finto per far funzionare il cancello.
+     *
+     * ## Perché ci sono, da questa beta
+     *
+     * Fino alla .60 `quote.*.valore` era `required` e questo stato non esisteva a database — zero
+     * righe NULL su 98, misurate. Il `required` però non proteggeva: chi spuntava «associa tutti
+     * gli immobili esistenti» otteneva una tabella non salvabile finché non l'aveva compilata
+     * tutta, e la via d'uscita rapida era scrivere `0`. Il motore legge lo zero come «non
+     * partecipa» — e quel condòmino sparisce dal piano, mentre gli altri pagano la sua quota.
+     * Misurato: dieci unità, nove compilate e una dimenticata, ciascuno dei nove paga
+     * **€ 1.111,11 invece di € 1.000,00**, col centesimo di resto su uno solo, e nessun controllo contabile ha niente da segnalare
+     * perché il totale del piano resta identico al preventivo.
+     *
+     * ## Cosa NON fa
+     *
+     * Non tocca un solo peso e non cambia un solo importo: se l'amministratore accetta e procede,
+     * l'aritmetica è quella di sempre. Serve a **dirlo prima**, e a metterlo agli atti nella nota
+     * degli scoperti. Il rimedio vero è compilare il millesimo.
+     *
+     * ⚠️ Guarda **solo il NULL, mai lo zero**. Lo zero significa «non partecipa» ed è legittimo:
+     * è così che sono fatte le tabelle parziali vere — ascensore senza i piani terra, scale senza
+     * i negozi con ingresso su strada. Avvisare anche lì significherebbe urlare su nove tabelle
+     * su sedici che sono corrette, e in due settimane nessuno leggerebbe più l'avviso.
+     *
+     * @var list<array{immobile_id:int, tabella_id:int, conto_id:int}>
+     */
+    private array $millesimiNonCompilati = [];
+
     /** Unità che hanno versato più di quanto la spesa richiedeva loro. */
     private array $eccedenzeCopertura = [];
 
@@ -80,6 +114,7 @@ class CalcoloQuoteService
         $this->pivotOverrides   = [];
         $this->pianoRateCreatedAt = $pianoRate?->created_at;
         $this->scopertiAccumulati = [];
+        $this->millesimiNonCompilati = [];
         $this->eccedenzeCopertura = [];
         $this->importiRipartiti = [];
         $this->addebitiDiretti  = [];
@@ -298,6 +333,7 @@ class CalcoloQuoteService
     public function calcolaDaFattureStraordinarie(PianoRate $pianoRate): array
     {
         $this->scopertiAccumulati = [];
+        $this->millesimiNonCompilati = [];
         $this->eccedenzeCopertura = [];
         $this->importiRipartiti = [];
         $this->addebitiDiretti  = [];
@@ -470,6 +506,30 @@ class CalcoloQuoteService
     public function getScoperti(): array
     {
         return $this->scopertiAccumulati;
+    }
+
+    /**
+     * Le righe senza millesimo incontrate durante il calcolo, senza ripetizioni.
+     *
+     * @return list<array{immobile_id:int, tabella_id:int, conto_id:int}>
+     */
+    public function getMillesimiNonCompilati(): array
+    {
+        $viste = [];
+        $unici = [];
+
+        foreach ($this->millesimiNonCompilati as $riga) {
+            $chiave = $riga['tabella_id'].':'.$riga['immobile_id'];
+
+            if (isset($viste[$chiave])) {
+                continue;
+            }
+
+            $viste[$chiave] = true;
+            $unici[] = $riga;
+        }
+
+        return $unici;
     }
 
     /**
@@ -794,6 +854,25 @@ class CalcoloQuoteService
 
                 if (!$immobile) {
                     Log::debug("distribuisciSuTabelle: quota ID={$quota->id} in tabella ID={$tabella->id} non ha immobile associato. Saltata.");
+                    continue;
+                }
+
+                // ⚠️ **NULL e zero non sono la stessa cosa, da questa beta.** Il valore assente
+                // significa «non ancora compilato» e va detto; lo zero significa «non partecipa»
+                // ed è legittimo. Sotto, l'aritmetica li tratta identici come ha sempre fatto:
+                // qui si annota soltanto, senza toccare nessun peso.
+                if ($quota->valore === null) {
+                    Log::warning("distribuisciSuTabelle: immobile ID={$immobile->id} non ha ancora un millesimo nella tabella ID={$tabella->id} ('{$tabella->nome}'). La sua quota verrebbe ripartita fra le altre unità.", [
+                        'conto_id'     => $conto->id,
+                        'tabella_nome' => $tabella->nome,
+                    ]);
+
+                    $this->millesimiNonCompilati[] = [
+                        'immobile_id' => $immobile->id,
+                        'tabella_id'  => $tabella->id,
+                        'conto_id'    => $conto->id,
+                    ];
+
                     continue;
                 }
 
