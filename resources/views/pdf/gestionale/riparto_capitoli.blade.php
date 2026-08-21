@@ -294,11 +294,22 @@
 
                         @if($isFirst)
                             @php
-                                $totImmTab = 0;
-                                foreach($rigaImmobile['soggetti'] as $sogg) {
-                                    $totImmTab += ($sogg['per_capitolo'][$capId]['importo'] ?? 0);
-                                }
-                                $hasQuota = !is_null($quota) && $totImmTab > 0;
+                                /*
+                                 * Un millesimo scritto — anche se è zero — si legge in nero.
+                                 * Lo sbiadito resta a chi nella tabella non c'è (`null`).
+                                 *
+                                 * Fino alla beta.63 la condizione chiedeva anche un importo
+                                 * addebitato: uno zero documentato usciva quindi grigio
+                                 * chiarissimo su fondo chiaro, cioè illeggibile proprio nel
+                                 * documento che va in assemblea. Gemella della stessa riga in
+                                 * `riparto_tabelle.blade.php`.
+                                 *
+                                 * ⚠️ I commenti qui dentro si scrivono in PHP e non in Blade:
+                                 * il compilatore estrae il blocco `@php` prima di compilare i
+                                 * commenti, e un `{{-- --}}` finirebbe verbatim nel PHP generato
+                                 * facendo rispondere 500 all'intera stampa.
+                                 */
+                                $hasQuota = !is_null($quota);
                             @endphp
                             <td rowspan="{{ $nSoggettiImmobile }}" style="padding: 2px 2px; border: 1px solid {{ $sepLine }};
                                        text-align: right; font-size: {{ $fontSmall }};

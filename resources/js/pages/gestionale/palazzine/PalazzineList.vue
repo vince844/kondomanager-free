@@ -45,8 +45,14 @@ const pageGuides = [
     colorVariant: 'blue' as const
   },
   {
-    title: 'Spese Isolate',
-    description: 'La suddivisione in palazzine è essenziale per applicare tabelle millesimali specifiche (es. manutenzione tetto per un singolo blocco).',
+    // ⚠️ **Qui c'era una promessa che il programma non mantiene** (tolta nella beta.63, insieme
+    // alla gemella nello stato vuoto e alla scheda «Assegnazione strutturale» delle tabelle).
+    // Diceva che la suddivisione in palazzine serve ad «applicare tabelle millesimali
+    // specifiche»: le colonne `tabelle.palazzina_id` e `tabelle.scala_id` si salvavano e nessun
+    // filtro le leggeva. Il modo che funziona davvero è quello descritto qui, e non passa dalla
+    // palazzina. Il filtro vero è previsto in v1.11 (Iniziativa A della roadmap).
+    title: 'Spese di un solo blocco',
+    description: 'Per addebitare una spesa a un solo corpo di fabbrica — il tetto di una palazzina — si crea una tabella millesimale che contiene le sole unità di quel blocco.',
     icon: PieChart,
     colorVariant: 'emerald' as const
   },

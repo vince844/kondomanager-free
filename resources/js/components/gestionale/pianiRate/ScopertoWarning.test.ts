@@ -89,6 +89,27 @@ function tabellaSenzaMillesimi(overrides: Record<string, unknown> = {}) {
     };
 }
 
+/**
+ * La quarta forma, aggiunta dalla beta.63: le tabelle collegate al capitolo non arrivano al 100%.
+ *
+ * Non riguarda né un'unità né una tabella — **manca una tabella**, e quale sia lo sa solo
+ * l'amministratore. `immobile_id`, `tabella_id` e `ruolo_richiesto` arrivano tutti `null`.
+ */
+function coefficientiSottoIlCento(overrides: Record<string, unknown> = {}) {
+    return {
+        immobile_id: null,
+        immobile_nome: null,
+        conto_id: 11,
+        conto_nome: 'Rifacimento lastrico solare',
+        tabella_id: null,
+        tabella_nome: null,
+        importo: 600030,
+        ruolo_richiesto: null,
+        motivo: 'coefficienti_sotto_il_cento',
+        ...overrides,
+    };
+}
+
 function monta(scoperti: Record<string, unknown>[]) {
     return mount(ScopertoWarning, { props: { scoperti: scoperti as never } });
 }
@@ -142,6 +163,38 @@ describe('la tabella senza millesimi', () => {
 
         expect(w.text()).toContain('La tabella collegata non ha millesimi utilizzabili');
         expect(w.text()).not.toContain('«»');
+    });
+});
+
+describe('i coefficienti che non arrivano al cento', () => {
+    test('dice che manca percentuale, non che mancano le anagrafiche', () => {
+        // ⚠️ **È il difetto che questo blocco esiste per prendere.** Senza un ramo suo la forma
+        // cadeva nel caso storico — quello della quota orfana — e la riga consigliava di
+        // «censire le anagrafiche mancanti su questa unità»: un consiglio che non c'entra
+        // niente, su un'unità che non esiste, che manda a cercare un difetto dove non c'è.
+        const w = monta([coefficientiSottoIlCento()]);
+
+        expect(w.text()).toContain('Le tabelle collegate al capitolo non arrivano al 100%');
+        expect(w.text()).toContain('Collega la tabella che manca');
+        expect(w.text()).not.toContain('Censisci le anagrafiche mancanti');
+        expect(w.text()).not.toContain('Unità senza soggetto');
+    });
+
+    // ⚠️ **Solo il test qui sopra morde davvero.** Provato togliendo il ramo dal componente: il
+    // resto passa lo stesso, perché il nome del capitolo è una colonna a sé e il caso storico
+    // non costruisce comunque un collegamento su `immobile_id` nullo. Il test qui sotto resta
+    // perché presidia comportamento visibile all'utente — nessun link morto, l'importo mostrato
+    // e non un trattino — non perché provi il ramo.
+    test('non offre un collegamento che porterebbe altrove, e mostra l\'importo scoperto', () => {
+        const w = monta([coefficientiSottoIlCento()]);
+
+        // `immobile_id` è nullo: un pulsante «Anagrafiche» punterebbe a `/immobili/null`.
+        expect(w.html()).not.toContain('/immobili/null');
+        expect(w.html()).not.toContain('/tabelle/null');
+
+        // A differenza del millesimo non compilato, qui l'importo **è** calcolabile: è la fetta
+        // che i coefficienti non dichiarano. Va mostrata, non sostituita da un trattino.
+        expect(w.text()).toContain('6.000,30');
     });
 });
 

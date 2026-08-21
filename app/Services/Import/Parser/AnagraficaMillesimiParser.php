@@ -110,6 +110,40 @@ final class AnagraficaMillesimiParser
                     continue;
                 }
 
+                /*
+                 * ⚠️ **Il negativo si rifiuta anche qui, non solo sulla porta HTTP.**
+                 *
+                 * La beta.61 ha vietato i millesimi negativi in `UpdateQuoteRequest`, ma quella
+                 * guardia sta su **una porta sola**: da qui il valore entra senza passarci. Un
+                 * `-900` in una cella — un refuso, o una formattazione contabile letta male, che
+                 * sui file veri capita — non avvisa (non è `null`), non partecipa (è ≤ 0) e però
+                 * **entra nel divisore** `sum('valore')`, **rimpicciolendolo**. Ogni quota della
+                 * tabella diventa allora una frazione più grande, la tabella pesa **più** del suo
+                 * coefficiente rispetto alle altre collegate allo stesso capitolo, e a pagare di
+                 * più sono **gli altri partecipanti di quella stessa tabella**: denaro che cambia
+                 * persona senza che niente lo segnali.
+                 *
+                 * Misurato il 21/08/2026: due tabelle al 50/50 su una spesa da € 1.000,00, un solo
+                 * `-900` in una — chi doveva pagare € 333,33 riceve **€ 484,85**, e l'unità con il
+                 * valore negativo scende a € 30,30.
+                 *
+                 * Si rifiuta invece di raddrizzarlo: un millesimo negativo non ha una lettura
+                 * corretta ovvia — non è né «zero» né «900» — e indovinarla vorrebbe dire
+                 * scrivere in archivio un numero che nel file non c'era.
+                 */
+                if ($valore < 0.0) {
+                    $rilievi[] = Rilievo::errore(
+                        'tabella.valore_negativo',
+                        sprintf('Nella tabella «%s» il valore «%s» è negativo.', $nomeTabella, $grezzo),
+                        'Un millesimo non può essere negativo: correggi la cella nel file. '
+                        .'Se quell\'unità non partecipa alla tabella, lascia la cella vuota o scrivi zero.',
+                        $rigaUtente,
+                        $nomeTabella,
+                    );
+
+                    continue;
+                }
+
                 $quote[$nomeTabella][$chiave] = $valore;
             }
         }

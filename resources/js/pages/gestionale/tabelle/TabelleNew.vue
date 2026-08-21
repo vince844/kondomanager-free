@@ -7,7 +7,7 @@ import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import TabelleGuide from '@/components/guides/TabelleGuide.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, Table, Layers, Settings, Info } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Table, Settings, Info } from 'lucide-vue-next';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Label } from '@/components/ui/label';
@@ -19,14 +19,10 @@ import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
-import type { Palazzina } from '@/types/gestionale/palazzine';
-import type { Scala } from '@/types/gestionale/scale';
 
 const props = defineProps<{
   condominio: Building;
   condomini: Building[];
-  palazzine: Palazzina[];
-  scale: Scala[];
 }>()
 
 type TabellaType = {
@@ -74,12 +70,10 @@ const pageGuides = computed(() => [
     icon: Table,
     colorVariant: 'blue' as const
   },
-  {
-    title: 'Assegnazione Strutturale',
-    description: "Associa la tabella a specifiche palazzine o scale del condominio.",
-    icon: Layers,
-    colorVariant: 'emerald' as const
-  },
+  // ⚠️ **Terza copia della stessa promessa, tolta nella beta.63.** La scheda del modulo e la frase
+  // della guida erano le due evidenti; questa scheda in testa alla pagina diceva la stessa cosa —
+  // «associa la tabella a specifiche palazzine o scale» — ed è quella che si legge per prima.
+  // Nessun filtro leggeva quei due campi. Il filtro vero è previsto in Iniziativa A (v1.11).
   {
     title: 'Impostazioni Avanzate',
     description: "Configura note e l'associazione automatica a tutti gli immobili.",
@@ -96,8 +90,6 @@ const form = useForm({
   descrizione: '',
   note: '',
   all_flats: false as boolean,
-  palazzina_id: '',
-  scala_id: '',
 });
 
 const submit = () => {
@@ -258,43 +250,25 @@ watch(() => form.tipologia, (newVal) => {
           </CardContent>
         </Card>
 
-        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
-          <CardHeader class="pb-3 border-b border-dashed mb-4">
-            <CardTitle class="text-base font-semibold">Assegnazione strutturale</CardTitle>
-            <CardDescription>Opzionalmente, puoi limitare l'uso di questa tabella a palazzine o scale specifiche.</CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-6">
-            <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
-              <div class="sm:col-span-3">
-                <Label for="palazzina">Palazzina</Label>
-                <v-select 
-                  :options="palazzine" 
-                  label="name" 
-                  class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
-                  v-model="form.palazzina_id"
-                  placeholder="Associa ad una palazzina..."
-                  @update:modelValue="form.clearErrors('palazzina_id')" 
-                  :reduce="(palazzina: Palazzina) => palazzina.id"
-                />
-                <InputError :message="form.errors.palazzina_id" />
-              </div>
+        <!--
+          ⚠️ **La scheda «Assegnazione strutturale» è stata tolta nella beta.63, e non era una
+          funzione a metà: era una funzione che non è mai esistita.**
 
-              <div class="sm:col-span-3">
-                <Label for="scala">Scala</Label>
-                <v-select 
-                  :options="scale" 
-                  label="name" 
-                  class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
-                  v-model="form.scala_id"
-                  placeholder="Associa ad una scala..."
-                  @update:modelValue="form.clearErrors('scala_id')" 
-                  :reduce="(scala: Scala) => scala.id"
-                />
-                <InputError :message="form.errors.scala_id" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          Le colonne `tabelle.palazzina_id` e `tabelle.scala_id` si compilavano, si salvavano, e
+          **nessun calcolo e nessun filtro le leggeva**. La guida prometteva il contrario — «puoi
+          delimitare l'uso di una tabella solo agli immobili che fanno fisicamente parte di quella
+          scala» — quindi chi creava «Tabella scale — Scala B», sceglieva la scala e spuntava
+          «associa tutti gli immobili esistenti» si ritrovava tutte le unità del condominio invece
+          delle sole sei della scala.
+
+          Misurato prima di togliere: valorizzate in **zero tabelle su sedici**. Nessuno le ha mai
+          usate, e questo dice quanto la promessa fosse creduta.
+
+          Le colonne **restano a database**: il filtro per scala e palazzina è previsto in
+          Iniziativa A (v1.11) e toglierle ora vorrebbe dire due migrazioni — una per cancellarle e
+          una per rimetterle — su una release che non ha ancora il backup automatico. Quello che
+          sparisce è la **promessa**, non lo spazio per mantenerla.
+        -->
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">

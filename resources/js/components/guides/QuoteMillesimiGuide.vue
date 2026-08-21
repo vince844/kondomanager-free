@@ -94,10 +94,29 @@ defineEmits(['update:open']);
               <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                 <h4 class="font-bold text-slate-900 dark:text-white mb-1">Zero — «questa unità non partecipa»</h4>
                 <p class="leading-relaxed text-[13px]">
-                  È una scelta dichiarata, ed è legittima: l'ascensore che i piani terra non pagano,
-                  le scale che non riguardano il negozio con ingresso su strada. L'unità resta fuori
-                  dal riparto e <strong>non compare nessun avviso</strong>, perché non c'è niente da
-                  segnalare.
+                  <!--
+                    ⚠️ **L'esempio è cambiato nella beta.63, e la ragione va scritta.** Prima diceva
+                    «l'ascensore che i piani terra non pagano, le scale che non riguardano il negozio
+                    con ingresso su strada». Non è una spiegazione del campo: è una **qualificazione
+                    giuridica**, ed è sbagliata. L'art. 1124 c.c. divide la spesa metà per valore e
+                    metà per altezza di piano: il piano terra non paga la metà per altezza, ma paga
+                    quella per valore, e l'esonero totale richiede un titolo. Cass. civ. sez. II
+                    4 dicembre 2025 n. 31675 ha annullato una delibera che ripartiva la sostituzione
+                    degli ascensori solo per altezza, escludendo i locali terranei.
+
+                    Il principio del prodotto è che **il gestionale applica la tabella, non la
+                    redige** — la guida delle tabelle lo dichiara già per l'art. 1124. Questa frase
+                    entrava nello stesso territorio dalla porta di servizio. L'esempio nuovo descrive
+                    cosa fa il campo senza qualificare nessun caso.
+                  -->
+                  È una scelta dichiarata, ed è legittima: è la forma delle tabelle parziali, quelle
+                  di un impianto o di una scala che servono solo una parte del fabbricato, dove chi
+                  resta fuori non concorre alla spesa. L'unità resta fuori dal riparto e
+                  <strong>non compare nessun avviso</strong>, perché non c'è niente da segnalare.
+                  <br><br>
+                  <em>Quali unità restino fuori lo decide il titolo — il regolamento, la delibera,
+                  la tabella redatta dal tecnico —, non il programma: qui si scrive il risultato di
+                  quella decisione.</em>
                 </p>
               </div>
               <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">

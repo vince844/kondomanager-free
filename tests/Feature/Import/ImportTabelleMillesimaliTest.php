@@ -210,3 +210,40 @@ it('avvisa che le tabelle entrano senza capitolo di spesa collegato', function (
     expect($codici)->toContain('tabelle.non_collegate_ai_capitoli')
         ->and(Tabella::query()->has('conti')->count())->toBe(0);
 });
+
+/**
+ * Un foglio minimo costruito a mano: le quattro colonne fisse più una tabella, e una sola unità
+ * con il valore indicato.
+ *
+ * Si costruisce invece di aggiungere una riga alla fixture reale perché la fixture serve a provare
+ * che i **file veri** si leggono: sporcarla con un valore che sui file veri non c'è le toglierebbe
+ * proprio quella qualità.
+ */
+function foglioMillesimiCon(string $valore): \App\Services\Import\Foglio
+{
+    return new \App\Services\Import\Foglio('Prova', [
+        ['Palazzina', 'Gruppo', 'Progressivo', 'Proprietario', 'AMMINISTRAZIONE'],
+        ['1', 'A', '1', 'Rossi Mario', $valore],
+    ]);
+}
+
+it('rifiuta il millesimo negativo invece di scriverlo in archivio', function () {
+    // ⚠️ **La guardia della beta.61 stava su una porta sola.** `UpdateQuoteRequest` vieta i
+    // negativi a chi compila la schermata; l'importazione entrava da un'altra parte e non ci
+    // passava. Un `-900` non avvisa (non è `null`), non partecipa (è ≤ 0) e però **entra nel
+    // divisore**, rimpicciolendolo: la tabella pesa **più** del suo coefficiente rispetto alle
+    // altre collegate allo stesso capitolo, e a pagare di più sono gli altri partecipanti di
+    // quella stessa tabella. Misurato: due tabelle al 50/50 su € 1.000,00 e un solo `-900`, chi
+    // doveva pagare € 333,33 riceve € 484,85.
+    //
+    // Si rifiuta con un rilievo invece di raddrizzarlo: `-900` non ha una lettura corretta ovvia,
+    // e indovinarla scriverebbe in archivio un numero che nel file non c'era.
+    $parser = new AnagraficaMillesimiParser();
+
+    $foglio = foglioMillesimiCon('-900');
+    $out = $parser->estrai($foglio, 0);
+
+    $codici = array_map(fn ($r) => $r->codice, $out['esito']->perSeverita(Severita::Errore));
+
+    expect($codici)->toContain('tabella.valore_negativo');
+});

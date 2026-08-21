@@ -96,7 +96,7 @@ const table = useVueTable({
     v-else
     :icon="BuildingIcon"
     title="Nessuna palazzina"
-    description="Non è ancora stata censita nessuna palazzina. Servono solo ai condomìni composti da più edifici, per delimitare tabelle e spese a un corpo di fabbrica."
+    description="Non è ancora stata censita nessuna palazzina. Servono ai condomìni composti da più edifici: compaiono sulla scheda dell'unità, ordinano l'elenco degli immobili e raggruppano le unità quando si compilano i millesimi."
     media-class="bg-violet-50/50 dark:bg-violet-900/20 text-violet-500"
   />
   <div v-if="table.getRowModel().rows?.length" class="flex items-center justify-end py-4 space-x-2">

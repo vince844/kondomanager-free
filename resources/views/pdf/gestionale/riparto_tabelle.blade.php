@@ -324,11 +324,22 @@
                         {{-- quota ‰ (Stampata solo sulla prima riga dell'immobile, unificata) --}}
                         @if($isFirst)
                             @php
-                                $totImmTab = 0;
-                                foreach($rigaImmobile['soggetti'] as $sogg) {
-                                    $totImmTab += ($sogg['per_tabella'][$tabId]['importo'] ?? 0);
-                                }
-                                $hasQuota = !is_null($quota) && $totImmTab > 0;
+                                /*
+                                 * ⚠️ **La leggibilità guarda la PRESENZA in tabella, non l'importo.**
+                                 * Fino alla beta.63 era `!is_null($quota) && $totImmTab > 0`: una
+                                 * quota a zero — legittima, e dalla beta.61 il modo dichiarato per
+                                 * documentare che un'unità è stata considerata e non partecipa —
+                                 * usciva nel grigio del «non c'è niente», illeggibile su fondo
+                                 * chiaro. Si registrava lo zero sulla carta e poi lo si nascondeva.
+                                 *
+                                 * ⛔ **E il commento qui è PHP, non Blade.** La prima stesura usava
+                                 * `{{-- … --}}` dentro questo `@php`: `storeUncompiledBlocks()` gira
+                                 * **prima** di `compileComments()`, quindi un commento Blade dentro
+                                 * un blocco `@php` finisce verbatim nel PHP compilato e il template
+                                 * non si apre più — 500 su **ogni** stampa di riparto, di ogni
+                                 * piano. L'ha preso la revisione avversariale della .63.
+                                 */
+                                $hasQuota = !is_null($quota);
                             @endphp
                             <td rowspan="{{ $nSoggettiImmobile }}" style="padding: 2px 2px; border: 1px solid {{ $sepLine }};
                                        text-align: right; font-size: {{ $fontSmall }};

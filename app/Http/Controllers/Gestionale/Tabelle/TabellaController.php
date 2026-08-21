@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Tabella\CreateTabellaRequest;
 use App\Http\Requests\Gestionale\Tabella\TabellaIndexRequest;
 use App\Http\Requests\Gestionale\Tabella\UpdateTabellaRequest;
-use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
-use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Http\Resources\Gestionale\Tabelle\TabellaResource;
 use App\Models\Condominio;
 use App\Models\Tabella;
@@ -82,7 +80,12 @@ class TabellaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
-        $condominio->load(['palazzine', 'scale']);
+        // ⚠️ **`palazzine` e `scale` non si caricano più, dalla beta.63.** Servivano alla scheda
+        // «Assegnazione strutturale», che prometteva di delimitare la tabella a una scala o a una
+        // palazzina — e nessun filtro leggeva quei due campi. Tolta la scheda, restavano due
+        // interrogazioni a ogni caricamento della pagina per riempire due elenchi che nessuno
+        // guardava. Le **colonne** a database restano: il filtro vero è previsto in Iniziativa A
+        // (v1.11), e allora torneranno anche queste due righe.
 
         // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
@@ -94,8 +97,6 @@ class TabellaController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
-            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
-            'scale'      => ScalaResource::collection($condominio->scale),
         ]);
     }
 
@@ -196,8 +197,6 @@ class TabellaController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'tabella'    => new TabellaResource($tabella),
-            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
-            'scale'      => ScalaResource::collection($condominio->scale)
         ]);
     }
 

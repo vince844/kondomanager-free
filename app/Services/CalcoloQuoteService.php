@@ -27,6 +27,28 @@ use Illuminate\Support\Facades\Log;
  */
 class CalcoloQuoteService
 {
+    /**
+     * Quanto può mancare alla somma dei coefficienti prima che sia un difetto e non un
+     * arrotondamento — espressa in frazione, cioè 0,0005 = 0,05 punti percentuali.
+     *
+     * ⚠️ **Non è zero, e la ragione è nella colonna.** `conto_tabella_millesimale.coefficiente`
+     * è `decimal(5,2)`: tre platee in parti uguali sommano 99,99 e non si può scrivere meglio.
+     * Con due decimali, N platee in parti uguali perdono al massimo N × 0,005 punti — quindi
+     * questa soglia copre fino a **dieci** tabelle sullo stesso capitolo senza gridare.
+     *
+     * Vedi la nota estesa accanto alla guardia, in `distribuisciSuTabelle()`.
+     */
+    /**
+     * Quanti **punti percentuali** possono mancare all'appello senza che sia un difetto.
+     *
+     * Espressa in punti e non in frazione di proposito: è l'unità in cui è scritta la colonna
+     * `conto_tabella_millesimale.coefficiente` (`decimal(5,2)`), e il confronto fatto lì è esatto.
+     * Nella prima stesura la soglia era `0.0005` in frazione e il confronto avveniva su una somma
+     * di divisioni per 100: a **esattamente 99,95** — cioè il limite che questa costante dichiara
+     * accettabile — l'esito dipendeva dal rumore in virgola mobile invece che da questa riga.
+     */
+    private const TOLLERANZA_COEFFICIENTI_PUNTI = 0.05;
+
     private ?Gestione $gestioneCorrente = null;
     private array $pivotOverrides = [];
     private ?\Carbon\Carbon $pianoRateCreatedAt = null;
@@ -762,6 +784,16 @@ class CalcoloQuoteService
         $weights      = [];
         $pesiScoperti = [];
 
+        /**
+         * La quota di spesa che i coefficienti delle tabelle collegate **dichiarano** di coprire.
+         *
+         * Serve alla guardia in fondo al metodo: `AssociaTabellaController` impedisce che la somma
+         * superi il 100, ma sotto non guarda nessuno — e la rinormalizzazione finale
+         * (`$w / $pesoSoggetti`) distribuisce comunque tutto, quindi la parte non dichiarata
+         * finiva addosso ai partecipanti delle tabelle che c'erano.
+         */
+        $quotaDichiarata = 0.0;
+
         // Nessuna tabella millesimale collegata al conto.
         //
         // Fino alla beta.32 qui c'era un `return` con un Log::warning: l'importo
@@ -808,6 +840,7 @@ class CalcoloQuoteService
             }
 
             $weightCoeff = $coeff / 100.0;
+            $quotaDichiarata += $weightCoeff;
             $quote = $tabella->quote;
 
             // Tabella collegata al capitolo ma inutilizzabile: nessun immobile assegnato,
@@ -959,6 +992,76 @@ class CalcoloQuoteService
             }
         }
 
+        /*
+         * La parte di spesa che **nessuna tabella dichiara di coprire**.
+         *
+         * ## Il difetto che questa guardia esiste per prendere
+         *
+         * Una voce di spesa si collega alle tabelle con un coefficiente percentuale: è la forma
+         * con cui il gestionale rappresenta le ripartizioni a quote fisse fra platee diverse, e la
+         * materia condominiale ne è piena — un terzo e due terzi dell'art. 1126, metà e metà
+         * dell'art. 1124, l'art. 1125.
+         *
+         * `AssociaTabellaController:58` blocca la somma **sopra** il 100. Sotto non guardava
+         * nessuno, e la rinormalizzazione qui sotto (`$w / $pesoSoggetti`) porta comunque i pesi a
+         * 1: qualunque cosa i coefficienti sommino, veniva distribuito il **100%** della spesa
+         * sulle sole unità delle tabelle collegate.
+         *
+         * Misurato sul caso più naturale: rifacimento del lastrico da € 9.000, la sola tabella
+         * «uso esclusivo» collegata al 33,33% perché la seconda si aggiunge dopo. Il titolare
+         * riceveva **€ 9.000 invece di € 3.000** — tre volte — e nessun controllo contabile aveva
+         * niente da segnalare, perché il totale del piano quadrava col preventivo.
+         *
+         * ⚠️ **Era una guardia scritta in un verso solo**: *cosa succede se dichiaro più del
+         * 100%* era stato chiesto, *cosa succede se dichiaro meno* no. È la famiglia della
+         * beta.41 e della beta.45.
+         *
+         * ## Perché uno scoperto e non un blocco
+         *
+         * Il canale esiste già e fa esattamente le due cose che servono: **decurta** l'importo da
+         * distribuire e **ferma** la generazione chiedendo una motivazione scritta, lasciando
+         * all'amministratore l'ultima parola. È lo stesso trattamento del capitolo senza nessuna
+         * tabella (`conto_senza_tabella`, beta.32): quello è il caso allo 0%, questo è il caso
+         * fra l'1% e il 99%. Nessun meccanismo nuovo.
+         *
+         * ## La tolleranza, e perché non è zero
+         *
+         * `conto_tabella_millesimale.coefficiente` è `decimal(5,2)`: tre platee in parti uguali
+         * sommano **99,99** e non c'è modo di scriverlo meglio. Una guardia severa segnalerebbe
+         * ogni ripartizione in terzi, cioè griderebbe al lupo — la lezione della beta.60: *una
+         * guardia che grida troppo si spegne, ed è peggio di una che non c'è*.
+         *
+         * La soglia è scelta sulla precisione della colonna, non a occhio: con due decimali, N
+         * platee in parti uguali perdono al massimo N × 0,005 punti, quindi **0,05 punti**
+         * coprono fino a dieci tabelle sullo stesso capitolo. Sopra quella soglia non è
+         * arrotondamento: è una tabella che manca.
+         *
+         * ⚠️ **Il confronto si fa in punti percentuali arrotondati a due decimali, non in
+         * frazione.** `$quotaDichiarata` è una somma di divisioni per 100 e porta con sé il
+         * rumore: a esattamente 99,95 dichiarati, `1.0 - $quotaDichiarata` vale
+         * `0.0005000000000000004` e supererebbe la soglia — cioè il caso limite che la costante
+         * dichiara **accettabile** verrebbe segnalato, per una cifra binaria e non per una
+         * decisione. Arrotondare alla precisione della colonna toglie di mezzo la questione.
+         */
+        $puntiMancanti = round(100.0 - ($quotaDichiarata * 100.0), 2);
+        $nonDichiarato = 1.0 - $quotaDichiarata;
+
+        if ($puntiMancanti > self::TOLLERANZA_COEFFICIENTI_PUNTI) {
+            Log::warning("distribuisciSuTabelle: i coefficienti del conto ID={$conto->id} ('{$conto->nome}') dichiarano solo il ".round($quotaDichiarata * 100, 2)."% della spesa. Il resto è registrato come scoperto.", [
+                'conto_id'          => $conto->id,
+                'quota_dichiarata'  => $quotaDichiarata,
+                'non_dichiarato'    => $nonDichiarato,
+            ]);
+
+            $pesiScoperti[] = [
+                'immobile_id'     => null,   // non è di nessuna unità: è la fetta che nessuno copre
+                'tabella_id'      => null,   // e non è di nessuna tabella: sono quelle che mancano
+                'ruolo_richiesto' => null,
+                'peso'            => $nonDichiarato,
+                'motivo'          => 'coefficienti_sotto_il_cento',
+            ];
+        }
+
         // Pesi finali vuoti: nessuna quota sarà generata per questo conto (se neanche pesiScoperti è popolato)
         if (empty($weights) && empty($pesiScoperti)) {
             Log::warning("distribuisciSuTabelle: nessun peso calcolato per conto ID={$conto->id} ('{$conto->nome}'). Importo {$importoConto} centesimi NON distribuito. Causa probabile: tabelle millesimali vuote o anagrafiche mancanti.", [
@@ -1037,7 +1140,25 @@ class CalcoloQuoteService
         // Sottrae quanto ciascuna unità ha GIÀ versato per questa voce: senza questo
         // passaggio una spesa già coperta in tutto o in parte verrebbe richiesta una
         // seconda volta (vedi docs/fondo_accantonato_e_quadratura_sp.md §4).
-        $importiDistributi = $this->nettingGiaVersato($conto, $importiDistributi);
+        /*
+         * ⚠️ **Il fattore di copertura, e perché il netting non può ignorarlo.**
+         *
+         * `nettingGiaVersato()` applica la copertura storica in proporzione a quanto questa
+         * chiamata rappresenta del budget del capitolo — serve per l'acconto e il saldo, che sono
+         * due chiamate indipendenti sullo stesso conto. Ma il confronto lo faceva contro
+         * `$conto->importo` **nominale**, mentre l'importo distribuito è già decurtato dagli
+         * scoperti: la copertura veniva quindi scomputata solo per la frazione ripartita, e la
+         * differenza **richiesta di nuovo a chi l'aveva già versata**.
+         *
+         * Uno scoperto non è una tranche che arriverà dopo: è una parte che non verrà chiesta a
+         * nessuno, mai. Il denominatore giusto è quindi il budget *coperibile*, non quello
+         * nominale. Senza scoperti il fattore vale 1 e non cambia niente.
+         */
+        $fattoreCopertura = abs($importoConto) > 0
+            ? $importoDaDistribuirePennyPerfect / abs($importoConto)
+            : 1.0;
+
+        $importiDistributi = $this->nettingGiaVersato($conto, $importiDistributi, $fattoreCopertura);
 
         foreach ($importiDistributi as $key => $importoCentesimi) {
             [$aid, $iid] = array_map('intval', explode('|', $key));
@@ -1065,7 +1186,7 @@ class CalcoloQuoteService
      * @param  array<string,int>  $importiDistributi  mappa "anagraficaId|immobileId" => centesimi lordi
      * @return array<string,int>  la stessa mappa, al netto delle coperture
      */
-    private function nettingGiaVersato(Conto $conto, array $importiDistributi): array
+    private function nettingGiaVersato(Conto $conto, array $importiDistributi, float $fattoreCopertura = 1.0): array
     {
         $coperture = ContributoVersato::perImmobile(Conto::class, $conto->id);
 
@@ -1112,7 +1233,12 @@ class CalcoloQuoteService
         // come fa distribuisciImporto() dentro la STESSA chiamata. floor() sbaglia
         // sempre per difetto sulla copertura applicata: nel peggiore dei casi si
         // richiede qualche centesimo IN PIÙ del dovuto, mai in meno.
-        $totaleNominale = abs((int) $conto->importo);
+        //
+        // ⚠️ **Il nominale è scalato dal fattore di copertura (beta.63).** Quando una parte del
+        // capitolo resta scoperta, l'importo distribuito è decurtato ma il budget del conto no:
+        // il rapporto scendeva sotto 1 anche in assenza di altre tranche, e la copertura storica
+        // veniva scomputata solo in parte. Vedi `GiaVersatoSottoDecurtazioneTest`.
+        $totaleNominale = (int) round(abs((int) $conto->importo) * $fattoreCopertura);
         $totaleQuestaChiamata = abs(array_sum($importiDistributi));
         $quota = ($totaleNominale > 0 && $totaleQuestaChiamata < $totaleNominale)
             ? $totaleQuestaChiamata / $totaleNominale

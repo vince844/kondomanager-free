@@ -14,6 +14,11 @@ import { usePermission } from "@/composables/permissions";
  *   addebitarla. È il caso storico della v1.9.1, l'unico che questa tabella sapeva mostrare.
  * - `conto_senza_tabella` → il capitolo non ha nessuna tabella millesimale collegata.
  * - `tabella_senza_millesimi` → la tabella è collegata ma non ha immobili, o li ha tutti a zero.
+ * - `coefficienti_sotto_il_cento` → le tabelle collegate al capitolo dichiarano meno del 100%
+ *   (beta.63). Non riguarda né un immobile né una tabella: **manca una tabella**, e quale sia lo
+ *   sa solo l'amministratore. Senza un ramo suo cadeva nel caso storico e la riga consigliava di
+ *   «censire le anagrafiche mancanti» — un consiglio che non c'entra niente e che manderebbe a
+ *   cercare un difetto dove non c'è.
  *
  * Le ultime due **non riguardano un immobile**: `immobile_id` arriva `null`. Mostrandole con il
  * tracciato della prima si otteneva «Immobile #» seguito dal vuoto, un badge di ruolo vuoto e un
@@ -82,6 +87,13 @@ const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
         return {
             cosa: 'Nessuna tabella millesimale collegata al capitolo',
             azione: 'Collega una tabella millesimale a questa voce di spesa',
+        };
+    }
+
+    if (s.motivo === 'coefficienti_sotto_il_cento') {
+        return {
+            cosa: 'Le tabelle collegate al capitolo non arrivano al 100%',
+            azione: 'Collega la tabella che manca, o alza la percentuale di quelle collegate',
         };
     }
 

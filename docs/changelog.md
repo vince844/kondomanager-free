@@ -7,6 +7,119 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.63] - Il Totale Tornava Sempre
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Nasce da una segnalazione sul forum sulle tabelle millesimali, e ha fatto emergere un difetto sul
+denaro che nessuno aveva mai visto — per una ragione che vale la pena raccontare.
+
+### Un capitolo che non dichiara tutto non lo addebita tutto
+
+Una voce di spesa si collega alle tabelle millesimali con una **percentuale**. È la forma con cui si
+costruiscono le ripartizioni a quote fisse: un terzo a chi ha l'uso esclusivo del lastrico e due
+terzi agli altri, metà a valore e metà per altezza sulle scale, e così via.
+
+Il programma impediva che quelle percentuali superassero il 100. **Sotto, non guardava nessuno** — e
+distribuiva comunque l'intera spesa sulle tabelle collegate.
+
+Il caso concreto: rifacimento del lastrico da € 9.000, si crea la tabella «uso esclusivo» con dentro
+il solo titolare, la si collega al 33,33% e si rimanda a dopo la tabella degli altri condòmini.
+Generando il piano in quel momento, **il titolare riceveva € 9.000 invece di € 3.000**. Tre volte. E
+nessun controllo diceva niente, perché il totale del piano coincideva col preventivo.
+
+Ora la parte non dichiarata resta **scoperta**: la generazione si ferma, dice quale capitolo e
+quanto manca, e si può procedere lo stesso scrivendo il perché — come già succede per un millesimo
+non compilato. L'ultima parola resta dell'amministratore.
+
+⚠️ **Se hai capitoli configurati bene non cambia niente**, ed è stato verificato: una ripartizione
+in terzi somma 99,99 per come sono fatte le percentuali, e non fa scattare nulla.
+
+### Perché non se ne era mai accorto nessuno
+
+Il motore trasforma una spesa in quote passando per quattro proporzioni in fila, e alla fine
+**rinormalizza**: qualunque cosa manchi lungo la strada, il totale torna sempre uguale al
+preventivo.
+
+Vuol dire che questo tipo di difetto **non si vede come «i conti non tornano»**. Si vede come denaro
+addebitato alla persona sbagliata, con i conti che tornano perfettamente. È il motivo per cui
+arrivano dal forum uno alla volta, invece che dai nostri controlli: solo chi amministra davvero può
+accorgersene.
+
+Due dei quattro anelli sono ora chiusi. Gli altri due sono misurati e in lavorazione — uno è
+confermato, l'altro va verificato — e verranno chiusi insieme, perché sono la stessa cosa.
+
+### Lo zero scritto apposta ora arriva anche sulla stampa
+
+Dalla beta.61 si può scrivere **zero** come millesimo per dire «questa unità non partecipa»
+— tipicamente in una tabella che serve solo una parte del fabbricato. Serve a mettere agli atti che
+l'unità è stata considerata, così la tabella si legge in assemblea.
+
+Sul riparto stampato quello zero però spariva: la cella usciva con un trattino, indistinguibile da
+un'unità che nella tabella non c'è proprio. Ora scrive **0,00**, e si legge — prima era grigio
+chiarissimo su fondo chiaro. Gli importi non cambiano di un centesimo: chi è a zero continua a non
+pagare niente, e chi partecipa si divide la spesa esattamente come prima.
+
+### Un millesimo negativo non entra più dall'importazione
+
+Il divieto esisteva per chi compila la schermata, non per chi importa un file. Un `-900` — un
+refuso, o una cella con formattazione contabile letta male — non dava errore, non partecipava al
+riparto, ma **rimpiccioliva il divisore**: quella tabella pesava **più** della percentuale con cui
+era collegata alla spesa, e a pagare di più erano **gli altri condòmini di quella stessa tabella**.
+Su una spesa da € 1.000,00 divisa a metà fra due tabelle, un solo `-900` porta da € 333,33 a
+**€ 484,85** la quota di chi non c'entrava niente.
+
+Ora l'importazione lo rifiuta e lo scrive nel rapporto. Non lo corregge da sé: `-900` non ha una
+lettura giusta ovvia, e indovinarla scriverebbe in archivio un numero che nel file non c'era.
+
+### Quanto avevi già versato non ti viene richiesto due volte
+
+Una voce di spesa può essere in parte già coperta: un fondo accantonato, un acconto versato prima
+del piano. Il programma lo scomputa dalla quota — ma lo faceva **in proporzione** a quanto quel
+piano chiedeva rispetto al preventivo, e da questa versione una spesa può essere chiesta decurtata
+(è la correzione qui sopra sui coefficienti). Le due cose insieme facevano scomputare solo una
+frazione di quanto già versato.
+
+Con lo scenario del lastrico: capitolo da € 9.000 collegato solo al 33,33%, il titolare aveva già
+versato € 1.000,00. Il piano gli chiedeva **€ 2.666,40** — dentro ci sono € 666,70 che erano già in
+cassa del condominio. Ora ne chiede € 1.999,70.
+
+La proporzione serviva a un caso vero e resta: un capitolo pagato in due tranche — un acconto ora,
+il saldo fra qualche mese — non deve scomputare due volte lo stesso versamento. Quel caso continua
+a funzionare come prima; è cambiato solo il confronto, che ora guarda quanto il piano può davvero
+chiedere invece del preventivo intero.
+
+**Il difetto era già lì**, per chi aveva un'unità senza intestatario o una tabella senza millesimi.
+Ma è questa versione ad aver reso comune il caso che lo fa scattare, quindi si corregge qui.
+
+### Due cose che dicevamo e non facevamo
+
+- **«Puoi delimitare una tabella a una scala o a una palazzina»**: si potevano scegliere, si
+  salvavano, e **nessun filtro le leggeva**. Chi seguiva l'istruzione e spuntava «associa tutti gli
+  immobili esistenti» si ritrovava l'intero condominio invece delle sole unità di quella scala. La
+  scheda e la frase sono state tolte; il filtro vero è un lavoro previsto più avanti. La stessa
+  promessa era ripetuta in altri due posti — nella scheda «Spese isolate» dell'elenco palazzine e
+  nel messaggio che compare quando non ce n'è ancora nessuna — e anche lì ora c'è scritto il modo
+  che funziona davvero: **si crea una tabella millesimale con le sole unità di quel blocco**.
+- **L'esempio dei millesimi a zero** citava l'ascensore che i piani terra non pagherebbero. Non è
+  una spiegazione del campo: è una qualificazione giuridica, e non è così semplice. L'esempio ora
+  descrive cosa fa il campo — la tabella di un impianto o di una scala che serve solo una parte del
+  fabbricato — e aggiunge la cosa che conta: **quali unità restino fuori lo decide il titolo, non
+  il programma**.
+
+### Sotto il cofano
+
+- **Una guardia nuova sulle stampe.** Un errore di sintassi in un modello di documento PDF non si
+  vede da nessuna parte: non passa dalla compilazione del frontend, non ha una prova automatica che
+  lo apra, e la verifica a video guarda le schermate. L'unico modo di accorgersene era aprire il
+  PDF. Ora tutti e tredici i modelli vengono compilati a ogni esecuzione della suite, e uno che non
+  si apre ferma il rilascio invece di arrivare all'amministratore.
+- **Lo zero sulla stampa e i millesimi negativi hanno una prova ciascuno**, e la stampa per
+  capitoli — che è una seconda copia della stessa logica — ha la sua, perché correggere due copie
+  senza presidiarle significa vederne ricadere una alla prima modifica.
+
+---
+
 ## [1.10.0-beta.62] - La Metà Che Nessuno Aveva Corretto
 
 ⚠️ **Questa versione tocca il database:** la colonna del numero di vani passa da intera a decimale.

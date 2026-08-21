@@ -122,8 +122,14 @@ defineEmits(['update:open']);
             <div class="mt-4 p-4 rounded-lg bg-slate-100 dark:bg-slate-800 flex gap-3 text-[13px]">
               <Info class="w-5 h-5 text-slate-500 shrink-0" />
               <div>
-                <strong>Assegnazione a palazzine o scale:</strong> Puoi delimitare l'uso di una tabella (es. Tabella Scale Scala B) solo agli immobili che fanno fisicamente parte di quella scala. Questo aiuta a non commettere errori quando si imputano le spese nel preventivo.
-                <br><br>
+                <!--
+                  ⚠️ **Tolta nella beta.63: prometteva una cosa che il programma non faceva.**
+                  Diceva «Puoi delimitare l'uso di una tabella (es. Tabella Scale Scala B) solo agli
+                  immobili che fanno fisicamente parte di quella scala». Le colonne esistevano e
+                  nessun filtro le leggeva: chi seguiva l'istruzione e spuntava «associa tutti gli
+                  immobili esistenti» otteneva l'intero condominio. La scheda che raccoglieva quei
+                  due campi è sparita insieme alla frase; il filtro vero è in Iniziativa A (v1.11).
+                -->
                 <strong>Inserimento massivo:</strong> Selezionando la spunta "Associa tutti gli immobili esistenti" durante la creazione, il sistema dopo il salvataggio ti porterà in una schermata dedicata. Lì vedrai l'elenco completo degli immobili e potrai inserire massivamente tutte le quote e i parametri in un colpo solo, risparmiando tantissimo tempo.
               </div>
             </div>

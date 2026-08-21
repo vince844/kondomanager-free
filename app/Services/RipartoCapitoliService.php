@@ -580,17 +580,39 @@ class RipartoCapitoliService
                 $immobile = $quota->immobile ?? null;
                 if (!$immobile) continue;
 
-                $valore = (float) $quota->valore;
-                if ($valore <= 0.0) continue;
+                /*
+                 * ⚠️ **Un millesimo NULL non è uno zero, e solo il NULL si salta qui.**
+                 * La beta.61 ha reso il millesimo facoltativo per distinguere «non ancora
+                 * compilato» (NULL) da «non partecipa» (zero scritto apposta). Un `(float) null`
+                 * vale `0.0`, quindi confondere i due stati è la cosa più facile del mondo — ed è
+                 * proprio l'errore che questa riga esiste per non fare.
+                 */
+                if ($quota->valore === null) {
+                    continue;
+                }
 
-                // Salva il valore millesimale della prima tabella collegata, utile per
-                // l'intestazione PDF — ma solo finché i sottoconti aggregati sotto
-                // questo capitolo usano tutti la STESSA tabella: se differiscono
-                // (vedi sotto, 'quota_mista'), un singolo valore "mill." per il
-                // capitolo sarebbe fuorviante, quindi non se ne mostra nessuno.
+                $valore = (float) $quota->valore;
+
+                /*
+                 * ⚠️ **La registrazione per la stampa sta PRIMA della guardia sul peso, ed è il
+                 * punto del difetto.** Fino alla beta.63 stava dopo il `continue`, quindi lo zero
+                 * scritto apposta non arrivava mai al PDF: la cella usciva con un trattino,
+                 * indistinguibile da un'unità che nella tabella non c'è proprio. È la gemella
+                 * esatta del difetto corretto in `RipartoTabelleService`, e va tenuta allineata:
+                 * sono due copie della stessa stampa.
+                 *
+                 * Registrare non è ripartire — il peso lo decide la guardia qui sotto, e resta
+                 * zero. Nessun euro cambia posto.
+                 *
+                 * La condizione sulla prima tabella resta com'era: il valore «mill.» in testa al
+                 * capitolo ha senso solo finché i sottoconti aggregati usano tutti la STESSA
+                 * tabella; se differiscono (vedi 'quota_mista') non se ne mostra nessuno.
+                 */
                 if ($tabella->id === $primoTabId && empty($capitoliInfo[$radiceId]['quota_mista'])) {
                     $quoteMill[$radiceId][$immobile->id] = $valore;
                 }
+
+                if ($valore <= 0.0) continue;
 
                 $pesoImmobile = $valore / $sommaValori;
 

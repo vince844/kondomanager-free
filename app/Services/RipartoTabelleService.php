@@ -518,10 +518,52 @@ class RipartoTabelleService
                 if (!$immobile) continue;
 
                 $valore = (float) $quota->valore;
-                if ($valore <= 0.0) continue;
 
-                // Registra valore nella tabella per questo immobile
+                /*
+                 * ⚠️ **La quota si registra PRIMA della guardia, e l'ordine è tutta la
+                 * correzione.**
+                 *
+                 * Fino alla beta.63 il `continue` stava sopra questa riga: un'unità a zero non
+                 * entrava nella matrice, quindi la cella del PDF usciva con un trattino —
+                 * **indistinguibile** da un'unità che nella tabella non c'è proprio
+                 * (`$quoteMill[...] ?? null` più avanti, riga ~319).
+                 *
+                 * Ma le due cose il programma le dichiara diverse dalla beta.61: la riga assente
+                 * dice «non partecipa», lo zero dice «considerata, non partecipa». È una
+                 * distinzione che serve in assemblea — l'art. 1123 c.3 mette la spesa a carico del
+                 * gruppo che trae utilità, e mettere agli atti chi è stato escluso è metà del
+                 * lavoro. Segnalato dal forum nell'agosto 2026: *«ritengo che vada data la
+                 * possibilità di gestire questo caso»*.
+                 *
+                 * Registrando prima, lo zero arriva sulla carta come `0,00`. Il `continue` resta
+                 * dov'era per tutto il resto: **nessun peso, nessun euro, nessun cambiamento del
+                 * divisore**. È presentazione, non aritmetica — ed è fissato da
+                 * `ZeroDocumentatoInStampaTest`, che ha un test apposta perché lo zero non diventi
+                 * un addebito.
+                 */
+                /*
+                 * ⚠️ **Il NULL non si registra: sono tre stati, non due.**
+                 *
+                 * `$valore = (float) $quota->valore` trasforma `null` in `0.0`, quindi registrare
+                 * senza guardia scriveva sulla carta «0,00» anche per un millesimo **non ancora
+                 * compilato** — cioè affermava «considerata ed esclusa» dove il dato dice «manca il
+                 * numero». Sono i due significati che la beta.61 ha faticato a separare, e la prima
+                 * stesura di questa correzione li faceva ricadere insieme.
+                 *
+                 * `CalcoloQuoteService:888` la distinzione ce l'ha già (`$quota->valore === null`);
+                 * qui mancava, e prima della .63 il difetto era **mascherato** dal fatto che il
+                 * `continue` stava sopra la registrazione. Trovato dalla revisione avversariale.
+                 *
+                 * Con questa riga: `null` → il PDF scrive «—» («non c'è un numero»), `0.0` → scrive
+                 * «0,00» («c'è, ed è zero»).
+                 */
+                if ($quota->valore === null) {
+                    continue;
+                }
+
                 $quoteMill[$tabella->id][$immobile->id] = $valore;
+
+                if ($valore <= 0.0) continue;
 
                 $weightImmobile = $weightCoeff * ($valore / $sommaValori);
 
