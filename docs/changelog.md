@@ -97,9 +97,11 @@ L'esclusione dall'**elenco** resta e ha una ragione: l'allegato di una fattura v
 e mescolarlo all'archivio confonderebbe due cose diverse. A cambiare sono le **scritte**, che ora
 dicono ciò che i numeri contano davvero: «Documenti in archivio», «Spazio dell'archivio».
 
-⏳ **La domanda vera — «quanto disco sto occupando davvero, e dove?» — non ha ancora risposta**, ed
-è un lavoro a sé: un totale da 11 MB scritto sopra un elenco che mostra due documenti confonderebbe
-più di adesso. Serve la ripartizione per luogo, con un modo di arrivarci. È in lavorazione.
+⏳ **E c'è una domanda più grossa dietro, che stiamo affrontando adesso.** Se un documento non si
+trova, oggi bisogna già sapere dove lo si è messo — in archivio, su quell'unità, su quella fattura,
+su quel fornitore: **non esiste nessun posto che mostri tutti i documenti di un condominio**. È
+quello il lavoro della prossima versione. Un totale più grande scritto sopra un elenco che ne mostra
+due confonderebbe più di adesso, e non è la strada.
 
 ### Sotto il cofano
 

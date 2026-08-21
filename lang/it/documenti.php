@@ -185,10 +185,13 @@ return [
      * contavano **due**; spazio reale ~11 MB, i riquadri dicevano **414 KB**. Segnalato da un
      * amministratore sul forum e confermato da Vincenzo.
      *
-     * ⏳ Lo **spazio** avrà un trattamento a parte nella 1.10.0-beta.63: «quanto disco sto
-     * occupando» è una domanda legittima a cui un numero limitato all'archivio risponde male, e
-     * lì il riquadro tornerà a essere un totale — con la ripartizione per luogo. Vedi la voce
-     * «Coda 55» in `docs/roadmap.md`.
+     * ⏳ **Ma la domanda vera non è quella dello spazio.** Ragionandoci il 21/08/2026 è emerso che
+     * il riquadro ne mescolava tre — *dov'è finito quel file*, *quanto disco occupo*, *quale
+     * condominio lo occupa* — e che **la prima non ha risposta da nessuna parte**: non esiste
+     * nessuna vista «tutti i documenti di questo condominio», quindi per ritrovare un file bisogna
+     * già sapere dove lo si è messo. La beta.63 costruisce quella, non un totale migliore. Il
+     * totale dello spazio va dove ha una conseguenza — la pagina dei backup, che misura già il
+     * disco libero. Vedi «Coda 55» in `docs/roadmap.md`.
      */
     'stats' => [
         'total_storage_bytes'  => 'Spazio dell\'archivio',
