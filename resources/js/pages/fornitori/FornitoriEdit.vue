@@ -37,8 +37,13 @@ const props = defineProps<{
 const regimiProvvigioni = ['provvigioni_base_50', 'provvigioni_base_20'];
 
 const page = usePage(); 
-const backUrl = page.props.back_url as string || route('fornitori.index'); 
 const { generateRoute } = usePermission();
+// ⚠️ Il ripiego chiamava `route('fornitori.index')`, un nome che non esiste: le rotte dei
+// fornitori vivono sotto il prefisso di ruolo (`admin.fornitori.index`). Finché il controller
+// manda `back_url` non si vede; il giorno che non lo mandasse, Ziggy solleverebbe **durante il
+// setup** e la pagina di modifica resterebbe bianca — un ripiego che rompe più di ciò da cui
+// ripara. Trovato dalla guardia `NomiDiRottaCheNonEsistonoTest` nella beta.62.
+const backUrl = page.props.back_url as string || route(generateRoute('fornitori.index'));
 
 const pageGuides = computed(() => [
   {

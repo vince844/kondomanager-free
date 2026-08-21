@@ -41,8 +41,6 @@ class NewDocumentoNotification extends LocalizedNotification implements ShouldQu
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
-
         return (new MailMessage)
             ->subject(__('notifications.new_document.subject'))
             ->greeting(__('notifications.new_document.greeting', [
@@ -53,7 +51,7 @@ class NewDocumentoNotification extends LocalizedNotification implements ShouldQu
             ]))
             ->line('**' . __('notifications.new_document.title') . ':** ' . $this->documento->name)
             ->line('**' . __('notifications.new_document.description') . ':** ' . Str::ucfirst($this->documento->description))
-            ->action(__('notifications.new_document.action'), url("/{$routePrefix}/categorie-documenti/"));
+            ->action(__('notifications.new_document.action'), RouteHelper::urlArchivioDocumenti($notifiable));
 
     }
 

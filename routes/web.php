@@ -187,7 +187,13 @@ Route::post('/password/new', [NewUserPasswordController::class, 'reset'])
 | Inviti Routes
 |--------------------------------------------------------------------------
 */
+// `only()` e non un `resource` intero: `InvitoController` implementa **solo** queste quattro
+// azioni. Le altre tre che `Route::resource` generava — `show`, `edit`, `update` — puntavano a
+// metodi inesistenti e rispondevano **500** a chiunque ci arrivasse per URL. Un invito non si
+// modifica: si revoca (`destroy`) e se ne manda un altro. Rimosse nella beta.62, insieme alle
+// altre quattordici trovate dalla scansione di `RotteSenzaMetodoTest`.
 Route::resource('/inviti', InvitoController::class)
+    ->only(['index', 'create', 'store', 'destroy'])
     ->middleware(['auth', 'verified']);
 
 Route::get('/invito/register', [InvitoRegisteredUserController::class, 'show'])

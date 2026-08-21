@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import CercaComune from '@/components/comuni/CercaComune.vue';
+import { misuraLeggibile } from '@/lib/gestionale/misure';
 import type { BreadcrumbItem } from '@/types';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
@@ -74,8 +75,14 @@ const form = useForm({
   subalterno_catasto: props.immobile.subalterno_catasto,
   interno: props.immobile.interno,
   piano: props.immobile.piano,
-  superficie: props.immobile.superficie,
-  numero_vani: props.immobile.numero_vani,
+  // ⚠️ **Le due misure entrano nel modulo già leggibili, e non è solo estetica.** Sono colonne
+  // `decimal`: arrivano come `"456.00"` e `"6.50"`, quindi la casella mostrava due zeri che
+  // nessuno aveva battuto. Con `misuraLeggibile()` **il valore che si vede è quello che si
+  // salva** — separatore compreso, perché resta il punto e non serve nessuna conversione al
+  // `submit`. Chi batte la virgola per abitudine non viene corretto con un errore: la raddrizza
+  // `prepareForValidation()` prima della validazione.
+  superficie: misuraLeggibile(props.immobile.superficie) ?? '',
+  numero_vani: misuraLeggibile(props.immobile.numero_vani) ?? '',
   palazzina_id: props.immobile.palazzina ? props.immobile.palazzina.id : '',
   scala_id: props.immobile.scala ? props.immobile.scala.id : '',
   tipologia_id: props.immobile.tipologia ? props.immobile.tipologia.id : '',
@@ -186,6 +193,7 @@ const submit = () => {
                     v-model="form.palazzina_id" 
                     :reduce="(p: Palazzina) => p.id" 
                 />
+                <InputError :message="form.errors.palazzina_id" />
               </div>
 
               <div class="sm:col-span-3">
@@ -197,6 +205,7 @@ const submit = () => {
                     v-model="form.scala_id" 
                     :reduce="(s: Scala) => s.id" 
                 />
+                <InputError :message="form.errors.scala_id" />
               </div>
             </div>
           </CardContent>
@@ -228,6 +237,7 @@ const submit = () => {
                     v-model="form.piano" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.piano" />
               </div>
               
               <div class="sm:col-span-2">
@@ -237,6 +247,7 @@ const submit = () => {
                     v-model="form.superficie" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.superficie" />
               </div>
               
               <div class="sm:col-span-2">
@@ -246,6 +257,7 @@ const submit = () => {
                     v-model="form.numero_vani" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.numero_vani" />
               </div>
 
               <div class="sm:col-span-8">
@@ -255,6 +267,7 @@ const submit = () => {
                     v-model="form.note" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.note" />
               </div>
 
             </div>
@@ -279,6 +292,7 @@ const submit = () => {
                   />
                   <CercaComune @scelto="comuneScelto" />
                 </div>
+                <InputError :message="form.errors.comune_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -288,6 +302,7 @@ const submit = () => {
                     v-model="form.codice_catasto" 
                     class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.codice_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -297,6 +312,7 @@ const submit = () => {
                     v-model="form.sezione_catasto" 
                     class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.sezione_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -306,6 +322,7 @@ const submit = () => {
                     v-model="form.foglio_catasto" 
                     class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.foglio_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -315,6 +332,7 @@ const submit = () => {
                     v-model="form.particella_catasto" 
                     class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.particella_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -324,6 +342,7 @@ const submit = () => {
                     v-model="form.subalterno_catasto" 
                     class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.subalterno_catasto" />
               </div>
 
             </div>

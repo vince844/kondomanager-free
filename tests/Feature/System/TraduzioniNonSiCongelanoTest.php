@@ -38,6 +38,33 @@
  * per questo che cerca le righe che cominciano a colonna zero.
  *
  * Non copre i template: lì `trans()` funziona per costruzione.
+ *
+ * ⚠️ **Tre buchi misurati nella beta.62, cercando i gemelli del difetto che questa guardia
+ * chiude.** Ne è uscito un caso vero — `resources/js/components/commenti/Commento.vue`, corretto
+ * lì — e la scoperta che questa guardia non poteva vederlo. Sono scritti qui perché una
+ * limitazione taciuta è una guardia che dichiara più di quanto guarda:
+ *
+ * 1. **Il valore si ritaglia fino al primo a capo a profondità zero.** Una costante il cui valore
+ *    è un'espressione **scalare** spalmata su più righe — `a ?? b ?? trans('x')` — viene tagliata
+ *    alla prima riga, che non contiene `trans(`, quindi la costante è scartata **prima** del
+ *    filtro delle forme pigre. È il buco che ha lasciato passare `Commento.vue`, ed è il peggiore
+ *    dei tre perché non produce una scusa sbagliata: produce un'assenza.
+ * 2. **`export const`, `let` e `var` non entrano** (l'espressione cerca `const` a colonna zero).
+ *    Misurato sull'albero della .62: gli unici `export const` con `trans()` sono gli otto
+ *    `columns.ts`, e in tutti la `trans()` sta dentro `header:`/`cell:`, cioè è pigra. Buco reale,
+ *    oggi senza vittime.
+ * 3. **`ref` è nell'elenco delle forme pigre e non lo è**: `ref(trans('x'))` valuta l'argomento
+ *    subito e congela esattamente come una costante. Oggi in `resources/js` non c'è nessun
+ *    `ref(trans(`, quindi anche questo è debito e non difetto.
+ *
+ * ⛔ **La correzione ovvia dei buchi 2 e 3 è stata provata e scartata**, e vale la pena dire
+ * perché: allargando l'espressione a `export|let|var` e stringendo la scusa della freccia, gli
+ * otto `columns.ts` diventano **falsi positivi** — il loro valore si apre con `[`, che non è
+ * nessuna delle forme scusate, e verrebbero segnalati pur essendo sani. Una guardia che segnala
+ * otto punti corretti insegna a ignorarla, e questo file esiste per la lezione opposta. Chiudere
+ * i tre buchi richiede di ritagliare il valore per davvero (fino al `;` a profondità zero) e di
+ * riconoscere le forme pigre sull'**intero** valore invece che sul suo inizio: è un lavoro a sé,
+ * non una riga da cambiare, ed è in roadmap.
  */
 
 use Illuminate\Support\Facades\File;

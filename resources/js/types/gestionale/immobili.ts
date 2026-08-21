@@ -9,7 +9,11 @@ export interface Immobile {
     descrizione: string
     note: string,
     codice_interno: string,
-    superficie: number,
+    // ⚠️ Sono colonne `decimal`, e una `decimal` esce da Eloquent come **stringa**: `"456.00"`,
+    // non `456`. Il tipo diceva `number` e mentiva da sempre — a video la differenza non si vede
+    // perché l'interpolazione in una stringa funziona con entrambi, e si vedrebbe al primo
+    // confronto o alla prima somma. Chi le stampa passa da `misuraLeggibile()`.
+    superficie: string | null,
     comune_catasto: string,
     codice_catasto: string,
     foglio_catasto: string,
@@ -17,7 +21,7 @@ export interface Immobile {
     subalterno_catasto: string,
     sezione_catasto: string,
     attivo: boolean,
-    numero_vani: number,
+    numero_vani: string | null,
     interno: string,
     piano: string,
     palazzina: Palazzina,

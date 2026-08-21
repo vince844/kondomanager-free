@@ -172,10 +172,10 @@ return [
      | Stats
      | ------------------------------------------------------------------ */
     'stats' => [
-        'total_storage_bytes'  => 'Total space used',
-        'total_documents'      => 'Total documents',
-        'uploaded_this_month'  => 'Uploaded this month',
-        'average_size_bytes'   => 'Average size',
+        'total_storage_bytes'  => 'Archive space',
+        'total_documents'      => 'Documents in the archive',
+        'uploaded_this_month'  => 'Archived this month',
+        'average_size_bytes'   => 'Average size in the archive',
     ],
 
     /* ------------------------------------------------------------------

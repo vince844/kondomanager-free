@@ -188,6 +188,7 @@ const submit = () => {
                   :reduce="(p: Palazzina) => p.id" 
                   placeholder="Associa palazzina..." 
                 />
+                <InputError :message="form.errors.palazzina_id" />
               </div>
 
               <div class="sm:col-span-3">
@@ -199,6 +200,7 @@ const submit = () => {
                   v-model="form.scala_id" 
                   :reduce="(s: Scala) => s.id" placeholder="Associa scala..." 
                 />
+                <InputError :message="form.errors.scala_id" />
               </div>
             </div>
           </CardContent>
@@ -230,6 +232,7 @@ const submit = () => {
                   placeholder="es. T, 1, 2..." 
                   class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.piano" />
               </div>
               <div class="sm:col-span-2">
                 <Label for="superficie">Superficie (m²)</Label>
@@ -239,6 +242,7 @@ const submit = () => {
                   placeholder="es. 90" 
                   class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.superficie" />
               </div>
               <div class="sm:col-span-2">
                 <Label for="numero_vani">Numero vani</Label>
@@ -248,6 +252,7 @@ const submit = () => {
                   placeholder="es. 5" 
                   class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.numero_vani" />
               </div>
 
               <div class="sm:col-span-8">
@@ -258,6 +263,7 @@ const submit = () => {
                   placeholder="Note visibili solo agli amministratori..." 
                   class="mt-1 bg-white dark:bg-slate-950"
                 />
+                <InputError :message="form.errors.note" />
               </div>
             </div>
           </CardContent>
@@ -281,6 +287,7 @@ const submit = () => {
                   />
                   <CercaComune @scelto="comuneScelto" />
                 </div>
+                <InputError :message="form.errors.comune_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="codice_catasto">Codice</Label>
@@ -290,6 +297,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. H501"
                 />
+                <InputError :message="form.errors.codice_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -300,6 +308,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. A, B..."
                 />
+                <InputError :message="form.errors.sezione_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="foglio_catasto">Foglio</Label>
@@ -309,6 +318,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. 123"
                 />
+                <InputError :message="form.errors.foglio_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="particella_catasto">Particella</Label>
@@ -318,6 +328,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. 1234"
                 />
+                <InputError :message="form.errors.particella_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="subalterno_catasto">Subalterno</Label>
@@ -327,6 +338,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. 12345"
                 />
+                <InputError :message="form.errors.subalterno_catasto" />
               </div>
             </div>
           </CardContent>

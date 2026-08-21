@@ -169,6 +169,22 @@ const handleProcedi = () => {
           dal piano — non {{ senzaMillesimo.length === 1 ? 'riceve' : 'ricevono' }} nemmeno una riga da € 0,00 —
           e <strong>la {{ senzaMillesimo.length === 1 ? 'sua quota la pagano' : 'loro quota la pagano' }} gli altri condòmini</strong>.
         </p>
+
+        <!--
+          ⚠️ **La finestra per rimediare si chiude, e va detto qui.** Segnalato da Vincenzo leggendo
+          l'avviso: «se oggi non ho i millesimi e creo il piano rate, poi non posso ricrearlo se ho
+          già degli incassi». È esatto — `PianoRateGenerationController` blocca il ricalcolo su due
+          condizioni: rate con incassi registrati («Annulla prima gli incassi») e rate già emesse in
+          contabilità («Annulla prima le emissioni»).
+          Senza questa riga l'avviso descriveva la conseguenza ma non la sua **reversibilità**, che
+          è l'informazione che serve per decidere: procedere è una scelta che si può disfare oggi e
+          non più dopo il primo incasso.
+        -->
+        <p v-if="senzaMillesimo.length" class="text-sm text-amber-800 mt-2">
+          <strong>Finché non emetti le rate e non arriva il primo incasso</strong>, puoi compilare i
+          millesimi mancanti e rigenerare il piano. Dopo, il ricalcolo si blocca: per correggerlo
+          dovresti prima annullare gli incassi o le emissioni.
+        </p>
       </div>
     </div>
 

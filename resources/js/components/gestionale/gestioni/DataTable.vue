@@ -2,7 +2,7 @@
 
 import { ref } from 'vue';
 import { useTabellaServer } from '@/composables/useTabellaServer';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import DataTablePagination from '@/components/DataTablePagination.vue';
@@ -27,8 +27,31 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
+const page = usePage<{ esercizio: { id: number } }>();
+
+/*
+ * ⚠️ **`gestionale.esercizi.gestioni.index`, non `gestionale.gestioni.index`.**
+ *
+ * Il secondo nome non è mai esistito: le gestioni stanno **annidate sotto l'esercizio**, e le
+ * uniche sette rotte registrate lo dicono. Siccome `route()` sta dentro una funzione — viene
+ * chiamata quando si cambia pagina o si ordina, non al montaggio — la tabella si disegnava senza
+ * un lamento e moriva con un errore JavaScript al primo clic sulla paginazione.
+ *
+ * È la terza volta che questo progetto trova una tabella che «non paginava affatto»: le altre due
+ * — piani rate e piani dei conti — sono state corrette nella beta.54, e la lezione scritta allora
+ * dice che *una funzione che nessuno ha mai esercitato non è funzionante finché non si dimostra
+ * il contrario*. Da questa beta la classe ha la sua guardia:
+ * `tests/Feature/System/NomiDiRottaCheNonEsistonoTest.php`.
+ *
+ * L'esercizio si legge da `usePage()` come fa già la barra dei filtri accanto
+ * (`DataTableToolbar.vue:29`): la prop non c'è, e aggiungerla vorrebbe dire cambiare anche la
+ * pagina che monta la tabella per un dato che è già a portata di mano.
+ */
 const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
-  useTabellaServer(() => route(generateRoute('gestionale.gestioni.index'), { condominio: props.condominio.id}));
+  useTabellaServer(() => route(generateRoute('gestionale.esercizi.gestioni.index'), {
+    condominio: props.condominio.id,
+    esercizio: page.props.esercizio.id,
+  }));
 
 const table = useVueTable({
   get data() {

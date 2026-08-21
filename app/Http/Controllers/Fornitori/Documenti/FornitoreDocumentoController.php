@@ -154,8 +154,8 @@ class FornitoreDocumentoController extends Controller
 
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::exists($documento->path)) {
-                    Storage::delete($documento->path);
+                if (Storage::disk('local')->exists($documento->path)) {
+                    Storage::disk('local')->delete($documento->path);
                 }
 
                 $uploadedFile = $request->file('file');
@@ -200,8 +200,8 @@ class FornitoreDocumentoController extends Controller
     {
         try {
 
-            if (Storage::exists($documento->path)) {
-                Storage::delete($documento->path);
+            if (Storage::disk('local')->exists($documento->path)) {
+                Storage::disk('local')->delete($documento->path);
             }
 
             $documento->delete();

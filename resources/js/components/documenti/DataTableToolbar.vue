@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
 import { useTabellaServer } from '@/composables/useTabellaServer';
+import { reidratraFiltri } from '@/composables/useReidratazioneFiltri';
 import { Permission } from '@/enums/Permission';
 import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 import { trans } from 'laravel-vue-i18n';
@@ -21,8 +22,19 @@ import { useCondomini } from '@/composables/useCondomini';
 const { generateRoute, hasPermission } = usePermission();
 const { categorie, isLoading, loadCategorie } = useCategorieDocumenti();
 
-const { table } = defineProps<{
-  table: Table<Documento>
+const { table, filters } = defineProps<{
+  table: Table<Documento>,
+  /**
+   * I filtri **già applicati dal server**, così come tornano dal controller.
+   *
+   * ⚠️ Senza questa prop la barra nasceva vuota anche su una pagina filtrata. Finché nessuno
+   * costruiva a mano un indirizzo con `category_id` il difetto era latente; dalla beta.62 il nome
+   * di una categoria è un link che porta esattamente lì, e una pagina filtrata che non lo
+   * dichiara — e che perde il filtro al primo tocco sulla barra — sarebbe stata una trappola
+   * costruita apposta. È la domanda del perimetro di raggiungibilità: *cosa diventa raggiungibile
+   * che prima non lo era?*
+   */
+  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null }
 }>();
 
 // Read current filters from column state
@@ -50,6 +62,38 @@ const condominioFilter = computed(() => {
   const val = condominioColumn?.getFilterValue();
   return Array.isArray(val) ? val : [];
 });
+
+/*
+ * La reidratazione, e **deve stare prima del `watchDebounced` qui sotto** — la ragione è scritta
+ * per esteso in `useReidratazioneFiltri.ts`, insieme al motivo per cui vive in un file a sé e non
+ * qui dentro: dentro il componente il test non poteva chiamarla, e ne provava una copia.
+ */
+reidratraFiltri(filters, nameFilter, categoriaColumn, condominioColumn);
+
+/*
+ * ⚠️ **Reidratare il valore non basta: senza le opzioni la pillola non ha un nome da scrivere.**
+ *
+ * Gli elenchi di categorie e condomìni si caricano solo all'apertura del menu (`@open`), che è
+ * giusto: sono due richieste che sulla maggioranza delle visite non servono. Ma arrivando con un
+ * filtro **già applicato** — dalla beta.62 è quello che fa il nome di una categoria nell'elenco
+ * categorie — le opzioni sono ancora vuote, e la pillola sa di essere accesa senza sapere su cosa:
+ * accanto a «Categoria» resta uno spazio muto invece di «Verbali».
+ *
+ * Segnalato da Vincenzo guardando la pagina, dopo che la revisione l'aveva classificato «bassa» e
+ * io l'avevo rimandato: è la conferma della regola di questo progetto per cui una schermata si
+ * guarda, non si deduce. Un filtro che non dice **su cosa** filtra è mezzo passo dal filtro che non
+ * dice di esistere, cioè dal difetto che la reidratazione esiste per togliere.
+ *
+ * Il carico avviene **solo** quando quel filtro è davvero attivo, quindi la visita normale
+ * all'elenco non paga niente.
+ */
+if (filters?.category_id?.length) {
+  loadCategorie();
+}
+
+if (filters?.condominio_id?.length) {
+  loadCondomini();
+}
 
 const { filtra } = useTabellaServer(() => route(generateRoute('documenti.index')));
 

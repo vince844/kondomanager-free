@@ -43,8 +43,6 @@ class ApprovedDocumentoNotification extends LocalizedNotification implements Sho
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
-
         return (new MailMessage)
             ->subject(__('notifications.approved_document.subject'))
             ->greeting(__('notifications.approved_document.greeting', [
@@ -55,7 +53,7 @@ class ApprovedDocumentoNotification extends LocalizedNotification implements Sho
             ]))
             ->line('**' . __('notifications.approved_document.title') . ':** ' . $this->documento->name)
             ->line('**' . __('notifications.approved_document.description') . ':** ' . Str::ucfirst($this->documento->description))
-            ->action(__('notifications.approved_document.action'), url("/{$routePrefix}/categorie-documenti/"));
+            ->action(__('notifications.approved_document.action'), RouteHelper::urlArchivioDocumenti($notifiable));
     }
 
     /**

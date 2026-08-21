@@ -67,7 +67,13 @@ Route::prefix('admin')->as('admin.')
             'fornitori' => 'fornitore'
         ]);
 
+    // `only()` e non un `resource` intero: `FornitoreAnagraficaController` implementa **solo**
+    // queste quattro azioni. Le altre tre — `show`, `edit`, `update` — puntavano a metodi
+    // inesistenti e rispondevano **500** a chiunque ci arrivasse per URL. I referenti di un
+    // fornitore si aggiungono e si tolgono dall'elenco del fornitore; la scheda del singolo
+    // referente non è mai esistita. Rimosse nella beta.62.
     Route::resource('fornitori.anagrafiche', FornitoreAnagraficaController::class)
+        ->only(['index', 'create', 'store', 'destroy'])
         ->parameters([
             'fornitori' => 'fornitore',
             'anagrafiche' => 'anagrafica'
@@ -92,11 +98,21 @@ Route::prefix('admin')->as('admin.')
         ])
         ->only(['index', 'store', 'destroy']);
 
+    // `only()` e non `except(['store'])`: quell'`except` non era una potatura ragionata, serviva
+    // solo a evitare la collisione di nome con la rotta di `store` registrata a mano più sotto
+    // (`categorie-documento`), e nel frattempo teneva registrate **tre rotte fantasma**.
+    // `CategoriaDocumentoController` implementa `index`, `store`, `update`, `destroy`: `create`,
+    // `show` ed `edit` puntavano a metodi inesistenti e rispondevano **500**.
+    //
+    // `show` era l'unica delle diciassette effettivamente linkata — il nome della categoria
+    // nell'elenco — ed è arrivata dal forum nella beta.62: *«cliccando su una qualsiasi delle
+    // categorie mi compare Call to undefined method»*. Una categoria non ha una pagina di
+    // dettaglio: si crea, si rinomina e si elimina dall'elenco, come i referenti dei fornitori.
     Route::resource('categorie', CategoriaDocumentoController::class)
         ->parameters([
             'categorie' => 'categoria'
         ])
-        ->except(['store']);
+        ->only(['index', 'update', 'destroy']);
 
     Route::resource('eventi', EventoController::class)
         ->parameters([
@@ -142,11 +158,15 @@ Route::prefix('admin')->as('admin.')
             'comunicazioni' => 'comunicazione'
         ]);
 
+    // `only()` e non `except(['update'])`: l'`update` sta a parte qui sotto perché accetta anche
+    // `POST` (i moduli con allegato). L'`except` però lasciava registrata anche `show`, che
+    // `DocumentoController` non implementa e che rispondeva **500**: un documento si scarica
+    // (`documenti.download`) o si modifica, non si "apre in una scheda". Rimossa nella beta.62.
     Route::resource('documenti', DocumentoController::class)
         ->parameters([
             'documenti' => 'documento'
         ])
-        ->except(['update']);
+        ->only(['index', 'create', 'store', 'edit', 'destroy']);
 
     Route::match(['put', 'patch', 'post'], 'documenti/{documento}', [DocumentoController::class, 'update'])
         ->name('documenti.update');

@@ -5,6 +5,7 @@ import { usePermission } from "@/composables/permissions"
 import DropdownAction from '@/components/gestionale/immobili/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/immobili/DataTableColumnHeader.vue'
 import AnagraficheStack from '@/components/AnagraficheStack.vue'
+import { misuraLeggibile } from '@/lib/gestionale/misure'
 import { Home, ArrowRight, MapPin, FileSearch, Hash } from 'lucide-vue-next'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Immobile } from '@/types/gestionale/immobili'
@@ -173,9 +174,19 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Dati tecnici' }),
       cell: ({ row }) => {
         const immobile = row.original
+
+        // ⚠️ **Le due misure passano da `misuraLeggibile()`, e non è un ritocco estetico.**
+        // Sono colonne `decimal`, che Eloquent consegna come stringa con tutti i decimali
+        // dichiarati: la superficie si scriveva «456.00 m²» da sempre, e la beta.62 — rendendo
+        // decimale anche il numero di vani — avrebbe portato «6.00 vani» su ogni unità già a
+        // database. Gli zeri di coda spariscono; il separatore resta il **punto**, come nella
+        // casella che si compila e come sui millesimi.
+        const superficie = misuraLeggibile(immobile.superficie)
+        const vani = misuraLeggibile(immobile.numero_vani)
+
         return h('div', { class: 'flex flex-col text-xs' }, [
-          h('span', { class: 'font-semibold text-slate-700 dark:text-slate-300' }, immobile.superficie ? `${immobile.superficie} m²` : '-'),
-          h('span', { class: 'text-[10px] text-slate-400' }, `${immobile.numero_vani ?? '-'} vani`)
+          h('span', { class: 'font-semibold text-slate-700 dark:text-slate-300' }, superficie ? `${superficie} m²` : '-'),
+          h('span', { class: 'text-[10px] text-slate-400' }, `${vani ?? '-'} vani`)
         ])
       }
     },

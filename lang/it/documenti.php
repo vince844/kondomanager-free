@@ -172,11 +172,29 @@ return [
     /* ------------------------------------------------------------------
      | Stats
      | ------------------------------------------------------------------ */
+    /*
+     * ⚠️ **Ogni etichetta dice «archivio», e non è pignoleria.**
+     *
+     * Questi quattro numeri contano **solo** i documenti d'archivio: `getAdminDocumentiStats()`
+     * filtra su `documentable_type` nullo, quindi esclude gli allegati delle fatture, i documenti
+     * delle unità immobiliari e quelli dei fornitori. L'esclusione è voluta — l'archivio è un
+     * posto, e l'allegato di una fattura vive sulla fattura — ma fino alla beta.62 le etichette
+     * promettevano un totale: «Documenti totali», «Spazio totale utilizzato».
+     *
+     * Misurato il 21/08/2026 sul database di sviluppo: **sei** documenti su disco, i riquadri ne
+     * contavano **due**; spazio reale ~11 MB, i riquadri dicevano **414 KB**. Segnalato da un
+     * amministratore sul forum e confermato da Vincenzo.
+     *
+     * ⏳ Lo **spazio** avrà un trattamento a parte nella 1.10.0-beta.63: «quanto disco sto
+     * occupando» è una domanda legittima a cui un numero limitato all'archivio risponde male, e
+     * lì il riquadro tornerà a essere un totale — con la ripartizione per luogo. Vedi la voce
+     * «Coda 55» in `docs/roadmap.md`.
+     */
     'stats' => [
-        'total_storage_bytes'  => 'Spazio totale utilizzato',
-        'total_documents'      => 'Documenti totali',
-        'uploaded_this_month'  => 'Caricati questo mese',
-        'average_size_bytes'   => 'Dimensione media',
+        'total_storage_bytes'  => 'Spazio dell\'archivio',
+        'total_documents'      => 'Documenti in archivio',
+        'uploaded_this_month'  => 'In archivio questo mese',
+        'average_size_bytes'   => 'Dimensione media in archivio',
     ],
 
     /* ------------------------------------------------------------------

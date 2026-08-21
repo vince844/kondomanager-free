@@ -134,6 +134,14 @@ defineEmits(['update:open']);
               sistemare. Puoi procedere lo stesso — la decisione resta tua — ma scrivendo il
               perché, che resta agli atti del piano.
             </p>
+            <div class="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-900/50 mt-3">
+              <p class="text-amber-800 dark:text-amber-200/80 leading-relaxed text-[13px] mb-0">
+                <strong>Ma la finestra per rimediare si chiude.</strong> Finché non emetti le rate e non
+                arriva il primo incasso puoi compilare i millesimi e rigenerare il piano. Dopo, il
+                ricalcolo si blocca: per correggerlo dovresti prima annullare gli incassi o le emissioni.
+                Se i millesimi ti mancano ancora, spesso conviene aspettare a emettere.
+              </p>
+            </div>
           </section>
 
           <section>

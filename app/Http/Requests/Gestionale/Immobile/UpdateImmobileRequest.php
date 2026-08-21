@@ -50,8 +50,18 @@ class UpdateImmobileRequest extends FormRequest
             // mettono in testa.
             'interno'             => 'nullable|string|max:255',
             'piano'               => 'sometimes|nullable|string|max:255',
-            'superficie'          => 'sometimes|nullable|numeric',
-            'numero_vani'         => 'sometimes|nullable|integer',
+            // ⚠️ `decimal:0,2` e non `numeric`. Con `numeric` un `6,555` passerebbe la regola e
+            // MySQL lo scriverebbe in colonna come `6.56`: un valore cambiato in silenzio, che è
+            // il difetto che la beta.61 ha appena pagato sui millesimi. Così il terzo decimale
+            // viene rifiutato con un messaggio — che da questa versione ha anche dove comparire.
+            // La virgola è già stata raddrizzata da `prepareForValidation()`.
+            'superficie'          => 'sometimes|nullable|decimal:0,2|min:0|max:999999.99',
+            // ⚠️ Il tetto è quello **della colonna**, non un massimo di prodotto. Fino alla
+            // beta.61 questo campo non aveva alcun massimo: un `1200` battuto per errore si è
+            // salvato senza un fiato, e mettere ora `max:999.99` renderebbe **non salvabile** una
+            // scheda che ieri si salvava — anche a chi volesse solo correggere il piano. È il caso
+            // «salvo senza cambiare quel campo», che questo progetto ha già sbagliato due volte.
+            'numero_vani'         => 'sometimes|nullable|decimal:0,2|min:0|max:999999.99',
             'note'                => 'sometimes|nullable|string',
             'palazzina_id'        => ['sometimes', 'nullable', 'integer', Rule::exists('palazzine', 'id')],
             'scala_id'            => ['sometimes', 'nullable', 'integer', Rule::exists('scale', 'id')],
@@ -174,11 +184,17 @@ class UpdateImmobileRequest extends FormRequest
     /**
      * Prepare data before validation.
      * Uppercases relevant string fields.
+     *
+     * I due campi decimali passano da `DecimaleItaliano::conIlPunto()`, come nella request di
+     * creazione: le due sono copie l'una dell'altra sul blocco dei dati tecnici, e la regola vive
+     * in un posto solo proprio perché non si possa correggere a metà.
      */
     protected function prepareForValidation()
     {
         $this->merge([
             'interno'        => strtoupper((string) $this->interno),
+            'numero_vani'    => \App\Support\DecimaleItaliano::conIlPunto($this->numero_vani),
+            'superficie'     => \App\Support\DecimaleItaliano::conIlPunto($this->superficie),
             'codice_catasto' => $this->codice_catasto
                 ? strtoupper($this->codice_catasto)
                 : null,

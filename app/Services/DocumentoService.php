@@ -166,9 +166,15 @@ class DocumentoService
             ->selectRaw('COUNT(*) as total_documents')
             ->selectRaw('SUM(file_size) as total_storage_bytes')
             ->selectRaw('AVG(file_size) as average_size_bytes')
-            ->selectRaw('SUM(CASE WHEN MONTH(created_at) = ? AND YEAR(created_at) = ? THEN 1 ELSE 0 END) as uploaded_this_month', [
-                now()->month, 
-                now()->year
+            // ⚠️ **Un intervallo di date, non `MONTH()` e `YEAR()`.** Quelle due funzioni esistono
+            // su MySQL e non su SQLite, quindi la pagina dell'archivio rispondeva **500** dentro
+            // la suite: era intestabile per costruzione, ed è la ragione per cui non aveva
+            // nessun test. Il confronto per intervallo dice la stessa cosa ovunque — e su MySQL
+            // è anche più veloce, perché una funzione applicata alla colonna impedisce l'uso
+            // dell'indice mentre un intervallo no.
+            ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as uploaded_this_month', [
+                now()->startOfMonth(),
+                now()->startOfMonth()->addMonth(),
             ])
             ->first();
 
@@ -201,9 +207,13 @@ class DocumentoService
             ->selectRaw('COUNT(*) as total_documents')
             ->selectRaw('COALESCE(SUM(file_size), 0) as total_storage_bytes')
             ->selectRaw('COALESCE(AVG(file_size), 0) as average_size_bytes')
-            ->selectRaw('SUM(CASE WHEN MONTH(created_at) = ? AND YEAR(created_at) = ? THEN 1 ELSE 0 END) as uploaded_this_month', [
-                now()->month,
-                now()->year
+            // Stesso intervallo di date del riquadro amministratore qui sopra, e per la stessa
+            // ragione: `MONTH()` e `YEAR()` non esistono su SQLite. Il gemello lasciato indietro
+            // sarebbe rimasto rotto nella suite finché non ci fosse passato un test — cioè, viste
+            // le due volte che è già successo su questo modulo, per un pezzo.
+            ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as uploaded_this_month', [
+                now()->startOfMonth(),
+                now()->startOfMonth()->addMonth(),
             ])
             ->first();
 

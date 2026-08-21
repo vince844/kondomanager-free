@@ -975,7 +975,13 @@ class FatturaPassivaController extends Controller
             // Otteniamo il percorso assoluto del file sul server
             $percorsoAssoluto = Storage::disk('local')->path($documento->path);
 
-            return response()->download($percorsoAssoluto, $documento->name);
+            // `nomeDiScaricamento()` e non `$documento->name`: qui il nome nasce da
+            // `getClientOriginalName()`, quindi **di norma** l'estensione ce l'ha già e il metodo
+            // non tocca niente. Ma «di norma» non è «sempre» — un nome di file senza estensione
+            // arriva da qualunque sistema che lo generi — e soprattutto la regola del nome di
+            // scaricamento dev'essere **una sola** in tutto il progetto: è averla avuta in due
+            // copie che ha prodotto la segnalazione dal forum sui documenti d'archivio.
+            return response()->download($percorsoAssoluto, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
             Log::error("Errore download fattura ID {$fattura->id}: ".$e->getMessage());

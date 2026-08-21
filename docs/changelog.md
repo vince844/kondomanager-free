@@ -7,6 +7,129 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.62] - La Metà Che Nessuno Aveva Corretto
+
+⚠️ **Questa versione tocca il database:** la colonna del numero di vani passa da intera a decimale.
+È un allargamento, nessun dato viene modificato — ma se in qualche unità quel campo contenesse un
+numero impossibile (oltre 999.999), l'aggiornamento si ferma **dicendo quale**, invece di fallire
+con un codice d'errore del database.
+
+Quattro segnalazioni dal forum, e tre avevano la stessa forma: qualcosa era già stato corretto —
+ma soltanto dove chi aveva segnalato poteva vederlo.
+
+### Il documento scaricato non perde più l'estensione, da nessuna delle due porte
+
+Un amministratore lo aveva segnalato a maggio, allegando anche la correzione. Era giusta, ed è
+stata applicata. Ad agosto la stessa cosa è tornata **dal lato condòmino**: chi entra come
+condòmino scaricava ancora file senza `.pdf`.
+
+Non era un difetto nuovo. Le due aree — amministratore e condòmino — avevano due copie quasi
+identiche della stessa funzione, e a maggio ne era stata corretta una sola. Da questa versione la
+regola del nome vive in **un posto solo**, quindi non si può più correggere a metà.
+
+⚠️ **Su Windows la differenza si vede, su macOS no**, ed è il motivo per cui la segnalazione ha
+impiegato tre mesi ad arrivare: macOS indovina il tipo dal contenuto e aggiunge l'estensione da sé.
+
+### Cliccare una categoria dell'archivio non dà più errore — e ora fa qualcosa
+
+*«Cliccando su una qualsiasi delle categorie presenti mi compare l'errore Call to undefined
+method… Sinceramente non so neanche cosa dovrebbe fare il software cliccando su una categoria.»*
+
+La seconda frase era la domanda giusta. Il nome della categoria era un collegamento verso una
+pagina **mai esistita**, e ora porta ai **documenti di quella categoria** — che è quello che il
+prodotto fa già dall'altro lato, dove il condòmino sfoglia l'archivio per categoria. L'elenco che
+si apre **dichiara** di essere filtrato, e dice **su cosa**: accanto a «Categoria» compare il nome —
+«Verbali» — il filtro non sparisce al primo tocco sulla barra di ricerca, e il pulsante per
+azzerarlo è lì.
+
+### Diciassette indirizzi che rispondevano «errore del server»
+
+La versione scorsa ne aveva chiusi nove, quella prima ancora quattro — ogni volta nel file in cui
+il difetto era stato visto. Contandoli tutti sono risultati **diciassette**, sparsi in cinque file:
+inviti, referenti dei fornitori, categorie dell'archivio, documenti dell'area utente.
+
+Sono indirizzi che il programma registrava senza avere il codice dietro: chiunque ci arrivasse —
+un segnalibro, un link vecchio, un collegamento in una mail — riceveva un errore del server invece
+di una pagina. Tolti tutti, e da oggi **non se ne può creare uno nuovo senza accorgersene**.
+
+⚠️ **Se hai un segnalibro su uno di quegli indirizzi**, ora trovi «pagina non trovata» invece di un
+errore: sono schermate che non sono mai esistite.
+
+### Il numero di vani accetta i mezzi vani — e ora, se rifiuta, lo dice
+
+*«In alcune visure catastali tale valore non è intero… non dà errori ma non salva il dato.»*
+
+Erano due difetti sovrapposti. Il primo: il campo accettava solo numeri interi, quindi `6,5` non
+entrava. Il secondo, peggiore: **l'errore c'era e non aveva dove comparire**. La scheda dell'unità
+controlla sedici campi e ne mostrava l'esito per quattro — quindi il programma rifiutava in
+silenzio, e non solo il numero di vani: **non salvava niente**. Chi avesse corretto insieme il
+piano, la superficie e i vani si perdeva anche le altre due correzioni senza saperlo.
+
+Ora i vani accettano i decimali — anche il quarto di vano — si scrivono col punto **o con la
+virgola** (chi batte la virgola non viene corretto: si raddrizza da sola), e **tutti** i campi
+della scheda hanno un posto dove mostrare l'errore, compresi superficie, piano, note e i cinque
+identificativi catastali.
+
+⚠️ **La superficie aveva lo stesso difetto e nessuno l'aveva segnalato:** scritta all'italiana —
+`90,5` — veniva rifiutata in silenzio esattamente come i vani. Corretta insieme.
+
+*(A video sparisce anche una piccolezza che dava fastidio: metri quadri e vani non si scrivono più
+con gli zeri inutili in coda — «400 m²» e non «400.00 m²».)*
+
+### Le briciole di navigazione non tradotte: già a posto, e restava un caso
+
+La segnalazione riguardava la versione beta.50 ed era **già stata corretta nella beta.60**: chi
+aggiorna la vede sistemata. Cercando se ne fosse rimasto qualche caso ne è saltato fuori uno, nel
+nome di chi ha scritto un commento, dove a volte compariva la sigla tecnica al posto di «Utente
+sconosciuto». Corretto.
+
+### I riquadri dell'archivio dicono di cosa parlano
+
+Sopra l'elenco dei documenti ci sono quattro numeri, e si intitolavano «Documenti totali» e
+«Spazio totale utilizzato». Non erano totali: contavano **solo** l'archivio, e lasciavano fuori gli
+allegati delle fatture, i documenti delle unità immobiliari e quelli dei fornitori.
+
+Misurato su un archivio di prova: **sei documenti sul disco, i riquadri ne contavano due**; spazio
+occupato circa 11 MB, i riquadri dicevano 414 KB. La sproporzione non è un caso — i file pesanti,
+planimetrie e visure, stanno sulle unità e non in archivio.
+
+L'esclusione dall'**elenco** resta e ha una ragione: l'allegato di una fattura vive sulla fattura,
+e mescolarlo all'archivio confonderebbe due cose diverse. A cambiare sono le **scritte**, che ora
+dicono ciò che i numeri contano davvero: «Documenti in archivio», «Spazio dell'archivio».
+
+⏳ **La domanda vera — «quanto disco sto occupando davvero, e dove?» — non ha ancora risposta**, ed
+è un lavoro a sé: un totale da 11 MB scritto sopra un elenco che mostra due documenti confonderebbe
+più di adesso. Serve la ripartizione per luogo, con un modo di arrivarci. È in lavorazione.
+
+### Sotto il cofano
+
+- **Tre collegamenti nelle mail dei documenti portavano a una pagina che non esiste** — due per
+  l'amministratore, uno per il condòmino, e quest'ultimo apriva un errore del server. Ora
+  l'indirizzo si costruisce dal nome della pagina, che è verificabile, invece di essere scritto a
+  mano pezzo per pezzo.
+- **L'elenco delle gestioni non paginava**: cambiare pagina o ordinare moriva in un errore, perché
+  chiamava un indirizzo che non è mai esistito. È la terza volta che una tabella «non paginava
+  affatto»; da questa versione c'è un controllo che lo impedisce.
+- **Il condòmino aveva un pannello «crea nuova categoria» che non poteva funzionare**: si
+  scriveva nome e descrizione, si premeva «Salva» e non succedeva niente, senza un messaggio. Le
+  categorie dell'archivio le gestisce l'amministratore, quindi il pannello è stato tolto invece
+  che riparato.
+- **L'archivio documenti non era collaudabile** perché la sua pagina usava una funzione di calcolo
+  che esiste solo su MySQL: adesso la stessa domanda si pone in un modo che vale su qualunque
+  database, ed è anche più veloce.
+- **Il disco dei documenti è dichiarato esplicitamente in sedici punti** dove prima era sottinteso.
+  Oggi non cambia niente; il giorno che l'archivio si sposta altrove, cambia tutto.
+- **Due controlli strutturali nuovi** congelano una famiglia di difetti che questo progetto aveva
+  già corretto tre volte, caso per caso: nessun indirizzo registrato può puntare a codice che non
+  esiste, e nessuna schermata può chiamare un indirizzo che non esiste. Al momento in cui vengono
+  scritti segnalano **zero** punti, che è la misura di una guardia utilizzabile.
+- Una revisione critica condotta prima del rilascio ha trovato **sette difetti a suite verde**, di
+  cui due nel codice che questa versione aveva appena scritto — compreso uno che avrebbe fatto
+  **fallire l'aggiornamento** su un'installazione con un numero di vani fuori misura. Sono tutti
+  corretti qui.
+
+---
+
 ## [1.10.0-beta.61] - Il Millesimo Che Nessuno Aveva Compilato
 
 **Nessuna migrazione: il database non viene toccato.**

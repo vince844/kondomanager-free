@@ -77,7 +77,41 @@ class DocumentoController extends Controller
                 'per_page'     => $documenti->perPage(),
                 'total'        => $documenti->total(),
             ],
-            'filters' => Arr::only($validated, ['name', 'category_id', 'condominio_id']),
+            /*
+             * ⚠️ **Il tipo che torna indietro deve combaciare con quello che l'opzione del filtro
+             * contiene — e i due filtri di questa barra non usano lo stesso tipo.**
+             *
+             * Dalla query string gli identificativi arrivano sempre come stringhe (`['3']`), anche
+             * se la regola li valida `integer`: Laravel controlla, non converte. La barra si
+             * reidrata confrontando questi valori con le opzioni, e il confronto è un `Set.has()`,
+             * che non converte niente.
+             *
+             * Le due composable che alimentano i due filtri emettono tipi **opposti**:
+             * `useCategorieDocumenti` un numero (`categoria.id`), `useCondomini` una stringa
+             * (`String(c.id)`). Finché i filtri venivano solo scritti dall'interfaccia la
+             * divergenza era invisibile — ogni valore combaciava con sé stesso; si vede solo ora
+             * che si reidratano dal server.
+             *
+             * Un cast unico per tutti gli array accenderebbe una pillola e spegnerebbe l'altra —
+             * e sul condominio farebbe di peggio: cliccando la voce nel menu la si
+             * **aggiungerebbe** invece di toglierla, lasciando un filtro che dal menu non si può
+             * più rimuovere. Trovato dalla revisione avversariale della beta.62.
+             *
+             * ⛔ **La correzione giusta è togliere la divergenza, e non si fa qui.** `useCondomini`
+             * è condivisa con le barre di comunicazioni, segnalazioni e utenti: allinearla ai
+             * numeri porta la correzione fuori dal perimetro di questa beta, su tre pagine che le
+             * segnalazioni non riguardano. La voce è in `docs/roadmap.md` con la misura; qui si
+             * rispetta la convenzione esistente, filtro per filtro.
+             */
+            'filters' => [
+                ...Arr::only($validated, ['name']),
+                ...(isset($validated['category_id'])
+                    ? ['category_id' => array_map('intval', $validated['category_id'])]
+                    : []),
+                ...(isset($validated['condominio_id'])
+                    ? ['condominio_id' => array_map('strval', $validated['condominio_id'])]
+                    : []),
+            ],
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);
@@ -240,8 +274,8 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::exists($documento->path)) {
-                    Storage::delete($documento->path);
+                if (Storage::disk('local')->exists($documento->path)) {
+                    Storage::disk('local')->delete($documento->path);
                 }
 
                 $uploadedFile = $request->file('file');
@@ -306,8 +340,8 @@ class DocumentoController extends Controller
             DB::beginTransaction();
 
             // Delete the file from storage
-            if (Storage::exists($documento->path)) {
-                Storage::delete($documento->path);
+            if (Storage::disk('local')->exists($documento->path)) {
+                Storage::disk('local')->delete($documento->path);
             }
 
             // Delete the database record
@@ -338,11 +372,10 @@ class DocumentoController extends Controller
     /**
      * Stream the specified document as a file download.
      *
-     * The file is stored on disk with a hashed filename that preserves the original
-     * extension (via hashName()), but $documento->name holds a user-defined title
-     * with no extension. The extension is extracted from the stored path and appended
-     * to the download filename if not already present, so the browser receives a
-     * correctly named file regardless of the operating system or browser in use.
+     * Il nome di scaricamento lo decide `Documento::nomeDiScaricamento()`, che porta con sé la
+     * spiegazione del perché serve. Fino alla beta.62 la regola era scritta qui dentro, e il
+     * gemello dell'area utente era rimasto senza: la seconda segnalazione dal forum è arrivata
+     * da lì. Una regola in un posto solo non si può correggere a metà.
      *
      * @param  \App\Models\Documento $documento
      * @return \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\RedirectResponse
@@ -359,19 +392,9 @@ class DocumentoController extends Controller
                 );
             }
 
-            // Il file è salvato con hashName() che preserva l'estensione originale
-            // (es. documenti/a1b2c3.pdf), ma $documento->name è il titolo senza estensione.
-            // Appendiamo l'estensione al nome solo se non è già presente.
-            $extension    = pathinfo($documento->path, PATHINFO_EXTENSION);
-            $downloadName = $documento->name;
-
-            if (!empty($extension) && !str_ends_with(strtolower($downloadName), '.' . strtolower($extension))) {
-                $downloadName .= '.' . $extension;
-            }
-
             $percorsoAssoluto = Storage::disk('local')->path($documento->path);
 
-            return response()->download($percorsoAssoluto, $downloadName);
+            return response()->download($percorsoAssoluto, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
 

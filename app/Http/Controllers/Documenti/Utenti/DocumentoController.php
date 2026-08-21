@@ -179,8 +179,8 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::exists($documento->path)) {
-                    Storage::delete($documento->path);
+                if (Storage::disk('local')->exists($documento->path)) {
+                    Storage::disk('local')->delete($documento->path);
                 }
 
                 $uploadedFile = $request->file('file');
@@ -232,8 +232,8 @@ class DocumentoController extends Controller
             DB::beginTransaction();
 
             // Delete the file from storage
-            if (Storage::exists($documento->path)) {
-                Storage::delete($documento->path);
+            if (Storage::disk('local')->exists($documento->path)) {
+                Storage::disk('local')->delete($documento->path);
             }
 
             // Delete the database record
@@ -265,6 +265,14 @@ class DocumentoController extends Controller
     /**
      * Download the specified document file.
      *
+     * Il nome di scaricamento lo decide `Documento::nomeDiScaricamento()`, non questo metodo: la
+     * stessa regola serve anche al controller dell'area amministratore, e quando viveva in due
+     * copie è stata corretta in una sola — è da lì che è nata la segnalazione dal forum che
+     * questo metodo chiude.
+     *
+     * Il disco è `local` **esplicito**, come nei `store()` di entrambe le aree: senza, la lettura
+     * andrebbe sul disco di default, che oggi coincide per configurazione ma non per garanzia.
+     *
      * @param  \App\Models\Documento $documento
      */
     public function download(Documento $documento)
@@ -272,14 +280,14 @@ class DocumentoController extends Controller
         Gate::authorize('view',$documento);
 
         try {
-            
-            if (!Storage::exists($documento->path)) {
+
+            if (!Storage::disk('local')->exists($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found'))
                 );
             }
 
-            return Storage::download($documento->path, $documento->name);
+            return Storage::disk('local')->download($documento->path, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
 

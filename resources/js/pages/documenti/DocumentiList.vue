@@ -16,10 +16,16 @@ import type { Flash } from '@/types/flash';
 import type { Documento, Stats } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
 
-defineProps<{
+const props = defineProps<{
   documenti: Documento[],
   stats: Stats,
-  meta: PaginationMeta
+  meta: PaginationMeta,
+  /**
+   * I filtri che il server ha applicato. Arrivano da `DocumentoController@index` e servono alla
+   * barra dei filtri per **dichiarare** su cosa è filtrato l'elenco: senza, chi arriva dal nome
+   * di una categoria vede una pagina filtrata che sembra completa.
+   */
+  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null }
 }>();
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -85,7 +91,7 @@ watch(flashMessage, (newValue) => {
           </div>
 
           <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4 mt-2">
-             <DataTable :columns="columns" :data="documenti" :meta="meta"/>
+             <DataTable :columns="columns" :data="documenti" :meta="meta" :filters="props.filters"/>
           </div>
         </section>
       </div>

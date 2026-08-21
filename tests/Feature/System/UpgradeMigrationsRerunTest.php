@@ -101,4 +101,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // su `hasTable`, quindi la categoria meno rischiosa — ma sta qui lo stesso, perché una
     // migrazione fuori da questo dataset smette di essere presidiata.
     '2026_08_19_100000_create_comuni_table',
+
+    // Aggiunta nella beta.62: `immobili.numero_vani` da `integer` a `decimal(5,2)`, per le visure
+    // catastali che riportano mezzi vani. È un `MODIFY` su tabella viva, quindi la stessa
+    // categoria a rischio di `add_pertinenza_di_to_immobili` e
+    // `rendi_facoltativi_descrizione_e_interno`. Idempotente per costruzione: ripetere un
+    // `change()` verso `decimal(5,2)` su una colonna che già lo è la riscrive identica. Il
+    // passaggio è un **allargamento**, quindi nessun valore esistente può essere troncato.
+    '2026_08_20_120000_vani_decimali_su_immobili',
 ]);

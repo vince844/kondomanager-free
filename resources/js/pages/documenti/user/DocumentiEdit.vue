@@ -11,8 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
-import axios from 'axios';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
 import { publishedConstants } from '@/lib/documenti/constants';
@@ -30,8 +28,6 @@ const props = defineProps<{
 const { generateRoute } = usePermission();
 
 const localCategories = ref(props.categories);
-const newCategoryName = ref('')
-const newCategoryDescription = ref('')
 const file = ref<File | null>(null)
 const progress = ref<number | null>(null)
 
@@ -43,27 +39,27 @@ const form = useForm({
   file: null as File | null,
 });
 
-const createCategory = async () => {
-
-  if (!newCategoryName.value) return
-
-  try {
-    const response = await axios.post(route(generateRoute('categorie.store')), {
-      name: newCategoryName.value,
-      description: newCategoryDescription.value
-    })
-
-    const newCat = response.data
-    localCategories.value.push(newCat)
-    form.category_id = newCat.id
-
-    newCategoryName.value = ''
-    newCategoryDescription.value = ''
-  } catch (error) {
-    console.error('Errore creazione categoria', error)
-  }
-
-}
+/*
+ * ⚠️ **Il pannello «crea nuova categoria» è stato tolto da questa pagina nella beta.62, e non
+ * per scelta di prodotto: non ha mai potuto funzionare.**
+ *
+ * Chiamava `route(generateRoute('categorie.store'))`, e `generateRoute` antepone il prefisso del
+ * ruolo di chi guarda. Questa schermata la vede **solo il condòmino**, quindi il nome risolto era
+ * `user.categorie.store` — che non esiste: le categorie dell'archivio si gestiscono dall'area
+ * amministratore, e il controller dell'area utente implementa soltanto `index` e `show`. Ziggy
+ * sollevava, l'eccezione finiva nel `catch` e diventava un `console.error`: il condòmino apriva il
+ * pannello, scriveva nome e descrizione, premeva «Salva» e **non succedeva niente**, senza un
+ * messaggio.
+ *
+ * Tolto invece che riparato, perché la regola del progetto è quella della beta.54: *quando una
+ * funzione non è applicabile a una schermata, la si rimuove da quella schermata* — lasciarla
+ * inerte insegna che i comandi del prodotto non sono affidabili. Il segnale che era di troppo era
+ * già in casa: la pagina di **creazione** di un documento, per lo stesso condòmino, il pannello
+ * non ce l'ha.
+ *
+ * Trovato dalla guardia `NomiDiRottaCheNonEsistonoTest` nella sua seconda regola — quella che sui
+ * file dell'area utente pretende che il nome esista col prefisso `user.`.
+ */
 
 function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement
@@ -259,49 +255,6 @@ const submit = () => {
                             class="flex-1"
                             @update:modelValue="form.clearErrors('category_id')" 
                           />
-                          <Sheet>
-                            <SheetTrigger as-child>
-                              <button type="button" class="p-2 rounded-md border hover:bg-muted transition">
-                                <Plus class="w-4 h-4 text-muted-foreground hover:text-primary" />
-                              </button>
-                            </SheetTrigger>
-                            <SheetContent side="right" class="p-6">
-                              <SheetHeader class="mt-4 p-0">
-                                <SheetTitle>Crea nuova categoria</SheetTitle>
-                                <SheetDescription>
-                                  Aggiungi una nuova categoria per i documenti.
-                                </SheetDescription>
-                              </SheetHeader>
-
-                              <form @submit.prevent="createCategory" class="mt-6 space-y-4">
-                                <div>
-                                  <Label for="new-category-name">Nome</Label>
-                                  <Input
-                                    id="new-category-name"
-                                    v-model="newCategoryName"
-                                    placeholder="Nome della categoria"
-                                    class="w-full mt-1"
-                                  />
-                                </div>
-
-                                <div>
-                                  <Label for="new-category-description">Descrizione</Label>
-                                  <Textarea
-                                    id="new-category-description"
-                                    v-model="newCategoryDescription"
-                                    placeholder="Descrizione della categoria"
-                                    class="w-full mt-1 min-h-[200px]"
-                                  />
-                                </div>
-
-                                <div class="flex justify-end">
-                                  <SheetClose as-child>
-                                    <Button type="submit">Salva</Button>
-                                  </SheetClose>
-                                </div>
-                              </form>
-                            </SheetContent>
-                          </Sheet>
                         </div>
 
                         <InputError :message="form.errors.category_id" />

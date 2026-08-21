@@ -44,12 +44,30 @@ const isOwnComment = props.commento.user_id === props.currentUserId;
 const canEdit = isOwnComment && hasPermission([Permission.EDIT_OWN_COMMENTS_SEGNALAZIONI]);
 const canDelete = isOwnComment && hasPermission([Permission.DELETE_OWN_COMMENTS_SEGNALAZIONI]);
 
-const authorName = props.commento.autore?.anagrafica?.nome
+/*
+ * ⚠️ **`computed` e non una costante, e le due righe vanno lette insieme.**
+ *
+ * Le traduzioni dei file PHP arrivano al browser in un pacchetto **caricato in modo asincrono**:
+ * una costante di modulo dentro `<script setup>` è valutata una volta sola all'avvio del
+ * componente, e può girare prima che quel pacchetto sia arrivato. `trans()` su una chiave non
+ * ancora caricata restituisce **la chiave stessa**, quindi il ramo di ripiego congelava a video
+ * la stringa tecnica `commenti.autore_sconosciuto` al posto di «Utente sconosciuto».
+ *
+ * Il secondo guasto era più subdolo del primo: `authorInitials` confrontava il valore
+ * **congelato** con una `trans()` **viva**. A traduzioni arrivate il confronto non combaciava
+ * più, e l'avatar mostrava «CO» — le prime due lettere di `commenti.autore_sconosciuto` — invece
+ * del «?» previsto. Lo stesso succedeva a chiunque cambiasse lingua a pagina aperta.
+ *
+ * È l'ultimo caso della bonifica della beta.60, che ne aveva chiusi diciannove e non aveva visto
+ * questo: la sua guardia ritaglia il valore di una costante fermandosi al primo a capo, e questa
+ * sta su tre righe. Il buco è documentato in `TraduzioniNonSiCongelanoTest`.
+ */
+const authorName = computed(() => props.commento.autore?.anagrafica?.nome
   ?? props.commento.autore?.name
-  ?? trans('commenti.autore_sconosciuto');
+  ?? trans('commenti.autore_sconosciuto'));
 
 const authorInitials = computed(() => {
-  const name = authorName.trim();
+  const name = authorName.value.trim();
   if (!name || name === trans('commenti.autore_sconosciuto')) return '?';
   const parts = name.split(/\s+/);
   if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();

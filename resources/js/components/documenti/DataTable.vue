@@ -20,7 +20,9 @@ const props = defineProps<{
     per_page: number,
     last_page: number,
     total: number
-  }
+  },
+  /** I filtri applicati dal server: servono alla barra per dichiararsi. Vedi `DataTableToolbar.vue`. */
+  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null }
 }>()
 
 const { generateRoute } = usePermission();
@@ -60,7 +62,7 @@ const table = useVueTable({
 
 <template>
     <div class="flex items-center">
-      <DataTableToolbar :table="table" />
+      <DataTableToolbar :table="table" :filters="props.filters" />
     </div>
   
   <div class="border rounded-md">
