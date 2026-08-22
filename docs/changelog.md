@@ -7,6 +7,58 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.70] - La Guida Che Mancava
+
+**Nessuna migrazione: il database non viene toccato. Nessun cambiamento di comportamento.**
+
+Cambia solo che una funzione che il programma offriva senza spiegare, ora è spiegata.
+
+### Cos'era il problema
+
+L'interruttore **«già versato»** su una voce di spesa apre una funzione intera — un elenco, una
+pagina, un modale — e cambia il risultato del riparto. L'unica spiegazione che esisteva era la riga
+di descrizione **sotto l'interruttore stesso**.
+
+Controllate tutte e diciannove le guide del programma: nessuna lo spiegava. La guida dei saldi lo
+nomina una volta parlando d'altro, la pagina del piano dei conti ha due guide che non lo citano, e
+la pagina «Già versato» non aveva **nessun** pannello di guida.
+
+*(Il buco l'ha trovato Vincenzo, leggendo la descrizione dell'interruttore e chiedendo se fosse
+spiegata da qualche parte.)*
+
+### La guida nuova, raggiungibile da tutti e due i punti
+
+Dal menu **«Guide»** nella pagina del piano dei conti, dove l'interruttore si accende, e dalla
+pagina **«Già versato»**, dove gli importi si registrano. È lo stesso pannello: chi arriva da una
+parte non ha visto l'altra.
+
+Spiega a cosa serve — *stai preventivando una spesa che i condòmini hanno già cominciato a pagare
+prima che questa contabilità esistesse* — e cosa **non** è: non è un saldo iniziale, che è la
+fotografia complessiva del dare e avere di un'unità.
+
+### E due comportamenti che nessuno poteva conoscere
+
+⚠️ **Su una voce divisa fra proprietario e inquilino, lo sconto vale per tutti e due.** Il
+versamento è registrato sull'**unità**, e viene tolto dal totale dell'unità **prima** che questo
+venga diviso fra i due ruoli. Se ha versato solo il proprietario, l'inquilino si trova la quota
+ridotta anche lui, in proporzione.
+
+Non è un errore di calcolo: è una conseguenza del fatto che il dato è per unità, ed era già una
+decisione presa e scritta nella documentazione tecnica. Mancava solo di dirla a chi la subisce.
+
+⚠️ **La quota non scende mai sotto zero.** Chi ha versato più della sua parte non ottiene un credito
+automatico: gli viene chiesto zero, e la differenza arriva come attività nell'Inbox con l'importo
+unità per unità. È denaro dei condòmini che sta da qualche parte, e va deciso cosa farne.
+
+### Più tre cose minori, tutte verificate sul codice
+
+- Spegnere l'interruttore **non nasconde** una voce su cui hai già registrato dei versamenti.
+- Un **capitolo** non può avere il già versato: il denaro si registra dove sta la spesa.
+- Il **preventivo resta pieno** — a cambiare è solo quanto viene chiesto adesso. È il motivo per cui
+  un piano rate può sommare meno del preventivo senza che ci sia niente di sbagliato.
+
+---
+
 ## [1.10.0-beta.69] - La Catena Delle Quattro Proporzioni
 
 **Nessuna migrazione: il database non viene toccato.**

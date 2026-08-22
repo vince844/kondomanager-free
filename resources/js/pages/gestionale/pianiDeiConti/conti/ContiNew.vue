@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import RipartoUsufruttoGuide from '@/components/guides/RipartoUsufruttoGuide.vue';
 import OperazioniContiGuide from '@/components/guides/OperazioniContiGuide.vue';
+import GiaVersatoGuide from '@/components/guides/GiaVersatoGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
 import ModalModificaConto from '@/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue'
 import AlberoDeiConti from '@/components/gestionale/pianiDeiConti/conti/AlberoDeiConti.vue'
@@ -67,15 +68,24 @@ const showModalRimuoviTabella   = ref(false)
 const tabellaDaModificare       = ref<TabellaAssociata | null>(null)
 const showGuideUsufrutto        = ref(false)
 const showGuideOperazioni       = ref(false)
+/**
+ * ⚠️ Aggiunta nella beta.70, su domanda di Vincenzo: «abbiamo spiegato nella guida a cosa serve
+ * questa opzione?». No — l'interruttore «già versato» apre una funzione intera (un elenco, una
+ * pagina, un modale) e cambia il risultato del riparto, e l'unica spiegazione era la riga sotto
+ * l'interruttore stesso.
+ */
+const showGuideGiaVersato      = ref(false)
 
 const textGuidesList = [
   { id: 'operazioni', title: 'Guida: Operazioni e Struttura' },
   { id: 'usufrutto', title: 'Guida: Ruoli e Usufrutto' },
+  { id: 'giaversato', title: 'Guida: Già versato' },
 ]
 
 const openGuide = (id: string) => {
   if (id === 'operazioni') showGuideOperazioni.value = true;
   if (id === 'usufrutto') showGuideUsufrutto.value = true;
+  if (id === 'giaversato') showGuideGiaVersato.value = true;
 }
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -556,5 +566,6 @@ const printRiparto = () => {
 
   <RipartoUsufruttoGuide v-model:open="showGuideUsufrutto" />
   <OperazioniContiGuide v-model:open="showGuideOperazioni" />
+  <GiaVersatoGuide v-model:open="showGuideGiaVersato" />
 
 </template>

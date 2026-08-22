@@ -4,6 +4,9 @@ import { Head, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import GiaVersatoGuide from '@/components/guides/GiaVersatoGuide.vue';
+import { Button } from '@/components/ui/button';
+import { BookOpen } from 'lucide-vue-next';
 import { Input } from '@/components/ui/input';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
@@ -29,6 +32,9 @@ const { euro } = useCurrencyFormatter({ fromCents: true });
 const { generatePath } = usePermission();
 
 const search = ref('');
+
+/** Il pannello della guida: l'interruttore si accende altrove, gli importi si registrano qui. */
+const mostraGuida = ref(false);
 
 const filtrate = computed(() => {
   const q = search.value.toLowerCase().trim();
@@ -81,7 +87,21 @@ const guide = [
         :guides="guide"
         :breadcrumbs="headerBreadcrumbs"
         :condominio="condominio"
-      />
+      >
+        <!--
+          ⚠️ La stessa guida che sta sulla pagina del piano dei conti, e non è una ripetizione:
+          l'interruttore si accende **là**, gli importi si registrano **qui**, e chi arriva da
+          questa parte non ha visto l'altra pagina. Un solo componente, montato in tutti e due i
+          punti in cui serve.
+        -->
+        <template #actions>
+          <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
+            <BookOpen class="h-4 w-4" /> Guida completa
+          </Button>
+        </template>
+      </PageHeaderGuide>
+
+      <GiaVersatoGuide v-model:open="mostraGuida" />
 
       <div class="w-full">
         <StrutturaLayout>
