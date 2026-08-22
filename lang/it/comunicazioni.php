@@ -15,6 +15,7 @@ return [
     'success_disapprove_communication'            => "La comunicazione è stata disapprovata con successo.",
     'error_approve_communication'                 => "Si è verificato un errore durante l'approvazione della comunicazione.",
     'error_notify_new_communication'              => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica.",
+    'error_notify_updated_communication'          => "La comunicazione è stata aggiornata, ma si è verificato un errore nell'invio della notifica.",
     'error_notify_approved_communication'         => "La comunicazione è stata approvata, ma si è verificato un errore nell'invio della notifica.",
     
     /* ------------------------------------------------------------------
@@ -110,6 +111,7 @@ return [
         'residents'         => 'Anagrafiche',
         'comments'          => 'Consenti commenti',
         'featured'          => 'Comunicazione in evidenza',
+        'notify_update'     => 'Avvisa via mail chi ha già ricevuto questa comunicazione',
         'private'           => 'Crea comunicazione come privata',
         'administrator'     => 'Amministratore',
         'none'              => 'Nessuna',
@@ -177,6 +179,7 @@ return [
         'priority'    => 'Seleziona il livello di priorità con cui questa comunicazione deve essere trattata. Le priorità possono influenzare la visibilità o l\'urgenza nella bacheca.',
         'comments'    => 'Quando viene selezionata questa opzione verranno abilitati i commenti per questa comunicazione',
         'featured'    => 'Le comunicazioni in evidenza sono evidenziate nella bacheca per attirare maggiore attenzione.',
+        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che la comunicazione è cambiata. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso alla platea la riceve comunque, perché per lui è nuova.",
         'private'     => 'Le comunicazioni private possono essere visualizzate solo dagli amministratori e da te.',
     ],
 

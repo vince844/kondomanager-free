@@ -58,6 +58,9 @@ return [
         'description' => 'Seleziona di seguito le notifiche via email che desideri ricevere',
         'empty' => 'Non ci sono notifiche email disponibili da selezionare.',
         'save' => 'Salva preferenze',
+        'enable_all' => 'Attiva tutte',
+        'disable_all' => 'Disattiva tutte',
+        'counter' => ':attive attive su :totali',
     ],
 
     'two_factor' => [
@@ -114,6 +117,10 @@ return [
             'label' => 'Comunicazione bacheca approvata',
             'description' => 'Ricevi una notifica quando viene approvata la comunicazione da te inviata',
         ],
+        'updated_communication' => [
+            'label' => 'Comunicazione bacheca aggiornata',
+            'description' => 'Ricevi una notifica quando una comunicazione che hai già ricevuto viene modificata',
+        ],
         'new_ticket' => [
             'label' => 'Nuova segnalazione guasto',
             'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
@@ -122,6 +129,10 @@ return [
             'label' => 'Segnalazione guasto approvata',
             'description' => 'Ricevi una notifica quando viene approvata la segnalazione guasto da te inviata',
         ],
+        'updated_ticket' => [
+            'label' => 'Segnalazione guasto aggiornata',
+            'description' => 'Ricevi una notifica quando una segnalazione guasto che segui viene modificata',
+        ],
         'new_archive_document' => [
             'label' => 'Nuovo documento in archivio',
             'description' => 'Ricevi una notifica quando viene pubblicato un nuovo documento in archivio',
@@ -129,6 +140,10 @@ return [
         'approved_archive_document' => [
             'label' => 'Documento in archivio approvato',
             'description' => 'Ricevi una notifica quando viene approvato un documento in archivio da te inviato',
+        ],
+        'updated_archive_document' => [
+            'label' => 'Documento in archivio aggiornato',
+            'description' => 'Ricevi una notifica quando un documento che hai già ricevuto viene modificato',
         ],
         'new_comment' => [
             'label' => 'Nuovo commento',

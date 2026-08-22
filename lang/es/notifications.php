@@ -181,4 +181,32 @@ return [
         'no_reply'            => 'Please do not reply to this email.',
         'auto_generated'      => 'This is an automatically generated email.',
     ],
+
+    // ─── Avisos de modificación (beta.64) ──────────────────────────────────────
+    'updated_communication' => [
+        'subject'   => 'Comunicación actualizada en el tablón',
+        'greeting'  => 'Hola :name',
+        'line_1'    => 'La comunicación ha sido actualizada por :user.',
+        'object'    => 'Asunto',
+        'priority'  => 'Prioridad',
+        'action'    => 'Ver comunicación',
+    ],
+
+    'updated_ticket' => [
+        'subject'   => 'Incidencia actualizada',
+        'greeting'  => 'Hola :name',
+        'line_1'    => 'La incidencia ha sido actualizada por :user.',
+        'object'    => 'Asunto',
+        'status'    => 'Estado',
+        'action'    => 'Ver incidencia',
+    ],
+
+    'updated_document' => [
+        'subject'     => 'Documento actualizado en el archivo',
+        'greeting'    => 'Hola :name',
+        'line_1'      => 'El documento ha sido actualizado por :user en el archivo de la comunidad.',
+        'title'       => 'Título',
+        'description' => 'Descripción',
+        'action'      => 'Ver documentos',
+    ],
 ];

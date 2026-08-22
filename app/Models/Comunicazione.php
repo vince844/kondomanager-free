@@ -13,6 +13,7 @@ class Comunicazione extends Model
     protected $table = 'comunicazioni';
 
     protected $fillable = [
+        'updated_by',
         'subject',
         'description',
         'created_by',
@@ -60,4 +61,16 @@ class Comunicazione extends Model
     {
        return $this->belongsTo(User::class, 'created_by');
     }
+
+    /**
+     * Chi ha modificato l'oggetto per ultimo. `null` finché non lo modifica nessuno.
+     *
+     * Aggiunta nella beta.64 insieme all'avviso di modifica: senza, quell'avviso era costretto a
+     * nominare il **creatore**, cioè a dire una cosa falsa su chi aveva fatto cosa.
+     */
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
 }

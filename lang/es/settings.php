@@ -58,6 +58,9 @@ return [
         'description' => 'Select below the email notifications you wish to receive',
         'empty' => 'There are no email notifications available to select.',
         'save' => 'Save Preferences',
+        'enable_all' => 'Activar todas',
+        'disable_all' => 'Desactivar todas',
+        'counter' => ':attive activas de :totali',
     ],
 
     'two_factor' => [
@@ -114,6 +117,10 @@ return [
             'label' => 'Noticeboard communication approved',
             'description' => 'Receive a notification when your communication is approved',
         ],
+        'updated_communication' => [
+            'label' => 'Comunicación del tablón actualizada',
+            'description' => 'Recibe una notificación cuando se modifica una comunicación que ya has recibido',
+        ],
         'new_ticket' => [
             'label' => 'New fault report',
             'description' => 'Receive a notification when a new fault report is created',
@@ -122,6 +129,10 @@ return [
             'label' => 'Fault report approved',
             'description' => 'Receive a notification when your fault report is approved',
         ],
+        'updated_ticket' => [
+            'label' => 'Incidencia actualizada',
+            'description' => 'Recibe una notificación cuando se modifica una incidencia que sigues',
+        ],
         'new_archive_document' => [
             'label' => 'New document in archive',
             'description' => 'Receive a notification when a new document is published in the archive',
@@ -129,6 +140,10 @@ return [
         'approved_archive_document' => [
             'label' => 'Archive document approved',
             'description' => 'Receive a notification when your archive document is approved',
+        ],
+        'updated_archive_document' => [
+            'label' => 'Documento del archivo actualizado',
+            'description' => 'Recibe una notificación cuando se modifica un documento que ya has recibido',
         ],
         'new_comment' => [
             'label' => 'New comment',

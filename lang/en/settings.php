@@ -58,6 +58,9 @@ return [
         'description' => 'Select below the email notifications you wish to receive',
         'empty' => 'There are no email notifications available to select.',
         'save' => 'Save Preferences',
+        'enable_all' => 'Enable all',
+        'disable_all' => 'Disable all',
+        'counter' => ':attive of :totali enabled',
     ],
 
     'two_factor' => [
@@ -114,6 +117,10 @@ return [
             'label' => 'Noticeboard communication approved',
             'description' => 'Receive a notification when your communication is approved',
         ],
+        'updated_communication' => [
+            'label' => 'Notice board communication updated',
+            'description' => 'Get a notification when a communication you already received is changed',
+        ],
         'new_ticket' => [
             'label' => 'New fault report',
             'description' => 'Receive a notification when a new fault report is created',
@@ -122,6 +129,10 @@ return [
             'label' => 'Fault report approved',
             'description' => 'Receive a notification when your fault report is approved',
         ],
+        'updated_ticket' => [
+            'label' => 'Maintenance ticket updated',
+            'description' => 'Get a notification when a ticket you follow is changed',
+        ],
         'new_archive_document' => [
             'label' => 'New document in archive',
             'description' => 'Receive a notification when a new document is published in the archive',
@@ -129,6 +140,10 @@ return [
         'approved_archive_document' => [
             'label' => 'Archive document approved',
             'description' => 'Receive a notification when your archive document is approved',
+        ],
+        'updated_archive_document' => [
+            'label' => 'Archive document updated',
+            'description' => 'Get a notification when a document you already received is changed',
         ],
         'new_comment' => [
             'label' => 'New comment',

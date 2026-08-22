@@ -6,6 +6,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
@@ -98,6 +99,8 @@ const form = useForm({
   anagrafiche: (props.documento?.anagrafiche ?? []).map((anagrafica: Anagrafica) => anagrafica.id),
   category_id: props.documento?.categoria?.id ?? null, 
   file: null as File | null,
+  // Parte sempre spenta — vedi la nota gemella in `comunicazioni/ComunicazioniEdit.vue`.
+  avvisa_destinatari: false,
 });
 
 // Validazione file
@@ -584,6 +587,39 @@ const submit = (): void => {
                             :disabled="form.condomini_ids.length === 0"
                         />
                         <InputError :message="form.errors.anagrafiche" />
+                    </div>
+
+                    <!--
+                      La casella sta **in fondo alla scheda dei destinatari**, e non fra le opzioni
+                      del documento, perché è di questa scheda che parla: decide chi riceve una mail
+                      fra quelli elencati qui sopra. Non è una proprietà del documento — vedi la
+                      nota per esteso in `comunicazioni/ComunicazioniEdit.vue`.
+                    -->
+                    <div class="sm:col-span-6">
+                        <div class="flex items-center justify-between p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <Checkbox
+                                    id="avvisa_destinatari"
+                                    :checked="form.avvisa_destinatari"
+                                    v-model="form.avvisa_destinatari"
+                                    @update:checked="(val: boolean) => form.avvisa_destinatari = val"
+                                />
+                                <Label for="avvisa_destinatari" class="cursor-pointer font-medium text-sm text-amber-900 dark:text-amber-200">
+                                    {{ trans('documenti.label.notify_update') }}
+                                </Label>
+                            </div>
+                            <HoverCard>
+                                <HoverCardTrigger as-child>
+                                    <button type="button" class="text-amber-500 hover:text-amber-700 outline-none">
+                                        <Info class="w-4 h-4" />
+                                    </button>
+                                </HoverCardTrigger>
+                                <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                    <h4 class="text-sm font-bold mb-2">{{ trans('documenti.label.notify_update') }}</h4>
+                                    <p class="text-xs text-slate-500 leading-relaxed">{{ trans('documenti.tooltip.notify_update') }}</p>
+                                </HoverCardContent>
+                            </HoverCard>
+                        </div>
                     </div>
 
                 </div>

@@ -75,7 +75,11 @@ const form = useForm({
     can_comment: !!props.comunicazione?.can_comment,
     is_featured: !!props.comunicazione?.is_featured,
     is_published: props.comunicazione?.is_published !== undefined ? Boolean(props.comunicazione.is_published) : true,
-    anagrafiche: (props.comunicazione?.anagrafiche ?? []).map(anagrafica => anagrafica.id)
+    anagrafiche: (props.comunicazione?.anagrafiche ?? []).map(anagrafica => anagrafica.id),
+    // ⚠️ Parte **sempre spenta**, a ogni apertura del modulo. Un avviso a tutto il condominio
+    // non deve essere il comportamento predefinito di un salvataggio: chi corregge un refuso
+    // non se lo aspetta, e se ne accorge solo quando gli rispondono in venti.
+    avvisa_destinatari: false
 });
 
 onMounted(() => {
@@ -372,6 +376,43 @@ const submit = () => {
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                                         <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.featured') }}</h4>
                                         <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.featured') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+
+                        <!--
+                          ⚠️ **Questa casella non è una proprietà della comunicazione: è un'azione
+                          che si compie salvando.** Per questo sta su una riga sua, con un colore
+                          diverso dalle due qui sopra e il testo che dice cosa succede — non
+                          «notifiche sì/no», ma «a chi arriva una mail se salvo adesso».
+
+                          Chi viene **aggiunto** alla platea in questa modifica riceve comunque la
+                          comunicazione, spuntata o no: per lui è nuova, e non avvisarlo era il
+                          difetto corretto nella beta.64. Qui si decide solo per chi c'era già.
+                        -->
+                        <div class="sm:col-span-6">
+                            <div class="flex items-center justify-between p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <Checkbox
+                                        id="avvisa_destinatari"
+                                        :checked="form.avvisa_destinatari"
+                                        v-model="form.avvisa_destinatari"
+                                        @update:checked="(val: boolean) => form.avvisa_destinatari = val"
+                                    />
+                                    <Label for="avvisa_destinatari" class="cursor-pointer font-medium text-sm text-amber-900 dark:text-amber-200">
+                                        {{ trans('comunicazioni.label.notify_update') }}
+                                    </Label>
+                                </div>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-amber-500 hover:text-amber-700 outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.notify_update') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.notify_update') }}</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>

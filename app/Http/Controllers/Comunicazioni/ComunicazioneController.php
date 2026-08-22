@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Comunicazioni;
 
 use App\Events\Comunicazioni\NotifyUserOfCreatedComunicazione;
+use App\Events\Notifiche\DestinatariDaAvvisare;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Http\Controllers\Controller;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
@@ -17,6 +19,7 @@ use App\Models\Comunicazione;
 use App\Models\Condominio;
 use App\Services\ComunicazioneService;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\RedirectResponse;
@@ -241,21 +244,29 @@ class ComunicazioneController extends Controller
 
         $validated = $request->validated(); 
 
+        /*
+         * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot**, ed è tutto il senso della
+         * correzione della beta.64. Fino a qui la platea si fissava alla creazione: chi veniva
+         * aggiunto in modifica non riceveva **niente**, né allora né mai. Non era «non lo
+         * avvisiamo di una modifica» — a lui la comunicazione non era mai arrivata, e la vedeva
+         * solo entrando a guardare.
+         */
+        $risolutore = app(DestinatariNotifica::class);
+        $destinatariPrima = $risolutore->perModello($comunicazione);
+
         try {
 
             DB::beginTransaction();
 
-            $comunicazione->update($validated);
+            // ⚠️ `updated_by` non arriva dal modulo: lo mette il server. Un campo che decide
+            // «chi ha fatto questo» non si accetta mai da chi manda la richiesta.
+            $comunicazione->update($validated + ['updated_by' => Auth::id()]);
 
             $comunicazione->condomini()->sync($validated['condomini_ids'] ?? []);
 
             $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
     
             DB::commit();
-
-            return to_route('admin.comunicazioni.index')->with(
-                $this->flashSuccess(__('comunicazioni.success_update_communication'))
-            );
 
         } catch (\Exception $e) {
 
@@ -267,6 +278,61 @@ class ComunicazioneController extends Controller
                 $this->flashError(__('comunicazioni.error_update_communication'))
             );
 
+        }
+
+        /*
+         * Gli avvisi stanno **fuori dalla transazione**, come già fa `store()`: una mail che non
+         * parte non deve far tornare indietro una modifica che il database ha accettato.
+         */
+        try {
+
+            $this->avvisaDopoLaModifica($comunicazione, $destinatariPrima, $validated);
+
+        } catch (\Exception $emailException) {
+
+            Log::error('Error notifying update for comunicazione ID ' . $comunicazione->id . ': ' . $emailException->getMessage());
+
+            return to_route('admin.comunicazioni.index')->with(
+                $this->flashWarning(__('comunicazioni.error_notify_updated_communication'))
+            );
+
+        }
+
+        return to_route('admin.comunicazioni.index')->with(
+            $this->flashSuccess(__('comunicazioni.success_update_communication'))
+        );
+    }
+
+    /**
+     * Chi va avvisato dopo una modifica, e con quale dei due avvisi.
+     *
+     * - **I nuovi arrivati** ricevono l'avviso di *creazione*, sempre e senza chiedere: per loro
+     *   l'oggetto è nuovo davvero, e non avvisarli è il difetto che questa beta corregge.
+     * - **Chi c'era già** riceve l'avviso di *modifica*, e **solo se l'amministratore lo chiede**.
+     *   Mandare una mail a tutto il condominio perché si è corretto un refuso sarebbe la prima
+     *   lamentela: l'ultima parola resta a chi firma la comunicazione.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
+     * @param  array<string, mixed>  $validated
+     */
+    private function avvisaDopoLaModifica(Comunicazione $comunicazione, $destinatariPrima, array $validated): void
+    {
+        $destinatariDopo = app(DestinatariNotifica::class)->perModello($comunicazione->fresh());
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+
+        if ($nuovi !== []) {
+            DestinatariDaAvvisare::dispatch($comunicazione, $nuovi, 'nuovo');
+        }
+
+        if (! ($validated['avvisa_destinatari'] ?? false)) {
+            return;
+        }
+
+        $giaDestinatari = $destinatariDopo->intersect($destinatariPrima)->values()->all();
+
+        if ($giaDestinatari !== []) {
+            DestinatariDaAvvisare::dispatch($comunicazione, $giaDestinatari, 'aggiornato');
         }
     }
 

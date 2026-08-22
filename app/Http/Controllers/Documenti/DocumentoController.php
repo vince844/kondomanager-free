@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Documenti;
 
 use App\Events\Documenti\NotifyUserOfCreatedDocumento;
+use App\Events\Notifiche\DestinatariDaAvvisare;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
@@ -22,6 +24,7 @@ use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
@@ -267,6 +270,13 @@ class DocumentoController extends Controller
 
         $validated = $request->validated();
 
+        /*
+         * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot** — vedi la nota gemella in
+         * `Comunicazioni\ComunicazioneController::update()`, dove sta il perché per esteso.
+         */
+        $risolutore = app(DestinatariNotifica::class);
+        $destinatariPrima = $risolutore->perModello($documento);
+
         try {
 
             DB::beginTransaction();
@@ -294,6 +304,8 @@ class DocumentoController extends Controller
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
                 'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                // ⚠️ Lo mette il server, non il modulo: vedi la nota gemella negli altri due.
+                'updated_by'   => Auth::id(),
                 'category_id'  => $validated['category_id'] ?? $documento->category_id,
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
                 'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
@@ -316,9 +328,54 @@ class DocumentoController extends Controller
             );
         }
 
+        try {
+
+            $this->avvisaDopoLaModifica($documento, $destinatariPrima, $validated);
+
+        } catch (\Exception $emailException) {
+
+            Log::error('Error notifying update for documento ID ' . $documento->id . ': ' . $emailException->getMessage());
+
+            return to_route('admin.documenti.index')->with(
+                $this->flashWarning(__('documenti.error_notify_updated_document'))
+            );
+
+        }
+
         return to_route('admin.documenti.index')->with(
             $this->flashSuccess(__('documenti.success_update_document'))
         );
+    }
+
+    /**
+     * Chi va avvisato dopo una modifica, e con quale dei due avvisi.
+     *
+     * Gemella di `Comunicazioni\ComunicazioneController::avvisaDopoLaModifica()`, dove sta la
+     * spiegazione per esteso: i nuovi arrivati ricevono l'avviso di *creazione* sempre, chi c'era
+     * già riceve quello di *modifica* solo se l'amministratore spunta la casella.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
+     * @param  array<string, mixed>  $validated
+     */
+    private function avvisaDopoLaModifica(Documento $documento, $destinatariPrima, array $validated): void
+    {
+        $destinatariDopo = app(DestinatariNotifica::class)->perModello($documento->fresh());
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+
+        if ($nuovi !== []) {
+            DestinatariDaAvvisare::dispatch($documento, $nuovi, 'nuovo');
+        }
+
+        if (! ($validated['avvisa_destinatari'] ?? false)) {
+            return;
+        }
+
+        $giaDestinatari = $destinatariDopo->intersect($destinatariPrima)->values()->all();
+
+        if ($giaDestinatari !== []) {
+            DestinatariDaAvvisare::dispatch($documento, $giaDestinatari, 'aggiornato');
+        }
     }
 
     /**

@@ -109,4 +109,16 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // `change()` verso `decimal(5,2)` su una colonna che già lo è la riscrive identica. Il
     // passaggio è un **allargamento**, quindi nessun valore esistente può essere troncato.
     '2026_08_20_120000_vani_decimali_su_immobili',
+
+    // Aggiunte nella beta.64. La prima è la categoria a rischio più alto del dataset — tre `ALTER`
+    // con chiave esterna su tabelle popolate — e su MySQL colonna e vincolo sono due statement
+    // distinti: un'interruzione a metà lascia la colonna senza la chiave, ed è lo stato che le due
+    // guardie separate devono saper riconoscere.
+    '2026_08_22_090000_add_updated_by_to_comunicazioni_segnalazioni_documenti',
+    // La seconda tocca **dati** e non struttura — inserisce le righe delle tre preferenze nuove
+    // ereditando lo stato della sorella «nuova» — e proprio per questo vale la pena presidiarla:
+    // uno schema change rieseguito male fallisce rumorosamente, un inserimento no. La sua
+    // idempotenza sta nell'esclusione degli utenti che la riga ce l'hanno già: al secondo giro non
+    // trova nessuno, e soprattutto non riaccende quello che qualcuno avesse spento nel frattempo.
+    '2026_08_22_090100_seed_preferenze_notifica_di_modifica',
 ]);

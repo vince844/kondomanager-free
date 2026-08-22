@@ -17,6 +17,7 @@ return [
     'error_approve_document'         => 'Si è verificato un errore durante l\'approvazione del documento.',
     'error_notify_new_document'      => 'Il documento è stato creato, ma si è verificato un errore nell\'invio della notifica.',
     'error_notify_approved_document' => 'Il documento è stato approvato, ma si è verificato un errore nell\'invio della notifica.',
+    'error_notify_updated_document' => "Il documento è stato aggiornato, ma si è verificato un errore nell'invio della notifica.",
     'category_has_documents'         => 'Questa categoria contiene dei documenti. Spostali o eliminali prima di eliminare la categoria.',
     'success_delete_category'        => 'La categoria documenti è stata eliminata con successo.',
     'error_delete_category'          => 'Si è verificato un errore durante l\'eliminazione della categoria documento.',
@@ -104,6 +105,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avvisa via mail chi ha già ricevuto questo documento",
         'name'                          => 'Nome documento',
         'description'                   => 'Descrizione documento',
         'category'                      => 'Categoria',
@@ -215,6 +217,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che il documento è cambiato. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso lo riceve comunque, perché per lui è nuovo.",
         'visibility' => 'Se impostata su privata, solo gli amministratori potranno visualizzare il documento.',
         'category'   => 'Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.',
     ],

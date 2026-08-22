@@ -199,3 +199,86 @@ it('le due porte leggono il disco `local`, non quello di default', function () {
         ->assertOk()
         ->assertDownload('Verbale assemblea 2026.pdf');
 });
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────────
+ * La terza segnalazione: un carattere che in un nome di file non ci può stare
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * *«Entro in modifica del documento, cambio il titolo e salvo. Riprovo a scaricarlo e ottengo
+ * l'errore generico "Si è verificato un errore durante il download del documento". Ripristino il
+ * titolo di prima e il download torna a funzionare.»* — e poi, avendolo capito da sé: *«Se nel nome
+ * documento utilizzo un carattere che non è ammesso nel nome di un file (nel mio caso il "/") il
+ * download di quel documento fallisce.»*
+ *
+ * La diagnosi dell'amministratore è esatta. `Documento::nomeDiScaricamento()` restituiva il titolo
+ * così com'era, e `HeaderUtils::makeDisposition()` di Symfony **solleva un'eccezione** se il nome
+ * contiene `/` o `\`: *«The filename and the fallback cannot contain the "/" and "\" characters»*.
+ * Laravel ripulisce il solo *fallback* da accenti e da `%` (`ResponseFactory::fallbackName()`), ma
+ * le barre non le tocca — e comunque il controllo di Symfony guarda **tutti e due** i nomi.
+ *
+ * ⚠️ **Il titolo non si può vietare in ingresso**, ed è il punto che decide la forma della
+ * correzione. `Verbale 12/2026` è un titolo giusto: in Italia i verbali d'assemblea si numerano
+ * così. Il titolo è un dato dell'archivio; il nome del file è un artefatto che se ne ricava. A
+ * doversi adattare è il secondo.
+ */
+
+it('il titolo con una barra non fa più fallire il download, da nessuna delle due porte', function () {
+    // ⚠️ È il difetto: prima della correzione qui arrivava un 500 e a video l'errore generico.
+    $documento = documentoDaScaricare($this->condominio, $this->admin, 'Verbale 12/2026');
+    $condomino = condominoDocumenti($this->condominio);
+
+    $this->actingAs($this->admin)
+        ->get(route('admin.documenti.download', ['documento' => $documento->id]))
+        ->assertOk()
+        ->assertDownload('Verbale 12-2026.pdf');
+
+    $this->actingAs($condomino)
+        ->get(route('user.documenti.download', ['documento' => $documento->id]))
+        ->assertOk()
+        ->assertDownload('Verbale 12-2026.pdf');
+});
+
+it('la barra rovesciata vale come quella dritta', function () {
+    // Symfony le rifiuta tutte e due nella stessa riga. Chi arriva da Windows batte questa.
+    $documento = documentoDaScaricare($this->condominio, $this->admin, 'Verbale 12\\2026');
+
+    $this->actingAs($this->admin)
+        ->get(route('admin.documenti.download', ['documento' => $documento->id]))
+        ->assertOk()
+        ->assertDownload('Verbale 12-2026.pdf');
+});
+
+it("il titolo in archivio non viene toccato: a cambiare è solo il nome del file", function () {
+    // ⚠️ La prova che la correzione è dove deve essere. Se avessimo ripulito il titolo al
+    // salvataggio, l'amministratore si vedrebbe riscrivere `Verbale 12/2026` in `Verbale 12-2026`
+    // in elenco, nella ricerca e nelle notifiche — cioè gli avremmo corretto un dato giusto.
+    $documento = documentoDaScaricare($this->condominio, $this->admin, 'Verbale 12/2026');
+
+    $this->actingAs($this->admin)
+        ->get(route('admin.documenti.download', ['documento' => $documento->id]))
+        ->assertOk();
+
+    expect($documento->fresh()->name)->toBe('Verbale 12/2026');
+});
+
+it('gli altri caratteri che un nome di file non accetta si raddrizzano insieme', function (string $titolo, string $atteso) {
+    // ⚠️ **Due gravità diverse, una correzione sola.** `/` e `\` fanno rispondere 500 al server —
+    // è il difetto segnalato. Gli altri (`: * ? " < > |`) il server li lascia passare, ma su
+    // Windows il file **non si salva**: l'utente vede il download partire e finire nel nulla.
+    // Poiché la segnalazione è arrivata nella forma della classe — *«un carattere che non è
+    // ammesso nel nome di un file»* — la classe si chiude tutta, non solo il caso che gridava.
+    $documento = documentoDaScaricare($this->condominio, $this->admin, $titolo);
+
+    $this->actingAs($this->admin)
+        ->get(route('admin.documenti.download', ['documento' => $documento->id]))
+        ->assertOk()
+        ->assertDownload($atteso);
+})->with([
+    'due punti'          => ['Assemblea: convocazione', 'Assemblea- convocazione.pdf'],
+    'asterisco'          => ['Nota *urgente*', 'Nota -urgente-.pdf'],
+    'punto interrogativo' => ['Che fare?', 'Che fare-.pdf'],
+    'virgolette'         => ['Verbale "definitivo"', 'Verbale -definitivo-.pdf'],
+    'minore e maggiore'  => ['Delibera <bozza>', 'Delibera -bozza-.pdf'],
+    'barra verticale'    => ['Spese | 2026', 'Spese - 2026.pdf'],
+]);

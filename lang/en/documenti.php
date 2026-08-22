@@ -17,6 +17,7 @@ return [
     'error_approve_document'         => 'An error occurred while approving the document.',
     'error_notify_new_document'      => 'The document was created, but an error occurred sending the notification.',
     'error_notify_approved_document' => 'The document was approved, but an error occurred sending the notification.',
+    'error_notify_updated_document' => "The document was updated, but an error occurred while sending the notification.",
     'category_has_documents'         => 'This category contains documents. Move or delete them before deleting the category.',
     'success_delete_category'        => 'The document category was deleted successfully.',
     'error_delete_category'          => 'An error occurred while deleting the document category.',
@@ -104,6 +105,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Email the people who already received this document",
         'name'                          => 'Document name',
         'description'                   => 'Document description',
         'category'                      => 'Category',
@@ -193,6 +195,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Sends an email to those who were already recipients, telling them the document has changed. Leave it off if you are fixing a typo: anyone added now receives it anyway, because for them it is new.",
         'visibility' => 'If set to private, only administrators will be able to view the document.',
         'category'   => 'Select a category to better organize documents, or create a new one.',
     ],

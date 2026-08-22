@@ -29,6 +29,9 @@ class UpdateDocumentoRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Solo in modifica: la casella «avvisa i destinatari». In creazione l'avviso parte
+            // sempre, quindi il campo non arriva e `nullable` lo lascia passare.
+            'avvisa_destinatari' => ['nullable', 'boolean'],
             'name'            => ['sometimes', 'required', 'string'],
             'description'     => ['sometimes', 'nullable', 'string'],
             'created_by'      => ['sometimes', 'required', 'exists:users,id'],

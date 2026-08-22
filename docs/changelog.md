@@ -7,6 +7,114 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.64] - Chi Arrivava Dopo
+
+⚠️ **Questa versione tocca il database:** due migrazioni. La prima registra **chi modifica** una
+comunicazione, una segnalazione o un documento — finora si sapeva solo chi li aveva creati. La
+seconda crea le tre preferenze di notifica nuove per gli utenti che già esistono, dando a ciascuna
+lo stato della sua sorella «nuova»: chi riceve le comunicazioni nuove riceverà anche gli
+aggiornamenti, **chi le aveva spente resta spento**.
+
+Tre segnalazioni dal forum. Una era una domanda a cui rispondere e non un difetto; le altre due
+erano più grandi di come sono arrivate.
+
+### Chi veniva aggiunto a una comunicazione non la riceveva. Mai.
+
+*«La notifica viene trasmessa soltanto per le nuove comunicazioni. Nel caso di modifica non viene
+processata. Proporrei di processare questo invio anche in caso di modifica.»*
+
+L'osservazione era esatta, ma sotto c'erano **due cose diverse**.
+
+La prima nessuno l'aveva segnalata, ed è la più seria. I destinatari si fissavano **al momento della
+creazione**. Se poi si entrava in modifica e si aggiungeva un condominio o un'anagrafica, quelle
+persone non ricevevano **niente** — né allora né mai. La comunicazione esisteva, e loro la vedevano
+solo se entravano a guardare. Non è «non le avvisiamo di una modifica»: a loro **non era mai
+arrivata**.
+
+Ora chi entra nella platea riceve la comunicazione, e la riceve come **nuova**, perché per lui lo è.
+Vale per le comunicazioni in bacheca, per le segnalazioni guasto e per i documenti d'archivio.
+
+⚠️ **Per le segnalazioni la forma è diversa**, ed è giusto saperlo: la loro platea non è un elenco
+scelto, è **il condominio**. Il caso in cui cambia è spostare la segnalazione su un altro
+condominio, e da quel momento riguarda persone che non ne sapevano niente. La lista di anagrafiche
+che pure si può compilare **non decide chi riceve la notifica**, e non è stata resa tale: avrebbe
+mandato mail a gente a cui la creazione non le manda mai.
+
+### E poi c'è la modifica vera e propria, con una casella
+
+Avvisare a **ogni** salvataggio avrebbe voluto dire mandare una mail a tutto il condominio perché si
+è corretta una virgola. In modifica c'è quindi una casella — **spenta ogni volta che si apre il
+modulo** — che manda un avviso a chi la comunicazione l'aveva già ricevuta. L'ultima parola resta a
+chi firma.
+
+Sono due avvisi diversi e non lo stesso con parole diverse: dire «nuova comunicazione» a chi l'ha
+già letta sarebbe falso, e alla seconda volta smetterebbe di aprirle.
+
+### Tre interruttori nuovi nelle preferenze, e due pulsanti
+
+Chi riceve deve poter scegliere. Le notifiche di **modifica** hanno quindi una preferenza propria,
+separata da quella delle cose nuove: si può continuare a essere avvisati delle comunicazioni nuove e
+non di ogni correzione. Sono tre — bacheca, segnalazioni, archivio — e le vedono tutti i ruoli che
+già vedevano le corrispondenti «nuove», condòmini compresi.
+
+Con quattordici interruttori in pagina, e altri che arriveranno, sopra l'elenco ci sono ora
+**«Attiva tutte»** e **«Disattiva tutte»**, con accanto il conteggio di quante sono accese. Non
+salvano: cambiano la pagina, e il salvataggio resta il pulsante di sempre.
+
+### L'avviso adesso dice chi ha modificato davvero
+
+Le tabelle di comunicazioni, segnalazioni e documenti registravano solo **chi aveva creato**. Un
+avviso di modifica che nominasse quella persona direbbe una cosa falsa su chi ha fatto cosa, in una
+mail che arriva a tutto il condominio.
+
+Ora c'è la colonna, e l'avviso scrive **«è stata aggiornata da …»** con il nome giusto. Serve anche
+fuori dalla mail: in uno studio con più persone, *«chi ha cambiato questa comunicazione dopo che era
+stata pubblicata?»* è una domanda che prima o poi arriva, e finora non aveva risposta da nessuna
+parte — nemmeno nel registro tecnico.
+
+### Il documento non si scarica più se il titolo contiene una barra
+
+*«Entro in modifica, cambio il nome del documento e salvo. Riprovo a scaricarlo e ottengo l'errore
+generico. Ripristino il nome di prima e funziona.»* — e poi, avendolo capito da sé: *«Se nel nome
+uso un carattere che non è ammesso in un nome di file, nel mio caso il "/", il download fallisce.»*
+
+La diagnosi era esatta. Il nome del file scaricato si ricavava dal titolo così com'era, e una barra
+in un nome di file non ci può stare: il download si interrompeva prima di cominciare.
+
+⚠️ **Il titolo non è stato vietato, ed è la parte che conta.** `Verbale 12/2026` è un titolo giusto:
+in Italia i verbali d'assemblea si numerano così. A cambiare è solo il nome del file, che diventa
+`Verbale 12-2026.pdf`; in archivio il titolo resta quello che hai scritto, in elenco, nella ricerca
+e nelle notifiche.
+
+Corretti insieme anche gli altri caratteri che un nome di file non accetta — `: * ? " < > |` — che
+non facevano fallire il download ma **impedivano di salvare il file su Windows**: partiva e finiva
+nel nulla.
+
+### Comproprietari: una domanda a cui abbiamo risposto, non un difetto
+
+*«Posso assegnare un'unità a più proprietari con le loro quote, ma poi tutto viene gestito per
+proprietario. Il trucco è mettere il 100% a uno solo e zero agli altri, ma così l'anagrafica è
+sbagliata.»*
+
+Ha ragione, e il trucco è esattamente quello che non va fatto: quel dato serve anche per il registro
+di anagrafe e per le convocazioni. La risposta è una funzione già progettata — **un peso contabile
+separato dalla quota anagrafica**, più un interruttore per decidere chi compare nei riparti — e
+arriva in una versione successiva. Non è stata improvvisata qui.
+
+### Sotto il cofano
+
+- **La stessa forma si ripeteva da tre versioni.** Il changelog registra già due difetti identici —
+  il riparto manuale che *«arrivava dal form solo alla creazione»* e il controllo di capienza del
+  conto *«collegato solo in creazione»* — e questa era la terza. Ora una prova automatica pretende
+  che chi avvisa qualcuno alla creazione **abbia deciso** cosa fare alla modifica: o lo fa, o
+  dichiara per iscritto perché no. Non impone la simmetria, impone la scelta.
+- **Due prove nuove sulle traduzioni e sulle stampe**: una controlla che ogni tipo di notifica abbia
+  etichetta e descrizione in tutte e quattro le lingue — con tre tipi nuovi erano ventiquattro voci
+  scritte a mano, e una dimenticata mostrava l'inglese in mezzo a una pagina italiana senza che
+  nessun errore lo segnalasse.
+
+---
+
 ## [1.10.0-beta.63] - Il Totale Tornava Sempre
 
 **Nessuna migrazione: il database non viene toccato.**

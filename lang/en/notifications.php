@@ -181,4 +181,32 @@ return [
         'no_reply'            => 'Please do not reply to this email.',
         'auto_generated'      => 'This is an automatically generated email.',
     ],
+
+    // ─── Update notices (beta.64) ──────────────────────────────────────────────
+    'updated_communication' => [
+        'subject'   => 'Notice board communication updated',
+        'greeting'  => 'Hello :name',
+        'line_1'    => 'The communication was updated by :user.',
+        'object'    => 'Subject',
+        'priority'  => 'Priority',
+        'action'    => 'View communication',
+    ],
+
+    'updated_ticket' => [
+        'subject'   => 'Maintenance ticket updated',
+        'greeting'  => 'Hello :name',
+        'line_1'    => 'The ticket was updated by :user.',
+        'object'    => 'Subject',
+        'status'    => 'Status',
+        'action'    => 'View ticket',
+    ],
+
+    'updated_document' => [
+        'subject'     => 'Archive document updated',
+        'greeting'    => 'Hello :name',
+        'line_1'      => "The document was updated by :user in the building's archive.",
+        'title'       => 'Title',
+        'description' => 'Description',
+        'action'      => 'View documents',
+    ],
 ];
