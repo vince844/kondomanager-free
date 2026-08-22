@@ -7,6 +7,59 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.68] - La Metà Che Spariva Salvando
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Una voce di spesa divisa fra due tabelle millesimali perdeva la seconda ogni volta che si apriva la
+sua scheda e si salvava.
+
+### Il caso non è esotico, è quello di scuola
+
+L'**art. 1126 c.c.** divide la spesa del lastrico solare in due: **un terzo** a chi ne ha l'uso
+esclusivo, **due terzi** a tutti gli altri. In KondoManager si fa collegando due tabelle millesimali
+alla stessa voce, con i loro pesi. Lo stesso vale per l'art. 1124 sulle scale e per l'ascensore.
+
+### Cosa succedeva
+
+La scheda di modifica di una voce conosce **una tabella sola**: legge la prima e manda quella. Al
+salvataggio il programma cancellava **tutte** le altre associazioni e le loro ripartizioni.
+
+Bastava aprire la scheda per correggere un importo, o il nome, e la ripartizione si dimezzava. Senza
+chiedere niente e senza dire niente.
+
+    tabelle collegate prima : 2   (33,33 + 66,67)
+    tabelle collegate dopo  : 1   (33,33)
+
+⚠️ **Il danno non era un addebito sbagliato, e il merito è della beta.63.** Con i coefficienti che
+dichiarano solo una parte della spesa, il riparto registra il resto come **scoperto** — una riga
+visibile, con la sua causale. Quindi nessuno ha pagato la quota di un altro in silenzio: quello che
+si perdeva era il dato, e il lavoro per ricostruirlo.
+
+### Ora il salvataggio non le tocca, e la scheda lo dice
+
+Su una voce ripartita su più tabelle la scelta della tabella **non compare più** — mostrarne una su
+due sarebbe peggio, perché darebbe da leggere una ripartizione che non è quella vera. Al suo posto
+c'è scritto su quante tabelle è divisa la voce, che nome, importo e note si modificano lo stesso, e
+che la ripartizione si cambia dalla sezione delle tabelle collegate.
+
+⚠️ **Perché la correzione si ferma qui.** Insegnare a quella scheda a gestire più tabelle è una
+schermata nuova, cioè una funzione, e va nella 1.11. Quello che non poteva restare nella 1.10 è che
+una schermata **distruggesse un dato che non sa nemmeno mostrare**.
+
+È lo stesso principio già scritto nel programma per la trasformazione di una voce in capitolo, che
+chiede una conferma esplicita prima di eliminare le tabelle collegate: *mai un'eliminazione
+silenziosa dedotta da un salvataggio*. Là era già applicato, qui no.
+
+### Sotto il cofano
+
+Cinque prove nuove, di cui **tre sono controprove**: che l'importo e il nome si salvino lo stesso —
+una guardia che si soddisfacesse rifiutando il salvataggio sarebbe peggio del difetto —, che una
+voce con una tabella sola continui a comportarsi esattamente come prima, e che lo scenario provato
+sia davvero quello a due tabelle e non uno che nel frattempo è cambiato.
+
+---
+
 ## [1.10.0-beta.67] - Il Credito Che Cresceva Mentre Lo Spendevi
 
 **Nessuna migrazione: il database non viene toccato.**

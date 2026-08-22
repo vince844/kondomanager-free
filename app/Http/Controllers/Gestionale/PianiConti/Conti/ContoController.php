@@ -206,6 +206,16 @@ class ContoController extends Controller
             // capitolo, ora lo diventa) — mai su un resave a parità di stato,
             // che prima cancellava tabella/ripartizioni di una voce reale
             // solo perché isCapitolo veniva (ri)calcolato male a monte.
+            /*
+             * Quante tabelle millesimali sono collegate a questa voce, **prima** di toccarla.
+             *
+             * Serve al ramo qui sotto: la scheda di modifica ne conosce una sola, quindi su una
+             * voce che ne ha più d'una non è in grado di rappresentare ciò che c'è.
+             */
+            $tabelleCollegate = DB::table('conto_tabella_millesimale')
+                ->where('conto_id', $conto->id)
+                ->count();
+
             if ($isCapitolo && ! $eraGiaCapitolo) {
                 $contoTabellaIds = DB::table('conto_tabella_millesimale')
                     ->where('conto_id', $conto->id)
@@ -231,7 +241,35 @@ class ContoController extends Controller
                         ->where('conto_id', $conto->id)
                         ->delete();
                 }
-            } elseif (! $isCapitolo) {
+            } elseif (! $isCapitolo && $tabelleCollegate <= 1) {
+                /*
+                 * ⛔ **Una voce ripartita su PIÙ tabelle non si tocca da qui.** Corretto nella beta.68.
+                 *
+                 * `ModalModificaConto.vue` legge `tabelle_millesimali[0]` e manda quella: la scheda
+                 * conosce **una tabella sola**. Fin qui è un limite. Il difetto era che il blocco
+                 * qui sotto — «pulizia delle vecchie tabelle orfane» — cancellava **tutte** le
+                 * altre associazioni e le loro ripartizioni: aprire la scheda per correggere un
+                 * importo bastava a dimezzare la ripartizione, senza chiedere e senza dire niente.
+                 *
+                 * Il caso non è esotico, è quello di scuola: **art. 1126 c.c.**, lastrico solare
+                 * diviso fra chi ne ha l'uso esclusivo (un terzo) e tutti gli altri (due terzi).
+                 * Lo stesso vale per l'art. 1124 sulle scale e per l'ascensore.
+                 *
+                 * ⚠️ **È lo stesso principio della guardia qui sopra**, sul ramo gemello della
+                 * conversione in capitolo: *«mai un'eliminazione silenziosa dedotta da una
+                 * transizione»*. Là era già applicato, qui no.
+                 *
+                 * ⚠️ **La correzione è una rimozione, e si ferma qui di proposito.** Insegnare a
+                 * questa scheda a gestire N tabelle è una schermata nuova, cioè una funzione: va
+                 * nella 1.11. Quello che non poteva restare è che una schermata distruggesse un
+                 * dato che non sa nemmeno mostrare. Nome, importo, note e gerarchia si salvano lo
+                 * stesso — è solo la parte che la scheda non sa rappresentare a non venire toccata.
+                 *
+                 * Nel frattempo una voce su più tabelle si modifica dalla sezione delle tabelle
+                 * collegate, che sa farlo da sempre — e la scheda lo dice.
+                 *
+                 * Il presidio è `tests/Feature/Gestionale/CapitoloSuPiuTabelleNonSiPerdeTest.php`.
+                 */
                 $tabella = Tabella::query()
                     ->where('id', $data['tabella_millesimale_id'])
                     ->where('condominio_id', $condominio->id)

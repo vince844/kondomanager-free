@@ -13,7 +13,7 @@ import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapito
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import vSelect from 'vue-select'
 import MoneyInput from '@/components/MoneyInput.vue'
-import { Info, Lock } from 'lucide-vue-next'
+import { Info, Lock, TriangleAlert } from 'lucide-vue-next'
 import { trans } from 'laravel-vue-i18n'
 import type { Conto } from '@/types/gestionale/conti'
 import type { TabellaDropdown } from '@/types/gestionale/tabelle'
@@ -56,6 +56,20 @@ const moneyOptions = ref({
   allowBlank: false,
   masked: true,
 })
+
+/**
+ * Quante tabelle millesimali sono collegate alla voce aperta.
+ *
+ * ⚠️ **Questa scheda ne sa rappresentare una sola** — legge `tabelle_millesimali[0]` — e fino alla
+ * beta.67 salvarla ne cancellava tutte le altre, con le loro ripartizioni. Il caso non è esotico:
+ * è l'art. 1126 c.c., il lastrico solare diviso fra chi ne ha l'uso esclusivo e tutti gli altri.
+ *
+ * Dalla beta.68 il salvataggio non le tocca più. Ma tacere non basta: senza questo conteggio la
+ * scheda mostrerebbe **una** tabella su due come se fossero tutte, e chi legge crederebbe di
+ * vedere la ripartizione completa.
+ */
+const tabelleCollegate = computed(() => props.conto?.tabelle_millesimali?.length ?? 0);
+const suPiuTabelle = computed(() => tabelleCollegate.value > 1);
 
 const form = useForm({
   nome: '',
@@ -395,7 +409,30 @@ const submit = () => {
             <InputError :message="form.errors.parent_id" />
           </div>
 
-          <div v-if="!isCapitolo" class="space-y-2">
+          <!--
+            ⚠️ Su una voce ripartita su più tabelle la tendina **non si mostra**, e non è una
+            limitazione nascosta: mostrarne una su due sarebbe peggio, perché darebbe da leggere
+            una ripartizione che non è quella vera. Il salvataggio non le tocca (beta.68), e qui si
+            dice dove si modificano.
+          -->
+          <div v-if="!isCapitolo && suPiuTabelle" class="space-y-2">
+            <Label>Ripartizione</Label>
+            <div class="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20">
+              <TriangleAlert class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div class="space-y-1 text-xs text-amber-900 dark:text-amber-200">
+                <p class="font-semibold">
+                  Questa voce è ripartita su {{ tabelleCollegate }} tabelle millesimali.
+                </p>
+                <p>
+                  Qui puoi cambiare nome, importo e note: la ripartizione resta com'è. Per
+                  modificarla — i pesi, le tabelle, i soggetti — usa la sezione delle tabelle
+                  collegate sulla riga della voce.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="!isCapitolo" class="space-y-2">
             <Label>{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.allocation_table') }}</Label>
             <v-select
               v-model="form.tabella_millesimale_id"
@@ -408,7 +445,7 @@ const submit = () => {
             <InputError :message="form.errors.tabella_millesimale_id" />
           </div>
 
-          <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
+          <div v-if="!isCapitolo && !suPiuTabelle" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.owner_percent') }}</Label>
               <Input v-model="form.percentuale_proprietario" class="h-8 mt-1" placeholder="100" />
