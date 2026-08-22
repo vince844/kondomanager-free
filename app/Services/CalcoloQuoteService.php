@@ -923,15 +923,86 @@ class CalcoloQuoteService
                     ? $ctm->ripartizioni
                     : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
 
+                /*
+                 * ## ⚠️ Anello 3 — la parte che le ripartizioni per ruolo non dichiarano
+                 *
+                 * **Chiuso nella beta.69, ed è la stessa forma dell'anello 1.** Le ripartizioni
+                 * dicono quanta parte della quota dell'unità tocca al proprietario, quanta
+                 * all'inquilino, quanta all'usufruttuario. Se sommano a meno di 100, una parte non
+                 * è attribuita a nessun ruolo — e fino alla beta.68 veniva **assorbita** dalla
+                 * rinormalizzazione finale e spalmata su chi c'era.
+                 *
+                 * Misurato con una sonda il 22/08/2026: due unità da 500 millesimi, spesa
+                 * € 1.000,00, ripartizioni che dichiarano il **60%** → addebitati **€ 1.000,00**,
+                 * cioè il 100%. Nessun controllo contabile aveva niente da segnalare, perché il
+                 * totale del piano coincideva col preventivo.
+                 *
+                 * ⚠️ **La correzione sta qui e non solo nella porta che scriveva male.** Le porte
+                 * che scrivono le ripartizioni sono quattro, tre avevano il controllo sulla somma e
+                 * una no (`ContoController@update`, corretta anch'essa nella beta.69). Ma una porta
+                 * nuova domani rifarebbe lo stesso buco, e i dati scritti prima di oggi restano.
+                 * Il motore non deve mai far quadrare una base incompleta.
+                 */
+                $percentualeDichiarata = (float) $ripartizioni->sum(fn ($r) => max(0.0, (float) $r->percentuale));
+                $puntiRipartizioneMancanti = round(100.0 - $percentualeDichiarata, 2);
+
+                if ($puntiRipartizioneMancanti > self::TOLLERANZA_COEFFICIENTI_PUNTI) {
+                    $pesoNonAttribuito = $weightImmobile * ($puntiRipartizioneMancanti / 100.0);
+
+                    Log::warning("distribuisciSuTabelle: le ripartizioni per ruolo del conto ID={$conto->id} "
+                        . "sulla tabella ID={$tabella->id} dichiarano solo il {$percentualeDichiarata}%. "
+                        . "Il resto è registrato come scoperto.", [
+                        'conto_id'    => $conto->id,
+                        'tabella_id'  => $tabella->id,
+                        'immobile_id' => $immobile->id,
+                    ]);
+
+                    $pesiScoperti[] = [
+                        'immobile_id'     => $immobile->id,
+                        'tabella_id'      => $tabella->id,
+                        'ruolo_richiesto' => null,
+                        'peso'            => $pesoNonAttribuito,
+                        'motivo'          => 'ripartizioni_sotto_il_cento',
+                    ];
+                }
+
                 foreach ($ripartizioni as $rip) {
                     $percent = (float) $rip->percentuale;
                     if ($percent <= 0.0) continue;
 
                     $weightRip = $weightImmobile * ($percent / 100.0);
 
+                    /*
+                     * ## ⚠️ Anello 4 — `quota > 0`, e non è un dettaglio (beta.69)
+                     *
+                     * Un intestatario con quota **zero** è registrato ma non paga: più sotto il
+                     * ciclo lo salta con `if ($quotaAnag <= 0.0) continue`. Finché il filtro non
+                     * lo escludeva **anche qui**, una riga a quota zero rendeva `$anagrafiche` non
+                     * vuoto, quindi:
+                     *
+                     * - la **cascata** non scattava (il ruolo «c'è»),
+                     * - il ramo dello **scoperto** nemmeno (la collezione non è vuota),
+                     * - e il peso di quel ruolo **evaporava**, per poi essere ridistribuito dalla
+                     *   rinormalizzazione finale — su **altre unità**.
+                     *
+                     * Misurato il 22/08/2026: due unità da 500 millesimi, spesa € 1.000,00,
+                     * ripartizioni 50/50 fra proprietario e inquilino, e sull'unità 2 un inquilino
+                     * a quota zero → **unità 1 € 666,67, unità 2 € 333,33**. Cioè € 166,67 spostati
+                     * da un'unità all'altra, con il totale del piano perfettamente esatto.
+                     *
+                     * ⚠️ **La prova che ha deciso la forma della correzione** è il confronto con lo
+                     * stesso caso senza nessun inquilino: là la cascata risolve sul proprietario e
+                     * l'unità 2 paga € 500,00, che è il comportamento voluto. Le due situazioni
+                     * sono la stessa cosa — nessuno che paghi quella metà — e devono dare lo stesso
+                     * risultato. Da qui: **un ruolo le cui quote sono tutte a zero è un ruolo
+                     * assente**, e prende la stessa strada.
+                     *
+                     * Il presidio è `tests/Feature/Riparto/CatenaProporzioniAnelli34Test.php`.
+                     */
                     $anagrafiche = $immobile->anagrafiche
                         ->where('pivot.attivo', true)
-                        ->where('pivot.tipologia', $rip->soggetto);
+                        ->where('pivot.tipologia', $rip->soggetto)
+                        ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
 
                     // Rule Engine Livello 3: Risoluzione a cascata del ruolo (catena per natura).
                     // La catena vive in RuoloAnagraficaImmobile::catenaRiparto() — unico posto
@@ -947,9 +1018,12 @@ class CalcoloQuoteService
                         $candidati = RuoloAnagraficaImmobile::catenaRipiego($rip->soggetto);
 
                         foreach ($candidati as $ruoloFallback) {
+                            // Stesso filtro sulla quota: un ripiego su un ruolo che non paga non
+                            // è un ripiego, e la cascata deve poter proseguire fino al prossimo.
                             $anagrafiche = $immobile->anagrafiche
                                 ->where('pivot.attivo', true)
-                                ->where('pivot.tipologia', $ruoloFallback->value);
+                                ->where('pivot.tipologia', $ruoloFallback->value)
+                                ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
 
                             if ($anagrafiche->isNotEmpty()) {
                                 Log::debug("distribuisciSuTabelle: ruolo '{$rip->soggetto}' assente su immobile "

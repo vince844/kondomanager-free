@@ -7,6 +7,86 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.69] - La Catena Delle Quattro Proporzioni
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Si chiude la catena delle quattro proporzioni: la radice comune dei difetti di calcolo corretti
+negli ultimi due mesi.
+
+### Perché questi difetti non si vedono
+
+Per trasformare una spesa in quote il motore passa per **quattro proporzioni in fila**, e alla fine
+rinormalizza tutto. Vuol dire che qualunque cosa manchi lungo la strada, **il totale del piano
+coincide sempre con il preventivo**: la quadratura torna, nessun controllo contabile ha niente da
+segnalare.
+
+Il difetto non si manifesta come «i conti non tornano» ma come **denaro addebitato alla persona
+sbagliata, con i conti perfetti**. È il motivo per cui emergono uno alla volta, dal forum, e li
+trova solo chi amministra davvero.
+
+| anello | chiuso in |
+| :--- | :--- |
+| 1 · capitolo → tabella | beta.63 |
+| 2 · tabella → unità | beta.61 e .63 |
+| **3 · ripartizione → ruolo** | **questa** |
+| **4 · ruolo → persona** | **questa** |
+
+### Terzo anello — le ripartizioni per ruolo
+
+Una voce di spesa dice quanta parte della quota di un'unità tocca al proprietario, quanta
+all'inquilino, quanta all'usufruttuario. Se quelle percentuali sommavano a **meno di 100**, la parte
+non attribuita a nessuno non spariva: veniva assorbita e addebitata comunque.
+
+    due unità, spesa € 1.000,00, ripartizioni che dichiarano il 60%
+    prima  → € 500,00 + € 500,00 = € 1.000,00 addebitati
+    ora    → € 300,00 + € 300,00, e € 400,00 scoperti
+
+La parte non dichiarata **ferma la generazione del piano**, e si procede solo motivando —
+esattamente come già accade per i coefficienti delle tabelle.
+
+⚠️ **E la porta che lo lasciava scrivere.** I punti che scrivono quelle percentuali sono quattro:
+tre controllavano che sommassero a 100, la scheda di modifica di una voce no. Ora lo controlla. Ed è
+la **quarta volta** che una guardia esiste in creazione e non in modifica — dopo il riparto manuale,
+la capienza del conto in modifica pagamento e le notifiche della beta.64: da questa versione una
+prova automatica verifica che nessun punto nuovo possa scrivere senza controllare.
+
+### Quarto anello — un intestatario con quota zero
+
+Se su un'unità l'inquilino è registrato ma con **quota zero**, non paga: fin qui è corretto. Il
+problema era dove finiva la sua parte.
+
+    due unità, spesa € 1.000,00 divisa a metà fra proprietario e inquilino,
+    e sulla seconda unità un inquilino a quota zero
+
+    prima  → unità 1: € 666,67    unità 2: € 333,33
+    ora    → unità 1: € 500,00    unità 2: € 500,00
+
+**€ 166,67 si spostavano da un'unità all'altra**, con il totale del piano esatto al centesimo.
+
+⚠️ **Come è stato deciso il comportamento giusto:** confrontandolo con lo stesso caso **senza nessun
+inquilino**. Là il programma già faceva la cosa sensata — la quota resta sul proprietario di quella
+stessa unità — perché una regola apposta risolve il ruolo mancante. Le due situazioni sono la stessa
+cosa: nessuno che paghi quella metà su quell'unità. Da oggi un ruolo le cui quote sono tutte a zero
+è trattato come un ruolo assente, e prende la stessa strada.
+
+### Cosa non è cambiato, ed è una scelta dichiarata
+
+- Un'unità con **un solo intestatario registrato con quota 50** paga comunque tutta la quota della
+  sua unità. La spesa deve essere pagata da qualcuno, e se è registrato uno solo tocca a lui.
+- I **comproprietari** continuano a dividersi la quota fra loro.
+
+Entrambi i casi sono ora fissati da una prova automatica, così la scelta resta visibile invece di
+essere indistinguibile da una dimenticanza.
+
+### Sotto il cofano
+
+Undici prove nuove, di cui **quattro congelano i casi sani** perché la correzione non li sposti di
+un centesimo. Le due correzioni stanno **nel motore** e non solo nelle schermate: una porta nuova
+domani rifarebbe lo stesso buco, e i dati scritti prima di oggi restano.
+
+---
+
 ## [1.10.0-beta.68] - La Metà Che Spariva Salvando
 
 **Nessuna migrazione: il database non viene toccato.**

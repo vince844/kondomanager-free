@@ -325,6 +325,35 @@ class ContoController extends Controller
                     ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario'] ?? 0],
                 ];
 
+                /*
+                 * ⚠️ **Questo controllo mancava, ed era l'anello 3 della catena delle proporzioni.**
+                 * Aggiunto nella beta.69.
+                 *
+                 * Le porte che scrivono `conto_tabella_ripartizioni` sono quattro: `store()` qui
+                 * sopra (riga 94), `AssociaTabellaController`, `AggiornaTabellaController` e
+                 * `FatturaPassivaService` — che usa una strategia diversa ma altrettanto chiusa,
+                 * ripiegando su «proprietario 100» invece di rifiutare. **Solo `update()` scriveva
+                 * senza guardare.**
+                 *
+                 * Cosa costava, misurato con una sonda il 22/08/2026: ripartizioni che dichiarano il
+                 * 60% della quota di un'unità facevano addebitare il **100%**, perché la
+                 * rinormalizzazione finale del motore assorbiva il resto. Il totale del piano
+                 * restava perfettamente uguale al preventivo, quindi nessun controllo contabile
+                 * aveva niente da segnalare.
+                 *
+                 * ⚠️ È la **quarta** volta che una guardia esiste in `store()` e non in `update()`
+                 * su questo progetto — dopo il riparto manuale, la capienza del conto in modifica
+                 * pagamento e le notifiche della beta.64. Il presidio strutturale è
+                 * `tests/Feature/System/RipartizioniValidateSuOgniPortaTest.php`.
+                 *
+                 * Il motore è stato chiuso lo stesso (`CalcoloQuoteService`, anello 3): questa
+                 * riga serve a fermare l'errore **dove lo si commette**, con un messaggio che dice
+                 * cosa fare, invece di scoprirlo generando il piano.
+                 */
+                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
+                    throw new \Exception("La somma delle percentuali deve essere 100%");
+                }
+
                 foreach ($ripartizioni as $rip) {
                     if ((float) $rip['percentuale'] > 0) {
                         DB::table('conto_tabella_ripartizioni')->insert([
