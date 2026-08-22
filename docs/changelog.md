@@ -7,6 +7,75 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.66] - Ognuno A Casa Propria
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Tutte le pagine del gestionale ora verificano che ciò che si apre appartenga davvero al condominio
+scritto nell'indirizzo.
+
+### Il difetto: bastava cambiare un numero nell'indirizzo
+
+Gli indirizzi del gestionale hanno questa forma:
+
+    /gestionale/12/tabelle/45
+
+Il programma leggeva quei due numeri **separatamente**: cercava il condominio 12 e cercava la
+tabella 45, e non verificava che la tabella 45 fosse una tabella del condominio 12. Chi aveva
+accesso a un condominio poteva quindi arrivare ai dati di un altro semplicemente cambiando il primo
+numero — tabelle millesimali, esercizi, unità immobiliari, casse, piani rate.
+
+⚠️ **Non era un accesso libero dall'esterno**: serviva comunque essere entrati con un'utenza valida
+e avere il permesso per quel tipo di pagina. Il perimetro che mancava era quello **fra un
+condominio e l'altro**, che è precisamente il perimetro con cui uno studio lavora quando amministra
+più stabili — o quando affida un condominio a un collaboratore e non gli altri.
+
+Alcune pagine avevano un controllo scritto a mano nel proprio codice: **29 su 112**. Le altre no, e
+soprattutto ogni pagina nuova nasceva senza, perché il controllo dipendeva da chi la scriveva.
+
+### La correzione: il controllo sta sull'indirizzo, non nelle pagine
+
+Ora il legame è dichiarato **una volta sola, sull'indirizzo**, e vale per tutto ciò che ci passa:
+il figlio viene cercato *dentro* il padre, e se non c'è la pagina risponde «non trovato». **159
+indirizzi del gestionale su 160.**
+
+La risposta è «non trovato» e non «non autorizzato», ed è voluto: non conferma nemmeno che quella
+risorsa esista da qualche parte.
+
+I controlli scritti a mano nelle 29 pagine **restano tutti**. Non sono diventati inutili: proteggono
+da cose diverse — quello nuovo protegge l'indirizzo, quelli vecchi proteggono ciò che la pagina fa
+dopo, con i dati che arrivano dal modulo.
+
+⚠️ **L'unico indirizzo che resta fuori** è il dettaglio dei movimenti di una singola voce di spesa,
+dove il legame fra esercizio e voce passa per tre passaggi e non è esprimibile in questa forma. Là
+il controllo scritto a mano c'è, ed è dichiarato per iscritto nel presidio automatico, così che
+resti l'unica eccezione invece di diventare la prima di una serie.
+
+### Cinque pagine che rispondevano «errore 500» sono state tolte
+
+Cercando gli indirizzi da vincolare ne sono saltati fuori cinque generati automaticamente per
+pagine **mai scritte**: il dettaglio di una palazzina, di una scala, di una tabella, di un esercizio
+e di una gestione. Il codice dietro era vuoto, e su un indirizzo annidato quel vuoto non restituiva
+una pagina bianca ma un **errore 500** a chiunque ci arrivasse digitando l'indirizzo.
+
+Nessuna pagina ci rimandava, quindi il difetto era silenzioso. È la stessa famiglia delle quattro
+tolte nella beta.48 e delle due nella beta.61: pagine che il programma prometteva senza averle.
+
+### Sotto il cofano
+
+- Tre legami nuovi fra i dati che prima non esistevano e che ora rendono verificabile ciò che prima
+  si poteva solo assumere: dall'esercizio ai suoi piani dei conti e ai suoi piani rate, e dal
+  condominio a tutte le sue voci di spesa.
+- Un presidio automatico nuovo con dodici prove, che verifica tre cose separate: quanti indirizzi
+  sono vincolati e che le eccezioni siano solo quelle dichiarate con la loro ragione; che ogni
+  legame dichiarato punti a qualcosa che esiste davvero (un legame rinominato non darebbe errore,
+  darebbe un 500 a richieste legittime); e che il dato di un altro condominio venga davvero
+  rifiutato mentre il proprio viene davvero servito.
+- Corretti nove file di prove che costruivano un esercizio senza collegargli la sua gestione — uno
+  stato che il programma non sa produrre, ma che le prove producevano senza dirlo.
+
+---
+
 ## [1.10.0-beta.65] - Chi Poteva Entrare, E Chi No
 
 **Nessuna migrazione: il database non viene toccato.**

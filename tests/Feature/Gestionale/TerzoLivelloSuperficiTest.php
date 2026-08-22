@@ -7,6 +7,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Spatie\Permission\Models\{Permission, Role};
 
+require_once __DIR__.'/GestionaleTestHelpers.php';
+
 uses(RefreshDatabase::class);
 
 /**
@@ -38,6 +40,7 @@ function scenarioSuperfici(): array
     $condominio = Condominio::factory()->create();
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
     $gestione   = Gestione::factory()->create(['condominio_id' => $condominio->id]);
+    legaAEsercizio($esercizio, $gestione->id);
     $pianoConti = PianoConto::factory()->create([
         'condominio_id' => $condominio->id,
         'gestione_id'   => $gestione->id,

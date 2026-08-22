@@ -15,6 +15,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
+require_once __DIR__.'/../Gestionale/GestionaleTestHelpers.php';
+
 uses(RefreshDatabase::class);
 
 /**
@@ -185,6 +187,7 @@ test('la stampa PDF risponde 200 con un capitolo a molti sottoconti (nessun cras
     [$pianoConto, $tabella, $gestione] = contestoAggregazionePadre();
     $condominio = Condominio::find($pianoConto->condominio_id);
     $esercizio = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $gestione->id);
 
     $role = Role::firstOrCreate(['name' => 'amministratore', 'guard_name' => 'web']);
     $user = User::factory()->create();
@@ -230,6 +233,7 @@ test('un condominio grande (molti capitoli e unità) non fa crashare mPDF anche 
     [$pianoConto, $tabella, $gestione] = contestoAggregazionePadre();
     $condominio = Condominio::find($pianoConto->condominio_id);
     $esercizio = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $gestione->id);
 
     $role = Role::firstOrCreate(['name' => 'amministratore', 'guard_name' => 'web']);
     $user = User::factory()->create();

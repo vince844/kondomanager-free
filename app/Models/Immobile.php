@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\RisolveIFigliDelleRotte;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Immobile extends Model
 {
+    use RisolveIFigliDelleRotte;
+
     
     use HasFactory;
 
@@ -224,6 +227,23 @@ class Immobile extends Model
     public function saldi()
     {
         return $this->hasMany(Saldo::class);
+    }
+
+
+    /**
+     * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
+     *
+     * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel
+     * deriverebbe il nome con una pluralizzazione inglese, e su nomi italiani sbaglia sempre.
+     *
+     * @return array<string, string>
+     */
+    protected function relazioniDeiFigliNelleRotte(): array
+    {
+        return [
+            'anagrafica' => 'anagrafiche',
+            'documento' => 'documenti',
+        ];
     }
 
 }

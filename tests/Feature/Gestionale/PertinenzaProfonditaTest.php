@@ -240,17 +240,35 @@ it('il principale si cerca nel condominio dell\'unità, non in quello scritto ne
     $cantina = unitaDi($this->condominio, 'Cantina 2', $this->tipologia->id);
     $estranea = unitaDi($altro, 'Interno 1 altrove', $this->tipologia->id);
 
-    // ⚠️ La rotta `immobili` non ha binding vincolato: `/gestionale/{condominio}/immobili/{immobile}`
-    // risolve l'unità per sola chiave, e il condominio nell'indirizzo può essere un altro. Se la
-    // regola guarda quello, basta cambiare un numero nell'URL per legare un box di un condominio a
-    // un appartamento di un altro — e un legame fra condomìni diversi non ha nessun senso in
-    // diritto, perché il requisito soggettivo dell'art. 817 c.c. presuppone un solo proprietario
-    // dei due beni, ma soprattutto sfonda il perimetro con cui tutto il resto del gestionale
-    // ragiona.
+    // La regola di validazione cerca il principale **nel condominio dell'unità che si sta
+    // modificando**, non in quello scritto nell'indirizzo. Un legame fra condomìni diversi non ha
+    // senso in diritto — il requisito soggettivo dell'art. 817 c.c. presuppone un solo proprietario
+    // dei due beni — e soprattutto sfonda il perimetro con cui tutto il resto del gestionale ragiona.
     $this->actingAs($this->user)
-        ->put(route('admin.gestionale.immobili.update', [$altro, $cantina]),
+        ->put(route('admin.gestionale.immobili.update', [$this->condominio, $cantina]),
             corpoAggiornamento($cantina, ['pertinenza_di_immobile_id' => $estranea->id]))
         ->assertSessionHasErrors('pertinenza_di_immobile_id');
+
+    expect($cantina->fresh()->pertinenza_di_immobile_id)->toBeNull();
+});
+
+it('e cambiare il condominio nell\'indirizzo non porta da nessuna parte', function () {
+    // ⚠️ **Questa è la parte che la beta.66 ha cambiato.** Fino alla beta.65
+    // `/gestionale/{condominio}/immobili/{immobile}` risolveva l'unità per sola chiave, e il
+    // condominio nell'indirizzo poteva essere un altro: bastava cambiare un numero nell'URL per
+    // arrivare all'unità di qualcun altro, e l'unica cosa che ci si parava davanti era la regola di
+    // validazione qui sopra — cioè una difesa che vale per *questo* campo e non per il resto.
+    //
+    // Ora la rotta è vincolata (`scopeBindings()`): l'unità viene cercata **dentro** il condominio
+    // dell'indirizzo, e se non c'è la richiesta finisce in 404 senza mai arrivare al controller.
+    // Il 404 e non un 403 è voluto: non conferma nemmeno che quell'unità esista.
+    $altro = Condominio::factory()->create();
+    $cantina = unitaDi($this->condominio, 'Cantina 3', $this->tipologia->id);
+
+    $this->actingAs($this->user)
+        ->put(route('admin.gestionale.immobili.update', [$altro, $cantina]),
+            corpoAggiornamento($cantina, ['pertinenza_di_immobile_id' => null]))
+        ->assertNotFound();
 
     expect($cantina->fresh()->pertinenza_di_immobile_id)->toBeNull();
 });

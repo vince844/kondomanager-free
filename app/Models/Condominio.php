@@ -2,7 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\RisolveIFigliDelleRotte;
+use App\Models\Gestionale\DelegaF24;
+use App\Models\Gestionale\FatturaPassiva;
+use App\Models\Gestionale\PagamentoFornitore;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Cassa;
+use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\ScritturaContabile;
@@ -10,10 +16,13 @@ use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Condominio extends Model
 {
+    use RisolveIFigliDelleRotte;
+
     use HasFactory, HasCustomIdentifier;
 
     protected $table = 'condomini';
@@ -169,4 +178,92 @@ class Condominio extends Model
     {
         return $this->hasMany(ScritturaContabile::class);
     }
+
+    /**
+     * ## Le sei relazioni aggiunte nella beta.66, e perché stanno qui
+     *
+     * Servono allo *scoping* delle rotte annidate: `/gestionale/{condominio}/fatture/{fattura}` deve
+     * poter rifiutare la fattura di un **altro** condominio, e Laravel lo fa chiedendo al padre una
+     * relazione verso il figlio. Senza, quella rotta serviva il dato altrui senza dire niente.
+     *
+     * ⚠️ **Non sono un'impalcatura per il binding.** Le sei tabelle hanno già `condominio_id` —
+     * verificato il 22/08/2026 — quindi queste relazioni descrivono un legame che esiste da sempre e
+     * che semplicemente non era mai stato dichiarato. Sono relazioni che ci starebbero comunque.
+     */
+    public function fatture(): HasMany
+    {
+        return $this->hasMany(FatturaPassiva::class);
+    }
+
+    public function deleghe(): HasMany
+    {
+        return $this->hasMany(DelegaF24::class);
+    }
+
+    public function pagamenti(): HasMany
+    {
+        return $this->hasMany(PagamentoFornitore::class);
+    }
+
+    public function saldi(): HasMany
+    {
+        return $this->hasMany(Saldo::class);
+    }
+
+    public function pianiRate(): HasMany
+    {
+        return $this->hasMany(PianoRate::class);
+    }
+
+    /**
+     * Tutti i conti del condominio, attraverso i suoi piani dei conti.
+     *
+     * ⚠️ **`conti` non ha `condominio_id`**: pende da `piano_conto_id`, e il piano dei conti ha il
+     * condominio. Da qui il `hasManyThrough`, che è il legame vero e non una scorciatoia — un
+     * `condominio_id` denormalizzato su `conti` sarebbe una seconda fonte di verità da tenere
+     * allineata a mano.
+     *
+     * Serve allo scoped binding di `/gestionale/{condominio}/contributi/{conto}`: senza, quella
+     * rotta accetta il conto di un altro condominio. Verificato il 22/08/2026 sui dati reali: il
+     * condominio 16 restituisce 7 conti su 27 in archivio.
+     */
+    public function conti(): HasManyThrough
+    {
+        return $this->hasManyThrough(Conto::class, PianoConto::class);
+    }
+
+    public function lottiImportazione(): HasMany
+    {
+        return $this->hasMany(ImportBatch::class);
+    }
+
+    /**
+     * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
+     *
+     * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel
+     * deriverebbe il nome con una pluralizzazione inglese, e su nomi italiani sbaglia sempre.
+     *
+     * @return array<string, string>
+     */
+    protected function relazioniDeiFigliNelleRotte(): array
+    {
+        return [
+            'esercizio' => 'esercizi',
+            'immobile' => 'immobili',
+            'tabella' => 'tabelle',
+            'cassa' => 'casse',
+            'palazzina' => 'palazzine',
+            'scala' => 'scale',
+            'anagrafica' => 'anagrafiche',
+            'scrittura' => 'scrittureContabili',
+            'fattura' => 'fatture',
+            'delega' => 'deleghe',
+            'pagamento' => 'pagamenti',
+            'saldo' => 'saldi',
+            'batch' => 'lottiImportazione',
+            'pianoRate' => 'pianiRate',
+            'conto' => 'conti',
+        ];
+    }
+
 }

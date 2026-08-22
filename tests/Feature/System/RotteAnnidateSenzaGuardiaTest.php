@@ -10,20 +10,36 @@ use Illuminate\Support\Facades\Route;
  * Laravel risolve i due modelli **per id, ciascuno per conto suo**: niente lega il figlio al
  * padre. Chi cambia l'id nell'indirizzo apre la risorsa di un altro condominio.
  *
- * ## Perché una guardia a mano e non `->scopeBindings()`
+ * ## ⚠️ Dalla beta.66 non è più l'unica difesa, e questa sezione dice cosa è cambiato
  *
- * Misurato aprendo la beta.61, e non è il rimedio che sembra. Laravel deriva il nome della
- * relazione da cercare con `Str::plural(Str::camel($childType))`
- * (`Illuminate/Database/Eloquent/Model.php:2510`), cioè una pluralizzazione **inglese** applicata
- * a nomi italiani: per `{tabella}` cerca `Condominio::tabellas()`, per `{esercizio}`
- * `Condominio::esercizios()`. Sulle 26 coppie padre>figlio del gestionale, le relazioni col nome
- * atteso sono **zero su 26**.
+ * Fino alla beta.65 il vincolo sulla rotta era spento, e la ragione era misurata: `->scopeBindings()`
+ * chiede al modello padre una relazione verso il figlio e **il nome se lo inventa**, con
+ * `Str::plural(Str::camel($childType))` — una pluralizzazione **inglese** applicata a nomi
+ * italiani. Per `{tabella}` cercava `Condominio::tabellas()`. Sulle 26 coppie padre>figlio del
+ * gestionale le relazioni col nome atteso erano **zero su 26**, e il fallimento non era un 404:
+ * `resolveChildRouteBindingQuery()` invoca la relazione come primo statement, quindi
+ * `BadMethodCallException`, cioè **500 anche sulle richieste legittime**.
  *
- * E il fallimento non è un 404: `resolveChildRouteBindingQuery()` invoca la relazione come primo
- * statement, prima di qualunque query, quindi solleva `BadMethodCallException` — **500 su ogni
- * richiesta, anche legittima**. Due delle nidificazioni più usate (`esercizio > pianoConto`,
- * `esercizio > pianoRate`) non hanno nemmeno la colonna: il legame passa dal pivot
- * `esercizio_gestione`. La voce completa è la coda ㊷ in `docs/roadmap.md`.
+ * La beta.66 ha tolto l'ostacolo invece di aggirarlo: il trait `App\Traits\RisolveIFigliDelleRotte`
+ * dichiara la mappa in chiaro, e tre coppie che sembravano impossibili si sono rivelate
+ * esprimibili — `Esercizio::pianiConti()` e `Esercizio::pianiRate()` attraverso il pivot
+ * `esercizio_gestione`, `Condominio::conti()` con un `hasManyThrough`. Oggi **159 rotte del
+ * gestionale su 160** cercano il figlio dentro il condominio dell'indirizzo. Il presidio è
+ * `ScopingDelleRotteAnnidateTest`, e la coda ㊷ in `docs/roadmap.md` è chiusa.
+ *
+ * ## Allora perché questo file esiste ancora
+ *
+ * Perché le due difese proteggono da cose diverse, e la seconda non rende inutile la prima.
+ *
+ * Il vincolo sulla rotta protegge **l'indirizzo**: impedisce che `{tabella}` sia la tabella di un
+ * altro condominio. Non dice niente su ciò che il controller fa **dopo** — un id preso dal corpo
+ * della richiesta, una relazione seguita a mano, una scrittura su un modello che nell'indirizzo non
+ * compare. Quelle restano affare della guardia nel controller, ed è quello che l'elenco qui sotto
+ * congela.
+ *
+ * E c'è la ragione più prosaica: una rotta può uscire dal vincolo. È già successo — una sola oggi,
+ * dichiarata e motivata in `ScopingDelleRotteAnnidateTest` — e il giorno che ne esce una seconda la
+ * difesa in profondità è l'unica cosa che resta accesa.
  *
  * ## Cosa fa questa guardia, e cosa **non** fa
  *
@@ -162,13 +178,11 @@ const SCOPERTI_NOTI = [
     'App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController@edit',
     'App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController@update',
     'App\Http\Controllers\Gestionale\Esercizi\EsercizioController@edit',
-    'App\Http\Controllers\Gestionale\Esercizi\EsercizioController@show',
     'App\Http\Controllers\Gestionale\Esercizi\EsercizioController@update',
     'App\Http\Controllers\Gestionale\Gestioni\GestioneController@create',
     'App\Http\Controllers\Gestionale\Gestioni\GestioneController@destroy',
     'App\Http\Controllers\Gestionale\Gestioni\GestioneController@edit',
     'App\Http\Controllers\Gestionale\Gestioni\GestioneController@index',
-    'App\Http\Controllers\Gestionale\Gestioni\GestioneController@show',
     'App\Http\Controllers\Gestionale\Gestioni\GestioneController@store',
     'App\Http\Controllers\Gestionale\Gestioni\GestioneController@update',
     'App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController@create',
@@ -202,7 +216,6 @@ const SCOPERTI_NOTI = [
     'App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController@__invoke',
     'App\Http\Controllers\Gestionale\Palazzine\PalazzinaController@destroy',
     'App\Http\Controllers\Gestionale\Palazzine\PalazzinaController@edit',
-    'App\Http\Controllers\Gestionale\Palazzine\PalazzinaController@show',
     'App\Http\Controllers\Gestionale\Palazzine\PalazzinaController@update',
     'App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController@__invoke',
     'App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController@__invoke',
@@ -239,10 +252,8 @@ const SCOPERTI_NOTI = [
     'App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController@update',
     'App\Http\Controllers\Gestionale\Scale\ScalaController@destroy',
     'App\Http\Controllers\Gestionale\Scale\ScalaController@edit',
-    'App\Http\Controllers\Gestionale\Scale\ScalaController@show',
     'App\Http\Controllers\Gestionale\Scale\ScalaController@update',
     'App\Http\Controllers\Gestionale\Tabelle\TabellaController@edit',
-    'App\Http\Controllers\Gestionale\Tabelle\TabellaController@show',
     'App\Http\Controllers\Gestionale\Tabelle\TabellaController@update',
 ];
 

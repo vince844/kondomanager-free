@@ -2,6 +2,7 @@
 
 namespace App\Models\Gestionale;
 
+use App\Traits\RisolveIFigliDelleRotte;
 use App\Enums\StatoPianoRate;
 use App\Models\Condominio;
 use App\Models\Gestione;
@@ -22,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class PianoRate extends Model
 {
+    use RisolveIFigliDelleRotte;
+
     use HasFactory;
 
     protected $table = 'piani_rate';
@@ -254,6 +257,23 @@ class PianoRate extends Model
         $inizioGestione = $this->gestione?->data_inizio;
 
         return $inizioGestione ? \Carbon\CarbonImmutable::parse($inizioGestione) : null;
+    }
+
+
+    /**
+     * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
+     *
+     * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel
+     * deriverebbe il nome con una pluralizzazione inglese, e su nomi italiani sbaglia sempre.
+     *
+     * @return array<string, string>
+     */
+    protected function relazioniDeiFigliNelleRotte(): array
+    {
+        return [
+            'capitolo' => 'capitoli',
+            'rata' => 'rate',
+        ];
     }
 
 }

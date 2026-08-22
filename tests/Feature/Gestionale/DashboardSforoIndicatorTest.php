@@ -31,8 +31,8 @@ if (! function_exists('creaScenarioSforoNonCoperto')) {
         // setupContabile() esegue già Event::fake([FatturaRegistrata::class]).
         [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
 
-        // Il cruscotto itera $esercizio->gestioni (pivot esercizio_gestione).
-        $esercizio->gestioni()->attach($gestione->id, ['attiva' => true]);
+        // Il cruscotto itera $esercizio->gestioni (pivot esercizio_gestione): dalla beta.66 il
+        // legame lo costruisce `setupContabile()` per tutti, non più un test alla volta.
 
         // Budget preventivato del capitolo: 1.000€ (in centesimi).
         $capitolo->update(['importo' => 100000]);

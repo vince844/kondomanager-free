@@ -133,16 +133,6 @@ class ScalaController extends Controller
         }
     }
 
-    /**
-     * Display a specific scala.
-     *
-     * @param  \App\Models\Scala  $scala
-     * @return void
-     */
-    public function show(Scala $scala)
-    {
-        // TODO: implement details page if needed
-    }
 
     /**
      * Show the form for editing an existing scala.

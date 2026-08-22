@@ -205,13 +205,6 @@ class GestioneController extends Controller
     }
     
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Gestione $gestione)
-    {
-        //
-    }
 
     /**
      * Show the form for editing an existing management entity.

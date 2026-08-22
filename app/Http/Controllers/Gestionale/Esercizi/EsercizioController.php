@@ -170,13 +170,6 @@ class EsercizioController extends Controller
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Esercizio $esercizio)
-    {
-        //
-    }
 
     /**
      * Display the form for editing an existing exercise.

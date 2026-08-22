@@ -175,13 +175,6 @@ class TabellaController extends Controller
 
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Tabella $tabella)
-    {
-        //
-    }
 
     /**
      * Show the form for editing the specified resource.

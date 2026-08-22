@@ -9,6 +9,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
+require_once __DIR__.'/GestionaleTestHelpers.php';
+
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
@@ -44,6 +46,7 @@ test('Bug 2: modifica di un sottoconto salva correttamente il campo codice', fun
     ]);
 
     $esercizio = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $response = $this->actingAs($this->user)
@@ -167,6 +170,7 @@ test('Store: isCapitolo e isSottoConto insieme vengono rifiutati', function () {
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
 
     $capitolo = Conto::factory()->create([
         'piano_conto_id' => $pianoConti->id, 'parent_id' => null, 'is_capitolo' => true,
@@ -190,6 +194,7 @@ test('Update: isCapitolo e isSottoConto insieme vengono rifiutati', function () 
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
 
     $capitolo = Conto::factory()->create([
         'piano_conto_id' => $pianoConti->id, 'parent_id' => null, 'is_capitolo' => true,
@@ -245,6 +250,7 @@ test('Update: un sotto-conto non può essere scelto come capitolo padre', functi
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $capitolo = Conto::factory()->create([
@@ -303,6 +309,7 @@ test('Update: modificare una voce di terzo livello non accusa di una scelta mai 
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
 
     $capitolo = Conto::factory()->create([
         'piano_conto_id' => $pianoConti->id, 'parent_id' => null,
@@ -346,6 +353,7 @@ test('Update: un conto non può essere il padre di sé stesso', function () {
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $capitolo = Conto::factory()->create([
@@ -409,6 +417,7 @@ test('BUG: senza conferma esplicita, la conversione in capitolo di una voce con 
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     // Voce di spesa di primo livello, non ancora budgettizzata (importo=0),
@@ -466,6 +475,7 @@ test('Con conferma esplicita, la conversione deliberata in capitolo funziona ed 
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $voce = Conto::factory()->create([
@@ -507,6 +517,7 @@ test('Flusso reale: resave senza modifiche invia isCapitolo=false (stato vero) e
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $voce = Conto::factory()->create([
@@ -564,6 +575,7 @@ test('Store: richiedeGiaVersato=true viene persistito su una voce di spesa', fun
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $response = $this->actingAs($this->user)
@@ -584,6 +596,7 @@ test('Store: un capitolo non può avere richiedeGiaVersato=true, a prescindere d
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
 
     $response = $this->actingAs($this->user)
         ->post(route('admin.gestionale.esercizi.piani-conti.conti.store', [$condominio, $esercizio, $pianoConti]), [
@@ -601,6 +614,7 @@ test('Update: richiedeGiaVersato può essere attivato in un secondo momento', fu
     $condominio = Condominio::factory()->create();
     $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
     $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    legaAEsercizio($esercizio, $pianoConti->gestione_id);
     $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
 
     $voce = Conto::factory()->create([

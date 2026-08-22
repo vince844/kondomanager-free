@@ -54,6 +54,25 @@ Route::prefix('/gestionale/{condominio}')
         EnsureCondominioHasEsercizio::class,   
         EnsureCondominioHasPianoConti::class  
     ])
+    /*
+     * ⚠️ **Le cose di un condominio non si aprono da un altro condominio (beta.66).**
+     *
+     * Fino alla beta.65 l'indirizzo `/gestionale/16/tabelle/29` serviva la tabella 29 **anche se
+     * apparteneva al condominio 18**: il figlio veniva cercato per id e basta. Su 112 rotte annidate
+     * solo 29 avevano una guardia scritta a mano nel controller.
+     *
+     * `scopeBindings()` dice a Laravel di cercare il figlio **dentro** il padre. Il nome della
+     * relazione lo decide `App\Traits\RisolveIFigliDelleRotte`, montato sui modelli padre: senza,
+     * Laravel lo deriva con una pluralizzazione inglese e su nomi italiani cerca
+     * `Condominio::tabellas()` — cioè risponde 500 anche alle richieste legittime.
+     *
+     * **È acceso sul gruppo, non risorsa per risorsa, ed è una scelta.** Così una rotta annidata
+     * nuova nasce protetta: chi la aggiunge senza mappare la coppia ottiene un errore rumoroso in
+     * sviluppo invece di una fuga silenziosa in produzione. Le poche che non si possono scopare —
+     * il figlio non ha una relazione col padre perché non ne ha la colonna — sono disattivate una
+     * per una qui sotto, ciascuna col suo perché.
+     */
+    ->scopeBindings()
     ->group(function () {
     
     Route::get('/', DashboardController::class)
@@ -85,10 +104,21 @@ Route::prefix('/gestionale/{condominio}')
         ->name('fetch-fatture-straordinarie');
     // --- FINE FIX ---
     
+    /*
+     * ⛔ **`show` escluso: il metodo non è mai stato scritto.**
+     * `Route::resource` la generava lo stesso, e il corpo del controller era un `//`. Su una rotta
+     * annidata quel metodo non riceve nemmeno il modello giusto — la firma non accetta
+     * `{condominio}`, quindi il dispatcher passa gli argomenti per posizione e il controller si
+     * vede arrivare l'id del condominio al posto del figlio: **500 a chiunque ci arrivi per URL**.
+     * Nessuna pagina ci linkava; scoperta dalla guardia dello scoping nella beta.66, stessa
+     * famiglia delle quattro rimosse nella beta.48 e delle due nella beta.61.
+     */
     Route::resource('palazzine', PalazzinaController::class)
+        ->except(['show'])
         ->parameters(['palazzine' => 'palazzina']);
     
     Route::resource('scale', ScalaController::class)
+        ->except(['show'])   // idem: metodo mai scritto, vedi la nota qui sopra
         ->parameters(['scale' => 'scala']);
     
     // `only()` e non un `resource` intero: `SaldoInizialeController` implementa **solo** queste
@@ -153,6 +183,7 @@ Route::prefix('/gestionale/{condominio}')
         ->name('casse.registra-apertura');
     
     Route::resource('tabelle', TabellaController::class)
+        ->except(['show'])   // metodo mai scritto: vedi la nota su `palazzine`
         ->parameters(['tabelle' => 'tabella']);
     
     Route::prefix('tabelle/{tabella}')->group(function () {
@@ -161,9 +192,11 @@ Route::prefix('/gestionale/{condominio}')
     });
 
     Route::resource('esercizi', EsercizioController::class)
+        ->except(['show'])   // metodo mai scritto: vedi la nota su `palazzine`
         ->parameters(['esercizi' => 'esercizio']);
     
     Route::resource('esercizi.gestioni', GestioneController::class)
+        ->except(['show'])   // metodo mai scritto: vedi la nota su `palazzine`
         ->parameters([
             'esercizi' => 'esercizio',
             'gestioni' => 'gestione'
@@ -193,12 +226,24 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'    => 'esercizio',
             'piani-conti' => 'pianoConto',
             'conti'       => 'conto'
-        ]); 
-    
-    // Drill-down della colonna Consuntivo: i movimenti che compongono lo speso di
-    // una voce. Non annidata sotto {pianoConto} perché il conto identifica già la
-    // voce e il controller ne verifica l'appartenenza al condominio.
+        ]);
+
+    /*
+     * Drill-down della colonna Consuntivo: i movimenti che compongono lo speso di una voce.
+     *
+     * ⛔ **L'unica rotta del gestionale senza scoping, e l'unica coppia non mappabile.** Da
+     * `{esercizio}` a `{conto}` ci sono **tre** salti — il pivot `esercizio_gestione`, poi
+     * `piani_conti.gestione_id`, poi `conti.piano_conto_id` — e nessuna relazione Eloquent li fa
+     * tutti e tre. Ovunque altrove la coppia si è potuta mappare (vedi `Esercizio::pianiConti()` e
+     * `Condominio::conti()`); qui no, e con lo scoping acceso questa rotta risponderebbe 500 anche
+     * a chi ha diritto di aprirla.
+     *
+     * La guardia resta quindi quella scritta a mano in `MovimentiPerVoceController`, che verifica
+     * l'appartenenza del conto al condominio. Il presidio che questa resti l'unica eccezione è
+     * `tests/Feature/System/ScopingDelleRotteAnnidateTest.php`.
+     */
     Route::get('esercizi/{esercizio}/voci/{conto}/movimenti', MovimentiPerVoceController::class)
+        ->withoutScopedBindings()
         ->name('esercizi.voci.movimenti');
 
     Route::post('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/associa-tabella', AssociaTabellaController::class)

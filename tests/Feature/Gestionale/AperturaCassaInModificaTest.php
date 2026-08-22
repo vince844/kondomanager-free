@@ -203,9 +203,13 @@ test('una cassa di un altro condominio non si tocca', function () {
     [$altro] = setupContabile();
     $cassa = cassaSenzaApertura($altro->id, 500000);
 
+    // ⚠️ **404 e non 403, dalla beta.66.** La guardia a mano nel controller c'è ancora e
+    // risponderebbe 403, ma non ci si arriva più: la rotta è vincolata al condominio nell'indirizzo
+    // (`scopeBindings()`), quindi la cassa viene cercata **dentro** quel condominio e non si trova.
+    // È il rifiuto migliore dei due, perché non conferma nemmeno che quella cassa esista.
     $this->actingAs(utenteApertura())
         ->post(route('admin.gestionale.casse.registra-apertura', [$condominio->id, $cassa->id]))
-        ->assertForbidden();
+        ->assertNotFound();
 
     expect(apertureDi($cassa))->toBe(0);
 });

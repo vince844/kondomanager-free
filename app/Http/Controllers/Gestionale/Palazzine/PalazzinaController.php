@@ -128,16 +128,6 @@ class PalazzinaController extends Controller
         }
     }
 
-    /**
-     * Display the specified palazzina.
-     *
-     * @param  \App\Models\Palazzina  $palazzina
-     * @return void
-     */
-    public function show(Palazzina $palazzina)
-    {
-        // Not implemented. Could return a detailed view.
-    }
 
     /**
      * Show the form for editing the specified palazzina.
