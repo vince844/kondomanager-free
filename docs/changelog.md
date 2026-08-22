@@ -7,6 +7,79 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.65] - Chi Poteva Entrare, E Chi No
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Due difetti opposti sullo stesso tema. Uno teneva fuori l'amministratore dal proprio gestionale;
+l'altro apriva una porta a chi non doveva entrare.
+
+### Si aggiorna anche venendo da una versione vecchia
+
+Provando l'aggiornamento da una beta.50, subito dopo il login compariva **500 — colonna
+`last_login_at` sconosciuta**, e da lì non si andava avanti.
+
+La ragione è un cane che si morde la coda. Quella colonna nasce da una migrazione, e le migrazioni
+si lanciano da una pagina a cui si arriva **dopo aver fatto il login** — ma il login stesso scriveva
+in quella colonna. **Per aggiornare il database bisognava entrare, e per entrare serviva il database
+già aggiornato.** L'unica uscita era una query a mano, cioè nessuna uscita.
+
+Ora registrare l'ultimo accesso è considerato per quello che è — **contabilità, non
+autenticazione**: se non si può fare, non impedisce di entrare.
+
+⚠️ **Verificato che non ce ne fossero altri.** Non ci si è fermati alla riga segnalata: sono state
+esaminate tutte le tabelle che l'aggiornamento modifica o crea, e tutto ciò che gira prima di quella
+pagina. La mina era una sola, e da oggi una prova automatica rifà quel percorso a ogni giro —
+toglie la colonna, fa un login vero e pretende che funzioni.
+
+*(Questo difetto non l'ha trovato nessuna prova automatica: è saltato fuori provando
+l'aggiornamento a mano su una copia. Vale la pena continuare a farlo prima di ogni pubblicazione.)*
+
+### Il file di configurazione non si riscrive più in base a quello che chiede il visitatore
+
+Dalla v1.9 il programma, su alcuni hosting, aggiungeva da solo al proprio file di configurazione una
+riga che dice *«fidati del proxy»*. Decideva **a ogni richiesta**, e lo decideva **leggendo il nome
+del sito così come lo dichiara chi si collega** — un dato che chiunque può scrivere come vuole.
+
+Le conseguenze erano due, entrambe serie.
+
+- **Chi si collegava poteva farla scrivere.** Su una configurazione che accetta qualunque nome, una
+  visita non autenticata bastava a far comparire quella riga, e a quel punto restava.
+- **E scattava anche da sola, per errore.** Il confronto cercava un pezzo di testo, non un dominio:
+  `studio.aversa.it`, `condominio.avellino.it` e `mio.avvocato.it` la facevano scattare senza che
+  nessuno ci provasse.
+
+Con quella riga attiva il programma **crede a chiunque** dichiari il proprio indirizzo IP. E su
+quell'indirizzo si regge il blocco dei tentativi: cinque password sbagliate, o un codice a due
+fattori sbagliato, e l'accesso si chiude. **Cambiando indirizzo a ogni tentativo quel blocco non
+arrivava mai** — cioè si poteva provare all'infinito una password o un codice a sei cifre.
+
+Adesso si scrive un valore che è **sicuro dappertutto**: il programma si fida solo di un proxy che
+si trova sulla stessa rete interna, e mai di chi arriva da internet. E siccome quel valore va bene
+ovunque, **non c'è più niente da indovinare**: la parte che guardava il nome del sito è stata tolta,
+non resa più stretta.
+
+⚠️ **Se il tuo file era già stato modificato da noi in passato, l'aggiornamento lo corregge — e te
+lo scrive.** Al posto della riga vecchia trovi la spiegazione di cosa è cambiato, perché, e come
+rimettere il valore precedente se il tuo hosting lo richiede davvero. **Una riga che hai scritto tu
+non viene toccata in nessun caso**, qualunque valore abbia: si corregge solo ciò che avevamo scritto
+noi, e solo se è rimasto com'era.
+
+Infine: quel controllo ora gira **solo durante installazione e aggiornamento**, non più a ogni
+pagina che qualcuno apre.
+
+### Sotto il cofano
+
+- **Diciassette prove nuove sui proxy fidati**, e quattro di queste non provano il comportamento ma
+  che il difetto non possa tornare: che in quel file non ricompaia una lettura di ciò che manda chi
+  visita, e che il valore pericoloso non possa essere riscritto per distrazione.
+- **Lo script che prepara il pacchetto scaricabile non riscrive più il file di configurazione
+  d'esempio.** Lo rigenerava da zero, ed erano due copie della stessa cosa che potevano divergere:
+  è successo, e la copia generata prometteva una cosa che il programma non faceva. Ora la fonte è
+  una sola, quella del progetto.
+
+---
+
 ## [1.10.0-beta.64] - Chi Arrivava Dopo
 
 ⚠️ **Questa versione tocca il database:** due migrazioni. La prima registra **chi modifica** una

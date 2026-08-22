@@ -28,14 +28,30 @@ return [
     | LoadConfiguration, DOPO che il .env è stato caricato: qui env() funziona.
     | Il valore risolto sopravvive anche a `php artisan config:cache`.
     |
+    | VALORE CONSIGLIATO — dalla beta.65: PRIVATE_SUBNETS
+    | È un token che Symfony sostituisce con l'elenco delle reti private (loopback, RFC1918,
+    | CGNAT 100.64/10 e gli equivalenti IPv6). Si fida solo di un proxy che si connette da una di
+    | quelle reti — cioè il caso dell'hosting condiviso e di nginx/apache davanti a php-fpm — e da
+    | internet NON è falsificabile, perché chi arriva da fuori ha un REMOTE_ADDR pubblico.
+    |
+    | È il valore che l'installatore scrive da solo (UpgradePatchServiceProvider), e ha sostituito
+    | il precedente '*'. Fino alla beta.64 quel '*' veniva scritto in base a HTTP_HOST, cioè a
+    | un'intestazione mandata dal client: vedi la coda ㉞ in docs/roadmap.md.
+    |
+    | Se l'hosting mette il proprio proxy su un indirizzo PUBBLICO, PRIVATE_SUBNETS non lo copre e
+    | serve la lista esplicita degli IP di quel proxy. Non '*'.
+    |
     | SICUREZZA — valori possibili di TRUSTED_PROXIES nel .env:
+    |   - PRIVATE_SUBNETS       => CONSIGLIATO: vedi sopra. Sicuro ovunque, efficace dove il proxy
+    |                              è su rete privata o loopback.
     |   - non impostato / null  => DEFAULT SICURO: non ci si fida di nessun
     |                              proxy, gli header X-Forwarded-* vengono
     |                              ignorati. Un attaccante NON può falsificare
     |                              il proprio IP o lo schema. È la scelta
     |                              corretta per VPS "nude" dove PHP è esposto
     |                              direttamente.
-    |   - '*'                   => Si fida del proxy che si connette
+    |   - '*'                   => SCONSIGLIATO dalla beta.65, preferire
+    |                              PRIVATE_SUBNETS. Si fida del proxy che si connette
     |                              direttamente (REMOTE_ADDR). Usare SOLO su
     |                              hosting condiviso / dietro Cloudflare dove
     |                              l'unico modo per raggiungere PHP è passare

@@ -5,6 +5,7 @@ namespace App\Listeners;
 use App\Models\User;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Registra l'ultimo accesso riuscito di un utente.
@@ -24,6 +25,27 @@ use Illuminate\Support\Facades\DB;
  * Un `update()` sul model toccherebbe `updated_at`, che da quel momento direbbe «ultimo accesso»
  * invece di «ultima modifica alla scheda»: due informazioni diverse collassate in una, e quella
  * che si perde è l'unica che racconta chi ha messo mano all'utenza.
+ *
+ * ## ⚠️ Perché si controlla che la colonna esista — il difetto che ha chiuso fuori un amministratore
+ *
+ * Segnalato il 22/08/2026 aggiornando da una beta.50 a una beta.63: dopo il login compariva
+ * **500 — `Unknown column 'last_login_at' in 'field list'`**, e da lì non si andava avanti.
+ *
+ * La colonna nasce nella migrazione `2026_08_16_120000`, che gira dalla pagina di aggiornamento del
+ * database. Ma a quella pagina si arriva **dopo aver fatto il login**, e il login passa di qui. È un
+ * cane che si morde la coda: **l'aggiornamento richiede il login, e il login richiedeva
+ * l'aggiornamento.** Chi aggiornava da una versione precedente restava murato fuori dal proprio
+ * gestionale, senza nessuna strada che non fosse una query a mano.
+ *
+ * Registrare l'ultimo accesso è **contabilità, non autenticazione**: se non si può fare, non deve
+ * impedire di entrare. La guardia costa una domanda allo schema per login — non per richiesta — e
+ * si può togliere quando la 1.10 sarà l'unica versione da cui si aggiorna.
+ *
+ * ⚠️ **La classe è più larga di questa colonna**, ed è quello che presidia
+ * `tests/Feature/System/AggiornamentoDaVersioneVecchiaTest.php`: qualunque cosa giri **prima** della
+ * pagina di aggiornamento e **scriva** su una tabella che l'aggiornamento modifica produce lo stesso
+ * blocco. Leggere non fa danno — Eloquent restituisce `null` per una colonna che non c'è — a rompere
+ * è solo la scrittura.
  */
 class AggiornaUltimoAccesso
 {
@@ -39,6 +61,12 @@ class AggiornaUltimoAccesso
         // indietro. Senza questa riga la colonna direbbe che è entrato qualcuno che è stato
         // rimbalzato, e sarebbe la peggiore delle date: falsa e credibile.
         if ($event->user->suspended()) {
+            return;
+        }
+
+        // Vedi la nota nel blocco qui sopra: durante l'aggiornamento da una versione precedente
+        // la colonna non esiste ancora, e senza questa riga il login risponde 500.
+        if (! Schema::hasColumn('users', 'last_login_at')) {
             return;
         }
 
