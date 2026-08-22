@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { useForm, Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PagamentoFornitoreGuide from '@/components/guides/PagamentoFornitoreGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,9 +16,10 @@ import {
     CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
     AlertOctagon, TriangleAlert, Lock,
     Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp,
-    Bug, Scale, Info, FileX, Ban
+    Bug, Scale, Info, FileX, Ban, BookOpen
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { costruisciAllocazioni, distribuisciNetting } from '@/lib/gestionale/fatture/netting';
 import { usePermission } from '@/composables/permissions';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -255,21 +257,53 @@ const tipiDetrazione = [
 // ---------------------------------------------------------------------------
 // Computed — Totali & Allocazioni
 // ---------------------------------------------------------------------------
+/**
+ * Le pendenze selezionate, nella forma che il modulo di compensazione si aspetta (centesimi interi).
+ *
+ * La conversione euro → centesimi avviene **qui e una volta sola**: da questo punto in poi tutto il
+ * calcolo sta in `lib/gestionale/fatture/netting.ts`, che è coperto da vitest.
+ */
+const pendenzeSelezionate = computed(() =>
+    pendenze.value
+        .filter(p => p.selezionata && (p.importo_allocato || 0) > 0)
+        .map(p => ({
+            id: p.id,
+            isNotaCredito: !!p.is_nota_credito,
+            residuoCents: Math.abs(p.residuo || 0),
+            importoAllocatoCents: Math.round((p.importo_allocato || 0) * 100),
+            isScaduta: !!p.is_scaduta,
+            dataScadenza: p.data_scadenza ?? null,
+        }))
+);
+
+/**
+ * L'esito della compensazione: le allocazioni da spedire e i totali da mostrare.
+ *
+ * ⚠️ **I numeri a video e quelli spediti vengono dallo stesso calcolo**, ed è il punto della
+ * beta.67. Prima erano due aritmetiche diverse: la schermata mostrava `pagamento − compensazione`
+ * con un `max(0, …)` davanti, che nascondeva il caso in cui la nota vale più delle fatture — e
+ * proprio quel caso produceva il payload che il motore respingeva.
+ */
+const esitoNetting = computed(() => costruisciAllocazioni(pendenzeSelezionate.value));
+
+/** Da id documento a pendenza, per etichettare le righe delle allocazioni. */
+const pendenzaPerId = computed(() => new Map(pendenze.value.map(p => [p.id, p])));
+
+/** Il pannello della guida completa. Le tre schede in cima sono un riassunto, non una spiegazione. */
+const mostraGuida = ref(false);
+
 const totaleAllocatoPagamento = computed(() =>
     pendenze.value
         .filter(p => p.selezionata && !p.is_nota_credito)
         .reduce((sum, p) => sum + (p.importo_allocato || 0), 0)
 );
 
-const totaleAllocatoCompensazione = computed(() =>
-    pendenze.value
-        .filter(p => p.selezionata && p.is_nota_credito)
-        .reduce((sum, p) => sum + Math.abs(p.importo_allocato || 0), 0)
-);
+const totaleAllocatoCompensazione = computed(() => esitoNetting.value.compensatoCents / 100);
 
-const bonificoEffettivo = computed(() =>
-    Math.max(0, totaleAllocatoPagamento.value - totaleAllocatoCompensazione.value)
-);
+/** Credito selezionato che in questo pagamento non si può usare: le fatture non bastano ad assorbirlo. */
+const creditoNonUtilizzato = computed(() => esitoNetting.value.creditoNonUtilizzatoCents / 100);
+
+const bonificoEffettivo = computed(() => esitoNetting.value.uscitaCassaCents / 100);
 
 const uscitaCassaTotale = computed(() =>
     bonificoEffettivo.value + (Number(form.importo_commissioni_cents) || 0)
@@ -376,27 +410,31 @@ const onAllocazioneChange = (p: Pendenza, val: any) => {
     syncAllocazioni();
 };
 
-// Netting 1-Click: auto-compensa NC sulle FT
+/**
+ * «Compensa automaticamente»: sceglie quanto allocare su ciascuna pendenza.
+ *
+ * ⚠️ **Prima selezionava tutte le note al credito pieno e tutte le fatture al residuo pieno**, il
+ * che con una nota da € 800,00 su fatture per € 500,00 chiedeva di consumare € 800,00 di credito
+ * per coprire € 500,00 di debito: sbilanciato per costruzione, e respinto sempre. Ora il credito si
+ * distribuisce, e le note si selezionano solo per quanto serve davvero.
+ */
 const applyNetting = () => {
-    const ncs = pendenze.value.filter(p => p.is_nota_credito && p.stato_approvazione === 'approvata');
-    const fts = pendenze.value.filter(p => !p.is_nota_credito && p.stato_approvazione === 'approvata').sort((a, b) => {
-        // Priorità: fatture scadute prima
-        if (a.is_scaduta && !b.is_scaduta) return -1;
-        if (!a.is_scaduta && b.is_scaduta) return 1;
-        return (a.data_scadenza || '').localeCompare(b.data_scadenza || '');
-    });
+    const candidate = pendenze.value.filter(p => p.stato_approvazione === 'approvata');
 
-    // 1. Attiva tutte le NC
-    ncs.forEach(nc => {
-        nc.selezionata = true;
-        nc.importo_allocato = Math.abs(nc.residuo) / 100;
-    });
+    const importi = distribuisciNetting(candidate.map(p => ({
+        id: p.id,
+        isNotaCredito: !!p.is_nota_credito,
+        residuoCents: Math.abs(p.residuo || 0),
+        importoAllocatoCents: 0,
+        isScaduta: !!p.is_scaduta,
+        dataScadenza: p.data_scadenza ?? null,
+    })));
 
-    // 2. Distribuisci il credito sulle FT più vecchie, poi il resto va in pagamento cash
-    fts.forEach(ft => {
-        const residuoEuro = ft.residuo / 100;
-        ft.selezionata = true;
-        ft.importo_allocato = residuoEuro;
+    pendenze.value.forEach(p => {
+        const cents = importi.get(p.id);
+        if (cents === undefined) return;
+        p.selezionata = cents > 0;
+        p.importo_allocato = cents / 100;
     });
 
     syncAllocazioni();
@@ -442,14 +480,21 @@ const deselezionaTutte = () => {
     syncAllocazioni();
 };
 
+/**
+ * Scrive nel form le allocazioni da spedire.
+ *
+ * ⚠️ **Qui c'era il difetto della beta.66 e di prima.** Questa funzione emetteva **un record per
+ * documento** — la fattura tipizzata `pagamento` per intero, la nota `compensazione` per intero —
+ * e la partita doppia non poteva quadrare: con fattura € 1.000,00 e nota € 200,00 dava DARE 1.000
+ * e AVERE 1.200. Ogni compensazione veniva respinta con «Sbilancio rilevato», sia premendo
+ * «Compensa automaticamente» sia selezionando le pendenze a mano.
+ *
+ * La forma giusta è nella specifica dal 2025 (`docs/pagamenti_fatture.md`, Decisione 1): la fattura
+ * compare **due volte**, una per la parte che esce di cassa e una per la parte coperta dal credito.
+ * Il calcolo sta nel modulo, coperto da prove; qui resta solo l'assegnazione.
+ */
 const syncAllocazioni = () => {
-    form.allocazioni = pendenze.value
-        .filter(p => p.selezionata && (p.importo_allocato || 0) > 0)
-        .map(p => ({
-            fattura_id: p.id,
-            tipo: p.is_nota_credito ? 'compensazione' : 'pagamento',
-            importo_allocato_cents: Math.round((p.importo_allocato || 0) * 100),
-        }));
+    form.allocazioni = esitoNetting.value.allocazioni;
 };
 
 // ---------------------------------------------------------------------------
@@ -619,10 +664,22 @@ const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Registra Pagamento' },
 ]);
 
+/**
+ * Le tre schede in cima alla pagina.
+ *
+ * ⚠️ **Riscritte nella beta.67, e non è una questione di gusto.** Si chiamavano «Ledger
+ * Esecutivo», «Smart Netting» e «Sentinella Anti-Frode»: tre nomi inglesi che non dicono a un
+ * amministratore né cosa fa la pagina né cosa gli succede se preme un pulsante. Il primo non
+ * significa niente in nessuna delle due lingue; il secondo nomina un'operazione contabile con un
+ * termine di sala operativa; il terzo promette una difesa contro le frodi mentre quello che fa è
+ * confrontare due IBAN.
+ *
+ * La regola qui è quella delle guide del progetto: **non ripetere l'etichetta, dire cosa succede.**
+ */
 const pageGuides = [
-    { title: 'Ledger Esecutivo',     description: 'Seleziona il fornitore, poi scegli le fatture da pagare nel registro a destra. Il sistema calcola tutto automaticamente.', icon: ArrowRightLeft, colorVariant: 'blue' as const },
-    { title: 'Smart Netting',        description: 'Se il fornitore ha Note di Credito aperte, un click compensa automaticamente riducendo l\'uscita di cassa.',               icon: Sparkles,       colorVariant: 'amber' as const },
-    { title: 'Sentinella Anti-Frode', description: 'Ogni IBAN viene verificato contro l\'anagrafica. In caso di discrepanza, è richiesta conferma manuale.',                  icon: ShieldCheck,    colorVariant: 'emerald' as const },
+    { title: 'Prima il fornitore, poi i documenti', description: 'Scegli il fornitore a sinistra: a destra compaiono le sue fatture da pagare e le sue note di credito da usare. Spunti quelle che ti servono e i totali si aggiornano.', icon: ArrowRightLeft, colorVariant: 'blue' as const },
+    { title: 'Le note di credito riducono il bonifico', description: 'Se il fornitore ti ha emesso una nota di credito, la usi per coprire in parte o del tutto una fattura: dalla banca esce solo la differenza, e il debito si chiude lo stesso.', icon: Sparkles, colorVariant: 'amber' as const },
+    { title: "L'IBAN viene confrontato con l'anagrafica", description: "Se l'IBAN che stai per usare non è quello registrato per questo fornitore, il programma si ferma e ti chiede di confermarlo a mano.", icon: ShieldCheck, colorVariant: 'emerald' as const },
 ];
 </script>
 
@@ -639,7 +696,15 @@ const pageGuides = [
                 :video-url="null"
                 :back-url="route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id })"
                 back-text="Indietro"
-            />
+            >
+                <template #actions>
+                    <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
+                        <BookOpen class="h-4 w-4" /> Guida completa
+                    </Button>
+                </template>
+            </PageHeaderGuide>
+
+            <PagamentoFornitoreGuide v-model:open="mostraGuida" />
 
             <!-- Banner warning cash -->
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
@@ -682,7 +747,7 @@ const pageGuides = [
                                             <div class="flex items-center gap-2 mt-0.5">
                                                 <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
                                                 <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
-                                                <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none">
+                                                <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded-md px-1.5 py-0.5 leading-none">
                                                     Ritenuta
                                                 </span>
                                             </div>
@@ -693,7 +758,7 @@ const pageGuides = [
                                     <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
                                         <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                         <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
-                                        <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none shrink-0">
+                                        <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded-md px-1.5 py-0.5 leading-none shrink-0">
                                             Ritenuta
                                         </span>
                                     </div>
@@ -835,7 +900,7 @@ const pageGuides = [
                                             <p class="text-[9px] text-slate-400 mt-0.5">Detrazioni fiscali condominiali (Art. 16-bis TUIR)</p>
                                         </div>
                                     </div>
-                                    <Badge v-if="form.bonifico_parlante" class="bg-indigo-100 text-indigo-700 border-indigo-200 text-[8px] font-black uppercase tracking-widest">
+                                    <Badge v-if="form.bonifico_parlante" class="rounded-md bg-indigo-100 text-indigo-700 border-indigo-200 text-[8px] font-black uppercase tracking-widest">
                                         Fiscale
                                     </Badge>
                                 </div>
@@ -884,13 +949,13 @@ const pageGuides = [
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
                             <div class="flex justify-between text-xs">
-                                <span class="text-slate-400">Totale Pagamenti</span>
+                                <span class="text-slate-400">Totale documenti</span>
                                 <span>{{ euro(totaleAllocatoPagamento, { fromCents: false }) }}</span>
                             </div>
 
                             <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0">
                                 <div v-if="totaleAllocatoCompensazione > 0" class="flex justify-between text-xs pl-2 border-l-2 border-blue-500/50 ml-1">
-                                    <span class="text-blue-400/80">Compensato con NC</span>
+                                    <span class="text-blue-400/80">Coperto con note di credito</span>
                                     <span class="text-blue-400/80">- {{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</span>
                                 </div>
                             </Transition>
@@ -920,36 +985,64 @@ const pageGuides = [
                 <!-- ── COLONNA DESTRA — Ledger Esecutivo ── -->
                 <div class="lg:col-span-8 flex flex-col gap-5 relative z-0">
 
-                    <!-- Smart Router Netting Banner -->
+                    <!-- Banner delle note di credito compensabili -->
                     <Transition enter-active-class="transition-all duration-500 ease-out" enter-from-class="opacity-0 -translate-y-3 scale-[0.98]" enter-to-class="opacity-100 translate-y-0 scale-100">
+                        <!--
+                          `flex-wrap` più `gap-3`: a 375 px il pulsante sforava il viewport di 23 px
+                          e faceva scorrere la pagina intera in orizzontale. Era così da quando il
+                          banner esiste, ma non lo incontrava nessuno: fino alla beta.67 premere quel
+                          pulsante finiva sempre in errore, quindi il difetto di impaginazione stava
+                          dietro a un difetto più grosso. Sistemato l'uno si vede l'altro.
+                        -->
                         <div v-if="hasNetting && form.fornitore_id"
-                            class="bg-gradient-to-r from-amber-50 to-amber-50/60 dark:from-amber-950/30 dark:to-amber-950/10 rounded-xl border border-amber-200 dark:border-amber-800/50 p-4 flex items-center justify-between shadow-sm">
+                            class="bg-gradient-to-r from-amber-50 to-amber-50/60 dark:from-amber-950/30 dark:to-amber-950/10 rounded-xl border border-amber-200 dark:border-amber-800/50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
                             <div class="flex items-center gap-3">
                                 <div class="p-2.5 bg-amber-100 dark:bg-amber-800/40 rounded-xl border border-amber-200/50">
                                     <Sparkles class="w-5 h-5 text-amber-600 dark:text-amber-400" />
                                 </div>
-                                <div>
-                                    <p class="text-sm font-bold text-amber-900 dark:text-amber-200">Smart Router — Netting 1-Click</p>
-                                    <p class="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">
-                                        Questo fornitore ha <strong>{{ euro(totaleNC) }}</strong> in Note di Credito compensabili
-                                        contro <strong>{{ euro(totaleFT) }}</strong> di fatture aperte.
+                                <!--
+                                  ⚠️ Il titolo diceva «Smart Router — Netting 1-Click», che non dice
+                                  a un amministratore né cosa c'è né cosa succede premendo. Ora il
+                                  titolo è il fatto, e la riga sotto è **cosa farà il pulsante**:
+                                  una funzione che tocca dei soldi va spiegata prima di premerla,
+                                  non dopo.
+                                -->
+                                <div class="min-w-0">
+                                    <p class="text-sm font-bold text-amber-900 dark:text-amber-200">
+                                        Questo fornitore ha note di credito da usare
+                                    </p>
+                                    <p class="text-[11px] text-amber-700/90 dark:text-amber-400/90 mt-0.5">
+                                        <strong>{{ euro(totaleNC) }}</strong> di note di credito, contro
+                                        <strong>{{ euro(totaleFT) }}</strong> di fatture da pagare.
+                                    </p>
+                                    <p class="text-[11px] text-amber-700/90 dark:text-amber-400/90 mt-1">
+                                        Premendo il pulsante le note vengono usate sulle fatture, partendo dalle
+                                        più scadute: il bonifico si riduce di altrettanto. Puoi correggere ogni
+                                        importo a mano dopo, e niente viene registrato finché non confermi.
                                     </p>
                                 </div>
                             </div>
+                            <!--
+                              `shrink-0`: senza, il pulsante si sovrapponeva alla riga di testo
+                              accanto — si leggeva «…di fatture apert» con il pulsante sopra
+                              l'ultima parola. Il testo ha `min-w-0` e va a capo, il pulsante no.
+                              `ml-auto`: quando il testo è lungo e il pulsante finisce su una riga
+                              sua, resta a destra invece di tornare a sinistra sotto l'icona.
+                            -->
                             <Button variant="outline" size="sm" type="button" @click="applyNetting"
-                                class="h-9 px-4 text-[11px] font-black uppercase tracking-wider border-amber-300 bg-white dark:bg-amber-800/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/50 shadow-sm transition-all gap-1.5">
-                                <Zap class="w-3.5 h-3.5" /> Compensa Automaticamente
+                                class="h-9 px-4 shrink-0 ml-auto text-[11px] font-bold uppercase tracking-wider border-amber-300 bg-white dark:bg-amber-800/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/50 shadow-sm transition-all gap-1.5">
+                                <Zap class="w-3.5 h-3.5" /> Usa le note di credito
                             </Button>
                         </div>
                     </Transition>
 
                     <!-- Tabella Documenti Pendenze -->
                     <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between rounded-t-xl">
+                        <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3 rounded-t-xl">
                             <div>
                                 <div class="flex items-center gap-2">
                                     <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Documenti pendenti</h3>
-                                    <Badge v-if="pendenze.length" variant="secondary" class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent">
+                                    <Badge v-if="pendenze.length" variant="secondary" class="rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent">
                                         {{ pendenze.length }} {{ pendenze.length === 1 ? 'Documento' : 'Documenti' }}
                                     </Badge>
                                 </div>
@@ -957,8 +1050,14 @@ const pageGuides = [
                                     {{ form.fornitore_id ? 'Seleziona le fatture da pagare e le note di credito da compensare.' : 'Seleziona un fornitore per visualizzare i documenti.' }}
                                 </p>
                             </div>
-                            <div v-if="pendenze.length" class="flex items-center gap-2">
-                                <Badge v-if="documentiSelezionati > 0" class="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold">
+                            <!--
+                              `flex-wrap` come sul banner qui sopra: a 375 px questi tre elementi
+                              erano l'ultima cosa che faceva scorrere la pagina in orizzontale
+                              (451 px contro 375). Difetto preesistente, chiuso qui perché era
+                              rimasto l'unico su questa pagina — e perché è la stessa riga.
+                            -->
+                            <div v-if="pendenze.length" class="flex flex-wrap items-center justify-end gap-2">
+                                <Badge v-if="documentiSelezionati > 0" class="rounded-md bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold">
                                     {{ documentiSelezionati }} selezionat{{ documentiSelezionati === 1 ? 'o' : 'i' }}
                                 </Badge>
                                 <Button variant="outline" size="sm" type="button" @click="selezionaTutte"
@@ -1025,19 +1124,43 @@ const pageGuides = [
                                 <!-- Info documento -->
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
-                                        <Badge :class="p.is_nota_credito
-                                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-400'
-                                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'"
-                                            class="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5">
-                                            {{ p.is_nota_credito ? 'NC' : 'FT' }}
-                                        </Badge>
+                                        <!--
+                                          ⚠️ **Il tooltip non è un vezzo: «FT» e «NC» sono due sigle,
+                                          e una sigla la capisce chi la conosce già.** Sono standard
+                                          nella contabilità italiana, ma questa pagina la usa anche
+                                          chi amministra due condomìni e non fa il commercialista.
+                                          Una legenda fissa costerebbe spazio per sempre per una
+                                          cosa che si impara una volta; il tooltip è lì solo quando
+                                          serve, ed è lo stesso modello del badge «Ratifica
+                                          richiesta» due righe più sotto.
+                                        -->
+                                        <TooltipProvider :delay-duration="200">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <Badge :class="p.is_nota_credito
+                                                        ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-400'
+                                                        : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'"
+                                                        class="rounded-md text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 cursor-help">
+                                                        {{ p.is_nota_credito ? 'NC' : 'FT' }}
+                                                    </Badge>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="top" class="max-w-xs text-center">
+                                                    <p class="font-bold mb-1">{{ p.is_nota_credito ? 'Nota di credito' : 'Fattura' }}</p>
+                                                    <p class="text-[11px] leading-relaxed font-normal opacity-90">
+                                                        {{ p.is_nota_credito
+                                                            ? 'Un documento con cui il fornitore restituisce qualcosa al condominio: uno storno, un lavoro rifatto, un errore in fattura. Non è denaro che entra in cassa — è un credito da usare per pagare meno.'
+                                                            : 'Un documento che il fornitore ha emesso e che il condominio deve pagare.' }}
+                                                    </p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
                                         <span class="font-bold text-sm text-slate-800 dark:text-slate-200">{{ p.numero_documento }}</span>
                                         <span v-if="p.is_scaduta && !p.is_nota_credito"
-                                            class="text-[8px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 leading-none flex items-center gap-1">
+                                            class="text-[8px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 rounded-md px-1.5 py-0.5 leading-none flex items-center gap-1">
                                             <Clock class="w-2.5 h-2.5" /> Scaduta
                                         </span>
                                         <span v-if="p.stato_pagamento === 'parziale'"
-                                            class="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 leading-none">
+                                            class="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-1.5 py-0.5 leading-none">
                                             Parziale
                                         </span>
                                         <!-- Badge sforo con Tooltip shadcn (sfondo nero, freccia) -->
@@ -1045,7 +1168,7 @@ const pageGuides = [
                                             <Tooltip>
                                                 <TooltipTrigger as-child>
                                                     <span
-                                                        class="text-[8px] font-black uppercase tracking-wider text-orange-700 bg-orange-100 border border-orange-300 rounded px-1.5 py-0.5 leading-none cursor-help"
+                                                        class="text-[8px] font-black uppercase tracking-wider whitespace-nowrap text-orange-700 bg-orange-100 border border-orange-300 rounded-md px-1.5 py-0.5 leading-none cursor-help"
                                                     >
                                                         ⚠ Ratifica richiesta
                                                     </span>
@@ -1058,7 +1181,7 @@ const pageGuides = [
                                         </TooltipProvider>
                                         <span
                                             v-else-if="p.stato_approvazione !== 'approvata'"
-                                            class="text-[8px] font-black uppercase tracking-wider text-slate-500 bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 leading-none"
+                                            class="text-[8px] font-black uppercase tracking-wider text-slate-500 bg-slate-200 border border-slate-300 rounded-md px-1.5 py-0.5 leading-none"
                                         >
                                             Da approvare
                                         </span>
@@ -1067,7 +1190,7 @@ const pageGuides = [
                                             v-if="p.stato_approvazione === 'sforo_motivato'"
                                             type="button"
                                             @click.stop="apriModaleApprovazioneSforo(p)"
-                                            class="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-white bg-orange-500 hover:bg-orange-600 border border-orange-600 rounded px-2 py-0.5 leading-none transition-colors shadow-sm"
+                                            class="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider whitespace-nowrap text-white bg-orange-500 hover:bg-orange-600 border border-orange-600 rounded-md px-2 py-0.5 leading-none transition-colors shadow-sm"
                                         >
                                             <Stamp class="w-2.5 h-2.5" />
                                             Approva sforo
@@ -1118,14 +1241,35 @@ const pageGuides = [
                         <!-- Footer registro -->
                         <div v-if="pendenze.length > 0"
                             class="py-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl flex flex-col sm:flex-row items-end sm:items-center justify-between px-6">
-                            <div>
+                            <!--
+                              `min-w-0` più `max-w-sm`: la riga sul credito non utilizzabile può
+                              essere lunga, e senza un limite allargava questo riquadro fino a
+                              spingere le colonne dei totali, mandando «NC comp.» a capo. Il testo
+                              va a capo **dentro** il riquadro, che è il posto giusto.
+                            -->
+                            <div class="min-w-0 max-w-sm">
                                 <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-x-4" enter-to-class="opacity-100 translate-x-0">
-                                    <div v-if="totaleAllocatoCompensazione > 0" class="flex items-center gap-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 px-3 py-2 rounded-lg shadow-sm">
+                                    <div v-if="totaleAllocatoCompensazione > 0" class="flex items-start gap-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 px-3 py-2 rounded-lg shadow-sm">
                                         <div class="bg-blue-100 dark:bg-blue-800/50 p-1 rounded-md">
                                             <ArrowRightLeft class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                                         </div>
                                         <div class="text-[11px] text-blue-800 dark:text-blue-300 leading-tight">
-                                            Netting: <strong class="font-black text-blue-900 dark:text-blue-100">{{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</strong> <span class="opacity-80">compensato con NC</span>
+                                            Coperto con le note di credito: <strong class="font-black text-blue-900 dark:text-blue-100">{{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</strong><span class="opacity-80">, che non escono dal conto corrente</span>
+                                            <!--
+                                              ⚠️ Il credito che non si può usare va detto, non nascosto. Se le fatture
+                                              selezionate non bastano ad assorbire la nota, l'eccedenza resta sulla nota:
+                                              senza questa riga l'amministratore vede una nota da € 800,00 selezionata e
+                                              € 500,00 compensati, e non ha modo di capire dove sono finiti gli altri.
+                                            -->
+                                            <!--
+                                              Niente `opacity-80` qui, a differenza dell'etichetta
+                                              accanto: quella nomina un totale, questa avverte che
+                                              del denaro non si può usare. Un avviso letto peggio
+                                              dell'etichetta che lo circonda è un avviso mancato.
+                                            -->
+                                            <span v-if="creditoNonUtilizzato > 0" class="block mt-0.5 font-medium">
+                                                {{ euro(creditoNonUtilizzato, { fromCents: false }) }} di credito non si possono usare qui: le fatture selezionate non bastano. Restano sulla nota.
+                                            </span>
                                         </div>
                                     </div>
                                 </Transition>
@@ -1138,7 +1282,7 @@ const pageGuides = [
                                 </div>
                                 <div v-if="totaleAllocatoCompensazione > 0" class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
                                 <div v-if="totaleAllocatoCompensazione > 0" class="text-right">
-                                    <span class="text-[10px] text-blue-500 font-bold uppercase tracking-widest block mb-0.5">NC Comp.</span>
+                                    <span class="text-[10px] text-blue-500 font-bold uppercase tracking-widest block mb-0.5">Note di credito</span>
                                     <span class="font-black text-blue-600 dark:text-blue-400 text-lg">- {{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</span>
                                 </div>
                                 <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
@@ -1178,24 +1322,37 @@ const pageGuides = [
                             <!-- Dettaglio allocazioni -->
                             <div class="p-5">
                                 <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Dettaglio Allocazioni</p>
+                                <!--
+                                  ⚠️ **Si scorre `esitoNetting.allocazioni`, non `pendenze`, ed è la
+                                  correzione della beta.67.** Questo pannello è l'ultima cosa che
+                                  l'amministratore legge prima di confermare, e diceva una cosa
+                                  diversa da quella che veniva spedita: tipizzava per documento —
+                                  «Pagamento» se fattura, «Compensazione» se nota — mentre una
+                                  fattura coperta in parte dal credito produce **due** righe, una
+                                  per la parte che esce di cassa e una per la parte compensata.
+                                  Era la stessa assunzione sbagliata che rendeva il payload
+                                  sbilanciato, ricopiata nella resa: la riga su una compensazione
+                                  pura si leggeva «Pagamento € 177,00» mentre di euro non ne usciva
+                                  nessuno.
+                                -->
                                 <div class="space-y-2">
-                                    <div v-for="p in pendenze.filter(x => x.selezionata)" :key="p.id"
+                                    <div v-for="(a, i) in esitoNetting.allocazioni" :key="`${a.fattura_id}-${a.tipo}-${i}`"
                                         class="flex justify-between items-start text-xs border-b border-slate-800 pb-2 last:border-0 last:pb-0">
                                         <div class="flex-1 mr-4">
                                             <div class="flex items-center gap-2">
                                                 <span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                                                    :class="p.is_nota_credito ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-700 text-slate-400'">
-                                                    {{ p.is_nota_credito ? 'NC' : 'FT' }}
+                                                    :class="pendenzaPerId.get(a.fattura_id)?.is_nota_credito ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-700 text-slate-400'">
+                                                    {{ pendenzaPerId.get(a.fattura_id)?.is_nota_credito ? 'NC' : 'FT' }}
                                                 </span>
-                                                <span class="font-medium text-slate-200">{{ p.numero_documento }}</span>
+                                                <span class="font-medium text-slate-200">{{ pendenzaPerId.get(a.fattura_id)?.numero_documento }}</span>
                                             </div>
                                         </div>
                                         <div class="text-right shrink-0">
-                                            <span class="font-bold" :class="p.is_nota_credito ? 'text-blue-400' : 'text-white'">
-                                                {{ p.is_nota_credito ? '- ' : '' }}{{ euro((p.importo_allocato || 0) * 100) }}
+                                            <span class="font-bold" :class="a.tipo === 'compensazione' ? 'text-blue-400' : 'text-white'">
+                                                {{ pendenzaPerId.get(a.fattura_id)?.is_nota_credito ? '- ' : '' }}{{ euro(a.importo_allocato_cents) }}
                                             </span>
                                             <div class="text-[9px] text-slate-500 font-medium mt-0.5">
-                                                {{ p.is_nota_credito ? 'Compensazione' : 'Pagamento' }}
+                                                {{ a.tipo === 'compensazione' ? 'Compensazione' : 'Pagamento' }}
                                             </div>
                                         </div>
                                     </div>

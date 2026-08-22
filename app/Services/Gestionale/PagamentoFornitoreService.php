@@ -568,10 +568,14 @@ class PagamentoFornitoreService
 
             // Il nuovo importo netto totale viene distribuito proporzionalmente
             // (per semplicità: caso singola fattura — multi-fattura non modificabile)
-            if (abs($nuovoImportoNetto) > abs($residuoSenzaCorrente) && ! $allowOverpayment) {
+            // ⚠️ Nessun `abs()` sul residuo, dalla beta.67: ora è già una magnitudo per fatture e
+            // note, e un negativo significa **allocato più del dovuto**. Prendendone il valore
+            // assoluto, una nota consumata oltre il suo valore tornava a offrire credito — che è
+            // esattamente il difetto che questa guardia esiste per fermare.
+            if (abs($nuovoImportoNetto) > $residuoSenzaCorrente && ! $allowOverpayment) {
                 throw new OverpaymentException(
                     sprintf(
-                        'Overpayment su fattura %s (id %d): si alloca %s€ ma il residuo è %s€.',
+                        'Overpayment su fattura %s (id %d): si alloca € %s ma il residuo è € %s.',
                         $fattura->numero_documento ?? "#{$fattura->id}",
                         $fattura->id,
                         number_format($nuovoImportoNetto / 100, 2, ',', '.'),
@@ -604,7 +608,7 @@ class PagamentoFornitoreService
             if (! $capienza['ok']) {
                 throw new InsufficientFundsException(
                     sprintf(
-                        'Saldo conto insufficiente: disponibile %s€, necessario %s€ (scopertura %s€). '.
+                        'Saldo conto insufficiente: disponibile € %s, necessario € %s (scopertura € %s). '.
                         'Usare allow_overdraft per procedere.',
                         number_format($capienza['saldo_attuale_cents'] / 100, 2, ',', '.'),
                         number_format($deltaRichiesto / 100, 2, ',', '.'),
@@ -1159,13 +1163,19 @@ class PagamentoFornitoreService
 
             $residuo = $fattura->residuo;
 
-            // ⚠️ MODIFICA: Uso abs() per confrontare le magnitudo.
-            // Permette di gestire le Note di Credito dove il residuo è negativo (es. -244€),
-            // verificando che l'allocazione proposta (es. 244€) non superi il credito disponibile.
-            if (abs($allocatoProposto) > abs($residuo) && ! $allowOverpayment) {
+            // ⚠️ **Qui c'era `abs($residuo)`, ed era la seconda metà del difetto della coda ㉘.**
+            // Era stato aggiunto per le note di credito, il cui residuo risultava negativo: ma il
+            // negativo non era la loro condizione normale, era il segno di un accessor che
+            // sottraeva l'allocato da un netto negativo. Il valore assoluto nascondeva il difetto e
+            // insieme **lo faceva passare**: una nota da € 2.440,00 già compensata per la metà
+            // dichiarava € 3.660,00 di credito, e questa riga li lasciava consumare.
+            //
+            // Dalla beta.67 il residuo è già una magnitudo per tutti e due i tipi di documento, e
+            // un negativo significa allocato più del dovuto — quindi va confrontato com'è.
+            if (abs($allocatoProposto) > $residuo && ! $allowOverpayment) {
                 throw new OverpaymentException(
                     sprintf(
-                        'Overpayment su fattura %s (id %d): si alloca %s€ ma il residuo è %s€.',
+                        'Overpayment su fattura %s (id %d): si alloca € %s ma il residuo è € %s.',
                         $fattura->numero_documento ?? "#{$fattura->id}",
                         $fattura->id,
                         number_format($allocatoProposto / 100, 2, ',', '.'),
@@ -1187,7 +1197,7 @@ class PagamentoFornitoreService
             if ($totalePagamentoCash >= 500000) { // 5.000€ in centesimi
                 throw new IllegalCashAmountException(
                     sprintf(
-                        'Pagamento in contanti di %s€ non consentito: supera il limite di 5.000€ '.
+                        'Pagamento in contanti di € %s non consentito: supera il limite di € 5.000 '.
                         '(D.Lgs. 231/2007 antiriciclaggio).',
                         number_format($totalePagamentoCash / 100, 2, ',', '.')
                     )
@@ -1205,7 +1215,7 @@ class PagamentoFornitoreService
             if (! $capienza['ok']) {
                 throw new InsufficientFundsException(
                     sprintf(
-                        'Saldo conto insufficiente: disponibile %s€, necessario %s€ (scopertura %s€). '.
+                        'Saldo conto insufficiente: disponibile € %s, necessario € %s (scopertura € %s). '.
                         'Usare allow_overdraft per procedere.',
                         number_format($capienza['saldo_attuale_cents'] / 100, 2, ',', '.'),
                         number_format($totaleCassa / 100, 2, ',', '.'),

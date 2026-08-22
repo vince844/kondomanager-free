@@ -7,6 +7,84 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.67] - Il Credito Che Cresceva Mentre Lo Spendevi
+
+**Nessuna migrazione: il database non viene toccato.**
+
+Due difetti sullo stesso tema, uno visibile e uno no, che dovevano essere corretti insieme.
+
+### La nota di credito non si riusciva a usare
+
+Il motore contabile la compensazione la sa fare da sempre: se il pagamento gli arriva costruito
+bene, la fattura si chiude e i conti quadrano anche quando dalla banca non esce un euro. Ma la
+schermata di registrazione del pagamento **non sapeva costruirla** — e in quella stessa schermata
+c'era un pulsante che proponeva di compensare automaticamente con un click.
+
+Premendolo si finiva **sempre** in «sbilancio rilevato tra dare e avere», e il pagamento non si
+salvava. Non era un caso limite: era ogni uso della nota di credito da quella schermata, anche
+selezionandola a mano.
+
+⚠️ **Perché succedeva.** Una fattura coperta in parte dal credito deve comparire **due volte** nella
+registrazione — una riga per la parte che esce di cassa e una per la parte compensata — e la
+schermata ne scriveva una sola. La forma giusta era specificata dal 2025 e il motore la
+implementava già; a non implementarla era l'interfaccia.
+
+Il calcolo sta ora in un modulo a sé, coperto da diciannove prove che verificano la quadratura caso
+per caso — **prima** di spedire, non dopo essere stati respinti.
+
+### Sotto ce n'era un secondo, che il primo teneva nascosto
+
+Il credito residuo di una nota era calcolato al contrario:
+
+    nota da € 2.440,00, niente compensato    → € 2.440,00 disponibili   ✓
+    dopo aver compensato € 1.220,00          → € 3.660,00 disponibili   ✗
+
+**Il credito cresceva mentre lo si spendeva**, e il controllo che impedisce di consumarne troppo
+leggeva quella cifra gonfiata. Se si fosse corretto solo il pulsante, l'errore visibile sarebbe
+diventato **tre fatture chiuse a «pagata» con € 1.220,00 di credito inventato e zero euro usciti di
+cassa**. Per questo le due cose sono state corrette insieme.
+
+La correzione sta in un punto solo, l'accessor: un numero che va letto al contrario a seconda del
+tipo di documento è un numero che il prossimo chiamante sbaglia in buona fede.
+
+### La schermata dice cosa sta per fare, prima di farlo
+
+Il riquadro giallo si chiamava **«Smart Router — Netting 1-Click»** e il pulsante **«Compensa
+automaticamente»**: due nomi che non dicono a un amministratore né cosa c'è né cosa succede se
+preme. Ora il riquadro dice che il fornitore ha note di credito da usare, e sotto c'è scritto cosa
+farà il pulsante — quali fatture tocca, in che ordine, e che niente viene registrato finché non si
+conferma.
+
+Sparite anche le sigle: «compensato con NC» è diventato «coperto con le note di credito», e le
+etichette **FT** e **NC** sulle righe hanno un tooltip che le scioglie.
+
+⚠️ **E dice quanto credito non si può usare.** Se la nota vale più delle fatture selezionate,
+l'eccedenza non è utilizzabile in quel pagamento: resta sulla nota, e ora lo si legge invece di
+doverlo dedurre dai totali.
+
+Corretto anche il pannello che elenca cosa verrà scritto in contabilità: diceva «Pagamento» su
+righe che erano compensazioni — cioè mostrava una cosa diversa da quella che veniva spedita. Era lo
+stesso errore, copiato in un terzo posto, e non l'ha trovato nessun test: si vede solo premendo il
+pulsante.
+
+### Una guida completa in cima alla pagina
+
+Come su altre schermate. Questa pagina fa **cinque** cose che dal nome non si deducono — la
+compensazione, il controllo dell'IBAN contro l'anagrafica, il sospetto di pagamento doppio entro
+ventiquattro ore, la capienza del conto, il limite di legge sui contanti — e nessuna era spiegata
+da nessuna parte.
+
+### Sotto il cofano
+
+- Nove prove nuove sul lato contabile e diciannove sul calcolo della compensazione, fra cui quella
+  che rifà lo scenario per intero — tre fatture e una nota, le prime due compensazioni accettate e
+  la terza rifiutata — e quella che verifica che il payload vecchio venga davvero **respinto**.
+- Corretti cinque messaggi d'errore che scrivevano il simbolo dell'euro dopo l'importo.
+- Su schermo stretto il banner e la barra dei documenti non fanno più scorrere la pagina in
+  orizzontale; le etichette non si spezzano più a metà parola.
+
+---
+
 ## [1.10.0-beta.66] - Ognuno A Casa Propria
 
 **Nessuna migrazione: il database non viene toccato.**

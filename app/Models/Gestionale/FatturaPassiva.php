@@ -279,12 +279,41 @@ class FatturaPassiva extends Model
     }
 
     /**
-     * Residuo da saldare = netto_a_pagare − totale_allocato.
-     * Negativo = overpayment → anomalia, vedi inconsistenza_pagamento.
+     * Quanto resta da saldare (fattura) o da compensare (nota di credito), in centesimi.
+     *
+     * **Positivo = ancora da chiudere. Negativo = allocato più del dovuto**, cioè un'anomalia —
+     * vedi `inconsistenza_pagamento`. Vale per tutti e due i tipi di documento, ed è il punto.
+     *
+     * ## ⚠️ Perché c'è `abs()` sul netto, e cosa costava non averlo (corretto nella beta.67)
+     *
+     * `FatturaPassivaService` registra le note di credito moltiplicando per **−1**: il netto di una
+     * nota è negativo. L'allocato invece è sempre positivo, perché è la somma di quanto si è
+     * consumato. Facendo `netto − allocato` su una nota, ogni compensazione **allontanava** il
+     * risultato da zero:
+     *
+     *     nota da € 2.440,00, niente compensato → −244000, letto come € 2.440,00 disponibili  ✓
+     *     dopo aver compensato € 1.220,00       → −366000, letto come € 3.660,00 disponibili  ✗
+     *
+     * **Il credito cresceva mentre lo si spendeva.** E non restava un numero storto a video:
+     * l'endpoint delle pendenze lo espone con `abs()`, e la guardia sull'eccesso in
+     * `PagamentoFornitoreService` confronta magnitudo — `abs($allocatoProposto) > abs($residuo)` —
+     * quindi leggeva la cifra gonfiata e **accettava** la compensazione di troppo: € 3.660,00
+     * consumati da una nota che ne vale € 2.440,00, tre fatture chiuse a «pagata» e zero euro
+     * usciti di cassa.
+     *
+     * La convenzione qui sotto è la stessa che `PagamentoFornitoreService::ricalcolaStatoFattura()`
+     * usa già da sé (`abs($totale)` contro `abs($netto)`) ed è per questo che la macchina degli
+     * stati era giusta mentre il residuo no: erano due letture diverse dello stesso fatto.
+     *
+     * ⚠️ **La correzione sta qui e non nei chiamanti**, che sono tre e di cui **uno è la guardia**.
+     * Un numero che va letto al contrario a seconda del tipo di documento è un numero che il
+     * prossimo chiamante sbaglierà in buona fede.
+     *
+     * Il presidio è `tests/Feature/Gestionale/CreditoNotaCreditoNonCresceTest.php`.
      */
     public function getResiduoAttribute(): int
     {
-        return $this->netto_a_pagare - $this->totale_allocato;
+        return abs($this->netto_a_pagare) - $this->totale_allocato;
     }
 
     // ── v1.9.1 — Scopes pagamento ─────────────────────────────────────────────

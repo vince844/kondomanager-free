@@ -390,7 +390,12 @@ class PagamentoFornitoreController extends Controller
                     'numero_documento' => $nc->numero_documento ?? "NC#{$nc->id}",
                     'data_documento' => $nc->data_documento?->format('d/m/Y'),
                     'netto_a_pagare' => abs($nc->netto_a_pagare),
-                    'residuo' => abs($nc->residuo),
+                    // ⚠️ `max(0, …)` e non `abs(…)`, dalla beta.67. Il residuo di una nota ora dice
+                    // **quanto credito resta**, e un valore negativo significa una cosa sola: ne è
+                    // stato consumato più del dovuto. Con `abs()` quell'anomalia tornava a video
+                    // come credito disponibile — cioè il difetto si ripresentava proprio nel punto
+                    // in cui l'amministratore lo avrebbe visto e speso.
+                    'residuo' => max(0, $nc->residuo),
                     'is_nota_credito' => true,
                     'gestione_id' => $nc->scritture()->first()?->gestione_id,
                     // Necessario per il controllo di selezione nel frontend:
