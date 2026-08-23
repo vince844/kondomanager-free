@@ -295,6 +295,10 @@ Route::prefix('/gestionale/{condominio}')
     // Route for "Sposta Spesa" (Budget Reallocation)
     Route::post('/piani-rate/{pianoRate}/move-budget', [BudgetMovementController::class, 'store'])
         ->name('piani-rate.move-budget');
+
+    // Storno di un movimento di Sposta Spesa — beta.73, prima non esisteva nessuna via.
+    Route::post('/piani-rate/{pianoRate}/budget-movements/{budgetMovement}/reverse', [BudgetMovementController::class, 'reverse'])
+        ->name('piani-rate.budget-movements.reverse');
     
     // Rotta per vedere l'estratto conto (accessibile dal piano rate)
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])

@@ -7,6 +7,189 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.73] - Il Credito Che Restava Invisibile
+
+**Tocca il database:** una migrazione idempotente aggiunge `reverses_movement_id` a
+`budget_movements` (self-FK nullabile), per lo storno di uno spostamento budget descritto più
+sotto.
+
+### Il difetto
+
+Il motore riconosce il credito di un condòmino in **due forme** — il saldo iniziale a importo
+negativo (`RataQuote::credito_disponibile`, dalla beta.9) e lo **strapagamento**: chi ha versato più
+della quota dovuta. La pagina del piano rate ne mostrava solo la prima, in quattro punti dello
+stesso file (`PianiRateShow.vue`):
+
+- la card «Crediti (Anticipi)» sommava solo le quote a importo negativo, ignorando lo strapagamento;
+- la card «Incassato» sommava l'importo teorico invece di `importo_pagato`, quindi dichiarava meno
+  denaro di quello davvero entrato in cassa — sotto di esattamente l'eccedenza versata;
+- il badge «Credito» sulla riga di un condòmino non scattava per lo strapagamento;
+- lo stesso badge sulla singola rata restava «Saldata» invece di «Credito».
+
+**Verificato sui dati veri**: su un piano dove erano entrati € 500,00 in cassa e un condòmino aveva
+versato € 100,00 in più del dovuto, la pagina dichiarava € 400,00 incassati e € 80,00 di crediti.
+Corretti, sono € 500,00 e € 180,00.
+
+### La causa non era solo in Vue
+
+`PianoRateQuoteService` (il service che alimenta questa pagina) deriva il proprio campo `stato` per
+ogni riga rata con la stessa regola a una condizione sola: una rata strapagata risulta `'pagata'`,
+non in credito. È quell'etichetta — non un refuso nel componente — a far sommare l'importo teorico
+invece di quello versato. Controllati gli altri due consumatori dello stesso service:
+`PianoRatePrintController` ha una sua copia della stessa aggregazione ma stampa solo l'importo
+teorico, senza toccare `stato`; `SyncScadenziarioWithPianoRate` chiama già `CreditoService`, la
+fonte comune, correttamente.
+
+La correzione qui si ferma a `PianiRateShow.vue`: i quattro punti si sistemano leggendo
+`importo_pagato` dal payload già esistente, senza toccare il backend. L'etichetta `stato` del
+service resta la stessa per chiunque altro la legga in futuro — è un debito riconosciuto, non
+questa beta.
+
+### Test
+
+Estratta la formula del credito in un modulo dedicato,
+`resources/js/lib/gestionale/pianiRate/credito.ts`, che ricalca esattamente
+`RataQuote::getCreditoDisponibileAttribute()` — la pagina non tiene più una copia propria della
+regola, destinata a scollarsi dal motore come già successo una volta. Quindici nuovi test coprono
+entrambe le forme di credito e i sei stati di una rata. Suite: **1733 PHP** (2 skipped) e
+**250 JS**, entrambe verdi.
+
+### Verificato anche su un piano generato dal motore vero, non solo sul primo dato
+
+La misura iniziale sui € 500,00/€ 80,00 veniva da un condominio di collaudo con dati scritti a
+mano: `importo_pagato` senza nessuna scrittura contabile dietro. Per esserne certi fino in fondo,
+un secondo giro è passato per intero dalle porte vere — condominio, unità, tabella millesimale,
+preventivo, piano rate generato ed emesso, un incasso reale che strapaga di € 200,00 — con
+`regole_calcolo` valorizzato e due righe pivot autentiche su `quota_scrittura` dietro l'eccedenza.
+Stesso esito: **€ 1.200,00** incassati e **€ 200,00** di credito, badge blu su cella e riga.
+
+### La guida che mancava, e due difetti trovati scrivendola
+
+La pagina del piano rate non aveva **nessuna** guida oltre le tre card riassuntive in testa. Ora ne
+ha una, richiamabile dal pulsante «Guide»: quattro sezioni — stato e voci, emissione, colori e
+crediti, stampe — che spiegano ogni pulsante, ogni badge e ogni blocco, comprese le due forme di
+credito appena corrette.
+
+Scriverla ha richiesto di leggere la pagina per intero (1800 righe), e sono emerse tre cose:
+
+- **la barra dei pulsanti, su un telefono, scorre in orizzontale senza nessun indizio visivo** —
+  niente scrollbar (nascosta apposta), niente sfumatura. L'ultimo pulsante, «Sposta spesa», restava
+  raggiungibile solo da chi provava a scorrere per caso. Aggiunta una sfumatura sul bordo destro,
+  visibile solo sotto il punto in cui la barra comincia a scorrere;
+- **l'indicatore «Aggiornamento...»** della sezione «Copertura spese» leggeva `isProcessingStatus`
+  (il flag dell'interruttore Bozza/Approvato) invece di `isReloadingCapitoli`, la variabile scritta
+  apposta per quello. Non è mai comparso;
+- **un filtro «solo crediti»** esisteva nel codice — la variabile, il computed che filtra le righe,
+  persino il testo dello stato vuoto — ma **nessun controllo del template lo attivava mai**. Rimosso
+  insieme a un'icona importata e mai usata (`List`), invece di lasciare in giro uno stato che la
+  guida avrebbe dovuto o inventare o tacere.
+
+Suite riverificate dopo le correzioni: **1733 PHP** (2 skipped) e **250 JS**, entrambe verdi.
+
+### «Sposta spesa» prometteva un annullamento che non esisteva
+
+Scrivendo la guida è emersa una domanda semplice: quando si sposta budget da una voce all'altra
+per un'emergenza, quella voce come recupera i fondi ceduti? La risposta, verificata sul codice, ha
+scoperto quattro buchi nella stessa funzione, non uno:
+
+- **Nessun modo di annullare un movimento.** Il messaggio che blocca la rimozione di una voce
+  coinvolta diceva da sempre *«devi annullare questi movimenti (restituendo i fondi)»* —
+  `BudgetMovementController` aveva **una sola rotta, `store`**. L'azione promessa non esisteva.
+- **La guardia di rimozione controllava l'esistenza, non il saldo.** Una voce toccata anche una
+  sola volta da Sposta Spesa restava bloccata **per sempre**, e lo era per movimenti di
+  **qualunque** piano rate, non solo di quello che si stava modificando.
+- **Si poteva spostare via budget già speso.** Nessun controllo impediva di prelevare da una voce
+  con fatture già registrate per l'intero importo — il codice stesso lo segnava `TODO V1.11`, mai
+  chiuso.
+- **Il modale mentiva.** Diceva: *«le differenze saranno gestite automaticamente nel conguaglio di
+  fine anno»*. Verificato: quella funzione non esiste — `FatturaPassivaService.php:206` la segna
+  esplicitamente `TODO(chiusura esercizio, non ancora costruita)`.
+
+**Costruiti tutti e quattro insieme**, perché condividono la stessa base:
+
+- **Storno reale**, un clic dallo storico della voce (l'icona dell'orologio): crea un movimento
+  uguale e contrario, non tocca né cancella l'originale — stessa filosofia della contabilità di
+  tutto il progetto. Un movimento si storna una volta sola, e il pulsante «Storna» porta un
+  tooltip che dice a chi tornano i fondi e quanto, invece di lasciarlo indovinare.
+- **La guardia ora controlla il saldo netto**, e solo per il piano corrente: uno storno completo
+  sblocca di nuovo la rimozione; un movimento su un altro piano non blocca più niente qui.
+- **Il controllo sullo speso reale** prima di spostare — non una query su `righe_fattura` (la
+  fonte incompleta corretta nella beta.30), ma `SpesaPerVoceService`, la stessa che alimenta il
+  cruscotto.
+- **L'etichetta «Da Sposta Spesa»** sulle voci scoperte che ne derivano, sia sul piano corrente
+  (nel dialogo «Ricalcola»/«Sincronizza») sia nel selettore capitoli di un piano rate **nuovo** —
+  così chi sincronizza capisce *perché* quella voce manca di soldi, non solo che ne manca.
+- Il testo del modale ora dice la verità: il recupero **non è automatico**, e serve un piano
+  successivo.
+
+**Verificato a video sul condominio dimostrativo reale**, non su dati di prova, fino in fondo al
+ciclo: creato un movimento, visti i badge «Integra»/«Parziale» comparire, aperto lo storico,
+stornato con successo (fondi tornati, badge spenti). Un secondo tentativo di storno, su una voce
+diversa già in sforo per conto suo, è stato **bloccato correttamente dal controllo sullo speso**
+senza che fosse il test a cercare apposta quel caso. Poi, di nuovo con un movimento vero: aperta la
+pagina «Crea nuovo piano rate», selezionata dal menu proprio la voce con il badge indaco «Da Sposta
+Spesa: € 150,00» — l'unica selezionabile fra cinque, le altre tutte «Esaurito» — compilato il resto
+del modulo e **premuto davvero «Salva piano rate»**: il piano è stato creato, con un preventivo di
+€ 150,00 ripartito sui condòmini reali del condominio e coerente all'euro con il residuo lasciato
+scoperto dallo spostamento. Il piano e il movimento di prova sono stati ripuliti subito dopo.
+
+Un secondo difetto, trovato nello stesso giro: il dialogo di conferma dello storno restava
+impilato sopra il popover dello storico invece di sostituirlo — corretto dando al popover uno
+stato esplicito che si chiude a successo avvenuto. E un terzo, più piccolo: la nota «Disp: € ...»
+e «Sforo da recuperare: € ...» duplicavano il simbolo euro (`MoneyHelper::format()` lo include
+già), preesistente e corretto insieme al nuovo testo che ripeteva lo stesso errore; nel modale
+«Sposta spesa» un importo compariva senza nessun simbolo.
+
+**26 test nuovi.** Suite di allora: **1748 PHP** e **259 JS**, entrambe verdi.
+
+### La revisione avversariale, prima di raccontare
+
+Quattro lenti mirate sul diff — saldo netto e storni, controllo sullo speso, idempotenza della
+migrazione, coerenza delle tre viste sul simbolo euro — hanno prodotto sette reperti. Quattro erano
+veri e a basso rischio, corretti subito perché il codice li ha costruiti questa beta:
+
+- **La corsa critica sul doppio storno era reale**, non solo teorica: `reverseMovement()` controlla
+  "è già stato stornato" con un `SELECT` prima di agire, fuori da qualunque lock — due richieste
+  quasi simultanee lo superano entrambe. Aggiunto un **indice unico** su
+  `budget_movements.reverses_movement_id` (NULL resta libero per i movimenti normali, vincola solo
+  chi rivendica lo stesso storno): la garanzia ora vive nel database, non solo nel controllo
+  applicativo, con l'eccezione di violazione tradotta in un errore leggibile invece di un 500.
+- **Si poteva stornare uno storno.** Il commento nel codice dichiarava "non si storna uno storno,
+  mantiene la catena leggibile" — ma era vero solo lato client (il pulsante spariva in UI). Una
+  richiesta diretta alla rotta lo permetteva ancora, rifacendo silenziosamente l'operazione
+  originale. Bloccato anche lato server.
+- **Il badge «Da Sposta Spesa» non nettava gli storni.** La query leggeva "questa voce è mai
+  comparsa come sorgente", non il saldo netto: una voce stornata per intero restava marcata, dicendo
+  a chi crea un nuovo piano che il residuo veniva da uno spostamento quando non era più vero.
+  Corretto in entrambi i punti che costruiscono l'etichetta (piano corrente e selettore nuovo piano),
+  stesso calcolo già provato per la guardia di rimozione.
+- **Tre nuovi test** coprono i tre fix: storno-di-storno rifiutato (service e rotta HTTP), badge che
+  sparisce dopo uno storno completo (verificato via HTTP, non solo a livello di query). Suite finale
+  della beta: **1751 PHP** (2 skipped) e **259 JS**, entrambe verdi.
+
+### Un credito nascosto nel prospetto rate stampato
+
+Trovata verificando un file di prova rimasto a metà da un'indagine precedente in questa stessa
+sessione, non dalla revisione avversariale sopra. `_tabella_scadenziario.blade.php` — il partial
+dietro il PDF «Prospetto Rate» — nascondeva dietro un trattino qualunque cella con un credito su
+singola rata (`RataQuote::importo` negativo: stessa forma di credito appena corretta a schermo dalla
+Coda 69), ma il totale di colonna in fondo alla tabella lo sommava comunque. Chi stampava il
+documento e sommava a occhio le celle visibili otteneva un numero diverso da quello stampato — il
+totale era sempre corretto, il documento mentiva su come ci si arrivava. La colonna TOTALE (€) dello
+stesso file già mostrava i negativi correttamente: la cella per-rata aveva un controllo (`> 0`) che
+quella colonna non aveva mai avuto. Corretto in una riga (`!= 0`), verificato con un test dedicato.
+
+Un quinto reperto era vero ma non di questa beta, e non è stato inseguito nello scope: la
+risoluzione dell'esercizio di una gestione (`wherePivot('attiva', true)->first()`, senza
+`ORDER BY`) può scegliere l'esercizio sbagliato per una gestione che sopravvive a più anni, perché
+nessun punto del codice disattiva mai il pivot verso quello vecchio. Lo stesso pattern è copiato in
+altri tre punti del progetto — non è nuovo qui, ma qui per la prima volta alimenta un controllo che
+blocca soldi. Verificato sul database reale: **0 gestioni su tutte quelle esistenti** hanno oggi più
+di un esercizio collegato, quindi è latente, non attivo. Scritto in roadmap (Coda 75) con la
+posizione precisa invece di allargare questa beta a tre file che non erano nel suo perimetro.
+
+---
+
 ## [1.10.0-beta.72] - Il Preventivo Che Si Alzava Da Solo
 
 **Nessuna migrazione del database.** Ma un dato salvato veniva corrotto, e due numeri già visibili

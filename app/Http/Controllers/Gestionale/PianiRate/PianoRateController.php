@@ -521,13 +521,36 @@ class PianoRateController extends Controller
 
             // 2. Usiamo la nuova intelligenza!
             $report = $coverageService->analyze($pianoRate->gestione, $fatturatoMap, $coperturaVirtualeMap);
-            
+
+            // ⚠️ Beta.73: quali voci hanno ancora un residuo aperto da "Sposta spesa", in
+            // qualunque piano rate di QUESTA gestione — non solo questo piano, perché il deficit
+            // misurato da analyze() è già aggregato a livello di gestione. Saldo netto, non
+            // semplice presenza: una voce stornata per intero non deve portare l'etichetta, o
+            // direbbe che Sposta Spesa l'ha lasciata scoperta quando non è più vero (trovato in
+            // Fase 1-bis, verificando che lo storno chiudesse davvero il cerchio).
+            $pianiRateIds = $pianoRate->gestione->pianiRate()->pluck('id');
+            $ceduto = BudgetMovement::whereIn('piano_rate_id', $pianiRateIds)
+                ->selectRaw('source_conto_id, SUM(amount) as tot')
+                ->groupBy('source_conto_id')
+                ->pluck('tot', 'source_conto_id');
+            $ricevuto = BudgetMovement::whereIn('piano_rate_id', $pianiRateIds)
+                ->selectRaw('destination_conto_id, SUM(amount) as tot')
+                ->groupBy('destination_conto_id')
+                ->pluck('tot', 'destination_conto_id');
+            $vociDaSpostaSpesa = [];
+            foreach ($ceduto as $contoId => $totCeduto) {
+                if (((int) $totCeduto - (int) ($ricevuto[$contoId] ?? 0)) > 0) {
+                    $vociDaSpostaSpesa[(int) $contoId] = true;
+                }
+            }
+
             // 3. Estraiamo solo quelli che hanno davvero bisogno di soldi
-            $orfani = collect($coverageService->getCapitoliFinanziabili($report))
+            $orfani = collect($coverageService->getCapitoliFinanziabili($report, $vociDaSpostaSpesa))
                 ->map(fn($item) => [
-                    'id'      => $item['id'],
-                    'nome'    => $item['padre'] ? "— " . $item['nome'] : $item['nome'],
-                    'importo' => $item['importo_suggerito'], 
+                    'id'               => $item['id'],
+                    'nome'             => $item['padre'] ? "— " . $item['nome'] : $item['nome'],
+                    'importo'          => $item['importo_suggerito'],
+                    'da_sposta_spesa'  => $item['da_sposta_spesa'], 
                 ])->values()->toArray();
         }
         
@@ -932,17 +955,33 @@ class PianoRateController extends Controller
             return back()->with($this->flashError("Annulla le emissioni prima di modificare le voci."));
         }
 
-        $isInvolved = BudgetMovement::query()
-            ->where(function ($query) use ($capitoloId) {
-                $query->where('source_conto_id', $capitoloId)
-                      ->orWhere('destination_conto_id', $capitoloId);
-            })
-            ->exists();
+        // ⚠️ Il saldo NETTO, non la semplice esistenza di righe storiche — beta.73.
+        //
+        // Fino a questa beta il controllo guardava se la voce era MAI comparsa in un movimento,
+        // in QUALUNQUE piano rate: un blocco permanente, perché nessuno storno esisteva per
+        // farlo tornare a zero (il messaggio diceva «restituisci i fondi», ma non c'era nessuna
+        // rotta per farlo davvero). E lo scope era comunque sbagliato: un movimento scritto su
+        // un ALTRO piano rate non lascia nessuna traccia nel pivot DI QUESTO piano — bloccare la
+        // rimozione qui per una storia che appartiene a un piano diverso non protegge niente.
+        //
+        // Ora il controllo è scoped a questo piano soltanto, e guarda il saldo netto: se la voce
+        // ha ricevuto e restituito lo stesso importo (uno storno completo), è di nuovo rimovibile.
+        $nettoRicevuto = (int) BudgetMovement::where('piano_rate_id', $pianoRate->id)
+            ->where('destination_conto_id', $capitoloId)
+            ->sum('amount');
+        $nettoCeduto = (int) BudgetMovement::where('piano_rate_id', $pianoRate->id)
+            ->where('source_conto_id', $capitoloId)
+            ->sum('amount');
+        $saldoNetto = $nettoRicevuto - $nettoCeduto;
 
-        if ($isInvolved) {
+        if ($saldoNetto !== 0) {
+            $importo = number_format(abs($saldoNetto) / 100, 2, ',', '.');
+            $messaggio = $saldoNetto > 0
+                ? "Questa voce ha ricevuto € {$importo} netti da altre voci con Sposta Spesa, in questo piano rate. "
+                : "Questa voce ha ceduto € {$importo} netti ad altre voci con Sposta Spesa, in questo piano rate. ";
+
             return back()->with($this->flashError(
-                "Impossibile rimuovere: questa voce è vincolata da movimenti di budget (anche da altri piani rate). " .
-                "Devi prima annullare i movimenti o restituire i fondi, poi potrai cancellarla."
+                $messaggio . "Storna i movimenti dallo storico (icona dell'orologio) prima di rimuoverla."
             ));
         }
 

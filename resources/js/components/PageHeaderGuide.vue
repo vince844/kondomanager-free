@@ -99,7 +99,7 @@ function selectEsercizio(esercizioId: number | string) {
         <slot name="breadcrumb">
           <nav
             v-if="hasBreadcrumbs"
-            class="flex flex-wrap md:inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm max-w-full"
+            class="flex flex-nowrap items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm max-w-full overflow-x-auto"
           >
             <template v-for="(item, index) in breadcrumbs" :key="index">
               <Link v-if="item.href && index < breadcrumbs!.length - 1" :href="item.href" class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 hover:text-primary transition-colors whitespace-nowrap">

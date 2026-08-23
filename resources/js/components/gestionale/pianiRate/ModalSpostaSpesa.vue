@@ -92,10 +92,12 @@ watch(() => props.show, (val) => {
                 </div>
                 <div class="text-sm text-blue-900">
                     <strong>Come funziona:</strong>
-                    Stai modificando la destinazione d'uso interna dei fondi. 
+                    Stai modificando la destinazione d'uso interna dei fondi.
                     <span class="block mt-1 text-blue-800/80">
-                        Le rate già emesse ai condomini <strong>NON VERRANNO RICALCOLATE</strong>. 
-                        Eventuali differenze di ripartizione saranno gestite automaticamente nel conguaglio di fine anno.
+                        Le rate già emesse ai condomini <strong>NON VERRANNO RICALCOLATE</strong>.
+                        La voce che cede i fondi resta scoperta di quell'importo: <strong>non è automatico</strong> —
+                        comparirà come voce da finanziare la prossima volta che ricalcoli o crei un nuovo
+                        piano rate, con l'indicazione che il residuo viene da uno spostamento.
                     </span>
                 </div>
             </div>
@@ -106,8 +108,8 @@ watch(() => props.show, (val) => {
                 </div>
                 <div class="text-xs text-slate-700">
                     <strong>Esempio pratico:</strong>
-                    Hai avanzato 200€ dalle "Pulizie" e si rompe il cancello? 
-                    Sposta 200€ su "Manutenzione Cancello". 
+                    Hai avanzato € 200 dalle "Pulizie" e si rompe il cancello?
+                    Sposta € 200 su "Manutenzione Cancello".
                     Il totale del piano non cambia, ma ora hai la copertura contabile corretta per pagare il fabbro.
                 </div>
             </div>
@@ -132,7 +134,7 @@ watch(() => props.show, (val) => {
                 :value="String(source.id)"
                 :disabled="source.importo_residuo <= 0"
               >
-                {{ source.nome }} (Disp: {{ source.formatted_residuo }})
+                {{ source.nome }} (Disp: € {{ source.formatted_residuo }})
               </SelectItem>
             </SelectContent>
           </Select>

@@ -9,6 +9,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PianoRateDettaglioGuide from '@/components/guides/PianoRateDettaglioGuide.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Separator } from '@/components/ui/separator';
@@ -17,7 +18,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
 import PianoRateSpaccatoSheet from '@/components/gestionale/pianiRate/PianoRateSpaccatoSheet.vue';
-import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel, Printer, ShieldCheck, CalendarDays, TableProperties, FileText } from "lucide-vue-next";
+import { MoreVertical, Mail, ReceiptText, BellRing, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel, Printer, ShieldCheck, CalendarDays, TableProperties, FileText } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
@@ -33,6 +34,8 @@ import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
 import type { Flash } from '@/types/flash';
+import { creditoDisponibileCents, haCreditoDisponibile, versatoRataCents } from '@/lib/gestionale/pianiRate/credito';
+import { saldoNettoMovimenti } from '@/lib/gestionale/pianiRate/budgetMovements';
 
 const props = defineProps<{
   condominio: Building;
@@ -49,7 +52,7 @@ const props = defineProps<{
   has_unpublished_rates?: boolean;
   copertura: {
       scoperto_count: number;
-      orfani: Array<{ id: number; nome: string; importo: number }>;
+      orfani: Array<{ id: number; nome: string; importo: number; da_sposta_spesa?: boolean }>;
   } | null; 
 }>()
 
@@ -128,17 +131,18 @@ const confirmDetachItem = (capitolo: any) => {
         showFeedback('Azione bloccata', 'Non puoi rimuovere voci se ci sono incassi registrati.', true);
         return;
     }
+    // Coda 73: il saldo NETTO di questo piano, non la semplice esistenza di righe storiche —
+    // uno storno completo (icona dell'orologio, «Storna») lo riporta a zero e sblocca la voce.
     const movimenti = props.pianoRate.budget_movements || [];
-    const capId = Number(capitolo.id); 
-    const isDestination = movimenti.some((m: any) => Number(m.destination_conto_id) === capId);
-    const isSource = movimenti.some((m: any) => Number(m.source_conto_id) === capId);
-    if (isDestination || isSource) {
-        let msg = `Il capitolo "${capitolo.nome}" è vincolato. `;
-        if (isDestination) msg += `Ha RICEVUTO fondi extra da altre voci. `;
-        else msg += `Ha FINANZIATO altre voci (Sposta Spesa). `;
-        msg += `Per mantenere la coerenza contabile, devi annullare questi movimenti (restituendo i fondi) prima di eliminare la voce.`;
+    const capId = Number(capitolo.id);
+    const saldo = saldoNettoMovimenti(movimenti, capId);
+    if (saldo !== 0) {
+        const importo = euro(Math.abs(saldo));
+        let msg = `Il capitolo "${capitolo.nome}" ha un saldo netto di ${importo} rispetto ad altre voci, con Sposta Spesa su questo piano. `;
+        msg += saldo > 0 ? `Ha ricevuto fondi extra. ` : `Ha ceduto fondi ad altre voci. `;
+        msg += `Storna i movimenti dallo storico (icona dell'orologio, accanto all'importo) prima di rimuoverla.`;
         showFeedback('Voce bloccata da movimenti', msg, true);
-        return; 
+        return;
     }
     itemToDelete.value = capitolo;
     isDeleteItemModalOpen.value = true;
@@ -285,7 +289,6 @@ const eseguiCambioStato = (newValue: boolean, extra: object) => {
 };
 
 const tab = ref<"anagrafica" | "immobile">("anagrafica");
-const showOnlyCredits = ref(false);
 const today = new Date();
 today.setHours(0, 0, 0, 0);
 
@@ -480,7 +483,8 @@ const handleProcedi = (nota: string) => {
 const getRataStyle = (rata: any) => {
   const scaduta = new Date(rata.scadenza) < new Date() && rata.stato === 'da_pagare';
   if (rata.stato === 'annullata') return { container: 'bg-gray-50 border-gray-200 text-gray-400 opacity-60', text: 'line-through decoration-gray-400', icon: Ban, label: 'Annullata' };
-  if (rata.importo < 0 || rata.stato === 'credito') return { container: 'bg-blue-50 border-blue-200 text-blue-700', text: 'font-bold', icon: Coins, label: 'Credito' };
+  // Coda 69: anche una rata 'pagata' in eccedenza porta credito, non solo il saldo negativo.
+  if (rata.stato === 'credito' || haCreditoDisponibile(rata)) return { container: 'bg-blue-50 border-blue-200 text-blue-700', text: 'font-bold', icon: Coins, label: 'Credito' };
   if (rata.stato === 'pagata') return { container: 'bg-emerald-50 border-emerald-200 text-emerald-700', text: 'font-bold', icon: CheckCircle2, label: 'Saldata' };
   if (rata.stato === 'parzialmente_pagata') return { container: 'bg-amber-50 border-amber-300 text-amber-800 ring-1 ring-amber-100/50', text: 'font-bold', icon: PieChart, label: 'Parziale' };
   if (scaduta) return { container: 'bg-white border-red-300 text-red-700 shadow-sm', text: 'font-bold', icon: AlertCircle, label: 'Scaduta' };
@@ -505,10 +509,10 @@ const immobileDettagli = (immobile: any) => {
 };
 
 const isVoceRicevente = (capitoloId: number) => {
+    // Coda 73: saldo netto positivo, non «è mai comparsa come destinazione» — uno storno
+    // completo non deve lasciare il badge «Integra» acceso su fondi che non ci sono più.
     if (!props.pianoRate.budget_movements) return false;
-    return props.pianoRate.budget_movements.some((m: any) => 
-        Number(m.destination_conto_id) === Number(capitoloId)
-    );
+    return saldoNettoMovimenti(props.pianoRate.budget_movements, Number(capitoloId)) > 0;
 };
 
 const isReady = computed(() => props.pianoRate?.numero_rate > 0 && (Array.isArray(props.quotePerAnagrafica) || Array.isArray(props.quotePerImmobile)));
@@ -542,24 +546,24 @@ const dataWithMap = computed(() => {
       const importo = r.importo ?? 0;
       const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
       const isScaduta = scadenzaTime <= today.getTime();
-      if (r.stato === "pagata") versato += importo;
-      else if (r.stato === "parzialmente_pagata") versato += (r.importo_pagato ?? 0);
+      // Coda 69: importo_pagato, non l'importo teorico — una rata strapagata risulta 'pagata'
+      // ma ha versato più del dovuto, e la differenza va contata.
+      versato += versatoRataCents(r);
       if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
         if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
         else scadute += importo;
       }
     });
-    const creditiRiga = rate.filter((r: any) => r.importo < 0).reduce((sum: number, r: any) => sum + Math.abs(r.importo), 0);
+    // Coda 69: il credito ha due forme (RataQuote::credito_disponibile) — il saldo iniziale
+    // negativo e lo strapagamento — non solo la prima.
+    const creditiRiga = rate.reduce((sum: number, r: any) => sum + creditoDisponibileCents(r.importo ?? 0, r.importo_pagato ?? 0), 0);
     const totaleRate = rate.reduce((sum: number, r: any) => sum + (r.importo ?? 0), 0);
     const saldoNetto = totaleRate - versato; 
     return { ...item, rateMap, scaduteRiga: scadute, versatoRiga: versato, creditiRiga, totaleRate, totale: saldoNetto };
   });
 });
 
-const currentData = computed(() => {
-  const data = dataWithMap.value;
-  return showOnlyCredits.value ? data.filter((i: any) => i.creditiRiga > 0) : data;
-});
+const currentData = computed(() => dataWithMap.value);
 
 const aggregates = computed(() => {
   if (!isReady.value) return { totaleGenerale: 0, totaliPerRata: {}, totaleRateScadute: 0, totaleVersato: 0, creditiTotali: 0, totaleTeorico: 0, daIncassareTotale: 0 };
@@ -573,13 +577,13 @@ const aggregates = computed(() => {
       const isScaduta = scadenzaTime <= today.getTime();
       perRata[r.numero] = (perRata[r.numero] || 0) + importo;
       totaleTeorico += importo;
-      if (r.stato === "pagata") versato += importo;
-      else if (r.stato === "parzialmente_pagata") versato += (r.importo_pagato ?? 0);
+      // Coda 69: stessa correzione di dataWithMap — importo_pagato, non l'importo teorico.
+      versato += versatoRataCents(r);
       if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
          if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
          else scadute += importo;
       }
-      if (importo < 0) crediti += Math.abs(importo);
+      crediti += creditoDisponibileCents(importo, r.importo_pagato ?? 0);
     });
   });
   const daIncassareTotale = totaleTeorico - versato;
@@ -625,6 +629,14 @@ const pageGuides = [
     colorVariant: 'amber' as const
   }
 ];
+
+const showGuideDettaglio = ref(false);
+const textGuidesList = [
+  { id: 'dettaglio', title: 'Guida: dettaglio piano rate' },
+];
+const openGuide = (id: string) => {
+  if (id === 'dettaglio') showGuideDettaglio.value = true;
+};
 
 interface DettaglioStats {
     spesa: number;
@@ -712,6 +724,8 @@ const printRipartoCapitoli = () => {
         :esercizio="props.esercizio"
         :backUrl="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })"
         backText="Torna alla lista"
+        :text-guides="textGuidesList"
+        @open-text-guide="openGuide"
       >
       </PageHeaderGuide>
 
@@ -778,7 +792,14 @@ const printRipartoCapitoli = () => {
                 <div class="w-px h-5 bg-gray-300 hidden sm:block shrink-0"></div>
 
                 <!-- PULSANTI -->
-                <div class="flex items-center gap-2 overflow-x-auto w-full scrollbar-none pb-0.5 whitespace-nowrap">
+                <!-- ⚠️ La riga scorre in orizzontale su schermo stretto — sono più pulsanti di quanti
+                     ne stiano a 375px — e `.scrollbar-none` nasconde apposta la barra di scorrimento
+                     nativa. Senza un indizio visivo, "Sposta spesa" (l'ultimo pulsante) resta
+                     raggiungibile solo da chi prova a scorrere per caso: verificato scorrendo a mano
+                     su un piano vero, il pulsante c'è ma nessun segnale lo annuncia. La sfumatura
+                     sotto è quell'indizio, solo su mobile perché da `sm:` in su la riga sta tutta. -->
+                <div class="relative w-full min-w-0">
+                    <div class="flex items-center gap-2 overflow-x-auto w-full scrollbar-none pb-0.5 whitespace-nowrap">
 
                     <!-- SWITCH APPROVATO/BOZZA -->
                     <HoverCard :open-delay="200">
@@ -1116,6 +1137,9 @@ const printRipartoCapitoli = () => {
 
 
                 </div>
+                    <!-- Sfumatura d'indizio, solo sotto sm: da lì in su la riga sta tutta e non serve. -->
+                    <div class="sm:hidden pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-gray-50 to-transparent"></div>
+                </div>
             </div>
             <!-- ============================================================ -->
 
@@ -1154,7 +1178,7 @@ const printRipartoCapitoli = () => {
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-primary font-medium" v-if="!isCapitoliExpanded">
-                            {{ isProcessingStatus ? 'Aggiornamento...' : 'Mostra dettagli' }}
+                            {{ isReloadingCapitoli ? 'Aggiornamento...' : 'Mostra dettagli' }}
                         </span>
                         <component :is="isCapitoliExpanded ? ChevronUp : ChevronDown" class="w-4 h-4 text-gray-400" />
                     </div>
@@ -1197,10 +1221,13 @@ const printRipartoCapitoli = () => {
                                 </p>
                             </div>
                             <div class="flex items-center gap-4">
-                                <BudgetHistoryPopover 
+                                <BudgetHistoryPopover
                                     :capitolo-id="capitolo.id"
                                     :current-amount="capitolo.importo"
                                     :movements="props.pianoRate.budget_movements || []"
+                                    :condominio-id="props.condominio.id"
+                                    :piano-rate-id="props.pianoRate.id"
+                                    @stornato="showFeedback('Movimento stornato', 'I fondi sono tornati alla voce di origine.', false)"
                                 />
                                 <span class="text-xs font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
                                 <button 
@@ -1380,7 +1407,7 @@ const printRipartoCapitoli = () => {
                                                             <span>{{ euro(Math.abs(dettaglio.totale_crediti)) }}</span>
                                                         </div>
                                                         <div v-if="dettaglio.totale_debiti > 0 && dettaglio.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium pt-1">
-                                                            <span v-if="dettaglio.saldo_netto === 0" class="text-emerald-300">Compensazione totale (0€)</span>
+                                                            <span v-if="dettaglio.saldo_netto === 0" class="text-emerald-300">Compensazione totale (€ 0)</span>
                                                             <span v-else-if="dettaglio.saldo_netto > 0" class="text-red-200">Residuo debito: {{ euro(dettaglio.saldo_netto) }}</span>
                                                             <span v-else class="text-blue-200">Residuo credito: {{ euro(Math.abs(dettaglio.saldo_netto)) }}</span>
                                                         </div>
@@ -1487,7 +1514,7 @@ const printRipartoCapitoli = () => {
 
               <div v-else class="text-center py-12 text-muted-foreground bg-gray-50 rounded-lg border border-dashed">
                 <p v-if="!props.pianoRate">Caricamento dati...</p>
-                <p v-else>{{ showOnlyCredits ? "Nessun credito da rimborsare." : "Nessuna quota trovata." }}</p>
+                <p v-else>Nessuna quota trovata.</p>
               </div>
             </TabsContent>
 
@@ -1694,6 +1721,9 @@ const printRipartoCapitoli = () => {
                         <Checkbox :id="`orphan-${o.id}`" v-model="orphanCheckboxes[o.id]" />
                         <label :for="`orphan-${o.id}`" class="text-xs font-medium leading-none cursor-pointer pt-0.5 select-none">
                             {{ o.nome }} <span class="text-amber-700">({{ euro(o.importo) }})</span>
+                            <span v-if="o.da_sposta_spesa" class="ml-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                                <ArrowRightLeft class="w-2.5 h-2.5" /> Residuo da Sposta Spesa
+                            </span>
                         </label>
                     </div>
                 </div>
@@ -1751,10 +1781,12 @@ const printRipartoCapitoli = () => {
         @success="showFeedback('Budget Spostato', 'Operazione completata con successo. Il residuo è stato aggiornato.', false)"
     />
 
-    <PianoRateSpaccatoSheet 
+    <PianoRateSpaccatoSheet
         v-model:open="isSpaccatoOpen"
         :anagrafica-data="selectedSpaccatoData"
     />
+
+    <PianoRateDettaglioGuide v-model:open="showGuideDettaglio" />
 
   </GestionaleLayout>
 </template>

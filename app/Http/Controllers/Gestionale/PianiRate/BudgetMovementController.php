@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Gestionale\BudgetMovement;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
@@ -82,6 +83,33 @@ class BudgetMovementController extends Controller
             return back()->withErrors($e->errors());
         } catch (\Exception $e) {
             Log::error("Budget Movement Error: " . $e->getMessage());
+            return back()->withErrors(['amount' => 'Errore di sistema: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Storna un movimento di Sposta Spesa — beta.73, prima non esisteva nessuna via.
+     *
+     * Il messaggio che blocca la rimozione di una voce coinvolta dice da anni «devi annullare
+     * questi movimenti (restituendo i fondi)»: fino a questa beta non c'era nessun'azione dietro
+     * quella frase. Questa rotta la rende vera.
+     * Route: admin.gestionale.piani-rate.budget-movements.reverse
+     */
+    public function reverse(Request $request, Condominio $condominio, PianoRate $pianoRate, BudgetMovement $budgetMovement)
+    {
+        // Stessa guardia manuale di store(): il binding implicito risolve gli id senza legarli
+        // fra loro, quindi vanno controllati a mano — vedi la coda ㊷ in docs/roadmap.md.
+        abort_unless($pianoRate->condominio_id === $condominio->id, 404);
+        abort_unless($budgetMovement->piano_rate_id === $pianoRate->id, 404);
+
+        try {
+            $this->budgetService->reverseMovement($budgetMovement, Auth::id());
+
+            return back()->with('success', 'Movimento stornato: i fondi sono tornati alla voce di origine.');
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors());
+        } catch (\Exception $e) {
+            Log::error("Budget Movement Reverse Error: " . $e->getMessage());
             return back()->withErrors(['amount' => 'Errore di sistema: ' . $e->getMessage()]);
         }
     }

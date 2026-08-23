@@ -515,3 +515,37 @@ it('due figli con NULL ricevono ciascuno il proprio preventivo completo', functi
     expect($map[1])->toBe(30000); // Compenso: 300€ completi
     expect($map[2])->toBe(52300); // Pulizia: 523€ completi
 });
+// -----------------------------------------------------------------------
+// getCapitoliFinanziabili — l'etichetta «da Sposta Spesa» sulle voci scoperte, beta.73
+//
+// Una voce scoperta perché qualcuno le ha spostato via il budget è indistinguibile, per
+// l'amministratore, da una voce scoperta perché il preventivo è stato alzato: stesso avviso
+// ambra, stesso importo. Il parametro in più dice perché, quando lo si sa.
+// -----------------------------------------------------------------------
+
+function itemFinanziabile(int $id, string $nome, int $delta): array
+{
+    return [
+        'id' => $id, 'nome' => $nome, 'padre' => null, 'is_leaf' => true,
+        'budget' => abs($delta), 'pianificato' => 0, 'copertura_virtuale' => 0, 'delta' => $delta,
+    ];
+}
+
+it('getCapitoliFinanziabili segnala le voci con un movimento di Sposta Spesa in uscita', function () {
+    $service = new BudgetCoverageService();
+    $report = ['items' => [itemFinanziabile(1, 'Manutenzione', -20000), itemFinanziabile(2, 'Pulizia', -5000)]];
+
+    $risultato = collect($service->getCapitoliFinanziabili($report, vociDaSpostaSpesa: [1 => true]))->keyBy('id');
+
+    expect($risultato[1]['da_sposta_spesa'])->toBeTrue();
+    expect($risultato[2]['da_sposta_spesa'])->toBeFalse();
+});
+
+it('getCapitoliFinanziabili non segnala nulla se non passo la mappa', function () {
+    $service = new BudgetCoverageService();
+    $report = ['items' => [itemFinanziabile(1, 'Manutenzione', -20000)]];
+
+    $risultato = $service->getCapitoliFinanziabili($report);
+
+    expect($risultato[0]['da_sposta_spesa'])->toBeFalse();
+});

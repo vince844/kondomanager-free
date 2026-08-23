@@ -20,7 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -33,6 +33,7 @@ interface Capitolo {
   nome: string;
   disabled: boolean;
   is_sforo: boolean;
+  da_sposta_spesa?: boolean;
   importo_totale: number;
   residuo: number;
   note?: string;
@@ -941,17 +942,25 @@ const submit = () => {
                       <span class="text-[10px] text-slate-500">Budget: {{ euro(option.importo_totale) }}</span>
                     </div>
                     <div class="flex items-center">
-                      <span v-if="option.is_sforo" 
+                      <span v-if="option.is_sforo"
                             class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-rose-200">
                         <TrendingDown class="w-3 h-3" /> Sforo: {{ euro(option.residuo) }}
                       </span>
-                      
-                      <span v-else-if="option.disabled" 
+
+                      <span v-else-if="option.disabled"
                             class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200">
                         <Ban class="w-3 h-3" /> Esaurito
                       </span>
-                      
-                      <span v-else 
+
+                      <!-- Coda 73: questa voce ha ceduto budget con Sposta Spesa — il residuo
+                           mostrato qui è quello che rientrerebbe scegliendola. -->
+                      <span v-else-if="option.da_sposta_spesa"
+                            class="flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-indigo-200"
+                            title="Questa voce ha ceduto budget con Sposta Spesa in un altro piano">
+                        <ArrowRightLeft class="w-3 h-3" /> Da Sposta Spesa: {{ euro(option.residuo) }}
+                      </span>
+
+                      <span v-else
                             class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200">
                         <Wallet class="w-3 h-3" /> Disp: {{ euro(option.residuo) }}
                       </span>

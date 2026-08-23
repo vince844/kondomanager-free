@@ -1,17 +1,52 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { router } from '@inertiajs/vue3';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { History, ArrowRight, ArrowLeft, User } from 'lucide-vue-next';
+import { History, ArrowRight, ArrowLeft, User, Undo2 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 const props = defineProps<{
   capitoloId: number;
   currentAmount: number; // In Centesimi
   movements: Array<any>; // Tutti i movimenti del piano rate
+  condominioId: number;
+  pianoRateId: number;
 }>();
 
+const emit = defineEmits(['stornato']);
+
 const { euro } = useCurrencyFormatter();
+
+const stornandoId = ref<number | null>(null);
+
+// ⚠️ Senza uno stato controllato, lo storno chiudeva il dialogo di conferma ma non
+// questo popover: restavano impilati, uno visibile dietro l'altro (trovato a video il
+// 23/08/2026). Il Popover di reka-ui gestisce l'apertura da sé finché non gli si dà
+// un v-model — da qui in poi la chiude esplicitamente `storna()` a successo avvenuto.
+const isOpen = ref(false);
+
+/** Un movimento è già stornato se un altro movimento dichiara di stornare proprio lui. */
+const isGiaStornato = (moveId: number) =>
+    props.movements.some((m) => Number(m.reverses_movement_id) === Number(moveId));
+
+/** Non si storna uno storno: mantiene la catena leggibile senza avanti-indietro infiniti. */
+const isStorno = (move: any) => move.reverses_movement_id != null;
+
+const storna = (moveId: number) => {
+    if (stornandoId.value) return;
+    stornandoId.value = moveId;
+    router.post(route('admin.gestionale.piani-rate.budget-movements.reverse', {
+        condominio: props.condominioId,
+        pianoRate: props.pianoRateId,
+        budgetMovement: moveId,
+    }), {}, {
+        preserveScroll: true,
+        onFinish: () => { stornandoId.value = null; },
+        onSuccess: () => { isOpen.value = false; emit('stornato'); },
+    });
+};
 
 // FIX: Convertiamo tutto in Number per evitare errori di confronto (String vs Int)
 const targetId = computed(() => Number(props.capitoloId));
@@ -45,7 +80,7 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
 
 <template>
   <div v-if="hasHistory" class="flex items-center">
-    <Popover>
+    <Popover v-model:open="isOpen">
       <PopoverTrigger as-child>
         <button 
             class="text-slate-400 hover:text-indigo-600 transition-colors p-1 rounded-full"
@@ -93,6 +128,25 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
 
                 <div class="mt-1.5 pt-1.5 border-t border-slate-50 text-slate-500 italic">
                     "{{ move.reason }}"
+                </div>
+
+                <div class="mt-1.5 pt-1.5 border-t border-slate-50 flex items-center justify-end">
+                    <span v-if="isStorno(move)" class="text-[10px] text-slate-400 italic">Storno</span>
+                    <span v-else-if="isGiaStornato(move.id)" class="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                        <Undo2 class="w-2.5 h-2.5" /> Già stornato
+                    </span>
+                    <Button
+                        v-else
+                        variant="ghost"
+                        size="sm"
+                        class="h-6 px-2 text-[10px] text-slate-500 hover:text-red-600 hover:bg-red-50"
+                        :disabled="stornandoId === move.id"
+                        :title="`Restituisce € ${(move.amount / 100).toFixed(2).replace('.', ',')} a ${move.source_conto?.nome ?? 'chi li aveva ceduti'}, con un movimento uguale e contrario. L'originale resta nello storico`"
+                        @click="storna(move.id)"
+                    >
+                        <Undo2 class="w-2.5 h-2.5 mr-1" />
+                        {{ stornandoId === move.id ? 'Storno...' : 'Storna' }}
+                    </Button>
                 </div>
             </div>
         </div>

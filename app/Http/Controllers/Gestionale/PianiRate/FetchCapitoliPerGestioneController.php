@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestione;
+use App\Models\Gestionale\BudgetMovement;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use Illuminate\Http\JsonResponse;
@@ -99,9 +100,30 @@ class FetchCapitoliPerGestioneController extends Controller
                 }
             }
 
+            // ⚠️ Beta.73: quali voci hanno ancora un residuo aperto da "Sposta spesa" — è qui,
+            // nel selettore di un piano NUOVO, che l'amministratore deve sapere perché una voce
+            // risulta scoperta, non solo che lo è. Saldo netto, non semplice presenza: una voce
+            // stornata per intero non deve portare l'etichetta (Fase 1-bis, stesso fix di
+            // PianoRateController).
+            $pianiRateIds = $gestione->pianiRate()->pluck('id');
+            $ceduto = BudgetMovement::whereIn('piano_rate_id', $pianiRateIds)
+                ->selectRaw('source_conto_id, SUM(amount) as tot')
+                ->groupBy('source_conto_id')
+                ->pluck('tot', 'source_conto_id');
+            $ricevuto = BudgetMovement::whereIn('piano_rate_id', $pianiRateIds)
+                ->selectRaw('destination_conto_id, SUM(amount) as tot')
+                ->groupBy('destination_conto_id')
+                ->pluck('tot', 'destination_conto_id');
+            $vociDaSpostaSpesa = [];
+            foreach ($ceduto as $contoId => $totCeduto) {
+                if (((int) $totCeduto - (int) ($ricevuto[$contoId] ?? 0)) > 0) {
+                    $vociDaSpostaSpesa[(int) $contoId] = true;
+                }
+            }
+
             // Chiamata al servizio
             $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap);
-            $capitoliFinanziabiliRaw = collect($coverageService->getCapitoliFinanziabili($analisiBilancio))->keyBy('id');
+            $capitoliFinanziabiliRaw = collect($coverageService->getCapitoliFinanziabili($analisiBilancio, $vociDaSpostaSpesa))->keyBy('id');
 
             $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap) {
                 // Troviamo il budget per l'interfaccia
@@ -127,10 +149,16 @@ class FetchCapitoliPerGestioneController extends Controller
                 }
 
                 $nome = $c->parent_id ? "{$c->parent->nome} > {$c->nome}" : "[CAPITOLO] {$c->nome}";
+                $daSpostaSpesa = $finanziabileData['da_sposta_spesa'] ?? false;
 
-                $nota = "Disp: € " . MoneyHelper::format($residuo);
+                // ⚠️ MoneyHelper::format() include già il simbolo — un "€ " scritto qui davanti
+                // produceva "€ € 150,00" su tutt'e tre i rami. Preesistente sui primi due,
+                // trovato scrivendo il terzo: stessa regola della beta.72, si corregge insieme.
+                $nota = "Disp: " . MoneyHelper::format($residuo);
                 if ($isSforo) {
-                    $nota = "Sforo da recuperare: € " . MoneyHelper::format($residuo);
+                    $nota = "Sforo da recuperare: " . MoneyHelper::format($residuo);
+                } elseif ($daSpostaSpesa) {
+                    $nota = "Residuo da Sposta Spesa: " . MoneyHelper::format($residuo);
                 } elseif ($isDisabled && max($budgetTeorico, $spesoReale) > 0) {
                     $nota = "Interamente finanziato/Esaurito";
                 } elseif (max($budgetTeorico, $spesoReale) === 0) {
@@ -138,14 +166,15 @@ class FetchCapitoliPerGestioneController extends Controller
                 }
 
                 return [
-                    'id'             => $c->id,
-                    'nome'           => $nome,
-                    'importo_totale' => MoneyHelper::fromCents($budgetTeorico),
-                    'speso_reale'    => MoneyHelper::fromCents($spesoReale),
-                    'residuo'        => MoneyHelper::fromCents($residuo),
-                    'disabled'       => $isDisabled,
-                    'is_sforo'       => $isSforo,
-                    'note'           => $nota
+                    'id'              => $c->id,
+                    'nome'            => $nome,
+                    'importo_totale'  => MoneyHelper::fromCents($budgetTeorico),
+                    'speso_reale'     => MoneyHelper::fromCents($spesoReale),
+                    'residuo'         => MoneyHelper::fromCents($residuo),
+                    'disabled'        => $isDisabled,
+                    'is_sforo'        => $isSforo,
+                    'da_sposta_spesa' => $daSpostaSpesa,
+                    'note'            => $nota
                 ];
             });
 

@@ -51,7 +51,12 @@
                         $totaliPerRata[$numero] += $importo;
                     @endphp
                     <td style="padding: 4px; text-align: right; border: 1px solid #dce3ea;">
-                        @if($importo > 0)
+                        {{-- ⚠️ Non "> 0": un credito su questa rata (RataQuote::importo negativo,
+                             es. saldo iniziale) è un valore reale che il totale di colonna sotto
+                             include comunque. Nasconderlo qui e sommarlo lì fa apparire un totale
+                             che non coincide con la somma delle celle visibili — la colonna
+                             TOTALE (€) qui a destra già mostra i negativi senza questo filtro. --}}
+                        @if($importo != 0)
                             € {{ number_format($importo / 100, 2, ',', '.') }}
                         @else
                             <span style="color: #bbb;">—</span>
