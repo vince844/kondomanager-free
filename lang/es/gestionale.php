@@ -315,6 +315,24 @@ return [
         'show' => [
             'head_title' => 'Installment plan detail',
             'plan_title_prefix' => 'Installment plan',
+            'legal' => [
+                'deliberation_of' => 'Acuerdo del',
+            ],
+            'approval_modal' => [
+                'title' => 'Aprobacion del plan de cuotas',
+                'subtitle' => 'Registra los datos del acuerdo de la junta antes de hacer ejecutivo el plan.',
+                'deliberation_date_label' => 'Fecha del acuerdo de la junta *',
+                'deliberation_date_help' => 'Fecha en que la junta aprobo este plan. Queda registrada en el historial de auditoria.',
+                'minutes_number_label' => 'N. de acta (opcional)',
+                'minutes_number_placeholder' => 'Ej. Acta n. 3/2026',
+                'notes_label' => 'Notas o referencias (opcional)',
+                'notes_placeholder' => 'Ej. Aprobado con 8 votos a favor sobre 10 milesimas presentes...',
+                'last_deliberation_title' => 'Ultimo acuerdo registrado:',
+                'last_deliberation_date' => 'Fecha:',
+                'last_deliberation_minutes' => 'Acta:',
+                'saving' => 'Registrando...',
+                'confirm' => 'Aprobar y registrar',
+            ],
             'subtitle' => 'Updated status of installments and payments.',
             'breadcrumb_detail' => 'Detail',
             'draft_state' => [

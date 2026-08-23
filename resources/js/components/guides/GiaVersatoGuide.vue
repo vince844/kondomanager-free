@@ -26,6 +26,15 @@
  *    credito automatico: l'eccedenza viene rilevata e finisce come attività nell'Inbox, con
  *    l'importo per unità.
  *
+ * ## Aggiornata nella beta.75
+ *
+ * Aggiunta la scheda «Le due scelte» e agganciata la guida anche alla pagina di **dettaglio**
+ * (`ContributiEdit.vue`), dove prima non c'era: la guida esisteva solo sull'elenco e sul piano
+ * dei conti, mentre le due decisioni che contano — natura del versamento e stato della liquidità —
+ * si prendono proprio lì. La terza opzione di liquidità («già nel saldo di apertura») nasce con
+ * questa beta: senza di lei chi apriva la cassa dall'estratto conto si vedeva contare i soldi due
+ * volte, e la guida non aveva modo di avvisarlo.
+ *
  * ⚠️ Ogni affermazione di questo file è stata verificata sul codice il 22/08/2026, in
  * `CalcoloQuoteService::nettingGiaVersato()`, `ContributoVersatoController`, `ContoController` e
  * nella migrazione che ha introdotto la colonna. Se cambia uno di quei comportamenti, questo file
@@ -60,6 +69,7 @@ defineEmits(['update:open']);
                     <TabsList class="mb-6 grid w-full grid-cols-3">
                         <TabsTrigger value="cosa">A cosa serve</TabsTrigger>
                         <TabsTrigger value="riparto">Nel riparto</TabsTrigger>
+                        <TabsTrigger value="decisioni">Le due scelte</TabsTrigger>
                         <TabsTrigger value="attenzione">Da sapere</TabsTrigger>
                     </TabsList>
 
@@ -164,6 +174,74 @@ defineEmits(['update:open']);
                     </TabsContent>
 
                     <!-- ── DA SAPERE ───────────────────────────────────────────── -->
+                    <TabsContent value="decisioni" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
+                        <p>
+                            La pagina di dettaglio ti chiede <strong>due cose che il programma non può
+                            dedurre</strong>: che natura hanno quei soldi, e dove si trovano oggi. Sbagliarle
+                            non produce un errore — produce un bilancio che non torna, mesi dopo.
+                        </p>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">1. Fondo deliberato o rate già riscosse?</h3>
+                            <p class="mb-2">
+                                <strong>Fondo deliberato:</strong> l'assemblea ha costituito un fondo per
+                                quell'opera (art. 1135 c.c.). Le somme hanno un <strong>vincolo di
+                                destinazione</strong> e non possono essere spese per altro senza una nuova
+                                delibera. Il programma lo fa valere: non ti lascia appoggiarle su una cassa
+                                liberamente utilizzabile per gli imprevisti.
+                            </p>
+                            <p>
+                                <strong>Rate già riscosse:</strong> somme incassate e non ancora spese, senza
+                                un fondo deliberato. Restano conguagliabili a fine gestione.
+                            </p>
+                            <div class="mt-3 flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
+                                <Info class="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+                                <p class="text-xs text-slate-600 dark:text-slate-400">
+                                    La distinzione la stabilisce la <strong>delibera</strong>, non il software.
+                                    Attribuire un vincolo che l'assemblea non ha deliberato — o ignorarne uno
+                                    esistente — è un problema legale, non contabile.
+                                </p>
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">2. Dove sono quei soldi, oggi?</h3>
+                            <p class="mb-3">
+                                Il riparto non se ne occupa — a lui basta sapere quanto è già stato versato.
+                                Ma quei soldi <strong>esistono anche fuori dal riparto</strong>, e la risposta
+                                decide se il programma deve scriverli in cassa o no. Si risponde una volta sola.
+                            </p>
+                            <ul class="ml-5 list-disc space-y-2">
+                                <li>
+                                    <strong>Sono ancora fermi, mai spesi.</strong> Sono su un conto del
+                                    condominio e il programma non li ha ancora visti: li accredita subito sulla
+                                    cassa che scegli, come farebbe con un saldo di apertura.
+                                </li>
+                                <li>
+                                    <strong>Sono fermi, e già nel saldo di apertura.</strong> Sono in banca, ma
+                                    il saldo di apertura che hai inserito nella cassa <strong>li comprende
+                                    già</strong> — è il caso di chi parte dall'estratto conto, cioè quasi
+                                    sempre. Qui il programma registra solo il vincolo e <strong>non scrive
+                                    nulla</strong>: accreditarli li conterebbe due volte.
+                                </li>
+                                <li>
+                                    <strong>Sono già stati spesi come acconto.</strong> Sono usciti verso il
+                                    fornitore prima di KondoManager. Non c'è liquidità da registrare, e il
+                                    debito verso quel fornitore va verificato a mano quando registrerai la
+                                    fattura: potrebbe essere già scontato dell'acconto, oppure no.
+                                </li>
+                            </ul>
+                            <div class="mt-3 flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+                                <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                                <p class="text-xs text-amber-900 dark:text-amber-200">
+                                    <strong>La domanda da farsi è una sola:</strong> il saldo che ho scritto
+                                    aprendo la cassa comprendeva già questi soldi? Se l'hai preso dall'estratto
+                                    conto, la risposta è sì — e la scelta giusta è la seconda.
+                                </p>
+                            </div>
+                        </section>
+                    </TabsContent>
+
                     <TabsContent value="attenzione" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <Users class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />

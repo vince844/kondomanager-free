@@ -2,7 +2,7 @@
 import { ref, watch, computed } from 'vue';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Wallet, HelpCircle, PiggyBank, ReceiptText, CheckCircle2 } from 'lucide-vue-next';
+import { Wallet, HelpCircle, PiggyBank, ReceiptText, CheckCircle2, Landmark, BookOpen } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 
@@ -38,7 +38,8 @@ const casseSelezionabili = computed(() =>
 
 const emit = defineEmits<{
     (e: 'update:show', value: boolean): void;
-    (e: 'confirm', payload: { liquiditaStato: 'registrata_in_cassa' | 'gia_speso_acconto', cassaId: number | null, notaAcconto: string }): void;
+    (e: 'open-guida'): void;
+    (e: 'confirm', payload: { liquiditaStato: 'registrata_in_cassa' | 'gia_speso_acconto' | 'gia_in_apertura', cassaId: number | null, notaAcconto: string }): void;
 }>();
 
 const etichettaTipo: Record<string, string> = { banca: 'Banca', cassa_contanti: 'Contanti', fondo: 'Fondo' };
@@ -58,7 +59,7 @@ const posizionaDropdownCassa = (dropdownList: HTMLElement, component: any, { wid
     dropdownList.style.top = `${rect.bottom}px`;
 };
 
-const scenario = ref<'registrata_in_cassa' | 'gia_speso_acconto'>('registrata_in_cassa');
+const scenario = ref<'registrata_in_cassa' | 'gia_speso_acconto' | 'gia_in_apertura'>('registrata_in_cassa');
 const cassaId = ref<number | null>(null);
 const notaAcconto = ref('');
 
@@ -72,6 +73,9 @@ watch(() => props.show, (isOpen) => {
 
 const isValid = computed(() => {
     if (scenario.value === 'registrata_in_cassa') return !!cassaId.value;
+    // Scenario C: la liquidità è già a giornale dall'apertura di cassa. Non c'è una cassa da
+    // scegliere né un acconto da descrivere — non chiedere nulla è la risposta giusta.
+    if (scenario.value === 'gia_in_apertura') return true;
     return notaAcconto.value.trim().length >= 10;
 });
 
@@ -104,12 +108,19 @@ const handleConfirm = () => {
                             Il riparto ora ne tiene conto — ma questi soldi esistono anche fuori dal riparto? Rispondi una
                             volta sola: non te lo richiederemo più per questa voce.
                         </p>
+                        <!-- ⚠️ Il pulsante «Guida» della pagina sta dietro questo overlay e non si può
+                             premere: la decisione si prende qui, e qui l'aiuto deve essere raggiungibile. -->
+                        <button type="button" @click="emit('open-guida')"
+                            class="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 underline underline-offset-2">
+                            <BookOpen class="w-3.5 h-3.5" />
+                            Non sei sicuro? Apri la guida
+                        </button>
                     </div>
                 </div>
 
                 <div class="p-7 space-y-6">
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
                         <!-- Scenario A -->
                         <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative h-full"
@@ -133,6 +144,31 @@ const handleConfirm = () => {
                                 I soldi sono ancora su un conto o un fondo del condominio. Manca solo un passaggio:
                                 registrarli come liquidità reale, esattamente come un saldo di apertura. Scegli sotto
                                 su quale cassa si trovano — li accreditiamo subito.
+                            </p>
+                        </label>
+
+                        <!-- Scenario C — beta.75: il caso di chi ha aperto la cassa dall'estratto conto -->
+                        <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative h-full"
+                            :class="scenario === 'gia_in_apertura'
+                                ? 'bg-sky-50 border-sky-400 dark:bg-sky-900/20 dark:border-sky-600 shadow-md ring-1 ring-sky-400'
+                                : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'">
+                            <div class="flex items-start justify-between w-full mb-3">
+                                <div class="flex items-center gap-2">
+                                    <Landmark class="w-4 h-4 shrink-0"
+                                        :class="scenario === 'gia_in_apertura' ? 'text-sky-600' : 'text-slate-400'" />
+                                    <span class="font-black text-sm"
+                                        :class="scenario === 'gia_in_apertura' ? 'text-sky-800 dark:text-sky-300' : 'text-slate-700 dark:text-slate-300'">
+                                        Sono fermi, e già nel saldo di apertura
+                                    </span>
+                                </div>
+                                <input type="radio" v-model="scenario" value="gia_in_apertura"
+                                    class="w-4 h-4 mt-0.5 text-sky-600 border-slate-300 focus:ring-sky-600 shrink-0" />
+                            </div>
+                            <p class="text-[11px] leading-relaxed flex-1"
+                                :class="scenario === 'gia_in_apertura' ? 'text-sky-700/80 dark:text-sky-400/80' : 'text-slate-500'">
+                                I soldi sono in banca, ma il saldo di apertura che hai inserito nella cassa li
+                                <strong>comprende già</strong> — è il caso di chi parte dall'estratto conto.
+                                Registriamo solo il vincolo: nessun accredito, altrimenti li conteremmo due volte.
                             </p>
                         </label>
 
@@ -244,7 +280,7 @@ const handleConfirm = () => {
                             Annulla
                         </Button>
                         <Button
-                            class="flex-1 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black disabled:opacity-50"
+                            class="flex-1 h-11 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900 text-white font-black disabled:opacity-50"
                             :disabled="!isValid || isProcessing"
                             @click="handleConfirm">
                             {{ isProcessing ? 'Salvataggio in corso...' : 'Conferma e salva' }}

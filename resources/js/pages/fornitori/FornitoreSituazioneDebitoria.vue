@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import InputError from '@/components/InputError.vue';
 import { useForm, Head, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
@@ -253,11 +254,13 @@ const deleteDebito = (id: number) => {
               placeholder="Cerca condominio..." 
               class="style-chooser"
             />
+            <InputError :message="form.errors.condominio_id" />
           </div>
 
           <div class="space-y-1.5">
             <Label class="text-[11px] font-black uppercase text-slate-500">Descrizione Pendenza</Label>
             <Input v-model="form.descrizione" placeholder="Es: Saldo fatture riscaldamento 2025" class="h-10" />
+            <InputError :message="form.errors.descrizione" />
           </div>
 
           <div class="space-y-1.5">
@@ -266,6 +269,7 @@ const deleteDebito = (id: number) => {
               <Euro class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <MoneyInput v-model="form.importo" :money-options="moneyOptions" class="pl-10 font-black text-xl h-12" placeholder="0,00" />
             </div>
+            <InputError :message="form.errors.importo" />
             <p class="text-[9px] text-slate-400 italic">Inserisci l'importo dovuto. Il sistema lo caricherà come passività.</p>
           </div>
 

@@ -315,6 +315,24 @@ return [
         'show' => [
             'head_title' => 'Dettaglio del piano rate',
             'plan_title_prefix' => 'Piano rate',
+            'legal' => [
+                'deliberation_of' => 'Delibera del',
+            ],
+            'approval_modal' => [
+                'title' => 'Approvazione piano rate',
+                'subtitle' => 'Registra i dati della delibera assembleare prima di rendere esecutivo il piano (art. 1135 c.c.).',
+                'deliberation_date_label' => 'Data della delibera assembleare *',
+                'deliberation_date_help' => "Data in cui l'assemblea ha approvato questo piano. Resta registrata nello storico di controllo.",
+                'minutes_number_label' => 'N. verbale (opzionale)',
+                'minutes_number_placeholder' => 'Es. Verbale n. 3/2026',
+                'notes_label' => 'Note o riferimenti (opzionale)',
+                'notes_placeholder' => 'Es. Approvato con 8 voti favorevoli su 10 millesimi presenti...',
+                'last_deliberation_title' => 'Ultima delibera registrata:',
+                'last_deliberation_date' => 'Data:',
+                'last_deliberation_minutes' => 'Verbale:',
+                'saving' => 'Registrazione in corso...',
+                'confirm' => 'Approva e registra',
+            ],
             'subtitle' => 'Situazione aggiornata delle rate e dei pagamenti.',
             'breadcrumb_detail' => 'Dettaglio',
             'draft_state' => [

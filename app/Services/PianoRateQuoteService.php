@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Saldo;
 use Illuminate\Support\Collection;
@@ -112,8 +114,30 @@ class PianoRateQuoteService
 
         $pianoRate->loadMissing('capitoli');
 
-        return (int) $pianoRate->capitoli
+        $budget = (int) $pianoRate->capitoli
             ->sum(fn ($capitolo) => $capitolo->pivot->importo ?? $capitolo->importo);
+
+        // ⚠️ **Il già versato va tolto dall'atteso, o il badge grida al lupo su un piano giusto.**
+        //
+        // `eDisallineato()` confronta questo totale con la somma delle quote generate. Su un
+        // capitolo con del già versato il motore chiede **solo il residuo** — è il senso di quella
+        // funzione — quindi le quote generate valgono meno del budget **per costruzione**, e fino
+        // alla beta.75 ogni piano che sfruttasse il netting nasceva marcato «Disallineato:
+        // ricalcola!». Misurato sul condominio di prova: budget € 5.000,00, già versato
+        // € 2.000,00, quote generate € 3.000,00 — corrette, e segnalate come sbagliate.
+        //
+        // Il danno non era solo cosmetico: quel badge invita a premere «Ricalcola», che è
+        // esattamente la cosa da non fare su un piano che sta bene.
+        //
+        // ⚠️ **Resta un caso di bordo, più stretto di quello che chiude.** Il netting non porta
+        // mai una quota sotto zero: se un'unità ha versato **più** della sua parte, l'applicato è
+        // minore del registrato e il confronto torna a divergere. Quella sovra-contribuzione ha
+        // però già la sua segnalazione dedicata nell'Inbox, e non passa di qui.
+        $giaVersato = (int) ContributoVersato::where('target_type', Conto::class)
+            ->whereIn('target_id', $pianoRate->capitoli->pluck('id'))
+            ->sum('importo_cents');
+
+        return max(0, $budget - $giaVersato);
     }
 
     /**

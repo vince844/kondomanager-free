@@ -324,6 +324,7 @@ class ContributoVersatoController extends Controller
             'liquidita_stato'        => ['nullable', Rule::in([
                 ContributoVersato::LIQUIDITA_REGISTRATA_IN_CASSA,
                 ContributoVersato::LIQUIDITA_GIA_SPESO_ACCONTO,
+                ContributoVersato::LIQUIDITA_GIA_IN_APERTURA,
             ])],
             'cassa_id'               => [
                 'nullable',

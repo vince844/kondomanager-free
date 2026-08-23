@@ -1019,6 +1019,9 @@ onMounted(async () => {
                                             <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || 'Nessun dettaglio aggiuntivo' }}</span>
                                         </div>
                                     </template>
+                                    <template #no-options>
+                                        <span class="text-[12px] text-slate-500">Nessun condòmino corrisponde alla ricerca.</span>
+                                    </template>
                                 </v-select>
 
                                 <div v-else class="space-y-2">
@@ -1042,7 +1045,11 @@ onMounted(async () => {
                                                 <span class="text-[11px] text-slate-400 truncate">{{ nome || 'Unità immobiliare' }}</span>
                                             </div>
                                         </template>
-                                    </v-select>
+                                    
+                                    <template #no-options>
+                                        <span class="text-[12px] text-slate-500">Nessun risultato per questa ricerca.</span>
+                                    </template>
+                                </v-select>
 
                                     <div>
                                         <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Intestatario della ricevuta</Label>
@@ -1060,7 +1067,11 @@ onMounted(async () => {
                                                     <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || 'Nessun dettaglio aggiuntivo' }}</span>
                                                 </div>
                                             </template>
-                                        </v-select>
+                                        
+                                    <template #no-options>
+                                        <span class="text-[12px] text-slate-500">Nessun risultato per questa ricerca.</span>
+                                    </template>
+                                </v-select>
                                     </div>
                                 </div>
                             </div>
@@ -1105,6 +1116,10 @@ onMounted(async () => {
                                             <span v-if="conto_corrente?.iban" class="text-[10px] text-slate-400 mt-0.5">{{ conto_corrente.iban }}</span>
                                         </div>
                                     </template>
+                                
+                                    <template #no-options>
+                                        <span class="text-[12px] text-slate-500">Nessun risultato per questa ricerca.</span>
+                                    </template>
                                 </v-select>
                                 <InputError :message="form.errors.cassa_id" class="mt-1" />
                             </div>
@@ -1139,6 +1154,10 @@ onMounted(async () => {
                                             <span class="text-sm text-slate-700">{{ nome }}</span>
                                             <span v-if="tipo" class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">{{ tipo }}</span>
                                         </div>
+                                    </template>
+                                
+                                    <template #no-options>
+                                        <span class="text-[12px] text-slate-500">Nessun risultato per questa ricerca.</span>
                                     </template>
                                 </v-select>
                             </div>

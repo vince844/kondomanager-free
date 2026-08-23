@@ -123,9 +123,14 @@ const submit = () => {
 
                     <div class="sm:col-span-3 sm:col-start-1">
                         <Label for="codice_fiscale">{{ trans('condomini.label.tax_code') }}</Label>
+                        <!-- ⚠️ L'errore «esiste già un condominio con questo codice fiscale» arriva dal
+                             server e restava acceso mentre l'utente stava già battendo il codice nuovo:
+                             il modulo diceva sbagliato un valore che nel frattempo era cambiato. Si
+                             spegne appena il campo viene toccato — il server lo rialzerà se serve. -->
                         <Input 
                         id="codice_fiscale" 
                         v-model="form.codice_fiscale" 
+                        @input="form.clearErrors('codice_fiscale')"
                         :placeholder="trans('condomini.placeholder.tax_code')" 
                         class="mt-1 bg-white" 
                         />

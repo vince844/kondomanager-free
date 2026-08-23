@@ -41,7 +41,7 @@ const moneyOptions = ref({
 interface Fornitore {
     id: number;
     ragione_sociale: string;
-    piva?: string;
+    partita_iva?: string;
     codice_fiscale?: string;
     soggetto_ritenuta: boolean;
     perc_ritenuta?: number;
@@ -471,7 +471,7 @@ const pageGuides: never[] = [];
                                     placeholder="Cerca fornitore..."
                                     class="w-full"
                                     :disabled="true">
-                                    <template #option="{ ragione_sociale, piva, codice_fiscale, soggetto_ritenuta }">
+                                    <template #option="{ ragione_sociale, partita_iva, codice_fiscale, soggetto_ritenuta }">
                                         <div class="flex items-center gap-3 py-1 opacity-60">
                                             <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
                                                 <Briefcase class="w-4 h-4 text-slate-400" />
@@ -479,7 +479,7 @@ const pageGuides: never[] = [];
                                             <div class="flex flex-col overflow-hidden">
                                                 <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ ragione_sociale }}</span>
                                                 <div class="flex items-center gap-2 mt-0.5">
-                                                    <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
+                                                    <span v-if="partita_iva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ partita_iva }}</span>
                                                     <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
                                                     <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none">
                                                         Ritenuta

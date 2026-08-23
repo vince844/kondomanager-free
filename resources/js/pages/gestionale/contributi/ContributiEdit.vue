@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import GiaVersatoGuide from '@/components/guides/GiaVersatoGuide.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import ModalLiquiditaGiaVersato from '@/components/gestionale/contributi/ModalLiquiditaGiaVersato.vue';
 import { Button } from '@/components/ui/button';
@@ -68,6 +69,11 @@ const { toast } = useToast();
 const versato = ref<Record<number, string>>(
   Object.fromEntries(props.righe.map(r => [r.immobile_id, (r.gia_versato / 100).toFixed(2)]))
 );
+
+// La guida in header: qui si prendono le due decisioni che il programma non può dedurre
+// (natura del versamento e stato della liquidità), ed era l'unica delle tre pagine del
+// già-versato a non averla — vedi GiaVersatoGuide, scheda «Le due scelte».
+const mostraGuida = ref(false);
 
 const natura = ref(props.natura);
 // Riparte da quanto già salvato: senza questo, ogni ri-salvataggio che non
@@ -281,6 +287,9 @@ const guide = [
         :guides="guide"
         :breadcrumbs="headerBreadcrumbs"
         :condominio="condominio"
+        has-text-guide
+        text-guide-title="Guida"
+        @open-text-guide="mostraGuida = true"
       />
 
       <div class="w-full">
@@ -568,6 +577,8 @@ const guide = [
       :is-processing="salvando"
       @update:show="mostraModaleLiquidita = $event"
       @confirm="onConfirmLiquidita"
+      @open-guida="mostraGuida = true"
     />
+    <GiaVersatoGuide v-model:open="mostraGuida" />
   </GestionaleLayout>
 </template>

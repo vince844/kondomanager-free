@@ -7,6 +7,140 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.75] - Il Pregresso Che Si Spacciava Per Deliberato
+
+**Non tocca il database.** Cambia però **dove finisce il pregresso** nel libro giornale: chi
+riemette un piano rate vede gli stessi totali di prima, con il riporto degli anni precedenti su un
+conto diverso.
+
+### Il difetto: il riporto contato come entrata dell'anno
+
+Quando un piano rate assorbe i saldi di apertura con una **Rata 0**, quel denaro non è una spesa
+deliberata per l'esercizio in corso: è un **riporto degli anni precedenti**. L'emissione però lo
+chiudeva in AVERE sullo stesso conto del preventivo, `gestione_rate`.
+
+Misurato sul caso di prova — quattro unità, € 1.800,00 di pregresso e € 1.600,00 di preventivo — il
+2026 risultava aver chiamato ai condòmini **€ 3.400,00**, e **il deliberato dell'anno non era più
+distinguibile dal riporto**.
+
+### Perché non si vedeva
+
+Il numero giusto c'era già: ogni quota porta nel proprio snapshot la componente di sola gestione,
+`regole_calcolo.importi.quota_pura_gestione`. `EmissioneRateController` la leggeva così:
+
+```php
+$json = is_string($quota->regole_calcolo) ? json_decode($quota->regole_calcolo) : (object)$quota->regole_calcolo;
+if (isset($json->importi->quota_pura_gestione)) { … }
+```
+
+`RataQuote` ha `'regole_calcolo' => 'json'` fra i casts, quindi l'attributo torna un **array**: si
+prende il ramo `(object) $array`, che è un cast **superficiale**. `$json->importi` resta un array,
+`isset($json->importi->quota_pura_gestione)` è **sempre falso**, e non solleva mai un errore. Il
+ramo non si è mai eseguito.
+
+```bash
+php -r '$r=["importi"=>["quota_pura_gestione"=>0]]; $j=(object)$r; var_dump(isset($j->importi->quota_pura_gestione));'
+```
+
+Sulle rate ordinarie non cambiava nulla, perché lì `quota_pura_gestione` **coincide** con
+`importo`: il difetto era raggiungibile solo dove i due numeri divergono, cioè sulla Rata 0. Le
+altre quattro letture dello stesso campo — `PianoRateQuoteService`, `StoreIncassoRateAction`,
+`SituazioneDebitoriaController`, `SyncScadenziarioWithPianoRate` — lo leggono correttamente come
+array, quindi **libro giornale e prospetti raccontavano due numeri diversi per lo stesso piano**.
+
+### La correzione
+
+Il DARE su `crediti_condomini` resta l'**intera** quota: il condòmino deve tutto. Cambia la
+contropartita, che ora è doppia quando la rata porta un riporto:
+
+| | DARE | AVERE |
+| :--- | :--- | :--- |
+| Componente deliberata dell'anno | `crediti_condomini` | `gestione_rate` |
+| Riporto da esercizi precedenti | `crediti_condomini` | `passate_gestioni` |
+
+`passate_gestioni` è lo stesso conto con cui `RegistraAperturaCassaAction` porta dentro il saldo di
+apertura di una cassa, e per la stessa ragione: è una posizione anteriore, non un provento
+dell'anno.
+
+La componente di riporto si **deriva per differenza** (`importo − quota_pura_gestione`) invece di
+leggere `saldo_usato` dallo snapshot: così `DARE = AVERE` vale per costruzione anche su una quota il
+cui snapshot non quadri. Un riporto **negativo** — il condòmino che arriva a credito — si scrive nel
+verso opposto senza sbilanciare la scrittura.
+
+---
+
+### «Carica debito pregresso» non salvava niente, e non lo diceva
+
+La modale usa `MoneyInput` con `masked: true`: il campo vale **`380,00`**. Il controller validava
+`'importo' => 'required|numeric'`, e in PHP `is_numeric('380,00')` è **false**. La validazione
+falliva **a ogni tentativo**, e siccome nel file non esisteva **nemmeno un `InputError`**, l'utente
+non vedeva nulla: premeva, e non succedeva niente.
+
+Il costo non era locale. La pagina stessa dichiara che *«il sistema ti permetterà di registrare e
+saldare fatture degli anni passati solo se il relativo debito è stato prima dichiarato in questa
+sezione»* — quindi con il caricamento morto **l'intero percorso delle fatture pregresse era
+irraggiungibile**. Esattamente quello di chi rileva un condominio senza consegne.
+
+La conversione passa ora da `MoneyHelper::toCents()`, che è il confine d'ingresso del progetto e
+legge sia la stringa mascherata sia un numero puro; la modale ha tre `InputError`. Il test copre
+anche il caso che avrebbe fatto più danno: **`1.500,00` letto con `(float)` vale 1,5**.
+
+---
+
+### Il già versato contava i soldi due volte
+
+Dichiarando che gli acconti raccolti prima sono «ancora fermi in banca», il programma li accreditava
+sulla cassa con una scrittura di accantonamento. Ma chi apre la cassa con il saldo dell'estratto
+conto — **l'ordine di lavoro corretto, quello che la guida raccomanda** — quei soldi li aveva già
+dentro. Misurato: cassa a giornale **€ 5.000,00** contro **€ 3.000,00** di estratto conto reale.
+
+Il sistema non può indovinare quale ordine sia stato seguito, ed entrambi sono legittimi. È stato
+quindi aggiunto un terzo stato di liquidità, `gia_in_apertura` — *«sono fermi, e già nel saldo di
+apertura»* — che registra il vincolo per il riparto e **non produce alcuna scrittura**. La colonna è
+`string(30)`: nessuna migrazione.
+
+---
+
+### Il badge «Disallineato» gridava al lupo
+
+`PianoRateQuoteService::eDisallineato()` confronta il budget dei capitoli con le quote generate. Su
+un capitolo con del già versato il motore chiede **solo il residuo**, quindi i due numeri divergono
+per costruzione: **ogni piano che sfruttasse il netting nasceva marcato come sbagliato**, invitando
+a premere «Ricalcola» proprio dove non serviva. Il totale atteso ora sottrae il già versato
+registrato.
+
+---
+
+### Cose piccole che si vedevano
+
+- **L'IBAN non è più obbligatorio** per aprire un conto corrente: serve a compilare i bonifici, non
+  a tenere la contabilità, e bloccava il **primo** passo contabile di chi rileva uno stabile.
+- **La partita IVA del fornitore non compariva mai, per nessuno**: i template leggevano `piva`,
+  la colonna è `partita_iva`. Corretto in quattro file — registrazione e modifica fattura,
+  registrazione e modifica pagamento.
+- **La modale di approvazione del piano rate mostrava le chiavi di traduzione grezze**
+  (`GESTIONALE.PIANI_RATE.SHOW.APPROVAL_MODAL.…`): il blocco esisteva **solo in portoghese**.
+  Aggiunto in it/en/es.
+- **L'errore sul codice fiscale duplicato** restava acceso mentre si correggeva il campo.
+- **«Sorry, no matching options»** nelle cinque tendine degli incassi è ora in italiano. Restano le
+  altre 59 tendine del progetto: `vue-select` è importato file per file, e la passata è a parte.
+
+### La guida del già versato
+
+Aggiunta la scheda **«Le due scelte»** (natura del versamento e stato della liquidità, con i tre
+scenari) e agganciata la guida anche alla pagina di **dettaglio**, che era l'unica delle tre pagine
+del già versato a non averla — cioè proprio quella dove si decide. Un rimando dentro la modale
+rende l'aiuto raggiungibile anche quando l'overlay copre l'intestazione.
+
+### Test
+
+`RicostruzionePregressoRataZeroTest` (6, nuovo) sul caso di prova — quattro unità, pregresso,
+preventivo, emissione, incasso — compresi il verso negativo e la controprova che a incasso completo
+`crediti_condomini` torna a zero. `DebitoPregressoImportoMascheratoTest` (4, nuovo) sull'importo
+mascherato. Tre test nuovi in `ContributiVersatiHttpTest` per lo scenario C e per il badge.
+
+---
+
 ## [1.10.0-beta.74] - La Colonna Che Non Valeva Più il Deliberato
 
 **Non tocca il database.** Cambia però **quello che esce stampato**: chi ristampa un riparto già

@@ -797,3 +797,105 @@ test('GUARDIA: il vincolo fondo/cassa non si può aggirare su un resave successi
 
     expect(ContributoVersato::first()->natura)->toBe('avanzo');
 })->group('contributi', 'http', 'liquidita', 'vincolo-fondo', 'regressione-avversariale');
+
+/**
+ * ★ beta.75 — lo scenario che mancava, e il doppio conteggio che produceva.
+ *
+ * Con i due soli scenari precedenti, chi apriva la cassa con il saldo dell'estratto conto — che è
+ * l'ordine di lavoro corretto — e poi dichiarava il già versato come «ancora fermi» si vedeva
+ * accreditare una seconda volta soldi che l'apertura conteneva già. Misurato sul condominio di
+ * prova: cassa a giornale € 5.000,00 contro € 3.000,00 di estratto conto reale.
+ *
+ * Il sistema non può indovinare quale ordine l'utente abbia seguito, ed entrambi sono legittimi.
+ * Lo scenario C dice esattamente il caso in cui la liquidità è già a giornale da altrove: registra
+ * il vincolo per il riparto e **non scrive nulla**.
+ */
+test('SCENARIO C: "già nel saldo di apertura" registra il vincolo senza accreditare la cassa', function () {
+    $sc = cvScenario(setupContabile());
+    $cassa = cvCreaCassa($sc->condominio->id);
+
+    $saldoPrima = app(SaldoCassaService::class)->saldoDisponibile($cassa);
+
+    $this->actingAs($this->user)
+        ->put("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'gia_versato' => 50_000],
+                ['immobile_id' => $sc->unita[1]->immobile->id, 'gia_versato' => 50_000],
+            ],
+            'liquidita_stato' => 'gia_in_apertura',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    // ★ Il punto: la cassa non si muove di un centesimo.
+    expect(app(SaldoCassaService::class)->saldoDisponibile($cassa->fresh()))->toBe($saldoPrima);
+
+    expect(\App\Models\Gestionale\ScritturaContabile::where('condominio_id', $sc->condominio->id)
+        ->where('tipo_movimento', 'accantonamento')->count())->toBe(0);
+
+    // Ma il vincolo è registrato, e il riparto lo userà.
+    $cv = ContributoVersato::first();
+    expect($cv->liquidita_stato)->toBe('gia_in_apertura')
+        ->and($cv->cassa_id)->toBeNull()
+        ->and(ContributoVersato::sum('importo_cents'))->toBe(100_000);
+
+    expect(app(StatoPatrimonialeService::class)->calcola($sc->condominio)['quadra'])->toBeTrue();
+})->group('contributi', 'http', 'liquidita');
+
+test('SCENARIO C: non pretende né una cassa né una nota', function () {
+    // Scegliendolo, all'utente non resta niente da compilare: la cassa non serve (la liquidità è
+    // già a giornale) e non c'è nessun acconto da descrivere.
+    $sc = cvScenario(setupContabile());
+
+    $this->actingAs($this->user)
+        ->put("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'avanzo',
+            'righe' => [['immobile_id' => $sc->unita[0]->immobile->id, 'gia_versato' => 25_000]],
+            'liquidita_stato' => 'gia_in_apertura',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect(ContributoVersato::first()->liquidita_stato)->toBe('gia_in_apertura');
+})->group('contributi', 'http', 'liquidita');
+
+/**
+ * ★ beta.75 — il badge «Disallineato: ricalcola!» gridava al lupo sui piani col netting.
+ *
+ * `eDisallineato()` confronta il budget dei capitoli con le quote generate. Su un capitolo con
+ * del già versato il motore chiede **solo il residuo**, quindi i due numeri divergono per
+ * costruzione e ogni piano che sfruttasse il netting nasceva marcato come sbagliato — invitando
+ * a premere «Ricalcola» proprio dove non serviva.
+ */
+test('un piano che sfrutta il già versato non risulta disallineato', function () {
+    $sc = cvScenario(setupContabile());
+
+    // Lavori da € 1.100,00, di cui € 200,00 già raccolti prima di Kondomanager.
+    $this->actingAs($this->user)
+        ->put("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'avanzo',
+            'righe' => [['immobile_id' => $sc->unita[0]->immobile->id, 'gia_versato' => 20_000]],
+            'liquidita_stato' => 'gia_in_apertura',
+        ])->assertSessionHasNoErrors();
+
+    $piano = \App\Models\Gestionale\PianoRate::create([
+        'condominio_id' => $sc->condominio->id,
+        'gestione_id'   => $sc->gestione->id,
+        'nome'          => 'Piano col netting',
+        'stato'         => 'bozza',
+        'tipo'          => 'ordinario',
+        'numero_rate'   => 1,
+    ]);
+    $piano->capitoli()->attach($sc->conto->id);
+
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($piano);
+
+    $service = app(\App\Services\PianoRateQuoteService::class);
+
+    // Il motore ha chiesto il residuo: 110.000 - 20.000.
+    expect($service->totalePuroGeneratoCents($piano->fresh()))->toBe(90_000)
+        // E l'atteso ora lo sa: prima della beta.75 valeva 110.000 e il badge si accendeva.
+        ->and($service->totaleAttesoCents($piano->fresh()))->toBe(90_000)
+        ->and($service->eDisallineato($piano->fresh()))->toBeFalse();
+})->group('contributi', 'disallineamento');

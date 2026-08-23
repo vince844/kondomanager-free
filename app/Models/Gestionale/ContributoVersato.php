@@ -53,6 +53,23 @@ class ContributoVersato extends Model
     /** I soldi sono già usciti come acconto al fornitore, prima di Kondomanager. */
     public const LIQUIDITA_GIA_SPESO_ACCONTO = 'gia_speso_acconto';
 
+    /**
+     * I soldi ci sono, sono in banca, **e il saldo di apertura della cassa li comprende già**.
+     *
+     * ⚠️ **Perché serviva un terzo stato, e non bastava un avviso.** Con i due soli stati
+     * precedenti, chi apriva la cassa con il saldo dell'estratto conto — che è l'ordine di
+     * lavoro corretto, ed è quello che la guida raccomanda — e poi dichiarava il già versato
+     * come «ancora fermi» si ritrovava quei soldi contati **due volte**: una dentro l'apertura,
+     * una nell'accantonamento. Misurato sul caso di prova: cassa a giornale € 5.000,00 contro
+     * € 3.000,00 di estratto conto reale.
+     *
+     * Il sistema non può indovinare quale dei due ordini l'utente abbia seguito, ed entrambi
+     * sono legittimi: se il già versato si dichiara **prima** di aprire la cassa, accreditare è
+     * giusto. Questo stato dice esattamente l'altro caso, e **non produce alcuna scrittura**:
+     * il vincolo resta registrato per il riparto, la liquidità è già a giornale da altrove.
+     */
+    public const LIQUIDITA_GIA_IN_APERTURA = 'gia_in_apertura';
+
     public function target(): MorphTo
     {
         return $this->morphTo();

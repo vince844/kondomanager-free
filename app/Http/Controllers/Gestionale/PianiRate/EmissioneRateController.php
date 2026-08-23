@@ -35,6 +35,14 @@ class EmissioneRateController extends Controller
     use HandleFlashMessages, HasEsercizio;
 
     /**
+     * Marcatore dell'unica eccezione di dominio che questo controller solleva da sé.
+     * Serve perché il `catch (\Throwable)` in coda riduce tutto a «errore tecnico»: senza
+     * un marcatore, a chi emette una rata con un riporto in un condominio a cui manca il
+     * Fondo Passate Gestioni resterebbe un messaggio che non dice cosa fare.
+     */
+    private const ERRORE_PASSATE_GESTIONI = 'EMISSIONE_SENZA_FONDO_PASSATE_GESTIONI';
+
+    /**
      * Emette una o più rate di un piano approvato.
      * Genera le scritture contabili e gestisce l'emissione "Silenziosa" 
      * per evitare l'invio prematuro di notifiche (Finestra di Vulnerabilità).
@@ -74,12 +82,21 @@ class EmissioneRateController extends Controller
             ->where('ruolo', 'gestione_rate')
             ->first();
 
+        // Contropartita del riporto da esercizi precedenti. NON è obbligatoria qui: serve solo
+        // alle rate che portano un pregresso, e pretenderla sempre bloccherebbe l'emissione
+        // ordinaria dei condomìni che non ce l'hanno. Il controllo è dentro il ciclo, dove si
+        // sa se serve davvero.
+        $contoPassateGestioni = ContoContabile::where('condominio_id', $condominio->id)
+            ->where('ruolo', 'passate_gestioni')
+            ->whereNull('deleted_at')
+            ->first();
+
         if (!$contoCrediti || !$contoGestione) {
             return back()->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
         }
 
         try {
-            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $inviaNotifiche) {
+            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche) {
                 
                 $rateSelezionate = Rata::with('rateQuote')
                     ->where('piano_rate_id', $pianoRate->id)
@@ -89,7 +106,8 @@ class EmissioneRateController extends Controller
                 foreach ($rateSelezionate as $rata) {
                     if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) continue;
 
-                    $totaleRataCentesimi = 0; 
+                    $totaleRataCentesimi = 0;
+                    $totalePregressoCentesimi = 0;
 
                     // 1. Scrittura Testata
                     $scrittura = ScritturaContabile::create([
@@ -104,19 +122,50 @@ class EmissioneRateController extends Controller
                     ]);
 
                     // 2. Scrittura Righe (Dettaglio quote)
+                    //
+                    // Il condòmino deve l'INTERA quota, quindi il DARE su Crediti v/Condòmini è
+                    // sempre `importo` pieno. A cambiare è la contropartita, perché una quota può
+                    // portare dentro due cose di competenza diversa, e lo snapshot lo dice già:
+                    //
+                    //     importo = quota_pura_gestione + saldo_usato
+                    //
+                    // `quota_pura_gestione` è la spesa deliberata per QUESTO esercizio e chiude su
+                    // Gestione Rate. `saldo_usato` è il riporto da esercizi precedenti — la Rata 0
+                    // è fatta solo di quello — e non è un provento dell'anno: chiude sul Fondo
+                    // Passate Gestioni, la stessa contropartita con cui l'apertura di cassa porta
+                    // dentro una posizione anteriore (RegistraAperturaCassaAction:70-73).
+                    //
+                    // ⚠️ **Perché la componente di riporto si DERIVA per differenza** invece di
+                    // leggere `saldo_usato` dallo snapshot: così `DARE = AVERE` vale per
+                    // costruzione, anche su una quota il cui snapshot non quadri. Fidarsi di due
+                    // numeri scritti da qualcun altro significa poter emettere una scrittura
+                    // sbilanciata, e il DoubleEntryValidator la rifiuterebbe a fine rata, dopo aver
+                    // già bruciato il protocollo.
                     foreach ($rata->rateQuote as $quota) {
-                        
-                        $importoDaRegistrare = $quota->importo;
 
-                        if (!empty($quota->regole_calcolo)) {
-                            $json = is_string($quota->regole_calcolo) ? json_decode($quota->regole_calcolo) : (object)$quota->regole_calcolo;
-                            
-                            if (isset($json->importi->quota_pura_gestione)) {
-                                $importoDaRegistrare = (int) $json->importi->quota_pura_gestione;
-                            }
+                        $importoQuota = (int) $quota->importo;
+
+                        if ($importoQuota <= 0) continue;
+
+                        // ⚠️ `regole_calcolo` ha il cast `'json'` sul Model, quindi qui arriva un
+                        // ARRAY. Fino alla beta.62 questa lettura faceva `(object) $array` e poi
+                        // `isset($json->importi->quota_pura_gestione)`: il cast a oggetto è
+                        // SUPERFICIALE, `$json->importi` restava un array e l'isset era sempre
+                        // falso. Il ramo non si è mai eseguito, e il riporto finiva su Gestione
+                        // Rate insieme al deliberato. Invisibile sulle rate ordinarie, dove i due
+                        // numeri coincidono; visibile solo dove divergono, cioè sulla Rata 0.
+                        $componenteGestione = $importoQuota;
+                        $regole = $quota->regole_calcolo;
+
+                        if (is_string($regole)) {
+                            $regole = json_decode($regole, true);
                         }
 
-                        if ($importoDaRegistrare <= 0) continue;
+                        if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
+                            $componenteGestione = (int) $regole['importi']['quota_pura_gestione'];
+                        }
+
+                        $componentePregresso = $importoQuota - $componenteGestione;
 
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCrediti->id,
@@ -124,22 +173,45 @@ class EmissioneRateController extends Controller
                             'immobile_id'        => $quota->immobile_id,
                             'rata_id'            => $rata->id,
                             'tipo_riga'          => 'dare',
-                            'importo'            => $importoDaRegistrare, 
+                            'importo'            => $importoQuota,
                             'note'               => "Quota " . $rata->descrizione
                         ]);
 
                         $quota->update(['scrittura_contabile_id' => $scrittura->id]);
-                        $totaleRataCentesimi += $importoDaRegistrare;
+
+                        $totaleRataCentesimi     += $componenteGestione;
+                        $totalePregressoCentesimi += $componentePregresso;
                     }
 
-                    // 3. Chiusura in Avere (Gestione)
-                    if ($totaleRataCentesimi > 0) {
-                        $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoGestione->id,
-                            'tipo_riga'          => 'avere',
-                            'importo'            => $totaleRataCentesimi,
-                            'note'               => "Totale emissione " . $rata->descrizione
-                        ]);
+                    // 3. Chiusura in Avere, su due conti quando la rata porta un riporto.
+                    //
+                    // I due totali possono essere NEGATIVI: un condòmino che arriva a credito ha
+                    // `saldo_usato < 0`, quindi la sua componente di riporto riduce il debito. Un
+                    // totale negativo si scrive nel verso opposto, e la quadratura regge comunque
+                    // perché il DARE delle quote è già la somma algebrica delle due componenti.
+                    $totaleDareQuote = $totaleRataCentesimi + $totalePregressoCentesimi;
+
+                    if ($totaleDareQuote > 0) {
+
+                        if ($totalePregressoCentesimi !== 0 && ! $contoPassateGestioni) {
+                            throw new \RuntimeException(self::ERRORE_PASSATE_GESTIONI);
+                        }
+
+                        foreach ([
+                            [$contoGestione, $totaleRataCentesimi, "Totale emissione " . $rata->descrizione],
+                            [$contoPassateGestioni, $totalePregressoCentesimi, "Riporto esercizi precedenti — " . $rata->descrizione],
+                        ] as [$conto, $totale, $nota]) {
+
+                            if ($totale === 0) continue;
+
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $conto->id,
+                                'tipo_riga'          => $totale > 0 ? 'avere' : 'dare',
+                                'importo'            => abs($totale),
+                                'note'               => $nota
+                            ]);
+                        }
+
                     } else {
                         // Nessuna quota da emettere (es. rata di soli conguagli a credito):
                         // la testata resterebbe una scrittura SENZA RIGHE, che il
@@ -219,6 +291,14 @@ class EmissioneRateController extends Controller
 
         } catch (\Throwable $e) {
             Log::error("Errore emissione rate: " . $e->getMessage());
+
+            if (str_contains($e->getMessage(), self::ERRORE_PASSATE_GESTIONI)) {
+                return back()->with($this->flashError(
+                    'Questa rata porta un riporto da esercizi precedenti, ma nel piano dei conti di '
+                    .'questo condominio manca il «Fondo Passate Gestioni» (2301). Ricrealo dal piano '
+                    .'dei conti e riprova: senza, il riporto finirebbe fra le entrate dell\'anno.'
+                ));
+            }
 
             if (str_contains($e->getMessage(), 'Duplicate entry') && str_contains($e->getMessage(), 'numero_protocollo_unique')) {
                 return back()->with($this->flashError(

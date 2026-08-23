@@ -315,6 +315,24 @@ return [
         'show' => [
             'head_title' => 'Installment plan detail',
             'plan_title_prefix' => 'Installment plan',
+            'legal' => [
+                'deliberation_of' => 'Resolution of',
+            ],
+            'approval_modal' => [
+                'title' => 'Instalment plan approval',
+                'subtitle' => 'Record the details of the meeting resolution before making the plan enforceable.',
+                'deliberation_date_label' => 'Date of the meeting resolution *',
+                'deliberation_date_help' => 'The date the meeting approved this plan. It is kept in the audit history.',
+                'minutes_number_label' => 'Minutes number (optional)',
+                'minutes_number_placeholder' => 'e.g. Minutes no. 3/2026',
+                'notes_label' => 'Notes or references (optional)',
+                'notes_placeholder' => 'e.g. Approved with 8 votes in favour out of 10 thousandths present...',
+                'last_deliberation_title' => 'Last recorded resolution:',
+                'last_deliberation_date' => 'Date:',
+                'last_deliberation_minutes' => 'Minutes:',
+                'saving' => 'Recording...',
+                'confirm' => 'Approve and record',
+            ],
             'subtitle' => 'Updated status of installments and payments.',
             'breadcrumb_detail' => 'Detail',
             'draft_state' => [

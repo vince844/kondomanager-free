@@ -38,7 +38,8 @@ const moneyOptions = ref({
 interface Fornitore {
     id: number;
     ragione_sociale: string;
-    piva?: string;
+    // ⚠️ Vedi FatturaRegisterNew: la colonna è `partita_iva`, non `piva`.
+    partita_iva?: string;
     codice_fiscale?: string;
     soggetto_ritenuta: boolean;
     perc_ritenuta?: number;
@@ -603,7 +604,7 @@ const pageGuides = [
                                 <div class="flex flex-col overflow-hidden">
                                     <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ selectedFornitore?.ragione_sociale }}</span>
                                     <div class="flex items-center gap-2 mt-0.5">
-                                        <span v-if="selectedFornitore?.piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ selectedFornitore.piva }}</span>
+                                        <span v-if="selectedFornitore?.partita_iva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ selectedFornitore.partita_iva }}</span>
                                         <span v-else-if="selectedFornitore?.codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ selectedFornitore.codice_fiscale }}</span>
                                         <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
                                         <span v-if="selectedFornitore?.soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
