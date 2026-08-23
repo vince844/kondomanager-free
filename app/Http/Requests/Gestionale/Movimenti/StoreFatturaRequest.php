@@ -75,7 +75,11 @@ class StoreFatturaRequest extends FormRequest
             // ── REGOLE SCUDO LEGALE E BUDGET (INTATTE E PROTETTE) ──
             'dati_extra.override_budget'                       => 'nullable|array',
             'dati_extra.override_budget.motivazione'           => 'required_with:dati_extra.override_budget|string|min:10',
-            'dati_extra.override_budget.importo_sforo'         => 'required_with:dati_extra.override_budget|integer',
+            // `min:0` perché questo numero arriva dal client e viene usato verbatim per la
+            // scrittura di copertura da fondo di riserva: un valore negativo girerebbe il segno
+            // del giroconto. Entrambi i produttori lato form sono non negativi per costruzione,
+            // quindi la regola non ha falsi positivi — è la rete sotto, non un cambio di flusso.
+            'dati_extra.override_budget.importo_sforo'         => 'required_with:dati_extra.override_budget|integer|min:0',
             'dati_extra.override_budget.strategia_rientro'     => 'required_with:dati_extra.override_budget|in:conguaglio_fine_anno,rata_integrativa,fondo_riserva',
             'dati_extra.override_budget.fondo_patrimoniale_id' => 'nullable|integer|exists:conti_contabili,id',
 

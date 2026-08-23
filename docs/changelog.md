@@ -7,6 +7,101 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.72] - Il Preventivo Che Si Alzava Da Solo
+
+**Nessuna migrazione del database.** Ma un dato salvato veniva corrotto, e due numeri già visibili
+cambiano valore: sono in testa qui sotto.
+
+### Da dove nasce
+
+Un amministratore scrive sul forum, da 1.9.1: «ho caricato una fattura di pulizia scale, mi sarei
+aspettato di vedere il budget eroso in Piano dei conti, e vedo soltanto il budget assegnato e la
+copertura». La sua seconda osservazione — il simulatore che non sottrae l'IVA — era già stata
+corretta nella beta.18. La prima invece era per metà un equivoco che avevamo indotto noi con
+un'etichetta ambigua, e per metà una lacuna vera: il consuntivo, messo a video dalla beta.30
+nell'elenco e nella finestra dei movimenti, **nel pannello di dettaglio non era mai arrivato**. Che
+è esattamente il posto in cui lui stava guardando.
+
+Cercando quel buco ne è venuto fuori uno più grave, che nessuno aveva segnalato.
+
+### Il difetto che corregge un dato salvato
+
+`PianoContiController` porta in memoria l'importo di una voce al maggiore fra preventivo e spesa:
+è il **fabbisogno**, ed è il numero giusto per la barra di copertura, la stessa base su cui il
+cruscotto calcola la propria percentuale. Il guaio è che quel numero finiva anche dentro il modulo
+«Modifica voce», in un campo che al salvataggio **riscrive** il preventivo.
+
+Il giro, misurato: `€ 6.000,00` → la maschera lo normalizza a `6000.00` → `MoneyHelper::toCents()`
+lo riconosce come stringa numerica e produce `600000` → a database. Su una voce con preventivo
+€ 5.000,00 e speso € 6.000,00 bastava aprire «Modifica» per cambiare una nota e salvare perché il
+preventivo deliberato diventasse € 6.000,00. Nessuna delle due protezioni poteva accorgersene: il
+blocco elastico scatta quando l'importo **scende**, e questo saliva; il blocco rigido esiste solo
+con rate approvate — e lì produceva il difetto speculare, rifiutando con «l'importo è bloccato da
+rate già approvate o emesse» anche chi l'importo non l'aveva toccato.
+
+Non c'è riparazione automatica: un preventivo alzato a mano e uno alzato dal difetto sono
+indistinguibili. Il segnale, per chi vuole controllare, è che coincida esattamente con lo speso.
+
+### Numeri che cambiano a video
+
+- **Il campo «Importo» del pannello si chiama ora «Preventivo»** e mostra il deliberato. Su una voce
+  in sforo il numero **scende**, perché prima mostrava lo speso.
+- **Il denominatore della barra di copertura si chiama «Fabbisogno»**, nel pannello e nell'elenco.
+  Il valore non cambia: cambia il nome, che era quello di un'altra grandezza — e quella grandezza
+  ora sta lì accanto, con il suo.
+
+### Il resto
+
+- **Preventivo, Consuntivo e differenza nel pannello di dettaglio**, residuo o eccedenza in rosso.
+  Una voce senza preventivo mostra `—` e non `€ 0,00`: stessa convenzione dell'elenco.
+- **«Emesso ai condòmini» era falso**: `BudgetCoverageService` conta anche i piani in bozza, e
+  `StatoPianoRate` non ha nemmeno uno stato «emesso». Era la stessa scheda a smentirsi, col pallino
+  ambra «Piano in bozza» poche righe sotto.
+- **Un capitolo con una spesa diretta non è più scambiato per una voce normale.** Il pannello
+  indovinava la natura della voce da `importo_raw === 0`, ed era l'ultimo punto a farlo: ma il
+  gonfiaggio scorre anche i conti radice, quindi quell'importo a zero non è.
+- **La semantica lorda del preventivo è finalmente scritta** — guida in-app e commento sul Model.
+  Non stava da nessuna parte, ed era la premessa da cui la segnalazione nasceva.
+- Simbolo `€` prima dell'importo in quattro messaggi d'errore; `min:0` su `importo_sforo`, che
+  arriva dal client e viene usato così com'è per la copertura da fondo di riserva.
+
+### Quello che ha trovato la verifica a video, e non era in piano
+
+Le **tre viste** hanno pagato il loro costo: due difetti li ha visti solo il telefono, uno solo il
+tema scuro.
+
+- **Su mobile un importo veniva tagliato a metà** — «€ 1.537,0» — perché tre colonne su 375 px
+  lasciano 81 px a testa. Un numero troncato è peggio di un numero assente: si legge lo stesso e
+  sembra giusto.
+- **Il nome della voce si riduceva a «Manut…» e «So…»**, schiacciato dalle due colonne di importi,
+  e il titolo del pannello a metà parola accanto al pulsante «Modifica». La causa di fondo era un
+  `pr-[200px]` scritto a mano che riserva spazio a colonne che su mobile non stanno lì: lasciava
+  60 px utili su 260, e l'etichetta si incolonnava una parola per riga.
+- **In tema scuro il nome di ogni voce era illeggibile**, grigio ardesia su fondo quasi nero: le
+  tre varianti `dark:` non c'erano. Difetto preesistente, sulla stessa pagina, corretto qui perché
+  una correzione fuori perimetro lasciata in TEST non entra nel port e il reset la cancella.
+
+### Test
+
+- Nuovi `DettaglioConto.test.ts` (9 casi) e `ModalModificaConto.test.ts` (3 casi). Il secondo è
+  stato verificato per mutazione: rimesso il difetto, diventa rosso leggendo `6.000,00`.
+- Il difetto del modale **non è testabile in PHP**: il controller persiste correttamente ciò che
+  riceve, e un test sull'update passerebbe identico prima e dopo. Vive tutto nell'inizializzazione
+  del campo.
+- Suite: **1733 PHP** (2 skipped) e **235 JS**, entrambe verdi.
+
+### Cosa resta aperto, e perché
+
+- **La rimozione del gonfiaggio** va alla 1.10.1, e per prima: trascina il totale Sopravvenienze e
+  la quota «auto» dei piani con pivot NULL, e soprattutto `percentuale_copertura` e
+  `stato_copertura` non hanno **un solo test** in tutta la suite. Vanno coperti prima di toccarli.
+- **La guardia server-side sullo sforo** pure. Non è una validazione: spingere una fattura in
+  `sforo_motivato` la rende non pagabile e mette in calendario una convocazione d'assemblea entro
+  sette giorni. Va fatta insieme a quella sulla regolazione immediata, e non tre giorni prima di
+  una stabile.
+
+---
+
 ## [1.10.0-beta.71] - Un Condominio Già Pronto
 
 ⚠️ **Questa versione tocca il database:** una migrazione aggiunge una colonna ai condomini, per

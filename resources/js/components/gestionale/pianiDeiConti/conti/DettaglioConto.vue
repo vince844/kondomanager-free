@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import type { Conto } from '@/types/gestionale/conti'
+import { ContoHelpers, type Conto } from '@/types/gestionale/conti'
 
 interface TabellaAssociata {
   id: number
@@ -65,14 +65,48 @@ const eliminaConto     = () => { if (props.conto) emit('elimina', props.conto) }
 const modificaConto    = () => { if (props.conto) emit('modifica', props.conto) }
 const selectSottoconto = (sottoconto: Conto) => { emit('select', sottoconto) }
 
-/* const isCapitolo = (conto: Conto) => {
-  const importoZero = ['€ 0,00', '0,00', '€0,00', '0,00€'].some(v => conto.importo.includes(v))
-  return conto.parent_id === null && importoZero
-} */
+/**
+ * Un capitolo è tale perché è **dichiarato** tale, non perché il suo importo è a zero.
+ *
+ * L'euristica `parent_id === null && importo_raw === 0` sbaglia in due direzioni opposte, e
+ * l'albero (`AlberoDeiConti.vue`) e il modale di modifica leggono già il campo persistito:
+ *
+ * - un sottoconto non ancora budgetato ha importo 0 e passava per capitolo — è il bug «voce a
+ *   zero perde la tabella millesimale» che `ModalModificaConto` cita nel proprio commento;
+ * - un capitolo su cui è stata registrata una spesa diretta **non** ha importo 0, perché
+ *   `PianoContiController` porta `importo` allo speso quando c'è sforo, e quel ciclo scorre
+ *   anche i conti radice: il pannello lo trattava allora come una voce normale, con il badge
+ *   «Spesa», il campo «Importo» e la card di copertura che a un capitolo non spettano.
+ *
+ * Si usa l'helper condiviso invece di riscrivere il confronto: era già la terza copia.
+ */
+const isCapitolo = (conto: Conto) => ContoHelpers.isCapitolo(conto)
 
-const isCapitolo = (conto: Conto) => {
-  return conto.parent_id === null && conto.importo_raw === 0
-}
+/**
+ * Preventivo, consuntivo e differenza della voce aperta — gli stessi tre numeri che l'elenco
+ * mostra dalla beta.30, e che qui mancavano: era l'unico punto della pagina in cui il
+ * consuntivo non compariva, ed è il punto da cui è partita la segnalazione dal forum.
+ *
+ * Il preventivo è `budget_originale_raw`, **non** `importo_raw`: quest'ultimo viene portato
+ * allo speso dal controller quando lo sforo è già avvenuto, e darebbe sempre differenza zero.
+ * Stesso criterio di `AlberoDeiConti.spesoInfo`, che è la fonte di questi numeri a sinistra.
+ */
+const bilancioVoce = computed(() => {
+  const speso = props.conto?.speso_raw ?? 0
+  const preventivo = props.conto?.budget_originale_raw ?? props.conto?.importo_raw ?? 0
+  const differenza = preventivo - speso
+
+  return {
+    speso,
+    preventivo,
+    differenza,
+    hasPreventivo: preventivo !== 0,
+    hasSpesa: speso !== 0,
+    // Una voce senza preventivo non «sfora»: non ha un budget da superare. Sono le
+    // sopravvenienze, che nascono fuori preventivo per definizione.
+    isSforo: differenza < 0 && preventivo > 0,
+  }
+})
 
 const getTabelleAssociate = (): TabellaAssociata[] =>
   props.conto?.tabelle_millesimali?.map(tm => ({
@@ -154,8 +188,13 @@ const statusColorClass = computed(() => {
 
       <!-- CARD HEADER CONTO -->
       <Card>
-        <CardHeader class="flex flex-row items-start justify-between space-y-0">
-          <div class="space-y-1 flex-1 min-w-0">
+        <!--
+          `flex-col` sotto `sm`: in riga con il pulsante «Modifica» e il cestino il titolo
+          restava largo 82 px su mobile, cioè «Manut…». Il nome della voce è l'unica cosa che
+          dice quale voce si sta guardando, e va letto per intero prima dei suoi comandi.
+        -->
+        <CardHeader class="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-0 space-y-0">
+          <div class="space-y-1 w-full sm:flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <Badge variant="outline" v-if="props.conto.codice" class="text-xs text-muted-foreground">
                 {{ props.conto.codice }}
@@ -208,10 +247,42 @@ const statusColorClass = computed(() => {
           </CardTitle>
         </CardHeader>
         <CardContent class="grid gap-4 p-3">
-          <div v-if="!isCapitolo(props.conto)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground uppercase">Importo</label>
-              <p class="text-lg font-bold text-foreground">{{ props.conto.importo }}</p>
+          <div v-if="!isCapitolo(props.conto)" class="space-y-4">
+            <!--
+              Preventivo, consuntivo e differenza. Una voce senza preventivo mostra un trattino
+              e non «€ 0,00»: non ha un budget di zero euro, non ha proprio un budget — stessa
+              convenzione dell'elenco a sinistra.
+            -->
+            <!--
+              Due colonne fino a `sm`, tre da lì in su. A 375 px tre colonne lasciano 81 px a
+              testa e un importo a quattro cifre viene **tagliato**, non mandato a capo: si
+              leggeva «€ 1.537,0». Un numero troncato è peggio di un numero assente, perché si
+              legge lo stesso e sembra giusto.
+            -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground uppercase">Preventivo</label>
+                <p class="text-base sm:text-lg font-bold text-foreground tabular-nums">
+                  {{ bilancioVoce.hasPreventivo ? euro(bilancioVoce.preventivo) : '—' }}
+                </p>
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground uppercase">Consuntivo</label>
+                <p class="text-base sm:text-lg font-bold tabular-nums"
+                   :class="bilancioVoce.isSforo ? 'text-red-600 dark:text-red-400' : 'text-foreground'">
+                  {{ bilancioVoce.hasSpesa ? euro(bilancioVoce.speso) : '—' }}
+                </p>
+              </div>
+              <div v-if="bilancioVoce.hasPreventivo" class="space-y-1">
+                <label class="text-xs font-medium text-muted-foreground uppercase">
+                  {{ bilancioVoce.isSforo ? 'Eccedenza' : 'Residuo' }}
+                </label>
+                <p class="text-base sm:text-lg font-bold tabular-nums flex items-center gap-1.5"
+                   :class="bilancioVoce.isSforo ? 'text-red-600 dark:text-red-400' : 'text-foreground'">
+                  <AlertTriangle v-if="bilancioVoce.isSforo" class="w-4 h-4 shrink-0" />
+                  {{ euro(Math.abs(bilancioVoce.differenza)) }}
+                </p>
+              </div>
             </div>
             <div v-if="props.conto.fornitore_nome" class="space-y-1">
               <label class="text-xs font-medium text-muted-foreground uppercase">Fornitore suggerito</label>
@@ -244,7 +315,14 @@ const statusColorClass = computed(() => {
           <div>
             <div class="space-y-2 mb-4">
               <div class="flex justify-between text-sm">
-                <span class="font-medium text-muted-foreground">Coperto da piano rate / Preventivato</span>
+                <!--
+                  «Fabbisogno», non «Preventivato»: il denominatore è `conto.importo` dopo che
+                  il controller lo ha portato al maggiore fra preventivo e speso. È il numero
+                  giusto — quanto va effettivamente finanziato, lo stesso su cui il cruscotto
+                  calcola la propria percentuale (`BudgetCoverageService::fabbisognoReale`) —
+                  ma finora portava il nome di un'altra grandezza, che ora sta qui sopra.
+                -->
+                <span class="font-medium text-muted-foreground">Coperto da piano rate / Fabbisogno</span>
                 <span class="font-bold">
                   {{ euro(props.conto.impegnato || 0) }}
                   <span class="text-muted-foreground font-normal">/ {{ props.conto.importo }}</span>
@@ -258,7 +336,7 @@ const statusColorClass = computed(() => {
                 ></div>
               </div>
               <p class="text-xs text-muted-foreground leading-relaxed pt-1">
-                Quota del preventivo già inserita in un piano rate emesso ai condòmini.
+                Quota del preventivo già inserita in un piano rate, in bozza o approvato.
                 Non indica la spesa realmente sostenuta o pagata ai fornitori.
               </p>
             </div>

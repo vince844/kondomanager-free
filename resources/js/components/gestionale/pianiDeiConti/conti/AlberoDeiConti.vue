@@ -174,8 +174,14 @@ const getTextColor = (conto: Conto) => {
           }"
           @click="selezionaConto(conto)"
         >
-          <div class="flex items-center gap-2">
-            <Folder v-if="isCapitolo(conto)" 
+          <!--
+            `flex-wrap` più il nome a larghezza piena sotto `sm`: su 375 px le due colonne di
+            importi da 96 px lasciavano un centinaio di pixel al nome, che veniva troncato a
+            «Manut…» e «So…». Su mobile il nome prende quindi la sua riga e gli importi vanno
+            a capo insieme, allineati a destra; da `sm` in su la riga resta quella di prima.
+          -->
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Folder v-if="isCapitolo(conto)"
                     class="w-4 h-4 transition-colors" 
                     :class="props.selectedId === conto.id ? 'text-slate-950' : 'text-slate-500'" />
             
@@ -183,12 +189,17 @@ const getTextColor = (conto: Conto) => {
                       class="w-4 h-4 transition-colors" 
                       :class="props.selectedId === conto.id ? 'text-slate-700' : 'text-slate-400'" />
 
-            <div class="flex-1 truncate text-sm font-medium flex items-center gap-1.5">
+            <div class="min-w-0 basis-[calc(100%-1.5rem)] sm:basis-auto sm:flex-1 truncate text-sm font-medium flex items-center gap-1.5">
               <span v-if="conto.codice" class="text-xs text-slate-400 mr-1.5">[{{ conto.codice }}]</span>
+              <!--
+                Le tre varianti `dark:` non c'erano: in tema scuro il nome della voce era
+                grigio ardesia su fondo quasi nero, cioè illeggibile. Trovato guardando la
+                pagina in scuro, che è la vista che nessuno attraversa per caso.
+              -->
               <span class="truncate transition-colors" :class="{
-                'font-bold text-slate-950': isCapitolo(conto),
-                'text-slate-800': !isCapitolo(conto) && props.selectedId === conto.id,
-                'text-slate-600': !isCapitolo(conto) && props.selectedId !== conto.id
+                'font-bold text-slate-950 dark:text-slate-50': isCapitolo(conto),
+                'text-slate-800 dark:text-slate-100': !isCapitolo(conto) && props.selectedId === conto.id,
+                'text-slate-600 dark:text-slate-300': !isCapitolo(conto) && props.selectedId !== conto.id
               }">
                 {{ conto.nome }}
               </span>
@@ -209,7 +220,7 @@ const getTextColor = (conto: Conto) => {
               </TooltipProvider>
             </div>
 
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5 ml-auto">
               <Lock v-if="!isCapitolo(conto) && conto.has_rate_emesse" class="w-3 h-3 text-amber-500" />
 
               <template v-if="!isCapitolo(conto)">
@@ -256,16 +267,36 @@ const getTextColor = (conto: Conto) => {
             </div>
           </div>
 
-          <div v-if="!isCapitolo(conto) && conto.percentuale_copertura !== undefined" class="mt-1 pl-6 pr-[200px]">
+          <!--
+            Il `pr-[200px]` riserva lo spazio alle due colonne di importi sulla destra, che su
+            mobile non stanno più lì: lasciava 60 px di larghezza utile su 260, e l'etichetta si
+            incolonnava una parola per riga. Vale da `sm` in su, dove quelle colonne esistono.
+          -->
+          <div v-if="!isCapitolo(conto) && conto.percentuale_copertura !== undefined" class="mt-1 pl-6 sm:pr-[200px]">
             <div class="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
               <div class="h-full rounded-full transition-all duration-500" :class="getBarColor(conto)" :style="{ width: `${Math.min(conto.percentuale_copertura || 0, 100)}%` }"></div>
             </div>
-            <div class="flex justify-between items-center mt-0.5">
-              <span class="text-[9px] text-slate-400 uppercase font-semibold">Coperto da piano rate</span>
-              <div class="flex items-center gap-0.5 text-[10px]">
-                <span :class="getTextColor(conto)">{{ euro(conto.impegnato || 0) }}</span>
+            <!--
+              Impilate sotto `sm`: l'etichetta si è allungata con «/ Fabbisogno» e su 375 px,
+              messa in riga con gli importi, si sfilacciava su quattro righe con i numeri
+              incastrati in mezzo. Su mobile prende la sua riga; da `sm` in su torna affiancata.
+            -->
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-0.5 mt-0.5">
+              <!--
+                Il denominatore qui accanto è il fabbisogno — `conto.importo` portato al maggiore
+                fra preventivo e speso — e va nominato, come nel pannello di dettaglio: senza nome
+                si legge come se fosse il preventivo, che è la voce a sinistra e vale un altro numero.
+              -->
+              <span class="text-[9px] text-slate-400 uppercase font-semibold">Coperto da piano rate / Fabbisogno</span>
+              <!--
+                `whitespace-nowrap` sugli importi: l'etichetta qui accanto si è allungata e su
+                mobile mandava a capo il valore fra il simbolo e le cifre — «€» su una riga e
+                «9.000,00» sulla successiva. L'etichetta può andare a capo, un importo no.
+              -->
+              <div class="flex items-center gap-0.5 text-[10px] shrink-0">
+                <span class="whitespace-nowrap" :class="getTextColor(conto)">{{ euro(conto.impegnato || 0) }}</span>
                 <span class="text-slate-400">/</span>
-                <span class="text-slate-600 dark:text-slate-400 font-medium">{{ conto.importo }}</span>
+                <span class="text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">{{ conto.importo }}</span>
               </div>
             </div>
 

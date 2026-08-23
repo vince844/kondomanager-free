@@ -151,7 +151,22 @@ const populateFormFromConto = (newConto: Conto) => {
   form.richiedeGiaVersato = !!newConto.richiede_gia_versato
   confermaConversioneCapitolo.value = false
 
-  form.importo = !newConto.is_capitolo ? newConto.importo : ''
+  // ⚠️ **Il preventivo deliberato, non lo speso.** `conto.importo` è la stringa formattata da
+  // `ContoResource`, che il controller del piano dei conti porta allo speso quando la voce ha
+  // sforato: è il *fabbisogno*, giusto per la barra di copertura e sbagliato dentro un campo
+  // che al salvataggio riscrive `conti.importo`.
+  //
+  // Il giro completo, misurato: «€ 6.000,00» → `MoneyInput` normalizza a «6000.00» → il
+  // controller lo riconverte con `MoneyHelper::toCents()` → 600000 finisce a database. Bastava
+  // aprire «Modifica» per cambiare una nota e salvare: su una voce con preventivo € 5.000,00 e
+  // speso € 6.000,00 il preventivo deliberato diventava € 6.000,00, in silenzio. Il soft lock
+  // non se ne accorgeva perché il valore *saliva*, e dove l'hard lock c'era produceva l'effetto
+  // opposto — «l'importo è bloccato da rate già approvate o emesse» a chi non lo aveva toccato.
+  //
+  // `budget_originale_raw` è il budget deliberato; sulle voci mai andate in sforo vale quanto
+  // `importo_raw`, quindi qui cambia solo dove oggi è sbagliato.
+  const preventivoDeliberato = newConto.budget_originale_raw ?? newConto.importo_raw ?? 0
+  form.importo = !newConto.is_capitolo ? euro(preventivoDeliberato) : ''
 }
 
 watch(

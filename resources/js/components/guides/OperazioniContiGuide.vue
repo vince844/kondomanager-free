@@ -69,7 +69,7 @@ defineEmits(['update:open']);
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                 <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Preventivo — «quanto avevo previsto»</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  L'importo deliberato per quella voce. Il budget inserito nei sottoconti risale e si somma sul capitolo padre. Si modifica selezionando la voce e usando "Modifica" nel pannello di destra.
+                  L'importo deliberato per quella voce, <strong>IVA inclusa</strong>: il consuntivo con cui viene confrontato somma il lordo delle fatture, quindi un preventivo scritto al netto risulterebbe sforato appena registrata la prima spesa. Il budget inserito nei sottoconti risale e si somma sul capitolo padre. Si modifica selezionando la voce e usando "Modifica" nel pannello di destra.
                 </p>
               </div>
 

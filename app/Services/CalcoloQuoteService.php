@@ -309,8 +309,8 @@ class CalcoloQuoteService
             if ($spesoReale > abs((int) $conto->importo)) {
                 throw new \RuntimeException(
                     "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
-                    ."ma risulta una fattura reale (".number_format($spesoReale / 100, 2, ',', '.')." €) "
-                    ."superiore al suo budget (".number_format(abs((int) $conto->importo) / 100, 2, ',', '.')." €). "
+                    ."ma risulta una fattura reale (€ ".number_format($spesoReale / 100, 2, ',', '.').") "
+                    ."superiore al suo budget (€ ".number_format(abs((int) $conto->importo) / 100, 2, ',', '.')."). "
                     ."Aggiorna prima l'importo della voce al costo reale della spesa: altrimenti il già "
                     ."versato viene applicato contro un budget sbagliato, e la quota calcolata — qualunque "
                     ."sia il piano rate — non corrisponde a quanto realmente dovuto."
@@ -331,9 +331,9 @@ class CalcoloQuoteService
             if ($totaleImpegnato > $budgetConto) {
                 throw new \RuntimeException(
                     "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
-                    ."ma la somma degli importi richiesti dai piani rate attivi su questa voce ("
-                    .number_format($totaleImpegnato / 100, 2, ',', '.')." €) supera il suo budget ("
-                    .number_format($budgetConto / 100, 2, ',', '.')." €). "
+                    ."ma la somma degli importi richiesti dai piani rate attivi su questa voce (€ "
+                    .number_format($totaleImpegnato / 100, 2, ',', '.').") supera il suo budget (€ "
+                    .number_format($budgetConto / 100, 2, ',', '.')."). "
                     ."Aggiorna prima l'importo della voce al fabbisogno reale, oppure disattiva uno dei piani "
                     ."rate in conflitto: altrimenti il già versato verrebbe conteggiato più volte e parte "
                     ."della spesa non verrebbe mai richiesta ai condòmini."

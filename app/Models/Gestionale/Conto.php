@@ -19,6 +19,18 @@ class Conto extends Model
 
     protected $table = 'conti';
 
+    /**
+     * `importo` è il preventivo deliberato della voce, in centesimi interi e **IVA INCLUSA**.
+     *
+     * Non è una convenzione facoltativa: è il lordo che ci si confronta, perché lo speso di una
+     * voce somma imponibile più imposta, e perché quando la spesa supera il preventivo è proprio
+     * quel lordo che finisce scritto qui (`FatturaPassivaService`). Un preventivo caricato al
+     * netto risulta quindi sforato appena si registra la prima fattura.
+     *
+     * ⚠️ Attenzione a leggere `importo` da una voce che arriva dal Piano dei conti: il suo
+     * controller lo porta in memoria al maggiore fra preventivo e speso — il *fabbisogno* — e in
+     * quel contesto il preventivo deliberato è esposto a parte come `budget_originale_raw`.
+     */
     protected $fillable = [
         'piano_conto_id',
         'conto_contabile_id',

@@ -449,7 +449,7 @@ class ContributoVersatoController extends Controller
                         tipo: EventoTipo::GIA_VERSATO_ACCONTO_DICHIARATO,
                         title: 'Già versato dichiarato come acconto già speso — '.$conto->nome,
                         description: 'L\'amministratore ha dichiarato che il già versato per "'.$conto->nome.'" '
-                            .'('.number_format($totaleGiaVersato / 100, 2, ',', '.').' €) è già stato versato al '
+                            .'(€ '.number_format($totaleGiaVersato / 100, 2, ',', '.').') è già stato versato al '
                             .'fornitore come acconto, prima di Kondomanager. Nota: '.($dati['nota_acconto'] ?? '—')
                             .'. Registra questo importo come fattura pregressa (is_pregresso) verso il fornitore '
                             .'corretto: è lo stesso meccanismo già usato per i debiti ereditati da altri gestionali. '
