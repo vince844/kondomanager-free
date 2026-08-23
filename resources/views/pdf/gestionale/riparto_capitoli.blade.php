@@ -289,7 +289,6 @@
                             $datiTab  = $soggetto['per_capitolo'][$capId] ?? null;
                             $quota    = $datiTab ? $datiTab['quota'] : null;
                             $importo  = $datiTab ? $datiTab['importo'] : 0;
-                            $hasData  = !is_null($quota) && $importo > 0;
                         @endphp
 
                         @if($isFirst)
@@ -326,7 +325,12 @@
                         <td style="padding: 2px 3px; border: 1px solid {{ $sepLine }};
                                    text-align: right; background-color: {{ $bgRow }};
                                    color: {{ $navy }}; font-size: {{ $fontBase }};">
-                            @if($importo > 0)
+                            {{-- ⚠️ Non «> 0»: un importo negativo è un credito, cioè un valore
+                                 reale che il totale di riga somma comunque. Nasconderlo nella
+                                 cella e contarlo nel totale produce una riga che non torna in
+                                 orizzontale, su un foglio che va in assemblea. Lo zero invece
+                                 resta un trattino: vuol dire «non partecipa». --}}
+                            @if($importo != 0)
                                 € {{ number_format($importo / 100, 2, ',', '.') }}
                             @else
                                 —

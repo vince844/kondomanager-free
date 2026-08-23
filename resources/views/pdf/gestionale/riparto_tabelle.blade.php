@@ -318,7 +318,6 @@
                             $quota    = $datiTab ? $datiTab['quota'] : null;
                             $importo  = $datiTab ? $datiTab['importo'] : 0;
                             $decimali = $tabInfo['decimali'] ?? 2;
-                            $hasData  = !is_null($quota) && $importo > 0;
                         @endphp
 
                         {{-- quota ‰ (Stampata solo sulla prima riga dell'immobile, unificata) --}}
@@ -357,7 +356,13 @@
                         <td style="padding: 2px 3px; border: 1px solid {{ $sepLine }};
                                    text-align: right; background-color: {{ $bgRow }};
                                    color: {{ $navy }}; font-size: {{ $fontBase }};">
-                            @if($importo > 0)
+                            {{-- ⚠️ Non «> 0»: un importo negativo è un credito, cioè un valore
+                                 reale, e il totale di riga qui a destra lo somma comunque.
+                                 Nasconderlo nella cella e contarlo nel totale produce una riga
+                                 che non torna in orizzontale — su un foglio che va in assemblea
+                                 significa un documento che non si può ricontrollare a mano.
+                                 Lo zero invece resta un trattino: vuol dire «non partecipa». --}}
+                            @if($importo != 0)
                                 € {{ number_format($importo / 100, 2, ',', '.') }}
                             @else
                                 —

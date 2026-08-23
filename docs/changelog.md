@@ -7,6 +7,80 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.74] - La Colonna Che Non Valeva Più il Deliberato
+
+**Non tocca il database.** Cambia però **quello che esce stampato**: chi ristampa un riparto già
+emesso vedrà gli stessi totali di prima, ma il pregresso in una colonna diversa. È il punto di
+questa versione, e va detto prima di tutto il resto.
+
+### Il difetto, trovato da un amministratore sui propri dati
+
+Ha importato il suo condominio da Danea, ha fatto un preventivo con una voce sola —
+**amministrazione, € 1.000,00** — ripartita su **una sola tabella millesimale**, e ha stampato il
+riparto. La colonna di quella tabella valeva **€ 1.214,36**. E la quota di un singolo condòmino,
+**€ 1.277,35**, era **più alta del totale della colonna** in cui stava.
+
+Poi ha guardato lo scadenziario e si è fermato: «*qui mi blocco … inutile andare avanti*».
+
+Aveva ragione su tutta la linea, ed è arrivato alla causa senza vedere il codice: «*al posto di
+4065,19 **degli ex non riportati***».
+
+### Perché la colonna si gonfiava
+
+`RipartoTabelleService` costruisce i totali di riga sommando **tutte** le rate del piano, quindi
+anche la rata zero dei saldi di apertura. Le celle per colonna invece le ricostruisce dal solo
+budget dei capitoli, che vale € 1.000,00. La differenza — un «residuo» che è, per costruzione, il
+pregresso del soggetto — veniva appoggiata **sulla tabella dove quel condòmino pesa di più**.
+
+Con una tabella sola, se l'è presa tutta lei.
+
+Il conto torna al centesimo sui suoi dati: i **quattro titolari cessati** valevano € 271,23, i
+**proprietari attuali** € 485,59, e la differenza fa esattamente i **€ 214,36** di troppo. I saldi
+dei cessati finiscono sull'unità in solido per l'art. 63 disp. att. c.c., quindi non hanno una
+persona con millesimi e stavano già nella colonna giusta; quelli dei proprietari attuali no. **Il
+difetto scattava perché c'erano dei subentri:** in un condominio senza compravendite a metà anno
+non si sarebbe visto.
+
+### La correzione: una strada sola, non due
+
+Il residuo va **sempre** nella pseudo-colonna «addebito diretto». Non è una regola nuova: è quella
+che il ramo accanto applicava già a chi non pesa in nessuna tabella, con la motivazione scritta lì
+— *il pregresso non appartiene a nessuna tabella millesimale, ed è esattamente ciò che quella
+colonna significa*. Valeva identico per i proprietari attuali.
+
+Il file dichiara due garanzie: che ogni colonna sommi al budget dei suoi conti, e che ogni riga
+coincida con quanto davvero addebitato. Il vecchio riallineamento salvava la seconda **rompendo la
+prima**. Ora convivono, e il metodo perde due rami e una quindicina di righe.
+
+### E i crediti che sparivano dalle celle
+
+Stesso difetto, in quattro documenti diversi: la cella stampava l'importo solo `@if($importo > 0)`,
+mentre i totali di colonna e di riga sommavano il valore vero, negativi compresi. Su ogni riga di
+chi è a credito **la tabella non tornava in orizzontale**, e a schermo lo stesso dato si leggeva
+correttamente: il prodotto dava due risposte diverse allo stesso numero.
+
+Il suo esempio: un condòmino con **€ 203,72** di credito nella rata zero e € 51,91 da versare nella
+prima. La cella della rata zero era vuota, e il totale di riga stampava **€ -151,81** — corretto, e
+impossibile da ricontrollare a mano.
+
+Corretto in `_tabella_scadenziario`, `riparto_tabelle`, `riparto_capitoli` e
+`ripartizione_spese`: ora `!= 0`. Lo zero resta un trattino, perché vuol dire «non partecipa»; il
+negativo si stampa. Tolta anche una variabile morta che in due di quei file ripeteva proprio il
+predicato sbagliato.
+
+### Perché è arrivato adesso
+
+Il filtro sul segno c'è dalla **1.9.1-beta.7**, il riallineamento del riparto dalla
+**1.10.0-beta.8**. Nessuno dei due è nato con l'importazione dati — ma l'importazione porta dentro
+saldi di apertura e titolari cessati in un colpo solo, cioè esattamente le condizioni che li fanno
+scattare. È il prezzo di una funzione che mette il prodotto davanti a dati veri: i difetti che
+c'erano diventano raggiungibili.
+
+L'importatore, in tutto questo, non ha sbagliato niente: i **€ 4.065,31** della rata zero sono la
+somma esatta della colonna «Saldo finale» del suo file Danea, 27 righe, zero centesimi persi.
+
+---
+
 ## [1.10.0-beta.73] - Il Credito Che Restava Invisibile
 
 **Tocca il database:** una migrazione idempotente aggiunge `reverses_movement_id` a

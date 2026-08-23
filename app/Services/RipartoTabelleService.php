@@ -49,8 +49,14 @@ use Illuminate\Support\Facades\Log;
  *      addebitato in contabilità (rate_quote) perché le allocazioni sono le
  *      stesse che hanno generato le rate. Se i dati sono cambiati dopo la
  *      generazione (o per quote extra come saldi), un riallineamento di
- *      sicurezza corregge il residuo sulla tabella a peso maggiore del
- *      soggetto: la garanzia legale (riga = rate_quote) vale SEMPRE.
+ *      sicurezza porta il residuo nella pseudo-colonna «addebito diretto»:
+ *      la garanzia legale (riga = rate_quote) vale SEMPRE.
+ *
+ * Le due garanzie sono indipendenti, e vanno tenute tali. Fino alla beta.73 il
+ * riallineamento scaricava il residuo su una tabella millesimale, cioè salvava
+ * la (2) rompendo la (1): la colonna di una tabella smetteva di valere il
+ * budget dei suoi conti. Il pregresso non appartiene a nessuna tabella — per
+ * questo la colonna degli addebiti diretti esiste.
  *
  * Storia: v1.9.1 distribuiva il totale di riga proporzionalmente ai pesi e
  * scaricava il resto sull'ultima tabella registrata (anche a peso zero →
@@ -253,59 +259,47 @@ class RipartoTabelleService
                 // Celle esatte per-conto (stesse allocazioni che hanno generato le rate)
                 $importiPerTab = [];
                 $rowSum    = 0;
-                $pesPerTab = [];
-                $peseTot   = 0.0;
                 foreach ($tabelleInfo as $tabId => $_info) {
                     $cent = $cells[$tabId][$pesiFlatKey] ?? 0;
                     $importiPerTab[$tabId] = $cent;
                     $rowSum += $cent;
-
-                    $w = $weights[$tabId][$pesiFlatKey] ?? 0.0;
-                    $pesPerTab[$tabId] = $w;
-                    $peseTot += $w;
                 }
 
-                // Riallineamento di sicurezza: la riga stampata deve SEMPRE
-                // coincidere con rate_quote (garanzia legale). Un residuo ≠ 0
-                // indica quote extra (saldi/conguagli) o dati modificati dopo
-                // la generazione: va sulla tabella a peso maggiore del soggetto.
+                // Riallineamento di sicurezza: la riga stampata deve SEMPRE coincidere con
+                // `rate_quote` (garanzia legale). Un residuo ≠ 0 indica quote extra — saldi di
+                // apertura, conguagli — o dati modificati dopo la generazione.
+                //
+                // Il residuo va **sempre** nella pseudo-colonna degli addebiti diretti: non
+                // appartiene a nessuna tabella millesimale, ed è esattamente ciò che quella
+                // colonna significa — denaro dovuto da questo soggetto che i millesimi non
+                // spiegano.
+                //
+                // ⚠️ **Fino alla beta.73 c'erano due strade, e una era sbagliata.** Se il
+                // soggetto aveva peso in almeno una tabella, il residuo veniva appoggiato sulla
+                // «tabella a peso maggiore» invece che qui. Il risultato: la colonna di una
+                // tabella millesimale non valeva più il deliberato. Su un preventivo di
+                // € 1.000,00 con una sola tabella, la colonna stampava **€ 1.214,36** — e la
+                // quota di un singolo condòmino poteva risultare **più alta del totale della
+                // colonna**, che è la forma in cui un amministratore se ne accorge.
+                //
+                // Segnalato il 23/08/2026 sul proprio condominio importato da Danea. I suoi
+                // € 214,36 erano i pregressi dei proprietari attuali (€ 485,59) al netto di
+                // quelli dei titolari cessati (€ 271,23), finiti sull'unità per l'art. 63 disp.
+                // att. c.c. e quindi già in questa colonna. Il difetto scattava **perché c'erano
+                // dei subentri**: senza compravendite a metà anno non si sarebbe visto.
+                //
+                // Le due garanzie del docblock convivono solo così: la riga continua a coincidere
+                // con `rate_quote`, e la colonna torna a valere il budget dei suoi conti.
                 $residuo = $importoTotale - $rowSum;
-                if ($residuo !== 0 && $peseTot > 0.0) {
-                    arsort($pesPerTab);
-                    $tabMax = array_key_first($pesPerTab);
-                    $importiPerTab[$tabMax] += $residuo;
-                    Log::debug("RipartoTabelleService: residuo di {$residuo} cent riallineato a rate_quote.", [
-                        'piano_rate_id' => $pianoRate->id,
-                        'anagrafica_id' => $anagraficaId,
-                        'immobile_id'   => $immobileId,
-                    ]);
-                } elseif ($residuo !== 0) {
-                    // ⚠️ **Il soggetto non ha peso in nessuna tabella**, e il riallineamento qui
-                    // sopra non poteva scattare: `arsort` su un vettore di zeri non ha una
-                    // «tabella a peso maggiore» a cui appoggiare il residuo.
-                    //
-                    // Non è un caso di laboratorio: succede **con il rimedio che gli
-                    // amministratori usano oggi per il subentro** — genero le rate, stacco il
-                    // vecchio proprietario dalla pivot, ristampo. Le sue quote restano in
-                    // `rate_quote`, ma nella pivot non c'è più, quindi tutte le sue celle valgono
-                    // zero mentre il totale di riga resta quello addebitato.
-                    //
-                    // Il risultato era un documento che si contraddice: la riga non somma alle
-                    // sue celle e `tot_per_tabella` non somma più a `gran_totale` — cioè cade
-                    // l'invariante che l'intestazione di questo file dichiara come **garanzia
-                    // legale**, sul foglio che va in assemblea.
-                    //
-                    // Il residuo va nella pseudo-colonna degli addebiti diretti: non appartiene a
-                    // nessuna tabella millesimale, ed è esattamente ciò che quella colonna
-                    // significa — denaro dovuto da questo soggetto che i millesimi non spiegano.
+                if ($residuo !== 0) {
                     $importiPerTab[self::COLONNA_DIRETTO] =
                         ($importiPerTab[self::COLONNA_DIRETTO] ?? 0) + $residuo;
 
                     $this->dichiaraColonnaDiretto($tabelleInfo);
 
-                    Log::warning("RipartoTabelleService: soggetto senza peso in tabella, residuo di "
-                        . "{$residuo} cent portato in colonna «addebito diretto». Probabile "
-                        . "titolare staccato dalla pivot dopo la generazione delle rate.", [
+                    Log::debug("RipartoTabelleService: residuo di {$residuo} cent portato in "
+                        . "colonna «addebito diretto» (pregresso, conguaglio, o titolare "
+                        . "staccato dalla pivot dopo la generazione delle rate).", [
                         'piano_rate_id' => $pianoRate->id,
                         'anagrafica_id' => $anagraficaId,
                         'immobile_id'   => $immobileId,

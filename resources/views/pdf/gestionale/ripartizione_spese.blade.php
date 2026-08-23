@@ -68,7 +68,11 @@
                         $totaliPerRata[$numero] += $importo;
                     @endphp
                     <td style="padding: 4px; text-align: right; border: 1px solid #dce3ea;">
-                        @if($importo > 0)
+                        {{-- ⚠️ Non «> 0»: un importo negativo è un credito, e l'accumulatore
+                             `$totaliPerRata` qui sopra lo somma comunque. Nasconderlo nella cella
+                             e contarlo nel totale produce una riga che non torna in orizzontale.
+                             Lo zero resta un trattino: vuol dire «non partecipa». --}}
+                        @if($importo != 0)
                             € {{ number_format($importo / 100, 2, ',', '.') }}
                         @else
                             <span style="color: #bbb;">—</span>
