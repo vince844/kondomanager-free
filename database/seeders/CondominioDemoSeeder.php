@@ -47,7 +47,7 @@ use Illuminate\Support\Facades\DB;
  *
  * ## Il perimetro, dichiarato
  *
- * ⚠️ **Non copre «tutto quello che il programma sa fare», e non deve.** Con centotrentotto
+ * ⚠️ **Non copre «tutto quello che il programma sa fare», e non deve.** Con centotrentanove
  * migrazioni di superficie quell'obiettivo non finisce mai, e un seeder che insegue tutto è un
  * seeder che nessuno aggiorna. Copre **il percorso di un condominio**, che è ciò che un
  * amministratore deve vedere per capire — e che per costruzione tocca il motore da capo a fondo:
@@ -70,6 +70,26 @@ use Illuminate\Support\Facades\DB;
  *     propria voce e chiede rate nuove — è la sezione gialla del piano dei conti.
  *
  * Il rendiconto non si semina: è una vista, e con questi movimenti si popola da sé.
+ *
+ * ## Due cose escluse apposta, e il perché
+ *
+ * ⚠️ **Il «già versato» è escluso**, benché sia la funzione documentata nella beta.70 e fosse
+ * stato messo qui una prima volta. Provato e misurato il 23/08/2026: il motore sottrae gli acconti
+ * mentre calcola (`CalcoloQuoteService::nettingGiaVersato`), ma il pivot `piano_rate_capitoli` —
+ * che la porta vera riempie con `importo_suggerito`, cioè `max(conto->importo, spesoReale)` di
+ * `BudgetCoverageService:38`, **senza sottrarre le coperture** — resta al lordo. Il cruscotto
+ * confronta i due (`PianoRateQuoteService::totaleAttesoCents` contro `totalePuroGeneratoCents`) e
+ * su questa demo la differenza era € 12.480,00 dichiarati contro € 10.980,00 generati: allarme
+ * rosso «hai modificato il preventivo, ricalcola» su un piano perfettamente corretto. È lo stesso
+ * allarme per cui il pivot era già stato sistemato una volta, e mettere il netto a mano nel pivot
+ * significherebbe scrivere uno stato che la porta vera non produce — cioè rompere la regola qui
+ * sopra. Rientra quando quella discordanza è risolta nel prodotto, non prima.
+ *
+ * ⚠️ **I saldi iniziali sono esclusi apposta**, e non per dimenticanza. Un saldo si blocca quando
+ * un piano rate lo rivendica (`SaldoInizialeController:101`), e qui il piano è già emesso: o i
+ * saldi nascono col lucchetto — mostrando la funzione già morta, senza matita né cestino — oppure
+ * restano fuori dal piano, e allora il piano non torna con i pregressi dichiarati. Entrambe le
+ * strade insegnano qualcosa di falso, e una demo che insegna il falso è peggio di una che tace.
  *
  * ## Come si aggiorna
  *
@@ -143,6 +163,13 @@ class CondominioDemoSeeder extends Seeder
             // regge, e soprattutto si legge: «Condominio Dimostrativo 2» dice a un amministratore
             // cos'ha davanti, «DEMO-260823063527» no.
             'codice_identificativo' => 'DEMO-'.$progressivo,
+            // ⚠️ Obbligatorio, non decorativo: `UpdateCondominioRequest:38` lo pretende
+            // `required`. Senza, chi apriva il condominio dimostrativo, cambiava il numero
+            // di piani e salvava si prendeva un errore su un campo che non aveva toccato.
+            // Compare anche nell'intestazione di tutte le stampe e sulla delega F24, che lo
+            // eredita da qui. Undici cifre come un codice fiscale di condominio vero, e
+            // derivato dal progressivo perché la colonna è UNIQUE.
+            'codice_fiscale'        => '900'.str_pad((string) $progressivo, 8, '0', STR_PAD_LEFT),
             'nome'                  => 'Condominio Dimostrativo'.($progressivo > 1 ? ' '.$progressivo : ''),
             'indirizzo'             => 'Via Giuseppe Verdi 12',
             'comune'                => 'Milano',
@@ -165,7 +192,12 @@ class CondominioDemoSeeder extends Seeder
 
     private function creaUnitaEPersone(): void
     {
-        $tipologia = DB::table('tipologie_immobili')->value('id');
+        // ⚠️ Per **nome**, non la prima che capita: `value('id')` senza `where` restituiva
+        // «Ufficio» (id 1), e le quattro unità comparivano nell'elenco col badge UFFICIO
+        // accanto ad «Attico». Se il vocabolario fosse vuoto si resta sul primo id
+        // disponibile, perché un badge sbagliato è meno grave di un seeder che non parte.
+        $tipologia = DB::table('tipologie_immobili')->where('nome', 'Abitazione')->value('id')
+            ?? DB::table('tipologie_immobili')->value('id');
 
         $definizioni = [
             ['codice' => 'INT-1', 'nome' => 'Interno 1', 'interno' => '1', 'piano' => 'Piano terra'],
@@ -177,7 +209,6 @@ class CondominioDemoSeeder extends Seeder
         foreach ($definizioni as $d) {
             $this->unita[$d['codice']] = Immobile::create([
                 'condominio_id'   => $this->condominio->id,
-                'tipo'            => 'appartamento',
                 'tipologia_id'    => $tipologia,
                 'codice_immobile' => $d['codice'],
                 'nome'            => $d['nome'],
@@ -191,18 +222,34 @@ class CondominioDemoSeeder extends Seeder
         // E `user_id` resta **null**: queste sono persone dell'anagrafica, non utenti del
         // programma — un seeder che creasse sei utenze vere aggiungerebbe sei password da
         // gestire e sei caselle di posta a cui il programma proverebbe a scrivere.
+        // ⚠️ **Niente `Anagrafica::factory()` qui.** `fakerphp/faker` è in `require-dev`:
+        // il pacchetto distribuito si costruisce con `--no-dev` e Faker non c'è (verificato
+        // su km_v1.10.0-beta.32.zip: zero occorrenze di `vendor/fakerphp`, mentre le
+        // factory viaggiano regolarmente). `$this->faker` sarebbe **null** e la prima riga
+        // di `AnagraficaFactory::definition()` morirebbe: il pulsante funzionava solo sulle
+        // macchine di sviluppo. I valori qui sono scritti a mano e derivati dal progressivo,
+        // perché email, PEC, codice fiscale e numero documento hanno un indice UNIQUE e la
+        // seconda demo collideva con la prima.
+        $n = $this->progressivo;
+
         foreach ([
-            'rossi'    => 'Mario Rossi',
-            'bianchi'  => 'Anna Bianchi',
-            'verdi'    => 'Luca Verdi',
-            'verdi2'   => 'Sara Verdi',
-            'esposito' => 'Giulia Esposito',
-            'ferrari'  => 'Paolo Ferrari',
-        ] as $chiave => $nomeCompleto) {
-            $this->persone[$chiave] = Anagrafica::factory()->create([
-                'user_id'   => null,
-                'nome'      => $nomeCompleto,
-                'indirizzo' => 'Via Giuseppe Verdi 12',
+            'rossi'    => ['Mario Rossi',     'mario.rossi',     'RSSMRA70A01F205X', '1970-01-01', 'Milano'],
+            'bianchi'  => ['Anna Bianchi',    'anna.bianchi',    'BNCNNA75E41F205Y', '1975-05-01', 'Milano'],
+            'verdi'    => ['Luca Verdi',      'luca.verdi',      'VRDLCU82H15F205Z', '1982-06-15', 'Milano'],
+            'verdi2'   => ['Sara Verdi',      'sara.verdi',      'VRDSRA85T50F205W', '1985-12-10', 'Milano'],
+            'esposito' => ['Giulia Esposito', 'giulia.esposito', 'SPSGLI68D45F839K', '1968-04-05', 'Napoli'],
+            'ferrari'  => ['Paolo Ferrari',   'paolo.ferrari',   'FRRPLA90L20F205J', '1990-07-20', 'Milano'],
+        ] as $chiave => [$nomeCompleto, $slug, $cf, $nascita, $luogo]) {
+            $this->persone[$chiave] = Anagrafica::create([
+                'user_id'        => null,
+                'nome'           => $nomeCompleto,
+                'indirizzo'      => 'Via Giuseppe Verdi 12',
+                'email'          => "{$slug}.demo{$n}@kondomanager.test",
+                'pec'            => "{$slug}.demo{$n}@pec.kondomanager.test",
+                'codice_fiscale' => substr($cf, 0, 14).str_pad((string) $n, 2, '0', STR_PAD_LEFT),
+                'telefono'       => '02 1234'.str_pad((string) $n, 3, '0', STR_PAD_LEFT),
+                'luogo_nascita'  => $luogo,
+                'data_nascita'   => $nascita,
             ]);
         }
 
@@ -226,6 +273,15 @@ class CondominioDemoSeeder extends Seeder
                 'created_at'    => now(),
                 'updated_at'    => now(),
             ]);
+
+            // ⚠️ **Non basta `anagrafica_immobile`.** Assegnare un'unità rende la persona
+            // condòmina dello stabile, e quel fatto vive nel pivot `anagrafica_condominio`:
+            // è quello che leggono la rubrica, i selettori dei destinatari di comunicazioni,
+            // eventi e documenti — e soprattutto `StoreIncassoRateRequest:18`, che senza
+            // pivot **rifiuta il pagante**. È la stessa riga che scrive la porta vera
+            // (`ImmobileAnagraficaController:148`) dalla beta.48, coda ⑫; qui mancava, e il
+            // seeder ricostruiva a mano proprio lo stato che quella beta aveva chiuso.
+            $this->persone[$persona]->condomini()->syncWithoutDetaching([$this->condominio->id]);
         }
     }
 
@@ -919,6 +975,15 @@ class CondominioDemoSeeder extends Seeder
                     // porta vera e la porta ha detto di no.
                     'origine_decisionale' => 'gestione_corrente',
                     'tipo_ripartizione'   => 'millesimale',
+                    // ⚠️ **Obbligatoria quando la ripartizione è millesimale**:
+                    // `StoreFatturaRequest:90` la impone con `required_if`. Qui il seeder
+                    // chiama il service e non passa dalla FormRequest, quindi la regola non
+                    // scattava e `FatturaPassivaService:969` scartava la tabella in silenzio
+                    // (`! empty(...)`). Risultato: il conto della sopravvenienza nasceva con
+                    // **zero** tabelle collegate, `CalcoloQuoteService` registrava l'importo
+                    // come scoperto e non produceva quote — e il pulsante «Finanzia Spesa»
+                    // che il cruscotto mette accanto alla sezione gialla portava a un errore.
+                    'tabella_millesimale_id' => $this->tabelle['proprieta']->id,
                     'motivazione_sforo'   => 'Vetrata dell\'androne infranta durante la notte: '
                                            . 'sostituzione disposta d\'urgenza per la sicurezza '
                                            . 'dell\'accesso, da ratificare in assemblea.',

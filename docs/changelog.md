@@ -59,6 +59,17 @@ voluta: la contabilità non deve poter sparire premendo un pulsante. Il condomin
 l'unica eccezione, per una ragione precisa: **quei movimenti li ha scritti il programma**, non un
 amministratore. La rimozione chiede conferma e dice cosa sta per cancellare.
 
+E porta via **tutto**, comprese le cose che il condominio non tiene in una propria colonna ma dietro
+una tabella di collegamento: le sei persone che aveva aggiunto alla rubrica e i quattro fornitori
+d'esempio. Con la stessa cautela in entrambi i casi — si cancella solo chi **non appartiene più a
+nessun altro condominio** e **non è un utente** del programma, perché quelle due rubriche sono
+condivise fra tutti gli stabili.
+
+Non è pulizia estetica. Le sei persone hanno email, PEC e codice fiscale **fissi**, e quelle colonne
+non ammettono duplicati: una rimozione che le lasciasse indietro farebbe morire la **demo
+successiva** su un errore di integrità. Per questo la prova automatica non si ferma alla rimozione
+ma fa il giro intero — crea, rimuove, ricrea.
+
 ### E il messaggio d'errore sui condomini veri ora dice perché
 
 Provando a eliminare un condominio con movimenti contabili si leggeva soltanto «si è verificato un
@@ -82,9 +93,52 @@ può fatturare; il servizio delle fatture pretende la modalità di pagamento; e 
 dichiarare quali voci copre — senza, il cruscotto lo dà per disallineato e **la demo si apriva con
 un allarme rosso**, che è l'ultima cosa da mostrare a chi guarda il programma per la prima volta.
 
-Nove prove automatiche pretendono ora che il condominio si costruisca **senza un solo avviso**, che
-il cruscotto lo trovi allineato, che l'Inbox non sia vuota, che si rimuova senza lasciare niente
-indietro, e che quella rimozione **rifiuti di toccare un condominio vero**.
+### Il difetto che non si vedeva perché in sviluppo la libreria c'è
+
+Le sei persone venivano create con una *factory* — lo strumento con cui la suite di prova fabbrica
+dati finti. Le factory dipendono da `fakerphp/faker`, che è una **dipendenza di sviluppo**: il
+pacchetto distribuito si costruisce senza, e infatti aprendo `km_v1.10.0-beta.32.zip` di
+`vendor/fakerphp` non c'è traccia — mentre le quindici factory viaggiano regolarmente.
+
+Su un'installazione vera, quindi, la factory esisteva ma la libreria sotto no: l'utente premeva il
+pulsante e leggeva «non è stato possibile creare il condominio dimostrativo», con mezzo condominio
+rimasto a database. Qui non si vedeva perché in sviluppo Faker è installato, e nessuna prova poteva
+accorgersene **eseguendo** il seeder per la stessa ragione: l'unico controllo possibile è statico, e
+adesso c'è.
+
+Insieme a quello, quattro cose che si vedevano al primo sguardo e nessuno guardava:
+
+- il condominio nasceva **senza codice fiscale**, che è obbligatorio in modifica: chi apriva il
+  dimostrativo, cambiava il numero di piani e salvava si prendeva un errore su un campo che non
+  aveva toccato;
+- le quattro unità risultavano **«Ufficio»** — la tipologia veniva presa prendendo la prima del
+  vocabolario invece di cercarla per nome;
+- le sei persone **non risultavano condòmine**: mancava la riga che le lega allo stabile, quella che
+  legge la rubrica e che l'incasso pretende per accettare un pagante. È la stessa riga che la beta.48
+  aveva aggiunto alla porta vera, e che qui era stata saltata scrivendo a mano;
+- la spesa imprevista **non si poteva finanziare**: nasceva senza tabella millesimale, e il pulsante
+  «Finanzia spesa» che il cruscotto mette lì accanto portava a un errore.
+
+### Due cose lasciate fuori apposta
+
+Il **già versato** — gli acconti dichiarati su una voce, la funzione documentata nella beta.70 — era
+stato messo nella demo e poi tolto, dopo averlo misurato. Il motore sottrae gli acconti mentre
+calcola le quote, ma l'elenco delle voci che il piano dichiara di coprire resta al **lordo**: il
+cruscotto confronta i due numeri e su questa demo trovava € 12.480,00 dichiarati contro € 10.980,00
+generati, cioè un allarme rosso su un piano perfettamente corretto. Scrivere il netto a mano avrebbe
+significato costruire uno stato che il programma non produce — cioè rompere la regola su cui questo
+seeder è fondato. **È una discordanza del prodotto, non della demo, ed è registrata come tale.**
+
+I **saldi iniziali** restano fuori per una ragione simile: un saldo si blocca quando un piano rate lo
+rivendica, e qui il piano è già emesso. O nascerebbero col lucchetto — mostrando la funzione già
+morta, senza matita né cestino — oppure resterebbero fuori dal piano, e allora il piano non
+tornerebbe con i pregressi dichiarati. Entrambe le strade insegnano qualcosa di falso.
+
+**Diciassette** prove automatiche pretendono ora che il condominio si costruisca **senza un solo
+avviso**, che il cruscotto lo trovi allineato, che l'Inbox non sia vuota, che si rimuova senza
+lasciare niente indietro **nemmeno dietro le tabelle di collegamento**, che una seconda demo nasca
+dopo la prima, che il codice non chiami factory, e che quella rimozione **rifiuti di toccare un
+condominio vero**.
 
 ---
 

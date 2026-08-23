@@ -65,6 +65,14 @@ class CreaCondominioDimostrativoAction
             $fatture        = DB::table('fatture_passive')->where('condominio_id', $id)->pluck('id');
             $pagamenti      = DB::table('pagamenti_fornitori')->where('condominio_id', $id)->pluck('id');
 
+            // ⚠️ **Catturati adesso, non dopo.** `anagrafica_condominio` e `condominio_evento`
+            // scendono a cascata insieme al condominio: cercare queste persone e questi eventi
+            // dopo il `delete()` non troverebbe più niente, ed è esattamente il motivo per cui
+            // restavano indietro. Su questa macchina, dopo una ventina di cicli crea/rimuovi,
+            // erano 184 anagrafiche orfane su 215 — tre quarti della rubrica.
+            $anagrafiche = DB::table('anagrafica_condominio')->where('condominio_id', $id)->pluck('anagrafica_id');
+            $eventi      = DB::table('condominio_evento')->where('condominio_id', $id)->pluck('evento_id');
+
             /*
              * ⚠️ **L'ordine è derivato dai vincoli del database, non indovinato.** Interrogando
              * `information_schema` per i vincoli che **non** sono a cascata, i blocchi verso
@@ -113,15 +121,58 @@ class CreaCondominioDimostrativoAction
             // 7. I conti contabili, che nessuno porta via.
             DB::table('conti_contabili')->whereIn('id', $contiContabili)->delete();
 
-            // 8. Il fornitore dimostrativo, ma **solo se non ha più fatture**: è una rubrica
-            //    condivisa fra i condomini, e potrebbe servire a qualcun altro.
-            $fornitore = DB::table('fornitori')
-                ->where('ragione_sociale', 'Impresa Manutenzioni Demo s.r.l.')
-                ->first();
+            // 8. I fornitori dimostrativi, ma **solo se non hanno più fatture**: è una rubrica
+            //    condivisa fra i condomini, e potrebbero servire a qualcun altro.
+            //
+            //    ⚠️ Sono **quattro**, non uno. Fino alla .71 questa riga ne confrontava uno solo
+            //    e gli altri tre restavano in elenco a ogni rimozione. L'elenco è esplicito e non
+            //    un `LIKE '%Demo%'`: un amministratore può benissimo avere un fornitore vero con
+            //    «Demo» nel nome, e non deve sparirgli da sotto.
+            $fornitoriDemo = [
+                'Impresa Manutenzioni Demo s.r.l.',
+                'Idraulica Urgenze Demo s.n.c.',
+                'Pulizie Aurora Demo s.r.l.',
+                'Vetreria Rapida Demo s.r.l.',
+            ];
 
-            if ($fornitore && ! DB::table('fatture_passive')->where('fornitore_id', $fornitore->id)->exists()) {
-                DB::table('fornitori')->where('id', $fornitore->id)->delete();
+            foreach (DB::table('fornitori')->whereIn('ragione_sociale', $fornitoriDemo)->get() as $fornitore) {
+                if (! DB::table('fatture_passive')->where('fornitore_id', $fornitore->id)->exists()) {
+                    DB::table('fornitori')->where('id', $fornitore->id)->delete();
+                }
             }
+
+            // 9. Le persone della rubrica, con la stessa cautela dei fornitori: si cancella solo
+            //    chi **non appartiene più a nessun condominio** e **non è un utente** del
+            //    programma. Un condòmino che possiede unità anche altrove resta dov'è, e nessun
+            //    account resta senza la sua anagrafica.
+            //
+            //    Non è pignoleria: dalla .71 le sei persone hanno email, PEC e codice fiscale
+            //    fissi, derivati dal progressivo. Lasciarle indietro significa che la **seconda**
+            //    demo muore su un errore di integrità, perché quelle colonne sono UNIQUE.
+            $superstiti = DB::table('anagrafica_condominio')
+                ->whereIn('anagrafica_id', $anagrafiche)
+                ->distinct()
+                ->pluck('anagrafica_id');
+
+            DB::table('anagrafiche')
+                ->whereIn('id', $anagrafiche)
+                ->whereNotIn('id', $superstiti->isEmpty() ? [0] : $superstiti)
+                ->whereNull('user_id')
+                ->delete();
+
+            // 10. Gli eventi dell'inbox operativa e dello scadenzario, se non riguardano più
+            //     nessun condominio. Il test «si rimuove senza lasciare niente indietro» non
+            //     poteva accorgersene: scorre le tabelle cercando `condominio_id`, e l'evento
+            //     il condominio ce l'ha attraverso un pivot.
+            $eventiSuperstiti = DB::table('condominio_evento')
+                ->whereIn('evento_id', $eventi)
+                ->distinct()
+                ->pluck('evento_id');
+
+            DB::table('eventi')
+                ->whereIn('id', $eventi)
+                ->whereNotIn('id', $eventiSuperstiti->isEmpty() ? [0] : $eventiSuperstiti)
+                ->delete();
         });
     }
 

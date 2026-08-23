@@ -311,6 +311,92 @@ it('⚠️ si rimuove senza lasciare niente indietro', function () {
     );
 });
 
+it('⚠️ non usa le factory: Faker non esiste su un\'installazione vera', function () {
+    /*
+     * ⚠️ **Il difetto che non si vedeva perché in sviluppo Faker c'è.**
+     *
+     * `fakerphp/faker` è in `require-dev`. Il pacchetto distribuito si costruisce con `--no-dev`,
+     * quindi Faker **non c'è**: verificato aprendo `km_v1.10.0-beta.32.zip`, zero occorrenze di
+     * `vendor/fakerphp` — mentre `database/factories/` viaggia regolarmente, quindici file. Una
+     * `Model::factory()` esiste quindi anche in produzione, ma `$this->faker` è **null** e la
+     * prima riga di `definition()` muore.
+     *
+     * Il pulsante «Crea condominio di esempio» funzionava perciò solo sulle macchine di sviluppo:
+     * su un'installazione vera l'utente leggeva «non è stato possibile creare il condominio
+     * dimostrativo» e a database restava mezzo condominio. Nessun test poteva accorgersene
+     * eseguendo il seeder, perché qui Faker è installato: l'unico controllo possibile è statico.
+     */
+    foreach ([
+        'database/seeders/CondominioDemoSeeder.php',
+        'app/Actions/Condominio/CreaCondominioDimostrativoAction.php',
+    ] as $file) {
+        $sorgente = file_get_contents(base_path($file));
+
+        // Solo le chiamate vere: le occorrenze dentro i commenti spiegano perché non si usano.
+        $senzaCommenti = preg_replace('#/\*.*?\*/|//[^\n]*#s', '', $sorgente);
+
+        // ⚠️ `toBeFalse`, non `->not->toContain(...)`: `toContain` in Pest è **variadica**, e il
+        // messaggio passato come secondo argomento diventa un secondo termine da cercare — la
+        // guardia smette di guardare. Scoperto reintroducendo la factory apposta: il test restava
+        // verde. Un test che non sa diventare rosso non è una guardia.
+        expect(str_contains($senzaCommenti, '::factory('))->toBeFalse(
+            "{$file} chiama una factory Eloquent.\n\n"
+            ."Le factory dipendono da `fakerphp/faker`, che è in `require-dev` e **non è presente**\n"
+            ."nel pacchetto distribuito. Il codice del condominio dimostrativo gira sulla macchina\n"
+            ."di un utente, non nella suite: qui va scritto tutto a mano.\n\n"
+            .'⚠️ I valori vanno derivati dal progressivo — email, PEC, codice fiscale e numero '
+            .'documento hanno un indice UNIQUE, e la seconda demo collide con la prima.');
+    }
+});
+
+it('⚠️ né lascia indietro ciò che sta dietro un pivot', function () {
+    /*
+     * ⚠️ **Il test qui sopra non poteva accorgersene, ed è il motivo per cui questo esiste.**
+     * Quello scorre le tabelle cercando una colonna `condominio_id`: anagrafiche, eventi e
+     * fornitori il condominio non ce l'hanno come colonna — ce l'hanno attraverso un pivot, o
+     * non ce l'hanno affatto. Restavano quindi indietro a ogni rimozione senza che niente lo
+     * dicesse: misurato il 23/08/2026 sul database di sviluppo, **184 anagrafiche orfane su 221**
+     * e un fornitore rimosso su quattro.
+     *
+     * Non è solo sporcizia. Dalla .71 le sei persone hanno email, PEC e codice fiscale **fissi**,
+     * derivati dal progressivo, e quelle colonne sono UNIQUE: una rimozione che le lascia in giro
+     * fa morire la **demo successiva** su un errore di integrità. Ecco perché il ciclo completo —
+     * crea, rimuovi, ricrea — è parte del test e non un di più.
+     */
+    $azione = app(CreaCondominioDimostrativoAction::class);
+
+    $primaAnagrafiche = DB::table('anagrafiche')->count();
+    $primaFornitori   = DB::table('fornitori')->count();
+    $primaEventi      = DB::table('eventi')->count();
+
+    $c = $azione->esegui()['condominio'];
+    $azione->rimuovi($c);
+
+    expect(DB::table('anagrafiche')->count())->toBe($primaAnagrafiche,
+        'Le persone del condominio dimostrativo sono rimaste nella rubrica. Si cancellano solo '
+        ."quelle che non appartengono più a nessun condominio e non hanno un utente collegato:\n"
+        .'vedi il passo 9 di `CreaCondominioDimostrativoAction::rimuovi()`.');
+
+    expect(DB::table('fornitori')->count())->toBe($primaFornitori,
+        "I fornitori dimostrativi sono **quattro**, non uno: fino alla .71 la rimozione ne\n"
+        .'confrontava uno solo e gli altri tre restavano in elenco a ogni giro.');
+
+    expect(DB::table('eventi')->count())->toBe($primaEventi,
+        "Gli eventi dell'inbox operativa e dello scadenzario sono rimasti. Il condominio ce l'hanno\n"
+        .'attraverso il pivot `condominio_evento`, che scende a cascata: gli id vanno catturati '
+        .'**prima** della cancellazione.');
+
+    // Il ciclo completo: la seconda demo deve nascere, non morire su un UNIQUE.
+    $seconda = $azione->esegui();
+
+    expect($seconda['avvisi'])->toBe([],
+        "La seconda demo ha segnalato problemi che la prima non aveva — quasi sempre una collisione\n"
+        ."su email, PEC o codice fiscale lasciati indietro dalla rimozione precedente:\n  - "
+        .implode("\n  - ", $seconda['avvisi']));
+
+    $azione->rimuovi($seconda['condominio']);
+});
+
 it('⚠️ e rifiuta di toccare un condominio che non è dimostrativo', function () {
     // ⚠️ **La guardia più importante di questo file.** `rimuovi()` cancella movimenti contabili
     // aggirando le protezioni del database: se puntasse a un condominio vero, cancellerebbe la
