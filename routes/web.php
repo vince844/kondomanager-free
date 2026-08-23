@@ -115,6 +115,22 @@ Route::resource('/condomini', CondominioController::class)
 Route::get('/condomini/options', [CondominioController::class, 'options'])
     ->name('condomini.options');
 
+/*
+ * Il condominio dimostrativo.
+ *
+ * ⚠️ **Sotto lo stesso sbarramento della creazione**: chi non può creare un condominio non può
+ * nemmeno crearne uno di prova. Sono due rotte e non una perché la seconda deve poter esistere da
+ * sola — un amministratore che ha finito di guardare la demo la toglie senza passare dalla pagina
+ * di creazione.
+ */
+Route::post('/condomini/dimostrativo', [CondominioController::class, 'creaDimostrativo'])
+    ->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Visualizza condomini'])
+    ->name('condomini.dimostrativo.crea');
+
+Route::delete('/condomini/{condominio}/dimostrativo', [CondominioController::class, 'eliminaDimostrativo'])
+    ->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Visualizza condomini'])
+    ->name('condomini.dimostrativo.elimina');
+
 Route::get('/fetch-condomini', FetchCondominiController::class)
     ->middleware(['auth', 'verified']);
 

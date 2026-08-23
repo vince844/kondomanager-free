@@ -37,6 +37,7 @@ class Condominio extends Model
      */
     protected $fillable = [
         'codice_identificativo',
+        'is_demo',
         'nome',   
         'indirizzo',
         'comune',             
@@ -61,6 +62,7 @@ class Condominio extends Model
      * @var array<string, string>
      */
     protected $casts = [
+        'is_demo' => 'boolean',
         'anno_costruzione' => 'integer',
         'anno_acquisizione' => 'integer',
         'numero_piani' => 'integer',

@@ -7,6 +7,87 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.71] - Un Condominio Già Pronto
+
+⚠️ **Questa versione tocca il database:** una migrazione aggiunge una colonna ai condomini, per
+distinguere quello dimostrativo. Non modifica nessun condominio esistente.
+
+### Il problema
+
+Chi installa KondoManager si trova davanti un programma vuoto, e da un programma vuoto non si
+capisce cosa sappia fare. Per vederlo all'opera bisognava inserire a mano unità, persone, millesimi,
+preventivo e piano rate: **un'ora di lavoro prima di poter giudicare** se il software fa al caso
+proprio.
+
+### Un pulsante accanto a «crea condominio»
+
+Apre una finestra che spiega cosa sta per succedere, e solo dopo costruisce un condominio completo
+con dati realistici:
+
+- quattro unità con proprietari, **un inquilino e due comproprietari**;
+- le tabelle millesimali, compreso il **lastrico diviso secondo l'art. 1126 c.c.** — un terzo a chi
+  ne ha l'uso esclusivo e due terzi a tutti gli altri, su due tabelle collegate alla stessa spesa;
+- il preventivo, con una voce divisa fra proprietario e inquilino;
+- il piano rate, **generato ed emesso** dal motore vero — con le scritture contabili che l'emissione
+  comporta, non con un cambio di stato;
+- **due incassi, di cui uno parziale**: così si vede anche una morosità;
+- una fattura fornitore **con ritenuta d'acconto** e una **nota di credito compensata**, così che
+  dalla banca esca meno di quanto si chiude di debito;
+- un **giroconto** che alimenta il fondo lavori;
+- una fattura **fuori budget**, che resta in attesa di ratifica e nel piano dei conti accende la sua
+  voce in rosso — il caso più comune della vita vera di un amministratore, e quello in cui il
+  programma **blocca il pagamento** finché l'assemblea non ha deliberato (art. 1135 c.c.);
+- una **sopravvenienza**: una spesa che a preventivo non c'era affatto — la vetrata dell'androne
+  rotta di notte — che si crea la propria voce sotto un capitolo a parte e chiede rate nuove. È la
+  sezione gialla «fuori preventivo» del piano dei conti, e non va confusa con lo sforo: quella
+  supera un budget, questa **non ne ha uno**;
+- uno **storno**: un pagamento annullato con la sua scrittura contraria, perché in contabilità non
+  si cancella, si rettifica — ed è il principio su cui è costruito tutto il gestionale;
+- lo **scadenzario delle ritenute già calcolato**, così che la pagina F24 mostri quando e quanto
+  versare invece di essere vuota;
+- e **tre attività nell'Inbox operativa**, ciascuna con il suo pulsante «Risolvi»: la ritenuta da
+  versare, le rate da sollecitare, il fondo lavori da completare.
+
+**Uno alla volta:** quando esiste già, il pulsante diventa rosso e propone di rimuoverlo — o di
+aprirlo, se è quello che si voleva. E **funziona anche dal menu «elimina»** dei tre puntini
+nell'elenco: due strade per la stessa cosa devono dare lo stesso esito.
+
+### Si può rimuovere, ed è la metà che conta
+
+Un condominio con movimenti contabili registrati normalmente **non si elimina** — è una protezione
+voluta: la contabilità non deve poter sparire premendo un pulsante. Il condominio dimostrativo è
+l'unica eccezione, per una ragione precisa: **quei movimenti li ha scritti il programma**, non un
+amministratore. La rimozione chiede conferma e dice cosa sta per cancellare.
+
+### E il messaggio d'errore sui condomini veri ora dice perché
+
+Provando a eliminare un condominio con movimenti contabili si leggeva soltanto «si è verificato un
+errore durante l'eliminazione»: non si capiva se fosse un guasto o una regola, né che riprovare
+fosse inutile. Ora il messaggio dice che quel condominio ha pagamenti, deleghe F24 o casse
+registrate, e che per questo non si elimina — cancellarlo butterebbe via la sua contabilità.
+
+*(Quello che manca davvero è un altro verbo: **archiviare** un condominio che non si amministra più,
+senza cancellarne la contabilità. È una funzione, ed è registrata per la 1.11.)*
+
+### Sotto il cofano: la scelta che rende utile questo lavoro nel tempo
+
+Il condominio dimostrativo **non è scritto direttamente nel database**, ma costruito passando dalle
+stesse porte che usa un amministratore — il servizio delle fatture, quello dei pagamenti, il
+generatore del piano rate, l'incasso, il giroconto.
+
+Vuol dire che **non può produrre situazioni che il programma non sa produrre**, e che si aggiorna da
+solo quando il programma cambia. Costruendolo così sono venuti fuori tre punti in cui scrivere a
+mano avrebbe prodotto un condominio finto: una voce di spesa senza il suo aggancio contabile non si
+può fatturare; il servizio delle fatture pretende la modalità di pagamento; e un piano rate deve
+dichiarare quali voci copre — senza, il cruscotto lo dà per disallineato e **la demo si apriva con
+un allarme rosso**, che è l'ultima cosa da mostrare a chi guarda il programma per la prima volta.
+
+Nove prove automatiche pretendono ora che il condominio si costruisca **senza un solo avviso**, che
+il cruscotto lo trovi allineato, che l'Inbox non sia vuota, che si rimuova senza lasciare niente
+indietro, e che quella rimozione **rifiuti di toccare un condominio vero**.
+
+---
+
 ## [1.10.0-beta.70] - La Guida Che Mancava
 
 **Nessuna migrazione: il database non viene toccato. Nessun cambiamento di comportamento.**

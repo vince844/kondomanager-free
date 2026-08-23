@@ -115,6 +115,10 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // distinti: un'interruzione a metà lascia la colonna senza la chiave, ed è lo stato che le due
     // guardie separate devono saper riconoscere.
     '2026_08_22_090000_add_updated_by_to_comunicazioni_segnalazioni_documenti',
+
+    // Colonna semplice con guardia: marca i condomini costruiti dal programma a scopo
+    // dimostrativo, che devono restare eliminabili anche con movimenti contabili.
+    '2026_08_23_090000_add_is_demo_to_condomini_table',
     // La seconda tocca **dati** e non struttura — inserisce le righe delle tre preferenze nuove
     // ereditando lo stato della sorella «nuova» — e proprio per questo vale la pena presidiarla:
     // uno schema change rieseguito male fallisce rumorosamente, un inserimento no. La sua
