@@ -417,6 +417,16 @@
             <span style="color: #c07a30; font-weight: bold;">U</span> Usufruttuario &nbsp;
             <span style="color: #2a8050; font-weight: bold;">I</span> Inquilino
             <br>
+            @if(isset($capitoli[\App\Services\RipartoCapitoliService::COLONNA_GIA_VERSATO]) || isset($capitoli[\App\Services\RipartoCapitoliService::COLONNA_PREGRESSO]))
+                <br>
+                @if(isset($capitoli[\App\Services\RipartoCapitoliService::COLONNA_GIA_VERSATO]))
+                    <strong>Già versato:</strong> quanto l'unità aveva già corrisposto verso queste voci, che viene scomputato dal dovuto. Segue l'unità e non la persona (art. 63 disp. att. c.c.). Le colonne dei capitoli restano al deliberato.&nbsp;
+                @endif
+                @if(isset($capitoli[\App\Services\RipartoCapitoliService::COLONNA_PREGRESSO]))
+                    <strong>Saldi precedenti:</strong> i saldi delle gestioni chiuse, che non appartengono a nessuna voce del preventivo corrente.
+                @endif
+            @endif
+            <br>
             Gli importi sono in Euro (€). Le quote ‰ sono quelle registrate nelle tabelle di ripartizione. Le colonne contrassegnate con 'q.' indicano quote proporzionali, non millesimi. La colonna <em>% TOT.</em> indica la percentuale di ogni soggetto sul totale del piano rate.
         </td>
         <td style="width: 25%; vertical-align: bottom; font-size: {{ $fontTiny }}; color: #666; text-align: right;">

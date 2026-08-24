@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -50,6 +51,40 @@ class RipartoCapitoliService
      * a un soggetto che l'unità non ha più, che nessun capitolo può spiegare.
      */
     public const COLONNA_FUORI_RIPARTO = 'fuori_riparto';
+
+    /**
+     * Lo sconto a chi aveva già versato, in una colonna sua.
+     *
+     * **La colonna di un capitolo deve continuare a valere il budget deliberato.** È la regola che
+     * il motore si è dato nel docblock di `CalcoloQuoteService::getImportiPerConto()` — e che
+     * questa stampa non ha rispettato per cinquanta beta, perché non conosceva il netting affatto:
+     * lo sconto entrava mescolato al pregresso nel residuo di riga, e finiva **sommato sul
+     * capitolo a peso maggiore**. Su € 5.000,00 di lavori con € 2.000,00 già versati e € 1.800,00
+     * di arretrati la colonna stampava € 4.800,00: né il deliberato, né quanto viene chiesto.
+     *
+     * Il già versato è una grandezza **per immobile**, non per capitolo e non per soggetto: segue
+     * l'unità (art. 63 disp. att. c.c.). Una colonna che lo dichiara è l'unico posto dove un
+     * amministratore può leggerlo in assemblea senza doverlo dedurre da una sottrazione.
+     */
+    public const COLONNA_GIA_VERSATO = 'gia_versato';
+
+    /**
+     * I saldi degli esercizi precedenti, in una colonna sua.
+     *
+     * Il pregresso non appartiene a nessun capitolo del preventivo corrente: è denaro dovuto per
+     * gestioni chiuse, che la Rata 0 assorbe. Fino alla beta.75 finiva in AVERE sulla
+     * `gestione_rate` dell'esercizio in corso — corretto lì — e in stampa continuava a nascondersi
+     * dentro il capitolo più grosso, dove era **indistinguibile dal deliberato**.
+     *
+     * ⚠️ **Ha segno opposto al già versato, e questo era il difetto.** Il pregresso aumenta il
+     * dovuto, il già versato lo diminuisce: sommati in un residuo unico si annullano. Sul caso
+     * misurato il residuo valeva −€ 200,00, e nessuna delle due grandezze era leggibile. Il segno
+     * di quella somma non è un proxy di nulla — dice solo quale delle due è maggiore.
+     *
+     * La fonte è esatta e non è un'euristica: `regole_calcolo.importi.saldo_usato`, persistito su
+     * **ogni** quota da `GenerateRateQuotesAction` — la Rata 0 e le rate ordinarie.
+     */
+    public const COLONNA_PREGRESSO = 'pregresso';
 
     /**
      * Costruisce la matrice di ripartizione completa per un dato Piano Rate.
@@ -226,11 +261,87 @@ class RipartoCapitoliService
         // RipartoTabelleService applica già per la stampa gemella.
         $pianoRate->loadMissing(['rate.rateQuote.anagrafica', 'rate.rateQuote.immobile']);
         $totaliReali = [];
+        // Il pregresso per riga, letto da ciò che è stato **emesso** invece di essere ricalcolato.
+        //
+        // `regole_calcolo.importi.saldo_usato` è persistito su ogni quota — Rata 0 e rate
+        // ordinarie — da `GenerateRateQuotesAction`, ed è la sola fonte esatta della componente
+        // pregressa. Non costa nessuna query in più: `rate.rateQuote` è già caricato qui sopra e
+        // `regole_calcolo` è castato a `json` sul model.
+        //
+        // ⚠️ **Non si somma `saldo_usato` sperando che il totale torni**: serve a *separare* il
+        // residuo, non a sostituirlo. Il riallineamento a `rate_quote` resta l'ultima parola,
+        // perché è la garanzia legale di questa stampa.
+        $pregressoReale = [];
+
+        // ⚠️ **Il tetto del netting, e perché senza non si può dedurre niente.**
+        //
+        // Il netting si ricava per differenza, e la differenza non sa **da cosa** nasce: qualunque
+        // scarto verso il basso fra il lordo ricalcolato dal vivo e le quote emesse verrebbe
+        // battezzato «già versato». Due casi reali lo producono, e nessuno dei due è un versamento:
+        //
+        // - **il subentrante**, che ha pesi vivi sulla pivot e zero quote in `rate_quote` — il
+        //   rimedio che gli amministratori usano oggi per il subentro (vedi il commento a
+        //   `$importoReale`, più sotto). Misurato sulla fixture `scenarioNudaProprieta()`: la
+        //   stampa dichiarava «Già versato −€ 600,00» in un condominio dove nessuno aveva versato
+        //   un centesimo;
+        // - **lo scoperto**, quando i coefficienti non arrivano al 100% e l'amministratore procede
+        //   motivando (art. 1126 c.c.): su € 9.000,00 di lastrico con una sola tabella al 33,33 lo
+        //   scarto è € 6.000,30, e finiva dichiarato come denaro già incassato.
+        //
+        // Il tetto è **quanto risulta davvero registrato** per quell'immobile sui capitoli di
+        // questo piano — la stessa fonte e lo stesso perimetro che `PianoRateQuoteService` usa dalla
+        // beta.75. Senza coperture registrate il tetto è zero, la colonna non compare, e lo scarto
+        // viene trattato per quello che è.
+        // ⚠️ **Il perimetro sono i conti che questa matrice ha davvero percorso, non il pivot.**
+        //
+        // Prendere il tetto da `$pianoRate->capitoli` sembrava naturale ed è sbagliato su **due
+        // tipi di piano su tre**, in modi diversi e per ragioni entrambe strutturali:
+        //
+        // - **sullo straordinario il pivot è vuoto.** `PianoRateController::store()` per
+        //   `tipo === 'straordinario'` sincronizza `fattureStraordinarie()` e **mai** `capitoli()`:
+        //   `whereIn('target_id', [])` non restituisce niente e il tetto vale zero per ogni
+        //   immobile. È lo scenario per cui il già versato è nato — accantonamento un anno,
+        //   variante l'anno dopo — quindi la correzione non sarebbe entrata in funzione proprio lì,
+        //   e la colonna sarebbe scesa **sotto** il deliberato: € 100,00 su € 1.100,00, misurato;
+        // - **col capitolo padre nel pivot le coperture stanno per forza altrove.** Il già versato
+        //   non è registrabile su un capitolo — `ContributoVersatoController` fa
+        //   `abort_if((bool) $conto->is_capitolo, 404)` — e un conto con sottoconti è sempre
+        //   `is_capitolo`. Quindi le coperture di quel ramo hanno un `target_id` che il pivot non
+        //   nomina. E il pivot col padre è la norma, non l'eccezione: `SyncOrphanChaptersAction`
+        //   scrive le radici col totale ricorsivo dei figli.
+        //
+        // Il motore non ha questo problema perché **scende**: `processaConti()` propaga l'override
+        // ai sottoconti e chiama il netting sulla foglia. `$processatiIds` è la stessa discesa,
+        // già fatta da `processaCapitoliPerPesi()` poche righe sopra — usarlo allinea i due
+        // perimetri invece di tenerne una seconda copia da aggiornare.
+        $tettoNetting = ContributoVersato::query()
+            ->where('target_type', Conto::class)
+            ->whereIn('target_id', array_unique(array_merge(
+                $capitoliIds,
+                $processatiIds,
+                $pianoRate->capitoli->pluck('id')->all()
+            )))
+            ->selectRaw('immobile_id, SUM(importo_cents) as totale')
+            ->groupBy('immobile_id')
+            ->pluck('totale', 'immobile_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
         foreach ($pianoRate->rate as $rata) {
             foreach ($rata->rateQuote as $rq) {
                 if (!$rq->anagrafica_id || !$rq->immobile_id) continue;
                 $totaliReali[$rq->anagrafica_id][$rq->immobile_id] =
                     ($totaliReali[$rq->anagrafica_id][$rq->immobile_id] ?? 0) + (int) round($rq->importo);
+
+                $regole = $rq->regole_calcolo;
+                if (is_string($regole)) {
+                    $regole = json_decode($regole, true);
+                }
+                if (is_array($regole) && isset($regole['importi']['saldo_usato'])) {
+                    $pregressoReale[$rq->anagrafica_id][$rq->immobile_id] =
+                        ($pregressoReale[$rq->anagrafica_id][$rq->immobile_id] ?? 0)
+                        + (int) round($regole['importi']['saldo_usato']);
+                }
 
                 // I modelli servono più avanti per i soggetti che **non** hanno pesi: senza,
                 // l'assemblaggio li salterebbe con il suo `continue` su dizionario mancante,
@@ -319,35 +430,148 @@ class RipartoCapitoliService
             $importoReale = $totaliReali[$aid][$iid] ?? (empty($totaliReali) ? null : 0);
             if ($importoReale !== null) {
                 $lordoRiga = array_sum($importiPerCapitolo);
-                $residuo = $importoReale - $lordoRiga;
-                if ($residuo !== 0) {
-                    $pesiSogg = [];
-                    foreach ($capitoliInfo as $contoId => $_) {
-                        $w = $weightsPerCapitolo[$contoId][$key] ?? 0.0;
-                        if ($w > 0.0) $pesiSogg[$contoId] = $w;
-                    }
-                    if (!empty($pesiSogg)) {
-                        arsort($pesiSogg);
-                        $contoMax = array_key_first($pesiSogg);
-                        $importiPerCapitolo[$contoMax] = ($importiPerCapitolo[$contoMax] ?? 0) + $residuo;
-                        Log::debug("RipartoCapitoliService: residuo di {$residuo} cent riallineato a rate_quote.", [
-                            'piano_rate_id' => $pianoRate->id,
-                            'anagrafica_id' => $aid,
-                            'immobile_id'   => $iid,
-                        ]);
-                    } else {
-                        // ⚠️ **Il soggetto non ha peso in nessun capitolo**, quindi non esiste un
-                        // «capitolo a peso maggiore» su cui appoggiare il residuo: `arsort` su un
-                        // vettore vuoto non ha una risposta, e prima di questa riga il residuo
-                        // veniva semplicemente perso.
-                        //
-                        // È il soggetto dissociato del blocco qui sopra, dove il residuo coincide
-                        // con l'intero importo addebitato. Va nella pseudo-colonna, che è già
-                        // stata dichiarata in `$capitoliInfo` prima dell'assemblaggio.
-                        $importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] =
-                            ($importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] ?? 0) + $residuo;
+                $residuo   = $importoReale - $lordoRiga;
+                $pregresso = $pregressoReale[$aid][$iid] ?? 0;
 
-                        $this->dichiaraColonnaFuoriRiparto($capitoliInfo, $totPerCapitolo);
+                // ⚠️ **La condizione è `residuo` OPPURE `pregresso`, e la disgiunzione non è
+                // difensiva: è il caso in cui le due componenti si annullano esattamente.**
+                //
+                // Un condòmino con € 600,00 di arretrati che ha versato in anticipo € 600,00 ha
+                // residuo **zero**. Guardando il solo residuo si salta tutta la decomposizione e le
+                // due colonne restano vuote: la stampa dichiara che non ha arretrati e non ha
+                // versato niente, mentre ha entrambi. Il totale di riga resta giusto — si annullano
+                // — quindi nessuna quadratura se ne accorge.
+                //
+                // Misurato il 24/08/2026 sul condominio `Via Ostiense 40`, costruito
+                // dall'interfaccia per la verifica a video: su € 1.800,00 di pregresso la stampa
+                // ne mostrava € 1.200,00, e su € 2.000,00 di già versato ne mostrava € 1.400,00.
+                // Il primo test scritto per questa correzione non lo vedeva, perché dava a tutte
+                // e quattro le unità gli stessi importi: con quote uguali il residuo non è mai zero.
+                if ($residuo !== 0 || $pregresso !== 0) {
+                    // ══ La decomposizione del residuo (beta.76, Coda 76) ═════════════════════
+                    //
+                    // Il residuo è un intero unico in cui **due grandezze di segno opposto sono
+                    // già sommate**: il pregresso, che aumenta il dovuto, e il netting del già
+                    // versato, che lo diminuisce. Fino alla beta.75 finiva tutto sul capitolo a
+                    // peso maggiore, dove diventava indistinguibile dal deliberato; e nella .75 si
+                    // era tentato di classificarlo **per segno**, che è la stessa cosa fatta
+                    // peggio — il segno di una somma dice solo quale addendo è maggiore, non
+                    // quanto valgono. Su € 5.000,00 di lavori con € 2.000,00 versati e € 1.800,00
+                    // di arretrati il residuo vale −€ 200,00: quel numero non è né l'uno né
+                    // l'altro, e la correzione per segno è stata ritirata prima del rilascio.
+                    //
+                    // La separazione non richiede euristiche perché **una delle due componenti è
+                    // registrata**: `saldo_usato`, sopra. Da lì l'algebra è chiusa —
+                    //
+                    //     residuo  = importoReale − lordoRiga = pregresso − netting
+                    //     netting  = pregresso − residuo
+                    //
+                    // — ed è esatta, non stimata: `pregresso` viene da ciò che è stato emesso e
+                    // `residuo` da ciò che è stato emesso, quindi anche la differenza lo è. Non si
+                    // ricalcola nulla: se questa stampa istanziasse il motore, avremmo due
+                    // aritmetiche che possono divergere, contro la garanzia dichiarata qui sotto.
+                    // ⚠️ **Tre limiti, non uno, e il terzo è quello che conta.**
+                    //
+                    // Il netting non può essere negativo (non esiste un già versato negativo), non
+                    // può superare il lordo della riga (il motore lo limita con
+                    // `min($copertura, $lordoImmobile)`), e soprattutto **non può superare quanto
+                    // risulta registrato** per quell'immobile. I primi due sono guardie di
+                    // plausibilità; il terzo è l'unico che distingue un versamento da uno scarto
+                    // qualsiasi, ed è il motivo per cui `$tettoNetting` esiste.
+                    //
+                    // Il tetto si consuma: due contitolari della stessa unità attingono alla stessa
+                    // copertura, che è per immobile e non per persona (art. 63 disp. att. c.c.).
+                    // Senza il decremento la stessa copertura verrebbe dichiarata due volte.
+                    $tettoResiduo = $tettoNetting[$iid] ?? 0;
+                    $nettingApplicabile = max(0, min($pregresso - $residuo, $lordoRiga, $tettoResiduo));
+                    if ($nettingApplicabile > 0) {
+                        $tettoNetting[$iid] = $tettoResiduo - $nettingApplicabile;
+                    }
+
+                    // Ciò che nessuna delle due fonti spiega. L'identità di riga regge in ogni caso,
+                    // ed è ciò che rende sicuri i limiti qui sopra:
+                    //
+                    //     lordoRiga + pregresso − netting + resto = importoReale
+                    $resto = $residuo - $pregresso + $nettingApplicabile;
+
+                    if ($pregresso !== 0) {
+                        $importiPerCapitolo[self::COLONNA_PREGRESSO] =
+                            ($importiPerCapitolo[self::COLONNA_PREGRESSO] ?? 0) + $pregresso;
+                        $this->dichiaraPseudoColonna(
+                            self::COLONNA_PREGRESSO, 'Saldi precedenti', $capitoliInfo, $totPerCapitolo
+                        );
+                    }
+
+                    if ($nettingApplicabile > 0) {
+                        $importiPerCapitolo[self::COLONNA_GIA_VERSATO] =
+                            ($importiPerCapitolo[self::COLONNA_GIA_VERSATO] ?? 0) - $nettingApplicabile;
+                        $this->dichiaraPseudoColonna(
+                            self::COLONNA_GIA_VERSATO, 'Già versato', $capitoliInfo, $totPerCapitolo
+                        );
+                    }
+
+                    if ($resto !== 0) {
+                        // ══ Dove va ciò che nessuno spiega, e perché dipende dal segno ══════════
+                        //
+                        // **Resto negativo = la matrice ha allocato più di quanto sia stato
+                        // addebitato.** Il lordo di questa riga è in parte fantasma: viene dai pesi
+                        // vivi sulla pivot, che nessuna quota emessa conferma. I due casi sono il
+                        // subentrante attaccato dopo la generazione e lo scoperto accettato. Va
+                        // **tolto dalle colonne che l'hanno prodotto**, in proporzione: è una
+                        // correzione di un'allocazione eccessiva, non un addebito, e non può far
+                        // salire nessuna colonna. È anche il comportamento che questa stampa aveva
+                        // prima della beta.76, ed è giusto conservarlo: il subentrante torna a
+                        // stampare zero, che è quello che gli è stato addebitato.
+                        //
+                        // **Resto positivo = è stato addebitato più di quanto la matrice spieghi.**
+                        // Qui va **dichiarato**, mai appoggiato su un capitolo — la regola che la
+                        // gemella applica dalla beta.73, dopo che appoggiare il residuo sulla
+                        // «tabella a peso maggiore» aveva fatto stampare € 1.214,36 su una colonna
+                        // da € 1.000,00 in un condominio vero importato da Danea.
+                        //
+                        // La distinzione non è un ripiego: una riduzione corregge, un'aggiunta
+                        // afferma. Solo la seconda ha bisogno di una colonna che la nomini.
+                        if ($resto < 0) {
+                            $pesiSogg = [];
+                            foreach ($capitoliInfo as $cId => $_ig) {
+                                $w = $weightsPerCapitolo[$cId][$key] ?? 0.0;
+                                if ($w > 0.0) $pesiSogg[$cId] = $w;
+                            }
+                            if (!empty($pesiSogg)) {
+                                arsort($pesiSogg);
+                                $cMax = array_key_first($pesiSogg);
+                                $importiPerCapitolo[$cMax] = ($importiPerCapitolo[$cMax] ?? 0) + $resto;
+                            } else {
+                                $importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] =
+                                    ($importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] ?? 0) + $resto;
+                                $this->dichiaraColonnaFuoriRiparto($capitoliInfo, $totPerCapitolo);
+                            }
+
+                            Log::debug("RipartoCapitoliService: {$resto} cent di lordo non confermato da rate_quote, tolti dai capitoli.", [
+                                'piano_rate_id' => $pianoRate->id,
+                                'anagrafica_id' => $aid,
+                                'immobile_id'   => $iid,
+                                'lordo_riga'    => $lordoRiga,
+                            ]);
+                        } else {
+                            $importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] =
+                                ($importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] ?? 0) + $resto;
+
+                            $this->dichiaraColonnaFuoriRiparto($capitoliInfo, $totPerCapitolo);
+
+                            // ⚠️ A `warning`, non a `debug`: fin qui il caso che aggiunge denaro su
+                            // un documento d'assemblea era l'unico silenzioso di questo servizio,
+                            // mentre gli scoperti e gli orfani gridavano già.
+                            Log::warning("RipartoCapitoliService: {$resto} cent non spiegati né dal pregresso né dal già versato, portati fuori riparto.", [
+                                'piano_rate_id' => $pianoRate->id,
+                                'anagrafica_id' => $aid,
+                                'immobile_id'   => $iid,
+                                'residuo'       => $residuo,
+                                'pregresso'     => $pregresso,
+                                'netting'       => $nettingApplicabile,
+                                'lordo_riga'    => $lordoRiga,
+                            ]);
+                        }
                     }
                 }
             }
@@ -791,6 +1015,140 @@ class RipartoCapitoliService
      * sotto-colonna delle quote resta vuota invece di mostrare un totale «0» che sarebbe un
      * numero finto su un documento che va in assemblea.
      */
+    /**
+     * Toglie `$delta` (negativo) dalle celle dei capitoli, in proporzione a quanto ciascuna vale.
+     *
+     * Serve a disfare un'allocazione che le quote emesse non confermano. **Proporzionale e non
+     * tutta sul capitolo maggiore**: con più capitoli, scaricare l'intera riduzione su uno solo lo
+     * porterebbe sotto il suo valore reale mentre gli altri restano gonfi — due errori invece di
+     * nessuno. Prima della beta.76 il caso a un capitolo solo era l'unico provato, e la differenza
+     * non si vedeva.
+     *
+     * Penny-perfect: `floor()` sulle quote e il centesimo che avanza alla cella maggiore, così la
+     * somma delle celle continua a valere la riga.
+     *
+     * Le pseudo-colonne sono escluse: non hanno prodotto l'allocazione e non devono assorbirne la
+     * correzione.
+     *
+     * ⚠️ **I due limiti contro il negativo non sono provati da un test, e il motivo è che non so
+     * costruire lo scenario che li raggiunge**: servirebbe una riga il cui pregresso superi il
+     * totale emesso, e il pregresso è una componente di quel totale. Sono dichiarati per quello che
+     * sono — difensivi — e loggano a `warning` invece di correggere in silenzio. Una colonna di
+     * capitolo negativa su un documento d'assemblea non significa niente e nessuno saprebbe
+     * leggerla: il costo di sbagliarsi è asimmetrico, e la guardia si ripaga anche scattando zero
+     * volte, purché il giorno che scatta lo dica.
+     */
+    private function riduciProporzionalmente(
+        array &$importiPerCapitolo,
+        int $delta,
+        array &$capitoliInfo,
+        array &$totPerCapitolo
+    ): void {
+        $pseudo = [self::COLONNA_FUORI_RIPARTO, self::COLONNA_GIA_VERSATO, self::COLONNA_PREGRESSO];
+
+        $base = [];
+        foreach ($importiPerCapitolo as $capId => $imp) {
+            if (in_array($capId, $pseudo, true) || $imp <= 0) {
+                continue;
+            }
+            $base[$capId] = $imp;
+        }
+
+        $totale = array_sum($base);
+        if ($totale <= 0) {
+            // Nessun capitolo da cui togliere: la riduzione si dichiara invece di sparire.
+            //
+            // ⚠️ La colonna va **dichiarata**, non solo scritta: l'assemblaggio finale itera
+            // `$capitoliInfo`, quindi una cella la cui colonna non è dichiarata non viene contata
+            // nel totale di riga — l'importo sparirebbe e la riga non varrebbe più `rate_quote`.
+            $importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] =
+                ($importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] ?? 0) + $delta;
+
+            $this->dichiaraColonnaFuoriRiparto($capitoliInfo, $totPerCapitolo);
+
+            return;
+        }
+
+        // ⚠️ **Non si può togliere più di quello che c'è.** Senza questo limite, un `$delta` più
+        // grande della somma delle celle produrrebbe quote maggiori delle celle stesse, e la
+        // colonna di un capitolo andrebbe **negativa** su un documento d'assemblea: una voce di
+        // spesa che vale meno di zero non significa niente, e nessuno saprebbe leggerla.
+        //
+        // L'eccedenza non sparisce — sparire romperebbe l'identità di riga: va nella pseudo-colonna,
+        // che è il posto dove questo servizio dichiara ciò che non sa spiegare.
+        $daTogliere = min(-$delta, $totale);
+        $eccesso    = -$delta - $daTogliere;
+
+        $assegnato = 0;
+        $quote     = [];
+        foreach ($base as $capId => $imp) {
+            $quote[$capId] = (int) floor($daTogliere * $imp / $totale);
+            $assegnato += $quote[$capId];
+        }
+
+        if ($assegnato < $daTogliere) {
+            arsort($base);
+            $quote[array_key_first($base)] += $daTogliere - $assegnato;
+        }
+
+        foreach ($quote as $capId => $q) {
+            // Secondo limite, sulla singola cella: il centesimo di resto va alla cella maggiore, e
+            // su una riga con una cella sola quella cella è anche l'unica capiente.
+            $importiPerCapitolo[$capId] -= min($q, $importiPerCapitolo[$capId]);
+        }
+
+        if ($eccesso > 0) {
+            $importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] =
+                ($importiPerCapitolo[self::COLONNA_FUORI_RIPARTO] ?? 0) - $eccesso;
+
+            $this->dichiaraColonnaFuoriRiparto($capitoliInfo, $totPerCapitolo);
+
+            // ⚠️ **Non so costruire lo scenario che arriva qui**, ed è il motivo per cui questo log
+            // esiste. Servirebbe una riga il cui pregresso superi il totale emesso, mentre il
+            // pregresso è una *componente* di quel totale: sulla carta è impossibile. Una guardia
+            // che non scatta mai però è una cosa che nasconde — se il giorno che scatta non lo dice,
+            // tanto vale non averla. Se questa riga compare in un registro, la premessa è caduta e
+            // va capito perché, non silenziata.
+            Log::warning('RipartoCapitoliService: riduzione più grande della somma delle celle — premessa caduta.', [
+                'eccesso'      => $eccesso,
+                'da_togliere'  => -$delta,
+                'somma_celle'  => $totale,
+            ]);
+        }
+    }
+
+    /**
+     * Dichiara una pseudo-colonna: una colonna che non è un capitolo e non ha millesimi.
+     *
+     * Le tre di questo servizio — «Già versato», «Saldi esercizi precedenti», «Fuori riparto» —
+     * hanno la stessa forma e differiscono solo per nome, quindi vivono qui invece di in tre metodi
+     * gemelli: la lezione che questa base di codice ha pagato tre volte è che due funzioni identiche
+     * divergono appena una delle due viene corretta.
+     *
+     * Idempotente: chiamarla per ogni riga che ne ha bisogno costa una `isset`.
+     */
+    private function dichiaraPseudoColonna(
+        string $chiave,
+        string $nome,
+        array &$capitoliInfo,
+        array &$totPerCapitolo
+    ): void {
+        if (isset($capitoliInfo[$chiave])) {
+            return;
+        }
+
+        $capitoliInfo[$chiave] = [
+            'nome'        => $nome,
+            'quota_label' => '—',
+            'quota_tipo'  => null,
+            'decimali'    => 0,
+            'tot_importo' => 0,
+            'senza_quote' => true,
+        ];
+
+        $totPerCapitolo[$chiave] = 0;
+    }
+
     private function dichiaraColonnaFuoriRiparto(array &$capitoliInfo, array &$totPerCapitolo): void
     {
         if (isset($capitoliInfo[self::COLONNA_FUORI_RIPARTO])) {

@@ -334,6 +334,26 @@ defineEmits(['update:open']);
                                 <li><strong>Riparto per Capitolo</strong> — le spese calcolate capitolo per
                                     capitolo, con l'importo esatto imputato a ciascuno.</li>
                             </ul>
+                            <p class="mt-3">
+                                Nel «Riparto per Capitolo» puoi trovare due colonne che compaiono
+                                <strong>solo se servono</strong>, cioè solo nei condomìni che hanno saldi di
+                                apertura o contributi già versati:
+                            </p>
+                            <ul class="ml-5 mt-1.5 list-disc space-y-1.5 text-xs">
+                                <li><strong>Già versato</strong> — quanto l'unità aveva già corrisposto verso
+                                    quelle voci, che viene scomputato dal dovuto. È in negativo, e segue
+                                    l'unità e non la persona (art. 63 disp. att. c.c.). Le colonne dei
+                                    capitoli restano al <strong>deliberato</strong>: la facciata continua a
+                                    valere quanto ha approvato l'assemblea, e lo sconto si legge a parte.</li>
+                                <li><strong>Saldi precedenti</strong> — i saldi delle gestioni chiuse, che non
+                                    appartengono a nessuna voce del preventivo corrente.</li>
+                            </ul>
+                            <p class="mt-2">
+                                Può comparire anche <strong>«Fuori riparto»</strong>: è denaro addebitato a un
+                                soggetto che i millesimi non spiegano più — tipicamente un condòmino staccato
+                                dall'unità dopo aver generato le rate. Se la vedi, quella riga merita un
+                                controllo.
+                            </p>
                         </section>
 
                         <section>

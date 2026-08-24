@@ -94,6 +94,25 @@ class CalcoloQuoteService
     private array $eccedenzeCopertura = [];
 
     /**
+     * Quanto netting del già-versato è stato **davvero applicato**, per capitolo e per unità:
+     * `conto_id => [immobile_id => centesimi]`, sempre positivo.
+     *
+     * **Applicato non è registrato**, e la differenza non è teorica: la copertura è limitata dal
+     * lordo dell'unità (`min($copertura, $lordoImmobile)`), quindi un'unità che ha versato più
+     * della sua parte compare qui con l'importo *assorbito*, non con quello versato — l'eccedenza
+     * vive in `$eccedenzeCopertura`. Ed è scalata dalla quota proporzionale fra chiamate
+     * indipendenti e dal fattore di copertura degli scoperti: chi volesse ricostruire questo
+     * numero da `contributi_versati` dovrebbe riscrivere tre aggiustamenti, che è il modo in cui
+     * due copie della stessa aritmetica cominciano a divergere.
+     *
+     * **Esisteva come promessa prima che come codice.** Il docblock di `getImportiPerConto()`
+     * rimandava a `getNettingApplicato()` dalla beta.49 per spiegare perché la colonna di una
+     * tabella resta al deliberato — e quell'accessore non era mai stato scritto. Costruito nella
+     * beta.76, chiudendo la Coda 76.
+     */
+    private array $nettingApplicato = [];
+
+    /**
      * Registro motore → stampa (beta.49, coda ⑩): quanto è stato **davvero** portato a riparto,
      * per capitolo. `conto_id => centesimi con segno`, già al netto della decurtazione scoperti.
      *
@@ -139,6 +158,7 @@ class CalcoloQuoteService
         $this->millesimiNonCompilati = [];
         $this->eccedenzeCopertura = [];
         $this->importiRipartiti = [];
+        $this->nettingApplicato = [];
         $this->addebitiDiretti  = [];
         $totali = [];
         $pianoConto = $gestione->pianoConto;
@@ -358,6 +378,7 @@ class CalcoloQuoteService
         $this->millesimiNonCompilati = [];
         $this->eccedenzeCopertura = [];
         $this->importiRipartiti = [];
+        $this->nettingApplicato = [];
         $this->addebitiDiretti  = [];
 
         // Carichiamo le fatture col pivot: importo_collegato è la quota della
@@ -560,7 +581,8 @@ class CalcoloQuoteService
      * **Già al netto della decurtazione degli scoperti, ancora al lordo del netting** del
      * già-versato. La distinzione non è pedanteria: la colonna di una tabella deve continuare a
      * valere il budget deliberato, mentre lo sconto a un'unità che aveva già versato è una
-     * grandezza per immobile e vive in una colonna sua — vedi `getNettingApplicato()`.
+     * grandezza per immobile e vive in una colonna sua — vedi `getNettingApplicato()`, costruito nella
+     * beta.76 dopo essere stato citato da qui, senza esistere, dalla beta.49.
      *
      * Vuoto finché non si è chiamato `calcolaPerGestione()` o `calcolaDaFattureStraordinarie()`.
      *
@@ -1410,8 +1432,17 @@ class CalcoloQuoteService
                 }
             }
 
+            // Il registro per la stampa: quanto è stato assorbito da questa unità su questo
+            // capitolo. Si somma invece di assegnare, perché un capitolo può essere finanziato
+            // da più chiamate indipendenti (acconto e saldo) e ciascuna applica la sua quota.
+            $assorbito = 0;
             foreach ($righe as $key => $lordoRiga) {
                 $importiDistributi[$key] = max(0, $lordoRiga - $quote[$key]);
+                $assorbito += min($quote[$key], $lordoRiga);
+            }
+            if ($assorbito > 0) {
+                $this->nettingApplicato[$conto->id][$immobileId] =
+                    ($this->nettingApplicato[$conto->id][$immobileId] ?? 0) + $assorbito;
             }
         }
 
@@ -1426,6 +1457,25 @@ class CalcoloQuoteService
     public function getEccedenzeCopertura(): array
     {
         return $this->eccedenzeCopertura;
+    }
+
+    /**
+     * Il netting del già-versato davvero applicato: `conto_id => [immobile_id => centesimi]`.
+     *
+     * Serve a chi stampa. La regola che questo motore si è dato — scritta nel docblock di
+     * `getImportiPerConto()` e rimasta senza codice per ventisette beta — è che **la colonna di un
+     * capitolo continua a valere il budget deliberato**, mentre lo sconto a un'unità che aveva già
+     * versato è una grandezza per immobile e vive in una colonna sua. Questo accessore è quella
+     * colonna.
+     *
+     * Vuoto finché non si è chiamato `calcolaPerGestione()` o `calcolaDaFattureStraordinarie()`,
+     * e vuoto anche dopo se nessuna unità aveva coperture registrate.
+     *
+     * @return array<int,array<int,int>>
+     */
+    public function getNettingApplicato(): array
+    {
+        return $this->nettingApplicato;
     }
 
     /**

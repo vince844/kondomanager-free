@@ -7,6 +7,248 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.76] - Le Due Grandezze Che Si Annullavano
+
+**Non tocca il database.** Cambia però **come si legge la stampa «Riparto per Capitolo di Spesa»**:
+due colonne nuove compaiono solo nei condomìni che hanno saldi di apertura o contributi già versati.
+I totali di riga e il gran totale restano identici.
+
+Chiude la **Coda 76**. La **Coda 70**, che questa beta doveva chiudere insieme, è risultata **già
+chiusa dalla beta.75** — vedi in fondo.
+
+### Il difetto: un residuo che conteneva due cose di segno opposto
+
+La stampa costruisce la matrice sugli importi **lordi** dei capitoli, che non conoscono il netting
+del già versato, e poi la riallinea alle quote realmente emesse con un «residuo» per riga. Il
+riallineamento è corretto ed è la garanzia legale di questa stampa: la riga stampata deve valere
+quanto `rate_quote`.
+
+Il guaio era **cosa conteneva quel residuo, e dove finiva**. Dentro ci sono due grandezze di segno
+opposto:
+
+| | Effetto sul dovuto |
+| :--- | :--- |
+| Il **pregresso** — i saldi delle gestioni chiuse | lo **aumenta** |
+| Il **già versato** — quanto l'unità aveva già corrisposto | lo **diminuisce** |
+
+Sommate in un intero unico si annullano, e finivano appoggiate sul **capitolo a peso maggiore**,
+cioè sulla voce di spesa più grossa.
+
+Misurato sul condominio di prova — quattro unità, € 5.000,00 di lavori, € 1.600,00 di
+amministrazione, € 2.000,00 già versati, € 1.800,00 di arretrati:
+
+```
+Rifacimento facciata      € 4.800,00   ← né il deliberato (€ 5.000,00),
+                                          né il richiesto (€ 3.000,00)
+Amministrazione           € 1.600,00
+─────────────────────────────────────
+Totale                    € 6.400,00   ← torna
+```
+
+Gli arretrati di € 1.800,00 **non comparivano da nessuna parte**. E il gran totale tornava: è la
+ragione per cui il difetto è sopravvissuto a ogni controllo di quadratura.
+
+### Perché la correzione della beta.75 era stata ritirata
+
+Nella .75 si era tentato di classificare il residuo **per segno** — positivo in «fuori riparto»,
+negativo riassorbito sul capitolo. Migliorava il caso col solo pregresso e **peggiorava** quello con
+entrambi, ed è stata ritirata prima del rilascio insieme ai suoi due test.
+
+Il motivo, accertato leggendo il codice riga per riga, è più profondo di quanto la diagnosi dicesse:
+`residuo = importoReale − lordoRiga` è **un intero unico in cui le due componenti sono già sommate**.
+Il segno di una somma dice quale addendo è maggiore, non quanto valgono. Con € 1.800,00 e € 2.000,00
+il residuo vale −€ 200,00, e quel numero non è nessuna delle due grandezze.
+
+Non solo: **il segno non è un proxy nemmeno della singola componente.** Un pregresso può essere
+negativo — un condòmino a credito — e il ramo «negativo → riassorbito sul capitolo» avrebbe preso
+quel credito e lo avrebbe trasformato in uno sconto su una voce di spesa.
+
+### La correzione: separare invece di classificare
+
+La separazione non ha bisogno di euristiche perché **una delle due componenti è già registrata**:
+`regole_calcolo.importi.saldo_usato`, scritto su **ogni** quota da `GenerateRateQuotesAction` — la
+Rata 0 e le rate ordinarie. Da lì l'algebra è chiusa:
+
+```
+residuo = importoReale − lordoRiga = pregresso − netting
+netting = pregresso − residuo
+```
+
+Ed è **esatta, non stimata**: entrambi i termini vengono da ciò che è stato emesso.
+
+⚠️ **Non si ricalcola nulla.** La strada scritta in roadmap il 23/08 era «rendere riutilizzabile
+`CalcoloQuoteService::nettingGiaVersato()` e chiamarla dalle stampe». È stata scartata verificando il
+codice: le stampe non istanziano il motore, e farle chiamare significherebbe **due aritmetiche che
+possono divergere**, contro la garanzia «riga stampata = `rate_quote`». La strada vera era già
+scritta nel codice e mai costruita — il docblock di `getImportiPerConto()` prescriveva dalla beta.49
+che *«la colonna di una tabella deve continuare a valere il budget deliberato, mentre lo sconto a
+un'unità che aveva già versato vive in una colonna sua»*, e rimandava a un `getNettingApplicato()`
+**che non esisteva**. Ora esiste.
+
+### Cosa si vede
+
+```
+Rifacimento facciata      € 5.000,00   ← il deliberato
+Amministrazione           € 1.600,00
+Già versato              −€ 2.000,00
+Saldi precedenti          € 1.800,00
+─────────────────────────────────────
+Totale                    € 6.400,00
+```
+
+È quello che si dice in assemblea: la facciata costa € 5.000,00, ne sono già stati versati
+€ 2.000,00, se ne chiedono € 3.000,00, più € 1.800,00 di arretrati. La legenda spiega le due colonne,
+compreso il fatto che il già versato **segue l'unità e non la persona** (art. 63 disp. att. c.c.).
+
+### Le due stampe tornano simmetriche
+
+La gemella «per Tabelle» aveva già smesso di appoggiare il residuo sulle colonne millesimali **dalla
+beta.73**, dopo che in un condominio vero importato da Danea una colonna da € 1.000,00 era arrivata a
+stampare **€ 1.214,36**. La stampa per capitoli continuava a farlo: la biforcazione è stata tolta.
+
+### E quando i conti non tornano, lo dice
+
+Ciò che non è spiegato né dal pregresso né dal già versato — dati modificati dopo la generazione, un
+soggetto staccato dall'unità — va **sempre** nella colonna «Fuori riparto», e viene registrato a
+livello `warning`. Prima era loggato a `debug`, cioè invisibile in produzione: **l'unico caso
+silenzioso di questo servizio era proprio quello che sposta denaro su un documento d'assemblea**,
+mentre gli scoperti e gli orfani gridavano già.
+
+Il collo di bottiglia è dichiarato: il netting non può essere negativo né superare il lordo della
+riga, perché il motore lo limita con `min($copertura, $lordoImmobile)`. Chi ha versato più della sua
+parte non riceve uno sconto maggiore del dovuto — quell'eccedenza ha già la sua segnalazione.
+
+### La Coda 70 era già chiusa, e la diagnosi indicava il servizio sbagliato
+
+Questa beta doveva chiudere anche la **Coda 70** («il cruscotto non conosce il già versato»).
+Verificando prima di scrivere, è risultata **chiusa dalla beta.75**:
+`PianoRateQuoteService::totaleAttesoCents()` sottrae il già versato registrato, ed è l'**unica** fonte
+del verdetto «Disallineato» — i suoi due consumatori la chiamano entrambi, e nel frontend non c'è
+nessun ricalcolo. La .75 l'aveva corretta come effetto collaterale di un'altra diagnosi, senza dirlo.
+
+⚠️ E la diagnosi originale indicava `BudgetCoverageService`, che invece **calcola giusto**: là il
+pianificato viene dal pivot al lordo e il fabbisogno è `max(preventivo, speso)` anch'esso al lordo,
+quindi la voce risulta coperta — che è la risposta corretta alla domanda che quel servizio si fa. Con
+€ 5.000,00 di preventivo, € 2.000,00 già in cassa e € 3.000,00 da chiedere, la voce **è** coperta.
+Correggerlo avrebbe rotto la barra di copertura.
+
+### Le prove
+
+**Quattordici test** in `DecomposizioneResiduoRipartoTest`, sul caso misurato e sui suoi bordi: il
+solo pregresso, il solo già versato, nessuno dei due (retrocompatibilità), le due componenti che si
+annullano esattamente, importi diversi da unità a unità, l'invariante «le celle sommano alla riga» —
+che su questa matrice **non aveva un presidio** —, l'accordo col gran totale della gemella, il
+limite su chi ha versato più del dovuto, il subentrante che non deve risultare «già versato», la
+controprova che il limite lascia passare il versamento vero, i due contitolari che non dichiarano due
+volte la stessa copertura, e la resa del modello PDF — perché «le colonne si disegnano da sole» era
+una deduzione, ed era sbagliata: `Str::limit(…, 22)` troncava «Saldi esercizi precedenti», e il nome
+è stato accorciato a «Saldi precedenti».
+
+Suite completa: **1784 test PHP** e **259 JavaScript**, verdi.
+
+### Cosa ha trovato la revisione, e perché è servita
+
+La **Fase 1-bis** è stata eseguita la sera del 24/08, dopo che l'API dei sottoagenti si è ripresa —
+di giorno aveva risposto `529 Overloaded` a undici richieste su undici, e su un documento
+d'assemblea si è preferito rinviarla invece di farla a metà. Quattro lenti, e hanno trovato un
+difetto **introdotto da questa stessa beta**.
+
+**Il netting si ricava per differenza, e la differenza non sa da cosa nasce.** Qualunque scarto
+verso il basso fra il lordo ricalcolato dal vivo e le quote emesse veniva battezzato «già versato»,
+purché cadesse nell'intervallo plausibile. Due percorsi reali lo producono, e nessuno dei due è un
+versamento:
+
+- **il subentro fatto a mano** — il rimedio che gli amministratori usano oggi, perché il motore non
+  legge le date di competenza: si generano le rate, si stacca chi è uscito, si attacca il
+  subentrante, si ristampa. Il subentrante ha pesi vivi e zero quote emesse. Misurato: la stampa
+  dichiarava **«Già versato −€ 600,00» in un condominio dove nessuno aveva versato un centesimo**;
+- **lo scoperto accettato** (art. 1126 c.c., coefficienti sotto il 100%): su € 9.000,00 di lastrico
+  con una sola tabella al 33,33 lo scarto di **€ 6.000,30** veniva dichiarato come denaro incassato.
+
+In entrambi i casi **senza alcun avviso**, perché il residuo tornava esattamente a zero. E la
+legenda introdotta da questa beta rinforzava l'affermazione falsa. Prima della .76 quelle righe
+stampavano zero e non affermavano niente: **la correzione aveva aggiunto un'affermazione dove non
+ce n'era una**, che è il difetto di raggiungibilità che il processo di questo progetto cerca.
+
+**La correzione ha due parti.** Il netting non può superare quanto risulta **registrato** per
+quell'immobile sui capitoli del piano — la stessa fonte e lo stesso perimetro che
+`PianoRateQuoteService` usa dalla beta.75 — e il tetto **si consuma**, perché due contitolari
+attingono alla stessa copertura, che segue l'unità e non la persona. E lo scarto che avanza si
+comporta diversamente a seconda del segno: **negativo** significa che la matrice ha allocato più di
+quanto sia stato addebitato, e viene tolto in proporzione dalle colonne che l'hanno prodotto —
+è una correzione, non un addebito, e non può far salire nessuna colonna; **positivo** significa che
+è stato addebitato più di quanto la matrice spieghi, e va dichiarato in «Fuori riparto» con
+l'avviso. Una riduzione corregge, un'aggiunta afferma: solo la seconda ha bisogno di una colonna che
+la nomini.
+
+Verificato dopo la correzione: il subentrante torna a stampare **€ 0,00** e la colonna «Già versato»
+non compare affatto; il lastrico stampa **€ 2.999,70**, cioè quanto è stato davvero addebitato.
+
+### Un difetto della stampa gemella, che non entra qui
+
+La revisione ha trovato anche che nella gemella «per Tabelle» il residuo si somma sulla cella degli
+**addebiti ad personam veri**: con € 400,00 di balcone a carico dell'interno 1 e € 500,00 già
+versati, il PDF stampa «Addebito diretto −€ 100,00», e in assemblea si legge «meno cento euro»
+all'unico condòmino che ha avuto un intervento a suo carico. È **preesistente** — viene dalla
+beta.73 — e la correzione è portare anche lì le due colonne di questa beta. È in roadmap come
+**Coda 77**, con lo scenario misurato, invece di essere rattoppata a fine giornata.
+
+### La seconda passata, e cosa ha cambiato
+
+Il codice scritto per chiudere i reperti della prima passata **non era stato rivisto da nessuno**,
+ed è stato sottoposto a una **seconda passata** di quattro lenti sul solo perimetro nuovo. Ha
+trovato otto reperti, tutti con lo scenario **eseguito**, e due erano difetti introdotti proprio da
+quel codice.
+
+**Il tetto guardava il posto sbagliato, e sugli straordinari era sempre zero.** Il perimetro era
+`$pianoRate->capitoli`, cioè il pivot — ma per `tipo === 'straordinario'` il controller sincronizza
+solo `fattureStraordinarie()` e **mai** `capitoli()`: il pivot è vuoto e il tetto vale zero per ogni
+immobile. La correzione non entrava mai in funzione **proprio nello scenario per cui il già versato
+è nato** — accantonamento un anno, variante l'anno dopo — e la colonna scendeva *sotto* il
+deliberato: € 100,00 su € 1.100,00, misurato. Stesso difetto col **capitolo padre nel pivot**,
+perché il già versato non è nemmeno registrabile su un capitolo
+(`abort_if((bool) $conto->is_capitolo, 404)`): le coperture di quel ramo stanno per forza sui
+sottoconti, che il pivot non nomina. Corretto allineando il perimetro a quello del motore — che
+**scende** ai sottoconti — riusando `$processatiIds`, la discesa già fatta trenta righe sopra.
+
+**La riduzione proporzionale è stata ritirata.** Toglieva lo scarto da tutti i capitoli in
+proporzione, compresi quelli che non l'avevano prodotto: misurato, «Amministrazione» stampata
+**€ 694,32** contro € 1.600,00 deliberati **e** € 1.600,00 davvero addebitati, su un capitolo che
+non aveva nessuno scoperto. Peggio del difetto che voleva chiudere. Il ramo negativo torna quindi al
+comportamento **pre-beta.76** — tutto sul capitolo a peso maggiore — che non è giusto in generale ma
+è quello che questa stampa ha avuto per cinquanta beta, e non introduce niente di nuovo.
+
+⚠️ **Il perché sta in roadmap come Coda 78, ed è la beta successiva.** Nessuna euristica sulla
+destinazione dello scarto può essere giusta, perché `residuo` è **uno scalare per riga**: da lì non
+si ricava a quale capitolo appartenga né cosa sia. La correzione vera è **persistere sul piano i
+registri del motore** al momento della generazione — `getImportiRipartiti()` e
+`getNettingApplicato()`, quest'ultimo costruito in questa beta e oggi **senza un solo chiamante** —
+accanto a `saldo_usato`, che è la fonte esatta del pregresso e funziona già così. Con quei registri
+la stampa **legge** invece di dedurre, e cadono insieme il tetto, l'euristica e l'attribuzione. Tocca
+la generazione, quindi vuole i suoi test e non una pezza a fine giornata.
+
+### Due guardie dichiarate per quello che sono
+
+La riduzione proporzionale ha due limiti contro il caso in cui una colonna di capitolo andrebbe
+**negativa**. Non sono provati da un test, e il motivo è scritto nel codice: **non si sa costruire
+lo scenario che li raggiunge**, perché servirebbe una riga il cui pregresso superi il totale emesso,
+e il pregresso è una componente di quel totale. Loggano a `warning` invece di correggere in
+silenzio, così se un giorno scattano la premessa caduta si vede invece di essere assorbita.
+
+### Una nota sul metodo
+
+Il difetto della guardia sul residuo zero — un condòmino con arretrati e versamenti che si annullano
+esattamente, che spariva da entrambe le colonne — **non l'ha trovato un test**: l'ha trovato la
+generazione del PDF vero sul condominio costruito dall'interfaccia per la verifica a video. I nove
+test scritti per questa correzione erano verdi, e non lo vedevano perché davano a tutte e quattro le
+unità **gli stessi importi**: con quote uguali il residuo non è mai zero. Era la simmetria dello
+scenario a nascondere il caso, non la mancanza di test.
+
+⚠️ La **Fase 0.3** resta svolta a mano, per lo stesso 529 della mattina, ed è quindi meno esaustiva
+del solito.
+
+---
+
 ## [1.10.0-beta.75] - Il Pregresso Che Si Spacciava Per Deliberato
 
 **Non tocca il database.** Cambia però **dove finisce il pregresso** nel libro giornale: chi
