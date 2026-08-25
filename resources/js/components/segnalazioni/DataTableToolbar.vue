@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission }  from "@/enums/Permission";
 import { trans } from 'laravel-vue-i18n';
 
@@ -22,6 +23,8 @@ const { generateRoute, hasPermission } = usePermission();
 const { table } = defineProps<{
   table: Table<Segnalazione>
 }>();
+
+const { filtra } = useTabellaServer(() => route(generateRoute('segnalazioni.index')));
 
 // Read current filters from column state
 const priorityColumn = table.getColumn('priority');
@@ -55,26 +58,21 @@ const condominioFilter = computed(() => {
 watchDebounced(
   [subjectFilter, priorityFilter, statoFilter, condominioFilter],
   ([subject, priority, stato, condominio_id]) => {
-    const params: Record<string, any> = { page: 1 };
-
-    if (subject) params.subject = subject;
-    if (priority.length > 0) params.priority = priority;
-    if (stato.length > 0) params.stato = stato;
-    if (condominio_id.length > 0) params.condominio_id = condominio_id;
-
-    router.get(
-      route(generateRoute('segnalazioni.index')),
-      params,
+    // Ogni filtro va passato anche quando è vuoto: `null` significa **togli**. La richiesta riparte
+    // da ciò che c'è nell'URL, quindi un filtro omesso resterebbe quello di prima e non si potrebbe
+    // più svuotare. Per i filtri a scelta multipla il vuoto è l'array senza elementi.
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0) {
-            table.reset();
-          }
+        subject: subject || null,
+        priority: priority.length > 0 ? priority : null,
+        stato: stato.length > 0 ? stato : null,
+        condominio_id: condominio_id.length > 0 ? condominio_id : null,
+      },
+      () => {
+        if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0) {
+          table.reset();
         }
-      }
+      },
     );
   },
   { debounce: 300 }
@@ -97,7 +95,7 @@ const clearAllFilters = () => {
 <template>
   <div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
     <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
-      
+
       <Input
         :placeholder="trans('segnalazioni.table.filter_by_title')"
         v-model="subjectFilter"
@@ -105,7 +103,7 @@ const clearAllFilters = () => {
       />
 
       <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
-        
+
         <DataTableFacetedFilter
           v-if="priorityColumn"
           :column="priorityColumn"
@@ -150,13 +148,13 @@ const clearAllFilters = () => {
       </div>
     </div>
 
-    <Link 
+    <Link
       as="button"
       v-if="hasPermission([Permission.CREATE_SEGNALAZIONI])"
-      :href="route(generateRoute('segnalazioni.create'))" 
+      :href="route(generateRoute('segnalazioni.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-3.5 h-3.5 text-green-500" />
       <span>{{ trans('segnalazioni.actions.new_ticket') }}</span>
     </Link>
 

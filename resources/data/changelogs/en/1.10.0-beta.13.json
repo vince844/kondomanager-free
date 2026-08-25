@@ -1,0 +1,10 @@
+{
+    "features": [
+        "One-click backup restore from the panel: next to every completed backup you'll find a 'Restore' button that returns the installation to the state of that archive, with no phpMyAdmin, terminal or MySQL client. A confirmation dialog shows date, type and size, asks for the password if the archive is encrypted, lets you create a safety backup before proceeding and requires your account password.",
+        "During the restore the application enters restore mode with a progress screen; the process is resumable if the page is closed or the server interrupts it. When it finishes all users sign in again and a result page summarises anything to reconfigure.",
+        "Cross-version restore: if you restore a backup from an older version, KondoManager automatically applies the needed database updates and realigns the version. You don't have to install the old version first. A backup from a version newer than the installed code is rejected, prompting you to update first.",
+        "Automatic database backup before every update: on the upgrade confirmation screen a safety backup of the pre-migration state is created, on by default. If the update goes wrong, you restore it from the same panel. A distracted administrator is never left without a restore point.",
+        "Security: during a restore the whole application is blocked by a waiting page except the restore operations; archives are validated (no suspicious paths, SHA-256 integrity checked) before touching any data; if a backup comes from an installation with a different encryption key, the unreadable data (2FA, email password) is cleared with a notice, avoiding lockouts at login.",
+        "Restore guide updated with the new one-click procedure. Full translations it/en/es/pt. Fixed some layout details on the Backup management page."
+    ]
+}

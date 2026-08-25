@@ -33,11 +33,20 @@ class ImpostazioniGeneraliController extends Controller
         return Inertia::render('impostazioni/impostazioniGenerali', [
             'can_register'             => (bool) $settings->user_frontend_registration,
             'language'                 => (string) $settings->language,
+            'app_name'                 => (string) $settings->app_name,
             'open_condominio_on_login' => $user->userPreferences->open_condominio_on_login,
             'default_condominio_id'    => $user->userPreferences->default_condominio_id,
             'condomini'                => Condominio::select('id','nome')->get(),
             'default_user_role'        => (string) $settings->default_user_role,
             'force_comment_moderation' => (bool) $settings->force_comment_moderation,
+            'default_per_page'         => (int) $settings->default_per_page,
+            // Il 100 resta fuori: il portale condòmino non ha un selettore per le righe, quindi un
+            // valore globale così alto gli darebbe cento schede da scorrere e nessun comando per
+            // ridurle. Chi lavora sul gestionale può comunque sceglierlo tabella per tabella.
+            'per_page_disponibili'     => array_values(array_filter(
+                config('pagination.consentite'),
+                fn (int $v) => $v <= 50,
+            )),
             'roles'                    => $roles,
         ]);
     }
@@ -58,8 +67,10 @@ class ImpostazioniGeneraliController extends Controller
 
             $settings->user_frontend_registration = $validated['user_frontend_registration'];
             $settings->language = $validated['language'];
+            $settings->app_name = $validated['app_name'];
             $settings->default_user_role = $validated['default_user_role'];
             $settings->force_comment_moderation = $validated['force_comment_moderation'];
+            $settings->default_per_page = $validated['default_per_page'];
             $settings->save();
 
             $userPreferences = $user->userPreferences;
@@ -68,8 +79,9 @@ class ImpostazioniGeneraliController extends Controller
             $userPreferences->default_condominio_id = $validated['open_condominio_on_login']
                 ? $validated['default_condominio_id']
                 : null;
-            
+
             app()->setLocale($settings->language);
+            config(['app.name' => $settings->app_name]);
 
             $userPreferences->save();
 

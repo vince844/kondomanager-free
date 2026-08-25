@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Corrigido um erro pelo qual, ao criar um plano de prestações complementar sobre uma rubrica de despesa acima do orçamento, gravar não produzia qualquer efeito se o valor sugerido fosse deixado inalterado: sem navegação, sem erro no ecrã. A causa estava na forma como o valor era convertido internamente antes de ser enviado ao servidor. O plano é agora sempre gravado, quer o valor seja alterado ou não.",
+        "Corrigido também um efeito colateral do mesmo erro: alguns valores mostrados no ecrã (como o total selecionado ou o saldo remanescente do capítulo) podiam aparecer multiplicados por 100 em relação ao valor real, devido a uma interpretação ambígua do formato numérico.",
+        "Realinhada a etiqueta \"Prestação Complementar\" na janela de excesso de orçamento da fatura e no guia interno de faturas: mostravam \"Gerar novo plano\" para a mesma estratégia que, em todo o resto da aplicação, é sempre chamada \"Prestação Complementar\" — nenhuma alteração de comportamento, apenas coerência no texto apresentado."
+    ]
+}

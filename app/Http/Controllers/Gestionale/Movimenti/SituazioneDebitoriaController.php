@@ -25,10 +25,14 @@ class SituazioneDebitoriaController extends Controller
                 $q->whereHas('pianoRate', fn($p) => $p->where('condominio_id', $condominio->id));
             });
 
-        // 2. Filtro Logico: Rate non ancora pagate del tutto o a credito
+        // 2. Filtro Logico: Rate non ancora pagate del tutto o a credito.
+        // Include anche le quote STRAPAGATE (importo_pagato > importo): sono
+        // credito disponibile e devono nettare il residuo della rata, altrimenti
+        // la UI mostra un debito inesistente (rischio doppio addebito).
         $query->where(function($q) {
-            $q->whereRaw('importo > importo_pagato') 
-              ->orWhere('importo', '<', 0);          
+            $q->whereRaw('importo > importo_pagato')
+              ->orWhereRaw('importo_pagato > importo')
+              ->orWhere('importo', '<', 0);
         });
 
         // 3. Filtri Contestuali
@@ -78,7 +82,9 @@ class SituazioneDebitoriaController extends Controller
             $dettaglioTooltip = $gruppoQuotes->map(function($q) use ($condominio, &$esercizioId, $metodoDist, $numeroRata, $totaleRatePiano, $first) {
                 
                 $residuoNettoQuota = ($q->importo - $q->importo_pagato); 
-                $unita = $q->immobile ? "Int. {$q->immobile->interno}" : 'Generico';
+                // `etichetta`: con l'interno facoltativo questa riga diceva «Int. » e non identificava
+            // niente, proprio nella schermata dove si sta per incassare da qualcuno.
+            $unita = $q->immobile ? $q->immobile->etichetta : 'Generico';
 
                 // 1. RECUPERO RUOLO DALLA TUA TABELLA PIVOT
                 $ruoloIniziale = 'P'; // Default fallback
@@ -150,7 +156,13 @@ class SituazioneDebitoriaController extends Controller
                 // Ritorniamo i dati formattati per la UI e per il motore composable Vue
                 return [
                     'unita'             => $unita,
-                    'anagrafica'        => $q->anagrafica ? $q->anagrafica->nome : 'Generico', 
+                    'anagrafica'        => $q->anagrafica ? $q->anagrafica->nome : 'Generico',
+                    // Serve all'interfaccia per sapere DI CHI è il credito di questa quota.
+                    // Cercando per immobile il gruppo raccoglie le quote di tutti i
+                    // comproprietari (vedi il filtro a :39-45), quindi una riga a saldo misto
+                    // può contenere il credito di una persona e il debito di un'altra: senza
+                    // questo id la pagina offrirebbe il credito altrui a chi sta incassando.
+                    'anagrafica_id'     => $q->anagrafica_id,
                     'ruolo'             => $ruoloIniziale, // INIETTIAMO IL RUOLO [P, I, U]
                     'residuo'           => MoneyHelper::fromCents($residuoNettoQuota), 
                     'residuo_originale' => MoneyHelper::fromCents($residuoNettoQuota), 
@@ -176,7 +188,9 @@ class SituazioneDebitoriaController extends Controller
             }
 
             $unitaCoinvolte = $gruppoQuotes->map(function($q) {
-                return $q->immobile ? "Int. {$q->immobile->interno} ({$q->immobile->nome})" : null;
+                // `etichetta`: senza interno restava «Int.  (Posto auto 3)», con la parentesi orfana
+                    // e nessun numero davanti. Reperto della revisione della beta.58.
+                    return $q->immobile ? $q->immobile->etichettaEstesa : null;
             })->filter()->unique()->join(', ');
 
             $isEmitted = $gruppoQuotes->contains(fn($q) => !is_null($q->scrittura_contabile_id));

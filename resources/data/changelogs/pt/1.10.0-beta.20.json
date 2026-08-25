@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Atenção — Muda o comportamento da edição de fatura acima do orçamento: guardar uma alteração que leva um capítulo de despesa além do valor restante agora exige uma confirmação explícita. Um diálogo mostra o valor da ultrapassagem e declara o que NÃO acontecerá ao guardar: nenhuma justificação registada, nenhuma cobertura planeada, a fatura permanece \"aprovada\" e não aparecerá no painel de ultrapassagens. Pode cancelar e corrigir os valores, ou guardar conscientemente; para justificar a ultrapassagem o caminho continua a ser o estorno com novo registo. Antes, uma edição acima do orçamento passava com um clique e o único sinal era um aviso no topo da página.",
+        "Uma fatura cuja ultrapassagem foi justificada e depois ratificada pela assembleia já não pode ser editada, qualquer que fosse a estratégia de recuperação. As faturas com cobertura do fundo já estavam protegidas desde a beta.19, mas as estratégias \"acerto de fim de ano\" e \"prestação complementar\" não criam coberturas e, após a ratificação, a fatura voltava a ser editável: a justificação e a deliberação ficavam referidas a valores que a assembleia nunca viu. Agora vale a mesma regra para todas: a ratificação fotografa a fatura — para a alterar, estorna-se e regista-se de novo."
+    ]
+}

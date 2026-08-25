@@ -17,9 +17,22 @@ export const columns: ColumnDef<Categoria>[] = [
 
       const categoria = row.original;
     
+      /*
+       * Il nome porta ai **documenti di questa categoria**, non a una scheda della categoria.
+       *
+       * ⚠️ Fino alla beta.62 puntava a `categorie.show`, una rotta che `Route::resource`
+       * registrava e che il controller non implementava: chi cliccava riceveva un **500**. È
+       * arrivato dal forum insieme alla domanda giusta — *«non so neanche cosa dovrebbe fare il
+       * software cliccando su una categoria»* — e la risposta era già nel prodotto, dall'altro
+       * lato: il condòmino sfoglia l'archivio per categoria e vede i documenti di quella.
+       *
+       * Non serve un metodo nuovo: l'elenco documenti accetta già `category_id`. La barra dei
+       * filtri si reidrata da `filters` (vedi `DataTableToolbar.vue`), così la pagina che si apre
+       * **dichiara** di essere filtrata invece di esserlo in silenzio.
+       */
       return h('div', { class: 'flex items-center space-x-2' }, [
         h('a', {
-           href: route(generateRoute('categorie.show'), { id: categoria.id }),
+          href: route(generateRoute('documenti.index'), { category_id: [categoria.id] }),
           class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
         }, categoria.name)
       ]);

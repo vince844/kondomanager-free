@@ -14,9 +14,18 @@ class ContoResource extends JsonResource
     public static array $pianiStraordinariMap = [];
     
     // Nuove mappe aggiunte per il widget
-    public static array $addebitiMap = []; 
-    public static array $strategieSforoMap = []; 
-    public static array $budgetOriginaliMap = []; 
+    public static array $addebitiMap = [];
+    public static array $strategieSforoMap = [];
+    public static array $budgetOriginaliMap = [];
+
+    /**
+     * beta.30 — speso reale per voce (SpesaPerVoceService): fatture registrate,
+     * anche non ancora pagate, più le regolazioni immediate. Concetto DIVERSO da
+     * `$coverageMap`, che è quanto del preventivo è già stato messo in un piano
+     * rate emesso ai condòmini: una voce può essere coperta al 100% e non aver
+     * ancora speso nulla, o viceversa.
+     */
+    public static array $spesoMap = [];
 
     public function toArray(Request $request): array
     {
@@ -183,10 +192,17 @@ class ContoResource extends JsonResource
             'id'                    => $this->id,
             'piano_conto_id'        => $this->piano_conto_id,
             'parent_id'             => $this->parent_id,
+            // Fatto esplicito e persistito — mai indovinato da importo/parent_id
+            // (bug "voce a zero perde la tabella millesimale").
+            'is_capitolo'           => (bool) $this->is_capitolo,
+            'richiede_gia_versato'  => (bool) $this->richiede_gia_versato,
             'importo'               => MoneyHelper::format($this->importo),
             'importo_raw'           => $this->importo,
             // Valori aggiunti per il widget Audit:
             'budget_originale_raw'  => self::$budgetOriginaliMap[$this->id] ?? $this->importo,
+            // Speso reale: si confronta con budget_originale_raw, non con importo_raw
+            // (che il controller gonfia allo speso quando lo sforo è già avvenuto).
+            'speso_raw'             => (int) (self::$spesoMap[$this->id] ?? 0),
             'addebiti_personali'    => self::$addebitiMap[$this->id] ?? [],
             'strategie_sforo'       => self::$strategieSforoMap[$this->id] ?? [],
             // ------------------------------------

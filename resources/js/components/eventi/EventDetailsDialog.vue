@@ -108,9 +108,11 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
     });
 });
 
-// LOGICA WALLET: Rileva se c'è un credito di Rata Zero (Salvato in meta come storico_crediti_rata0)
+// LOGICA WALLET: Rileva se c'è un credito di Rata Zero (salvato nel meta come credito_rata_zero)
 const creditoDisponibile = computed<number>(() => {
-    // Leggiamo un nuovo parametro che il backend ci passerà: il credito puro della rata 0
+    // `credito_rata_zero` è il credito della rata 0 ancora DISPONIBILE, cioè al netto di
+    // quanto ne è già stato speso: non il credito originario. È la stessa misura su cui il
+    // motore decide quanto si può compensare.
     return Number(props.evento?.meta?.credito_rata_zero || 0);
 });
 

@@ -28,6 +28,9 @@ class CreateSegnalazioneRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Solo in modifica: la casella «avvisa i destinatari». In creazione l'avviso parte
+            // sempre, quindi il campo non arriva e `nullable` lo lascia passare.
+            'avvisa_destinatari' => ['nullable', 'boolean'],
             'subject'       => 'required|string|max:255',
             'description'   => 'required|string',
             'priority'      => 'required|string',

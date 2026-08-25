@@ -5,7 +5,7 @@ import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, Table, Layers, Settings } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Table, Settings } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
@@ -14,15 +14,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
-import type { Palazzina } from '@/types/gestionale/palazzine';
-import type { Scala } from '@/types/gestionale/scale';
 import type { Tabella } from '@/types/gestionale/tabelle';
 
 const props = defineProps<{
   condominio: Building;
   tabella: Tabella;
-  palazzine: Palazzina[];
-  scale: Scala[];
 }>()
 
 type TabellaType = {
@@ -33,6 +29,10 @@ type TabellaType = {
 const tipologieTabelle = [
   { label: 'Standard', id: 'standard' },
   { label: "Ascensore", id: 'ascensore' },
+  // `scale` c'è nell'enum del database dal primo giorno e l'importatore lo produce
+  // (LivelloTabelle mappa «scala» e «scale»), ma mancava qui e nella regola `in:`:
+  // una tabella importata «SCALE A» non si poteva più salvare. Coda ㊱.
+  { label: "Scale", id: 'scale' },
   { label: "Riscaldamento", id: 'riscaldamento' },
   { label: "Acqua", id: 'acqua' },
   { label: "Lastrico", id: 'lastrico' },
@@ -65,12 +65,8 @@ const pageGuides = computed(() => [
     icon: Table,
     colorVariant: 'blue' as const
   },
-  {
-    title: 'Assegnazione Strutturale',
-    description: "Gestisci l'associazione a specifiche palazzine o scale del condominio.",
-    icon: Layers,
-    colorVariant: 'emerald' as const
-  },
+  // ⚠️ Vedi la nota gemella in `TabelleNew.vue`: la promessa del filtro per palazzina o scala
+  // stava in tre posti e nessun codice la manteneva. Tolta nella beta.63.
   {
     title: 'Impostazioni Avanzate',
     description: "Aggiorna le note di gestione della tabella.",
@@ -86,8 +82,6 @@ const form = useForm({
   numero_decimali: props.tabella.numero_decimali,
   descrizione: props.tabella.descrizione,
   note: props.tabella.note,
-  palazzina_id: props.tabella.palazzina ? props.tabella.palazzina.id : '',
-  scala_id: props.tabella.scala ? props.tabella.scala.id : '',
 });
 
 const submit = () => {
@@ -189,43 +183,25 @@ const submit = () => {
           </CardContent>
         </Card>
 
-        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
-          <CardHeader class="pb-3 border-b border-dashed mb-4">
-            <CardTitle class="text-base font-semibold">Assegnazione strutturale</CardTitle>
-            <CardDescription>Limita l'uso di questa tabella a palazzine o scale specifiche.</CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-6">
-            <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
-              <div class="sm:col-span-3">
-                <Label for="palazzina">Palazzina</Label>
-                <v-select 
-                  :options="palazzine" 
-                  label="name" 
-                  class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
-                  v-model="form.palazzina_id"
-                  placeholder="Nessuna palazzina associata"
-                  @update:modelValue="form.clearErrors('palazzina_id')" 
-                  :reduce="(palazzina: Palazzina) => palazzina.id"
-                />
-                <InputError :message="form.errors.palazzina_id" />
-              </div>
+        <!--
+          ⚠️ **La scheda «Assegnazione strutturale» è stata tolta nella beta.63, e non era una
+          funzione a metà: era una funzione che non è mai esistita.**
 
-              <div class="sm:col-span-3">
-                <Label for="scala">Scala</Label>
-                <v-select 
-                  :options="scale" 
-                  label="name" 
-                  class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
-                  v-model="form.scala_id"
-                  placeholder="Nessuna scala associata"
-                  @update:modelValue="form.clearErrors('scala_id')" 
-                  :reduce="(scala: Scala) => scala.id"
-                />
-                <InputError :message="form.errors.scala_id" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          Le colonne `tabelle.palazzina_id` e `tabelle.scala_id` si compilavano, si salvavano, e
+          **nessun calcolo e nessun filtro le leggeva**. La guida prometteva il contrario — «puoi
+          delimitare l'uso di una tabella solo agli immobili che fanno fisicamente parte di quella
+          scala» — quindi chi creava «Tabella scale — Scala B», sceglieva la scala e spuntava
+          «associa tutti gli immobili esistenti» si ritrovava tutte le unità del condominio invece
+          delle sole sei della scala.
+
+          Misurato prima di togliere: valorizzate in **zero tabelle su sedici**. Nessuno le ha mai
+          usate, e questo dice quanto la promessa fosse creduta.
+
+          Le colonne **restano a database**: il filtro per scala e palazzina è previsto in
+          Iniziativa A (v1.11) e toglierle ora vorrebbe dire due migrazioni — una per cancellarle e
+          una per rimetterle — su una release che non ha ancora il backup automatico. Quello che
+          sparisce è la **promessa**, non lo spazio per mantenerla.
+        -->
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">

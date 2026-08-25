@@ -37,4 +37,16 @@ class BudgetMovement extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /** Il movimento che questo storna, se questo è uno storno. */
+    public function movimentoOriginale()
+    {
+        return $this->belongsTo(BudgetMovement::class, 'reverses_movement_id');
+    }
+
+    /** Il movimento che ha stornato questo, se qualcuno l'ha fatto. */
+    public function storno()
+    {
+        return $this->hasOne(BudgetMovement::class, 'reverses_movement_id');
+    }
 }

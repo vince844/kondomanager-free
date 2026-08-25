@@ -2,20 +2,30 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
+use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
+use App\Models\Esercizio;
+use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\StatoPatrimonialeService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Controller per la visualizzazione di dettaglio di una Scrittura Contabile.
+ * Controller per la visualizzazione del Libro Giornale — elenco e dettaglio
+ * delle Scritture Contabili.
  *
- * v1.9.1-beta.7: vista read-only del Libro Giornale.
+ * v1.9.1-beta.7: vista read-only di dettaglio.
+ * v1.10.0-beta.29: elenco/registro sfogliabile, annidato per esercizio.
  * Lo storno si gestisce sempre dal documento genitore (pagamento/fattura).
  *
  * Responsabilità:
@@ -25,7 +35,200 @@ use Inertia\Response;
  */
 class ScritturaContabileController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, HasCondomini;
+    use OrdinaElenco;
+
+    /**
+     * L'elenco scritture ha **tutte** le intestazioni già non ordinabili in `columns.ts`: qui non
+     * c'è nulla da consentire, e la lista vuota lo dichiara invece di lasciarlo dedurre.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [];
+    }
+
+    use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco;
+
+    /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
+    private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
+
+    /**
+     * Elenco paginato delle scritture contabili di un esercizio (Libro Giornale).
+     */
+    public function index(Request $request, Condominio $condominio, Esercizio $esercizio): Response
+    {
+        if ($esercizio->condominio_id !== $condominio->id) {
+            abort(403, 'L\'esercizio non appartiene a questo condominio.');
+        }
+
+        $query = ScritturaContabile::where('condominio_id', $condominio->id)
+            ->where('esercizio_id', $esercizio->id)
+            ->with(['righe', 'gestione']);
+
+        $this->applyFiltri($query, $request);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        // ⚠️ **Venti e non dieci**, ed è una scelta di questo elenco. Le scritture del libro
+        // giornale sono dense — protocollo, data, gestione, causale, tipo, importo, stato — e una
+        // giornata di lavoro ne produce facilmente più di dieci: vederne dieci significa non
+        // vedere la giornata. Resta comunque un valore di partenza: chi ne sceglie un altro qui
+        // sopra se lo ritrova al rientro, e da lì in poi comanda la sua scelta.
+        $perPage = $this->righePerPagina($request, predefinito: 20);
+
+        // Il "page" in query string può arrivare da un altro esercizio (lo porta con sé lo
+        // switcher di PageHeaderGuide, che riscrive solo il segmento URL): senza clamp, un
+        // esercizio con meno pagine risulterebbe vuoto senza alcun modo di uscirne.
+        $totale = (clone $query)->count();
+        $ultimaPagina = max(1, (int) ceil($totale / $perPage));
+        $paginaRichiesta = min(max((int) $request->input('page', 1), 1), $ultimaPagina);
+
+        $scritture = (clone $query)
+            ->orderByDesc('data_registrazione')
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $paginaRichiesta)
+            ->withQueryString();
+
+        $rows = $scritture->getCollection()->map(function (ScritturaContabile $s) {
+            $totaleDare  = $s->righe->where('tipo_riga', 'dare')->sum('importo');
+            $totaleAvere = $s->righe->where('tipo_riga', 'avere')->sum('importo');
+
+            return [
+                'id'                   => $s->id,
+                'numero_protocollo'    => $s->numero_protocollo,
+                'data_registrazione'   => $s->data_registrazione?->format('d/m/Y'),
+                'causale'              => $s->causale,
+                'descrizione'          => $s->descrizione,
+                'tipo_movimento'       => $s->tipo_movimento?->value,
+                'tipo_movimento_label' => $s->tipo_movimento?->label(),
+                'stato'                => $s->stato,
+                'gestione'             => $s->gestione ? [
+                    'id'   => $s->gestione->id,
+                    'nome' => $s->gestione->nome,
+                ] : null,
+                'importo'              => (int) $totaleDare,
+                'is_quadrata'          => $totaleDare === $totaleAvere,
+            ];
+        });
+
+        // Riepilogo Dare/Avere sull'intero risultato filtrato, non sulla sola pagina corrente.
+        $righeFiltrate = (clone $query)->with('righe')->get()->pluck('righe')->flatten();
+        $riepilogoDareAvere = [
+            'totale_dare'  => (int) $righeFiltrate->where('tipo_riga', 'dare')->sum('importo'),
+            'totale_avere' => (int) $righeFiltrate->where('tipo_riga', 'avere')->sum('importo'),
+        ];
+
+        $statoPatrimoniale = app(StatoPatrimonialeService::class)->calcola($condominio, $esercizio);
+
+        // Le query di diagnosi girano solo quando serve: sul percorso sano (quadra) non
+        // aggiungono alcun costo.
+        $diagnosi = $statoPatrimoniale['quadra'] ? null : $this->diagnosiSbilancio($condominio, $esercizio);
+
+        return Inertia::render('gestionale/movimenti/scritture/List', [
+            'condominio' => $condominio,
+            'condomini'  => CondominioResource::collection($this->getCondomini())->resolve(),
+            'esercizio'  => $esercizio,
+            'esercizi'   => $condominio->esercizi()->orderByDesc('data_inizio')->get(),
+            'scritture'  => [
+                'data' => $rows,
+                'meta' => [
+                    'current_page' => $scritture->currentPage(),
+                    'last_page'    => $scritture->lastPage(),
+                    'total'        => $scritture->total(),
+                    'per_page'     => $scritture->perPage(),
+                ],
+            ],
+            'tipiMovimento' => collect(TipoMovimentoContabile::cases())->map(fn ($c) => [
+                'value' => $c->value,
+                'label' => $c->label(),
+            ])->values(),
+            'stati' => self::STATI,
+            'riepilogoDareAvere' => $riepilogoDareAvere,
+            'quadratura' => [
+                'quadra'  => $statoPatrimoniale['quadra'],
+                'sbilancio' => $statoPatrimoniale['sbilancio'],
+                'totale_attivo'  => $statoPatrimoniale['attivo']['totale'],
+                'totale_passivo' => $statoPatrimoniale['passivo']['totale'],
+                'costi'   => $statoPatrimoniale['costi'],
+                'ricavi'  => $statoPatrimoniale['ricavi'],
+                'risultato_esercizio' => $statoPatrimoniale['risultato_esercizio'],
+                'liquidita_non_contabilizzata' => $statoPatrimoniale['liquidita_non_contabilizzata'],
+            ],
+            'diagnosi' => $diagnosi,
+            'filters' => $request->only(['search', 'tipo_movimento', 'stato', 'data_da', 'data_a']),
+        ]);
+    }
+
+    /**
+     * Cerca le due cause di sbilancio note e diagnosticabili automaticamente:
+     *
+     * 1. Scritture non bilanciate al loro interno (Dare ≠ Avere sulla singola
+     *    scrittura) — quasi certamente la causa se ce n'è anche solo una.
+     * 2. Casse con `saldo_iniziale != 0`: per costruzione (vedi
+     *    RegistraAperturaCassaAction, che azzera la colonna nella stessa
+     *    transazione in cui registra l'apertura) un valore residuo — positivo
+     *    o negativo — significa che l'apertura non è mai stata portata a
+     *    giornale ed è esattamente la liquidità che StatoPatrimonialeService
+     *    somma "a mano" come liquidita_non_contabilizzata. Sul perché non basti
+     *    guardare i positivi, vedi il commento accanto alla query.
+     *
+     * Oltre questi due casi la diagnosi automatica si ferma: un importo
+     * digitato male ma comunque bilanciato non lascia traccia distinguibile.
+     */
+    private function diagnosiSbilancio(Condominio $condominio, Esercizio $esercizio): array
+    {
+        $scrittureNonQuadrate = ScritturaContabile::where('condominio_id', $condominio->id)
+            ->where('esercizio_id', $esercizio->id)
+            ->with('righe')
+            ->get()
+            ->filter(fn (ScritturaContabile $s) => $s->righe->where('tipo_riga', 'dare')->sum('importo')
+                !== $s->righe->where('tipo_riga', 'avere')->sum('importo'))
+            ->map(fn (ScritturaContabile $s) => [
+                'id'                => $s->id,
+                'numero_protocollo' => $s->numero_protocollo,
+                'causale'           => $s->causale,
+            ])
+            ->values();
+
+        // `!= 0` e non `> 0`: `StatoPatrimonialeService` somma TUTTI i saldi non ancora a
+        // giornale, negativi compresi, quindi un conto scoperto sbilancia esattamente come
+        // uno positivo. Cercando i soli positivi la diagnosi era cieca su metà dei casi, e
+        // quello sbilancio finiva nel ramo «causa non nota» — l'unico che non offre niente
+        // da fare. Il saldo negativo non è un caso di frontiera: `RegistraAperturaCassaAction`
+        // lo gestisce esplicitamente invertendo i versi.
+        $casseSenzaApertura = Cassa::where('condominio_id', $condominio->id)
+            ->where('saldo_iniziale', '!=', 0)
+            ->get(['id', 'nome', 'saldo_iniziale'])
+            ->map(fn (Cassa $c) => [
+                'id'             => $c->id,
+                'nome'           => $c->nome,
+                'saldo_iniziale' => $c->saldo_iniziale,
+            ])
+            ->values();
+
+        return [
+            'scritture_non_quadrate' => $scrittureNonQuadrate,
+            'casse_senza_apertura'   => $casseSenzaApertura,
+        ];
+    }
+
+    /**
+     * Applica i filtri della toolbar alla query (condivisa fra elenco e riepilogo).
+     */
+    private function applyFiltri($query, Request $request): void
+    {
+        $query
+            ->when($request->search, function ($q, $v) {
+                $q->where(function ($sub) use ($v) {
+                    $sub->where('causale', 'like', "%{$v}%")
+                        ->orWhere('descrizione', 'like', "%{$v}%")
+                        ->orWhere('numero_protocollo', 'like', "%{$v}%");
+                });
+            })
+            ->when($request->tipo_movimento, fn ($q, $v) => $q->where('tipo_movimento', $v))
+            ->when($request->stato, fn ($q, $v) => $q->where('stato', $v))
+            ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_registrazione', '>=', $v))
+            ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_registrazione', '<=', $v));
+    }
 
     /**
      * Mostra il dettaglio di una singola scrittura contabile.

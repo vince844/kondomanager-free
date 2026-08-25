@@ -1,0 +1,18 @@
+{
+    "features": [
+        "New \"General Ledger\" page in the Movements bar: a chronological list of all accounting entries for the selected fiscal year, with text search, filters by movement type/status/date range, and the ability to switch fiscal years to review past ones.",
+        "The \"Balance Sheet\" widget now explains in plain language whether the condominium's assets and liabilities balance out — and when they don't, it points to the most likely cause (an entry that's unbalanced within itself, or a cash account with an opening balance not yet recorded) with a direct link to fix it.",
+        "A \"Calculation details\" button opens a full table with every value behind the check (assets, liabilities, costs, revenues, fiscal year result, unrecorded liquidity, imbalance).",
+        "New widget showing the total Debit and total Credit of the entries visible under the current filters, with a checkmark confirming they balance.",
+        "The same status and date-range filters from the General Ledger are now available in Payment Collections, Supplier Invoices, Supplier Payments, and Bank Transfers.",
+        "Fixed: the \"Reversed\" card in Payment Collections (count and quick filter) always showed zero, no matter how many collections had actually been reversed — it compared the status against a value that doesn't exist in the database.",
+        "Fixed the description on the millesimal tables page, which referred to a \"validator\" that never existed and supposedly checked that each table's shares summed to exactly 1000: the engine actually always allocates 100% of the expense over the table's real total, even when it isn't 1000.",
+        "Fixed a bug where reversing a payment collection didn't verify that the entry passed was actually a payment collection: in theory (never reachable through normal use of the interface) the id of any other entry type in the same condominium, such as a bank transfer, could be mistakenly marked as reversed. An explicit check was added.",
+        "Fixed: the panel showing reversal details (date, amount, operator) on a payment collection's detail page never appeared, even for a genuinely reversed collection — the total amount kept showing as active instead of struck through. The operator who performed the reversal still shows as \"Unknown\": that information was never recorded, to be added in a future beta.",
+        "The \"Voided\" status label for a reversed payment collection is now \"Reversed\" in the filters and the collections table, matching the \"Reverse\" action the administrator actually performed.",
+        "The same \"Reversed\" label is now used in the General Ledger too (filter and status badge), which had been left showing the old \"Voided\" wording. Also removed the strikethrough on the badge text, which just crossed out the word instead of signaling a no-longer-valid amount.",
+        "Fixed the \"Amount\" column header in the General Ledger, left-aligned while the amounts below it are right-aligned: now right-aligned to match the rest of the column.",
+        "Fixed a duplicated-word typo in the General Ledger's \"Calculation details\" modal, which showed the fiscal year's name with its own label prepended a second time (e.g. \"Esercizio Esercizio anno 2026\").",
+        "Immediate Settlement entries now show, before you even save, a preview of the protocol number that will be assigned — handy for jotting it down on the paper document right away. The number is system-generated, not typeable, and stays indicative until saved."
+    ]
+}

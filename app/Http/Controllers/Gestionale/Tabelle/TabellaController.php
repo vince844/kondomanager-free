@@ -6,12 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Tabella\CreateTabellaRequest;
 use App\Http\Requests\Gestionale\Tabella\TabellaIndexRequest;
 use App\Http\Requests\Gestionale\Tabella\UpdateTabellaRequest;
-use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
-use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Http\Resources\Gestionale\Tabelle\TabellaResource;
 use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 
 class TabellaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a listing of the resource.
@@ -32,6 +32,16 @@ class TabellaController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        //
+        // ⚠️ **Qui `per_page` era validato e poi buttato via.** La richiesta lo accettava, il
+        // controller paginava con il valore di configurazione: chi sceglieva 40 righe vedeva il
+        // selettore cambiare e l'elenco restare a dieci. È la stessa famiglia dei difetti segnalati
+        // sul forum, nella variante più muta — il valore non si perdeva per strada, non veniva
+        // proprio letto.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $tabelle = $condominio
             ->tabelle()
             ->with(['palazzina', 'scala'])
@@ -39,7 +49,8 @@ class TabellaController extends Controller
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
-            ->paginate(config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, TabellaIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
         
         // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
@@ -52,6 +63,8 @@ class TabellaController extends Controller
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'tabelle'    => TabellaResource::collection($tabelle)->resolve(),
+            'sort'       => $validated['sort'] ?? null,
+            'direction'  => $validated['direction'] ?? null,
             'meta'       => [
                 'current_page' => $tabelle->currentPage(),
                 'last_page'    => $tabelle->lastPage(),
@@ -67,7 +80,12 @@ class TabellaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
-        $condominio->load(['palazzine', 'scale']);
+        // ⚠️ **`palazzine` e `scale` non si caricano più, dalla beta.63.** Servivano alla scheda
+        // «Assegnazione strutturale», che prometteva di delimitare la tabella a una scala o a una
+        // palazzina — e nessun filtro leggeva quei due campi. Tolta la scheda, restavano due
+        // interrogazioni a ogni caricamento della pagina per riempire due elenchi che nessuno
+        // guardava. Le **colonne** a database restano: il filtro vero è previsto in Iniziativa A
+        // (v1.11), e allora torneranno anche queste due righe.
 
         // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
@@ -79,8 +97,6 @@ class TabellaController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
-            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
-            'scale'      => ScalaResource::collection($condominio->scale),
         ]);
     }
 
@@ -118,9 +134,17 @@ class TabellaController extends Controller
                 foreach ($immobili as $immobile) {
                     $tabella->quote()->create([
                         'immobile_id'  => $immobile->id,
+                        // `valore` nullo significa **«da compilare»**, e dalla beta.61 è uno stato
+                        // dichiarato invece che una scappatoia: la pagina delle quote lo sa dire, e
+                        // la generazione del piano rate si ferma a chiederlo. Prima di allora
+                        // questa riga produceva una tabella **non più salvabile** finché ogni
+                        // casella non era piena.
                         'valore'       => null,
                         'coefficienti' => null,
-                        'created_by'   => null,
+                        // ⚠️ Era `null`, con l'autore disponibile due righe sopra in
+                        // `$data['created_by']`: le quote create qui non avevano firma, e
+                        // risultavano di nessuno.
+                        'created_by'   => $data['created_by'],
                     ]);
                 }
             }
@@ -151,13 +175,6 @@ class TabellaController extends Controller
 
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Tabella $tabella)
-    {
-        //
-    }
 
     /**
      * Show the form for editing the specified resource.
@@ -173,8 +190,6 @@ class TabellaController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'tabella'    => new TabellaResource($tabella),
-            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
-            'scale'      => ScalaResource::collection($condominio->scale)
         ]);
     }
 
@@ -213,6 +228,14 @@ class TabellaController extends Controller
      */
     public function destroy(Condominio $condominio, Tabella $tabella): RedirectResponse
     {
+        // ⚠️ La tabella dell'indirizzo deve essere di **questo** condominio: il binding implicito
+        // risolve i due modelli per id, ciascuno per conto suo. Senza questa riga, cancellare la
+        // tabella di un altro condominio riusciva — e portava via in cascata tutte le sue quote
+        // (`ON DELETE CASCADE` su `quote_tabella.tabella_id`) — chiudendo con un **messaggio verde
+        // di successo** sulla schermata del condominio sbagliato. Vedi la coda ㊷ in
+        // `docs/roadmap.md` e la guardia gemella in `TabellaQuotaController`.
+        abort_unless($tabella->condominio_id === $condominio->id, 404);
+
          try {
 
             if ($tabella->conti()->exists()) {

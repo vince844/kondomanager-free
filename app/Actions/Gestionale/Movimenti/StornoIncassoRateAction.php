@@ -2,8 +2,10 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Enums\TipoMovimentoContabile;
 use App\Models\Condominio;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\DoubleEntryValidator;
 use Illuminate\Support\Facades\DB;
 
 class StornoIncassoRateAction
@@ -11,7 +13,9 @@ class StornoIncassoRateAction
     public function execute(ScritturaContabile $scrittura, Condominio $condominio): void
     {
         // 1. GUARD CLAUSE: Preveniamo lo "Storno dello Storno" (Inception contabile)
-        if ($scrittura->tipo_movimento === 'rettifica') {
+        // tipo_movimento è castato all'enum: il confronto con la stringa era sempre
+        // falso, quindi questa protezione non scattava mai.
+        if ($scrittura->tipo_movimento === TipoMovimentoContabile::RETTIFICA) {
             throw new \RuntimeException('Non è possibile stornare una scrittura di rettifica.');
         }
 
@@ -67,6 +71,11 @@ class StornoIncassoRateAction
                     // Ricalcolo dello stato leggendo la nuova pivot aggiornata
                     $quota->ricalcolaStato();
                 }
+
+                // La rettifica è il mirror esatto dell'originale: se l'originale
+                // quadrava deve quadrare anche lei. Verificarlo qui intercetta
+                // un'inversione incompleta prima che entri nel giornale.
+                DoubleEntryValidator::validateOrFail($rettifica->id);
 
                 // 6. Sigilliamo la scrittura originale
                 $scr->update(['stato' => 'annullata']);

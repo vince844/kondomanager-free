@@ -3,6 +3,7 @@
 namespace App\Actions\PianoRate;
 
 use App\Enums\OrigineQuota;
+use App\Exceptions\Gestionale\MetodoDistribuzioneSconosciutoException;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
@@ -143,6 +144,8 @@ class GenerateRateQuotesAction
             // -----------------------------------------------------------------------------
             // FASE 1: CREAZIONE RATE ORDINARIE (1..N)
             // -----------------------------------------------------------------------------
+            $soggettiQuotaZeroDocumentati = [];
+
             foreach ($dateRate as $index => $dataScadenza) {
                 $numeroRata = $index + 1;
 
@@ -173,22 +176,62 @@ class GenerateRateQuotesAction
                         $metaStoricoSaldo = null;
 
                         if ($datiSaldo && $datiSaldo['importo'] != 0) {
-                            if ($pianoRate->metodo_distribuzione === 'prima_rata' && $numeroRata === 1) {
-                                $quotaSaldoRata = $datiSaldo['importo'];
-                            } elseif ($pianoRate->metodo_distribuzione === 'tutte_rate') {
-                                $quotaSaldoRata = $calcolaFettina($datiSaldo['importo'], $numeroRate, $numeroRata);
-                            }
+                            // Era un `if/elseif` **senza else**: con un valore fuori
+                            // vocabolario nessuno dei due rami scattava, la quota restava a
+                            // zero su OGNI rata e il pregresso spariva senza eccezione e senza
+                            // log — mentre il lucchetto si chiudeva lo stesso e
+                            // `gestioni.nota_saldo` registrava un importo «processato» che non
+                            // esisteva in nessuna quota.
+                            //
+                            // Il `match` è esaustivo e lo zero di `rata_zero` è **dichiarato**:
+                            // quel pregresso vive nella Rata 0, creata prima di questo ciclo
+                            // (vedi `:51`), quindi qui non deve toccare le rate ordinarie. Uno
+                            // zero scritto è una decisione; uno zero per caduta è un difetto in
+                            // attesa.
+                            $quotaSaldoRata = match ($pianoRate->metodo_distribuzione) {
+                                'prima_rata' => $numeroRata === 1 ? $datiSaldo['importo'] : 0,
+                                'tutte_rate' => $calcolaFettina($datiSaldo['importo'], $numeroRate, $numeroRata),
+                                'rata_zero' => 0,
+                                default => throw new MetodoDistribuzioneSconosciutoException(
+                                    $pianoRate->metodo_distribuzione,
+                                    $pianoRate->id
+                                ),
+                            };
+
                             $metaStoricoSaldo = $datiSaldo['meta_storico'];
                         }
 
                         $importoFinale = $quotaOrdinariaRata + $quotaSaldoRata;
+                        $eZero = $importoFinale == 0 && $quotaOrdinariaRata == 0 && $quotaSaldoRata == 0;
 
-                        if ($importoFinale == 0 && $quotaOrdinariaRata == 0 && $quotaSaldoRata == 0) {
-                            continue; // Ignora se tutto è a zero
+                        // Un soggetto presente nel calcolo ($totaliPerImmobile ha
+                        // la sua chiave) ma a quota zero — tipicamente perché il
+                        // netting del già-versato ha azzerato l'intera quota — non
+                        // deve sparire senza lasciare traccia: senza questa riga,
+                        // guardando le rate generate non c'è modo di distinguere
+                        // "l'unità non doveva nulla" da "un errore di
+                        // configurazione l'ha esclusa per sbaglio". Una sola riga
+                        // documentaria per soggetto (sulla prima rata), non una per
+                        // rata: sarebbe rumore senza aggiungere informazione.
+                        $chiaveSoggetto = $aid.'|'.$iid;
+                        $daDocumentare = $eZero
+                            && $numeroRata === 1
+                            && array_key_exists($aid, $totaliPerImmobile)
+                            && array_key_exists($iid, $totaliPerImmobile[$aid])
+                            && !isset($soggettiQuotaZeroDocumentati[$chiaveSoggetto]);
+
+                        if ($eZero && !$daDocumentare) {
+                            continue; // Ignora se tutto è a zero e già documentato (o non documentabile)
+                        }
+
+                        if ($daDocumentare) {
+                            $soggettiQuotaZeroDocumentati[$chiaveSoggetto] = true;
                         }
 
                         $statoQuota = $importoFinale <= 0 ? 'credito' : 'da_pagare';
-                        $tipoRiga = ($quotaOrdinariaRata == 0 && $quotaSaldoRata != 0) ? 'saldo_iniziale' : 'ordinaria';
+                        $tipoRiga = $daDocumentare
+                            ? 'coperta_da_versamento'
+                            : (($quotaOrdinariaRata == 0 && $quotaSaldoRata != 0) ? 'saldo_iniziale' : 'ordinaria');
 
                         // 3. Costruzione JSON Meta Tracciabile
                         $snapshot = [

@@ -61,6 +61,8 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - Autenticação com proteção de dois fatores
 - Sistema de convites para registo de utilizadores
 - Localização: Italiano, Inglês, Português
+- Importação de um condomínio inteiro a partir de outro programa de gestão (primeira fonte: Danea Domustudio)
+- Cópia de segurança completa e reposição a partir do painel, retomáveis e cifráveis em AES-256
 
 ### Módulo de Contabilidade de Gestão e Estrutura
 
@@ -80,6 +82,14 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - Widget Treasury Guardian para análise preditiva de liquidez a 30 dias
 - Mecanismo em cascata dinâmico (Inquilino → Usufrutuário → Proprietário) em conformidade com o Código Civil
 - Gestão inteligente de descobertos documentados para unidades vazias
+- Livro diário navegável com pesquisa, filtros por período e estado, e verificação do equilíbrio
+- Balanço patrimonial com diagnóstico em linguagem corrente dos desequilíbrios e correção no local
+- Transferências entre contas bancárias e fundos, com protocolo, pré-visualização e estorno
+- Retenções na fonte e modelo F24: mapa por limiar, guia de pagamento e fecho em partida dobrada
+- Contribuições já entregues pelos condóminos descontadas do rateio, distribuídas por permilagem
+- Registo rápido de pequenas despesas sem abrir uma conta de fornecedor
+- Valor realizado ao lado do orçamentado em cada rubrica, com o detalhe dos movimentos que o compõem
+- Data da primeira prestação configurável no plano de prestações
 
 ### Suíte de Documentos e Relatórios PDF
 
@@ -90,6 +100,9 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - **Repartição de Orçamento por Tabela (Prestações):** documento detalhado (A4/A3) cruzando imóveis, sujeitos (proprietário, inquilino, etc.) e tabelas de frações ideais
 - **Cronogramas de Prestações:** agregação dinâmica por Condómino ou Imóvel
 - **Guias de Pagamento a Fornecedores:** resumo de valores e detalhes para transferências bancárias
+- **Rateio por Rubrica de Despesa:** a leitura por rubrica orçamental, a par do rateio por tabelas
+- **Extrato de Conta do Condómino:** saldos e sequência completa dos movimentos do exercício
+- **Modelo F24 e mapa para o home banking:** com a lista dos pagamentos que cada guia liquida
 
 ---
 
@@ -97,9 +110,9 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 
 Para instalar o KondoManager, o seu ambiente de servidor deve satisfazer os seguintes requisitos:
 
-- **PHP** >= 8.2
+- **PHP** >= 8.4.1 — *a partir da versão 1.10.0; as anteriores corriam em PHP 8.2*
 - **Base de dados:** MySQL 5.7+ ou MariaDB 10.3+
-- **Extensões PHP:** `zip`, `curl`, `openssl`, `mbstring`, `fileinfo`, `dom`, `xml` - consulte o guia do [Laravel](https://laravel.com/docs/12.x/deployment) para mais informações
+- **Extensões PHP:** `zip`, `curl`, `bcmath`, `fileinfo`, `gd`, `intl`, `mbstring`, `openssl`, `dom`, `xml` - `gd` é o que gera os PDF: sem ela o programa instala-se mas não produz nenhum mapa
 - **Para instalação manual:** Node.js & NPM, Composer
 
 ---
@@ -127,23 +140,34 @@ O sistema de atualização automática gere automaticamente o ciclo de vida das 
 
 Aceda ao seu painel de alojamento (cPanel, Plesk) na secção "Cron Jobs" ou "Agendamento de Tarefas". Configure a execução a cada minuto (* * * * *).
 
-**Exemplo para ambiente local MAMP (Mac):**
+**Exemplo para ambiente local ServBay** (a partir do KondoManager 1.10.0 a base é PHP 8.4, não
+suportado pela versão gratuita do MAMP — se está a migrar do MAMP, siga o
+[guia de migração para ServBay](https://kondomanager.com/docs/migrazione-mamp-a-servbay.html)):
+
+*macOS — crontab (`crontab -e`):*
 ```bash
-/Applications/MAMP/bin/php/php8.2.0/bin/php suapasta/artisan schedule:run >> /dev/null 2>&1
+/Applications/ServBay/script/alias/php suapasta/artisan schedule:run >> /dev/null 2>&1
 ```
+
+*Windows — Agendador de Tarefas (o Windows não tem crontab):* abra o Prompt de Comando,
+verifique o caminho real do PHP com `where php`, depois registe a tarefa a cada minuto:
+```bash
+schtasks /create /tn "KondoManager Scheduler" /tr "php C:\suapasta\artisan schedule:run" /sc minute /mo 1
+```
+
 **Exemplo para Servidor Partilhado (cPanel/Linux):**
 ```bash
 /usr/local/bin/php /home/seusite/public_html/artisan schedule:run >> /dev/null 2>&1
 ```
 
-Certifique-se de usar o caminho absoluto para o executável PHP v8.2+, por exemplo
-/usr/local/bin/ea-php82 /home/seusite/domain_path/path/to/cron/script 
+Certifique-se de usar o caminho absoluto para o executável PHP 8.4+, por exemplo
+/usr/local/bin/ea-php84 /home/seusite/domain_path/path/to/cron/script 
 
 No exemplo anterior, substitua "ea-php99" pela versão PHP atribuída ao domínio que deseja utilizar. Verifique no MultiPHP Manager a versão PHP efetivamente atribuída a um domínio.
 
-### 3. Atualização da Versão 1.9.0 para 1.9.1
+### 3. Atualização da Versão 1.9.1 para 1.10.0
 
-As atualizações automáticas estão disponíveis a partir da versão 1.9.0, portanto, se ainda estiver a utilizar a versão 1.9.0 e quiser atualizar, deve seguir os seguintes passos:
+As atualizações automáticas estão disponíveis a partir da versão 1.9.0. Os passos abaixo não dependem da versão de origem: são os mesmos para qualquer atualização manual a partir da 1.8.0.
 
 1. Certifique-se de ter uma cópia de segurança da `base de dados` e dos ficheiros da pasta `storage`
 2. Descarregue o [ficheiro de atualização](https://kondomanager.short.gy/km-installer) do site oficial do Kondomanager

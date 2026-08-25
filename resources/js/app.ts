@@ -7,6 +7,7 @@ import type { DefineComponent } from 'vue';
 import { createApp, h, watch } from 'vue'; 
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { initializeTheme } from './composables/useAppearance';
+import { registraTracciamentoNavigazione } from './composables/useUrlPrecedente';
 import money from 'v-money3';
 import { i18nVue, loadLanguageAsync } from 'laravel-vue-i18n';
 
@@ -21,6 +22,10 @@ createInertiaApp({
             import.meta.glob<DefineComponent>('./pages/**/*.vue'),
         ),
         setup({ el, App, props, plugin }) {
+            // Prima del mount: l'evento `before` deve essere in ascolto già alla
+            // primissima navigazione, altrimenti la provenienza iniziale si perde.
+            registraTracciamentoNavigazione();
+
             const app = createApp({ render: () => h(App, props) })
                 .use(plugin)
                 .use(ZiggyVue)

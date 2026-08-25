@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Ao chegar a partir do Dashboard para criar um plano de prestações para um estouro ou uma sobrevivência já identificados, a opção de tipo não pertinente (ordinário/extraordinário) agora bloqueia-se automaticamente, com uma explicação sempre visível sob o cartão — não apenas ao passar o rato, acessível também por teclado e leitor de ecrã.",
+        "O cartão \"Plano de prestações ordinário\" passa a rotular-se sozinho como \"Plano de Prestação Suplementar\" quando não é a primeira emissão do ano para essa gestão: seja ao chegar do Dashboard para um estouro, seja — ao criar o plano manualmente — quando a gestão selecionada já tem um plano ordinário \"orçamento inicial\" no balanço.",
+        "Se mudar manualmente a gestão no menu \"Gestão de referência\" depois de chegar do Dashboard, o bloqueio do tipo e o rótulo \"Suplementar\" atualizam-se em conformidade, em vez de ficarem ancorados à gestão com que a página tinha aberto originalmente.",
+        "Corrigido um caso em que o sinal \"esta gestão já tem um plano\" também contava um plano extraordinário pré-existente, fazendo aparecer o rótulo \"Plano de Prestação Suplementar\" no primeiríssimo plano ordinário do ano para essa gestão."
+    ]
+}

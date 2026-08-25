@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
+use App\Exceptions\Gestionale\IncassoNonRegistrabileException;
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
 use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
@@ -20,13 +23,34 @@ use App\Services\Gestionale\IncassoRateService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class IncassoRateController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, HasCondomini;
+    use OrdinaElenco;
+
+    /**
+     * Le colonne ordinabili dell'elenco incassi, che poggia su `scritture_contabili`.
+     *
+     * ⚠️ Fuori «Soggetto» e «Importo»: il primo è una relazione risolta a video riga per riga,
+     * il secondo è un totale ricomposto dalle righe della scrittura. Entrambi richiedono una
+     * decisione sulla chiave, non un default.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'causale' => 'causale',
+            'stato'   => 'stato',
+        ];
+    }
+
+    use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco;
+
+    /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
+    private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
 
     /**
      * Inizializza il controller iniettando il servizio per la gestione incassi.
@@ -46,13 +70,27 @@ class IncassoRateController extends Controller
      */
     public function index(Request $request, Condominio $condominio)
     {
+        // I due parametri dell'ordinamento si validano qui: questo elenco non ha una
+        // FormRequest, e il nome della colonna finisce dentro `orderBy()`.
+        $ordinamento = $request->validate(self::regoleOrdinamento(array_keys(self::colonneOrdinabili())) + [
+            'per_page' => ['sometimes', 'integer'],
+        ]);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $ordinamento['per_page'] = $this->righePerPagina($request);
+
         $query = $this->incassoService->getIncassiQuery(
             $condominio,
             $request->input('search'),
-            $request->input('stato')
+            $request->input('stato'),
+            $request->input('data_da'),
+            $request->input('data_a')
         );
 
-        $movimenti = $query->paginate(config('pagination.default_per_page'))
+        $movimenti = $query
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_registrazione', versoPredefinito: 'desc'))
+            ->paginate($ordinamento['per_page'])
             ->withQueryString()
             ->through(fn($mov) => $this->incassoService->formatMovimentoForFrontend($mov));
 
@@ -77,13 +115,18 @@ class IncassoRateController extends Controller
                 ->whereMonth('data_registrazione', now()->month)
                 ->whereYear('data_registrazione', now()->year)
                 ->count(),
+            // StornoIncassoRateAction sigilla la scrittura originale con stato='annullata'
+            // (giornale append-only: la scrittura resta, viene solo marcata). 'stornato'
+            // non è un valore ammesso dalla colonna: il confronto non ha mai trovato nulla.
             'stornati' => ScritturaContabile::where('condominio_id', $condominio->id)
                 ->where('tipo_movimento', 'incasso_rata')
-                ->where('stato', 'stornato')
+                ->where('stato', 'annullata')
                 ->count(),
         ];
 
         return Inertia::render('gestionale/movimenti/incassi/IncassoRateList', [
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             'condominio' => $condominio,
             'movimenti'  => $movimenti,
             'condomini'  => $listaPalazzi, 
@@ -91,7 +134,8 @@ class IncassoRateController extends Controller
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
             'stats'      => $stats,
-            'filters'    => $request->all(['search', 'stato']),
+            'stati'      => self::STATI,
+            'filters'    => $request->all(['search', 'stato', 'data_da', 'data_a']),
         ]);
     }
 
@@ -149,7 +193,21 @@ class IncassoRateController extends Controller
      */
     public function store(StoreIncassoRateRequest $request, Condominio $condominio, StoreIncassoRateAction $action) 
     {
-        $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
+        try {
+            $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
+        } catch (IncassoNonRegistrabileException $e) {
+            // Conflitto di dominio, non guasto: l'incasso **non si poteva registrare**, e niente è
+            // stato scritto. Si torna al modulo compilato con il motivo, invece della pagina 500
+            // che l'amministratore si prendeva — perdendo la distribuzione appena fatta a mano.
+            //
+            // ⚠️ Si cattura **la famiglia, non il caso**. Questo `catch` era per tipo, e ogni
+            // guardia nuova che sollevava un tipo non elencato tornava a produrre la 500: è
+            // successo nella beta.43, di nuovo nella beta.48, e le tre guardie sulle
+            // compensazioni a credito ci sono rimaste dentro fino alla beta.49. Con la base
+            // comune una guardia nuova è coperta senza toccare questo file — ed è l'eccezione
+            // stessa a dire, con `campo()`, su quale casella mostrare il messaggio.
+            return back()->withInput()->withErrors([$e->campo() => $e->getMessage()]);
+        }
 
         // --- AGGIORNAMENTO EVENTI SCADENZIARIO ---
         $paganteId = $request->input('pagante_id');
@@ -306,7 +364,8 @@ class IncassoRateController extends Controller
             'quotePagate.rata.pianoRate.gestione',
             'quotePagate.immobile',
             'figlie.quotePagate.rata',
-            'figlie.quotePagate.immobile'
+            'figlie.quotePagate.immobile',
+            'figlie.righe.anagrafica',
         ]);
 
         // Caricamento del nome utente creatore per l'audit trail

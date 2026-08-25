@@ -33,9 +33,14 @@ trait ValidatesImmobileAnagraficaPivot
                 ->sum('quota');
 
             if ($totalQuotaByTipologia + $newQuota > 100) {
+                // Il ruolo si nomina come lo legge l'amministratore, non con lo slug della
+                // colonna: «nuda_proprietario» in un messaggio d'errore è una svista che si
+                // vede solo quando il ruolo nuovo comincia a essere usato.
+                $ruolo = \App\Enums\RuoloAnagraficaImmobile::tryFrom((string) $newTipologia);
+
                 $validator->errors()->add(
                     $quotaField,
-                    "La somma delle quote per {$newTipologia} non può superare 100."
+                    'La somma delle quote per ' . ($ruolo?->label() ?? $newTipologia) . ' non può superare 100.'
                 );
             }
         });

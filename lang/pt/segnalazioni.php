@@ -16,6 +16,7 @@ return [
     'success_unapprove_ticket'            => "A sinalização de avaria foi colocada em moderação com sucesso.",
     'error_unapprove_ticket'              => "Ocorreu um erro ao colocar a sinalização de avaria em moderação.",
     'error_notify_approved_ticket'        => "A sinalização de avaria foi aprovada, mas ocorreu um erro no envio da notificação.",
+    'error_notify_updated_ticket' => "A ocorrência foi atualizada, mas ocorreu um erro no envio da notificação.",
     'success_lock_ticket'                 => "A sinalização de avaria foi bloqueada com sucesso.",
     'error_lock_ticket'                   => "Ocorreu um erro ao bloquear a sinalização de avaria.",
     'success_unlock_ticket'               => "A sinalização de avaria foi desbloqueada com sucesso.",
@@ -173,6 +174,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avisar por email quem acompanha esta ocorrência",
         'object'             => 'Assunto da sinalização',
         'description'        => 'Descrição da sinalização',
         'visibility'         => 'Visibilidade da sinalização',
@@ -187,7 +189,7 @@ return [
         'featured'           => 'Sinalização em destaque',
         'private'            => 'Criar sinalização como privada',
         'no_priority'        => 'Nenhuma',
-        'no_status'          => 'Nenhum'
+        'no_status'          => 'Nenhum',
     ],
 
     /* ------------------------------------------------------------------
@@ -207,6 +209,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Envia um email a todos os condóminos com notificações ligadas, a dizer que a ocorrência mudou. Deixe-a desligada se estiver a corrigir uma gralha.",
         'visibility' => 'Se definida como privada, apenas os administradores poderão visualizar a sinalização.',
         'priority'   => 'Defina o nível de prioridade desta sinalização para ajudar os administradores a gerirem-na adequadamente.',
         'status'     => 'Defina o estado atual da sinalização para acompanhar o progresso.',

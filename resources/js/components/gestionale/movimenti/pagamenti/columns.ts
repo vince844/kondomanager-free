@@ -125,6 +125,10 @@ export const createColumns = (condominioId: number): ColumnDef<any>[] => [
   },
   {
     accessorKey: 'importi',
+      /**
+       * ⚠️ **Non ordinabile.** «Importi» monta lordo, ritenuta e netto: tre numeri, tre ordinamenti possibili, nessuno predefinito.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importi' }),
     size: 150,
     cell: ({ row }) => {

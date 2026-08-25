@@ -7,6 +7,7 @@ import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
+import { misuraLeggibile } from '@/lib/gestionale/misure';
 import { List, Pencil, Building2, Map, FileText, Ruler } from 'lucide-vue-next';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import type { BreadcrumbItem } from '@/types';
@@ -19,6 +20,9 @@ const props = defineProps<{
   immobile: Immobile;
 }>()
 
+
+/** La superficie come la scrivono l'elenco e la scheda di modifica: vedi `lib/gestionale/misure.ts`. */
+const superficieLeggibile = computed(() => misuraLeggibile(props.immobile.superficie));
 const { generatePath } = usePermission();
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -115,7 +119,15 @@ const pageGuides = computed(() => [
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1">
                   <Ruler class="w-3 h-3" /> Superficie
                 </p>
-                <p class="text-sm font-medium">{{ immobile.superficie ? immobile.superficie + ' m²' : '-' }}</p>
+                <!--
+                  ⚠️ **Anche qui `misuraLeggibile()`, o le due schermate si contraddicono.** Questa
+                  riga interpolava il valore grezzo e scriveva «90.50 m²», mentre l'elenco unità e
+                  la scheda di modifica — corretti nella beta.62 — scrivono «90.5». Prima della
+                  beta erano d'accordo tutte e tre sul valore grezzo: la divergenza l'avrebbe
+                  introdotta la correzione, ed è il difetto che «riallineare due pagine» produce
+                  quando se ne riallinea una sola. Trovato dalla revisione avversariale.
+                -->
+                <p class="text-sm font-medium">{{ superficieLeggibile ? superficieLeggibile + ' m²' : '-' }}</p>
               </div>
               <div class="sm:col-span-2 pt-2">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Descrizione</p>
@@ -138,16 +150,16 @@ const pageGuides = computed(() => [
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Sezione / Foglio</p>
-                <p class="text-sm font-mono">{{ immobile.sezione_catasto ?? '-' }} / {{ immobile.foglio_catasto ?? '-' }}</p>
+                <p class="text-sm">{{ immobile.sezione_catasto ?? '-' }} / {{ immobile.foglio_catasto ?? '-' }}</p>
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Particella / Sub</p>
-                <p class="text-sm font-mono">{{ immobile.particella_catasto ?? '-' }} / {{ immobile.subalterno_catasto ?? '-' }}</p>
+                <p class="text-sm">{{ immobile.particella_catasto ?? '-' }} / {{ immobile.subalterno_catasto ?? '-' }}</p>
               </div>
               <div class="sm:col-span-2 pt-2">
                  <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 rounded-lg p-3 flex gap-3">
                     <p class="text-[11px] text-amber-700 dark:text-amber-400 leading-tight">
-                      Assicurati che questi dati siano corretti per la generazione automatica dei modelli fiscali e delle comunicazioni di subentro.
+                      Assicurati che questi dati siano corretti per la generazione automatica dei modelli fiscali.
                     </p>
                  </div>
               </div>

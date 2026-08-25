@@ -239,6 +239,26 @@ describe('Stampa Distinta Spese', function () {
         $response->assertHeader('Content-Type', 'application/pdf');
     });
 
+    it('accetta il parametro di ordinamento senza rompere la stampa', function () {
+        // La pagina passa `?ordina=` per far corrispondere il PDF all'ordine mostrato
+        // a schermo. Qualunque valore, anche manomesso, deve produrre un PDF valido:
+        // OrdinamentoConti::criterioValido() ricade su "nome".
+        $ctx  = setupStampePrintTest();
+        $user = $ctx['user'];
+
+        foreach (['nome', 'codice', 'colonna_inesistente', ''] as $criterio) {
+            $response = $this->actingAs($user)->get(route('admin.gestionale.esercizi.piani-conti.print-distinta', [
+                'condominio' => $ctx['condominio']->id,
+                'esercizio'  => $ctx['esercizioId'],
+                'pianoConto' => $ctx['pianoContoId'],
+                'ordina'     => $criterio,
+            ]));
+
+            $response->assertStatus(200);
+            $response->assertHeader('Content-Type', 'application/pdf');
+        }
+    });
+
     it('calcola correttamente il totale preventivo dal DB', function () {
         $ctx = setupStampePrintTest();
 

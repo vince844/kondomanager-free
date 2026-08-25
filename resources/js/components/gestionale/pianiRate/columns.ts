@@ -87,19 +87,42 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     accessorKey: 'dettagli_rate',
+      /**
+       * ⚠️ **Non ordinabile.** «Emissione» monta numero di rate e stato in una cella: due domande, non una.
+       *
+       * Il server accetta solo le chiavi dichiarate nella richiesta: lasciarla cliccabile
+       * manderebbe l'amministratore in un errore di validazione al primo clic.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Emissione' }),
     cell: ({ row }) => {
       const pianoRate = row.original
       
       return h('div', { class: 'flex flex-col' }, [
-        h('span', { class: 'text-sm font-medium text-slate-700 dark:text-slate-300' }, `${pianoRate.numero_rate} Rate`),
+        // `numero_rate` è quello configurato e **non conta la Rata 0**: su un piano con i saldi
+        // assorbiti l'elenco diceva «1 Rate» mentre le rate emesse erano due.
+        h('span', { class: 'text-sm font-medium text-slate-700 dark:text-slate-300' },
+          pianoRate.has_saldi ? `${pianoRate.numero_rate} Rate + Rata 0` : `${pianoRate.numero_rate} Rate`),
         h('span', { class: 'text-xs text-slate-500' }, `Dal ${new Date(pianoRate.data_inizio).toLocaleDateString('it-IT')}`)
       ])
     },
   },
   {
     accessorKey: 'totale_capitoli',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importo totale' }),
+      /**
+       * ⚠️ **Non ordinabile.** «Importo totale» è aggregato dai capitoli: ordinarlo richiede una somma in sottoquery, che è una scelta sul costo della query.
+       *
+       * Il server accetta solo le chiavi dichiarate nella richiesta: lasciarla cliccabile
+       * manderebbe l'amministratore in un errore di validazione al primo clic.
+       */
+      enableSorting: false,
+    /**
+     * ⚠️ **Si chiamava «Importo totale», e non lo era.** La cella legge `totale_capitoli`, cioè la
+     * somma dei capitoli a preventivo: su un piano che assorbe il pregresso con una Rata 0 il
+     * dettaglio mostrava € 3.400,00 e l'elenco € 1.600,00 per lo stesso piano. Due risposte alla
+     * stessa domanda in due posti. Il nome ora dice quale delle due è.
+     */
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Preventivo' }),
     cell: ({ row }) => {
       // Usiamo la funzione euro della tua composable
       const totale = row.original.totale_capitoli || 0;

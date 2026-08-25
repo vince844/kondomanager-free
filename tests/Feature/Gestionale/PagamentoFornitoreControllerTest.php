@@ -2,26 +2,27 @@
 
 use App\Enums\MetodoPagamento;
 use App\Enums\StatoPagamentoFattura;
+use App\Enums\StatoPagamentoFornitore;
 use App\Enums\TipoAllocazioneFattura;
 use App\Enums\TipoDetrazione;
-use App\Models\Condominio;
-use App\Models\Esercizio;
-use App\Models\User;
-use App\Models\Gestionale\FatturaPassiva;
+use App\Events\Gestionale\PagamentoRegistrato;
+use App\Listeners\Gestionale\SyncF24WithPagamento;
+use App\Models\CategoriaEvento;
+use App\Models\Evento;
 use App\Models\Gestionale\PagamentoFornitore;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
-require_once __DIR__ . '/GestionaleTestHelpers.php';
+require_once __DIR__.'/GestionaleTestHelpers.php';
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-    
+    app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
     $permessoAdmin = Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
     $ruoloAdmin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
     $ruoloAdmin->givePermissionTo($permessoAdmin);
@@ -38,20 +39,20 @@ test('registrazione pagamento happy path: scrittura quadra, stato evolve, cassa 
 
     $response = $this->actingAs($this->user)
         ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
-            'fornitore_id'       => $fornitore->id,
-            'esercizio_id'       => $esercizio->id,
-            'conto_corrente_id'  => $contoCorrenteId,
-            'data_pagamento'     => now()->toDateString(),
-            'metodo_pagamento'   => MetodoPagamento::BONIFICO->value,
-            'allocazioni'        => [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
                 [
-                    'fattura_id'             => $fattura->id,
-                    'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                     'importo_allocato_cents' => 122000,
-                ]
+                ],
             ],
-            'bonifico_parlante'  => false,
-            'allow_overdraft'    => true,
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
         ]);
 
     $response->assertStatus(302);
@@ -62,7 +63,7 @@ test('registrazione pagamento happy path: scrittura quadra, stato evolve, cassa 
 
     $pagamento = PagamentoFornitore::first();
     expect($pagamento)->not->toBeNull();
-    
+
     $scrittura = $pagamento->scrittura;
     expect($scrittura)->not->toBeNull();
     expect($scrittura->isQuadrata())->toBeTrue();
@@ -74,58 +75,58 @@ test('registrazione pagamento happy path: scrittura quadra, stato evolve, cassa 
 test('pagamento fattura con ritenuta: il listener F24 viene triggerato', function () {
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
     $fornitore->update([
-        'soggetto_ritenuta' => true, 
-        'perc_ritenuta' => 20, 
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta' => 20,
         'perc_imponibile_ritenuta' => 100,
-        'codice_tributo' => '1040'
+        'codice_tributo' => '1040',
     ]);
 
     $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo], [
         'applica_ritenuta' => true,
-        'importo_ritenuta'       => 20000,
+        'importo_ritenuta' => 20000,
         'importo_netto_a_pagare' => 102000,
     ]);
 
     $response = $this->actingAs($this->user)
         ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
-            'fornitore_id'       => $fornitore->id,
-            'esercizio_id'       => $esercizio->id,
-            'conto_corrente_id'  => $contoCorrenteId,
-            'data_pagamento'     => now()->toDateString(),
-            'metodo_pagamento'   => MetodoPagamento::BONIFICO->value,
-            'allocazioni'        => [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
                 [
-                    'fattura_id'             => $fattura->id,
-                    'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                     'importo_allocato_cents' => 102000,
-                ]
+                ],
             ],
             'importo_ritenuta_cents' => 20000,
-            'allow_overdraft'    => true,
+            'allow_overdraft' => true,
         ]);
 
     $response->assertStatus(302);
     $response->assertSessionHasNoErrors();
 
     $pagamento = PagamentoFornitore::first();
-    
-    \App\Models\CategoriaEvento::firstOrCreate(
+
+    CategoriaEvento::firstOrCreate(
         ['name' => 'Scadenze amministrative'],
         ['description' => 'Test', 'color' => '#000000', 'icon' => 'test']
     );
 
-    (new \App\Listeners\Gestionale\SyncF24WithPagamento())->handle(new \App\Events\Gestionale\PagamentoRegistrato($pagamento));
+    (new SyncF24WithPagamento)->handle(new PagamentoRegistrato($pagamento));
 
-    $task = \App\Models\Evento::where('meta->type', 'versamento_ritenuta')
+    $task = Evento::where('meta->type', 'versamento_ritenuta')
         ->where('meta->context->pagamento_id', $pagamento->id)
         ->first();
 
-    if (!$task) {
-        dump("PAGAMENTO_ID: " . $pagamento->id);
-        dump("IMPORTO_RITENUTA: " . $pagamento->importo_ritenuta);
-        dump("FATTURA_ID: " . $fattura->id);
-        dump("EVENTI_COUNT: " . \App\Models\Evento::count());
-        dump("EVENTI: " . \App\Models\Evento::all()->toJson());
+    if (! $task) {
+        dump('PAGAMENTO_ID: '.$pagamento->id);
+        dump('IMPORTO_RITENUTA: '.$pagamento->importo_ritenuta);
+        dump('FATTURA_ID: '.$fattura->id);
+        dump('EVENTI_COUNT: '.Evento::count());
+        dump('EVENTI: '.Evento::all()->toJson());
     }
 
     expect($task)->not->toBeNull();
@@ -138,24 +139,24 @@ test('bonifico parlante: causale ben formata con riferimento normativo', functio
 
     $response = $this->actingAs($this->user)
         ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
-            'fornitore_id'       => $fornitore->id,
-            'esercizio_id'       => $esercizio->id,
-            'conto_corrente_id'  => $contoCorrenteId,
-            'data_pagamento'     => now()->toDateString(),
-            'metodo_pagamento'   => MetodoPagamento::BONIFICO->value,
-            'allocazioni'        => [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
                 [
-                    'fattura_id'             => $fattura->id,
-                    'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                     'importo_allocato_cents' => 122000,
-                ]
+                ],
             ],
-            'bonifico_parlante'  => true,
-            'allow_overdraft'    => true,
-            'tipo_detrazione'    => TipoDetrazione::RISTRUTTURAZIONE->value,
+            'bonifico_parlante' => true,
+            'allow_overdraft' => true,
+            'tipo_detrazione' => TipoDetrazione::RISTRUTTURAZIONE->value,
             'beneficiari_detrazione' => [
-                ['codice_fiscale' => 'RSSMRA80A01H501U']
-            ]
+                ['codice_fiscale' => 'RSSMRA80A01H501U'],
+            ],
         ]);
 
     $response->assertStatus(302);
@@ -168,10 +169,10 @@ test('bonifico parlante: causale ben formata con riferimento normativo', functio
 
 test('compensazione nota di credito: netting a 3 record pivot e invariante di cassa', function () {
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
-    
+
     $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
     $notaCredito = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo], [
-        'tipo_documento'   => 'nota_credito',
+        'tipo_documento' => 'nota_credito',
         'applica_ritenuta' => false,
         'righe' => [[
             'descrizione' => 'Reso',
@@ -184,30 +185,30 @@ test('compensazione nota di credito: netting a 3 record pivot e invariante di ca
 
     $response = $this->actingAs($this->user)
         ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
-            'fornitore_id'       => $fornitore->id,
-            'esercizio_id'       => $esercizio->id,
-            'conto_corrente_id'  => $contoCorrenteId,
-            'data_pagamento'     => now()->toDateString(),
-            'metodo_pagamento'   => MetodoPagamento::BONIFICO->value,
-            'allocazioni'        => [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
                 [
-                    'fattura_id'             => $fattura->id,
-                    'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                     'importo_allocato_cents' => 97600, // 1220 - 244
                 ],
                 [
-                    'fattura_id'             => $notaCredito->id,
-                    'tipo'                   => TipoAllocazioneFattura::COMPENSAZIONE->value,
+                    'fattura_id' => $notaCredito->id,
+                    'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value,
                     'importo_allocato_cents' => 24400,
                 ],
                 [
-                    'fattura_id'             => $fattura->id,
-                    'tipo'                   => TipoAllocazioneFattura::COMPENSAZIONE->value,
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value,
                     'importo_allocato_cents' => 24400,
-                ]
+                ],
             ],
-            'bonifico_parlante'  => false,
-            'allow_overdraft'    => true,
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
         ]);
 
     $response->assertStatus(302);
@@ -216,11 +217,11 @@ test('compensazione nota di credito: netting a 3 record pivot e invariante di ca
     $pagamento = PagamentoFornitore::first();
     // La relazione è $pagamento->scrittura->fatture
     expect($pagamento->scrittura->fatture()->count())->toBe(3);
-    
+
     $cassaUscita = $pagamento->scrittura->righe()->where('tipo_riga', 'avere')->whereNotNull('cassa_id')->sum('importo');
     $sommaPagamenti = $pagamento->scrittura->fatture()->wherePivot('tipo', 'pagamento')->sum('importo_allocato');
-    
-    expect((int)$cassaUscita)->toEqual((int)$sommaPagamenti);
+
+    expect((int) $cassaUscita)->toEqual((int) $sommaPagamenti);
 });
 
 test('update pagamento confermato aggiorna i campi mutabili', function () {
@@ -229,34 +230,36 @@ test('update pagamento confermato aggiorna i campi mutabili', function () {
 
     $this->actingAs($this->user)
         ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
-            'fornitore_id'       => $fornitore->id,
-            'esercizio_id'       => $esercizio->id,
-            'conto_corrente_id'  => $contoCorrenteId,
-            'data_pagamento'     => now()->toDateString(),
-            'metodo_pagamento'   => App\Enums\MetodoPagamento::BONIFICO->value,
-            'allocazioni'        => [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
                 [
-                    'fattura_id'             => $fattura->id,
-                    'tipo'                   => App\Enums\TipoAllocazioneFattura::PAGAMENTO->value,
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                     'importo_allocato_cents' => 122000,
-                ]
+                ],
             ],
-            'bonifico_parlante'  => false,
-            'allow_overdraft'    => true,
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
         ]);
 
-    $pagamento = App\Models\Gestionale\PagamentoFornitore::first();
+    $pagamento = PagamentoFornitore::first();
 
     $response = $this->actingAs($this->user)
         ->put(route('admin.gestionale.pagamenti-fornitori.update', [$condominio, $pagamento]), [
-            'conto_corrente_id'   => $contoCorrenteId,
-            'data_pagamento'      => now()->addDay()->toDateString(),
-            'metodo_pagamento'    => App\Enums\MetodoPagamento::BONIFICO->value,
+            'conto_corrente_id' => $contoCorrenteId,
+            // Una data diversa da quella di registrazione, ma nel passato: la data
+            // di pagamento descrive un movimento già avvenuto e non può essere futura.
+            'data_pagamento' => now()->subDay()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
             'importo_lordo_cents' => $pagamento->importo_lordo,
             'importo_netto_cents' => $pagamento->importo_netto,
             'importo_ritenuta_cents' => $pagamento->importo_ritenuta,
-            'causale_bonifico'    => 'Modifica test causale',
-            'note_override'       => 'Nota aggiunta post',
+            'causale_bonifico' => 'Modifica test causale',
+            'note_override' => 'Nota aggiunta post',
         ]);
 
     $response->assertStatus(302);
@@ -265,5 +268,217 @@ test('update pagamento confermato aggiorna i campi mutabili', function () {
     $pagamento->refresh();
     expect($pagamento->causale_bonifico)->toBe('Modifica test causale');
     expect($pagamento->note_override)->toBe('Nota aggiunta post');
-    expect($pagamento->data_pagamento->toDateString())->toBe(now()->addDay()->toDateString());
+    expect($pagamento->data_pagamento->toDateString())->toBe(now()->subDay()->toDateString());
+});
+
+test('pagina di modifica pagamento espone la lista fornitori richiesta dalla sentinella anti-frode IBAN', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamento = PagamentoFornitore::first();
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.edit', [$condominio, $pagamento]));
+
+    $response->assertStatus(200);
+    $response->assertInertia(fn ($page) => $page
+        ->component('gestionale/movimenti/pagamenti/PagamentoEdit')
+        ->has('fornitori')
+        ->where('fornitori.0.id', $fornitore->id)
+    );
+});
+
+test('un pagamento stornato non è raggiungibile in modifica: edit() reindirizza con un errore chiaro', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fattura->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamento = PagamentoFornitore::first();
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.storno', [$condominio, $pagamento]), [
+            'motivo' => 'Storno di test: IBAN errato del fornitore.',
+        ]);
+
+    $pagamento->refresh();
+    expect($pagamento->stato)->toBe(StatoPagamentoFornitore::STORNATO);
+
+    // La pagina di modifica non deve MAI essere raggiungibile per un pagamento stornato:
+    // redirect immediato invece di renderizzare un form che fallirebbe silenziosamente al salvataggio.
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.edit', [$condominio, $pagamento]));
+
+    $response->assertRedirect(route('admin.gestionale.pagamenti-fornitori.show', [$condominio, $pagamento]));
+    $response->assertSessionHas('message.type', 'error');
+
+    // Difesa in profondità: anche un PUT diretto (bypassando la UI) deve fallire con un
+    // errore di validazione esplicito (errors.modifica_vietata), non un redirect silenzioso
+    // che il frontend Inertia interpreterebbe come successo.
+    $updateResponse = $this->actingAs($this->user)
+        ->put(route('admin.gestionale.pagamenti-fornitori.update', [$condominio, $pagamento]), [
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'importo_lordo_cents' => $pagamento->importo_lordo,
+            'importo_netto_cents' => $pagamento->importo_netto,
+        ]);
+
+    $updateResponse->assertSessionHasErrors('modifica_vietata');
+});
+
+test('filtro stato isola il pagamento stornato dagli altri', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fatturaConfermata = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+    $fatturaStornata = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaConfermata->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamentoConfermato = PagamentoFornitore::first();
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaStornata->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamentoDaStornare = PagamentoFornitore::where('id', '!=', $pagamentoConfermato->id)->firstOrFail();
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.storno', [$condominio, $pagamentoDaStornare]), [
+            'motivo' => 'Storno di test per isolare il filtro stato.',
+        ]);
+
+    // Lo storno genera un terzo record (la scrittura di storno stessa nasce
+    // "confermato"): a questo punto ci sono 2 pagamenti confermati e 1 stornato,
+    // quindi il filtro stato=stornato è quello che isola in modo inequivocabile
+    // il pagamento originale appena stornato.
+    expect(PagamentoFornitore::count())->toBe(3);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.index', [$condominio]).'?stato=stornato');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('gestionale/movimenti/pagamenti/PagamentiList')
+        ->has('pagamenti.data', 1)
+        ->where('pagamenti.data.0.id', $pagamentoDaStornare->id)
+        ->where('pagamenti.data.0.stato', 'stornato')
+    );
+});
+
+test('filtro intervallo date isola i pagamenti per data_pagamento', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fatturaFuoriRange = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+    $fatturaDentroRange = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => '2026-01-10',
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaFuoriRange->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => '2026-03-15',
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaDentroRange->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamentoDentroRange = PagamentoFornitore::whereDate('data_pagamento', '2026-03-15')->firstOrFail();
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.index', [$condominio]).'?data_da=2026-03-01&data_a=2026-03-31');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('gestionale/movimenti/pagamenti/PagamentiList')
+        ->has('pagamenti.data', 1)
+        ->where('pagamenti.data.0.id', $pagamentoDentroRange->id)
+    );
 });

@@ -47,6 +47,16 @@ return [
             'report' => false,
         ],
 
+        'backups' => [
+            'driver' => 'local',
+            // Env-driven per isolare istanze di collaudo o spostare gli archivi
+            // su un mount dedicato; default invariato.
+            'root' => env('BACKUP_ROOT', storage_path('app/backups')),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

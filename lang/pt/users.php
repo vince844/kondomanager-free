@@ -56,10 +56,16 @@ return [
         'anagrafica'         => 'Registo',
         'no_anagrafica'      => 'Sem registo',
         'status'             => 'Estado',
+        'last_login'         => 'Último acesso',
+        'never_logged_in'    => 'nunca',
         'suspended'          => 'Suspenso',
         'active'             => 'Ativo',
         'actions'            => 'Ações',
         'filter'             => 'Filtrar por nome...',
+        'selected'           => 'selecionados',
+        'loading'            => 'A carregar...',
+        'no_results'         => 'Sem resultados.',
+        'clear_all_filters'  => 'Remover filtros',
         'no_permissions'     => 'Nenhuma permissão',
         'verified_tooltip'   => 'Utilizador verificado - clique para revogar verificação',
         'unverified_tooltip' => 'Utilizador não verificado - clique para verificar',
@@ -160,6 +166,7 @@ return [
      | Guides
      | ------------------------------------------------------------------ */
     'guides' => [
+        'button'        => 'Guia',
         'users_title' => 'Utilizadores e Acessos',
         'users_desc'  => 'Faça a gestão de quem tem acesso à plataforma e respetivos registos.',
         'roles_title' => 'Papéis e Permissões',

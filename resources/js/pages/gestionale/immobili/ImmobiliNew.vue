@@ -10,10 +10,12 @@ import { List, Plus, LoaderCircle, Home, Hash, MapPin, Info } from 'lucide-vue-n
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import PertinenzaField from '@/components/gestionale/immobili/PertinenzaField.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
+import CercaComune from '@/components/comuni/CercaComune.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
@@ -24,7 +26,8 @@ const props = defineProps<{
   condomini: Building[];
   palazzine: Palazzina[];
   scale: Scala[];
-  tipologie: TipologiaImmobile[]
+  tipologie: TipologiaImmobile[];
+  unitaPrincipali: { id: number; etichetta: string }[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -74,7 +77,28 @@ const form = useForm({
   palazzina_id: '',
   scala_id: '',
   tipologia_id: '',
+  pertinenza_di_immobile_id: null as number | null,
+  pertinenza_di_esterna: null as string | null,
 });
+
+/**
+ * La categoria della tipologia scelta, che decide **solo l'evidenza** del campo «Pertinenza di» —
+ * mai la sua disponibilità. Vedi la nota estesa in `PertinenzaField.vue`.
+ */
+const categoriaTipologiaScelta = computed(
+  // `form.tipologia_id` parte come stringa vuota e diventa un numero alla selezione: il
+  // confronto va normalizzato, o non trova mai niente.
+  () => props.tipologie.find((t) => String(t.id) === String(form.tipologia_id))?.categoria ?? null,
+);
+
+/**
+ * Il Comune scelto dall'elenco riempie **due** campi, non uno: senza il codice catastale accanto al
+ * nome, l'aiuto avrebbe risparmiato la parte facile e lasciato quella che nessuno ricorda.
+ */
+const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
+  form.comune_catasto = c.nome;
+  form.codice_catasto = c.codice_catasto;
+};
 
 const submit = () => {
     form.post(route(...generateRoute('gestionale.immobili.store', { condominio: props.condominio.id })), {
@@ -134,6 +158,15 @@ const submit = () => {
                 <InputError :message="form.errors.tipologia_id" />
               </div>
 
+              <PertinenzaField
+                :unita-principali="unitaPrincipali"
+                :categoria-tipologia="categoriaTipologiaScelta"
+                v-model:immobile-id="form.pertinenza_di_immobile_id"
+                v-model:esterna="form.pertinenza_di_esterna"
+                :errore-immobile="form.errors.pertinenza_di_immobile_id"
+                :errore-esterna="form.errors.pertinenza_di_esterna"
+              />
+
               <div class="sm:col-span-6">
                 <Label for="descrizione">Descrizione</Label>
                 <Input 
@@ -155,6 +188,7 @@ const submit = () => {
                   :reduce="(p: Palazzina) => p.id" 
                   placeholder="Associa palazzina..." 
                 />
+                <InputError :message="form.errors.palazzina_id" />
               </div>
 
               <div class="sm:col-span-3">
@@ -166,6 +200,7 @@ const submit = () => {
                   v-model="form.scala_id" 
                   :reduce="(s: Scala) => s.id" placeholder="Associa scala..." 
                 />
+                <InputError :message="form.errors.scala_id" />
               </div>
             </div>
           </CardContent>
@@ -197,6 +232,7 @@ const submit = () => {
                   placeholder="es. T, 1, 2..." 
                   class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.piano" />
               </div>
               <div class="sm:col-span-2">
                 <Label for="superficie">Superficie (m²)</Label>
@@ -206,6 +242,7 @@ const submit = () => {
                   placeholder="es. 90" 
                   class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.superficie" />
               </div>
               <div class="sm:col-span-2">
                 <Label for="numero_vani">Numero vani</Label>
@@ -215,6 +252,7 @@ const submit = () => {
                   placeholder="es. 5" 
                   class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.numero_vani" />
               </div>
 
               <div class="sm:col-span-8">
@@ -225,6 +263,7 @@ const submit = () => {
                   placeholder="Note visibili solo agli amministratori..." 
                   class="mt-1 bg-white dark:bg-slate-950"
                 />
+                <InputError :message="form.errors.note" />
               </div>
             </div>
           </CardContent>
@@ -239,12 +278,16 @@ const submit = () => {
             <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4">
               <div class="sm:col-span-3 font-sans">
                 <Label for="comune_catasto">Comune catastale</Label>
-                <Input 
-                  id="comune_catasto" 
-                  v-model="form.comune_catasto" 
-                  class="mt-1 bg-white dark:bg-slate-950" 
-                  placeholder="es. Milano, Roma..."
-                />
+                <div class="mt-1 flex items-center gap-2">
+                  <Input 
+                    id="comune_catasto" 
+                    v-model="form.comune_catasto" 
+                    class="bg-white dark:bg-slate-950" 
+                    placeholder="es. Milano, Roma..."
+                  />
+                  <CercaComune @scelto="comuneScelto" />
+                </div>
+                <InputError :message="form.errors.comune_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="codice_catasto">Codice</Label>
@@ -252,8 +295,9 @@ const submit = () => {
                   id="codice_catasto" 
                   v-model="form.codice_catasto" 
                   class="mt-1 bg-white dark:bg-slate-950" 
-                  placeholder="es. 12345"
+                  placeholder="es. H501"
                 />
+                <InputError :message="form.errors.codice_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -264,6 +308,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. A, B..."
                 />
+                <InputError :message="form.errors.sezione_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="foglio_catasto">Foglio</Label>
@@ -273,6 +318,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. 123"
                 />
+                <InputError :message="form.errors.foglio_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="particella_catasto">Particella</Label>
@@ -282,6 +328,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. 1234"
                 />
+                <InputError :message="form.errors.particella_catasto" />
               </div>
               <div class="sm:col-span-1 font-sans">
                 <Label for="subalterno_catasto">Subalterno</Label>
@@ -291,6 +338,7 @@ const submit = () => {
                   class="mt-1 bg-white dark:bg-slate-950" 
                   placeholder="es. 12345"
                 />
+                <InputError :message="form.errors.subalterno_catasto" />
               </div>
             </div>
           </CardContent>

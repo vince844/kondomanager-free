@@ -132,10 +132,15 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     if ($rateZero) {
                         $quoteRataZero = $rateZero->rateQuote()->whereIn('anagrafica_id', $quotePerAnagrafica->keys())->get();
                         foreach ($quoteRataZero->groupBy('anagrafica_id') as $anagId => $quote0) {
-                            $totaleQuota0 = $quote0->sum('importo');
-                            // Se la Rata 0 è un credito (negativo), lo salviamo in positivo per il frontend
-                            if ($totaleQuota0 < 0) {
-                                $creditiRataZero[$anagId] = abs($totaleQuota0); 
+                            // Stessa formula che il portale usa quando serve l'evento, presa
+                            // dallo stesso posto: due copie divergono alla prima modifica.
+                            // Questo resta comunque uno **snapshot** — il valore che il condòmino
+                            // legge lo ricalcola `EventoResource` al momento, perché qui non si
+                            // torna mai a riscrivere un evento già creato.
+                            $creditoResiduo = \App\Services\Gestionale\CreditoService::nettoSpendibile($quote0);
+
+                            if ($creditoResiduo > 0) {
+                                $creditiRataZero[$anagId] = $creditoResiduo;
                             }
                         }
                     }
@@ -145,8 +150,15 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     $anagrafica = $quote->first()->anagrafica;
                     if (!$anagrafica) continue;
 
-                    $esiste = Evento::where('start_time', $rata->data_scadenza->copy()->setTime(0, 0))
-                        ->whereJsonContains('meta->context->rata_id', $rata->id)
+                    // L'evento si riconosce dalla RATA e dalla PERSONA, non dalla data.
+                    //
+                    // Qui c'era anche un filtro su `start_time`: finché le scadenze non si
+                    // spostano è indifferente, perché la data dell'evento coincide sempre con
+                    // quella della rata. Dal momento in cui una scadenza si può cambiare —
+                    // ed è ciò che questa versione introduce — quel filtro rende invisibile
+                    // l'evento che già esiste, e il listener ne crea un secondo per la stessa
+                    // rata e la stessa persona. Il `rata_id` la identifica già da solo.
+                    $esiste = Evento::whereJsonContains('meta->context->rata_id', $rata->id)
                         ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagraficaId))
                         ->exists();
 
@@ -156,7 +168,10 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     
                     $dettaglioQuote = $quote->map(function($q) use (&$importoVal) {
                         $immobile = $q->immobile;
-                        $desc = $immobile ? "Int. {$immobile->interno} ({$immobile->nome})" : "Unità";
+                        // `etichetta`: senza interno restava «Int.  (Posto auto 3)», con la parentesi orfana.
+            // `etichettaEstesa`: qui prima si mostravano interno **e** nome, e applicare la sola
+            // `etichetta` avrebbe tolto il nome a ogni installazione esistente (ripasso .58).
+            $desc = $immobile ? $immobile->etichettaEstesa : "Unità";
                         
                         $componenteSpesa = $q->importo;
                         $componenteSaldo = 0;

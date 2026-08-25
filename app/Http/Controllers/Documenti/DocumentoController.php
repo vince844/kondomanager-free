@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Documenti;
 
 use App\Events\Documenti\NotifyUserOfCreatedDocumento;
+use App\Events\Notifiche\DestinatariDaAvvisare;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
@@ -18,9 +20,11 @@ use App\Models\Condominio;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
@@ -29,7 +33,7 @@ use Illuminate\Support\Facades\Storage;
 
 class DocumentoController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, PaginaElenco;
 
     /**
      * Create a new controller instance.
@@ -54,6 +58,10 @@ class DocumentoController extends Controller
 
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $documenti = $this->documentoService->getDocumenti(  
             anagrafica: null,
             condominioIds: null,
@@ -72,7 +80,43 @@ class DocumentoController extends Controller
                 'per_page'     => $documenti->perPage(),
                 'total'        => $documenti->total(),
             ],
-            'filters' => Arr::only($validated, ['name', 'category_id', 'condominio_id'])
+            /*
+             * ⚠️ **Il tipo che torna indietro deve combaciare con quello che l'opzione del filtro
+             * contiene — e i due filtri di questa barra non usano lo stesso tipo.**
+             *
+             * Dalla query string gli identificativi arrivano sempre come stringhe (`['3']`), anche
+             * se la regola li valida `integer`: Laravel controlla, non converte. La barra si
+             * reidrata confrontando questi valori con le opzioni, e il confronto è un `Set.has()`,
+             * che non converte niente.
+             *
+             * Le due composable che alimentano i due filtri emettono tipi **opposti**:
+             * `useCategorieDocumenti` un numero (`categoria.id`), `useCondomini` una stringa
+             * (`String(c.id)`). Finché i filtri venivano solo scritti dall'interfaccia la
+             * divergenza era invisibile — ogni valore combaciava con sé stesso; si vede solo ora
+             * che si reidratano dal server.
+             *
+             * Un cast unico per tutti gli array accenderebbe una pillola e spegnerebbe l'altra —
+             * e sul condominio farebbe di peggio: cliccando la voce nel menu la si
+             * **aggiungerebbe** invece di toglierla, lasciando un filtro che dal menu non si può
+             * più rimuovere. Trovato dalla revisione avversariale della beta.62.
+             *
+             * ⛔ **La correzione giusta è togliere la divergenza, e non si fa qui.** `useCondomini`
+             * è condivisa con le barre di comunicazioni, segnalazioni e utenti: allinearla ai
+             * numeri porta la correzione fuori dal perimetro di questa beta, su tre pagine che le
+             * segnalazioni non riguardano. La voce è in `docs/roadmap.md` con la misura; qui si
+             * rispetta la convenzione esistente, filtro per filtro.
+             */
+            'filters' => [
+                ...Arr::only($validated, ['name']),
+                ...(isset($validated['category_id'])
+                    ? ['category_id' => array_map('intval', $validated['category_id'])]
+                    : []),
+                ...(isset($validated['condominio_id'])
+                    ? ['condominio_id' => array_map('strval', $validated['condominio_id'])]
+                    : []),
+            ],
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 
@@ -89,7 +133,10 @@ class DocumentoController extends Controller
        return Inertia::render('documenti/DocumentiNew', [
             'categories' => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             'condomini'  => CondominioResource::collection(Condominio::all()),
-            'anagrafiche' => []
+            'anagrafiche' => [],
+            // Il limite lo decide il server, non noi: la schermata scriveva un numero fisso
+            // (o non ne scriveva nessuno) mentre la regola ne accettava un altro.
+            'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]); 
     }
 
@@ -199,7 +246,10 @@ class DocumentoController extends Controller
             'documento'   => new DocumentoResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            // Il limite lo decide il server, non noi: la schermata scriveva un numero fisso
+            // (o non ne scriveva nessuno) mentre la regola ne accettava un altro.
+            'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]); 
     }
 
@@ -220,6 +270,13 @@ class DocumentoController extends Controller
 
         $validated = $request->validated();
 
+        /*
+         * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot** — vedi la nota gemella in
+         * `Comunicazioni\ComunicazioneController::update()`, dove sta il perché per esteso.
+         */
+        $risolutore = app(DestinatariNotifica::class);
+        $destinatariPrima = $risolutore->perModello($documento);
+
         try {
 
             DB::beginTransaction();
@@ -227,8 +284,8 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::exists($documento->path)) {
-                    Storage::delete($documento->path);
+                if (Storage::disk('local')->exists($documento->path)) {
+                    Storage::disk('local')->delete($documento->path);
                 }
 
                 $uploadedFile = $request->file('file');
@@ -247,6 +304,8 @@ class DocumentoController extends Controller
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
                 'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                // ⚠️ Lo mette il server, non il modulo: vedi la nota gemella negli altri due.
+                'updated_by'   => Auth::id(),
                 'category_id'  => $validated['category_id'] ?? $documento->category_id,
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
                 'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
@@ -269,9 +328,54 @@ class DocumentoController extends Controller
             );
         }
 
+        try {
+
+            $this->avvisaDopoLaModifica($documento, $destinatariPrima, $validated);
+
+        } catch (\Exception $emailException) {
+
+            Log::error('Error notifying update for documento ID ' . $documento->id . ': ' . $emailException->getMessage());
+
+            return to_route('admin.documenti.index')->with(
+                $this->flashWarning(__('documenti.error_notify_updated_document'))
+            );
+
+        }
+
         return to_route('admin.documenti.index')->with(
             $this->flashSuccess(__('documenti.success_update_document'))
         );
+    }
+
+    /**
+     * Chi va avvisato dopo una modifica, e con quale dei due avvisi.
+     *
+     * Gemella di `Comunicazioni\ComunicazioneController::avvisaDopoLaModifica()`, dove sta la
+     * spiegazione per esteso: i nuovi arrivati ricevono l'avviso di *creazione* sempre, chi c'era
+     * già riceve quello di *modifica* solo se l'amministratore spunta la casella.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
+     * @param  array<string, mixed>  $validated
+     */
+    private function avvisaDopoLaModifica(Documento $documento, $destinatariPrima, array $validated): void
+    {
+        $destinatariDopo = app(DestinatariNotifica::class)->perModello($documento->fresh());
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+
+        if ($nuovi !== []) {
+            DestinatariDaAvvisare::dispatch($documento, $nuovi, 'nuovo');
+        }
+
+        if (! ($validated['avvisa_destinatari'] ?? false)) {
+            return;
+        }
+
+        $giaDestinatari = $destinatariDopo->intersect($destinatariPrima)->values()->all();
+
+        if ($giaDestinatari !== []) {
+            DestinatariDaAvvisare::dispatch($documento, $giaDestinatari, 'aggiornato');
+        }
     }
 
     /**
@@ -293,8 +397,8 @@ class DocumentoController extends Controller
             DB::beginTransaction();
 
             // Delete the file from storage
-            if (Storage::exists($documento->path)) {
-                Storage::delete($documento->path);
+            if (Storage::disk('local')->exists($documento->path)) {
+                Storage::disk('local')->delete($documento->path);
             }
 
             // Delete the database record
@@ -325,11 +429,10 @@ class DocumentoController extends Controller
     /**
      * Stream the specified document as a file download.
      *
-     * The file is stored on disk with a hashed filename that preserves the original
-     * extension (via hashName()), but $documento->name holds a user-defined title
-     * with no extension. The extension is extracted from the stored path and appended
-     * to the download filename if not already present, so the browser receives a
-     * correctly named file regardless of the operating system or browser in use.
+     * Il nome di scaricamento lo decide `Documento::nomeDiScaricamento()`, che porta con sé la
+     * spiegazione del perché serve. Fino alla beta.62 la regola era scritta qui dentro, e il
+     * gemello dell'area utente era rimasto senza: la seconda segnalazione dal forum è arrivata
+     * da lì. Una regola in un posto solo non si può correggere a metà.
      *
      * @param  \App\Models\Documento $documento
      * @return \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\RedirectResponse
@@ -346,19 +449,9 @@ class DocumentoController extends Controller
                 );
             }
 
-            // Il file è salvato con hashName() che preserva l'estensione originale
-            // (es. documenti/a1b2c3.pdf), ma $documento->name è il titolo senza estensione.
-            // Appendiamo l'estensione al nome solo se non è già presente.
-            $extension    = pathinfo($documento->path, PATHINFO_EXTENSION);
-            $downloadName = $documento->name;
-
-            if (!empty($extension) && !str_ends_with(strtolower($downloadName), '.' . strtolower($extension))) {
-                $downloadName .= '.' . $extension;
-            }
-
             $percorsoAssoluto = Storage::disk('local')->path($documento->path);
 
-            return response()->download($percorsoAssoluto, $downloadName);
+            return response()->download($percorsoAssoluto, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
 

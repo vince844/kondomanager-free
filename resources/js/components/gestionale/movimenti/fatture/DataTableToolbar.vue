@@ -1,50 +1,79 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
-import { Search, Plus } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, Plus, Zap, X } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 
-const props = defineProps<{ table: Table<any> }>();
-const page = usePage<{ condominio: Building, filters: any }>();
+defineProps<{ table: Table<any> }>();
+const page = usePage<{
+  condominio: Building
+  statiPagamento: { value: string; label: string }[]
+  filters: {
+    search?: string
+    stato_pagamento?: string
+    stato_approvazione?: string
+    data_da?: string
+    data_a?: string
+  }
+}>();
 const { generateRoute } = usePermission();
 const condominioId = computed(() => page.props.condominio.id);
+
 const globalFilter = ref(page.props.filters?.search || '');
+const statoPagamento = ref(page.props.filters?.stato_pagamento || '');
+const dataDa = ref(page.props.filters?.data_da || '');
+const dataA = ref(page.props.filters?.data_a || '');
 
-const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
-  if (globalFilter.value) params.search = globalFilter.value
-  
-  // Mantieni eventuali filtri attivi (es. sforo_motivato cliccato dalla card)
-  if (page.props.filters?.stato_approvazione) {
-      params.stato_approvazione = page.props.filters.stato_approvazione;
-  }
-  return params
-})
-
-watchDebounced(
-  globalFilter,
-  () => {
-    router.get(
-      route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
-      filterParams.value,
-      { preserveState: true, replace: true, preserveScroll: true }
-    )
-  },
-  { debounce: 300 }
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
 )
 
-const isFiltered = computed(() => globalFilter.value.length > 0)
-const resetFilter = () => { globalFilter.value = '' }
+// Ogni filtro viaggia sempre, anche vuoto: `null` significa **togli**, mentre ometterlo
+// lascerebbe in piedi quello di prima e non ci sarebbe più modo di svuotarlo.
+// `stato_approvazione` non ha un controllo qui (arriva dalla card «sfori motivati»):
+// non si passa, così il composable lo riporta com'è insieme a righe per pagina e ordinamento.
+const applyFilters = () => {
+  filtra({
+    search: globalFilter.value || null,
+    stato_pagamento: statoPagamento.value || null,
+    data_da: dataDa.value || null,
+    data_a: dataA.value || null,
+  })
+}
+
+watchDebounced(globalFilter, applyFilters, { debounce: 300 })
+watch([statoPagamento, dataDa, dataA], applyFilters)
+
+const isFiltered = computed(() =>
+  !!(globalFilter.value || statoPagamento.value || dataDa.value || dataA.value || page.props.filters?.stato_approvazione)
+)
+
+const resetFilters = () => {
+  globalFilter.value = ''
+  statoPagamento.value = ''
+  dataDa.value = ''
+  dataA.value = ''
+
+  router.get(
+    route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
+    { page: 1 },
+    { preserveState: true, replace: true, preserveScroll: true }
+  )
+}
+
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full">
+  <div class="flex flex-wrap items-center justify-between w-full gap-2">
 
-    <div class="flex items-center space-x-2">
+    <div class="flex flex-wrap items-center gap-2">
 
       <!-- Ricerca libera -->
       <div class="relative">
@@ -58,15 +87,55 @@ const resetFilter = () => { globalFilter.value = '' }
         />
       </div>
 
+      <!-- Stato pagamento -->
+      <Select v-model="statoPagamento">
+        <SelectTrigger class="h-8 w-[170px] text-xs style-chooser">
+          <SelectValue placeholder="Stato pagamento" />
+        </SelectTrigger>
+        <SelectContent position="popper" :style="{ width: 'var(--reka-select-trigger-width)' }">
+          <SelectItem v-for="stato in page.props.statiPagamento" :key="stato.value" :value="stato.value">
+            {{ stato.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <!-- Intervallo data documento -->
+      <Input type="date" v-model="dataDa" class="h-8 w-[140px] text-xs" title="Data documento da" />
+      <Input type="date" v-model="dataA" class="h-8 w-[140px] text-xs" title="Data documento a" />
+
+      <!-- Reset -->
+      <Button
+        v-if="isFiltered"
+        variant="ghost"
+        @click="resetFilters"
+        class="h-8 px-2 lg:px-3 text-slate-500 hover:text-slate-700"
+      >
+        <X class="h-4 w-4 mr-1 lg:mr-2" />
+        <span class="hidden lg:inline">Azzera filtri</span>
+        <span class="inline lg:hidden">Azzera</span>
+      </Button>
+
     </div>
 
-    <Link 
-      :href="route(generateRoute('gestionale.fatture.create'), { condominio: condominioId })"
-      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
-    >
-      <Plus class="w-3.5 h-3.5" /> 
-      Nuova fattura
-    </Link>
+    <div class="flex items-center gap-2">
+      <!-- La regolazione immediata è il fratello minore della fattura (costo → banca
+           senza partita fornitore): vive qui accanto, non più nella barra movimenti. -->
+      <Link
+        :href="route(generateRoute('gestionale.regolazioni-immediate.create'), { condominio: condominioId })"
+        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 dark:border-slate-700 shadow-sm text-xs text-white font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-800 dark:hover:bg-slate-800 transition-colors"
+      >
+        <Zap class="w-3.5 h-3.5 text-amber-500" />
+        Regolazione immediata
+      </Link>
+
+      <Link
+        :href="route(generateRoute('gestionale.fatture.create'), { condominio: condominioId })"
+        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+      >
+        <Plus class="w-3.5 h-3.5 text-green-500" />
+        Nuova fattura
+      </Link>
+    </div>
 
   </div>
 </template>

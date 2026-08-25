@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Eventi;
 
+use App\Traits\OrdinaElenco;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Evento\CreateEventoRequest;
 use App\Http\Requests\Evento\EditEventoRequest;
@@ -21,6 +23,7 @@ use App\Models\RicorrenzaEvento;
 use App\Services\EventoService;
 use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
@@ -35,7 +38,9 @@ use Recurr\Transformer\ArrayTransformerConfig;
 
 class EventoController extends Controller
 {
+    use OrdinaElenco;
     use HandleFlashMessages;
+    use PaginaElenco;
 
     public function __construct(
         private RecurrenceService $recurrenceService,
@@ -54,7 +59,9 @@ class EventoController extends Controller
 
         $validated = $request->validated();
         
-        $perPage = min((int) ($validated['per_page'] ?? config('pagination.default_per_page')), 100);
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $perPage = $this->righePerPagina($request);
         $page = (int) ($validated['page'] ?? 1);
 
         $events = $this->recurrenceService->getEventsInNextDays(
@@ -76,7 +83,13 @@ class EventoController extends Controller
                 'per_page' => $events->perPage(),
                 'total' => $events->total(),
             ],
-            'filters' => $validated,
+            // ⚠️ **Qui non si rimanda alcun ordinamento, ed è deliberato.** Questo elenco non nasce
+            // da una query sola: `RecurrenceService` combina gli eventi singoli con le occorrenze
+            // generate in PHP dalle ricorrenze e pagina la collezione risultante, quindi non c'è un
+            // `ORDER BY` a cui appoggiarsi. Fino alla beta.54 `sort` e `direction` uscivano di qui
+            // pur non essendo mai applicati: la freccetta nell'intestazione si accendeva e le righe
+            // non si muovevano. Dichiarare un ordinamento che non si è fatto è il difetto che
+            // questa beta esiste per chiudere, e valeva anche qui dentro.
         ]);
     }
 

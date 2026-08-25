@@ -23,6 +23,8 @@ import type { Fornitore } from '@/types/fornitori';
 import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
   fornitore: Fornitore;
   documento: Documento;
 }>()
@@ -78,20 +80,17 @@ const pageGuides = [
 ];
 
 // Validazione file
+// ⚠️ Via il controllo sulla dimensione — era un secondo limite scritto dove nessuno lo cerca — e via
+// JPG e PNG, che la regola a server (`mimes:pdf`) non ha mai accettato: si offrivano all'utente per
+// poi respingerli dopo il caricamento.
 const validateFile = (selectedFile: File): boolean => {
-  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-  const maxSize = 20 * 1024 * 1024; // 20MB
-  
+  const allowedTypes = ['application/pdf'];
+
   if (!allowedTypes.includes(selectedFile.type)) {
-    form.setError('file', 'Sono ammessi solo file PDF, JPG o PNG');
+    form.setError('file', 'Sono ammessi solo file PDF');
     return false;
   }
-  
-  if (selectedFile.size > maxSize) {
-    form.setError('file', 'Il file non può superare i 20MB');
-    return false;
-  }
-  
+
   return true;
 }
 
@@ -290,7 +289,7 @@ const submit = (): void => {
                                         <EmptyDescription>
                                             Trascina qui il file oppure clicca per selezionarlo.
                                             <div class="text-xs text-muted-foreground mt-1">
-                                                Formati supportati: PDF, Immagini (max 20MB)
+                                                Solo PDF (max {{ limiteFile }})
                                             </div>
                                         </EmptyDescription>
                                     </EmptyHeader>
@@ -300,7 +299,7 @@ const submit = (): void => {
                                     id="file-upload"
                                     type="file"
                                     class="hidden"
-                                    accept=".pdf,application/pdf,image/jpeg,image/png"
+                                    accept="application/pdf"
                                     @change="handleFileChange"
                                     ref="fileInputRef"
                                 />

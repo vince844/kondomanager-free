@@ -40,6 +40,9 @@ class CreateComunicazioneRequest extends FormRequest
             'anagrafiche.*'   => ['integer', Rule::exists('anagrafiche', 'id')],
             'condomini_ids'   => ['required', 'array'],
             'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
+            // Solo in modifica: la casella «avvisa i destinatari». In creazione l'avviso parte
+            // sempre, quindi il campo non arriva e `nullable` lo lascia passare.
+            'avvisa_destinatari' => ['nullable', 'boolean'],
         ];
     }
 

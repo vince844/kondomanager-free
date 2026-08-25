@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
+use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\DoubleEntryValidator;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RigaScrittura;
 use App\Enums\StatoPianoRate;
@@ -14,6 +17,7 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\RataEmessa;
 use App\Enums\EventoTipo;
 use App\Models\Evento;
+use App\Services\Gestionale\CreditoService;
 use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -29,6 +33,14 @@ use Illuminate\Support\Facades\Log;
 class EmissioneRateController extends Controller
 {
     use HandleFlashMessages, HasEsercizio;
+
+    /**
+     * Marcatore dell'unica eccezione di dominio che questo controller solleva da sé.
+     * Serve perché il `catch (\Throwable)` in coda riduce tutto a «errore tecnico»: senza
+     * un marcatore, a chi emette una rata con un riporto in un condominio a cui manca il
+     * Fondo Passate Gestioni resterebbe un messaggio che non dice cosa fare.
+     */
+    private const ERRORE_PASSATE_GESTIONI = 'EMISSIONE_SENZA_FONDO_PASSATE_GESTIONI';
 
     /**
      * Emette una o più rate di un piano approvato.
@@ -70,12 +82,21 @@ class EmissioneRateController extends Controller
             ->where('ruolo', 'gestione_rate')
             ->first();
 
+        // Contropartita del riporto da esercizi precedenti. NON è obbligatoria qui: serve solo
+        // alle rate che portano un pregresso, e pretenderla sempre bloccherebbe l'emissione
+        // ordinaria dei condomìni che non ce l'hanno. Il controllo è dentro il ciclo, dove si
+        // sa se serve davvero.
+        $contoPassateGestioni = ContoContabile::where('condominio_id', $condominio->id)
+            ->where('ruolo', 'passate_gestioni')
+            ->whereNull('deleted_at')
+            ->first();
+
         if (!$contoCrediti || !$contoGestione) {
             return back()->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
         }
 
         try {
-            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $inviaNotifiche) {
+            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche) {
                 
                 $rateSelezionate = Rata::with('rateQuote')
                     ->where('piano_rate_id', $pianoRate->id)
@@ -85,7 +106,8 @@ class EmissioneRateController extends Controller
                 foreach ($rateSelezionate as $rata) {
                     if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) continue;
 
-                    $totaleRataCentesimi = 0; 
+                    $totaleRataCentesimi = 0;
+                    $totalePregressoCentesimi = 0;
 
                     // 1. Scrittura Testata
                     $scrittura = ScritturaContabile::create([
@@ -100,19 +122,50 @@ class EmissioneRateController extends Controller
                     ]);
 
                     // 2. Scrittura Righe (Dettaglio quote)
+                    //
+                    // Il condòmino deve l'INTERA quota, quindi il DARE su Crediti v/Condòmini è
+                    // sempre `importo` pieno. A cambiare è la contropartita, perché una quota può
+                    // portare dentro due cose di competenza diversa, e lo snapshot lo dice già:
+                    //
+                    //     importo = quota_pura_gestione + saldo_usato
+                    //
+                    // `quota_pura_gestione` è la spesa deliberata per QUESTO esercizio e chiude su
+                    // Gestione Rate. `saldo_usato` è il riporto da esercizi precedenti — la Rata 0
+                    // è fatta solo di quello — e non è un provento dell'anno: chiude sul Fondo
+                    // Passate Gestioni, la stessa contropartita con cui l'apertura di cassa porta
+                    // dentro una posizione anteriore (RegistraAperturaCassaAction:70-73).
+                    //
+                    // ⚠️ **Perché la componente di riporto si DERIVA per differenza** invece di
+                    // leggere `saldo_usato` dallo snapshot: così `DARE = AVERE` vale per
+                    // costruzione, anche su una quota il cui snapshot non quadri. Fidarsi di due
+                    // numeri scritti da qualcun altro significa poter emettere una scrittura
+                    // sbilanciata, e il DoubleEntryValidator la rifiuterebbe a fine rata, dopo aver
+                    // già bruciato il protocollo.
                     foreach ($rata->rateQuote as $quota) {
-                        
-                        $importoDaRegistrare = $quota->importo;
 
-                        if (!empty($quota->regole_calcolo)) {
-                            $json = is_string($quota->regole_calcolo) ? json_decode($quota->regole_calcolo) : (object)$quota->regole_calcolo;
-                            
-                            if (isset($json->importi->quota_pura_gestione)) {
-                                $importoDaRegistrare = (int) $json->importi->quota_pura_gestione;
-                            }
+                        $importoQuota = (int) $quota->importo;
+
+                        if ($importoQuota <= 0) continue;
+
+                        // ⚠️ `regole_calcolo` ha il cast `'json'` sul Model, quindi qui arriva un
+                        // ARRAY. Fino alla beta.62 questa lettura faceva `(object) $array` e poi
+                        // `isset($json->importi->quota_pura_gestione)`: il cast a oggetto è
+                        // SUPERFICIALE, `$json->importi` restava un array e l'isset era sempre
+                        // falso. Il ramo non si è mai eseguito, e il riporto finiva su Gestione
+                        // Rate insieme al deliberato. Invisibile sulle rate ordinarie, dove i due
+                        // numeri coincidono; visibile solo dove divergono, cioè sulla Rata 0.
+                        $componenteGestione = $importoQuota;
+                        $regole = $quota->regole_calcolo;
+
+                        if (is_string($regole)) {
+                            $regole = json_decode($regole, true);
                         }
 
-                        if ($importoDaRegistrare <= 0) continue;
+                        if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
+                            $componenteGestione = (int) $regole['importi']['quota_pura_gestione'];
+                        }
+
+                        $componentePregresso = $importoQuota - $componenteGestione;
 
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCrediti->id,
@@ -120,23 +173,61 @@ class EmissioneRateController extends Controller
                             'immobile_id'        => $quota->immobile_id,
                             'rata_id'            => $rata->id,
                             'tipo_riga'          => 'dare',
-                            'importo'            => $importoDaRegistrare, 
+                            'importo'            => $importoQuota,
                             'note'               => "Quota " . $rata->descrizione
                         ]);
 
                         $quota->update(['scrittura_contabile_id' => $scrittura->id]);
-                        $totaleRataCentesimi += $importoDaRegistrare;
+
+                        $totaleRataCentesimi     += $componenteGestione;
+                        $totalePregressoCentesimi += $componentePregresso;
                     }
 
-                    // 3. Chiusura in Avere (Gestione)
-                    if ($totaleRataCentesimi > 0) {
-                        $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoGestione->id,
-                            'tipo_riga'          => 'avere',
-                            'importo'            => $totaleRataCentesimi,
-                            'note'               => "Totale emissione " . $rata->descrizione
-                        ]);
+                    // 3. Chiusura in Avere, su due conti quando la rata porta un riporto.
+                    //
+                    // I due totali possono essere NEGATIVI: un condòmino che arriva a credito ha
+                    // `saldo_usato < 0`, quindi la sua componente di riporto riduce il debito. Un
+                    // totale negativo si scrive nel verso opposto, e la quadratura regge comunque
+                    // perché il DARE delle quote è già la somma algebrica delle due componenti.
+                    $totaleDareQuote = $totaleRataCentesimi + $totalePregressoCentesimi;
+
+                    if ($totaleDareQuote > 0) {
+
+                        if ($totalePregressoCentesimi !== 0 && ! $contoPassateGestioni) {
+                            throw new \RuntimeException(self::ERRORE_PASSATE_GESTIONI);
+                        }
+
+                        foreach ([
+                            [$contoGestione, $totaleRataCentesimi, "Totale emissione " . $rata->descrizione],
+                            [$contoPassateGestioni, $totalePregressoCentesimi, "Riporto esercizi precedenti — " . $rata->descrizione],
+                        ] as [$conto, $totale, $nota]) {
+
+                            if ($totale === 0) continue;
+
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $conto->id,
+                                'tipo_riga'          => $totale > 0 ? 'avere' : 'dare',
+                                'importo'            => abs($totale),
+                                'note'               => $nota
+                            ]);
+                        }
+
+                    } else {
+                        // Nessuna quota da emettere (es. rata di soli conguagli a credito):
+                        // la testata resterebbe una scrittura SENZA RIGHE, che il
+                        // DoubleEntryValidator approva (0 = 0) ma che sporca il giornale e
+                        // brucia un numero di protocollo. Peggio: nessuna quota riceve
+                        // scrittura_contabile_id, quindi il guard anti-doppia-emissione non
+                        // scatta e ogni nuova emissione ne accumula un'altra.
+                        $scrittura->forceDelete();
+                        continue;
                     }
+
+                    // Quadratura dell'emissione: la somma delle quote a DARE deve
+                    // corrispondere esattamente alla chiusura in AVERE. Un arrotondamento
+                    // sbagliato sulle quote qui viene intercettato subito, invece di
+                    // propagarsi a tutte le rate del piano e comparire nel rendiconto.
+                    DoubleEntryValidator::validateOrFail($scrittura->id);
 
                     // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
                     $rataId = (int) $rata->id;
@@ -179,14 +270,35 @@ class EmissioneRateController extends Controller
 
             InboxService::clearAdminCache();
 
-            $msg = $inviaNotifiche 
-                ? 'Rate emesse e notificate correttamente ai condòmini.' 
+            $msg = $inviaNotifiche
+                ? 'Rate emesse e notificate correttamente ai condòmini.'
                 : 'Rate emesse in modalità silenziosa. I condòmini non vedranno gli importi finché non li pubblicherai.';
 
-            return back()->with($this->flashSuccess($msg));
+            // Proposta compensazione: se qualche intestatario delle rate appena
+            // emesse ha un credito disponibile (saldo a credito o strapagamento),
+            // lo segnaliamo così l'amministratore può compensare subito.
+            $suggerimentoCrediti = $this->buildSuggerimentoCrediti($condominio, $request->rate_ids);
+
+            $risposta = back()->with($this->flashSuccess($msg));
+
+            // In una chiave propria, non accodato a $msg: il banner di `flash.message` viene
+            // dipinto e poi cancellato dal modale di conferma dell'emissione, quindi un
+            // suggerimento scritto lì non fa in tempo a essere letto. Da qui lo raccoglie il
+            // modale, che resta finché non lo si chiude ed è dove l'amministratore guarda.
+            return $suggerimentoCrediti
+                ? $risposta->with('suggerimento_crediti', $suggerimentoCrediti)
+                : $risposta;
 
         } catch (\Throwable $e) {
             Log::error("Errore emissione rate: " . $e->getMessage());
+
+            if (str_contains($e->getMessage(), self::ERRORE_PASSATE_GESTIONI)) {
+                return back()->with($this->flashError(
+                    'Questa rata porta un riporto da esercizi precedenti, ma nel piano dei conti di '
+                    .'questo condominio manca il «Fondo Passate Gestioni» (2301). Ricrealo dal piano '
+                    .'dei conti e riprova: senza, il riporto finirebbe fra le entrate dell\'anno.'
+                ));
+            }
 
             if (str_contains($e->getMessage(), 'Duplicate entry') && str_contains($e->getMessage(), 'numero_protocollo_unique')) {
                 return back()->with($this->flashError(
@@ -197,6 +309,59 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Si è verificato un errore tecnico durante l\'emissione.'));
         }
 }
+
+    /**
+     * Verifica se gli intestatari delle rate appena emesse hanno crediti
+     * disponibili (saldi a credito non consumati o quote strapagate) e
+     * costruisce il testo del suggerimento di compensazione da accodare
+     * al messaggio flash. Ritorna null se nessuno ha credito.
+     */
+    private function buildSuggerimentoCrediti(Condominio $condominio, array $rateIds): ?string
+    {
+        $anagraficheIds = RataQuote::whereIn('rata_id', $rateIds)
+            ->whereNotNull('anagrafica_id')
+            ->pluck('anagrafica_id')
+            ->unique();
+
+        if ($anagraficheIds->isEmpty()) {
+            return null;
+        }
+
+        $crediti = app(CreditoService::class)->perCondominio($condominio->id, $anagraficheIds->all());
+
+        if ($crediti->isEmpty()) {
+            return null;
+        }
+
+        // Contano solo quelli il cui credito copre DAVVERO qualcosa: segnalare un credito
+        // che non ha niente da compensare manda l'amministratore su una pagina dove non c'è
+        // nulla da fare, che è il difetto che questa versione sta chiudendo.
+        $compensabili = $crediti->filter(fn($c) => $c['compensabile']['importo_cents'] > 0)->values();
+
+        if ($compensabili->isEmpty()) {
+            return null;
+        }
+
+        // Con un solo condòmino si può essere precisi: si dice quale rata copre.
+        if ($compensabili->count() === 1) {
+            $c = $compensabili->first();
+
+            return 'Nota: ' . $c['nome'] . ' ha ' . MoneyHelper::format($c['compensabile']['importo_cents'])
+                . ' di credito spendibile subito. ' . $c['compensabile']['frase']
+                . ' Lo compensi da "Nuovo incasso".';
+        }
+
+        $elenco = $compensabili->take(3)
+            ->map(fn($c) => $c['nome'] . ' (' . MoneyHelper::format($c['compensabile']['importo_cents']) . ')')
+            ->join(', ');
+
+        if ($compensabili->count() > 3) {
+            $elenco .= ' e altri ' . ($compensabili->count() - 3);
+        }
+
+        return 'Nota: ' . $compensabili->count() . ' condòmini hanno un credito che copre rate già aperte — '
+            . $elenco . '. Li compensi da "Nuovo incasso".';
+    }
 
     /**
      * Annulla l'emissione di una singola rata.

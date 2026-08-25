@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\ScritturaContabile;
@@ -42,6 +43,13 @@ class StornoIncassoController extends Controller
         // 1. Sicurezza: verifichiamo che la scrittura appartenga al condominio corrente
         if ((int) $scrittura->condominio_id !== (int) $condominio->id) {
             abort(403, 'Azione non autorizzata su questo condominio.');
+        }
+
+        // {scrittura} arriva grezzo dalla rotta (nessun binding per tipo_movimento):
+        // senza questo controllo, l'id di una scrittura di QUALSIASI altro tipo
+        // (es. un giroconto) verrebbe accettato e stornato come se fosse un incasso.
+        if ($scrittura->tipo_movimento !== TipoMovimentoContabile::INCASSO_RATA) {
+            abort(403, 'Questa scrittura non è un incasso rata: lo storno non è applicabile.');
         }
 
         if ($scrittura->stato === 'annullata') {

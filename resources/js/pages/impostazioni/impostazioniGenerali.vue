@@ -6,9 +6,11 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { Settings, Globe, Building2, ShieldCheck } from 'lucide-vue-next'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import Alert from '@/components/Alert.vue'
+import InputError from '@/components/InputError.vue'
 import { trans, wTrans, isLoaded, loadLanguageAsync } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
 import type { GeneralSettings } from '@/types/GeneralSettings'
@@ -72,11 +74,14 @@ const languageLabels = computed<
 const {
   can_register,
   language,
+  app_name,
   open_condominio_on_login,
   default_condominio_id,
   condomini,
-  default_user_role, 
-  roles,            
+  default_user_role,
+  roles,
+  default_per_page,
+  per_page_disponibili,
 } = page.props
 
 /* -------------------------------------------------
@@ -85,10 +90,12 @@ const {
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: (language || 'it') as SupportedLanguage,
+  app_name: app_name || 'Kondomanager',
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
   force_comment_moderation: Boolean(page.props.force_comment_moderation),
+  default_per_page: Number(default_per_page) || 10,
 })
 
 /* -------------------------------------------------
@@ -184,6 +191,25 @@ const submit = () => {
               </div>
             </div>
 
+            <!-- APP NAME -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.app_name_settings_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.app_name_settings_description') }}
+                </p>
+              </div>
+
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Input v-model="form.app_name" type="text" maxlength="255"
+                  :placeholder="trans('impostazioni.placeholder.app_name')"
+                  class="w-full text-sm" />
+                <InputError :message="form.errors.app_name" />
+              </div>
+            </div>
+
             <!-- OPEN CONDOMINIO -->
             <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
@@ -268,6 +294,34 @@ const submit = () => {
               </div>
             </div>
 
+            <!-- RIGHE PER PAGINA -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.default_per_page_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.default_per_page_description') }}
+                </p>
+              </div>
+
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Select v-model="form.default_per_page">
+                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_per_page }">
+                    <SelectValue :placeholder="`${form.default_per_page}`" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="n in per_page_disponibili" :key="n" :value="n">
+                      {{ n }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p v-if="form.errors.default_per_page" class="text-sm text-red-500 mt-1">
+                  {{ form.errors.default_per_page }}
+                </p>
+              </div>
+            </div>
+
             <!-- MODERAZIONE COMMENTI -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
@@ -283,7 +337,7 @@ const submit = () => {
 
           </CardContent>
 
-          <CardFooter class="px-0 pt-6 flex items-center gap-4">
+          <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
             <Button :disabled="form.processing">
               <span v-if="form.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
               {{ trans('impostazioni.actions.save_settings') }}

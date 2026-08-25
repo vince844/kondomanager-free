@@ -14,6 +14,8 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,7 +25,7 @@ use Illuminate\Support\Facades\DB;
 
 class GestioneController extends Controller
 {
-     use HandleFlashMessages, HasCondomini;
+     use HandleFlashMessages, HasCondomini, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a listing of the management entities for a specific condominium and fiscal year.
@@ -53,6 +55,10 @@ class GestioneController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
@@ -64,7 +70,8 @@ class GestioneController extends Controller
             ->with(['esercizi' => function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
             }])
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, GestioneIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
 
         return Inertia::render('gestionale/gestioni/GestioniList', [
             'condominio' => $condominio,
@@ -79,6 +86,8 @@ class GestioneController extends Controller
                 'total'        => $gestioni->total(),
             ],
             'filters' => $request->only(['nome']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 
@@ -196,13 +205,6 @@ class GestioneController extends Controller
     }
     
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Gestione $gestione)
-    {
-        //
-    }
 
     /**
      * Show the form for editing an existing management entity.
@@ -342,10 +344,29 @@ class GestioneController extends Controller
             }
 
             // --- NUOVO CONTROLLO: Livello 1.5: Verifica Saldi (Versione 1.9) ---
-            $totaleSaldi = Saldo::where('gestione_id', $gestione->id)->count();
-            if ($totaleSaldi > 0) {
+            //
+            // Il conteggio comprende due famiglie che si cancellano da due posti diversi, e
+            // fino alla beta.43 il messaggio ne nominava uno solo. I saldi verso fornitori
+            // hanno `immobile_id` a NULL, mentre la pagina Saldi carica i pregressi passando
+            // **dagli immobili** (`SaldoInizialeController::index`): un debito fornitore lì non
+            // compare, e l'amministratore leggeva un'istruzione che non poteva eseguire.
+            // Si gestiscono dalla situazione debitoria del fornitore, che ha la sua rotta di
+            // eliminazione. Il divieto resta: a cambiare è che ora dice dove andare.
+            $saldiCondomini = Saldo::where('gestione_id', $gestione->id)->whereNull('fornitore_id')->count();
+            $saldiFornitori = Saldo::where('gestione_id', $gestione->id)->whereNotNull('fornitore_id')->count();
+
+            if ($saldiCondomini + $saldiFornitori > 0) {
+                $dove = [];
+                if ($saldiCondomini > 0) {
+                    $dove[] = "{$saldiCondomini} pregressi dei condòmini, che si eliminano dalla sezione «Saldi»";
+                }
+                if ($saldiFornitori > 0) {
+                    $dove[] = "{$saldiFornitori} debiti verso fornitori, che si eliminano dalla situazione debitoria del fornitore — nella sezione «Saldi» non compaiono";
+                }
+
                 return back()->with($this->flashError(
-                    "Impossibile eliminare: la gestione contiene saldi iniziali pregressi. Devi prima eliminare i saldi associati dalla sezione 'saldi'"
+                    'Impossibile eliminare: la gestione contiene saldi iniziali pregressi ('
+                    . implode(' e ', $dove) . ').'
                 ));
             }
             // -------------------------------------------------------------------

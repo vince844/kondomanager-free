@@ -12,6 +12,14 @@ use RuntimeException;
 
 class PianoRateCreatorService
 {
+    /**
+     * Il giorno del mese in cui scadono le rate quando l'amministratore non lo indica.
+     *
+     * Deve restare uguale al `default(5)` della migrazione di `piani_rate`: sono due copie
+     * dello stesso numero, e il test `CalendarioRateBonificheTest` le tiene agganciate.
+     */
+    public const GIORNO_SCADENZA_PREDEFINITO = 5;
+
     public function verificaGestione(int $gestioneId): Gestione
     {
         $gestione = Gestione::with(['pianoConto.conti', 'esercizi'])->findOrFail($gestioneId);
@@ -28,23 +36,48 @@ class PianoRateCreatorService
 
     public function creaPianoRate(array $data, Condominio $condominio): PianoRate
     {
-        return PianoRate::create([
+        $attributi = [
             'gestione_id'          => $data['gestione_id'],
             'condominio_id'        => $condominio->id,
             'nome'                 => $data['nome'],
             'descrizione'          => $data['descrizione'] ?? null,
             'metodo_distribuzione' => $data['metodo_distribuzione'] ?? 'prima_rata',
             'numero_rate'          => $data['numero_rate'],
-            'giorno_scadenza'      => $data['giorno_scadenza'] ?? 1,
             'note'                 => $data['note'] ?? null,
             'attivo'               => true,
-        ]);
+            // NULL non è un dato mancante: è la scelta di far partire il piano dall'inizio
+            // della gestione, cioè il comportamento di sempre. Vedi
+            // `PianoRate::dataPartenzaCalendario()`.
+            'data_prima_scadenza'  => $data['data_prima_scadenza'] ?? null,
+        ];
+
+        // Qui c'era `$data['giorno_scadenza'] ?? 1`, e quell'1 non lasciava mai parlare il
+        // default dichiarato dallo schema — `integer('giorno_scadenza')->default(5)`,
+        // `2025_11_05_093141_create_piani_rate_table.php:21`. Chi non sceglieva il giorno
+        // otteneva un piano che scade il **primo** del mese invece che il cinque.
+        //
+        // Il valore si scrive esplicitamente e non si lascia al database, benché il default
+        // ci sia: omettendo la chiave, il record a database nasce giusto ma **l'oggetto in
+        // memoria non lo sa** — Eloquent non rilegge dopo l'insert, e chiunque legga
+        // `giorno_scadenza` sul modello appena creato prende `null`. Il default resta in
+        // migrazione come rete per gli insert che non passano di qui.
+        $attributi['giorno_scadenza'] = $data['giorno_scadenza'] ?? self::GIORNO_SCADENZA_PREDEFINITO;
+
+        return PianoRate::create($attributi);
     }
 
     public function creaRicorrenza(PianoRate $pianoRate, array $data): void
     {
         $gestione = $pianoRate->gestione;
-        $start    = new \DateTime($gestione->data_inizio, new \DateTimeZone('Europe/Rome'));
+
+        // Terzo e ultimo punto in cui la partenza era cablata sull'inizio della gestione.
+        // La `rrule` va costruita sulla data vera, non solo spostata dopo: `setStartDate`
+        // determina anche da quale mese il ricorrente comincia a contare.
+        $partenza = $pianoRate->dataPartenzaCalendario();
+        $start    = new \DateTime(
+            $partenza ? $partenza->toDateString() : $gestione->data_inizio,
+            new \DateTimeZone('Europe/Rome')
+        );
 
         $frequency = strtoupper($data['recurrence_frequency']);
         $interval  = max(1, (int)($data['recurrence_interval'] ?? 1));

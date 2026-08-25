@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Fixed the \"Budget Apportionment by Chapter and Subject\" print: it showed one column per sub-account (e.g. \"Bank charges\", \"Fees\", \"Filings\") instead of one per real expense chapter (e.g. \"Administrative\"). On a condominium with many sub-accounts the print could even fail to generate due to an internal technical limit; on a smaller one it showed only part of the columns, with a correct footer total that didn't match the sum of the visible values — confusing to read, even though the underlying figures were never wrong.",
+        "Each chapter now has a single column with the combined total of all its sub-accounts, far more readable on detailed charts of accounts. The \"Apportionment by Table\" print was left untouched: it already worked correctly.",
+        "Also raised an internal technical limit that, on genuinely large condominiums, could still prevent the print from generating despite the fix above: it now holds up with headroom even on very extensive charts of accounts."
+    ]
+}

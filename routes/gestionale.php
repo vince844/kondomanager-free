@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Gestionale\Controlli\ControlliPostImportController;
 use App\Http\Controllers\Gestionale\Casse\CassaController;
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
@@ -8,9 +9,13 @@ use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaContr
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
+use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
+use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
+use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
@@ -22,6 +27,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
+use App\Http\Controllers\Gestionale\PianiConti\MovimentiPerVoceController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiPrintController;
 use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
@@ -48,11 +54,39 @@ Route::prefix('/gestionale/{condominio}')
         EnsureCondominioHasEsercizio::class,   
         EnsureCondominioHasPianoConti::class  
     ])
+    /*
+     * ⚠️ **Le cose di un condominio non si aprono da un altro condominio (beta.66).**
+     *
+     * Fino alla beta.65 l'indirizzo `/gestionale/16/tabelle/29` serviva la tabella 29 **anche se
+     * apparteneva al condominio 18**: il figlio veniva cercato per id e basta. Su 112 rotte annidate
+     * solo 29 avevano una guardia scritta a mano nel controller.
+     *
+     * `scopeBindings()` dice a Laravel di cercare il figlio **dentro** il padre. Il nome della
+     * relazione lo decide `App\Traits\RisolveIFigliDelleRotte`, montato sui modelli padre: senza,
+     * Laravel lo deriva con una pluralizzazione inglese e su nomi italiani cerca
+     * `Condominio::tabellas()` — cioè risponde 500 anche alle richieste legittime.
+     *
+     * **È acceso sul gruppo, non risorsa per risorsa, ed è una scelta.** Così una rotta annidata
+     * nuova nasce protetta: chi la aggiunge senza mappare la coppia ottiene un errore rumoroso in
+     * sviluppo invece di una fuga silenziosa in produzione. Le poche che non si possono scopare —
+     * il figlio non ha una relazione col padre perché non ne ha la colonna — sono disattivate una
+     * per una qui sotto, ciascuna col suo perché.
+     */
+    ->scopeBindings()
     ->group(function () {
     
     Route::get('/', DashboardController::class)
         ->name('index');
     
+    // «Da controllare dopo l'importazione». Sta qui e non nel gruppo dell'import perché la
+    // domanda arriva giorni dopo, quando l'uuid del lotto non ce l'ha più nessuno — e perché il
+    // permesso giusto è quello del gestionale: chi non poteva importare deve poter sistemare.
+    Route::get('/controlli-import', [ControlliPostImportController::class, 'index'])
+        ->name('controlli-import.index');
+
+    Route::put('/controlli-import/{batch}', [ControlliPostImportController::class, 'aggiorna'])
+        ->name('controlli-import.aggiorna');
+
     Route::get('/struttura', [StrutturaController::class, 'index'])
         ->name('struttura.index');
 
@@ -70,14 +104,45 @@ Route::prefix('/gestionale/{condominio}')
         ->name('fetch-fatture-straordinarie');
     // --- FINE FIX ---
     
+    /*
+     * ⛔ **`show` escluso: il metodo non è mai stato scritto.**
+     * `Route::resource` la generava lo stesso, e il corpo del controller era un `//`. Su una rotta
+     * annidata quel metodo non riceve nemmeno il modello giusto — la firma non accetta
+     * `{condominio}`, quindi il dispatcher passa gli argomenti per posizione e il controller si
+     * vede arrivare l'id del condominio al posto del figlio: **500 a chiunque ci arrivi per URL**.
+     * Nessuna pagina ci linkava; scoperta dalla guardia dello scoping nella beta.66, stessa
+     * famiglia delle quattro rimosse nella beta.48 e delle due nella beta.61.
+     */
     Route::resource('palazzine', PalazzinaController::class)
+        ->except(['show'])
         ->parameters(['palazzine' => 'palazzina']);
     
     Route::resource('scale', ScalaController::class)
+        ->except(['show'])   // idem: metodo mai scritto, vedi la nota qui sopra
         ->parameters(['scale' => 'scala']);
     
+    // `only()` e non un `resource` intero: `SaldoInizialeController` implementa **solo** queste
+    // quattro azioni. `create`, `show` ed `edit` puntavano a metodi inesistenti e rispondevano
+    // **500** a chiunque ci arrivasse per URL — i saldi iniziali si dichiarano tutti dalla pagina
+    // di elenco, e quelle tre schermate non sono mai state volute. Rimosse nella beta.61, stesso
+    // difetto e stesso rimedio delle quattro di `ContoController` nella beta.48.
     Route::resource('saldi', SaldoInizialeController::class)
+        ->only(['index', 'store', 'update', 'destroy'])
         ->parameters(['saldi' => 'saldo']);
+
+    // Sblocco manuale di un lucchetto senza titolare (dati storici anteriori alla
+    // beta.32, o il caso ambiguo che la migrazione di riparazione lascia chiuso
+    // di proposito quando più piani rivendicano gli stessi saldi).
+    Route::post('saldi/{saldo}/sblocca', [SaldoInizialeController::class, 'sblocca'])
+        ->name('saldi.sblocca');
+
+    // Già versato per voce di spesa: alimenta il netting del riparto (beta.26).
+    Route::get('contributi', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'index'])
+        ->name('contributi.index');
+    Route::get('contributi/{conto}', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'edit'])
+        ->name('contributi.edit');
+    Route::put('contributi/{conto}', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'update'])
+        ->name('contributi.update');
 
     Route::get('esercizi/{esercizio}/fetch-saldi-analitici/{gestione}', [PianoRateController::class, 'fetchSaldiAnalitici'])
         ->name('fetch-saldi-analitici');
@@ -91,17 +156,34 @@ Route::prefix('/gestionale/{condominio}')
             'anagrafiche' => 'anagrafica'
         ]);
     
+    // `except(['show'])`: `ImmobileDocumentoController` non implementa `show` — un documento si
+    // scarica, non si "apre in una scheda". La rotta generata rispondeva **500**. Rimossa nella
+    // beta.61.
     Route::resource('immobili.documenti', ImmobileDocumentoController::class)
+        ->except(['show'])
         ->parameters([
             'immobili'  => 'immobile',
             'documenti' => 'documento'
         ]);
+
+    // Le pertinenze di un'unità: sola lettura. Il legame si dichiara dalla scheda della
+    // **pertinenza**, non da qui — è la pertinenza che punta al principale, e un secondo punto di
+    // scrittura sullo stesso dato sarebbe due verità con due regole.
+    Route::get('immobili/{immobile}/pertinenze', [ImmobileController::class, 'pertinenze'])
+        ->name('immobili.pertinenze.index');
     
     // --- CASSE ---
     Route::resource('casse', CassaController::class)
         ->parameters(['casse' => 'cassa']);
+
+    // Porta a giornale il saldo di apertura di una cassa che l'ha in colonna ma non in
+    // contabilità. È l'azione che mancava alla diagnosi del Libro Giornale: il widget
+    // sapeva nominare la causa dello sbilancio e non offriva niente per curarla.
+    Route::post('casse/{cassa}/registra-apertura', [CassaController::class, 'registraApertura'])
+        ->name('casse.registra-apertura');
     
     Route::resource('tabelle', TabellaController::class)
+        ->except(['show'])   // metodo mai scritto: vedi la nota su `palazzine`
         ->parameters(['tabelle' => 'tabella']);
     
     Route::prefix('tabelle/{tabella}')->group(function () {
@@ -110,9 +192,11 @@ Route::prefix('/gestionale/{condominio}')
     });
 
     Route::resource('esercizi', EsercizioController::class)
+        ->except(['show'])   // metodo mai scritto: vedi la nota su `palazzine`
         ->parameters(['esercizi' => 'esercizio']);
     
     Route::resource('esercizi.gestioni', GestioneController::class)
+        ->except(['show'])   // metodo mai scritto: vedi la nota su `palazzine`
         ->parameters([
             'esercizi' => 'esercizio',
             'gestioni' => 'gestione'
@@ -130,13 +214,38 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-riparto', [PianoContiPrintController::class, 'riparto'])
         ->name('esercizi.piani-conti.print-riparto');
     
+    // `only()` e non un `resource` intero: `ContoController` implementa **solo** queste tre
+    // azioni. Le altre quattro che `Route::resource` generava — `index`, `create`, `show`,
+    // `edit` — puntavano a metodi inesistenti e rispondevano **500** a chiunque ci arrivasse
+    // per URL. Nessuna pagina le linkava, quindi il difetto era latente: le voci di spesa si
+    // gestiscono tutte dalla pagina del piano dei conti e dai suoi modali, e quelle quattro
+    // schermate non sono mai state volute. Rimosse nella beta.48.
     Route::resource('esercizi.piani-conti.conti', ContoController::class)
+        ->only(['store', 'update', 'destroy'])
         ->parameters([
             'esercizi'    => 'esercizio',
             'piani-conti' => 'pianoConto',
             'conti'       => 'conto'
-        ]); 
-    
+        ]);
+
+    /*
+     * Drill-down della colonna Consuntivo: i movimenti che compongono lo speso di una voce.
+     *
+     * ⛔ **L'unica rotta del gestionale senza scoping, e l'unica coppia non mappabile.** Da
+     * `{esercizio}` a `{conto}` ci sono **tre** salti — il pivot `esercizio_gestione`, poi
+     * `piani_conti.gestione_id`, poi `conti.piano_conto_id` — e nessuna relazione Eloquent li fa
+     * tutti e tre. Ovunque altrove la coppia si è potuta mappare (vedi `Esercizio::pianiConti()` e
+     * `Condominio::conti()`); qui no, e con lo scoping acceso questa rotta risponderebbe 500 anche
+     * a chi ha diritto di aprirla.
+     *
+     * La guardia resta quindi quella scritta a mano in `MovimentiPerVoceController`, che verifica
+     * l'appartenenza del conto al condominio. Il presidio che questa resti l'unica eccezione è
+     * `tests/Feature/System/ScopingDelleRotteAnnidateTest.php`.
+     */
+    Route::get('esercizi/{esercizio}/voci/{conto}/movimenti', MovimentiPerVoceController::class)
+        ->withoutScopedBindings()
+        ->name('esercizi.voci.movimenti');
+
     Route::post('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/associa-tabella', AssociaTabellaController::class)
         ->name('esercizi.piani-conti.conti.associa-tabella');
 
@@ -146,7 +255,12 @@ Route::prefix('/gestionale/{condominio}')
     Route::put('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/aggiorna-tabella/{tabella}', AggiornaTabellaController::class)
         ->name('esercizi.piani-conti.conti.aggiorna-tabella');
 
+    // `only()` e non un `resource` intero: `PianoRateController` non implementa `edit` né
+    // `update` — un piano rate non si modifica in quel modo, si rigenera (`regenerate`) o se ne
+    // cambia lo stato (`update-stato`). Le due rotte generate rispondevano **500**. Rimosse nella
+    // beta.61.
     Route::resource('esercizi.piani-rate', PianoRateController::class)
+        ->only(['index', 'create', 'store', 'show', 'destroy'])
         ->parameters([
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
@@ -157,6 +271,9 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-riparto-tabelle', [PianoRatePrintController::class, 'ripartoTabelle'])
         ->name('esercizi.piani-rate.print-riparto-tabelle');
+
+    Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-riparto-capitoli', [PianoRatePrintController::class, 'ripartoCapitoli'])
+        ->name('esercizi.piani-rate.print-riparto-capitoli');
 
     Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
     ->name('piani-rate.update-stato');
@@ -178,18 +295,36 @@ Route::prefix('/gestionale/{condominio}')
     // Route for "Sposta Spesa" (Budget Reallocation)
     Route::post('/piani-rate/{pianoRate}/move-budget', [BudgetMovementController::class, 'store'])
         ->name('piani-rate.move-budget');
+
+    // Storno di un movimento di Sposta Spesa — beta.73, prima non esisteva nessuna via.
+    Route::post('/piani-rate/{pianoRate}/budget-movements/{budgetMovement}/reverse', [BudgetMovementController::class, 'reverse'])
+        ->name('piani-rate.budget-movements.reverse');
     
     // Rotta per vedere l'estratto conto (accessibile dal piano rate)
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])
         ->name('anagrafiche.estratto-conto');
     
+    Route::get('/anagrafiche/{anagrafica}/estratto-conto/print', [EstrattoContoAnagraficaController::class, 'print'])
+        ->name('anagrafiche.estratto-conto.print');
+    
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
     ->name('esercizi.piani-rate.regenerate');
-    
+
+    // Libro Giornale — elenco scritture contabili, annidato per esercizio così
+    // il dropdown esercizio di PageHeaderGuide funziona out-of-the-box.
+    Route::get('esercizi/{esercizio}/scritture', [ScritturaContabileController::class, 'index'])
+        ->name('esercizi.scritture.index');
+
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
     
+    // `only()` e non un `resource` intero: `IncassoRateController` implementa **solo** queste
+    // quattro azioni. Un incasso non si modifica e non si cancella: si **storna** (la rotta qui
+    // sotto), perché la partita doppia non ammette la riscrittura di una scrittura registrata.
+    // `edit`, `update` e `destroy` puntavano a metodi inesistenti e rispondevano **500**. Rimosse
+    // nella beta.61.
     Route::resource('movimenti-rate', IncassoRateController::class)
+        ->only(['index', 'create', 'store', 'show'])
         ->parameters(['movimenti-rate' => 'scrittura']);
 
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
@@ -197,6 +332,32 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');
+
+    // --- PRIMA NOTA DIRETTA: REGOLAZIONE IMMEDIATA (costo → banca, senza fattura) ---
+    Route::get('/regolazioni-immediate/create', [RegolazioneImmediataController::class, 'create'])
+        ->name('regolazioni-immediate.create');
+
+    Route::post('/regolazioni-immediate', [RegolazioneImmediataController::class, 'store'])
+        ->name('regolazioni-immediate.store');
+
+    Route::post('/regolazioni-immediate/{scrittura}/storno', [RegolazioneImmediataController::class, 'storno'])
+        ->name('regolazioni-immediate.storno');
+
+    // --- GIROCONTI: spostamenti di liquidità fra casse (fondi = partizioni del c/c) ---
+    Route::get('/giroconti', [GirocontoController::class, 'index'])
+        ->name('giroconti.index');
+
+    Route::get('/giroconti/create', [GirocontoController::class, 'create'])
+        ->name('giroconti.create');
+
+    Route::post('/giroconti', [GirocontoController::class, 'store'])
+        ->name('giroconti.store');
+
+    Route::post('/giroconti/{scrittura}/storno', [GirocontoController::class, 'storno'])
+        ->name('giroconti.storno');
+
+    Route::post('/giroconti/riallinea-fondi', [GirocontoController::class, 'riallinea'])
+        ->name('giroconti.riallinea');
 
     // --- CICLO PASSIVO: FATTURE ---
     Route::get('/fatture', [FatturaPassivaController::class, 'index'])
@@ -261,6 +422,29 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
         ->name('pagamenti-fornitori.storno');
+
+    // --- RITENUTE E DELEGHE F24 (v1.10.0-beta.38) ---
+    Route::get('/f24', [DelegaF24Controller::class, 'index'])
+        ->name('f24.index');
+
+    Route::post('/f24/genera', [DelegaF24Controller::class, 'genera'])
+        ->name('f24.genera');
+
+    Route::get('/f24/{delega}', [DelegaF24Controller::class, 'show'])
+        ->name('f24.show');
+
+    // Il modello ministeriale, per chi paga allo sportello (v1.10.0-beta.39).
+    Route::get('/f24/{delega}/modello', DelegaF24PrintController::class)
+        ->name('f24.modello');
+
+    Route::post('/f24/{delega}/versa', [DelegaF24Controller::class, 'conferma'])
+        ->name('f24.versa');
+
+    Route::post('/f24/{delega}/storna', [DelegaF24Controller::class, 'storna'])
+        ->name('f24.storna');
+
+    Route::post('/f24/{delega}/annulla', [DelegaF24Controller::class, 'annulla'])
+        ->name('f24.annulla');
 
     // --- DETTAGLIO SCRITTURA CONTABILE (v1.9.1-beta.7) ---
     Route::get('/scritture/{scrittura}', [ScritturaContabileController::class, 'show'])

@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Avviso quando si usa credito tra gestioni diverse: se in 'Nuovo incasso' il credito disponibile del condomino appartiene a una gestione (es. ordinaria) diversa da quella della rata che si sta saldando (es. straordinaria), un banner giallo lo segnala chiaramente e richiede una conferma esplicita prima di procedere. La compensazione non viene mai bloccata — potrebbe essere autorizzata da un accordo condominiale — ma resta sempre una scelta consapevole dell'amministratore, tracciata in modo esplicito.",
+        "Credito disponibile visibile anche nell'Estratto Conto: prima si vedeva solo cercando il condomino in 'Nuovo incasso', ora una card dedicata nella scheda dell'Estratto Conto mostra subito il credito disponibile, con il dettaglio per gestione se proviene da più di una.",
+        "Nuovo widget in Dashboard 'Crediti da compensare': elenco dei condomini con credito disponibile nel condominio corrente, con un click diretto su 'Nuovo incasso' già precompilato per compensarlo.",
+        "Corretto un problema di impaginazione nella Dashboard: il riquadro 'Inbox Operativa', quando conteneva molte attività in sospeso, cresceva senza alcun limite e spingeva in basso il resto della pagina. Ora resta sempre della stessa altezza del riquadro 'Copertura bilancio' accanto, con scorrimento interno per le attività in eccesso.",
+        "Miglioramenti minori: badge sempre allineati in modo coerente nella lista incassi, rimossa una dicitura duplicata quando cassa e tipo cassa coincidono, e linguaggio più chiaro nei banner della pagina 'Nuovo incasso'."
+    ]
+}

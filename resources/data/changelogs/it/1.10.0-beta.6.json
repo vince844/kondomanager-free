@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Risolto un crash che si verificava digitando l'IBAN Beneficiario nella pagina di modifica di un pagamento fornitore.",
+        "Bonifico Parlante, tipo di detrazione fiscale e commissioni bancarie ora vengono salvati correttamente quando si modifica un pagamento fornitore già registrato.",
+        "I pagamenti fornitori stornati non sono più raggiungibili dalla pagina di modifica: viene mostrato un messaggio chiaro invece di un salvataggio senza alcun effetto.",
+        "Aggiunto un controllo di capienza del conto anche in fase di modifica di un pagamento fornitore, con richiesta di conferma esplicita in caso di scoperto — come già avveniva in creazione.",
+        "Aggiunta una protezione che impedisce la modifica di pagamenti cumulativi su più fatture, per evitare che gli importi allocati vengano corrotti.",
+        "Il campo \"Bonifico Parlante\", riservato alle detrazioni fiscali (ristrutturazioni, ecobonus, sismabonus, superbonus), ora compare solo per i pagamenti effettuati tramite bonifico: la normativa non ammette contanti o assegni per queste detrazioni.",
+        "Migliorato il layout della pagina di modifica pagamento fornitore: card a piena larghezza, campi correlati affiancati e pulsante di salvataggio più compatto, in linea con le altre pagine del gestionale.",
+        "Risolti alcuni problemi di visualizzazione della pagina di modifica pagamento fornitore su smartphone, dove alcuni campi potevano sovrapporsi."
+    ]
+}

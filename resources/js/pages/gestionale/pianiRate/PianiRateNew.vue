@@ -7,6 +7,7 @@ import axios from 'axios';
 import vSelect from 'vue-select';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PianoRateGuide from '@/components/guides/PianoRateGuide.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,11 +20,12 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays, TrendingDown } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
+import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
 import type { BreadcrumbItem } from '@/types';
 
 interface Capitolo {
@@ -31,6 +33,7 @@ interface Capitolo {
   nome: string;
   disabled: boolean;
   is_sforo: boolean;
+  da_sposta_spesa?: boolean;
   importo_totale: number;
   residuo: number;
   note?: string;
@@ -41,7 +44,7 @@ interface CapitoloDettaglio {
   nome: string;
   importo_totale: number;
   residuo: number;
-  importo_da_usare: number | undefined;
+  importo_da_usare: string | number | undefined;
   note: string;
 }
 
@@ -56,7 +59,18 @@ interface SaldoDettaglio {
   is_debito: boolean;
   immobile_id?: number;
   ripartizione_mode: 'automatica' | 'manuale';
-  ripartizioni_custom: { anagrafica_id: number; importo: number }[];
+  ripartizioni_custom: { anagrafica_id: number; importo: string | number }[];
+  /**
+   * Chi pagherebbe cosa in automatico, calcolato dal server con le stesse funzioni del
+   * generatore. `null` sui saldi nominali, che un destinatario ce l'hanno già.
+   */
+  riparto_previsto: {
+    risolvibile: boolean;
+    ruolo: string | null;
+    ruolo_label: string | null;
+    motivo: string | null;
+    quote: { anagrafica_id: number; nome: string; quota: number; importo: number }[];
+  } | null;
 }
 
 const props = defineProps<{
@@ -71,6 +85,7 @@ const props = defineProps<{
     is_primo_anno?: boolean
     has_movimenti?: boolean
   }
+  hasPianoEsistente?: boolean
   anagraficheDisponibili: { id: number, nome: string }[]
 }>()
 
@@ -83,6 +98,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Piani Rate', href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
   { title: 'Nuovo Piano Rate', href: '#' },
 ]);
+
+/** Il pannello laterale della guida: chiuso finché non lo si chiede. */
+const mostraGuida = ref(false);
 
 const pageGuides = computed(() => [
   {
@@ -129,6 +147,12 @@ const { euro } = useCurrencyFormatter({ fromCents: false });
 const showBannerPreselezione = ref(false);
 // Salva gli ID fatture dal deep-link PRIMA che Inertia sovrascriva l'URL
 const preselectedFattureIds = ref<string[]>([]);
+// Gestione puntata dal deep-link Dashboard: il lock del tipo e l'etichetta
+// "Integrativa" derivati da showBannerPreselezione restano validi SOLO
+// finché l'utente non cambia gestione a mano (stesso principio già usato
+// sopra per preselectedFattureIds: il contesto Dashboard non si ri-applica
+// a una gestione diversa da quella per cui è stato calcolato).
+const preselectedGestioneId = ref<number | null>(null);
 
 const frequencies = [
   { label: 'Mensile', value: 'MONTHLY' },
@@ -161,6 +185,8 @@ const form = useForm({
   saldi_config: [] as any[],
   numero_rate: 12,
   giorno_scadenza: 5,
+  // Vuota = «parte dall'inizio della gestione», che è il comportamento di sempre.
+  data_prima_scadenza: null as string | null,
   note: '',
   genera_subito: true,
   recurrence_enabled: false,
@@ -175,6 +201,19 @@ const form = useForm({
   accetta_scoperti: false as boolean,
   nota_scoperti: '' as string,
 })
+
+
+/**
+ * La data da cui partirebbe il piano, calcolata con la stessa regola del server —
+ * `partenzaCalendario()`, gemella di `PianoRate::dataPartenzaCalendario()`. Serve solo a
+ * suggerirla: se l'interfaccia dicesse una data e il server ne usasse un'altra, nessuna delle
+ * due sarebbe sbagliata da sola.
+ */
+const partenzaSuggerita = computed<string | null>(() => {
+  const gestione = props.gestioni?.find(g => g.id === form.gestione_id);
+
+  return partenzaCalendario(form.data_prima_scadenza, (gestione as any)?.data_inizio);
+});
 
 // --- LETTURA DEEP-LINK DA DASHBOARD ---
 onMounted(() => {
@@ -201,7 +240,8 @@ onMounted(() => {
 
   if (urlParams.has('gestione_id')) {
     const id = urlParams.get('gestione_id');
-    form.gestione_id = id ? Number(id) : null; 
+    form.gestione_id = id ? Number(id) : null;
+    preselectedGestioneId.value = form.gestione_id;
   }
 });
 
@@ -209,18 +249,66 @@ onMounted(() => {
 const isLoadingFatture = ref(false)
 const fattureStraordinarie = ref<any[]>([])
 
+// Quando si arriva da un CTA della Dashboard, il tipo di piano non è una
+// scelta dell'utente: la Dashboard lo ha già determinato in base alla voce
+// da finanziare (sforo su capitolo esistente vs sopravvenienza/ad personam).
+// Blocchiamo quindi l'opzione non pertinente invece di lasciarla cliccabile
+// e mandare l'utente a sbattere contro un errore di validazione a valle.
+// Il contesto Dashboard resta valido SOLO finché la gestione selezionata è
+// ancora quella per cui la Dashboard ha calcolato quel contesto: se
+// l'utente la cambia dal select "Gestione di riferimento" (rimane
+// liberamente modificabile), il lock e l'etichetta si sbloccano per la
+// nuova gestione invece di restare ancorati alla precedente.
+const isDashboardContextValid = computed(() =>
+  showBannerPreselezione.value && form.gestione_id === preselectedGestioneId.value
+)
+const isOrdinarioDisabled = computed(() => isDashboardContextValid.value && form.tipo !== 'ordinario')
+const isStraordinarioDisabled = computed(() => isDashboardContextValid.value && form.tipo !== 'straordinario')
+
+// Rietichetta la card "Piano rate ordinario" come "Piano Rata Integrativa"
+// quando è chiaro che non si tratta della prima emissione dell'anno:
+// - arrivo dalla Dashboard per uno sforo "orfano" sulla gestione ancora
+//   selezionata (segnale certo)
+// - oppure la gestione selezionata ha già un piano rate "preventivo
+//   iniziale" ordinario (segnale euristico dal backend, utile per chi crea
+//   il piano manualmente senza passare dalla Dashboard)
+const isPianoIntegrativo = computed(() =>
+  form.tipo === 'ordinario' && (isDashboardContextValid.value || !!props.hasPianoEsistente)
+)
+const ordinarioCardTitle = computed(() => isPianoIntegrativo.value ? 'Piano Rata Integrativa' : 'Piano rate ordinario')
+
 // Nuovi campi form necessari per lo straordinario (aggiungili anche all'interfaccia nel backend)
 const autorizzazioneStraordinaria = ref({
   tipo_autorizzazione: '',
   motivazione_autorizzazione: ''
 })
 
-// Helper fondamentale per i calcoli con MoneyInput (risolve il problema NaN)
+// Helper fondamentale per i calcoli con MoneyInput (risolve il problema NaN).
+// Il valore può arrivare in due notazioni diverse a seconda di come è nato:
+// - "1.250,50" (italiana/mascherata) se l'utente ha digitato nel campo MoneyInput
+// - "1250.50" (JS pura) se il campo non è mai stato toccato e resta al valore
+//   iniziale che gli abbiamo passato noi (vedi toMoneyFieldString più sotto)
+// Le due notazioni si distinguono dalla presenza della virgola: solo la prima
+// la usa come separatore decimale. Stessa identica logica di MoneyHelper::toCents() lato PHP.
 const parseMoney = (val: any): number => {
-  if (!val) return 0;
+  if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') return val;
+  const str = val.toString().trim();
+  if (!str.includes(',')) return Number(str) || 0;
   // Trasforma "1.250,50" in 1250.50
-  return Number(val.toString().replace(/\./g, '').replace(',', '.'));
+  return Number(str.replace(/\./g, '').replace(',', '.')) || 0;
+};
+
+// Converte un numero grezzo (es. dal backend) nella stringa da usare come valore
+// INIZIALE di un v-model collegato a MoneyInput. Deve essere già in notazione JS
+// pura (punto decimale, "1250.50"): se le passassimo la notazione italiana
+// "1.250,50", v-money3 non riuscirebbe a fare Number() su di essa al mount e la
+// ri-formatterebbe da solo in "1250.50" — che parseMoney() interpreterebbe già
+// correttamente, ma è comunque più sicuro e prevedibile partire già in quel formato
+// invece di affidarsi al comportamento interno della libreria.
+const toMoneyFieldString = (val: number | string | null | undefined): string => {
+  const n = typeof val === 'number' ? val : Number(val ?? 0);
+  return (Number.isFinite(n) ? n : 0).toFixed(2);
 };
 
 const rimuoviCapitolo = (id: number) => {
@@ -265,10 +353,10 @@ watch(() => form.gestione_id, async (newId) => {
 
   try {
     router.get(
-      window.location.pathname, 
-      { gestione_id: newId },   
+      window.location.pathname,
+      { gestione_id: newId },
       {
-        only: ['saldoInfo'],    
+        only: ['saldoInfo', 'hasPianoEsistente'],
         preserveState: true,    
         preserveScroll: true,   
         onSuccess: (page: any) => {
@@ -322,7 +410,9 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
     fattureStraordinarie.value = resFatture.data.map((f: any) => ({
       ...f,
       selezionata: preselectedFattureIds.value.includes(f.id.toString()),
-      importo_suggerito: f.residuo_da_finanziare
+      // Stesso fix di importo_da_usare sopra: valore grezzo -> stringa,
+      // altrimenti se l'importo suggerito non viene toccato resta un numero.
+      importo_suggerito: toMoneyFieldString(f.residuo_da_finanziare)
     }));
 
     // Consuma i pre-selezionati: se l'utente cambia gestione, non si ri-applicano
@@ -396,7 +486,8 @@ const apriConfigurazioneSaldi = () => {
 }
 
 const aggiungiRigaRiparto = (saldo: SaldoDettaglio) => {
-  saldo.ripartizioni_custom.push({ anagrafica_id: 0, importo: 0 });
+  // Stringa fin da subito, stesso motivo delle altre due righe corrette sopra.
+  saldo.ripartizioni_custom.push({ anagrafica_id: 0, importo: toMoneyFieldString(0) });
 }
 
 watch(() => form.capitoli_ids, (newIds) => {
@@ -405,12 +496,16 @@ watch(() => form.capitoli_ids, (newIds) => {
     if (!capitoliDettaglio.value.find(c => c.id === id)) {
       const capOriginale = capitoliDisponibili.value.find(c => c.id === id);
       if (capOriginale) {
+        const residuoIniziale = (capOriginale.residuo ?? 0) > 0 ? capOriginale.residuo : 0;
         capitoliDettaglio.value.push({
           id: id,
           nome: capOriginale.nome,
           importo_totale: capOriginale.importo_totale ?? 0,
           residuo: capOriginale.residuo ?? 0,
-          importo_da_usare: (capOriginale.residuo ?? 0) > 0 ? capOriginale.residuo : 0,
+          // Stringa fin da subito (non un numero grezzo): se l'utente non tocca il campo,
+          // il v-model di v-money3 non lo riformatta mai da solo, e un numero grezzo fallisce
+          // la validazione 'string' lato server con un errore silenzioso (nessun redirect, nessun log).
+          importo_da_usare: toMoneyFieldString(residuoIniziale),
           note: ''
         });
       }
@@ -478,7 +573,20 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
         back-text="Torna all'elenco"
-      />
+      >
+        <template #actions>
+          <!--
+            Le tre card in cima dicono DOVE sono le cose; la guida dice quale scegliere e
+            perché — il tipo di piano, i tre metodi per i saldi, il calendario. È la pagina
+            con più combinazioni del gestionale, e nessuna di quelle scelte è ovvia.
+          -->
+          <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
+            <BookOpen class="h-4 w-4" /> Guida
+          </Button>
+        </template>
+      </PageHeaderGuide>
+
+      <PianoRateGuide v-model:open="mostraGuida" />
 
       <form id="pianoRateForm" @submit.prevent="submit" class="space-y-6">
 
@@ -496,21 +604,39 @@ const submit = () => {
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"
-              :class="form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400' : 'border-slate-200 hover:bg-slate-50 bg-white'">
+          <label class="flex flex-col p-5 rounded-xl border transition-all relative"
+              :class="[
+                form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400' : 'border-slate-200 hover:bg-slate-50 bg-white',
+                isOrdinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer'
+              ]"
+              :aria-disabled="isOrdinarioDisabled ? 'true' : undefined">
               <div class="flex items-start justify-between w-full mb-3">
-                  <div class="font-black text-sm" :class="form.tipo === 'ordinario' ? 'text-blue-800' : 'text-slate-700'">Piano rate ordinario</div>
-                  <input type="radio" v-model="form.tipo" value="ordinario" class="w-4 h-4 mt-0.5 text-blue-600 border-slate-300 focus:ring-blue-600" />
+                  <div class="font-black text-sm" :class="form.tipo === 'ordinario' ? 'text-blue-800' : 'text-slate-700'">{{ ordinarioCardTitle }}</div>
+                  <input type="radio" v-model="form.tipo" value="ordinario" :disabled="isOrdinarioDisabled"
+                      :aria-describedby="isOrdinarioDisabled ? 'tipo-ordinario-non-disponibile' : undefined"
+                      class="w-4 h-4 mt-0.5 text-blue-600 border-slate-300 focus:ring-blue-600 disabled:cursor-not-allowed" />
               </div>
               <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'ordinario' ? 'text-blue-700/80' : 'text-slate-500'">Finanzia le spese di preventivo approvate a inizio anno (o i loro sforamenti).</p>
+              <p v-if="isOrdinarioDisabled" id="tipo-ordinario-non-disponibile" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
+                  <Info class="w-3 h-3 shrink-0" /> Non disponibile: il tipo è già stato determinato in base alla voce da finanziare.
+              </p>
           </label>
-          <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"
-              :class="form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400' : 'border-slate-200 hover:bg-slate-50 bg-white'">
+          <label class="flex flex-col p-5 rounded-xl border transition-all relative"
+              :class="[
+                form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400' : 'border-slate-200 hover:bg-slate-50 bg-white',
+                isStraordinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer'
+              ]"
+              :aria-disabled="isStraordinarioDisabled ? 'true' : undefined">
               <div class="flex items-start justify-between w-full mb-3">
                   <div class="font-black text-sm" :class="form.tipo === 'straordinario' ? 'text-amber-800' : 'text-slate-700'">Piano rate straordinario (Art. 1135 c.c.)</div>
-                  <input type="radio" v-model="form.tipo" value="straordinario" class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600" />
+                  <input type="radio" v-model="form.tipo" value="straordinario" :disabled="isStraordinarioDisabled"
+                      :aria-describedby="isStraordinarioDisabled ? 'tipo-straordinario-non-disponibile' : undefined"
+                      class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600 disabled:cursor-not-allowed" />
               </div>
               <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'straordinario' ? 'text-amber-700/80' : 'text-slate-500'">Finanzia fatture per spese impreviste o lavori ad personam non presenti a bilancio.</p>
+              <p v-if="isStraordinarioDisabled" id="tipo-straordinario-non-disponibile" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
+                  <Info class="w-3 h-3 shrink-0" /> Non disponibile: il tipo è già stato determinato in base alla voce da finanziare.
+              </p>
           </label>
         </div>
 
@@ -571,15 +697,41 @@ const submit = () => {
             <!-- ── BANNER DINAMICO per gestione ─────────────────────────────── -->
             <div v-if="!saldoInfo.is_primo_anno">
 
-              <!-- Bloccato: un'altra gestione ha già consumato il saldo -->
-              <div v-if="!saldoInfo.applicabile"
-                   class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 flex items-start gap-3">
-                <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 class="font-bold text-amber-900 dark:text-amber-100 text-sm">Saldi non disponibili</h4>
-                  <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">{{ saldoInfo.motivo }}</p>
-                </div>
-              </div>
+              <!--
+                Non aver ancora scelto la gestione NON è un problema, ed è l'unico stato di
+                questa card che non lo è. Finiva nello stesso riquadro ambra con il triangolo
+                di allarme usato per il blocco vero — «un'altra gestione ha già consumato il
+                saldo» — perché il server, al primo caricamento, riusa `applicabile: false`
+                per dire due cose diverse: «non si può» e «non lo so ancora».
+
+                A chi apre la pagina la differenza non arriva: vede un avviso arancione prima
+                ancora di aver toccato qualcosa, e si chiede cosa abbia sbagliato.
+              -->
+              <!--
+                I due stati in cui non c'è niente da decidere — non hai ancora scelto la
+                gestione, oppure i saldi sono già in un altro piano — sono una RIGA, non un
+                riquadro. La card ha già titolo e sottotitolo: metterci dentro un box bordato
+                per dire che non c'è nulla da fare è una scatola dentro una scatola, e pesa
+                più dello stato in cui invece c'è da scegliere.
+
+                E non sono ambra. Nessuno dei due è un problema: il secondo in particolare è
+                la situazione normale dal secondo piano dell'anno in poi. Il triangolo
+                arancione diceva «hai sbagliato qualcosa» a chi non aveva sbagliato niente.
+
+                Nascondere del tutto sarebbe stato peggio: il testo del secondo caso risponde
+                alla domanda che l'amministratore si farebbe comunque — «perché non vedo
+                nessun saldo?» — e gli dice come averne. Un'assenza non spiegata si scambia
+                per un dato mancante.
+              -->
+              <p v-if="!form.gestione_id" class="flex items-start gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                <span>Scegli la gestione di riferimento qui sopra: i debiti e i crediti dell'anno precedente compariranno qui.</span>
+              </p>
+
+              <p v-else-if="!saldoInfo.applicabile" class="flex items-start gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                <span>{{ saldoInfo.motivo }}</span>
+              </p>
 
               <template v-else>
 
@@ -621,8 +773,10 @@ const submit = () => {
                         {{ saldoGestioneCorrente.countSolidali }} saldi solidali (Art. 63) —
                       </template>
                       Totale netto:
+                      <!-- Il più sta sul DEBITO, come in SaldiDetailPanel: positivo = debito è
+                           la convenzione dei dati, e questa pagina la stampava al rovescio. -->
                       <strong :class="saldoGestioneCorrente.totale > 0 ? 'text-red-700' : 'text-emerald-700'">
-                        {{ saldoGestioneCorrente.totale > 0 ? '' : '+ ' }}{{ euro(Math.abs(saldoGestioneCorrente.totale) / 100) }}
+                        {{ euro(saldoGestioneCorrente.totale / 100, { forcePlus: true }) }}
                       </strong>
                     </p>
                   </div>
@@ -708,7 +862,7 @@ const submit = () => {
                       </li>
                       <li class="flex items-start gap-2">
                         <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0"></div>
-                        <span><strong>Saldi Solidali:</strong> Legati all'immobile, il sistema li ripartirà <strong>in automatico</strong> usando i coefficienti di quota di proprietà. Usa il pulsante qui sotto se vuoi forzare un riparto manuale per le anagrafiche.</span>
+                        <span><strong>Saldi Solidali:</strong> Legati all'immobile, il sistema li ripartirà <strong>in automatico</strong> fra chi ha un diritto reale sull'unità — mai l'inquilino, che verso il condominio non è debitore. Apri il pulsante qui sotto per <strong>vedere chi pagherà</strong> prima di generare, o per forzare un riparto manuale.</span>
                       </li>
                     </ul>
                   </div>
@@ -788,17 +942,25 @@ const submit = () => {
                       <span class="text-[10px] text-slate-500">Budget: {{ euro(option.importo_totale) }}</span>
                     </div>
                     <div class="flex items-center">
-                      <span v-if="option.is_sforo" 
+                      <span v-if="option.is_sforo"
                             class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-rose-200">
                         <TrendingDown class="w-3 h-3" /> Sforo: {{ euro(option.residuo) }}
                       </span>
-                      
-                      <span v-else-if="option.disabled" 
+
+                      <span v-else-if="option.disabled"
                             class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200">
                         <Ban class="w-3 h-3" /> Esaurito
                       </span>
-                      
-                      <span v-else 
+
+                      <!-- Coda 73: questa voce ha ceduto budget con Sposta Spesa — il residuo
+                           mostrato qui è quello che rientrerebbe scegliendola. -->
+                      <span v-else-if="option.da_sposta_spesa"
+                            class="flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-indigo-200"
+                            title="Questa voce ha ceduto budget con Sposta Spesa in un altro piano">
+                        <ArrowRightLeft class="w-3 h-3" /> Da Sposta Spesa: {{ euro(option.residuo) }}
+                      </span>
+
+                      <span v-else
                             class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200">
                         <Wallet class="w-3 h-3" /> Disp: {{ euro(option.residuo) }}
                       </span>
@@ -944,6 +1106,59 @@ const submit = () => {
                 <Label for="giorno_scadenza">Giorno del mese</Label>
                 <Input id="giorno_scadenza" v-model.number="form.giorno_scadenza" class="mt-1 bg-white dark:bg-slate-950" />
               </div>
+              <!--
+                La data di partenza si SUGGERISCE nel segnaposto, non si scrive nel campo:
+                compilarla la trasformerebbe al primo salvataggio in una scelta esplicita che
+                nessuno ha fatto, e il piano smetterebbe di seguire la gestione.
+              -->
+              <div>
+                <!--
+                  La spiegazione sta in un HoverCard e non sotto il campo, come per «Metodo di
+                  distribuzione» qui accanto: tre campi affiancati di cui uno solo con due
+                  righe di testo sotto sbilanciano la riga, e l'icona informativa è
+                  l'affordance che questa pagina insegna già.
+                -->
+                <div class="flex items-center gap-2">
+                  <Label for="data_prima_scadenza">Prima scadenza</Label>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                        <Info class="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50 p-4 shadow-xl border-blue-100">
+                      <div class="space-y-2 text-sm">
+                        <h4 class="font-bold text-slate-800 flex items-center gap-2 border-b pb-2">
+                          <CalendarDays class="w-4 h-4 text-blue-600" /> Quando cade la prima rata
+                        </h4>
+                        <p class="text-xs text-slate-600">
+                          <strong class="text-slate-700">Se la lasci vuota</strong><br>
+                          <span class="opacity-90">
+                            Si parte dall'inizio della gestione<template v-if="partenzaSuggerita">, il
+                            <strong>{{ partenzaSuggerita.split('-').reverse().join('/') }}</strong></template>.
+                            Il piano continua a seguire la gestione anche se un domani la sua data cambia.
+                          </span>
+                        </p>
+                        <p class="text-xs text-slate-600">
+                          <strong class="text-emerald-700">Se indichi una data</strong><br>
+                          <span class="opacity-90">
+                            La prima rata cade esattamente lì, con il suo giorno: il 30 settembre resta
+                            il 30. Dalla seconda in poi comanda il <strong>giorno del mese</strong> qui a
+                            fianco.
+                          </span>
+                        </p>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
+                <Input
+                  id="data_prima_scadenza"
+                  type="date"
+                  v-model="form.data_prima_scadenza"
+                  class="mt-1 bg-white dark:bg-slate-950"
+                />
+                <InputError :message="form.errors.data_prima_scadenza" />
+              </div>
               <div class="flex items-center pt-6">
                  <div class="flex items-center gap-2">
                   <Checkbox id="genera_subito" v-model="form.genera_subito" />
@@ -1056,7 +1271,7 @@ const submit = () => {
                 <div class="flex items-center gap-1.5 shrink-0">
                   <span class="text-xs text-slate-400 font-semibold">Totale</span>
                   <span class="font-bold text-sm px-2.5 py-1 rounded-lg" :class="gruppo.totale_soggetto > 0 ? 'text-red-700 bg-red-50 border-red-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'">
-                    {{ gruppo.totale_soggetto > 0 ? '' : '+ ' }}{{ euro(Math.abs(gruppo.totale_soggetto) / 100) }}
+                    {{ euro(gruppo.totale_soggetto / 100, { forcePlus: true }) }}
                   </span>
                 </div>
               </div>
@@ -1075,7 +1290,7 @@ const submit = () => {
                     </div>
                     <div class="text-right shrink-0">
                       <div class="font-bold text-base" :class="saldo.is_debito ? 'text-red-700' : 'text-emerald-700'">
-                        {{ saldo.is_debito ? '' : '+ ' }}{{ euro(Math.abs(saldo.importo) / 100) }}
+                        {{ euro(saldo.importo / 100, { forcePlus: true }) }}
                       </div>
                     </div>
                   </div>
@@ -1088,6 +1303,43 @@ const submit = () => {
                     <div class="flex items-center justify-between gap-3 flex-wrap">
                       <span class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5"><Building2 class="w-3.5 h-3.5 text-indigo-400" /> Modalità riparto subentro:</span>
                       <v-select :options="[{ label: 'Auto — Pro-quota proprietari', value: 'automatica' }, { label: 'Manuale — Split', value: 'manuale' }]" v-model="saldo.ripartizione_mode" :reduce="(o: any) => o.value" :clearable="false" class="w-64 text-xs bg-white" />
+                    </div>
+
+                    <!-- Anteprima del riparto automatico. Prima qui non c'era niente: in
+                         automatico l'amministratore scopriva chi era stato addebitato solo
+                         DOPO aver generato il piano. I numeri arrivano dal server, calcolati
+                         con le stesse funzioni del generatore — non ricalcolati qui. -->
+                    <div v-if="saldo.ripartizione_mode === 'automatica' && saldo.riparto_previsto" class="rounded-xl border p-4 space-y-2"
+                         :class="saldo.riparto_previsto.risolvibile ? 'bg-slate-50/60 border-slate-200' : 'bg-amber-50 border-amber-200'">
+
+                      <template v-if="saldo.riparto_previsto.risolvibile">
+                        <p class="text-[11px] text-slate-500 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                          <Users class="w-3.5 h-3.5 text-slate-400" />
+                          A carico di: {{ saldo.riparto_previsto.ruolo_label }}
+                        </p>
+                        <div v-for="q in saldo.riparto_previsto.quote" :key="q.anagrafica_id"
+                             class="flex items-center justify-between gap-3 text-xs bg-white border border-slate-100 rounded-lg px-3 py-1.5">
+                          <span class="font-semibold text-slate-700 truncate">{{ q.nome }}</span>
+                          <span class="flex items-center gap-3 shrink-0">
+                            <span class="text-[10px] text-slate-400 font-semibold">quota {{ q.quota }}</span>
+                            <span class="font-bold" :class="q.importo > 0 ? 'text-red-700' : 'text-emerald-700'">
+                              {{ euro(q.importo / 100, { forcePlus: true }) }}
+                            </span>
+                          </span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 leading-snug pt-1">
+                          Il criterio è la natura della gestione: l'ordinaria è dell'usufruttuario (art. 1004 c.c.),
+                          la straordinaria del proprietario (art. 1005). L'inquilino non è debitore verso il condominio.
+                          Se fra le parti vale un accordo diverso, passa al riparto manuale.
+                        </p>
+                      </template>
+
+                      <template v-else>
+                        <p class="text-[11px] text-amber-800 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                          <AlertTriangle class="w-3.5 h-3.5" /> Questo pregresso non ha su chi cadere
+                        </p>
+                        <p class="text-[11px] text-amber-700 leading-snug">{{ saldo.riparto_previsto.motivo }}</p>
+                      </template>
                     </div>
 
                     <div v-if="saldo.ripartizione_mode === 'manuale'" class="bg-indigo-50/40 border-2 border-dashed border-indigo-200 rounded-xl p-4 space-y-3">

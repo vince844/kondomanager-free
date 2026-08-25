@@ -181,4 +181,32 @@ return [
         'no_reply'            => 'Por favor, não responda a este email.',
         'auto_generated'      => 'Este é um email gerado automaticamente.',
     ],
+
+    // ─── Avisos de alteração (beta.64) ─────────────────────────────────────────
+    'updated_communication' => [
+        'subject'   => 'Comunicação atualizada no placard',
+        'greeting'  => 'Olá :name',
+        'line_1'    => 'A comunicação foi atualizada por :user.',
+        'object'    => 'Assunto',
+        'priority'  => 'Prioridade',
+        'action'    => 'Ver comunicação',
+    ],
+
+    'updated_ticket' => [
+        'subject'   => 'Ocorrência atualizada',
+        'greeting'  => 'Olá :name',
+        'line_1'    => 'A ocorrência foi atualizada por :user.',
+        'object'    => 'Assunto',
+        'status'    => 'Estado',
+        'action'    => 'Ver ocorrência',
+    ],
+
+    'updated_document' => [
+        'subject'     => 'Documento atualizado no arquivo',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O documento foi atualizado por :user no arquivo do condomínio.',
+        'title'       => 'Título',
+        'description' => 'Descrição',
+        'action'      => 'Ver documentos',
+    ],
 ];

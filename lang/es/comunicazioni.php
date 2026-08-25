@@ -15,6 +15,7 @@ return [
     'success_disapprove_communication'            => "The communication has been disapproved successfully.",
     'error_approve_communication'                 => "An error occurred while approving the communication.",
     'error_notify_new_communication'              => "The communication was created, but there was an error sending the notification.",
+    'error_notify_updated_communication'          => "La comunicación se ha actualizado, pero se ha producido un error al enviar la notificación.",
     'error_notify_approved_communication'         => "The communication was approved, but there was an error sending the notification.",
     
     /* ------------------------------------------------------------------
@@ -110,6 +111,7 @@ return [
         'residents'         => 'Residents',
         'comments'          => 'Allow comments',
         'featured'          => 'Featured communication',
+        'notify_update'     => 'Avisar por correo a quienes ya recibieron esta comunicación',
         'private'           => 'Create as private communication',
         'administrator'     => 'Administrator',
         'none'              => 'None',
@@ -177,6 +179,7 @@ return [
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
         'comments'    => 'When this option is selected, comments will be enabled for this communication.',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
+        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que la comunicación ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora la recibirá igualmente, porque para él es nueva.",
         'private'     => 'Private communications can only be viewed by administrators and you.',
     ],
 

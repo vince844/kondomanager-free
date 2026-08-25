@@ -23,9 +23,12 @@ use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\PianoRateCreatorService;
 use App\Services\PianoRateQuoteService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,7 +40,7 @@ use Inertia\Response;
 
 class PianoRateController extends Controller
 {
-    use HandleFlashMessages, HasCondomini;
+    use HandleFlashMessages, HasCondomini, OrdinaElenco, PaginaElenco;
 
     /**
      * Costruttore del controller.
@@ -65,11 +68,16 @@ class PianoRateController extends Controller
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         $validated = $request->validated();
-        
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
             ->whereHas('gestione.esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            ->tap(fn ($q) => $this->ordina($q, $validated, PianoRateIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
+            ->paginate($validated['per_page']);
 
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
@@ -88,6 +96,8 @@ class PianoRateController extends Controller
                 'total' => $pianiRate->total()
             ],
             'filters' => $request->only(['nome']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 
@@ -116,9 +126,29 @@ class PianoRateController extends Controller
 
             // Se Inertia sta chiedendo i dati di una gestione specifica, la cerchiamo
             $gestioneSelezionata = Gestione::where('condominio_id', $condominio->id)->findOrFail($request->gestione_id);
-            
+
             // E usiamo il service per farci dire se è bloccata o meno
             $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($gestioneSelezionata);
+
+            // Segnala al frontend se per questa gestione esiste già un piano rate
+            // "madre" (preventivo iniziale, non un'integrazione né uno
+            // straordinario): usato per rietichettare "Piano rate ordinario"
+            // come "Piano Rata Integrativa" quando non è la prima emissione
+            // dell'anno. Scoping su tipo+contesto_creazione (non un ->exists()
+            // generico) per non confondere un piano straordinario/integrativo
+            // preesistente con un vero preventivo iniziale già emesso.
+            //
+            // LIMITE NOTO: piani_rate non ha esercizio_id (una gestione può
+            // essere riagganciata a più esercizi nel tempo — vedi
+            // GestioneController::update()), quindi un preventivo iniziale
+            // di un esercizio precedente sulla stessa gestione può ancora
+            // far scattare l'etichetta "Integrativa" al primo piano del
+            // nuovo esercizio. Impatto: solo cosmetico (etichetta UI), non
+            // tocca calcoli, validazioni o dati salvati.
+            $hasPianoEsistente = PianoRate::where('gestione_id', $gestioneSelezionata->id)
+                ->where('tipo', 'ordinario')
+                ->where('contesto_creazione', 'preventivo_iniziale')
+                ->exists();
 
         } else {
             // Comportamento di default (al primo caricamento della pagina)
@@ -129,6 +159,7 @@ class PianoRateController extends Controller
                 'motivo' => 'Seleziona una gestione per verificare i saldi.',
                 'is_primo_anno' => false
             ];
+            $hasPianoEsistente = false;
         }
         // -------------------------------------------------------------------
 
@@ -139,6 +170,7 @@ class PianoRateController extends Controller
             'condomini' => $condomini,
             'gestioni' => $gestioni,
             'saldoInfo' => $saldoInfo,
+            'hasPianoEsistente' => $hasPianoEsistente,
             'anagraficheDisponibili' => $condominio->anagrafiche()->orderBy('nome')->get(['anagrafiche.id', 'nome']),
         ]);
     }
@@ -189,6 +221,13 @@ class PianoRateController extends Controller
             // --- [CORREZIONE CHIRURGICA: MAPPIAMO SULLE COLONNE REALI] ---
             $tipoPiano = $validated['tipo'] ?? 'ordinario';
             $pianoRate->tipo = $tipoPiano;
+
+            // La scelta sui saldi va persistita, non dedotta dal lucchetto: un
+            // piano creato senza "genera subito" deve poter ritrovare la stessa
+            // intenzione quando le rate verranno generate più tardi.
+            // (Non è una spunta dell'amministratore: è lo stato del wallet al
+            // momento della creazione, congelato per le generazioni successive.)
+            $pianoRate->applica_saldi = $applicareSaldi;
 
             // 1. Determiniamo la Genesi del Piano (Il Contesto)
             $pianoRate->contesto_creazione = match(true) {
@@ -260,15 +299,10 @@ class PianoRateController extends Controller
                     }
                 } else {
                     // Logica intelligenza sui deficit (preservata)
-                    $rawFatturato = DB::table('righe_fattura')
-                        ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                        ->where('fatture_passive.esercizio_id', $esercizio->id)
-                        ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                        ->whereNull('righe_fattura.immobile_id')
-                        ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
-                        ->groupBy('righe_fattura.conto_id')->get();
-                    $fatturatoMap = $rawFatturato->pluck('totale', 'conto_id')->toArray();
-                    
+                    // Speso reale dal libro giornale: include regolazioni immediate
+                    // e fatture pregresse, e scarta da sé le spese ad personam.
+                    $fatturatoMap = app(SpesaPerVoceService::class)->perEsercizio($esercizio);
+
                     $fattureSforo = DB::table('righe_fattura')
                         ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                         ->where('fatture_passive.esercizio_id', $esercizio->id)
@@ -374,6 +408,15 @@ class PianoRateController extends Controller
             }
             unset($configSaldo, $rip);
 
+            // Il riparto manuale di un saldo solidale (Art. 63) è una decisione
+            // dell'amministratore, non un dato ricalcolabile: va persistita, o
+            // il primo ricalcolo la sostituisce col pro-quota automatico senza
+            // dirlo. Arriva dal form solo qui, alla creazione.
+            if (!empty($saldiConfigCents)) {
+                $pianoRate->saldi_config = $saldiConfigCents;
+                $pianoRate->save();
+            }
+
             // 6. Generazione Rate fisiche (IMPORTANTE: L'Action ora troverà il tipo corretto)
             $statistiche = [];
             if (!empty($validated['genera_subito'])) {
@@ -386,9 +429,13 @@ class PianoRateController extends Controller
                 );
             }
 
-            // 7. Applicazione Saldi (Invariato)
+            // 7. Applicazione Saldi
+            // Il lucchetto lo chiude GeneratePianoRateAction, intestandolo al
+            // piano e solo sui saldi finiti davvero nelle quote. Bloccarlo qui
+            // significava bloccarlo anche quando le rate non venivano generate:
+            // saldi congelati da un piano che non li conteneva, e nessun modo
+            // di riaprirli dalla UI.
             if ($applicareSaldi) {
-                $this->saldoService->marcaSaldoApplicato($gestione, $saldoInfo['saldo']);
                 $gestione->refresh();
                 $pianoRate->setRelation('gestione', $gestione);
             }
@@ -452,16 +499,10 @@ class PianoRateController extends Controller
             $coverageService = app(BudgetCoverageService::class);
             
             // 1. Recupero Veloce Fatturato e Virtuale
-            $rawFatturato = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                ->whereNull('righe_fattura.immobile_id')
-                ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
-                ->groupBy('righe_fattura.conto_id')->get();
-                
-            $fatturatoMap = $rawFatturato->pluck('totale', 'conto_id')->toArray();
-            
+            // Speso reale dal libro giornale: include regolazioni immediate e
+            // fatture pregresse, e scarta da sé le spese ad personam.
+            $fatturatoMap = app(SpesaPerVoceService::class)->perEsercizio($esercizio);
+
             $fattureSforo = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
@@ -480,13 +521,36 @@ class PianoRateController extends Controller
 
             // 2. Usiamo la nuova intelligenza!
             $report = $coverageService->analyze($pianoRate->gestione, $fatturatoMap, $coperturaVirtualeMap);
-            
+
+            // ⚠️ Beta.73: quali voci hanno ancora un residuo aperto da "Sposta spesa", in
+            // qualunque piano rate di QUESTA gestione — non solo questo piano, perché il deficit
+            // misurato da analyze() è già aggregato a livello di gestione. Saldo netto, non
+            // semplice presenza: una voce stornata per intero non deve portare l'etichetta, o
+            // direbbe che Sposta Spesa l'ha lasciata scoperta quando non è più vero (trovato in
+            // Fase 1-bis, verificando che lo storno chiudesse davvero il cerchio).
+            $pianiRateIds = $pianoRate->gestione->pianiRate()->pluck('id');
+            $ceduto = BudgetMovement::whereIn('piano_rate_id', $pianiRateIds)
+                ->selectRaw('source_conto_id, SUM(amount) as tot')
+                ->groupBy('source_conto_id')
+                ->pluck('tot', 'source_conto_id');
+            $ricevuto = BudgetMovement::whereIn('piano_rate_id', $pianiRateIds)
+                ->selectRaw('destination_conto_id, SUM(amount) as tot')
+                ->groupBy('destination_conto_id')
+                ->pluck('tot', 'destination_conto_id');
+            $vociDaSpostaSpesa = [];
+            foreach ($ceduto as $contoId => $totCeduto) {
+                if (((int) $totCeduto - (int) ($ricevuto[$contoId] ?? 0)) > 0) {
+                    $vociDaSpostaSpesa[(int) $contoId] = true;
+                }
+            }
+
             // 3. Estraiamo solo quelli che hanno davvero bisogno di soldi
-            $orfani = collect($coverageService->getCapitoliFinanziabili($report))
+            $orfani = collect($coverageService->getCapitoliFinanziabili($report, $vociDaSpostaSpesa))
                 ->map(fn($item) => [
-                    'id'      => $item['id'],
-                    'nome'    => $item['padre'] ? "— " . $item['nome'] : $item['nome'],
-                    'importo' => $item['importo_suggerito'], 
+                    'id'               => $item['id'],
+                    'nome'             => $item['padre'] ? "— " . $item['nome'] : $item['nome'],
+                    'importo'          => $item['importo_suggerito'],
+                    'da_sposta_spesa'  => $item['da_sposta_spesa'], 
                 ])->values()->toArray();
         }
         
@@ -571,6 +635,10 @@ class PianoRateController extends Controller
             'ratePure' => $ratePure, 
             'quotePerAnagrafica' => $this->pianoRateQuoteService->quotePerAnagrafica($pianoRate),
             'quotePerImmobile' => $this->pianoRateQuoteService->quotePerImmobile($pianoRate),
+            // Il verdetto sull'allineamento arriva dal server, calcolato dallo **stesso** metodo
+            // che usa il cruscotto: fino all'11/08/2026 le due schermate se lo calcolavano da
+            // sole, con metodi e tolleranze diverse, e potevano contraddirsi.
+            'disallineato' => $this->pianoRateQuoteService->eDisallineato($pianoRate),
             'needsMigration' => false, 
             'copertura' => $coperturaData,
             'sources' => $sources, // <--- Ora questo conterrà le fatture!
@@ -663,13 +731,28 @@ class PianoRateController extends Controller
      * @param Gestione $gestione La gestione selezionata nel frontend
      * @return \Illuminate\Http\JsonResponse Un array JSON di Saldi pronti per la modale Vue
      */
-    public function fetchSaldiAnalitici(Condominio $condominio, Esercizio $esercizio, Gestione $gestione)
-    {
+    public function fetchSaldiAnalitici(
+        Condominio $condominio,
+        Esercizio $esercizio,
+        Gestione $gestione,
+        \App\Actions\PianoRate\GenerateSaldiAction $anteprima
+    ) {
         $saldi = Saldo::where('gestione_id', $gestione->id)
             ->where('is_applicato', false)
+            // Terzo posto in cui `saldi` veniva letta senza separare le due famiglie che ci
+            // convivono (beta.43). Un debito verso fornitore non ha anagrafica né immobile,
+            // quindi compariva qui come saldo «solidale» intestato a «Unità Sconosciuta» — e
+            // l'amministratore poteva configurargli un riparto manuale che `GenerateSaldiAction`
+            // non avrebbe mai applicato, visto che di là il filtro `whereNull('fornitore_id')`
+            // c'è da sempre. Stesso filtro, così le due estremità del flusso guardano la stessa
+            // lista.
+            ->whereNull('fornitore_id')
+            // Le righe a zero non entrano mai nella generazione: mostrarle qui
+            // farebbe configurare una ripartizione che non verrà mai applicata.
+            ->where('saldo_iniziale', '!=', 0)
             ->with(['anagrafica', 'immobile'])
             ->get()
-            ->map(function($s) use ($condominio) {
+            ->map(function($s) use ($condominio, $gestione, $anteprima) {
                 $ruolo = null;
                 if ($s->anagrafica_id && $s->immobile_id) {
                     $ruolo = DB::table('anagrafica_immobile')
@@ -683,11 +766,20 @@ class PianoRateController extends Controller
                     'anagrafica_id' => $s->anagrafica_id,
                     'tipo' => $s->anagrafica_id ? 'nominale' : 'solidale',
                     'soggetto_nome' => $s->anagrafica_id ? $s->anagrafica->nome : "Unità " . ($s->immobile->nome ?? 'Sconosciuta'),
-                    'immobile_nome' => $s->immobile ? $s->immobile->nome . " (Int. " . $s->immobile->interno . ")" : 'N/D',
+                    // `etichettaEstesa`: senza interno restava «Posto auto 3 (Int. )», con la parentesi vuota.
+                    'immobile_nome' => $s->immobile ? $s->immobile->etichettaEstesa : 'N/D',
                     'ruolo' => $ruolo ?? ($s->anagrafica_id ? 'Anagrafica' : 'Condominio'),
                     'importo' => $s->saldo_iniziale,
                     'is_debito' => $s->saldo_iniziale > 0,
-                    'immobile_id' => $s->immobile_id
+                    'immobile_id' => $s->immobile_id,
+                    // L'anteprima del riparto automatico: chi pagherebbe cosa se il piano
+                    // venisse generato adesso. Solo per i solidali — un saldo nominale ha già
+                    // il suo destinatario e non c'è niente da risolvere. La calcola il server
+                    // con le stesse funzioni del generatore, non il frontend: un'anteprima che
+                    // ricalcola a modo suo diverge al primo cambio (beta.35).
+                    'riparto_previsto' => $s->anagrafica_id
+                        ? null
+                        : $anteprima->anteprimaSolidale($s, $gestione),
                 ];
             });
 
@@ -700,8 +792,9 @@ class PianoRateController extends Controller
      * 1. Blocca se ci sono pagamenti registrati.
      * 2. Blocca se ci sono emissioni in partita doppia (Libro Giornale).
      * 3. Blocca se il piano è Approvato (forzando il ripristino in Bozza per eliminare gli eventi dello scadenziario).
-     * Se i controlli passano, elimina il piano e rimuove i lucchetti (is_applicato=false) dai saldi originari,
-     * MA SOLO SE i saldi erano stati effettivamente inclusi in questo specifico piano rate.
+     * Se i controlli passano, elimina il piano e riapre il lucchetto sui saldi intestati
+     * a questo piano (saldi.piano_rate_id), lasciando intatti quelli di altri piani e i
+     * debiti verso fornitori.
      *
      * @param Condominio $condominio Il condominio corrente
      * @param Esercizio $esercizio L'esercizio contabile corrente
@@ -744,46 +837,33 @@ class PianoRateController extends Controller
             ));
         }
 
-        // 2. VERIFICA PRESENZA SALDI IN QUESTO PIANO (Il Fix Integrativi)
-        $hasSaldiInThisPlan = false;
-        $rate = $pianoRate->rate()->with('rateQuote')->get();
-        
-        foreach($rate as $rata) {
-            foreach($rata->rateQuote as $quota) {
-                // Controllo retrocompatibilità (V1.8)
-                if ($quota->tipo === 'saldo_iniziale') {
-                    $hasSaldiInThisPlan = true;
-                    break 2;
-                }
-
-                // FIX V1.9: regole_calcolo è già un array grazie al cast nel modello
-                $regole = $quota->regole_calcolo;
-
-                if (is_array($regole) && isset($regole['importi']['saldo_usato']) && $regole['importi']['saldo_usato'] != 0) {
-                    $hasSaldiInThisPlan = true;
-                    break 2;
-                }
-            }
-        }
-
-        // 3. ELIMINAZIONE E SBLOCCO SALDI
+        // 2. ELIMINAZIONE E SBLOCCO SALDI
         try {
             DB::beginTransaction();
 
             $gestione = $pianoRate->gestione;
 
-            // Rimuoviamo il blocco saldi SOLO SE questo piano è quello che li aveva assorbiti
-            if ($hasSaldiInThisPlan && $gestione && $gestione->saldo_applicato) {
-                // Sblocca la Gestione Macro
-                $gestione->update([
-                    'saldo_applicato' => false,
-                    'nota_saldo' => null
-                ]);
+            if ($gestione) {
+                // Lo sblocco segue l'intestazione (saldi.piano_rate_id): si
+                // riaprono i saldi che QUESTO piano teneva chiusi, non tutti
+                // quelli della gestione — i debiti verso fornitori vivono nella
+                // stessa tabella con is_applicato=true e non vanno toccati.
+                $rilasciati = $this->saldoService->rilasciaLucchetti($pianoRate, $gestione);
 
-                // Sblocca le singole righe Saldo Micro relative a questa gestione
-                Saldo::where('gestione_id', $gestione->id)
-                    ->where('is_applicato', true)
-                    ->update(['is_applicato' => false]);
+                // Rete di sicurezza per i piani antecedenti alla beta.32 che la
+                // migrazione di riparazione non è riuscita a intestare: si torna
+                // al vecchio criterio, dedotto dal contenuto delle quote.
+                if ($rilasciati === 0 && $gestione->saldo_applicato && $this->pianoContieneSaldi($pianoRate)) {
+                    Saldo::where('gestione_id', $gestione->id)
+                        ->where('is_applicato', true)
+                        ->whereNull('fornitore_id')
+                        // Mai toccare un lucchetto che ha già un titolare: quello
+                        // appartiene a un altro piano, che continua ad addebitarlo.
+                        ->whereNull('piano_rate_id')
+                        ->update(['is_applicato' => false, 'piano_rate_id' => null]);
+
+                    $this->saldoService->allineaFlagGestione($gestione);
+                }
             }
 
            // 1. RIACCENSIONE SEMAFORO DASHBOARD (Per Piani Straordinari)
@@ -829,6 +909,32 @@ class PianoRateController extends Controller
     }
 
     /**
+     * Vecchio criterio (pre beta.32): il piano contiene tracce di saldo pregresso
+     * nelle quote generate? Usato solo come rete di sicurezza per dati storici —
+     * è fragile per costruzione, perché un ricalcolo cancella proprio quelle quote.
+     */
+    private function pianoContieneSaldi(PianoRate $pianoRate): bool
+    {
+        foreach ($pianoRate->rate()->with('rateQuote')->get() as $rata) {
+            foreach ($rata->rateQuote as $quota) {
+                // Retrocompatibilità V1.8
+                if ($quota->tipo === 'saldo_iniziale') {
+                    return true;
+                }
+
+                // regole_calcolo è già un array grazie al cast nel modello
+                $regole = $quota->regole_calcolo;
+
+                if (is_array($regole) && !empty($regole['importi']['saldo_usato'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Rimuove uno specifico capitolo di spesa da un Piano Rate esistente.
      * Elimina e ricalcola le rate basandosi sui capitoli rimanenti, verificando
      * che il capitolo da eliminare non sia vincolato da incassi, emissioni o spostamenti manuali di budget (BudgetMovement).
@@ -849,17 +955,33 @@ class PianoRateController extends Controller
             return back()->with($this->flashError("Annulla le emissioni prima di modificare le voci."));
         }
 
-        $isInvolved = BudgetMovement::query()
-            ->where(function ($query) use ($capitoloId) {
-                $query->where('source_conto_id', $capitoloId)
-                      ->orWhere('destination_conto_id', $capitoloId);
-            })
-            ->exists();
+        // ⚠️ Il saldo NETTO, non la semplice esistenza di righe storiche — beta.73.
+        //
+        // Fino a questa beta il controllo guardava se la voce era MAI comparsa in un movimento,
+        // in QUALUNQUE piano rate: un blocco permanente, perché nessuno storno esisteva per
+        // farlo tornare a zero (il messaggio diceva «restituisci i fondi», ma non c'era nessuna
+        // rotta per farlo davvero). E lo scope era comunque sbagliato: un movimento scritto su
+        // un ALTRO piano rate non lascia nessuna traccia nel pivot DI QUESTO piano — bloccare la
+        // rimozione qui per una storia che appartiene a un piano diverso non protegge niente.
+        //
+        // Ora il controllo è scoped a questo piano soltanto, e guarda il saldo netto: se la voce
+        // ha ricevuto e restituito lo stesso importo (uno storno completo), è di nuovo rimovibile.
+        $nettoRicevuto = (int) BudgetMovement::where('piano_rate_id', $pianoRate->id)
+            ->where('destination_conto_id', $capitoloId)
+            ->sum('amount');
+        $nettoCeduto = (int) BudgetMovement::where('piano_rate_id', $pianoRate->id)
+            ->where('source_conto_id', $capitoloId)
+            ->sum('amount');
+        $saldoNetto = $nettoRicevuto - $nettoCeduto;
 
-        if ($isInvolved) {
+        if ($saldoNetto !== 0) {
+            $importo = number_format(abs($saldoNetto) / 100, 2, ',', '.');
+            $messaggio = $saldoNetto > 0
+                ? "Questa voce ha ricevuto € {$importo} netti da altre voci con Sposta Spesa, in questo piano rate. "
+                : "Questa voce ha ceduto € {$importo} netti ad altre voci con Sposta Spesa, in questo piano rate. ";
+
             return back()->with($this->flashError(
-                "Impossibile rimuovere: questa voce è vincolata da movimenti di budget (anche da altri piani rate). " .
-                "Devi prima annullare i movimenti o restituire i fondi, poi potrai cancellarla."
+                $messaggio . "Storna i movimenti dallo storico (icona dell'orologio) prima di rimuoverla."
             ));
         }
 

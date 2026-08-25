@@ -1,0 +1,8 @@
+{
+    "features": [
+        "⚠ Questo aggiornamento comprende una migrazione del database, eseguita automaticamente durante l'aggiornamento guidato. Non tocca alcun dato esistente: crea solo la nuova tabella del \"già versato\".",
+        "Nuova pagina \"Già versato per voce di spesa\": se il condominio arriva da un altro gestionale con un accantonamento già raccolto (es. una delibera del 2025), registralo qui — il riparto chiederà ai condòmini solo il residuo, non l'intera spesa una seconda volta.",
+        "Corretto un caso in cui, rateizzando la stessa voce in più tranche (acconto e saldo), la copertura già versata poteva essere sottratta più volte invece che una sola: individuato e risolto prima del rilascio con una revisione dedicata del codice.",
+        "Corretto un bug presente dal precedente aggiornamento: il campo \"Saldo iniziale\" di una cassa, dopo essere stato registrato in contabilità, poteva risultare vuoto e modificabile nel form di modifica. Ridigitarlo poteva sbilanciare lo Stato Patrimoniale. Il campo ora si blocca correttamente e mostra il saldo reale a scopo informativo."
+    ]
+}

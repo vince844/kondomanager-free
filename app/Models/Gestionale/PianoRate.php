@@ -2,6 +2,7 @@
 
 namespace App\Models\Gestionale;
 
+use App\Traits\RisolveIFigliDelleRotte;
 use App\Enums\StatoPianoRate;
 use App\Models\Condominio;
 use App\Models\Gestione;
@@ -22,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class PianoRate extends Model
 {
+    use RisolveIFigliDelleRotte;
+
     use HasFactory;
 
     protected $table = 'piani_rate';
@@ -32,9 +35,11 @@ class PianoRate extends Model
         'nome',
         'descrizione',
         'metodo_distribuzione',
+        'applica_saldi',
+        'saldi_config',
         'numero_rate',
         'giorno_scadenza',
-        'data_inizio',
+        'data_prima_scadenza',
         'attivo',
         'note',
         'nota_scoperti',
@@ -53,11 +58,56 @@ class PianoRate extends Model
 
     protected $casts = [
         'stato'                   => StatoPianoRate::class,
-        'data_inizio'             => 'date',
+        // NULL = «parte dall'inizio della gestione», che è il comportamento di sempre.
+        'data_prima_scadenza'     => 'date',
         'data_delibera_assemblea' => 'date',      // Cast automatico a Carbon per formattazione agevole
         'approvato_il'            => 'datetime',  // Cast automatico a Carbon con orario
         'attivo'                  => 'boolean',
+        // NULL = piani antecedenti alla beta.32, dove la scelta non veniva persistita.
+        'applica_saldi'           => 'boolean',
+        // Riparto manuale dei saldi solidali (Art. 63) deciso alla creazione.
+        'saldi_config'            => 'array',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | SOGLIA DI IMMUTABILITÀ
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Il piano ha incassi registrati su almeno una quota.
+     */
+    public function haIncassiRegistrati(): bool
+    {
+        return $this->rate()
+            ->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))
+            ->exists();
+    }
+
+    /**
+     * Almeno una quota è stata emessa in contabilità, cioè ha una scrittura collegata.
+     */
+    public function haRateEmesse(): bool
+    {
+        return $this->rate()
+            ->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))
+            ->exists();
+    }
+
+    /**
+     * La soglia oltre la quale il piano — e i dati che lo alimentano — non si
+     * correggono più, si stornano.
+     *
+     * Finché è false il sistema è già disposto a distruggere e riscrivere tutte
+     * le quote (è quello che fa «Ricalcola»): non ha senso vietare la correzione
+     * del saldo che le alimenta. Quando diventa true il numero è uscito dallo
+     * studio — è stato emesso a giornale o incassato — e va rettificato, non riscritto.
+     */
+    public function eImmutabile(): bool
+    {
+        return $this->haRateEmesse() || $this->haIncassiRegistrati();
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -179,4 +229,51 @@ class PianoRate extends Model
     {
         return PianoRateFactory::new();
     }
+
+    /**
+     * La data da cui parte il calendario delle rate.
+     *
+     * È `data_prima_scadenza` se l'amministratore l'ha scelta, altrimenti l'inizio della
+     * gestione — che è il comportamento di sempre, e resta il default proprio perché nella
+     * grande maggioranza dei casi è quello giusto.
+     *
+     * `NULL` in colonna non è un dato mancante: **è la scelta di seguire la gestione**. Un
+     * piano che non ha una data propria si sposta se l'inizio della gestione si sposta, e chi
+     * lo vuole fermo mette una data. È la ragione per cui questa colonna non è stata
+     * riempita all'indietro sui piani esistenti.
+     *
+     * ⚠️ La controparte TypeScript è `partenzaCalendario()` in
+     * `resources/js/lib/gestionale/pianiRate/calendario.ts`, che l'interfaccia usa per dire
+     * all'amministratore da dove partirà. Le due devono rispondere allo stesso modo: è lo
+     * schema che nella beta.35 è costato un centesimo di divergenza sul netto da pagare,
+     * perché nessuna delle due copie era sbagliata da sola.
+     */
+    public function dataPartenzaCalendario(): ?\Carbon\CarbonInterface
+    {
+        if ($this->data_prima_scadenza) {
+            return \Carbon\CarbonImmutable::parse($this->data_prima_scadenza);
+        }
+
+        $inizioGestione = $this->gestione?->data_inizio;
+
+        return $inizioGestione ? \Carbon\CarbonImmutable::parse($inizioGestione) : null;
+    }
+
+
+    /**
+     * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
+     *
+     * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel
+     * deriverebbe il nome con una pluralizzazione inglese, e su nomi italiani sbaglia sempre.
+     *
+     * @return array<string, string>
+     */
+    protected function relazioniDeiFigliNelleRotte(): array
+    {
+        return [
+            'capitolo' => 'capitoli',
+            'rata' => 'rate',
+        ];
+    }
+
 }

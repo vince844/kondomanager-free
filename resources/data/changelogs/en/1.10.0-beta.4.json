@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Platform upgrade: Kondomanager has been updated to the latest versions of Laravel, Inertia and Livewire, with extensive testing across all pages to ensure full compatibility.",
+        "Language selection during installation: the setup wizard now lets you choose the application's main language right away (Italian, English, Spanish, Portuguese), instead of having to set it afterwards.",
+        "Customizable application name: the name shown in the browser tab and as the sender in emails sent to unit owners can now be changed at any time from General Settings, not just during installation.",
+        "Strengthened security on the installer's final summary page: passwords (admin, database, mail) are no longer exposed in plain text on the page or in the downloadable summary file.",
+        "Fixed an issue where the language and application name chosen during a fresh installation were not applied correctly.",
+        "Removed unused email configuration fields from the 'Environment' installation step: mail configuration remains in its dedicated step."
+    ]
+}

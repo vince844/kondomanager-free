@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers\Fornitori;
 
+use App\Traits\OrdinaElenco;
+
+use App\Enums\Fiscale\NaturaPercipiente;
+use App\Enums\Fiscale\TipoRitenuta;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
@@ -15,6 +19,7 @@ use App\Models\Anagrafica;
 use App\Models\CategoriaFornitore;
 use App\Models\Fornitore;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -23,8 +28,10 @@ use Illuminate\Support\Facades\DB;
 
 class FornitoreController extends Controller
 {
+    use OrdinaElenco;
     use HandleFlashMessages;
-    
+    use PaginaElenco;
+
     /**
      * Display paginated list of fornitori with filtering options.
      * 
@@ -39,11 +46,16 @@ class FornitoreController extends Controller
     {
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $fornitori = Fornitore::with(['referenti:id,nome,indirizzo', 'categoria'])
             ->when($validated['ragione_sociale'] ?? false, function ($query, $ragioneSociale) {
                 $query->where('ragione_sociale', 'like', "%{$ragioneSociale}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, FornitoreIndexRequest::colonneOrdinabili(), predefinita: 'ragione_sociale', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page'])
             ->withQueryString();
     
         return Inertia::render('fornitori/FornitoriList', [
@@ -54,7 +66,9 @@ class FornitoreController extends Controller
                 'per_page'     => $fornitori->perPage(),
                 'total'        => $fornitori->total(),
             ],
-            'filters' => $request->only(['ragione_sociale']) 
+            'filters' => $request->only(['ragione_sociale']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 
@@ -70,6 +84,7 @@ class FornitoreController extends Controller
         return Inertia::render('fornitori/FornitoriNew', [
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
+            ...$this->regimeFiscaleOptions(),
         ]);
     }
 
@@ -158,8 +173,26 @@ class FornitoreController extends Controller
 
         return Inertia::render('fornitori/FornitoriEdit', [
             'fornitore'   => new EditFornitoreResource($fornitore),
-            'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all())
+            'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
+            ...$this->regimeFiscaleOptions(),
        ]);
+    }
+
+    /**
+     * Opzioni per le select del regime fiscale ritenuta (v1.10, Fase 1).
+     *
+     * @return array{tipiRitenuta: array<int, array{value:string,label:string}>, natureRecipiente: array<int, array{value:string,label:string}>}
+     */
+    private function regimeFiscaleOptions(): array
+    {
+        return [
+            'tipiRitenuta' => collect(TipoRitenuta::cases())
+                ->map(fn (TipoRitenuta $c) => ['value' => $c->value, 'label' => $c->label()])
+                ->values(),
+            'natureRecipiente' => collect(NaturaPercipiente::cases())
+                ->map(fn (NaturaPercipiente $c) => ['value' => $c->value, 'label' => $c->label()])
+                ->values(),
+        ];
     }
 
     /**

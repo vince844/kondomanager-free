@@ -49,6 +49,20 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // La sospensione si verifica **dopo** le credenziali, non prima: rispondere «sospeso» a
+        // chi la password non ce l'ha direbbe a un estraneo quali account esistono e in che stato
+        // sono. Chi arriva qui ha già dimostrato di essere il titolare.
+        if (Auth::user()->suspended()) {
+            Auth::guard('web')->logout();
+
+            $this->session()->invalidate();
+            $this->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'email' => trans('auth.suspended'),
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

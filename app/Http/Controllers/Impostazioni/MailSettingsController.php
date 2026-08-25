@@ -136,6 +136,9 @@ class MailSettingsController extends Controller
                 Config::set('mail.mailers.smtp.username',   $request->mail_username);
                 Config::set('mail.mailers.smtp.password',   $password);
                 Config::set('mail.mailers.smtp.encryption', $request->mail_encryption);
+                // Vedi MailConfigServiceProvider::applySmtpConfig(): 'scheme' è la chiave
+                // che Laravel usa davvero per decidere TLS/SSL, non 'encryption'.
+                Config::set('mail.mailers.smtp.scheme', $request->mail_encryption === 'ssl' ? 'smtps' : null);
             } else {
                 // Sendmail: nessuna credenziale necessaria
                 Config::set('mail.default', 'sendmail');

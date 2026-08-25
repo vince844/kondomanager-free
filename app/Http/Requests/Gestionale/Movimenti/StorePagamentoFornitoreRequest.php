@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Enums\MetodoPagamento;
 use App\Enums\TipoAllocazioneFattura;
 use App\Enums\TipoDetrazione;
@@ -33,9 +34,34 @@ class StorePagamentoFornitoreRequest extends FormRequest
         return [
             // --- DATI PRINCIPALI ---
             'fornitore_id'       => ['required', 'integer', 'exists:fornitori,id'],
-            'esercizio_id'       => ['required', 'integer', 'exists:esercizi,id'],
-            'conto_corrente_id'  => ['required', 'integer'],
-            'data_pagamento'     => ['required', 'date'],
+
+            // Scopato per condominio: validaInput() controlla lo stato dell'esercizio
+            // ma mai l'appartenenza, quindi un esercizio_id di un altro condominio
+            // passava indisturbato fino alla scrittura.
+            'esercizio_id'       => [
+                'required', 'integer',
+                Rule::exists('esercizi', 'id')->where('condominio_id', $this->route('condominio')?->id),
+            ],
+            // Non aveva nemmeno un exists: il service risolve la cassa con
+            // Cassa::where('conto_contabile_id', ...) senza filtro, e verificaCapienza()
+            // sommava i movimenti di quel conto chiunque ne fosse il proprietario.
+            // Con un id altrui si pagava attingendo al saldo della banca di un altro
+            // condominio.
+            'conto_corrente_id'  => [
+                'required', 'integer',
+                Rule::exists('conti_contabili', 'id')->where('condominio_id', $this->route('condominio')?->id),
+                // Il denaro esce solo da casse reali: i fondi sono partizioni
+                // contabili del c/c e si consumano via giroconto, mai pagando.
+                // Il form esclude già i fondi; questo chiude il varco via API (beta.19).
+                Rule::exists('casse', 'conto_contabile_id')
+                    ->where('condominio_id', $this->route('condominio')?->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
+            ],
+
+            // Il sigillo per anzianità (30 giorni) si ancora a created_at, ma una
+            // data_pagamento nel futuro resta comunque priva di senso contabile:
+            // il movimento non è ancora avvenuto.
+            'data_pagamento'     => ['required', 'date', 'before_or_equal:'.DateHelper::oggiUtente()],
 
             'metodo_pagamento'   => [
                 'required',
@@ -56,7 +82,14 @@ class StorePagamentoFornitoreRequest extends FormRequest
 
             // --- ALLOCAZIONI (multi-fattura) ---
             'allocazioni'                        => ['required', 'array', 'min:1'],
-            'allocazioni.*.fattura_id'            => ['required', 'integer', 'exists:fatture_passive,id'],
+            // validaInput() controlla solo che le fatture allocate siano OMOGENEE fra
+            // loro, non che appartengano al condominio della rotta: si potevano pagare
+            // fatture di un altro condominio (caso tutt'altro che teorico — lo stesso
+            // fornitore lavora per più stabili).
+            'allocazioni.*.fattura_id' => [
+                'required', 'integer',
+                Rule::exists('fatture_passive', 'id')->where('condominio_id', $this->route('condominio')?->id),
+            ],
             'allocazioni.*.tipo'                  => [
                 'required',
                 Rule::in([

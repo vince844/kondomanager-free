@@ -11,9 +11,17 @@ namespace App\Enums;
  * Ogni case include il riferimento normativo ufficiale da inserire
  * nella causale del bonifico, evitando switch sparsi nel codice.
  *
- * NOTA: La banca trattiene automaticamente l'8% sul bonifico parlante
- * e lo versa all'A.d.E. (ritenuta diversa dalla ritenuta d'acconto).
- * Questo enum NON gestisce tale ritenuta — solo il riferimento normativo.
+ * NOTA: La banca trattiene automaticamente l'**11%** sul bonifico parlante e lo versa
+ * all'A.d.E. (ritenuta ex art. 25 DL 78/2010, diversa dalla ritenuta d'acconto del
+ * condominio). Era scritto 8%: l'aliquota è salita all'11% per i bonifici disposti dal
+ * 1° marzo 2024 (L. 213/2023), e la pagina divulgativa dell'Agenzia riporta ancora il valore
+ * vecchio — corretto qui il 04/08/2026, allineandolo a `MotivoEsclusioneRitenuta`, che l'11%
+ * lo diceva già.
+ *
+ * Questo enum NON gestisce tale ritenuta — solo il riferimento normativo per la causale. Il
+ * condominio non la versa e non la certifica: la opera la banca sul fornitore. Quel che il
+ * condominio deve fare è **non applicare la propria**, ed è ciò che accade dal momento in cui
+ * un pagamento è marcato come bonifico parlante (vedi `PagamentoFornitoreService`).
  */
 enum TipoDetrazione: string
 {

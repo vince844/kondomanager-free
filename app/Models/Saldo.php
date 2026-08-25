@@ -26,7 +26,11 @@ class Saldo extends Model
         'anagrafica_id',  // Il soggetto (proprietario/inquilino)
         'immobile_id',    // L'unità immobiliare specifica
         'gestione_id',    // La gestione a cui appartiene il debito/credito (Novità v1.9)
-        'saldo_iniziale', // Debito (-) o Credito (+) pregresso in centesimi
+        'piano_rate_id',  // Il piano rate che ha assorbito questo saldo (chi ha chiuso il lucchetto)
+        // Positivo = DEBITO del condòmino, negativo = CREDITO. È la convenzione di tutto il
+        // progetto — vedi `docs/architettura_saldi_iniziali.md`. Il commento diceva il
+        // contrario, e stava proprio sulla riga che chiunque legge per capire il segno.
+        'saldo_iniziale', // Debito (+) o Credito (-) pregresso in centesimi
         'saldo_finale',   // Saldo risultante a fine esercizio
         'origine',        // 'manuale', 'importato', 'automatico'
         'is_applicato',   // Se true, il saldo è bloccato perché già inserito in un piano rate (Novità v1.9)
@@ -54,6 +58,37 @@ class Saldo extends Model
     public function gestione(): BelongsTo
     {
         return $this->belongsTo(Gestione::class);
+    }
+
+    /**
+     * Il piano rate che ha assorbito questo saldo, cioè chi ha chiuso il
+     * lucchetto. Null quando il saldo è libero: senza questo legame lo sblocco
+     * andava dedotto leggendo le quote generate, e ogni ricalcolo lo perdeva.
+     */
+    public function pianoRate(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Gestionale\PianoRate::class, 'piano_rate_id');
+    }
+
+    /**
+     * Questo saldo è ormai intoccabile?
+     *
+     * Non basta che sia stato assorbito da un piano: finché quel piano non è
+     * emesso o incassato è ancora interamente riscrivibile, e vietare la
+     * correzione del saldo che lo alimenta sarebbe più severo di quanto il
+     * sistema sia con il piano stesso.
+     *
+     * Restano bloccati i saldi con `is_applicato` ma senza titolare: sono i
+     * debiti verso fornitori e i dati storici anteriori alla beta.32, per i
+     * quali non è possibile stabilire quale piano li tenga.
+     */
+    public function eBloccato(): bool
+    {
+        if ($this->pianoRate) {
+            return $this->pianoRate->eImmutabile();
+        }
+
+        return (bool) $this->is_applicato;
     }
 
     /**
@@ -90,19 +125,10 @@ class Saldo extends Model
 
     // --- HELPER METODS ---
 
-    /**
-     * Determina se il saldo rappresenta un debito per il condòmino.
-     */
-    public function isDebito(): bool
-    {
-        return $this->saldo_iniziale < 0;
-    }
-
-    /**
-     * Determina se il saldo rappresenta un credito per il condòmino.
-     */
-    public function isCredito(): bool
-    {
-        return $this->saldo_iniziale > 0;
-    }
+    // `isDebito()` e `isCredito()` sono stati RIMOSSI nella beta.43. Erano invertiti rispetto
+    // alla convenzione del progetto — `isDebito()` rispondeva `saldo_iniziale < 0` — e non
+    // avevano un solo chiamante in tutto il codice. Non sono stati corretti ma tolti: un
+    // metodo con quel nome è esattamente ciò che qualcuno chiamerebbe in buona fede scrivendo
+    // logica sui segni, e avrebbe ottenuto il verso opposto senza alcun modo di accorgersene.
+    // Chi serve, scriva il confronto: è una riga, e si legge.
 }

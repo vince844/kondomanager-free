@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Credits always visible in 'New payment collection': overpaid instalments (more collected than due, typically inherited from versions prior to 1.9.1) now appear as credit rows with a negative balance instead of disappearing from the list. The displayed balance is always the true one, net of the credit: amounts already paid are never proposed as due again.",
+        "Universal, zero-cash 'Use credit': the button now works with any credit the resident holds (opening credit balance, advance payment or overpaid instalment), can combine multiple credits in a single entry and supports compensations with € 0 collected — new instalments can be settled entirely from credit, with no money movement.",
+        "Advance payments become spendable: when a resident pays more than due, the excess no longer ends up in an unrecoverable accounting entry — it stays attached as credit to the last instalment paid, visible in 'New payment collection' and usable against instalments issued later.",
+        "Compensation hint on issue: when you issue new instalments, if any of the holders has an available credit the system reports it immediately with name and amount, so you can compensate right away. No automatic entries: the decision always stays with the administrator.",
+        "Full traceability for credit compensations: the payment list and each entry's detail page now correctly show the resident and the instalments covered, even for zero-cash compensations (no money collected, settled purely from credit) — they used to show 'Unknown' with no detail. The account statement always lists, entry by entry, which credit was used and against which instalment."
+    ]
+}

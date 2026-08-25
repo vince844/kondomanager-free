@@ -16,6 +16,7 @@ return [
     'success_unapprove_ticket'            => "La segnalazione guasto è stata messa in moderazione con successo.",
     'error_unapprove_ticket'              => "Si è verificato un errore durante il tentativo di mettere la segnalazione guasto in moderazione.",
     'error_notify_approved_ticket'        => "La segnalazione guasto è stata approvata, ma si è verificato un errore nell'invio della notifica.",
+    'error_notify_updated_ticket' => "La segnalazione è stata aggiornata, ma si è verificato un errore nell'invio della notifica.",
     'success_lock_ticket'                 => "La segnalazione guasto è stata bloccata con successo.",
     'error_lock_ticket'                   => "Si è verificato un errore durante il tentativo di bloccare della segnalazione guasto.",
     'success_unlock_ticket'               => "La segnalazione guasto è stata sbloccata con successo.",
@@ -174,6 +175,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avvisa via mail chi segue questa segnalazione",
         'object'             => 'Oggetto segnalazione',
         'description'        => 'Descrizione segnalazione',
         'visibility'         => 'Visibilità segnalazione',
@@ -209,6 +211,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Manda una mail a tutti i condòmini del condominio che hanno le notifiche accese, per dirgli che la segnalazione è cambiata. Lasciala spenta se stai correggendo un refuso.",
         'visibility' => 'Se impostata su privata, solo gli amministratori potranno visualizzare la segnalazione.',
         'priority'   => 'Imposta il livello di priorità per questa segnalazione in modo da aiutare gli amministratori a gestirla di conseguenza.',
         'status'     => 'Imposta lo stato attuale della segnalazione per tenere traccia dei progressi.',

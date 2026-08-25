@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Nova secção Configurações → Gestão de cópias de segurança: crie um backup completo da instalação (base de dados, documentos carregados e ficheiro de configuração .env) diretamente na interface, com barra de progresso, e descarregue-o como arquivo zip. Lista de backups com tamanho, impressão SHA-256 para verificar as cópias, descarregamento e eliminação com confirmação.",
+        "Concebido para alojamento partilhado: o backup avança em pequenas etapas retomáveis, sem necessidade de mysqldump, terminal ou cron. Se a página for fechada ou o servidor interromper a execução, o backup retoma exatamente de onde parou.",
+        "Conservação automática configurável: escolha quantos backups manter no servidor (padrão 5); os mais antigos são eliminados automaticamente no final de cada novo backup.",
+        "Verificação de requisitos antes de começar: extensão ZIP, base de dados suportada, pasta gravável e espaço em disco disponível, com estimativa do tamanho do backup.",
+        "Guia integrado 'Backup e restauro': o que o arquivo contém, como guardá-lo em segurança e o procedimento passo a passo para restaurar ou transferir a instalação para outro servidor.",
+        "Cada arquivo inclui um manifesto com a versão da aplicação e checksums de integridade: é o formato em que se baseará o futuro restauro guiado pela interface."
+    ]
+}

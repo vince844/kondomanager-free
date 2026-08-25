@@ -1,5 +1,10 @@
 # 💾 Installazione su Synology NAS (Container Manager)
 
+<!-- verifica-documentazione -->
+> **Stato:** Descrive il codice — verificato e corretto il 31/07/2026 su 1.10.0-beta.32
+> Corretti i due punti sbagliati trovati nell'audit: il Passo 1 puntava a un branch e a uno ZIP `v1.9.1-beta` inesistenti (ora `v1.9.1`), e la correzione automatica di APP_URL è dichiarata per quello che è — avviene solo se il valore attuale è vuoto, `http://localhost` o contiene `kondomanager-free.test`.
+<!-- /verifica-documentazione -->
+
 KondoManager può essere facilmente ospitato sul tuo NAS Synology sfruttando **Container Manager** (precedentemente noto come Docker). 
 Questa guida utilizza lo stack **Standard** (Nginx + PHP-FPM + Supervisor per i processi in background), che è la soluzione più affidabile.
 
@@ -15,7 +20,7 @@ Questa guida utilizza lo stack **Standard** (Nginx + PHP-FPM + Supervisor per i 
 Hai due opzioni: usare l'interfaccia web (File Station) o usare SSH.
 
 ### Opzione A: Tramite File Station (Più semplice, niente riga di comando)
-1. Scarica il file ZIP di KondoManager da GitHub: [Scarica v1.9.1-beta](https://github.com/vince844/kondomanager-free/archive/refs/heads/v1.9.1-beta.zip).
+1. Scarica il file ZIP di KondoManager da GitHub: [Scarica v1.9.1](https://github.com/vince844/kondomanager-free/archive/refs/heads/v1.9.1.zip).
 2. Apri **File Station** nel tuo Synology.
 3. Naviga nella cartella condivisa `docker`.
 4. Crea una nuova sottocartella chiamata `kondomanager-free`.
@@ -28,7 +33,7 @@ Hai due opzioni: usare l'interfaccia web (File Station) o usare SSH.
 3. Esegui:
    ```bash
    cd /volume1/docker
-   git clone -b v1.9.1-beta https://github.com/vince844/kondomanager-free.git
+   git clone -b v1.9.1 https://github.com/vince844/kondomanager-free.git
    ```
 
 ---
@@ -103,7 +108,7 @@ Per assicurarti che i processi in background stiano funzionando correttamente (i
 Controlla i log dal Container Manager. Se vedi un errore relativo a `permission denied` su `entrypoint.sh`, significa che il Passo 2 non è andato a buon fine. Ripeti l'operazione con il Task Scheduler assicurandoti di usare l'utente `root`.
 
 ### Errore di connessione / CORS nel browser (Reindirizza a localhost o test)
-Se avevi usato questa cartella in precedenza in altri ambienti, il file `.env` potrebbe contenere configurazioni errate. Il nostro script corregge in automatico questo problema impostando `APP_URL=http://localhost:8889`. 
+Se avevi usato questa cartella in precedenza in altri ambienti, il file `.env` potrebbe contenere configurazioni errate. Il nostro script corregge questo problema impostando `APP_URL=http://localhost:8889`, ma **solo se** il valore attuale è vuoto, è esattamente `http://localhost` o contiene `kondomanager-free.test`: qualsiasi altro valore viene preservato, ed è voluto — è ciò che permette di usare un dominio reale dietro reverse proxy. Se il tuo `.env` ne conteneva già uno diverso, correggilo a mano come indicato qui sotto. 
 Tuttavia, siccome sei su un NAS, potresti voler impostare l'IP reale del tuo NAS.
 1. Da File Station, apri la cartella `kondomanager-free`
 2. Modifica il file `.env` con l'editor di testo del NAS

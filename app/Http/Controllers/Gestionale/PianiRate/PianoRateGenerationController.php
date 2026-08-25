@@ -104,8 +104,24 @@ class PianoRateGenerationController extends Controller
             DB::commit();
 
             $msg = "Piano rate ricalcolato con successo!";
+
             if ($nuoviCapitoli > 0) {
                 $msg = "Sincronizzazione completata: inclusi {$nuoviCapitoli} nuovi capitoli di spesa.";
+            } elseif (! empty($orphanIds)) {
+                // L'utente ha chiesto di includere delle voci scoperte e non ne è entrata
+                // nessuna: `SyncOrphanChaptersAction` filtra `whereNull('parent_id')`, quindi
+                // un id di sotto-conto non passa mai e l'azione restituisce 0.
+                //
+                // Dichiarare comunque «ricalcolato con successo» è la forma peggiore di un
+                // avviso sbagliato: non è un difetto che tace, è una conferma che mente. Chi
+                // legge chiude la pagina convinto di aver risolto, e la voce resta scoperta.
+                // Finché la sincronizzazione non sa raggiungere i sotto-conti, che è lavoro
+                // sul percorso del denaro e sta fuori dalla beta.51, almeno lo diciamo.
+                return back()->with($this->flashError(
+                    "Ricalcolo eseguito, ma nessuna delle voci selezionate è stata inclusa nel piano: "
+                    . "la sincronizzazione automatica raggiunge solo i capitoli di primo livello. "
+                    . "Per includere un sotto-conto, elimina il piano e ricrealo selezionando la voce."
+                ));
             }
 
             return back()->with($this->flashSuccess($msg));

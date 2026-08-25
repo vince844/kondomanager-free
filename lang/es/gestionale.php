@@ -315,6 +315,24 @@ return [
         'show' => [
             'head_title' => 'Installment plan detail',
             'plan_title_prefix' => 'Installment plan',
+            'legal' => [
+                'deliberation_of' => 'Acuerdo del',
+            ],
+            'approval_modal' => [
+                'title' => 'Aprobacion del plan de cuotas',
+                'subtitle' => 'Registra los datos del acuerdo de la junta antes de hacer ejecutivo el plan.',
+                'deliberation_date_label' => 'Fecha del acuerdo de la junta *',
+                'deliberation_date_help' => 'Fecha en que la junta aprobo este plan. Queda registrada en el historial de auditoria.',
+                'minutes_number_label' => 'N. de acta (opcional)',
+                'minutes_number_placeholder' => 'Ej. Acta n. 3/2026',
+                'notes_label' => 'Notas o referencias (opcional)',
+                'notes_placeholder' => 'Ej. Aprobado con 8 votos a favor sobre 10 milesimas presentes...',
+                'last_deliberation_title' => 'Ultimo acuerdo registrado:',
+                'last_deliberation_date' => 'Fecha:',
+                'last_deliberation_minutes' => 'Acta:',
+                'saving' => 'Registrando...',
+                'confirm' => 'Aprobar y registrar',
+            ],
             'subtitle' => 'Updated status of installments and payments.',
             'breadcrumb_detail' => 'Detail',
             'draft_state' => [
@@ -763,8 +781,6 @@ return [
                     'description_optional' => 'Description (Optional)',
                     'pdf_only' => 'Only PDF files are allowed.',
                     'pdf_short' => 'PDF only',
-                    'max_size_20mb' => 'File cannot exceed 20MB.',
-                    'pdf_max_20mb' => 'PDF only (Max 20MB)',
                     'click_to_upload' => 'Click to upload',
                     'or_drag_file' => 'or drag file here',
                     'or_drag_new_file' => 'or drag new file here',
@@ -1145,6 +1161,9 @@ return [
                         'committed_already_text' => 'This expense has already been allocated in an installment plan for a total amount of :amount. To maintain accounting consistency, you cannot reduce the total below this value.',
                         'committed_how_to_fix' => 'If you need a lower value, go to the "Installment plans" module, remove the share assigned to this entry, and then return to edit here.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'This entry already has an allocation table and apportionment percentages attached. Converting it into a chapter will delete them. Continue?',
+                    ],
                     'actions' => [
                         'saving' => 'Saving...',
                         'save_changes' => 'Save changes',
@@ -1382,7 +1401,9 @@ return [
         'breadcrumb_quotes' => 'Shares',
         'heading_title' => 'Link properties to the allocation table',
         'heading_description' => 'Below you can specify the shares for each property linked to the table - :table',
-        'max_rows_reached' => 'You have already reached the maximum number of allowed rows.',
+        // Era in inglese dentro il file spagnolo, come diverse voci di questa sezione: tradotta
+        // nella beta.52 insieme alla riscrittura del messaggio.
+        'max_rows_reached' => 'Ya has asociado todas las :count unidades inmobiliarias de esta comunidad. Para añadir más, créalas primero en la sección «Unidades inmobiliarias».',
         'actions' => [
             'add_property' => 'Add property',
         ],

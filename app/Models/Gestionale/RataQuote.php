@@ -88,6 +88,21 @@ class RataQuote extends Model
         return max(0, $this->importo - $this->importo_pagato);
     }
 
+    /**
+     * Credito che questa quota mette a disposizione per le compensazioni.
+     * Due forme possibili:
+     * - quota a importo negativo (saldo iniziale a credito / anticipo): la parte non ancora consumata;
+     * - quota strapagata (importo_pagato > importo): l'eccedenza incassata.
+     */
+    public function getCreditoDisponibileAttribute(): int
+    {
+        if ($this->importo < 0) {
+            return max(0, abs($this->importo) - abs($this->importo_pagato));
+        }
+
+        return max(0, $this->importo_pagato - $this->importo);
+    }
+
     public function getImportoResiduoFormattatoAttribute(): string
     {
         return MoneyHelper::format($this->importo_residuo);

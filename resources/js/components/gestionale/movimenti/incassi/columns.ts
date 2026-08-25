@@ -1,7 +1,7 @@
 import { h } from 'vue'
 import DropdownAction from './DataTableRowActions.vue'
 import DataTableColumnHeader from './DataTableColumnHeader.vue'
-import { CalendarDays, Info, Banknote, Coins, Building2, CheckCircle, RotateCcw, Clock } from 'lucide-vue-next'
+import { CalendarDays, Info, Banknote, Coins, Building2, CheckCircle, RotateCcw } from 'lucide-vue-next'
 import { useFormat } from '@/composables/useFormat'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -34,6 +34,10 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
   // ── 2. SOGGETTO (invariato) ────────────────────────────────────────
   {
     accessorKey: 'pagante',
+      /**
+       * ⚠️ **Non ordinabile.** «Soggetto» è una relazione risolta a video riga per riga: senza scegliere la chiave non ha un ordine.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Soggetto' }),
     size: 180,
     cell: ({ row }) => {
@@ -140,7 +144,11 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
 
       return h('div', { class: 'flex flex-col gap-1 overflow-hidden' }, [
         h('span', { class: 'font-bold text-sm text-slate-900 truncate' }, row.getValue('causale')),
-        h('div', { class: 'flex items-center gap-1.5 flex-wrap min-w-0' }, [gestioneBadge, dettaglioBadge].filter(Boolean)),
+        // Sempre impilate verticalmente (mai affiancate): con "flex-wrap" un
+        // badge corto come "1 RATA" finiva sulla stessa riga della gestione,
+        // mentre uno più lungo come "1 RATA · CREDITO USATO" andava a capo —
+        // stesso layout, resa incoerente in base alla sola lunghezza del testo.
+        h('div', { class: 'flex flex-col items-start gap-1 min-w-0' }, [gestioneBadge, dettaglioBadge].filter(Boolean)),
       ])
     },
   },
@@ -148,23 +156,44 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
   // ── 4. IMPORTO + RISORSA accorpati ────────────────────────────────
   {
     accessorKey: 'importo_totale_raw',
+      /**
+       * ⚠️ **Non ordinabile.** «Importo» è un totale ricomposto dalle righe della scrittura, non un campo.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importo' }),
     size: 150,
     cell: ({ row }) => {
       const formatted = row.original.importo_totale_formatted
       const cassaNome = row.original.cassa_nome || 'N/D'
       const cassaTipo = row.original.cassa_tipo_label || 'Risorsa'
+      const dettagli  = row.original.dettagli_rate || []
+      const haCredito = dettagli.some((d: any) => d.tipo === 'credito')
+
+      // Se l'amministratore ha chiamato la cassa col nome del suo tipo (es.
+      // "Conto Corrente"), il tipo ripeterebbe lo stesso testo appena mostrato
+      // sopra: lo mostriamo solo quando aggiunge un'informazione in più.
+      const tipoRidondante = cassaNome.trim().toLowerCase() === cassaTipo.trim().toLowerCase()
+
+      // Nessuna cassa toccata (importo versato € 0) ma la scrittura è coperta
+      // da credito: "N/D" da solo sembrerebbe un dato mancante, non una scelta
+      // intenzionale. Sostituiamo con un'indicazione esplicita.
+      const risorsaRow = (cassaNome === 'N/D' && haCredito)
+        ? h('div', { class: 'flex items-center gap-1 min-w-0' }, [
+            h(Coins, { class: 'w-3 h-3 text-blue-500 shrink-0' }),
+            h('span', { class: 'text-[11px] text-blue-600 font-semibold truncate' }, 'Credito pregresso'),
+          ])
+        : h('div', { class: 'flex items-center gap-1 min-w-0' }, [
+            h(Building2, { class: 'w-3 h-3 text-slate-400 shrink-0' }),
+            h('span', { class: 'text-[11px] text-slate-400 truncate', title: cassaNome }, cassaNome),
+          ])
 
       return h('div', { class: 'flex flex-col gap-0.5 group cursor-default' }, [
         h('span', { class: 'font-black text-sm whitespace-nowrap text-slate-900 group-hover:text-emerald-600 transition-colors tabular-nums' },
           formatted
         ),
-        h('div', { class: 'flex items-center gap-1 min-w-0' }, [
-          h(Building2, { class: 'w-3 h-3 text-slate-400 shrink-0' }),
-          h('span', { class: 'text-[11px] text-slate-400 truncate', title: cassaNome }, cassaNome),
-        ]),
-        h('span', { class: 'text-[11px] text-slate-400 whitespace-nowrap' }, cassaTipo),
-      ])
+        risorsaRow,
+        (cassaNome === 'N/D' && haCredito) || tipoRidondante ? null : h('span', { class: 'text-[11px] text-slate-400 whitespace-nowrap' }, cassaTipo),
+      ].filter(Boolean))
     },
   },
 
@@ -182,15 +211,10 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
           class: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
           icon: CheckCircle,
         },
-        stornato: {
-          label: 'Stornato',
-          class: 'bg-slate-100 text-slate-500 border border-slate-200',
-          icon: RotateCcw,
-        },
         annullata: {
-          label: 'Annullato',
+          label: 'Stornato',
           class: 'bg-rose-50 text-rose-700 border border-rose-200',
-          icon: Clock,
+          icon: RotateCcw,
         },
       }
 

@@ -3,15 +3,20 @@
 namespace App\Http\Controllers\System;
 
 use App\Http\Controllers\Controller;
-use App\Settings\GeneralSettings;
+use App\Models\Backup;
+use App\Services\Backup\BackupManager;
+use App\Services\Backup\Exceptions\BackupInProgressException;
+use App\Services\System\SystemFinalizer;
 use App\Services\UpdateService;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Redirect;
-use Illuminate\Support\Facades\Log;
+use App\Settings\GeneralSettings;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 class SystemUpgradeController extends Controller
 {
@@ -25,18 +30,65 @@ class SystemUpgradeController extends Controller
     public function index(UpdateService $service)
     {
         // GATE: Verifica se auto-update è abilitato
-        if (!$service->isAutoUpdateEnabled()) {
+        if (! $service->isAutoUpdateEnabled()) {
             return Inertia::render('system/upgrade/Disabled', [
-                'reason'  => 'manual_installation',
-                'message' => 'Gli aggiornamenti automatici non sono disponibili per installazioni manuali. Per aggiornare, segui la procedura manuale.'
+                'reason' => 'manual_installation',
+                'message' => 'Gli aggiornamenti automatici non sono disponibili per installazioni manuali. Per aggiornare, segui la procedura manuale.',
             ]);
         }
 
+        $release = $service->checkRemoteVersion();
+
         return Inertia::render('system/upgrade/Index', [
-            'currentVersion'    => config('app.version'),
-            'availableRelease'  => $service->checkRemoteVersion(),
-            'inProgress'        => $service->isUpgradeInProgress()
+            'currentVersion' => config('app.version'),
+            'availableRelease' => $release,
+            'inProgress' => $service->isUpgradeInProgress(),
+            'requisiti' => $this->requisitiMancanti($release),
         ]);
+    }
+
+    /**
+     * Cosa manca a questo server per reggere la versione offerta.
+     *
+     * **Esiste perché l'ordine era al contrario.** La pagina proponeva l'aggiornamento e il
+     * controllo scattava **dopo il clic**, dentro `prepareForUpgrade()`: l'amministratore vedeva
+     * offrirsi qualcosa che non poteva avere, e lo scopriva provando. Nulla di rotto — il controllo
+     * sta prima di qualunque scrittura — ma un ordine che fa perdere tempo e fiducia.
+     *
+     * ⚠️ **E le estensioni non le controllava nessuno**, su questa strada. `UpdateService` le
+     * trasporta nel bridge ma non le verifica, e `extension_loaded()` lo chiama solo l'installer di
+     * una macchina nuova. Chi *aggiorna* su un hosting senza `gd` passava tutti i controlli e poi
+     * non stampava più niente — `gd` è ciò su cui poggia mpdf, cioè ogni PDF del programma. Questo
+     * è il primo punto del percorso di aggiornamento in cui quella domanda viene fatta.
+     *
+     * Ritorna `null` quando non c'è niente da segnalare, così la pagina non deve saperlo.
+     *
+     * @return array{php: array{richiesto: string, attuale: string}|null, estensioni: list<string>}|null
+     */
+    private function requisitiMancanti(?array $release): ?array
+    {
+        if (! $release) {
+            return null;
+        }
+
+        // Il ripiego è lo stesso di `UpdateService`: se il manifest tace, si assume la soglia vera
+        // del codice invece di una più permissiva. Un ripiego generoso qui vorrebbe dire dare via
+        // libera a un aggiornamento che poi non parte.
+        $phpRichiesto = $release['requirements']['php'] ?? '8.4.1';
+        $php = version_compare(PHP_VERSION, $phpRichiesto, '<')
+            ? ['richiesto' => $phpRichiesto, 'attuale' => PHP_VERSION]
+            : null;
+
+        $estensioni = array_values(array_filter(
+            $release['requirements']['extensions'] ?? [],
+            fn ($ext) => ! extension_loaded($ext)
+        ));
+
+        if (! $php && empty($estensioni)) {
+            return null;
+        }
+
+        return ['php' => $php, 'estensioni' => $estensioni];
     }
 
     /**
@@ -49,33 +101,35 @@ class SystemUpgradeController extends Controller
     public function launch(UpdateService $service)
     {
         // GATE: Verifica auto-update abilitato
-        if (!$service->isAutoUpdateEnabled()) {
+        if (! $service->isAutoUpdateEnabled()) {
             return back()->withErrors([
-                'msg' => 'Gli aggiornamenti automatici non sono disponibili. Usa la procedura manuale.'
+                'msg' => 'Gli aggiornamenti automatici non sono disponibili. Usa la procedura manuale.',
             ]);
         }
 
         $release = $service->checkRemoteVersion();
-        
-        if (!$release) {
+
+        if (! $release) {
             return back()->withErrors(['msg' => 'Nessun aggiornamento disponibile.']);
         }
 
         try {
             $bridge = $service->prepareForUpgrade($release);
-            
+
             return Inertia::render('system/upgrade/Launch', [
-                'actionUrl' => url('/index.php'),
-                'token'     => $bridge['token'],
-                'version'   => $release['version']
+                // L'indirizzo lo decide il service insieme alla posizione del
+                // file: qui non si ricostruisce a mano, o le due cose divergono.
+                'actionUrl' => $bridge['url'],
+                'token' => $bridge['token'],
+                'version' => $release['version'],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Upgrade launch failed', [
-                'error'     => $e->getMessage(),
-                'version'   => $release['version'] ?? 'unknown'
+                'error' => $e->getMessage(),
+                'version' => $release['version'] ?? 'unknown',
             ]);
-            
+
             return back()->withErrors(['msg' => $e->getMessage()]);
         }
     }
@@ -92,10 +146,117 @@ class SystemUpgradeController extends Controller
         $fileVersion = config('app.version');
 
         return Inertia::render('system/upgrade/Confirm', [
-            'currentVersion'    => $dbVersion,
-            'newVersion'        => $fileVersion,
-            'needsUpgrade'      => version_compare($fileVersion, $dbVersion, '>'),
+            'currentVersion' => $dbVersion,
+            'newVersion' => $fileVersion,
+            'needsUpgrade' => version_compare($fileVersion, $dbVersion, '>'),
+            'canBackup' => $this->preUpgradeBackupAvailable($dbVersion),
         ]);
+    }
+
+    /**
+     * Il backup di sicurezza gira PRIMA delle migrazioni, quindi può contare
+     * solo sull'infrastruttura backup GIÀ presente nel database che sta per
+     * essere migrato — non su quella che le migrazioni in arrivo creeranno.
+     *
+     * Chi aggiorna da una versione anteriore alla 1.10 quella tabella non ce
+     * l'ha, e non gliela creiamo al volo: il primo aggiornamento alla 1.10
+     * resta senza rete automatica — esattamente come ogni aggiornamento fatto
+     * fino ad oggi — e la pagina di conferma gli chiede una copia del database
+     * dal pannello dell'hosting.
+     *
+     * Il controllo si riapre da solo: dalla 1.11 in poi si aggiorna partendo
+     * da una 1.10.0 o successiva, la tabella c'è, e il backup automatico torna
+     * disponibile senza che nessuno debba ricordarsi di togliere un interruttore.
+     */
+    private function preUpgradeBackupAvailable(string $dbVersion): bool
+    {
+        return version_compare($dbVersion, '1.10.0', '>=')
+            && Schema::hasTable('backups');
+    }
+
+    /**
+     * Avvia un backup di sicurezza (solo database) PRIMA delle migrazioni.
+     * Endpoint dedicato al flusso di aggiornamento: protetto dal ruolo
+     * amministratore (gruppo rotte upgrade), indipendente dal permesso e dal
+     * kill-switch della feature backup — è una rete di sicurezza, non la
+     * funzione backup dell'utente. Il frontend poi lo fa avanzare via
+     * backupStep() finché non è completato, quindi lancia le migrazioni.
+     */
+    public function backupStart(BackupManager $manager, GeneralSettings $settings): JsonResponse
+    {
+        // Stessa condizione della pagina di conferma: le due parti non possono
+        // discordare su quando il backup pre-aggiornamento è disponibile.
+        abort_unless(
+            $this->preUpgradeBackupAvailable($settings->version ?? '0.0.0'),
+            409,
+            'Infrastruttura di backup non disponibile.'
+        );
+
+        // Il backup di sicurezza gira PRIMA delle migrazioni: se si aggiorna da
+        // una versione anteriore alla beta.12, la tabella backups non ha ancora
+        // le colonne type/encrypted usate dal motore di backup. Le allineiamo
+        // qui (sola infrastruttura, nessun dato utente toccato) per non fallire.
+        $this->ensureBackupsMetadataColumns();
+
+        // Un backup di sicurezza già in corso (ripresa dopo un reload): riusalo.
+        $running = $manager->runningBackup();
+
+        if ($running !== null) {
+            return response()->json(['backup' => $this->presentUpgradeBackup($running)]);
+        }
+
+        try {
+            $backup = $manager->start(Auth::user(), ['type' => Backup::TYPE_DB_ONLY]);
+        } catch (BackupInProgressException $e) {
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
+
+        return response()->json(['backup' => $this->presentUpgradeBackup($backup)]);
+    }
+
+    public function backupStep(Backup $backup, BackupManager $manager): JsonResponse
+    {
+        $manager->runStep($backup);
+
+        return response()->json(['backup' => $this->presentUpgradeBackup($backup->refresh())]);
+    }
+
+    /**
+     * Allinea le colonne di metadati della tabella backups (type/encrypted)
+     * introdotte nella beta.12. Serve al solo backup di sicurezza pre-upgrade,
+     * che gira prima delle migrazioni: aggiornando da una versione più vecchia
+     * quelle colonne non esistono ancora e la creazione del record fallirebbe
+     * con "Unknown column". È idempotente e non tocca alcun dato utente; la
+     * migration dedicata resta la fonte di verità e diventa un no-op quando poi
+     * verrà eseguita (è guardata con hasColumn).
+     */
+    private function ensureBackupsMetadataColumns(): void
+    {
+        if (! Schema::hasColumn('backups', 'type')) {
+            Schema::table('backups', function (Blueprint $table) {
+                $table->string('type', 20)->default('full')->after('status');
+            });
+        }
+
+        if (! Schema::hasColumn('backups', 'encrypted')) {
+            Schema::table('backups', function (Blueprint $table) {
+                $table->boolean('encrypted')->default(false)->after('type');
+            });
+        }
+    }
+
+    /**
+     * Proiezione minima del backup di sicurezza per la barra di avanzamento
+     * della pagina di conferma aggiornamento.
+     */
+    private function presentUpgradeBackup(Backup $backup): array
+    {
+        return [
+            'uuid' => $backup->uuid,
+            'status' => $backup->status->value,
+            'percent' => $backup->progress['percent'] ?? 0,
+            'error' => $backup->error,
+        ];
     }
 
     /**
@@ -105,51 +266,24 @@ class SystemUpgradeController extends Controller
      * tutte le cache di sistema per evitare inconsistenze e infine rimuove i file
      * temporanei creati durante il processo di aggiornamento.
      */
-    public function run() 
+    public function run(SystemFinalizer $finalizer)
     {
-        // Previene il timeout PHP su ambienti Windows / hosting condiviso.
-        // Artisan::call('migrate') gira nello stesso processo PHP della richiesta HTTP
-        // e quindi eredita il max_execution_time del web server (default 60s).
-        // ini_set + set_time_limit coprono entrambi i meccanismi di enforcement
-        // (alcuni SAPI Windows rispettano solo uno dei due).
-        set_time_limit(0);
-        ini_set('max_execution_time', '0');
-
         try {
             Log::info('Upgrade finalization started');
 
-            // 1. Migrazioni con retry logic
-            $this->runMigrationsWithRetry();
-
-           // 2. Aggiornamento versione DB (Bypassiamo Spatie Singleton)
-           DB::table('settings')
-                ->where('group', 'general')
-                ->where('name', 'version')
-                ->update(['payload' => json_encode(config('app.version'))]);
-            
-            // 3. Cache clearing
-            Artisan::call('optimize:clear'); 
-            Artisan::call('view:clear');
-            Artisan::call('route:clear');
-
-            // 4. INVALIDA CACHE MIDDLEWARE
-            Cache::forget('system.needs_upgrade');
-            
-            // AGGIUNTO: Pulisci anche cache aggiornamenti
-            $updateService = app(UpdateService::class);
-            $updateService->clearUpdateCache();
+            // Migrazioni con retry + versione DB + cache + storage link:
+            // logica condivisa con il ripristino dei backup (SystemFinalizer,
+            // vedi docs/ripristino_backup_design.md §7-bis).
+            $finalizer->finalize();
 
             Log::info('Upgrade middleware cache invalidated');
 
-            // 4. Storage link
-            $this->ensureStorageLink();
-
-            // 5. Cleanup
+            // Cleanup specifici del processo di auto-update
             $this->cleanupInstallerJunk();
             $this->cleanupOldBackups();
 
             Log::info('Upgrade completed successfully', [
-                'version' => config('app.version')
+                'version' => config('app.version'),
             ]);
 
             return Redirect::route('system.upgrade.changelog')
@@ -158,11 +292,11 @@ class SystemUpgradeController extends Controller
         } catch (\Exception $e) {
             Log::error('Upgrade finalization failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return Redirect::back()
-                ->withErrors(['msg' => 'Errore durante la finalizzazione: ' . $e->getMessage()]);
+                ->withErrors(['msg' => 'Errore durante la finalizzazione: '.$e->getMessage()]);
         }
     }
 
@@ -174,70 +308,13 @@ class SystemUpgradeController extends Controller
     public function showChangelog(GeneralSettings $settings)
     {
         return Inertia::render('system/upgrade/Changelog', [
-            'log' => $this->getChangelog($settings)
+            'log' => $this->getChangelog($settings),
         ]);
     }
 
     /**
      * HELPERS
      */
-    
-    /**
-     * Esegue le migrazioni del database con una logica di tolleranza agli errori.
-     * Se una migrazione fallisce (es. per un blocco temporaneo del DB), ritenta
-     * l'esecuzione fino a un numero massimo di tentativi specificato.
-     */
-    private function runMigrationsWithRetry(int $maxAttempts = 3): void
-    {
-        // Le migration vengono eseguite dentro una richiesta HTTP (via Artisan::call),
-        // quindi ereditano il max_execution_time del web server.
-        // Su Windows / hosting condiviso il default è 60 secondi: troppo poco per
-        // migration con data-migration su tabelle grandi.
-        // set_time_limit(0) rimuove il limite per tutta la durata di questa chiamata.
-        set_time_limit(0);
-
-        $attempts = 0;
-        
-        while ($attempts < $maxAttempts) {
-            try {
-                Artisan::call('migrate', ['--force' => true]);
-                Log::info("Migrations completed on attempt " . ($attempts + 1));
-                return;
-                
-            } catch (\Exception $e) {
-                $attempts++;
-                
-                if ($attempts >= $maxAttempts) {
-                    throw new \Exception("Migration failed after {$maxAttempts} attempts: " . $e->getMessage());
-                }
-                
-                Log::warning("Migration attempt {$attempts} failed, retrying...", [
-                    'error' => $e->getMessage()
-                ]);
-                
-                sleep(2);
-            }
-        }
-    }
-
-    /**
-     * Verifica e, se necessario, crea il link simbolico per la cartella di storage pubblico.
-     * Essenziale affinché i file caricati dall'utente siano accessibili via web
-     * anche dopo un aggiornamento che potrebbe aver rimosso la directory `public`.
-     */
-    private function ensureStorageLink(): void
-    {
-        $target = storage_path('app/public');
-        $link = public_path('storage');
-
-        if (!file_exists($link)) {
-            if (@symlink($target, $link)) {
-                Log::info('Storage symlink created');
-            } else {
-                Log::warning('Failed to create storage symlink - check permissions');
-            }
-        }
-    }
 
     /**
      * Rimuove eventuali script "ponte" o file di setup lasciati dal processo di
@@ -247,17 +324,34 @@ class SystemUpgradeController extends Controller
     private function cleanupInstallerJunk(): void
     {
         $paths = [
+            // Posizione attuale del bridge (dalla 1.10).
+            public_path('km-update.php'),
+            // Posizioni storiche: il bridge fino alla 1.9 veniva copiato nella
+            // radice, e il setup standalone si carica ancora lì.
             base_path('index.php'),
-            public_path('index.php')
+            public_path('index.php'),
         ];
 
+        // 'Auto-Update Engine' è l'intestazione del bridge, '410 Gone' il
+        // segnaposto che il setup standalone lascia quando non riesce a
+        // cancellarsi. Prima c'era 'Bridge-Only', che il bridge non ha mai
+        // contenuto: la pulizia non lo riconosceva e una copia rimasta indietro
+        // restava lì per sempre — nella radice di un hosting condiviso, per
+        // giunta, dove ha la precedenza su Laravel e manda in errore il sito.
+        $firme = ['Auto-Update Engine', '410 Gone', 'Bridge-Only'];
+
         foreach ($paths as $path) {
-            if (file_exists($path)) {
-                $content = @file_get_contents($path);
-                // Cerca la firma del bridge o il comando di autodistruzione
-                if (strpos($content, '410 Gone') !== false || strpos($content, 'Bridge-Only') !== false) {
+            if (! file_exists($path)) {
+                continue;
+            }
+
+            $content = (string) @file_get_contents($path);
+
+            foreach ($firme as $firma) {
+                if (str_contains($content, $firma)) {
                     @unlink($path);
-                    Log::info('Installer junk removed: ' . $path);
+                    Log::info('Installer junk removed: '.$path);
+                    break;
                 }
             }
         }
@@ -272,17 +366,17 @@ class SystemUpgradeController extends Controller
     {
         $version = config('app.version');
         $lang = $settings->language ?? 'it';
-        
+
         $path = resource_path("data/changelogs/{$lang}/{$version}.json");
 
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             $path = resource_path("data/changelogs/it/{$version}.json");
         }
 
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             return [
-                'date' => date('d/m/Y'), 
-                'version' => $version,   
+                'date' => date('d/m/Y'),
+                'version' => $version,
                 'features' => ['Aggiornamento di sistema completato.'],
             ];
         }
@@ -291,7 +385,7 @@ class SystemUpgradeController extends Controller
         $parsedJson = json_decode(file_get_contents($path), true) ?? [];
 
         // 2. Se il file JSON è un semplice array di stringhe (manca la chiave 'features')
-        if (is_array($parsedJson) && !isset($parsedJson['features'])) {
+        if (is_array($parsedJson) && ! isset($parsedJson['features'])) {
             return [
                 'date' => date('d/m/Y'),
                 'version' => $version,
@@ -316,14 +410,14 @@ class SystemUpgradeController extends Controller
     {
         try {
             $backups = glob(base_path('_km_safe_zone*'));
-            
+
             foreach ($backups as $dir) {
                 if (is_dir($dir) && (time() - filemtime($dir) > 86400)) {
                     File::deleteDirectory($dir);
                     Log::info('Old backup removed', ['path' => basename($dir)]);
                 }
             }
-            
+
         } catch (\Exception $e) {
             Log::warning('Backup cleanup failed', ['error' => $e->getMessage()]);
         }

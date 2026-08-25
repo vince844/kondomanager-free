@@ -27,7 +27,7 @@ const props = defineProps<{
 
 const { generateRoute } = usePermission();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
     title: trans('anagrafiche.header.list_residents_title'),
     href: route(generateRoute('anagrafiche.index')),
@@ -36,7 +36,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     title: trans('anagrafiche.header.new_resident_head'),
     href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {

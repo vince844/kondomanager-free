@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Impressão de extrato de conta (PDF): adicionado um novo documento oficial exportável para cada contato, que inclui um resumo completo dos saldos (inicial, pago, débitos, final) e um cronograma detalhado dos movimentos contábeis do exercício.",
+        "Menu suspenso inteligente para botões de ação (UX Mobile): os cabeçalhos das páginas (PageHeaderGuide) agora agrupam automaticamente os botões de ação em um 'menu hambúrguer' em smartphones, preservando o espaço da tela sem sacrificar a navegabilidade.",
+        "Retorno dinâmico aprimorado da trilha de navegação: a navegação de volta para o plano de parcelamento a partir do extrato de conta agora detecta o histórico da sessão, evitando erros 404 irritantes em cenários de múltiplos contextos.",
+        "Otimização da formatação de moeda: corrigido o alinhamento visual do símbolo do euro no PDF do extrato de conta, colocado consistentemente antes do valor numérico em todas as linhas.",
+        "Formatação de Rodapé em PDF: corrigido um problema de renderização onde quebras de linha e espaços múltiplos na Nota Legal / Rodapé eram ignorados nos PDFs gerados, garantindo que a formatação reflita com precisão a entrada do usuário."
+    ]
+}

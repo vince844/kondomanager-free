@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Fornitore;
 
+use App\Enums\Fiscale\NaturaPercipiente;
+use App\Enums\Fiscale\TipoRitenuta;
 use App\Helpers\MoneyHelper;
 use App\Models\Fornitore;
 use App\Rules\UniqueEmailAcrossTables;
@@ -67,6 +69,18 @@ class CreateFornitoreRequest extends FormRequest
             'perc_ritenuta'              => 'nullable|required_if:soggetto_ritenuta,true|numeric|min:0|max:100',
             'perc_imponibile_ritenuta'   => 'nullable|required_if:soggetto_ritenuta,true|numeric|min:0|max:100',
             'codice_tributo'             => 'nullable|required_if:soggetto_ritenuta,true|string|max:10',
+
+            // --- NUOVI CAMPI: Regime Fiscale Ritenuta (v1.10, Fase 1) ---
+            // Additivi ai campi legacy sopra: codice_tributo resta un override
+            // motivato, la fonte di verità diventa tipo_ritenuta + natura_percipiente.
+            'tipo_ritenuta'                => ['nullable', Rule::in(array_column(TipoRitenuta::cases(), 'value'))],
+            'natura_percipiente'           => ['nullable', Rule::in(array_column(NaturaPercipiente::cases(), 'value'))],
+            'residente_fiscale'            => 'boolean',
+            'regime_forfetario'            => 'boolean',
+            'forfetario_dichiarato_il'     => 'nullable|date|required_if:regime_forfetario,true',
+            'forfetario_riferimento'       => 'nullable|string|max:255',
+            'provvigioni_base_ridotta'     => 'boolean',
+            'provvigioni_dichiarazione_il' => 'nullable|date|required_if:provvigioni_base_ridotta,true',
         ];
     }
 
@@ -85,6 +99,9 @@ class CreateFornitoreRequest extends FormRequest
             // Assicuriamoci che i booleani siano strict (utile per il form)
             'soggetto_ritenuta'     => filter_var($this->soggetto_ritenuta, FILTER_VALIDATE_BOOLEAN),
             'certificazione_iso'    => filter_var($this->certificazione_iso, FILTER_VALIDATE_BOOLEAN),
+            'residente_fiscale'         => filter_var($this->input('residente_fiscale', true), FILTER_VALIDATE_BOOLEAN),
+            'regime_forfetario'         => filter_var($this->regime_forfetario, FILTER_VALIDATE_BOOLEAN),
+            'provvigioni_base_ridotta'  => filter_var($this->provvigioni_base_ridotta, FILTER_VALIDATE_BOOLEAN),
             
             // Pulizia IBAN: rimuove gli spazi e mette tutto maiuscolo
             'iban_principale'       => $this->iban_principale ? Str::upper(str_replace(' ', '', $this->iban_principale)) : null,

@@ -3,6 +3,8 @@
 return [
     'dashboard'     => "Dashboard",
     'condomini'     => "Buildings",
+    'elencoCondomini' => "All buildings",
+    'importaDati'   => "Import data",
     'rubrica'       => "Address book",
     'anagrafiche'   => "Residents",
     'fornitori'     => "Suppliers",

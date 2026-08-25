@@ -46,7 +46,13 @@ class PianoRateResource extends JsonResource
             'stato'                         => $statoValue,
             'giorno_scadenza'               => $this->giorno_scadenza,
             'metodo_distribuzione'          => $this->metodo_distribuzione,
-            'data_inizio'                   => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
+            // ⚠️ La chiave resta `data_inizio` **di proposito**, ma legge `created_at`.
+            // `piani_rate.data_inizio` era in `$fillable` e nei `$casts` del Model, ma **la
+            // colonna non esiste** (26 colonne, verificato): l'accessor restituiva sempre null e
+            // il ripiego su `created_at` era già l'unico ramo davvero percorso. Crearla adesso
+            // cambierebbe ciò che il frontend riceve, che è l'opposto di una correzione: si
+            // toglie la finta colonna, si tiene la chiave in uscita.
+            'data_inizio'                   => $this->created_at?->format('Y-m-d'),
             'data_delibera_assemblea'       => $this->data_delibera_assemblea?->format('Y-m-d'),
             'numero_verbale'                => $this->numero_verbale,
             'nota_approvazione'             => $this->nota_approvazione,

@@ -74,6 +74,16 @@ class Fornitore extends Model
         'giorni_scadenza',
         'modalita_pagamento_default',
         'iban_principale',
+
+        // --- REGIME FISCALE RITENUTA (V 1.10, Fase 1 — additivo ai campi legacy sopra) ---
+        'tipo_ritenuta',
+        'natura_percipiente',
+        'residente_fiscale',
+        'regime_forfetario',
+        'forfetario_dichiarato_il',
+        'forfetario_riferimento',
+        'provvigioni_base_ridotta',
+        'provvigioni_dichiarazione_il',
     ];
 
     /**
@@ -89,6 +99,14 @@ class Fornitore extends Model
         'perc_ritenuta'            => 'decimal:2',
         'perc_imponibile_ritenuta' => 'decimal:2',
         'capitale_sociale'         => 'integer',
+
+        'tipo_ritenuta'                 => \App\Enums\Fiscale\TipoRitenuta::class,
+        'natura_percipiente'            => \App\Enums\Fiscale\NaturaPercipiente::class,
+        'residente_fiscale'             => 'boolean',
+        'regime_forfetario'             => 'boolean',
+        'forfetario_dichiarato_il'      => 'date',
+        'provvigioni_base_ridotta'      => 'boolean',
+        'provvigioni_dichiarazione_il'  => 'date',
     ];
 
     /**

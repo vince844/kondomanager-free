@@ -153,6 +153,10 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
     // ─── SALDO ATTUALE ──────────────────────────────────────────
     {
       accessorKey: 'saldo_raw',
+      /**
+       * ⚠️ **Non ordinabile.** «Saldo Attuale» non è un campo: è calcolato sommando i movimenti della cassa.
+       */
+      enableSorting: false,
       header: ({ column }) => h('div', { class: 'text-right w-full flex justify-end items-center' }, h(DataTableColumnHeader, { column, title: 'Saldo Attuale' })),
       size: 140,
       cell: ({ row }) => {

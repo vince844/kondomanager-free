@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Saldo;
 use Illuminate\Support\Collection;
@@ -13,13 +15,27 @@ class PianoRateQuoteService
      */
     private function determinaSePianoUsaSaldi(PianoRate $pianoRate): bool
     {
+        // C'era un `take(50)` **senza `orderBy`**, e non era una questione di prestazioni: le
+        // 50 righe erano quelle che il database restituiva per caso. Su un piano con più di
+        // cinquanta quote la risposta dipendeva da quali capitavano nel campione — un piano
+        // che usa i saldi poteva rispondere «no» perché nessuna delle righe pescate ne
+        // conteneva uno. Una domanda a sì/no non si risponde a campione.
+        //
+        // Il cursore legge in streaming e il `return true` esce alla prima riga utile, che è
+        // il caso frequente; quando la risposta è «no» il costo è quello di saperlo davvero.
+        // Non è un `exists()` in SQL perché la condizione vive dentro una colonna JSON con
+        // **due forme storiche** — `importi.saldo_usato` e `audit.saldo_usato` — e una query
+        // per percorso JSON si comporterebbe in modo diverso fra MySQL e lo SQLite dei test:
+        // esattamente il tipo di divergenza fra schema di prova e schema reale che la beta.34
+        // ha pagato.
         $quoteCampione = $pianoRate->rate()
             ->join('rate_quote', 'rate.id', '=', 'rate_quote.rata_id')
             ->whereNotNull('rate_quote.regole_calcolo')
-            ->take(50) 
-            ->pluck('rate_quote.regole_calcolo');
+            ->select('rate_quote.regole_calcolo')
+            ->cursor();
 
-        foreach ($quoteCampione as $json) {
+        foreach ($quoteCampione as $riga) {
+            $json = $riga->regole_calcolo;
             // Qui json_decode serve ancora perché pluck() su query builder restituisce stringhe grezze
             $snapshot = is_array($json) ? $json : json_decode($json, true);
             if (isset($snapshot['importi']['saldo_usato']) && $snapshot['importi']['saldo_usato'] != 0) {
@@ -31,6 +47,122 @@ class PianoRateQuoteService
         }
         
         return false;
+    }
+
+    /**
+     * Quanto il piano ha **davvero messo in rata** come spesa di gestione, in centesimi.
+     *
+     * Somma `regole_calcolo.importi.quota_pura_gestione`, cioè la sola componente di spesa dello
+     * snapshot: il pregresso non entra **per costruzione**, e non c'è niente da sottrarre.
+     *
+     * ## Perché sottrarre i saldi era la strada sbagliata
+     *
+     * Il cruscotto della pagina del piano faceva `totaleTeorico − saldiPregressi`, e quella
+     * sottrazione è esattamente ciò che si è rotto sui **saldi solidali**: una riga con
+     * `anagrafica_id` nullo non compare in un'aggregazione per persona, quindi mancava dalla
+     * sottrazione e il badge «Disallineato» restava acceso per sempre.
+     *
+     * Leggere la componente pura toglie il problema alla radice invece di rattopparlo — tanto
+     * che la correzione del 10/08/2026 (`totaleSaldiPregressiCents()`) è stata **cancellata**
+     * quando questo metodo l'ha resa inutile.
+     *
+     * ## Il ripiego, e quanto vale
+     *
+     * Le quote senza `quota_pura_gestione` nello snapshot contano il loro `importo`, escluse
+     * quelle di Rata Zero e di tipo `saldo_iniziale` — altrimenti il pregresso rientrerebbe
+     * dalla finestra. È il comportamento che il cruscotto ha da sempre e va conservato: sui dati
+     * reali dell'11/08/2026 non si attiva mai (**0 quote su 369** sono prive della chiave), ma
+     * esiste per i piani generati prima che lo snapshot la portasse.
+     */
+    public function totalePuroGeneratoCents(PianoRate $pianoRate): int
+    {
+        $pianoRate->loadMissing('rate.rateQuote');
+
+        $totale = 0;
+
+        foreach ($pianoRate->rate as $rata) {
+            foreach ($rata->rateQuote as $quota) {
+                $regole = $quota->regole_calcolo;
+
+                if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
+                    $totale += (int) $regole['importi']['quota_pura_gestione'];
+
+                    continue;
+                }
+
+                if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
+                    $totale += (int) $quota->importo;
+                }
+            }
+        }
+
+        return $totale;
+    }
+
+    /**
+     * Quanto il piano **dovrebbe** mettere in rata: i capitoli collegati, o le fatture se è
+     * straordinario.
+     */
+    public function totaleAttesoCents(PianoRate $pianoRate): int
+    {
+        if ($pianoRate->tipo === 'straordinario') {
+            $pianoRate->loadMissing('fattureStraordinarie');
+
+            return (int) $pianoRate->fattureStraordinarie
+                ->sum(fn ($fattura) => $fattura->pivot->importo_collegato);
+        }
+
+        $pianoRate->loadMissing('capitoli');
+
+        $budget = (int) $pianoRate->capitoli
+            ->sum(fn ($capitolo) => $capitolo->pivot->importo ?? $capitolo->importo);
+
+        // ⚠️ **Il già versato va tolto dall'atteso, o il badge grida al lupo su un piano giusto.**
+        //
+        // `eDisallineato()` confronta questo totale con la somma delle quote generate. Su un
+        // capitolo con del già versato il motore chiede **solo il residuo** — è il senso di quella
+        // funzione — quindi le quote generate valgono meno del budget **per costruzione**, e fino
+        // alla beta.75 ogni piano che sfruttasse il netting nasceva marcato «Disallineato:
+        // ricalcola!». Misurato sul condominio di prova: budget € 5.000,00, già versato
+        // € 2.000,00, quote generate € 3.000,00 — corrette, e segnalate come sbagliate.
+        //
+        // Il danno non era solo cosmetico: quel badge invita a premere «Ricalcola», che è
+        // esattamente la cosa da non fare su un piano che sta bene.
+        //
+        // ⚠️ **Resta un caso di bordo, più stretto di quello che chiude.** Il netting non porta
+        // mai una quota sotto zero: se un'unità ha versato **più** della sua parte, l'applicato è
+        // minore del registrato e il confronto torna a divergere. Quella sovra-contribuzione ha
+        // però già la sua segnalazione dedicata nell'Inbox, e non passa di qui.
+        $giaVersato = (int) ContributoVersato::where('target_type', Conto::class)
+            ->whereIn('target_id', $pianoRate->capitoli->pluck('id'))
+            ->sum('importo_cents');
+
+        return max(0, $budget - $giaVersato);
+    }
+
+    /**
+     * Il verdetto: questo piano è ancora allineato al preventivo?
+     *
+     * **Esiste per avere un posto solo.** Fino all'11/08/2026 la domanda aveva due risposte: il
+     * cruscotto la calcolava in PHP leggendo la componente pura con tolleranza **zero**, la
+     * pagina del piano la ricalcolava in TypeScript sottraendo i saldi con tolleranza **€ 2,00**.
+     * Un piano scostato di € 1,00 era verde di là e «URGENTE» di qua.
+     *
+     * **Tolleranza zero, e i dati lo confermano:** la distribuzione penny-perfect somma esatta
+     * ai capitoli — misurato l'11/08/2026 su tutti i piani reali, delta 0 su ognuno. Una
+     * tolleranza che non scatta mai può solo nascondere.
+     *
+     * Un piano senza rate non è disallineato: non è ancora stato generato.
+     */
+    public function eDisallineato(PianoRate $pianoRate): bool
+    {
+        $pianoRate->loadMissing('rate');
+
+        if ($pianoRate->rate->isEmpty()) {
+            return false;
+        }
+
+        return $this->totaleAttesoCents($pianoRate) !== $this->totalePuroGeneratoCents($pianoRate);
     }
 
     public function quotePerAnagrafica(PianoRate $pianoRate): Collection
@@ -49,8 +181,17 @@ class PianoRateQuoteService
                 
                 $saldoIniziale = 0;
                 if ($pianoUsaSaldi && $esercizio) {
+                    // La gestione è il filtro che mancava. Senza, con
+                    // un'ordinaria e una straordinaria aperte sullo stesso
+                    // esercizio l'avviso dell'una stampava anche il pregresso
+                    // dell'altra — e nel verso opposto, un credito altrove
+                    // abbassava il dovuto. È l'asse su cui filtra da sempre
+                    // GenerateSaldiAction: la stampa deve mostrare ciò che il
+                    // piano ha davvero assorbito, non un'altra somma.
                     $saldoRecord = Saldo::where('esercizio_id', $esercizio->id)
                         ->where('condominio_id', $pianoRate->condominio_id)
+                        ->where('gestione_id', $pianoRate->gestione_id)
+                        ->whereNull('fornitore_id')
                         ->where('anagrafica_id', $anagrafica->id)
                         ->sum('saldo_iniziale');
                     $saldoIniziale = (int) $saldoRecord;
@@ -147,8 +288,13 @@ class PianoRateQuoteService
                 $totaleCrediti = 0;
 
                 if ($pianoUsaSaldi && $esercizio) {
+                    // Stesso filtro di quotePerAnagrafica, e per la stessa
+                    // ragione: il totale stampato per l'unità deve essere
+                    // quello della gestione del piano, non di tutte insieme.
                     $saldiRecords = Saldo::where('esercizio_id', $esercizio->id)
                         ->where('condominio_id', $pianoRate->condominio_id)
+                        ->where('gestione_id', $pianoRate->gestione_id)
+                        ->whereNull('fornitore_id')
                         ->where('immobile_id', $immobile->id)
                         ->get();
 

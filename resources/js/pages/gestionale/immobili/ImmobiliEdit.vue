@@ -9,11 +9,14 @@ import { List, Save, LoaderCircle, Home, Hash, Info, MapPin } from 'lucide-vue-n
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import PertinenzaField from '@/components/gestionale/immobili/PertinenzaField.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
+import CercaComune from '@/components/comuni/CercaComune.vue';
+import { misuraLeggibile } from '@/lib/gestionale/misure';
 import type { BreadcrumbItem } from '@/types';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
@@ -25,7 +28,8 @@ const props = defineProps<{
   immobile: Immobile;
   palazzine: Palazzina[];
   scale: Scala[];
-  tipologie: TipologiaImmobile[]
+  tipologie: TipologiaImmobile[];
+  unitaPrincipali: { id: number; etichetta: string }[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -71,12 +75,39 @@ const form = useForm({
   subalterno_catasto: props.immobile.subalterno_catasto,
   interno: props.immobile.interno,
   piano: props.immobile.piano,
-  superficie: props.immobile.superficie,
-  numero_vani: props.immobile.numero_vani,
+  // ⚠️ **Le due misure entrano nel modulo già leggibili, e non è solo estetica.** Sono colonne
+  // `decimal`: arrivano come `"456.00"` e `"6.50"`, quindi la casella mostrava due zeri che
+  // nessuno aveva battuto. Con `misuraLeggibile()` **il valore che si vede è quello che si
+  // salva** — separatore compreso, perché resta il punto e non serve nessuna conversione al
+  // `submit`. Chi batte la virgola per abitudine non viene corretto con un errore: la raddrizza
+  // `prepareForValidation()` prima della validazione.
+  superficie: misuraLeggibile(props.immobile.superficie) ?? '',
+  numero_vani: misuraLeggibile(props.immobile.numero_vani) ?? '',
   palazzina_id: props.immobile.palazzina ? props.immobile.palazzina.id : '',
   scala_id: props.immobile.scala ? props.immobile.scala.id : '',
   tipologia_id: props.immobile.tipologia ? props.immobile.tipologia.id : '',
+  pertinenza_di_immobile_id: props.immobile.pertinenza_di_immobile_id ?? null,
+  pertinenza_di_esterna: props.immobile.pertinenza_di_esterna ?? null,
 });
+
+/**
+ * La categoria della tipologia scelta, che decide **solo l'evidenza** del campo «Pertinenza di» —
+ * mai la sua disponibilità. Vedi la nota estesa in `PertinenzaField.vue`.
+ */
+const categoriaTipologiaScelta = computed(
+  // `form.tipologia_id` parte come stringa vuota e diventa un numero alla selezione: il
+  // confronto va normalizzato, o non trova mai niente.
+  () => props.tipologie.find((t) => String(t.id) === String(form.tipologia_id))?.categoria ?? null,
+);
+
+/**
+ * Il Comune scelto dall'elenco riempie **due** campi, non uno: senza il codice catastale accanto al
+ * nome, l'aiuto avrebbe risparmiato la parte facile e lasciato quella che nessuno ricorda.
+ */
+const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
+  form.comune_catasto = c.nome;
+  form.codice_catasto = c.codice_catasto;
+};
 
 const submit = () => {
     form.put(route(...generateRoute('gestionale.immobili.update', { condominio: props.condominio.id, immobile: props.immobile.id })), {
@@ -133,6 +164,15 @@ const submit = () => {
                 <InputError :message="form.errors.tipologia_id" />
               </div>
 
+              <PertinenzaField
+                :unita-principali="unitaPrincipali"
+                :categoria-tipologia="categoriaTipologiaScelta"
+                v-model:immobile-id="form.pertinenza_di_immobile_id"
+                v-model:esterna="form.pertinenza_di_esterna"
+                :errore-immobile="form.errors.pertinenza_di_immobile_id"
+                :errore-esterna="form.errors.pertinenza_di_esterna"
+              />
+
               <div class="sm:col-span-6">
                 <Label for="descrizione">Descrizione</Label>
                 <Input 
@@ -153,6 +193,7 @@ const submit = () => {
                     v-model="form.palazzina_id" 
                     :reduce="(p: Palazzina) => p.id" 
                 />
+                <InputError :message="form.errors.palazzina_id" />
               </div>
 
               <div class="sm:col-span-3">
@@ -164,6 +205,7 @@ const submit = () => {
                     v-model="form.scala_id" 
                     :reduce="(s: Scala) => s.id" 
                 />
+                <InputError :message="form.errors.scala_id" />
               </div>
             </div>
           </CardContent>
@@ -182,7 +224,7 @@ const submit = () => {
                 <Input 
                     id="interno" 
                     v-model="form.interno" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
                     v-on:focus="form.clearErrors('interno')"
                 />
                 <InputError :message="form.errors.interno" />
@@ -193,8 +235,9 @@ const submit = () => {
                 <Input 
                     id="piano" 
                     v-model="form.piano" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.piano" />
               </div>
               
               <div class="sm:col-span-2">
@@ -204,6 +247,7 @@ const submit = () => {
                     v-model="form.superficie" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.superficie" />
               </div>
               
               <div class="sm:col-span-2">
@@ -213,6 +257,7 @@ const submit = () => {
                     v-model="form.numero_vani" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.numero_vani" />
               </div>
 
               <div class="sm:col-span-8">
@@ -222,6 +267,7 @@ const submit = () => {
                     v-model="form.note" 
                     class="mt-1 bg-white dark:bg-slate-950" 
                 />
+                <InputError :message="form.errors.note" />
               </div>
 
             </div>
@@ -238,11 +284,15 @@ const submit = () => {
               
               <div class="sm:col-span-3 font-sans">
                 <Label for="comune_catasto">Comune catastale</Label>
-                <Input 
-                    id="comune_catasto" 
-                    v-model="form.comune_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950" 
-                />
+                <div class="mt-1 flex items-center gap-2">
+                  <Input 
+                      id="comune_catasto" 
+                      v-model="form.comune_catasto" 
+                      class="bg-white dark:bg-slate-950" 
+                  />
+                  <CercaComune @scelto="comuneScelto" />
+                </div>
+                <InputError :message="form.errors.comune_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -250,8 +300,9 @@ const submit = () => {
                 <Input 
                     id="codice_catasto" 
                     v-model="form.codice_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.codice_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -259,8 +310,9 @@ const submit = () => {
                 <Input 
                     id="sezione_catasto" 
                     v-model="form.sezione_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.sezione_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -268,8 +320,9 @@ const submit = () => {
                 <Input 
                     id="foglio_catasto" 
                     v-model="form.foglio_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.foglio_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -277,8 +330,9 @@ const submit = () => {
                 <Input 
                     id="particella_catasto" 
                     v-model="form.particella_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.particella_catasto" />
               </div>
               
               <div class="sm:col-span-1 font-sans">
@@ -286,8 +340,9 @@ const submit = () => {
                 <Input 
                     id="subalterno_catasto" 
                     v-model="form.subalterno_catasto" 
-                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                    class="mt-1 bg-white dark:bg-slate-950 uppercase" 
                 />
+                <InputError :message="form.errors.subalterno_catasto" />
               </div>
 
             </div>

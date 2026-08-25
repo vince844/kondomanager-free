@@ -80,16 +80,14 @@ test('permette creazione piano rate se i saldi sono liberi e applica il lock', f
     $this->mock(SaldoEsercizioService::class, function (MockInterface $mock) use ($ordinaria) {
         $mock->shouldReceive('calcolaSaldoApplicabile')
              ->andReturn([
-                 'saldo' => 10000, 
+                 'saldo' => 10000,
                  'applicabile' => true,
                  'motivo' => 'Saldo disponibile'
              ]);
 
-        $mock->shouldReceive('marcaSaldoApplicato')
-             ->zeroOrMoreTimes()
-             ->andReturnUsing(function ($gestione) {
-                 return DB::table('gestioni')->where('id', $gestione->id)->update(['saldo_applicato' => 1]);
-             });
+        // Da beta.32 il lucchetto lo chiude GeneratePianoRateAction sulle righe
+        // effettivamente finite nelle quote, non più lo store a tappeto.
+        $mock->shouldReceive('sincronizzaLucchetti')->zeroOrMoreTimes();
     });
 
     // 4. Chiamata
@@ -109,4 +107,43 @@ test('permette creazione piano rate se i saldi sono liberi e applica il lock', f
     // 5. Verifiche: nessun errore di sessione e il PianoRateCreatorService è stato invocato
     $response->assertSessionHasNoErrors();
     $response->assertStatus(302); // Redirect di successo
+});
+
+// REGRESSIONE (revisione avversariale beta.28): hasPianoEsistente deve essere
+// scoped su tipo='ordinario' + contesto_creazione='preventivo_iniziale', non
+// un ->exists() generico — altrimenti un piano straordinario preesistente fa
+// erroneamente rietichettare come "Piano Rata Integrativa" il primissimo
+// piano ordinario dell'anno per quella gestione.
+test('hasPianoEsistente resta false se la gestione ha solo un piano straordinario, non uno ordinario', function () {
+    $gestione = Gestione::factory()->create(['condominio_id' => $this->condominio->id]);
+    $gestione->esercizi()->attach($this->esercizio->id);
+
+    \App\Models\Gestionale\PianoRate::factory()->create([
+        'condominio_id' => $this->condominio->id,
+        'gestione_id' => $gestione->id,
+        'tipo' => 'straordinario',
+        'contesto_creazione' => 'libero_manuale',
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.esercizi.piani-rate.create', [$this->condominio, $this->esercizio]) . '?gestione_id=' . $gestione->id);
+
+    $response->assertInertia(fn ($page) => $page->where('hasPianoEsistente', false));
+});
+
+test('hasPianoEsistente diventa true quando la gestione ha già un piano ordinario "preventivo iniziale"', function () {
+    $gestione = Gestione::factory()->create(['condominio_id' => $this->condominio->id]);
+    $gestione->esercizi()->attach($this->esercizio->id);
+
+    \App\Models\Gestionale\PianoRate::factory()->create([
+        'condominio_id' => $this->condominio->id,
+        'gestione_id' => $gestione->id,
+        'tipo' => 'ordinario',
+        'contesto_creazione' => 'preventivo_iniziale',
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.esercizi.piani-rate.create', [$this->condominio, $this->esercizio]) . '?gestione_id=' . $gestione->id);
+
+    $response->assertInertia(fn ($page) => $page->where('hasPianoEsistente', true));
 });

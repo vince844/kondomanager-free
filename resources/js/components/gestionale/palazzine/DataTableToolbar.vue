@@ -1,11 +1,12 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage, Link } from '@inertiajs/vue3';
+import { usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import type { Table } from '@tanstack/vue-table';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Building } from '@/types/buildings';
@@ -22,28 +23,22 @@ const { generateRoute } = usePermission();
 // Filters
 const nameFilter = ref('')
 
-// Computed params for router
-const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
-  if (nameFilter.value) params.name = nameFilter.value
-  return params
-})
+// Server-side table wiring
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.palazzine.index'), { condominio: page.props.condominio.id }),
+)
 
 // Watch filters with debounce
 watchDebounced(
   [nameFilter],
   () => {
-    router.get(
-      route(generateRoute('gestionale.palazzine.index'), { condominio: page.props.condominio.id }),
-      filterParams.value,
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!nameFilter.value) props.table.reset()
-        }
-      }
+        name: nameFilter.value || null,
+      },
+      () => {
+        if (!nameFilter.value) props.table.reset()
+      },
     )
   },
   { debounce: 300 }

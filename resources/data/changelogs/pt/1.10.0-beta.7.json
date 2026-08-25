@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Corrigido um erro que ocorria ao abrir a página de edição de uma fatura de fornecedor já registada: faltavam alguns dados (fornecedores, orçamento, fundos de reserva) necessários logo no carregamento da página.",
+        "Corrigido um erro que ocorria ao abrir a lista, o detalhe ou a edição de uma fatura de fornecedor já estornada.",
+        "A edição de uma fatura de fornecedor não editável (estornada, de um exercício encerrado, transitada, com supervenientes, em derrapagem orçamental por ratificar, ou num plano de prestações extraordinário) mostra agora sempre uma mensagem clara em vez de falhar silenciosamente.",
+        "Adicionada a exibição de mensagens de aviso na página de detalhe da fatura, que até agora não mostrava nenhuma.",
+        "Corrigido um problema em que o envio de e-mail pela configuração SMTP do painel administrativo podia falhar silenciosamente em alguns provedores de hospedagem devido a um hostname EHLO inválido; corrigida também a opção de encriptação SSL, que até agora não tinha qualquer efeito."
+    ]
+}

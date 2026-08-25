@@ -6,6 +6,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
@@ -30,6 +31,8 @@ import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 
 const props = defineProps<{
+  /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
+  limiteFile: string;
   documento: Documento | any; 
   condomini: Building[];
   categories: Categoria[];
@@ -47,7 +50,7 @@ const file = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const showFileInput = ref(false)
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('documenti.breadcrumbs.list'), 
       href: route(generateRoute('documenti.index'))
@@ -56,7 +59,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('documenti.breadcrumbs.edit'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
@@ -96,23 +99,26 @@ const form = useForm({
   anagrafiche: (props.documento?.anagrafiche ?? []).map((anagrafica: Anagrafica) => anagrafica.id),
   category_id: props.documento?.categoria?.id ?? null, 
   file: null as File | null,
+  // Parte sempre spenta — vedi la nota gemella in `comunicazioni/ComunicazioniEdit.vue`.
+  avvisa_destinatari: false,
 });
 
 // Validazione file
+//
+// ⚠️ Il controllo sulla **dimensione** non si fa più qui: era un secondo limite scritto in un posto
+// dove nessuno lo cercava, e rifiutava file che il server avrebbe accettato mentre ne lasciava
+// partire altri che il server rifiutava. Il limite è uno solo ed è quello del server.
+//
+// ⚠️ E i formati: la regola a server è `mimes:pdf`, quindi JPEG e PNG non sono mai passati. Offrirli
+// qui voleva dire far scegliere un file e respingerlo dopo il caricamento.
 const validateFile = (selectedFile: File): boolean => {
-  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-  const maxSize = 20 * 1024 * 1024; // 20MB
-  
+  const allowedTypes = ['application/pdf'];
+
   if (!allowedTypes.includes(selectedFile.type)) {
     form.setError('file', trans('documenti.dialogs.document_supported_types'));
     return false;
   }
-  
-  if (selectedFile.size > maxSize) {
-    form.setError('file', trans('documenti.dialogs.max_document_size'));
-    return false;
-  }
-  
+
   return true;
 }
 
@@ -352,7 +358,7 @@ const submit = (): void => {
                                         <EmptyDescription>
                                             {{ trans('documenti.dialogs.select_document_description') }}
                                             <div class="text-xs text-muted-foreground mt-1">
-                                                {{ trans('documenti.dialogs.document_supported_types') }}
+                                                {{ trans('documenti.dialogs.document_supported_types') }} (max {{ props.limiteFile }})
                                             </div>
                                         </EmptyDescription>
                                     </EmptyHeader>
@@ -362,7 +368,7 @@ const submit = (): void => {
                                     id="file-upload"
                                     type="file"
                                     class="hidden"
-                                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,image/jpg"
+                                    accept="application/pdf"
                                     @change="handleFileChange"
                                     ref="fileInputRef"
                                 />
@@ -581,6 +587,39 @@ const submit = (): void => {
                             :disabled="form.condomini_ids.length === 0"
                         />
                         <InputError :message="form.errors.anagrafiche" />
+                    </div>
+
+                    <!--
+                      La casella sta **in fondo alla scheda dei destinatari**, e non fra le opzioni
+                      del documento, perché è di questa scheda che parla: decide chi riceve una mail
+                      fra quelli elencati qui sopra. Non è una proprietà del documento — vedi la
+                      nota per esteso in `comunicazioni/ComunicazioniEdit.vue`.
+                    -->
+                    <div class="sm:col-span-6">
+                        <div class="flex items-center justify-between p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <Checkbox
+                                    id="avvisa_destinatari"
+                                    :checked="form.avvisa_destinatari"
+                                    v-model="form.avvisa_destinatari"
+                                    @update:checked="(val: boolean) => form.avvisa_destinatari = val"
+                                />
+                                <Label for="avvisa_destinatari" class="cursor-pointer font-medium text-sm text-amber-900 dark:text-amber-200">
+                                    {{ trans('documenti.label.notify_update') }}
+                                </Label>
+                            </div>
+                            <HoverCard>
+                                <HoverCardTrigger as-child>
+                                    <button type="button" class="text-amber-500 hover:text-amber-700 outline-none">
+                                        <Info class="w-4 h-4" />
+                                    </button>
+                                </HoverCardTrigger>
+                                <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                    <h4 class="text-sm font-bold mb-2">{{ trans('documenti.label.notify_update') }}</h4>
+                                    <p class="text-xs text-slate-500 leading-relaxed">{{ trans('documenti.tooltip.notify_update') }}</p>
+                                </HoverCardContent>
+                            </HoverCard>
+                        </div>
                     </div>
 
                 </div>

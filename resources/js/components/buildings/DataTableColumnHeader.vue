@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next';
 import type { Column } from '@tanstack/vue-table';
 import type { Building} from '@/types/buildings';
@@ -55,7 +55,14 @@ export default {
     </DropdownMenu>
   </div>
 
-  <div v-else :class="$attrs.class">
+  <!--
+    ⚠️ **Stessa tipografia del ramo ordinabile, e non è un vezzo.** Quel ramo rende un `Button`
+    che porta con sé `font-bold` e la propria spaziatura; questo era un `div` nudo, quindi le
+    intestazioni non ordinabili uscivano in peso 500 invece di 700 e spostate di 4 px a sinistra.
+    Finché quasi tutte le colonne erano ordinabili non si notava — dalla beta.54, che ne spegne
+    sedici, la differenza è diventata una riga di intestazioni disallineate.
+  -->
+  <div v-else :class="cn('pl-1 font-bold', $attrs.class ?? '')">
     {{ title }}
   </div>
 </template>

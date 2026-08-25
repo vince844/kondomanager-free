@@ -14,6 +14,7 @@ use App\Models\Comunicazione;
 use App\Services\ComunicazioneService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
+use App\Traits\PaginaElenco;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +25,7 @@ use Illuminate\Http\RedirectResponse;
 
 class ComunicazioneController extends Controller
 {
-    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
+    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData, PaginaElenco;
     
     /**
      * Create a new controller instance.
@@ -55,6 +56,10 @@ class ComunicazioneController extends Controller
         Gate::authorize('view', $comunicazione);
 
         $validated = $request->validated();
+
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
     
         try {
 

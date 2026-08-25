@@ -1,0 +1,18 @@
+{
+    "features": [
+        "Nuova pagina \"Libro Giornale\" nella barra Movimenti: elenco cronologico di tutte le scritture contabili dell'esercizio selezionato, con ricerca testuale, filtri per tipo movimento/stato/intervallo date, e la possibilità di cambiare esercizio per consultare le operazioni di anni precedenti.",
+        "Il widget \"Stato Patrimoniale\" ora spiega in linguaggio corrente se attivo e passivo del condominio tornano — e quando non tornano, indica la causa più probabile (una scrittura non bilanciata al suo interno, o una cassa con un saldo di apertura non ancora registrato) con un link diretto per correggerla.",
+        "Un pulsante \"Dettagli calcolo\" apre una tabella completa con tutti i valori usati nella verifica (attivo, passivo, costi, ricavi, risultato d'esercizio, liquidità non contabilizzata, sbilancio).",
+        "Nuovo widget con il totale Dare e il totale Avere delle scritture visibili con i filtri correnti, con un bollino di conferma pareggio.",
+        "Gli stessi filtri per stato e intervallo date del Libro Giornale sono ora disponibili anche in Incassi rate, Fatture passive, Pagamenti fornitori e Giroconti.",
+        "Corretto: la card \"Stornati\" in Incassi rate (numero e filtro rapido) mostrava sempre zero, indipendentemente da quanti incassi fossero stati davvero stornati — confrontava lo stato con un valore che non esiste nel database.",
+        "Corretta la descrizione della pagina Tabelle millesimali, che parlava di un \"validatore\" mai esistito capace di controllare che la somma dei millesimi fosse esattamente 1000: il motore in realtà ripartisce sempre il 100% della spesa sul totale reale della tabella, anche quando non è 1000.",
+        "Corretto un bug per cui lo storno di un incasso non verificava che la scrittura passata fosse davvero un incasso rata: in teoria (mai raggiungibile navigando normalmente nell'interfaccia) l'id di una scrittura di un altro tipo dello stesso condominio, ad esempio un giroconto, poteva essere marcato come stornato per errore. Aggiunto un controllo esplicito.",
+        "Corretto: il riquadro con i dettagli dello storno (data, importo, operatore) nella pagina di dettaglio di un incasso non compariva mai, nemmeno per un incasso davvero stornato — il totale versato continuava a mostrarsi come attivo invece che barrato. L'operatore che ha effettuato lo storno risulta ancora \"Sconosciuto\": quel dato non è mai stato registrato, verrà aggiunto in una beta successiva.",
+        "L'etichetta di stato \"Annullata\" per un incasso stornato è ora \"Stornata\"/\"Stornato\" nei filtri e nella tabella degli incassi, coerente con l'azione \"Storna\" che l'amministratore ha effettivamente compiuto.",
+        "La stessa etichetta \"Stornata\" è ora usata anche nel Libro Giornale (filtro e badge di stato), che era rimasto con la vecchia dicitura \"Annullata\". Tolta anche la barratura sul testo del badge, che tagliava semplicemente la parola invece di segnalare un valore non più valido.",
+        "Corretta l'intestazione della colonna \"Importo\" nel Libro Giornale, allineata a sinistra mentre gli importi sotto sono allineati a destra: ora allineata a destra come il resto della colonna.",
+        "Corretto un refuso nella modale \"Dettagli calcolo\" del Libro Giornale, che mostrava \"Esercizio Esercizio anno 2026\" (il nome dell'esercizio include già la parola \"Esercizio\").",
+        "Regolazione immediata mostra ora, prima ancora di salvare, un'anteprima del numero di protocollo che verrà assegnato — utile per annotarlo subito sul documento cartaceo. Il numero è generato dal sistema, non digitabile, e resta indicativo fino al salvataggio."
+    ]
+}

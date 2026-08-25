@@ -2,10 +2,11 @@
 
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Fornitore } from '@/types/fornitori';
@@ -14,24 +15,20 @@ interface DataTableToolbarProps {
   table: Table<Fornitore>
 }
 
+defineProps<DataTableToolbarProps>();
+
 const ragioneSocialeFilter = ref('')
 const { hasPermission, generateRoute } = usePermission();
+
+const { filtra } = useTabellaServer(() => route(generateRoute('fornitori.index')));
 
 // Debounce search input (300ms delay)
 watchDebounced(
   ragioneSocialeFilter,
   (newValue) => {
-    // Reset filters if empty, otherwise filter
-    router.get(
-      route(generateRoute('fornitori.index')),
-      newValue
-        ? { ragione_sociale: newValue, page: 1 }
-        : { page: 1 }, // Clear the filter
-      {
-        preserveState: true,
-        replace: true,
-      }
-    )
+    // Il filtro svuotato va passato come `null`, non omesso: la richiesta riparte da ciò che c'è
+    // nell'URL, e un filtro omesso resterebbe quello di prima.
+    filtra({ ragione_sociale: newValue || null })
   },
   { debounce: 300 }
 )
@@ -50,13 +47,13 @@ watchDebounced(
     </div>
 
     <!-- Right Section: Button (force it to the right) -->
-    <Link 
+    <Link
       as="button"
       v-if="hasPermission([Permission.CREATE_USERS])"
-      :href="route(generateRoute('fornitori.create'))" 
+      :href="route(generateRoute('fornitori.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-3.5 h-3.5 text-green-500" />
       <span>Crea fornitori</span>
     </Link>
 

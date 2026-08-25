@@ -315,6 +315,24 @@ return [
         'show' => [
             'head_title' => 'Dettaglio del piano rate',
             'plan_title_prefix' => 'Piano rate',
+            'legal' => [
+                'deliberation_of' => 'Delibera del',
+            ],
+            'approval_modal' => [
+                'title' => 'Approvazione piano rate',
+                'subtitle' => 'Registra i dati della delibera assembleare prima di rendere esecutivo il piano (art. 1135 c.c.).',
+                'deliberation_date_label' => 'Data della delibera assembleare *',
+                'deliberation_date_help' => "Data in cui l'assemblea ha approvato questo piano. Resta registrata nello storico di controllo.",
+                'minutes_number_label' => 'N. verbale (opzionale)',
+                'minutes_number_placeholder' => 'Es. Verbale n. 3/2026',
+                'notes_label' => 'Note o riferimenti (opzionale)',
+                'notes_placeholder' => 'Es. Approvato con 8 voti favorevoli su 10 millesimi presenti...',
+                'last_deliberation_title' => 'Ultima delibera registrata:',
+                'last_deliberation_date' => 'Data:',
+                'last_deliberation_minutes' => 'Verbale:',
+                'saving' => 'Registrazione in corso...',
+                'confirm' => 'Approva e registra',
+            ],
             'subtitle' => 'Situazione aggiornata delle rate e dei pagamenti.',
             'breadcrumb_detail' => 'Dettaglio',
             'draft_state' => [
@@ -763,8 +781,6 @@ return [
                     'description_optional' => 'Descrizione (Opzionale)',
                     'pdf_only' => 'Sono consentiti solo file PDF.',
                     'pdf_short' => 'Solo PDF',
-                    'max_size_20mb' => 'Il file non può superare i 20MB.',
-                    'pdf_max_20mb' => 'Solo PDF (Max 20MB)',
                     'click_to_upload' => 'Clicca per caricare',
                     'or_drag_file' => 'oppure trascina il file qui',
                     'or_drag_new_file' => 'oppure trascina il nuovo file qui',
@@ -1145,6 +1161,9 @@ return [
                         'committed_already_text' => 'Questa spesa è già stata allocata in un piano rate per un importo totale di :amount. Per mantenere la coerenza contabile, non puoi ridurre il totale al di sotto di questo valore.',
                         'committed_how_to_fix' => 'Se hai bisogno di un valore inferiore, vai al modulo "Piani rate", rimuovi la quota assegnata a questa voce e poi torna a modificare qui.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'Questa voce ha già una tabella millesimale e delle percentuali di ripartizione collegate. Trasformarla in capitolo le eliminerà. Continuare?',
+                    ],
                     'actions' => [
                         'saving' => 'Salvataggio...',
                         'save_changes' => 'Salva modifiche',
@@ -1382,7 +1401,18 @@ return [
         'breadcrumb_quotes' => 'Millesimi',
         'heading_title' => 'Associa immobili alla tabella millesimale',
         'heading_description' => 'Di seguito puoi specificare i millesimi per ogni immobile associato alla tabella - :table',
-        'max_rows_reached' => 'Hai già raggiunto il numero massimo di righe consentite.',
+        // ⚠️ Il testo precedente — «hai già raggiunto il numero massimo di righe consentite» —
+        // ha prodotto una segnalazione sul forum il 15/08/2026: si legge come un tetto imposto
+        // dal programma, e non esiste nessun tetto. Il limite è il numero di unità in anagrafica,
+        // perché la pagina dei millesimi le associa e non le crea. La chiave, per giunta, non era
+        // usata da nessuno: il messaggio era cablato in italiano dentro `QuoteList.vue`.
+        // ⚠️ **La parola «anagrafica» non si usa qui, e la correzione è del 15/08/2026.** In
+        // KondoManager `Anagrafica` è il *soggetto* — proprietari, inquilini, usufruttuari — e
+        // «anagrafiche» è l'etichetta che l'amministratore vede nella scheda dell'unità. Scritta
+        // in questo messaggio per intendere «l'elenco delle unità», produceva la frase «unità
+        // presenti in anagrafica», che a chi conosce il gestionale si legge come «unità presenti
+        // nell'elenco delle persone». Segnalato da Vincenzo guardando la pagina a video.
+        'max_rows_reached' => 'Hai già associato tutte le :count unità immobiliari di questo condominio. Per aggiungerne altre, creale prima nella sezione «Unità immobiliari».',
         'actions' => [
             'add_property' => 'Aggiungi immobile',
         ],

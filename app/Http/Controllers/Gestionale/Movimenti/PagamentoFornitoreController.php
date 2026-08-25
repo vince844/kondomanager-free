@@ -2,32 +2,37 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Enums\StatoPagamentoFattura;
-use App\Enums\TipoAllocazioneFattura;
+use App\Enums\StatoPagamentoFornitore;
 use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
 use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
+use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
+use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\OverpaymentException;
-use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
 use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
+use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StorePagamentoFornitoreRequest;
 use App\Http\Requests\Gestionale\Movimenti\UpdatePagamentoFornitoreRequest;
 use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Gestionale\Movimenti\PagamentoFornitoreResource;
 use App\Models\Condominio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PagamentoFornitore;
-use App\Http\Resources\Gestionale\Movimenti\PagamentoFornitoreResource;
 use App\Services\Gestionale\PagamentoFornitoreService;
 use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +40,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Controller per la registrazione dei pagamenti ai fornitori.
@@ -48,32 +54,61 @@ use Inertia\Response;
  */
 class PagamentoFornitoreController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, HasCondomini;
+    use OrdinaElenco;
+
+    /**
+     * Le colonne ordinabili dell'elenco pagamenti a fornitore.
+     *
+     * ⚠️ Fuori «Importi», che monta lordo, ritenuta e netto in una cella, e fuori «Fornitore»,
+     * che a video non è cliccabile: ammetterla sarebbe configurazione morta.
+     */
+    public static function colonneOrdinabili(): array
+    {
+        return [
+            'data_pagamento' => 'data_pagamento',
+            'stato'          => 'stato',
+        ];
+    }
+
+    use HandleFlashMessages, HasCondomini, HasEsercizio, PaginaElenco;
 
     public function __construct(private PagamentoFornitoreService $service) {}
 
     /**
      * Mostra l'elenco dei pagamenti registrati per il condominio selezionato.
-     *
-     * @param Request $request
-     * @param Condominio $condominio
      */
     public function index(Request $request, Condominio $condominio): Response
     {
+        // I due parametri dell'ordinamento si validano qui: questo elenco non ha una
+        // FormRequest, e il nome della colonna finisce dentro `orderBy()`.
+        $ordinamento = $request->validate(self::regoleOrdinamento(array_keys(self::colonneOrdinabili())) + [
+            'per_page' => ['sometimes', 'integer'],
+        ]);
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $ordinamento['per_page'] = $this->righePerPagina($request);
+
         $pagamenti = PagamentoFornitore::where('condominio_id', $condominio->id)
             ->with(['fornitore', 'contoCorrente', 'scrittura'])
             ->when($request->search, function ($q, $v) {
                 $q->where(function ($sub) use ($v) {
-                    $sub->whereHas('fornitore', fn($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))
-                        ->orWhereHas('scrittura', fn($qs) => $qs->where('descrizione', 'like', "%{$v}%"));
+                    $sub->whereHas('fornitore', fn ($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))
+                        ->orWhereHas('scrittura', fn ($qs) => $qs->where('descrizione', 'like', "%{$v}%"));
                 });
             })
-            ->when($request->metodo_pagamento, fn($q, $v) => $q->where('metodo_pagamento', $v))
-            ->when($request->has('has_ritenuta'), fn($q) => $q->where('importo_ritenuta', '>', 0))
-            ->when($request->stato, fn($q, $v) => $q->where('stato', $v))
+            ->when($request->metodo_pagamento, fn ($q, $v) => $q->where('metodo_pagamento', $v))
+            ->when($request->has('has_ritenuta'), fn ($q) => $q->where('importo_ritenuta', '>', 0))
+            ->when($request->stato, fn ($q, $v) => $q->where('stato', $v))
+            ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_pagamento', '>=', $v))
+            ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_pagamento', '<=', $v))
             ->orderByDesc('data_pagamento')
             ->orderByDesc('id')
-            ->paginate(20)
+            ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_pagamento', versoPredefinito: 'desc'))
+            // ⚠️ **`per_page` era cablato a 20**: il selettore delle righe cambiava e l'elenco
+            // restava fermo. È la variante più muta dei difetti segnalati sul forum — il
+            // valore non si perde per strada, non viene proprio letto.
+            ->paginate($ordinamento['per_page'])
             ->withQueryString();
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
@@ -97,12 +132,18 @@ class PagamentoFornitoreController extends Controller
         ];
 
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentiList', [
+            'sort'      => $ordinamento['sort'] ?? null,
+            'direction' => $ordinamento['direction'] ?? null,
             'condominio' => $condominio,
-            'condomini'  => $listaCondomini,
-            'esercizio'  => $esercizio,
-            'pagamenti'  => PagamentoFornitoreResource::collection($pagamenti),
-            'stats'      => $stats,
-            'filters'    => $request->only(['search', 'metodo_pagamento', 'has_ritenuta', 'stato']),
+            'condomini' => $listaCondomini,
+            'esercizio' => $esercizio,
+            'pagamenti' => PagamentoFornitoreResource::collection($pagamenti),
+            'stats' => $stats,
+            'stati' => collect(StatoPagamentoFornitore::cases())->map(fn ($c) => [
+                'value' => $c->value,
+                'label' => $c->label(),
+            ])->values(),
+            'filters' => $request->only(['search', 'metodo_pagamento', 'has_ritenuta', 'stato', 'data_da', 'data_a']),
         ]);
     }
 
@@ -130,16 +171,16 @@ class PagamentoFornitoreController extends Controller
             ->get()
             ->map(function ($cassa) {
                 $entrate = $cassa->totale_entrate ?? 0;
-                $uscite  = $cassa->totale_uscite ?? 0;
-                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+                $uscite = $cassa->totale_uscite ?? 0;
+                // beta.25: saldo da SaldoCassaService (unica fonte), non ricalcolato qui.
+                $saldoAttuale = (int) $cassa->saldo_reale;
 
                 return [
-                    'id'            => $cassa->conto_contabile_id,
-                    'cassa_id'      => $cassa->id,
-                    'nome'          => $cassa->nome,
-                    'tipo'          => $cassa->tipo,
-                    'iban'          => $cassa->contoCorrente?->iban ?? null,
+                    'id' => $cassa->conto_contabile_id,
+                    'cassa_id' => $cassa->id,
+                    'nome' => $cassa->nome,
+                    'tipo' => $cassa->tipo,
+                    'iban' => $cassa->contoCorrente?->iban ?? null,
                     'saldo_attuale' => $saldoAttuale,
                 ];
             });
@@ -151,17 +192,17 @@ class PagamentoFornitoreController extends Controller
                 ->with('esercizi:id')
                 ->get()
                 ->map(fn ($g) => [
-                    'id'            => $g->id,
-                    'nome'          => $g->nome,
-                    'tipo'          => $g->tipo,
+                    'id' => $g->id,
+                    'nome' => $g->nome,
+                    'tipo' => $g->tipo,
                     'esercizio_ids' => $g->esercizi->pluck('id')->toArray(),
                 ])
             : collect();
 
-        $preselectedFatturaId = request('fattura_id') ? (int)request('fattura_id') : null;
-        $preselectedFornitoreId = request('fornitore_id') ? (int)request('fornitore_id') : null;
+        $preselectedFatturaId = request('fattura_id') ? (int) request('fattura_id') : null;
+        $preselectedFornitoreId = request('fornitore_id') ? (int) request('fornitore_id') : null;
 
-        if ($preselectedFatturaId && !$preselectedFornitoreId) {
+        if ($preselectedFatturaId && ! $preselectedFornitoreId) {
             $fattura = FatturaPassiva::find($preselectedFatturaId);
             if ($fattura) {
                 $preselectedFornitoreId = $fattura->fornitore_id;
@@ -170,14 +211,14 @@ class PagamentoFornitoreController extends Controller
 
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentoNew', [
             'condominio' => $condominio,
-            'condomini'  => $listaCondomini,
-            'esercizio'  => $esercizio,
-            'esercizi'   => $condominio->esercizi()->where('stato', 'aperto')->get(),
-            'fornitori'  => Fornitore::all(),
-            'banche'     => $banche,
-            'gestioni'   => $gestioni,
+            'condomini' => $listaCondomini,
+            'esercizio' => $esercizio,
+            'esercizi' => $condominio->esercizi()->where('stato', 'aperto')->get(),
+            'fornitori' => Fornitore::all(),
+            'banche' => $banche,
+            'gestioni' => $gestioni,
             'preselected_fornitore_id' => $preselectedFornitoreId,
-            'preselected_fattura_id'   => $preselectedFatturaId,
+            'preselected_fattura_id' => $preselectedFatturaId,
         ]);
     }
 
@@ -198,7 +239,7 @@ class PagamentoFornitoreController extends Controller
 
             return back()->with($this->flashSuccess('Pagamento registrato con successo.'));
 
-        // ── BLOCCHI BYPASSABILI CON CONFERMA ESPLICITA (modali con override) ──────────
+            // ── BLOCCHI BYPASSABILI CON CONFERMA ESPLICITA (modali con override) ──────────
 
         } catch (IbanDiscrepanzaException $e) {
             // Sentinella Anti-Frode: IBAN differisce dall'anagrafica.
@@ -221,9 +262,9 @@ class PagamentoFornitoreController extends Controller
             // perché Inertia garantisce errors al frontend; ->with() va in sessione
             // e il middleware condivide solo 'flash.message', non chiavi custom.
             return back()->withErrors([
-                'insufficient_funds'      => $e->getMessage(),
+                'insufficient_funds' => $e->getMessage(),
                 'insufficient_funds_data' => json_encode([
-                    'saldo_cents'      => $e->saldoCents,
+                    'saldo_cents' => $e->saldoCents,
                     'necessario_cents' => $e->necessarioCents,
                     'scopertura_cents' => $e->scoperturaCents,
                 ]),
@@ -234,15 +275,15 @@ class PagamentoFornitoreController extends Controller
             // Bypassabile con allow_overpayment=true + nota_override obbligatoria.
             // Stessa strategia: dati strutturati come JSON in errors.
             return back()->withErrors([
-                'overpayment'      => $e->getMessage(),
+                'overpayment' => $e->getMessage(),
                 'overpayment_data' => json_encode([
                     'allocato_cents' => $e->allocatoCents,
-                    'residuo_cents'  => $e->residuoCents,
-                    'num_fattura'    => $e->numFattura,
+                    'residuo_cents' => $e->residuoCents,
+                    'num_fattura' => $e->numFattura,
                 ]),
             ]);
 
-        // ── BLOCCHI NON BYPASSABILI (modali informative, no override) ─────────────
+            // ── BLOCCHI NON BYPASSABILI (modali informative, no override) ─────────────
 
         } catch (FiscalYearClosedException $e) {
             // Esercizio chiuso: nessuna scrittura possibile.
@@ -264,11 +305,25 @@ class PagamentoFornitoreController extends Controller
             // Non bypassabile — errore operativo da correggere.
             return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
 
+        } catch (RitenutaIncoerenteException $e) {
+            // L'importo della ritenuta non corrisponde alle fatture allocate. Non è
+            // bypassabile: la ritenuta discende dalle fatture pagate, e il valore giusto
+            // il servizio lo conosce già.
+            return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
+
+        } catch (IdempotencyKeyConflittoException $e) {
+            // La chiave di idempotenza è già in uso, ma non da un replay di questo
+            // pagamento: nessuna scrittura è avvenuta e si risolve rigenerandola.
+            // Ha un catch suo perché è un conflitto di dominio, non un guasto: nel
+            // catch generico finirebbe a Log::error con lo stack trace, cioè come
+            // rumore in mezzo agli errori veri.
+            return back()->withErrors(['idempotency_key_conflitto' => $e->getMessage()]);
+
         } catch (\Exception $e) {
             // Errore tecnico non previsto. La transazione atomica garantisce
             // che nessun dato parziale sia stato scritto nel DB.
-            Log::error('Errore registrazione pagamento fornitore: ' . $e->getMessage());
-            Log::error('Traccia: ' . $e->getTraceAsString());
+            Log::error('Errore registrazione pagamento fornitore: '.$e->getMessage());
+            Log::error('Traccia: '.$e->getTraceAsString());
 
             return back()->withErrors(['error' => $e->getMessage()]);
         }
@@ -308,20 +363,20 @@ class PagamentoFornitoreController extends Controller
                 $gestioneId = $f->scritture()->first()?->gestione_id;
 
                 return [
-                    'id'                => $f->id,
-                    'tipo_documento'    => $f->tipo_documento,
-                    'numero_documento'  => $f->numero_documento ?? "FT#{$f->id}",
-                    'data_documento'    => $f->data_documento?->format('d/m/Y'),
-                    'data_scadenza'     => $f->data_scadenza?->format('Y-m-d'),
+                    'id' => $f->id,
+                    'tipo_documento' => $f->tipo_documento,
+                    'numero_documento' => $f->numero_documento ?? "FT#{$f->id}",
+                    'data_documento' => $f->data_documento?->format('d/m/Y'),
+                    'data_scadenza' => $f->data_scadenza?->format('Y-m-d'),
                     'data_scadenza_fmt' => $f->data_scadenza?->format('d/m/Y'),
-                    'importo_lordo'     => $lordo,
-                    'netto_a_pagare'    => $f->netto_a_pagare,
-                    'residuo'           => $residuoCents,
-                    'stato_pagamento'   => $f->stato_pagamento->value,
-                    'stato_approvazione'=> $f->stato_approvazione,
-                    'is_scaduta'        => $f->data_scadenza && $f->data_scadenza->isPast(),
-                    'is_nota_credito'   => $f->tipo_documento === 'nota_credito',
-                    'gestione_id'       => $gestioneId,
+                    'importo_lordo' => $lordo,
+                    'netto_a_pagare' => $f->netto_a_pagare,
+                    'residuo' => $residuoCents,
+                    'stato_pagamento' => $f->stato_pagamento->value,
+                    'stato_approvazione' => $f->stato_approvazione,
+                    'is_scaduta' => $f->data_scadenza && $f->data_scadenza->isPast(),
+                    'is_nota_credito' => $f->tipo_documento === 'nota_credito',
+                    'gestione_id' => $gestioneId,
                     'descrizione_righe' => $f->righe->pluck('descrizione')->filter()->implode(', '),
                 ];
             });
@@ -330,20 +385,25 @@ class PagamentoFornitoreController extends Controller
         $noteCredito = $this->service->trovaNoteCreditoCompensabili($fornitoreId, $condominio->id)
             ->map(function (FatturaPassiva $nc) {
                 return [
-                    'id'                => $nc->id,
-                    'tipo_documento'    => 'nota_credito',
-                    'numero_documento'  => $nc->numero_documento ?? "NC#{$nc->id}",
-                    'data_documento'    => $nc->data_documento?->format('d/m/Y'),
-                    'netto_a_pagare'    => abs($nc->netto_a_pagare),
-                    'residuo'           => abs($nc->residuo),
-                    'is_nota_credito'   => true,
-                    'gestione_id'       => $nc->scritture()->first()?->gestione_id,
+                    'id' => $nc->id,
+                    'tipo_documento' => 'nota_credito',
+                    'numero_documento' => $nc->numero_documento ?? "NC#{$nc->id}",
+                    'data_documento' => $nc->data_documento?->format('d/m/Y'),
+                    'netto_a_pagare' => abs($nc->netto_a_pagare),
+                    // ⚠️ `max(0, …)` e non `abs(…)`, dalla beta.67. Il residuo di una nota ora dice
+                    // **quanto credito resta**, e un valore negativo significa una cosa sola: ne è
+                    // stato consumato più del dovuto. Con `abs()` quell'anomalia tornava a video
+                    // come credito disponibile — cioè il difetto si ripresentava proprio nel punto
+                    // in cui l'amministratore lo avrebbe visto e speso.
+                    'residuo' => max(0, $nc->residuo),
+                    'is_nota_credito' => true,
+                    'gestione_id' => $nc->scritture()->first()?->gestione_id,
                     // Necessario per il controllo di selezione nel frontend:
                     // togglePendenza() controlla p.stato_approvazione === 'approvata'
                     // Se mancante (undefined) il click viene sempre bloccato.
                     'stato_approvazione' => $nc->stato_approvazione,
-                    'is_scaduta'         => false, // Le NC non hanno scadenza di pagamento
-                    'stato_pagamento'    => $nc->stato_pagamento->value,
+                    'is_scaduta' => false, // Le NC non hanno scadenza di pagamento
+                    'stato_pagamento' => $nc->stato_pagamento->value,
                 ];
             });
 
@@ -354,10 +414,10 @@ class PagamentoFornitoreController extends Controller
             ->values();
 
         return response()->json([
-            'pendenze'      => $risultato,
-            'has_netting'   => $noteCredito->isNotEmpty() && $pendenze->where('is_nota_credito', false)->isNotEmpty(),
-            'totale_nc'     => $noteCredito->sum('residuo'),
-            'totale_ft'     => $pendenze->where('is_nota_credito', false)->sum('residuo'),
+            'pendenze' => $risultato,
+            'has_netting' => $noteCredito->isNotEmpty() && $pendenze->where('is_nota_credito', false)->isNotEmpty(),
+            'totale_nc' => $noteCredito->sum('residuo'),
+            'totale_ft' => $pendenze->where('is_nota_credito', false)->sum('residuo'),
         ]);
     }
 
@@ -381,37 +441,37 @@ class PagamentoFornitoreController extends Controller
         ]);
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
-        $esercizio      = $this->getEsercizioCorrente($condominio);
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         $scritturaFatture = $pagamento->scrittura?->fatture?->map(fn ($f) => [
-            'id'               => $f->id,
+            'id' => $f->id,
             'numero_documento' => $f->numero_documento,
-            'data_documento'   => $f->data_documento?->format('d/m/Y'),
-            'tipo_documento'   => $f->tipo_documento,
+            'data_documento' => $f->data_documento?->format('d/m/Y'),
+            'tipo_documento' => $f->tipo_documento,
             'importo_allocato' => $f->pivot->importo_allocato,
             'tipo_allocazione' => $f->pivot->tipo?->value ?? $f->pivot->tipo,
         ]) ?? collect();
 
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentoShow', [
             'condominio' => $condominio,
-            'condomini'  => $listaCondomini,
-            'esercizio'  => $esercizio,
-            'pagamento'  => (new PagamentoFornitoreResource($pagamento))->resolve(),
-            'scrittura'  => $pagamento->scrittura ? [
-                'id'                 => $pagamento->scrittura->id,
-                'numero_protocollo'  => $pagamento->scrittura->numero_protocollo,
-                'causale'            => $pagamento->scrittura->causale,
-                'tipo_movimento'     => $pagamento->scrittura->tipo_movimento?->value,
+            'condomini' => $listaCondomini,
+            'esercizio' => $esercizio,
+            'pagamento' => (new PagamentoFornitoreResource($pagamento))->resolve(),
+            'scrittura' => $pagamento->scrittura ? [
+                'id' => $pagamento->scrittura->id,
+                'numero_protocollo' => $pagamento->scrittura->numero_protocollo,
+                'causale' => $pagamento->scrittura->causale,
+                'tipo_movimento' => $pagamento->scrittura->tipo_movimento?->value,
                 'data_registrazione' => $pagamento->scrittura->data_registrazione?->format('d/m/Y'),
-                'righe'              => $pagamento->scrittura->righe->map(fn ($r) => [
-                    'id'        => $r->id,
+                'righe' => $pagamento->scrittura->righe->map(fn ($r) => [
+                    'id' => $r->id,
                     'tipo_riga' => $r->tipo_riga,
-                    'importo'   => $r->importo,
-                    'note'      => $r->note,
-                    'conto'     => $r->contoContabile ? [
-                        'id'     => $r->contoContabile->id,
+                    'importo' => $r->importo,
+                    'note' => $r->note,
+                    'conto' => $r->contoContabile ? [
+                        'id' => $r->contoContabile->id,
                         'codice' => $r->contoContabile->codice,
-                        'nome'   => $r->contoContabile->nome,
+                        'nome' => $r->contoContabile->nome,
                     ] : null,
                 ]),
                 'fatture' => $scritturaFatture,
@@ -423,20 +483,25 @@ class PagamentoFornitoreController extends Controller
      * Mostra il form per la modifica di un pagamento fornitore confermato.
      *
      * Prepara i dati necessari per il form semplificato (banche e gestione).
-     * Le guardie di modificabilità sono demandate al service.
-     *
-     * @param Condominio $condominio
-     * @param PagamentoFornitore $pagamento
-     * @return Response
+     * Le guardie di modificabilità (esercizio chiuso, ecc.) restano demandate
+     * al service e vengono intercettate in update(); lo storno viene invece
+     * bloccato già qui, perché altrimenti l'utente atterrerebbe su un form
+     * apparentemente funzionante il cui salvataggio fallisce sempre in silenzio.
      */
-    public function edit(Condominio $condominio, PagamentoFornitore $pagamento): Response
+    public function edit(Condominio $condominio, PagamentoFornitore $pagamento): Response|RedirectResponse
     {
         abort_if($pagamento->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        if ($pagamento->pagamento_padre_id !== null || $pagamento->stato === StatoPagamentoFornitore::STORNATO) {
+            return redirect()
+                ->route('admin.gestionale.pagamenti-fornitori.show', ['condominio' => $condominio->id, 'pagamento' => $pagamento->id])
+                ->with($this->flashError('Questo pagamento è stato stornato: non è modificabile.'));
+        }
 
         $pagamento->load(['fornitore', 'contoCorrente', 'scrittura.fatture']);
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
-        $esercizio      = $this->getEsercizioCorrente($condominio);
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         // Banche e casse con saldo calcolato dal giornale
         $banche = Cassa::where('condominio_id', $condominio->id)
@@ -451,26 +516,27 @@ class PagamentoFornitoreController extends Controller
             ->get()
             ->map(function ($cassa) {
                 $entrate = $cassa->totale_entrate ?? 0;
-                $uscite  = $cassa->totale_uscite ?? 0;
-                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+                $uscite = $cassa->totale_uscite ?? 0;
+                // beta.25: saldo da SaldoCassaService (unica fonte), non ricalcolato qui.
+                $saldoAttuale = (int) $cassa->saldo_reale;
 
                 return [
-                    'id'            => $cassa->conto_contabile_id,
-                    'cassa_id'      => $cassa->id,
-                    'nome'          => $cassa->nome,
-                    'tipo'          => $cassa->tipo,
-                    'iban'          => $cassa->contoCorrente?->iban ?? null,
+                    'id' => $cassa->conto_contabile_id,
+                    'cassa_id' => $cassa->id,
+                    'nome' => $cassa->nome,
+                    'tipo' => $cassa->tipo,
+                    'iban' => $cassa->contoCorrente?->iban ?? null,
                     'saldo_attuale' => $saldoAttuale,
                 ];
             });
 
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentoEdit', [
             'condominio' => $condominio,
-            'condomini'  => $listaCondomini,
-            'esercizio'  => $esercizio,
-            'pagamento'  => new PagamentoFornitoreResource($pagamento),
-            'banche'     => $banche,
+            'condomini' => $listaCondomini,
+            'esercizio' => $esercizio,
+            'pagamento' => new PagamentoFornitoreResource($pagamento),
+            'banche' => $banche,
+            'fornitori' => Fornitore::all(),
         ]);
     }
 
@@ -478,11 +544,6 @@ class PagamentoFornitoreController extends Controller
      * Aggiorna un pagamento fornitore confermato.
      *
      * Delega l'aggiornamento e la validazione di integrità (overpayment) al PagamentoFornitoreService.
-     *
-     * @param UpdatePagamentoFornitoreRequest $request
-     * @param Condominio $condominio
-     * @param PagamentoFornitore $pagamento
-     * @return RedirectResponse
      */
     public function update(UpdatePagamentoFornitoreRequest $request, Condominio $condominio, PagamentoFornitore $pagamento): RedirectResponse
     {
@@ -499,7 +560,10 @@ class PagamentoFornitoreController extends Controller
                 ->with($this->flashSuccess('Pagamento aggiornato con successo.'));
 
         } catch (PagamentoModificaVietataException $e) {
-            return back()->with($this->flashError($e->getMessage()));
+            // withErrors (non flash): un redirect "back" senza errors è trattato da Inertia
+            // come successo a tutti gli effetti, mostrando la modale di conferma anche se
+            // il salvataggio è stato bloccato. Vedi errors.modifica_vietata nel frontend.
+            return back()->withErrors(['modifica_vietata' => $e->getMessage()]);
 
         } catch (IbanDiscrepanzaException $e) {
             return back()->withErrors(['iban_discrepanza' => $e->getMessage()]);
@@ -509,9 +573,9 @@ class PagamentoFornitoreController extends Controller
 
         } catch (InsufficientFundsException $e) {
             return back()->withErrors([
-                'insufficient_funds'      => $e->getMessage(),
+                'insufficient_funds' => $e->getMessage(),
                 'insufficient_funds_data' => json_encode([
-                    'saldo_cents'      => $e->saldoCents,
+                    'saldo_cents' => $e->saldoCents,
                     'necessario_cents' => $e->necessarioCents,
                     'scopertura_cents' => $e->scoperturaCents,
                 ]),
@@ -519,11 +583,11 @@ class PagamentoFornitoreController extends Controller
 
         } catch (OverpaymentException $e) {
             return back()->withErrors([
-                'overpayment'      => $e->getMessage(),
+                'overpayment' => $e->getMessage(),
                 'overpayment_data' => json_encode([
                     'allocato_cents' => $e->allocatoCents,
-                    'residuo_cents'  => $e->residuoCents,
-                    'num_fattura'    => $e->numFattura,
+                    'residuo_cents' => $e->residuoCents,
+                    'num_fattura' => $e->numFattura,
                 ]),
             ]);
 
@@ -539,9 +603,15 @@ class PagamentoFornitoreController extends Controller
         } catch (AllocazioniInconsistentiException $e) {
             return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
 
+        } catch (RitenutaIncoerenteException $e) {
+            // In modifica le allocazioni sono immutabili, quindi la ritenuta non può
+            // cambiare: un valore diverso da quello registrato è sempre un errore.
+            return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
+
         } catch (\Exception $e) {
-            Log::error("Errore modifica pagamento ID {$pagamento->id}: " . $e->getMessage());
-            Log::error('Traccia: ' . $e->getTraceAsString());
+            Log::error("Errore modifica pagamento ID {$pagamento->id}: ".$e->getMessage());
+            Log::error('Traccia: '.$e->getTraceAsString());
+
             return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
@@ -549,28 +619,25 @@ class PagamentoFornitoreController extends Controller
     /**
      * Generates and downloads the Supplier Payment Slip in PDF format.
      *
-     * @param Condominio $condominio
-     * @param PagamentoFornitore $pagamento
-     * @param PdfService $pdfService
-     * @return \Symfony\Component\HttpFoundation\StreamedResponse
+     * @return StreamedResponse
      */
     public function distinta(Condominio $condominio, PagamentoFornitore $pagamento, PdfService $pdfService)
     {
         abort_if($pagamento->condominio_id !== $condominio->id, 403, 'Unauthorized action.');
-        
+
         $pagamento->load(['fornitore', 'contoCorrente', 'scrittura.fatture']);
-        
+
         $data = [
             'condominio' => $condominio,
-            'pagamento'  => $pagamento,
-            'fornitore'  => $pagamento->fornitore,
-            'scrittura'  => $pagamento->scrittura,
-            'fatture'    => $pagamento->scrittura->fatture ?? collect(),
+            'pagamento' => $pagamento,
+            'fornitore' => $pagamento->fornitore,
+            'scrittura' => $pagamento->scrittura,
+            'fatture' => $pagamento->scrittura->fatture ?? collect(),
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.distinta', $data);
 
-        $filename = sprintf('Distinta_PAG-%s_%s.pdf', 
+        $filename = sprintf('Distinta_PAG-%s_%s.pdf',
             $pagamento->scrittura->numero_protocollo ?? $pagamento->id,
             $pagamento->data_pagamento?->format('Ymd') ?? date('Ymd')
         );

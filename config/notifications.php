@@ -16,6 +16,16 @@ return [
                 'description' => 'Ricevi una notifica quando viene approvata la comunicazione da te inviata',
                 'permission'  => Permission::VIEW_COMUNICAZIONI
             ],
+            // ⚠️ Aggiunta nella beta.64, e **separata da «nuova» di proposito**: prima l'avviso di
+            // modifica viaggiava sulla preferenza delle comunicazioni nuove, quindi chi voleva
+            // sapere delle nuove riceveva anche gli aggiornamenti senza poter scegliere. Sono due
+            // cose diverse — una è un fatto nuovo, l'altra una correzione a qualcosa che hai già
+            // letto — e chi riceve deve poterle distinguere.
+            NotificationType::UPDATED_COMMUNICATION->value => [
+                'label'       => 'Comunicazione bacheca aggiornata',
+                'description' => 'Ricevi una notifica quando una comunicazione che hai già ricevuto viene modificata',
+                'permission'  => Permission::VIEW_COMUNICAZIONI,
+            ],
             NotificationType::NEW_TICKET->value => [
                 'label'       => 'Nuova segnalazione guasto',
                 'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
@@ -26,6 +36,11 @@ return [
                 'description' => 'Ricevi una notifica quando viene approvata la segnalazione guasto da te inviata',
                 'permission'  => Permission::VIEW_SEGNALAZIONI
             ],
+            NotificationType::UPDATED_TICKET->value => [
+                'label'       => 'Segnalazione guasto aggiornata',
+                'description' => 'Ricevi una notifica quando una segnalazione guasto che segui viene modificata',
+                'permission'  => Permission::VIEW_SEGNALAZIONI,
+            ],
             NotificationType::NEW_ARCHIVE_DOCUMENT->value => [
                 'label'       => 'Nuovo documento in archivio',
                 'description' => 'Ricevi una notifica quando viene pubblicato un nuovo documento in archivio',
@@ -35,6 +50,11 @@ return [
                 'label'       => 'Documento in archivio approvato',
                 'description' => 'Ricevi una notifica quando viene approvato un documento in archivio da te inviato',
                 'permission'  => Permission::VIEW_ARCHIVE_DOCUMENTS
+            ],
+            NotificationType::UPDATED_ARCHIVE_DOCUMENT->value => [
+                'label'       => 'Documento in archivio aggiornato',
+                'description' => 'Ricevi una notifica quando un documento che hai già ricevuto viene modificato',
+                'permission'  => Permission::VIEW_ARCHIVE_DOCUMENTS,
             ],
             NotificationType::NEW_COMMENT->value => [
                 'label'       => 'Nuovo commento',

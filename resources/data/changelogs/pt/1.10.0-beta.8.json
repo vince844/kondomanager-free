@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Precisão absoluta no relatório de rateio: os totais de cada coluna da impressão 'Rateio por tabela e pessoa' agora coincidem sempre ao cêntimo com o orçamento da respetiva rubrica de despesa (ex. quota fixa de água). Os cêntimos de arredondamento ficam distribuídos entre os condóminos que realmente participam naquela rubrica: nunca mais um cêntimo atribuído a quem não tem relação com aquela conta. O total devido por cada condómino permanece obviamente inalterado e idêntico à contabilidade.",
+        "Impressão do rateio mais legível: as colunas de serviço (papel, total da pessoa, % do total e total da unidade) foram estreitadas para libertar espaço para as tabelas de permilagem. O resultado é uma letra maior e até 8 tabelas numa única página, como nas impressões tradicionais.",
+        "Funcionamento completo mesmo sem ligação à internet: os tipos de letra da interface agora estão incluídos na aplicação em vez de serem descarregados de um serviço externo em cada página. Arranque mais rápido para todos e suporte total a instalações locais offline (ex. MAMP).",
+        "Qualidade comprovada com dados reais: o motor de rateio e a impressão são agora verificados automaticamente, a cada alteração do software, contra um condomínio real de 44 unidades e 8 tabelas de permilagem. Cada versão futura terá de reproduzir todos os seus totais ao cêntimo antes de poder ser lançada."
+    ]
+}

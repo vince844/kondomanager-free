@@ -1,26 +1,63 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm, Link } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings, Info } from 'lucide-vue-next';
+import { Head, useForm, Link, router } from '@inertiajs/vue3';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings, Info, Globe, Terminal, Server } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { trans } from 'laravel-vue-i18n';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import CronSetupGuide from '@/components/guides/CronSetupGuide.vue';
 
 const props = defineProps({
     enabled: Boolean,
     webhookUrl: String,
     allowedIps: Array,
+    lastHeartbeat: Number,
+    lastHeartbeatSource: String,
 });
 
 const form = useForm({
     enabled: props.enabled,
 });
 
+const breadcrumbs = computed(() => [
+  {
+    title: trans('impostazioni.label.settings'),
+    href: '/impostazioni',
+  },
+  {
+    title: trans('impostazioni.header.cron_settings_title'),
+    href: '/impostazioni/cron',
+  },
+]);
+
+const pageGuides = computed(() => [
+  {
+    title: trans('impostazioni.dialogs.cron_guide_1_title'),
+    description: trans('impostazioni.dialogs.cron_guide_1_desc'),
+    icon: Info,
+    colorVariant: 'blue'
+  },
+  {
+    title: trans('impostazioni.dialogs.cron_guide_2_title'),
+    description: trans('impostazioni.dialogs.cron_guide_2_desc'),
+    icon: Globe,
+    colorVariant: 'amber'
+  },
+  {
+    title: trans('impostazioni.dialogs.cron_guide_3_title'),
+    description: trans('impostazioni.dialogs.cron_guide_3_desc'),
+    icon: Terminal,
+    colorVariant: 'emerald'
+  }
+]);
+
 const copied = ref(false);
 const isRegenerateDialogOpen = ref(false);
+const showPleskGuide = ref(false);
 
 const toggleEnabled = () => {
     form.post(route('impostazioni.cron.update'), {
@@ -42,67 +79,97 @@ const copyToClipboard = () => {
     copied.value = true;
     setTimeout(() => copied.value = false, 2000);
 };
+
+const currentTime = ref(Math.floor(Date.now() / 1000));
+let timeInterval = null;
+let pollInterval = null;
+
+onMounted(() => {
+    timeInterval = setInterval(() => {
+        currentTime.value = Math.floor(Date.now() / 1000);
+    }, 1000);
+
+    pollInterval = setInterval(() => {
+        router.reload({
+            only: ['lastHeartbeat', 'lastHeartbeatSource'],
+            preserveScroll: true,
+            preserveState: true,
+        });
+    }, 15000);
+});
+
+onUnmounted(() => {
+    if (timeInterval) clearInterval(timeInterval);
+    if (pollInterval) clearInterval(pollInterval);
+});
+
+const isCronActive = computed(() => {
+    if (!props.lastHeartbeat) return false;
+    // Consider active if heartbeat is within the last 3 minutes (180 seconds)
+    return (currentTime.value - props.lastHeartbeat) <= 180;
+});
+
+const lastHeartbeatRelative = computed(() => {
+    if (!props.lastHeartbeat) return trans('impostazioni.dialogs.cron_status_never_run');
+    const seconds = currentTime.value - props.lastHeartbeat;
+    if (seconds < 0) return trans('impostazioni.dialogs.cron_status_now');
+    if (seconds < 60) return trans('impostazioni.dialogs.cron_status_seconds_ago', { seconds });
+    const mins = Math.floor(seconds / 60);
+    return trans('impostazioni.dialogs.cron_status_minutes_ago', { minutes: mins });
+});
 </script>
 
 <template>
-    <AppLayout>
+    <AppLayout :breadcrumbs="[]">
         <Head :title="trans('impostazioni.header.cron_settings_title')" />
 
-        <div class="px-4 py-6">
-            <div class="mb-6">
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-                    {{ trans('impostazioni.header.cron_settings_title') }}
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {{ trans('impostazioni.header.cron_settings_description') }}
-                </p>
-            </div>
+        <div class="px-4 py-6 space-y-6">
+            <PageHeaderGuide
+                :page-title="trans('impostazioni.header.cron_settings_title')"
+                :page-subtitle="trans('impostazioni.header.cron_settings_description')"
+                :icon="Settings"
+                :guides="pageGuides"
+                :breadcrumbs="breadcrumbs"
+                back-url="/impostazioni"
+                :back-text="trans('impostazioni.label.settings')"
+            >
+                <template #actions>
+                    <Button variant="outline" size="sm" @click="showPleskGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200">
+                        <Server class="w-4 h-4" />
+                        Guida configurazione
+                    </Button>
+                </template>
+            </PageHeaderGuide>
 
             <Card class="border shadow-none p-4">
-                <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-4">
-                    <Link
-                        as="button"
-                        href="/impostazioni"
-                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
-                    >
-                        <Settings class="w-4 h-4" />
-                        <span>{{ trans('impostazioni.label.settings') }}</span>
-                    </Link>
+                <div class="flex flex-col w-full sm:flex-row sm:justify-between mb-4">
+                    <!-- HEARTBEAT STATUS -->
+                    <div class="flex items-center gap-3 bg-muted/30 px-3 py-2 rounded-md border mb-4 sm:mb-0">
+                        <div class="relative flex h-3 w-3">
+                            <span v-if="isCronActive" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3" :class="isCronActive ? 'bg-green-500' : 'bg-red-500'"></span>
+                        </div>
+                        <div class="text-sm flex items-center">
+                            <span class="font-medium text-foreground mr-1">{{ trans('impostazioni.dialogs.cron_label_daemon') }}</span>
+                            <span :class="isCronActive ? 'text-green-600' : 'text-red-600 font-semibold'">
+                                {{ isCronActive ? trans('impostazioni.dialogs.cron_status_active') : trans('impostazioni.dialogs.cron_status_error') }}
+                            </span>
+                            
+                            <!-- SOURCE INDICATOR -->
+                            <div v-if="isCronActive && lastHeartbeatSource" class="ml-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full border bg-background/50 text-xs">
+                                <span class="w-2 h-2 rounded-full" :class="lastHeartbeatSource === 'webhook' ? 'bg-orange-500' : 'bg-gray-400'"></span>
+                                <span class="text-muted-foreground capitalize">{{ lastHeartbeatSource }}</span>
+                            </div>
+
+                            <span class="text-xs text-muted-foreground ml-2">
+                                {{ trans('impostazioni.dialogs.cron_label_last_check') }} {{ lastHeartbeatRelative }})
+                            </span>
+                        </div>
+                    </div>
+
                 </div>
                 
                 <CardContent class="space-y-4 p-0">
-
-                    <div class="rounded-lg border bg-muted/40 p-4 mb-6">
-                        <div class="flex items-start gap-4">
-                            <Info class="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                            <div class="grid gap-6 md:grid-cols-2 w-full">
-                                <div>
-                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
-                                        {{ trans('impostazioni.dialogs.cron_info_title') }}
-                                    </h4>
-                                    <p 
-                                        class="text-xs text-muted-foreground leading-relaxed" 
-                                        v-html="trans('impostazioni.dialogs.cron_info_description')"
-                                    ></p>
-                                </div>
-                                <div class="text-xs space-y-2 border-l pl-4 md:border-l-0 md:pl-0 md:border-l-0">
-                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
-                                        {{ trans('impostazioni.dialogs.cron_legend_title') }}
-                                    </h4>
-                                    <div class="flex items-center gap-2">
-                                        <span class="w-2 h-2 rounded-full bg-orange-500"></span>
-                                        <span class="font-medium">Webhook:</span>
-                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.cron_legend_external') }}</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="w-2 h-2 rounded-full bg-gray-400"></span>
-                                        <span class="font-medium">System Cron:</span>
-                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.cron_legend_internal') }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     
                     <!-- TOGGLE SCHEDULER -->
                     <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
@@ -179,7 +246,6 @@ const copyToClipboard = () => {
             </Card>
         </div>
 
-        <!-- CONFIRM DIALOG -->
         <ConfirmDialog
             v-model:modelValue="isRegenerateDialogOpen"
             :title="trans('impostazioni.actions.regenerate_token')"
@@ -187,4 +253,6 @@ const copyToClipboard = () => {
             @confirm="regenerateToken"
         />
     </AppLayout>
+
+    <CronSetupGuide v-model:open="showPleskGuide" />
 </template>

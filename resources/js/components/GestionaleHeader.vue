@@ -47,7 +47,11 @@ const props = withDefaults(defineProps<Props>(), {
 const page = usePage();
 const auth = computed<Auth>(() => page.props.auth as Auth);
 const condominio = computed<Building>(() => page.props.condominio as Building);
-const esercizio = computed<Esercizio>(() => page.props.esercizio as Esercizio);
+// `esercizio` è opzionale: non tutte le pagine del gestionale lo espongono.
+// Senza optional chaining il setup del componente andava in errore e SPARIVA
+// l'intera barra di navigazione — un prop dimenticato in un controller rendeva
+// la pagina inutilizzabile invece di degradare su qualche link in meno.
+const esercizio = computed<Esercizio | undefined>(() => page.props.esercizio as Esercizio | undefined);
 
 const isCurrentRoute = (url?: string) => {
     if (!url) return false;
@@ -103,19 +107,19 @@ const mainNavItems: NavItem[] = [
     {
         type: 'link',
         title: 'Gestioni',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }), 
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value?.id }), 
         icon: ListPlus,
     }, 
     {
         type: 'link',
         title: 'Piani conti',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value?.id }),
         icon: HandCoins,
     },
     {
         type: 'link',
         title: 'Piani rate',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value?.id }),
         icon: Wallet,
     },
     {
@@ -179,7 +183,9 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
 <template>
     <div>
         <!-- HEADER -->
-        <div class="border-b border-sidebar-border/80 bg-background/95 backdrop-blur">
+        <!-- `no-print`: su carta la barra dell'applicazione non serve, e nella prima
+             stampa del prospetto F24 lasciava in cima l'hamburger e l'avatar. -->
+        <div class="no-print border-b border-sidebar-border/80 bg-background/95 backdrop-blur">
             <div class="mx-auto flex h-16 items-center px-4 md:max-w-7xl">
 
                 <!-- MOBILE MENU -->

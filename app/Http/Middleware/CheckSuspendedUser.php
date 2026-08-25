@@ -29,9 +29,11 @@ class CheckSuspendedUser
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return response()->view('errors.403', [
-                'exception' => new Exception(__('errors.403.account_suspended'),)
-            ], 403);
+            // Rimando al login, non una view 403: su una richiesta Inertia una pagina HTML di
+            // errore diventa il modale a tutto schermo, che non porta da nessuna parte. Chi è
+            // stato sospeso deve trovarsi davanti la schermata di accesso con il motivo scritto.
+            return redirect()->route('login')
+                ->withErrors(['email' => __('errors.403.account_suspended')]);
         }
      
         return $next($request);

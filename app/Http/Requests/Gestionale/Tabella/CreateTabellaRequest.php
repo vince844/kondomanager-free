@@ -29,7 +29,7 @@ class CreateTabellaRequest extends FormRequest
     {
         return [
             'nome'            => 'required|string|max:255',
-            'tipologia'       => 'required|string|in:standard,ascensore,riscaldamento,acqua,lastrico,speciale,altro',
+            'tipologia'       => 'required|string|in:standard,ascensore,scale,riscaldamento,acqua,lastrico,speciale,altro',
             'quota'           => 'required|string|in:millesimi,persone,kwatt,mtcubi,quote',
             'numero_decimali' => 'required|integer|min:0|max:5',
             'created_by'      => 'required|exists:users,id',

@@ -153,7 +153,16 @@ return [
     'string' => ':attribute deve essere una stringa.',
     'timezone' => ':attribute deve essere un fuso orario valido.',
     'unique' => 'Il campo :attribute è già in uso.',
-    'uploaded' => 'L\'upload di :attribute è fallito.',
+    // Questa regola scatta quando è **PHP** ad aver scartato il file, prima che Laravel lo veda:
+    // succede quando supera `upload_max_filesize` o `post_max_size` del server. Il messaggio
+    // originale («l'upload è fallito») non dava all'utente nessun modo di capirlo — segnalato dal
+    // forum il 18/08/2026 da chi provava con un file da 4.376 KB su un server da 2 MB.
+    // Gli altri codici d'errore di PHP che finiscono nella stessa regola: disco pieno, cartella
+    // temporanea assente, trasferimento interrotto. Dire «troppo grande» manderebbe a rimpicciolire
+    // un file che va benissimo (revisione della beta.58).
+    'caricamento_interrotto' => 'Il caricamento si è interrotto prima di completarsi, e non per la dimensione del file. Di solito è il disco del server pieno, una cartella temporanea non scrivibile o la connessione caduta a metà. Riprova; se si ripete, il problema è sul server e va guardato lì.',
+    'corpo_troppo_grande' => 'Il file che stai caricando supera il limite complessivo di questo server (:limite): la richiesta è stata scartata prima di arrivare al programma, e per questo può sembrare una sessione scaduta. Chiedi a chi gestisce il server di alzare post_max_size (oltre a upload_max_filesize), oppure carica un file più piccolo.',
+    'uploaded' => 'Il caricamento di :attribute non è riuscito: il file supera il limite di questo server (:limite). Chiedi a chi lo gestisce di alzare upload_max_filesize e post_max_size, oppure carica un file più piccolo.',
     'uppercase' => ':attribute deve essere maiuscolo.',
     'url' => ':attribute deve essere un URL valido.',
     'ulid' => ':attribute deve essere un ULID valido.',
@@ -171,6 +180,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'Non puoi assegnare questo ruolo: i ruoli amministrativi li concede un amministratore.',
+            'last_admin' => "Questo è l'ultimo amministratore attivo: cambiargli ruolo lascerebbe l'installazione senza nessuno che possa governarla.",
+        ],
+        'permissions' => [
+            'not_allowed' => 'Non puoi concedere un permesso che tu stesso non hai.',
+        ],
         'email' => [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',

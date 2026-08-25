@@ -4,9 +4,10 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins } from 'lucide-vue-next';
+import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins, HandCoins } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
+import NavSezione from '@/components/NavSezione.vue';
 
 const page = usePage<{
   condominio: Building;
@@ -46,6 +47,12 @@ const topbarNavItems: LinkItem[] = [
     icon: Coins,
     title: 'Saldi Iniziali',
     href: generatePath('gestionale/:condominio/saldi', { condominio: condominio.value.id }),
+  },
+  {
+    type: 'link',
+    icon: HandCoins,
+    title: 'Già versato',
+    href: generatePath('gestionale/:condominio/contributi', { condominio: condominio.value.id }),
   }
 ];
 
@@ -55,21 +62,7 @@ const currentPath = window.location.pathname;
 
 <template>
   <div>
-    <!-- Topbar -->
-    <nav class="inline-flex items-center space-x-2 shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4">
-      <Button
-        v-for="item in topbarNavItems"
-        :key="item.href"
-        variant="ghost"
-        :class="['justify-start', { 'bg-muted': currentPath.startsWith(item.href) }]"
-        as-child
-      >
-        <Link :href="item.href">
-          <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
-          {{ item.title }}
-        </Link>
-      </Button>
-    </nav>
+    <NavSezione :items="topbarNavItems" class="mb-4" />
 
     <!-- Main content -->
     <div class="w-full">

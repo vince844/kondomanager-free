@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Corretto un bug per cui, creando un piano rate integrativo su una voce di spesa in sforo, il salvataggio non produceva alcun effetto se l'importo suggerito veniva lasciato invariato: nessuna navigazione, nessun errore a video. La causa era nel modo in cui l'importo veniva convertito internamente prima di essere inviato al server. Ora il piano rate si salva sempre, che l'importo venga toccato o no.",
+        "Corretto anche un effetto collaterale dello stesso bug: alcuni importi mostrati a schermo (come il totale selezionato o il residuo del capitolo) potevano apparire moltiplicati per 100 rispetto al valore reale, per un'interpretazione ambigua del formato numerico.",
+        "Riallineata l'etichetta \"Rata Integrativa\" nella modale di sforamento sulla fattura e nella guida in-app: mostravano \"Genera nuovo piano\" per la stessa identica strategia che altrove nell'app è sempre stata chiamata \"Rata Integrativa\" — nessun cambio di comportamento, solo coerenza nel testo mostrato."
+    ]
+}

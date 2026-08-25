@@ -70,6 +70,16 @@ class RecurrenceService
     }
 
     /**
+     * Helper cross-database per l'estrazione JSON sicura (evita errori su SQLite nei test).
+     */
+    private function getMetaExtractSql(string $key): string
+    {
+        return \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite'
+            ? "JSON_EXTRACT(`meta`, '$.\"{$key}\"')"
+            : "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"{$key}\"')) USING utf8mb4)";
+    }
+
+    /**
      * Recupera eventi singoli (non ricorrenti) per l'Admin, con visibilità globale.
      */
     private function getOneTimeEvents(Carbon $start, Carbon $end, array $filters): Collection
@@ -85,7 +95,7 @@ class RecurrenceService
                   // whereJsonContains è universale: gestisce MySQL e MariaDB senza whereRaw fragili
                   $sub->whereJsonContains('meta->requires_action', true)
                       ->whereRaw(
-                          "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"type\"')) USING utf8mb4) = ?",
+                          $this->getMetaExtractSql('type') . " = ?",
                           ['emissione_rata']
                       );
               });
@@ -145,19 +155,19 @@ class RecurrenceService
             $q->whereBetween('start_time', [$start, $end])
               ->orWhere(function ($sub) {
                   $sub->whereRaw(
-                          "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"type\"')) USING utf8mb4) = ?",
+                          $this->getMetaExtractSql('type') . " = ?",
                           ['scadenza_rata_condomino']
                       )
                       ->where(function ($statusQuery) {
                           $statusQuery
                               ->whereRaw(
-                                  "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"status\"')) USING utf8mb4) != ?",
+                                  $this->getMetaExtractSql('status') . " != ?",
                                   ['paid']
                               )
                               ->orWhere(function ($paidQuery) {
                                   $paidQuery
                                       ->whereRaw(
-                                          "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"status\"')) USING utf8mb4) = ?",
+                                          $this->getMetaExtractSql('status') . " = ?",
                                           ['paid']
                                       )
                                       ->where('updated_at', '>=', now()->subDays(30));
@@ -293,7 +303,7 @@ class RecurrenceService
         if (!empty($filters['exclude_type'])) {
             $query->where(function ($q) use ($filters) {
                 $q->whereRaw(
-                        "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"type\"')) USING utf8mb4) != ?",
+                        $this->getMetaExtractSql('type') . " != ?",
                         [$filters['exclude_type']]
                     )
                   ->orWhereNull('meta')

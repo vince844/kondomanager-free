@@ -10,6 +10,13 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# I limiti di caricamento devono concordare con `client_max_body_size` di nginx (25M in
+# docker/standard/nginx/default.conf): vince sempre il più basso della catena, e l'utente riceve un
+# errore che non spiega niente. `upload_max_filesize` è il numero che il programma mostra, letto da
+# App\Support\LimiteCaricamento. Aggiunti nella beta.58 dopo una segnalazione dal forum.
+RUN printf '%b' 'upload_max_filesize = 20M\npost_max_size = 25M\nmax_execution_time = 120\n' \
+    > /usr/local/etc/php/conf.d/zz-kondomanager-upload.ini
+
 WORKDIR /var/www
 RUN usermod -u 1000 www-data
 # Copia supervisord.conf nella posizione standard di sistema

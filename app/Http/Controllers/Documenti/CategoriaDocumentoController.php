@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Documenti;
 
+use App\Traits\OrdinaElenco;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
 use App\Http\Requests\Documento\Categoria\CreateCategoriaRequest;
@@ -9,6 +11,7 @@ use App\Http\Requests\Documento\Categoria\UpdateCategoriaRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -17,7 +20,9 @@ use Illuminate\Support\Facades\Log;
 
 class CategoriaDocumentoController extends Controller
 {
+    use OrdinaElenco;
     use HandleFlashMessages;
+    use PaginaElenco;
 
     /**
      * Display a listing of the categoria documenti.
@@ -33,6 +38,10 @@ class CategoriaDocumentoController extends Controller
 
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $query = CategoriaDocumento::query();
 
         // Apply filters if present
@@ -41,7 +50,8 @@ class CategoriaDocumentoController extends Controller
         }
 
         // Paginate the result
-        $categorie = $query->paginate(config('pagination.default_per_page'))->withQueryString();
+        $categorie = $query->tap(fn ($q) => $this->ordina($q, $validated, CategoriaDocumentoIndexRequest::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page'])->withQueryString();
 
         return Inertia::render('documenti/categories/CategorieList', [
             'categorie' => CategoriaDocumentoResource::collection($categorie)->resolve(), 
@@ -51,7 +61,9 @@ class CategoriaDocumentoController extends Controller
                 'per_page'     => $categorie->perPage(),
                 'total'        => $categorie->total(),
             ],
-            'filters' => Arr::only($validated, ['name'])
+            'filters' => Arr::only($validated, ['name']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

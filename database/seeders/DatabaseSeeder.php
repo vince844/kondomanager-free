@@ -33,6 +33,7 @@ class DatabaseSeeder extends Seeder
             CategoriaEventoSeeder::class,
             TipologieImmobiliSeeder::class,
             CategoriaFornitoreSeeder::class,
+            ComuniSeeder::class,
         ]);
     }
 }

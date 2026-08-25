@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Riparto per tabella con precisione assoluta: i totali di ogni colonna della stampa 'Riparto per tabella e soggetto' ora coincidono sempre al centesimo con il budget della relativa voce di spesa (es. quota fissa acqua). I centesimi di arrotondamento restano distribuiti tra i condòmini che partecipano davvero a quella voce: mai più un centesimo attribuito a chi non c'entra con quel conto. Il totale dovuto da ogni condomino resta ovviamente invariato e identico alla contabilità.",
+        "Stampa riparto più leggibile: le colonne di servizio (ruolo, totale soggetto, % totale e totale immobile) sono state ristrette per liberare spazio alle tabelle millesimali. Il risultato è un carattere più grande e fino a 8 tabelle su un'unica pagina, come nelle stampe tradizionali.",
+        "Funzionamento completo anche senza connessione internet: i caratteri dell'interfaccia sono ora inclusi nell'applicazione invece di essere scaricati da un servizio esterno ad ogni pagina. Avvio più rapido per tutti e pieno supporto alle installazioni locali offline (es. MAMP).",
+        "Qualità verificata su dati reali: il motore di riparto e la stampa sono ora controllati automaticamente, ad ogni modifica del software, contro un condominio reale di 44 unità e 8 tabelle millesimali. Ogni futura versione dovrà riprodurne tutti i totali al centesimo prima di poter essere rilasciata."
+    ]
+}

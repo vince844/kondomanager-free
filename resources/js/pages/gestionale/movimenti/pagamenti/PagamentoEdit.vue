@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useForm, Head, router } from '@inertiajs/vue3';
+import { useForm, Head, Link, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
@@ -8,21 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
-import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     Banknote, CreditCard, Send, ShieldCheck, ShieldAlert, AlertTriangle,
-    CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
-    AlertOctagon, TriangleAlert, Lock, ChevronDown,
-    Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp,
+    CheckCircle, Briefcase, FileText, Wallet,
+    AlertOctagon, TriangleAlert, Lock,
+    Save, BadgeAlert,
     Bug, Scale, Info, FileX, Ban
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { centsToEuro } from '@/lib/gestionale/money';
 import { usePermission } from '@/composables/permissions';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
-import axios from 'axios';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -43,7 +41,7 @@ const moneyOptions = ref({
 interface Fornitore {
     id: number;
     ragione_sociale: string;
-    piva?: string;
+    partita_iva?: string;
     codice_fiscale?: string;
     soggetto_ritenuta: boolean;
     perc_ritenuta?: number;
@@ -72,34 +70,6 @@ interface Banca {
     saldo_attuale: number;
 }
 
-interface Gestione {
-    id: number;
-    nome: string;
-    tipo: string;
-    esercizio_ids?: number[];
-}
-
-interface Pendenza {
-    id: number;
-    tipo_documento: string;
-    numero_documento: string;
-    data_documento: string;
-    data_scadenza?: string;
-    data_scadenza_fmt?: string;
-    importo_lordo: number;
-    netto_a_pagare: number;
-    residuo: number;
-    stato_pagamento: string;
-    is_scaduta: boolean;
-    is_nota_credito: boolean;
-    gestione_id?: number;
-    descrizione_righe?: string;
-    stato_approvazione: string;
-    // UI state
-    selezionata?: boolean;
-    importo_allocato?: number;
-    tipo_allocazione?: 'pagamento' | 'compensazione';
-}
 interface PagamentoFornitore {
     id: number;
     fornitore: { id: number, ragione_sociale: string };
@@ -120,10 +90,8 @@ const props = defineProps<{
     condominio: Condominio;
     condomini: Condominio[];
     esercizio: Esercizio;
-    esercizi: Esercizio[];
     fornitori: Fornitore[];
     banche: Banca[];
-    gestioni: Gestione[];
     pagamento: PagamentoFornitore;
 }>();
 
@@ -137,7 +105,10 @@ const form = useForm({
     data_pagamento:                 props.pagamento.data_pagamento ? new Date(props.pagamento.data_pagamento).toISOString().substring(0, 10) : new Date().toISOString().substring(0, 10),
     metodo_pagamento:               props.pagamento.metodo_pagamento || 'bonifico',
     iban_beneficiario:              props.pagamento.iban_beneficiario || '',
-    importo_commissioni_cents:      Math.round((props.pagamento.importo_commissione || 0) * 100),
+    // La prop arriva dalla Resource ed è già in centesimi, come importo_lordo/ritenuta/netto
+    // qui sotto: la casella però si digita in euro, quindi qui si DIVIDE. Moltiplicare
+    // sarebbe la seconda conversione della stessa cifra — il bug del ×100 della beta.32.
+    importo_commissioni_cents:      centsToEuro(props.pagamento.importo_commissione),
     importo_lordo_cents:            props.pagamento.importo_lordo,
     importo_ritenuta_cents:         props.pagamento.importo_ritenuta,
     importo_netto_cents:            props.pagamento.importo_netto,
@@ -176,6 +147,9 @@ const overpaymentData = ref({ allocato_cents: 0, residuo_cents: 0, num_fattura: 
 const overpaymentNote = ref('');
 
 // ── Modali errori di dominio — non bypassabili ──
+const showModificaVietataModal = ref(false);
+const modificaVietataMsg = ref('');
+
 const showFiscalYearClosedModal = ref(false);
 const fiscalYearClosedMsg = ref('');
 
@@ -191,13 +165,42 @@ const allocazioniInconsistentiMsg = ref('');
 const showGenericErrorModal = ref(false);
 const genericErrorMsg = ref('');
 
-// --- Ratifica Sforo (inline in PagamentoNew) ---
-const showApprovaSforoModal = ref(false);
-const sforoTarget = ref<Pendenza | null>(null);
-const noteApprovazioneInline = ref('');
+/**
+ * Il rifiuto senza finestra dedicata (beta.49, coda ⑮). Gemello di quello in `PagamentoNew`,
+ * stessa ragione: la catena di `if (errors.<chiave>)` copriva dieci chiavi su undici, e tutto il
+ * resto — `ritenuta_incoerente`, e ogni validazione ordinaria di
+ * `UpdatePagamentoFornitoreRequest` — tornava dal server senza comparire da nessuna parte.
+ *
+ * In modifica il caso della ritenuta è ancora più stretto: le allocazioni sono immutabili, quindi
+ * la ritenuta non può cambiare, e un valore diverso da quello registrato è **sempre** un errore.
+ * Una guardia che non sbaglia mai, e che finora non riusciva a dirlo.
+ */
+const showRifiutoModal = ref(false);
+const rifiutoMotivi = ref<string[]>([]);
 
-const fiscalSentinelExpanded = ref(false);
-const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
+/**
+ * Le chiavi già servite da una finestra dedicata. Elenco di **esclusione**: dimenticarne una fa
+ * vedere il messaggio due volte, mentre l'elenco di inclusione che c'era prima lo faceva sparire.
+ * Fra i due errori possibili si sceglie quello che si vede.
+ *
+ * Rispetto a `PagamentoNew` c'è in più `modifica_vietata`, che esiste solo in modifica.
+ */
+const CHIAVI_CON_FINESTRA_PROPRIA = [
+    'iban_discrepanza', 'possibile_duplicato',
+    'insufficient_funds', 'insufficient_funds_data',
+    'overpayment', 'overpayment_data',
+    'fiscal_year_closed', 'illegal_cash',
+    'fattura_non_approvata', 'allocazioni_inconsistenti',
+    'modifica_vietata', 'error',
+];
+
+/** I motivi del rifiuto che nessuna finestra dedicata mostrerebbe. */
+const motiviSenzaFinestra = (errors: Record<string, string>): string[] =>
+    Object.entries(errors)
+        .filter(([chiave, messaggio]) => messaggio && !CHIAVI_CON_FINESTRA_PROPRIA.includes(chiave))
+        .map(([, messaggio]) => messaggio);
+
+const selectedFornitore = computed(() => props.fornitori?.find(f => f.id === form.fornitore_id));
 
 // Metodi pagamento disponibili (porta aperta per futuri)
 const metodiPagamento = [
@@ -304,6 +307,11 @@ const handleSubmit = () => {
                 return;
             }
             // ── Non bypassabili ──
+            if (errors.modifica_vietata) {
+                modificaVietataMsg.value = errors.modifica_vietata;
+                showModificaVietataModal.value = true;
+                return;
+            }
             if (errors.fiscal_year_closed) {
                 fiscalYearClosedMsg.value = errors.fiscal_year_closed;
                 showFiscalYearClosedModal.value = true;
@@ -324,10 +332,18 @@ const handleSubmit = () => {
                 showAllocazioniInconsistentiModal.value = true;
                 return;
             }
-            // ── Fallback tecnico ──
+            // ── Fallback tecnico: un guasto vero, con «Riprova» ──
             if (errors.error) {
                 genericErrorMsg.value = errors.error;
                 showGenericErrorModal.value = true;
+                return;
+            }
+
+            // ── Ripiego per tutto il resto: rifiuto, non guasto ──
+            const motivi = motiviSenzaFinestra(errors as Record<string, string>);
+            if (motivi.length) {
+                rifiutoMotivi.value = motivi;
+                showRifiutoModal.value = true;
             }
         },
     });
@@ -370,7 +386,7 @@ const transactionStatus = computed(() => {
     if (!form.conto_corrente_id) return 'SAFE';
     const b = bancheNormalizzate.value.find(b => b.id === form.conto_corrente_id);
     if (!b) return 'SAFE';
-    
+
     const postCents = b.saldo_attuale_cents - form.importo_lordo_cents;
     if (postCents < 0) return 'WARNING_CASH';
     return 'SAFE';
@@ -387,6 +403,15 @@ const ibanDiscrepanza = computed(() => {
 // Richiede IBAN per bonifico
 const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');
 
+// Il Bonifico Parlante richiede un bonifico tracciabile (art. 16-bis TUIR):
+// se si cambia metodo, la dichiarazione fiscale non è più valida.
+watch(() => form.metodo_pagamento, (metodo) => {
+    if (metodo !== 'bonifico') {
+        form.bonifico_parlante = false;
+        form.tipo_detrazione = null;
+    }
+});
+
 // ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
@@ -396,9 +421,7 @@ const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Modifica Pagamento' },
 ]);
 
-const pageGuides = [
-    { title: 'Modifica Veloce',      description: 'Modifica il conto di addebito, la data o le note di un pagamento. Il fornitore e le allocazioni alle fatture non sono modificabili.', icon: Save, colorVariant: 'blue' as const },
-];
+const pageGuides: never[] = [];
 </script>
 
 <template>
@@ -427,69 +450,90 @@ const pageGuides = [
                 </div>
             </Transition>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative z-10">
+            <div class="relative z-10">
 
-                <!-- ── COLONNA SINISTRA — Setup & Sentinelle ── -->
-                <div class="lg:col-span-4 h-full flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div class="flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 shrink-0">
                         <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Disposizione Pagamento</h3>
                     </div>
 
                     <div class="p-5 flex-1 overflow-y-auto space-y-5">
 
-                        <!-- Fornitore -->
-                        <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornitore *</Label>
-                            <v-select
-                                v-model="form.fornitore_id"
-                                :options="fornitori"
-                                label="ragione_sociale"
-                                :reduce="(f: Fornitore) => f.id"
-                                placeholder="Cerca fornitore..."
-                                class="w-full"
-                                :disabled="true">
-                                <template #option="{ ragione_sociale, piva, codice_fiscale, soggetto_ritenuta }">
-                                    <div class="flex items-center gap-3 py-1 opacity-60">
-                                        <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
-                                            <Briefcase class="w-4 h-4 text-slate-400" />
-                                        </div>
-                                        <div class="flex flex-col overflow-hidden">
-                                            <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ ragione_sociale }}</span>
-                                            <div class="flex items-center gap-2 mt-0.5">
-                                                <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
-                                                <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
+                        <!-- Fornitore + Conto Addebito -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornitore *</Label>
+                                <v-select
+                                    v-model="form.fornitore_id"
+                                    :options="fornitori"
+                                    label="ragione_sociale"
+                                    :reduce="(f: Fornitore) => f.id"
+                                    placeholder="Cerca fornitore..."
+                                    class="w-full"
+                                    :disabled="true">
+                                    <template #option="{ ragione_sociale, partita_iva, codice_fiscale, soggetto_ritenuta }">
+                                        <div class="flex items-center gap-3 py-1 opacity-60">
+                                            <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+                                                <Briefcase class="w-4 h-4 text-slate-400" />
+                                            </div>
+                                            <div class="flex flex-col overflow-hidden">
+                                                <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ ragione_sociale }}</span>
+                                                <div class="flex items-center gap-2 mt-0.5">
+                                                    <span v-if="partita_iva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ partita_iva }}</span>
+                                                    <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
+                                                    <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none">
+                                                        Ritenuta
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </template>
-                                <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
-                                    <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
-                                        <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                        <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ form.fornitore_id ? props.fornitori.find(f => f.id === form.fornitore_id)?.ragione_sociale : '' }}</span>
-                                    </div>
-                                </template>
-                            </v-select>
+                                    </template>
+                                    <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
+                                        <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
+                                            <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
+                                            <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none shrink-0">
+                                                Ritenuta
+                                            </span>
+                                        </div>
+                                    </template>
+                                </v-select>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Conto di Addebito *</Label>
+                                <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate" label="nome" :reduce="(c: any) => c.id" placeholder="Seleziona banca...">
+                                    <template #option="{ nome, saldo_attuale_cents }">
+                                        <div class="flex justify-between items-center py-0.5">
+                                            <span class="font-bold text-sm">{{ nome }}</span>
+                                            <span class="text-[10px]" :class="saldo_attuale_cents >= 0 ? 'text-emerald-600' : 'text-rose-500'">{{ euro(saldo_attuale_cents) }}</span>
+                                        </div>
+                                    </template>
+                                    <template #selected-option="{ nome, saldo_attuale_cents }">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-bold text-sm">{{ nome }}</span>
+                                            <span class="text-[10px] text-slate-400">{{ euro(saldo_attuale_cents) }}</span>
+                                        </div>
+                                    </template>
+                                </v-select>
+                            </div>
                         </div>
 
                         <hr class="border-slate-100 dark:border-slate-800">
 
-                        <!-- Conto Addebito -->
+                        <!-- Metodo Pagamento -->
                         <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Conto di Addebito *</Label>
-                            <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate" label="nome" :reduce="(c: any) => c.id" placeholder="Seleziona banca...">
-                                <template #option="{ nome, saldo_attuale_cents }">
-                                    <div class="flex justify-between items-center py-0.5">
-                                        <span class="font-bold text-sm">{{ nome }}</span>
-                                        <span class="text-[10px]" :class="saldo_attuale_cents >= 0 ? 'text-emerald-600' : 'text-rose-500'">{{ euro(saldo_attuale_cents) }}</span>
-                                    </div>
-                                </template>
-                                <template #selected-option="{ nome, saldo_attuale_cents }">
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-bold text-sm">{{ nome }}</span>
-                                        <span class="text-[10px] text-slate-400">{{ euro(saldo_attuale_cents) }}</span>
-                                    </div>
-                                </template>
-                            </v-select>
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Metodo Pagamento</Label>
+                            <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg gap-1">
+                                <button v-for="m in metodiPagamento" :key="m.value"
+                                    type="button"
+                                    @click="form.metodo_pagamento = m.value"
+                                    class="flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-md transition-all flex items-center justify-center gap-1.5"
+                                    :class="form.metodo_pagamento === m.value ? 'bg-white dark:bg-slate-700 text-primary shadow-sm' : 'text-slate-400 hover:text-slate-500'">
+                                    <component :is="m.icon" class="w-3.5 h-3.5" />
+                                    {{ m.label }}
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Treasury Guardian Light -->
@@ -525,21 +569,6 @@ const pageGuides = [
 
                         <hr class="border-slate-100 dark:border-slate-800">
 
-                        <!-- Metodo Pagamento -->
-                        <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Metodo Pagamento</Label>
-                            <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg gap-1">
-                                <button v-for="m in metodiPagamento" :key="m.value"
-                                    type="button"
-                                    @click="form.metodo_pagamento = m.value"
-                                    class="flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-md transition-all flex items-center justify-center gap-1.5"
-                                    :class="form.metodo_pagamento === m.value ? 'bg-white dark:bg-slate-700 text-primary shadow-sm' : 'text-slate-400 hover:text-slate-500'">
-                                    <component :is="m.icon" class="w-3.5 h-3.5" />
-                                    {{ m.label }}
-                                </button>
-                            </div>
-                        </div>
-
                         <!-- IBAN + Sentinella Anti-Frode -->
                         <div v-if="richiedeIban" class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">IBAN Beneficiario</Label>
@@ -570,30 +599,31 @@ const pageGuides = [
                             </Transition>
                         </div>
 
-                        <!-- Data Pagamento -->
-                        <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data Pagamento *</Label>
-                            <Input type="date" v-model="form.data_pagamento" class="h-9 text-sm" />
-                            <div v-if="isDataPagamentoVecchia" class="mt-2 flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
-                                <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-                                <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai modificando con una data avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
+                        <!-- Data Pagamento + Commissioni Bancarie -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data Pagamento *</Label>
+                                <Input type="date" v-model="form.data_pagamento" class="h-9 text-sm" />
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Commissioni Bancarie</Label>
+                                <MoneyInput
+                                    id="commissioni"
+                                    v-model="form.importo_commissioni_cents"
+                                    :money-options="moneyOptions"
+                                    :lazy="false"
+                                    class="h-9 text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
+                                    placeholder="0,00" />
                             </div>
                         </div>
-
-                        <!-- Commissioni Bancarie -->
-                        <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Commissioni Bancarie</Label>
-                            <MoneyInput
-                                id="commissioni"
-                                v-model="form.importo_commissioni_cents"
-                                :money-options="moneyOptions"
-                                :lazy="false"
-                                class="h-9 text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
-                                placeholder="0,00" />
+                        <div v-if="isDataPagamentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                            <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai modificando con una data avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
                         </div>
 
-                        <!-- Fiscal Sentinel (Bonifico Parlante) -->
-                        <div class="space-y-1.5">
+                        <!-- Fiscal Sentinel (Bonifico Parlante) — richiede un bonifico tracciabile (art. 16-bis TUIR) -->
+                        <div v-if="richiedeIban" class="space-y-1.5">
                             <div class="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors"
                                 :class="{ 'bg-indigo-50/50 border-indigo-200 dark:bg-indigo-900/10 dark:border-indigo-700/50': form.bonifico_parlante }">
                                 <div class="flex items-center justify-between cursor-pointer" @click="form.bonifico_parlante = !form.bonifico_parlante">
@@ -629,6 +659,19 @@ const pageGuides = [
                                                 La causale del bonifico verrà generata automaticamente con i riferimenti normativi richiesti dalla banca.
                                             </p>
                                         </div>
+                                        <!--
+                                            In modifica la conseguenza è più forte che in registrazione, perché la
+                                            spunta cambia un pagamento già scritto: togliendo la ritenuta l'importo
+                                            che esce al fornitore aumenta. Va detto qui, mentre si decide.
+                                        -->
+                                        <div v-if="selectedFornitore?.soggetto_ritenuta" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
+                                            <AlertTriangle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                            <p class="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                                                <strong>Il condominio non tratterrà la ritenuta d'acconto</strong> su questo pagamento:
+                                                con il bonifico parlante la opera la banca (11%), e applicarla entrambi sarebbe un
+                                                doppio prelievo. Togliendo la spunta la ritenuta torna quella prevista dalle fatture.
+                                            </p>
+                                        </div>
                                     </div>
                                 </Transition>
                             </div>
@@ -638,7 +681,7 @@ const pageGuides = [
 
                         <!-- Riferimenti Bancari e Note -->
                         <div class="space-y-4">
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div class="space-y-1.5">
                                     <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Causale Bonifico</Label>
                                     <Input v-model="form.causale_bonifico" class="h-9 text-sm" placeholder="Causale..." />
@@ -675,9 +718,13 @@ const pageGuides = [
                                 </span>
                             </div>
 
-                            <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                            <div class="mt-4 pt-4 border-t border-slate-700 flex items-center justify-end gap-3">
+                                <Link :href="route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id })"
+                                    class="inline-flex items-center justify-center h-9 px-5 rounded-md border border-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-all">
+                                    Annulla
+                                </Link>
                                 <Button type="button" @click="handleSubmit" :disabled="form.processing"
-                                    class="w-full h-12 rounded-xl font-black uppercase tracking-wider text-xs gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20">
+                                    class="h-9 px-6 rounded-md font-black uppercase tracking-wider text-[10px] gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20">
                                     <Save class="w-4 h-4" />
                                     Salva Modifiche
                                 </Button>
@@ -685,8 +732,6 @@ const pageGuides = [
                         </div>
                     </div>
                 </div>
-
-                <!-- ── COLONNA DESTRA — RIMOSSA PERCHE' IN EDIT LE ALLOCAZIONI NON SONO MODIFICABILI ── -->
             </div>
         </div>
 
@@ -936,7 +981,35 @@ const pageGuides = [
             </Transition>
         </Teleport>
 
-        <!-- ── 3. ESERCIZIO CHIUSO — non bypassabile ── -->
+        <!-- ── 3. MODIFICA NON CONSENTITA (storno, esercizio scrittura, ecc.) — non bypassabile ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showModificaVietataModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-700/30 px-8 pt-8 pb-6 text-center border-b border-slate-200 dark:border-slate-700">
+                            <div class="w-16 h-16 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-slate-200 dark:border-slate-600">
+                                <Lock class="w-8 h-8 text-slate-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Modifica non consentita</h3>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-xl p-4">
+                                <Info class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                <p class="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">{{ modificaVietataMsg }}</p>
+                            </div>
+
+                            <Button @click="() => { showModificaVietataModal = false; router.visit(route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id })); }"
+                                class="w-full h-12 rounded-xl bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white font-black uppercase tracking-widest text-[11px]">
+                                Ho capito — Torna all'elenco
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 4. ESERCIZIO CHIUSO — non bypassabile ── -->
         <Teleport to="body">
             <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
                 <div v-if="showFiscalYearClosedModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -983,7 +1056,7 @@ const pageGuides = [
             </Transition>
         </Teleport>
 
-        <!-- ── 4. LIMITE CONTANTI ANTIRICICLAGGIO — non bypassabile ── -->
+        <!-- ── 5. LIMITE CONTANTI ANTIRICICLAGGIO — non bypassabile ── -->
         <Teleport to="body">
             <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
                 <div v-if="showIllegalCashModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1030,7 +1103,7 @@ const pageGuides = [
             </Transition>
         </Teleport>
 
-        <!-- ── 5. FATTURA NON APPROVATA — non bypassabile ── -->
+        <!-- ── 6. FATTURA NON APPROVATA — non bypassabile ── -->
         <Teleport to="body">
             <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
                 <div v-if="showFatturaNonApprovataModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1039,7 +1112,7 @@ const pageGuides = [
                             <div class="w-16 h-16 bg-white dark:bg-amber-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-amber-100 dark:border-amber-800">
                                 <FileX class="w-8 h-8 text-amber-500" />
                             </div>
-                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Fattura Non Ancora Approvata</h3>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Fattura non ancora approvata</h3>
                             <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-amber-600 bg-amber-100 dark:bg-amber-900/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
                                 <Scale class="w-3 h-3" /> Art. 1135 c.c.
                             </span>
@@ -1078,7 +1151,7 @@ const pageGuides = [
             </Transition>
         </Teleport>
 
-        <!-- ── 6. ALLOCAZIONI INCONSISTENTI — non bypassabile ── -->
+        <!-- ── 7. ALLOCAZIONI INCONSISTENTI — non bypassabile ── -->
         <Teleport to="body">
             <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
                 <div v-if="showAllocazioniInconsistentiModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1126,7 +1199,51 @@ const pageGuides = [
             </Transition>
         </Teleport>
 
-        <!-- ── 7. ERRORE TECNICO GENERICO — fallback ── -->
+        <!-- ── 8. ERRORE TECNICO GENERICO — fallback ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <!--
+                    Il rifiuto che prima non si vedeva (coda ⑮). Distinta dalla finestra
+                    «Errore tecnico» qui sotto: là c'è il bug e «Riprova», qui c'è il motivo e
+                    solo «Chiudi», perché riprovare senza cambiare niente fallirebbe uguale.
+                -->
+                <div v-if="showRifiutoModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-amber-500 to-amber-600 px-8 pt-8 pb-6 text-center">
+                            <div class="w-16 h-16 bg-white/15 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/25">
+                                <AlertTriangle class="w-8 h-8 text-white" />
+                            </div>
+                            <h3 class="font-black text-white text-xl mb-1">Modifica non registrata</h3>
+                            <p class="text-amber-100 text-sm">C'è qualcosa da correggere prima di riprovare</p>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <ul class="space-y-3">
+                                <li v-for="(motivo, i) in rifiutoMotivi" :key="i"
+                                    class="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                                    <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <p class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{{ motivo }}</p>
+                                </li>
+                            </ul>
+
+                            <div class="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4">
+                                <CheckCircle class="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                <p class="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                                    Non è stato scritto nulla, e la compilazione è rimasta com'era: correggi
+                                    quanto sopra e riprova senza rifare tutto.
+                                </p>
+                            </div>
+
+                            <Button @click="showRifiutoModal = false"
+                                class="w-full h-12 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-black uppercase tracking-widest text-[11px]">
+                                Chiudi
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
         <Teleport to="body">
             <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
                 <div v-if="showGenericErrorModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">

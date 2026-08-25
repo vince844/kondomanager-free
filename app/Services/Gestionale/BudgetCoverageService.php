@@ -67,6 +67,7 @@ class BudgetCoverageService
                 'padre'              => $conto->parent?->nome,
                 'is_leaf'            => $isLeaf,
                 'budget'             => $fabbisognoReale,
+                'budget_teorico'     => $budgetTeorico,
                 'pianificato'        => $pianificato,
                 'copertura_virtuale' => $virtuale, 
                 'delta'              => $delta,
@@ -284,8 +285,14 @@ class BudgetCoverageService
     /**
      * Estrae i capitoli che necessitano di finanziamento tramite Piano Rate Ordinario/Integrativo.
      * Esclude i capitoli scudati da Fondi o Conguaglio.
+     *
+     * @param  array<int,true>  $vociDaSpostaSpesa  conto_id => true per le voci che hanno ceduto
+     *         budget con "Sposta spesa" — beta.73. Il chiamante lo costruisce con una query reale
+     *         (`BudgetMovement`), questo metodo resta senza accesso al database, com'è sempre
+     *         stato: stesso motivo per cui `analyze()` prende `$fatturatoMap` già calcolato invece
+     *         di interrogare `righe_fattura` da sé.
      */
-    public function getCapitoliFinanziabili(array $analysisReport): array
+    public function getCapitoliFinanziabili(array $analysisReport, array $vociDaSpostaSpesa = []): array
     {
         $capitoliFinanziabili = [];
 
@@ -295,7 +302,7 @@ class BudgetCoverageService
             }
 
             $daFinanziare = 0;
-            
+
             if (isset($item['delta']) && $item['delta'] < 0) {
                 $daFinanziare = abs($item['delta']);
             }
@@ -306,6 +313,11 @@ class BudgetCoverageService
                     'nome'              => $item['nome'],
                     'padre'             => $item['padre'],
                     'importo_suggerito' => $daFinanziare,
+                    // ⚠️ Non è un'affermazione di causa esatta: dice solo che questa voce ha
+                    // ceduto budget con Sposta Spesa *in qualche momento*, non che il deficit
+                    // misurato ora coincide centesimo per centesimo con quella cessione. Un
+                    // indizio per l'amministratore, non un calcolo di riconciliazione.
+                    'da_sposta_spesa'   => $vociDaSpostaSpesa[$item['id']] ?? false,
                     'dettagli_calcolo'  => [
                         'fabbisogno_reale'   => $item['budget'],
                         'gia_pianificato'    => $item['pianificato'],

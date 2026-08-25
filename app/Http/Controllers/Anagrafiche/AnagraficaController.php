@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Anagrafiche;
 
+use App\Traits\OrdinaElenco;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Anagrafica\AnagraficaIndexRequest;
 use App\Http\Requests\Anagrafica\CreateAnagraficaRequest;
@@ -12,6 +14,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +23,9 @@ use Inertia\Response;
 
 class AnagraficaController extends Controller
 {
+    use OrdinaElenco;
     use HandleFlashMessages;
+    use PaginaElenco;
 
     /**
      * Display a paginated list of anagrafiche with optional filtering.
@@ -32,7 +37,8 @@ class AnagraficaController extends Controller
      *
      * Query Parameters:
      * - page (integer, optional): The page number for pagination.
-     * - per_page (integer, optional): The number of results per page (between 10 and 100).
+     * - per_page (integer, optional): The number of results per page; normalized by PaginaElenco
+     *   against config('pagination.consentite'), never rejected.
      * - nome (string, optional): Filter anagrafiche by their nome (name).
      *
      * @param \Illuminate\Http\Request $request
@@ -41,6 +47,10 @@ class AnagraficaController extends Controller
     public function index(AnagraficaIndexRequest $request): Response
     {   
         $validated = $request->validated();
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
 
         $anagrafiche = Anagrafica::with(['condomini:id,nome,indirizzo'])
             // Filtro per Nome (Esistente)
@@ -56,7 +66,8 @@ class AnagraficaController extends Controller
                     $q->whereIn('condomini.id', $condominiIds);
                 });
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, AnagraficaIndexRequest::colonneOrdinabili(), predefinita: 'nome', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page'])
             ->withQueryString();
     
         return Inertia::render('anagrafiche/AnagraficheList', [
@@ -68,7 +79,9 @@ class AnagraficaController extends Controller
                 'total'        => $anagrafiche->total(),
             ],
             // Aggiungiamo condominio_id ai filtri passati al frontend
-            'filters' => request()->only(['nome', 'condominio_id']) 
+            'filters' => request()->only(['nome', 'condominio_id']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 

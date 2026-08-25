@@ -61,6 +61,8 @@ You can view a demo of the project at the following address:
 - Login with two-factor authentication
 - User registration invitation system
 - Localization: Italian, English, Portuguese
+- Import an entire condominium from another management program (first source: Danea Domustudio)
+- Full backup and restore from the panel, resumable and encryptable in AES-256
 
 ### Accounting and Structure Module
 
@@ -80,6 +82,14 @@ You can view a demo of the project at the following address:
 - Treasury Guardian widget for 30-day predictive liquidity analysis
 - Dynamic cascading engine (Tenant → Usufructuary → Owner) in compliance with the Civil Code
 - Smart management of documented shortfalls for vacant units
+- Browsable general ledger with search, period and status filters, and balance verification
+- Balance sheet with plain-language diagnosis of imbalances and on-the-spot correction
+- Transfers between bank accounts and funds, with protocol number, preview and reversal
+- Withholding tax and F24 tax form: threshold-based schedule, payment slip and double-entry closure
+- Contributions already paid in by owners netted off the breakdown, distributed by thousandths
+- Quick recording of petty expenses without opening a supplier account
+- Actual spend shown alongside the budget on every item, with the transactions that make it up
+- Configurable first-instalment due date on the payment plan
 
 ### Document Suite and PDF Reports
 
@@ -97,9 +107,9 @@ You can view a demo of the project at the following address:
 
 To install KondoManager, your server environment must meet the following requirements:
 
-- **PHP** >= 8.2
+- **PHP** >= 8.4.1 — *from version 1.10.0; earlier versions ran on PHP 8.2*
 - **Database:** MySQL 5.7+ or MariaDB 10.3+
-- **PHP Extensions:** `zip`, `curl`, `openssl`, `mbstring`, `fileinfo`, `dom`, `xml` - consult the [Laravel](https://laravel.com/docs/12.x/deployment) guide for more information
+- **PHP Extensions:** `zip`, `curl`, `bcmath`, `fileinfo`, `gd`, `intl`, `mbstring`, `openssl`, `dom`, `xml` - `gd` is what generates the PDFs: without it the program installs but produces no reports
 - **For manual installation:** Node.js & NPM, Composer
 
 ---
@@ -127,23 +137,34 @@ The automatic update system automatically manages the update lifecycle, ensuring
 
 Access your hosting panel (cPanel, Plesk) in the "Cron Jobs" or "Task Scheduler" section. Set execution every minute (* * * * *).
 
-**Example for MAMP local environment (Mac):**
+**Example for ServBay local environment** (from KondoManager 1.10.0 the baseline is PHP 8.4,
+not supported by MAMP's free tier — if you're migrating from MAMP, follow the
+[MAMP to ServBay migration guide](https://kondomanager.com/docs/migrazione-mamp-a-servbay.html)):
+
+*macOS — crontab (`crontab -e`):*
 ```bash
-/Applications/MAMP/bin/php/php8.2.0/bin/php yourfolder/artisan schedule:run >> /dev/null 2>&1
+/Applications/ServBay/script/alias/php yourfolder/artisan schedule:run >> /dev/null 2>&1
 ```
+
+*Windows — Task Scheduler (Windows has no crontab):* open Command Prompt, check the actual
+PHP path with `where php`, then register the task to run every minute:
+```bash
+schtasks /create /tn "KondoManager Scheduler" /tr "php C:\yourfolder\artisan schedule:run" /sc minute /mo 1
+```
+
 **Example for Shared Server (cPanel/Linux):**
 ```bash
 /usr/local/bin/php /home/yoursite/public_html/artisan schedule:run >> /dev/null 2>&1
 ```
 
-Make sure to use the absolute path to the PHP v8.2+ executable, for example
-/usr/local/bin/ea-php82 /home/yoursite/domain_path/path/to/cron/script 
+Make sure to use the absolute path to the PHP 8.4+ executable, for example
+/usr/local/bin/ea-php84 /home/yoursite/domain_path/path/to/cron/script 
 
 In the previous example, replace "ea-php99" with the PHP version assigned to the domain you want to use. Check in MultiPHP Manager for the PHP version actually assigned to a domain.
 
-### 3. Update manually from Version 1.9.0 to 1.9.1
+### 3. Update manually from Version 1.9.1 to 1.10.0
 
-Automatic updates are available starting from version 1.9.0, so if you are still using version 1.9.0 and want to update, you must follow these steps:
+Automatic updates are available starting from version 1.9.0. The steps below do not depend on the version you are coming from: they are the same for any manual update from 1.8.0 onwards.
 
 1. Make sure you have a backup of the `database` and files in the `storage` folder
 2. Download the [update file](https://kondomanager.short.gy/km-installer) from the official Kondomanager website

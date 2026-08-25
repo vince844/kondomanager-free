@@ -88,14 +88,14 @@ defineEmits(['update:open']);
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                 <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Standard</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  La tipologia principale per le ripartizioni classiche (Proprietà Generale, Scale, ecc.). Non ha comportamenti speciali.
+                  La tipologia principale per le ripartizioni classiche, come la Proprietà Generale. Non ha comportamenti speciali.
                 </p>
               </div>
 
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
-                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Ascensore (Art. 1124)</h4>
+                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Ascensore e Scale (Art. 1124)</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  La legge prevede che l'ascensore sia ripartito per il 50% in base ai millesimi di proprietà e per il 50% in base all'altezza del piano. In Kondomanager <strong>non applichiamo questa complessa miscelazione automaticamente</strong>. Devi calcolare le frazioni risultanti (es. col tuo geometra) ed inserirle come "Quote" proporzionali. Ecco perché selezionando "Ascensore", il sistema preseleziona la voce Quote per comodità.
+                  La legge prevede che l'ascensore sia ripartito per il 50% in base ai millesimi di proprietà e per il 50% in base all'altezza del piano. In Kondomanager <strong>non applichiamo questa complessa miscelazione automaticamente</strong>. Devi calcolare le frazioni risultanti (es. col tuo geometra) ed inserirle come "Quote" proporzionali. Ecco perché selezionando "Ascensore", il sistema preseleziona la voce Quote per comodità. Lo stesso articolo governa le <strong>scale</strong>, che hanno un tipo dedicato: sceglilo per tenerle distinte dalla tabella generale di proprietà.
                 </p>
               </div>
 
@@ -122,8 +122,14 @@ defineEmits(['update:open']);
             <div class="mt-4 p-4 rounded-lg bg-slate-100 dark:bg-slate-800 flex gap-3 text-[13px]">
               <Info class="w-5 h-5 text-slate-500 shrink-0" />
               <div>
-                <strong>Assegnazione a palazzine o scale:</strong> Puoi delimitare l'uso di una tabella (es. Tabella Scale Scala B) solo agli immobili che fanno fisicamente parte di quella scala. Questo aiuta a non commettere errori quando si imputano le spese nel preventivo.
-                <br><br>
+                <!--
+                  ⚠️ **Tolta nella beta.63: prometteva una cosa che il programma non faceva.**
+                  Diceva «Puoi delimitare l'uso di una tabella (es. Tabella Scale Scala B) solo agli
+                  immobili che fanno fisicamente parte di quella scala». Le colonne esistevano e
+                  nessun filtro le leggeva: chi seguiva l'istruzione e spuntava «associa tutti gli
+                  immobili esistenti» otteneva l'intero condominio. La scheda che raccoglieva quei
+                  due campi è sparita insieme alla frase; il filtro vero è in Iniziativa A (v1.11).
+                -->
                 <strong>Inserimento massivo:</strong> Selezionando la spunta "Associa tutti gli immobili esistenti" durante la creazione, il sistema dopo il salvataggio ti porterà in una schermata dedicata. Lì vedrai l'elenco completo degli immobili e potrai inserire massivamente tutte le quote e i parametri in un colpo solo, risparmiando tantissimo tempo.
               </div>
             </div>

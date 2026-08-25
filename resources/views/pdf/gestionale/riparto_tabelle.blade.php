@@ -14,22 +14,24 @@
     $nTab         = count($tabelle);
 
     // ── Font adattivo ────────────────────────────────────────────────────────
-    $fontBase  = $nTab > 8 ? '5.5pt' : ($nTab > 5 ? '6pt'   : '7pt');
-    $fontSmall = $nTab > 8 ? '4.5pt' : ($nTab > 5 ? '5pt'   : '6pt');
-    $fontTiny  = $nTab > 8 ? '4pt'   : ($nTab > 5 ? '4.5pt' : '5.5pt');
+    // Colonne di servizio ristrette (docs/stile_stampa_riparto_tabelle.md):
+    // lo spazio recuperato consente un font più grande a parità di tabelle.
+    $fontBase  = $nTab > 8 ? '6pt'   : ($nTab > 5 ? '6.5pt' : '7pt');
+    $fontSmall = $nTab > 8 ? '5pt'   : ($nTab > 5 ? '5.5pt' : '6pt');
+    $fontTiny  = $nTab > 8 ? '4.5pt' : ($nTab > 5 ? '5pt'   : '5.5pt');
 
     // ── Larghezze colonne (%) ────────────────────────────────────────────────
-    $wApp    = 5;
+    // Le colonne di servizio contengono valori corti (sigla ruolo, percentuale,
+    // importi): tenerle strette massimizza lo spazio per le tabelle millesimali.
+    $wApp    = 7;
     $wNome   = $nTab > 5 ? 18 : 22;
-    $wRuolo  = 5;
-    $wTotSogg= $nTab > 5 ? 8 : 10;
-    $wPct    = 5;
-    $wTotApt = $nTab > 5 ? 8 : 10;
+    $wRuolo  = 3;
+    $wTotSogg= 7;
+    $wPct    = 3.5;
+    $wTotApt = 7;
     $wFixed  = $wApp + $wNome + $wRuolo + $wTotSogg + $wPct + $wTotApt;
     $wTabCols = 100 - $wFixed;
-    $wPerTab  = $nTab > 0 ? max(5, $wTabCols / $nTab) : 50;
-    $wQuota   = $wPerTab * 0.44;
-    $wImporto = $wPerTab - $wQuota;
+    // Le larghezze interne verranno calcolate per ogni blocco (chunk)
 
     // ── Palette (allineata ai modelli) ───────────────────────────────────────
     $navy    = '#1e3a5f'; // brand color e testata testuale
@@ -135,8 +137,32 @@
     </p>
 @else
 
+@php
+    // Dividiamo le tabelle in blocchi di max 8 colonne per pagina.
+    // Con le colonne di servizio ristrette, 8 tabelle stanno in un unico
+    // blocco A3-L (caso PAR: una sola pagina come nelle stampe storiche).
+    $chunksTabelle = array_chunk($tabelle, 8, true);
+@endphp
+
+@foreach($chunksTabelle as $chunkIndex => $tabelleChunk)
+    @php
+        $nTabChunk = count($tabelleChunk);
+        $wPerTab  = $nTabChunk > 0 ? max(5, $wTabCols / $nTabChunk) : 50;
+        $wQuota   = $wPerTab * 0.44;
+        $wImporto = $wPerTab - $wQuota;
+    @endphp
+
+    @if(!$loop->first)
+        <pagebreak />
+        <div style="margin-bottom: 14px; border-bottom: 2px solid {{ $navy }}; padding-bottom: 8px;">
+            <h2 style="margin: 0; padding: 0; font-size: 13pt; color: {{ $navy }}; letter-spacing: 0.5px;">
+                RIPARTO BILANCIO PREVENTIVO PER TABELLA E SOGGETTO (Pagina {{ $chunkIndex + 1 }} di {{ count($chunksTabelle) }})
+            </h2>
+        </div>
+    @endif
+
 {{-- ══════════════════════════════════════════════════════════════════════════ --}}
-{{-- TABELLA PRINCIPALE                                                          --}}
+{{-- TABELLA PRINCIPALE (BLOCCO {{ $chunkIndex + 1 }})                           --}}
 {{-- ══════════════════════════════════════════════════════════════════════════ --}}
 <table style="width: 100%; border-collapse: collapse; font-size: {{ $fontBase }};">
 
@@ -146,7 +172,7 @@
         <tr style="background-color: {{ $navyLt }}; color: {{ $navy }};">
             <th rowspan="2" style="padding: 4px 3px; border: 1px solid {{ $navyMid }}; width: {{ $wApp }}%;
                                     text-align: center; vertical-align: middle;">
-                App.
+                Unità
             </th>
             <th rowspan="2" style="padding: 4px 5px; border: 1px solid {{ $navyMid }}; width: {{ $wNome }}%;
                                     text-align: left; vertical-align: middle;">
@@ -157,7 +183,7 @@
                 Ruolo
             </th>
 
-            @foreach($tabelle as $tabId => $tabInfo)
+            @foreach($tabelleChunk as $tabId => $tabInfo)
                 <th colspan="2" style="padding: 4px 3px; border: 1px solid {{ $navyMid }}; width: {{ $wPerTab }}%;
                                         text-align: center; font-size: {{ $fontSmall }}; white-space: nowrap; overflow: hidden;">
                     {{ Str::limit($tabInfo['nome'], $nTab > 6 ? 12 : 22) }}
@@ -183,7 +209,7 @@
 
         {{-- Riga 2: mill. / importo sub-header --}}
         <tr style="background-color: {{ $navyLt }}; color: {{ $navy }}; font-weight: normal; font-size: {{ $fontTiny }};">
-            @foreach($tabelle as $tabId => $tabInfo)
+            @foreach($tabelleChunk as $tabId => $tabInfo)
                 @php
                     $etichetteUnita = [
                         'millesimi' => 'mill. ‰',
@@ -192,7 +218,11 @@
                         'kwatt'     => 'kW',
                         'mtcubi'    => 'mc.',
                     ];
-                    $labelUnita = $etichetteUnita[$tabInfo['quota_tipo']] ?? 'quote';
+                    // Una colonna senza dimensione di riparto (l'addebito diretto) non ha
+                    // quote da intitolare: meglio vuoto che un'etichetta che promette un numero.
+                    $labelUnita = ($tabInfo['senza_quote'] ?? false)
+                        ? ''
+                        : ($etichetteUnita[$tabInfo['quota_tipo']] ?? 'quote');
                 @endphp
                 <th style="padding: 2px 2px; border: 1px solid {{ $navyMid }}; text-align: right; width: {{ $wQuota }}%; opacity: 0.9;">
                     {{ $labelUnita }}
@@ -245,15 +275,18 @@
                     @if($isFirst)
                         <td rowspan="{{ $nSoggettiImmobile }}"
                             style="padding: 3px 2px; border: 1px solid {{ $sepLine }};
-                                   text-align: center; font-weight: bold; color: {{ $navy }};
+                                   text-align: center; color: {{ $navy }};
                                    background-color: {{ $iceBlue }}; vertical-align: middle;
-                                   font-size: {{ $fontBase }};
                                    border-left: 3px solid {{ $navy }};">
-                            {{ $rigaImmobile['interno'] ?? '—' }}
+                            @if(!empty($rigaImmobile['nome_immobile']))
+                                {{-- Identità primaria allineata alla vista a schermo: nome unità in testa --}}
+                                <span style="font-weight: bold; font-size: {{ $fontSmall }};">{{ Str::limit($rigaImmobile['nome_immobile'], 24) }}</span>
+                                <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #555;">Int. {{ $rigaImmobile['interno'] ?: '—' }}</span>
+                            @else
+                                <span style="font-weight: bold; font-size: {{ $fontBase }};">{{ $rigaImmobile['interno'] ?: '—' }}</span>
+                            @endif
                             @if($rigaImmobile['piano'])
-                                <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #888;">
-                                    Piano {{ $rigaImmobile['piano'] }}
-                                </span>
+                                <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #888;">Piano {{ $rigaImmobile['piano'] }}</span>
                             @endif
                         </td>
                     @endif
@@ -279,23 +312,33 @@
                     </td>
 
                     {{-- ── Dati per tabella ────────────────────────── --}}
-                    @foreach($tabelle as $tabId => $tabInfo)
+                    @foreach($tabelleChunk as $tabId => $tabInfo)
                         @php
                             $datiTab  = $soggetto['per_tabella'][$tabId] ?? null;
                             $quota    = $datiTab ? $datiTab['quota'] : null;
                             $importo  = $datiTab ? $datiTab['importo'] : 0;
-                            $decimali = $tabInfo['decimali'] ?? 3;
-                            $hasData  = !is_null($quota) && $importo > 0;
+                            $decimali = $tabInfo['decimali'] ?? 2;
                         @endphp
 
                         {{-- quota ‰ (Stampata solo sulla prima riga dell'immobile, unificata) --}}
                         @if($isFirst)
                             @php
-                                $totImmTab = 0;
-                                foreach($rigaImmobile['soggetti'] as $sogg) {
-                                    $totImmTab += ($sogg['per_tabella'][$tabId]['importo'] ?? 0);
-                                }
-                                $hasQuota = !is_null($quota) && $totImmTab > 0;
+                                /*
+                                 * ⚠️ **La leggibilità guarda la PRESENZA in tabella, non l'importo.**
+                                 * Fino alla beta.63 era `!is_null($quota) && $totImmTab > 0`: una
+                                 * quota a zero — legittima, e dalla beta.61 il modo dichiarato per
+                                 * documentare che un'unità è stata considerata e non partecipa —
+                                 * usciva nel grigio del «non c'è niente», illeggibile su fondo
+                                 * chiaro. Si registrava lo zero sulla carta e poi lo si nascondeva.
+                                 *
+                                 * ⛔ **E il commento qui è PHP, non Blade.** La prima stesura usava
+                                 * `{{-- … --}}` dentro questo `@php`: `storeUncompiledBlocks()` gira
+                                 * **prima** di `compileComments()`, quindi un commento Blade dentro
+                                 * un blocco `@php` finisce verbatim nel PHP compilato e il template
+                                 * non si apre più — 500 su **ogni** stampa di riparto, di ogni
+                                 * piano. L'ha preso la revisione avversariale della .63.
+                                 */
+                                $hasQuota = !is_null($quota);
                             @endphp
                             <td rowspan="{{ $nSoggettiImmobile }}" style="padding: 2px 2px; border: 1px solid {{ $sepLine }};
                                        text-align: right; font-size: {{ $fontSmall }};
@@ -313,7 +356,13 @@
                         <td style="padding: 2px 3px; border: 1px solid {{ $sepLine }};
                                    text-align: right; background-color: {{ $bgRow }};
                                    color: {{ $navy }}; font-size: {{ $fontBase }};">
-                            @if($importo > 0)
+                            {{-- ⚠️ Non «> 0»: un importo negativo è un credito, cioè un valore
+                                 reale, e il totale di riga qui a destra lo somma comunque.
+                                 Nasconderlo nella cella e contarlo nel totale produce una riga
+                                 che non torna in orizzontale — su un foglio che va in assemblea
+                                 significa un documento che non si può ricontrollare a mano.
+                                 Lo zero invece resta un trattino: vuol dire «non partecipa». --}}
+                            @if($importo != 0)
                                 € {{ number_format($importo / 100, 2, ',', '.') }}
                             @else
                                 —
@@ -350,7 +399,7 @@
 
             {{-- Separatore visivo tra appartamenti --}}
             @if(!$loop->last)
-                <tr><td colspan="{{ 6 + ($nTab * 2) }}"
+                <tr><td colspan="{{ 6 + ($nTabChunk * 2) }}"
                         style="padding: 0; height: 3px; background-color: {{ $sepLine }}; border: none;"></td></tr>
             @endif
         @endforeach
@@ -362,15 +411,15 @@
                 Totali generali
             </td>
 
-            @foreach($tabelle as $tabId => $tabInfo)
+            @foreach($tabelleChunk as $tabId => $tabInfo)
                 @php
                     $totQ = $totQuotaTab[$tabId] ?? 0;
                     $totI = $totPerTab[$tabId] ?? 0;
-                    $decimali = $tabInfo['decimali'] ?? 3;
+                    $decimali = $tabInfo['decimali'] ?? 2;
                 @endphp
                 <td align="right" style="padding: 5px 2px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                             font-size: {{ $fontSmall }}; background-color: #f7f9fb;">
-                    {{ number_format((float)$totQ, $decimali, ',', '.') }}
+                    {{ ($tabInfo['senza_quote'] ?? false) ? '—' : number_format((float)$totQ, $decimali, ',', '.') }}
                 </td>
                 <td align="right" style="padding: 5px 3px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                             font-size: {{ $fontSmall }}; background-color: #f7f9fb;">
@@ -398,6 +447,8 @@
     </tbody>
 
 </table>
+
+@endforeach
 
 {{-- ── LEGENDA + NOTA ─────────────────────────────────────────────────────── --}}
 <table style="width: 100%; border-collapse: collapse; margin-top: 7px;">

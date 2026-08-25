@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit, Ban } from 'lucide-vue-next'
 
 const props = defineProps<{
   fattura: any,
@@ -20,6 +20,58 @@ const isModificabile = computed(() =>
   !props.fattura.is_pregresso &&
   props.fattura.stato_approvazione !== 'sforo_motivato'
 );
+
+// Solo una fattura APPROVATA è pagabile: PagamentoFornitoreService (riga ~1060)
+// respinge con FatturaNonApprovataException qualunque altro stato di approvazione.
+// Non riguarda quindi solo lo sforo da ratificare — vale anche per "da approvare" e
+// "contestata". Senza questo filtro l'azione portava a un vicolo cieco: il form si
+// apriva ma la fattura vi risultava non selezionabile, e l'utente non capiva perché.
+// Il menu offre già l'azione giusta per lo sforo ("Ratifica assembleare"), quindi
+// nascondere quella sbagliata non lascia l'utente senza strada.
+//
+// Il gate è una scelta di flusso deliberata, non un blocco da aggirare:
+// vedi docs/note_tecniche_e_decisioni.md — «Bug 5 — sforo_motivato "blocca" il
+// pagamento (art. 1135 c.c.)».
+const isPagabile = computed(() =>
+  props.fattura.stato_approvazione === 'approvata' &&
+  props.fattura.stato_pagamento !== 'pagata' &&
+  props.fattura.stato_pagamento !== 'stornata' &&
+  !props.fattura.dati_extra?.is_stornata
+);
+
+// Lo storno è ammesso solo su una fattura senza pagamenti vivi: il denaro già
+// uscito va rimesso a posto per primo, altrimenti resterebbe un'uscita di cassa
+// senza un debito che la giustifichi. Stessa regola della guardia server, esposta
+// qui perché l'utente la veda PRIMA di aprire la modale.
+const puoStornare = computed(() =>
+  !props.fattura.dati_extra?.is_stornata &&
+  props.fattura.netto_a_pagare > 0 &&
+  props.fattura.stato_pagamento === 'aperta'
+);
+
+const stornoBloccatoDaPagamenti = computed(() =>
+  !props.fattura.dati_extra?.is_stornata &&
+  props.fattura.netto_a_pagare > 0 &&
+  ['pagata', 'parziale'].includes(props.fattura.stato_pagamento)
+);
+
+// Il perché del divieto sull'Elimina lo calcola il server, con tutti e sette i
+// motivi: `null` significa eliminabile. Il frontend non lo ricostruisce — quando
+// ci provava ne conosceva due, e sbagliava in entrambi i versi (voce nascosta
+// senza spiegazione, oppure mostrata e poi rifiutata dalla destroy).
+const motivoEliminaBloccato = computed<string | null>(
+  () => props.fattura.motivo_blocco_eliminazione ?? null
+);
+
+const motivoStornoBloccato = computed(() =>
+  props.fattura.stato_pagamento === 'pagata'
+    ? 'La fattura è già stata pagata: storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.'
+    : 'La fattura ha un pagamento parziale: storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.'
+);
+
+// Messaggio della guardia server, se dovesse scattare comunque (difesa in profondità:
+// il blocco lato UI si basa sui dati della riga, che potrebbero essere obsoleti).
+const erroreStorno = ref<string | null>(null);
 
 // Stato dei Modali
 const isDeleteModalOpen = ref(false);
@@ -49,12 +101,23 @@ const executeDelete = () => {
 
 // Esecuzione Storno Contabile (Errore Consolidato)
 const executeStorno = () => {
+    erroreStorno.value = null;
+
     router.post(route(generateRoute('gestionale.fatture.storno'), {
         condominio: props.condominioId,
-        fattura: props.fattura.id 
+        fattura: props.fattura.id
     }), {}, {
         preserveScroll: true,
-        onSuccess: () => isStornoModalOpen.value = false
+        onSuccess: () => isStornoModalOpen.value = false,
+        // Le guardie di dominio rispondono con withErrors: il canale del flash non
+        // sopravvive al redirect di back() in una visita Inertia, e l'operazione
+        // veniva rifiutata in silenzio.
+        onError: (errors: Record<string, string>) => {
+            isStornoModalOpen.value = false;
+            erroreStorno.value = errors.storno_vietato
+                ?? Object.values(errors)[0]
+                ?? 'Operazione non consentita.';
+        },
     });
 };
 
@@ -105,7 +168,12 @@ const downloadPdf = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[210px]">
+    <!-- 210px non bastavano: le voci che spiegano un divieto («Elimina — non
+         consentito», «Storna — prima i pagamenti») andavano a capo, e il
+         contenitore ha `overflow-hidden`, quindi nowrap le avrebbe tagliate.
+         Si allarga il menu invece di accorciare l'etichetta: è l'etichetta che
+         fa il lavoro di dire che l'operazione è bloccata. -->
+    <DropdownMenuContent align="end" class="w-[250px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Fattura n. {{ fattura.numero_documento }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: condominioId, fattura: fattura.id }))" class="cursor-pointer">
@@ -128,14 +196,21 @@ const downloadPdf = () => {
         <Edit class="w-4 h-4 mr-2" /> Modifica
       </DropdownMenuItem>
       
-     <!--  <DropdownMenuItem 
-        v-if="fattura.stato_pagamento !== 'pagata' && fattura.stato_pagamento !== 'stornata' && !fattura.dati_extra?.is_stornata"
-        @click="router.visit(route(generateRoute('gestionale.pagamenti.create'), { condominio: condominioId, fattura_id: fattura.id }))"
+      <!-- Scorciatoia al pagamento con la fattura già scelta: il controller legge
+           `fattura_id`, la preseleziona e ne ricava il fornitore, quindi il form si
+           apre pronto invece di far ricercare a mano la fattura appena vista.
+           Era già scritta e commentata, ma puntava a `gestionale.pagamenti.create`,
+           rotta che non esiste (il nome vero è `gestionale.pagamenti-fornitori.create`):
+           riattivarla così com'era avrebbe dato errore.
+           "Registra pagamento" e non "Paga": il programma annota un pagamento, non lo
+           esegue — la banca resta fuori. -->
+      <DropdownMenuItem
+        v-if="isPagabile"
+        @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: condominioId, fattura_id: fattura.id }))"
         class="text-blue-600 focus:text-blue-700 focus:bg-blue-50 font-medium cursor-pointer"
       >
-        <CreditCard class="w-4 h-4 mr-2" /> Ordina bonifico
+        <CreditCard class="w-4 h-4 mr-2" /> Registra pagamento
       </DropdownMenuItem>
- -->
       <!-- Ratifica Assembleare: visibile solo per fatture in sforo_motivato -->
       <DropdownMenuItem
         v-if="fattura.stato_approvazione === 'sforo_motivato'"
@@ -156,20 +231,46 @@ const downloadPdf = () => {
 
       <DropdownMenuSeparator />
       
-      <DropdownMenuItem 
-          v-if="fattura.stato_pagamento === 'aperta' && !fattura.dati_extra?.is_stornata"
-          @click="confirmDeleteFattura" 
+      <DropdownMenuItem
+          v-if="!motivoEliminaBloccato"
+          @click="confirmDeleteFattura"
           class="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer"
       >
           <Trash2 class="w-4 h-4 mr-2" /> Elimina
       </DropdownMenuItem>
 
-      <DropdownMenuItem 
-          v-if="!fattura.dati_extra?.is_stornata && fattura.netto_a_pagare > 0"
-          @click="confirmStornoFattura" 
+      <!-- Stesso principio già applicato a «Storna» qui sotto: il divieto va detto
+           QUI. Prima la voce spariva e basta, e l'amministratore non aveva modo di
+           sapere quale dei sette motivi lo riguardasse — né cosa fare per uscirne.
+           Il motivo arriva dal server (`motivo_blocco_eliminazione`), quindi è
+           esattamente quello che applicherebbe la destroy(): niente due guardie
+           che divergono. -->
+      <DropdownMenuItem
+          v-else
+          disabled
+          class="opacity-60 cursor-not-allowed"
+          :title="motivoEliminaBloccato"
+      >
+          <Ban class="w-4 h-4 mr-2" /> Elimina — non consentito
+      </DropdownMenuItem>
+
+      <DropdownMenuItem
+          v-if="puoStornare"
+          @click="confirmStornoFattura"
           class="text-amber-600 focus:text-amber-700 focus:bg-amber-50 cursor-pointer"
       >
           <RotateCcw class="w-4 h-4 mr-2" /> Storna
+      </DropdownMenuItem>
+
+      <!-- Con pagamenti registrati lo storno non è ammesso: va detto QUI, non dopo
+           aver aperto una modale che promette un'operazione poi rifiutata. -->
+      <DropdownMenuItem
+          v-else-if="stornoBloccatoDaPagamenti"
+          disabled
+          class="opacity-60 cursor-not-allowed"
+          :title="motivoStornoBloccato"
+      >
+          <Ban class="w-4 h-4 mr-2" /> Storna — prima i pagamenti
       </DropdownMenuItem>
 
       <DropdownMenuItem v-if="fattura.dati_extra?.is_stornata" disabled class="opacity-50">
@@ -280,5 +381,26 @@ const downloadPdf = () => {
               </p>
           </div>
       </ConfirmDialog>
+
+      <!-- Esito della guardia server: mostra SEMPRE il motivo del rifiuto.
+           Prima l'operazione veniva negata senza alcun riscontro a schermo. -->
+      <div
+          v-if="erroreStorno"
+          class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          @click.self="erroreStorno = null"
+      >
+          <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+              <div class="flex items-start gap-3">
+                  <Ban class="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                  <div>
+                      <h3 class="text-lg font-semibold">Storno non consentito</h3>
+                      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{ erroreStorno }}</p>
+                  </div>
+              </div>
+              <div class="mt-5 flex justify-end">
+                  <Button @click="erroreStorno = null">Ho capito</Button>
+              </div>
+          </div>
+      </div>
   </Teleport>
 </template>

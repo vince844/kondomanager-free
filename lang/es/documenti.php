@@ -17,6 +17,7 @@ return [
     'error_approve_document'         => 'An error occurred while approving the document.',
     'error_notify_new_document'      => 'The document was created, but an error occurred sending the notification.',
     'error_notify_approved_document' => 'The document was approved, but an error occurred sending the notification.',
+    'error_notify_updated_document' => "El documento se ha actualizado, pero se ha producido un error al enviar la notificación.",
     'category_has_documents'         => 'This category contains documents. Move or delete them before deleting the category.',
     'success_delete_category'        => 'The document category was deleted successfully.',
     'error_delete_category'          => 'An error occurred while deleting the document category.',
@@ -104,6 +105,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avisar por correo a quienes ya recibieron este documento",
         'name'                          => 'Document name',
         'description'                   => 'Document description',
         'category'                      => 'Category',
@@ -151,8 +153,7 @@ return [
         'delete_document_description'   => 'This action cannot be undone. It will delete the document and all associated data.',
         'select_document_title'         => 'Drag your document here',
         'select_document_description'   => 'Or click to select it from your device.',
-        'document_supported_types'      => 'Only PDF, JPEG, PNG formats are allowed.',
-        'max_document_size'             => 'The file cannot exceed 20MB',
+        'document_supported_types'      => 'Solo se admite el formato PDF.',
         'categories' => [
             'delete_category_title'       => 'Are you sure you want to delete this category?',
             'delete_category_description' => 'This action cannot be undone. It will delete the category and all associated documents.',
@@ -173,10 +174,10 @@ return [
      | Stats
      | ------------------------------------------------------------------ */
     'stats' => [
-        'total_storage_bytes'  => 'Total space used',
-        'total_documents'      => 'Total documents',
-        'uploaded_this_month'  => 'Uploaded this month',
-        'average_size_bytes'   => 'Average size',
+        'total_storage_bytes'  => 'Archive space',
+        'total_documents'      => 'Documents in the archive',
+        'uploaded_this_month'  => 'Archived this month',
+        'average_size_bytes'   => 'Average size in the archive',
     ],
 
     /* ------------------------------------------------------------------
@@ -194,6 +195,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que el documento ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora lo recibirá igualmente, porque para él es nuevo.",
         'visibility' => 'If set to private, only administrators will be able to view the document.',
         'category'   => 'Select a category to better organize documents, or create a new one.',
     ],

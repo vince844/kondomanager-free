@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 class UserStatusController extends Controller
@@ -27,6 +28,8 @@ class UserStatusController extends Controller
      */
     public function suspend(User $user): RedirectResponse
     {
+        Gate::authorize('suspend', $user);
+
         try {
 
             $user->update(['suspended_at' => now()]);
@@ -60,6 +63,7 @@ class UserStatusController extends Controller
      */
     public function unsuspend(User $user): RedirectResponse
     {
+        Gate::authorize('unsuspend', $user);
 
         try {
 

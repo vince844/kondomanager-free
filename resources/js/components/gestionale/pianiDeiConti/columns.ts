@@ -77,6 +77,13 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     id: 'totale',
+      /**
+       * ⚠️ **Non ordinabile.** «Budget & Composizione» è un totale aggregato dai conti figli: stessa scelta dell'importo dei piani rate.
+       *
+       * Il server accetta solo le chiavi dichiarate nella richiesta: lasciarla cliccabile
+       * manderebbe l'amministratore in un errore di validazione al primo clic.
+       */
+      enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Budget & Composizione' }),
     cell: ({ row }) => {
       const totale = row.original.importo_totale ?? 0;

@@ -4,12 +4,15 @@ namespace App\Http\Requests\User;
 
 use App\Models\Anagrafica;
 use App\Models\User;
+use App\Traits\ValidaConcessioneRuoli;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 
 class CreateUserRequest extends FormRequest
 {
+    use ValidaConcessioneRuoli;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -28,8 +31,8 @@ class CreateUserRequest extends FormRequest
         return [
             'name'        => 'required|string|max:255',
             'email'       => 'required|string|email|max:255|unique:'.User::class,
-            'roles'       => ['required'],
-            'permissions' => ['sometimes', 'array'],
+            'roles'       => ['required', $this->regolaRuoloConcedibile()],
+            'permissions' => ['sometimes', 'array', $this->regolaPermessiConcedibili()],
             'anagrafica'  => [
                 'nullable',
                 Rule::exists('anagrafiche', 'id'), 

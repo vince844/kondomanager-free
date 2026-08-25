@@ -15,6 +15,7 @@ return [
     'success_disapprove_communication'           => "A comunicação foi desaprovada com sucesso.",
     'error_approve_communication'                => "Ocorreu um erro durante a aprovação da comunicação.",
     'error_notify_new_communication'             => "A comunicação foi criada, mas ocorreu um erro no envio da notificação.",
+    'error_notify_updated_communication'          => "A comunicação foi atualizada, mas ocorreu um erro no envio da notificação.",
     'error_notify_approved_communication'        => "A comunicação foi aprovada, mas ocorreu um erro no envio da notificação.",
 
     /* ------------------------------------------------------------------
@@ -110,6 +111,7 @@ return [
         'residents'         => 'Registos',
         'comments'          => 'Permitir comentários',
         'featured'          => 'Comunicação em destaque',
+        'notify_update'     => 'Avisar por email quem já recebeu esta comunicação',
         'private'           => 'Criar comunicação como privada',
         'administrator'     => 'Administrador',
         'none'              => 'Nenhuma',
@@ -177,6 +179,7 @@ return [
         'priority'      => 'Selecione o nível de prioridade com que esta comunicação deve ser tratada. As prioridades podem influenciar a visibilidade ou a urgência no quadro.',
         'comments'      => 'Quando esta opção é selecionada, os comentários serão ativados para esta comunicação.',
         'featured'      => 'As comunicações em destaque são realçadas no quadro para atrair maior atenção.',
+        'notify_update' => "Envia um email a quem já era destinatário, a dizer que a comunicação mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-a de qualquer forma, porque para ele é nova.",
         'private'       => 'As comunicações privadas podem ser visualizadas apenas pelos administradores e por si.',
     ],
 

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Segnalazioni;
 
+use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Enums\Permission;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
@@ -17,7 +19,9 @@ use App\Models\Evento;
 use App\Models\Segnalazione;
 use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -27,7 +31,7 @@ use Illuminate\Support\Arr;
 
 class SegnalazioneController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, PaginaElenco;
 
     /**
      * SegnalazioneController constructor.
@@ -55,6 +59,10 @@ class SegnalazioneController extends Controller
 
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, prima di passare il tutto alla Service: la
+        // scelta esplicita se c'è, altrimenti quella già fatta dall'utente su questo elenco.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $segnalazioni = $this->segnalazioneService->getSegnalazioni(  
             anagrafica: null,
             condominioIds: null,
@@ -74,7 +82,9 @@ class SegnalazioneController extends Controller
                 'total'        => $segnalazioni->total(),
             ],
             // AGGIUNTO: condominio_id per ripristinare lo stato del filtro nel frontend
-            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id'])
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id']),
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
   
@@ -235,19 +245,24 @@ class SegnalazioneController extends Controller
 
         $validated = $request->validated(); 
 
+        /*
+         * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot** — vedi la nota gemella in
+         * `Comunicazioni\ComunicazioneController::update()`, dove sta il perché per esteso.
+         */
+        $risolutore = app(DestinatariNotifica::class);
+        $destinatariPrima = $risolutore->perModello($segnalazione);
+
         try {
 
             DB::beginTransaction();
 
-            $segnalazione->update($validated);
+            // ⚠️ `updated_by` non arriva dal modulo: lo mette il server. Un campo che decide
+            // «chi ha fatto questo» non si accetta mai da chi manda la richiesta.
+            $segnalazione->update($validated + ['updated_by' => Auth::id()]);
             
             $segnalazione->anagrafiche()->sync($validated['anagrafiche']);
 
             DB::commit();
-
-            return to_route('admin.segnalazioni.index')->with(
-                $this->flashSuccess(__('segnalazioni.success_update_ticket'))
-            );
 
         } catch (\Exception $e) {
 
@@ -259,6 +274,55 @@ class SegnalazioneController extends Controller
                 $this->flashError(__('segnalazioni.error_update_ticket'))
             );
             
+        }
+
+        try {
+
+            $this->avvisaDopoLaModifica($segnalazione, $destinatariPrima, $validated);
+
+        } catch (\Exception $emailException) {
+
+            Log::error('Error notifying update for segnalazione ID ' . $segnalazione->id . ': ' . $emailException->getMessage());
+
+            return to_route('admin.segnalazioni.index')->with(
+                $this->flashWarning(__('segnalazioni.error_notify_updated_ticket'))
+            );
+
+        }
+
+        return to_route('admin.segnalazioni.index')->with(
+            $this->flashSuccess(__('segnalazioni.success_update_ticket'))
+        );
+    }
+
+    /**
+     * Chi va avvisato dopo una modifica, e con quale dei due avvisi.
+     *
+     * Gemella di `Comunicazioni\ComunicazioneController::avvisaDopoLaModifica()`, dove sta la
+     * spiegazione per esteso: i nuovi arrivati ricevono l'avviso di *creazione* sempre, chi c'era
+     * già riceve quello di *modifica* solo se l'amministratore spunta la casella.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
+     * @param  array<string, mixed>  $validated
+     */
+    private function avvisaDopoLaModifica(Segnalazione $oggetto, $destinatariPrima, array $validated): void
+    {
+        $destinatariDopo = app(DestinatariNotifica::class)->perModello($oggetto->fresh());
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+
+        if ($nuovi !== []) {
+            DestinatariDaAvvisare::dispatch($oggetto, $nuovi, 'nuovo');
+        }
+
+        if (! ($validated['avvisa_destinatari'] ?? false)) {
+            return;
+        }
+
+        $giaDestinatari = $destinatariDopo->intersect($destinatariPrima)->values()->all();
+
+        if ($giaDestinatari !== []) {
+            DestinatariDaAvvisare::dispatch($oggetto, $giaDestinatari, 'aggiornato');
         }
     }
 

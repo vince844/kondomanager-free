@@ -8,10 +8,14 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Models\Immobile;
+use App\Models\Saldo;
+use App\Models\Tabella;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
+use App\Services\Gestionale\SaldoEsercizioService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -27,6 +31,7 @@ class GeneratePianoRateAction
         private GenerateSaldiAction $saldiAction,
         private GenerateDateRateAction $dateRateAction,
         private GenerateRateQuotesAction $rateQuotesAction,
+        private SaldoEsercizioService $saldoService,
     ) {}
 
     /**
@@ -75,10 +80,120 @@ class GeneratePianoRateAction
 
         $scoperti = $this->calcolatore->getScoperti();
 
+        // ⚠️ **Le righe senza millesimo entrano nello stesso cancello degli scoperti, ma non sono
+        // scoperti.** Un'unità associata a una tabella e lasciata senza valore oggi sparisce dal
+        // piano — non riceve nemmeno una riga da € 0,00 — e la sua quota la pagano le altre, in
+        // silenzio, perché il motore normalizza sulla somma reale e il totale del piano resta
+        // identico al preventivo. Misurato: dieci unità con una dimenticata, e ciascuna delle nove
+        // paga **€ 1.111,11 invece di € 1.000,00**, col centesimo di resto su uno solo.
+        //
+        // `importo => 0` è dichiarato, non un ripiego: quanto avrebbe dovuto pagare quell'unità
+        // **non è calcolabile**, perché il numero che serve è proprio quello che manca. La riga
+        // dice chi e dove, non quanto — e la schermata la rende senza cifra.
+        //
+        // Accettando, l'aritmetica resta quella di sempre: non si corregge niente, si mette agli
+        // atti che si è scelto di procedere sapendolo.
+        foreach ($this->calcolatore->getMillesimiNonCompilati() as $riga) {
+            $scoperti[] = [
+                'immobile_id'     => $riga['immobile_id'],
+                'conto_id'        => $riga['conto_id'],
+                'tabella_id'      => $riga['tabella_id'],
+                'ruolo_richiesto' => null,
+                'importo'         => 0,
+                'motivo'          => 'millesimo_non_compilato',
+            ];
+        }
+
+        // Eccedenze del netting "già versato" (beta.26): unità che avevano versato
+        // più del dovuto per una voce. Non bloccano la generazione — è denaro dei
+        // condòmini, non un errore — ma resta nei log soltanto (invisibile
+        // all'amministratore) finché non apriamo anche un task Inbox, sullo
+        // stesso pattern usato qui sotto per gli scoperti.
+        $eccedenze = $this->calcolatore->getEccedenzeCopertura();
+        if (!empty($eccedenze)) {
+            $totaleEccedenzeCents = array_sum(array_column($eccedenze, 'eccedenza'));
+
+            Log::warning("GeneratePianoRate: eccedenze di copertura rilevate — versato più del dovuto, da restituire o conguagliare.", [
+                'piano_rate_id' => $pianoRate->id,
+                'totale_cents'  => $totaleEccedenzeCents,
+                'unita'         => count($eccedenze),
+            ]);
+
+            try {
+                // REVISIONE AVVERSARIALE: senza questo controllo, ogni "Ricalcola"
+                // di un piano rate ancora in bozza (rotta .regenerate, nessun
+                // vincolo sul numero di rigenerazioni) apriva un NUOVO task
+                // identico per la stessa eccedenza mai risolta — stesso principio
+                // di AUTO-CHIUSURA più sotto in questo file, che infatti controlla
+                // prima di agire.
+                $eventoEsistente = Evento::where('meta->type', EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA->value)
+                    ->where('meta->context->piano_rate_id', $pianoRate->id)
+                    ->where('meta->requires_action', true)
+                    ->exists();
+
+                if (! $eventoEsistente) {
+                    // condominio_id è una colonna diretta su piani_rate — più
+                    // affidabile della catena gestione->esercizio (Gestione ha solo
+                    // esercizi(), plurale: un ->esercizio singolare non esiste).
+                    $condominioIdEccedenze = $pianoRate->condominio_id;
+                    // REVISIONE AVVERSARIALE: senza fallback, una gestione senza
+                    // alcun esercizio con pivot attiva=true produceva un segmento
+                    // vuoto nell'URL ("/esercizi//piani-rate/12") — 404 al click.
+                    // Stesso fallback già usato da PianoRateQuoteService.
+                    $esercizioAttivoId = $pianoRate->gestione
+                        ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
+                        ?? $pianoRate->gestione?->esercizi()->first()?->id;
+
+                    $immobiliNomiEcc = Immobile::whereIn('id', array_column($eccedenze, 'immobile_id'))
+                        ->pluck('nome', 'id')
+                        ->toArray();
+                    $dettaglioUnita = collect($eccedenze)
+                        ->map(fn ($e) => ($immobiliNomiEcc[$e['immobile_id']] ?? "Immobile #{$e['immobile_id']}")
+                            .': € '.number_format($e['eccedenza'] / 100, 2, ',', '.'))
+                        ->implode(', ');
+
+                    InboxService::createTask(
+                        tipo: EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA,
+                        title: "Eccedenza già-versato — {$pianoRate->nome}",
+                        description: '€ '.number_format($totaleEccedenzeCents / 100, 2, ',', '.')
+                            .' versati in più del dovuto su '.count($eccedenze).' unità, per una o più voci con '
+                            .'già-versato registrato. La quota non è mai andata sotto zero, ma questo denaro dei '
+                            .'condòmini resta da restituire o conguagliare a fine gestione. Dettaglio: '.$dettaglioUnita,
+                        scadenza: now(),
+                        createdByUserId: $pianoRate->created_by ?? 1,
+                        condominioId: $condominioIdEccedenze,
+                        context: [
+                            'piano_rate_id' => $pianoRate->id,
+                            'piano_rate_nome' => $pianoRate->nome,
+                            'totale_cents' => $totaleEccedenzeCents,
+                            'eccedenze' => $eccedenze,
+                        ],
+                        actionUrl: '/gestionale/'.($condominioIdEccedenze ?? '').'/esercizi/'
+                            .($esercizioAttivoId ?? '').'/piani-rate/'.$pianoRate->id,
+                        priorita: 'normale'
+                    );
+                }
+            } catch (\Throwable $e) {
+                // Non blocca la generazione se il task inbox fallisce — stesso
+                // principio usato sotto per lo scoperto documentato.
+                Log::warning("GeneratePianoRate: Impossibile creare task inbox per eccedenza già-versato.", [
+                    'piano_rate_id' => $pianoRate->id,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+        }
+
         if (!empty($scoperti) && !$accettaScoperti) {
             // Arricchisce gli scoperti con nomi leggibili per la UI (singola query per tipo)
             $immobiliIds = array_unique(array_column($scoperti, 'immobile_id'));
             $contiIds    = array_unique(array_column($scoperti, 'conto_id'));
+
+            // Dalla beta.48 gli scoperti hanno tre forme, non una: la quota orfana per
+            // immobile (`motivo` null, quella storica), il capitolo senza tabella
+            // (`conto_senza_tabella`) e la tabella senza millesimi
+            // (`tabella_senza_millesimi`). Le ultime due non riguardano un immobile —
+            // `immobile_id` è null — e vanno nominate con la tabella, non con l'unità.
+            $tabelleIds = array_unique(array_filter(array_column($scoperti, 'tabella_id')));
 
             $immobiliNomi = Immobile::whereIn('id', $immobiliIds)
                 ->pluck('nome', 'id')
@@ -86,10 +201,21 @@ class GeneratePianoRateAction
             $contiNomi = Conto::whereIn('id', $contiIds)
                 ->pluck('nome', 'id')
                 ->toArray();
+            $tabelleNomi = empty($tabelleIds)
+                ? []
+                : Tabella::whereIn('id', $tabelleIds)->pluck('nome', 'id')->toArray();
 
             $scopertiArricchiti = array_map(fn ($s) => array_merge($s, [
-                'immobile_nome' => $immobiliNomi[$s['immobile_id']] ?? 'Immobile #' . $s['immobile_id'],
-                'conto_nome'    => $contiNomi[$s['conto_id']]       ?? 'Conto #'    . $s['conto_id'],
+                // Senza immobile non si inventa un'etichetta: la schermata sa già che in
+                // quel caso deve mostrare altro. «Immobile #» seguito da niente era il
+                // testo che compariva prima, ed è peggio di un campo vuoto.
+                'immobile_nome' => $s['immobile_id']
+                    ? ($immobiliNomi[$s['immobile_id']] ?? 'Immobile #' . $s['immobile_id'])
+                    : null,
+                'conto_nome'    => $contiNomi[$s['conto_id']] ?? 'Conto #' . $s['conto_id'],
+                'tabella_nome'  => ($s['tabella_id'] ?? null)
+                    ? ($tabelleNomi[$s['tabella_id']] ?? 'Tabella #' . $s['tabella_id'])
+                    : null,
             ]), $scoperti);
 
             throw new ScopertiNonAccettatiException($scopertiArricchiti);
@@ -104,30 +230,60 @@ class GeneratePianoRateAction
             $importoScopertiCents = array_sum(array_column($scoperti, 'importo'));
             $importoFormattato    = '€ ' . number_format($importoScopertiCents / 100, 2, ',', '.');
 
-            // Trova il condominio attraverso la catena di relazioni
-            $condominioId = $pianoRate->gestione?->esercizio?->condominio_id
-                ?? $pianoRate->gestione?->esercizio?->condominio?->id;
+            // ⚠️ **Questo task non nasceva mai**, e il difetto è stato trovato dalla revisione
+            // avversariale della beta.61. La riga era `loadMissing('gestione.esercizio')`, ma
+            // `Gestione` ha solo `esercizi()` al plurale: `loadMissing` solleva
+            // `RelationNotFoundException`, che il `catch (\Throwable)` qui sotto inghiotte in un
+            // `Log::warning`. Il promemoria che doveva riportare l'amministratore a sistemare gli
+            // scoperti non è mai comparso in Inbox. Lo stesso file lo sapeva già: il commento a
+            // riga 134-136, nel blocco delle eccedenze, dice esattamente «Gestione ha solo
+            // esercizi(), plurale: un ->esercizio singolare non esiste».
+            //
+            // `condominio_id` è una colonna diretta su `piani_rate`, quindi non serve nessuna
+            // catena di relazioni; per l'esercizio si riusa il fallback già collaudato sopra.
+            $condominioId = $pianoRate->condominio_id;
+
+            $esercizioIdScoperti = $pianoRate->gestione
+                ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
+                ?? $pianoRate->gestione?->esercizi()->first()?->id;
+
+            // ⚠️ Il testo diceva una causa sola — «unità senza anagrafiche attive» — che dalla
+            // beta.48 non è più l'unica, e dalla .61 nemmeno la più frequente. Ora nomina le cause
+            // che ci sono davvero, e **tace sull'importo quando l'importo non esiste**: per un
+            // millesimo non compilato la cifra è zero per costruzione, e scrivere «€ 0,00 in quote
+            // non assegnabili» sarebbe una riga che si legge come un non-problema.
+            $senzaMillesimo = count(array_filter($scoperti, fn ($s) => ($s['motivo'] ?? null) === 'millesimo_non_compilato'));
+            $nonRipartibili = count($scoperti) - $senzaMillesimo;
+
+            $causa = implode(' ', array_filter([
+                $nonRipartibili > 0
+                    ? "{$importoFormattato} in quote non ripartibili su {$nonRipartibili} " . ($nonRipartibili === 1 ? 'voce' : 'voci') . '.'
+                    : null,
+                $senzaMillesimo > 0
+                    ? "{$senzaMillesimo} " . ($senzaMillesimo === 1 ? 'unità è associata a una tabella millesimale senza avere un millesimo' : 'unità sono associate a una tabella millesimale senza avere un millesimo')
+                        . ' e ' . ($senzaMillesimo === 1 ? 'non compare' : 'non compaiono') . ' nel piano: la ' . ($senzaMillesimo === 1 ? 'sua quota è stata ripartita' : 'loro quota è stata ripartita') . ' fra le altre.'
+                    : null,
+            ]));
 
             // Crea il task inbox — rimane aperto finché l'admin non lo chiude manualmente
             try {
-                $pianoRate->loadMissing('gestione.esercizio');
-                $condominioId = $pianoRate->gestione?->esercizio?->condominio_id;
-
                 InboxService::createTask(
                     tipo: EventoTipo::SCOPERTO_DOCUMENTATO,
                     title: "Quote non assegnate — {$pianoRate->nome}",
-                    description: "{$importoFormattato} in quote non assegnabili per unità senza anagrafiche attive. "
-                        . "Motivazione registrata: \"{$notaScoperti}\". "
-                        . "Azione: censire le anagrafiche mancanti. Il recupero avverrà con addebito manuale o a conguaglio.",
+                    description: $causa
+                        . " Motivazione registrata: \"{$notaScoperti}\"."
+                        . ' Azione: compilare i millesimi mancanti o censire le anagrafiche, poi rigenerare il piano.',
                     scadenza: now(),
-                    createdByUserId: $pianoRate->created_by ?? 1,
+                    createdByUserId: Auth::id() ?? 1,
                     condominioId: $condominioId,
                     context: [
-                        'piano_rate_id'   => $pianoRate->id,
-                        'piano_rate_nome' => $pianoRate->nome,
-                        'importo_cents'   => $importoScopertiCents,
+                        'piano_rate_id'      => $pianoRate->id,
+                        'piano_rate_nome'    => $pianoRate->nome,
+                        'importo_cents'      => $importoScopertiCents,
+                        'senza_millesimo'    => $senzaMillesimo,
+                        'non_ripartibili'    => $nonRipartibili,
                     ],
-                    actionUrl: '/gestionale/' . ($condominioId ?? '') . '/esercizi/' . ($pianoRate->gestione?->esercizio?->id ?? '') . '/piani-rate/' . $pianoRate->id,
+                    actionUrl: '/gestionale/' . ($condominioId ?? '') . '/esercizi/' . ($esercizioIdScoperti ?? '') . '/piani-rate/' . $pianoRate->id,
                     priorita: 'alta'
                 );
 
@@ -155,25 +311,56 @@ class GeneratePianoRateAction
                 'gestione_id'   => $gestione->id,
             ]);
 
+            $dettaglio = $pianoRate->tipo === 'straordinario'
+                ? "Per i piani straordinari verificare che ogni fattura collegata abbia importo finanziato (> 0) e "
+                    . "componenti straordinari validi: righe imprevisto/ad personam per le fatture correnti, "
+                    . "oppure una copertura di tipo 'sopravvenienza' agganciata a un capitolo con tabella millesimale "
+                    . "per le fatture pregresse."
+                : "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, "
+                    . "(2) ogni immobile abbia almeno un condòmino attivo associato, "
+                    . "(3) ogni voce di spesa sia collegata a una tabella millesimale.";
+
             throw new \RuntimeException(
-                "Impossibile generare il piano rate: nessuna quota calcolata. " .
-                "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, " .
-                "(2) ogni immobile abbia almeno un condòmino attivo associato, " .
-                "(3) ogni voce di spesa sia collegata a una tabella millesimale."
+                "Impossibile generare il piano rate: nessuna quota calcolata. " . $dettaglio
             );
         }
         // =========================================================================
 
         // 3. GESTIONE SALDI
-        $flagDb   = $gestione->fresh()->saldo_applicato;
-        $applicare = $forzaApplicazioneSaldi !== null ? $forzaApplicazioneSaldi : $flagDb;
+        //
+        // Ordine di precedenza, dal più esplicito al più debole:
+        //   a) l'override passato dal chiamante (creazione del piano);
+        //   b) il piano possiede già dei saldi — un ricalcolo non può perderli
+        //      per strada, è esattamente il bug del "lucchetto orfano";
+        //   c) i piani straordinari non assorbono pregressi se nessuno lo chiede
+        //      esplicitamente: è ciò che il log qui sotto dichiara da sempre, ma
+        //      che senza questo ramo non era vero per i piani generati in differita;
+        //   d) la scelta persistita alla creazione (piani generati più tardi);
+        //   e) il vecchio flag di gestione, per i piani antecedenti alla beta.32.
+        $possiedeSaldi = Saldo::where('piano_rate_id', $pianoRate->id)->exists();
+
+        $applicare = match (true) {
+            $forzaApplicazioneSaldi !== null      => $forzaApplicazioneSaldi,
+            $possiedeSaldi                        => true,
+            $pianoRate->tipo === 'straordinario'  => false,
+            $pianoRate->applica_saldi !== null    => (bool) $pianoRate->applica_saldi,
+            default                               => (bool) $gestione->fresh()->saldo_applicato,
+        };
 
         if ($pianoRate->tipo === 'straordinario') {
             Log::info("▶ Piano Straordinario: Saldi ignorati di default (salvo override esplicito).");
         }
 
         if ($applicare) {
-            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $saldiConfig);
+            // La ripartizione manuale dei saldi solidali (Art. 63) arriva dal form
+            // solo alla creazione. Senza il fallback su quanto persistito, ogni
+            // ricalcolo la sostituirebbe in silenzio con il riparto pro-quota
+            // automatico: stessi soggetti, importi diversi, nessun avviso.
+            $configEffettiva = !empty($saldiConfig)
+                ? $saldiConfig
+                : ($pianoRate->saldi_config ?? []);
+
+            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $configEffettiva);
             Log::info("Generazione: Saldi INCLUSI (" . count($saldi) . " anagrafiche)");
         } else {
             $saldi = [];
@@ -190,6 +377,21 @@ class GeneratePianoRateAction
             $dateRate,
             $saldi
         );
+
+        // 6. LUCCHETTO SALDI
+        // Chi genera le quote è anche l'unico che chiude (o riapre) il lucchetto,
+        // e lo fa a proprio nome: così lo stato del wallet non può divergere da
+        // ciò che il piano contiene davvero.
+        if ($gestione) {
+            [$saldiConsumatiIds, $totaleSaldi] = $this->riepilogaSaldiConsumati($saldi);
+
+            $this->saldoService->sincronizzaLucchetti(
+                $pianoRate,
+                $gestione,
+                $saldiConsumatiIds,
+                empty($saldiConsumatiIds) ? null : $totaleSaldi
+            );
+        }
 
         // =========================================================================
         // AUTO-CHIUSURA TASK "EMISSIONE RATA SOPRAVVENIENZA"
@@ -243,5 +445,40 @@ class GeneratePianoRateAction
             'piano_rate_id' => $pianoRate->id,
             'rate_create'   => $stats['rate_create'] ?? count($dateRate),
         ], $stats);
+    }
+
+    /**
+     * Estrae dalla distribuzione le righe della tabella `saldi` realmente
+     * consumate e il loro totale netto in centesimi.
+     *
+     * @param array $saldi Formato di GenerateSaldiAction: [anagrafica][immobile] => ['importo', 'meta_storico']
+     * @return array{0: int[], 1: int}
+     */
+    private function riepilogaSaldiConsumati(array $saldi): array
+    {
+        $ids = [];
+        $totale = 0;
+
+        foreach ($saldi as $immobiliSaldi) {
+            foreach ($immobiliSaldi as $dati) {
+                // Una coppia che si azzera (un debito e un credito che si
+                // compensano) non produce alcuna quota: GenerateRateQuotesAction
+                // la salta. Bloccare quei saldi renderebbe falsa l'invariante
+                // "intestati = finiti nelle quote" su cui poggia lo sblocco.
+                if ((int) ($dati['importo'] ?? 0) === 0) {
+                    continue;
+                }
+
+                $totale += (int) $dati['importo'];
+
+                foreach ($dati['meta_storico'] ?? [] as $meta) {
+                    if (!empty($meta['saldo_origine_id'])) {
+                        $ids[] = (int) $meta['saldo_origine_id'];
+                    }
+                }
+            }
+        }
+
+        return [array_values(array_unique($ids)), $totale];
     }
 }

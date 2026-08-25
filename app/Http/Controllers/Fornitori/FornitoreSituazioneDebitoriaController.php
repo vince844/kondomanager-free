@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Fornitori;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Fornitore;
 use App\Models\Saldo;
@@ -52,12 +53,31 @@ class FornitoreSituazioneDebitoriaController extends Controller
      */
     public function store(Request $request, Fornitore $fornitore)
     {
-        // 1. Validazione rigorosa
+        // ⚠️ **`importo` arriva MASCHERATO, e con `numeric` non passava mai.**
+        // La modale usa `MoneyInput` con `masked: true`, quindi il campo vale «380,00» —
+        // punto per le migliaia, virgola per i decimali. `is_numeric('380,00')` è **false**
+        // in PHP: la validazione falliva a ogni tentativo, e la modale non ha un posto dove
+        // mostrare l'errore (nessun `InputError`), quindi il modulo rifiutava **in silenzio**
+        // qualunque importo. Il caricamento dei debiti pregressi era di fatto inutilizzabile,
+        // e con lui il percorso delle fatture pregresse, che questa pagina dichiara di
+        // autorizzare. Corretto nella beta.75, insieme agli avvisi lato modale.
+        //
+        // La conversione la fa `MoneyHelper::toCents()`, che è il **confine di ingresso**
+        // del progetto e sa leggere sia la stringa mascherata sia un numero puro. Una volta
+        // sola: da qui in poi si ragiona in centesimi.
         $validated = $request->validate([
             'condominio_id' => 'required|exists:condomini,id',
             'descrizione'   => 'required|string|max:255',
-            'importo'       => 'required|numeric|min:0.01',
+            'importo'       => 'required',
         ]);
+
+        $importoCents = MoneyHelper::toCents($validated['importo']);
+
+        if ($importoCents <= 0) {
+            return back()->withErrors([
+                'importo' => 'Inserisci un importo maggiore di zero.',
+            ])->withInput();
+        }
 
         // 2. Troviamo l'esercizio APERTO per quel condominio
         // Senza un esercizio, non possiamo legare il debito allo Stato Patrimoniale Iniziale
@@ -76,9 +96,9 @@ class FornitoreSituazioneDebitoriaController extends Controller
         $gestione = $esercizio->gestioni()->where('tipo', 'ordinaria')->first() 
                     ?? $esercizio->gestioni()->first();
 
-        // 4. Trasformazione Contabile: Euro -> Cents e Positivo -> Negativo (Passività)
-        $importoCents = (int) round($validated['importo'] * 100);
-        $saldoIniziale = $importoCents * -1; 
+        // 4. Trasformazione Contabile: il segno. L'importo è già in centesimi (vedi sopra):
+        // qui si inverte soltanto, perché un debito verso fornitore è una passività.
+        $saldoIniziale = $importoCents * -1;
 
         // 5. Salvataggio nella tabella Saldi
         Saldo::create([

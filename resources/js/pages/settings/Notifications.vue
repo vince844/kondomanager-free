@@ -53,6 +53,30 @@ function updateEnabled(type: string, value: boolean) {
   if (target) target.enabled = value;
 }
 
+/**
+ * Quante ne sono accese, per dire all'utente cosa sta guardando prima che clicchi.
+ *
+ * ⚠️ Si conta su `form.preferences`, non sulla prop: dopo un «attiva tutte» il numero deve
+ * cambiare subito, altrimenti il pulsante sembra non aver fatto niente e si clicca due volte.
+ */
+const attive = computed(() => form.preferences.filter(p => p.enabled).length);
+const totali = computed(() => form.preferences.length);
+
+/**
+ * Accende o spegne tutto in un colpo.
+ *
+ * ⚠️ **Cambia solo il modulo, non salva.** La pagina ha un pulsante «Salva preferenze» esplicito, e
+ * un'azione che scrivesse a database di nascosto sarebbe l'unica della schermata a comportarsi
+ * così: chi clicca per sbaglio deve poter uscire senza aver cambiato niente.
+ *
+ * ⚠️ Tocca **solo le preferenze che l'utente vede davvero**, perché itera quelle del modulo — che
+ * il server ha già filtrato per permesso. Un fornitore non accende con questo pulsante notifiche
+ * che nella sua pagina non compaiono.
+ */
+function impostaTutte(valore: boolean) {
+  form.preferences.forEach(pref => { pref.enabled = valore; });
+}
+
 function submit() {
   form.put(route(generateRoute('settings.notifications.update')), {
     preserveScroll: true
@@ -83,6 +107,38 @@ function submit() {
         <form v-else @submit.prevent="submit">
           <Card class="border-none shadow-none pl-0">
             <CardContent class="space-y-4 pl-0">
+
+              <!--
+                Le notifiche sono diventate dodici, e ne arriveranno altre: senza queste due azioni
+                spegnerle tutte vuol dire dodici clic. Il conteggio accanto serve a vedere l'effetto
+                **prima** di salvare, che è l'unico momento in cui si può ancora tornare indietro.
+              -->
+              <div class="flex flex-wrap items-center justify-between gap-3 pb-1">
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('settings.notifications.counter', { attive: attive, totali: totali }) }}
+                </p>
+                <div class="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="attive === totali"
+                    @click="impostaTutte(true)"
+                  >
+                    {{ trans('settings.notifications.enable_all') }}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="attive === 0"
+                    @click="impostaTutte(false)"
+                  >
+                    {{ trans('settings.notifications.disable_all') }}
+                  </Button>
+                </div>
+              </div>
+
               <div
                 v-for="pref in preferences"
                 :key="pref.type"

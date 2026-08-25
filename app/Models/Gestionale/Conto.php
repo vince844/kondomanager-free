@@ -2,6 +2,7 @@
 
 namespace App\Models\Gestionale;
 
+use App\Traits\RisolveIFigliDelleRotte;
 use App\Models\Fornitore;
 use App\Models\Tabella;
 use Database\Factories\Gestionale\ContoFactory;
@@ -12,15 +13,31 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Conto extends Model
 {
+    use RisolveIFigliDelleRotte;
+
     use HasFactory;
 
     protected $table = 'conti';
 
+    /**
+     * `importo` è il preventivo deliberato della voce, in centesimi interi e **IVA INCLUSA**.
+     *
+     * Non è una convenzione facoltativa: è il lordo che ci si confronta, perché lo speso di una
+     * voce somma imponibile più imposta, e perché quando la spesa supera il preventivo è proprio
+     * quel lordo che finisce scritto qui (`FatturaPassivaService`). Un preventivo caricato al
+     * netto risulta quindi sforato appena si registra la prima fattura.
+     *
+     * ⚠️ Attenzione a leggere `importo` da una voce che arriva dal Piano dei conti: il suo
+     * controller lo porta in memoria al maggiore fra preventivo e speso — il *fabbisogno* — e in
+     * quel contesto il preventivo deliberato è esposto a parte come `budget_originale_raw`.
+     */
     protected $fillable = [
         'piano_conto_id',
         'conto_contabile_id',
         'default_fornitore_id',
         'parent_id',
+        'is_capitolo', // fatto esplicito, mai indovinato da importo/parent_id — vedi migrazione add_is_capitolo
+        'richiede_gia_versato', // filtra l'elenco "Già versato" (beta.27) — stesso principio di is_capitolo
         'codice',
         'nome',
         'descrizione',
@@ -38,6 +55,8 @@ class Conto extends Model
 
     protected $casts = [
         'is_tecnico' => 'boolean',
+        'is_capitolo' => 'boolean',
+        'richiede_gia_versato' => 'boolean',
     ];
     
     /** * =========================================================================
@@ -91,6 +110,12 @@ class Conto extends Model
     public function sottoconti()
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    /** Quanto le unità hanno già versato per questa voce (beta.26/27). */
+    public function contributiVersati()
+    {
+        return $this->morphMany(ContributoVersato::class, 'target');
     }
 
     public function contoContabile()
@@ -184,4 +209,20 @@ class Conto extends Model
     {
         return ContoFactory::new();
     }
+
+    /**
+     * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
+     *
+     * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel
+     * deriverebbe il nome con una pluralizzazione inglese, e su nomi italiani sbaglia sempre.
+     *
+     * @return array<string, string>
+     */
+    protected function relazioniDeiFigliNelleRotte(): array
+    {
+        return [
+            'tabella' => 'tabelle',
+        ];
+    }
+
 }

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Enums\StatoPagamentoFattura;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\FatturaPassivaService;
@@ -20,11 +22,38 @@ class StornoFatturaController extends Controller
     public function __invoke(Request $request, Condominio $condominio, FatturaPassiva $fattura, FatturaPassivaService $service)
     {
         if ($fattura->dati_extra['is_stornata'] ?? false) {
-            return back()->with($this->flashError('Questa fattura è già stata stornata in precedenza.'));
+            return back()->withErrors(['storno_vietato' => 'Questa fattura è già stata stornata in precedenza.']);
         }
 
         if ($fattura->netto_a_pagare < 0) {
-            return back()->with($this->flashError('Operazione negata: Non puoi stornare una Nota di Credito.'));
+            return back()->withErrors(['storno_vietato' => 'Non puoi stornare una Nota di Credito.']);
+        }
+
+        // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
+        // credito: il denaro è già uscito dalla cassa e quel movimento va stornato per
+        // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
+        // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
+        // ancora allocati.
+        // withErrors e non flash: in una visita Inertia il flash impostato da back()
+        // non arriva a schermo, e l'operazione veniva rifiutata in silenzio. Il canale
+        // degli errori di validazione è quello che il frontend riceve sempre.
+        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
+            return back()->withErrors([
+                'storno_vietato' => 'La fattura ha pagamenti registrati. '
+                    .'Storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.',
+            ]);
+        }
+
+        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale — il
+        // fondo è già stato decurtato per questa fattura. Stornare la fattura
+        // lasciando in piedi il giroconto consumerebbe il fondo per un debito che
+        // non esiste più. Prima si storna il giroconto (la copertura torna in
+        // attesa), poi la fattura.
+        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->exists()) {
+            return back()->withErrors([
+                'storno_vietato' => 'La copertura dal fondo è già stata confermata con un giroconto. '
+                    .'Storna prima il giroconto di conferma dalla pagina Giroconti, poi la fattura.',
+            ]);
         }
 
         $gestioneId = null;
@@ -82,7 +111,25 @@ class StornoFatturaController extends Controller
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
-                'applica_ritenuta'           => false,
+                // Design §8 punto 2: forzare false qui lasciava un DARE fantasma su
+                // 2201 e un AVERE residuo su 2202 quando l'originale aveva ritenuta.
+                // Propaghiamo il fatto dall'originale: se aveva ritenuta, lo storno
+                // deve stornarla assieme al resto.
+                'applica_ritenuta'           => $fattura->importo_ritenuta > 0,
+                // FIX (revisione avversariale): FISSA l'importo dell'originale invece
+                // di farlo ricalcolare da RitenutaService sullo stato ATTUALE del
+                // fornitore. Se l'anagrafica del fornitore cambia fra la
+                // registrazione e lo storno (es. diventa forfetario, o cambia
+                // aliquota), ricalcolare produrrebbe un importo diverso da quello
+                // davvero registrato — riaprendo lo stesso residuo fantasma su
+                // 2201/2202 che questo storno deve chiudere. Lo storno annulla
+                // l'importo REALE, non un importo "ricalcolato secondo le regole di oggi".
+                'ritenuta_override' => $fattura->importo_ritenuta > 0 ? [
+                    'importo_cents' => abs($fattura->importo_ritenuta),
+                    'aliquota' => $fattura->dati_extra['fiscal']['ritenuta_details']['aliquota'] ?? null,
+                    'codice_tributo' => $fattura->dati_extra['fiscal']['ritenuta_details']['codice_tributo'] ?? null,
+                    'imponibile_calcolo' => $fattura->dati_extra['fiscal']['ritenuta_details']['imponibile_calcolo'] ?? null,
+                ] : null,
 
                 'righe' => $fattura->righe->map(fn($r) => [
                     'descrizione'        => '[STORNO] ' . $r->descrizione,
@@ -90,7 +137,11 @@ class StornoFatturaController extends Controller
                     'aliquota_iva'       => (float) $r->aliquota_iva,
                     'importo_iva'        => abs((float) $r->importo_iva / 100),
                     'conto_id'           => $r->conto_id,
-                    'immobile_id'        => $r->immobile_id
+                    'immobile_id'        => $r->immobile_id,
+                    // Propagati dall'originale per far tornare l'importo di ritenuta
+                    // storncato esattamente identico a quello versato in origine.
+                    'concorre_base_ritenuta' => $r->concorre_base_ritenuta,
+                    'natura_riga_ritenuta'   => $r->natura_riga_ritenuta?->value,
                 ])->toArray(),
                 
                 // --- INIZIO FIX: RIMBORSO FONDO E COPERTURE ---
@@ -131,6 +182,27 @@ class StornoFatturaController extends Controller
             }
             
             $notaCredito->update(['numero_protocollo' => $protocolloNC]);
+
+            // FIX 3 (revisione avversariale): RIENTRO DEL BUDGET "RATA INTEGRATIVA"
+            // Se la fattura originale aveva alzato conto->importo automaticamente
+            // (beta.27, strategia_rientro='rata_integrativa' — vedi FatturaPassivaService::
+            // registraFattura(), che registra ogni bump in dati_extra.rata_integrativa_bump
+            // con l'importo PRECEDENTE), lo storno lo ripristina esattamente. Senza questo,
+            // un budget mai ratificato in assemblea per l'eccedenza restava permanentemente
+            // "approvato": una fattura futura fino al vecchio importo gonfiato non avrebbe
+            // più generato alcun allarme di sforo, aggirando in silenzio la garanzia di
+            // ratifica (Art. 1135 c.c.) che l'intero flusso ModalOverrideBudget protegge.
+            // Ripristino ESATTO, non ricalcolo dalle righe_fattura residue: dopo uno storno
+            // completo quella somma tornerebbe a 0, cancellando un budget deliberato
+            // legittimamente più alto del semplice speso reale (es. €5.000 deliberati anche
+            // se questa era l'unica fattura mai registrata su quella voce).
+            foreach (($fattura->dati_extra['rata_integrativa_bump'] ?? []) as $bump) {
+                $contoDaRipristinare = Conto::lockForUpdate()->find($bump['conto_id'] ?? null);
+                if ($contoDaRipristinare) {
+                    $contoDaRipristinare->importo = (int) $bump['importo_precedente_cents'];
+                    $contoDaRipristinare->save();
+                }
+            }
 
             // CONGELAMENTO FATTURA ORIGINALE
             $datiExtra = $fattura->dati_extra ?? [];

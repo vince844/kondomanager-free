@@ -7,6 +7,7 @@ import { usePermission } from "@/composables/permissions";
 import { UsersRound, Folders, TextSearch, Wallet } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Fornitore } from '@/types/fornitori';
+import NavSezione from '@/components/NavSezione.vue';
 
 const page = usePage<{
   fornitore: Fornitore;
@@ -20,6 +21,9 @@ const topbarNavItems: LinkItem[] = [
     type: 'link',
     icon: TextSearch,
     title: 'Dettagli',
+    // `exact`: stessa ragione dell'immobile — è il prefisso di `/anagrafiche`,
+    // `/situazione-debitoria` e `/documenti`.
+    exact: true,
     href:  generatePath('fornitori/:fornitore', { fornitore: fornitore.value.id }),
   },
   {
@@ -44,33 +48,21 @@ const topbarNavItems: LinkItem[] = [
 
 const currentPath = window.location.pathname;
 
+
+/**
+ * La voce di base della scheda si accende **solo** sul suo percorso: «Fornitore» sta a
+ * `/fornitori/5`, le sorelle a `/fornitori/5/documenti`. Prima la regola era un ternario scritto a
+ * mano dentro `:class` nel template; ora è un dato della voce, che il componente sa leggere.
+ */
+const vociNav = computed(() =>
+  topbarNavItems.map((item, indice) => ({ ...item, exact: indice === 0 }))
+);
+
 </script>
 
 <template>
   <div >
-    <!-- Topbar -->
-    <nav class="inline-flex items-center space-x-2 shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4">
-      <Button
-        v-for="item in topbarNavItems"
-        :key="item.href"
-        variant="ghost"
-        :class="[
-          'justify-start',
-          {
-            'bg-muted':
-              item.href === generatePath('fornitori/:fornitore', { fornitore: fornitore.id })
-                ? currentPath === item.href
-                : currentPath === item.href || currentPath.startsWith(item.href + '/')
-          }
-        ]"
-        as-child
-      >
-        <Link :href="item.href">
-          <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
-          {{ item.title }}
-        </Link>
-      </Button>
-    </nav>
+    <NavSezione :items="vociNav" class="mb-4" />
 
     <!-- Main content -->
     <div class="w-full">

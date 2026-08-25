@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Anagrafica;
-use App\Models\Gestionale\RataQuote; 
+use App\Models\Gestionale\RataQuote;
 use App\Helpers\MoneyHelper;
+use App\Services\Gestionale\CreditoService;
 use App\Traits\HasEsercizio;
+use App\Services\PDF\PdfService;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 
@@ -16,16 +19,9 @@ class EstrattoContoAnagraficaController extends Controller
     use HasEsercizio;
 
     /**
-     * Genera l'Estratto Conto finanziario di una singola Anagrafica.
-     * * Questo metodo costruisce un "Ledger" (Libro Mastro) cronologico che incrocia
-     * il Saldo Iniziale dell'esercizio con tutte le scritture contabili in Dare/Avere
-     * (Emissioni rate, Incassi, Compensazioni e Storni), calcolando il saldo progressivo
-     * "Waterfall" (a cascata) al centesimo, basato sul pattern Double-Entry.
-     *
-     * @param Request $request La richiesta HTTP corrente.
-     * @param Condominio $condominio Il Condominio in cui si sta operando.
-     * @param Anagrafica $anagrafica L'anagrafica del condòmino di cui calcolare l'estratto conto.
-     * @return \Inertia\Response Ritorna la vista Vue dell'estratto conto con le Statistiche e la Timeline elaborata.
+     * Genera l'Estratto Conto finanziario di una singola Anagrafica (vista Inertia).
+     * Costruisce un "Ledger" (Libro Mastro) cronologico in Dare/Avere con saldo progressivo
+     * "Waterfall" al centesimo, basato sul pattern Double-Entry.
      */
     public function show(Request $request, Condominio $condominio, Anagrafica $anagrafica)
     {
@@ -35,6 +31,62 @@ class EstrattoContoAnagraficaController extends Controller
             $q->where('condominio_id', $condominio->id);
         }]);
 
+        [$timeline, $stats] = $this->buildLedger($condominio, $esercizio, $anagrafica);
+
+        return Inertia::render('gestionale/pianiRate/EstrattoContoAnagrafica', [
+            'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'anagrafica' => $anagrafica,
+            'timeline'   => $timeline,
+            'stats'      => $stats
+        ]);
+    }
+
+    /**
+     * Genera il PDF dell'Estratto Conto di una singola Anagrafica.
+     * Aperto in una nuova scheda dal frontend tramite window.open().
+     */
+    public function print(Request $request, Condominio $condominio, Anagrafica $anagrafica, PdfService $pdfService)
+    {
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
+        $anagrafica->load(['immobili' => function($q) use ($condominio) {
+            $q->where('condominio_id', $condominio->id);
+        }]);
+
+        [$timeline, $stats, $saldoInizialeCents] = $this->buildLedger($condominio, $esercizio, $anagrafica);
+
+        $data = [
+            'condominio'         => $condominio,
+            'esercizio'          => $esercizio,
+            'anagrafica'         => $anagrafica,
+            'timeline'           => $timeline,
+            'stats'              => $stats,
+            'saldoInizialeCents' => $saldoInizialeCents,
+        ];
+
+        $mpdf = $pdfService->generate('pdf.gestionale.estratto_conto_anagrafica', $data, [
+            'orientation' => 'P',
+            'margin_top'  => 30,
+        ]);
+
+        $nomeFile = 'EC_' . str_replace(' ', '_', $anagrafica->nome) . '_' . $esercizio->nome . '.pdf';
+        $mpdf->SetHeader($condominio->nome . '||Estratto Conto – ' . $anagrafica->nome);
+
+        return response($mpdf->Output($nomeFile, 'I'))
+            ->header('Content-Type', 'application/pdf');
+    }
+
+    // -------------------------------------------------------------------------
+    // HELPER PRIVATO — Logica condivisa tra show() e print()
+    // -------------------------------------------------------------------------
+
+    /**
+     * Costruisce la timeline (ledger) e le statistiche per una anagrafica.
+     * Restituisce [$timeline, $stats, $saldoInizialeCents].
+     */
+    private function buildLedger(Condominio $condominio, Esercizio $esercizio, Anagrafica $anagrafica): array
+    {
         // Calcolo Saldo Iniziale (Crediti/Debiti portati dall'anno precedente)
         $saldoInizialeCents = $anagrafica->saldi()
             ->where('condominio_id', $condominio->id)
@@ -229,11 +281,10 @@ class EstrattoContoAnagraficaController extends Controller
                     }
 
                 } else {
-                    // 🟢 CASO D: AVERE (Incassi, Compensazioni, e RESTITUZIONE CREDITI DA STORNI)
+                    // CASO D: AVERE (Incassi, Compensazioni, e RESTITUZIONE CREDITI DA STORNI)
                     
                     if ($tipoMovimento === 'rettifica') {
                         // FIX CHIRURGICO: Identifica le scritture in AVERE generate da uno Storno
-                        // Esempio: La riga che restituisce i 100€ nel Salvadanaio
                         $dettagli[] = [
                             'type'   => 'rata',
                             'text'   => "Ripristino credito nel salvadanaio",
@@ -287,22 +338,36 @@ class EstrattoContoAnagraficaController extends Controller
             ];
         });
 
+        // Credito disponibile (saldo iniziale a credito + strapagamenti), non
+        // riusa $quoteMap perché quella è scoped alle rate presenti in questo
+        // esercizio/timeline: qui serve la fotografia completa dell'anagrafica.
+        //
+        // Lo scarto di perimetro vale anche per il `compensabile` qui sotto, ed è più visibile
+        // lì: la frase nomina una RATA, e quella rata può appartenere a un esercizio diverso da
+        // quello della pagina, quindi non comparire nella timeline sopra. È voluto — la
+        // posizione del condòmino non si interrompe al 31 dicembre — ma va saputo. Il PDF non
+        // è coinvolto: `estratto_conto_anagrafica.blade.php` non stampa nessuna di queste
+        // chiavi (verificato il 06/08/2026).
+        $credito = app(CreditoService::class)->perAnagrafica($condominio->id, $anagrafica->id);
+
         // COMPILAZIONE STATISTICHE CENTESIMALI FINALI
         $stats = [
-            'totale_addebiti'    => MoneyHelper::format($timeline->sum('dare')),
-            'totale_versamenti'  => MoneyHelper::format($timeline->sum('avere')),
-            'saldo_finale'       => MoneyHelper::format($runningBalance),
-            'saldo_raw'          => $runningBalance,
-            'saldo_iniziale'     => MoneyHelper::format($saldoInizialeCents),
-            'saldo_iniziale_raw' => $saldoInizialeCents
+            'totale_addebiti'         => MoneyHelper::format($timeline->sum('dare')),
+            'totale_versamenti'       => MoneyHelper::format($timeline->sum('avere')),
+            'saldo_finale'            => MoneyHelper::format($runningBalance),
+            'saldo_raw'               => $runningBalance,
+            'saldo_iniziale'          => MoneyHelper::format($saldoInizialeCents),
+            'saldo_iniziale_raw'      => $saldoInizialeCents,
+            'credito_disponibile'     => $credito['totale_formatted'],
+            'credito_disponibile_raw' => $credito['totale_cents'],
+            'credito_per_gestione'    => $credito['per_gestione'],
+            // Non solo quanto credito c'è, ma quale rata copre e dove si va a usarlo.
+            'compensabile'            => $credito['compensabile']['importo_formatted'],
+            'compensabile_raw'        => $credito['compensabile']['importo_cents'],
+            'compensabile_frase'      => $credito['compensabile']['frase'],
+            'compensabile_rata_id'    => $credito['compensabile']['rate_coperte'][0]['rata_id'] ?? null,
         ];
 
-        return Inertia::render('gestionale/pianiRate/EstrattoContoAnagrafica', [
-            'condominio' => $condominio,
-            'esercizio'  => $esercizio,
-            'anagrafica' => $anagrafica,
-            'timeline'   => $timeline,
-            'stats'      => $stats
-        ]);
+        return [$timeline, $stats, $saldoInizialeCents];
     }
 }

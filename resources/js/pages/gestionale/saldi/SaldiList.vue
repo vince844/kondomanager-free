@@ -5,8 +5,8 @@ import { Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
-import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import SaldiGuide from '@/components/guides/SaldiGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
 import { Coins, Lock, Search, Building2, Users } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
@@ -14,17 +14,18 @@ import type { ImmobileConSaldi } from '@/types/gestionale/saldi';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   esercizio: any;
   immobili: ImmobileConSaldi[];
   gestioni: any[];
 }>();
 
 const { generatePath } = usePermission();
-const { euro } = useCurrencyFormatter({ fromCents: false, forcePlus: true });
 
 // ── State ──────────────────────────────────────────────────────────────────
 const selectedId = ref<number | null>(null);
 const search = ref('');
+const showGuide = ref(false);
 
 const selectedImmobile = computed(() =>
   props.immobili.find(i => i.id === selectedId.value) ?? null
@@ -55,7 +56,7 @@ const pageGuides = [
   },
   {
     title: 'Dati Blindati',
-    description: 'I saldi inclusi in un piano rate emesso mostreranno un lucchetto e non potranno essere modificati per garantire la quadratura.',
+    description: 'I saldi assorbiti da un piano rate mostrano un lucchetto e non sono modificabili, per garantire la quadratura. Eliminando quel piano tornano liberi.',
     icon: Lock,
     colorVariant: 'blue' as const
   },
@@ -78,6 +79,10 @@ const pageGuides = [
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :condominio="condominio"
+        :condomini="condomini"
+        has-text-guide
+        text-guide-title="Guida"
+        @open-text-guide="showGuide = true"
       />
 
       <StrutturaLayout>
@@ -121,7 +126,7 @@ const pageGuides = [
                     :class="selectedId === imm.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-slate-200'"
                   >
                     {{ imm.nome }}
-                    <span class="font-normal text-slate-400 dark:text-slate-500"> · Int. {{ imm.interno }}</span>
+                    <span v-if="imm.interno" class="font-normal text-slate-400 dark:text-slate-500"> · Int. {{ imm.interno }}</span>
                   </p>
                   <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1">
                     <Building2 class="w-3 h-3 shrink-0" />
@@ -163,5 +168,7 @@ const pageGuides = [
         </div>
       </StrutturaLayout>
     </div>
+
+    <SaldiGuide v-model:open="showGuide" />
   </GestionaleLayout>
 </template>

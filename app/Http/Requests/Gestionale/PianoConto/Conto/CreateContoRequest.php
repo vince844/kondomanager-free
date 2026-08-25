@@ -2,12 +2,14 @@
 
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
+use App\Models\Gestionale\Conto;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * @method bool merge(string $key)
  * @property-read string $isCapitolo
  * @property-read string $isSottoConto
+ * @property-read string $richiedeGiaVersato
  * @property-read string $importo
  * @property-read string $parent_id
  * @property-read string $percentuale_proprietario
@@ -30,9 +32,14 @@ class CreateContoRequest extends FormRequest
             'tipo'                   => 'required|in:spesa,entrata',
             'note'                   => 'nullable|string',
             'isCapitolo'             => 'required|boolean',
-            'isSottoConto'           => 'required|boolean', 
+            'isSottoConto'           => 'required|boolean',
+            'richiedeGiaVersato'     => 'nullable|boolean',
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
-            'parent_id'              => 'nullable|exists:conti,id',
+            // Il padre deve vivere nello STESSO piano dei conti: senza questo
+            // vincolo un sottoconto poteva essere agganciato a un capitolo di un
+            // altro condominio (o di un altro piano dello stesso), producendo un
+            // albero contabile che attraversa i confini dello stabile.
+            'parent_id'              => ['nullable', $this->regolaPadreNelPiano()],
             'codice'                 => ['nullable', 'string', 'max:20'],
             'default_fornitore_id'   => ['nullable', 'exists:fornitori,id'],
             'tipo_spesa'             => ['nullable', 'string', 'in:standard,professionista,lavori,utenza'],
@@ -49,7 +56,7 @@ class CreateContoRequest extends FormRequest
         }
 
         if ($this->boolean('isSottoConto')) {
-             $rules['parent_id'] = 'required|exists:conti,id';
+             $rules['parent_id'] = ['required', $this->regolaPadreNelPiano()];
         }
 
         return $rules;
@@ -75,12 +82,37 @@ class CreateContoRequest extends FormRequest
         $this->merge([
             'isCapitolo' => $this->boolean('isCapitolo'),
             'isSottoConto' => $this->boolean('isSottoConto'),
+            'richiedeGiaVersato' => $this->boolean('richiedeGiaVersato'),
         ]);
     }
 
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
+            // Un capitolo non può avere un padre proprio: le regole "primo livello"
+            // più sotto assumono che un capitolo scelto come padre non abbia mai un
+            // parent_id — un conto isCapitolo=true e isSottoConto=true insieme
+            // violerebbe quell'invariante fin dalla creazione.
+            if ($this->boolean('isCapitolo') && $this->boolean('isSottoConto')) {
+                $validator->errors()->add(
+                    'isCapitolo',
+                    'Una voce non può essere contemporaneamente un capitolo e un sotto-conto'
+                );
+            }
+
+            // Il capitolo padre deve essere una voce di PRIMO LIVELLO: un sotto-conto
+            // non può fare da padre (anche se lasciato a importo 0).
+            if ($this->boolean('isSottoConto') && $this->filled('parent_id')) {
+                $parent = Conto::find($this->parent_id);
+
+                if ($parent && $parent->parent_id !== null) {
+                    $validator->errors()->add(
+                        'parent_id',
+                        'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
+                    );
+                }
+            }
+
             if (!$this->boolean('isCapitolo')) {
                 $somma = $this->percentuale_proprietario + 
                          $this->percentuale_inquilino + 
@@ -94,5 +126,18 @@ class CreateContoRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * Il conto padre deve appartenere allo stesso piano dei conti della rotta.
+     * È il vincolo di appartenenza che mancava: `exists:conti,id` accettava
+     * qualunque conto del database, compresi quelli di altri condomìni.
+     */
+    private function regolaPadreNelPiano(): \Illuminate\Validation\Rules\Exists
+    {
+        $pianoContoId = $this->route('pianoConto')?->id;
+
+        return \Illuminate\Validation\Rule::exists('conti', 'id')
+            ->where('piano_conto_id', $pianoContoId);
     }
 }

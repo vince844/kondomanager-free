@@ -15,6 +15,7 @@ return [
     'success_disapprove_communication'            => "The communication has been disapproved successfully.",
     'error_approve_communication'                 => "An error occurred while approving the communication.",
     'error_notify_new_communication'              => "The communication was created, but there was an error sending the notification.",
+    'error_notify_updated_communication'          => "The communication was updated, but an error occurred while sending the notification.",
     'error_notify_approved_communication'         => "The communication was approved, but there was an error sending the notification.",
     
     /* ------------------------------------------------------------------
@@ -110,6 +111,7 @@ return [
         'residents'         => 'Residents',
         'comments'          => 'Allow comments',
         'featured'          => 'Featured communication',
+        'notify_update'     => 'Email the people who already received this communication',
         'private'           => 'Create as private communication',
         'administrator'     => 'Administrator',
         'none'              => 'None',
@@ -177,6 +179,7 @@ return [
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
         'comments'    => 'When this option is selected, comments will be enabled for this communication.',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
+        'notify_update' => "Sends an email to those who were already recipients, telling them the communication has changed. Leave it off if you are fixing a typo: anyone added to the audience now receives it anyway, because for them it is new.",
         'private'     => 'Private communications can only be viewed by administrators and you.',
     ],
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
+use App\Models\Gestionale\Conto;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -9,6 +10,7 @@ use Illuminate\Validation\Rule;
  * @method bool merge(string $key)
  * @property-read string $isCapitolo
  * @property-read string $isSottoConto
+ * @property-read string $richiedeGiaVersato
  * @property-read string $importo
  * @property-read string $parent_id
  * @property-read string $percentuale_proprietario
@@ -22,6 +24,7 @@ class UpdateContoRequest extends FormRequest
         $this->merge([
             'isCapitolo' => $this->boolean('isCapitolo'),
             'isSottoConto' => $this->boolean('isSottoConto'),
+            'richiedeGiaVersato' => $this->boolean('richiedeGiaVersato'),
         ]);
     }
 
@@ -40,10 +43,13 @@ class UpdateContoRequest extends FormRequest
             'tipo'                   => 'required|in:spesa,entrata',
             'note'                   => 'nullable|string',
             'isCapitolo'             => 'required|boolean',
-            'isSottoConto'           => 'required|boolean', 
+            'isSottoConto'           => 'required|boolean',
+            'richiedeGiaVersato'     => 'nullable|boolean',
+            // Oltre a livello e cicli, il padre va vincolato al piano dei conti:
+            // era l'unico controllo mancante e lasciava passare capitoli altrui.
             'parent_id'              => [
                 'nullable',
-                'exists:conti,id',
+                $this->regolaPadreNelPiano(),
                 Rule::notIn(array_filter([$contoId])),
             ],
             'codice'                 => ['nullable', 'string', 'max:20'],
@@ -53,6 +59,10 @@ class UpdateContoRequest extends FormRequest
             'percentuale_proprietario' => 'nullable|numeric|min:0|max:100',
             'percentuale_inquilino' => 'nullable|numeric|min:0|max:100',
             'percentuale_usufruttuario' => 'nullable|numeric|min:0|max:100',
+            // Conferma esplicita, distinta da isCapitolo: richiesta solo quando la
+            // conversione in capitolo cancellerebbe una tabella millesimale reale
+            // già collegata (vedi ContoController::update()).
+            'confermaConversioneCapitolo' => 'nullable|boolean',
         ];
 
         if (!$this->boolean('isCapitolo')) {
@@ -66,7 +76,7 @@ class UpdateContoRequest extends FormRequest
         }
 
         if ($this->boolean('isSottoConto')) {
-            $rules['parent_id'] = 'required|exists:conti,id';
+            $rules['parent_id'] = ['required', $this->regolaPadreNelPiano()];
         }
 
         return $rules;
@@ -100,6 +110,52 @@ class UpdateContoRequest extends FormRequest
                 );
             }
 
+            // Un capitolo non può avere un padre proprio: le regole "primo livello"
+            // più sotto assumono che un capitolo scelto come padre non abbia mai un
+            // parent_id — un conto isCapitolo=true e isSottoConto=true insieme
+            // violerebbe quell'invariante. È anche la guardia che impedisce al
+            // backfill della migrazione (passo 3, "chi ha sottoconti è capitolo")
+            // di restare l'unica fonte di dati storici incoerenti: da qui in avanti,
+            // nessuna nuova modifica può ricrearli.
+            if ($this->boolean('isCapitolo') && $this->boolean('isSottoConto')) {
+                $validator->errors()->add(
+                    'isCapitolo',
+                    'Una voce non può essere contemporaneamente un capitolo e un sotto-conto'
+                );
+            }
+
+            // Il capitolo padre deve essere una voce di PRIMO LIVELLO: un sotto-conto
+            // non può fare da padre (anche se lasciato a importo 0).
+            if ($this->boolean('isSottoConto') && $this->filled('parent_id')) {
+                $parent = Conto::find($this->parent_id);
+
+                if ($parent && $parent->parent_id !== null) {
+                    // Due situazioni diverse dietro allo stesso rifiuto, e vanno dette in modo
+                    // diverso. Se il padre non è cambiato, l'amministratore non ha scelto niente:
+                    // sta modificando una voce che si trovava già al terzo livello, creata quando
+                    // il menu lo consentiva. Dirgli «il padre selezionato» lo manda a cercare un
+                    // errore che non ha commesso.
+                    $padreInvariato = $conto && (int) $conto->parent_id === (int) $this->parent_id;
+
+                    $validator->errors()->add(
+                        'parent_id',
+                        $padreInvariato
+                            ? 'Questa voce si trova al terzo livello, che il piano dei conti non prevede: '
+                              . 'è un residuo delle versioni precedenti. Per salvare, scegli come capitolo padre una '
+                              . 'voce di primo livello — oppure elimina la voce se non ti serve più.'
+                            : 'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
+                    );
+                }
+
+                // Anti-ciclo: il padre non può essere un discendente del conto in modifica.
+                if ($conto && $parent && in_array((int) $this->parent_id, $conto->getAllChildrenIds(), true)) {
+                    $validator->errors()->add(
+                        'parent_id',
+                        'Non puoi impostare come padre un discendente di questo conto: creerebbe un ciclo'
+                    );
+                }
+            }
+
             if ($conto && $conto->sottoconti && $conto->sottoconti->count() > 0 && !$this->boolean('isCapitolo')) {
                 $validator->errors()->add(
                     'isCapitolo',
@@ -120,5 +176,18 @@ class UpdateContoRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * Il conto padre deve appartenere allo stesso piano dei conti della rotta.
+     * È il vincolo di appartenenza che mancava: `exists:conti,id` accettava
+     * qualunque conto del database, compresi quelli di altri condomìni.
+     */
+    private function regolaPadreNelPiano(): \Illuminate\Validation\Rules\Exists
+    {
+        $pianoContoId = $this->route('pianoConto')?->id;
+
+        return \Illuminate\Validation\Rule::exists('conti', 'id')
+            ->where('piano_conto_id', $pianoContoId);
     }
 }

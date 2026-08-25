@@ -44,13 +44,18 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
         // 1. Numero Documento
         documentMetaElements.push(h('span', `n. ${fattura.numero_documento || 'S/N'}`));
 
-        // 2. Dot Ritenuta (se presente)
+        // 2. Badge Ritenuta (se presente)
+        // Era un punto ciano di 6 px con la spiegazione solo nel `title`: si
+        // notava a fatica e non si capiva senza andarci sopra col mouse — cioè
+        // mai, su un elenco che si scorre. Stesso badge dei Pagamenti fornitori,
+        // così la stessa informazione ha lo stesso aspetto nelle due pagine.
         if (fattura.importo_ritenuta && fattura.importo_ritenuta > 0) {
             documentMetaElements.push(
-                h('span', { 
-                    class: 'w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 cursor-help ml-1.5',
-                    title: 'Soggetto a ritenuta d\'acconto'
-                })
+                h('span', {
+                    class: 'inline-flex items-center gap-1 bg-cyan-50 text-cyan-600 border border-cyan-200 '
+                         + 'text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ml-1.5',
+                    title: 'Soggetto a ritenuta d\'acconto',
+                }, ['Ritenuta'])
             );
         }
 

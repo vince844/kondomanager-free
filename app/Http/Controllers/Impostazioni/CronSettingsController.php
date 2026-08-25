@@ -33,10 +33,15 @@ class CronSettingsController extends Controller
             '91.99.23.109'
         ]);
 
+        $lastHeartbeat = Cache::get('system_cron_heartbeat');
+        $lastHeartbeatSource = Cache::get('system_cron_source');
+
         return Inertia::render('impostazioni/impostazioniCron', [
             'enabled' => (bool) $settings->external_cron_enabled,
             'webhookUrl' => $webhookUrl,
             'allowedIps' => $ips,
+            'lastHeartbeat' => $lastHeartbeat,
+            'lastHeartbeatSource' => $lastHeartbeatSource,
         ]);
     }
 

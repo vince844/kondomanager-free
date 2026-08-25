@@ -2,20 +2,34 @@
 import { ref, watch, computed } from 'vue';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { ShieldAlert, TriangleAlert, Unlock, CheckCircle2 } from 'lucide-vue-next';
+import { ShieldAlert, TriangleAlert, Unlock, CheckCircle2, Wallet } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useFondiRiserva, type FondoRiserva } from '@/composables/useFondiRiserva';
+
+interface VoceInSforo {
+    id: number;
+    nome: string;
+    sforoLordoCents: number;
+    giaVersatoCents: number;
+    residuoNettoStimatoCents: number;
+}
 
 const { euro } = useCurrencyFormatter();
 
 const props = defineProps<{
     show: boolean;
     sforoTotale: number;
+    vociInSforo: VoceInSforo[];
     hasSpesePrivate: boolean;
     fondiRiserva: FondoRiserva[];
     isProcessing: boolean;
 }>();
+
+// Voci con già-versato attivo: solo per queste la rata integrativa chiede il
+// residuo netto invece dell'intero sforo lordo (CalcoloQuoteService::
+// guardiaSovraFinanziamentoGiaVersato) — vale la pena spiegarlo solo qui.
+const vociConGiaVersato = computed(() => props.vociInSforo.filter(v => v.giaVersatoCents > 0));
 
 const emit = defineEmits<{
     (e: 'update:show', value: boolean): void;
@@ -90,11 +104,20 @@ const handleConfirm = () => {
                     <div class="bg-rose-100 dark:bg-rose-900/50 p-2.5 rounded-xl shrink-0">
                         <ShieldAlert class="w-6 h-6 text-rose-600" />
                     </div>
-                    <div>
+                    <div class="min-w-0 flex-1">
                         <h3 class="font-black text-rose-900 dark:text-rose-100 text-lg">Sforamento budget rilevato</h3>
                         <p class="text-xs text-rose-700/70 mt-1">
                             Eccesso complessivo: <span class="font-black">{{ euro(sforoTotale) }}</span>
                         </p>
+                        <!-- Dettaglio per voce: una fattura può toccare più capitoli, mostriamo
+                             ciascuno invece di nascondere il quadro dietro un unico numero. -->
+                        <ul v-if="vociInSforo.length > 1" class="mt-2 space-y-0.5">
+                            <li v-for="v in vociInSforo" :key="v.id"
+                                class="text-[11px] text-rose-700/80 flex items-center justify-between gap-3">
+                                <span class="truncate">{{ v.nome }}</span>
+                                <span class="font-bold shrink-0">{{ euro(v.sforoLordoCents) }}</span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
 
@@ -135,7 +158,7 @@ const handleConfirm = () => {
                                 <div class="flex items-start justify-between w-full mb-3">
                                     <div class="font-black text-sm"
                                         :class="overrideStrategia === 'rata_integrativa' ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-300'">
-                                        2. Genera nuovo piano
+                                        2. Rata Integrativa
                                     </div>
                                     <input type="radio" v-model="overrideStrategia" value="rata_integrativa"
                                         class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600 shrink-0" />
@@ -174,12 +197,47 @@ const handleConfirm = () => {
                                         Bloccato: presenti spese private (ad personam). Non è possibile usare il fondo riserva del condominio.
                                     </span>
                                     <span v-else>
-                                        Neutralizza lo sforo attingendo al portafoglio di un fondo patrimoniale preesistente.
+                                        Pianifica la copertura dal fondo. Il fondo si decurta solo alla conferma,
+                                        con un giroconto che troverai proposto sulla fattura e nella pagina Giroconti.
                                     </span>
                                 </p>
                             </label>
                         </div>
                     </div>
+
+                    <!-- Già-versato: la rata integrativa chiederà il netto, non il lordo -->
+                    <Transition
+                        enter-active-class="transition-all duration-300 ease-out"
+                        enter-from-class="opacity-0 -translate-y-4"
+                        enter-to-class="opacity-100 translate-y-0">
+                        <div v-if="overrideStrategia === 'rata_integrativa' && vociConGiaVersato.length > 0"
+                            class="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 rounded-xl p-4 space-y-2.5">
+                            <div class="flex items-start gap-2.5">
+                                <Wallet class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                                <p class="text-[11px] text-indigo-800 dark:text-indigo-300 leading-relaxed">
+                                    <span v-if="vociConGiaVersato.length === 1">Questa voce ha</span>
+                                    <span v-else>Queste voci hanno</span>
+                                    già-versato registrato: il piano rate integrativo terrà conto di quanto già
+                                    contribuito dai condòmini e chiederà solo il residuo netto — non l'intero sforo
+                                    lordo mostrato sopra.
+                                </p>
+                            </div>
+                            <div class="space-y-1.5 pl-6">
+                                <div v-for="v in vociConGiaVersato" :key="v.id"
+                                    class="flex items-center justify-between gap-3 text-[11px]">
+                                    <span class="text-indigo-700/80 dark:text-indigo-400/80 truncate">{{ v.nome }}</span>
+                                    <span class="shrink-0 tabular-nums">
+                                        <span class="text-indigo-500/70 line-through mr-1.5">{{ euro(v.sforoLordoCents) }}</span>
+                                        <span class="font-black text-indigo-800 dark:text-indigo-200">{{ euro(v.residuoNettoStimatoCents) }}</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-indigo-500/70 pl-6 leading-relaxed">
+                                Stima indicativa (presume che questa fattura sia il costo totale reale della voce):
+                                l'importo definitivo lo calcola il motore di riparto quando generi il piano rate.
+                            </p>
+                        </div>
+                    </Transition>
 
                     <!-- Citazione legale -->
                     <p class="text-[11px] text-slate-500 leading-relaxed italic border-l-4 border-rose-200 pl-4">

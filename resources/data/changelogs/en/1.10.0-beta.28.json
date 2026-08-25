@@ -1,0 +1,8 @@
+{
+    "features": [
+        "When arriving from the Dashboard to create an installment plan for an already-identified overrun or unforeseen expense, the irrelevant plan type option (ordinary/extraordinary) now locks automatically, with an always-visible explanation under the card — not just on hover, so it's reachable from keyboard and screen readers too.",
+        "The \"Ordinary installment plan\" card now relabels itself as \"Supplementary Installment Plan\" when it's not the year's first emission for that expense management: either arriving from the Dashboard for an overrun, or — when creating the plan manually — when the selected expense management already has an \"initial budget\" ordinary plan on the books.",
+        "If you manually change the expense management from the \"Reference management\" dropdown after arriving from the Dashboard, the type lock and the \"Supplementary\" label update accordingly instead of staying anchored to the management the page originally opened with.",
+        "Fixed a case where the \"this management already has a plan\" signal also counted a pre-existing extraordinary plan, making the \"Supplementary Installment Plan\" label appear on the very first ordinary plan of the year for that management."
+    ]
+}

@@ -38,18 +38,29 @@ class ContoController extends Controller
             // Estrazione sicura dei flag booleani (previene errori se la chiave non esiste nel payload)
             $isCapitolo = $data['isCapitolo'] ?? false;
             $isSottoConto = $data['isSottoConto'] ?? false;
-                
+            $richiedeGiaVersato = $data['richiedeGiaVersato'] ?? false;
+
             // Creazione del record principale del Conto
             $nuovoConto = Conto::create([
                 'piano_conto_id'        => $pianoConto->id,
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
-                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'), 
+                // Fatto esplicito scelto ORA dall'amministratore, persistito subito:
+                // non va più indovinato da importo/parent_id in un secondo momento
+                // (bug "voce a zero perde la tabella millesimale", migrazione
+                // add_is_capitolo_to_conti_table).
+                'is_capitolo'           => $isCapitolo,
+                // Filtra l'elenco "Già versato" (beta.27): senza flag esplicito
+                // ogni voce di spesa vi compariva, confuso su un piano dei conti
+                // con decine di voci. Un capitolo non versa nulla direttamente
+                // (beta.22): non ha senso per lui, resta sempre false.
+                'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
+                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
                 'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
-                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0), 
+                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0),
                 'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
                 'note'                  => $data['note'] ?? null,
                 'attivo'                => true,
@@ -120,7 +131,14 @@ class ContoController extends Controller
             // Estrazione sicura
             $isCapitolo = $data['isCapitolo'] ?? false;
             $isSottoConto = $data['isSottoConto'] ?? false;
+            $richiedeGiaVersato = $data['richiedeGiaVersato'] ?? false;
             $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
+
+            // FIX bug "voce a zero perde la tabella millesimale": lo stato
+            // PERSISTITO prima di questo update è l'unica fonte di verità su
+            // se questo conto era già un capitolo. Va letto ORA, prima che
+            // $conto->update() più sotto lo sovrascriva.
+            $eraGiaCapitolo = (bool) $conto->is_capitolo;
 
             // Guard strutturale: un capitolo con sottoconti non può diventare una voce normale
             if ($isCapitolo === false && $conto->sottoconti()->exists()) {
@@ -164,26 +182,57 @@ class ContoController extends Controller
             // Procediamo con l'aggiornamento dei dati
             $conto->update([
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'is_capitolo'           => $isCapitolo,
+                // Un capitolo non versa nulla direttamente (beta.22): non ha senso
+                // per lui, resta sempre false a prescindere da cosa arriva dal form.
+                'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
                 'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
-                'codice'                => $data['codice'] ?? null, 
+                'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
-                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', 
-                'importo'               => $nuovoImporto, 
-                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, 
+                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
+                'importo'               => $nuovoImporto,
+                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
                 'note'                  => $data['note'] ?? null,
             ]);
 
             // Coerenza dati contabili:
             // - Capitolo => nessuna tabella/ripartizione associata
             // - Voce spesa => almeno una tabella e relative ripartizioni
-            if ($isCapitolo) {
+            //
+            // FIX bug "voce a zero perde la tabella millesimale": il ramo
+            // distruttivo scatta SOLO su una transizione vera (non era
+            // capitolo, ora lo diventa) — mai su un resave a parità di stato,
+            // che prima cancellava tabella/ripartizioni di una voce reale
+            // solo perché isCapitolo veniva (ri)calcolato male a monte.
+            /*
+             * Quante tabelle millesimali sono collegate a questa voce, **prima** di toccarla.
+             *
+             * Serve al ramo qui sotto: la scheda di modifica ne conosce una sola, quindi su una
+             * voce che ne ha più d'una non è in grado di rappresentare ciò che c'è.
+             */
+            $tabelleCollegate = DB::table('conto_tabella_millesimale')
+                ->where('conto_id', $conto->id)
+                ->count();
+
+            if ($isCapitolo && ! $eraGiaCapitolo) {
                 $contoTabellaIds = DB::table('conto_tabella_millesimale')
                     ->where('conto_id', $conto->id)
                     ->pluck('id');
 
                 if ($contoTabellaIds->isNotEmpty()) {
+                    // Difesa in profondità: c'è REALMENTE qualcosa da perdere.
+                    // Non basta che qualcuno (un frontend, una chiamata diretta)
+                    // dichiari isCapitolo=true — se questo elimina dati veri,
+                    // serve una conferma esplicita e distinta dal solo booleano.
+                    // Mai un'eliminazione silenziosa dedotta da una transizione.
+                    if (empty($data['confermaConversioneCapitolo'])) {
+                        throw ValidationException::withMessages([
+                            'isCapitolo' => "Questa voce ha una tabella millesimale e delle ripartizioni collegate: trasformarla in capitolo le eliminerebbe. Conferma esplicitamente per procedere.",
+                        ]);
+                    }
+
                     DB::table('conto_tabella_ripartizioni')
                         ->whereIn('conto_tabella_millesimale_id', $contoTabellaIds)
                         ->delete();
@@ -192,7 +241,35 @@ class ContoController extends Controller
                         ->where('conto_id', $conto->id)
                         ->delete();
                 }
-            } else {
+            } elseif (! $isCapitolo && $tabelleCollegate <= 1) {
+                /*
+                 * ⛔ **Una voce ripartita su PIÙ tabelle non si tocca da qui.** Corretto nella beta.68.
+                 *
+                 * `ModalModificaConto.vue` legge `tabelle_millesimali[0]` e manda quella: la scheda
+                 * conosce **una tabella sola**. Fin qui è un limite. Il difetto era che il blocco
+                 * qui sotto — «pulizia delle vecchie tabelle orfane» — cancellava **tutte** le
+                 * altre associazioni e le loro ripartizioni: aprire la scheda per correggere un
+                 * importo bastava a dimezzare la ripartizione, senza chiedere e senza dire niente.
+                 *
+                 * Il caso non è esotico, è quello di scuola: **art. 1126 c.c.**, lastrico solare
+                 * diviso fra chi ne ha l'uso esclusivo (un terzo) e tutti gli altri (due terzi).
+                 * Lo stesso vale per l'art. 1124 sulle scale e per l'ascensore.
+                 *
+                 * ⚠️ **È lo stesso principio della guardia qui sopra**, sul ramo gemello della
+                 * conversione in capitolo: *«mai un'eliminazione silenziosa dedotta da una
+                 * transizione»*. Là era già applicato, qui no.
+                 *
+                 * ⚠️ **La correzione è una rimozione, e si ferma qui di proposito.** Insegnare a
+                 * questa scheda a gestire N tabelle è una schermata nuova, cioè una funzione: va
+                 * nella 1.11. Quello che non poteva restare è che una schermata distruggesse un
+                 * dato che non sa nemmeno mostrare. Nome, importo, note e gerarchia si salvano lo
+                 * stesso — è solo la parte che la scheda non sa rappresentare a non venire toccata.
+                 *
+                 * Nel frattempo una voce su più tabelle si modifica dalla sezione delle tabelle
+                 * collegate, che sa farlo da sempre — e la scheda lo dice.
+                 *
+                 * Il presidio è `tests/Feature/Gestionale/CapitoloSuPiuTabelleNonSiPerdeTest.php`.
+                 */
                 $tabella = Tabella::query()
                     ->where('id', $data['tabella_millesimale_id'])
                     ->where('condominio_id', $condominio->id)
@@ -247,6 +324,35 @@ class ContoController extends Controller
                     ['soggetto' => 'inquilino', 'percentuale' => $data['percentuale_inquilino'] ?? 0],
                     ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario'] ?? 0],
                 ];
+
+                /*
+                 * ⚠️ **Questo controllo mancava, ed era l'anello 3 della catena delle proporzioni.**
+                 * Aggiunto nella beta.69.
+                 *
+                 * Le porte che scrivono `conto_tabella_ripartizioni` sono quattro: `store()` qui
+                 * sopra (riga 94), `AssociaTabellaController`, `AggiornaTabellaController` e
+                 * `FatturaPassivaService` — che usa una strategia diversa ma altrettanto chiusa,
+                 * ripiegando su «proprietario 100» invece di rifiutare. **Solo `update()` scriveva
+                 * senza guardare.**
+                 *
+                 * Cosa costava, misurato con una sonda il 22/08/2026: ripartizioni che dichiarano il
+                 * 60% della quota di un'unità facevano addebitare il **100%**, perché la
+                 * rinormalizzazione finale del motore assorbiva il resto. Il totale del piano
+                 * restava perfettamente uguale al preventivo, quindi nessun controllo contabile
+                 * aveva niente da segnalare.
+                 *
+                 * ⚠️ È la **quarta** volta che una guardia esiste in `store()` e non in `update()`
+                 * su questo progetto — dopo il riparto manuale, la capienza del conto in modifica
+                 * pagamento e le notifiche della beta.64. Il presidio strutturale è
+                 * `tests/Feature/System/RipartizioniValidateSuOgniPortaTest.php`.
+                 *
+                 * Il motore è stato chiuso lo stesso (`CalcoloQuoteService`, anello 3): questa
+                 * riga serve a fermare l'errore **dove lo si commette**, con un messaggio che dice
+                 * cosa fare, invece di scoprirlo generando il piano.
+                 */
+                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
+                    throw new \Exception("La somma delle percentuali deve essere 100%");
+                }
 
                 foreach ($ripartizioni as $rip) {
                     if ((float) $rip['percentuale'] > 0) {

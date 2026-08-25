@@ -1,5 +1,10 @@
 # 🐳 Desarrollo Local con Docker
 
+<!-- verifica-documentazione -->
+> **Estado:** Coincide con el código — verificado y corregido el 31/07/2026 en 1.10.0-beta.32, ampliado el **18/08/2026 en 1.10.0-beta.58** con la sección «Carga de archivos y persistencia de los documentos»
+> Se han corregido las cuatro afirmaciones erróneas detectadas en la auditoría: la rama de clonación (era `v1.9.1-beta`, que no existe), el `chmod` que faltaba en `docker/frankenphp/worker-entrypoint.sh`, la reescritura de APP_URL (es condicional) y el extracto de supervisord.conf, ahora con `[inet_http_server]` y el scheduler.
+<!-- /verifica-documentazione -->
+
 > **Plataformas compatibles:** Windows (WSL2), macOS, Linux, Synology NAS
 
 ---
@@ -44,7 +49,7 @@ git clone ...
 Abre tu terminal (en macOS/Linux) o el terminal WSL (en Windows) y ejecuta:
 
 ```bash
-git clone -b v1.10.0-beta https://github.com/vince844/kondomanager-free.git
+git clone -b v1.9.1 https://github.com/vince844/kondomanager-free.git
 cd kondomanager-free
 ```
 
@@ -63,6 +68,7 @@ chmod +x docker/standard/worker-entrypoint.sh
 **Si usas la stack FrankenPHP:**
 ```bash
 chmod +x docker/frankenphp/entrypoint.sh
+chmod +x docker/frankenphp/worker-entrypoint.sh
 ```
 
 ---
@@ -153,6 +159,13 @@ El archivo de configuración se encuentra en [`docker/supervisord.conf`](../dock
 ```ini
 [supervisord]
 nodaemon=true
+logfile=/var/www/storage/logs/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[inet_http_server]
+port = *:9001
+username = admin
+password = password
 
 [program:laravel-worker]
 process_name=%(program_name)s_%(process_num)02d
@@ -162,6 +175,13 @@ autorestart=true
 numprocs=1
 redirect_stderr=true
 stdout_logfile=/var/www/storage/logs/worker.log
+
+[program:laravel-scheduler]
+command=php /var/www/artisan schedule:work
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/www/storage/logs/scheduler.log
 ```
 
 **Parámetros principales:**
@@ -254,6 +274,45 @@ docker compose exec app php artisan db:seed --force
 
 ---
 
+## Carga de archivos y persistencia de los documentos
+
+*Sección añadida el 18/08/2026 con la 1.10.0-beta.58.*
+
+### Los límites de carga están declarados en las imágenes
+
+Hasta la beta.57 ninguna de las tres imágenes declaraba un límite, por lo que se aplicaba el valor
+predeterminado de nginx — **1 MB** — y un PDF de 1,5 MB era rechazado mientras la aplicación
+prometía 20. Ahora los valores están escritos en los `Dockerfile` y son coherentes entre sí:
+
+| | Valor |
+| :--- | :--- |
+| `upload_max_filesize` (PHP) | 20M |
+| `post_max_size` (PHP) | 25M |
+| `client_max_body_size` (nginx) | 30M |
+
+El orden no es casual: nginx es el más alto, así quien rechaza es **PHP**, que sabe decirlo con un
+mensaje comprensible en lugar de un error del servidor web. La aplicación no tiene un límite propio:
+lee el de PHP y escribe ese en la pantalla.
+
+### Qué no sobrevive a la recreación de un contenedor
+
+`storage/app` guarda los documentos cargados, las copias de seguridad y los adjuntos. En este
+compose la carpeta llega del bind mount `./:/var/www`, así que vive en el host y está a salvo. **En
+un despliegue real no es seguro**: sin un volumen declarado esa carpeta está en la capa escribible
+del contenedor y desaparece en la primera recreación, sin que nada lo avise antes.
+
+Para saberlo antes y no después:
+
+```bash
+docker compose exec app php artisan kondomanager:verifica-persistenza
+```
+
+Responde diciendo cuántos archivos y cuántos megabytes están en juego, y si la carpeta está dentro
+del contenedor explica dónde declarar el volumen. Con `--rigoroso` sale con código de error, de modo
+que puede ponerse en una tubería de despliegue.
+
+---
+
 ## Resolución de problemas
 
 ### `permission denied` al iniciar
@@ -263,6 +322,7 @@ chmod +x docker/standard/entrypoint.sh
 chmod +x docker/standard/worker-entrypoint.sh
 # o para FrankenPHP:
 chmod +x docker/frankenphp/entrypoint.sh
+chmod +x docker/frankenphp/worker-entrypoint.sh
 ```
 
 ### El container `app` se reinicia constantemente
@@ -298,7 +358,7 @@ Si el navegador muestra un error `Cross-Origin Request Blocked` o la página int
 
 **Causa:** el `.env` de tu carpeta de proyecto fue creado anteriormente por Herd, Coolify u otro entorno, y contiene `APP_URL=https://...`. Docker monta los archivos del host directamente en el container (volume mount), por lo que utiliza ese `.env` tal cual.
 
-**Solución automática (versiones recientes):** el `entrypoint.sh` establece automáticamente `APP_URL=http://localhost:8889` en cada inicio — no es necesaria ninguna intervención manual.
+**Corrección automática, pero condicionada:** el `entrypoint.sh` establece `APP_URL=http://localhost:8889` **solo si** el valor actual está vacío, es exactamente `http://localhost` o contiene `kondomanager-free.test`. Cualquier otro valor (por ejemplo un `https://...` dejado por Herd o Coolify) se **conserva**, para no romper las instalaciones detrás de un proxy inverso: en ese caso usa la corrección manual de abajo.
 
 **Fix manual (si es necesario):**
 ```bash

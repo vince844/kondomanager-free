@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Créditos sempre visíveis em 'Novo recebimento': as parcelas pagas a mais (valor recebido superior ao devido, tipicamente herdadas de versões anteriores à 1.9.1) agora aparecem como linhas de crédito com saldo negativo em vez de desaparecer da lista. O saldo exibido é sempre o real, líquido do crédito: valores já pagos nunca mais são propostos como devidos.",
+        "'Usar crédito' universal e com caixa zero: o botão agora funciona com qualquer crédito do condômino (saldo inicial credor, adiantamento ou parcela paga a mais), pode combinar vários créditos no mesmo lançamento e permite compensações com valor recebido € 0 — as novas parcelas são quitadas inteiramente com o crédito, sem movimentação de dinheiro.",
+        "O adiantamento torna-se utilizável: quando um condômino paga mais do que devia, o excedente não termina mais num lançamento contábil irrecuperável — permanece vinculado como crédito à última parcela paga, visível em 'Novo recebimento' e utilizável nas parcelas emitidas depois.",
+        "Sugestão de compensação na emissão: ao emitir novas parcelas, se algum titular tiver crédito disponível o sistema avisa imediatamente com nome e valor, para compensar na hora. Nenhum lançamento automático: a decisão fica sempre com o administrador.",
+        "Rastreabilidade completa das compensações a crédito: a lista de recebimentos e o detalhe de cada lançamento agora mostram corretamente o condômino e as parcelas cobertas mesmo em compensações a caixa zero (nenhum valor recebido, quitadas só com crédito) — antes apareciam como 'Desconhecido' sem nenhum detalhe. O extrato sempre mostra, lançamento a lançamento, qual crédito foi usado e em qual parcela."
+    ]
+}

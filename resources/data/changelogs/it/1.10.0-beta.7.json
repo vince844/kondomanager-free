@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Risolto un crash che si verificava aprendo la pagina di modifica di una fattura passiva registrata: mancavano alcuni dati (fornitori, budget, fondi di riserva) che la pagina richiede fin dal caricamento.",
+        "Risolto un errore che si verificava aprendo l'elenco, il dettaglio o la modifica di una fattura passiva già stornata.",
+        "La modifica di una fattura passiva non modificabile (stornata, di un esercizio chiuso, pregressa, con sopravvenienze, in sforo motivato o su un piano rate straordinario) ora mostra sempre un messaggio chiaro invece di fallire in silenzio.",
+        "Aggiunta la visualizzazione dei messaggi di avviso nella pagina di dettaglio fattura passiva, che finora non ne mostrava nessuno.",
+        "Risolto un problema per cui l'invio email dalla configurazione SMTP del pannello amministrativo poteva fallire silenziosamente su alcuni provider di hosting a causa di un hostname EHLO non valido; corretta inoltre la selezione della cifratura SSL, che finora non aveva alcun effetto."
+    ]
+}

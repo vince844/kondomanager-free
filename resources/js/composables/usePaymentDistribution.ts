@@ -95,12 +95,16 @@ export function usePaymentDistribution() {
         let budgetCents = Math.round(importoTotaleEuro * 100);
 
         rateList.forEach(r => {
+            const residuoCents = Math.round(parseMoney(r.residuo) * 100);
+
+            // Le righe di credito (residuo negativo) sono gestite a parte
+            // dalla distribuzione: non vanno azzerate né deselezionate qui.
+            if (residuoCents < 0) return;
+
             r.da_pagare = 0;
             r.selezionata = false;
 
-            const residuoCents = Math.round(parseMoney(r.residuo) * 100);
-            
-            if (residuoCents <= 0) return; 
+            if (residuoCents <= 0) return;
 
             const allocabileCents = Math.min(budgetCents, residuoCents);
             
@@ -114,10 +118,44 @@ export function usePaymentDistribution() {
         return budgetCents / 100;
     };
 
-    const calculateExcess = (rateList: Rata[], importoTotale: number) => {
-        const tot = parseFloat(String(importoTotale)) || 0;
+    /**
+     * L'anticipo che resta dopo aver applicato l'incasso ai debiti.
+     *
+     * ⚠️ `importoTotale` è il **CONTANTE**, mai contante + credito. La somma degli allocati è
+     * algebrica — le righe di credito portano un `da_pagare` negativo — quindi il credito è
+     * già dentro `alloc` e sommarlo di nuovo qui lo conta due volte. Il conto sbagliato era
+     * `contante + 2·credito − allocato`, e non restava a schermo: il server ricontrolla
+     * `importo_totale === somma_algebrica + eccedenza` e su discordanza rifiuta.
+     *
+     * Il contratto è fissato da `usePaymentDistribution.test.ts`, perché la firma da sola non
+     * lo dice e la prima volta è già costata una pagina 500.
+     */
+    const calculateExcess = (rateList: Rata[], contanteEuro: number) => {
+        const tot = parseFloat(String(contanteEuro)) || 0;
         const alloc = rateList.reduce((s, r) => s + parseMoney(r.da_pagare), 0);
         return Math.max(0, parseFloat((tot - alloc).toFixed(2)));
+    };
+
+    /**
+     * Quanto credito impiegare davvero: quello che il contante lascia scoperto, mai di più.
+     *
+     * Serve **prima** di distribuire, non dopo. Il ramo automatico costruiva il budget con
+     * tutto il credito disponibile (`contante + creditoDisponibile`) e prendeva per eccedenza
+     * l'avanzo del greedy: con 300 di credito, zero contante e 100 di debito l'avanzo era 200,
+     * che finivano nel campo eccedenza come **anticipo**. Ma quei 200 non sono entrati da
+     * nessuna parte — sono credito che resta dov'è. Impegnando prima il solo credito
+     * necessario, il budget è esatto e l'avanzo torna a essere ciò che dice di essere: il
+     * contante che sopravanza i debiti.
+     */
+    const creditoNecessario = (rateList: Rata[], contanteEuro: number, creditoDisponibileEuro: number) => {
+        const debiti = rateList.reduce((s, r) => {
+            const residuo = parseMoney(r.residuo);
+            return residuo > 0 ? s + residuo : s;
+        }, 0);
+
+        const scoperto = Math.max(0, debiti - (parseFloat(String(contanteEuro)) || 0));
+
+        return parseFloat(Math.min(creditoDisponibileEuro, scoperto).toFixed(2));
     };
 
     const onManualChange = (rata: Rata, val: string) => {
@@ -175,8 +213,9 @@ export function usePaymentDistribution() {
         getTotalAllocato, 
         getTotaleDebito, 
         getBilancioFinale, 
-        distributeGreedy, 
-        calculateExcess, 
+        distributeGreedy,
+        calculateExcess,
+        creditoNecessario,
         onManualChange, 
         resetAllocation, 
         pagaTutto, 

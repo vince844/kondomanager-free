@@ -1,5 +1,7 @@
 <script setup lang="ts">
 
+import { computed } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 import { type Table } from '@tanstack/vue-table'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -18,6 +20,23 @@ interface DataTablePaginationProps<TData> {
 }
 
 const { table, meta } = defineProps<DataTablePaginationProps<any>>()
+
+const pagina = usePage<{ paginazione?: { consentite?: number[] } }>()
+
+/**
+ * I valori offerti dal menu, dal server e non scritti qui.
+ *
+ * ⚠️ **Il valore in uso ci deve stare dentro.** Il menu offriva `[15,20,30,40,50]` mentre il
+ * predefinito era 10: il selettore mostrava «10» come segnaposto e nel menu quel numero non
+ * c'era, quindi chi passava a 50 non aveva più modo di tornare indietro. La riga qui sotto è la
+ * garanzia che la cosa non si ripeta anche se le due liste divergessero di nuovo.
+ */
+const opzioni = computed<number[]>(() => {
+  const consentite = pagina.props.paginazione?.consentite ?? [10, 15, 20, 30, 40, 50, 100]
+  const inUso = meta.per_page
+
+  return consentite.includes(inUso) ? consentite : [...consentite, inUso].sort((a, b) => a - b)
+})
 
 const handlePageChange = (newPage: number) => {
   if (meta.current_page === newPage) return
@@ -38,10 +57,13 @@ const handlePageChange = (newPage: number) => {
           }"
         >
           <SelectTrigger class="h-8 w-[70px]">
-            <SelectValue :placeholder="`${table.getState().pagination.pageSize}`" />
+            <!-- Il numero mostrato è quello con cui il server ha davvero paginato, non lo stato
+                 locale della libreria: due copie dello stesso dato divergono, e la prima a
+                 mentire è sempre quella che l'utente vede. -->
+            <SelectValue :placeholder="`${meta.per_page}`" />
           </SelectTrigger>
           <SelectContent side="top">
-            <SelectItem v-for="pageSize in [15, 20, 30, 40, 50]" :key="pageSize" :value="pageSize">
+            <SelectItem v-for="pageSize in opzioni" :key="pageSize" :value="pageSize">
               {{ pageSize }}
             </SelectItem>
           </SelectContent>

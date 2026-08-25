@@ -43,14 +43,14 @@ const pageGuides = [
     colorVariant: 'blue' as const
   },
   {
-    title: 'Validazione Automatica',
-    description: 'Il sistema integra un validatore di coerenza che controlla in tempo reale che la somma dei millesimi di ogni tabella sia esattamente 1000.',
+    title: 'Riparto sul Totale Reale',
+    description: 'Il motore ripartisce sempre il 100% della spesa sul totale effettivo dei millesimi della tabella — anche quando non è esattamente 1000 (unità rimosse, arrotondamenti approvati in assemblea): nessun euro perso o duplicato.',
     icon: Scale,
     colorVariant: 'emerald' as const
   },
   {
     title: 'Ripartizione Mista',
-    description: 'Crea tabelle specifiche per scale, ascensori, riscaldamento o box per gestire le ripartizioni di spesa più complesse in futuro.',
+    description: 'Crea tabelle specifiche per scale, ascensori, riscaldamento o lastrico solare per gestire le ripartizioni di spesa più complesse.',
     icon: TableProperties,
     colorVariant: 'amber' as const
   }
@@ -66,7 +66,7 @@ const pageGuides = [
       
       <PageHeaderGuide
         page-title="Tabelle millesimali"
-        page-subtitle="Configura i parametri di ripartizione del condominio. Il validatore di coerenza ti assisterà per evitare errori matematici."
+        page-subtitle="Configura i parametri di ripartizione del condominio."
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

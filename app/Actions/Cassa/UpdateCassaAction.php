@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\Log;
 
 class UpdateCassaAction
 {
+    public function __construct(
+        private RegistraAperturaCassaAction $aperturaAction
+    ) {}
+
     public function execute(Cassa $cassa, array $data): Cassa
     {
         return DB::transaction(function () use ($cassa, $data) {
@@ -19,27 +23,51 @@ class UpdateCassaAction
             // --- 1. CONTROLLO DI SICUREZZA ---
             // Questo blocco viene eseguito PRIMA di qualsiasi modifica.
             // Se scatta l'eccezione, la transazione si ferma e nulla cambia.
-            if ($cassa->tipo !== $data['tipo']) {
-                
-                // TODO: Ricordati di rimuovere il false fisso quando avrai i movimenti!
-                // $hasMovimenti = $cassa->contoContabile?->movimenti()->exists();
-                $hasMovimenti = false; 
+            // Movimenti OPERATIVI: la scrittura di apertura non conta, la genera il
+            // sistema. Senza questa distinzione, dalla beta.25 ogni cassa risulterebbe
+            // "con movimenti" fin dalla creazione e non sarebbe più modificabile.
+            $hasMovimenti = $cassa->hasMovimentiOperativi();
 
-                if ($hasMovimenti) {
-                    throw ValidationException::withMessages([
-                        'tipo' => 'Impossibile modificare il tipo: questa risorsa ha già movimenti contabili registrati.'
-                    ]);
-                }
+            if ($cassa->tipo !== $data['tipo'] && $hasMovimenti) {
+                throw ValidationException::withMessages([
+                    'tipo' => 'Impossibile modificare il tipo: questa risorsa ha già movimenti contabili registrati.'
+                ]);
+            }
+
+            // saldo_iniziale non ha un cast 'integer' sul model: lo normalizziamo
+            // esplicitamente per evitare confronti stretti falsati da un valore
+            // restituito come stringa dal driver DB (vedi CassaResource).
+            $saldoInizialeAttuale = (int) $cassa->saldo_iniziale;
+
+            // Se il campo non è presente nel payload, manteniamo il valore attuale
+            // (non deve mai azzerarsi solo perché omesso dalla richiesta).
+            $nuovoSaldoIniziale = isset($data['saldo_iniziale'])
+                ? MoneyHelper::toCents($data['saldo_iniziale'])
+                : $saldoInizialeAttuale;
+
+            // Guardia SEPARATA da $hasMovimenti: l'apertura sposta il saldo dalla
+            // colonna alla scrittura anche su una cassa senza nessun altro
+            // movimento (RegistraAperturaCassaAction). Da quel momento la colonna
+            // vale 0 e riscriverla la riporterebbe in vita accanto alla scrittura
+            // già a giornale — SaldoCassaService la conterebbe due volte.
+            if ($cassa->hasAperturaRegistrata()) {
+                // Il campo è diventato puramente informativo (il frontend vi mostra
+                // il saldo reale corrente, disabilitato): qualunque cosa arrivi nel
+                // payload — anche un salvataggio che non tocca affatto questo campo,
+                // che comunque lo re-invia — la colonna resta congelata a zero.
+                $nuovoSaldoIniziale = $saldoInizialeAttuale;
+            } elseif ($hasMovimenti && $nuovoSaldoIniziale !== $saldoInizialeAttuale) {
+                throw ValidationException::withMessages([
+                    'saldo_iniziale' => 'Impossibile modificare il saldo di apertura: questa risorsa ha già movimenti contabili registrati.'
+                ]);
             }
 
             // --- 2. AGGIORNAMENTO CASSA ---
             $cassa->update([
                 'nome'        => $data['nome'],
-                'tipo'        => $data['tipo'], 
+                'tipo'        => $data['tipo'],
                 'descrizione' => $data['descrizione'] ?? null,
-                'saldo_iniziale' => isset($data['saldo_iniziale']) 
-                                ? MoneyHelper::toCents($data['saldo_iniziale']) 
-                                : 0,
+                'saldo_iniziale' => $nuovoSaldoIniziale,
                 'note'        => $data['note'] ?? null,
                 // --- CAMPI GOVERNANCE FONDI ---
                 'sottotipo_fondo'         => $data['sottotipo_fondo'] ?? null,
@@ -47,6 +75,25 @@ class UpdateCassaAction
                 'is_override_assemblea'   => filter_var($data['is_override_assemblea'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'motivazione_override'    => $data['motivazione_override'] ?? null,
             ]);
+
+            // --- 2bis. IL SALDO DI APERTURA VA A GIORNALE ---
+            //
+            // Senza questa chiamata la colonna restava piena e il giornale vuoto, e lo Stato
+            // Patrimoniale si sbilanciava esattamente di quell'importo. Il percorso era
+            // riproducibile col mouse: cassa creata con il saldo vuoto — dove
+            // `CreateCassaAction` chiama l'azione, che esce subito su importo zero — e importo
+            // aggiunto **dopo**, in modifica, dove non lo chiamava nessuno.
+            //
+            // La beta.26 aveva messo mano a questa stessa guardia guardando la direzione
+            // opposta: là si riscriveva la colonna con l'apertura già a giornale (doppio
+            // conteggio), qui si scrive la colonna con l'apertura mai registrata. Stesso
+            // campo, stesso effetto sullo Stato Patrimoniale, verso contrario.
+            //
+            // L'azione è già idempotente e sa uscire da sola su importo zero, apertura
+            // presente o dati insufficienti: qui non si ripete nessuno dei suoi controlli.
+            // Siamo dentro la transazione della modifica, quindi o la cassa cambia e
+            // l'apertura è a giornale, o non è successo niente.
+            $this->aperturaAction->execute($cassa);
 
             // --- 3. AGGIORNAMENTO CONTO CONTABILE (Nome + Ruolo) ---
             if ($cassa->contoContabile) {

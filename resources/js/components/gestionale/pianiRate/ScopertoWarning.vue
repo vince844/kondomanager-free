@@ -1,18 +1,40 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
 import { AlertTriangle, ExternalLink } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 
+/**
+ * Uno scoperto ha tre forme, e prima della beta.48 questa schermata ne conosceva una sola.
+ *
+ * - `motivo` assente → **quota orfana**: l'unità c'è, ma nessun soggetto attivo a cui
+ *   addebitarla. È il caso storico della v1.9.1, l'unico che questa tabella sapeva mostrare.
+ * - `conto_senza_tabella` → il capitolo non ha nessuna tabella millesimale collegata.
+ * - `tabella_senza_millesimi` → la tabella è collegata ma non ha immobili, o li ha tutti a zero.
+ * - `coefficienti_sotto_il_cento` → le tabelle collegate al capitolo dichiarano meno del 100%
+ *   (beta.63). Non riguarda né un immobile né una tabella: **manca una tabella**, e quale sia lo
+ *   sa solo l'amministratore. Senza un ramo suo cadeva nel caso storico e la riga consigliava di
+ *   «censire le anagrafiche mancanti» — un consiglio che non c'entra niente e che manderebbe a
+ *   cercare un difetto dove non c'è.
+ *
+ * Le ultime due **non riguardano un immobile**: `immobile_id` arriva `null`. Mostrandole con il
+ * tracciato della prima si otteneva «Immobile #» seguito dal vuoto, un badge di ruolo vuoto e un
+ * collegamento a `/immobili/null` — cioè un pulsante che non porta da nessuna parte, proprio
+ * accanto a un messaggio che chiede di fare qualcosa.
+ */
 export interface ScopertoCents {
-    immobile_id: number;
-    immobile_nome: string;
+    immobile_id: number | null;
+    immobile_nome: string | null;
     conto_id: number;
     conto_nome: string;
+    tabella_id?: number | null;
+    tabella_nome?: string | null;
     importo: number; // in cents
-    ruolo_richiesto: string;
+    ruolo_richiesto: string | null;
+    motivo?: string | null;
 }
 
 const props = defineProps<{
@@ -28,7 +50,100 @@ const nota = ref('');
 const { euro } = useCurrencyFormatter();
 const { generatePath } = usePermission();
 
-const totaleScoperto = computed(() => props.scoperti.reduce((acc, curr) => acc + curr.importo, 0));
+/**
+ * ⚠️ **Due famiglie, in un avviso solo.** Le righe con `millesimo_non_compilato` non sono importi
+ * non ripartibili: sono unità che hanno una riga in tabella e non hanno ancora un millesimo. Non
+ * portano una cifra — quanto avrebbero dovuto pagare **non è calcolabile**, perché il numero che
+ * serve è proprio quello che manca — e soprattutto la loro conseguenza è **opposta** a quella
+ * degli scoperti veri.
+ *
+ * Scoperto vero: se procedi, quell'importo non entra nel piano e **le quote degli altri restano
+ * corrette**. Millesimo non compilato: se procedi, quell'unità sparisce dal piano e **la sua
+ * quota la pagano gli altri**. Dirlo con la stessa frase sarebbe una bugia, ed è la ragione per
+ * cui l'intestazione qui sotto si sdoppia.
+ */
+const nonRipartibili = computed(() => props.scoperti.filter((s) => s.motivo !== 'millesimo_non_compilato'));
+const senzaMillesimo = computed(() => props.scoperti.filter((s) => s.motivo === 'millesimo_non_compilato'));
+
+const totaleScoperto = computed(() => nonRipartibili.value.reduce((acc, curr) => acc + curr.importo, 0));
+
+/**
+ * Cosa manca, in una riga, e cosa si deve fare per toglierlo di mezzo.
+ *
+ * La frase dell'azione è la parte che conta: la roadmap lo dice esplicitamente — *«il messaggio
+ * deve nominare i capitoli e dire cosa fare, altrimenti la telefonata si sposta, non si toglie»*.
+ */
+const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
+    if (s.motivo === 'millesimo_non_compilato') {
+        return {
+            cosa: s.tabella_nome
+                ? `${s.immobile_nome ?? 'Un\'unità'} non ha ancora un millesimo nella tabella «${s.tabella_nome}»`
+                : `${s.immobile_nome ?? 'Un\'unità'} non ha ancora un millesimo`,
+            azione: 'Compila il millesimo, oppure togli la riga se questa unità non partecipa',
+        };
+    }
+
+    if (s.motivo === 'conto_senza_tabella') {
+        return {
+            cosa: 'Nessuna tabella millesimale collegata al capitolo',
+            azione: 'Collega una tabella millesimale a questa voce di spesa',
+        };
+    }
+
+    if (s.motivo === 'coefficienti_sotto_il_cento') {
+        return {
+            cosa: 'Le tabelle collegate al capitolo non arrivano al 100%',
+            azione: 'Collega la tabella che manca, o alza la percentuale di quelle collegate',
+        };
+    }
+
+    if (s.motivo === 'tabella_senza_millesimi') {
+        return {
+            cosa: s.tabella_nome
+                ? `La tabella «${s.tabella_nome}» non ha millesimi utilizzabili`
+                : 'La tabella collegata non ha millesimi utilizzabili',
+            azione: 'Assegna gli immobili alla tabella e inserisci i millesimi',
+        };
+    }
+
+    return {
+        cosa: s.immobile_nome ?? 'Unità senza soggetto',
+        azione: 'Censisci le anagrafiche mancanti su questa unità',
+    };
+};
+
+/**
+ * Dove si va a sistemare. `null` quando non c'è una destinazione costruibile.
+ *
+ * ⚠️ **`conto_senza_tabella` non ha collegamento, ed è una scelta.** La pagina in cui si collega
+ * una tabella a un capitolo è `.../esercizi/{esercizio}/piani-conti/{pianoConto}/conti`, e il
+ * payload dello scoperto non porta né l'esercizio né il piano dei conti. Indovinarli
+ * produrrebbe un pulsante che porta altrove — peggio di nessun pulsante, perché sembra una
+ * strada. La riga dice comunque quale capitolo e cosa fare.
+ *
+ * Si chiude quando arriva l'avviso preventivo sui capitoli del piano (§7.4 di
+ * `docs/validatore_coerenza_millesimi.md`): quella schermata quegli id ce li ha già.
+ */
+const destinazione = (s: ScopertoCents): string | null => {
+    if (s.motivo === 'millesimo_non_compilato' || s.motivo === 'tabella_senza_millesimi') {
+        return s.tabella_id
+            ? generatePath('gestionale/:condominio/tabelle/' + s.tabella_id + '/quote')
+            : null;
+    }
+
+    if (s.motivo === 'conto_senza_tabella') {
+        return null;
+    }
+
+    return s.immobile_id
+        ? generatePath('gestionale/:condominio/immobili/' + s.immobile_id)
+        : null;
+};
+
+const etichettaDestinazione = (s: ScopertoCents): string =>
+    s.motivo === 'tabella_senza_millesimi' || s.motivo === 'millesimo_non_compilato'
+        ? 'Millesimi'
+        : 'Anagrafiche';
 
 const canProceed = computed(() => nota.value.trim().length >= 10);
 
@@ -45,10 +160,42 @@ const handleProcedi = () => {
       <AlertTriangle class="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
       <div>
         <h3 class="font-bold text-amber-900 text-base">
-          Attenzione: {{ scoperti.length }} {{ scoperti.length === 1 ? 'quota non assegnabile' : 'quote non assegnabili' }} (totale {{ euro(totaleScoperto / 100) }})
+          Attenzione: c'è qualcosa da sistemare prima di generare il piano
         </h3>
-        <p class="text-sm text-amber-800 mt-1">
-          Queste unità non hanno soggetti attivi a cui addebitare la quota. Le quote degli altri condòmini restano corrette.
+
+        <!--
+          ⚠️ Due paragrafi e non uno, perché le due conseguenze sono **opposte** e una frase sola
+          sarebbe falsa per metà delle righe. Vedi la nota su `nonRipartibili` / `senzaMillesimo`.
+        -->
+        <p v-if="nonRipartibili.length" class="text-sm text-amber-800 mt-1">
+          <strong>{{ nonRipartibili.length }} {{ nonRipartibili.length === 1 ? 'importo non ripartibile' : 'importi non ripartibili' }}</strong>
+          (totale {{ euro(totaleScoperto) }}): non sono addebitabili a nessuno perché manca il soggetto,
+          la tabella millesimale o i millesimi. Se procedi, il piano rate <strong>non li conterrà</strong>
+          — le quote degli altri condòmini restano corrette.
+        </p>
+
+        <p v-if="senzaMillesimo.length" class="text-sm text-amber-800 mt-1">
+          <strong>{{ senzaMillesimo.length }} {{ senzaMillesimo.length === 1 ? 'unità senza millesimo' : 'unità senza millesimo' }}</strong>:
+          {{ senzaMillesimo.length === 1 ? 'ha' : 'hanno' }} una riga nella tabella millesimale ma il valore
+          è ancora vuoto. Se procedi, {{ senzaMillesimo.length === 1 ? 'quell\'unità sparisce' : 'quelle unità spariscono' }}
+          dal piano — non {{ senzaMillesimo.length === 1 ? 'riceve' : 'ricevono' }} nemmeno una riga da € 0,00 —
+          e <strong>la {{ senzaMillesimo.length === 1 ? 'sua quota la pagano' : 'loro quota la pagano' }} gli altri condòmini</strong>.
+        </p>
+
+        <!--
+          ⚠️ **La finestra per rimediare si chiude, e va detto qui.** Segnalato da Vincenzo leggendo
+          l'avviso: «se oggi non ho i millesimi e creo il piano rate, poi non posso ricrearlo se ho
+          già degli incassi». È esatto — `PianoRateGenerationController` blocca il ricalcolo su due
+          condizioni: rate con incassi registrati («Annulla prima gli incassi») e rate già emesse in
+          contabilità («Annulla prima le emissioni»).
+          Senza questa riga l'avviso descriveva la conseguenza ma non la sua **reversibilità**, che
+          è l'informazione che serve per decidere: procedere è una scelta che si può disfare oggi e
+          non più dopo il primo incasso.
+        -->
+        <p v-if="senzaMillesimo.length" class="text-sm text-amber-800 mt-2">
+          <strong>Finché non emetti le rate e non arriva il primo incasso</strong>, puoi compilare i
+          millesimi mancanti e rigenerare il piano. Dopo, il ricalcolo si blocca: per correggerlo
+          dovresti prima annullare gli incassi o le emissioni.
         </p>
       </div>
     </div>
@@ -57,7 +204,7 @@ const handleProcedi = () => {
       <table class="w-full text-sm text-left">
         <thead class="bg-amber-100/30 text-amber-900 text-xs uppercase font-semibold">
           <tr>
-            <th class="px-4 py-2">Immobile</th>
+            <th class="px-4 py-2">Cosa manca</th>
             <th class="px-4 py-2">Voce di spesa</th>
             <th class="px-4 py-2">Ruolo atteso</th>
             <th class="px-4 py-2 text-right">Importo</th>
@@ -65,25 +212,43 @@ const handleProcedi = () => {
           </tr>
         </thead>
         <tbody class="divide-y divide-amber-100 bg-white/50">
-          <tr v-for="(scoperto, index) in scoperti" :key="index" class="hover:bg-amber-50/50">
-            <td class="px-4 py-2 font-medium text-slate-900">{{ scoperto.immobile_nome }}</td>
+          <tr v-for="(scoperto, index) in scoperti" :key="index" class="hover:bg-amber-50/50 align-top">
+            <td class="px-4 py-2">
+              <div class="font-medium text-slate-900">{{ descrizione(scoperto).cosa }}</div>
+              <div class="text-[11px] text-slate-600 mt-0.5">{{ descrizione(scoperto).azione }}</div>
+            </td>
             <td class="px-4 py-2 text-slate-700">{{ scoperto.conto_nome }}</td>
             <td class="px-4 py-2">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border" 
-                    :class="{
-                      'bg-blue-50 text-blue-700 border-blue-200': scoperto.ruolo_richiesto === 'inquilino',
-                      'bg-purple-50 text-purple-700 border-purple-200': scoperto.ruolo_richiesto === 'usufruttuario',
-                      'bg-slate-50 text-slate-700 border-slate-200': scoperto.ruolo_richiesto !== 'inquilino' && scoperto.ruolo_richiesto !== 'usufruttuario'
-                    }">
-                {{ scoperto.ruolo_richiesto }}
-              </span>
+              <!-- Il ruolo esiste solo per la quota orfana: sulle altre due forme il badge
+                   sarebbe una cornice vuota, che si legge come un dato mancante. -->
+              <!-- ⚠️ Qui i colori erano una terza copia della stessa mappa, e **in disaccordo con
+                   le altre due**: l'inquilino era blu qui e verde nella scheda dell'unità, e
+                   `nuda_proprietario` non c'era affatto. Un amministratore che legge lo stesso
+                   ruolo in due colori diversi deve reimparare il vocabolario a ogni schermata.
+                   Ora è lo stesso componente del resto del gestionale. -->
+              <BadgeRuolo v-if="scoperto.ruolo_richiesto" :ruolo="scoperto.ruolo_richiesto" taglia="md" tema="chiaro" />
+              <span v-else class="text-slate-400 text-xs">—</span>
             </td>
-            <td class="px-4 py-2 text-right font-medium text-amber-700">{{ euro(scoperto.importo / 100) }}</td>
+            <!-- `euro()` ha `fromCents: true` come default e la conversione la fa da sé: qui
+                 c'era un `/ 100` che divideva una seconda volta, e € 24.741,60 di scoperto
+                 comparivano come € 247,42. Preesistente, trovato dal primo test di questo
+                 componente. Gli altri due chiamanti che pre-dividono — PianiRateNew ed
+                 EstrattoContoAnagrafica — istanziano `fromCents: false` e sono corretti. -->
+            <!--
+              ⚠️ Un trattino e non «€ 0,00»: zero euro è un importo, e qui l'importo **non esiste**
+              — dipende dal millesimo che manca. Scrivere una cifra darebbe per calcolato ciò che
+              non lo è.
+            -->
+            <td class="px-4 py-2 text-right font-medium text-amber-700">
+              <span v-if="scoperto.motivo === 'millesimo_non_compilato'" class="text-slate-400">—</span>
+              <span v-else>{{ euro(scoperto.importo) }}</span>
+            </td>
             <td class="px-4 py-2 text-center">
-              <a :href="generatePath('gestionale/:condominio/immobili/' + scoperto.immobile_id)" target="_blank" 
+              <a v-if="destinazione(scoperto)" :href="destinazione(scoperto)!" target="_blank"
                  class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                Anagrafiche <ExternalLink class="w-3 h-3" />
+                {{ etichettaDestinazione(scoperto) }} <ExternalLink class="w-3 h-3" />
               </a>
+              <span v-else class="text-slate-400 text-xs">—</span>
             </td>
           </tr>
         </tbody>
@@ -96,14 +261,17 @@ const handleProcedi = () => {
           Cosa vuoi fare?
         </label>
         <p class="text-xs text-amber-700">Se vuoi procedere comunque addossando la differenza, specifica una motivazione (min. 10 caratteri) che verrà salvata nello storico.</p>
+        <!-- Il testo diceva «correggi l'anagrafica»: vero per la quota orfana, falso per le
+             altre due forme, dove il rimedio è la tabella millesimale. Ogni riga dice già il
+             suo rimedio nella colonna «Cosa manca»: qui resta solo ciò che vale per tutte. -->
         <p class="text-xs font-semibold text-amber-800">
-          Attenzione: una volta emesse le rate non sarà più possibile includere questa unità tramite Ricalcola. Se vuoi includerla, correggi l'anagrafica prima di emettere.
+          Attenzione: una volta emesse le rate, Ricalcola non potrà più recuperare questi importi. Se vuoi includerli, correggi prima di emettere quanto indicato qui sopra.
         </p>
         <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           <Input 
             id="nota_scoperti"
             v-model="nota"
-            placeholder="Es: Immobili in fase di aggiornamento anagrafica..."
+            placeholder="Es: tabella millesimale in approvazione, la collego prima del consuntivo..."
             class="flex-1 bg-white border-amber-300 focus-visible:ring-amber-500"
             :disabled="processing"
             @keyup.enter="handleProcedi"

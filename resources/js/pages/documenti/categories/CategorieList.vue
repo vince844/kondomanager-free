@@ -24,7 +24,7 @@ const flashMessage = computed(() => page.props.flash.message);
 
 const { generateRoute } = usePermission();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('documenti.breadcrumbs.list'), 
       href: route(generateRoute('documenti.index'))
@@ -33,7 +33,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('documenti.header.list_categories_head'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {

@@ -1,11 +1,11 @@
 <script setup lang="ts" generic="TData, TValue">
 
 import { ref } from 'vue'
+import { useTabellaServer } from '@/composables/useTabellaServer'
 import { router } from '@inertiajs/vue3'
 import type { ColumnDef, SortingState } from '@tanstack/vue-table'
 import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from '@/components/ui/table'
-import {FlexRender,getCoreRowModel,useVueTable,getSortedRowModel } from '@tanstack/vue-table'
-import { valueUpdater } from '@/lib/utils'
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table'
 import DataTablePagination from '@/components/DataTablePagination.vue'
 import DataTableToolbar from '@/components/fornitori/DataTableToolbar.vue'
 import type { Fornitore } from '@/types/fornitori'
@@ -21,8 +21,8 @@ const props = defineProps<{
   }
 }>()
 
-const sorting = ref<SortingState>([])
-const isPending = ref(false) 
+const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
+  useTabellaServer(() => route('admin.fornitori.index'));
 
 const table = useVueTable({
   get data() {
@@ -38,38 +38,19 @@ const table = useVueTable({
       pageSize: props.meta.per_page,
     },
     get sorting() {
-      return sorting.value
+      return ordinamento.value
     },
   },
   manualPagination: true,
+  // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
+  manualSorting: true,
   onPaginationChange: updater => {
-
-    // Prevent concurrent requests
-    if (isPending.value) return 
-    
-    isPending.value = true
-    
-    const nextPage = typeof updater === 'function'
-      ? updater(table.getState().pagination).pageIndex
-      : updater.pageIndex;
-
-    const nextPageSize = table.getState().pagination.pageSize;
-
-    router.get(route('admin.fornitori.index'), {
-      page: nextPage + 1,
-      per_page: nextPageSize,
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      onFinish: () => {
-        isPending.value = false
-      }
-    });
+    const stato = table.getState().pagination
+    const p = typeof updater === 'function' ? updater(stato) : updater
+    suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
   },
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  onSortingChange: suOrdinamento,
   getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
 })
 
 </script>

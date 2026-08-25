@@ -24,12 +24,16 @@ final class TreasuryGuardianService
         // 1. Liquidità derivata dal giornale
         $liquiditaTotaleCents = $this->calcolaLiquidita($condominioId, $gestioneId);
 
-        // MVP §6.4: fondi vincolati = 0, disponibile = totale.
-        // La separazione reale dipende da Voci Accantonamento (v1.10).
-        // Non troncare con max(0, ...): se la liquidità è negativa, lo scoperto è già in atto
-        // e la timeline deve partire dal saldo reale.
-        $liquiditaVincolataCents = 0; // TODO(v1.10): $this->calcolaFondiVincolati($condominioId, $gestioneId);
-        $liquiditaDisponibileCents = $liquiditaTotaleCents;
+        // Beta.19: con i giroconti i fondi sono finalmente quantificabili — sono
+        // le casse tipo 'fondo', partizioni attive dell'unico c/c, lette in
+        // convenzione unica (dare − avere). La liquidità DISPONIBILE è quella
+        // totale meno il denaro accantonato: un semaforo verde calcolato su
+        // denaro vincolato è esattamente il falso positivo che questo widget
+        // nasceva per eliminare.
+        // Non troncare il disponibile con max(0, ...): se è negativo, lo
+        // scoperto è già in atto e la timeline deve partire dal saldo reale.
+        $liquiditaVincolataCents = $this->calcolaFondiVincolati($condominioId);
+        $liquiditaDisponibileCents = $liquiditaTotaleCents - $liquiditaVincolataCents;
 
         // §6.4: Verifica se esiste un fondo riserva per mostrare avviso non bloccante nel frontend
         $hasFondoRiserva = $this->condominioHaFondoRiserva($condominioId);
@@ -157,7 +161,14 @@ final class TreasuryGuardianService
             ->whereNull('sc.deleted_at'); // Salvo se serve per retrocompatibilità
 
         if ($gestioneId) {
-            $query->where('sc.gestione_id', $gestioneId);
+            // Le scritture SENZA gestione (saldi di apertura delle casse, beta.25)
+            // restano incluse: la liquidità in banca è del CONDOMINIO, non di una
+            // gestione. Escluderle mostrerebbe meno denaro di quanto ce n'è davvero
+            // e falserebbe il predittore a 30 giorni.
+            $query->where(function ($q) use ($gestioneId) {
+                $q->where('sc.gestione_id', $gestioneId)
+                  ->orWhereNull('sc.gestione_id');
+            });
         }
 
         $movimenti = $query->sum(DB::raw("CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END"));
@@ -165,37 +176,48 @@ final class TreasuryGuardianService
         return (int) ($saldiIniziali + $movimenti);
     }
 
-    private function calcolaFondiVincolati(int $condominioId, ?int $gestioneId): int
+    /**
+     * Denaro accantonato nelle casse tipo 'fondo' (beta.19).
+     *
+     * I fondi NON stanno in categoria 'fondi' del piano dei conti (lì vivono i
+     * mastri passivi): sono casse con conto attivo/liquidità figlio del mastro
+     * 1010, lette in convenzione unica saldo_iniziale + dare − avere — la stessa
+     * di SaldoCassaService. Nessun filtro per gestione: l'accantonamento è
+     * patrimonio del condominio, non di una gestione.
+     */
+    private function calcolaFondiVincolati(int $condominioId): int
     {
-        $query = DB::table('righe_scritture as rs')
+        $saldiIniziali = DB::table('casse')
+            ->where('condominio_id', $condominioId)
+            ->where('tipo', 'fondo')
+            ->whereNotNull('conto_contabile_id')
+            ->sum('saldo_iniziale');
+
+        $movimenti = DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', 'rs.scrittura_id', '=', 'sc.id')
-            ->join('conti_contabili as cc', 'rs.conto_contabile_id', '=', 'cc.id')
-            ->where('sc.condominio_id', $condominioId)
-            ->where('cc.categoria', 'fondi')
-            ->whereNull('sc.deleted_at');
+            ->join('casse as c', 'rs.conto_contabile_id', '=', 'c.conto_contabile_id')
+            ->where('c.condominio_id', $condominioId)
+            ->where('c.tipo', 'fondo')
+            ->whereNull('sc.deleted_at')
+            ->sum(DB::raw("CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END"));
 
-        if ($gestioneId) {
-            $query->where('sc.gestione_id', $gestioneId);
-        }
-
-        // I fondi sono conti di tipo PASSIVO. Aumentano in AVERE, diminuiscono in DARE.
-        $totale = $query->sum(DB::raw("CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE -rs.importo END"));
-        
-        // Non ammettiamo fondi vincolati "negativi" in questo contesto, se un fondo va sottozero è un'anomalia contabile,
-        // ma non restituisce vera liquidità. Al massimo è zero.
-        return max(0, (int) $totale);
+        // Un fondo sottozero è un'anomalia contabile, non liquidità restituita:
+        // al massimo il vincolato è zero.
+        return max(0, (int) ($saldiIniziali + $movimenti));
     }
 
     /**
-     * §6.4 MVP: verifica se il condominio ha un fondo riserva.
-     * Usato per mostrare l'avviso non bloccante "il calcolo non distingue ancora i fondi vincolati".
-     * TODO(v1.10): quando Voci Accantonamento sarà disponibile, usare calcolaFondiVincolati() al suo posto.
+     * §6.4: verifica se il condominio ha almeno una cassa fondo attiva.
+     * Prima della beta.19 il controllo era su conti_contabili.categoria='fondi',
+     * che è sempre vera (la radice PASSIVO 2000 ha quella categoria): il flag
+     * risultava true anche senza alcun fondo reale.
      */
     private function condominioHaFondoRiserva(int $condominioId): bool
     {
-        return DB::table('conti_contabili')
+        return DB::table('casse')
             ->where('condominio_id', $condominioId)
-            ->where('categoria', 'fondi')
+            ->where('tipo', 'fondo')
+            ->where('attiva', true)
             ->exists();
     }
 

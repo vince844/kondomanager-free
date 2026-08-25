@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Corrigido um erro que ocorria ao digitar o IBAN do Beneficiário na página de edição de um pagamento a fornecedor.",
+        "O \"bonifico parlante\" (transferência bancária qualificada para deduções fiscais italianas), o tipo de dedução fiscal e as taxas bancárias agora são guardados corretamente ao editar um pagamento a fornecedor já registado.",
+        "Os pagamentos a fornecedores estornados deixam de ser acessíveis a partir da página de edição: agora é exibida uma mensagem clara em vez de uma gravação sem qualquer efeito.",
+        "Adicionada uma verificação de saldo da conta também na edição de um pagamento a fornecedor, com pedido de confirmação explícita em caso de descoberto — tal como já acontecia na criação.",
+        "Adicionada uma proteção que impede a edição de pagamentos cumulativos em várias faturas, para evitar corromper os valores alocados.",
+        "O campo \"bonifico parlante\", reservado às deduções fiscais (obras de renovação, ecobonus, sismabonus, superbonus), agora só aparece para pagamentos feitos por transferência bancária: a lei italiana não permite dinheiro ou cheques para estas deduções.",
+        "Melhorado o layout da página de edição de pagamento a fornecedor: cartão a largura total, campos relacionados lado a lado e um botão de gravação mais compacto, em linha com as outras páginas do módulo de gestão.",
+        "Corrigidos alguns problemas de visualização da página de edição de pagamento a fornecedor em smartphones, onde alguns campos podiam sobrepor-se."
+    ]
+}

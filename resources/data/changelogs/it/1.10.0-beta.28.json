@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Quando si arriva dalla Dashboard per creare un piano rate su uno sforo o una sopravvenienza già identificati, l'opzione di tipo non pertinente (ordinario/straordinario) ora si blocca automaticamente, con una spiegazione sempre visibile sotto la card — non solo al passaggio del mouse, accessibile anche da tastiera e screen reader.",
+        "La card \"Piano rate ordinario\" si rietichetta da sola in \"Piano Rata Integrativa\" quando non è la prima emissione dell'anno per quella gestione: sia arrivando dalla Dashboard per uno sforo, sia — creando il piano manualmente — quando la gestione ha già un piano rate ordinario \"preventivo iniziale\" a bilancio.",
+        "Se si cambia manualmente la gestione dal menu \"Gestione di riferimento\" dopo essere arrivati dalla Dashboard, il blocco del tipo e l'etichetta \"Integrativa\" si aggiornano di conseguenza invece di restare ancorati alla gestione con cui la pagina si era aperta.",
+        "Corretto un caso in cui il segnale \"la gestione ha già un piano rate\" contava anche un piano straordinario preesistente, facendo apparire l'etichetta \"Piano Rata Integrativa\" sul primissimo piano ordinario dell'anno per quella gestione."
+    ]
+}

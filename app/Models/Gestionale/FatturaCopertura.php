@@ -51,6 +51,16 @@ class FatturaCopertura extends Model
         return $this->belongsTo(ContoContabile::class, 'fondo_id');
     }
 
+    /**
+     * Il giroconto che ha reso reale questa copertura (beta.19).
+     * Null finché la copertura è 'pianificata'; lo storno del giroconto
+     * riporta la FK a null e lo stato a 'pianificata'.
+     */
+    public function scritturaGiroconto()
+    {
+        return $this->belongsTo(ScritturaContabile::class, 'scrittura_giroconto_id');
+    }
+
     // ── SCOPES PER IL SEMAFORO FINANZIARIO E RENDICONTO ──────────────────────
 
     public function scopeConfermate($query)

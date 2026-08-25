@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Traits\OrdinaElenco;
+use App\Http\Requests\Documento\DocumentoIndexRequest;
+
 use App\Enums\Permission;
 use App\Enums\Role;
 use App\Models\Anagrafica;
@@ -14,6 +17,10 @@ use Illuminate\Support\Facades\Log;
 
 class DocumentoService
 {
+    // L'ordinamento si applica **qui** e non nel controller: la query la costruisce
+    // questo servizio, e applicarlo altrove significherebbe due punti da tenere allineati.
+    use OrdinaElenco;
+
     /**
      * Get documents paginated or limited, scoped by admin or user.
      */
@@ -29,7 +36,12 @@ class DocumentoService
             return $query->limit($limit)->get();
         }
 
-        return $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+        return $query->tap(fn ($q) => $this->ordina($q, $validated, DocumentoIndexRequest::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
+            // ⚠️ Il ripiego non è più la catena: `per_page` arriva **già risolto** dal controller
+            // (`App\Traits\PaginaElenco`), che tiene conto della scelta salvata dall'utente e delle
+            // impostazioni generali. Resta qui come rete per un chiamante futuro che se ne dimenticasse,
+            // perché un elenco che ripiega su dieci righe è meglio di un elenco che va in errore.
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
                      ->withQueryString();
     }
 
@@ -126,7 +138,12 @@ class DocumentoService
                       ->where('category_id', $categoriaId);
 
         return $query->orderBy('created_at', 'desc')
-                     ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+                     ->tap(fn ($q) => $this->ordina($q, $validated, DocumentoIndexRequest::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
+            // ⚠️ Il ripiego non è più la catena: `per_page` arriva **già risolto** dal controller
+            // (`App\Traits\PaginaElenco`), che tiene conto della scelta salvata dall'utente e delle
+            // impostazioni generali. Resta qui come rete per un chiamante futuro che se ne dimenticasse,
+            // perché un elenco che ripiega su dieci righe è meglio di un elenco che va in errore.
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
                      ->withQueryString();
     }
 
@@ -149,9 +166,15 @@ class DocumentoService
             ->selectRaw('COUNT(*) as total_documents')
             ->selectRaw('SUM(file_size) as total_storage_bytes')
             ->selectRaw('AVG(file_size) as average_size_bytes')
-            ->selectRaw('SUM(CASE WHEN MONTH(created_at) = ? AND YEAR(created_at) = ? THEN 1 ELSE 0 END) as uploaded_this_month', [
-                now()->month, 
-                now()->year
+            // ⚠️ **Un intervallo di date, non `MONTH()` e `YEAR()`.** Quelle due funzioni esistono
+            // su MySQL e non su SQLite, quindi la pagina dell'archivio rispondeva **500** dentro
+            // la suite: era intestabile per costruzione, ed è la ragione per cui non aveva
+            // nessun test. Il confronto per intervallo dice la stessa cosa ovunque — e su MySQL
+            // è anche più veloce, perché una funzione applicata alla colonna impedisce l'uso
+            // dell'indice mentre un intervallo no.
+            ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as uploaded_this_month', [
+                now()->startOfMonth(),
+                now()->startOfMonth()->addMonth(),
             ])
             ->first();
 
@@ -184,9 +207,13 @@ class DocumentoService
             ->selectRaw('COUNT(*) as total_documents')
             ->selectRaw('COALESCE(SUM(file_size), 0) as total_storage_bytes')
             ->selectRaw('COALESCE(AVG(file_size), 0) as average_size_bytes')
-            ->selectRaw('SUM(CASE WHEN MONTH(created_at) = ? AND YEAR(created_at) = ? THEN 1 ELSE 0 END) as uploaded_this_month', [
-                now()->month,
-                now()->year
+            // Stesso intervallo di date del riquadro amministratore qui sopra, e per la stessa
+            // ragione: `MONTH()` e `YEAR()` non esistono su SQLite. Il gemello lasciato indietro
+            // sarebbe rimasto rotto nella suite finché non ci fosse passato un test — cioè, viste
+            // le due volte che è già successo su questo modulo, per un pezzo.
+            ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as uploaded_this_month', [
+                now()->startOfMonth(),
+                now()->startOfMonth()->addMonth(),
             ])
             ->first();
 

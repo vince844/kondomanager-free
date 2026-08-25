@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
+import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import {
     BookOpen, ArrowLeft, Calendar, Building2, Landmark, FileText,
     CircleCheckBig, CircleX, RotateCcw, CreditCard, Banknote,
-    ArrowUpRight, ArrowDownLeft, Link2, Shield, Info, ChevronRight,
-    Hash, Clock, Layers, ShieldCheck
+    ArrowUpRight, Shield, Info, ChevronRight,
+    Hash, Clock, Layers, ShieldCheck, Repeat2
 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 
@@ -80,6 +81,7 @@ const props = defineProps<{
 
 const { euro } = useCurrencyFormatter();
 const { generateRoute, generatePath } = usePermission();
+const { urlPrecedente } = useUrlPrecedente();
 
 // ── Breadcrumbs ──────────────────────────────────────────────────────────────
 const breadcrumbs = computed(() => [
@@ -94,6 +96,8 @@ const tipoMovimentoBadge = computed(() => {
     if (!tipo) return { class: 'bg-slate-100 text-slate-600 border-slate-200', icon: BookOpen };
 
     if (tipo.includes('storno')) return { class: 'bg-rose-50 text-rose-700 border-rose-200', icon: RotateCcw };
+    if (tipo.includes('giroconto')) return { class: 'bg-violet-50 text-violet-700 border-violet-200', icon: Repeat2 };
+    if (tipo.includes('rettifica')) return { class: 'bg-violet-50 text-violet-700 border-violet-200', icon: Repeat2 };
     if (tipo.includes('pagamento')) return { class: 'bg-blue-50 text-blue-700 border-blue-200', icon: CreditCard };
     if (tipo.includes('incasso')) return { class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: Banknote };
     if (tipo.includes('fattura') || tipo.includes('nota_credito')) return { class: 'bg-amber-50 text-amber-700 border-amber-200', icon: FileText };
@@ -144,10 +148,34 @@ const navigaAllaFattura = (fatturaId: number) => {
     }));
 };
 
-const tornaPagamenti = () => {
-    router.visit(route(generateRoute('gestionale.pagamenti-fornitori.index'), {
-        condominio: props.condominio.id,
-    }));
+// Questa pagina è raggiungibile da molte tabelle diverse (pagamenti, fatture,
+// giroconti, incassi, Libro Giornale, drill-down del Piano dei Conti...):
+// "Indietro" non può puntare a una sola di quelle senza sbagliare per tutte le
+// altre. La provenienza reale arriva da useUrlPrecedente().
+//
+// beta.30: prima si leggeva `window.history.state.back`, che è una convenzione di
+// Vue Router — Inertia v3 in `history.state` mette solo `page`. Quel ramo era
+// quindi sempre falso e l'Indietro cadeva SEMPRE sul fallback, da qualunque
+// pagina si arrivasse.
+//
+// Il fallback (accesso diretto, nessuna provenienza) resta il Libro Giornale
+// dell'esercizio della scrittura: è l'unico registro che la contiene sempre.
+const backUrl = computed(() => {
+    const precedente = urlPrecedente();
+    if (precedente) {
+        return precedente;
+    }
+    if (props.scrittura.esercizio) {
+        return route(generateRoute('gestionale.esercizi.scritture.index'), {
+            condominio: props.condominio.id,
+            esercizio: props.scrittura.esercizio.id,
+        });
+    }
+    return route(generateRoute('gestionale.movimenti.index'), { condominio: props.condominio.id });
+});
+
+const tornaIndietro = () => {
+    router.visit(backUrl.value);
 };
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -160,6 +188,34 @@ const sforoRatificatoAudit = computed(() => {
     }
     return null;
 });
+
+// ── Storno regolazione immediata ─────────────────────────────────────────────
+// Stornabile solo una regolazione immediata non ancora stornata. Le figlie sono
+// già caricate dal controller: se ne esiste una, lo storno è stato fatto.
+const puoStornare = computed(() =>
+    props.scrittura.tipo_movimento === 'regolazione_immediata'
+    && (props.scrittura.figlie?.length ?? 0) === 0
+);
+
+const mostraModaleStorno = ref(false);
+const motivoStorno = ref('');
+const stornoInCorso = ref(false);
+
+const motivoValido = computed(() => motivoStorno.value.trim().length >= 10);
+
+const confermaStorno = () => {
+    if (!motivoValido.value || stornoInCorso.value) return;
+    stornoInCorso.value = true;
+
+    router.post(
+        route(generateRoute('gestionale.regolazioni-immediate.storno'), {
+            condominio: props.condominio.id,
+            scrittura: props.scrittura.id,
+        }),
+        { motivo: motivoStorno.value },
+        { onFinish: () => { stornoInCorso.value = false; mostraModaleStorno.value = false; } }
+    );
+};
 </script>
 
 <template>
@@ -178,12 +234,22 @@ const sforoRatificatoAudit = computed(() => {
                 :condomini="(props.condomini as any)"
             >
                 <template #actions>
+                    <!-- Lo storno è la sola via d'uscita ammessa dal giornale
+                         append-only: la scrittura non si cancella, si neutralizza. -->
+                    <Button
+                        v-if="puoStornare"
+                        variant="outline"
+                        @click="mostraModaleStorno = true"
+                        class="h-9 gap-2 shadow-sm font-medium text-amber-700 border-amber-300 hover:bg-amber-50"
+                    >
+                        <RotateCcw class="w-4 h-4" /> Storna
+                    </Button>
                     <Button
                         variant="outline"
-                        @click="tornaPagamenti"
+                        @click="tornaIndietro"
                         class="h-9 gap-2 shadow-sm font-medium"
                     >
-                        <ArrowLeft class="w-4 h-4" /> Torna ai pagamenti
+                        <ArrowLeft class="w-4 h-4" /> Indietro
                     </Button>
                 </template>
             </PageHeaderGuide>
@@ -663,6 +729,54 @@ const sforoRatificatoAudit = computed(() => {
                     </div>
 
                 </section>
+            </div>
+        </div>
+
+        <!-- ─── MODALE STORNO REGOLAZIONE IMMEDIATA ────────────────────── -->
+        <div
+            v-if="mostraModaleStorno"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            @click.self="mostraModaleStorno = false"
+        >
+            <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+                <div class="mb-4 flex items-start gap-3">
+                    <RotateCcw class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                    <div>
+                        <h3 class="text-lg font-semibold">Storna la registrazione</h3>
+                        <p class="mt-1 text-sm text-slate-500">
+                            Il libro giornale non si riscrive: la scrittura
+                            <span class="font-mono">{{ scrittura.numero_protocollo }}</span>
+                            resta e viene neutralizzata da una scrittura inversa.
+                            L'effetto sul capitolo di spesa e sulla cassa torna a zero.
+                        </p>
+                    </div>
+                </div>
+
+                <label for="motivo-storno" class="mb-1.5 block text-sm font-medium">
+                    Motivo dello storno *
+                </label>
+                <textarea
+                    id="motivo-storno"
+                    v-model="motivoStorno"
+                    rows="3"
+                    maxlength="1000"
+                    placeholder="Es. Capitolo di spesa errato: la commissione va imputata alle spese bancarie"
+                    class="w-full rounded-md border border-slate-300 p-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                ></textarea>
+                <p class="mt-1 text-xs text-slate-500">
+                    Almeno 10 caratteri. Resta nella causale della scrittura di storno, visibile nel giornale.
+                </p>
+
+                <div class="mt-5 flex items-center justify-end gap-3">
+                    <Button variant="ghost" @click="mostraModaleStorno = false">Annulla</Button>
+                    <Button
+                        :disabled="!motivoValido || stornoInCorso"
+                        class="bg-amber-600 hover:bg-amber-700"
+                        @click="confermaStorno"
+                    >
+                        {{ stornoInCorso ? 'Storno in corso…' : 'Conferma storno' }}
+                    </Button>
+                </div>
             </div>
         </div>
     </GestionaleLayout>

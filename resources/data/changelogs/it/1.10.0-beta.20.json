@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Attenzione — Cambia il comportamento della modifica fattura oltre budget: salvare una modifica che porta un capitolo di spesa oltre il residuo ora richiede una presa d'atto esplicita. Un dialogo mostra l'importo dello sforamento e dichiara cosa NON accadrà salvando: nessuna motivazione registrata, nessuna copertura pianificata, la fattura resta \"approvata\" e non comparirà nel cruscotto sforamenti. Puoi annullare e correggere gli importi, oppure salvare consapevolmente; per motivare lo sforamento la strada resta lo storno con nuova registrazione. Prima il salvataggio oltre budget passava con un click e l'unico segnale era un banner in cima alla pagina.",
+        "Una fattura il cui sforamento è stato motivato e poi ratificato dall'assemblea non è più modificabile, qualunque fosse la strategia di rientro. Le fatture con copertura dal fondo erano già protette dalla beta.19, ma le strategie \"conguaglio di fine anno\" e \"rata integrativa\" non creano coperture e dopo la ratifica la fattura tornava modificabile: motivazione e delibera restavano riferite a importi che l'assemblea non aveva mai visto. Ora vale la stessa regola per tutte: la ratifica fotografa la fattura — per cambiarla si storna e si registra di nuovo."
+    ]
+}

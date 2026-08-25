@@ -29,7 +29,13 @@ class CreateCassaRequest extends FormRequest
             'note'           => 'nullable|string',
             
             // Dati Bancari (Richiesti SOLO se tipo == banca)
-            'iban'         => 'nullable|required_if:tipo,banca|size:27', 
+            // ⚠️ **L'IBAN non è obbligatorio, e dalla beta.75 non lo è più.** Lo era con
+            // `required_if:tipo,banca`, e bloccava la creazione del conto corrente — cioè il
+            // **primo** passo contabile di un condominio. Chi rileva uno stabile senza passaggio
+            // di consegne l'IBAN spesso non ce l'ha ancora, e restava fermo prima di poter
+            // registrare qualunque cosa. Serve a compilare i bonifici, non a tenere la
+            // contabilità: quando c'è viene validato nella forma, quando manca si aggiunge dopo.
+            'iban'         => 'nullable|size:27', 
             'istituto'     => 'nullable|string|max:255',
             'bic'          => 'nullable|string|max:20',
             'intestatario' => 'nullable|string|max:255',
@@ -37,7 +43,6 @@ class CreateCassaRequest extends FormRequest
             // Validazione enum database per tipo_conto
             'tipo_conto' => [
                 'nullable',
-                'required_if:tipo,banca',
                 Rule::in(['ordinario', 'dedicato', 'estero', 'postale', 'contabilita_speciale', 'altro'])
             ],
             

@@ -153,7 +153,9 @@ return [
     'string' => ':attribute must be a string.',
     'timezone' => ':attribute must be a valid timezone.',
     'unique' => 'The :attribute field is already in use.',
-    'uploaded' => ':attribute failed to upload.',
+    'caricamento_interrotto' => 'La subida se interrumpió antes de completarse, y no por el tamaño del archivo. Suele ser el disco del servidor lleno, una carpeta temporal sin permisos de escritura o la conexión caída a medias. Inténtalo de nuevo; si se repite, el problema está en el servidor.',
+    'corpo_troppo_grande' => 'El archivo que estás subiendo supera el límite global de este servidor (:limite): la petición se descartó antes de llegar a la aplicación, y por eso puede parecer una sesión caducada. Pide a quien gestiona el servidor que aumente post_max_size (además de upload_max_filesize), o sube un archivo más pequeño.',
+    'uploaded' => 'No se ha podido subir :attribute: el archivo supera el límite de este servidor (:limite). Pide a quien lo gestiona que aumente upload_max_filesize y post_max_size, o sube un archivo más pequeño.',
     'uppercase' => ':attribute must be uppercase.',
     'url' => ':attribute must be a valid URL.',
     'ulid' => ':attribute must be a valid ULID.',
@@ -166,6 +168,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'No puedes asignar este rol: los roles administrativos los concede un administrador.',
+            'last_admin' => 'Este es el último administrador activo: cambiar su rol dejaría la instalación sin nadie que pueda gestionarla.',
+        ],
+        'permissions' => [
+            'not_allowed' => 'No puedes conceder un permiso que tú mismo no tienes.',
+        ],
         'email' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',

@@ -10,8 +10,12 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Gestionale\SpesaPerVoceService;
+use App\Services\PianoRateQuoteService;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
+use App\Services\Dashboard\Widgets\ControlliPostImportWidget;
+use App\Services\Dashboard\Widgets\CreditiDaCompensareWidget;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -22,9 +26,9 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, SpesaPerVoceService $spesaPerVoce, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget, ControlliPostImportWidget $controlliWidget, PianoRateQuoteService $pianoRateQuoteService): Response
     {
-        $widgetManager->register($treasuryWidget);
+        $widgetManager->registerMany([$treasuryWidget, $creditiWidget, $controlliWidget]);
 
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;
@@ -39,23 +43,10 @@ class DashboardController extends Controller
             $totBudgetPuro = 0;
             $vociScoperte = [];
 
-            // --- 1. Recupero Fatturato Reale dell'esercizio (SOLO SPESE COMUNI) ---
-            $rawFatturato = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                ->whereNull('righe_fattura.immobile_id') // Esclude le spese ad personam
-                ->select(
-                    'righe_fattura.conto_id', 
-                    DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale')
-                )
-                ->groupBy('righe_fattura.conto_id')
-                ->get();
-
-            $fatturatoMap = [];
-            foreach ($rawFatturato as $row) {
-                $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
-            }
+            // --- 1. Speso reale dell'esercizio (SOLO SPESE COMUNI) ---
+            // Letto dal libro giornale: include anche regolazioni immediate e
+            // fatture pregresse, invisibili alla vecchia query su righe_fattura.
+            $fatturatoMap = $spesaPerVoce->perEsercizio($esercizio);
 
             // --- NUOVO: Recupero spese ad personam totali ---
             // Nelle righe_fattura il false in MySQL spesso è salvato come 0.
@@ -138,7 +129,8 @@ class DashboardController extends Controller
                             ? "Addebito personale (Art. 63)" 
                             : "Parte comune (millesimale)",
                         'dettaglio'   => $riga->immobile_id
-                            ? "Int. {$riga->immobile->interno}"
+                            // `etichetta`: ripiega sul nome quando l'interno non c'è (beta.58).
+                    ? $riga->immobile->etichetta
                             : ($riga->conto ? "Voce: {$riga->conto->nome}" : "Imprevisto")
                     ];
                 }
@@ -218,11 +210,11 @@ class DashboardController extends Controller
                 $virtualeGestione = 0; 
 
                 foreach ($report['items'] as $item) {
-                    if (!($item['is_leaf'] ?? false)) continue; 
-                    
-                    $budgetTeorico = $item['budget'];
+                    if (!($item['is_leaf'] ?? false)) continue;
+
+                    $budgetTeorico = $item['budget_teorico'];
                     $spesoReale = $fatturatoMap[$item['id']] ?? 0;
-                    
+
                     $fabbisognoRealeGestione += max($budgetTeorico, $spesoReale);
                     $budgetPuroGestione += $budgetTeorico;
                     $virtualeGestione += $item['copertura_virtuale'] ?? 0;
@@ -260,7 +252,7 @@ class DashboardController extends Controller
                             'importo'     => $deficitRispettoRate, 
                             'gestione'    => $gestione->nome,
                             'gestione_id' => $gestione->id,
-                            'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget'],
+                            'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget_teorico'],
                             'strategia'   => $tipoStrategia 
                         ];
 
@@ -277,41 +269,19 @@ class DashboardController extends Controller
                     ]) 
                     ->get();
                 
+                // Il verdetto vive in `PianoRateQuoteService` dall'11/08/2026, e non più qui:
+                // la stessa domanda la fa anche la pagina del piano, e finché ognuna se la
+                // calcolava per conto proprio le due rispondevano in modo diverso — metodi
+                // diversi e tolleranze diverse (zero qui, € 2,00 di là). Vedi `eDisallineato()`.
                 foreach ($pianiRate as $piano) {
-                    if ($piano->rate->count() > 0) {
-                        $totalePuroGenerato = 0;
-                        foreach ($piano->rate as $rata) {
-                            foreach ($rata->rateQuote as $quota) {
-                                $regole = $quota->regole_calcolo;
-                                if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
-                                    $totalePuroGenerato += $regole['importi']['quota_pura_gestione'];
-                                } else {
-                                    if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
-                                        $totalePuroGenerato += $quota->importo;
-                                    }
-                                }
-                            }
-                        }
-
-                        $totaleAtteso = 0;
-                        if ($piano->tipo === 'straordinario') {
-                            foreach ($piano->fattureStraordinarie as $fattura) {
-                                $totaleAtteso += $fattura->pivot->importo_collegato;
-                            }
-                        } else {
-                            foreach ($piano->capitoli as $capitolo) {
-                                $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
-                            }
-                        }
-
-                        if ($totaleAtteso !== $totalePuroGenerato) {
-                            $pianiDisallineati[] = [
-                                'id' => $piano->id,
-                                'nome' => $piano->nome,
-                                'gestione' => $gestione->nome,
-                                'delta' => $totaleAtteso - $totalePuroGenerato
-                            ];
-                        }
+                    if ($pianoRateQuoteService->eDisallineato($piano)) {
+                        $pianiDisallineati[] = [
+                            'id' => $piano->id,
+                            'nome' => $piano->nome,
+                            'gestione' => $gestione->nome,
+                            'delta' => $pianoRateQuoteService->totaleAttesoCents($piano)
+                                     - $pianoRateQuoteService->totalePuroGeneratoCents($piano),
+                        ];
                     }
                 }
             }

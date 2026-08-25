@@ -8,6 +8,7 @@ import { Save, LoaderCircle, Building2, MapPin, Info } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import CercaComune from '@/components/comuni/CercaComune.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
@@ -16,7 +17,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 
 const props = defineProps<{ building: Building }>();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('condomini.header.list_buildings_title'),
       href: route('condomini.index') 
@@ -25,7 +26,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('condomini.header.edit_building_title'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
@@ -67,6 +68,15 @@ const form = useForm({
     foglio_catasto: props.building.foglio_catasto || '',
     particella_catasto: props.building.particella_catasto || '',
 });
+
+/**
+ * Il Comune scelto dall'elenco riempie **due** campi, non uno: senza il codice catastale accanto al
+ * nome, l'aiuto avrebbe risparmiato la parte facile e lasciato quella che nessuno ricorda.
+ */
+const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
+  form.comune_catasto = c.nome;
+  form.codice_catasto = c.codice_catasto;
+};
 
 const submit = () => {
     form.put(route("condomini.update", { id: props.building.id }), {
@@ -265,13 +275,16 @@ const submit = () => {
 
                     <div class="sm:col-span-4">
                         <Label for="comune_catasto">{{ trans('condomini.label.municipality') }}</Label>
-                        <Input 
-                          id="comune_catasto" 
-                          v-model="form.comune_catasto" 
-                          @focus="form.clearErrors('comune_catasto')"
-                          :placeholder="trans('condomini.placeholder.municipality')" 
-                          class="mt-1 bg-white" 
-                        />
+                        <div class="mt-1 flex items-center gap-2">
+                          <Input 
+                            id="comune_catasto" 
+                            v-model="form.comune_catasto" 
+                            @focus="form.clearErrors('comune_catasto')"
+                            :placeholder="trans('condomini.placeholder.municipality')" 
+                            class="bg-white" 
+                          />
+                          <CercaComune @scelto="comuneScelto" />
+                        </div>
                         <InputError :message="form.errors.comune_catasto" />
                     </div>
                     

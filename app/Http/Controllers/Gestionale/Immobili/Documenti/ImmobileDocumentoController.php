@@ -12,6 +12,8 @@ use App\Models\Condominio;
 use App\Models\Documento;
 use App\Models\Immobile;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasEsercizio;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -22,7 +24,7 @@ use Illuminate\Support\Facades\Storage;
 
 class ImmobileDocumentoController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio;
+    use HandleFlashMessages, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     /**
      * Display a paginated listing of documents for the specified immobile.
@@ -54,12 +56,17 @@ class ImmobileDocumentoController extends Controller
     {
         $validated = $request->validated();
 
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
+
         $documenti = $immobile->documenti()
             ->with(['condomini', 'createdBy.anagrafica'])
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->tap(fn ($q) => $this->ordina($q, $validated, ImmobileDocumentoIndexRequest::colonneOrdinabili(), predefinita: 'created_at', versoPredefinito: 'desc'))
+            ->paginate($validated['per_page'])
             ->appends($request->all());
         
         // Get the current active and open esercizio this is important to navigate gestioni menu
@@ -77,6 +84,8 @@ class ImmobileDocumentoController extends Controller
                 'total'        => $documenti->total(),
             ],
             'filters' => $request->only(['name']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 
@@ -110,6 +119,9 @@ class ImmobileDocumentoController extends Controller
             'condominio'  => $condominio,
             'esercizio'   => $esercizio,
             'immobile'    => $immobile,
+            // Il limite lo decide il server, non noi: la schermata scriveva «Max 10MB» mentre la
+            // validazione ne accettava 20 e il server dell'utente 2. Ora è un numero solo.
+            'limiteFile'  => \App\Support\LimiteCaricamento::etichetta(),
         ]);
     }
 
@@ -178,7 +190,10 @@ class ImmobileDocumentoController extends Controller
 
             $documento = $immobile->documenti()->create([
                 'name'         => $validated['name'],
-                'description'  => $validated['description'],
+                // `?? null` e non accesso diretto: da quando la descrizione è facoltativa la chiave
+                // può non esserci affatto in `validated()`, e l'accesso secco sollevava un errore
+                // che il `catch` qui sotto trasformava in un messaggio generico.
+                'description'  => $validated['description'] ?? null,
                 'path'         => $path,
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
@@ -192,13 +207,16 @@ class ImmobileDocumentoController extends Controller
         } catch (\Exception $e) {
             
             DB::rollback();
-            
-            Log::error('Error creating documento immobile: ' . $e->getMessage());
+
+            $riferimento = \App\Support\ErroriDiagnosticabili::registra($e, 'Errore creando il documento di un\'immobile', [
+                'condominio_id' => $condominio->id,
+                'immobile_id'   => $immobile->id,
+            ]);
 
             return to_route('admin.gestionale.immobili.documenti.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
-            ])->with($this->flashError(__('documenti.error_create_document')));
+            ])->with($this->flashError(__('documenti.error_create_document').' (rif. '.$riferimento.')'));
 
         }
 
@@ -252,6 +270,10 @@ class ImmobileDocumentoController extends Controller
             'condominio'  => $condominio,
             'esercizio'   => $esercizio,
             'immobile'    => new ImmobileResource($immobile),
+            // Stessa ragione della `create()`: `update()` valida con `LimiteCaricamento::regolaMax()`,
+            // e senza questa riga la schermata di modifica continuerebbe a promettere «Max 20MB» —
+            // cioè il difetto segnalato, sulla schermata accanto.
+            'limiteFile'  => \App\Support\LimiteCaricamento::etichetta(),
         ]); 
     }
 
@@ -316,8 +338,8 @@ class ImmobileDocumentoController extends Controller
 
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::exists($documento->path)) {
-                    Storage::delete($documento->path);
+                if (Storage::disk('local')->exists($documento->path)) {
+                    Storage::disk('local')->delete($documento->path);
                 }
 
                 $uploadedFile = $request->file('file');
@@ -416,8 +438,8 @@ class ImmobileDocumentoController extends Controller
     {
         try {
 
-            if (Storage::exists($documento->path)) {
-                Storage::delete($documento->path);
+            if (Storage::disk('local')->exists($documento->path)) {
+                Storage::disk('local')->delete($documento->path);
             }
 
             $documento->delete();

@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Atenção — Esta atualização altera a base de dados: uma migração acrescenta ao plano de contas um novo campo que regista explicitamente se uma rubrica é um capítulo (um contentor, sem orçamento próprio) ou uma rubrica de despesa real. Nenhuma conta existente é classificada de forma diferente da que aparece hoje: quem já tem uma tabela millesimale associada permanece protegido mesmo com valor zero. Execute as migrações após atualizar.",
+        "Corrigido um defeito em que uma rubrica de despesa ainda sem orçamento (valor zero, mas com tabela millesimale e percentagens de rateio já associadas) podia perder silenciosamente esses dados ao reabrir e voltar a guardar a modal de edição sem alterar nada. A causa era o sistema adivinhar se uma rubrica era um capítulo a partir do seu valor, em vez de recordar a escolha feita explicitamente na criação. Passa agora a ser um facto guardado, nunca mais uma suposição.",
+        "Adicionada uma dupla proteção do lado do servidor: transformar em capítulo uma rubrica com dados reais associados passa a exigir confirmação explícita, caso contrário a gravação é recusada com um aviso em vez de apagar silenciosamente.",
+        "Corrigido também um segundo defeito, relacionado com o primeiro: uma subconta já inserida sob um capítulo podia reaparecer na lista pendente como possível capítulo pai para uma nova rubrica. Uma subconta nunca mais é proposta como pai, e criar ou editar uma rubrica declarando-a simultaneamente capítulo e subconta é sempre recusado."
+    ]
+}

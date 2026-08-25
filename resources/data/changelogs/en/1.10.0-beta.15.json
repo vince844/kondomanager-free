@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Dashboard: the budget-overrun indicator now works correctly. When a category's actual spending exceeds its budget and the shortfall isn't yet covered by an instalment plan, the dashboard now properly flags it as an \"overrun\"; previously the indicator stayed off even though the shortfall amount was already shown correctly. The typical case is an out-of-budget invoice just ratified by the assembly: the overrun warning now stays on until the missing money is actually requested from the owners through an instalment plan. This is a display-only fix — no accounting data was wrong.",
+        "Extraordinary instalment plans: fixed a case where a plan covering legacy debts (or invoices with unexpected/one-off amounts) generated no instalments and returned an unclear error. These amounts are now split correctly among the owners. Also, when a plan finances only part of an invoice, exactly the financed share is now distributed, and the ordinary lines of a mixed invoice no longer end up in the extraordinary plan by mistake.",
+        "PDF prints (payment schedule and per-table breakdown, per real-estate unit): the report now leads with the unit's name, consistent with the on-screen view, with the registered account holder shown as a secondary line. Previously the print identified the row by the unit code and the registered owner only, causing confusion when the name given to the unit and the owner record don't match. Also added the document issue date in the footer of every print, above the legal note."
+    ]
+}

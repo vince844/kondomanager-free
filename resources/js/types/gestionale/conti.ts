@@ -29,6 +29,11 @@ export interface Conto {
   id: number
   piano_conto_id: number
   parent_id: number | null
+  // Fatto esplicito e persistito lato server — mai indovinato da importo/parent_id
+  // (bug "voce a zero perde la tabella millesimale").
+  is_capitolo: boolean
+  // Voce di spesa "da esercizio precedente": filtra l'elenco "Già versato".
+  richiede_gia_versato: boolean
   codice?: string | null
   nome: string
   descrizione: string | null
@@ -49,6 +54,10 @@ export interface Conto {
 
   // Radar Copertura & Lucchetto
   impegnato?: number
+  /** Preventivo vero, prima che il controller lo gonfi allo speso in caso di sforo. */
+  budget_originale_raw?: number
+  /** Speso reale in centesimi: fatture registrate (anche non pagate) + regolazioni immediate. */
+  speso_raw?: number
   percentuale_copertura?: number
   stato_copertura?: 'empty' | 'partial' | 'full' | 'over'
   piani_collegati?: string[]
@@ -113,15 +122,11 @@ export type ContoSoggetto = 'proprietario' | 'inquilino' | 'usufruttuario'
 
 // Helper semplificati
 export const ContoHelpers = {
-  // Verifica se un conto è un capitolo (importo 0 e ha sottoconti)
+  // Fatto esplicito e persistito — mai indovinato da importo (l'euristica
+  // precedente usava anche `importo.includes('0,00')`, che matcha per errore
+  // anche "€ 10,00"). Vedi bug "voce a zero perde la tabella millesimale".
   isCapitolo(conto: Conto): boolean {
-    const importoZero = 
-      conto.importo === '€ 0,00' || 
-      conto.importo === '0,00' || 
-      conto.importo === '€0,00' ||
-      conto.importo.includes('0,00');
-      
-    return importoZero && !!conto.sottoconti && conto.sottoconti.length > 0
+    return !!conto.is_capitolo
   },
 
   // Verifica se un conto ha sottoconti

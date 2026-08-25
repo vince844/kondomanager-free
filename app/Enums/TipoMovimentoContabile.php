@@ -19,6 +19,7 @@ namespace App\Enums;
  *   rettifica, pagamento_f24, incasso_diverso, rimborso_assicurativo
  *
  * Aggiunto in v1.9.1: storno_pagamento_fornitore
+ * Aggiunto in v1.10.0-beta.21: storno_pagamento_f24
  */
 enum TipoMovimentoContabile: string
 {
@@ -38,17 +39,46 @@ enum TipoMovimentoContabile: string
     case INCASSO_DIVERSO             = 'incasso_diverso';
     case RIMBORSO_ASSICURATIVO       = 'rimborso_assicurativo';
 
+    // ─── Prima nota diretta (Scrittura senza Fattura a monte) ────────────────
+    /**
+     * Registrazione a regolazione immediata: costo → banca/cassa in scrittura unica,
+     * senza aprire una partita fornitore. Per i fatti amministrativi che nascono e si
+     * estinguono nello stesso momento (bolli, commissioni bancarie, addebiti automatici).
+     * Vietata dove serve la struttura del debito — vedi RegolazioneImmediataNonAmmessaException.
+     */
+    case REGOLAZIONE_IMMEDIATA       = 'regolazione_immediata';
+
+    /** Scrittura inversa che annulla una regolazione immediata (giornale append-only). */
+    case STORNO_REGOLAZIONE_IMMEDIATA = 'storno_regolazione_immediata';
+
     // ─── Adempimenti fiscali ──────────────────────────────────────────────────
     case PAGAMENTO_F24               = 'pagamento_f24';
+
+    /** Scrittura inversa che annulla un pagamento F24 (giornale append-only). */
+    case STORNO_PAGAMENTO_F24        = 'storno_pagamento_f24';
 
     // ─── Movimenti tecnici ────────────────────────────────────────────────────
     case APERTURA                    = 'apertura';
     case CHIUSURA                    = 'chiusura';
     case GIROCONTO                   = 'giroconto';
+
+    /**
+     * Scrittura inversa che annulla un giroconto (giornale append-only).
+     * Come il giroconto, NON è entrata né uscita di cassa: sposta liquidità
+     * fra partizioni dell'unico c/c, entrata e uscita si elidono.
+     */
+    case STORNO_GIROCONTO            = 'storno_giroconto';
+
     case RETTIFICA                   = 'rettifica';
 
-    // ─── Futuri (v1.10+, non ancora in DB) ───────────────────────────────────
+    // Attivato in beta.27: RegistraContributoInCassaAction — porta a giornale
+    // un "già versato" (beta.26) che l'amministratore dichiara ancora fermo su
+    // una cassa/fondo del condominio. DARE cassa / AVERE Fondo Passate Gestioni,
+    // sullo stesso schema di APERTURA ma senza toccare saldo_iniziale né essere
+    // soggetto alla sua guardia "una volta sola per cassa".
     case ACCANTONAMENTO              = 'accantonamento';
+
+    // ─── Futuri (v1.10+, non ancora in DB) ───────────────────────────────────
     case RIPARTO                     = 'riparto';
     case RICONCILIAZIONE_BANCARIA    = 'riconciliazione_bancaria';
 
@@ -69,10 +99,14 @@ enum TipoMovimentoContabile: string
             self::RIMBORSO_CONDOMINO         => 'Rimborso condòmino',
             self::INCASSO_DIVERSO            => 'Incasso diverso',
             self::RIMBORSO_ASSICURATIVO      => 'Rimborso assicurativo',
+            self::REGOLAZIONE_IMMEDIATA      => 'Regolazione immediata',
+            self::STORNO_REGOLAZIONE_IMMEDIATA => 'Storno regolazione immediata',
             self::PAGAMENTO_F24              => 'Pagamento F24',
+            self::STORNO_PAGAMENTO_F24       => 'Storno pagamento F24',
             self::APERTURA                   => 'Apertura esercizio',
             self::CHIUSURA                   => 'Chiusura esercizio',
             self::GIROCONTO                  => 'Giroconto',
+            self::STORNO_GIROCONTO           => 'Storno giroconto',
             self::RETTIFICA                  => 'Rettifica',
             self::ACCANTONAMENTO             => 'Accantonamento',
             self::RIPARTO                    => 'Riparto',
@@ -85,6 +119,7 @@ enum TipoMovimentoContabile: string
         return in_array($this, [
             self::PAGAMENTO_FORNITORE,
             self::PAGAMENTO_F24,
+            self::REGOLAZIONE_IMMEDIATA,
         ]);
     }
 
@@ -95,6 +130,10 @@ enum TipoMovimentoContabile: string
             self::INCASSO_DIVERSO,
             self::RIMBORSO_ASSICURATIVO,
             self::STORNO_PAGAMENTO_FORNITORE,
+            // Lo storno di un'uscita di cassa è, per definizione, un rientro.
+            self::STORNO_REGOLAZIONE_IMMEDIATA,
+            self::STORNO_PAGAMENTO_F24,
+            self::ACCANTONAMENTO,
         ]);
     }
 

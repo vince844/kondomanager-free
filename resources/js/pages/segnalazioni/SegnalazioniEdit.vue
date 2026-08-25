@@ -32,16 +32,16 @@ const props = defineProps<{
 
 const { generateRoute } = usePermission();
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
-      title: trans('segnalazioni.breadcrumbs.list') || 'Segnalazioni', 
+      title: trans('segnalazioni.breadcrumbs.list'), 
       href: route(generateRoute('segnalazioni.index'))
   },
   {
-      title: trans('segnalazioni.breadcrumbs.edit') || 'Modifica segnalazione',
+      title: trans('segnalazioni.breadcrumbs.edit'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {
@@ -82,6 +82,8 @@ const form = useForm({
     is_featured: !!props.segnalazione?.is_featured,
     is_published: props.segnalazione?.is_published !== undefined ? Boolean(props.segnalazione.is_published) : true,
     anagrafiche: props.segnalazione?.anagrafiche?.map((a: Anagrafica) => a.id) || [],
+    // Parte sempre spenta — vedi la nota gemella in `comunicazioni/ComunicazioniEdit.vue`.
+    avvisa_destinatari: false,
 });
 
 onMounted(() => {
@@ -133,8 +135,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.content_title') || 'Dettagli Segnalazione' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.content_desc') || 'Inserisci le informazioni relative al problema da segnalare.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.content_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.content_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -168,8 +170,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.location_title') || 'Riferimenti Geografici' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.location_desc') || 'Indica il condominio e le anagrafiche legate a questa segnalazione.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.location_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.location_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -211,8 +213,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
-                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.settings_title') || 'Gestione Operativa' }}</CardTitle>
-                    <CardDescription>{{ trans('segnalazioni.section.settings_desc') || 'Imposta lo stato di lavorazione, la priorità e la visibilità della segnalazione.' }}</CardDescription>
+                    <CardTitle class="text-base font-semibold">{{ trans('segnalazioni.section.settings_title') }}</CardTitle>
+                    <CardDescription>{{ trans('segnalazioni.section.settings_desc') }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
@@ -391,6 +393,40 @@ const submit = () => {
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                                         <h4 class="text-sm font-bold mb-2">{{ trans('segnalazioni.label.featured') }}</h4>
                                         <p class="text-xs text-slate-500 leading-relaxed">{{ trans('segnalazioni.tooltip.featured') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+
+                        <!--
+                          Non è una proprietà della segnalazione: è un'azione che si compie
+                          salvando. Vedi la nota per esteso in `comunicazioni/ComunicazioniEdit.vue`.
+                          ⚠️ Qui la platea è **tutto il condominio** della segnalazione, non una
+                          lista scelta: spuntarla manda una mail a tutti quelli che hanno le
+                          notifiche accese, non solo a chi è nominato nel campo «anagrafiche».
+                        -->
+                        <div class="sm:col-span-6">
+                            <div class="flex items-center justify-between p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <Checkbox
+                                        id="avvisa_destinatari"
+                                        :checked="form.avvisa_destinatari"
+                                        v-model="form.avvisa_destinatari"
+                                        @update:checked="(val: boolean) => form.avvisa_destinatari = val"
+                                    />
+                                    <Label for="avvisa_destinatari" class="cursor-pointer font-medium text-sm text-amber-900 dark:text-amber-200">
+                                        {{ trans('segnalazioni.label.notify_update') }}
+                                    </Label>
+                                </div>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-amber-500 hover:text-amber-700 outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('segnalazioni.label.notify_update') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('segnalazioni.tooltip.notify_update') }}</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>

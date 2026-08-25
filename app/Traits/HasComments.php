@@ -60,6 +60,6 @@ trait HasComments
      */
     public function utenteHaAccessoAiCommenti(\App\Models\User $user): bool
     {
-        return $user->condomini()->whereKey($this->condominioId())->exists();
+        return $user->anagrafica?->condomini()->whereKey($this->condominioId())->exists() ?? false;
     }
 }

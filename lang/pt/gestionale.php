@@ -781,8 +781,6 @@ return [
                     'description_optional' => 'Descrição (Opcional)',
                     'pdf_only' => 'Apenas ficheiros PDF são permitidos.',
                     'pdf_short' => 'Apenas PDF',
-                    'max_size_20mb' => 'O ficheiro não pode exceder 20MB.',
-                    'pdf_max_20mb' => 'Apenas PDF (Máx. 20MB)',
                     'click_to_upload' => 'Clique para carregar',
                     'or_drag_file' => 'ou arraste o ficheiro para aqui',
                     'or_drag_new_file' => 'ou arraste o novo ficheiro para aqui',
@@ -1138,8 +1136,6 @@ return [
                     'description_optional' => 'Descrição (Opcional)',
                     'pdf_only' => 'Apenas ficheiros PDF são permitidos.',
                     'pdf_short' => 'Apenas PDF',
-                    'max_size_20mb' => 'O ficheiro não pode exceder 20MB.',
-                    'pdf_max_20mb' => 'Apenas PDF (Máx. 20MB)',
                     'click_to_upload' => 'Clique para carregar',
                     'or_drag_file' => 'ou arraste o ficheiro para aqui',
                     'or_drag_new_file' => 'ou arraste o novo ficheiro para aqui',
@@ -1520,6 +1516,9 @@ return [
                         'committed_already_text' => 'Esta despesa já foi alocada num plano de prestações no montante total de :amount. Para manter a coerência contabilística, não pode reduzir o total abaixo deste valor.',
                         'committed_how_to_fix' => 'Se precisar de um valor inferior, vá ao módulo "Planos de prestações", remova a quota atribuída a esta rubrica e depois volte a editar aqui.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'Esta rubrica já tem uma tabela millesimale e percentagens de rateio associadas. Transformá-la em capítulo irá eliminá-las. Continuar?',
+                    ],
                     'actions' => [
                         'saving' => 'A guardar...',
                         'save_changes' => 'Guardar alterações',
@@ -1757,7 +1756,7 @@ return [
         'breadcrumb_quotes' => 'Permilagens',
         'heading_title' => 'Associar imóveis à tabela de permilagens',
         'heading_description' => 'Abaixo pode definir as permilagens de cada imóvel associado à tabela - :table',
-        'max_rows_reached' => 'Já atingiu o número máximo de linhas permitidas.',
+        'max_rows_reached' => 'Já associou todas as :count unidades imobiliárias deste condomínio. Para acrescentar mais, crie-as primeiro na secção «Unidades imobiliárias».',
         'actions' => [
             'add_property' => 'Adicionar imóvel',
         ],

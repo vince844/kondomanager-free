@@ -17,6 +17,7 @@ return [
     'error_approve_document'         => 'Ocorreu um erro durante a aprovação do documento.',
     'error_notify_new_document'      => 'O documento foi criado, mas ocorreu um erro no envio da notificação.',
     'error_notify_approved_document' => 'O documento foi aprovado, mas ocorreu um erro no envio da notificação.',
+    'error_notify_updated_document' => "O documento foi atualizado, mas ocorreu um erro no envio da notificação.",
     'category_has_documents'         => 'Esta categoria contém documentos. Mova-os ou elimine-os antes de eliminar a categoria.',
     'success_delete_category'        => 'A categoria de documentos foi eliminada com sucesso.',
     'error_delete_category'          => 'Ocorreu um erro durante a eliminação da categoria de documentos.',
@@ -104,6 +105,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avisar por email quem já recebeu este documento",
         'name'                          => 'Nome do documento',
         'description'                   => 'Descrição do documento',
         'category'                      => 'Categoria',
@@ -151,8 +153,7 @@ return [
         'delete_document_description'   => 'Esta ação é irreversível. Eliminará o documento e todos os dados associados.',
         'select_document_title'         => 'Arraste o seu documento aqui',
         'select_document_description'   => 'Ou clique para o selecionar do seu dispositivo.',
-        'document_supported_types'      => 'Apenas são permitidos os formatos PDF, JPEG, PNG.',
-        'max_document_size'             => 'O ficheiro não pode exceder 20 MB',
+        'document_supported_types'      => 'Apenas é permitido o formato PDF.',
         'categories' => [
             'delete_category_title'       => 'Tem a certeza de que pretende eliminar esta categoria?',
             'delete_category_description' => 'Esta ação é irreversível. Eliminará a categoria e todos os documentos associados.',
@@ -173,10 +174,10 @@ return [
      | Stats
      | ------------------------------------------------------------------ */
     'stats' => [
-        'total_storage_bytes'  => 'Espaço total utilizado',
-        'total_documents'      => 'Documentos totais',
-        'uploaded_this_month'  => 'Carregados este mês',
-        'average_size_bytes'   => 'Tamanho médio',
+        'total_storage_bytes'  => 'Espaço do arquivo',
+        'total_documents'      => 'Documentos no arquivo',
+        'uploaded_this_month'  => 'Arquivados este mês',
+        'average_size_bytes'   => 'Tamanho médio no arquivo',
     ],
 
     /* ------------------------------------------------------------------
@@ -194,6 +195,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Envia um email a quem já era destinatário, a dizer que o documento mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-o de qualquer forma, porque para ele é novo.",
         'visibility' => 'Se definida como privada, apenas os administradores poderão visualizar o documento.',
         'category'   => 'Selecione uma categoria para organizar melhor os documentos, ou crie uma nova.',
     ],

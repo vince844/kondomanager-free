@@ -13,18 +13,22 @@ export function useCapitoliConti() {
   const error = ref<string | null>(null)
 
   const fetchCapitoliConti = async (
-    condominioId: string | number, 
-    pianoContoId: string | number
+    condominioId: string | number,
+    pianoContoId: string | number,
+    // In modifica: id del conto corrente, così il backend lo esclude (insieme ai suoi
+    // discendenti) dai possibili padri ed evita il "figlio di sé stesso" / i cicli.
+    excludeContoId?: string | number | null
   ) => {
     try {
       isLoading.value = true
       error.value = null
-      
+
       const response = await axios.get(route('admin.gestionale.fetch-capitoli-conti', {
         condominio: condominioId
       }), {
         params: {
-          piano_conto_id: pianoContoId
+          piano_conto_id: pianoContoId,
+          ...(excludeContoId ? { conto_id: excludeContoId } : {}),
         }
       })
       

@@ -1,15 +1,16 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import FattureGuide from '@/components/guides/FattureGuide.vue';
 import DataTable from '@/components/gestionale/movimenti/fatture/DataTable.vue'; 
 import { createColumns } from '@/components/gestionale/movimenti/fatture/columns';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { FileText, Clock, AlertTriangle, Euro } from 'lucide-vue-next';
+import { FileText, Clock, AlertTriangle, Euro, BookOpen, X, ArrowRight } from 'lucide-vue-next';
 import Alert from "@/components/Alert.vue";
 import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
@@ -20,6 +21,8 @@ const props = defineProps<{
     fatture:    { data: any[]; meta: any };
     stats:      { totale_aperte: number; totale_sfori: number; importo_da_pagare: number };
     filters:    { stato_pagamento?: string; stato_approvazione?: string; search?: string };
+    regolazioniImmediate?: number;
+    esercizio?: { id: number } | null;
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -33,6 +36,8 @@ const headerBreadcrumbs = computed(() => [
     { title: 'Fatture Passive' },
 ]);
 
+const showGuide = ref(false);
+
 const pageGuides = [
     { title: 'Ciclo Passivo', description: 'Registra le fatture con controllo automatico del budget.', icon: FileText, colorVariant: 'blue' as const },
     { title: 'Sfori Motivati', description: 'Le fatture che superano il preventivo richiedono ratifica.', icon: AlertTriangle, colorVariant: 'amber' as const },
@@ -40,6 +45,67 @@ const pageGuides = [
 ];
 
 const sforiFilterActive = computed(() => props.filters.stato_approvazione === 'sforo_motivato');
+
+// Ponte verso il Libro Giornale: le Regolazioni Immediate si creano dalla toolbar di
+// questa pagina ma non vi compaiono mai, perché non generano righe in fatture_passive.
+// Il link arriva già filtrato per tipo movimento, così non si atterra su un registro
+// pieno di tutto il resto.
+const regolazioniImmediate = computed(() => props.regolazioniImmediate ?? 0);
+
+const linkRegolazioni = computed(() => {
+    if (!props.esercizio) return null;
+
+    return route(generateRoute('gestionale.esercizi.scritture.index'), {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        tipo_movimento: 'regolazione_immediata',
+    });
+});
+
+// L'avviso è già silenzioso per chi non usa le regolazioni immediate (compare solo
+// se ce ne sono). Ma chi le usa come strumento abituale lo vedrebbe a ogni visita,
+// e per lui non è un aiuto: è un promemoria di una cosa che sa già. Chiuderlo è una
+// preferenza di visualizzazione, quindi sta nel browser — non serve un giro in
+// database né una voce nelle impostazioni. Per condominio, perché l'abitudine può
+// cambiare da un fabbricato all'altro.
+//
+// La chiusura NON è definitiva: scade dopo sei mesi. Un nascondimento per sempre
+// vale finché l'amministratore ricorda dove vivono le regolazioni; passata una
+// stagione contabile intera è più probabile che il promemoria torni utile che
+// fastidioso. Salviamo quindi la data, non un flag.
+const MESI_PRIMA_DI_RIMOSTRARE = 6;
+const chiavePonte = `km.ponte-regolazioni-nascosto.${props.condominio.id}`;
+
+const nascondimentoAncoraValido = (): boolean => {
+    if (typeof window === 'undefined') return false;
+
+    const salvato = window.localStorage.getItem(chiavePonte);
+    if (!salvato) return false;
+
+    const quando = Number(salvato);
+    if (!Number.isFinite(quando)) {
+        // Valore vecchio o corrotto (le prime versioni salvavano "1"): lo trattiamo
+        // come scaduto, così l'avviso torna una volta e poi riparte col nuovo schema.
+        window.localStorage.removeItem(chiavePonte);
+        return false;
+    }
+
+    const scadenza = new Date(quando);
+    scadenza.setMonth(scadenza.getMonth() + MESI_PRIMA_DI_RIMOSTRARE);
+
+    return Date.now() < scadenza.getTime();
+};
+
+const ponteNascosto = ref(nascondimentoAncoraValido());
+
+const mostraPonte = computed(() => regolazioniImmediate.value > 0 && !ponteNascosto.value);
+
+const nascondiPonte = () => {
+    ponteNascosto.value = true;
+    if (typeof window !== 'undefined') {
+        window.localStorage.setItem(chiavePonte, String(Date.now()));
+    }
+};
 
 // Toggle filtro sfori — click attiva, secondo click rimuove
 const filterSfori = () => {
@@ -67,6 +133,9 @@ const filterSfori = () => {
                 :breadcrumbs="(headerBreadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="showGuide = true"
             />
 
             <div class="w-full">
@@ -125,6 +194,39 @@ const filterSfori = () => {
                             <Alert :message="flashMessage.message" :type="flashMessage.type" />
                         </div>
 
+                        <div
+                            v-if="mostraPonte && linkRegolazioni"
+                            class="mb-3 flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3"
+                        >
+                            <BookOpen class="w-4 h-4 text-indigo-600 shrink-0" />
+                            <p class="flex-1 text-sm text-indigo-900 min-w-0">
+                                <span class="font-semibold">{{ regolazioniImmediate }}</span>
+                                {{ regolazioniImmediate === 1 ? 'regolazione immediata registrata' : 'regolazioni immediate registrate' }}
+                                in questo esercizio. Non compaiono qui perché non generano una fattura: le trovi nel Libro Giornale.
+                            </p>
+                            <!-- Azione e chiusura come coppia: stessa altezza, stesso raggio,
+                                 separate da un filo. Prima erano un testo e un'icona nuda,
+                                 di peso visivo diverso. -->
+                            <div class="flex shrink-0 items-center divide-x divide-indigo-200 rounded-lg border border-indigo-200 bg-white/70 overflow-hidden">
+                                <Link
+                                    :href="linkRegolazioni"
+                                    class="flex h-8 items-center gap-1.5 px-3 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-50"
+                                >
+                                    Apri
+                                    <ArrowRight class="w-3.5 h-3.5" />
+                                </Link>
+                                <button
+                                    type="button"
+                                    class="flex h-8 w-8 items-center justify-center text-indigo-400 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+                                    title="Nascondi questo avviso (riapparirà tra sei mesi)"
+                                    aria-label="Nascondi avviso"
+                                    @click="nascondiPonte"
+                                >
+                                    <X class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
                         <div>
                             <DataTable 
                                 :columns="createColumns(props.condominio.id)"
@@ -138,5 +240,7 @@ const filterSfori = () => {
                 </section>
             </div>
         </div>
+
+        <FattureGuide v-model:open="showGuide" />
     </GestionaleLayout>
 </template>

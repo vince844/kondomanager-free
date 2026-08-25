@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Pannello impostazioni cron & heartbeat: aggiunta una nuova vista per monitorare in tempo reale lo stato di salute dello scheduler di sistema con un widget visivo 'Heartbeat'.",
+        "Stampa riparto bilancio per capitolo: introdotto un nuovo documento PDF che raggruppa analiticamente le spese ripartite per capitoli di spesa, mostrando le quote esatte per ogni unità e soggetto.",
+        "Paginazione automatica stampe PDF: i prospetti PDF troppo larghi (con molte tabelle o capitoli) vengono ora suddivisi dinamicamente su più pagine orizzontali per garantire una leggibilità perfetta.",
+        "Supporto piani rate straordinari misti: è ora possibile aggregare in un unico piano straordinario sia i costi derivanti dalle fatture collegate sia quelli provenienti da capitoli di spesa inseriti manualmente.",
+        "Migliorata la logica 'catch-all' (raccoglitore): i piani rate generali ora escludono automaticamente tutte le voci di spesa già assegnate ad altri piani rate parziali attivi, prevenendo il rischio di doppia riscossione.",
+        "Ottimizzazioni per sviluppatori e sysadmin: aggiunta la guida ufficiale per la configurazione dei cron job su Plesk, implementato il supporto Docker per lo scheduler locale e introdotta una suite di test automatizzati per certificare il motore di riparto."
+    ]
+}

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Tabella;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Log;
  *     immobile_id => [
  *       'interno'  => string,
  *       'piano'    => string,
+ *       'nome_immobile' => string,  // nome unità (allineato alla vista a schermo), fallback codice
  *       'soggetti' => [
  *         anagrafica_id => [
  *           'nome'       => string,
@@ -33,23 +35,46 @@ use Illuminate\Support\Facades\Log;
  *   'tot_per_tabella' => [ tabella_id => int (cents) ],
  * ]
  *
- * ALGORITMO
- * ---------
- * Per ogni foglia del piano dei conti (conto con tabelleMillesimali configurate):
- *   1. Determina l'importo di quel conto nel piano rate (override pivot o importo live).
- *   2. Per ogni tabella collegata (con coefficiente%):
- *      - Parte di importo allocata a questa tabella = importo × coeff/100
- *      - Per ogni immobile in tabella: peso = valore_immobile / somma_valori_tabella
- *      - Per ogni ripartizione soggetto (proprietario, inquilino, ...):
- *          importo_soggetto_tabella = parte_tabella × peso_immobile × percentuale_soggetto/100
- *        → accumula in weights[tabella_id][anagrafica_id][immobile_id]
- * 3. Penny-perfect sull'importo totale del conto (globale), poi proporziona per tabella.
+ * ALGORITMO (per-conto, allineato a CalcoloQuoteService)
+ * ------------------------------------------------------
+ * Le celle della matrice sono ricostruite CONTO PER CONTO con lo stesso
+ * identico algoritmo penny-perfect usato da CalcoloQuoteService per generare
+ * le rate (pesi identici, stessa cascata ruolo, stessa decurtazione scoperti,
+ * stesso metodo del resto più grande). Ne seguono due garanzie:
+ *
+ *   1. COLONNE: ogni tabella somma esattamente al budget dei suoi conti
+ *      (per i conti collegati a una sola tabella — il caso normale), e i
+ *      centesimi di arrotondamento restano DENTRO i partecipanti del conto.
+ *   2. RIGHE: il totale di ogni soggetto coincide con quanto realmente
+ *      addebitato in contabilità (rate_quote) perché le allocazioni sono le
+ *      stesse che hanno generato le rate. Se i dati sono cambiati dopo la
+ *      generazione (o per quote extra come saldi), un riallineamento di
+ *      sicurezza porta il residuo nella pseudo-colonna «addebito diretto»:
+ *      la garanzia legale (riga = rate_quote) vale SEMPRE.
+ *
+ * Le due garanzie sono indipendenti, e vanno tenute tali. Fino alla beta.73 il
+ * riallineamento scaricava il residuo su una tabella millesimale, cioè salvava
+ * la (2) rompendo la (1): la colonna di una tabella smetteva di valere il
+ * budget dei suoi conti. Il pregresso non appartiene a nessuna tabella — per
+ * questo la colonna degli addebiti diretti esiste.
+ *
+ * Storia: v1.9.1 distribuiva il totale di riga proporzionalmente ai pesi e
+ * scaricava il resto sull'ultima tabella registrata (anche a peso zero →
+ * "€0,01 su TUNNEL a chi non c'entra"); vedi
+ * docs/ripartotabelle_discrepanza_centesimale.md.
  *
  * NOTA: La quota millesimale mostrata nella colonna "mill." è letta direttamente da
  * quote_tabella.valore per ogni (immobile, tabella). Non viene ricalcolata.
  */
 class RipartoTabelleService
 {
+    /**
+     * Chiave della pseudo-colonna che ospita gli addebiti ad personam.
+     *
+     * Non è l'id di nessuna tabella — è una stringa proprio per non poter collidere con uno.
+     */
+    public const COLONNA_DIRETTO = 'diretto';
+
     /**
      * Costruisce la matrice completa per la stampa.
      *
@@ -69,14 +94,47 @@ class RipartoTabelleService
             return $this->empty();
         }
 
-        // Override importi dal pivot piano_rate_capitoli
-        $pivotOverrides = [];
-        foreach ($pianoRate->capitoli as $cap) {
-            if (!is_null($cap->pivot->importo)) {
-                $pivotOverrides[$cap->id] = (int) $cap->pivot->importo;
-            }
+        // ─── Quanto va su ogni capitolo: **lo dice il motore** ─────────────────────────
+        //
+        // ⚠️ Qui c'erano venti righe che se lo ricalcolavano da sole, leggendo `righe_fattura`.
+        // Erano un rimpiazzo ingenuo di `calcolaDaFattureStraordinarie()`, e sbagliavano quattro
+        // cose — tutte visibili sul documento che va in assemblea:
+        //
+        // - prendevano **tutte** le righe con un conto, comprese le ordinarie, che dello
+        //   straordinario non fanno parte: il PDF mostrava capitoli che le rate non contenevano;
+        // - sommavano `imponibile + iva`, ignorando `importo_collegato`: un piano che finanzia
+        //   € 400,00 di una fattura da € 1.000,00 stampava il riparto di tutti e mille;
+        // - non conoscevano `fattura_coperture`, e una fattura **pregressa** — che non ha righe —
+        //   produceva un **foglio bianco** a fronte di rate emesse correttamente. È lo scenario
+        //   della migrazione dello storico;
+        // - scartavano le righe **ad personam**, o peggio, se avevano anche un conto, le
+        //   spalmavano su tutta la tabella millesimale.
+        //
+        // Il confine ora è netto: il motore risponde a «quanto», questo servizio solo a «a chi»,
+        // che è la parte che deve saper spaccare per colonna — cosa che il motore non fa mai,
+        // perché aggrega tutto per anagrafica e immobile.
+        //
+        // `soloLettura`: la stampa non deve poter essere bloccata da una guardia di
+        // *generazione*. Un riparto già emesso si ristampa anche se i dati sono cambiati dopo.
+        $motore = app(CalcoloQuoteService::class);
+
+        if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture()->exists()) {
+            $motore->calcolaDaFattureStraordinarie($pianoRate);
+        } else {
+            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true);
         }
-        $capitoliIds = $pianoRate->capitoli->pluck('id')->toArray();
+
+        // Già al netto della decurtazione degli scoperti: è la ragione per cui più sotto questo
+        // servizio non la rifà. Mantenerne una seconda copia è il difetto da cui nasce la voce ⑩.
+        $pivotOverrides = $motore->getImportiPerConto();
+        $capitoliIds    = array_keys($pivotOverrides);
+
+        // Gli addebiti ad personam non appartengono a nessuna tabella: viaggiano a parte.
+        $addebitiDiretti = $motore->getAddebitiDiretti();
+
+        if (empty($capitoliIds) && empty($addebitiDiretti)) {
+            return $this->empty();
+        }
 
         // ─── 2. Carica tutti i conti foglia con tabelle ───────────────────────
         $queryConti = Conto::with([
@@ -86,31 +144,58 @@ class RipartoTabelleService
             'sottoconti.tabelleMillesimali.ripartizioni',
         ])->where('piano_conto_id', $pianoConto->id);
 
-        if (!empty($capitoliIds)) {
-            // Piano specifico: filtra per capitoli inclusi
-            $queryConti->whereIn('id', $capitoliIds);
-        } else {
-            $queryConti->whereNull('parent_id');
-        }
+        // Si disegnano **esattamente** i conti che il motore ha distribuito, e nessun altro.
+        //
+        // Prima qui c'erano due rami: uno per il piano con capitoli espliciti e uno «catch-all»
+        // che ricaricava tutti i conti radice e riescludeva a mano quelli impegnati da altri
+        // piani attivi — cioè una terza copia di una regola che il motore applica già
+        // (`CalcoloQuoteService:117-131`). Ora il registro porta solo i conti realmente
+        // ripartiti, quindi la selezione è una sola riga e non c'è più niente da tenere
+        // allineato. Con il registro vuoto siamo già usciti sopra.
+        $contiImpegnatiIds = [];
+        $conti = empty($capitoliIds)
+            ? new Collection()
+            : $queryConti->whereIn('id', $capitoliIds)->get();
 
-        $conti = $queryConti->get();
-
-        // ─── 3. Accumula pesi per tabella ────────────────────────────────────
-        // weights[tabella_id][anagrafica_id . '|' . immobile_id] = float (peso normalizzato × importo)
+        // ─── 3. Ricostruisce le allocazioni esatte per (tabella, soggetto) ────
+        // cells[tabella_id][aid|iid]   = int cents (stesse allocazioni del motore rate)
+        // weights[tabella_id][aid|iid] = float (peso × importo, solo per il fallback residuo)
         // quoteMill[tabella_id][immobile_id] = float (valore nella tabella)
-        $weights  = [];   // tabella_id → "aid|iid" → float weight
+        $cells    = [];
+        $weights  = [];
         $quoteMill = [];  // tabella_id → immobile_id → float valore
         $tabelleInfo = []; // tabella_id → ['nome', 'quota_label']
+        $processatiIds = [];
 
-        $this->processaContiPerPesi($conti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at);
+        $this->processaConti($conti, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at, $contiImpegnatiIds, $processatiIds);
 
-        if (empty($weights)) {
+        // ─── Gli addebiti ad personam, che nessuna tabella può ospitare ────────────────
+        //
+        // Una spesa con `immobile_id` non passa dai millesimi: la paga chi ha quell'unità. Non ha
+        // quindi una colonna «tabella», e prima veniva semplicemente **persa** — o, se la riga
+        // aveva anche un conto, spalmata su tutti.
+        //
+        // Vive in una pseudo-colonna con chiave `'diretto'`, che il resto del codice tratta come
+        // una tabella qualunque: così le due invarianti del documento (le celle sommano alla
+        // riga, le colonne sommano al gran totale) restano vere senza casi speciali.
+        $cellePerSoggetto = [];
+        foreach ($addebitiDiretti as $addebito) {
+            $chiave = $addebito['anagrafica_id'] . '|' . $addebito['immobile_id'];
+            $cellePerSoggetto[$chiave] = ($cellePerSoggetto[$chiave] ?? 0) + $addebito['importo'];
+        }
+
+        if (! empty($cellePerSoggetto)) {
+            $cells[self::COLONNA_DIRETTO] = $cellePerSoggetto;
+            $this->dichiaraColonnaDiretto($tabelleInfo);
+        }
+
+        if (empty($weights) && empty($cellePerSoggetto)) {
             return $this->empty();
         }
 
         // ─── 4. Somma importi totali da rate_quote già emesse ─────────────────
-        // Usiamo le rate_quote come fonte di verità per gli importi reali distribuiti.
-        // I weights calcolati sopra servono SOLO per proporzionare per tabella.
+        // Le rate_quote restano la fonte di verità per il totale di ogni soggetto:
+        // le celle per-conto vengono riallineate a questo totale in caso di residuo.
         $pianoRate->load([
             'rate.rateQuote.anagrafica',
             'rate.rateQuote.immobile',
@@ -122,27 +207,27 @@ class RipartoTabelleService
             foreach ($rata->rateQuote as $rq) {
                 if (!$rq->anagrafica_id || !$rq->immobile_id) continue;
                 $totaliReali[$rq->anagrafica_id][$rq->immobile_id] =
-                    ($totaliReali[$rq->anagrafica_id][$rq->immobile_id] ?? 0) + (int) $rq->importo;
+                    ($totaliReali[$rq->anagrafica_id][$rq->immobile_id] ?? 0) + (int) round($rq->importo);
             }
         }
 
         // ─── 5. Costruisce struttura righe ────────────────────────────────────
-        // Per ogni (anagrafica, immobile) con importo reale, distribui per tabella
-        // usando le quote di peso calcolate.
 
         $righe       = [];
         $totPerTab   = array_fill_keys(array_keys($tabelleInfo), 0);
         $granTotale  = 0;
 
-        // Mappa ruolo → sigla
+        // Mappa ruolo → sigla.
+        //
+        // `nuda_proprietario` mancava, e il ripiego `strtoupper(substr(..., 0, 1))` di :221 lo
+        // rendeva **«N»**: una sigla che nella legenda del documento non esiste. Da quando il
+        // ruolo è registrabile (beta.43) può comparire davvero in assemblea.
         $sigleRuolo = [
             'proprietario'      => 'P',
+            'nuda_proprietario' => 'NP',
             'inquilino'         => 'I',
             'usufruttuario'     => 'U',
         ];
-
-        // Calcola pesi totali per immobile per ogni tabella, per poter proporzionare i millesimi
-        // (codice rimosso perché passiamo ai millesimi accorpati per immobile)
 
         // Per ogni anagrafica × immobile presente nelle rate reali
         foreach ($totaliReali as $anagraficaId => $perImmobile) {
@@ -169,38 +254,56 @@ class RipartoTabelleService
                 $quotaSogg = $pivot?->quota ?? 100;
                 $siglRuolo = $sigleRuolo[$ruoloRaw] ?? strtoupper(substr($ruoloRaw, 0, 1));
 
-                // Calcola pesi per tabella per questo (anagrafica × immobile)
                 $pesiFlatKey = $anagraficaId . '|' . $immobileId;
-                $pesPerTab   = [];
-                $peseTot     = 0.0;
 
-                foreach ($weights as $tabId => $flatMap) {
-                    $w = $flatMap[$pesiFlatKey] ?? 0.0;
-                    $pesPerTab[$tabId] = $w;
-                    $peseTot += $w;
+                // Celle esatte per-conto (stesse allocazioni che hanno generato le rate)
+                $importiPerTab = [];
+                $rowSum    = 0;
+                foreach ($tabelleInfo as $tabId => $_info) {
+                    $cent = $cells[$tabId][$pesiFlatKey] ?? 0;
+                    $importiPerTab[$tabId] = $cent;
+                    $rowSum += $cent;
                 }
 
-                // Distribuisce l'importo reale proporzionalmente alle tabelle
-                $importiPerTab = [];
-                if ($peseTot > 0.0) {
-                    $assegnato = 0;
-                    $tabIds    = array_keys($pesPerTab);
-                    $nTab      = count($tabIds);
-                    foreach ($tabIds as $idx => $tabId) {
-                        if ($idx === $nTab - 1) {
-                            // Ultimo: il resto (penny-perfect)
-                            $importiPerTab[$tabId] = $importoTotale - $assegnato;
-                        } else {
-                            $q = (int) round($importoTotale * ($pesPerTab[$tabId] / $peseTot));
-                            $importiPerTab[$tabId] = $q;
-                            $assegnato += $q;
-                        }
-                    }
-                } else {
-                    // Nessun peso configurato: mette tutto in "senza tabella"
-                    foreach (array_keys($tabelleInfo) as $tabId) {
-                        $importiPerTab[$tabId] = 0;
-                    }
+                // Riallineamento di sicurezza: la riga stampata deve SEMPRE coincidere con
+                // `rate_quote` (garanzia legale). Un residuo ≠ 0 indica quote extra — saldi di
+                // apertura, conguagli — o dati modificati dopo la generazione.
+                //
+                // Il residuo va **sempre** nella pseudo-colonna degli addebiti diretti: non
+                // appartiene a nessuna tabella millesimale, ed è esattamente ciò che quella
+                // colonna significa — denaro dovuto da questo soggetto che i millesimi non
+                // spiegano.
+                //
+                // ⚠️ **Fino alla beta.73 c'erano due strade, e una era sbagliata.** Se il
+                // soggetto aveva peso in almeno una tabella, il residuo veniva appoggiato sulla
+                // «tabella a peso maggiore» invece che qui. Il risultato: la colonna di una
+                // tabella millesimale non valeva più il deliberato. Su un preventivo di
+                // € 1.000,00 con una sola tabella, la colonna stampava **€ 1.214,36** — e la
+                // quota di un singolo condòmino poteva risultare **più alta del totale della
+                // colonna**, che è la forma in cui un amministratore se ne accorge.
+                //
+                // Segnalato il 23/08/2026 sul proprio condominio importato da Danea. I suoi
+                // € 214,36 erano i pregressi dei proprietari attuali (€ 485,59) al netto di
+                // quelli dei titolari cessati (€ 271,23), finiti sull'unità per l'art. 63 disp.
+                // att. c.c. e quindi già in questa colonna. Il difetto scattava **perché c'erano
+                // dei subentri**: senza compravendite a metà anno non si sarebbe visto.
+                //
+                // Le due garanzie del docblock convivono solo così: la riga continua a coincidere
+                // con `rate_quote`, e la colonna torna a valere il budget dei suoi conti.
+                $residuo = $importoTotale - $rowSum;
+                if ($residuo !== 0) {
+                    $importiPerTab[self::COLONNA_DIRETTO] =
+                        ($importiPerTab[self::COLONNA_DIRETTO] ?? 0) + $residuo;
+
+                    $this->dichiaraColonnaDiretto($tabelleInfo);
+
+                    Log::debug("RipartoTabelleService: residuo di {$residuo} cent portato in "
+                        . "colonna «addebito diretto» (pregresso, conguaglio, o titolare "
+                        . "staccato dalla pivot dopo la generazione delle rate).", [
+                        'piano_rate_id' => $pianoRate->id,
+                        'anagrafica_id' => $anagraficaId,
+                        'immobile_id'   => $immobileId,
+                    ]);
                 }
 
                 // Quota millesimale per tabella per questo immobile
@@ -217,6 +320,7 @@ class RipartoTabelleService
                     $righe[$immobileId] = [
                         'interno'          => $immobile->interno ?? '',
                         'piano'            => $immobile->piano   ?? '',
+                        'nome_immobile'    => $immobile->nome ?: ($immobile->codice_immobile ?? ''),
                         'soggetti'         => [],
                         'totale_immobile'  => 0,
                     ];
@@ -249,8 +353,12 @@ class RipartoTabelleService
         // Ordina righe per interno
         uasort($righe, fn($a, $b) => ($a['interno'] ?? '') <=> ($b['interno'] ?? ''));
 
-        // Ordina soggetti per ruolo (proprietario prima)
-        $ordineRuoli = ['proprietario' => 0, 'usufruttuario' => 1, 'inquilino' => 2];
+        // Ordina soggetti per ruolo (proprietario prima).
+        //
+        // `nuda_proprietario` cadeva sul `?? 9` e finiva **dopo l'inquilino**. Sta invece
+        // accanto al proprietario: è lo stesso soggetto economico con l'usufrutto staccato,
+        // ed è la lettura che l'enum già dichiara facendoli terminale l'uno dell'altro.
+        $ordineRuoli = ['proprietario' => 0, 'nuda_proprietario' => 1, 'usufruttuario' => 2, 'inquilino' => 3];
         foreach ($righe as &$riga) {
             uasort($riga['soggetti'], fn($a, $b) =>
                 ($ordineRuoli[$a['ruolo_raw']] ?? 9) <=> ($ordineRuoli[$b['ruolo_raw']] ?? 9)
@@ -273,26 +381,35 @@ class RipartoTabelleService
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Scorre i conti e accumula i pesi per tabella, mimando la logica di CalcoloQuoteService
-     * ma producendo weights[tabella_id]["aid|iid"] invece di totali[$aid][$iid].
+     * Scorre i conti replicando la traversal di CalcoloQuoteService::processaConti
+     * (overrides propagati ai sottoconti, snapshot temporale, esclusioni).
      */
-    private function processaContiPerPesi(
+    private function processaConti(
         Collection $conti,
         array $pivotOverrides,
-        array $capitoliIds,
+        array &$cells,
         array &$weights,
         array &$quoteMill,
         array &$tabelleInfo,
-        ?\Carbon\Carbon $snapshotAt
+        ?\Carbon\Carbon $snapshotAt,
+        array $contiImpegnatiIds = [],
+        array &$processatiIds = []
     ): void {
         foreach ($conti as $conto) {
+            if (in_array($conto->id, $contiImpegnatiIds)) continue;
+            if (in_array($conto->id, $processatiIds)) continue;
+            $processatiIds[] = $conto->id;
+
             $hasOverride = isset($pivotOverrides[$conto->id]);
 
             if ($hasOverride) {
                 $importo = $pivotOverrides[$conto->id];
 
                 if ($conto->tabelleMillesimali->isNotEmpty()) {
-                    $this->distribuisciConto($conto, $importo, $weights, $quoteMill, $tabelleInfo);
+                    $importoConto = in_array($conto->tipo ?? 'spesa', ['spesa', 'uscita'], true)
+                        ? abs($importo)
+                        : -abs($importo);
+                    $this->distribuisciConto($conto, $importoConto, $cells, $weights, $quoteMill, $tabelleInfo);
                     continue;
                 }
 
@@ -326,7 +443,7 @@ class RipartoTabelleService
                         }
                     }
 
-                    $this->processaContiPerPesi($figli, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt);
+                    $this->processaConti($figli, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
                 }
                 continue;
             }
@@ -334,25 +451,37 @@ class RipartoTabelleService
             // Senza override: usa importo live
             $importo = (int) ($conto->importo ?? 0);
             if ($importo !== 0 && $conto->tabelleMillesimali->isNotEmpty()) {
-                $this->distribuisciConto($conto, abs($importo), $weights, $quoteMill, $tabelleInfo);
+                $importoConto = in_array($conto->tipo ?? 'spesa', ['spesa', 'uscita'], true)
+                    ? abs($importo)
+                    : -abs($importo);
+                $this->distribuisciConto($conto, $importoConto, $cells, $weights, $quoteMill, $tabelleInfo);
             }
 
             if ($conto->sottoconti && $conto->sottoconti->isNotEmpty()) {
-                $this->processaContiPerPesi($conto->sottoconti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt);
+                $this->processaConti($conto->sottoconti, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
             }
         }
     }
 
     /**
-     * Per un singolo conto foglia, accumula i pesi per tabella × soggetto × immobile.
+     * Distribuisce un singolo conto sulle sue tabelle × soggetti con lo STESSO
+     * algoritmo di CalcoloQuoteService::distribuisciSuTabelle (pesi identici,
+     * cascata ruolo identica, decurtazione scoperti identica, penny-perfect
+     * identico), accumulando le celle intere in $cells[tabella_id][aid|iid].
      */
     private function distribuisciConto(
         Conto $conto,
-        int $importo,
+        int $importoConto,
+        array &$cells,
         array &$weights,
         array &$quoteMill,
         array &$tabelleInfo
     ): void {
+        // wPerTab[tabella_id][key] e wMerged[key]: pesi puri di QUESTO conto
+        $wPerTab = [];
+        $wMerged = [];
+        $pesoScopertoTotale = 0.0;
+
         foreach ($conto->tabelleMillesimali as $ctm) {
             $tabella = $ctm->tabella ?? null;
             if (!$tabella) continue;
@@ -372,55 +501,115 @@ class RipartoTabelleService
                     'nome'        => $tabella->nome,
                     'quota_label' => $tabella->quota_label ?? ucfirst($tabella->quota ?? 'mill.'),
                     'quota_tipo'  => $tabella->quota ?? 'millesimi',
-                    'decimali'    => $tabella->numero_decimali ?? 3,
+                    'decimali'    => $tabella->numero_decimali ?? 2,
                 ];
             }
 
-            $parteSuTabella = $importo * ($coeff / 100.0);
-
-            $ripartizioni = $ctm->ripartizioni->isNotEmpty()
-                ? $ctm->ripartizioni
-                : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
+            $weightCoeff = $coeff / 100.0;
 
             foreach ($quote as $quota) {
                 $immobile = $quota->immobile ?? null;
                 if (!$immobile) continue;
 
                 $valore = (float) $quota->valore;
-                if ($valore <= 0.0) continue;
 
-                // Registra valore nella tabella per questo immobile
+                /*
+                 * ⚠️ **La quota si registra PRIMA della guardia, e l'ordine è tutta la
+                 * correzione.**
+                 *
+                 * Fino alla beta.63 il `continue` stava sopra questa riga: un'unità a zero non
+                 * entrava nella matrice, quindi la cella del PDF usciva con un trattino —
+                 * **indistinguibile** da un'unità che nella tabella non c'è proprio
+                 * (`$quoteMill[...] ?? null` più avanti, riga ~319).
+                 *
+                 * Ma le due cose il programma le dichiara diverse dalla beta.61: la riga assente
+                 * dice «non partecipa», lo zero dice «considerata, non partecipa». È una
+                 * distinzione che serve in assemblea — l'art. 1123 c.3 mette la spesa a carico del
+                 * gruppo che trae utilità, e mettere agli atti chi è stato escluso è metà del
+                 * lavoro. Segnalato dal forum nell'agosto 2026: *«ritengo che vada data la
+                 * possibilità di gestire questo caso»*.
+                 *
+                 * Registrando prima, lo zero arriva sulla carta come `0,00`. Il `continue` resta
+                 * dov'era per tutto il resto: **nessun peso, nessun euro, nessun cambiamento del
+                 * divisore**. È presentazione, non aritmetica — ed è fissato da
+                 * `ZeroDocumentatoInStampaTest`, che ha un test apposta perché lo zero non diventi
+                 * un addebito.
+                 */
+                /*
+                 * ⚠️ **Il NULL non si registra: sono tre stati, non due.**
+                 *
+                 * `$valore = (float) $quota->valore` trasforma `null` in `0.0`, quindi registrare
+                 * senza guardia scriveva sulla carta «0,00» anche per un millesimo **non ancora
+                 * compilato** — cioè affermava «considerata ed esclusa» dove il dato dice «manca il
+                 * numero». Sono i due significati che la beta.61 ha faticato a separare, e la prima
+                 * stesura di questa correzione li faceva ricadere insieme.
+                 *
+                 * `CalcoloQuoteService:888` la distinzione ce l'ha già (`$quota->valore === null`);
+                 * qui mancava, e prima della .63 il difetto era **mascherato** dal fatto che il
+                 * `continue` stava sopra la registrazione. Trovato dalla revisione avversariale.
+                 *
+                 * Con questa riga: `null` → il PDF scrive «—» («non c'è un numero»), `0.0` → scrive
+                 * «0,00» («c'è, ed è zero»).
+                 */
+                if ($quota->valore === null) {
+                    continue;
+                }
+
                 $quoteMill[$tabella->id][$immobile->id] = $valore;
 
-                $pesoImmobile = $valore / $sommaValori;
+                if ($valore <= 0.0) continue;
+
+                $weightImmobile = $weightCoeff * ($valore / $sommaValori);
+
+                $ripartizioni = $ctm->ripartizioni->isNotEmpty()
+                    ? $ctm->ripartizioni
+                    : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
 
                 foreach ($ripartizioni as $rip) {
                     $percent = (float) $rip->percentuale;
                     if ($percent <= 0.0) continue;
 
+                    $weightRip = $weightImmobile * ($percent / 100.0);
+
                     $anagrafiche = $immobile->anagrafiche
                         ->where('pivot.attivo', true)
                         ->where('pivot.tipologia', $rip->soggetto);
 
-                    // Cascata ruolo (identica a CalcoloQuoteService)
-                    if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
-                        $catenaGodimento = ['inquilino', 'usufruttuario', 'proprietario'];
-                        $catenaCapitale  = ['proprietario'];
-                        $catena = in_array($rip->soggetto, $catenaCapitale, true)
-                            ? $catenaCapitale : $catenaGodimento;
-
-                        $start     = array_search($rip->soggetto, $catena, true);
-                        $candidati = $start === false ? $catena : array_slice($catena, $start + 1);
+                    // Cascata ruolo — **la stessa catena del motore**, dall'enum.
+                    //
+                    // ⚠️ Fino alla beta.49 qui c'erano due catene riscritte a mano e la condizione
+                    // `&& $rip->soggetto !== 'proprietario'`, che `CalcoloQuoteService` aveva
+                    // perso con la beta.43. Il commento sopra dichiarava «identica a
+                    // CalcoloQuoteService» ed era falso da undici giorni — la lezione è che un
+                    // commento non tiene allineate due copie: le tiene allineate una funzione
+                    // sola, e infatti ora la catena la scrive solo `catenaRiparto()`.
+                    //
+                    // Cosa cambiava a video: su un'unità con nuda proprietà e usufrutto, senza
+                    // proprietario attivo e con il coefficiente sul `proprietario`, il motore
+                    // risolveva la cascata e **addebitava il nudo proprietario**, mentre la
+                    // stampa cadeva nel ramo scoperto e lo mostrava a zero. Il riparto portato in
+                    // assemblea non coincideva con quello addebitato.
+                    //
+                    // Le due catene scritte a mano erano anche incomplete per conto loro: quella
+                    // di godimento finiva su `proprietario` e non arrivava mai a
+                    // `nuda_proprietario`, e per un `soggetto` fuori catalogo ripiegava
+                    // sull'intera catena di godimento invece che sul terminale legale.
+                    if ($anagrafiche->isEmpty()) {
+                        $candidati = RuoloAnagraficaImmobile::catenaRipiego($rip->soggetto);
 
                         foreach ($candidati as $ruoloFallback) {
                             $anagrafiche = $immobile->anagrafiche
                                 ->where('pivot.attivo', true)
-                                ->where('pivot.tipologia', $ruoloFallback);
+                                ->where('pivot.tipologia', $ruoloFallback->value);
                             if ($anagrafiche->isNotEmpty()) break;
                         }
                     }
 
-                    if ($anagrafiche->isEmpty()) continue;
+                    // Cascata esaurita: peso scoperto (decurtato come nel motore rate)
+                    if ($anagrafiche->isEmpty()) {
+                        $pesoScopertoTotale += $weightRip;
+                        continue;
+                    }
 
                     $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
                     if ($sommaQuote <= 0.0) $sommaQuote = 1.0;
@@ -429,17 +618,151 @@ class RipartoTabelleService
                         $quotaAnag = (float) $anag->pivot->quota;
                         if ($quotaAnag <= 0.0) continue;
 
-                        $pesoAnag = $pesoImmobile * ($percent / 100.0) * ($quotaAnag / $sommaQuote);
-                        $key      = $anag->id . '|' . $immobile->id;
+                        $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
+                        $key = $anag->id . '|' . $immobile->id;
 
-                        if (!isset($weights[$tabella->id])) {
-                            $weights[$tabella->id] = [];
-                        }
-                        $weights[$tabella->id][$key] = ($weights[$tabella->id][$key] ?? 0.0) + $parteSuTabella * $pesoAnag;
+                        $wPerTab[$tabella->id][$key] = ($wPerTab[$tabella->id][$key] ?? 0.0) + $weightAnagrafica;
+                        $wMerged[$key] = ($wMerged[$key] ?? 0.0) + $weightAnagrafica;
+
+                        // Peso × importo per il fallback residuo (ordinamento tabelle)
+                        $weights[$tabella->id][$key] =
+                            ($weights[$tabella->id][$key] ?? 0.0) + abs($importoConto) * $weightAnagrafica;
                     }
                 }
             }
         }
+
+        if (empty($wMerged)) return;
+
+        // ⚠️ **Qui c'era la decurtazione degli scoperti, ed è stata cancellata**: l'importo che
+        // arriva dal registro del motore è già al netto. Rifarla significherebbe applicarla due
+        // volte, e soprattutto significherebbe mantenere allineata una seconda copia
+        // dell'aritmetica — che è precisamente il difetto da cui nasce la coda ⑩.
+        //
+        // Resta invece la raccolta di `$pesoScopertoTotale` qui sopra: serve a normalizzare i
+        // pesi sui soli soggetti reali, non a togliere denaro.
+        $pesoSoggetti = array_sum($wMerged);
+        if ($pesoSoggetti <= 0.0) return;
+
+        $importoContoSegno = $importoConto;
+
+        $wMergedNorm = [];
+        foreach ($wMerged as $key => $w) {
+            $wMergedNorm[$key] = $w / $pesoSoggetti;
+        }
+
+        $alloc = $this->distribuisciImporto($wMergedNorm, $importoContoSegno);
+
+        // Split per tabella: se il conto insiste su una sola tabella (caso
+        // normale) l'intera quota va lì; altrimenti penny-perfect sui pesi
+        // per-tabella del soggetto.
+        $tabIds = array_keys($wPerTab);
+
+        foreach ($alloc as $key => $importoSoggetto) {
+            if (count($tabIds) === 1) {
+                $tid = $tabIds[0];
+                $cells[$tid][$key] = ($cells[$tid][$key] ?? 0) + $importoSoggetto;
+                continue;
+            }
+
+            $pesiSogg = [];
+            $sommaPesi = 0.0;
+            foreach ($tabIds as $tid) {
+                $w = $wPerTab[$tid][$key] ?? 0.0;
+                if ($w > 0.0) {
+                    $pesiSogg[$tid] = $w;
+                    $sommaPesi += $w;
+                }
+            }
+            if ($sommaPesi <= 0.0) {
+                $cells[$tabIds[0]][$key] = ($cells[$tabIds[0]][$key] ?? 0) + $importoSoggetto;
+                continue;
+            }
+
+            $pesiNorm = [];
+            foreach ($pesiSogg as $tid => $w) {
+                $pesiNorm[$tid] = $w / $sommaPesi;
+            }
+            foreach ($this->distribuisciImporto($pesiNorm, $importoSoggetto) as $tid => $parte) {
+                $cells[$tid][$key] = ($cells[$tid][$key] ?? 0) + $parte;
+            }
+        }
+    }
+
+    /**
+     * Distribuisce un importo totale basandosi su un array di pesi normalizzati,
+     * garantendo una ripartizione "penny-perfect" senza perdita o creazione di centesimi.
+     *
+     * COPIA 1:1 di CalcoloQuoteService::distribuisciImporto — DEVE rimanere
+     * sincronizzata: la garanzia "riga stampata = rate_quote" dipende dal fatto
+     * che i due servizi arrotondino in modo bit-identico.
+     *
+     * @param array $weights Array di pesi normalizzati (somma = 1)
+     * @param int $importoTotale Importo totale da distribuire in centesimi
+     * @return array Importi penny-perfect calcolati
+     */
+    /**
+     * Dichiara la pseudo-colonna degli addebiti diretti, se non c'è già.
+     *
+     * Serve da due punti che non si conoscono — le spese ad personam del motore e il residuo di
+     * un soggetto senza peso in tabella — e in entrambi i casi il significato è lo stesso: denaro
+     * dovuto da quel soggetto che i millesimi non spiegano. Una funzione sola perché la colonna
+     * resti identica, comunque ci si arrivi.
+     */
+    private function dichiaraColonnaDiretto(array &$tabelleInfo): void
+    {
+        if (isset($tabelleInfo[self::COLONNA_DIRETTO])) {
+            return;
+        }
+
+        $tabelleInfo[self::COLONNA_DIRETTO] = [
+            'nome'        => 'Addebito diretto',
+            'quota_label' => '—',
+            'quota_tipo'  => null,
+            'decimali'    => 0,
+            // Non ha una dimensione di riparto: la sotto-colonna delle quote resta vuota invece
+            // di mostrare «quote» e un totale «0», che sarebbero due numeri finti su un documento
+            // che va in assemblea.
+            'senza_quote' => true,
+        ];
+    }
+
+    private function distribuisciImporto(array $weights, int $importoTotale): array
+    {
+        $result = [];
+        if ($importoTotale === 0) {
+            foreach ($weights as $key => $_) { $result[$key] = 0; }
+            return $result;
+        }
+
+        $sign    = $importoTotale < 0 ? -1 : 1;
+        $totAbs  = abs($importoTotale);
+        $bases      = [];
+        $remainders = [];
+        $sumBase    = 0;
+
+        foreach ($weights as $key => $w) {
+            $raw   = round($totAbs * $w, 8);
+            $base  = (int) floor($raw);
+            $bases[$key]      = $base;
+            $remainders[$key] = $raw - $base;
+            $sumBase += $base;
+        }
+
+        $diff = $totAbs - $sumBase;
+        if ($diff > 0) {
+            arsort($remainders);
+            $keys = array_keys($remainders);
+            for ($i = 0; $i < $diff && $i < count($keys); $i++) {
+                $bases[$keys[$i]]++;
+            }
+        }
+
+        foreach ($bases as $key => $b) {
+            $result[$key] = $b * $sign;
+        }
+
+        return $result;
     }
 
     private function empty(): array

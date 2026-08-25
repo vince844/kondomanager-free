@@ -16,6 +16,7 @@ return [
     'success_unapprove_ticket'            => "The fault ticket has been successfully placed in moderation.",
     'error_unapprove_ticket'              => "An error occurred while trying to place the fault ticket in moderation.",
     'error_notify_approved_ticket'        => "The fault ticket was approved, but an error occurred while sending the notification.",
+    'error_notify_updated_ticket' => "La incidencia se ha actualizado, pero se ha producido un error al enviar la notificación.",
     'success_lock_ticket'                 => "The fault ticket has been locked successfully.",
     'error_lock_ticket'                   => "An error occurred while trying to lock the fault ticket.",
     'success_unlock_ticket'               => "The fault ticket has been unlocked successfully.",
@@ -173,6 +174,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avisar por correo a quienes siguen esta incidencia",
         'object'             => 'Ticket subject',
         'description'        => 'Ticket description',
         'visibility'         => 'Ticket visibility',
@@ -207,6 +209,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Envía un correo a todos los propietarios de la comunidad que tienen las notificaciones activas para decirles que la incidencia ha cambiado. Déjala desactivada si estás corrigiendo una errata.",
         'visibility' => 'If set to private, only administrators will be able to view the ticket.',
         'priority'   => 'Set the priority level for this ticket to help administrators manage it accordingly.',
         'status'     => 'Set the current status of the ticket to track progress.',

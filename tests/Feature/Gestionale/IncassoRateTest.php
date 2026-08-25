@@ -129,9 +129,10 @@ class IncassoRateTest extends TestCase
             'rata_id' => $rataHeader->id,
             'anagrafica_id' => $anagrafica->id,
             'immobile_id' => $immobile->id,
-            'importo' => 10000, 
+            'importo' => 10000,
             'importo_pagato' => 0,
-            'stato' => 'da_pagare'
+            'stato' => 'da_pagare',
+            'data_scadenza' => '2025-01-31'
         ]);
     
         $immobile->anagrafiche()->attach($anagrafica->id, [
@@ -180,7 +181,7 @@ class IncassoRateTest extends TestCase
         ]);
     }
     
-    /** @test */
+    #[\PHPUnit\Framework\Attributes\Test]
     public function registra_incasso_parziale() {
         $data = $this->createIncassoScenario();
         
@@ -208,10 +209,10 @@ class IncassoRateTest extends TestCase
         $this->assertEquals(5000, $data->quota->importo_pagato);
     }
     
-    /** @test */
+    #[\PHPUnit\Framework\Attributes\Test]
     public function registra_incasso_con_eccedenza_anticipo() {
         $data = $this->createIncassoScenario();
-        
+
         $payload = [
             'pagante_id' => $data->anagrafica->id,
             'cassa_id' => $data->cassa->id,
@@ -227,22 +228,414 @@ class IncassoRateTest extends TestCase
                 ]
             ]
         ];
-    
+
         app(StoreIncassoRateAction::class)->execute($payload, $data->condominio, $data->esercizio);
-    
+
         $data->quota->refresh();
-        
+
         $this->assertEquals('pagata', $data->quota->stato);
-    
+
+        // L'eccedenza diventa strapagamento sulla quota: credito visibile e spendibile
+        $this->assertEquals(12000, $data->quota->importo_pagato);
+        $this->assertEquals(2000, $data->quota->credito_disponibile);
+
+        // La riga contabile resta sui crediti, agganciata alla rata
         $this->assertDatabaseHas('righe_scritture', [
-            'conto_contabile_id' => $data->contoAnticipi->id,
+            'conto_contabile_id' => $data->contoCrediti->id,
+            'rata_id' => $data->quota->rata_id,
             'importo' => 2000,
             'tipo_riga' => 'avere',
             'note' => 'Anticipo / Eccedenza'
         ]);
+
+        // Nessun vicolo cieco sugli anticipi
+        $this->assertDatabaseMissing('righe_scritture', [
+            'conto_contabile_id' => $data->contoAnticipi->id,
+        ]);
     }
-    
-    /** @test */
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function eccedenza_diventa_credito_spendibile_su_rate_emesse_dopo() {
+        $data = $this->createIncassoScenario();
+
+        // 1. Incasso 120 su una rata da 100: nasce un credito (anticipo) di 20
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-02-01',
+            'importo_totale' => 120.00,
+            'descrizione' => 'Saldo + Anticipo',
+            'eccedenza' => 20.00,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $data->quota->id, 'importo' => 100.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        // 2. Viene emessa una nuova rata
+        $rata2 = Rata::create([
+            'piano_rate_id' => $data->quota->rata->piano_rate_id,
+            'numero_rata' => 2,
+            'data_scadenza' => '2025-02-28',
+            'importo_totale' => 10000,
+            'stato' => 'emessa'
+        ]);
+        $quota2 = RataQuote::create([
+            'rata_id' => $rata2->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => 10000,
+            'importo_pagato' => 0,
+            'stato' => 'da_pagare',
+            'data_scadenza' => '2025-02-28'
+        ]);
+
+        // 3. Compensazione a cassa zero: il credito di 20 paga (in parte) la rata 2
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-03-01',
+            'importo_totale' => 0,
+            'descrizione' => 'Compensazione anticipo',
+            'eccedenza' => 0,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $data->quota->id, 'importo' => -20.00],
+                ['rata_id' => $quota2->id, 'importo' => 20.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        $data->quota->refresh();
+        $quota2->refresh();
+
+        // Lo strapagamento è stato riassorbito...
+        $this->assertEquals(10000, $data->quota->importo_pagato);
+        $this->assertEquals(0, $data->quota->credito_disponibile);
+        $this->assertEquals('pagata', $data->quota->stato);
+
+        // ...e la rata 2 risulta pagata per 20
+        $this->assertEquals(2000, $quota2->importo_pagato);
+        $this->assertEquals('parzialmente_pagata', $quota2->stato);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function usa_credito_da_strapagamento_legacy_per_pagare_altra_rata() {
+        // Scenario identico al caso reale: una quota strapagata da una versione
+        // vecchia (pagato 120 su 100 dovuti) e una nuova rata emessa impagata.
+        $data = $this->createIncassoScenario();
+
+        $scritturaLegacy = \App\Models\Gestionale\ScritturaContabile::create([
+            'condominio_id' => $data->condominio->id,
+            'esercizio_id' => $data->esercizio->id,
+            'gestione_id' => $data->gestione->id,
+            'data_registrazione' => '2025-01-15',
+            'data_competenza' => '2025-01-15',
+            'causale' => 'Incasso legacy senza tetto',
+            'tipo_movimento' => 'incasso_rata',
+            'stato' => 'registrata',
+        ]);
+        $data->quota->pagamenti()->attach($scritturaLegacy->id, [
+            'importo_pagato' => 12000,
+            'data_pagamento' => '2025-01-15',
+        ]);
+        $data->quota->ricalcolaStato();
+
+        $this->assertEquals(2000, $data->quota->fresh()->credito_disponibile);
+
+        $rata2 = Rata::create([
+            'piano_rate_id' => $data->quota->rata->piano_rate_id,
+            'numero_rata' => 2,
+            'data_scadenza' => '2025-02-28',
+            'importo_totale' => 10000,
+            'stato' => 'emessa'
+        ]);
+        $quota2 = RataQuote::create([
+            'rata_id' => $rata2->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => 10000,
+            'importo_pagato' => 0,
+            'stato' => 'da_pagare',
+            'data_scadenza' => '2025-02-28'
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-03-01',
+            'importo_totale' => 0,
+            'descrizione' => 'Compensazione strapagamento',
+            'eccedenza' => 0,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $data->quota->id, 'importo' => -20.00],
+                ['rata_id' => $quota2->id, 'importo' => 20.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        $data->quota->refresh();
+        $quota2->refresh();
+
+        $this->assertEquals(10000, $data->quota->importo_pagato);
+        $this->assertEquals('pagata', $data->quota->stato);
+        $this->assertEquals(2000, $quota2->importo_pagato);
+        $this->assertEquals('parzialmente_pagata', $quota2->stato);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function usa_credito_da_saldo_iniziale_negativo_regressione() {
+        // Il flusso storico del "salvadanaio" (quota saldo_iniziale a importo
+        // negativo) deve continuare a funzionare dopo la generalizzazione.
+        $data = $this->createIncassoScenario();
+
+        $rataZero = Rata::create([
+            'piano_rate_id' => $data->quota->rata->piano_rate_id,
+            'numero_rata' => 0,
+            'data_scadenza' => '2025-01-01',
+            'importo_totale' => -5000,
+            'stato' => 'emessa',
+            'descrizione' => 'Saldo Pregresso'
+        ]);
+        $quotaCredito = RataQuote::create([
+            'rata_id' => $rataZero->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => -5000,
+            'importo_pagato' => 0,
+            'stato' => 'credito',
+            'tipo' => 'saldo_iniziale',
+            'data_scadenza' => '2025-01-01'
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-02-01',
+            'importo_totale' => 50.00,
+            'descrizione' => 'Contanti + credito',
+            'eccedenza' => 0,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $quotaCredito->id, 'importo' => -50.00],
+                ['rata_id' => $data->quota->id, 'importo' => 100.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        $quotaCredito->refresh();
+        $data->quota->refresh();
+
+        // Il salvadanaio è stato consumato per 50
+        $this->assertEquals(-5000, $quotaCredito->importo_pagato);
+        $this->assertEquals(0, $quotaCredito->credito_disponibile);
+
+        // La rata è saldata: 50 contanti + 50 credito
+        $this->assertEquals(10000, $data->quota->importo_pagato);
+        $this->assertEquals('pagata', $data->quota->stato);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function situazione_debitoria_mostra_strapagamento_come_credito() {
+        $data = $this->createIncassoScenario();
+
+        // Strapagamento legacy: 120 incassati su 100 dovuti
+        $scritturaLegacy = \App\Models\Gestionale\ScritturaContabile::create([
+            'condominio_id' => $data->condominio->id,
+            'esercizio_id' => $data->esercizio->id,
+            'gestione_id' => $data->gestione->id,
+            'data_registrazione' => '2025-01-15',
+            'data_competenza' => '2025-01-15',
+            'causale' => 'Incasso legacy senza tetto',
+            'tipo_movimento' => 'incasso_rata',
+            'stato' => 'registrata',
+        ]);
+        $data->quota->pagamenti()->attach($scritturaLegacy->id, [
+            'importo_pagato' => 12000,
+            'data_pagamento' => '2025-01-15',
+        ]);
+        $data->quota->ricalcolaStato();
+
+        $request = \Illuminate\Http\Request::create('/', 'GET', [
+            'anagrafica_id' => $data->anagrafica->id,
+        ]);
+
+        $controller = app(\App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController::class);
+        $rate = $controller($request, $data->condominio)->getData(true)['rate'];
+
+        $this->assertCount(1, $rate);
+        $this->assertTrue($rate[0]['is_credito']);
+        $this->assertEquals(-20.0, $rate[0]['residuo']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function compensazione_a_cassa_zero_mostra_pagante_e_dettaglio_rate() {
+        // Regressione: una compensazione a credito puro (importo versato € 0) non
+        // crea alcuna riga sulla scrittura padre — prima del fix il pagante
+        // risultava "Sconosciuto" e lo spaccato rate restava vuoto, sia in lista
+        // che nel dettaglio incasso, perché il fallback sulle scritture figlie
+        // mancava e perché tipo_movimento (un enum) veniva confrontato con una
+        // stringa raw (sempre falso).
+        $data = $this->createIncassoScenario();
+
+        $scritturaLegacy = \App\Models\Gestionale\ScritturaContabile::create([
+            'condominio_id' => $data->condominio->id,
+            'esercizio_id' => $data->esercizio->id,
+            'gestione_id' => $data->gestione->id,
+            'data_registrazione' => '2025-01-15',
+            'data_competenza' => '2025-01-15',
+            'causale' => 'Incasso legacy senza tetto',
+            'tipo_movimento' => 'incasso_rata',
+            'stato' => 'registrata',
+        ]);
+        $data->quota->pagamenti()->attach($scritturaLegacy->id, [
+            'importo_pagato' => 12000,
+            'data_pagamento' => '2025-01-15',
+        ]);
+        $data->quota->ricalcolaStato();
+
+        $rata2 = Rata::create([
+            'piano_rate_id' => $data->quota->rata->piano_rate_id,
+            'numero_rata' => 2,
+            'data_scadenza' => '2025-02-28',
+            'importo_totale' => 10000,
+            'stato' => 'emessa'
+        ]);
+        $quota2 = RataQuote::create([
+            'rata_id' => $rata2->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => 10000,
+            'importo_pagato' => 0,
+            'stato' => 'da_pagare',
+            'data_scadenza' => '2025-02-28'
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-03-01',
+            'importo_totale' => 0,
+            'descrizione' => 'Compensazione a cassa zero',
+            'eccedenza' => 0,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $data->quota->id, 'importo' => -20.00],
+                ['rata_id' => $quota2->id, 'importo' => 20.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        $scritturaPadre = \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $data->condominio->id)
+            ->where('tipo_movimento', 'incasso_rata')
+            ->where('causale', 'Compensazione a cassa zero')
+            ->firstOrFail();
+
+        $scritturaPadre->load([
+            'righe.anagrafica',
+            'quotePagate.rata',
+            'quotePagate.immobile',
+            'figlie.quotePagate.rata',
+            'figlie.quotePagate.immobile',
+            'figlie.righe.anagrafica',
+        ]);
+
+        $formattato = app(\App\Services\Gestionale\IncassoRateService::class)
+            ->formatMovimentoForFrontend($scritturaPadre);
+
+        $this->assertEquals('Mario', $formattato['pagante']['principale']);
+        $this->assertNotEmpty($formattato['dettagli_rate']);
+        $this->assertEquals('credito', $formattato['dettagli_rate'][0]['tipo']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function compensazione_cross_gestione_registra_nota_esplicita() {
+        // Il backend non impedisce di usare credito di una gestione per saldare
+        // una rata di un'altra gestione (scelta di prodotto: l'amministratore
+        // potrebbe avere un accordo condominiale che lo autorizza), ma deve
+        // tracciarlo esplicitamente sulla riga contabile, indipendentemente dal
+        // banner di conferma lato frontend (difesa in profondità).
+        $data = $this->createIncassoScenario();
+
+        // Strapagamento sulla quota ordinaria esistente: 150 incassati su 100 dovuti.
+        $scritturaLegacy = \App\Models\Gestionale\ScritturaContabile::create([
+            'condominio_id' => $data->condominio->id,
+            'esercizio_id' => $data->esercizio->id,
+            'gestione_id' => $data->gestione->id,
+            'data_registrazione' => '2025-01-15',
+            'data_competenza' => '2025-01-15',
+            'causale' => 'Incasso legacy senza tetto',
+            'tipo_movimento' => 'incasso_rata',
+            'stato' => 'registrata',
+        ]);
+        $data->quota->pagamenti()->attach($scritturaLegacy->id, [
+            'importo_pagato' => 15000,
+            'data_pagamento' => '2025-01-15',
+        ]);
+        $data->quota->ricalcolaStato();
+
+        // Seconda gestione (Straordinaria) con una rata impagata per la stessa anagrafica.
+        $gestioneStraordinaria = Gestione::create([
+            'condominio_id' => $data->condominio->id,
+            'nome' => 'Straordinaria',
+            'tipo' => 'straordinaria',
+            'data_inizio' => '2025-01-01',
+        ]);
+        $gestioneStraordinaria->esercizi()->attach($data->esercizio->id, ['attiva' => true]);
+
+        $pianoStraordinario = PianoRate::create([
+            'condominio_id' => $data->condominio->id,
+            'gestione_id' => $gestioneStraordinaria->id,
+            'nome' => 'Piano straordinario',
+            'numero_rate' => 1,
+        ]);
+
+        $rataStraordinaria = Rata::create([
+            'piano_rate_id' => $pianoStraordinario->id,
+            'numero_rata' => 1,
+            'data_scadenza' => '2025-02-28',
+            'importo_totale' => 5000,
+            'stato' => 'emessa'
+        ]);
+
+        $quotaStraordinaria = RataQuote::create([
+            'rata_id' => $rataStraordinaria->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => 5000,
+            'importo_pagato' => 0,
+            'stato' => 'da_pagare',
+            'data_scadenza' => '2025-02-28'
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $gestioneStraordinaria->id,
+            'data_pagamento' => '2025-03-01',
+            'importo_totale' => 0,
+            'descrizione' => 'Compensazione cross-gestione',
+            'eccedenza' => 0,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $data->quota->id, 'importo' => -50.00],
+                ['rata_id' => $quotaStraordinaria->id, 'importo' => 50.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        $quotaStraordinaria->refresh();
+        $this->assertEquals(5000, $quotaStraordinaria->importo_pagato);
+        $this->assertEquals('pagata', $quotaStraordinaria->stato);
+
+        $rigaAvere = \App\Models\Gestionale\RigaScrittura::where('rata_id', $quotaStraordinaria->rata_id)
+            ->where('tipo_riga', 'avere')
+            ->where('anagrafica_id', $data->anagrafica->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($rigaAvere);
+        $this->assertStringContainsString('cross-gestione', $rigaAvere->note);
+        $this->assertStringContainsString('Ordinaria', $rigaAvere->note);
+        $this->assertStringContainsString('Straordinaria', $rigaAvere->note);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
     public function impedisce_incasso_se_totale_matematico_non_quadra() {
         $data = $this->createIncassoScenario();
         
@@ -262,9 +655,84 @@ class IncassoRateTest extends TestCase
             ]
         ];
     
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Totale non corrispondente');
+        // beta.43: il tipo era `RuntimeException` con il messaggio «Totale non corrispondente»,
+        // che il controller non catturava — la guardia arrivava all'amministratore come pagina
+        // 500. Ora è un'eccezione di dominio che dice anche **di quanto** è lo scarto, e
+        // `IncassoTotaleNonQuadraTest` verifica che dall'altra parte diventi un errore di
+        // validazione. L'intento di questo test non cambia: il totale storto non passa.
+        $this->expectException(\App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException::class);
+        $this->expectExceptionMessage('non quadra');
 
         app(StoreIncassoRateAction::class)->execute($payload, $data->condominio, $data->esercizio);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function credito_piu_eccedenza_produce_scritture_quadrate() {
+        // Caso reale prodotto dalla UI: debito 100, credito disponibile 40,
+        // l'amministratore incassa 90 in contanti. 90 + 40 = 130 > 100, quindi
+        // il frontend calcola eccedenza = 30.
+        //
+        // Prima della correzione l'eccedenza finanziata dal credito veniva
+        // contabilizzata in AVERE sulla scrittura di CASSA (che ha in DARE i soli
+        // contanti): il giornale usciva sbilanciato di 30 e, una volta acceso il
+        // DoubleEntryValidator, l'intera operazione falliva.
+        $data = $this->createIncassoScenario();
+
+        $rataZero = Rata::create([
+            'piano_rate_id' => $data->quota->rata->piano_rate_id,
+            'numero_rata' => 0,
+            'data_scadenza' => '2025-01-01',
+            'importo_totale' => -4000,
+            'stato' => 'emessa',
+            'descrizione' => 'Saldo Pregresso',
+        ]);
+        $quotaCredito = RataQuote::create([
+            'rata_id' => $rataZero->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => -4000,
+            'importo_pagato' => 0,
+            'stato' => 'credito',
+            'tipo' => 'saldo_iniziale',
+            'data_scadenza' => '2025-01-01',
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-02-01',
+            'importo_totale' => 90.00,
+            'descrizione' => 'Contanti 90 + credito 40 su debito 100',
+            'eccedenza' => 30.00,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $quotaCredito->id, 'importo' => -40.00],
+                ['rata_id' => $data->quota->id, 'importo' => 100.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        // Ogni scrittura prodotta dall'incasso deve quadrare.
+        $scritture = \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $data->condominio->id)->get();
+        $this->assertGreaterThanOrEqual(2, $scritture->count());
+
+        foreach ($scritture as $scrittura) {
+            $dare = $scrittura->righe()->where('tipo_riga', 'dare')->sum('importo');
+            $avere = $scrittura->righe()->where('tipo_riga', 'avere')->sum('importo');
+            $this->assertEquals(
+                $dare, $avere,
+                "Scrittura {$scrittura->numero_protocollo} ({$scrittura->tipo_movimento->value}) sbilanciata: DARE {$dare} vs AVERE {$avere}"
+            );
+        }
+
+        // La cassa ha incassato esattamente i contanti dichiarati.
+        $scritturaCassa = $scritture->firstWhere('tipo_movimento', \App\Enums\TipoMovimentoContabile::INCASSO_RATA);
+        $this->assertEquals(9000, $scritturaCassa->righe()->where('tipo_riga', 'dare')->sum('importo'));
+
+        // Il debito di 100 è coperto e il credito è stato consumato solo per la
+        // parte realmente servita (10), non per l'intero prelievo di 40.
+        $data->quota->refresh();
+        $quotaCredito->refresh();
+        $this->assertEquals(10000, $data->quota->importo_pagato);
+        $this->assertEquals(3000, $quotaCredito->credito_disponibile);
     }
 }

@@ -56,10 +56,34 @@ class ImmobileAnagraficaController extends Controller
                 ->with('esercizio');
         }]);
 
+        // ⚠️ **Chi ha già quote emesse su questa unità.**
+        //
+        // «Dissocia» faceva un `detach()` dietro una conferma generica — «questa azione non è
+        // reversibile» — che non diceva la cosa che conta: se quel soggetto ha già rate emesse,
+        // le sue quote restano in `rate_quote` mentre lui sparisce dalla pivot, e i documenti
+        // cominciano a raccontare due storie diverse.
+        //
+        // Non è un caso di laboratorio: **è il rimedio che gli amministratori usano oggi per il
+        // subentro**, perché il motore non legge le date di competenza. Genero le rate, stacco il
+        // vecchio proprietario, ristampo. È lo stesso scenario che ha prodotto il difetto A6
+        // chiuso in questa beta, e finché il subentro vero non esiste (blocco B2, 1.11) la strada
+        // resta praticata: tanto vale dire all'amministratore cosa comporta, invece di lasciarlo
+        // scoprire dal riparto.
+        //
+        // Si guarda `rate_quote` e non i saldi: è lì che vive la quota emessa, ed è la tabella
+        // che il documento di riparto legge.
+        $anagraficheConQuoteEmesse = DB::table('rate_quote')
+            ->where('immobile_id', $immobile->id)
+            ->whereNotNull('anagrafica_id')
+            ->distinct()
+            ->pluck('anagrafica_id')
+            ->all();
+
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheList', [
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
-            'immobile'   => new ImmobileResource($immobile)
+            'immobile'   => new ImmobileResource($immobile),
+            'anagraficheConQuoteEmesse' => $anagraficheConQuoteEmesse,
         ]);
     }
 
@@ -109,11 +133,30 @@ class ImmobileAnagraficaController extends Controller
 
         try {
 
-            // Attach the anagrafica to the immobile with pivot data
+            // Assegnare un'unità a una persona la rende **condòmina di questo stabile**, e il
+            // pivot `anagrafica_condominio` è dove quel fatto vive: lo leggono le altre parti
+            // del gestionale per sapere chi appartiene al condominio.
+            //
+            // Fino alla beta.48 questa riga non c'era, e `anagrafica_id` è validato **senza**
+            // filtro sul condominio (`CreateImmobileAnagraficaRequest:38`): si poteva quindi
+            // assegnare un'unità a chiunque, ottenendo un proprietario che il gestionale non
+            // considerava del condominio. Sull'incasso questo si traduceva in un pagante
+            // rifiutato — vedi la coda ⑫ in roadmap, e `PaganteDelCondominioTest`.
+            //
+            // `syncWithoutDetaching`: chi possiede unità in più stabili non deve perderli, e
+            // un secondo collegamento non deve produrre una riga doppia.
+            Anagrafica::find($data['anagrafica_id'])
+                ?->condomini()
+                ->syncWithoutDetaching([$condominio->id]);
+
+            // ⚠️ `tipologie_spese` non viene più scritta (beta.50). Era presa da `validated()`
+            // ma **nessuna FormRequest la valida**, quindi arrivava sempre `null`: verificato,
+            // 0 righe valorizzate su 60. Nessun calcolo la legge. La colonna resta finché non
+            // cade con le altre migrazioni della 1.11; la `Resource` continua a esporla — oggi
+            // restituisce `null` come sempre, e toglierla cambierebbe ciò che il frontend riceve.
             $immobile->anagrafiche()->attach($data['anagrafica_id'], [
                 'tipologia'       => $data['tipologia'],
                 'quota'           => $data['quota'],
-                'tipologie_spese' => $data['tipologie_spese'] ?? null,
                 'data_inizio'     => $data['data_inizio'],
                 'data_fine'       => $data['data_fine'] ?? null,
                 'attivo'          => true,
@@ -199,7 +242,6 @@ class ImmobileAnagraficaController extends Controller
                 $immobile->anagrafiche()->attach($nuovoAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
-                    'tipologie_spese' => $data['tipologie_spese'] ?? null,
                     'data_inizio'     => $data['data_inizio'],
                     'data_fine'       => $data['data_fine'] ?? null,
                     'note'            => $data['note'] ?? null,
@@ -210,7 +252,6 @@ class ImmobileAnagraficaController extends Controller
                 $immobile->anagrafiche()->updateExistingPivot($vecchioAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
-                    'tipologie_spese' => $data['tipologie_spese'] ?? null,
                     'data_inizio'     => $data['data_inizio'],
                     'data_fine'       => $data['data_fine'] ?? null,
                     'note'            => $data['note'] ?? null,

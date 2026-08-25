@@ -44,7 +44,8 @@ class CheckExternalCron
         $incomingIp = $request->ip();
 
         // 3. VERIFICA TOKEN (Con Logica di Sicurezza Avanzata)
-        if ($request->query('token') !== $this->settings->external_cron_token) {
+        // hash_equals: confronto a tempo costante, evita timing attack sul token.
+        if (! hash_equals((string) $this->settings->external_cron_token, (string) $request->query('token'))) {
             
             // SECURITY CHECK: BRUTE FORCE DETECTION
             if (!in_array($incomingIp, $cachedIps)) {

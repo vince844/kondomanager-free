@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import type { BreadcrumbItem } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw, AlertTriangle } from "lucide-vue-next";
+import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw } from "lucide-vue-next";
 
 const props = defineProps<{
     condominio: any;
@@ -22,7 +21,6 @@ const props = defineProps<{
     utenteStornatore: string | null;
 }>();
 
-const { euro } = useCurrencyFormatter();
 const { generateRoute, generatePath } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
@@ -32,16 +30,26 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: `Dettaglio Incasso ${props.incasso.numero_protocollo}`, href: '#' },
 ]);
 
+// 'annullata' è il valore reale in DB (StornoIncassoRateAction). 'confermato' e
+// 'stornato' non sono mai esistiti come valori di stato: questo switch non ha
+// mai davvero distinto un incasso attivo da uno stornato.
 const statoVariant = computed(() => {
-    switch (props.incasso.stato) {
-        case 'confermato': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-        case 'stornato': return 'bg-rose-100 text-rose-800 border-rose-300 line-through';
-        default: return 'bg-slate-100 text-slate-600 border-slate-200';
-    }
+    return props.incasso.stato === 'annullata'
+        ? 'bg-rose-100 text-rose-800 border-rose-300 line-through'
+        : 'bg-emerald-100 text-emerald-800 border-emerald-300';
 });
 
-const totaleIncassato = computed(() => {
-    return props.incassoFormatted.importo_totale_raw * 100; // cents
+// Il totale versato da solo non basta a capire se una rata è stata saldata
+// con denaro reale o con credito pregresso (specialmente a cassa zero, dove
+// l'importo è correttamente € 0,00 ma non è affatto ovvio perché).
+const modalitaVersamento = computed(() => {
+    const righe = props.incassoFormatted.dettagli_rate || [];
+    const haCredito = righe.some((r: any) => r.tipo === 'credito');
+    const haContanti = righe.some((r: any) => r.tipo === 'contanti');
+
+    if (haCredito && !haContanti) return 'credito';
+    if (haCredito && haContanti) return 'misto';
+    return null;
 });
 
 </script>
@@ -50,10 +58,10 @@ const totaleIncassato = computed(() => {
     <Head :title="`Dettaglio Incasso ${props.incasso.numero_protocollo}`" />
 
     <GestionaleLayout>
-        
+
         <div class="px-6 py-8 space-y-6">
-            <PageHeaderGuide 
-                pageTitle="Dettaglio Incasso" 
+            <PageHeaderGuide
+                pageTitle="Dettaglio Incasso"
                 :pageSubtitle="`Protocollo ${props.incasso.numero_protocollo} — Registrato da ${utenteCreatore || 'Sistema'}`"
                 icon="Banknote"
                 :guides="[]"
@@ -62,8 +70,8 @@ const totaleIncassato = computed(() => {
                 :condomini="(props.condomini as any)"
             >
             <template #actions>
-                <Button 
-                    variant="outline" 
+                <Button
+                    variant="outline"
                     @click="router.visit(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: condominio.id }))"
                     class="h-9 gap-2 shadow-sm font-medium"
                 >
@@ -76,16 +84,16 @@ const totaleIncassato = computed(() => {
                 <section class="w-full space-y-6">
 
             <!-- AUDIT TRAIL STORNO (Se presente) -->
-            <div v-if="props.incasso.stato === 'stornato'" class="bg-gradient-to-r from-rose-50 to-red-50 dark:from-rose-950/30 dark:to-red-950/20 border border-rose-200 dark:border-rose-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
+            <div v-if="props.incasso.stato === 'annullata'" class="bg-gradient-to-r from-rose-50 to-red-50 dark:from-rose-950/30 dark:to-red-950/20 border border-rose-200 dark:border-rose-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
                 <div class="w-14 h-14 shrink-0 bg-rose-100 dark:bg-rose-900/50 rounded-full flex items-center justify-center border-4 border-rose-50/50 dark:border-rose-900/30">
                     <RotateCcw class="w-7 h-7 text-rose-600 dark:text-rose-400" />
                 </div>
                 <div class="flex-1 space-y-1">
                     <h3 class="font-black text-rose-900 dark:text-rose-200 text-lg flex items-center gap-2">
-                        Movimento Stornato <Badge class="bg-rose-200 text-rose-800 hover:bg-rose-200 border-none px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">Annullato</Badge>
+                        Movimento Stornato <Badge class="bg-rose-200 text-rose-800 hover:bg-rose-200 border-none px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">Stornato</Badge>
                     </h3>
                     <p class="text-sm text-rose-800/80 dark:text-rose-300/80 leading-relaxed max-w-3xl">
-                        Questo incasso è stato annullato contabilmente. Le rate ad esso collegate sono state ripristinate nello scadenziario come "Da pagare". L'importo in Cassa/Banca è stato stornato.
+                        Questo incasso è stato stornato contabilmente. Le rate ad esso collegate sono state ripristinate nello scadenziario come "Da pagare". L'importo in Cassa/Banca è stato stornato.
                     </p>
                 </div>
                 <div class="shrink-0 bg-white/60 dark:bg-slate-900/40 rounded-xl p-4 border border-rose-100 dark:border-rose-900/30 min-w-[280px]">
@@ -104,7 +112,7 @@ const totaleIncassato = computed(() => {
 
             <!-- HEADER INCASSO -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
+
                 <!-- Dati Principali -->
                 <Card class="md:col-span-2 shadow-sm border-slate-200 dark:border-slate-800">
                     <CardHeader class="pb-4">
@@ -134,7 +142,11 @@ const totaleIncassato = computed(() => {
                             </div>
                             <div class="space-y-1 sm:col-span-2 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Conto di Accredito</p>
-                                <p class="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <p v-if="props.incassoFormatted.cassa_nome === 'N/D' && modalitaVersamento === 'credito'" class="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                                    <Coins class="w-4 h-4 text-blue-500" />
+                                    Nessuno — saldato interamente con credito
+                                </p>
+                                <p v-else class="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                                     <Landmark class="w-4 h-4 text-slate-400" />
                                     {{ props.incassoFormatted.cassa_nome }}
                                 </p>
@@ -146,11 +158,11 @@ const totaleIncassato = computed(() => {
                                 </p>
                             </div>
                         </div>
-                        
+
                         <div class="mt-6 flex flex-wrap gap-2">
                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border shadow-sm" :class="statoVariant">
                                 <FileText class="w-3.5 h-3.5" />
-                                {{ props.incasso.stato === 'stornato' ? 'Annullato' : 'Registrato' }}
+                                {{ props.incasso.stato === 'annullata' ? 'Stornato' : 'Registrato' }}
                             </span>
                         </div>
                     </CardContent>
@@ -162,9 +174,15 @@ const totaleIncassato = computed(() => {
                         <CardTitle class="text-sm font-black uppercase tracking-wider text-slate-500">Totale Versamento</CardTitle>
                     </CardHeader>
                     <CardContent class="text-center">
-                        <div class="flex justify-center items-center py-4">
-                            <span class="text-4xl font-black" :class="props.incasso.stato === 'stornato' ? 'text-slate-400 line-through' : 'text-emerald-600 dark:text-emerald-400'">
+                        <div class="flex flex-col justify-center items-center py-4 gap-1">
+                            <span class="text-4xl font-black" :class="props.incasso.stato === 'annullata' ? 'text-slate-400 line-through' : 'text-emerald-600 dark:text-emerald-400'">
                                 {{ props.incassoFormatted.importo_totale_formatted }}
+                            </span>
+                            <span v-if="modalitaVersamento === 'credito'" class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                                <Coins class="w-3.5 h-3.5" /> Saldato con credito pregresso
+                            </span>
+                            <span v-else-if="modalitaVersamento === 'misto'" class="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                                <Coins class="w-3.5 h-3.5" /> Contanti + credito pregresso
                             </span>
                         </div>
                     </CardContent>
@@ -174,7 +192,7 @@ const totaleIncassato = computed(() => {
 
             <!-- RIGHE FATTURA E DOCUMENTI -->
             <div class="grid grid-cols-1 gap-6">
-                
+
                 <Card class="shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden">
                     <CardHeader class="bg-slate-50/50 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                         <CardTitle class="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">

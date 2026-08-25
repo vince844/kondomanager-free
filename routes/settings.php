@@ -1,14 +1,17 @@
 <?php
 
+use App\Http\Controllers\Impostazioni\BackupSettingsController;
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
 use App\Http\Controllers\Impostazioni\ImpostazioniStampeController;
 use App\Http\Controllers\Impostazioni\LogsController;
 use App\Http\Controllers\Impostazioni\MailSettingsController;
+use App\Http\Controllers\Impostazioni\RestoreController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthController;
+use App\Http\Middleware\EnsureRestoreToken;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -30,28 +33,58 @@ Route::middleware('auth')->group(function () {
         ->name('impostazioni.stampe.store');
 
     Route::get('impostazioni/cron', [CronSettingsController::class, 'edit'])
-        ->name('impostazioni.cron'); 
+        ->name('impostazioni.cron');
 
     Route::post('impostazioni/cron', [CronSettingsController::class, 'update'])
-        ->name('impostazioni.cron.update'); 
+        ->name('impostazioni.cron.update');
 
     Route::post('impostazioni/cron/regenerate', [CronSettingsController::class, 'regenerateToken'])
-        ->name('impostazioni.cron.regenerate'); 
+        ->name('impostazioni.cron.regenerate');
 
-        // MAIL SETTINGS
+    // MAIL SETTINGS
     Route::get('impostazioni/mail', [MailSettingsController::class, 'edit'])
-        ->name('impostazioni.mail'); 
+        ->name('impostazioni.mail');
 
     Route::post('impostazioni/mail', [MailSettingsController::class, 'update'])
-        ->name('admin.settings.mail.update'); 
+        ->name('admin.settings.mail.update');
 
     Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
         ->name('admin.settings.mail.test');
-    
+
+    // BACKUPS
+    Route::get('impostazioni/backups', [BackupSettingsController::class, 'index'])
+        ->name('impostazioni.backups');
+
+    Route::post('impostazioni/backups', [BackupSettingsController::class, 'store'])
+        ->name('impostazioni.backups.store');
+
+    Route::post('impostazioni/backups/settings', [BackupSettingsController::class, 'updateSettings'])
+        ->name('impostazioni.backups.settings');
+
+    Route::post('impostazioni/backups/password', [BackupSettingsController::class, 'removePassword'])
+        ->name('impostazioni.backups.password');
+
+    Route::post('impostazioni/backups/{backup:uuid}/step', [BackupSettingsController::class, 'step'])
+        ->name('impostazioni.backups.step');
+
+    Route::get('impostazioni/backups/{backup:uuid}/download', [BackupSettingsController::class, 'download'])
+        ->name('impostazioni.backups.download');
+
+    Route::delete('impostazioni/backups/{backup:uuid}', [BackupSettingsController::class, 'destroy'])
+        ->name('impostazioni.backups.destroy');
+
+    // RIPRISTINO — avvio (protetto da sessione + permesso + sudo). Gli step
+    // successivi NON usano la sessione (vedi gruppo session-less più sotto).
+    Route::post('impostazioni/backups/{backup:uuid}/ripristina/ispeziona', [RestoreController::class, 'inspect'])
+        ->name('impostazioni.backups.restore.inspect');
+
+    Route::post('impostazioni/backups/{backup:uuid}/ripristina', [RestoreController::class, 'start'])
+        ->name('impostazioni.backups.restore.start');
+
     // LOGS & AUDIT
     Route::get('logs', [LogsController::class, 'index'])
         ->name('logs.index');
-    
+
     Route::redirect('settings', 'settings/profile');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])
@@ -89,3 +122,36 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('settings/Appearance');
     })->name('appearance');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Ripristino — rotte SENZA sessione
+|--------------------------------------------------------------------------
+| Durante l'import il database viene sovrascritto e la tabella sessions con
+| esso: gli step e lo stato NON possono usare l'auth di sessione. Sono
+| autenticati dal token monouso (EnsureRestoreToken) e devono restare
+| raggiungibili anche in modalità ripristino (il prefisso "ripristino" è
+| nell'allowlist di CheckRestoreMode). Vedi docs/ripristino_backup_design.md.
+*/
+Route::middleware(EnsureRestoreToken::class)->group(function () {
+
+    Route::post('ripristino/step', [RestoreController::class, 'step'])
+        ->name('ripristino.step');
+
+    Route::get('ripristino/stato', [RestoreController::class, 'status'])
+        ->name('ripristino.status');
+});
+
+// Pagina di esito: la modalità ripristino è già spenta se completato, ma le
+// sessioni sono state azzerate — niente auth, legge lo stato su file.
+Route::get('ripristino/esito', [RestoreController::class, 'result'])
+    ->name('ripristino.result');
+
+// Recupero da un ripristino fallito/in stallo (pulsanti della pagina 503 o
+// dell'overlay admin). NON sotto EnsureRestoreToken: chi arriva dalla 503 non
+// ha il token — l'autorizzazione (token OPPURE password account) è nel
+// controller. CSRF-except in bootstrap/app.php (nessuna sessione qui).
+Route::post('ripristino/riprendi', [RestoreController::class, 'resume'])
+    ->name('ripristino.resume');
+Route::post('ripristino/annulla', [RestoreController::class, 'abort'])
+    ->name('ripristino.abort');

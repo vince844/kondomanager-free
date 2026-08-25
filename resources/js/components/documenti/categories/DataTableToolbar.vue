@@ -2,13 +2,14 @@
 
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link, useForm } from '@inertiajs/vue3';
+import { Link, useForm } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Plus, List } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
@@ -21,6 +22,8 @@ const isNewCategorySheetOpen = ref(false)
 const { table } = defineProps<{
   table: Table<Categoria>
 }>()
+
+const { filtra } = useTabellaServer(() => route(generateRoute('categorie.index')));
 
 const form = useForm({
   name: '',
@@ -47,23 +50,17 @@ const createCategory = () => {
 watchDebounced(
   [nameFilter],
   ([name]) => {
-    const params: Record<string, any> = { page: 1 }
-
-    if (name) params.name = name
-
-    router.get(
-      route(generateRoute('categorie.index')),
-      params,
+    // Il filtro svuotato va passato come `null`, non omesso: la richiesta riparte da ciò che c'è
+    // nell'URL, e un filtro omesso resterebbe quello di prima.
+    filtra(
       {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!name) {
-            table.reset()
-          }
+        name: name || null,
+      },
+      () => {
+        if (!name) {
+          table.reset()
         }
-      }
+      },
     )
   },
   { debounce: 300 }

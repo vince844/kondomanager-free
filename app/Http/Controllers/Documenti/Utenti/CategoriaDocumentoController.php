@@ -9,6 +9,7 @@ use App\Http\Resources\Documenti\DocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Services\DocumentoService;
 use App\Traits\HandlesUserCondominioData;
+use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Gate;
@@ -16,7 +17,7 @@ use Illuminate\Support\Arr;
 
 class CategoriaDocumentoController extends Controller
 {
-    use HandlesUserCondominioData;
+    use HandlesUserCondominioData, PaginaElenco;
 
     public function __construct(
         private DocumentoService $documentoService
@@ -60,6 +61,11 @@ class CategoriaDocumentoController extends Controller
 
         $userData = $this->getUserCondominioData();
         $validated = $request->validated();
+
+        // L'unico elenco paginato di questo controller sta qui: `index()` mostra le categorie con
+        // un assaggio di tre documenti (`limit: 3`), che non passa mai dal paginatore. La chiave
+        // della preferenza è quindi già distinta senza bisogno di un suffisso.
+        $validated['per_page'] = $this->righePerPagina($request);
 
         $documenti = $this->documentoService->getDocumentiByCategoria(
             anagrafica: $userData->anagrafica,

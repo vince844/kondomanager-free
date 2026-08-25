@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.9.1'),
+    'version' => env('APP_VERSION', '1.10.0'),
 
     /*
     |--------------------------------------------------------------------------
@@ -79,6 +79,21 @@ return [
     */
 
     'timezone' => 'UTC',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fuso orario di riferimento dell'utente
+    |--------------------------------------------------------------------------
+    |
+    | I timestamp restano in UTC (sopra), ma le validazioni sulle DATE inserite
+    | a mano — "non può essere futura" — devono ragionare nel fuso in cui vive
+    | l'amministratore. Con il solo UTC, un utente italiano che registra un
+    | pagamento alle 00:30 sceglie dal calendario la data di oggi (ora locale) e
+    | si vede respingere il form, perché in UTC è ancora ieri.
+    |
+    */
+
+    'user_timezone' => env('APP_USER_TIMEZONE', 'Europe/Rome'),
 
     /*
     |--------------------------------------------------------------------------
@@ -142,23 +157,20 @@ return [
     |--------------------------------------------------------------------------
     |
     | scheduler_queue_worker:
-    | - TRUE: Per Shared Hosting (cPanel/SiteGround). Lancia un worker "usa e getta" ogni minuto.
-    | - FALSE: Per VPS (con Supervisor). Non fa nulla (ci pensa Supervisor).
+    | - TRUE (default distro): Shared Hosting senza accesso CLI
+    |   (cPanel, Altervista, Netsons). Lancia un worker sincrono
+    |   ogni minuto dentro lo scheduler. Richiede cron-job.org.
+    |
+    | - FALSE: Plesk, VPS o qualsiasi server con cron nativi CLI.
+    |   Il worker gira come cron separato (queue:work --stop-when-empty).
+    |   Impostare SCHEDULE_QUEUE_WORKER=false nel .env.
     |
     */
     'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Trusted Proxies (Sicurezza Rete)
-    |--------------------------------------------------------------------------
-    |
-    | Definisce gli IP dei proxy di cui ci fidiamo.
-    | - '*' : Fidati di tutti (Cloudflare, AWS, Hosting Condiviso)
-    | - null : Non fidarti di nessuno default per sicurezza (VPS Nudo - Default Sicuro)
-    | - '10.0.0.1,192.168.1.1' : Lista specifica
-    |
-    */
-    'trusted_proxies' => env('TRUSTED_PROXIES', null), 
+    // I proxy fidati NON sono più qui: la chiave 'app.trusted_proxies' non
+    // veniva letta da nessuno (il middleware TrustProxies legge
+    // config('trustedproxy.proxies')). La configurazione, con le relative note
+    // di sicurezza, vive in config/trustedproxy.php.
 
 ];

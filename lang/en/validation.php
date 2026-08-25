@@ -153,7 +153,11 @@ return [
     'string' => ':attribute must be a string.',
     'timezone' => ':attribute must be a valid timezone.',
     'unique' => 'The :attribute field is already in use.',
-    'uploaded' => ':attribute failed to upload.',
+    // Fires when **PHP** discarded the file before Laravel saw it: it exceeded the server's
+    // `upload_max_filesize` or `post_max_size`. Reported on the forum on 18/08/2026.
+    'caricamento_interrotto' => 'The upload stopped before completing, and not because of the file size. It is usually a full disk on the server, a temporary folder that cannot be written to, or a connection dropped midway. Try again; if it keeps happening, the problem is on the server.',
+    'corpo_troppo_grande' => 'The file you are uploading exceeds this server\'s overall limit (:limite): the request was discarded before reaching the application, which is why it can look like an expired session. Ask whoever manages the server to raise post_max_size (as well as upload_max_filesize), or upload a smaller file.',
+    'uploaded' => ':attribute could not be uploaded: the file exceeds this server\'s limit (:limite). Ask whoever manages it to raise upload_max_filesize and post_max_size, or upload a smaller file.',
     'uppercase' => ':attribute must be uppercase.',
     'url' => ':attribute must be a valid URL.',
     'ulid' => ':attribute must be a valid ULID.',
@@ -166,6 +170,13 @@ return [
     */
 
     'custom' => [
+        'roles' => [
+            'not_allowed' => 'You cannot assign this role: administrative roles are granted by an administrator.',
+            'last_admin' => 'This is the last active administrator: changing this role would leave the installation with nobody able to manage it.',
+        ],
+        'permissions' => [
+            'not_allowed' => 'You cannot grant a permission you do not have yourself.',
+        ],
         'email' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',

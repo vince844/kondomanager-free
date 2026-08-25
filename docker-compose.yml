@@ -46,4 +46,10 @@ services:
       - dbdata:/var/lib/mysql
 
 volumes:
+  # `storage/app` tiene documenti caricati, backup e allegati: senza un volume con un nome vivrebbe
+  # nel livello scrivibile del contenitore e sparirebbe alla sua ricreazione. In questo compose la
+  # cartella arriva già dal bind mount `./:/var/www`, quindi il volume serve a chi parte da qui per
+  # un deploy vero. Su Coolify va dichiarato nel pannello: `kondomanager:verifica-persistenza` lo dice.
+  storage_app:
+
   dbdata:

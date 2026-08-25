@@ -11,9 +11,11 @@ class RigaFattura extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'dati_extra'         => 'array',
-        'importo_imponibile' => 'integer',
-        'importo_iva'        => 'integer',
+        'dati_extra'             => 'array',
+        'importo_imponibile'     => 'integer',
+        'importo_iva'            => 'integer',
+        'concorre_base_ritenuta' => 'boolean',
+        'natura_riga_ritenuta'   => \App\Enums\Fiscale\NaturaRigaRitenuta::class,
     ];
 
     public function fattura()

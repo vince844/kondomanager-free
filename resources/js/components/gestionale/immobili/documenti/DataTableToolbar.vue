@@ -2,9 +2,10 @@
 
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage} from '@inertiajs/vue3';
+import { usePage} from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { usePermission } from "@/composables/permissions";
+import { useTabellaServer } from '@/composables/useTabellaServer';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 import type { Immobile } from '@/types/gestionale/immobili';
@@ -22,26 +23,20 @@ const page = usePage<{ condominio: Building; immobile: Immobile }>()
 
 const nameFilter = ref('')
 
+const { filtra } = useTabellaServer(() =>
+  route(generateRoute('gestionale.immobili.documenti.index'), { condominio: page.props.condominio.id, immobile: page.props.immobile.id }),
+)
+
 watchDebounced(
   [nameFilter],
   ([name]) => {
-    const params: Record<string, any> = { page: 1 }
-
-    if (name) params.name = name
-
-    router.get(
-      route(generateRoute('gestionale.immobili.documenti.index'), { condominio: page.props.condominio.id, immobile: page.props.immobile.id }),
-      params,
-      {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!name) {
-            table.reset()
-          }
+    filtra(
+      { name: name || null },
+      () => {
+        if (!name) {
+          table.reset()
         }
-      }
+      },
     )
   },
   { debounce: 300 }

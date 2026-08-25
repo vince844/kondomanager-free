@@ -60,7 +60,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Saldo di apertura',
-    description: 'Puoi correggere il saldo di apertura se necessario. Questa modifica non influenza i movimenti già registrati, solo il punto di partenza.',
+    description: 'Puoi correggere il saldo di apertura solo finché non è stato registrato in contabilità: da quel momento il campo mostra il saldo reale corrente, a solo titolo informativo, e non è più modificabile da qui.',
     icon: Wallet,
     colorVariant: 'amber' as const
   },
@@ -232,7 +232,7 @@ const submit = () => {
                         <HoverCardContent class="w-72 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                           <h4 class="text-sm font-bold mb-2">Modifica saldo</h4>
                           <p class="text-xs text-slate-500 leading-relaxed">
-                            Puoi correggere il saldo di apertura se necessario. Questa modifica non influenza i movimenti già registrati, solo il punto di partenza.
+                            Puoi correggere il saldo di apertura solo finché la risorsa non ha movimenti contabili registrati: una volta presenti, il campo si blocca perché modificarlo altererebbe retroattivamente il saldo reale.
                           </p>
                         </HoverCardContent>
                       </HoverCard>
@@ -241,11 +241,23 @@ const submit = () => {
                       id="saldo_iniziale"
                       v-model="form.saldo_iniziale"
                       :money-options="moneyOptions"
-                      :lazy="true" 
+                      :lazy="true"
                       placeholder="0,00"
                       class="mt-1"
+                      :disabled="cassaData.saldo_iniziale_bloccato"
                       @focus="form.clearErrors('saldo_iniziale')"
                     />
+                    <p v-if="cassaData.saldo_iniziale_bloccato" class="text-xs text-amber-600 mt-1">
+                      Già registrato in contabilità: qui sopra è mostrato il saldo reale corrente, non più modificabile.
+                    </p>
+                    <!-- Il preavviso che mancava. Salvando, l'importo viene portato a giornale
+                         e da quel momento il campo si blocca: è il comportamento giusto, ma
+                         scoprirlo al salvataggio successivo — senza che nessuno l'avesse detto
+                         prima — è il modo tipico in cui nasce una segnalazione. -->
+                    <p v-else-if="!cassaData.has_movements || form.saldo_iniziale" class="text-xs text-slate-500 mt-1">
+                      Salvando, questo importo viene <strong>registrato in contabilità</strong> come saldo di apertura.
+                      Da quel momento il campo non è più modificabile da qui: controllalo adesso.
+                    </p>
                     <InputError :message="form.errors.saldo_iniziale" />
                   </div>
 

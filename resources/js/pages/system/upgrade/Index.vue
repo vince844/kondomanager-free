@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,10 +11,16 @@ const props = defineProps({
     currentVersion: String,
     availableRelease: Object, // Oggetto o null
     inProgress: Boolean,
+    requisiti: Object,        // null quando il server regge la versione offerta
     errors: Object
 });
 
 const form = useForm({});
+
+// Se manca qualcosa, l'aggiornamento non si può fare: non è una raccomandazione.
+// Con PHP sotto la soglia il programma non si avvia; senza le estensioni si avvia e poi
+// fallisce dove servono — nel caso di `gd`, su ogni stampa.
+const puoAggiornare = computed(() => !props.requisiti);
 
 const startLaunch = () => {
     if(confirm('Confermi di voler scaricare e installare l\'aggiornamento? Il sito andrà momentaneamente offline.')) {
@@ -39,6 +46,33 @@ const startLaunch = () => {
                     <AlertTitle>Errore</AlertTitle>
                     <AlertDescription>{{ errors.msg }}</AlertDescription>
                 </Alert>
+
+                <!-- ⚠️ Prima del pulsante, non dopo il clic: ciò che questo server non ha. -->
+                <div v-if="availableRelease && requisiti" class="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
+                    <div class="flex items-start gap-2">
+                        <AlertTriangle class="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                            <h3 class="font-bold text-amber-900">Il tuo server non è ancora pronto</h3>
+                            <p class="text-sm text-amber-800 mt-1">
+                                L'aggiornamento è disponibile, ma non può essere installato finché non
+                                sistemi quanto segue. Nessuna modifica è stata fatta.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div v-if="requisiti.php" class="text-sm text-amber-900 bg-amber-100/60 rounded p-3">
+                        <strong>Versione di PHP.</strong> Questa versione richiede
+                        <strong>PHP {{ requisiti.php.richiesto }}</strong>, il tuo server ha la
+                        <strong>{{ requisiti.php.attuale }}</strong>. Si cambia dal pannello del tuo
+                        hosting, di solito alla voce «Versione PHP» o «PHP Selector».
+                    </div>
+
+                    <div v-if="requisiti.estensioni && requisiti.estensioni.length" class="text-sm text-amber-900 bg-amber-100/60 rounded p-3">
+                        <strong>Estensioni PHP mancanti:</strong>&nbsp;<span class="font-semibold">{{ requisiti.estensioni.join(', ') }}</span>.
+                        Si attivano dallo stesso pannello, di solito accanto alla versione di PHP. Se non
+                        le trovi, le può attivare l'assistenza del tuo hosting.
+                    </div>
+                </div>
 
                 <div v-if="availableRelease" class="space-y-4">
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -73,7 +107,7 @@ const startLaunch = () => {
                 <Button 
                     v-if="availableRelease" 
                     @click="startLaunch" 
-                    :disabled="form.processing || inProgress"
+                    :disabled="form.processing || inProgress || !puoAggiornare"
                     class="bg-blue-600 hover:bg-blue-700"
                 >
                     <Loader2 v-if="form.processing" class="mr-2 h-4 w-4 animate-spin" />

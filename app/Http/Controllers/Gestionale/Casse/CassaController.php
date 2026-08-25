@@ -7,6 +7,7 @@ use App\Http\Requests\Gestionale\Casse\CassaIndexRequest;
 use App\Http\Requests\Gestionale\Casse\CreateCassaRequest;
 use App\Http\Resources\Gestionale\Casse\CassaResource;
 use App\Actions\Cassa\CreateCassaAction;
+use App\Actions\Cassa\RegistraAperturaCassaAction;
 use App\Actions\Cassa\UpdateCassaAction;
 use App\Helpers\MoneyHelper;
 use App\Http\Requests\Gestionale\Casse\UpdateCassaRequest;
@@ -14,6 +15,8 @@ use App\Http\Resources\Gestionale\Casse\UpdateCassaResource;
 use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
 use App\Traits\HandleFlashMessages;
+use App\Traits\OrdinaElenco;
+use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -24,12 +27,45 @@ use Illuminate\Support\Facades\DB;
 
 class CassaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini, HasEsercizio;
+    use HandleFlashMessages, HasCondomini, HasEsercizio, OrdinaElenco, PaginaElenco;
 
     public function __construct(
         private CreateCassaAction $createCassaAction,
-        private UpdateCassaAction $updateCassaAction
+        private UpdateCassaAction $updateCassaAction,
+        private RegistraAperturaCassaAction $aperturaAction
     ) {}
+
+    /**
+     * Porta a giornale il saldo di apertura di una cassa che ce l'ha in colonna.
+     *
+     * L'azione esisteva già, era transazionale e idempotente, e aveva **un solo chiamante**:
+     * la creazione della cassa. Dalla diagnosi dello Stato Patrimoniale non c'era modo di
+     * invocarla — il widget nominava la causa dello sbilancio e linkava una pagina dove
+     * l'unico pulsante presente passa da `UpdateCassaAction`, che l'apertura non la chiamava
+     * mai. Diagnosi senza cura.
+     *
+     * L'esito è **tipizzato** e i suoi sei casi si dividono in tre risposte diverse: fatto,
+     * non c'era niente da fare, manca qualcosa e ti dico cosa. Un unico «non è stato
+     * possibile» avrebbe spostato il vicolo cieco di un passo invece di toglierlo.
+     */
+    public function registraApertura(Condominio $condominio, Cassa $cassa): RedirectResponse
+    {
+        abort_unless($cassa->condominio_id === $condominio->id, 403);
+
+        $esito = $this->aperturaAction->execute($cassa);
+
+        if ($esito->riuscita()) {
+            return back()->with($this->flashSuccess($esito->messaggio()));
+        }
+
+        // «Già a posto» non è un fallimento: presentarlo come tale insegnerebbe a diffidare
+        // dei messaggi veri.
+        return back()->with(
+            $esito->giaAPosto()
+                ? $this->flashInfo($esito->messaggio())
+                : $this->flashError($esito->messaggio())
+        );
+    }
 
     /**
      * Display a listing of the resource.
@@ -37,6 +73,10 @@ class CassaController extends Controller
     public function index(CassaIndexRequest $request, Condominio $condominio): Response
     {
         $validated = $request->validated();
+
+        // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
+        // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
+        $validated['per_page'] = $this->righePerPagina($request);
 
         $query = $condominio
             ->casse()
@@ -53,7 +93,8 @@ class CassaController extends Controller
                 $q->where('tipo_riga', 'avere');
             }], 'importo');
 
-        $casse = $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+        $casse = $query->tap(fn ($q) => $this->ordina($q, $validated, CassaIndexRequest::colonneOrdinabili(), predefinita: 'nome', versoPredefinito: 'asc'))
+            ->paginate($validated['per_page']);
 
         return Inertia::render('gestionale/casse/CasseList', [
             'condominio' => $condominio,
@@ -67,6 +108,8 @@ class CassaController extends Controller
                 'total'        => $casse->total(),
             ],
             'filters'    => $request->only(['nome']), 
+            'sort'      => $validated['sort'] ?? null,
+            'direction' => $validated['direction'] ?? null,
         ]);
     }
 
@@ -192,20 +235,25 @@ class CassaController extends Controller
             );
         }
 
+        // --- CONTROLLO INTEGRITÀ ---
+        // Era scritto e commentato con «DA IMPLEMENTARE QUANDO AVREMO I MOVIMENTI». I movimenti
+        // ci sono da un pezzo, e nel frattempo l'eliminazione era diventata la scorciatoia più
+        // conveniente per far tornare verde lo Stato Patrimoniale: `casse` non ha `deleted_at`,
+        // `righe_scritture.cassa_id` è `nullOnDelete`, e la liquidità non contabilizzata
+        // spariva insieme alla riga. Il bollino diventava verde senza che nessuno avesse
+        // sistemato niente.
+        //
+        // La guardia vive sul model — `Cassa::motivoBloccoEliminazione()` — così questa
+        // decisione e la spiegazione mostrata nell'elenco non possono divergere.
+        if ($motivo = $cassa->motivoBloccoEliminazione()) {
+            return back()->with($this->flashError($motivo));
+        }
+
         try {
             DB::transaction(function () use ($cassa, $condominio) {
                 
                 // Carichiamo il conto contabile associato per poterlo eliminare dopo
                 $contoContabile = $cassa->contoContabile;
-
-                // --- CONTROLLO INTEGRITÀ (DA IMPLEMENTARE QUANDO AVREMO I MOVIMENTI) ---
-                // Se il conto contabile ha dei movimenti (es. incassi rate, pagamenti fatture),
-                // NON possiamo eliminare la cassa, altrimenti sballiamo il bilancio.
-                /*
-                if ($contoContabile && $contoContabile->movimenti()->exists()) {
-                    throw new \Exception("Impossibile eliminare: questa risorsa ha dei movimenti contabili registrati. Disattivala invece di eliminarla.");
-                }
-                */
 
                 // 2. Elimina i dati bancari (ContoCorrente) se presenti
                 // Utilizziamo la relazione per eliminare il record polimorfico

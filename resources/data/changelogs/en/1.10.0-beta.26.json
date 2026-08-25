@@ -1,0 +1,8 @@
+{
+    "features": [
+        "⚠ This update includes one database migration, applied automatically during the guided update. It doesn't touch any existing data: it only creates the new \"already paid\" table.",
+        "New \"Already Paid per Expense Item\" page: if a condominium comes from another software with a fund already collected (e.g. a 2025 resolution), record it here — the cost-sharing engine will only ask owners for the remainder, not the full expense a second time.",
+        "Fixed a case where, splitting the same expense item into multiple installments (down payment and balance), the already-paid coverage could be subtracted more than once instead of just once: found and fixed before release through a dedicated code review.",
+        "Fixed a bug present since the previous update: a cash account's \"Opening balance\" field, once posted to the ledger, could appear blank and editable in the edit form. Re-entering it could unbalance the Balance Sheet. The field now locks correctly and shows the real balance for information only."
+    ]
+}

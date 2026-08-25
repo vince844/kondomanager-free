@@ -19,6 +19,31 @@ use App\Enums\TipoAllocazioneFattura;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
+/**
+ * Attacca una gestione a un esercizio, come fa il prodotto.
+ *
+ * ⚠️ **Serve ogni volta che un test crea un esercizio e un piano (conti o rate) separatamente.**
+ * `PianoConto::factory()` si crea una gestione per conto suo, e quella gestione non finisce in
+ * nessun esercizio: è uno stato che l'applicazione non sa produrre — una gestione nasce sempre
+ * dentro un esercizio (`GestioneController@store`, `CondominioService`) — ma che le factory
+ * producono senza dirlo.
+ *
+ * Finché nessuno leggeva `esercizio_gestione` non si vedeva. Dalla beta.66 lo scoping delle rotte
+ * annidate risolve `{pianoConto}` e `{pianoRate}` *attraverso* quel pivot, quindi un contesto
+ * senza legame fa rispondere **404 a richieste legittime** — e il test fallisce per una ragione
+ * che non è quella che voleva provare.
+ */
+function legaAEsercizio(\App\Models\Esercizio $esercizio, int $gestioneId): void
+{
+    DB::table('esercizio_gestione')->insertOrIgnore([
+        'esercizio_id' => $esercizio->id,
+        'gestione_id'  => $gestioneId,
+        'attiva'       => true,
+        'created_at'   => now(),
+        'updated_at'   => now(),
+    ]);
+}
+
 function setupContabile(): array
 {
     // Disabilita listener che dipendono da tabelle non rilevanti per questi test
@@ -43,6 +68,23 @@ function setupContabile(): array
         'attiva'        => true,
         'created_at'    => now(),
         'updated_at'    => now(),
+    ]);
+
+    // ⚠️ **La gestione va attaccata all'esercizio, e non è un dettaglio del test.**
+    // Nel prodotto una gestione nasce sempre *dentro* un esercizio: `GestioneController@store` la
+    // attacca appena creata e `CondominioService` fa lo stesso alla creazione del condominio. Non
+    // esiste nessuna strada che produca una gestione staccata — verificato il 22/08/2026 sui dati
+    // reali: 0 gestioni orfane su 8.
+    //
+    // Finché nessuno leggeva il pivot, ometterlo qui non si vedeva. Dalla beta.66 lo scoping delle
+    // rotte annidate risolve `{pianoConto}` e `{pianoRate}` *attraverso* questo legame, quindi un
+    // contesto senza pivot fa rispondere 404 a richieste che nel prodotto sono legittime.
+    DB::table('esercizio_gestione')->insert([
+        'esercizio_id' => $esercizioId,
+        'gestione_id'  => $gestioneId,
+        'attiva'       => true,
+        'created_at'   => now(),
+        'updated_at'   => now(),
     ]);
 
     $fornitoreId = DB::table('fornitori')->insertGetId([
@@ -115,7 +157,12 @@ function setupContabile(): array
         'interno'         => '1',
         'nome'            => 'Appartamento Test',
         'descrizione'     => '',
-        'codice_immobile' => 'APP-TEST-1',
+        // `immobili.codice_immobile` è UNIQUE a livello globale, non per condominio:
+        // con un valore fisso, chiamare setupContabile() due volte nello stesso test
+        // esplodeva, rendendo impossibile scrivere test multi-condominio (per esempio
+        // le verifiche di scoping, che in un'app multi-tenant sono proprio quelle che
+        // servono di più). Lo leghiamo al condominio, che è già univoco.
+        'codice_immobile' => 'APP-TEST-'.$condominio->id,
         'attivo'          => true,
         'created_at'      => now(),
         'updated_at'      => now(),

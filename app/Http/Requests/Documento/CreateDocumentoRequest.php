@@ -6,6 +6,7 @@ use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
+use App\Support\LimiteCaricamento;
 
 /**
  * @method bool merge(string $key)
@@ -34,7 +35,7 @@ class CreateDocumentoRequest extends FormRequest
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
             'created_by'      => 'required|exists:users,id',
-            'file'            => 'required|file|mimes:pdf|max:20480',
+            'file'            => 'required|file|mimes:pdf|max:'.LimiteCaricamento::regolaMax(),
             'anagrafiche'     => ['nullable', 'array'],
             'anagrafiche.*'   => ['integer', Rule::exists('anagrafiche', 'id')],
             'condomini_ids'   => ['required', 'array'],

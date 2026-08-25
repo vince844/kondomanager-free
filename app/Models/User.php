@@ -47,6 +47,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'last_login_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
@@ -65,6 +66,35 @@ class User extends Authenticatable implements MustVerifyEmail
     public function suspended(): bool
     {
         return !is_null($this->suspended_at);
+    }
+
+    /**
+     * È l'unico amministratore ancora attivo dell'installazione?
+     *
+     * Serve a impedire i tre modi di restare senza amministratori — sospendere, eliminare,
+     * degradare — perché da quello stato **non si esce dall'interfaccia**: servirebbe `tinker`
+     * o una query a mano. Guarda gli amministratori **attivi**: un amministratore sospeso non
+     * tiene aperta la porta, quindi non conta come sostituto.
+     */
+    public function isUltimoAmministratoreAttivo(): bool
+    {
+        return static::unicoAmministratoreAttivoId() === $this->getKey();
+    }
+
+    /**
+     * L'id dell'unico amministratore attivo, se ne è rimasto uno solo; `null` altrimenti.
+     *
+     * Una query per rispondere a tutte le righe di un elenco: chiamare `isUltimoAmministratoreAttivo()`
+     * riga per riga costerebbe una query per utente.
+     */
+    public static function unicoAmministratoreAttivoId(): ?int
+    {
+        $attivi = static::role(\App\Enums\Role::AMMINISTRATORE->value)
+            ->whereNull('suspended_at')
+            ->limit(2)
+            ->pluck('id');
+
+        return $attivi->count() === 1 ? (int) $attivi->first() : null;
     }
 
     /**
@@ -104,6 +134,19 @@ class User extends Authenticatable implements MustVerifyEmail
             'open_condominio_on_login' => false,
             'default_condominio_id' => null,
         ]);
+    }
+
+    /**
+     * Le righe-per-pagina scelte elenco per elenco.
+     *
+     * ⚠️ Deliberatamente **non** caricata di default e non esposta da `UserResource`: sono dati che
+     * servono al controller nel momento in cui pagina, e a nessun altro. `auth.user` viaggia in
+     * ogni risposta Inertia, e appenderci una lista che cresce a ogni elenco visitato si
+     * pagherebbe su tutte le pagine del programma, comprese quelle senza tabelle.
+     */
+    public function preferenzeTabelle()
+    {
+        return $this->hasMany(PreferenzaTabellaUtente::class);
     }
 
 }

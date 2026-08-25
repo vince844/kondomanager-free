@@ -28,7 +28,7 @@ const currentPublished = computed(() => {
     return publishedConstants.find(p => p.value === !!props.comunicazione.is_published);
 });
 
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
       title: trans('comunicazioni.breadcrumbs.list'), 
       href: route(generateRoute('comunicazioni.index'))
@@ -37,7 +37,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('comunicazioni.breadcrumbs.view'),
       href: '#',
   }
-];
+]);
 
 const pageGuides = computed(() => [
   {

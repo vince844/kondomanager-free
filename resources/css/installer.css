@@ -22,12 +22,23 @@ input[type=password] {
     @apply w-full rounded-lg px-3 py-1.5 outline-gray-300 border-1 disabled:bg-gray-200 disabled:text-gray-400;
 }
 
+select {
+    @apply w-full appearance-none rounded-lg px-3 py-1.5 pe-9 outline-gray-300 border-1 bg-no-repeat disabled:bg-gray-200 disabled:text-gray-400;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd' /%3E%3C/svg%3E");
+    background-position: right 0.6rem center;
+    background-size: 1.1em 1.1em;
+}
+
 .group-header {
     @apply border-b w-full pb-1 text-gray-400;
 }
 
 .btn-primary {
     @apply min-w-32 cursor-pointer bg-gray-800 text-white font-semibold text-center px-3 py-1.5 rounded-lg active:scale-95 disabled:pointer-events-none disabled:bg-gray-300 disabled:text-gray-400 transition-all duration-200;
+}
+
+.btn-secondary {
+    @apply min-w-24 cursor-pointer bg-transparent text-gray-600 font-semibold text-center px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 active:scale-95 disabled:pointer-events-none disabled:text-gray-300 disabled:border-gray-200 transition-all duration-200;
 }
 
 .error {

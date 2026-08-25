@@ -3,12 +3,15 @@
 namespace App\Http\Requests\User;
 
 use App\Models\Anagrafica;
+use App\Traits\ValidaConcessioneRuoli;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 
 class UpdateUserRequest extends FormRequest
 {
+    use ValidaConcessioneRuoli;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -27,8 +30,12 @@ class UpdateUserRequest extends FormRequest
         return [
             'name'        => 'required|string|max:255',
             'email'       => ['required','string','lowercase','max:255','email', Rule::unique('users')->ignore($this->utenti, 'email')],
-            'roles'       => ['required'],
-            'permissions' => ['sometimes', 'array'],
+            'roles'       => [
+                'required',
+                $this->regolaRuoloConcedibile($this->utenti),
+                $this->regolaUltimoAmministratoreNonDegradabile($this->utenti),
+            ],
+            'permissions' => ['sometimes', 'array', $this->regolaPermessiConcedibili($this->utenti)],
             'anagrafica' => [
                 'nullable',
                 Rule::exists('anagrafiche', 'id'), 

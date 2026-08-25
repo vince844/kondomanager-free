@@ -35,6 +35,14 @@ class HandleInertiaRequests extends Middleware
             // Dati per Vue I18n
             'locale' => app()->getLocale(),
 
+            // I valori che il selettore righe-per-pagina può offrire. Condivisi una volta invece
+            // che scritti a mano nel componente: erano già divergenti — il menu partiva da 15
+            // mentre il valore predefinito era 10, così chi si spostava a 50 non trovava più
+            // l'opzione per tornare indietro. Una lista sola, e non può succedere di nuovo.
+            'paginazione' => [
+                'consentite' => config('pagination.consentite'),
+            ],
+
             'auth.user' => fn () => $request->user()
                 ? new UserResource($request->user())
                 : null,
@@ -42,6 +50,11 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'message' => fn () => $request->session()->get('message'),
                 'scoperti_warning' => fn () => $request->session()->get('scoperti_warning'),
+                // Chiave separata e non accodata a `message`: il banner del flash viene
+                // dipinto e subito cancellato dal modale di conferma che gli si sostituisce
+                // (verificato a video sulla beta.46). Il suggerimento deve poter arrivare
+                // dove l'amministratore guarda davvero, cioè dentro quel modale.
+                'suggerimento_crediti' => fn () => $request->session()->get('suggerimento_crediti'),
             ],
 
             'csrf_token' => fn () => $request->user() 

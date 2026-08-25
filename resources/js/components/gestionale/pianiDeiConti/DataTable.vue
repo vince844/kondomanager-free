@@ -1,13 +1,15 @@
 <script setup lang="ts" generic="TData, TValue">
 
 import { ref } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { useTabellaServer } from '@/composables/useTabellaServer';
+import { router, usePage } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
-import { valueUpdater } from '@/lib/utils';
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/pianiDeiConti/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
+import TableEmptyState from '@/components/gestionale/TableEmptyState.vue';
+import { ListTree } from 'lucide-vue-next';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
 import type { Building } from '@/types/buildings';
@@ -25,8 +27,23 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
-const sorting = ref<SortingState>([])
-const isPending = ref(false) 
+const pagina = usePage<{ esercizio: { id: number } }>();
+
+/**
+ * ⚠️ **La rotta era `gestionale.conti.index`, che non esiste.** Ziggy lancia sui nomi che non
+ * conosce, quindi ogni cambio di pagina e ogni cambio di righe su l'elenco dei piani dei conti moriva
+ * in un errore JavaScript e la tabella non si muoveva. Il difetto è precedente alla beta.54 — la
+ * riga vecchia aveva lo stesso nome — ed è emerso solo ora perché è la prima volta che qualcuno
+ * verifica che quelle due tabelle paginino davvero.
+ *
+ * Serve anche l'esercizio: l'indice vive sotto `/{condominio}/esercizi/{esercizio}/…`, e con il
+ * solo condominio Ziggy non saprebbe comporre l'indirizzo.
+ */
+const { inCorso, ordinamento, suPaginazione, suOrdinamento } = useTabellaServer(() =>
+  route(generateRoute('gestionale.esercizi.piani-conti.index'), {
+    condominio: props.condominio.id,
+    esercizio: pagina.props.esercizio.id,
+  }));
 
 const table = useVueTable({
   get data() {
@@ -42,38 +59,19 @@ const table = useVueTable({
       pageSize: props.meta.per_page,
     },
     get sorting() {
-      return sorting.value
+      return ordinamento.value
     },
   },
   manualPagination: true,
+  // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
+  manualSorting: true,
   onPaginationChange: updater => {
-
-    // Prevent concurrent requests
-    if (isPending.value) return 
-    
-    isPending.value = true
-    
-    const nextPage = typeof updater === 'function'
-      ? updater(table.getState().pagination).pageIndex
-      : updater.pageIndex;
-
-    const nextPageSize = table.getState().pagination.pageSize;
-
-    router.get(route(generateRoute('gestionale.conti.index'), { condominio: props.condominio.id}), {
-      page: nextPage + 1,
-      per_page: nextPageSize,
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      onFinish: () => {
-        isPending.value = false
-      }
-    });
+    const stato = table.getState().pagination
+    const p = typeof updater === 'function' ? updater(stato) : updater
+    suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
   },
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  onSortingChange: suOrdinamento,
   getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
 
 })
 
@@ -84,7 +82,7 @@ const table = useVueTable({
       <DataTableToolbar :table="table" />
     </div>
   
-  <div class="border rounded-md">
+  <div v-if="table.getRowModel().rows?.length" class="border rounded-md">
     <Table>
       <TableHeader>
         <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
@@ -97,27 +95,26 @@ const table = useVueTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        <template v-if="table.getRowModel().rows?.length">
-          <TableRow
-            v-for="row in table.getRowModel().rows" :key="row.id"
-            :data-state="row.getIsSelected() ? 'selected' : undefined"
-          >
-            <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
-              <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-            </TableCell>
-          </TableRow>
-        </template>
-        <template v-else>
-          <TableRow>
-            <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
-            </TableCell>
-          </TableRow>
-        </template>
+        <TableRow
+          v-for="row in table.getRowModel().rows" :key="row.id"
+          :data-state="row.getIsSelected() ? 'selected' : undefined"
+        >
+          <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
+            <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+          </TableCell>
+        </TableRow>
       </TableBody>
     </Table>
   </div>
-  <div class="flex items-center justify-end py-4 space-x-2">
+
+  <TableEmptyState
+    v-else
+    :icon="ListTree"
+    title="Nessun piano dei conti"
+    description="Non è ancora stato creato nessun piano dei conti. È l'elenco dei capitoli di spesa su cui si costruiscono il preventivo e il piano rate."
+    media-class="bg-amber-50/50 dark:bg-amber-900/20 text-amber-500"
+  />
+  <div v-if="table.getRowModel().rows?.length" class="flex items-center justify-end py-4 space-x-2">
     <DataTablePagination :table="table" :meta="props.meta" />
   </div>
   

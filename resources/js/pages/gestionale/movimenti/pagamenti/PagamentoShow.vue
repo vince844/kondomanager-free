@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import Alert from '@/components/Alert.vue';
+import type { Flash } from '@/types/flash';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,6 +68,8 @@ const props = defineProps<{
 
 const { euro } = useCurrencyFormatter();
 const { generateRoute, generatePath } = usePermission();
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
 
 // ── Breadcrumbs ───────────────────────────────────────────────────────────────
 const breadcrumbs = computed(() => [
@@ -177,6 +181,10 @@ const scaricaDistinta = () => {
                     </Button>
                 </template>
             </PageHeaderGuide>
+
+            <div v-if="flashMessage">
+                <Alert :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
 
             <!-- ─── BANNER STORNO ───────────────────────────────────────────── -->
             <div

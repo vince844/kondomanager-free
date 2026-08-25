@@ -13,6 +13,7 @@ return [
     */
 
     'failed'                    => 'The credentials you entered are incorrect.',
+    'suspended'                 => 'Tu cuenta ha sido suspendida. Contacta con el administrador de la finca.',
     'password'                  => 'The password you entered is incorrect.',
     'throttle'                  => 'Too many failed attempts. Please try again in :seconds seconds.',
     'reset_link_sent'           => 'A reset link will be sent to the email address if an associated account exists.',

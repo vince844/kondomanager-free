@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Pinpoint accuracy in the allocation report: every column total in the 'Allocation by table and person' print now always matches its expense line budget to the cent (e.g. fixed water fees). Rounding cents stay distributed among the owners who actually share that expense: no more stray cent charged to someone unrelated to that account. Each person's total obviously remains unchanged and identical to the accounting records.",
+        "More readable allocation print: the utility columns (role, person total, % of total and unit total) have been narrowed to free up space for the millesimal tables. The result is a larger font and up to 8 tables on a single page, just like traditional prints.",
+        "Fully functional without an internet connection: interface fonts are now bundled with the application instead of being fetched from an external service on every page load. Faster startup for everyone and full support for offline local installations (e.g. MAMP).",
+        "Quality proven on real data: the allocation engine and the print are now automatically verified, on every software change, against a real 44-unit condominium with 8 millesimal tables. Every future release must reproduce all of its totals to the cent before it can ship."
+    ]
+}

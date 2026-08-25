@@ -23,8 +23,13 @@ class AnagraficaFactory extends Factory
             'nome' => $this->faker->firstName() . ' ' . $this->faker->lastName(),
             'indirizzo' => $this->faker->streetAddress() . ', ' . $this->faker->city(),
             'email' => $this->generateUniqueEmail(),
-            'email_secondaria' => $this->faker->optional(70)->safeEmail(),
-            'pec' => $this->faker->optional(50)->safeEmail(),
+            // email_secondaria e pec hanno un vincolo UNIQUE in tabella quanto email:
+            // usavano safeEmail() grezzo, che pesca da un pool ristretto, e in un ciclo
+            // di poche decine di anagrafiche collidevano (test rossi a intermittenza).
+            // Passano dallo stesso generatore deduplicato, mantenendo la stessa
+            // probabilità di essere nulle.
+            'email_secondaria' => $this->faker->boolean(70) ? $this->generateUniqueEmail() : null,
+            'pec' => $this->faker->boolean(50) ? $this->generateUniqueEmail() : null,
             'codice_fiscale' => $this->generateCodiceFiscale(),
             'tipologia_documento' => $this->faker->randomElement(['passport', 'id_card']),
             'numero_documento' => $this->generateDocumentNumber(),

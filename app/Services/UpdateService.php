@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Auth;
  *   1. checkRemoteVersion()   → interroga il server remoto e popola la cache notifiche
  *   2. hasUpdateAvailable()   → la UI legge la cache per mostrare il badge
  *   3. prepareForUpgrade()    → valida i requisiti, scrive il bridge, attiva l'installer
- *   4. L'installer (index.php in root) esegue il deploy e si autodistrugge
+ *   4. L'installer (public/km-update.php) esegue il deploy e si autodistrugge
  *   5. SystemUpgradeController::finalize() pulisce cache e allinea il DB
  *
  * MODALITÀ OPERATIVE:
@@ -40,7 +40,7 @@ class UpdateService
      *         "version": "1.9.0",
      *         "url": "...",
      *         "hash": "sha256...",
-     *         "requirements": { "php": "8.2.0", "extensions": [...] },
+     *         "requirements": { "php": "8.4.0", "extensions": [...] },
      *         "exclude": [...]
      *       }
      *     ]
@@ -57,10 +57,33 @@ class UpdateService
 
     /**
      * Percorso del file installer master, versionato in Git.
-     * Non viene mai eseguito direttamente da qui — viene COPIATO in root
-     * da activateInstaller() e da lì eseguito via browser.
+     * Non viene mai eseguito direttamente da qui — viene COPIATO nella cartella
+     * pubblica da activateInstaller() e da lì eseguito via browser.
      */
     private const MASTER_PATH = 'resources/installer/index.php';
+
+    /**
+     * Nome con cui il bridge viene copiato dentro public/.
+     *
+     * PERCHÉ IN public/ E NON IN ROOT (cambiato nella 1.10):
+     * fino alla 1.9 il bridge veniva copiato in base_path('index.php') e il
+     * browser mandato su /index.php. Funziona solo dove la cartella pubblica del
+     * server coincide con la radice del progetto — gli hosting condivisi, grazie
+     * all'.htaccess che l'installer scrive. Su qualsiasi installazione con il
+     * document root su public/ (VPS, container, vhost Apache scritto bene, la
+     * nostra stessa immagine Docker) quel POST finiva invece sul front controller
+     * di Laravel: l'aggiornamento non partiva, e restavano a terra il bridge e il
+     * file JSON.
+     *
+     * Dentro public/ l'indirizzo funziona su ENTRAMBI i mondi: sui vhost perché
+     * quella È la cartella servita, sugli hosting condivisi perché la regola di
+     * riscrittura che fa funzionare tutto il sito manda /km-update.php su
+     * public/km-update.php.
+     *
+     * Il nome NON può essere index.php: sarebbe il front controller di Laravel,
+     * verrebbe sovrascritto dal deploy e poi cancellato dall'autodistruzione.
+     */
+    private const INSTALLER_FILE = 'km-update.php';
 
     // -------------------------------------------------------------------------
     // Chiavi cache — persistenti (Cache::forever) finché:
@@ -229,7 +252,7 @@ class UpdateService
      * il Bridge installer nel browser dell'utente.
      *
      * @param array $release  Array della release (da checkRemoteVersion())
-     * @return array          ['token' => string] da passare all'installer via GET/POST
+     * @return array          ['token' => string, 'url' => string] per la pagina di lancio
      *
      * @throws \Exception  Se auto-update disabilitato, hash mancante,
      *                     PHP incompatibile, o installer master non trovato
@@ -249,7 +272,11 @@ class UpdateService
         // Verifica PHP PRIMA di scrivere qualsiasi file:
         // se l'utente è su una versione incompatibile, blocchiamo qui con un
         // messaggio leggibile nella UI Laravel, senza rischio di deploy parziale.
-        $minPhp = $release['requirements']['php'] ?? '8.4.0';
+        // ⚠️ Il ripiego vale solo se il manifest remoto tace, e allora deve dire la **verità del
+        // codice**: `composer.lock` mostra che tutto Symfony chiede `>=8.4.1`, quindi sotto quella
+        // soglia il programma non parte. Un ripiego più permissivo del vero è peggio di nessun
+        // ripiego: lascia passare e rompe **dopo** aver scritto i file.
+        $minPhp = $release['requirements']['php'] ?? '8.4.1';
 
         if (version_compare(PHP_VERSION, $minPhp, '<')) {
             throw new \Exception(
@@ -283,9 +310,23 @@ class UpdateService
                     'bootstrap/cache',
                 ],
             ],
+            // ⚠️ **`gd` mancava, e mpdf è il motore di ogni PDF del programma.** Un hosting senza
+            // `gd` superava ogni controllo, l'amministratore configurava tutto, e poi **ogni
+            // stampa** falliva: il modo peggiore in cui un requisito può mancare, perché non blocca
+            // all'ingresso ma dopo. Mancavano anche `intl` (`cknow/laravel-money`) e `mbstring`,
+            // che pretende Laravel stesso. Misurate su `composer.lock`, non scelte a mano: la
+            // guardia `RequisitiDichiaratiTest` rifà il conto a ogni esecuzione della suite.
             'requirements' => $release['requirements'] ?? [
-                'php'        => '8.4.0',
-                'extensions' => ['zip', 'curl', 'bcmath', 'xml', 'fileinfo', 'posix'],
+                'php'        => '8.4.1',
+                'extensions' => ['zip', 'curl', 'bcmath', 'xml', 'fileinfo', 'posix', 'gd', 'intl', 'mbstring'],
+            ],
+            // La radice del progetto la sa Laravel: gliela diciamo invece di
+            // lasciargliela dedurre dalla posizione in cui si trova. Il bridge sta
+            // dentro public/, quindi __DIR__ NON è la radice, e indovinare è
+            // esattamente ciò che vogliamo togliere di mezzo.
+            'paths' => [
+                'base'   => base_path(),
+                'public' => public_path(),
             ],
         ];
 
@@ -293,7 +334,7 @@ class UpdateService
         File::put(base_path(self::BRIDGE_FILE), json_encode($bridgeData, JSON_PRETTY_PRINT));
         chmod(base_path(self::BRIDGE_FILE), 0644);
 
-        // Sovrascrive index.php in root con la copia dell'installer Bridge
+        // Copia il bridge dentro public/ (vedi INSTALLER_FILE)
         $this->activateInstaller();
 
         Log::info('Update bridge created', [
@@ -301,7 +342,10 @@ class UpdateService
             'initiated_by' => $bridgeData['security']['initiated_by'],
         ]);
 
-        return ['token' => $token];
+        return [
+            'token' => $token,
+            'url'   => url('/' . self::INSTALLER_FILE),
+        ];
     }
 
     // =========================================================================
@@ -309,27 +353,35 @@ class UpdateService
     // =========================================================================
 
     /**
-     * Copia il Bridge installer (versionato in Git) nella root pubblica.
+     * Copia il Bridge installer (versionato in Git) dentro la cartella pubblica.
      *
      * Il file master in resources/installer/index.php NON viene mai eseguito
-     * direttamente — questa copia in root è quella che gestisce il deploy
-     * e poi si autodistrugge al termine (register_shutdown_function).
+     * direttamente — questa copia è quella che gestisce il deploy e poi si
+     * autodistrugge al termine (register_shutdown_function).
      *
-     * @throws \Exception  Se il file master non esiste nel repository
+     * Vedi la costante INSTALLER_FILE per il perché della destinazione.
+     *
+     * @throws \Exception  Se il file master non esiste, o se la cartella
+     *                     pubblica non è scrivibile (meglio fermarsi qui che
+     *                     mandare l'utente su un indirizzo che darà 404)
      */
     private function activateInstaller(): void
     {
         $master = base_path(self::MASTER_PATH);
-        $target = base_path('index.php');
+        $target = public_path(self::INSTALLER_FILE);
 
         if (!File::exists($master)) {
             throw new \Exception("Impossibile trovare l'installer master in: " . self::MASTER_PATH);
         }
 
+        if (!is_writable(dirname($target))) {
+            throw new \Exception("La cartella public non è scrivibile: impossibile avviare l'aggiornamento automatico.");
+        }
+
         File::copy($master, $target);
         chmod($target, 0644);
 
-        Log::info("Installer activated in root");
+        Log::info('Installer activated', ['path' => $target]);
     }
 
     // =========================================================================
@@ -350,8 +402,23 @@ class UpdateService
      */
     public function isUpgradeInProgress(): bool
     {
-        if (File::exists(base_path(self::BRIDGE_FILE))) {
-            return true;
+        $bridge = base_path(self::BRIDGE_FILE);
+
+        if (File::exists($bridge)) {
+            // Il bridge da solo non basta a dire "in corso": se il lancio non è
+            // andato a buon fine (l'utente ha chiuso la pagina, l'indirizzo non
+            // rispondeva) quel file resta lì per sempre e la pagina aggiornamenti
+            // resta bloccata su "aggiornamento in corso" senza via d'uscita.
+            // Il token ha già una scadenza dichiarata: usiamola.
+            $data = json_decode((string) File::get($bridge), true);
+            $expiresAt = $data['security']['expires_at'] ?? null;
+
+            if ($expiresAt === null || time() <= (int) $expiresAt) {
+                return true;
+            }
+
+            Log::info('Stale update bridge ignored and removed', ['expired_at' => $expiresAt]);
+            File::delete($bridge);
         }
 
         return !empty(glob(sys_get_temp_dir() . '/km_lock_*.lock'));

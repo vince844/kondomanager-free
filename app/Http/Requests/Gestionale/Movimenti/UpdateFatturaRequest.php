@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests\Gestionale\Movimenti;
 
+use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
+use App\Enums\Fiscale\NaturaRigaRitenuta;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Support\LimiteCaricamento;
 
 /**
  * Valida i dati per la modifica di una fattura passiva aperta.
@@ -38,6 +41,15 @@ class UpdateFatturaRequest extends FormRequest
             'iban_fornitore'     => 'nullable|string',
             'conto_corrente_id'  => 'nullable|exists:conti_contabili,id',
             'applica_ritenuta'   => 'nullable|boolean',
+            'dati_extra.fiscal.motivo_esclusione_ritenuta' => [
+                'nullable', 'string', Rule::in(array_column(MotivoEsclusioneRitenuta::cases(), 'value')),
+                'required_if:applica_ritenuta,false',
+            ],
+            'dati_extra.fiscal.motivo_esclusione_ritenuta_note' => [
+                'nullable', 'string', 'max:500',
+                'required_if:dati_extra.fiscal.motivo_esclusione_ritenuta,'.MotivoEsclusioneRitenuta::OVERRIDE_MANUALE->value,
+            ],
+            'dati_extra.fiscal.conferma_codice_tributo_mancante' => 'nullable|boolean',
 
             'righe'                      => 'required|array|min:1',
             'righe.*.descrizione'        => 'required|string',
@@ -45,8 +57,16 @@ class UpdateFatturaRequest extends FormRequest
             'righe.*.aliquota_iva'       => 'required|numeric|min:0|max:100',
             'righe.*.conto_id'           => 'nullable|exists:conti,id',
             'righe.*.immobile_id'        => 'nullable|exists:immobili,id',
+            'righe.*.concorre_base_ritenuta' => 'nullable|boolean',
+            'righe.*.natura_riga_ritenuta' => [
+                'nullable', 'string', Rule::in(array_column(NaturaRigaRitenuta::cases(), 'value')),
+            ],
 
-            'file' => 'nullable|file|mimes:pdf,xml,p7m,jpg,png|max:10240',
+            'file' => ['nullable', 'file', 'mimes:pdf,xml,p7m,jpg,png',
+                // Il tetto di questa porta resta **10 MB, il suo**: un allegato di fattura è un
+                // documento singolo, non un archivio. Quello che cambia è che adesso non promette
+                // mai più di quanto il server accetti davvero.
+                'max:'.LimiteCaricamento::regolaMax(10.0)],
         ];
     }
 
@@ -82,6 +102,40 @@ class UpdateFatturaRequest extends FormRequest
                     );
                 }
             }
+
+            $this->guardiaNaturaPercipienteMancante($validator);
         });
+    }
+
+    /**
+     * Design §2.4 M2: stessa guardia di StoreFatturaRequest. Fornitore e
+     * tipo_documento sono immutabili in modifica: si leggono dalla fattura
+     * legata alla rotta, non dall'input.
+     */
+    private function guardiaNaturaPercipienteMancante($validator): void
+    {
+        $fattura = $this->route('fattura');
+        $fornitore = $fattura?->fornitore;
+        if (! $fornitore || ! $fornitore->soggetto_ritenuta || $fornitore->regime_forfetario || ! $fornitore->tipo_ritenuta) {
+            return;
+        }
+
+        if ($fornitore->natura_percipiente || $fornitore->codice_tributo) {
+            return;
+        }
+
+        $richiestaApplicazione = $this->input('applica_ritenuta') ?? ($fattura->tipo_documento !== 'nota_credito');
+        if (! filter_var($richiestaApplicazione, FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
+        if (filter_var($this->input('dati_extra.fiscal.conferma_codice_tributo_mancante', false), FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
+        $validator->errors()->add(
+            'dati_extra.fiscal.conferma_codice_tributo_mancante',
+            "Impossibile determinare il codice tributo (1019 o 1020): sull'anagrafica di {$fornitore->ragione_sociale} manca la natura del percipiente. Completala nell'anagrafica fornitore oppure conferma di voler procedere comunque."
+        );
     }
 }

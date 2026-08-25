@@ -181,4 +181,35 @@ return [
         'no_reply'              => 'Si prega di non rispondere a questa email.',
         'auto_generated'        => 'Questa è un\'email generata automaticamente.',
     ],
+
+    // ─── Avvisi di MODIFICA (beta.64) ──────────────────────────────────────────
+    // Partono solo se l'amministratore spunta «avvisa i destinatari» in modifica: correggere un
+    // refuso non deve mandare una mail a tutto il condominio. Chi viene AGGIUNTO in modifica
+    // riceve invece l'avviso di creazione qui sopra, perché per lui l'oggetto è nuovo davvero.
+    'updated_communication' => [
+        'subject'   => 'Comunicazione aggiornata in bacheca',
+        'greeting'  => 'Salve :name',
+        'line_1'    => 'La comunicazione è stata aggiornata da :user.',
+        'object'    => 'Oggetto',
+        'priority'  => 'Priorità',
+        'action'    => 'Visualizza comunicazione',
+    ],
+
+    'updated_ticket' => [
+        'subject'   => 'Segnalazione guasto aggiornata',
+        'greeting'  => 'Salve :name',
+        'line_1'    => 'La segnalazione è stata aggiornata da :user.',
+        'object'    => 'Oggetto',
+        'status'    => 'Stato',
+        'action'    => 'Visualizza segnalazione',
+    ],
+
+    'updated_document' => [
+        'subject'     => 'Documento aggiornato in archivio',
+        'greeting'    => 'Salve :name',
+        'line_1'      => "Il documento è stato aggiornato da :user nell'archivio del condominio.",
+        'title'       => 'Titolo',
+        'description' => 'Descrizione',
+        'action'      => 'Visualizza documenti',
+    ],
 ];

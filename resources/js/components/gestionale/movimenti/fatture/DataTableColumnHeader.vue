@@ -49,7 +49,14 @@ export default {
     </DropdownMenu>
   </div>
 
-  <div v-else :class="$attrs.class">
+  <!--
+    ⚠️ **Stessa tipografia del ramo ordinabile, e non è un vezzo.** Quel ramo rende un `Button`
+    che porta con sé `font-bold` e la propria spaziatura; questo era un `div` nudo, quindi le
+    intestazioni non ordinabili uscivano in peso 500 invece di 700 e spostate di 4 px a sinistra.
+    Finché quasi tutte le colonne erano ordinabili non si notava — dalla beta.54, che ne spegne
+    sedici, la differenza è diventata una riga di intestazioni disallineate.
+  -->
+  <div v-else :class="cn('pl-1 font-bold', $attrs.class ?? '')">
     {{ title }}
   </div>
 </template>

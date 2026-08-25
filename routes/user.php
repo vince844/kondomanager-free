@@ -43,11 +43,17 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
             'comunicazioni' => 'comunicazione'
         ]);
 
+    // `only()` e non `except(['update'])`: l'`update` sta a parte più sotto perché accetta anche
+    // `POST`. L'`except` però lasciava registrate anche `index` e `show`, che il
+    // `DocumentoController` dell'area utente non implementa e che rispondevano **500**. Il
+    // condòmino i documenti li sfoglia **per categoria** (`categorie-documenti.index` e
+    // `.show`), non da un elenco unico: quelle due schermate non sono mai esistite. Rimosse
+    // nella beta.62.
     Route::resource('documenti', DocumentoController::class)
         ->parameters([
             'documenti' => 'documento'
         ])
-        ->except(['update']);
+        ->only(['create', 'store', 'edit', 'destroy']);
     
     // Rotta per segnalare il pagamento (Single Action Controller)
     Route::post('eventi/{evento}/segnala-pagamento', PaymentReportingController::class)
@@ -64,10 +70,16 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])
         ->name('documenti.download');
 
+    // `only()` e non un `resource` intero: il `CategoriaDocumentoController` dell'area utente
+    // implementa **solo** `index` (l'elenco delle categorie) e `show` (i documenti di una
+    // categoria). Le altre cinque — `create`, `store`, `edit`, `update`, `destroy` — puntavano a
+    // metodi inesistenti e rispondevano **500**: il condòmino le categorie le consulta, non le
+    // gestisce. Rimosse nella beta.62.
     Route::resource('categorie-documenti', CategoriaDocumentoController::class)
         ->parameters([
             'categorie-documenti' => 'categoriaDocumento'
-        ]);
+        ])
+        ->only(['index', 'show']);
 
     Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
         ->name('settings.notifications.index');

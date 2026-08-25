@@ -29,10 +29,16 @@ defineEmits(['update:open']);
           
           <!-- Sezione 1 -->
           <section>
-            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">I tre Ruoli in Kondomanager</h3>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">I quattro Ruoli in Kondomanager</h3>
             <p class="mb-3">
-              In Kondomanager ci sono tre ruoli che puoi assegnare a un'anagrafica su un'unità: <strong class="text-indigo-600 dark:text-indigo-400">Proprietario, Inquilino, Usufruttuario</strong>.
-              Quando su un appartamento esiste un usufrutto, inserisci due anagrafiche: una come Proprietario (che nella realtà giuridica è il <em>nudo proprietario</em>) e una come Usufruttuario.
+              I ruoli che puoi assegnare a un'anagrafica su un'unità sono quattro: <strong class="text-indigo-600 dark:text-indigo-400">Proprietario, Nudo proprietario, Usufruttuario, Inquilino</strong>.
+              Quando su un appartamento esiste un usufrutto, inserisci due anagrafiche: una come <strong>Nudo proprietario</strong> e una come <strong>Usufruttuario</strong>.
+            </p>
+            <p class="mb-3 text-[13px] text-slate-500 dark:text-slate-400">
+              Fino alla versione 1.10.0-beta.43 il ruolo «Nudo proprietario» non esisteva, e la strada era registrarlo come
+              «Proprietario». Le unità già inserite così <strong>continuano a funzionare esattamente come prima</strong> — non
+              c'è niente da rifare. Usare il ruolo giusto serve quando vuoi che il sistema distingua da solo chi paga
+              l'ordinaria da chi paga la straordinaria, in particolare sui pregressi dell'unità.
             </p>
             <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
               <ul class="space-y-2">

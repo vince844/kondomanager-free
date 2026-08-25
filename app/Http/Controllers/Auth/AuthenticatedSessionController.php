@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -38,6 +39,16 @@ class AuthenticatedSessionController extends Controller
 
         // If this user exists, password is correct, and 2FA is enabled, we want to redirect to the 2FA challenge
         if ($user && $user->two_factor_confirmed_at && Hash::check($request->password, $user->password)) {
+
+            // Questo ramo **salta** `LoginRequest::authenticate()`, quindi salta anche il controllo
+            // sulla sospensione che vive lì: senza questa guardia i sospesi con la doppia
+            // autenticazione — cioè, prevedibilmente, gli amministratori — resterebbero scoperti.
+            if ($user->suspended()) {
+                throw ValidationException::withMessages([
+                    'email' => trans('auth.suspended'),
+                ]);
+            }
+
             // Store the user ID and remember preference in the session
             $request->session()->put([
                 'login.id' => $user->getKey(),

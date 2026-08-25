@@ -29,5 +29,11 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <!-- Suite ermetica: senza questo pin il .env reale dello sviluppatore
+             (che può avere TRUSTED_PROXIES=*) filtra nei test, facendo girare
+             l'INTERA suite in modalità "fidati di tutti i proxy" — così ->ip()
+             si fiderebbe di header X-Forwarded-* falsificati e il default
+             sicuro non verrebbe mai testato. 'null' = non fidarsi di nessuno. -->
+        <env name="TRUSTED_PROXIES" value="null"/>
     </php>
 </phpunit>

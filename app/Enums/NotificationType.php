@@ -13,11 +13,14 @@ enum NotificationType: string
 {
     case NEW_COMMUNICATION = 'new_communication';
     case APPROVED_COMMUNICATION = 'approved_communication';
+    case UPDATED_COMMUNICATION = 'updated_communication';
     case NEW_TICKET = 'new_ticket';
     case APPROVED_TICKET = 'approved_ticket';
+    case UPDATED_TICKET = 'updated_ticket';
     case NEW_USER = 'new_user';
     case NEW_ARCHIVE_DOCUMENT = 'new_archive_document';
     case APPROVED_ARCHIVE_DOCUMENT = 'approved_archive_document';
+    case UPDATED_ARCHIVE_DOCUMENT = 'updated_archive_document';
     
     // Commenti
     case NEW_COMMENT = 'new_comment';

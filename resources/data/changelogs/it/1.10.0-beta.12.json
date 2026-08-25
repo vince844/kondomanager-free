@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Cifratura AES-256 dei backup: imposta una password di protezione una volta sola nelle impostazioni (con conferma, icona occhio per mostrarla e validazione immediata) e crea archivi cifrati semplicemente attivando l'interruttore 'Proteggi con la password salvata (AES-256)'. Un backup scaricato o sottratto resta illeggibile senza la password.",
+        "La password di protezione non lascia mai il server: è custodita cifrata sul file system, non finisce mai dentro gli archivi, non è mai in chiaro nel database e non viene mai inviata al browser. Attenzione: se la dimentichi il backup è irrecuperabile — l'interfaccia lo ricorda al momento giusto e segnala che gli zip cifrati con AES si aprono con 7-Zip (Windows) o Keka (Mac), non con Esplora Risorse.",
+        "Nuovo tipo di backup 'solo database': più veloce e leggero perché non include i documenti caricati, ideale come copia di sicurezza rapida prima di un'operazione delicata (aggiornamento, import massivo, chiusura d'esercizio). La verifica dello spazio su disco tiene conto della dimensione ridotta, e nell'elenco i backup 'solo database' e quelli cifrati sono riconoscibili a colpo d'occhio.",
+        "Impostazioni backup riorganizzate: numero di backup da conservare e password di protezione ora vivono in un'unica scheda con un solo pulsante 'Salva impostazioni'; cambio password inline e rimozione con conferma.",
+        "Protezioni aggiuntive sotto il cofano: il server rifiuta di creare un backup non cifrato quando è richiesta la protezione, la tabella dei backup entra nei dump MySQL solo come struttura (mai i dati di lavoro) e vari irrobustimenti contro doppi avvii ed eliminazioni durante un passaggio in corso."
+    ]
+}

@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/GestionaleTestHelpers.php';
+require_once __DIR__.'/GestionaleTestHelpers.php';
 
 /**
  * Test suite: PagamentoFornitoreService v1.9.1
@@ -25,18 +25,20 @@ use App\Enums\MetodoPagamento;
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\StatoPagamentoFornitore;
 use App\Enums\TipoAllocazioneFattura;
+use App\Enums\TipoDetrazione;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
+use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PagamentoGiaStornatoException;
+use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
 use App\Models\Gestionale\ContoContabile;
-use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PagamentoFornitore;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Services\Gestionale\PagamentoFornitoreService;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 
 // ════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -80,9 +82,9 @@ function assertInvarianteCash(int $scritturaId, int $contoCorrenteId): void
 // ════════════════════════════════════════════════════════════════════════════
 
 it('pagamento totale: stato fattura diventa PAGATA e scrittura quadra', function () {
-    $ctx     = setupPagamentiService();
+    $ctx = setupPagamentiService();
     $fattura = registraFatturaServiceTest($ctx);
-    $service = new PagamentoFornitoreService();
+    $service = new PagamentoFornitoreService;
 
     expect($fattura->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
     expect($fattura->netto_a_pagare)->toEqual(122000); // 1000 + 22% IVA
@@ -98,9 +100,9 @@ it('pagamento totale: stato fattura diventa PAGATA e scrittura quadra', function
 });
 
 it('pagamento totale: la pivot ha esattamente 1 record di tipo pagamento', function () {
-    $ctx     = setupPagamentiService();
+    $ctx = setupPagamentiService();
     $fattura = registraFatturaServiceTest($ctx);
-    $service = new PagamentoFornitoreService();
+    $service = new PagamentoFornitoreService;
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
 
@@ -115,14 +117,14 @@ it('pagamento totale: la pivot ha esattamente 1 record di tipo pagamento', funct
 });
 
 it('pagamento parziale: stato diventa PARZIALE', function () {
-    $ctx     = setupPagamentiService();
+    $ctx = setupPagamentiService();
     $fattura = registraFatturaServiceTest($ctx);
-    $service = new PagamentoFornitoreService();
+    $service = new PagamentoFornitoreService;
 
     $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'allocazioni' => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => 50000, // pago 500€ su 1220€
         ]],
     ]));
@@ -135,15 +137,15 @@ it('pagamento parziale: stato diventa PARZIALE', function () {
 });
 
 it('due pagamenti parziali consecutivi chiudono la fattura', function () {
-    $ctx     = setupPagamentiService();
+    $ctx = setupPagamentiService();
     $fattura = registraFatturaServiceTest($ctx);
-    $service = new PagamentoFornitoreService();
+    $service = new PagamentoFornitoreService;
 
     // Primo pagamento: 700€
     $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'allocazioni' => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => 70000,
         ]],
     ]));
@@ -155,8 +157,8 @@ it('due pagamenti parziali consecutivi chiudono la fattura', function () {
     $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'conferma_duplicato_verificato' => true,
         'allocazioni' => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => 52000,
         ]],
     ]));
@@ -177,34 +179,34 @@ it('due pagamenti parziali consecutivi chiudono la fattura', function () {
 });
 
 it('bonifico cumulativo: paga 2 fatture con 1 scrittura e tutto quadra', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
 
     $fattura1 = registraFatturaServiceTest($ctx); // 1220€
     $fattura2 = registraFatturaServiceTest($ctx); // 1220€
 
     $pagamento = $service->registraPagamento([
-        'fornitore_id'                  => $fornitore->id,
-        'condominio_id'                 => $condominio->id,
-        'esercizio_id'                  => $esercizio->id,
-        'conto_corrente_id'             => $contoCorrenteId,
-        'data_pagamento'                => now()->format('Y-m-d'),
-        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
-        'iban_beneficiario'             => 'IT60X0542811101000000123456',
-        'importo_commissioni_cents'     => 0,
-        'allow_overdraft'               => true,
-        'iban_confermato_manualmente'   => true,
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'iban_beneficiario' => 'IT60X0542811101000000123456',
+        'importo_commissioni_cents' => 0,
+        'allow_overdraft' => true,
+        'iban_confermato_manualmente' => true,
         'conferma_duplicato_verificato' => true,
-        'allocazioni'                   => [
+        'allocazioni' => [
             [
-                'fattura_id'             => $fattura1->id,
-                'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                'fattura_id' => $fattura1->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                 'importo_allocato_cents' => $fattura1->netto_a_pagare,
             ],
             [
-                'fattura_id'             => $fattura2->id,
-                'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                'fattura_id' => $fattura2->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                 'importo_allocato_cents' => $fattura2->netto_a_pagare,
             ],
         ],
@@ -226,27 +228,27 @@ it('bonifico cumulativo: paga 2 fatture con 1 scrittura e tutto quadra', functio
 });
 
 it('pagamento con bonifico parlante genera causale fiscale corretta', function () {
-    $ctx     = setupPagamentiService();
+    $ctx = setupPagamentiService();
     $fattura = registraFatturaServiceTest($ctx);
-    $service = new PagamentoFornitoreService();
+    $service = new PagamentoFornitoreService;
 
     // Assicuriamoci che il fornitore abbia la P.IVA per la causale
     $ctx[3]->update(['partita_iva' => '12345678901']);
-    
+
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
-        'bonifico_parlante'      => true,
-        'tipo_detrazione'        => \App\Enums\TipoDetrazione::RISTRUTTURAZIONE->value,
+        'bonifico_parlante' => true,
+        'tipo_detrazione' => TipoDetrazione::RISTRUTTURAZIONE->value,
         'beneficiari_detrazione' => [
-            ['codice_fiscale' => 'RSSMRA80A01H501U', 'nome' => 'Mario Rossi']
+            ['codice_fiscale' => 'RSSMRA80A01H501U', 'nome' => 'Mario Rossi'],
         ],
     ]));
 
     $pagamento->refresh();
 
     expect($pagamento->bonifico_parlante)->toBeTrue();
-    expect($pagamento->tipo_detrazione)->toEqual(\App\Enums\TipoDetrazione::RISTRUTTURAZIONE);
+    expect($pagamento->tipo_detrazione)->toEqual(TipoDetrazione::RISTRUTTURAZIONE);
     expect($pagamento->beneficiari_detrazione)->toHaveCount(1);
-    
+
     $base = sprintf(
         'Pagamento %s del %s',
         $fattura->numero_documento ?? "FT#{$fattura->id}",
@@ -255,9 +257,9 @@ it('pagamento con bonifico parlante genera causale fiscale corretta', function (
 
     $expectedCausale = "Bonifico Ristrutturazione edilizia - art. 16-bis DPR 917/1986 - Benef. CF: RSSMRA80A01H501U - P.IVA: 12345678901 - {$base}";
     if (mb_strlen($expectedCausale) > 140) {
-        $expectedCausale = mb_substr($expectedCausale, 0, 137) . '...';
+        $expectedCausale = mb_substr($expectedCausale, 0, 137).'...';
     }
-    
+
     expect($pagamento->causale_bonifico)->toEqual($expectedCausale);
 });
 
@@ -266,24 +268,24 @@ it('pagamento con bonifico parlante genera causale fiscale corretta', function (
 // ════════════════════════════════════════════════════════════════════════════
 
 it('netting FT+NC: quadratura DARE=AVERE corretta', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
     // Fattura 1000€ + 22% = 1220€
     $fattura = registraFatturaServiceTest($ctx);
 
     // Nota credito 200€ + 22% = 244€ (no ritenuta)
-    $nc = (new FatturaPassivaService())->registraFattura(
+    $nc = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
-            'tipo_documento'   => 'nota_credito',
+            'tipo_documento' => 'nota_credito',
             'applica_ritenuta' => false,
-            'righe'            => [[
-                'descrizione'        => 'Storno parziale',
+            'righe' => [[
+                'descrizione' => 'Storno parziale',
                 'importo_imponibile' => 200,
-                'aliquota_iva'       => 22,
-                'conto_id'           => $capitolo->id,
-                'is_sopravvenienza'  => false,
+                'aliquota_iva' => 22,
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
             ]],
         ]),
         $condominio->id
@@ -296,33 +298,33 @@ it('netting FT+NC: quadratura DARE=AVERE corretta', function () {
     $bonifico = $fattura->netto_a_pagare - $importoNC; // 97600 cents
 
     $pagamento = $service->registraPagamento([
-        'fornitore_id'                  => $fornitore->id,
-        'condominio_id'                 => $condominio->id,
-        'esercizio_id'                  => $esercizio->id,
-        'conto_corrente_id'             => $contoCorrenteId,
-        'data_pagamento'                => now()->format('Y-m-d'),
-        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
-        'iban_beneficiario'             => 'IT60X0542811101000000123456',
-        'importo_commissioni_cents'     => 0,
-        'allow_overdraft'               => true,
-        'iban_confermato_manualmente'   => true,
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'iban_beneficiario' => 'IT60X0542811101000000123456',
+        'importo_commissioni_cents' => 0,
+        'allow_overdraft' => true,
+        'iban_confermato_manualmente' => true,
         'conferma_duplicato_verificato' => true,
-        'allocazioni'                   => [
+        'allocazioni' => [
             // Fattura: 976 pagamento + 244 compensazione = 1220 totale chiuso
             [
-                'fattura_id'             => $fattura->id,
-                'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+                'fattura_id' => $fattura->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                 'importo_allocato_cents' => $bonifico,
             ],
             [
-                'fattura_id'             => $fattura->id,
-                'tipo'                   => TipoAllocazioneFattura::COMPENSAZIONE->value,
+                'fattura_id' => $fattura->id,
+                'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value,
                 'importo_allocato_cents' => $importoNC,
             ],
             // NC: 244 compensazione → interamente utilizzata
             [
-                'fattura_id'             => $nc->id,
-                'tipo'                   => TipoAllocazioneFattura::COMPENSAZIONE->value,
+                'fattura_id' => $nc->id,
+                'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value,
                 'importo_allocato_cents' => $importoNC,
             ],
         ],
@@ -340,41 +342,41 @@ it('netting FT+NC: quadratura DARE=AVERE corretta', function () {
 });
 
 it('netting: invariante GOLD — Σ(pivot pagamento) = uscita cassa banca', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
     $fattura = registraFatturaServiceTest($ctx); // 1220€
 
-    $nc = (new FatturaPassivaService())->registraFattura(
+    $nc = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
-            'tipo_documento'   => 'nota_credito',
+            'tipo_documento' => 'nota_credito',
             'applica_ritenuta' => false,
-            'righe'            => [[
-                'descrizione'        => 'NC test',
+            'righe' => [[
+                'descrizione' => 'NC test',
                 'importo_imponibile' => 200,
-                'aliquota_iva'       => 22,
-                'conto_id'           => $capitolo->id,
-                'is_sopravvenienza'  => false,
+                'aliquota_iva' => 22,
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
             ]],
         ]),
         $condominio->id
     );
 
     $importoNC = abs($nc->netto_a_pagare); // 24400
-    $bonifico  = $fattura->netto_a_pagare - $importoNC; // 97600
+    $bonifico = $fattura->netto_a_pagare - $importoNC; // 97600
 
     $pagamento = $service->registraPagamento([
-        'fornitore_id'                  => $fornitore->id,
-        'condominio_id'                 => $condominio->id,
-        'esercizio_id'                  => $esercizio->id,
-        'conto_corrente_id'             => $contoCorrenteId,
-        'data_pagamento'                => now()->format('Y-m-d'),
-        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
-        'allow_overdraft'               => true,
-        'iban_confermato_manualmente'   => true,
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'allow_overdraft' => true,
+        'iban_confermato_manualmente' => true,
         'conferma_duplicato_verificato' => true,
-        'allocazioni'                   => [
+        'allocazioni' => [
             ['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,     'importo_allocato_cents' => $bonifico],
             ['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value, 'importo_allocato_cents' => $importoNC],
             ['fattura_id' => $nc->id,      'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value, 'importo_allocato_cents' => $importoNC],
@@ -393,9 +395,9 @@ it('netting: invariante GOLD — Σ(pivot pagamento) = uscita cassa banca', func
         ->where('conto_contabile_id', $contoCorrenteId)
         ->sum('importo');
 
-    expect($totalePivotPagamento)->toEqual($bonifico, "Σ(pivot pagamento) deve essere il bonifico effettivo");
-    expect($uscitaBanca)->toEqual($bonifico, "AVERE banca deve essere il bonifico effettivo");
-    expect($totalePivotPagamento)->toEqual($uscitaBanca, "INVARIANTE GOLD violata");
+    expect($totalePivotPagamento)->toEqual($bonifico, 'Σ(pivot pagamento) deve essere il bonifico effettivo');
+    expect($uscitaBanca)->toEqual($bonifico, 'AVERE banca deve essere il bonifico effettivo');
+    expect($totalePivotPagamento)->toEqual($uscitaBanca, 'INVARIANTE GOLD violata');
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -403,8 +405,8 @@ it('netting: invariante GOLD — Σ(pivot pagamento) = uscita cassa banca', func
 // ════════════════════════════════════════════════════════════════════════════
 
 it('storno pagamento: fattura torna APERTA e scrittura storno quadra', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
@@ -443,12 +445,12 @@ it('storno pagamento: fattura torna APERTA e scrittura storno quadra', function 
 });
 
 it('storno: pivot negativi mirror del pagamento originale', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
-    $storno    = $service->stornaPagamento($pagamento, 'Test pivot negativi');
+    $storno = $service->stornaPagamento($pagamento, 'Test pivot negativi');
 
     // La scrittura storno deve avere pivot con importo_allocato NEGATIVO
     $pivotStorno = DB::table('fattura_scrittura')
@@ -460,8 +462,8 @@ it('storno: pivot negativi mirror del pagamento originale', function () {
 });
 
 it('storno di pagamento già stornato lancia PagamentoGiaStornatoException', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
@@ -473,8 +475,8 @@ it('storno di pagamento già stornato lancia PagamentoGiaStornatoException', fun
 });
 
 it('storno cross-esercizio (Variante B1): usa esercizio corrente aperto', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio] = $ctx;
     $fattura = registraFatturaServiceTest($ctx);
 
@@ -486,12 +488,12 @@ it('storno cross-esercizio (Variante B1): usa esercizio corrente aperto', functi
     // Crea un nuovo esercizio aperto per ricevere lo storno
     $nuovoEsercizioId = DB::table('esercizi')->insertGetId([
         'condominio_id' => $condominio->id,
-        'nome'          => 'Esercizio 2027',
-        'stato'         => 'aperto',
-        'data_inizio'   => '2027-01-01',
-        'data_fine'     => '2027-12-31',
-        'created_at'    => now(),
-        'updated_at'    => now(),
+        'nome' => 'Esercizio 2027',
+        'stato' => 'aperto',
+        'data_inizio' => '2027-01-01',
+        'data_fine' => '2027-12-31',
+        'created_at' => now(),
+        'updated_at' => now(),
     ]);
 
     $storno = $service->stornaPagamento($pagamento, 'Storno cross-esercizio test');
@@ -511,24 +513,24 @@ it('storno cross-esercizio (Variante B1): usa esercizio corrente aperto', functi
 });
 
 it('storno pagamento cumulativo multi-fattura: riapre entrambe', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
 
     $fattura1 = registraFatturaServiceTest($ctx);
     $fattura2 = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento([
-        'fornitore_id'                  => $fornitore->id,
-        'condominio_id'                 => $condominio->id,
-        'esercizio_id'                  => $esercizio->id,
-        'conto_corrente_id'             => $contoCorrenteId,
-        'data_pagamento'                => now()->format('Y-m-d'),
-        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
-        'allow_overdraft'               => true,
-        'iban_confermato_manualmente'   => true,
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'allow_overdraft' => true,
+        'iban_confermato_manualmente' => true,
         'conferma_duplicato_verificato' => true,
-        'allocazioni'                   => [
+        'allocazioni' => [
             ['fattura_id' => $fattura1->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => $fattura1->netto_a_pagare],
             ['fattura_id' => $fattura2->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => $fattura2->netto_a_pagare],
         ],
@@ -544,41 +546,41 @@ it('storno pagamento cumulativo multi-fattura: riapre entrambe', function () {
 });
 
 it('storno pagamento con netting NC: riapre fattura e nota di credito', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
     $fattura = registraFatturaServiceTest($ctx);
-    
-    $nc = (new FatturaPassivaService())->registraFattura(
+
+    $nc = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
-            'tipo_documento'   => 'nota_credito',
+            'tipo_documento' => 'nota_credito',
             'applica_ritenuta' => false,
-            'righe'            => [[
-                'descrizione'        => 'NC test storno',
+            'righe' => [[
+                'descrizione' => 'NC test storno',
                 'importo_imponibile' => 200,
-                'aliquota_iva'       => 22,
-                'conto_id'           => $capitolo->id,
-                'is_sopravvenienza'  => false,
+                'aliquota_iva' => 22,
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
             ]],
         ]),
         $condominio->id
     );
 
     $importoNC = abs($nc->netto_a_pagare);
-    $bonifico  = $fattura->netto_a_pagare - $importoNC;
+    $bonifico = $fattura->netto_a_pagare - $importoNC;
 
     $pagamento = $service->registraPagamento([
-        'fornitore_id'                  => $fornitore->id,
-        'condominio_id'                 => $condominio->id,
-        'esercizio_id'                  => $esercizio->id,
-        'conto_corrente_id'             => $contoCorrenteId,
-        'data_pagamento'                => now()->format('Y-m-d'),
-        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
-        'allow_overdraft'               => true,
-        'iban_confermato_manualmente'   => true,
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'allow_overdraft' => true,
+        'iban_confermato_manualmente' => true,
         'conferma_duplicato_verificato' => true,
-        'allocazioni'                   => [
+        'allocazioni' => [
             ['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,     'importo_allocato_cents' => $bonifico],
             ['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value, 'importo_allocato_cents' => $importoNC],
             ['fattura_id' => $nc->id,      'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value, 'importo_allocato_cents' => $importoNC],
@@ -600,8 +602,8 @@ it('storno pagamento con netting NC: riapre fattura e nota di credito', function
 // ════════════════════════════════════════════════════════════════════════════
 
 it('pagamento con commissioni: DARE spese bancarie + quadratura corretta', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, , , , $contoCorrenteId] = $ctx;
     $fattura = registraFatturaServiceTest($ctx);
 
@@ -649,15 +651,15 @@ it('pagamento con commissioni: DARE spese bancarie + quadratura corretta', funct
 // ════════════════════════════════════════════════════════════════════════════
 
 it('overpayment bloccato: alloco più del residuo → OverpaymentException', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     expect(fn () => $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'allow_overpayment' => false,
-        'allocazioni'       => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+        'allocazioni' => [[
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => $fattura->netto_a_pagare + 1, // 1 centesimo in più
         ]],
     ])))->toThrow(OverpaymentException::class);
@@ -668,8 +670,8 @@ it('overpayment bloccato: alloco più del residuo → OverpaymentException', fun
 });
 
 it('esercizio chiuso: blocca registrazione → FiscalYearClosedException', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio] = $ctx;
     $fattura = registraFatturaServiceTest($ctx);
 
@@ -681,19 +683,19 @@ it('esercizio chiuso: blocca registrazione → FiscalYearClosedException', funct
 });
 
 it('antiriciclaggio: contanti >= 5000€ → IllegalCashAmountException', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
 
     // Fattura grande per superare il limite (6000€ + 22%)
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
-    $fattura = (new FatturaPassivaService())->registraFattura(
+    $fattura = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
             'righe' => [[
-                'descrizione'        => 'Fattura Grande',
+                'descrizione' => 'Fattura Grande',
                 'importo_imponibile' => 6000,
-                'aliquota_iva'       => 22,
-                'conto_id'           => $capitolo->id,
-                'is_sopravvenienza'  => false,
+                'aliquota_iva' => 22,
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
             ]],
         ]),
         $condominio->id
@@ -701,27 +703,27 @@ it('antiriciclaggio: contanti >= 5000€ → IllegalCashAmountException', functi
 
     expect(fn () => $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'metodo_pagamento' => MetodoPagamento::CONTANTI->value,
-        'allocazioni'      => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+        'allocazioni' => [[
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => $fattura->netto_a_pagare,
         ]],
     ])))->toThrow(IllegalCashAmountException::class);
 });
 
 it('antiriciclaggio: contanti 4999€ passano (sotto soglia)', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, $gestione, $fornitore, , $capitolo] = $ctx;
 
-    $fattura = (new FatturaPassivaService())->registraFattura(
+    $fattura = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
             'righe' => [[
-                'descrizione'        => 'Fattura Piccola',
+                'descrizione' => 'Fattura Piccola',
                 'importo_imponibile' => 4000, // 4000 + 22% = 4880 < 5000
-                'aliquota_iva'       => 22,
-                'conto_id'           => $capitolo->id,
-                'is_sopravvenienza'  => false,
+                'aliquota_iva' => 22,
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
             ]],
         ]),
         $condominio->id
@@ -730,9 +732,9 @@ it('antiriciclaggio: contanti 4999€ passano (sotto soglia)', function () {
     // Deve passare senza eccezione
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'metodo_pagamento' => MetodoPagamento::CONTANTI->value,
-        'allocazioni'      => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+        'allocazioni' => [[
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => $fattura->netto_a_pagare,
         ]],
     ]));
@@ -745,23 +747,23 @@ it('antiriciclaggio: contanti 4999€ passano (sotto soglia)', function () {
 // ════════════════════════════════════════════════════════════════════════════
 
 it('ricalcolaStatoFattura: corregge stato inconsistente (overpayment dirty data)', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     // Inserisce manualmente un pivot con overpayment (simula dirty data)
     $scrittura = $fattura->scritture()->first();
     DB::table('fattura_scrittura')->insert([
-        'fattura_passiva_id'     => $fattura->id,
+        'fattura_passiva_id' => $fattura->id,
         'scrittura_contabile_id' => $scrittura->id,
-        'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
-        'importo_allocato'       => $fattura->netto_a_pagare + 100000, // overpayment
-        'created_at'             => now(),
-        'updated_at'             => now(),
+        'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+        'importo_allocato' => $fattura->netto_a_pagare + 100000, // overpayment
+        'created_at' => now(),
+        'updated_at' => now(),
     ]);
 
     // ricalcolaStatoFattura non deve lanciare eccezione
-    expect(fn () => $service->ricalcolaStatoFattura($fattura))->not->toThrow(\Throwable::class);
+    expect(fn () => $service->ricalcolaStatoFattura($fattura))->not->toThrow(Throwable::class);
 
     $fattura->refresh();
 
@@ -772,8 +774,8 @@ it('ricalcolaStatoFattura: corregge stato inconsistente (overpayment dirty data)
 });
 
 it('ricalcolaStatoFattura: non include tipo=competenza nel calcolo', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     // La fattura appena registrata ha già 1 pivot tipo=competenza da FatturaPassivaService.
@@ -786,8 +788,8 @@ it('ricalcolaStatoFattura: non include tipo=competenza nel calcolo', function ()
 });
 
 it('versione_allocazioni incrementa ad ogni operazione sulla pivot', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     $versioneIniziale = $fattura->versione_allocazioni;
@@ -795,8 +797,8 @@ it('versione_allocazioni incrementa ad ogni operazione sulla pivot', function ()
     // Pagamento parziale → versione +1
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'allocazioni' => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => 50000,
         ]],
     ]));
@@ -812,11 +814,11 @@ it('versione_allocazioni incrementa ad ogni operazione sulla pivot', function ()
 });
 
 it('idempotency key: seconda chiamata con stessa key restituisce pagamento originale', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
-    $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
+    $idempotencyKey = (string) Str::uuid();
     $input = datiPagamento($ctx, $fattura, ['idempotency_key' => $idempotencyKey]);
 
     $pagamento1 = $service->registraPagamento($input);
@@ -835,8 +837,8 @@ it('idempotency key: seconda chiamata con stessa key restituisce pagamento origi
 });
 
 it('snapshot fornitore: salvato al momento del pagamento e immutabile', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, , , $fornitore] = $ctx;
     $fattura = registraFatturaServiceTest($ctx);
 
@@ -844,20 +846,33 @@ it('snapshot fornitore: salvato al momento del pagamento e immutabile', function
 
     // Snapshot creato
     expect($pagamento->fornitore_snapshot)->not->toBeNull();
-    expect($pagamento->fornitore_snapshot['schema_version'])->toEqual(1);
+    expect($pagamento->fornitore_snapshot['schema_version'])->toEqual(2);
     expect($pagamento->fornitore_snapshot['ragione_sociale'])->toEqual($fornitore->ragione_sociale);
 
-    // Modifica anagrafica fornitore DOPO il pagamento
-    $fornitore->update(['ragione_sociale' => 'Ragione Sociale Modificata Srl']);
+    // Dalla versione 2 lo snapshot porta anche il REGIME FISCALE, non solo l'identità.
+    // Serve al modulo F24: aliquota e codice tributo dipendono dal regime del percipiente
+    // al momento del pagamento, e un F24 già presentato non si riscrive correggendo oggi
+    // l'anagrafica del fornitore.
+    expect($pagamento->fornitore_snapshot)->toHaveKeys([
+        'tipo_ritenuta', 'natura_percipiente', 'perc_ritenuta',
+        'soggetto_ritenuta', 'regime_forfetario', 'residente_fiscale',
+    ]);
 
-    // Snapshot deve restare immutato
+    // Modifica anagrafica fornitore DOPO il pagamento
+    $fornitore->update([
+        'ragione_sociale' => 'Ragione Sociale Modificata Srl',
+        'perc_ritenuta' => 20,
+    ]);
+
+    // Snapshot deve restare immutato — identità e regime
     $pagamento->refresh();
     expect($pagamento->fornitore_snapshot['ragione_sociale'])->toEqual('Fornitore Test Srl');
+    expect((int) $pagamento->fornitore_snapshot['perc_ritenuta'])->toEqual(4);
 });
 
 it('numero_protocollo generato con prefisso PAG per pagamento_fornitore', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
@@ -869,21 +884,21 @@ it('numero_protocollo generato con prefisso PAG per pagamento_fornitore', functi
 });
 
 it('ritenute dacconto: calcolo pro-quota su pagamento parziale', function () {
-    $ctx     = setupPagamentiService();
-    $service = new PagamentoFornitoreService();
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
     // Fattura da 1000€ netto a pagare. Ha 200€ di ritenuta.
     // In db i cents sono 100000 e 20000.
-    $fattura = (new FatturaPassivaService())->registraFattura(
+    $fattura = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
             'applica_ritenuta' => true,
             'righe' => [[
-                'descrizione'        => 'Fattura Ritenuta',
+                'descrizione' => 'Fattura Ritenuta',
                 'importo_imponibile' => 1000,
-                'aliquota_iva'       => 0, // No IVA per calcoli più chiari
-                'conto_id'           => $capitolo->id,
-                'is_sopravvenienza'  => false,
+                'aliquota_iva' => 0, // No IVA per calcoli più chiari
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
             ]],
         ]),
         $condominio->id
@@ -898,67 +913,67 @@ it('ritenute dacconto: calcolo pro-quota su pagamento parziale', function () {
     // Paghiamo il 50% della fattura (50000 cents)
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'allocazioni' => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => 50000,
         ]],
     ]));
 
     $pagamento->refresh();
-    
+
     // Il 50% di 20000 è 10000 cents (100€)
     expect($pagamento->importo_ritenuta)->toEqual(10000);
-    
+
     // Il secondo pagamento del restante 50%
     $pagamento2 = $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'conferma_duplicato_verificato' => true,
         'allocazioni' => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
             'importo_allocato_cents' => 50000,
         ]],
     ]));
 
     $pagamento2->refresh();
-    
+
     // Anche il secondo pagamento deve avere 100€ di ritenuta
     expect($pagamento2->importo_ritenuta)->toEqual(10000);
 });
 it('aggiorna pagamento riscrivendo record bancario', function () {
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiService();
 
-    $fattura = (new App\Services\Gestionale\FatturaPassivaService())->registraFattura(
+    $fattura = (new FatturaPassivaService)->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], ['righe' => [['descrizione' => 'Test', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id, 'is_sopravvenienza' => false]]]),
         $condominio->id
     );
 
     $pagamentoData = [
-        'fornitore_id'      => $fornitore->id,
-        'condominio_id'     => $condominio->id,
-        'esercizio_id'      => $esercizio->id,
-        'gestione_id'       => $gestione->id,
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'gestione_id' => $gestione->id,
         'conto_corrente_id' => $contoCorrenteId,
-        'data_pagamento'    => now()->format('Y-m-d'),
-        'metodo_pagamento'  => App\Enums\MetodoPagamento::BONIFICO->value,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
         'importo_lordo_cents' => 122000,
         'importo_netto_cents' => 122000,
-        'allocazioni'       => [
+        'allocazioni' => [
             [
-                'fattura_id'             => $fattura->id,
-                'tipo'                   => App\Enums\TipoAllocazioneFattura::PAGAMENTO->value,
+                'fattura_id' => $fattura->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
                 'importo_allocato_cents' => 122000,
-            ]
+            ],
         ],
-        'allow_overdraft'   => true,
+        'allow_overdraft' => true,
     ];
 
-    $service = new App\Services\Gestionale\PagamentoFornitoreService();
+    $service = new PagamentoFornitoreService;
     $pagamento = $service->registraPagamento($pagamentoData);
 
     $newData = array_merge($pagamentoData, [
         'causale_bonifico' => 'Modificata',
-        'note_override'    => 'Nota modificata',
-        'data_pagamento'   => now()->addDay()->format('Y-m-d'),
+        'note_override' => 'Nota modificata',
+        'data_pagamento' => now()->addDay()->format('Y-m-d'),
     ]);
 
     $pagamentoAggiornato = $service->aggiornaPagamento($pagamento, $newData);
@@ -966,7 +981,218 @@ it('aggiorna pagamento riscrivendo record bancario', function () {
     expect($pagamentoAggiornato->causale_bonifico)->toBe('Modificata');
     expect($pagamentoAggiornato->note_override)->toBe('Nota modificata');
     expect($pagamentoAggiornato->data_pagamento->toDateString())->toBe(now()->addDay()->toDateString());
-    
+
     $scrittura = $pagamentoAggiornato->scrittura;
     expect($scrittura->data_registrazione->toDateString())->toBe(now()->addDay()->toDateString());
+});
+
+it('aggiorna pagamento con commissioni bancarie: ricrea riga spese bancarie e mantiene la quadratura', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiService();
+
+    $fattura = (new FatturaPassivaService)->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], ['righe' => [['descrizione' => 'Test', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id, 'is_sopravvenienza' => false]]]),
+        $condominio->id
+    );
+
+    $pagamentoData = [
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'gestione_id' => $gestione->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => 122000,
+        'importo_netto_cents' => 122000,
+        'allocazioni' => [
+            [
+                'fattura_id' => $fattura->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                'importo_allocato_cents' => 122000,
+            ],
+        ],
+        'allow_overdraft' => true,
+    ];
+
+    $service = new PagamentoFornitoreService;
+    // Creato SENZA commissioni
+    $pagamento = $service->registraPagamento($pagamentoData);
+
+    // Modificato AGGIUNGENDO 5€ di commissioni
+    $commissioni = 500;
+    $pagamentoAggiornato = $service->aggiornaPagamento($pagamento, array_merge($pagamentoData, [
+        'importo_commissioni_cents' => $commissioni,
+    ]));
+
+    assertQuadraturaPerfetta($pagamentoAggiornato->scrittura_contabile_id);
+
+    expect($pagamentoAggiornato->importo_commissione)->toEqual($commissioni);
+
+    $contoSpese = ContoContabile::where('condominio_id', $condominio->id)
+        ->where('ruolo', 'spese_bancarie')
+        ->first();
+
+    $dareSpese = (int) DB::table('righe_scritture')
+        ->where('scrittura_id', $pagamentoAggiornato->scrittura_contabile_id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoSpese->id)
+        ->value('importo');
+
+    expect($dareSpese)->toEqual($commissioni);
+
+    // AVERE Banca deve includere le commissioni (netto + commissioni)
+    $averkBanca = (int) DB::table('righe_scritture')
+        ->where('scrittura_id', $pagamentoAggiornato->scrittura_contabile_id)
+        ->where('tipo_riga', 'avere')
+        ->where('conto_contabile_id', $contoCorrenteId)
+        ->value('importo');
+
+    expect($averkBanca)->toEqual(122000 + $commissioni);
+
+    // Modificato di nuovo AZZERANDO le commissioni: la riga spese bancarie non deve ricomparire
+    $pagamentoSenzaCommissioni = $service->aggiornaPagamento($pagamentoAggiornato, array_merge($pagamentoData, [
+        'importo_commissioni_cents' => 0,
+    ]));
+
+    assertQuadraturaPerfetta($pagamentoSenzaCommissioni->scrittura_contabile_id);
+    expect($pagamentoSenzaCommissioni->importo_commissione)->toEqual(0);
+
+    $dareSpeseDopo = (int) DB::table('righe_scritture')
+        ->where('scrittura_id', $pagamentoSenzaCommissioni->scrittura_contabile_id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoSpese->id)
+        ->value('importo');
+
+    expect($dareSpeseDopo)->toEqual(0);
+});
+
+it('aggiorna pagamento persiste bonifico_parlante e tipo_detrazione', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiService();
+
+    $fattura = (new FatturaPassivaService)->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], ['righe' => [['descrizione' => 'Test', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id, 'is_sopravvenienza' => false]]]),
+        $condominio->id
+    );
+
+    $pagamentoData = [
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'gestione_id' => $gestione->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => 122000,
+        'importo_netto_cents' => 122000,
+        'allocazioni' => [
+            [
+                'fattura_id' => $fattura->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                'importo_allocato_cents' => 122000,
+            ],
+        ],
+        'allow_overdraft' => true,
+    ];
+
+    $service = new PagamentoFornitoreService;
+    // Creato senza bonifico parlante
+    $pagamento = $service->registraPagamento($pagamentoData);
+
+    expect($pagamento->bonifico_parlante)->toBeFalse();
+    expect($pagamento->tipo_detrazione)->toBeNull();
+
+    $pagamentoAggiornato = $service->aggiornaPagamento($pagamento, array_merge($pagamentoData, [
+        'bonifico_parlante' => true,
+        'tipo_detrazione' => TipoDetrazione::RISTRUTTURAZIONE->value,
+    ]));
+
+    expect($pagamentoAggiornato->bonifico_parlante)->toBeTrue();
+    expect($pagamentoAggiornato->tipo_detrazione)->toBe(TipoDetrazione::RISTRUTTURAZIONE);
+});
+
+it('blocca la modifica di un pagamento cumulativo su più fatture', function () {
+    $ctx = setupPagamentiService();
+    $service = new PagamentoFornitoreService;
+    [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
+
+    $fattura1 = registraFatturaServiceTest($ctx);
+    $fattura2 = registraFatturaServiceTest($ctx);
+
+    $pagamento = $service->registraPagamento([
+        'fornitore_id' => $fornitore->id,
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'allow_overdraft' => true,
+        'allocazioni' => [
+            [
+                'fattura_id' => $fattura1->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                'importo_allocato_cents' => $fattura1->netto_a_pagare,
+            ],
+            [
+                'fattura_id' => $fattura2->id,
+                'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                'importo_allocato_cents' => $fattura2->netto_a_pagare,
+            ],
+        ],
+    ]);
+
+    $service->aggiornaPagamento($pagamento, [
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->addDay()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => $pagamento->importo_lordo,
+        'importo_netto_cents' => $pagamento->importo_netto,
+    ]);
+})->throws(PagamentoModificaVietataException::class);
+
+it('blocca in modifica un aumento di importo che sfora la capienza del conto, ma permette un edit invariato', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiService();
+    $fattura = registraFatturaServiceTest($ctx = [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $service = new PagamentoFornitoreService;
+
+    // Registrato in overdraft esplicito: il conto parte da saldo 0, quindi qualunque
+    // pagamento lo porta in negativo (nessun saldo iniziale configurato in setup).
+    $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
+        'allow_overdraft' => true,
+    ]));
+
+    // Edit che NON aumenta l'uscita di cassa (stessa importo, cambia solo la data):
+    // deve passare anche SENZA allow_overdraft, perché non peggiora l'esposizione.
+    $pagamentoInvariato = $service->aggiornaPagamento($pagamento, [
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->addDay()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => $pagamento->importo_lordo,
+        'importo_netto_cents' => $pagamento->importo_netto,
+    ]);
+    expect($pagamentoInvariato->data_pagamento->toDateString())->toBe(now()->addDay()->toDateString());
+
+    // Edit che AUMENTA l'uscita di cassa senza allow_overdraft: deve essere bloccato
+    // (allow_overpayment serve solo a superare il controllo residuo fattura, non c'entra
+    // con la capienza conto: qui vogliamo isolare il blocco sulla capienza).
+    expect(fn () => $service->aggiornaPagamento($pagamentoInvariato, [
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => $pagamento->importo_lordo * 2,
+        'importo_netto_cents' => $pagamento->importo_netto * 2,
+        'allow_overpayment' => true,
+    ]))->toThrow(InsufficientFundsException::class);
+
+    // Lo stesso aumento CON allow_overdraft deve invece passare.
+    $pagamentoAumentato = $service->aggiornaPagamento($pagamentoInvariato, [
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->format('Y-m-d'),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => $pagamento->importo_lordo * 2,
+        'importo_netto_cents' => $pagamento->importo_netto * 2,
+        'allow_overpayment' => true,
+        'allow_overdraft' => true,
+    ]);
+    expect($pagamentoAumentato->importo_netto)->toEqual($pagamento->importo_netto * 2);
 });

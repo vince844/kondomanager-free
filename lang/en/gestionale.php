@@ -315,6 +315,24 @@ return [
         'show' => [
             'head_title' => 'Installment plan detail',
             'plan_title_prefix' => 'Installment plan',
+            'legal' => [
+                'deliberation_of' => 'Resolution of',
+            ],
+            'approval_modal' => [
+                'title' => 'Instalment plan approval',
+                'subtitle' => 'Record the details of the meeting resolution before making the plan enforceable.',
+                'deliberation_date_label' => 'Date of the meeting resolution *',
+                'deliberation_date_help' => 'The date the meeting approved this plan. It is kept in the audit history.',
+                'minutes_number_label' => 'Minutes number (optional)',
+                'minutes_number_placeholder' => 'e.g. Minutes no. 3/2026',
+                'notes_label' => 'Notes or references (optional)',
+                'notes_placeholder' => 'e.g. Approved with 8 votes in favour out of 10 thousandths present...',
+                'last_deliberation_title' => 'Last recorded resolution:',
+                'last_deliberation_date' => 'Date:',
+                'last_deliberation_minutes' => 'Minutes:',
+                'saving' => 'Recording...',
+                'confirm' => 'Approve and record',
+            ],
             'subtitle' => 'Updated status of installments and payments.',
             'breadcrumb_detail' => 'Detail',
             'draft_state' => [
@@ -763,8 +781,6 @@ return [
                     'description_optional' => 'Description (Optional)',
                     'pdf_only' => 'Only PDF files are allowed.',
                     'pdf_short' => 'PDF only',
-                    'max_size_20mb' => 'File cannot exceed 20MB.',
-                    'pdf_max_20mb' => 'PDF only (Max 20MB)',
                     'click_to_upload' => 'Click to upload',
                     'or_drag_file' => 'or drag file here',
                     'or_drag_new_file' => 'or drag new file here',
@@ -1145,6 +1161,9 @@ return [
                         'committed_already_text' => 'This expense has already been allocated in an installment plan for a total amount of :amount. To maintain accounting consistency, you cannot reduce the total below this value.',
                         'committed_how_to_fix' => 'If you need a lower value, go to the "Installment plans" module, remove the share assigned to this entry, and then return to edit here.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'This entry already has an allocation table and apportionment percentages attached. Converting it into a chapter will delete them. Continue?',
+                    ],
                     'actions' => [
                         'saving' => 'Saving...',
                         'save_changes' => 'Save changes',
@@ -1382,7 +1401,7 @@ return [
         'breadcrumb_quotes' => 'Shares',
         'heading_title' => 'Link properties to the allocation table',
         'heading_description' => 'Below you can specify the shares for each property linked to the table - :table',
-        'max_rows_reached' => 'You have already reached the maximum number of allowed rows.',
+        'max_rows_reached' => 'You have already linked all :count property units in this building. To add more, create them first in the «Property units» section.',
         'actions' => [
             'add_property' => 'Add property',
         ],

@@ -136,13 +136,22 @@ class MailConfigServiceProvider extends ServiceProvider
 
         Config::set('mail.default', 'smtp');
         Config::set('mail.mailers.smtp', [
-            'transport'  => 'smtp',
-            'host'       => $settings->mail_host,
-            'port'       => (int) $settings->mail_port,
-            'username'   => $settings->mail_username,
-            'password'   => $this->decryptPassword($settings->mail_password),
-            'encryption' => $settings->mail_encryption === 'null' ? null : $settings->mail_encryption,
-            'timeout'    => 30,
+            'transport'    => 'smtp',
+            // 'smtps' forza la TLS implicita (tipicamente porta 465). Per 'tls'/nessuna
+            // cifratura si lascia null: Laravel sceglie lo scheme in base alla porta e
+            // tenta comunque STARTTLS in modo opportunistico se il server lo offre.
+            'scheme'       => $settings->mail_encryption === 'ssl' ? 'smtps' : null,
+            'host'         => $settings->mail_host,
+            'port'         => (int) $settings->mail_port,
+            'username'     => $settings->mail_username,
+            'password'     => $this->decryptPassword($settings->mail_password),
+            'encryption'   => $settings->mail_encryption === 'null' ? null : $settings->mail_encryption,
+            'timeout'      => 30,
+            // Senza questo, Symfony Mailer usa il fallback letterale "[127.0.0.1]" come
+            // hostname EHLO/HELO: molti server SMTP (in particolare su hosting condivisi)
+            // lo rifiutano come pattern tipico di relay malconfigurato, facendo fallire
+            // l'invio in modo silenzioso agli occhi dell'utente.
+            'local_domain' => static::$defaultConfig['smtp']['local_domain'] ?? null,
         ]);
         $this->applyFrom($settings);
 

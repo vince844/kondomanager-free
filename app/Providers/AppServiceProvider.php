@@ -2,21 +2,24 @@
 
 namespace App\Providers;
 
+use Illuminate\Support\Facades\Validator;
+
 use App\Models\Segnalazione;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\SegnalazionePolicy;
-use Illuminate\Support\ServiceProvider;
+use App\Settings\GeneralSettings;
+use Illuminate\Database\Events\MigrationsEnded;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\ServiceProvider;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Database\Events\MigrationsEnded;
-use App\Settings\GeneralSettings;
-use Illuminate\Support\Facades\URL;
-use Livewire\Livewire; 
-use App\Livewire\Installer\InstallerWizard; 
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,7 +28,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // `scoped` e non `singleton`: CreditoService memoizza il credito di Rata 0 per la durata
+        // della richiesta (lo stesso numero viene chiesto una volta per evento in una lista).
+        // Un singleton lo terrebbe anche fra richieste diverse sotto un runtime persistente, e
+        // il condòmino tornerebbe a vedere un valore fermo — il difetto che quel calcolo evita.
+        $this->app->scoped(\App\Services\Gestionale\CreditoService::class);
     }
 
     /**
@@ -33,46 +40,164 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->suppressReadonlyTouchWarning();
+
         // ====================================================================
-        // OVERRIDE INSTALLER WIZARD (Fix Spatie Permission Cache)
+        // IL LIMITE VERO DI CARICAMENTO NEL MESSAGGIO D'ERRORE
         // ====================================================================
-        // IMPORTANTE: Questo override funziona SOLO per gli aggiornamenti.
+        // La regola `uploaded` scatta quando è PHP ad aver scartato il file, prima che Laravel lo
+        // veda: il messaggio non poteva sapere quale fosse il limite, e diceva soltanto che il
+        // caricamento «è fallito». Segnalato dal forum il 18/08/2026 da chi provava con un file da
+        // 4.376 KB su un server che ne accetta 2 MB. `:limite` lo riempie qui, letto dal server e
+        // non scritto a mano da nessuna parte.
+        // ⚠️ `etichettaServer()` e non `etichetta()`: quando questa regola scatta è **PHP** ad aver
+        // scartato il file, e il nostro tetto di 20 MB non è mai entrato in gioco. Dichiararlo qui
+        // portava il limite dei documenti su schermate che ne hanno altri — l'importatore ne annuncia
+        // 25 — cioè sostituiva una bugia generica con una bugia informata (revisione della .58).
         //
-        // PRIMA INSTALLAZIONE PULITA:
-        //   Livewire usa il file originale del package (Eii\Installer\...)
-        //   perché il checksum del snapshot nel DOM contiene il nome originale.
-        //   Il seed gira correttamente tramite config('installer.requirements.seeding').
+        // La regola `uploaded` copre però **cinque** codici d'errore di PHP, non solo la dimensione:
+        // se il disco è pieno o `upload_tmp_dir` è sparita, dire «il file è troppo grande» manda
+        // l'utente a rimpicciolire un file che va benissimo. Il codice vero si legge dal file stesso.
+        Validator::replacer('uploaded', function ($messaggio, $attributo, $regola, $parametri, $validatore) {
+            $file = data_get($validatore?->getData() ?? [], $attributo);
+            $codice = $file instanceof \Illuminate\Http\UploadedFile ? $file->getError() : UPLOAD_ERR_INI_SIZE;
+
+            if (! in_array($codice, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                return __('validation.caricamento_interrotto');
+            }
+
+            return str_replace(':limite', \App\Support\LimiteCaricamento::etichettaServer(), $messaggio);
+        });
+
+        // La regola `uploaded` scatta quando è **PHP** a scartare il file. Quando invece scatta la
+        // **nostra** `max:`, Laravel usa il testo predefinito di `validation.max.file`, che parla in
+        // kilobyte: «il file non può essere più grande di 20480 kilobytes». È il numero giusto detto
+        // nel modo in cui un limite non si dice a una persona — e la schermata accanto, nello stesso
+        // momento, lo scrive in megabyte.
         //
-        // AGGIORNAMENTI (migrate su DB esistente):
-        //   Qui l'override viene applicato e il nostro InstallerWizard custom
-        //   viene usato al posto dell'originale. Il fix aggiunge il purge della
-        //   cache Spatie Permission PRIMA del seed, necessario perché la cache
-        //   contiene ancora i permessi del DB precedente alle migrazioni.
-        //   Senza questo purge, Spatie legge dati stale e il seed può fallire.
-        //
+        // Sta qui e non in nove `messages()` per la ragione di sempre: una porta nuova nasce già
+        // corretta, senza che chi la scrive debba ricordarsene.
+        Validator::replacer('max', function ($messaggio, $attributo, $regola, $parametri, $validatore) {
+            $valore = data_get($validatore?->getData() ?? [], $attributo);
+            $kilobyte = (int) ($parametri[0] ?? 0);
+
+            // ⚠️ Un `replacer` **sostituisce** la sostituzione predefinita di Laravel, non la
+            // affianca: restituire il messaggio intatto lascerebbe `:max` scritto in pagina su ogni
+            // stringa e ogni numero del programma. Il ramo non-file deve rifare il lavoro che
+            // Laravel avrebbe fatto. (Rotto e corretto durante la revisione della .60: il primo
+            // giro produceva «nome non può essere più lungo di :max caratteri».)
+            if (! $valore instanceof \Illuminate\Http\UploadedFile) {
+                return str_replace(':max', (string) ($parametri[0] ?? ''), $messaggio);
+            }
+
+            return str_replace(
+                [':max kilobytes', ':max kilobyte', ':max'],
+                \App\Support\LimiteCaricamento::daKilobyte($kilobyte),
+                $messaggio
+            );
+        });
+
         // ====================================================================
-        if (config('installer.run_installer') && class_exists(Livewire::class) && class_exists(InstallerWizard::class)) {
-            Livewire::component('eii.installer.livewire.install.installer-wizard', InstallerWizard::class);
-        }
+        // ROTTE INSTALLER
+        // ====================================================================
+        // Registrate qui (non in bootstrap/app.php withRouting 'then') perché
+        // usano la macro Route::livewire(), disponibile solo dopo che tutti i
+        // provider hanno completato la fase register() — incluso quello di
+        // Livewire. Durante "composer install/update" (artisan package:discover)
+        // il closure 'then' di withRouting gira troppo presto e la macro non
+        // esiste ancora, causando un errore. loadRoutesFrom() in boot() non ha
+        // questo problema: è lo stesso schema già usato dal vendor eii/installer.
+        $this->loadRoutesFrom(base_path('routes/installer.php'));
 
         // ====================================================================
         // FIX HTTPS (Mixed Content per Reverse Proxy come Altervista/Cloudflare)
         // ====================================================================
 
-        // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS
+        // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS.
+        // Condizionato allo schema reale della richiesta: forzare SEMPRE, anche
+        // quando la richiesta corrente risulta genuinamente http, genera un
+        // mismatch tra lo schema della pagina e quello degli endpoint Livewire/
+        // asset generati — il browser blocca queste richieste come cross-origin
+        // (schema diverso = origin diversa). Osservato realmente su Altervista:
+        // pagina servita in http, endpoint Livewire forzato in https, richieste
+        // bloccate con errore CORS pur rispondendo 200.
+        //
+        // NON basta request()->isSecure(): su hosting dietro reverse proxy che
+        // termina TLS (Altervista, Cloudflare) rileva lo schema tramite proxy
+        // fidato solo se il middleware TrustProxies ha già processato QUESTA
+        // richiesta — ma TrustProxies gira nella pipeline dei middleware, DOPO
+        // che tutti i Service Provider (questo incluso) hanno già completato
+        // boot() (vedi Illuminate\Foundation\Http\Kernel::sendRequestThroughRouter:
+        // bootstrap() prima, Pipeline::through($middleware) dopo). Quindi qui
+        // isSecure() non può MAI riflettere un proxy fidato, indipendentemente
+        // da TRUSTED_PROXIES. Leggiamo perciò l'header diretto, bypassando il
+        // meccanismo di trust: accettabile perché il rischio di spoofing è solo
+        // estetico (schema sbagliato negli URL generati), non viene usato per
+        // decisioni di autenticazione o IP. Verificato su hosting reale
+        // (Altervista): nessun header X-Forwarded-Proto/Ssl viene mai visto da
+        // TrustProxies in questo punto, qualunque sia TRUSTED_PROXIES.
+        $isForwardedHttps = request()->header('X-Forwarded-Proto') === 'https'
+            || request()->header('X-Forwarded-Ssl') === 'on';
+
+        // In console (job in coda, comandi artisan) non c'è una request da cui
+        // rilevare lo schema reale, quindi si forza comunque in base a APP_URL.
         if (config('app.url') && str_contains(config('app.url'), 'https://')) {
-            URL::forceScheme('https');
+            if ($this->app->runningInConsole() || request()->isSecure() || $isForwardedHttps) {
+                URL::forceScheme('https');
+            }
         }
 
         // ====================================================================
         // GESTIONE PROXY (Spostata in bootstrap/app.php per standard Laravel 11)
         // ====================================================================
 
+        // L'ultimo accesso di ogni utente. Un solo ascoltatore copre tutte e tre le porte —
+        // modulo, doppia autenticazione e cookie *remember me* — perché passano tutte da
+        // `SessionGuard`, che emette questo evento.
+        Event::listen(\Illuminate\Auth\Events\Login::class, \App\Listeners\AggiornaUltimoAccesso::class);
+
         // Sincronizza la versione dopo ogni migrazione
         Event::listen(MigrationsEnded::class, function () {
             try {
                 $settings = app(GeneralSettings::class);
                 $settings->version = config('app.version');
+
+                // ====================================================================
+                // LINGUA / NOME APP SCELTI IN INSTALLAZIONE (FixedEnvironmentSettings)
+                // ====================================================================
+                // APP_LOCALE/APP_NAME nel .env non bastano: i valori realmente usati a
+                // runtime vengono letti da GeneralSettings (language, app_name) tramite
+                // SetLocaleMiddleware/SetAppNameMiddleware, che sovrascrivono la config
+                // in memoria su ogni richiesta. Le settings-migration inseriscono sempre
+                // un default fisso ('it', config('app.name')). Qui applichiamo la scelta
+                // reale dell'utente, salvata nel progress file PRIMA di migrate:fresh
+                // (quindi disponibile appena la tabella settings esiste), e puliamo
+                // subito i marker per non ri-applicarli su migrazioni future non collegate
+                // all'installer (es. update dell'app), il che resetterebbe silenziosamente
+                // una lingua o un nome cambiati nel frattempo dall'amministratore tramite
+                // Impostazioni generali.
+                $progressFile = config('installer.options.progress_file');
+                if (File::exists($progressFile)) {
+                    $progress = json_decode(File::get($progressFile), true) ?? [];
+                    $dirty = false;
+
+                    if (! empty($progress['pending_locale'])) {
+                        $settings->language = $progress['pending_locale'];
+                        unset($progress['pending_locale']);
+                        $dirty = true;
+                    }
+
+                    if (! empty($progress['pending_app_name'])) {
+                        $settings->app_name = $progress['pending_app_name'];
+                        unset($progress['pending_app_name']);
+                        $dirty = true;
+                    }
+
+                    if ($dirty) {
+                        File::put($progressFile, json_encode($progress, JSON_PRETTY_PRINT));
+                    }
+                }
+
                 $settings->save();
             } catch (\Exception $e) {
                 // Ignora se settings non è ancora configurato
@@ -80,9 +205,54 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
+        // ====================================================================
+        // NOME APP NEI JOB IN CODA
+        // ====================================================================
+        // SetAppNameMiddleware copre solo le richieste web: i job in coda (es.
+        // notifiche email inviate tramite ShouldQueue) girano in un processo
+        // worker separato, senza middleware HTTP. Qui applichiamo lo stesso
+        // override di config('app.name') prima che ogni job venga eseguito,
+        // così oggetto/corpo delle email (config('app.name') nelle notification
+        // e nei template mail di Laravel) riflettono il nome personalizzato.
+        Queue::before(function (JobProcessing $event) {
+            try {
+                $settings = app(GeneralSettings::class);
+                if (! empty($settings->app_name)) {
+                    config(['app.name' => $settings->app_name]);
+                }
+            } catch (\Throwable $e) {
+                // Se il DB non risponde, resta il valore da .env
+            }
+        });
+
         JsonResource::withoutWrapping();
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
+    }
+
+    /**
+     * Alcuni hosting condivisi molto restrittivi (es. Altervista) negano la
+     * modifica del mtime (utime) sui file già esistenti. Laravel chiama
+     * touch() internamente come pura ottimizzazione della cache delle view
+     * compilate (Blade/Livewire) — evita di ricalcolare l'hash del sorgente
+     * ad ogni richiesta quando il file compilato è già valido. Se touch()
+     * fallisce, PHP solleva un warning che il gestore errori di Laravel
+     * converte in eccezione fatale, anche se la cache compilata resta
+     * perfettamente valida e utilizzabile. Sopprimiamo SOLO questo avviso
+     * specifico, lasciando invariata la gestione di tutti gli altri
+     * errori/warning da parte di Laravel.
+     */
+    private function suppressReadonlyTouchWarning(): void
+    {
+        $previousHandler = set_error_handler(function (int $errno, string $errstr, string $errfile = '', int $errline = 0) use (&$previousHandler) {
+            if ($errno === E_WARNING && str_contains($errstr, 'touch(): Utime failed')) {
+                return true;
+            }
+
+            return $previousHandler
+                ? $previousHandler($errno, $errstr, $errfile, $errline)
+                : false;
+        });
     }
 }

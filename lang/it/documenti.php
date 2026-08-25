@@ -17,6 +17,7 @@ return [
     'error_approve_document'         => 'Si è verificato un errore durante l\'approvazione del documento.',
     'error_notify_new_document'      => 'Il documento è stato creato, ma si è verificato un errore nell\'invio della notifica.',
     'error_notify_approved_document' => 'Il documento è stato approvato, ma si è verificato un errore nell\'invio della notifica.',
+    'error_notify_updated_document' => "Il documento è stato aggiornato, ma si è verificato un errore nell'invio della notifica.",
     'category_has_documents'         => 'Questa categoria contiene dei documenti. Spostali o eliminali prima di eliminare la categoria.',
     'success_delete_category'        => 'La categoria documenti è stata eliminata con successo.',
     'error_delete_category'          => 'Si è verificato un errore durante l\'eliminazione della categoria documento.',
@@ -104,6 +105,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'notify_update' => "Avvisa via mail chi ha già ricevuto questo documento",
         'name'                          => 'Nome documento',
         'description'                   => 'Descrizione documento',
         'category'                      => 'Categoria',
@@ -151,8 +153,7 @@ return [
         'delete_document_description'   => 'Questa azione non è reversibile. Eliminerà il documento e tutti i dati associati.',
         'select_document_title'         => 'Trascina qui il tuo documento',
         'select_document_description'   => 'Oppure clicca per selezionarlo dal tuo dispositivo.',
-        'document_supported_types'      => 'Sono ammessi solo i formati PDF, JPEG, PNG.',
-        'max_document_size'             => 'Il file non può superare i 20MB',
+        'document_supported_types'      => 'È ammesso solo il formato PDF.',
         'categories' => [
             'delete_category_title'       => 'Sei sicuro di voler eliminare questa categoria?',
             'delete_category_description' => 'Questa azione non è reversibile. Eliminerà la categoria e tutti i documenti ad essa associati.',
@@ -173,11 +174,32 @@ return [
     /* ------------------------------------------------------------------
      | Stats
      | ------------------------------------------------------------------ */
+    /*
+     * ⚠️ **Ogni etichetta dice «archivio», e non è pignoleria.**
+     *
+     * Questi quattro numeri contano **solo** i documenti d'archivio: `getAdminDocumentiStats()`
+     * filtra su `documentable_type` nullo, quindi esclude gli allegati delle fatture, i documenti
+     * delle unità immobiliari e quelli dei fornitori. L'esclusione è voluta — l'archivio è un
+     * posto, e l'allegato di una fattura vive sulla fattura — ma fino alla beta.62 le etichette
+     * promettevano un totale: «Documenti totali», «Spazio totale utilizzato».
+     *
+     * Misurato il 21/08/2026 sul database di sviluppo: **sei** documenti su disco, i riquadri ne
+     * contavano **due**; spazio reale ~11 MB, i riquadri dicevano **414 KB**. Segnalato da un
+     * amministratore sul forum e confermato da Vincenzo.
+     *
+     * ⏳ **Ma la domanda vera non è quella dello spazio.** Ragionandoci il 21/08/2026 è emerso che
+     * il riquadro ne mescolava tre — *dov'è finito quel file*, *quanto disco occupo*, *quale
+     * condominio lo occupa* — e che **la prima non ha risposta da nessuna parte**: non esiste
+     * nessuna vista «tutti i documenti di questo condominio», quindi per ritrovare un file bisogna
+     * già sapere dove lo si è messo. La beta.63 costruisce quella, non un totale migliore. Il
+     * totale dello spazio va dove ha una conseguenza — la pagina dei backup, che misura già il
+     * disco libero. Vedi «Coda 55» in `docs/roadmap.md`.
+     */
     'stats' => [
-        'total_storage_bytes'  => 'Spazio totale utilizzato',
-        'total_documents'      => 'Documenti totali',
-        'uploaded_this_month'  => 'Caricati questo mese',
-        'average_size_bytes'   => 'Dimensione media',
+        'total_storage_bytes'  => 'Spazio dell\'archivio',
+        'total_documents'      => 'Documenti in archivio',
+        'uploaded_this_month'  => 'In archivio questo mese',
+        'average_size_bytes'   => 'Dimensione media in archivio',
     ],
 
     /* ------------------------------------------------------------------
@@ -195,6 +217,7 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che il documento è cambiato. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso lo riceve comunque, perché per lui è nuovo.",
         'visibility' => 'Se impostata su privata, solo gli amministratori potranno visualizzare il documento.',
         'category'   => 'Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.',
     ],

@@ -2,6 +2,20 @@
 
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
+
+// ============================================================================
+// 0. HEARTBEAT — prova di vita dello scheduler.
+// ============================================================================
+// Registrato per PRIMO, fuori da ogni if, SENZA withoutOverlapping.
+Schedule::call(function () {
+    // 'system' se schedule:run gira da CLI (cron nativo Plesk),
+    // 'webhook' se invocato via /system/run-scheduler (cron-job.org)
+    $source = PHP_SAPI === 'cli' ? 'system' : 'webhook';
+
+    Cache::put('system_cron_heartbeat', now()->timestamp, now()->addMinutes(10));
+    Cache::put('system_cron_source', $source, now()->addMinutes(10));
+})->name('system-heartbeat')->everyMinute();
 
 // ============================================================================
 // 1. MANUTENZIONE DATABASE (Garbage Collector)
@@ -35,5 +49,5 @@ if (config('app.scheduler_queue_worker')) {
             '--tries' => 3,
             '--backoff' => 10,
         ]);
-    })->name('sync-queue-worker')->everyMinute()->withoutOverlapping(); // <-- Aggiunto ->name('sync-queue-worker')
+    })->name('sync-queue-worker')->everyMinute()->withoutOverlapping();
 }

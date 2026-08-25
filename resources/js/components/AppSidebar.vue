@@ -5,8 +5,17 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
+import { usePermission } from '@/composables/permissions';
 import { BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
+
+// ⚠️ Il logo puntava a `route('dashboard')`, un nome che non esiste: le dashboard sono due,
+// `admin.dashboard` e `user.dashboard`, e Ziggy avrebbe sollevato al disegno dell'intera barra.
+// Non si vedeva perché questo componente **è codice morto**: lo importa solo
+// `layouts/app/AppSidebarLayout.vue`, che non importa nessuno. È una trappola armata, non un
+// difetto vivo — trovata dalla guardia `NomiDiRottaCheNonEsistonoTest` nella beta.62. La
+// rimozione dei due file è un'altra decisione e sta in roadmap.
+const { generateRoute } = usePermission();
 
 const mainNavItems: NavItem[] = [
     {
@@ -36,7 +45,7 @@ const footerNavItems: NavItem[] = [
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
-                        <Link :href="route('dashboard')">
+                        <Link :href="route(generateRoute('dashboard'))">
                             <AppLogo />
                         </Link>
                     </SidebarMenuButton>

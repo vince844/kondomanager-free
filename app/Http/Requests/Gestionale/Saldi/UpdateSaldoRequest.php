@@ -49,11 +49,20 @@ class UpdateSaldoRequest extends FormRequest
                     return;
                 }
 
-                // Muro contabile: saldo già applicato non è modificabile
-                if ($saldo->is_applicato) {
+                // Muro contabile: la soglia è l'EMISSIONE, non la generazione.
+                // Finché il piano non è emesso né incassato resta interamente
+                // riscrivibile — «Ricalcola» lo dimostra — quindi il saldo che
+                // lo alimenta si può ancora correggere.
+                if ($saldo->eBloccato()) {
+                    $piano = $saldo->pianoRate;
+
                     $validator->errors()->add(
                         'saldo',
-                        'Non puoi modificare un saldo già incluso in un piano rate emesso.'
+                        $piano
+                            ? "Non puoi modificare questo saldo: è incluso nel piano rate «{$piano->nome}», "
+                                . 'che risulta già emesso in contabilità o con incassi registrati. '
+                                . 'Per correggerlo annulla prima le emissioni o gli incassi di quel piano.'
+                            : 'Non puoi modificare un saldo già incluso in un piano rate emesso.'
                     );
                     return;
                 }
