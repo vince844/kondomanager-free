@@ -7,6 +7,21 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0] — Migration & Ledgers
+
+> **Stable release.**
+> Importazione di un condominio intero da un altro gestionale (Danea Domustudio), backup e ripristino
+> dal pannello, libro giornale e stato patrimoniale consultabili, ritenute d'acconto e modello F24,
+> giroconti fra casse e fondi, contributi già versati scomputati dal riparto, consuntivo accanto al
+> preventivo, e il percorso completo per **ricostruire un condominio senza passaggio di consegne**.
+>
+> ⚠️ **Richiede PHP 8.4.1** — le versioni precedenti giravano su PHP 8.2 — più le estensioni `gd`,
+> `intl` e `mbstring`. Chi sta sotto viene fermato prima che venga scritto un solo file.
+>
+> 77 beta release (beta.1 → beta.77) prima della stable.
+
+---
+
 ## [1.10.0-beta.77] - Il Cancello Che Lasciava Passare
 
 **Non tocca il database.** Corregge i requisiti che il programma dichiara di avere, e aggiunge la

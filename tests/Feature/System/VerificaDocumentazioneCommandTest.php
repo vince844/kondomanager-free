@@ -22,6 +22,13 @@
 use Illuminate\Support\Facades\Artisan;
 
 it('conta i documenti e dichiara la versione in sviluppo', function () {
+    // ⚠️ L'età si misura **in beta**, quindi questi test parlano solo dentro un ciclo di beta.
+    // Fissare qui la versione li rende indipendenti da dove si trova il progetto: senza, il giorno
+    // del rilascio stabile diventano rossi tutti insieme — che è esattamente quello che è successo
+    // il 26/08/2026, alzando la versione a `1.10.0`. Il comando era corretto: `betaCorrente()`
+    // torna `null` su una stabile di proposito. Erano i test ad assumere di girare sempre in beta.
+    config(['app.version' => '1.10.0-beta.50']);
+
     Artisan::call('kondomanager:verifica-documentazione');
     $uscita = Artisan::output();
 
@@ -49,6 +56,8 @@ it('distingue l\'ambiguo dal rotto, invece di scegliere per conto suo', function
 });
 
 it('mostra l\'età in beta, che è la cosa che nessuno calcola leggendo', function () {
+    config(['app.version' => '1.10.0-beta.50']);
+
     Artisan::call('kondomanager:verifica-documentazione');
     $uscita = Artisan::output();
 
@@ -71,6 +80,8 @@ it('l\'età non mescola le serie: i numeri di beta ripartono da uno', function (
 });
 
 it('il filtro sull\'età non mostra niente quando nessun documento la supera', function () {
+    config(['app.version' => '1.10.0-beta.50']);
+
     Artisan::call('kondomanager:verifica-documentazione', ['--eta' => 999]);
     $uscita = Artisan::output();
 
@@ -102,4 +113,28 @@ it('non modifica niente: è una diagnosi', function () {
     $dopo = collect(glob(base_path('docs/*.md')))->mapWithKeys(fn ($f) => [$f => md5_file($f)]);
 
     expect($dopo->all())->toBe($prima->all());
+});
+
+/**
+ * ★ Il caso che nessuno aveva mai eseguito: la suite su una versione **stabile**.
+ *
+ * Scoperto il 26/08/2026 alzando la versione da `1.10.0-beta.77` a `1.10.0` per il rilascio: tre
+ * test di questo file sono diventati rossi insieme. Il comando si comportava bene — l'età in beta
+ * non è calcolabile quando non c'è un numero di beta, e `betaCorrente()` torna `null` apposta — ma
+ * nessun test lo diceva, quindi il rosso sembrava un guasto invece di un comportamento previsto.
+ *
+ * In settantasette beta la suite non era mai girata con una versione non-beta in `config/app.php`,
+ * e quel giorno arriva **una volta per release**: cioè il giorno peggiore per scoprire una cosa così.
+ */
+it('su una versione stabile non parla di beta, invece di rompersi', function () {
+    config(['app.version' => '1.10.0']);
+
+    Artisan::call('kondomanager:verifica-documentazione');
+    $uscita = Artisan::output();
+
+    // Continua a fare il suo mestiere: conta i documenti e ne verifica i riferimenti.
+    expect($uscita)->toContain('documenti')
+        // Ma non inventa un'età che non ha modo di calcolare.
+        ->and($uscita)->not->toContain('versione in sviluppo')
+        ->and($uscita)->not->toContain('beta fa');
 });

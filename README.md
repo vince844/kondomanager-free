@@ -66,6 +66,8 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Login con protezione a due fattori
 - Sistema di inviti per la registrazione utenti
 - Localizzazione: Italiano, Inglese, Portoghese
+- Importazione di un condominio intero da un altro gestionale (prima sorgente: Danea Domustudio)
+- Backup completo e ripristino dal pannello, riprendibili e cifrabili in AES-256
 
 ### Modulo contabilità gestionale e struttura
 
@@ -95,6 +97,14 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Widget Treasury Guardian per l'analisi predittiva della liquidità a 30 giorni
 - Motore a cascata dinamico (Inquilino → Usufruttuario → Proprietario) conforme al Codice Civile
 - Gestione intelligente scoperti documentati per unità immobiliari vuote
+- Libro giornale sfogliabile con ricerca, filtri per periodo e stato, e verifica del pareggio
+- Stato patrimoniale con diagnosi in linguaggio corrente degli sbilanci e correzione sul posto
+- Giroconti fra conti correnti e fondi, con protocollo, anteprima e storno
+- Ritenute d'acconto e modello F24: scadenzario per soglia, delega e chiusura in partita doppia
+- Contributi già versati dai condòmini scomputati dal riparto, con distribuzione per millesimi
+- Registrazione rapida delle piccole spese senza aprire una partita fornitore
+- Consuntivo accanto al preventivo su ogni voce, con il dettaglio dei movimenti che lo compongono
+- Data di prima scadenza configurabile sul piano rate
 
 ### Suite documentale e Stampe PDF
 
@@ -105,6 +115,9 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - **Riparto Bilancio per Tabella (Piano Rate):** documento dettagliato (A4/A3) che incrocia unità immobiliari, soggetti (proprietario, inquilino, ecc.) e tabelle millesimali
 - **Prospetto Rate e Scadenziari:** con aggregazione dinamica per Condòmino o per Unità Immobiliare
 - **Distinta Pagamento Fornitore:** riepilogo importi con causali e dettagli per bonifici parlanti
+- **Riparto per Capitolo di Spesa:** la lettura per voce di bilancio, affiancata al riparto per tabella
+- **Estratto Conto del Condòmino:** saldi e sequenza completa dei movimenti dell'esercizio
+- **Modello F24 e prospetto per l'home banking:** con l'elenco dei pagamenti che ogni delega versa
 
 ---
 
@@ -112,9 +125,9 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 
 Per installare KondoManager, il tuo ambiente server deve soddisfare i seguenti requisiti:
 
-- **PHP** >= 8.2
+- **PHP** >= 8.4.1 — *dalla versione 1.10.0; le precedenti giravano su PHP 8.2*
 - **Database:** MySQL 5.7+ o MariaDB 10.3+
-- **Estensioni PHP:** `zip`, `curl`, `openssl`, `mbstring`, `fileinfo`, `dom`, `xml` — consulta la guida di [Laravel](https://laravel.com/docs/12.x/deployment) per ulteriori informazioni
+- **Estensioni PHP:** `zip`, `curl`, `bcmath`, `fileinfo`, `gd`, `intl`, `mbstring`, `openssl`, `dom`, `xml` — `gd` serve a generare i PDF: senza, il programma si installa ma non produce nessuna stampa
 - **Per installazione manuale:** Node.js & NPM, Composer
 
 ---
@@ -184,7 +197,7 @@ schtasks /create /tn "KondoManager Scheduler" /tr "php C:\tuacartella\artisan sc
 /usr/local/bin/php /home/tuosito/public_html/artisan schedule:run >> /dev/null 2>&1
 ```
 
-Assicurati di usare il percorso assoluto all'eseguibile PHP v8.2+, ad esempio `/usr/local/bin/ea-php82`. Cerca in MultiPHP Manager la versione PHP effettivamente assegnata al dominio.
+Assicurati di usare il percorso assoluto all'eseguibile PHP 8.4+, ad esempio `/usr/local/bin/ea-php84`. Cerca in MultiPHP Manager la versione PHP effettivamente assegnata al dominio.
 
 ---
 
@@ -210,7 +223,9 @@ La configurazione salvata dal pannello ha **precedenza** sul file `.env` e può 
 
 ---
 
-### 3. Aggiornamento manuale dalla versione 1.9.0 alla 1.9.1
+### 3. Aggiornamento manuale dalla versione 1.9.1 alla 1.10.0
+
+I passaggi non dipendono dalla versione di partenza: sono gli stessi per qualunque aggiornamento manuale dalla 1.8.0 in avanti.
 
 1. Assicurati di avere un backup del `database` e dei file della cartella `storage`
 2. Scarica il [file di aggiornamento](https://kondomanager.short.gy/km-installer) dal sito ufficiale di Kondomanager

@@ -204,6 +204,49 @@ it('anche il ripiego dell\'aggiornamento le elenca', function () {
 });
 
 /**
+ * ★ **I README sono la quarta lista, e nessuno li guardava.**
+ *
+ * Le tre liste in codice erano già divergenti; i tre README erano una quarta copia, e stavano ancora
+ * a `PHP >= 8.2` con una lista di estensioni senza `gd`, `intl` e `bcmath`. Il README italiano si
+ * contraddiceva perfino da solo: una riga diceva già *«da KondoManager 1.10.0 il riferimento è
+ * PHP 8.4»* mentre quella dei requisiti, cinquanta righe sopra, ne dichiarava 8.2.
+ *
+ * Sono la prima cosa che legge chi arriva da GitHub e decide se il programma gira sul suo hosting:
+ * una soglia sbagliata lì manda qualcuno a installare qualcosa che non può funzionare, oppure
+ * allontana chi invece potrebbe.
+ *
+ * Segnalati da Vincenzo il 25/08/2026, dopo che la prima stesura di questa guardia li aveva
+ * ignorati — cioè la guardia aveva lo stesso punto cieco del difetto che presidiava.
+ */
+it('i tre README dichiarano la stessa soglia PHP del codice', function () {
+    [$soglia, $chi] = phpMinimoRichiesto();
+    [$maj, $min] = $soglia;
+
+    foreach (['README.md', 'README.en.md', 'README.pt-br.md'] as $file) {
+        $testo = file_get_contents(base_path($file));
+
+        expect($testo)->toMatch('/\*\*PHP\*\* >= '.$maj.'\.'.$min.'/',
+            "{$file} non dichiara PHP {$maj}.{$min} nei requisiti minimi, mentre {$chi} lo pretende."
+        );
+    }
+});
+
+it('e nominano le estensioni che un PHP standard non garantisce', function () {
+    $necessarie = estensioniNonGarantite();
+
+    foreach (['README.md', 'README.en.md', 'README.pt-br.md'] as $file) {
+        $testo = file_get_contents(base_path($file));
+
+        $mancanti = array_values(array_filter(
+            $necessarie,
+            fn ($ext) => ! str_contains($testo, '`'.$ext.'`')
+        ));
+
+        expect($mancanti)->toBe([], "{$file} non nomina: ".implode(', ', $mancanti));
+    }
+});
+
+/**
  * Il verso opposto: il cancello non deve nemmeno respingere per niente.
  *
  * Una soglia dichiarata **sopra** il necessario chiude fuori installazioni che funzionerebbero, e
