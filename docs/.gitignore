@@ -1,0 +1,10 @@
+# Questo repository custodisce SOLO i documenti INTERNI di KondoManager.
+#
+# I file elencati qui sotto sono tracciati dal repository pubblico del prodotto
+# (regola invertita in `.gitignore`, righe 33-37). Tenerli anche qui vorrebbe dire
+# due storie per lo stesso file, e prima o poi due versioni diverse senza che
+# nessuno se ne accorga. La fonte di verità di questi dieci resta il pubblico.
+changelog.md
+docker_local_dev.*.md
+synology_nas_install.*.md
+plesk_cronjob_guide.md
