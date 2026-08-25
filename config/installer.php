@@ -84,8 +84,19 @@ return [
     | Server Requirements
     |--------------------------------------------------------------------------
     */
+    /*
+     * ⚠️ **Queste due liste sono un cancello: chi sta sotto viene respinto, e chi non c'è passa.**
+     *
+     * Non si scrivono a mano. Il minimo vero si legge da `composer.lock` — tutto Symfony chiede
+     * `>=8.4.1` — e le estensioni sono quelle che i pacchetti di **runtime** dichiarano `ext-*` e
+     * che un PHP standard non garantisce. `tests/Feature/System/RequisitiDichiaratiTest.php` rifà
+     * quel conto a ogni esecuzione della suite e fallisce se questa lista scende sotto il vero.
+     *
+     * `gd` mancava fino alla beta.77, e lo pretende **mpdf**, cioè il motore di ogni PDF del
+     * programma: un hosting senza `gd` superava questo controllo e poi falliva su ogni stampa.
+     */
     'requirements' => [
-        'php' => '8.4.0',
+        'php' => '8.4.1',
         'extensions' => [
             'openssl',
             'pdo',
@@ -94,6 +105,11 @@ return [
             'xml',
             'ctype',
             'json',
+            'bcmath',
+            'fileinfo',
+            'gd',
+            'intl',
+            'zip',
         ],
         'permissions' => [
             'storage/' => 'writable',

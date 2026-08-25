@@ -272,7 +272,11 @@ class UpdateService
         // Verifica PHP PRIMA di scrivere qualsiasi file:
         // se l'utente è su una versione incompatibile, blocchiamo qui con un
         // messaggio leggibile nella UI Laravel, senza rischio di deploy parziale.
-        $minPhp = $release['requirements']['php'] ?? '8.4.0';
+        // ⚠️ Il ripiego vale solo se il manifest remoto tace, e allora deve dire la **verità del
+        // codice**: `composer.lock` mostra che tutto Symfony chiede `>=8.4.1`, quindi sotto quella
+        // soglia il programma non parte. Un ripiego più permissivo del vero è peggio di nessun
+        // ripiego: lascia passare e rompe **dopo** aver scritto i file.
+        $minPhp = $release['requirements']['php'] ?? '8.4.1';
 
         if (version_compare(PHP_VERSION, $minPhp, '<')) {
             throw new \Exception(
@@ -306,9 +310,15 @@ class UpdateService
                     'bootstrap/cache',
                 ],
             ],
+            // ⚠️ **`gd` mancava, e mpdf è il motore di ogni PDF del programma.** Un hosting senza
+            // `gd` superava ogni controllo, l'amministratore configurava tutto, e poi **ogni
+            // stampa** falliva: il modo peggiore in cui un requisito può mancare, perché non blocca
+            // all'ingresso ma dopo. Mancavano anche `intl` (`cknow/laravel-money`) e `mbstring`,
+            // che pretende Laravel stesso. Misurate su `composer.lock`, non scelte a mano: la
+            // guardia `RequisitiDichiaratiTest` rifà il conto a ogni esecuzione della suite.
             'requirements' => $release['requirements'] ?? [
-                'php'        => '8.4.0',
-                'extensions' => ['zip', 'curl', 'bcmath', 'xml', 'fileinfo', 'posix'],
+                'php'        => '8.4.1',
+                'extensions' => ['zip', 'curl', 'bcmath', 'xml', 'fileinfo', 'posix', 'gd', 'intl', 'mbstring'],
             ],
             // La radice del progetto la sa Laravel: gliela diciamo invece di
             // lasciargliela dedurre dalla posizione in cui si trova. Il bridge sta

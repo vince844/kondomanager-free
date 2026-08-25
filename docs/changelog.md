@@ -7,6 +7,98 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.77] - Il Cancello Che Lasciava Passare
+
+**Non tocca il database.** Corregge i requisiti che il programma dichiara di avere, e aggiunge la
+guardia che impedisce di ritrovarcisi.
+
+### Il difetto: tre liste che non si parlavano, e nessuna giusta
+
+| Fonte | PHP | Estensioni |
+| :--- | :--- | :--- |
+| `config/installer.php:88` — installazione da zero | `8.4.0` | openssl, pdo, mbstring, tokenizer, xml, ctype, json |
+| `UpdateService.php:311` — ripiego in aggiornamento | `8.4.0` | zip, curl, bcmath, xml, fileinfo, posix |
+| `packages/latest.json` — **il cancello vero** | **`8.2.0`** | come sopra |
+
+Il requisito reale, misurato su `composer.lock`: **PHP 8.4.1** — tutto Symfony, su cui poggia
+Laravel, chiede `>=8.4.1`. Con il manifest a `8.2.0`, al rilascio della 1.10.0 chiunque fosse su
+PHP 8.2 o 8.3 avrebbe **superato il cancello** e si sarebbe ritrovato un'installazione che non parte.
+
+### E `gd` non c'era in nessuna delle tre
+
+Lo pretendono `mpdf` e `phpoffice/phpspreadsheet` — cioè **il motore che genera ogni PDF del
+programma**: riparto, scadenziario, estratto conto, F24. Un hosting senza `gd` superava l'installer,
+l'amministratore configurava tutto, e poi *ogni singola stampa* falliva.
+
+**È il modo peggiore in cui un requisito può mancare**, perché non blocca all'ingresso: blocca dopo,
+quando l'installazione è già in uso e nessuno collega più il sintomo alla causa. Mancavano anche
+`intl` (`cknow/laravel-money`) e, dalla lista dell'updater, `mbstring`, che pretende Laravel stesso.
+
+### Due cose che invece funzionavano
+
+Il controllo della versione PHP **esiste già nella 1.9.1** con lo stesso messaggio, ed è fatto
+**prima di scrivere qualunque file** — verificato leggendo `v1.9.1:app/Services/UpdateService.php`.
+Quindi il cancello fa il suo mestiere appena il numero dichiarato è quello vero, e chi sta sotto
+legge *«PHP 8.4.1 richiesto. Versione attuale: … — Aggiorna PHP sul tuo hosting prima di
+procedere.»* invece di trovarsi un deploy a metà.
+
+### E l'ordine era al contrario: te lo diceva dopo il clic
+
+La pagina «Gestione aggiornamenti» mostrava *«Nuova versione 1.10.0 disponibile»* e un pulsante. Il
+controllo dei requisiti scattava dentro `prepareForUpgrade()`, cioè **dopo** che l'amministratore
+aveva cliccato e confermato.
+
+Non si rompeva niente — il controllo sta prima di qualunque scrittura, e l'errore torna come
+messaggio di form — ma gli veniva proposto qualcosa che il suo server non poteva installare. Con la
+1.10.0 che alza la soglia a 8.4.1, **ogni installazione sotto quella soglia** avrebbe fatto quel
+percorso.
+
+⚠️ **E le estensioni, su quella strada, non le controllava nessuno.** `UpdateService` le trasporta
+nel bridge ma non le verifica; `extension_loaded()` lo chiama solo l'installer di una macchina
+nuova. Chi **aggiornava** su un hosting senza `gd` superava ogni controllo e poi non stampava più.
+Adesso la pagina è il primo punto del percorso di aggiornamento in cui quella domanda viene fatta.
+
+Quando manca qualcosa si legge **accanto alla versione offerta**, prima del pulsante: quale PHP
+serve e quale c'è, quali estensioni mancano e dove si attivano — «di solito alla voce *Versione PHP*
+o *PHP Selector*» — e il pulsante resta disabilitato. Cinque test in
+`RequisitiPrimaDelClicTest`, compreso il verso opposto: un server a posto non deve vedere nessun
+allarme, o l'allarme smette di significare qualcosa.
+
+### La guardia, che è la parte che dura
+
+`tests/Feature/System/RequisitiDichiaratiTest.php` — sette test che **ricalcolano** la soglia da
+`composer.lock` a ogni esecuzione della suite, invece di confrontarla con un numero scritto a mano.
+
+Perché una guardia e non una correzione e basta: le tre liste erano già state allineate una volta, e
+sono divergute di nuovo **senza che nessuno le toccasse** — basta che una dipendenza alzi la propria
+soglia, che è una cosa che succede da sé. Una lista fissa contro un numero che si muove diverge
+sempre.
+
+La guardia controlla **tutti e due i versi**: che il cancello non lasci passare chi sta sotto, e che
+non chieda più del necessario — una soglia troppo alta respinge installazioni che funzionerebbero, e
+l'amministratore respinto non scrive, cambia programma.
+
+Verificato che morda, rimettendo la lista vecchia: tre test rossi con i messaggi giusti — *«dichiara
+PHP 8.2.0, ma symfony/clock (>=8.4.1) pretende 8.4.1»* e *«Estensioni pretese da un pacchetto di
+runtime e non dichiarate: bcmath, fileinfo, gd, intl, zip»*.
+
+⚠️ **`packages/latest.json` non è in questo repository** e va aggiornato a mano prima del rilascio,
+nella voce della 1.10.0: `"php": "8.4.1"` e le estensioni allineate. È l'unico dei tre cancelli che
+questa beta non può correggere da sé, ed è quello che conta di più.
+
+### Cosa NON contiene questa beta
+
+Il lavoro sulle **stampe di riparto** — Code 77, 78 e 79 — è stato **rinviato a 1.10.1**, con la
+mappa già in mano invece che a metà lavoro. Quattro lenti hanno misurato che «far leggere alla
+stampa per capitoli i registri del motore» non è il cambiamento di poche righe che sembrava: otto
+trappole `alta`, e la rete di test che servirebbe non esiste — nessuno scenario per-capitoli ha uno
+scoperto, il ramo straordinario non ha un solo test, e «riga = `rate_quote`» è presidiata riga per
+riga solo sulla stampa gemella. Dettagli e scenari misurati in `roadmap.md`.
+
+Suite completa: **1796 test PHP** e **259 JavaScript**, verdi.
+
+---
+
 ## [1.10.0-beta.76] - Le Due Grandezze Che Si Annullavano
 
 **Non tocca il database.** Cambia però **come si legge la stampa «Riparto per Capitolo di Spesa»**:
@@ -78,8 +170,20 @@ Ed è **esatta, non stimata**: entrambi i termini vengono da ciò che è stato e
 
 ⚠️ **Non si ricalcola nulla.** La strada scritta in roadmap il 23/08 era «rendere riutilizzabile
 `CalcoloQuoteService::nettingGiaVersato()` e chiamarla dalle stampe». È stata scartata verificando il
-codice: le stampe non istanziano il motore, e farle chiamare significherebbe **due aritmetiche che
-possono divergere**, contro la garanzia «riga stampata = `rate_quote`». La strada vera era già
+codice: `RipartoCapitoliService` non istanzia il motore, e farlo significherebbe due aritmetiche che
+possono divergere, contro la garanzia «riga stampata = `rate_quote`».
+
+⛔ **Questa frase è falsa per metà, e l'errore è stato scoperto poche ore dopo, aprendo la .77.**
+Diceva «le stampe», al plurale. La **gemella** `RipartoTabelleService` il motore lo istanzia eccome
+(`app(CalcoloQuoteService::class)`, :119), da diverse beta, e legge `getImportiPerConto()` — che è
+già al netto degli scoperti — e `getAddebitiDiretti()`. C'è persino un parametro apposta,
+`soloLettura`, perché *«la stampa non deve poter essere bloccata da una guardia di generazione»*. Il
+principio è scritto lì: *«il motore risponde a "quanto", questo servizio solo a "a chi"»*, e tenere
+una seconda copia di quell'aritmetica è il difetto da cui nasce la coda ⑩.
+
+Fra le due stampe, quella fuori posto è **la per-capitoli**, che ricalcola tutto per conto proprio —
+ed è la ragione per cui prende il lordo da `conto->importo` invece che dal registro del motore, e
+quindi non vede la decurtazione degli scoperti. Tutti i guai di questa beta discendono da lì. La strada vera era già
 scritta nel codice e mai costruita — il docblock di `getImportiPerConto()` prescriveva dalla beta.49
 che *«la colonna di una tabella deve continuare a valere il budget deliberato, mentre lo sconto a
 un'unità che aveva già versato vive in una colonna sua»*, e rimandava a un `getNettingApplicato()`

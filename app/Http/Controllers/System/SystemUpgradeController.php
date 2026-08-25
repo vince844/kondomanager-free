@@ -37,11 +37,58 @@ class SystemUpgradeController extends Controller
             ]);
         }
 
+        $release = $service->checkRemoteVersion();
+
         return Inertia::render('system/upgrade/Index', [
             'currentVersion' => config('app.version'),
-            'availableRelease' => $service->checkRemoteVersion(),
+            'availableRelease' => $release,
             'inProgress' => $service->isUpgradeInProgress(),
+            'requisiti' => $this->requisitiMancanti($release),
         ]);
+    }
+
+    /**
+     * Cosa manca a questo server per reggere la versione offerta.
+     *
+     * **Esiste perché l'ordine era al contrario.** La pagina proponeva l'aggiornamento e il
+     * controllo scattava **dopo il clic**, dentro `prepareForUpgrade()`: l'amministratore vedeva
+     * offrirsi qualcosa che non poteva avere, e lo scopriva provando. Nulla di rotto — il controllo
+     * sta prima di qualunque scrittura — ma un ordine che fa perdere tempo e fiducia.
+     *
+     * ⚠️ **E le estensioni non le controllava nessuno**, su questa strada. `UpdateService` le
+     * trasporta nel bridge ma non le verifica, e `extension_loaded()` lo chiama solo l'installer di
+     * una macchina nuova. Chi *aggiorna* su un hosting senza `gd` passava tutti i controlli e poi
+     * non stampava più niente — `gd` è ciò su cui poggia mpdf, cioè ogni PDF del programma. Questo
+     * è il primo punto del percorso di aggiornamento in cui quella domanda viene fatta.
+     *
+     * Ritorna `null` quando non c'è niente da segnalare, così la pagina non deve saperlo.
+     *
+     * @return array{php: array{richiesto: string, attuale: string}|null, estensioni: list<string>}|null
+     */
+    private function requisitiMancanti(?array $release): ?array
+    {
+        if (! $release) {
+            return null;
+        }
+
+        // Il ripiego è lo stesso di `UpdateService`: se il manifest tace, si assume la soglia vera
+        // del codice invece di una più permissiva. Un ripiego generoso qui vorrebbe dire dare via
+        // libera a un aggiornamento che poi non parte.
+        $phpRichiesto = $release['requirements']['php'] ?? '8.4.1';
+        $php = version_compare(PHP_VERSION, $phpRichiesto, '<')
+            ? ['richiesto' => $phpRichiesto, 'attuale' => PHP_VERSION]
+            : null;
+
+        $estensioni = array_values(array_filter(
+            $release['requirements']['extensions'] ?? [],
+            fn ($ext) => ! extension_loaded($ext)
+        ));
+
+        if (! $php && empty($estensioni)) {
+            return null;
+        }
+
+        return ['php' => $php, 'estensioni' => $estensioni];
     }
 
     /**
