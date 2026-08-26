@@ -1,4 +1,13 @@
 {
+    "name": "kondomanager-free",
+    "version": "1.10.0",
+    "description": "KondoManager — software gestionale open source e self-hosted per amministratori di condominio, con contabilità in partita doppia.",
+    "license": "AGPL-3.0-or-later",
+    "homepage": "https://kondomanager.com",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/vince844/kondomanager-free.git"
+    },
     "private": true,
     "type": "module",
     "scripts": {

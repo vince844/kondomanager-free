@@ -1,13 +1,33 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/vue-starter-kit",
+    "name": "kondomanager/kondomanager-free",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "KondoManager — software gestionale open source e self-hosted per amministratori di condominio, con contabilità in partita doppia.",
     "keywords": [
-        "laravel",
-        "framework"
+        "condominio",
+        "amministratore-di-condominio",
+        "gestionale",
+        "contabilita",
+        "partita-doppia",
+        "millesimi",
+        "self-hosted",
+        "laravel"
     ],
-    "license": "MIT",
+    "license": "AGPL-3.0-or-later",
+    "homepage": "https://kondomanager.com",
+    "authors": [
+        {
+            "name": "Vincenzo Vecchio",
+            "homepage": "https://github.com/vince844",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/vince844/kondomanager-free/issues",
+        "source": "https://github.com/vince844/kondomanager-free",
+        "forum": "https://forum.kondomanager.com",
+        "docs": "https://kondomanager.com/docs/index.html"
+    },
     "require": {
         "php": "^8.4",
         "bacon/bacon-qr-code": "^3.0",
