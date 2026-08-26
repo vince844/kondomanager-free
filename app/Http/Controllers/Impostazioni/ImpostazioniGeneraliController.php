@@ -44,7 +44,7 @@ class ImpostazioniGeneraliController extends Controller
             // valore globale così alto gli darebbe cento schede da scorrere e nessun comando per
             // ridurle. Chi lavora sul gestionale può comunque sceglierlo tabella per tabella.
             'per_page_disponibili'     => array_values(array_filter(
-                config('pagination.consentite'),
+                config('pagination.consentite') ?? [],
                 fn (int $v) => $v <= 50,
             )),
             'roles'                    => $roles,

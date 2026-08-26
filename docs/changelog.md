@@ -7,6 +7,119 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.1] - L'Aggiornamento Che Non Arrivava a Destinazione
+
+**Non aggiunge migrazioni**, ma cambia il comportamento di una che già c'è: quella delle righe per
+pagina si fermava a metà strada e lasciava il database incompleto. Chi ha già aggiornato alla 1.10.0
+senza problemi non deve rifare niente.
+
+Quattro difetti diversi con una sola conseguenza: il programma arriva alla versione nuova con
+qualcosa di vecchio ancora attaccato — le dipendenze, la configurazione in cache, la tabella delle
+rotte, gli asset. Il primo si è manifestato davvero, la sera del rilascio, sull'aggiornamento della
+nostra dimostrazione pubblica; gli altri tre sono venuti fuori riproducendo in laboratorio
+l'aggiornamento 1.9.1 → 1.10.0 per capire il primo. Nessuno li avrebbe segnalati spontaneamente,
+perché tolgono anche gli strumenti con cui si capirebbe cosa è successo.
+
+### La cache delle rotte sopravviveva all'aggiornamento
+
+L'aggiornatore automatico svuotava `bootstrap/cache` cancellando un elenco di nomi:
+`config.php`, `routes.php`, `packages.php`, `services.php`. Ma **`routes.php` è il nome che Laravel
+usava fino alla versione 6**: dalla 7 la cache delle rotte si chiama `routes-v7.php`. E
+`bootstrap/cache` è fra le cartelle che il deploy preserva, quindi non veniva nemmeno sovrascritta.
+
+Restavano sul server, da prima dell'aggiornamento, `routes-v7.php`, `events.php` e `settings.php`.
+Risultato misurato: codice nuovo con la tabella delle rotte vecchia — `route:list` fallisce cercando
+un controller che non esiste più, e le rotte nate nella versione nuova non ci sono affatto. Dopo un
+`optimize:clear` tornano tutte.
+
+**Chi aggiorna dal pannello non ha una console**, quindi non poteva né accorgersene né uscirne.
+
+Adesso si cancella tutto ciò che finisce in `.php` dentro quella cartella, invece di un elenco.
+Sono tutti file che il framework rigenera da solo. Un elenco scritto a mano invecchia in silenzio
+ogni volta che Laravel rinomina un file, ed era già successo una volta.
+
+⚠️ **Ma questa correzione non vale per l'aggiornamento che stai per fare, e va detto.** L'aggiornatore
+che gira quando premi il pulsante è quello della versione **installata**, non quello della versione
+che stai scaricando: viene copiato da `resources/installer/index.php` dell'installazione corrente. La
+pulizia corretta governa quindi gli aggiornamenti che *partono* dalla 1.11 in poi.
+
+**Chi ha lanciato `php artisan optimize` prima di aggiornare** deve quindi lanciare, subito dopo:
+
+```
+php artisan optimize:clear
+```
+
+Chi non lo ha mai lanciato non ha nessuna cache da svuotare e non deve fare niente.
+
+### La migrazione delle righe per pagina moriva sulla configurazione vecchia
+
+`config/pagination.php` nasce nella 1.10. Chi aggiorna da prima con la configurazione in cache non
+ha quella chiave, quindi `config('pagination.consentite')` vale `null` — e in PHP 8 `in_array()` con
+un elenco nullo è un errore fatale, non un avviso.
+
+Misurato: `migrate` si fermava lì e lasciava **dieci migrazioni pendenti**, cioè un database a metà.
+
+Il difetto stava nella guardia, non nel valore: il ripiego a 10 c'era già e difendeva dal
+`DEFAULT_PER_PAGE=` lasciato vuoto nel `.env`. Non difendeva dal caso in cui il file di
+configurazione non si vedesse ancora. Cinque test nuovi, e uno di loro ha trovato che la prima
+stesura della correzione copriva solo metà del problema: il secondo argomento di `config()`
+restituisce il ripiego quando la chiave *manca*, ma non quando c'è e vale `null`.
+
+### E la stessa cosa, in quattro punti che la prima correzione aveva mancato
+
+La revisione di questa beta ha trovato che l'impostazione delle righe per pagina veniva letta allo
+stesso modo, senza rete, in altri quattro punti. Uno sta sul percorso di **ogni elenco del
+programma** — trenta schermate: con la configurazione vecchia in cache sarebbe stato un errore su
+tutto il gestionale, non su una singola pagina. Gli altri tre impediscono di aprire e di salvare le
+impostazioni generali.
+
+Corretti tutti, e aggiunta una guardia automatica che d'ora in poi rifiuta una lettura di quella
+configurazione senza rete: era la seconda volta che lo stesso difetto si presentava, e alla seconda
+si chiude la forma, non il caso.
+
+### Le rotte dell'installer dipendevano da una libreria che durante l'aggiornamento non c'è ancora
+
+`Route::livewire()` non è un metodo di Laravel: è una macro, e la registra soltanto Livewire 4. Il
+file che la usava viene letto all'avvio di ogni processo, web e console, **tranne quando le rotte
+sono in cache**: `loadRoutesFrom()` salta il file se `bootstrap/cache/routes-v7.php` esiste. Ed è
+proprio l'altro difetto di questa versione a togliere quella cache, quindi le due cose si incrociano
+e quella protezione non è una su cui contare. Nella finestra fra lo scaricamento del codice nuovo e
+l'aggiornamento delle librerie, il programma non si avviava affatto.
+
+Il costo non è l'errore, è cosa porta via: fallivano `migrate`, `optimize:clear`, `route:list` e
+`about`, cioè proprio gli strumenti con cui si finisce l'aggiornamento e si capisce cosa è successo.
+E il messaggio — «Attribute [livewire] does not exist» — non nomina né Livewire né le dipendenze.
+
+Adesso il passo del wizard si registra con `Route::get()`. Non è un ripiego: Livewire documenta la
+forma diretta, con Livewire 4 produce la stessa pagina, e con la 3 sopravvive dove la macro muore.
+
+### L'avvio in Docker saltava l'installazione delle dipendenze
+
+Gli entrypoint controllavano `if [ ! -d "vendor" ]`, cioè scambiavano «la cartella esiste» per «la
+cartella è quella giusta», e quattordici righe dopo lanciavano `migrate`. Dopo un aggiornamento del
+codice la cartella c'è — con dentro le librerie vecchie — quindi l'installazione veniva saltata in
+automatico e senza che nessuno leggesse niente. Stessa forma per `node_modules` e per `public/build`,
+che serviva gli asset della versione precedente in silenzio.
+
+Adesso le dipendenze si installano sempre — quando non c'è niente da fare costa pochi secondi — e
+gli asset si ricostruiscono quando un sorgente è più recente del manifest.
+
+### Sicurezza: aggiornata la libreria che interpreta il testo formattato
+
+`league/commonmark` dalla **2.8.2** alla **2.10.0**. La versione precedente aveva sei avvisi di
+sicurezza aperti: **quattro di gravità alta e due media**. Cinque sono casi di *denial of service* su
+testo costruito apposta; il sesto è diverso e va detto — è un aggiramento del filtro sui link
+pericolosi, cioè un problema di contenuto che passa, non di server che rallenta. Nessuna altra
+dipendenza è stata toccata.
+
+### Documentazione interna
+
+Il commento in cima al comando che misura lo stato dei documenti dichiarava che la cartella `docs/`
+è tenuta fuori da git. Non è più vero dal 21 agosto: è un repository a sé, e il repository pubblico
+ne traccia dieci file — le sole guide che servono a chi installa e usa il programma.
+
+---
+
 ## [1.10.0] — Migration & Ledgers
 
 > **Stable release.**

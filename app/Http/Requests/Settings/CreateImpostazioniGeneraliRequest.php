@@ -35,7 +35,7 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
             'default_per_page'           => [
                 'required',
                 'integer',
-                Rule::in(array_filter(config('pagination.consentite'), fn (int $v) => $v <= 50)),
+                Rule::in(array_filter(config('pagination.consentite') ?? [], fn (int $v) => $v <= 50)),
             ],
             'default_condominio_id'      => [
                 'required_if:open_condominio_on_login,true',

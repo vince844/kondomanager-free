@@ -792,16 +792,52 @@ try {
     }
     
     // Laravel cache clearing
+    //
+    // Si cancella TUTTO ciò che finisce in .php dentro bootstrap/cache, e non un
+    // elenco di nomi. L'elenco c'era, ed era sbagliato: conteneva `routes.php`,
+    // che è il nome usato da Laravel fino alla 6 — dalla 7 la cache delle rotte
+    // si chiama `routes-v7.php`. Restavano quindi sul server, da prima
+    // dell'aggiornamento, `routes-v7.php`, `events.php` e `settings.php`.
+    //
+    // Il costo non è teorico: se `bootstrap/cache` è preservato dal deploy, i file
+    // restano quelli di prima e il risultato è codice nuovo con la tabella delle
+    // rotte vecchia — `route:list` fallisce cercando un controller che non esiste
+    // più, e le rotte nate nella versione nuova non esistono. Chi aggiorna dal
+    // pannello non ha una console per accorgersene né per uscirne.
+    //
+    // ⚠️ Se sia preservato **non lo decide questo file**: l'elenco delle esclusioni
+    // arriva dal bridge (`$bridge['package']['exclude']`, riga 226), cioè dal
+    // `latest.json` remoto; la lista qui sotto è solo il ripiego per quando il
+    // bridge non ne porta una. Quindi `bootstrap/cache` è escluso davvero soltanto
+    // se sta anche nel `latest.json` della release — da verificare a ogni rilascio.
+    // In entrambi i casi la cancellazione qui è giusta: se la cartella è preservata
+    // toglie i file vecchi, se è sovrascritta toglie quelli appena depositati, che
+    // sono comunque cache da rifare.
+    //
+    // Tutti questi file sono rigenerabili: Laravel li ricostruisce da solo alla
+    // prima richiesta (`PackageManifest::build()` per packages/services) o al
+    // prossimo `optimize`. Il `.gitignore` della cartella non è un `.php` e
+    // sopravvive. Un elenco scritto a mano invece invecchia in silenzio ogni
+    // volta che il framework rinomina un file, ed è già successo una volta.
     $cacheDir = KM_ROOT . '/bootstrap/cache';
     $cleared = 0;
-    
-    foreach (['config.php', 'routes.php', 'packages.php', 'services.php'] as $file) {
-        if (file_exists("{$cacheDir}/{$file}")) {
-            @unlink("{$cacheDir}/{$file}");
+
+    // `scandir()` e non `glob()`: glob interpreta il percorso come uno SCHEMA, quindi
+    // su un'installazione il cui percorso contiene una parentesi quadra — es.
+    // /home/utente/km[test] — restituisce un array vuoto anche con i file tutti lì, e
+    // la pulizia non avverrebbe, in silenzio. Sarebbe una regressione rispetto al
+    // vecchio codice a nomi letterali, che in quel percorso funzionava. Misurato.
+    foreach (is_dir($cacheDir) ? (scandir($cacheDir) ?: []) : [] as $nome) {
+        if (substr($nome, -4) !== '.php') {
+            continue;
+        }
+
+        if (@unlink("{$cacheDir}/{$nome}")) {
             $cleared++;
+            logTech("Cleared Laravel cache: {$nome}");
         }
     }
-    
+
     logTech("Cleared {$cleared} Laravel cache files");
     
     // View cache

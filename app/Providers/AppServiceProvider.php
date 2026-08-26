@@ -100,13 +100,17 @@ class AppServiceProvider extends ServiceProvider
         // ====================================================================
         // ROTTE INSTALLER
         // ====================================================================
-        // Registrate qui (non in bootstrap/app.php withRouting 'then') perché
-        // usano la macro Route::livewire(), disponibile solo dopo che tutti i
-        // provider hanno completato la fase register() — incluso quello di
-        // Livewire. Durante "composer install/update" (artisan package:discover)
-        // il closure 'then' di withRouting gira troppo presto e la macro non
-        // esiste ancora, causando un errore. loadRoutesFrom() in boot() non ha
-        // questo problema: è lo stesso schema già usato dal vendor eii/installer.
+        // Registrate qui e non in bootstrap/app.php: loadRoutesFrom() gira a
+        // boot() compiuto, quando ogni provider ha finito register(). È lo
+        // schema che usava anche il vendor eii/installer.
+        //
+        // ⚠️ Fino al 26/08/2026 la ragione dichiarata era un'altra: la macro
+        // Route::livewire(), che esiste solo dopo il register() di Livewire e
+        // che il closure 'then' di withRouting avrebbe incontrato troppo presto
+        // durante `artisan package:discover`. Quella macro non si usa più (il
+        // perché sta in routes/installer.php), quindi quella ragione è decaduta:
+        // se un giorno queste rotte tornassero in bootstrap/app.php, non sarebbe
+        // la macro a impedirlo.
         $this->loadRoutesFrom(base_path('routes/installer.php'));
 
         // ====================================================================

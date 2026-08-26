@@ -40,7 +40,7 @@ class HandleInertiaRequests extends Middleware
             // mentre il valore predefinito era 10, così chi si spostava a 50 non trovava più
             // l'opzione per tornare indietro. Una lista sola, e non può succedere di nuovo.
             'paginazione' => [
-                'consentite' => config('pagination.consentite'),
+                'consentite' => config('pagination.consentite') ?? [],
             ],
 
             'auth.user' => fn () => $request->user()
