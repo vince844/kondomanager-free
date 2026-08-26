@@ -183,6 +183,15 @@ Automatic updates are available starting from version 1.9.0. The steps below do 
 
 **Important:** Do not close the browser page during the update process. The `index.php` file will self-delete at the end of the operation for security.
 
+**If you have ever run `php artisan optimize` on your server**, run this as well after the update:
+
+```bash
+php artisan optimize:clear
+```
+
+The updater clears the configuration cache but not the route cache: without this step the application keeps serving the previous version's route table, and new menu entries answer "page not found". If you have never run `optimize`, there is nothing to do.
+
+
 ---
 
 ## Manual Installation (For developers and advanced users)
@@ -233,33 +242,32 @@ Visit http://localhost:8000.
 
 If you prefer to update manually, strictly follow these steps to ensure compatibility with the versioning system:
 
+> ⚠️ **If you are moving from 1.9.x to 1.10.0, `composer install` is not optional.** Version 1.10 moves Livewire from 3 to 4: while the dependencies are still the old ones, every `php artisan` command stops with `Attribute [livewire] does not exist`. The database is not touched — the error comes before the migrations — and the way out is to finish updating the dependencies. That is why the commands below are **a single chain**.
+
 1. **Database Backup (Recommended)**
 ```bash
 mysqldump -u username -p database_name > backup_$(date +%Y%m%d).sql
 ```
 
-2. **Update code and dependencies**
+2. **The update, in a single command**
+
+The steps are joined by `&&`: if composer or npm fail — it happens, through an interrupted download or not enough memory on the server — the chain stops there and **the migrations never run**. The `config:clear` before `migrate` is required because the settings migrations read the configuration.
+
 ```bash
-git pull origin main
-composer install --no-dev --optimize-autoloader
-npm install && npm run build
+git pull origin main \
+ && composer install --no-dev --optimize-autoloader \
+ && npm install \
+ && npm run build \
+ && php artisan config:clear \
+ && php artisan migrate --force \
+ && php artisan optimize:clear \
+ && php artisan storage:link \
+ && echo "OK - update complete"
 ```
 
-3. **CRITICAL STEP**
+If `OK - update complete` does not appear, the update is not finished: read the last message, fix the problem and run the same chain again — it is safe to repeat.
 
-It is essential to clear the configuration cache before migrating, especially for the new versioning settings system:
-```bash
-php artisan config:clear
-```
-
-4. **Migration and optimization**
-```bash
-php artisan migrate --force
-php artisan optimize:clear
-php artisan storage:link
-```
-
-5. **Configuration and Starting Queues** 
+3. **Configuration and Starting Queues** 
 
 The system uses the database driver by default (you can also use Redis if you prefer) to manage background processes. It is necessary to start the worker to process queued tasks.
 ```bash
