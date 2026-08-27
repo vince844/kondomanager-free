@@ -47,10 +47,59 @@ class MySqlDumper implements DatabaseDumperInterface
         // letti e reimportati senza slittamenti (stesso approccio di mysqldump).
         $pdo->exec("SET time_zone = '+00:00'");
 
-        $out = @fopen($targetPath, 'ab');
+        // ⚠️ `r+b` e non `ab`, per poter troncare: alla ripresa il file va riportato
+        // a **quanto il checkpoint sa di avere scritto**, non lasciato com'è.
+        //
+        // Il checkpoint è salvato da `BackupManager::advanceDump()` **dopo** che questo
+        // metodo è tornato. Se il processo muore prima — timeout di PHP, kill del worker,
+        // memoria esaurita — tutto ciò che è stato scritto in quello step è nel file e in
+        // nessun checkpoint. Il passo successivo riprende dall'ultimo checkpoint buono e
+        // **riscrive lo stesso segmento**: il dump contiene due volte le stesse istruzioni
+        // e non si reimporta più.
+        //
+        // Misurato il 27/08/2026 riproducendolo: passo 1 registra 273 byte, il passo
+        // ucciso ne scrive 12.917 che nessuno registra, la ripresa li riscrive. Il file
+        // finale valeva 2.865.272 byte invece di 2.333.722, e `mysql <` moriva con
+        // `ERROR 1062 Duplicate entry ... for key 'cache_locks.PRIMARY'`.
+        //
+        // È il difetto che colpisce **le macchine deboli**, cioè quelle per cui lo
+        // step-runner esiste: dove il dump sta in un solo step non si riprende mai.
+        $out = @fopen($targetPath, file_exists($targetPath) ? 'r+b' : 'w+b');
         if ($out === false) {
             throw new RuntimeException("Impossibile aprire il file di dump {$targetPath} in scrittura.");
         }
+
+        // ⚠️ «Assente» e «zero» non sono la stessa cosa, e confonderli costa un archivio.
+        //
+        // `bytes_written` nasce in questa versione: ogni checkpoint scritto da una precedente ne è
+        // privo. Con un `?? 0` quel checkpoint faceva troncare il file a zero e proseguire dallo
+        // `stage` di metà percorso — producendo un dump senza intestazione e senza le prime tabelle
+        // che però contiene «Dump completato», quindi `dump()` restituiva `true` e il backup veniva
+        // marcato COMPLETED, con checksum e manifest. Misurato sul database di sviluppo: **68
+        // tabelle su 85**, e il ripristino muore.
+        //
+        // Non è un caso di laboratorio: `storage` è escluso dal deploy dell'aggiornatore, quindi un
+        // dump interrotto sopravvive alla sostituzione dei file, il record resta «running» per due
+        // ore, e `SystemUpgradeController::backupStart()` **riusa esplicitamente** un backup in
+        // corso. Cioè capita proprio alla rete di sicurezza pre-aggiornamento.
+        //
+        // Quando il checkpoint non conosce la chiave si **ricomincia da capo**: è l'unico stato in
+        // cui checkpoint e file tornano a coincidere con certezza. Costa il tempo di un dump; le
+        // alternative costano un archivio che mente. Non si solleva un'eccezione perché su quel
+        // percorso significherebbe lasciare l'aggiornamento senza rete.
+        if ($state !== [] && ! array_key_exists('bytes_written', $state)) {
+            $state = [];
+        }
+
+        $scrittiSecondoIlCheckpoint = (int) ($state['bytes_written'] ?? 0);
+
+        if (ftruncate($out, $scrittiSecondoIlCheckpoint) === false) {
+            fclose($out);
+
+            throw new RuntimeException("Impossibile riportare il file di dump {$targetPath} alla lunghezza del checkpoint.");
+        }
+
+        fseek($out, $scrittiSecondoIlCheckpoint);
 
         try {
             while (true) {
@@ -83,6 +132,16 @@ class MySqlDumper implements DatabaseDumperInterface
                 }
             }
         } finally {
+            // Registrato nel `finally` e non prima di ogni `return`: così vale per
+            // entrambe le uscite — dump concluso e budget esaurito — e non c'è una
+            // terza via che possa dimenticarlo. Su eccezione il valore non serve, perché
+            // `BackupManager` marca il backup fallito e il checkpoint viene azzerato.
+            $posizione = ftell($out);
+
+            if ($posizione !== false) {
+                $state['bytes_written'] = $posizione;
+            }
+
             fclose($out);
         }
     }

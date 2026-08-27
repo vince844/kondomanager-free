@@ -118,6 +118,31 @@ it('non resta bloccato per sempre su un bridge scaduto', function () {
         ->and(File::exists(base_path('update_bridge.json')))->toBeFalse();
 });
 
+it('un file di lock orfano nella cartella temporanea non blocca piu l aggiornamento', function () {
+    // Il controllo tolto cercava `km_lock_*.lock` in `sys_get_temp_dir()`. Cercava un file che
+    // questo prodotto NON HA MAI SCRITTO: verificato su tutta la cronologia, `km_lock_` compare
+    // in un solo file — UpdateService — dal primo commit dell'aggiornamento automatico.
+    //
+    // Non era inerte. Il `glob` non guardava l'età e non qualificava il proprietario, e su un
+    // hosting condiviso la cartella temporanea è comune a più siti: un file con quel nome —
+    // vecchio di mesi, o di qualcun altro — bloccava l'aggiornamento **per sempre**, mostrando
+    // solo un pulsante grigio senza spiegazione. E chi sta su hosting condiviso non ha una
+    // console per andare a cancellarlo.
+    //
+    // Trovato il 27/08/2026 da uno screenshot di un amministratore su Altervista, fermo con
+    // «Scarica e Installa» disabilitato mentre PHP e requisiti erano a posto.
+    $orfano = sys_get_temp_dir().'/km_lock_'.uniqid().'.lock';
+    File::put($orfano, 'residuo di un meccanismo mai costruito');
+
+    try {
+        expect(app(UpdateService::class)->isUpgradeInProgress())->toBeFalse(
+            'Un file di lock orfano sta ancora bloccando l aggiornamento.'
+        );
+    } finally {
+        @unlink($orfano);
+    }
+});
+
 it('il bridge porta la firma che la pulizia post-aggiornamento cerca', function () {
     // cleanupInstallerJunk() rimuove i file residui riconoscendoli dal contenuto.
     // Cercava 'Bridge-Only', stringa che il bridge non ha mai contenuto: una

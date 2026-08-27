@@ -144,3 +144,64 @@ describe('quando non c è nulla da aggiornare', () => {
         expect(wrapper.text()).not.toContain('Avvia aggiornamento');
     });
 });
+
+/**
+ * L'istruzione sull'ordine del ripristino, che a video non si raggiunge.
+ *
+ * Il blocco compare solo quando `errors.msg` è valorizzato, cioè **dopo un aggiornamento
+ * fallito**. Sull'ambiente di sviluppo non lo si raggiunge senza rompere davvero un
+ * aggiornamento, e forzare le props di Inertia da console non funziona dopo l'idratazione.
+ * Montare il componente è l'unico modo onesto di guardarlo: deterministico, e resta nella suite
+ * invece di essere un'ispezione fatta una volta.
+ *
+ * Perché conta: fino alla 1.11.0-beta.2 il messaggio diceva soltanto «puoi ripristinarlo dalla
+ * pagina Gestione backups». Seguito alla lettera dopo una migrazione fallita, quel consiglio non
+ * ripara niente — rimette il database e il ripristino riesegue le migrazioni, cioè rilancia lo
+ * stesso guasto. L'ordine giusto è: **prima i file indietro, poi il database.**
+ *
+ * ## Cosa questi test NON coprono
+ *
+ * - **Non provano che l'ordine funzioni**, solo che venga detto. Che dopo il rollback dei file il
+ *   ripristino accetti l'archivio è coperto da `ManifestVersioneDelloSchemaTest`.
+ * - **Non guardano il rendering in scuro.** L'`<Alert variant="destructive">` usa i token del
+ *   tema (`alert/index.ts:15`, con `dark:border-destructive`), verificato sul codice e non a video.
+ */
+describe("il messaggio dopo un aggiornamento fallito", () => {
+    test("dice di rimettere prima i file e solo dopo ripristinare", () => {
+        const wrapper = render({ canBackup: true, errors: { msg: 'Migrazione fallita.' } });
+
+        const testo = wrapper.text();
+
+        expect(testo).toContain('Migrazione fallita.');
+        expect(testo).toContain('rimetti prima i file della versione precedente');
+        expect(testo).toContain('solo dopo ripristina il');
+    });
+
+    test("spiega PERCHE l ordine conta, invece di darlo come istruzione da seguire a memoria", () => {
+        const wrapper = render({ canBackup: true, errors: { msg: 'Migrazione fallita.' } });
+
+        // Senza il perché, alla prima fretta si salta il passaggio.
+        expect(wrapper.text()).toContain('le migrazioni vengono rieseguite');
+    });
+
+    test("senza backup non promette un ripristino che non si puo fare", () => {
+        const wrapper = render({ canBackup: false, errors: { msg: 'Migrazione fallita.' } });
+
+        const testo = wrapper.text();
+
+        expect(testo).toContain('Migrazione fallita.');
+        expect(testo).not.toContain('rimetti prima i file della versione precedente');
+    });
+
+    test("distingue un errore che si ripete da un interruzione, che invece si riprende", () => {
+        // L'invariante gemella sta in UpgradeMigrationsRerunTest: le migrazioni SONO
+        // rieseguibili, quindi «premi di nuovo» resta vero per un'interruzione. Il testo
+        // nuovo aggiunge il caso in cui ripremere non basta, senza contraddire quello.
+        const wrapper = render({ canBackup: true });
+
+        const testo = wrapper.text();
+
+        expect(testo).toContain('riprende da dove si era interrotto');
+        expect(testo).toContain("non è un'interruzione");
+    });
+});

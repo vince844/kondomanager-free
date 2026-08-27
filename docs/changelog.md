@@ -7,6 +7,90 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.2] - La Rete Che Non Avrebbe Retto
+
+**Non aggiunge migrazioni.** Corregge il backup di sicurezza che gira prima di ogni aggiornamento —
+quello che dalla 1.11 in poi parte da solo — e che in cinque punti diversi non avrebbe fatto il suo
+lavoro. Nessuno l'aveva mai esercitato: era rimasto dormiente per settantasette beta.
+
+Questa versione nasce da una decisione presa prima di scrivere codice: **collaudare quel backup per
+davvero**, su una copia di un database reale, invece di dedurne il funzionamento leggendo. Il motore
+si è rivelato solido — dump completo, reimportazione pulita, tutti i conteggi identici — ma i bordi
+no, e i bordi sono quelli che si toccano nel momento peggiore.
+
+### Un backup interrotto produceva un archivio che non si poteva rimettere dentro
+
+Il backup avanza a piccoli passi, così regge anche gli hosting lenti. Se un passo veniva ucciso a
+metà — un limite di tempo, la memoria esaurita, un riavvio — quello che aveva scritto restava nel
+file ma non veniva registrato da nessuna parte. Il passo successivo ripartiva dall'ultimo punto noto
+e **riscriveva lo stesso pezzo una seconda volta**.
+
+L'archivio risultava completato, con la sua dimensione e il suo codice di controllo. Ma non si
+reimportava: misurato, moriva su una riga duplicata. È il difetto che colpisce **proprio le macchine
+lente**, cioè quelle per cui i piccoli passi esistono: dove il backup si conclude in un colpo solo,
+non si riprende mai.
+
+### L'archivio dichiarava la versione sbagliata, e il ripristino rifiutava sé stesso
+
+Il backup di sicurezza gira quando i file della versione nuova hanno già sostituito i vecchi, ma il
+database è ancora quello di prima. L'archivio si etichettava con la versione **dei file**, pur
+contenendo il database **di prima**.
+
+La conseguenza si vedeva nell'unico momento in cui quel backup serve: l'amministratore a cui
+l'aggiornamento va male rimette i file della versione precedente — la reazione naturale — e il
+programma **rifiutava il proprio backup di sicurezza**, dicendo che proveniva da una versione più
+recente. Adesso l'archivio dichiara la versione del database che contiene, che è ciò che un backup
+ha sempre significato.
+
+### Un backup abbandonato bloccava tutto per due ore
+
+Bastava chiudere la scheda a metà backup perché il programma continuasse a crederlo in corso. In
+quella finestra non si poteva né farne un altro né **ripristinare** — cioè proprio quello che serve
+a chi ha appena visto fallire un aggiornamento e ha chiuso la pagina. Ora un backup abbandonato
+viene riconosciuto e archiviato prima di rispondere, mentre uno interrotto da poco resta a
+disposizione per essere ripreso.
+
+### Il backup di sicurezza torna a chi aggiorna da una versione di prova
+
+Chi aveva installato una versione di prova della 1.10 non riceveva il backup automatico, pur avendo
+tutto il necessario per farlo. Il controllo guardava il numero di versione invece di guardare se
+l'infrastruttura ci fosse, e ogni numero con «beta» dentro veniva considerato più vecchio della
+versione definitiva. Adesso conta solo quello che serve davvero, e chi arriva da una 1.9 resta
+correttamente escluso perché quell'infrastruttura non ce l'ha ancora.
+
+### Un file dimenticato poteva bloccare l'aggiornamento per sempre
+
+Segnalato da un amministratore che si è trovato «Scarica e Installa» disabilitato senza spiegazione,
+con tutti i requisiti a posto. Il programma cercava un file di blocco nella cartella temporanea del
+server — un file che **non ha mai scritto**: era il residuo di un meccanismo pensato e mai
+costruito. Su un hosting condiviso quella cartella è comune a più siti, quindi bastava un file con
+quel nome, di chiunque e di qualunque età, per bloccare l'aggiornamento senza dire perché e senza
+scadenza. Tolto.
+
+### Se un aggiornamento fallisce, adesso il programma dice in che ordine rimediare
+
+Il messaggio d'errore diceva «puoi ripristinare il backup dalla pagina Gestione backups». Seguito
+alla lettera dopo una migrazione fallita, quel consiglio non ripara niente: rimette il database e il
+ripristino riesegue le stesse migrazioni, cioè rilancia il guasto.
+
+L'ordine che funziona è **prima i file della versione precedente, poi il database** — e adesso è
+scritto lì, con il motivo, perché senza il motivo alla prima fretta si salta il passaggio. È anche
+distinto il caso in cui basta ripremere (una pagina che si blocca) da quello in cui ripremere non
+serve (lo stesso errore che torna identico).
+
+### Nota di metodo
+
+Cinque di questi otto difetti sono stati trovati collaudando invece di leggere, e **due sono stati
+introdotti dalle correzioni di questa stessa versione**, poi trovati dalla revisione che precede il
+rilascio. Uno dei due era peggiore del difetto che correggeva: produceva un archivio a cui mancavano
+diciassette tabelle su ottantacinque, dichiarandolo completo.
+
+Ogni correzione è ora protetta da una prova automatica, e ogni prova è stata verificata rimettendo
+il difetto per controllare che diventasse rossa — perché una prova che resta verde anche senza la
+correzione non protegge nessuno.
+
+---
+
 ## [1.11.0-beta.1] - L'Aggiornamento Che Non Arrivava a Destinazione
 
 **Non aggiunge migrazioni**, ma cambia il comportamento di una che già c'è: quella delle righe per

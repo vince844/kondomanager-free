@@ -394,9 +394,12 @@ class UpdateService
      * Usato dal middleware/controller per mostrare una schermata di attesa
      * e impedire operazioni concorrenti durante il deploy.
      *
-     * Controlla due segnali:
-     *   1. Presenza del bridge file (aggiornamento avviato ma non ancora completato)
-     *   2. Presenza di lock file temporanei creati dall'installer durante il deploy
+     * Controlla **un** segnale: la presenza di un `update_bridge.json` con un token non ancora
+     * scaduto. Un bridge scaduto viene ignorato e cancellato, così un lancio non andato a buon
+     * fine non blocca la pagina per sempre.
+     *
+     * *(Fino al 27/08/2026 i segnali erano due: il secondo cercava dei file di lock temporanei
+     * «creati dall'installer». Non li creava nessuno — vedi il commento nel corpo.)*
      *
      * @return bool
      */
@@ -421,6 +424,28 @@ class UpdateService
             File::delete($bridge);
         }
 
-        return !empty(glob(sys_get_temp_dir() . '/km_lock_*.lock'));
+        // ⚠️ Qui c'era un secondo controllo, e toglierlo non indebolisce niente:
+        //
+        //     return ! empty(glob(sys_get_temp_dir().'/km_lock_*.lock'));
+        //
+        // Cercava un file che **questo prodotto non ha mai scritto**. Verificato su tutta la
+        // cronologia: `km_lock_` compare in un solo file — questo — dal primo commit del lavoro
+        // sull'aggiornamento automatico (`3c0ea2ac`). Era il residuo di un meccanismo pensato e
+        // mai costruito.
+        //
+        // Non era però inerte, ed è per questo che è stato tolto invece che lasciato lì. Il
+        // `glob` non guardava l'età e non qualificava il proprietario: su un hosting condiviso
+        // `sys_get_temp_dir()` è comune a più siti, quindi **qualunque** file con quel nome —
+        // vecchio di sei mesi, o di qualcun altro — bloccava l'aggiornamento **per sempre**. E
+        // lo bloccava in silenzio: la pagina mostra il pulsante grigio e non dice perché, e chi
+        // sta su hosting condiviso non ha una console per andare a guardare.
+        //
+        // Trovato il 27/08/2026 da uno screenshot di un amministratore su Altervista, fermo con
+        // «Scarica e Installa» disabilitato mentre PHP e requisiti erano a posto.
+        //
+        // Un aggiornamento davvero in corso è quello che ha un bridge valido e non scaduto: lo
+        // dice il controllo qui sopra, che ha una scadenza dichiarata ed è l'unico che il codice
+        // di questo prodotto alimenta davvero.
+        return false;
     }
 }

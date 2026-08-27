@@ -810,6 +810,9 @@ try {
     // `latest.json` remoto; la lista qui sotto è solo il ripiego per quando il
     // bridge non ne porta una. Quindi `bootstrap/cache` è escluso davvero soltanto
     // se sta anche nel `latest.json` della release — da verificare a ogni rilascio.
+    // ✅ Verificato il 27/08/2026 sul manifest pubblicato della 1.10.0: `bootstrap/cache`
+    //    c'è. Quindi la cartella è davvero preservata, e questa cancellazione toglie i
+    //    file della versione precedente.
     // In entrambi i casi la cancellazione qui è giusta: se la cartella è preservata
     // toglie i file vecchi, se è sovrascritta toglie quelli appena depositati, che
     // sono comunque cache da rifare.

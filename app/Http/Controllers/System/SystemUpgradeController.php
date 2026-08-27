@@ -170,8 +170,25 @@ class SystemUpgradeController extends Controller
      */
     private function preUpgradeBackupAvailable(string $dbVersion): bool
     {
-        return version_compare($dbVersion, '1.10.0', '>=')
-            && Schema::hasTable('backups');
+        // ⚠️ Qui c'era anche `version_compare($dbVersion, '1.10.0', '>=')`, tolto il 27/08/2026.
+        //
+        // Rispondeva alla stessa domanda di `hasTable`, ma peggio. La ragione scritta sopra —
+        // «chi aggiorna da una versione anteriore alla 1.10 quella tabella non ce l'ha» — descrive
+        // esattamente `hasTable`, che è la verifica diretta; il confronto di versione ne era un
+        // **proxy**, e un proxy sbagliato: `version_compare('1.10.0-beta.77', '1.10.0', '>=')` è
+        // **falso**, quindi ogni installazione che ha girato una beta della 1.10 restava senza rete
+        // pur avendo la tabella dalla beta.11. Sono i tester, cioè chi aggiorna per primo e più
+        // spesso.
+        //
+        // Toglierlo non indebolisce nulla, e non dipende dal fatto che tutti abbiano già migrato:
+        // chi arriva alla 1.11 partendo ancora dalla 1.9.1 — e c'è chi salta le versioni — la
+        // tabella non ce l'ha, quindi `hasTable` lo esclude lo stesso. La difesa viene da lì.
+        //
+        // Il caso residuo delle beta fra la .11 e la .12, che hanno la tabella senza le colonne
+        // `type`/`encrypted`, è già coperto da `ensureBackupsMetadataColumns()`, che gira prima del
+        // backup proprio per quello. Con il proxy tolto quella difesa diventa l'unica, che è come
+        // dovrebbe essere: una difesa nascosta dietro un cancello più stretto non si esercita mai.
+        return Schema::hasTable('backups');
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\Backup\FileSelector;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\FakeBackupDumper;
 
@@ -329,4 +330,70 @@ test('il selettore dei file esclude i percorsi configurati e non segue i symlink
     expect(implode("\n", $paths))->not->toContain('collegamento');
     expect(implode("\n", $paths))->not->toContain('.DS_Store');
     expect($collected['total_bytes'])->toBeGreaterThan(0);
+});
+
+/**
+ * `runningBackup()` miete i backup stantii prima di rispondere.
+ *
+ * ## Perché serve un test, e non basta il commento nel codice
+ *
+ * La Fase 1-bis della beta.2 ha rilevato che di otto correzioni questa era **l'unica senza un
+ * test**: si poteva togliere la mietitura e la suite restava verde. E il rischio non è teorico —
+ * chiunque legga un metodo che si chiama `runningBackup()` e ci trovi dentro una scrittura può
+ * ragionevolmente decidere che un lettore non debba scrivere, e toglierla.
+ *
+ * Toglierla riporterebbe due difetti misurati:
+ *
+ * - `SystemUpgradeController::backupStart()` interroga questo metodo **prima** di `start()`, quindi
+ *   riuserebbe un record morto invece di sostituirlo;
+ * - `RestoreManager::start()` rifiuta di partire se questo metodo non torna `null`, quindi un
+ *   backup abbandonato bloccherebbe **ogni ripristino** — proprio a chi ha appena visto fallire un
+ *   aggiornamento e ha chiuso la scheda.
+ *
+ * ## Cosa questo test NON copre
+ *
+ * - **Non copre la finestra sotto le due ore.** Un backup interrotto da cinque minuti è
+ *   considerato vivo, e per il percorso di backup è giusto: il chiamante lo riprende dal
+ *   checkpoint. Che sia giusto anche per il *ripristino* è un'altra questione, ed è in coda.
+ * - **Non prova che gli eventi non siano doppi.** `start()` chiama `failStaleBackups()` e poi
+ *   questo metodo, che la richiama: la seconda passata trova la lista vuota perché i record non
+ *   sono più `running`. È idempotenza per costruzione della query, non asserita qui.
+ */
+test('un backup abbandonato non conta piu come in corso, e non blocca chi arriva dopo', function () {
+    $manager = app(BackupManager::class);
+
+    $stantio = Backup::create([
+        'uuid' => (string) Str::uuid(),
+        'status' => BackupStatus::DUMPING_DATABASE,
+        'type' => Backup::TYPE_DB_ONLY,
+        'disk' => 'backups',
+        'progress' => ['percent' => 40],
+    ]);
+
+    // Più vecchio della soglia dichiarata in config/backup.php.
+    $ore = (int) config('backup.stale_after_hours', 2);
+    $stantio->forceFill(['updated_at' => now()->subHours($ore + 1)])->saveQuietly();
+
+    expect($manager->runningBackup())->toBeNull(
+        'Un backup fermo da oltre la soglia viene ancora considerato in corso: bloccherebbe backup e ripristini.'
+    );
+
+    expect($stantio->fresh()->status)->toBe(BackupStatus::FAILED);
+});
+
+test('un backup interrotto da poco resta in corso, perche va ripreso dal checkpoint', function () {
+    $manager = app(BackupManager::class);
+
+    $recente = Backup::create([
+        'uuid' => (string) Str::uuid(),
+        'status' => BackupStatus::DUMPING_DATABASE,
+        'type' => Backup::TYPE_DB_ONLY,
+        'disk' => 'backups',
+        'progress' => ['percent' => 40],
+    ]);
+
+    // La mietitura non deve essere troppo zelante: sotto la soglia il record va lasciato stare,
+    // altrimenti una ripresa dopo un reload ricomincerebbe il dump da capo.
+    expect($manager->runningBackup()?->id)->toBe($recente->id);
+    expect($recente->fresh()->status)->toBe(BackupStatus::DUMPING_DATABASE);
 });
