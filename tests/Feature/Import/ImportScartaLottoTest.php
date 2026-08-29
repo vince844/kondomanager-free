@@ -91,8 +91,10 @@ it('dice a che punto era arrivata, in numero e non solo per nome', function () {
 
     $this->actingAs($utente)->get(route('import.index'))
         ->assertInertia(fn ($p) => $p
-            ->where('interrotto.posizione', 6)
-            ->where('interrotto.livelli_totali', 7)
+            // Dalla 1.11.0-beta.4 i livelli sono otto: «Capitoli di spesa» sta terzo, subito
+            // dopo gli esercizi, quindi «tabelle» è scivolato dal sesto al settimo posto.
+            ->where('interrotto.posizione', 7)
+            ->where('interrotto.livelli_totali', 8)
             ->where('interrotto.ha_scritto', false)
         );
 });

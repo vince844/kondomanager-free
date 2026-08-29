@@ -7,6 +7,39 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.4] - Il Bilancio Che Veniva Letto E Buttato
+
+**Non aggiunge migrazioni.** L'importatore da Danea impara a leggere una stampa che finora
+riconosceva e scartava: il «Bilancio consuntivo per conto», da cui nasce la struttura delle spese
+del condominio.
+
+Chi importava aveva unità, persone, tabelle e saldi — e un piano dei conti vuoto. I capitoli di
+spesa andavano ribattuti a mano, uno per uno, guardando la stampa che era già stata caricata.
+
+### La struttura delle spese entra da sé
+
+Dal bilancio consuntivo entrano i capitoli con le loro voci: «AMMINISTRAZIONE» con sotto il
+compenso, la cancelleria, la gestione del conto corrente. Sul corpus di un amministratore vero sono
+4 capitoli e 17 voci, lette senza un errore.
+
+**Gli importi entrano a zero, ed è voluto.** Quello che il consuntivo porta è la fotografia di
+quanto si è speso l'anno scorso, non il preventivo di quest'anno: scriverlo come budget vorrebbe
+dire deliberare al posto dell'assemblea. La cifra dell'anno scorso finisce nella descrizione di
+ogni voce, dove nessun calcolo la legge ma si ritrova nel momento in cui serve — cioè quando si
+scrive il preventivo vero.
+
+### Le spese personali non entrano due volte
+
+Il bilancio stampa «Spese personali» come se fosse un capitolo. Non lo è: sono addebiti a singoli
+condòmini, e sono **già dentro i saldi di apertura** che l'importazione scrive. Misurato: la
+colonna «Movimenti personali» del riparto somma esattamente la stessa cifra.
+
+Importarle anche come capitolo le avrebbe contate due volte — e ripartite per millesimi avrebbero
+fatto pagare a tutti quello che devono singoli. Ora si leggono, entrano nella quadratura, e un
+avviso dice dove sono finite.
+
+---
+
 ## [1.11.0-beta.3] - Il Condominio Che Nessun File Sapeva Dire
 
 **Non aggiunge migrazioni.** Corregge l'importatore da Danea per chi esporta i dati in un modo che

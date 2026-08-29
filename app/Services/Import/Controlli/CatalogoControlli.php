@@ -120,6 +120,41 @@ final class CatalogoControlli
                     .'ma se quella separazione corrisponda a come è stato deliberato lo sai solo tu: '
                     .'il file dichiara «straordinario», non quale delibera ci sta sotto.',
             ),
+                        'capitoli.spese_personali_non_importate' => new VoceCatalogo(
+                rotta: $saldi,
+                etichettaAzione: 'Vai ai saldi',
+                perche: 'Non c\'è niente da rimettere a posto: quelle spese sono già dentro i saldi '
+                    .'di apertura di chi le deve. La voce resta per dire dove sono finite, perché '
+                    .'chi confronta il bilancio vecchio con l\'archivio nuovo le cercherebbe fra i '
+                    .'capitoli e non le troverebbe.',
+            ),
+            'capitoli.senza_preventivo' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'Quanto chiedere ai condòmini quest\'anno lo decide l\'assemblea, non il '
+                    .'consuntivo dell\'anno scorso: nessuna query può scrivere un preventivo al posto '
+                    .'di chi lo delibera.',
+            ),
+            'capitoli.senza_voci' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'Se quel capitolo serva davvero, e con quali voci sotto, lo sa solo chi '
+                    .'gestisce il condominio: il file lo porta senza contenuto, e un contenitore '
+                    .'vuoto non si può né preventivare né ripartire.',
+            ),
+            'bilancio.non_quadra' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'La differenza è fra i numeri del file e il totale che il file stesso '
+                    .'dichiara: solo chi ha quella stampa in mano può dire quale dei due è giusto.',
+            ),
+            'capitolo.non_quadra' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'Come sopra, ma su un capitolo solo. Gli importi di un consuntivo non entrano '
+                    .'in archivio come preventivo, quindi la differenza non sposta nessun numero: '
+                    .'resta però un segnale che quella stampa va guardata.',
+            ),
                         'tabella.parziale' => new VoceCatalogo(
                 rotta: $tabelle,
                 etichettaAzione: 'Vai alle tabelle',

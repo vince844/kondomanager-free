@@ -12,6 +12,7 @@ use App\Services\Import\Canonical\CanonicalTitolarita;
 use App\Models\ImportFile;
 use App\Services\Import\Canonical\CanonicalSaldiApertura;
 use App\Services\Import\Canonical\CanonicalSaldo;
+use App\Services\Import\Livelli\LivelloCapitoli;
 use App\Services\Import\Livelli\LivelloCondominio;
 use App\Services\Import\Livelli\LivelloEsercizi;
 use App\Services\Import\Livelli\LivelloSaldi;
@@ -21,6 +22,7 @@ use App\Services\Import\Livelli\LivelloTitolarita;
 use App\Services\Import\Livelli\LivelloUnita;
 use App\Services\Import\Parser\AnagraficaMillesimiParser;
 use App\Services\Import\Parser\BannerParser;
+use App\Services\Import\Parser\BilancioConsuntivoParser;
 use App\Services\Import\Parser\ElencoUnitaParser;
 use App\Services\Import\Parser\RipartoConsuntivoParser;
 use Illuminate\Support\Facades\Storage;
@@ -102,6 +104,10 @@ final class ImportVerificaService
                 ReportType::RipartoConsuntivo => $this->leggiRiparto($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file),
                 ReportType::ElencoUnita => $this->leggiElencoUnita($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file, $immobiliRicchi),
                 ReportType::AnagraficaMillesimi => $this->leggiMillesimi($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file, $immobiliCompatti),
+                // Fino alla 1.11.0-beta.4 finiva nel `default`, cioè `leggiSoloBanner()`: se ne
+                // leggeva la testata e si buttava il contenuto, perché non esisteva un livello
+                // in cui i capitoli potessero atterrare.
+                ReportType::BilancioConsuntivo => $this->leggiBilancio($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file),
                 // Gli altri report hanno una testata da cui ricavare condominio ed esercizio,
                 // anche se il loro contenuto va nell'archivio storico che la 1.10 non ha.
                 default => $this->leggiSoloBanner($foglioLetto, $canonici, $esiti),
@@ -596,6 +602,34 @@ final class ImportVerificaService
      * @param  array<string, mixed>  $canonici
      * @param  array<string, EsitoVerifica>  $esiti
      */
+    /**
+     * Il bilancio consuntivo → la struttura delle spese, **e** la testata come tutti gli altri.
+     *
+     * Il banner si legge lo stesso: questa stampa lo porta come le sue sorelle, ed è uno dei file
+     * che permettono all'importazione di sapere di quale condominio si tratta.
+     */
+    private function leggiBilancio(
+        Foglio $foglio,
+        int $rigaIntestazione,
+        array &$canonici,
+        array &$esiti,
+        array &$letture,
+        ImportFile $file,
+    ): void {
+        $this->leggiSoloBanner($foglio, $canonici, $esiti);
+
+        $letto = (new BilancioConsuntivoParser)->estrai($foglio, $rigaIntestazione);
+
+        $canonici[LivelloCapitoli::CHIAVE] = $letto['struttura'];
+        $esiti[LivelloCapitoli::CHIAVE] = $letto['esito'];
+
+        $letture[] = [
+            'file' => $file->nome_originale,
+            'tipo' => 'Capitoli di spesa',
+            'righe' => $letto['esito']->righeTotali,
+        ];
+    }
+
     private function leggiSoloBanner(Foglio $foglio, array &$canonici, array &$esiti): void
     {
         $this->registraBanner((new BannerParser)->estrai($foglio), $canonici, $esiti);

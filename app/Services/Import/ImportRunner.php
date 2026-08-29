@@ -3,6 +3,7 @@
 namespace App\Services\Import;
 
 use App\Models\ImportBatch;
+use App\Services\Import\Livelli\LivelloCapitoli;
 use App\Services\Import\Livelli\LivelloCondominio;
 use App\Services\Import\Livelli\LivelloEsercizi;
 use App\Services\Import\Livelli\LivelloSaldi;
@@ -42,6 +43,10 @@ final class ImportRunner
         return [
             new LivelloCondominio,
             new LivelloEsercizi,
+            // Terzo e non in coda: `esegui()` fa `return` al primo livello che non passa, e
+            // metterlo dopo i saldi lo nasconderebbe dietro il livello che si ferma più spesso.
+            // Le sue dipendenze — condominio ed esercizi — sono soddisfatte qui.
+            new LivelloCapitoli,
             new LivelloSoggetti,
             new LivelloUnita,
             new LivelloTitolarita,

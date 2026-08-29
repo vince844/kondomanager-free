@@ -710,6 +710,7 @@ class ImportController extends Controller
     {
         $etichette = [
             'condominio' => 'Condominio ed esercizio',
+            'capitoli' => 'Capitoli di spesa',
             'soggetti' => 'Persone, unità e chi possiede cosa',
             'tabelle' => 'Tabelle millesimali',
             'saldi' => 'Saldi di apertura',
