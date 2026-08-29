@@ -273,7 +273,7 @@ onUnmounted(() => {
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger>
-                                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-help transition-colors"
+                                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold border cursor-help transition-colors"
                                                 :class="{
                                                     'bg-red-50 text-red-700 border-red-100 hover:bg-red-100': statoCopertura === 'misaligned',
                                                     'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100': statoCopertura === 'deficit',

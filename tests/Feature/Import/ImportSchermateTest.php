@@ -152,13 +152,17 @@ it('la schermata di riconoscimento dice cosa manca prima di dire cosa c\'è', fu
     // Chi migra ha paura di perdere pezzi, non di averne troppi.
     Storage::fake('local');
 
-    $this->actingAs(utenteImport())->post(route('import.store'), [
+    // La stessa persona carica e prosegue: dal 28/08/2026 un lotto è di chi l'ha caricato, e
+    // due `utenteImport()` sono due persone diverse.
+    $utente = utenteImport();
+
+    $this->actingAs($utente)->post(route('import.store'), [
         'file' => [fileFixture('elenco_unita.xls')],
     ]);
 
     $batch = ImportBatch::latest()->first();
 
-    $this->actingAs(utenteImport())
+    $this->actingAs($utente)
         ->get(route('import.riconoscimento', $batch->uuid))
         ->assertOk()
         ->assertInertia(fn ($page) => $page

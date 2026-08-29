@@ -236,7 +236,9 @@ final class LivelloTabelle implements LivelloImport
             $avvisi[] = Rilievo::avviso(
                 'tabelle.non_collegate_ai_capitoli',
                 sprintf(
-                    '%d %s entrate senza collegamento a un capitolo di spesa.',
+                    // Il verbo sta **solo** nel segnaposto: averlo anche qui produceva «4 tabelle
+                    // sono entrate entrate», e al singolare «1 tabella è entrata entrate».
+                    '%d %s senza collegamento a un capitolo di spesa.',
                     $creati,
                     $creati === 1 ? 'tabella è entrata' : 'tabelle sono entrate',
                 ),

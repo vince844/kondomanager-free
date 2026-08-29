@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import Alert from '@/components/Alert.vue';
 import InputError from '@/components/InputError.vue';
-import { UploadCloud, FileSpreadsheet, PencilRuler, Sparkles, Lock, LoaderCircle } from 'lucide-vue-next';
+import { UploadCloud, FileSpreadsheet, PencilRuler, Sparkles, LoaderCircle, Info, ShieldCheck } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
 
 const props = defineProps<{
@@ -177,6 +177,48 @@ const etichettaLivello = (chiave: string | null) => ({
         </CardHeader>
 
         <CardContent class="space-y-4">
+          <!--
+            **Il criterio è generale, Danea è solo l'esempio più frequente.**
+
+            La prima versione di questo riquadro parlava di «stampe» e di «Import/Export tramite
+            Excel» come se fossero categorie universali: sono due voci di menù **di Danea**. Ma
+            l'importatore non è il lettore di un gestionale solo — i modelli Excel nostri arrivano,
+            e altri export arriveranno — e la domanda che conta non cambia mai: **il file dice a
+            quale condominio appartiene?** Da quella discende tutto il resto.
+
+            **Sta sopra la zona di trascinamento, non sotto.** Fino alla 1.11.0-beta.3 la
+            differenza si scopriva alla **terza** schermata, con i file ormai caricati e
+            l'esportazione da rifare; messa sotto il riquadro di caricamento sarebbe arrivata
+            comunque dopo il gesto che informa. Una spiegazione che si legge dopo aver agito non
+            è una spiegazione.
+
+            Restano invece **in fondo** «Parto da zero» e «In arrivo»: la prima è l'uscita
+            dall'importatore, la seconda descrive due cose che non esistono ancora. Aprire con
+            loro una pagina che si chiama «Importa dati» vorrebbe dire cominciare da ciò che non
+            si può fare.
+          -->
+          <div class="rounded-md border bg-muted/40 p-4 text-sm">
+            <p class="flex items-center gap-2 font-medium">
+              <Info class="h-4 w-4 shrink-0 text-muted-foreground" />
+              Il file dice a quale condominio appartiene?
+            </p>
+            <p class="mt-2 text-muted-foreground">
+              È l'unica cosa che cambia il modo di lavorare. Alcuni file lo <strong>dichiarano in
+              testa</strong> — nome del condominio, codice fiscale e periodo dell'esercizio: da
+              quelli creo tutto io, con le date esatte, anche quando l'anno non è solare.
+              <span class="text-foreground/70">In Danea sono le <strong>stampe</strong> esportate in
+              Excel, e la più completa è il «Consuntivo ripartizioni per unità», che porta anche i
+              saldi.</span>
+            </p>
+            <p class="mt-2 text-muted-foreground">
+              Altri sono <strong>elenchi puri</strong>, che cominciano dalle intestazioni di colonna:
+              vanno benissimo, ma non dicono di chi sono i dati. In quel caso il condominio deve
+              <strong>essere già in archivio con un esercizio aperto</strong>, e te lo chiederò nella
+              schermata di verifica.
+              <span class="text-foreground/70">In Danea è l'export «Import/Export tramite Excel».</span>
+            </p>
+          </div>
+
           <div
             class="rounded-lg border-2 border-dashed bg-muted/40 p-8 text-center transition-colors"
             :class="trascinando ? 'border-primary bg-muted' : 'border-input'"
@@ -207,6 +249,7 @@ const etichettaLivello = (chiave: string | null) => ({
             </Button>
           </div>
 
+
           <div v-if="nomiFile.length" class="space-y-2">
             <div
               v-for="(nome, i) in nomiFile"
@@ -233,8 +276,10 @@ const etichettaLivello = (chiave: string | null) => ({
       <div class="grid gap-4 md:grid-cols-2">
         <Card>
           <CardContent class="space-y-2 pt-6">
-            <Sparkles class="h-5 w-5 text-muted-foreground" />
-            <h3 class="font-medium">Parto da zero</h3>
+            <h3 class="flex items-center gap-2 font-medium">
+              <Sparkles class="h-5 w-5 shrink-0 text-muted-foreground" />
+              Parto da zero
+            </h3>
             <p class="text-sm text-muted-foreground">
               Nessun dato da importare: creo il condominio a mano.
             </p>
@@ -254,8 +299,10 @@ const etichettaLivello = (chiave: string | null) => ({
         -->
         <Card class="border-dashed">
           <CardContent class="space-y-2 pt-6">
-            <PencilRuler class="h-5 w-5 text-muted-foreground" />
-            <h3 class="font-medium text-muted-foreground">In arrivo</h3>
+            <h3 class="flex items-center gap-2 font-medium text-muted-foreground">
+              <PencilRuler class="h-5 w-5 shrink-0" />
+              In arrivo
+            </h3>
             <p class="text-sm text-muted-foreground">
               I <strong>modelli Excel</strong> da compilare a mano, per chi non ha un export
               usabile, e la <strong>migrazione assistita</strong> — ci mandi i file e te la
@@ -266,10 +313,28 @@ const etichettaLivello = (chiave: string | null) => ({
         </Card>
       </div>
 
-      <p class="flex items-center gap-2 border-t pt-4 text-xs text-muted-foreground">
-        <Lock class="h-3.5 w-3.5" />
-        Niente viene scritto in Kondomanager finché non confermi. Puoi ricaricare i file quante volte vuoi.
-      </p>
+      <!--
+        ⚠️ **Qui c'era «Niente viene scritto finché non confermi. Puoi ricaricare i file quante
+        volte vuoi»: la stessa frase della prima card dell'intestazione, parola per parola.**
+
+        Ripetere la promessa su ogni schermata è voluto (`intestazione.ts`), ma ripeterla **due
+        volte nella stessa** la svaluta: la seconda non si legge più, e le due insieme fanno
+        sembrare che si stia insistendo.
+
+        Al suo posto va la rassicurazione che manca, ed è quella che conta davvero quando si sta
+        per caricare l'anagrafe di un condominio intero: **dove finiscono quei file**.
+        Verificato: `ImportUploadService` li salva sul disco **privato** e `scarta` li cancella —
+        due test lo presidiano, «conserva i file nel disco privato, non fra quelli pubblici» e
+        «cancella i file caricati, che sono dati altrui su un disco privato».
+      -->
+      <div class="flex items-start gap-3 rounded-lg border bg-muted/40 p-4">
+        <ShieldCheck class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <p class="text-sm text-muted-foreground">
+          I file restano su <strong>questo</strong> server, in una cartella privata: contengono i
+          dati personali dei tuoi condòmini — nomi, codici fiscali, indirizzi — e non vanno da
+          nessun'altra parte. Se chiudi un'importazione a metà, vengono cancellati.
+        </p>
+      </div>
     </div>
 
     <ImportGuide v-model:open="mostraGuida" />

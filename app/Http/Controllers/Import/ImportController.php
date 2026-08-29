@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Import;
 
+use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
+use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\ImportBatch;
 use App\Models\ImportFile;
 use App\Services\Import\AnteprimaImport;
@@ -12,6 +15,8 @@ use App\Services\Import\ImportContext;
 use App\Services\Import\ImportRunner;
 use App\Services\Import\ImportUploadService;
 use App\Services\Import\ImportVerificaService;
+use App\Services\Import\Livelli\LivelloCondominio;
+use App\Services\Import\Livelli\LivelloEsercizi;
 use App\Services\Import\Rilievo;
 use App\Services\Import\Severita;
 use App\Services\Import\ReportType;
@@ -19,6 +24,7 @@ use App\Services\Import\SpreadsheetReader;
 use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Support\LimiteCaricamento;
@@ -64,8 +70,18 @@ class ImportController extends Controller
      */
     public function index(): Response
     {
+        $utente = request()->user();
+
+        // ⚠️ **«L'ultimo lotto in corso» era l'ultimo di chiunque.** Questa riga è la ragione per
+        // cui il buco sulla proprietà del lotto non richiedeva nemmeno di indovinare un uuid: la
+        // schermata d'ingresso lo consegnava, insieme al nome del condominio altrui. Ora è il
+        // proprio; l'amministratore continua a vederli tutti, che è il suo mestiere.
         $interrotto = ImportBatch::query()
             ->whereIn('stato', [ImportBatch::STATO_IN_CORSO, ImportBatch::STATO_PARZIALE])
+            ->when(
+                $utente !== null && ! $utente->hasRole(RoleEnum::AMMINISTRATORE->value),
+                fn ($q) => $q->where(fn ($w) => $w->where('user_id', $utente->id)->orWhereNull('user_id')),
+            )
             ->latest()
             ->first();
 
@@ -107,7 +123,7 @@ class ImportController extends Controller
      */
     public function rapportoPdf(string $uuid, PdfService $pdf, ControlliPostImport $controlli)
     {
-        $batch = ImportBatch::where('uuid', $uuid)->with('condominio')->firstOrFail();
+        $batch = $this->lotto($uuid, ['condominio']);
 
         abort_if($batch->rapporto === null, 404, 'Questa importazione non ha ancora un rapporto.');
 
@@ -146,6 +162,44 @@ class ImportController extends Controller
     }
 
     /**
+     * Il lotto di **chi lo sta guardando**, o 404.
+     *
+     * ⚠️ **Fino al 28/08/2026 questa guardia non c'era, su nessuna delle nove porte del lotto.**
+     * Tutte facevano `$this->lotto($uuid)` e nient'altro: chiunque
+     * potesse importare poteva aprire, dirottare e **scartare** l'importazione a metà di un
+     * collega. Non era nemmeno un uuid da indovinare — la schermata d'ingresso mostrava a tutti
+     * l'ultimo lotto in corso, quello di chiunque l'avesse lasciato aperto.
+     *
+     * Riprodotto eseguendo: con due collaboratori, il secondo riceveva l'uuid del primo nei dati
+     * della hub, gli impostava una destinazione (302, decisioni scritte), ne apriva la verifica
+     * (200) e lo portava a «annullato».
+     *
+     * **404 e non 403**: un lotto che non è tuo non esiste, per te. Un 403 confermerebbe che
+     * quell'uuid è di qualcuno, che è metà dell'informazione che non deve uscire.
+     *
+     * L'amministratore li vede tutti — è il suo mestiere rimettere in piedi il lavoro altrui — e
+     * i lotti **senza proprietario** restano aperti a chi può importare: sono quelli caricati
+     * prima che `user_id` esistesse, e murarli vorrebbe dire cancellare del lavoro vero senza
+     * dirlo a nessuno.
+     */
+    private function lotto(string $uuid, array $con = []): ImportBatch
+    {
+        $batch = ImportBatch::where('uuid', $uuid)->with($con)->firstOrFail();
+
+        $utente = request()->user();
+
+        abort_if(
+            $batch->user_id !== null
+                && $utente !== null
+                && (int) $batch->user_id !== (int) $utente->id
+                && ! $utente->hasRole(RoleEnum::AMMINISTRATORE->value),
+            404,
+        );
+
+        return $batch;
+    }
+
+    /**
      * A che punto era arrivata, in numero: «arrivata a Tabelle (5 su 7)».
      *
      * «Arrivata a Tabelle» da solo non dice se manca poco o molto, ed è la sola informazione
@@ -181,7 +235,7 @@ class ImportController extends Controller
      */
     public function scarta(string $uuid)
     {
-        $batch = ImportBatch::where('uuid', $uuid)->firstOrFail();
+        $batch = $this->lotto($uuid);
 
         abort_if($batch->stato === ImportBatch::STATO_COMPLETATO, 422,
             'Questa importazione è già arrivata in fondo: non si scarta, si annulla.');
@@ -242,7 +296,7 @@ class ImportController extends Controller
      */
     public function riconoscimento(string $uuid): Response
     {
-        $batch = ImportBatch::where('uuid', $uuid)->with('files')->firstOrFail();
+        $batch = $this->lotto($uuid, ['files']);
 
         return Inertia::render('import/ImportRiconoscimento', [
             'lotto' => [
@@ -269,7 +323,7 @@ class ImportController extends Controller
      */
     public function verificaFile(string $uuid): Response
     {
-        $batch = ImportBatch::where('uuid', $uuid)->with('files')->firstOrFail();
+        $batch = $this->lotto($uuid, ['files']);
 
         $letto = $this->verifica->verifica($batch);
 
@@ -284,7 +338,85 @@ class ImportController extends Controller
             // camminando dentro il flusso, non da un test.
             'senza_errori' => collect($letto['esiti'])->every(fn (EsitoVerifica $e) => $e->errori() === 0),
             'passi' => $this->passi($letto),
+            'destinazione' => $this->destinazioneDaScegliere($batch, $letto),
         ]);
+    }
+
+    /**
+     * Cosa mostrare nella tendina «in quale condominio vanno questi dati».
+     *
+     * Restituisce `null` quando la scelta non serve — cioè quando i file la dichiarano da soli.
+     * Offrire comunque una tendina che poi verrebbe ignorata è peggio che non offrirla: chi la
+     * usa crede di aver deciso qualcosa.
+     *
+     * L'elenco lo si costruisce **solo** in questo caso: sono due query in più su una schermata
+     * che ne fa già molte, e nel caso normale — la stampa con la testata — non servono a niente.
+     */
+    private function destinazioneDaScegliere(ImportBatch $batch, array $letto): ?array
+    {
+        if ($letto['dichiaratoDaiFile']) {
+            return null;
+        }
+
+        $decisioni = $batch->decisioni ?? [];
+
+        // ⚠️ **Chi non può scrivere nei condomìni non deve nemmeno vederne l'elenco.**
+        //
+        // La tendina mandava a tutti nome e codice fiscale di **ogni** condominio dell'archivio,
+        // anche a un ruolo a cui l'elenco condomìni è chiuso: bastava caricare un file qualsiasi
+        // per avere l'anagrafe completa degli stabili gestiti. E chi la usava senza il permesso
+        // di modifica sbatteva, dopo aver scelto, in un 403 a schermo pieno — un vicolo cieco
+        // costruito da noi, perché è `destinazione()` a pretendere quel permesso.
+        //
+        // Meglio non offrirla e dire perché: una porta chiusa spiegata è più utile di una porta
+        // che si apre su un muro.
+        if (Gate::denies('update', Condominio::class)) {
+            return [
+                'condomini' => [],
+                'esercizio_aperto' => [],
+                'scelto_condominio' => null,
+                'senza_permesso' => true,
+            ];
+        }
+
+        $condomini = Condominio::query()
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'codice_fiscale'])
+            ->map(fn (Condominio $c) => [
+                'id' => $c->id,
+                'nome' => $c->nome,
+                'codice_fiscale' => $c->codice_fiscale,
+            ])
+            ->all();
+
+        // L'esercizio **aperto** di ciascun condominio, indicizzato per condominio: non è una
+        // scelta ma un fatto, e la schermata lo dichiara appena si sceglie il condominio.
+        // Tutti insieme e non uno per volta perché la prima tendina cambia nel browser, e
+        // ricaricare la pagina a ogni cambio farebbe perdere la posizione in una schermata lunga.
+        $aperti = Esercizio::query()
+            ->whereIn('condominio_id', array_column($condomini, 'id'))
+            ->where('stato', 'aperto')
+            ->orderBy('data_inizio', 'desc')
+            ->get(['id', 'condominio_id', 'nome', 'data_inizio', 'data_fine']);
+
+        $esercizi = [];
+
+        foreach ($aperti as $e) {
+            // `first()` come fa `HasEsercizio::getEsercizioCorrente()`: se l'invariante «al più
+            // un esercizio aperto» fosse violata, la schermata deve annunciare **lo stesso** che
+            // userà il motore, non un altro.
+            $esercizi[(string) $e->condominio_id] ??= [
+                'nome' => $e->nome !== null && $e->nome !== '' ? $e->nome : 'senza nome',
+                'periodo' => $e->data_inizio?->format('d/m/Y').' – '.$e->data_fine?->format('d/m/Y'),
+            ];
+        }
+
+        return [
+            'condomini' => $condomini,
+            'esercizio_aperto' => $esercizi,
+            'scelto_condominio' => $decisioni[ImportVerificaService::DESTINAZIONE_CONDOMINIO] ?? null,
+            'senza_permesso' => false,
+        ];
     }
 
     /**
@@ -338,7 +470,7 @@ class ImportController extends Controller
      */
     public function anteprima(string $uuid): Response
     {
-        $batch = ImportBatch::where('uuid', $uuid)->with('files')->firstOrFail();
+        $batch = $this->lotto($uuid, ['files']);
         $letto = $this->verifica->verifica($batch);
 
         return Inertia::render('import/ImportAnteprima', [
@@ -363,7 +495,7 @@ class ImportController extends Controller
             'scelta' => ['required', 'string', 'in:unisci,salta,crea_nuovo,dividi,lascia'],
         ]);
 
-        $batch = ImportBatch::where('uuid', $uuid)->firstOrFail();
+        $batch = $this->lotto($uuid);
 
         $batch->update([
             'decisioni' => [...($batch->decisioni ?? []), $validato['chiave'] => $validato['scelta']],
@@ -373,11 +505,78 @@ class ImportController extends Controller
     }
 
     /**
+     * «Importa dentro **questo** condominio» — la destinazione scelta a mano.
+     *
+     * Non è una decisione come le altre e per questo non passa da `decidi()`: quelle sono
+     * risposte a un elenco chiuso («unisci», «dividi»…), questa porta un **id**. E un id va
+     * autorizzato: senza il controllo, chi può soltanto creare condomìni potrebbe scrivere le
+     * unità di un condominio dentro un altro passando l'id nella richiesta — che è esattamente
+     * il perimetro chiuso nella beta.66, riaperto da una porta nuova.
+     *
+     * **L'esercizio non è un parametro.** Lo risolve `ImportVerificaService`, prendendo quello
+     * aperto del condominio scelto: è la regola di tutto il resto del prodotto, e la data di
+     * inizio dell'esercizio finisce dentro ogni titolarità scritta. Lasciarlo scegliere voleva
+     * dire offrire un modo di sbagliare che non dà nessun segnale.
+     */
+    public function destinazione(Request $request, string $uuid)
+    {
+        $validato = $request->validate([
+            'condominio_id' => ['required', 'integer', 'exists:condomini,id'],
+        ]);
+
+        Gate::authorize('update', Condominio::findOrFail($validato['condominio_id']));
+
+        $batch = $this->lotto($uuid);
+
+        // ⚠️ **Le decisioni implicite della scelta precedente vanno via.**
+        //
+        // Cambiando destinazione restavano in archivio, e non erano inerti: `salta` su un
+        // condominio scartato **zittisce** la domanda «in archivio esiste già, unisci o lascia
+        // com'è?» se più avanti un file dichiara proprio quello. Misurato affiancando due lotti
+        // identici: quello pulito poneva la domanda, quello con il residuo la saltava e scriveva
+        // nel condominio sbagliato senza un solo rilievo.
+        //
+        // Si tolgono **solo** quelle dei due livelli che la destinazione decide da sé. Le altre
+        // — i nomi doppi da dividere, i duplicati fra le persone — sono risposte sui **file**, e
+        // cambiare il condominio di arrivo non le rende sbagliate.
+        $superstiti = array_filter(
+            $batch->decisioni ?? [],
+            fn (string $chiave) => ! str_starts_with($chiave, LivelloCondominio::CHIAVE.':')
+                && ! str_starts_with($chiave, LivelloEsercizi::CHIAVE.':'),
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        // Assegnato e non salvato: `decisioniImplicite()` legge le decisioni dal lotto, e le
+        // servono quelle nuove — ma una scrittura sola è meglio di due.
+        $batch->decisioni = [
+            ...$superstiti,
+            ImportVerificaService::DESTINAZIONE_CONDOMINIO => $validato['condominio_id'],
+        ];
+
+        $batch->update(['decisioni' => $this->verifica->decisioniImplicite($batch)]);
+
+        return back()->with($this->flashSuccess('Destinazione impostata: i dati verranno importati in questo condominio.'));
+    }
+
+    /**
      * Il commit: da qui in poi qualcosa entra in archivio.
      */
     public function conferma(string $uuid)
     {
-        $batch = ImportBatch::where('uuid', $uuid)->with('files')->firstOrFail();
+        $batch = $this->lotto($uuid, ['files']);
+
+        // ⚠️ **Il permesso si ricontrolla qui, dove si scrive davvero.**
+        //
+        // `destinazione()` autorizza il momento in cui la scelta viene **registrata**; poi la
+        // scelta resta scritta sul lotto, e la scrittura vera avviene qui, magari giorni dopo.
+        // Fra i due momenti un permesso si può revocare — è la ragione per cui i permessi
+        // esistono — e senza questo controllo l'importazione dentro un condominio esistente
+        // partiva lo stesso, perché «era già stata decisa».
+        $destinazione = ($batch->decisioni ?? [])[ImportVerificaService::DESTINAZIONE_CONDOMINIO] ?? null;
+
+        if ($destinazione !== null) {
+            Gate::authorize('update', Condominio::class);
+        }
         $letto = $this->verifica->verifica($batch);
 
         $ctx = new ImportContext($batch);
@@ -399,7 +598,7 @@ class ImportController extends Controller
      */
     public function esito(string $uuid): Response
     {
-        $batch = ImportBatch::where('uuid', $uuid)->with('condominio')->firstOrFail();
+        $batch = $this->lotto($uuid, ['condominio']);
 
         return Inertia::render('import/ImportEsito', [
             'lotto' => [
@@ -622,9 +821,24 @@ class ImportController extends Controller
                 'serve_per' => 'persone, unità e chi possiede cosa',
                 'bloccante' => true,
             ],
+            // ⚠️ **Non bloccante, ma per poco.**
+            //
+            // È l'unica stampa fra quelle attese che porta la testata, e dalla testata arrivano
+            // il condominio e l'esercizio. Per mezza giornata questa riga ha detto «bloccante»,
+            // che era il modo sbagliato di descrivere un problema vero: chi in Danea non ha
+            // consuntivi — perché quel condominio lo prende in gestione adesso — non poteva
+            // esportarlo nemmeno volendo, e si trovava davanti a un cartello che diceva
+            // «senza, non si prosegue» su un file che non esiste. Adesso la destinazione si può
+            // indicare a mano nella schermata di verifica, e questa stampa torna a essere ciò
+            // che è: la sola sorgente dei **saldi di apertura**, che non stanno da nessun'altra parte.
             ReportType::RipartoConsuntivo->value => [
                 'cosa' => 'il Riparto consuntivo',
-                'serve_per' => 'i saldi di apertura e il totale su cui verificarli',
+                // ⚠️ Non «te li chiediamo»: dell'esercizio non si chiede niente, si usa quello
+                // aperto del condominio scelto. E senza testata il condominio deve **esistere
+                // già**, perché da questi file non si ricavano né il nome né le date.
+                'serve_per' => 'i saldi di apertura — e per creare da sé il condominio e il suo esercizio, '
+                    .'che stanno nella sua testata; senza, dovrai indicare nella schermata dopo un '
+                    .'condominio già in archivio, con un esercizio aperto',
                 'bloccante' => false,
             ],
             ReportType::AnagraficaMillesimi->value => [

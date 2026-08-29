@@ -18,6 +18,21 @@ final readonly class CanonicalCondominio
         public ?string $cap = null,
         public ?string $comune = null,
         public ?string $provincia = null,
+        /**
+         * L'id della riga scelta a mano come destinazione, quando c'è.
+         *
+         * ⚠️ **Senza questo campo l'id si perdeva per strada.** La destinazione si sceglie da una
+         * tendina — cioè indicando una riga precisa dell'archivio col dito — ma il canonico
+         * portava solo nome e codice fiscale, e al commit `RicercaEsistenti` lo **ricercava**.
+         * Con due condomìni omonimi **senza codice fiscale** la ricerca ritrovava il primo:
+         * misurato, scegliendo il secondo tutto finiva nel primo. Non è un caso di laboratorio —
+         * il codice fiscale del condominio è facoltativo, e chi amministra più stabili della
+         * stessa proprietà ha nomi ripetuti.
+         *
+         * Resta `null` per i condomìni che arrivano dalla testata di una stampa: quelli non
+         * indicano nessuna riga, e vanno cercati.
+         */
+        public ?int $idScelto = null,
     ) {}
 
     /**
@@ -29,6 +44,13 @@ final readonly class CanonicalCondominio
      */
     public function chiave(): string
     {
+        // L'id quando c'è: è l'unica cosa che distingue due omonimi senza codice fiscale, e la
+        // chiave serve proprio a non confonderli. Senza, la decisione presa su uno rispondeva
+        // anche per l'altro.
+        if ($this->idScelto !== null) {
+            return '#'.$this->idScelto;
+        }
+
         return $this->codiceFiscale ?? mb_strtolower(trim($this->nome));
     }
 

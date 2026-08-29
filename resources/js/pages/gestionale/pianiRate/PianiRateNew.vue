@@ -943,25 +943,25 @@ const submit = () => {
                     </div>
                     <div class="flex items-center">
                       <span v-if="option.is_sforo"
-                            class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-rose-200">
+                            class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-rose-200">
                         <TrendingDown class="w-3 h-3" /> Sforo: {{ euro(option.residuo) }}
                       </span>
 
                       <span v-else-if="option.disabled"
-                            class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200">
+                            class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-red-200">
                         <Ban class="w-3 h-3" /> Esaurito
                       </span>
 
                       <!-- Coda 73: questa voce ha ceduto budget con Sposta Spesa — il residuo
                            mostrato qui è quello che rientrerebbe scegliendola. -->
                       <span v-else-if="option.da_sposta_spesa"
-                            class="flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-indigo-200"
+                            class="flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-indigo-200"
                             title="Questa voce ha ceduto budget con Sposta Spesa in un altro piano">
                         <ArrowRightLeft class="w-3 h-3" /> Da Sposta Spesa: {{ euro(option.residuo) }}
                       </span>
 
                       <span v-else
-                            class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200">
+                            class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-md font-bold ml-2 border border-green-200">
                         <Wallet class="w-3 h-3" /> Disp: {{ euro(option.residuo) }}
                       </span>
                     </div>
@@ -1264,8 +1264,8 @@ const submit = () => {
                   </div>
                   <div class="min-w-0 flex items-center gap-2 flex-wrap">
                     <span class="font-bold text-slate-900 text-sm truncate">{{ gruppo.nome }}</span>
-                    <span v-if="gruppo.tipo === 'solidale'" class="text-[9px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold uppercase border border-indigo-200">Solidale · Art. 63</span>
-                    <span v-else class="text-[9px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-bold uppercase">Nominale</span>
+                    <span v-if="gruppo.tipo === 'solidale'" class="text-[9px] px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 font-bold uppercase border border-indigo-200">Solidale · Art. 63</span>
+                    <span v-else class="text-[9px] px-2 py-0.5 rounded-md bg-slate-200 text-slate-600 font-bold uppercase">Nominale</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">

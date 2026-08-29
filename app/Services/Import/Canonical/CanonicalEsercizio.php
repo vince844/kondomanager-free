@@ -27,6 +27,24 @@ final readonly class CanonicalEsercizio
     ) {}
 
     /** Vero se l'esercizio coincide con l'anno solare. Informativo: non cambia nulla. */
+    /**
+     * L'esercizio dichiarato dalla testata è **straordinario**?
+     *
+     * Verificato sullo schema Firebird di Domustudio (backup del 19/02/2019): in Danea l'esercizio
+     * non è una tabella a sé — è una riga di `TCONDOMINI`, con `DATAAPERTURA`/`DATACHIUSURA`
+     * proprie, un `CONDGENID` che punta all'identità del condominio in `TCONDOMINI_GENERALE`, e
+     * una colonna booleana **`STRAORDINARIO`** (`DEFAULT 0`). Un esercizio straordinario è quindi
+     * una riga come le altre, con un periodo suo e lo stesso condominio dell'ordinario, esportata
+     * con le stesse stampe: nel file l'unica differenza è la parola nella testata.
+     *
+     * Il confronto è sul prefisso perché la testata declina al maschile («straordinario») ma
+     * altre stampe potrebbero declinare diversamente, e la parola è comunque scritta da loro.
+     */
+    public function eStraordinario(): bool
+    {
+        return $this->tipo !== null && str_starts_with(mb_strtolower($this->tipo), 'straordinar');
+    }
+
     public function isSolare(): bool
     {
         return $this->dataInizio->month === 1

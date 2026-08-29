@@ -36,7 +36,15 @@ function utenteFlusso(): User
     return $u;
 }
 
-function caricaBundle(): ImportBatch
+/**
+ * ⚠️ **La persona si passa, non si inventa.**
+ *
+ * Fino al 28/08/2026 questi aiutanti caricavano come un utente appena creato, e il test
+ * proseguiva come un altro: passavano solo perché nessuna porta del lotto controllava di chi
+ * fosse. Chiusa quella falla, i test dicono ciò che devono dire — **la stessa persona** porta il
+ * lotto dall'inizio alla fine.
+ */
+function caricaBundle(User $come): ImportBatch
 {
     $files = [];
 
@@ -44,7 +52,7 @@ function caricaBundle(): ImportBatch
         $files[] = new UploadedFile(base_path('tests/Fixtures/import/danea/'.$n), $n, 'application/vnd.ms-excel', test: true);
     }
 
-    test()->actingAs(utenteFlusso())->post(route('import.store'), ['file' => $files]);
+    test()->actingAs($come)->post(route('import.store'), ['file' => $files]);
 
     return ImportBatch::latest()->first();
 }
@@ -56,7 +64,7 @@ beforeEach(function () {
 
 it('porta un lotto dal caricamento all\'archivio passando per tutte le schermate', function () {
     $utente = utenteFlusso();
-    $batch = caricaBundle();
+    $batch = caricaBundle($utente);
 
     // S2 — riconoscimento
     $this->actingAs($utente)->get(route('import.riconoscimento', $batch->uuid))->assertOk();
@@ -120,7 +128,7 @@ it('le decisioni sopravvivono a un ricaricamento della pagina', function () {
     // Stanno sul lotto e non in sessione: un'importazione che le perde le richiede tutte da
     // capo, e su quaranta unità è il momento in cui si chiude la scheda.
     $utente = utenteFlusso();
-    $batch = caricaBundle();
+    $batch = caricaBundle($utente);
 
     $this->actingAs($utente)->put(route('import.decisione', $batch->uuid), [
         'chiave' => 'soggetto:prova',
@@ -138,7 +146,7 @@ it('«dividi in due» divide davvero, invece di limitarsi a registrare una scelt
     // commettere. Qui si verifica che dalla decisione nascano due persone e due titolarità
     // sulla stessa unità — cioè la comproprietà che il tracciato di Danea non sa esprimere.
     $utente = utenteFlusso();
-    $batch = caricaBundle();
+    $batch = caricaBundle($utente);
 
     $anteprima = $this->actingAs($utente)->get(route('import.anteprima', $batch->uuid));
     $props = $anteprima->viewData('page')['props'];
@@ -164,7 +172,7 @@ it('«dividi in due» divide davvero, invece di limitarsi a registrare una scelt
 it('la conferma resta chiusa finché una decisione è in sospeso', function () {
     // Non è una cortesia: procedere senza la decisione significa sceglierla al posto suo.
     $utente = utenteFlusso();
-    $batch = caricaBundle();
+    $batch = caricaBundle($utente);
 
     $this->actingAs($utente)->get(route('import.anteprima', $batch->uuid))
         ->assertInertia(fn ($p) => $p->has('anteprima.persone.da_dividere', 2));
@@ -176,7 +184,7 @@ it('l\'anteprima mostra le unità che resterebbero senza nessuno', function () {
     // È l'avviso che la schermata mostra per primo, in rosso. Sul corpus reale sono zero, e il
     // test verifica che il conteggio esista e sia esatto — non che sia vuoto per caso.
     $utente = utenteFlusso();
-    $batch = caricaBundle();
+    $batch = caricaBundle($utente);
 
     $this->actingAs($utente)->get(route('import.anteprima', $batch->uuid))
         ->assertInertia(fn ($p) => $p
@@ -191,7 +199,7 @@ it('una decisione presa smette di bloccare la conferma', function () {
     // perché. È il difetto peggiore che una schermata di conferma possa avere, perché l'unica
     // via d'uscita apparente è ricominciare da capo.
     $utente = utenteFlusso();
-    $batch = caricaBundle();
+    $batch = caricaBundle($utente);
 
     $this->actingAs($utente)->get(route('import.anteprima', $batch->uuid))
         ->assertInertia(fn ($p) => $p->where('confermabile', false));
@@ -220,7 +228,7 @@ it('la seconda importazione sullo stesso archivio si completa dalle schermate', 
     $utente = utenteFlusso();
 
     // Prima importazione: pulita.
-    $primo = caricaBundle();
+    $primo = caricaBundle($utente);
     decidiTuttoEConferma($utente, $primo);
     expect($primo->fresh()->stato)->toBe(ImportBatch::STATO_COMPLETATO);
 
@@ -228,7 +236,7 @@ it('la seconda importazione sullo stesso archivio si completa dalle schermate', 
     $anagrafiche = Anagrafica::count();
 
     // Seconda importazione degli stessi file: adesso condominio e persone esistono già.
-    $secondo = caricaBundle();
+    $secondo = caricaBundle($utente);
 
     $props = $this->actingAs($utente)->get(route('import.anteprima', $secondo->uuid))
         ->viewData('page')['props'];
@@ -287,7 +295,7 @@ it('il giro delle decisioni converge invece di riproporsi', function () {
     // proprietà che conta — si risponde, si ricontrolla, e non resta niente.
     $utente = utenteFlusso();
 
-    $primo = caricaBundle();
+    $primo = caricaBundle($utente);
     $p = $this->actingAs($utente)->get(route('import.anteprima', $primo->uuid))->viewData('page')['props'];
 
     foreach ($p['anteprima']['persone']['da_dividere'] as $d) {
@@ -299,7 +307,7 @@ it('il giro delle decisioni converge invece di riproporsi', function () {
     $this->actingAs($utente)->post(route('import.conferma', $primo->uuid));
     expect($primo->fresh()->stato)->toBe(ImportBatch::STATO_COMPLETATO);
 
-    $secondo = caricaBundle();
+    $secondo = caricaBundle($utente);
 
     // Si risponde finché la schermata non dichiara più niente di aperto. Il limite di giri non
     // è pedanteria: è ciò che trasforma un anello infinito in un test rosso.
@@ -350,7 +358,7 @@ it('il giro delle decisioni converge invece di riproporsi', function () {
  * Il bundle con il riparto nella forma **vera**: posizione intestata al nome unito e un ruolo
  * col conteggio dei giorni. Le fixture costruite a tavolino non avevano né l'una né l'altro.
  */
-function caricaBundleReale(): ImportBatch
+function caricaBundleReale(User $come): ImportBatch
 {
     $files = [];
 
@@ -358,7 +366,7 @@ function caricaBundleReale(): ImportBatch
         $files[] = new UploadedFile(base_path('tests/Fixtures/import/danea/'.$n), $n, 'application/vnd.ms-excel', test: true);
     }
 
-    test()->actingAs(utenteFlusso())->post(route('import.store'), ['file' => $files]);
+    test()->actingAs($come)->post(route('import.store'), ['file' => $files]);
 
     return ImportBatch::latest()->first();
 }
@@ -372,7 +380,7 @@ it('dividere un nome doppio non lascia il suo saldo senza nessuno', function () 
     // Il saldo **non** si spezza a metà: il file non dice in che proporzione, e inventarla
     // sarebbe decidere su denaro altrui. Resta in solido sull'unità, e lo si dice.
     $utente = utenteFlusso();
-    $batch = caricaBundleReale();
+    $batch = caricaBundleReale($utente);
 
     $props = test()->actingAs($utente)->get(route('import.anteprima', $batch->uuid))
         ->viewData('page')['props'];
@@ -410,7 +418,7 @@ it('importa il riparto vero anche quando la titolarità è cambiata a metà anno
     // «ex Pr 336 gg» è un ex proprietario tanto quanto «ex Pr»: il numero è il pro-rata della
     // spesa, non la persona. Il confronto esatto lo mancava e l'import si fermava.
     $utente = utenteFlusso();
-    $batch = caricaBundleReale();
+    $batch = caricaBundleReale($utente);
 
     $props = test()->actingAs($utente)->get(route('import.anteprima', $batch->uuid))
         ->viewData('page')['props'];

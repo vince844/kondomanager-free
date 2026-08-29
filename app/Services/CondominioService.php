@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Gestione;
 use App\Models\Gestionale\ContoContabile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -97,28 +98,52 @@ class CondominioService
      * @param Esercizio $esercizio L'esercizio a cui collegare la gestione.
      * @return void
      */
-    public function createDefaultGestione(Condominio $condominio, Esercizio $esercizio): void
-    {
+    /**
+     * La gestione predefinita del condominio, agganciata a quell'esercizio.
+     *
+     * ⚠️ **Il tipo è un parametro dalla beta.3 della 1.11, e serve all'importazione.** In Danea
+     * un esercizio straordinario è una riga di `TCONDOMINI` con `STRAORDINARIO = 1` e un periodo
+     * proprio; da noi lo stesso concetto è una **gestione straordinaria**, che è il contenitore
+     * che esiste per quello. Senza il parametro l'importazione poteva solo creare l'ordinaria, e
+     * il pregresso di uno straordinario ci finiva dentro senza che niente lo segnalasse.
+     *
+     * I chiamanti che non lo passano non cambiano comportamento: il predefinito resta `ordinaria`.
+     *
+     * Le date sono quelle dell'esercizio salvo indicazione diversa: una gestione straordinaria ha
+     * un periodo suo — un fondo lavori può durare più di un anno — ed è la ragione per cui
+     * `gestioni` ha `data_inizio` e `data_fine` proprie e un legame molti-a-molti con gli esercizi.
+     *
+     * @return Gestione la gestione, così chi la crea può dire a valle quale ha usato
+     */
+    public function createDefaultGestione(
+        Condominio $condominio,
+        Esercizio $esercizio,
+        string $tipo = 'ordinaria',
+        $dataInizio = null,
+        $dataFine = null,
+    ): Gestione {
         // Controlliamo che non esista già per evitare duplicati
-        $gestione = $condominio->gestioni()->where('tipo', 'ordinaria')->first();
+        $gestione = $condominio->gestioni()->where('tipo', $tipo)->first();
 
         if (!$gestione) {
             $gestione = $condominio->gestioni()->create([
-                'nome'        => 'Gestione ordinaria',
-                'tipo'        => 'ordinaria',
+                'nome'        => 'Gestione '.$tipo,
+                'tipo'        => $tipo,
                 'attiva'      => true,
-                'data_inizio' => $esercizio->data_inizio,
-                'data_fine'   => $esercizio->data_fine,
+                'data_inizio' => $dataInizio ?? $esercizio->data_inizio,
+                'data_fine'   => $dataFine ?? $esercizio->data_fine,
             ]);
 
-            Log::info("Gestione ordinaria creata per '{$condominio->nome}'");
+            Log::info("Gestione {$tipo} creata per '{$condominio->nome}'");
         }
 
         // Assicuriamoci che questa gestione sia agganciata all'esercizio appena creato.
         if (!$gestione->esercizi()->where('esercizio_id', $esercizio->id)->exists()) {
             $gestione->esercizi()->attach($esercizio->id);
-            Log::info("Gestione ordinaria agganciata all'Esercizio ID {$esercizio->id}");
+            Log::info("Gestione {$tipo} agganciata all'Esercizio ID {$esercizio->id}");
         }
+
+        return $gestione;
     }
 
     /**

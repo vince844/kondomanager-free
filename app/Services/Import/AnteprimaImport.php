@@ -312,7 +312,12 @@ final class AnteprimaImport
         $tabelle = $canonici[LivelloTabelle::CHIAVE] ?? [];
         $quote = array_sum(array_map(fn (CanonicalTabella $t) => $t->partecipanti(), $tabelle));
 
-        return ($canonici[LivelloCondominio::CHIAVE] !== null ? 1 : 0)
+        // ⚠️ `?? null` e non accesso diretto: se **nessun** file caricato dichiara il condominio
+        // — succede con gli export «Import/Export tabelle» di Danea, che non hanno la testata —
+        // la chiave non esiste affatto, e leggerla qui faceva morire l'anteprima con un
+        // «Undefined array key "condominio"» al posto di una spiegazione. Le sette righe qui
+        // sotto si difendevano già; questa no. Segnalato il 28/08/2026 da un amministratore.
+        return (($canonici[LivelloCondominio::CHIAVE] ?? null) !== null ? 1 : 0)
             + (isset($canonici[LivelloEsercizi::CHIAVE]) ? 1 : 0)
             + count($canonici[LivelloSoggetti::CHIAVE] ?? [])
             + count($canonici[LivelloUnita::CHIAVE] ?? [])

@@ -113,7 +113,14 @@ final class CatalogoControlli
                 perche: 'Se le due persone in una cella sola vadano divise, e in che proporzione, '
                     .'lo sai solo tu.',
             ),
-            'tabella.parziale' => new VoceCatalogo(
+            'esercizio.straordinario_in_gestione_dedicata' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai alle gestioni',
+                perche: 'La gestione straordinaria è stata creata e le spese ci sono finite dentro, '
+                    .'ma se quella separazione corrisponda a come è stato deliberato lo sai solo tu: '
+                    .'il file dichiara «straordinario», non quale delibera ci sta sotto.',
+            ),
+                        'tabella.parziale' => new VoceCatalogo(
                 rotta: $tabelle,
                 etichettaAzione: 'Vai alle tabelle',
                 perche: 'Una tabella parziale è un modo normale di ripartire: solo tu sai se quelle '

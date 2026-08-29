@@ -116,7 +116,7 @@ const formattatoreGiorno = computed(() => {
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger>
-                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-help transition-colors"
+                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold border cursor-help transition-colors"
                                 :class="widgetTheme.badgeBg + ' ' + widgetTheme.border">
                                 <span class="flex h-1.5 w-1.5 rounded-full" 
                                     :class="{'bg-red-500 animate-pulse': treasury.livello === 'rosso', 'bg-amber-500 animate-pulse': treasury.livello === 'giallo', 'bg-emerald-500': treasury.livello === 'verde'}"></span>

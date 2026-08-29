@@ -219,7 +219,7 @@ it('ogni codice di avviso che il motore produce è nel catalogo', function () {
 
     // Senza questa riga il test passerebbe anche se la scansione non trovasse niente — cioè
     // proprio nel caso in cui ha smesso di controllare qualcosa.
-    expect(array_unique($sorgente))->toHaveCount(22);
+    expect(array_unique($sorgente))->toHaveCount(23);
 
     $catalogo = array_keys(CatalogoControlli::voci());
     $fuori = array_values(array_diff(array_unique($sorgente), $catalogo));

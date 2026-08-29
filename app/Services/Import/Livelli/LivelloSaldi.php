@@ -88,7 +88,7 @@ final class LivelloSaldi implements LivelloImport
         // il wallet non saprebbe a quale gestione riferire il pregresso. La crea il livello
         // «Esercizi» riusando il servizio dell'applicazione — ma si verifica **a database**,
         // non si dà per fatto.
-        if ($esercizio instanceof Esercizio && $this->gestione($esercizio) === null) {
+        if ($esercizio instanceof Esercizio && $this->gestione($esercizio, $ctx) === null) {
             $mancanti[] = new PrerequisitoMancante(
                 'saldi.gestione_mancante',
                 'L\'esercizio non ha nessuna gestione a cui agganciare i saldi.',
@@ -118,7 +118,7 @@ final class LivelloSaldi implements LivelloImport
         $condominio = $ctx->risolto(LivelloCondominio::CHIAVE);
         /** @var Esercizio $esercizio */
         $esercizio = $ctx->risolto(LivelloEsercizi::CHIAVE);
-        $gestione = $this->gestione($esercizio);
+        $gestione = $this->gestione($esercizio, $ctx);
 
         $unita = $ctx->risoltiMolti(LivelloUnita::CHIAVE);
         $soggetti = $ctx->risoltiMolti(LivelloSoggetti::CHIAVE);
@@ -475,8 +475,27 @@ final class LivelloSaldi implements LivelloImport
         return mb_strtolower(trim(preg_replace('/\s+/', ' ', $nome) ?? ''));
     }
 
-    private function gestione(Esercizio $esercizio): ?Gestione
+    /**
+     * La gestione su cui appoggiare il pregresso.
+     *
+     * ⚠️ **Prima prendeva sempre la più vecchia agganciata all'esercizio** (`orderBy('id')`), e
+     * con due gestioni è quasi sempre quella sbagliata: importando un esercizio **straordinario**
+     * i suoi saldi finivano nell'ordinaria, che ha id minore perché è nata prima.
+     *
+     * Ora la sceglie chi lo sa: `LivelloEsercizi` dichiara quale ha usato. Il vecchio criterio
+     * resta come ripiego per i percorsi che non passano da lì — i test che invocano questo
+     * livello da solo, e le importazioni riprese da un lotto vecchio.
+     */
+    private function gestione(Esercizio $esercizio, ?ImportContext $ctx = null): ?Gestione
     {
+        $dichiarata = $ctx?->risolto(LivelloEsercizi::GESTIONE);
+
+        if ($dichiarata instanceof Gestione
+            && $dichiarata->esercizi()->whereKey($esercizio->getKey())->exists()
+        ) {
+            return $dichiarata;
+        }
+
         return Gestione::whereHas('esercizi', fn ($q) => $q->whereKey($esercizio->getKey()))
             ->orderBy('id')
             ->first();

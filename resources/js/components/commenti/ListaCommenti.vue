@@ -46,7 +46,7 @@ const inAttesa = computed(() => props.commentiInAttesa?.length ?? 0);
         <!-- Badge approvati/pubblicati -->
         <span
           v-if="totaleCommenti > 0"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
         >
           <CheckCircle2 class="w-3 h-3" />
           <span>{{ totaleCommenti }}</span>
@@ -55,7 +55,7 @@ const inAttesa = computed(() => props.commentiInAttesa?.length ?? 0);
         <!-- Badge in attesa (solo moderatori) -->
         <span
           v-if="commentiConfig.can_moderate && inAttesa > 0"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
         >
           <Clock class="w-3 h-3" />
           <span>{{ inAttesa }}</span>

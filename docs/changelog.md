@@ -7,6 +7,135 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.3] - Il Condominio Che Nessun File Sapeva Dire
+
+**Non aggiunge migrazioni.** Corregge l'importatore da Danea per chi esporta i dati in un modo che
+non avevamo previsto — e che si è scoperto essere il più naturale dei due.
+
+**Chiude anche un difetto di riservatezza che c'era da prima:** l'importazione a metà di un
+collega era visibile, dirottabile e cancellabile da chiunque potesse importare. Se hai più di una
+persona che usa Kondomanager nello stesso studio, questo aggiornamento riguarda anche te.
+
+Danea offre due strade per tirare fuori i dati. Le **stampe esportate** portano in testa una riga
+con il nome del condominio e il codice fiscale; l'**Import/Export tramite Excel** produce elenchi
+puri, che cominciano dalle intestazioni di colonna. L'importatore leggeva il condominio solo dalla
+prima riga della testata, e la seconda strada non ne aveva nessuna.
+
+Chi arrivava di lì caricava unità, persone e tabelle, le vedeva leggere correttamente — e poi
+l'anteprima si chiudeva con un messaggio che non spiegava niente. Non c'era nessuna via d'uscita:
+il consiglio implicito era «riesporta come stampa», ma un amministratore che prende in gestione un
+condominio adesso, in Danea, di consuntivi non ne ha.
+
+### Ora si può dire a mano dove vanno i dati
+
+Quando nessun file dichiara il condominio, la schermata di verifica lo chiede: una tendina, in
+fondo alla pagina. La scelta resta visibile e modificabile finché non si conferma, e vale meno di
+quello che dicono i file — se in seguito si aggiunge una stampa con la testata, comanda la testata.
+
+**L'esercizio non si sceglie: viene dichiarato.** Sotto la tendina compare qual è, con il suo
+periodo. È quello aperto del condominio, la stessa regola che il programma usa dappertutto, e non
+c'è una seconda risposta ragionevole da offrire: importare vuol dire registrare chi possiede cosa
+*adesso*. La data di inizio dell'esercizio diventa la data di inizio di ogni titolarità scritta,
+quindi indicare l'anno sbagliato non avrebbe prodotto nessun errore e nessun avviso — solo numeri
+giusti nel periodo sbagliato, scoperti al primo riparto. Se il condominio non ha un esercizio
+aperto, la schermata lo dice prima: unità, persone e tabelle entrano lo stesso, chi possiede cosa
+e i saldi no.
+
+Il condominio scelto viene anche **riconosciuto come esistente**, quindi le unità e le persone si
+attaccano a quello che c'è invece di crearne un secondo. E l'anteprima non ripropone più le due
+domande «questo esiste già, vuoi unirlo?» sul condominio e sull'esercizio: la risposta è nella
+scelta appena fatta.
+
+### L'anteprima moriva invece di spiegare
+
+Il difetto vero e proprio era una riga sola. Sette valori su otto si difendevano dall'assenza del
+dato; il condominio no, e la sua mancanza usciva come un errore tecnico al posto di una
+spiegazione. Adesso la mancanza viene detta nella schermata di verifica, dove si può rimediare.
+
+### Prima di caricare, la schermata dice cosa aspettarsi
+
+Quello che cambia il modo di lavorare è una cosa sola: **il file dice a quale condominio
+appartiene?** Alcuni lo dichiarano in testa — nome, codice fiscale e periodo dell'esercizio — e da
+quelli l'importazione crea condominio ed esercizio da sé, con le date esatte anche quando l'anno
+non è solare. Altri sono elenchi puri, e allora il condominio deve essere già in archivio con un
+esercizio aperto.
+
+Fino a ieri questa differenza si scopriva alla **terza** schermata, con i file ormai caricati e
+l'esportazione da rifare. Ora è scritta sulla pagina d'ingresso, prima di scegliere i file.
+
+### I saldi entrano anche in un esercizio che non aveva una gestione
+
+Importando dentro un condominio già in archivio, l'importazione arrivava fino ai saldi e lì si
+fermava: «l'esercizio non ha nessuna gestione a cui agganciare i saldi». Succedeva per un esercizio
+creato dal programma stesso, che nasce senza. Ora la gestione ordinaria viene agganciata come già
+accade quando è l'importazione a creare l'esercizio.
+
+### Un esercizio straordinario diventa una gestione, non un secondo anno
+
+Nel gestionale di partenza ordinario e straordinario sono **due esercizi distinti**, ciascuno col
+suo periodo. Da noi sono due **gestioni** dentro lo stesso esercizio — la separazione che il
+rendiconto deve mostrare.
+
+Prima l'importazione di uno straordinario apriva un secondo esercizio accavallato al primo, ed
+entrambi restavano aperti; la gestione ordinaria veniva agganciata a tutti e due, e l'unica traccia
+del tipo era una parola nella descrizione. Ora lo straordinario entra nella **gestione
+straordinaria** del condominio, con le sue date, dentro l'esercizio che copre quel periodo. Se
+quell'esercizio non c'è ancora, l'importazione si ferma e lo dice, invece di aprire un anno
+contabile che nessuno ha deliberato.
+
+Nello stesso passaggio: i saldi finivano sempre nella gestione più vecchia dell'esercizio, che con
+due gestioni è sempre l'ordinaria. Ora vanno in quella che l'importazione ha effettivamente usato.
+
+### Un'importazione è di chi l'ha caricata
+
+**Chiunque potesse importare poteva aprire, dirottare e scartare l'importazione a metà di un
+collega.** Non serviva nemmeno indovinare un indirizzo: la schermata d'ingresso mostrava a tutti
+l'ultimo lotto in corso — quello di chiunque l'avesse lasciato aperto — col nome del suo
+condominio. Tutte e nove le pagine dell'importazione sono ora chiuse a chi non è il proprietario
+del lotto; l'amministratore continua a vederle, che è il suo mestiere.
+
+Il difetto c'era da prima di questa funzione. È saltato fuori cercandone altri, e nessun test
+l'aveva visto per una ragione che vale la pena dire: i test **lo percorrevano**, caricando come un
+utente e proseguendo come un altro. Una suite che passa dentro il buco non lo può vedere.
+
+### Il condominio scelto è quello scelto, anche se un altro ha lo stesso nome
+
+Il condominio si indica da una tendina — cioè si punta il dito su una riga precisa — ma quella
+riga veniva poi **ricercata** per codice fiscale, e se manca per nome. Con due condomìni omonimi
+**senza codice fiscale** si finiva nel primo: scegliendo il secondo, unità e persone entravano
+nell'altro. Il codice fiscale del condominio è facoltativo, e chi amministra più stabili della
+stessa proprietà ha nomi ripetuti.
+
+Nello stesso passaggio: cambiando idea sulla destinazione, la risposta data per il condominio
+scartato restava scritta sul lotto, e più avanti **zittiva** la domanda «in archivio esiste già,
+vuoi unirlo?» su quel condominio. Ora se ne va insieme alla scelta che l'aveva generata; le
+risposte sui file — i nomi doppi da dividere, i duplicati fra le persone — restano, perché
+cambiare il condominio di arrivo non le rende sbagliate.
+
+### Due porte che si aprivano su un muro
+
+La tendina elencava nome e codice fiscale di **tutti** i condomìni dell'archivio anche a chi non
+può vederne l'elenco, e chi non ha il permesso di modificarli, dopo aver scelto, sbatteva in un
+errore a schermo pieno. Ora a quell'utente la tendina non compare e la pagina dice perché.
+
+E il permesso si ricontrolla al momento di scrivere, non solo quando la scelta viene registrata:
+fra i due momenti possono passare giorni, e un permesso revocato deve valere.
+
+### Le etichette di stato non sono più pillole
+
+Le badge di tutta l'applicazione — «pronto», «da sistemare», «bozza», i contatori — passano da
+angoli tondi ad angoli smussati, come i riquadri e i campi accanto a cui vivono. Sono 154 usi del
+componente più 16 etichette scritte a mano nelle pagine, allineate nello stesso passaggio.
+
+### Il riparto consuntivo non è più annunciato come indispensabile
+
+Sulla schermata di riconoscimento, l'elenco di cosa manca marcava il riparto consuntivo con
+«senza, non si prosegue», nello stesso riquadro che dice «puoi proseguire lo stesso». Ora dice cosa
+si perde davvero — i saldi di apertura, che non stanno in nessun altro file — e che il condominio,
+se il riparto non c'è, viene chiesto nella schermata dopo.
+
+---
+
 ## [1.11.0-beta.2] - La Rete Che Non Avrebbe Retto
 
 **Non aggiunge migrazioni.** Corregge il backup di sicurezza che gira prima di ogni aggiornamento —

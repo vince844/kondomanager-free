@@ -166,6 +166,11 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea c
         Route::put('/{uuid}/decisione', [ImportController::class, 'decidi'])
             ->name('decisione');
 
+        // «Importa dentro questo condominio»: separata da `decisione` perché porta un id, e un
+        // id va autorizzato contro la policy — non è una risposta a un elenco chiuso.
+        Route::put('/{uuid}/destinazione', [ImportController::class, 'destinazione'])
+            ->name('destinazione');
+
         Route::post('/{uuid}/conferma', [ImportController::class, 'conferma'])
             ->name('conferma');
 

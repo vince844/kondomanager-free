@@ -50,6 +50,14 @@ final class RicercaEsistenti
 
     public function condominio(CanonicalCondominio $dati): ?Condominio
     {
+        // ⚠️ **Quando l'utente ha indicato la riga col dito, non c'è niente da cercare.**
+        // La somiglianza è un ripiego per i dati che arrivano da un file; qui l'identità è
+        // dichiarata, e ricostruirla per nome significava scartarla — con due omonimi senza
+        // codice fiscale si finiva nel primo, misurato.
+        if ($dati->idScelto !== null) {
+            return Condominio::find($dati->idScelto);
+        }
+
         if ($dati->codiceFiscale !== null) {
             $perCf = Condominio::where('codice_fiscale', $dati->codiceFiscale)->first();
 
