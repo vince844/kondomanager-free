@@ -164,12 +164,22 @@ it('dice all\'amministratore cosa ricava da ogni file, in parole sue', function 
         ->and(ReportType::RipartoConsuntivo->cosaProduce())->toContain('Saldi di apertura');
 
     // Movimenti e rate versate dicevano «Archivio storico dei movimenti», ma l'archivio storico
-    // è rimandato alla 1.10.1: il contenuto si legge e si butta, e né la conferma né l'esito ne
+    // non è implementato: il contenuto si legge e si butta, e né la conferma né l'esito ne
     // parlavano più. Chi migra ha paura di perdere pezzi, e questa era la frase che glieli
     // prometteva. Adesso dichiara cosa il file serve davvero a fare.
     expect(ReportType::Movimenti->cosaProduce())->not->toContain('Archivio storico')
-        ->and(ReportType::Movimenti->cosaProduce())->toContain('non entra nella 1.10')
-        ->and(ReportType::RateVersate->cosaProduce())->toContain('non entra nella 1.10');
+        ->and(ReportType::Movimenti->cosaProduce())->toContain('non entra ancora')
+        ->and(ReportType::RateVersate->cosaProduce())->toContain('non entra ancora');
+
+    // ⛔ **E nessun numero di versione in quelle frasi.** La correzione precedente ne aveva messo
+    // uno — «non entra nella 1.10» — e ha smesso di essere vera il 26/08/2026, quando la 1.10 è
+    // uscita: la schermata continuava a rimandare a una versione già passata, e se n'è accorto un
+    // giro a video, non un test. Questa asserzione è quel test: la regola del flusso di lavoro
+    // dice che i testi descrivono il comportamento **al presente e senza versioni**, perché un
+    // numero sparso nella prosa invecchia da solo a ogni rilascio.
+    foreach (ReportType::cases() as $tipo) {
+        expect($tipo->cosaProduce())->not->toMatch('/\b\d+\.\d+(\.\d+)?\b/');
+    }
 });
 
 it('dà a ogni report un nome che un amministratore riconosce', function () {

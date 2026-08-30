@@ -7,6 +7,68 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.6] - L'Importazione Che Si Poteva Disfare
+
+**Non aggiunge migrazioni.** Arriva l'**annullamento di un'importazione**: se hai caricato un
+condominio e ti accorgi che i file erano sbagliati, lo togli con tutto quello che è entrato con lui
+invece di cancellare le voci una per una.
+
+⚠️ **Cambia chi può importare.** Serve un permesso nuovo, **«Importa dati»**, che gli amministratori
+ricevono automaticamente con l'aggiornamento. Se avevi affidato l'importazione a un collaboratore
+dandogli «Crea condomini», da questa versione dovrai dargli anche «Importa dati» dalla scheda utente:
+la trovi fra i permessi, ed è una spunta.
+
+### Disfare un'importazione, finché si può
+
+Il pulsante sta sulla schermata di esito, e ci si torna dal cruscotto del condominio — «Esito, e se
+si può annullare». Prima di chiedere conferma dice **cosa sparirà**, contato: il condominio, le
+unità, le persone, le tabelle, i saldi. Le persone restano in rubrica se appartengono anche a un
+altro condominio o se hanno un accesso al programma.
+
+Vale anche per un'importazione **interrotta a metà**, che è il caso in cui serve di più: quelle
+scrivono comunque una parte, e finora quella parte non si toglieva.
+
+### Non c'è una scadenza, c'è una condizione
+
+Altri gestionali danno una settimana di tempo. Qui la domanda non è *quando* ma *se qualcuno ci ha
+lavorato sopra*: un'importazione su cui non hai ancora fatto niente resta annullabile per sempre,
+una su cui hai registrato una fattura non lo è già dopo dieci minuti. Quando non si può,
+**la schermata dice cosa lo impedisce** — «2 casse, 1 piano rate» — invece di mostrare un pulsante
+grigio.
+
+**E «lavorato sopra» non vuol dire solo contabilità.** Bloccano l'annullamento anche un documento
+caricato, una comunicazione in bacheca, un evento in agenda, una segnalazione aperta, un commento e
+i contributi già versati: sono tutte cose che sparirebbero insieme al condominio, e nessuna di esse
+è arrivata con l'importazione.
+
+Due casi restano fuori, ed entrambi sono detti a schermo: un'importazione entrata in un
+**condominio che esisteva già** (annullarla vorrebbe dire cancellare anche quello che c'era prima),
+e un caricamento mai confermato, che si **scarta** invece di annullarlo.
+
+### 🔒 Un file di un'importazione altrui non si tocca più
+
+Due delle dodici schermate dell'importazione non controllavano di chi fosse il caricamento: chi
+poteva importare riusciva a **cambiare il tipo di un file** di un collega e a **cancellarglielo**,
+conoscendo l'indirizzo. Il controllo che le altre dieci avevano già è stato messo anche lì.
+
+### Riconoscere un'importazione lasciata a metà
+
+Le schede «Importazione ferma a metà» dicevano solo data e numero di file: con due o tre migrazioni
+aperte insieme erano indistinguibili. Ora portano il nome del condominio, e quando l'importazione
+non c'è ancora arrivata i **nomi dei file** che hai caricato.
+
+### Dettagli
+
+- Il menu a tendina che corregge il tipo di un file ha l'aspetto delle altre tendine del programma,
+  invece di quello grezzo del browser.
+- I pulsanti «Lascia stare», «Scarta» e «Togli» si vedono come pulsanti: erano testo, e accanto a
+  un'azione rossa sembravano etichette.
+- La schermata di riconoscimento non parla più di una versione uscita mesi fa quando spiega cosa
+  non entra dai file dei movimenti.
+- La guida dell'importazione racconta l'annullamento, e non dice più che non esiste.
+
+---
+
 ## [1.11.0-beta.5] - Il Foglio Per Chi Non Ha Niente Da Esportare
 
 **Non aggiunge migrazioni.** Arriva il **modello Excel da compilare a mano**: la strada per chi dal

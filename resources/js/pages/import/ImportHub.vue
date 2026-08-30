@@ -32,6 +32,7 @@ const props = defineProps<{
   interrotte: {
     uuid: string;
     condominio: string | null;
+    file_nomi: string[];
     livello_corrente: string | null;
     iniziata_il: string | null;
     file: number;
@@ -62,6 +63,32 @@ function scarta(uuid: string) {
   scarto.delete(route('import.scarta', uuid), {
     onFinish: () => { scartando.value = null; },
   });
+}
+
+/**
+ * Come si riconosce un'importazione a metà, quando il condominio non si sa ancora.
+ *
+ * ⚠️ **Il nome del condominio esiste solo dal secondo livello in poi.** Un lotto fermo prima non
+ * ce l'ha, ed è proprio quello che va distinto dagli altri: con tre migrazioni aperte le schede
+ * erano identiche a meno dell'ora. Allora si dice quali file contiene — che è l'unica cosa che
+ * l'amministratore riconosce, perché li ha trascinati lui.
+ *
+ * Due nomi e poi il conto: l'elenco intero su quattro file lungo una riga la spezzerebbe, e la
+ * scheda serve a riconoscere, non a inventariare.
+ */
+function comeSiRiconosce(b: { condominio: string | null; file_nomi: string[] }): string {
+  if (b.condominio) {
+    return b.condominio;
+  }
+
+  if (b.file_nomi.length === 0) {
+    return 'nessun file';
+  }
+
+  const primi = b.file_nomi.slice(0, 2).join(', ');
+  const altri = b.file_nomi.length - 2;
+
+  return altri > 0 ? `${primi} e altri ${altri}` : primi;
 }
 
 // Il flash si legge dai props di pagina: `<Alert />` senza props rende una scatola vuota
@@ -136,8 +163,8 @@ const etichettaLivello = (chiave: string | null) => ({
             <h2 class="font-semibold">
               {{ props.interrotte.length > 1 ? 'Importazione ferma a metà' : 'Hai un\'importazione ferma a metà' }}
             </h2>
-            <p class="mt-1 text-sm text-muted-foreground">
-              <template v-if="b.condominio">{{ b.condominio }} · </template>
+            <p class="mt-1 text-sm font-medium text-foreground">{{ comeSiRiconosce(b) }}</p>
+            <p class="mt-0.5 text-sm text-muted-foreground">
               <template v-if="b.iniziata_il">iniziata il {{ b.iniziata_il }} · </template>
               {{ b.file }} file caricat{{ b.file === 1 ? 'o' : 'i' }}<template v-if="b.livello_corrente">,
                 arrivata a <strong>{{ etichettaLivello(b.livello_corrente) }}</strong><template
@@ -165,13 +192,25 @@ const etichettaLivello = (chiave: string | null) => ({
           <div class="flex flex-wrap items-center gap-2">
             <!-- La distruttiva è la più smorzata delle due, ma c'è -->
             <template v-if="scartando === b.uuid">
-              <Button variant="ghost" size="sm" @click="scartando = null">Lascia stare</Button>
+              <!--
+                ⚠️ **Il gemello di quello dell'esito, corretto insieme.** Era `ghost` da prima
+                dell'annullamento, e non se n'era accorto nessuno finché la stessa coppia non è
+                comparsa una seconda volta. Correggerne uno solo è la forma che questo progetto ha
+                pagato tre volte — le rotte morte in un file su cinque, il download senza estensione
+                su uno dei due controller: si chiudono i due insieme.
+              -->
+              <Button variant="outline" size="sm" @click="scartando = null">Lascia stare</Button>
               <Button variant="destructive" size="sm" :disabled="scarto.processing" @click="scarta(b.uuid)">
                 Sì, scartala
               </Button>
             </template>
             <template v-else>
-              <Button variant="ghost" @click="scartando = b.uuid">Scarta</Button>
+              <!--
+                Terza occorrenza della stessa forma, nella stessa card: `ghost` accanto al pulsante
+                pieno «Riprendi» faceva leggere l'azione distruttiva come un'etichetta. Resta
+                secondaria — `outline` contro il primario — ma si vede che è premibile.
+              -->
+              <Button variant="outline" @click="scartando = b.uuid">Scarta</Button>
               <Link :href="route('import.riconoscimento', b.uuid)">
                 <Button>Riprendi</Button>
               </Link>
@@ -288,7 +327,12 @@ const etichettaLivello = (chiave: string | null) => ({
                 <FileSpreadsheet class="h-4 w-4 text-muted-foreground" />
                 {{ nome }}
               </span>
-              <Button type="button" variant="ghost" size="sm" @click="togli(i)">Togli</Button>
+              <!--
+                Quarta e ultima della famiglia in questo percorso. Qui è meno vistoso — la riga ha
+                già un bordo suo — ma la regola è la stessa: un'azione che toglie qualcosa non si
+                scrive come un'etichetta.
+              -->
+              <Button type="button" variant="outline" size="sm" @click="togli(i)">Togli</Button>
             </div>
 
             <InputError :message="form.errors['file.0'] ?? form.errors.file" />

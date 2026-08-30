@@ -19,6 +19,7 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ImportGuide from '@/components/guides/ImportGuide.vue';
 import { guideImport } from '@/pages/import/intestazione';
 import BadgeStato from '@/components/import/BadgeStato.vue';
+import vSelect from 'vue-select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -70,6 +71,28 @@ function cambiaTipo(file: FileRiconosciuto, valore: string) {
   router.put(route('import.file.tipo', [props.lotto.uuid, file.id]), { report_type: valore }, {
     preserveScroll: true,
   });
+}
+
+/** Da un'opzione della tendina al valore che il server si aspetta. */
+function valoreDelTipo(t: { valore: string }): string {
+  return t.valore;
+}
+
+/**
+ * La tendina ha scelto un tipo.
+ *
+ * ⚠️ **Il `null` si ignora invece di essere spedito.** `vue-select` emette `null` quando la
+ * selezione si svuota, e mandarlo al server significherebbe chiedergli di dimenticare il tipo di
+ * un file — cioè il contrario di quello che l'utente sta facendo. La tendina è `:clearable="false"`
+ * proprio per non offrire quel gesto, e questa guardia è la seconda rete: la prima è una prop, e
+ * una prop si toglie senza accorgersene.
+ */
+function tipoScelto(file: FileRiconosciuto, valore: string | null) {
+  if (valore === null) {
+    return;
+  }
+
+  cambiaTipo(file, valore);
 }
 
 function escludi(file: FileRiconosciuto) {
@@ -149,16 +172,29 @@ const utilizzabili = () => props.file.filter((f) => f.tipo && f.importabile).len
 
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
-                    <select
-                      class="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                      :value="f.tipo ?? ''"
-                      @change="cambiaTipo(f, ($event.target as HTMLSelectElement).value)"
-                    >
-                      <option value="" disabled>Cambia…</option>
-                      <option v-for="t in props.tipi" :key="t.valore" :value="t.valore">
-                        {{ t.etichetta }}
-                      </option>
-                    </select>
+                    <!--
+                      ⚠️ **`v-select` e non un `<select>` nudo.** Era l'unica tendina di tutto il
+                      percorso di importazione disegnata dal browser invece che dal prodotto: in
+                      mezzo a pulsanti e badge con il bordo del tema, si leggeva come un pezzo di
+                      un'altra applicazione — e su questa riga si prende una decisione che cambia
+                      cosa il file scrive in archivio. `vue-select` è la tendina del progetto (68
+                      file la usano, contro quattro `<select>` rimasti), quindi qui si conforma,
+                      come dice la regola della beta.38: *il default è conformarsi*.
+
+                      `append-to-body` perché la tendina vive dentro una cella di tabella con
+                      `overflow` proprio: senza, l'elenco si aprirebbe tagliato dalla riga.
+                    -->
+                    <v-select
+                      class="w-56 text-xs"
+                      :options="props.tipi"
+                      label="etichetta"
+                      :reduce="valoreDelTipo"
+                      :model-value="f.tipo ?? null"
+                      :clearable="false"
+                      placeholder="Cambia…"
+                      append-to-body
+                      @update:model-value="(valore: string | null) => tipoScelto(f, valore)"
+                    />
                     <!--
                       Era `variant="ghost"`, cioè testo nudo accanto a una tendina con il bordo:
                       l'unica azione distruttiva della schermata sembrava un'etichetta. Con il
@@ -275,3 +311,12 @@ const utilizzabili = () => props.file.filter((f) => f.tipo && f.importabile).len
     <ImportGuide v-model:open="mostraGuida" />
   </AppLayout>
 </template>
+
+<!--
+  ⚠️ **Il foglio di stile di `vue-select` si importa qui, componente per componente.** È l'idioma
+  del progetto — lo fanno tutti i file che usano la tendina — e non è ovvio: senza, il componente
+  si monta e funziona, ma esce **senza bordo, con il valore sopra e la freccia sotto**. Non dà
+  nessun errore, in console non compare niente, e a occhio sembra un problema di layout: l'ho visto
+  solo guardando la pagina, che è il motivo per cui la verifica a video non si salta.
+-->
+<style src="vue-select/dist/vue-select.css"></style>

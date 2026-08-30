@@ -42,7 +42,22 @@ function personaCheImporta(bool $amministratore = false): User
         'web',
     ));
 
-    return $u;
+    // ⚠️ **Dal 30/08/2026 importare vuole «Importa dati», e il collaboratore non ce l'ha.**
+    //
+    // Glielo si concede qui esplicitamente, e non è un aggiustamento per far passare il caso: è
+    // **lo scenario della delega**, cioè la ragione per cui quel permesso è stato preferito a
+    // `role:amministratore`. Un amministratore affida l'importazione a due collaboratori, e questo
+    // file continua a provare che **l'uno non vede il lotto dell'altro**.
+    //
+    // Con la restrizione al solo ruolo questa prova sarebbe morta: fra amministratori la guardia
+    // sulla proprietà tace di proposito, quindi non ci sarebbe stato modo di scriverla.
+    if (! $amministratore) {
+        $u->givePermissionTo(App\Enums\Permission::IMPORTA_DATI->value);
+    }
+
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+    return $u->fresh();
 }
 
 function lottoDi(User $proprietario): ImportBatch

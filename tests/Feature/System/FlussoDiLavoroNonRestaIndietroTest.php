@@ -32,6 +32,18 @@
  * .62 non sono mai state scritte. Una guardia sulla sola intestazione si sarebbe quindi dichiarata
  * soddisfatta esattamente nel giro in cui il documento stava cominciando a mentire.
  *
+ * ⚠️ **Corretto il 30/08/2026, aprendo la 1.11.0-beta.6, e la correzione riguarda proprio questo
+ * paragrafo.** Il controllo sull'intestazione era descritto qui come «il più debole dei due», e
+ * quella frase ha funzionato da anestetico: era **cieco**, non debole. Confrontava con
+ * `str_contains($intestazione, "beta.{$beta}")`, quindi cercando `beta.5` trovava `beta.50`…
+ * `beta.59` del ciclo 1.10 ed era verde per costruzione. Le beta **.3, .4 e .5** sono passate senza
+ * che l'intestazione le nominasse, e nessuno se n'è accorto perché il test diceva di sì.
+ *
+ * **Dichiarare debole un presidio non è documentarlo: è smettere di guardarlo.** Chi leggeva sapeva
+ * già che valeva poco, quindi non si è chiesto se valesse zero. Il confronto ora passa da
+ * `intestazioneNomina()` — versione intera più lookahead — e ha il suo autocontrollo, che prima non
+ * aveva: è la metà del file che nella stesura precedente non era provata.
+ *
  * ## Cosa questa guardia NON copre
  *
  * - **Non dice che le lezioni siano buone**: dice che ci sono. Una sezione con dentro una riga
@@ -40,6 +52,13 @@
  *   non ha una sezione e non l'avrà mai; sanare all'indietro non è il mestiere di questa guardia.
  * - **Non copre gli altri documenti**: per quelli l'età è una misura, non un difetto, ed è giusto
  *   che resti tale — è il comando `kondomanager:verifica-documentazione` a mostrarla.
+ * - **Non dice che l'intestazione sia stata *riverificata*, solo che nomina la versione.** Chi
+ *   scrive «riletto su 1.11.0-beta.6» senza aver ricontato niente la soddisfa. È il limite che il
+ *   paragrafo qui sopra ha già pagato una volta, ed è irriducibile: nessun `preg_match` distingue
+ *   una cifra misurata da una ricopiata.
+ * - **Non copre il caso in cui la versione in `config/app.php` non sia stata alzata.** Se la .6
+ *   restasse dichiarata `beta.5`, questa guardia chiederebbe la .5 e sarebbe soddisfatta. Il
+ *   presidio di quel passo è la Fase 4 del flusso, non questo file.
  * - **Non gira su un clone pulito**: `docs/*` è gitignorato, quindi il documento non è nel
  *   repository. Su una macchina che non ce l'ha i test si saltano invece di fallire, come già fa
  *   `VerificaDocumentazioneCommandTest` con `roadmap.md`.
@@ -64,6 +83,34 @@ function betaInSviluppo(): ?int
     return preg_match('#-beta\.(\d+)#', (string) config('app.version'), $m)
         ? (int) $m[1]
         : null;
+}
+
+/**
+ * L'intestazione di stato nomina **questa** versione, e non una che le somiglia.
+ *
+ * ⚠️ **Questa funzione esiste perché il controllo che sostituisce era cieco, ed è stato verde per
+ * tre giri senza guardare niente.** Fino al 30/08/2026 qui c'era
+ * `str_contains($intestazione, "beta.{$beta}")`: con la versione in sviluppo a `1.11.0-beta.5`
+ * cercava la stringa `beta.5`, che è **contenuta in** `beta.50`, `beta.52` … `beta.59` — nove
+ * menzioni del ciclo 1.10 scritte in quell'intestazione da settimane. Il risultato è che le beta
+ * **.3, .4 e .5** sono passate senza che l'intestazione le nominasse mai, e la .6 sarebbe passata
+ * identica (`beta.60`…`beta.66`).
+ *
+ * Due proprietà che il confronto nuovo ha e quello vecchio non aveva:
+ *
+ * - **la versione intera**, non il suffisso: `1.11.0-beta.6` e non `beta.6`. Un `beta.6` senza
+ *   ciclo davanti non distingue la 1.11 dalla 1.10, e questo documento copre due cicli;
+ * - **il lookahead negativo sulla cifra**, che è la parte che il ciclo precedente ha reso
+ *   necessaria: la 1.10 è arrivata alla beta.77, quindi anche la 1.11 può arrivare alla .60, e
+ *   senza `(?!\d)` il difetto tornerebbe identico fra cinquantaquattro beta.
+ *
+ * È la stessa famiglia del comando anti-collisione dei codici della coda, che leggeva un intervallo
+ * di caratteri e ha smesso di funzionare quando l'intervallo si è riempito: **un confronto per
+ * sottostringa è un intervallo travestito**, e regge solo finché lo spazio dei nomi è rado.
+ */
+function intestazioneNomina(string $intestazione, string $versione): bool
+{
+    return (bool) preg_match('#'.preg_quote($versione, '#').'(?!\d)#', $intestazione);
 }
 
 /**
@@ -164,17 +211,44 @@ it("l'intestazione di stato nomina la versione in sviluppo", function () {
     expect($inizio !== false)->toBeTrue('Il documento ha perso i marcatori dell\'intestazione di stato');
 
     $intestazione = substr($testo, $inizio, $fine - $inizio);
+    $versione = (string) config('app.version');
 
-    expect(str_contains($intestazione, "beta.{$beta}"))->toBeTrue(
-        "L'intestazione di stato di `docs/flusso_di_lavoro_rilascio.md` non nomina la beta.{$beta},\n".
-        "che è la versione in sviluppo secondo `config/app.php`.\n\n".
-        "⚠️ Questo controllo è **il più debole dei due**, e sta qui solo per completezza: aprendo la\n".
-        "beta.62 l'intestazione era stata aggiornata e le lezioni non erano state scritte. Un\n".
-        "documento che dichiara di essere stato riletto senza esserlo è peggio di uno vecchio.\n\n".
+    expect(intestazioneNomina($intestazione, $versione))->toBeTrue(
+        "L'intestazione di stato di `docs/flusso_di_lavoro_rilascio.md` non nomina la versione\n".
+        "**{$versione}**, che è quella in sviluppo secondo `config/app.php`.\n\n".
+        "⚠️ Va scritta **per intero** — `{$versione}`, non `beta.{$beta}` —: questo documento copre\n".
+        "due cicli di release, e il solo suffisso non distingue la 1.11 dalla 1.10. È esattamente\n".
+        "l'ambiguità che ha reso cieco il controllo precedente, verde per tre giri di fila.\n\n".
         "Nell'intestazione va scritto anche **cosa è cambiato**: quali cifre sono state riverificate\n".
         "e quali erano invecchiate. Su questo documento invecchiano ogni volta, e la conta si rifà."
     );
 })->skip(fn () => ! file_exists(documentoDiProcesso()), 'docs/ è gitignorato: il documento non è su questa macchina');
+
+it("il controllo sull'intestazione morde: una versione che somiglia non basta", function () {
+    // ⚠️ **Questo è il test che nella stesura precedente non c'era**, ed è il motivo per cui il
+    // difetto è vissuto tre giri. Passa dalla **stessa funzione** del test vero — lezione 3 della
+    // beta.60: una guardia provata su una copia della sua espressione regolare prova la copia.
+    //
+    // L'intestazione finta contiene le versioni del ciclo 1.10 che contengono `1.11.0-beta.6`…
+    // non come sottostringa, ma riproduce la forma esatta del difetto: una menzione più lunga che
+    // comincia con quella cercata.
+    $finta = 'riletto su 1.11.0-beta.60 e su 1.11.0-beta.61, poi su 1.10.0-beta.6 chiudendola';
+
+    expect(intestazioneNomina($finta, '1.11.0-beta.6'))->toBeFalse(
+        'Il lookahead non morde: `1.11.0-beta.6` sta combaciando dentro `1.11.0-beta.60`, che è '.
+        'il difetto per cui questa funzione esiste.'
+    );
+
+    // E il controprova: quando la versione c'è davvero, la deve vedere — in tutte le posizioni in
+    // cui l'intestazione la scrive, compresa quella in fondo alla frase e quella fra asterischi.
+    expect(intestazioneNomina('… Versione all\'apertura: **1.11.0-beta.6**.', '1.11.0-beta.6'))->toBeTrue()
+        ->and(intestazioneNomina('aprendo la 1.11.0-beta.6, con le lezioni', '1.11.0-beta.6'))->toBeTrue()
+        ->and(intestazioneNomina('chiusa il 30/08 su 1.11.0-beta.6', '1.11.0-beta.6'))->toBeTrue();
+
+    // ⚠️ E il caso che ha prodotto il guasto vero, riprodotto tale e quale: il suffisso nudo del
+    // ciclo precedente non deve più valere come menzione della versione in sviluppo.
+    expect(intestazioneNomina('riletto su 1.10.0-beta.50 e su 1.10.0-beta.59', '1.11.0-beta.5'))->toBeFalse();
+});
 
 it('la guardia morde: una beta senza sezione viene vista', function () {
     // L'autocontrollo passa dalla **stessa funzione** del test vero — è la lezione della beta.60:

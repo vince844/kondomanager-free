@@ -8,6 +8,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\ImportBatch;
 use App\Models\ImportFile;
+use App\Services\Import\AnnullamentoImportazione;
 use App\Services\Import\AnteprimaImport;
 use App\Services\Import\Controlli\ControlliPostImport;
 use App\Services\Import\EsitoVerifica;
@@ -84,7 +85,7 @@ class ImportController extends Controller
         // restavano in archivio con i loro file, invisibili: nessuna schermata le nominava e
         // nessuno le avrebbe più riprese.
         $interrotte = ImportBatch::query()
-            ->with('condominio')
+            ->with(['condominio', 'files'])
             ->whereIn('stato', [ImportBatch::STATO_IN_CORSO, ImportBatch::STATO_PARZIALE])
             ->when(
                 $utente !== null && ! $utente->hasRole(RoleEnum::AMMINISTRATORE->value),
@@ -103,6 +104,17 @@ class ImportController extends Controller
                 // interpretare è un modo di sbagliare fuso orario per niente.
                 'iniziata_il' => $b->created_at?->format('d/m/Y H:i'),
                 'file' => $b->files_count,
+                // ⚠️ **I nomi dei file, non solo quanti sono.** Con più importazioni a metà —
+                // che è il caso normale di uno studio che sta migrando tre condomìni — le schede
+                // erano distinguibili solo dall'ora di inizio: «Importazione ferma a metà, 4 file
+                // caricati» ripetuto due volte non dice a chi appartiene nessuna delle due.
+                //
+                // Il nome del condominio c'è **solo se il lotto ha superato il primo livello**, e
+                // un'importazione ferma a metà spesso non ci è arrivata: è precisamente il caso in
+                // cui l'identità serve, e l'unica che esiste sono i file che l'amministratore ha
+                // trascinato. Segnalato da Vincenzo il 30/08/2026 guardando la schermata: «qui non
+                // mi dice per quale condominio, come faccio a saperlo?».
+                'file_nomi' => $b->files->pluck('nome_originale')->all(),
                 'posizione' => $this->posizione($b->livello_corrente),
                 'livelli_totali' => count(ImportRunner::livelli()),
                 // Un lotto «parziale» ha già scritto qualcosa: scartarlo chiude la sessione,
@@ -668,9 +680,43 @@ class ImportController extends Controller
     }
 
     /**
+     * Disfa un'importazione completata.
+     *
+     * ⚠️ **Il permesso si ricontrolla qui come in `conferma()`**, e per la stessa ragione: fra il
+     * momento in cui si importa e quello in cui ci si pente possono passare giorni, e un permesso
+     * revocato in mezzo deve valere.
+     *
+     * ⛔ **La decisione non è di questo metodo.** Chiede a `AnnullamentoImportazione`, che risponde
+     * con il *perché* attaccato — e se la risposta è no, quel perché arriva a schermo invece di un
+     * errore generico. Un rifiuto che il server pronuncia e la schermata non mostra vale quanto un
+     * rifiuto non pronunciato (beta.49).
+     */
+    public function annulla(string $uuid, AnnullamentoImportazione $annullamento)
+    {
+        $batch = $this->lotto($uuid);
+
+        Gate::authorize('delete', Condominio::class);
+
+        $verdetto = $annullamento->esegui($batch);
+
+        if (! $verdetto->possibile) {
+            return back()->with($this->flashError(
+                $verdetto->motivo.' '.$verdetto->aiuto
+            ));
+        }
+
+        return redirect()
+            ->route('import.index')
+            ->with($this->flashSuccess(sprintf(
+                'Importazione annullata: «%s» è stato rimosso, con tutto quello che era entrato con lui.',
+                $verdetto->condominio->nome,
+            )));
+    }
+
+    /**
      * S5 — Esito: il rapporto, e se l'annullamento è possibile.
      */
-    public function esito(string $uuid): Response
+    public function esito(string $uuid, AnnullamentoImportazione $annullamento): Response
     {
         $batch = $this->lotto($uuid, ['condominio']);
 
@@ -729,6 +775,11 @@ class ImportController extends Controller
             ],
             'rapporto' => $batch->rapporto ?? [],
             'creati' => $batch->itemsCreati()->count(),
+            // ⚠️ **Il verdetto si calcola qui e si mostra prima del clic**, non dopo. È lo stesso
+            // principio della verifica riga per riga che l'importatore applica in ingresso: si
+            // dice cosa succederà, poi si chiede conferma. Un pulsante che si scopre inerte solo
+            // premendolo è la cosa da cui la card di questa pagina mette in guardia.
+            'annullamento' => $annullamento->verdetto($batch)->perLaSchermata(),
         ]);
     }
 
@@ -860,11 +911,29 @@ class ImportController extends Controller
     /**
      * L'utente smentisce il riconoscimento: il punteggio è un suggerimento, non un verdetto.
      */
+    /**
+     * ⚠️ **La guardia sulla proprietà del lotto passa da qui come da tutte le altre rotte.**
+     *
+     * Trovato il 30/08/2026: questa rotta e `escludiFile()` erano le **uniche due** a non chiamare
+     * `lotto()`, e non per una decisione — per la firma. Hanno un `ImportFile` risolto dal binding
+     * invece del solo uuid, quindi la riga che altrove recupera il lotto *e* ne verifica la
+     * proprietà qui non c'era mai stata scritta.
+     *
+     * Misurato prima della correzione: un utente con il solo permesso di importare **cambiava il
+     * tipo** di un file del lotto di un collega e **glielo cancellava**, con due `302`. Nessun 403,
+     * nessuna traccia. La beta.3 aveva chiuso questa falla dichiarando «tutte e nove le rotte del
+     * lotto»: le rotte con un uuid sono dodici, e queste due stavano nelle altre tre.
+     *
+     * È la lezione della beta.61 — *la classe si chiude nel file in cui la si è vista e resta
+     * aperta in tutti gli altri* — applicata alla **firma** invece che al file.
+     */
     public function forzaTipo(Request $request, string $uuid, ImportFile $file)
     {
         $validato = $request->validate([
             'report_type' => ['required', 'string', 'in:'.implode(',', array_column(ReportType::cases(), 'value'))],
         ]);
+
+        $this->lotto($uuid);
 
         abort_unless($file->batch->uuid === $uuid, 404);
 
@@ -876,8 +945,11 @@ class ImportController extends Controller
         return back()->with($this->flashSuccess('Tipo aggiornato.'));
     }
 
+    /** Come `forzaTipo()`: la proprietà del lotto si verifica anche qui — vedi il docblock là sopra. */
     public function escludiFile(string $uuid, ImportFile $file)
     {
+        $this->lotto($uuid);
+
         abort_unless($file->batch->uuid === $uuid, 404);
 
         $file->delete();

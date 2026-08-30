@@ -30,6 +30,7 @@ function utenteCheImporta(bool $puoModificare = true): User
     foreach ([
         App\Enums\Permission::CREATE_CONDOMINI->value,
         App\Enums\Permission::EDIT_CONDOMINI->value,
+        App\Enums\Permission::IMPORTA_DATI->value,
         'Accesso pannello amministratore',
     ] as $nome) {
         Permission::firstOrCreate(['name' => $nome, 'guard_name' => 'web']);
@@ -37,6 +38,8 @@ function utenteCheImporta(bool $puoModificare = true): User
 
     $u = User::factory()->create();
     $u->givePermissionTo(App\Enums\Permission::CREATE_CONDOMINI->value);
+    // ⚠️ Dal 30/08/2026 importare vuole «Importa dati»: «Crea condomini» non basta più.
+    $u->givePermissionTo(App\Enums\Permission::IMPORTA_DATI->value);
 
     if ($puoModificare) {
         $u->givePermissionTo(App\Enums\Permission::EDIT_CONDOMINI->value);

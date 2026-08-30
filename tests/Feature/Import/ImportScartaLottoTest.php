@@ -23,7 +23,12 @@ function utenteScarto(): User
     Permission::firstOrCreate(['name' => 'Crea condomini', 'guard_name' => 'web']);
 
     $u = User::factory()->create();
+    // ⚠️ **Dal 30/08/2026 serve «Importa dati», non più «Crea condomini».** L'amministratore lo ha
+    // per costruzione; qui si concede esplicitamente perché il caso non passa da un ruolo.
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Importa dati', 'guard_name' => 'web']);
     $u->givePermissionTo('Crea condomini');
+    $u->givePermissionTo('Importa dati');
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
     return $u;
 }

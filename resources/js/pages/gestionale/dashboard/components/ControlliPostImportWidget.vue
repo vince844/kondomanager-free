@@ -17,7 +17,7 @@
  * - **è tutto a posto** → neutro, una riga sola: questo condominio è arrivato da un'importazione,
  *   e la sua ricevuta è qui. Non scade, perché la domanda «dov'è il rapporto?» arriva mesi dopo.
  */
-import { ClipboardCheck, ChevronRight, FileDown, CheckCircle2 } from 'lucide-vue-next';
+import { ClipboardCheck, ChevronRight, FileDown, CheckCircle2, Undo2 } from 'lucide-vue-next';
 
 const props = defineProps<{
   controlli: {
@@ -94,6 +94,20 @@ const props = defineProps<{
       >
         <FileDown class="h-3.5 w-3.5" /> Rapporto dell'importazione
       </a>
+      <!--
+        ⚠️ **Porta l'esito, non il verdetto.** Se questa riga dicesse da sé «annullabile» o
+        «non annullabile» sarebbe la stessa domanda con due risposte in due posti — il difetto
+        della beta.44, dove il pannello e il motore rispondevano diversamente per undici beta.
+        L'autorità è `AnnullamentoImportazione`, e sta sulla schermata d'esito: qui si offre solo
+        la strada per arrivarci.
+      -->
+      <a
+        v-if="props.controlli.lotto"
+        :href="props.controlli.lotto.url_esito"
+        class="inline-flex items-center gap-1 text-sm text-muted-foreground underline"
+      >
+        <Undo2 class="h-3.5 w-3.5" /> Esito, e se si può annullare
+      </a>
     </div>
   </div>
 
@@ -117,6 +131,9 @@ const props = defineProps<{
         </a>
         <a :href="props.controlli.url" class="text-sm text-muted-foreground underline">
           Rivedi i controlli
+        </a>
+        <a :href="props.controlli.lotto.url_esito" class="inline-flex items-center gap-1 text-sm text-muted-foreground underline">
+          <Undo2 class="h-3.5 w-3.5" /> Esito, e se si può annullare
         </a>
       </div>
     </div>

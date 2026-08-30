@@ -10,7 +10,7 @@
  *    spiegazione è un pulsante che genera una email di assistenza.
  */
 import { computed, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ImportGuide from '@/components/guides/ImportGuide.vue';
@@ -52,7 +52,56 @@ const props = defineProps<{
     generato_il?: string;
   };
   creati: number;
+  /**
+   * Il verdetto dell'annullamento, calcolato dal server **prima** del clic.
+   *
+   * `conteggi` è per livello e conta le entità che esistono davvero, non le righe del registro:
+   * il registro sopravvive alle entità, quindi contarlo darebbe un numero vero e una cosa falsa.
+   */
+  annullamento: {
+    possibile: boolean;
+    motivo: string | null;
+    aiuto: string | null;
+    impedimenti: Record<string, number>;
+    conteggi: Record<string, number>;
+    condominio: string | null;
+  };
 }>();
+
+// La conferma è **in linea**, come lo scarto nella hub: la domanda è breve e un modale per due
+// parole è un ostacolo in più su una cosa che l'utente ha già deciso. Qui il booleano basta —
+// a differenza della hub, che ha più lotti in pagina e deve tenere l'uuid di quello giusto.
+const staAnnullando = ref(false);
+const annulla = useForm({});
+
+/**
+ * Le etichette dei livelli, al singolare e al plurale.
+ *
+ * ⚠️ **Le due forme e non una.** La prima stesura aveva la sola forma plurale e a video usciva
+ * «1 esercizi», su un elenco che un amministratore legge prima di cancellare qualcosa. Un numero
+ * accanto a un plurale sbagliato fa sembrare l'elenco generato invece che scritto — ed è l'ultima
+ * cosa che serve nel punto in cui si chiede di fidarsi di un conteggio.
+ */
+const NOMI_LIVELLO: Record<string, [singolare: string, plurale: string]> = {
+  esercizi: ['esercizio', 'esercizi'],
+  capitoli: ['capitolo di spesa', 'capitoli di spesa'],
+  soggetti: ['persona', 'persone'],
+  unita: ['unità', 'unità'],
+  titolarita: ['legame persona-unità', 'legami persona-unità'],
+  tabelle: ['tabella millesimale', 'tabelle millesimali'],
+  saldi: ['saldo di apertura', 'saldi di apertura'],
+};
+
+const cosaSparisce = computed(() =>
+  Object.entries(props.annullamento.conteggi)
+    // Il condominio non entra nell'elenco: è il soggetto della frase, non uno degli addendi.
+    .filter(([livello]) => livello !== 'condominio')
+    .map(([livello, n]) => {
+      const forme = NOMI_LIVELLO[livello];
+
+      return `${n} ${forme ? forme[n === 1 ? 0 : 1] : livello}`;
+    }),
+);
 
 const mostraGuida = ref(false);
 
@@ -351,24 +400,68 @@ const conteggi = computed(() => livelli.value.reduce(
       <Card class="border-dashed">
         <CardContent class="space-y-1 pt-6">
           <h2 class="font-medium text-muted-foreground">Annullare questa importazione</h2>
-          <p class="text-sm text-muted-foreground">
-            <!--
-              ⚠️ Qui c'era «Il comando arriva con la 1.10.1», scritto quando la 1.10.1 era il
-              futuro. Adesso siamo alla 1.11 e quella riga era una scadenza mancata scritta in
-              schermata — la forma di bugia che si nota per prima, perché il numero di versione
-              l'amministratore ce l'ha in fondo alla pagina. Una promessa senza data è meglio di
-              una promessa con la data sbagliata.
-            -->
-            Ogni entità creata da questo lotto è annotata, quindi l'annullamento
-            <strong>sarà</strong> possibile finché nessuna operazione avrà usato questi dati — non
-            entro una scadenza, ma finché non servono a qualcos'altro.
-            <strong class="text-foreground">Il comando però non c'è ancora.</strong>
-          </p>
-          <p class="text-sm text-muted-foreground">
-            Se devi disfare adesso: le voci si tolgono dalle schermate del condominio — unità,
-            anagrafiche, tabelle, saldi — e il condominio intero si elimina dalla sua scheda, che
-            porta via con sé tutto quello che è entrato con questa importazione.
-          </p>
+
+          <!-- ✅ Si può: si dice cosa sparisce, con i numeri, e poi si chiede conferma. -->
+          <template v-if="props.annullamento.possibile">
+            <p class="text-sm text-muted-foreground">
+              Questa importazione ha creato
+              <strong class="text-foreground">{{ props.annullamento.condominio }}</strong>, e nessuno
+              ci ha ancora lavorato sopra: si può disfare per intero.
+            </p>
+            <p v-if="cosaSparisce.length" class="text-sm text-muted-foreground">
+              Spariranno il condominio e tutto quello che è entrato con lui —
+              {{ cosaSparisce.join(', ') }}. Le persone restano in rubrica se appartengono anche a
+              un altro condominio o se hanno un accesso al programma.
+            </p>
+
+            <p v-if="staAnnullando" class="pt-2 text-sm font-medium text-foreground">
+              Sicuro? Non si torna indietro: per riaverli dovrai importare di nuovo i file.
+            </p>
+
+            <div class="flex flex-wrap gap-2 pt-2">
+              <template v-if="staAnnullando">
+                <!--
+                  ⚠️ **`outline` e non `ghost`.** Con `ghost` era testo nudo accanto a un pulsante
+                  rosso pieno: la via d'uscita sembrava un'etichetta e l'unica cosa che si leggeva
+                  come premibile era quella distruttiva. È lo stesso difetto che questo percorso
+                  aveva già corretto sul pulsante «Escludi» del riconoscimento, con la stessa
+                  motivazione scritta lì accanto — e l'ho rifatto uguale. Il bordo la fa leggere
+                  per quello che è, restando comunque più discreta della conferma.
+                -->
+                <Button variant="outline" size="sm" @click="staAnnullando = false">Lascia stare</Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  :disabled="annulla.processing"
+                  @click="annulla.delete(route('import.annulla', { uuid: props.lotto.uuid }))"
+                >
+                  Sì, annulla l'importazione
+                </Button>
+              </template>
+              <Button v-else variant="outline" size="sm" @click="staAnnullando = true">
+                Annulla questa importazione
+              </Button>
+            </div>
+          </template>
+
+          <!--
+            ⛔ Non si può: si dice **perché**, e cosa fare al posto suo. Mai un pulsante grigio
+            senza spiegazione — una diagnosi senza cura lascia l'amministratore peggio di prima.
+          -->
+          <template v-else>
+            <p class="text-sm text-muted-foreground">
+              <strong class="text-foreground">{{ props.annullamento.motivo }}</strong>
+              {{ props.annullamento.aiuto }}
+            </p>
+            <ul
+              v-if="Object.keys(props.annullamento.impedimenti).length"
+              class="list-inside list-disc pt-1 text-sm text-muted-foreground"
+            >
+              <li v-for="(quante, cosa) in props.annullamento.impedimenti" :key="cosa">
+                {{ quante }} {{ cosa }}
+              </li>
+            </ul>
+          </template>
         </CardContent>
       </Card>
 

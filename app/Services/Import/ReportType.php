@@ -183,12 +183,20 @@ enum ReportType: string
             self::AnagraficaMillesimi => 'Persone · Unità · Tabelle millesimali',
             self::RipartoConsuntivo => 'Saldi di apertura, con il totale su cui quadrarli',
             self::BilancioConsuntivo => 'Struttura dei capitoli di spesa',
-            // L'archivio storico è rimandato alla 1.10.1. Il file resta utile — la testata
-            // porta condominio ed esercizio — ma promettere «archivio storico dei movimenti»
-            // e poi non parlarne più né in conferma né in esito è il modo più diretto di far
-            // credere a chi migra di aver perso dei pezzi.
-            self::Movimenti => 'Solo condominio ed esercizio: lo storico non entra nella 1.10',
-            self::RateVersate => 'Solo condominio ed esercizio: lo storico non entra nella 1.10',
+            // L'archivio storico dei movimenti non è ancora implementato. Il file resta utile —
+            // la testata porta condominio ed esercizio — ma promettere «archivio storico dei
+            // movimenti» e poi non parlarne più né in conferma né in esito è il modo più diretto
+            // di far credere a chi migra di aver perso dei pezzi.
+            //
+            // ⚠️ **Senza il numero di versione, e non è pedanteria.** Qui c'era «non entra nella
+            // 1.10», scritto quando la 1.10 era il futuro: la 1.10 è uscita il 26/08/2026 e la
+            // 1.10.1 è stata fusa nella 1.11, quindi la frase è rimasta a promettere una cosa su
+            // una versione già passata. Se ne è accorto un giro a video il 30/08/2026, non un
+            // test — nessuno può esserlo. La regola del flusso di lavoro è scritta: *le guide
+            // descrivono il comportamento attuale, al presente, senza numeri di versione*, perché
+            // un numero sparso nel testo invecchia da solo a ogni rilascio.
+            self::Movimenti => 'Solo condominio ed esercizio: lo storico dei movimenti non entra ancora',
+            self::RateVersate => 'Solo condominio ed esercizio: lo storico dei versamenti non entra ancora',
             self::ElencoAttivita => 'Niente: Kondomanager non importa le pratiche',
             self::ModelloManuale => 'Condominio · Unità · Persone · Tabelle millesimali · Saldi',
         };

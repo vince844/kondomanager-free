@@ -147,7 +147,26 @@ Route::get('/fetch-condomini', FetchCondominiController::class)
 | Il permesso è quello della creazione condomìni: chi può importare sta creando
 | condomìni, anagrafiche e unità in blocco.
 */
-Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea condomini'])
+/*
+ * ⚠️ **«Importa dati», un permesso suo — deciso da Vincenzo il 30/08/2026.**
+ *
+ * Qui c'era `Crea condomini`, che era il permesso più vicino quando l'importatore è nato ma non
+ * descrive quello che fa: l'importazione non crea un condominio, **crea un archivio** — unità,
+ * persone, titolarità, tabelle, saldi — e da questa beta lo **disfa** anche.
+ *
+ * La prima strada era `role:amministratore`, ed è stata scartata misurandone la conseguenza:
+ * avrebbe reso **codice morto** la proprietà del lotto costruita nella beta.3 (un lotto è di chi
+ * l'ha caricato, e un collega non lo apre), perché fra amministratori quella guardia tace di
+ * proposito. Il permesso ottiene la stessa cosa senza perdere la protezione: l'amministratore lo
+ * ha per costruzione (`AMMINISTRATORE => PermissionEnum::cases()`), il collaboratore no.
+ *
+ * ⚠️ **Resta un cambio di comportamento da dichiarare nel changelog:** su un'installazione dove un
+ * collaboratore ha «Crea condomini», da oggi non importa più finché qualcuno non gli dà «Importa
+ * dati». *(Misurato su questo database: zero utenti in quella condizione.)* Alle installazioni
+ * esistenti il permesso arriva con `SystemFinalizer::finalize()`, che lancia già
+ * `RolesAndPermissionsSeeder` — la trappola della beta.59 qui è già chiusa.
+ */
+Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Importa dati'])
     ->prefix('/importa-dati')
     ->name('import.')
     ->group(function () {
@@ -187,8 +206,13 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea c
             ->name('rapporto');
 
         // Chiude una sessione lasciata a metà. Non annulla ciò che è già entrato in archivio:
-        // quello ha una condizione da valutare, e arriva con la 1.10.1.
+        // quello è l'altra rotta, qui sotto, e ha una condizione da valutare.
         Route::delete('/{uuid}', [ImportController::class, 'scarta'])->name('scarta');
+
+        // Disfa un'importazione **completata**. Sta dopo `scarta` perché sono due cose diverse e
+        // il prodotto le dice diverse: si scarta ciò che non è mai entrato, si annulla ciò che è
+        // entrato. La condizione la valuta `AnnullamentoImportazione`, non questa riga.
+        Route::delete('/{uuid}/annulla', [ImportController::class, 'annulla'])->name('annulla');
 
         Route::put('/{uuid}/file/{file}/tipo', [ImportController::class, 'forzaTipo'])
             ->name('file.tipo');

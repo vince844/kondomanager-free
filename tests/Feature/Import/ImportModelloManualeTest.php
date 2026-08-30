@@ -43,7 +43,12 @@ function utenteModello(): User
     }
 
     $u = User::factory()->create();
+    // ⚠️ **Dal 30/08/2026 serve «Importa dati», non più «Crea condomini».** L'amministratore lo ha
+    // per costruzione; qui si concede esplicitamente perché il caso non passa da un ruolo.
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Importa dati', 'guard_name' => 'web']);
     $u->givePermissionTo('Crea condomini');
+    $u->givePermissionTo('Importa dati');
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
     return $u;
 }
@@ -170,6 +175,7 @@ function modelloDiProva(array $sovrascrivi = []): string
 {
     return modelloCompilato(...array_merge([
         'copertina' => [
+            'condomini' => 1,
             'condominio' => 'CONDOMINIO SCRITTO A MANO',
             'codice_fiscale' => '97555000188',
             'indirizzo' => 'Via del Modello 10, Roma',
@@ -219,7 +225,14 @@ function caricaModello(User $come, string $percorso): ImportBatch
 
     test()->actingAs($come)->post(route('import.store'), ['file' => [$file]]);
 
-    return ImportBatch::latest()->first();
+    // ⚠️ **`orderByDesc('id')` e non `latest()`, ed è costato un test che provava il nulla.**
+    // `latest()` ordina per `created_at`: due caricamenti nello stesso secondo sono a **pari
+    // merito**, e il database può restituire il primo. Finché ogni caso caricava un file solo la
+    // differenza non esisteva; il primo test che ne carica **due** — il giro completo
+    // annulla-e-reimporta, in fondo a questo file — riceveva due volte lo **stesso** lotto, e
+    // passava confermando due volte quello di prima. Tre sabotaggi al prodotto lo lasciavano
+    // verde, ed è così che se n'è accorto qualcuno. La chiave primaria non ha pari merito.
+    return ImportBatch::orderByDesc('id')->first();
 }
 
 /** Tutti i codici dei rilievi, di qualunque foglio. */
@@ -1038,4 +1051,238 @@ it('lo mostra invece a chi importa da Danea, dove quella stampa esiste', functio
             ->has('passi', 8)
             ->where('passi', fn ($passi) => collect($passi)->pluck('chiave')->contains('capitoli'))
         );
+});
+
+
+
+/*
+|--------------------------------------------------------------------------
+| Il giro completo: genera → compila → importa → annulla → reimporta
+|--------------------------------------------------------------------------
+|
+| Scritti il 30/08/2026 aprendo la 1.11.0-beta.6, su una preoccupazione di Vincenzo: «dobbiamo
+| stare attenti a non rompere quello che avevamo fatto nella beta.5 perché funzionava bene».
+|
+| ## Perché stanno in QUESTO file e non in uno loro
+|
+| Perché è qui che vivono `modelloDiProva()`, `caricaModello()` e `modelloCompilato()`, e Pest
+| carica i file di test **uno per uno**: un file nuovo che li chiamasse funzionerebbe lanciando la
+| suite intera e morirebbe di errore fatale lanciando solo sé stesso — che è il modo in cui si
+| lanciano quando si sta lavorando. L'alternativa era duplicare centoventi righe di costruzione
+| del modello, cioè due copie divergenti di «come si compila», che è precisamente il difetto che
+| questo progetto insegue da trenta beta.
+|
+| ## Cosa presidiano, ed è una cosa sola vista da due lati
+|
+| Il rischio dell'annullamento **non è rompere il parser**: è **lasciare residui**. Un
+| annullamento che dimentica qualcosa non si vede subito — si vede alla *seconda* importazione,
+| che trova righe «già presenti» e chiede decisioni che nessuno ha mai posto. È la lezione della
+| beta.47: *«un'operazione fallita deve lasciare l'archivio come l'ha trovato, o il tentativo
+| successivo non è un ritentativo: è un caso nuovo, più difficile del primo»*.
+|
+| Quindi il giro completo prova **tutte e due** le preoccupazioni con una prova sola: se
+| l'annullamento lascia residui è rosso, e se il modello o il parser si rompono è rosso uguale.
+|
+| ## Cosa NON coprono
+|
+| - **Non provano il regime B** (importazione dentro un condominio che preesisteva): il modello
+|   manuale porta la copertina, quindi crea sempre il condominio. Il caso «scelto e non creato» —
+|   quello in cui `import_batches.condominio_id` non basta a decidere — vuole un corpus Danea
+|   senza testata, e non passa da qui.
+| - **Non provano i rami `unito` e `saltato`**: il giro non incontra duplicati da risolvere. Sui
+|   quattro lotti veri a database, misurati il 30/08/2026, **l'unica azione registrata è `creato`**:
+|   quei due rami non sono mai stati esercitati, né qui né sui dati reali.
+| - **Non dicono niente sui saldi in centesimi oltre ai due valori del modello di prova.**
+|
+| ## Cosa la sabotatura ha provato, e cosa NON è riuscita a provare
+|
+| *Scritto il 30/08/2026, perché una prova che non si è vista fallire non è una prova.*
+|
+| - **Il primo caso morde**: cambiando il nome di un foglio dentro `ModelloManualeWriter` diventa
+|   rosso, insieme a mezzo file. È la fedeltà fra le due metà della promessa della beta.5, ed è
+|   esattamente ciò che deve presidiare.
+| - **Il secondo caso non l'ho fatto diventare rosso sabotando il prodotto**, e la spiegazione non
+|   è che non guardi: è che la proprietà è **difesa in profondità**. Tolta di mano la domanda sul
+|   duplicato del condominio, si ferma il livello **esercizi**; tolto pure il riconoscimento dei
+|   soggetti, si ferma comunque. Ogni livello rifiuta di duplicare per conto proprio, e un
+|   sabotaggio a un punto solo sposta la fermata al punto dopo. Misurato: sotto sabotaggio il
+|   rapporto passa da uno a due livelli e lo stato resta `parziale`.
+| - **Ma l'asserzione sa fallire**, ed è stato verificato con un controllo positivo: facendo
+|   importare al secondo giro un condominio **diverso**, il caso diventa rosso su
+|   `'condomini' => 2`.
+| - ⚠️ **E il tentativo di sabotarlo ha trovato due difetti veri, che rileggere non aveva
+|   trovato.** Il primo era nella fotografia, che leggeva `Condominio::first()?->nome` e quindi
+|   **non avrebbe visto un secondo condominio**. Il secondo era in `caricaModello()`, che usava
+|   `latest()`: vedi il commento là sopra. Finché il sabotaggio non è stato tentato, questi due
+|   test passavano **entrambi per il motivo sbagliato**.
+*/
+
+/**
+ * La fotografia dell'archivio: ciò che deve tornare identico dopo annulla-e-reimporta.
+ *
+ * ⚠️ **Nessun id, e i valori ordinati.** Due importazioni successive scrivono gli stessi dati con
+ * chiavi diverse: un confronto che includesse gli id sarebbe rosso per costruzione, e quello è il
+ * modo più veloce per far disattivare una prova. Si confronta ciò che l'amministratore vedrebbe.
+ *
+ * @return array<string, mixed>
+ */
+function fotografiaArchivio(): array
+{
+    $saldi = Saldo::pluck('saldo_iniziale')->map(fn ($v) => (int) $v)->sort()->values()->all();
+    $unita = Immobile::pluck('nome')->sort()->values()->all();
+    $persone = Anagrafica::pluck('nome')->sort()->values()->all();
+    $tabelle = Tabella::pluck('nome')->sort()->values()->all();
+
+    return [
+        // ⚠️ **Il conteggio, non solo il nome del primo.** La prima stesura leggeva
+        // `Condominio::first()?->nome` e basta: un secondo condominio creato per sbaglio non
+        // avrebbe cambiato la fotografia di una virgola. L'ha trovato il tentativo di sabotare
+        // la prova, non la rilettura — ed è il motivo per cui il sabotaggio si fa.
+        'condomini' => Condominio::count(),
+        'condominio' => Condominio::first()?->nome,
+        'esercizi' => Esercizio::count(),
+        'unita' => $unita,
+        'persone' => $persone,
+        'tabelle' => $tabelle,
+        'saldi' => $saldi,
+        'titolarita' => \Illuminate\Support\Facades\DB::table('anagrafica_immobile')->count(),
+    ];
+}
+
+it('il modello compilato entra in archivio, ed è questa la fotografia che l\'annullamento dovrà saper ripristinare', function () {
+    $utente = utenteModello();
+    $batch = caricaModello($utente, modelloDiProva());
+
+    $this->actingAs($utente)->post(route('import.conferma', $batch->uuid));
+
+    expect($batch->fresh()->stato)->toBe('completato')
+        ->and(fotografiaArchivio())->toBe([
+            'condomini' => 1,
+            'condominio' => 'CONDOMINIO SCRITTO A MANO',
+            'esercizi' => 1,
+            // ⚠️ Il nome porta la tipologia davanti alla sigla: è l'importatore a comporlo così,
+            // non il file. Misurato, non supposto — la sigla nuda («B1/1») era la mia ipotesi.
+            'unita' => ['appartamento B1/1', 'appartamento B1/2', 'negozio NEG'],
+            'persone' => ['BIANCHI ANNA', 'GIALLI SPA', 'ROSSI MARIO', 'VERDI LUCA'],
+            'tabelle' => ['PROPRIETA GENERALE', 'SCALE'],
+            // −45,00 € e 120,50 €, in centesimi interi come vuole la convenzione.
+            'saldi' => [-4500, 12050],
+            'titolarita' => 4,
+        ]);
+
+    // Il registro dice diciassette righe, e **nessun capitolo**: il modello non ha il foglio del
+    // preventivo, tolto nella beta.4 perché il preventivo è ciò che l'assemblea sta per
+    // deliberare. Se un giorno comparisse un capitolo qui, vorrebbe dire che quel foglio è
+    // tornato senza che nessuno l'abbia deciso.
+    expect(\Illuminate\Support\Facades\DB::table('import_batch_items')
+        ->where('import_batch_id', $batch->id)->count())->toBe(17)
+        ->and(\Illuminate\Support\Facades\DB::table('import_batch_items')
+            ->where('import_batch_id', $batch->id)->where('livello', 'capitoli')->count())->toBe(0);
+});
+
+it('rifare la stessa importazione senza annullarla non duplica niente: si ferma in «parziale»', function () {
+    // ⚠️ Questo caso **non riguarda l'annullamento**: fotografa la protezione che c'è **già**, ed
+    // è quella che la beta.6 non deve rompere. Misurato il 30/08/2026: il secondo giro non scrive
+    // una riga in più e il lotto resta `parziale` invece di dichiararsi completato.
+    //
+    // Serve anche da controprova al caso qui sotto: se dopo un annullamento il secondo giro si
+    // fermasse **allo stesso modo**, vorrebbe dire che l'annullamento non ha tolto niente.
+    $utente = utenteModello();
+
+    $primo = caricaModello($utente, modelloDiProva());
+    $this->actingAs($utente)->post(route('import.conferma', $primo->uuid));
+    $dopoIlPrimo = fotografiaArchivio();
+
+    $secondo = caricaModello($utente, modelloDiProva());
+    $this->actingAs($utente)->get(route('import.verifica', $secondo->uuid));
+    $this->actingAs($utente)->post(route('import.conferma', $secondo->uuid));
+
+    expect($secondo->fresh()->stato)->toBe('parziale')
+        ->and(fotografiaArchivio())->toBe($dopoIlPrimo);
+});
+
+it('dopo l\'annullamento, la stessa importazione rifatta ridà la fotografia identica', function () {
+    // ⚠️ **L'annullamento chiede «Elimina condomini», non «Crea condomini».** In regime A disfare
+    // vuol dire cancellare un condominio, e chi non può cancellarne uno dalla sua scheda non deve
+    // poterlo fare da qui: è la regola della beta.71 — *due strade per la stessa cosa devono dare
+    // lo stesso esito* — applicata al cancello invece che all'esito.
+    Permission::firstOrCreate(['name' => 'Elimina condomini', 'guard_name' => 'web']);
+    $utente = utenteModello();
+    $utente->givePermissionTo('Elimina condomini');
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+    $utente = $utente->fresh();
+
+    $primo = caricaModello($utente, modelloDiProva());
+    $this->actingAs($utente)->post(route('import.conferma', $primo->uuid));
+    $riferimento = fotografiaArchivio();
+
+    $this->actingAs($utente)->delete(route('import.annulla', $primo->uuid))->assertRedirect();
+
+    // 1. L'archivio è tornato vuoto. Non «quasi»: le titolarità e le anagrafiche sono la parte
+    //    che il registro non sa raggiungere da solo (§3.1 e §3.2 della scheda), quindi sono
+    //    esattamente quelle che un annullamento incompleto lascia indietro.
+    expect(Condominio::count())->toBe(0)
+        ->and(Immobile::count())->toBe(0)
+        ->and(Tabella::count())->toBe(0)
+        ->and(Saldo::count())->toBe(0)
+        ->and(\Illuminate\Support\Facades\DB::table('anagrafica_immobile')->count())->toBe(0)
+        ->and($primo->fresh()->stato)->not->toBe('completato');
+
+    // 2. E il secondo giro è un ritentativo vero, non un caso nuovo: arriva in fondo — non in
+    //    `parziale` come nel caso qui sopra — e ricostruisce la stessa identica fotografia.
+    $secondo = caricaModello($utente, modelloDiProva());
+    $this->actingAs($utente)->get(route('import.verifica', $secondo->uuid));
+    $this->actingAs($utente)->post(route('import.conferma', $secondo->uuid));
+
+    expect($secondo->fresh()->stato)->toBe('completato')
+        ->and(fotografiaArchivio())->toBe($riferimento);
+})->skip(
+    // ⚠️ **Uno `skip` con la condizione scritta dentro**, che si accende da solo il giorno in cui
+    // la rotta esiste: è la forma che la beta.43 ha promosso, e l'opposto dello `skip` con
+    // motivazione «si verifica a mano» che la beta.75 ha vietato.
+    //
+    // ⚠️ **Ma ha un difetto che va detto:** se l'annullamento prenderà un nome di rotta diverso da
+    // `import.annulla`, questa condizione resterà vera per sempre e la prova non si accenderà —
+    // cioè diventerebbe una guardia verde che non guarda niente, che è il difetto che questa
+    // stessa giornata ha corretto in `FlussoDiLavoroNonRestaIndietroTest`. Chi costruisce
+    // l'annullamento controlli **questa riga** prima di dichiararlo finito.
+    fn () => ! \Illuminate\Support\Facades\Route::has('import.annulla'),
+    'L\'annullamento non esiste ancora: scheda in docs/annullamento_importazione.md, Coda 96.'
+);
+
+
+
+
+
+
+
+
+
+
+
+it('un\'importazione appena fatta è sempre annullabile: nessun impedimento scatta da solo', function () {
+    // ⚠️ **È la guardia dell'elenco degli impedimenti, e senza di lei quell'elenco è un'ipotesi.**
+    //
+    // `AnnullamentoImportazione::SEGNI_DI_LAVORO` è una lista scritta a mano: dice quali tabelle
+    // significano «qualcuno ci ha lavorato sopra». Ha **due** modi di sbagliare, opposti:
+    //
+    // - **corta** — e allora l'annullamento cancella in silenzio roba che non ha importato. È il
+    //   difetto che la revisione avversariale del 30/08/2026 ha trovato: ne sorvegliava sei su
+    //   ventuno tabelle a cascata, e sparivano documenti, comunicazioni, segnalazioni e i
+    //   contributi già versati;
+    // - **lunga** — e allora nomina qualcosa che **l'importazione stessa crea**, e da quel momento
+    //   nessuna importazione è più annullabile: la funzione muore senza che un test si accenda.
+    //
+    // Questo caso presidia il secondo verso, che è quello invisibile. Il primo lo presidia la
+    // domanda «cosa scende a cascata», e va rifatta quando si aggiunge una tabella al condominio.
+    $utente = utenteModello();
+    $batch = caricaModello($utente, modelloDiProva());
+    $this->actingAs($utente)->post(route('import.conferma', $batch->uuid));
+
+    $verdetto = app(\App\Services\Import\AnnullamentoImportazione::class)->verdetto($batch->fresh());
+
+    expect($verdetto->impedimenti)->toBe([],
+        'Un\'importazione appena conclusa risulta già non annullabile: '.
+        'una voce di SEGNI_DI_LAVORO nomina qualcosa che l\'importazione crea da sé.'
+    )->and($verdetto->possibile)->toBeTrue();
 });

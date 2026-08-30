@@ -298,12 +298,24 @@ defineEmits(['update:open']);
               solo l'ultima.
             </p>
             <p class="mt-2">
-              Se qualcosa era già entrato in archivio, quello <strong>resta</strong>: toglierlo
-              sarebbe l'annullamento, che non ha una scadenza ma una condizione — finché nessuna
-              operazione ha usato quei dati — e <strong>non è ancora costruito</strong>. Per
-              disfare adesso: le voci si tolgono dalle schermate del condominio, e il condominio
-              intero si elimina dalla sua scheda, portando via tutto ciò che è entrato con quella
-              importazione.
+              Se invece è già entrato qualcosa in archivio, quella si <strong>annulla</strong>, e
+              il pulsante sta sulla schermata di esito — ci torni dal cruscotto del condominio,
+              alla voce «Esito, e se si può annullare». Sparisce il condominio e tutto quello che è
+              entrato con lui: unità, persone, tabelle, saldi. Le persone restano in rubrica se
+              appartengono anche a un altro condominio o se hanno un accesso al programma.
+            </p>
+            <p class="mt-2">
+              <strong>Non c'è una scadenza, c'è una condizione:</strong> si annulla finché nessuno
+              ci ha lavorato sopra. Appena registri una cassa, una fattura o un piano rate su quel
+              condominio, l'annullamento si ferma e ti dice <em>cosa</em> lo impedisce — perché
+              toglierebbe anche il lavoro fatto dopo. Da lì in poi decidi tu come procedere: te lo
+              elenco, non lo tolgo io.
+            </p>
+            <p class="mt-2">
+              Un caso resta fuori, ed è detto a schermo: se l'importazione è entrata in un
+              <strong>condominio che esisteva già</strong>, annullarla vorrebbe dire cancellare
+              anche tutto quello che ci avevi dentro da prima. Lì le voci importate si tolgono una
+              per una dalle schermate del condominio.
             </p>
           </section>
 

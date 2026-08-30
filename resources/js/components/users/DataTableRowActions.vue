@@ -10,6 +10,7 @@ import { trans } from 'laravel-vue-i18n'
 import { Trash2, FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
 import type { User } from '@/types/users';
 import { usePermission } from '@/composables/permissions'
+import { Permission } from '@/enums/Permission'
 
 const props = defineProps<{ user: User }>()
 
@@ -23,10 +24,10 @@ const { hasPermission } = usePermission()
  * comando che finirebbe in un errore, che è la trappola descritta nella lezione della beta.53.
  */
 const puoSospendere = computed(
-  () => hasPermission(['Sospendi utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
+  () => hasPermission([Permission.SUSPEND_USERS]) && !props.user.is_self && !props.user.is_ultimo_amministratore
 )
 
-const puoRiattivare = computed(() => hasPermission(['Sospendi utenti']))
+const puoRiattivare = computed(() => hasPermission([Permission.SUSPEND_USERS]))
 
 const puoEliminare = computed(
   () => hasPermission(['Elimina utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
