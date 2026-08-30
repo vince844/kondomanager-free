@@ -104,6 +104,8 @@ final class LivelloSaldi implements LivelloImport
                 'Serve il «Consuntivo ripartizioni per unità / anagrafica» dell\'ultimo esercizio '
                 .'chiuso: è la stampa che porta il saldo finale di ogni condòmino, ed è anche '
                 .'quella che contiene il totale su cui verificarli.',
+                // Un file che non c'è non è un'incoerenza: è una scelta di chi importa.
+                bloccante: false,
             );
         }
 
@@ -127,6 +129,35 @@ final class LivelloSaldi implements LivelloImport
         $avvisi = [];
         $daScrivere = [];
 
+        // ⚠️ **Nessuna persona importata, e saldi intestati a qualcuno: si dice una volta sola.**
+        //
+        // Senza questa guardia ogni riga intestata produceva `saldi.soggetto_non_trovato` — un
+        // errore per riga, tutti uguali — e il messaggio diceva «Il riparto porta un saldo per…»,
+        // nominando una stampa che nel percorso del modello compilato a mano **non esiste**.
+        // Con venti condòmini erano venti errori identici che raccontavano il file sbagliato.
+        //
+        // Il livello si ferma comunque, ed è giusto: scrivere solo i saldi solidali e lasciare
+        // fuori gli intestati vorrebbe dire mettere in archivio un pregresso più leggero del vero,
+        // che è precisamente il difetto che questo livello esiste per impedire.
+        $intestati = array_filter($dati->righe, fn (CanonicalSaldo $s) => ! $s->isSolidale());
+
+        if ($soggetti === [] && $intestati !== []) {
+            return EsitoCommit::bloccato(Rilievo::errore(
+                'saldi.nessuna_persona_importata',
+                sprintf(
+                    '%d saldi sono intestati a una persona, ma non è stata importata nessuna persona.',
+                    count($intestati),
+                ),
+                $dati->fonte === 'foglio dei saldi'
+                    ? 'Il foglio «2 persone» del modello è vuoto: compilalo e ricarica il file. '
+                    .'Un saldo intestato ha bisogno di qualcuno a cui essere intestato — se invece '
+                    .'quelle posizioni seguono la casa e non la persona, lascia vuota la colonna '
+                    .'«persona» e diventano saldi solidali sull\'unità.'
+                    : 'Carica anche l\'elenco unità, che è il file da cui arrivano le persone: da '
+                    .'solo il riparto porta i nomi ma non le anagrafiche.',
+            ));
+        }
+
         foreach ($dati->righe as $saldo) {
             $immobile = $this->risolviUnita($saldo, $unita, $rilievi);
 
@@ -137,7 +168,7 @@ final class LivelloSaldi implements LivelloImport
             $anagrafica = null;
 
             if (! $saldo->isSolidale()) {
-                $anagrafica = $this->risolviSoggetto($saldo, $soggetti, $rilievi, $avvisi);
+                $anagrafica = $this->risolviSoggetto($saldo, $soggetti, $rilievi, $avvisi, $dati->fonte === 'foglio dei saldi');
 
                 if ($anagrafica === null) {
                     continue;
@@ -169,7 +200,7 @@ final class LivelloSaldi implements LivelloImport
             );
         }
 
-        $daScrivere = $this->accorpaSolidali($daScrivere);
+        $daScrivere = $this->accorpaPerPosizione($daScrivere, $avvisi);
 
         $creati = 0;
         $saltati = 0;
@@ -200,7 +231,11 @@ final class LivelloSaldi implements LivelloImport
                 'descrizione' => match (true) {
                     $saldo->daTitolareCessato => 'Saldo di un titolare non più attuale, importato sull\'unità (art. 63 disp. att. c.c.)',
                     $saldo->daNomeDiviso => 'Posizione di un nome doppio diviso in due persone: resta in solido sull\'unità',
-                    default => null,
+                    // La causale la porta solo il modello compilato a mano — nelle stampe di
+                    // Danea non esiste — ed è l'unico posto in cui sopravvive il *perché* di una
+                    // posizione aperta. Sta in coda perché i due casi sopra descrivono come il
+                    // saldo è finito lì, che a distanza di un anno conta di più.
+                    default => $saldo->causale,
                 },
             ]);
 
@@ -257,51 +292,61 @@ final class LivelloSaldi implements LivelloImport
     }
 
     /**
-     * Un'unità ha **un solo** saldo solidale per esercizio e gestione.
+     * Una posizione sola per **(unità, persona)** — e per (unità, nessuno), che è il solidale.
      *
-     * Lo dice l'architettura dei Saldi Iniziali (`docs/architettura_saldi_iniziali.md` §2: «al
-     * massimo un saldo solidale per (esercizio, gestione, immobile)»), e lo dice il dominio: il
-     * saldo solidale è il debito che segue **la casa**, quindi ce n'è uno per casa — non uno
-     * per ciascuno dei titolari che si sono succeduti.
+     * ## Il caso solidale, che c'era già
      *
-     * Un'unità che ha cambiato proprietario e inquilino nello stesso esercizio produce due
-     * righe `ex …` nel riparto, ed è il caso normale, non un caso limite. La prima stesura di
-     * questo livello le scriveva come due saldi: il secondo veniva poi scartato dal controllo
-     * anti-duplicato, **il suo importo spariva e la quadratura falliva** — cioè il difetto si
-     * annunciava da solo, ma solo grazie alla quadratura. Senza quel controllo, sarebbe finito
-     * in archivio un pregresso più leggero del vero, senza che niente lo segnalasse.
+     * Un'unità ha **un solo** saldo solidale per esercizio e gestione. Lo dice l'architettura dei
+     * Saldi Iniziali (`docs/architettura_saldi_iniziali.md` §2) e lo dice il dominio: il saldo
+     * solidale è il debito che segue **la casa**, quindi ce n'è uno per casa — non uno per
+     * ciascuno dei titolari che si sono succeduti. Un'unità che ha cambiato proprietario e
+     * inquilino nello stesso esercizio produce due righe `ex …` nel riparto, ed è il caso
+     * normale: la prima stesura le scriveva come due saldi, il secondo veniva scartato dal
+     * controllo anti-duplicato, **il suo importo spariva e la quadratura falliva**.
+     *
+     * ## Il caso intestato, che mancava
+     *
+     * ⚠️ **Lo stesso identico difetto valeva per le righe con una persona, e lì la quadratura non
+     * lo annunciava.** Trovato dalla revisione avversariale della beta.5: due righe intestate alla
+     * stessa persona sulla stessa unità — «conguaglio 2024/2025 € 120,50» e «rate non versate
+     * € 300,00», che è **esattamente quello che il modello compilabile a mano invita a scrivere** —
+     * arrivavano intere al ciclo di scrittura; la prima creava il `Saldo`, la seconda trovava
+     * l'esistente su (esercizio, immobile, gestione, anagrafica) e finiva in `saltati`. I € 300
+     * non entravano, il lotto si chiudeva «completato», e l'unica traccia era un contatore che
+     * ovunque nel prodotto significa «era già in archivio, non l'ho toccato».
+     *
+     * Sommare è l'unica lettura corretta: in archivio una persona ha **una** posizione per
+     * esercizio e gestione, e le due righe del file sono due pezzi della stessa posizione. Le
+     * causali si uniscono, così il perché non si perde. E si dice, perché il file diceva un'altra
+     * cosa.
      *
      * @param  list<array{0: CanonicalSaldo, 1: Model, 2: Model|null}>  $daScrivere
+     * @param  list<Rilievo>  $avvisi
      * @return list<array{0: CanonicalSaldo, 1: Model, 2: Model|null}>
      */
-    private function accorpaSolidali(array $daScrivere): array
+    private function accorpaPerPosizione(array $daScrivere, array &$avvisi): array
     {
-        $solidali = [];
-        $risultato = [];
+        $accumulate = [];
+        $fusi = 0;
 
-        foreach ($daScrivere as $voce) {
-            [$saldo, $immobile, $anagrafica] = $voce;
+        foreach ($daScrivere as [$saldo, $immobile, $anagrafica]) {
+            // La chiave è la stessa su cui il ciclo di scrittura cerca il duplicato: se due righe
+            // collidono là, devono essersi già fuse qui.
+            $chiave = $immobile->getKey().'|'.($anagrafica?->getKey() ?? 'solidale');
 
-            if ($anagrafica !== null) {
-                $risultato[] = $voce;
-
-                continue;
-            }
-
-            $chiave = $immobile->getKey();
-
-            if (! isset($solidali[$chiave])) {
-                $solidali[$chiave] = [$saldo, $immobile, null, 1];
+            if (! isset($accumulate[$chiave])) {
+                $accumulate[$chiave] = [$saldo, $immobile, $anagrafica];
 
                 continue;
             }
 
             /** @var CanonicalSaldo $accumulato */
-            $accumulato = $solidali[$chiave][0];
+            $accumulato = $accumulate[$chiave][0];
+            $fusi++;
 
-            $solidali[$chiave][0] = new CanonicalSaldo(
+            $accumulate[$chiave][0] = new CanonicalSaldo(
                 immobileRef: $accumulato->immobileRef,
-                soggettoNome: null,
+                soggettoNome: $accumulato->soggettoNome,
                 importoCents: $accumulato->importoCents + $saldo->importoCents,
                 daTitolareCessato: $accumulato->daTitolareCessato || $saldo->daTitolareCessato,
                 rigaSorgente: $accumulato->rigaSorgente,
@@ -310,15 +355,47 @@ final class LivelloSaldi implements LivelloImport
                 // fonde con un saldo di un titolare cessato sulla stessa unità perdeva in
                 // silenzio l'avviso e la descrizione che lo segnalano.
                 daNomeDiviso: $accumulato->daNomeDiviso || $saldo->daNomeDiviso,
+                // Due posizioni che si fondono sulla stessa unità hanno due motivi diversi, e
+                // tenerne uno solo sarebbe scegliere a caso quale metà della storia raccontare.
+                causale: $this->uniscoCausali($accumulato->causale, $saldo->causale),
             );
-            $solidali[$chiave][3]++;
         }
 
-        foreach ($solidali as $voce) {
-            $risultato[] = [$voce[0], $voce[1], $voce[2]];
+        if ($fusi > 0) {
+            $avvisi[] = Rilievo::avviso(
+                'saldi.righe_fuse_su_una_posizione',
+                sprintf(
+                    $fusi === 1
+                        ? 'Due righe di saldo riguardavano la stessa posizione: le ho sommate in una sola.'
+                        : '%d righe di saldo si sovrapponevano ad altre sulla stessa posizione: le ho sommate.',
+                    $fusi + 1,
+                ),
+                'In Kondomanager una persona ha una posizione sola per esercizio, quindi due righe '
+                .'della stessa persona sulla stessa unità sono due pezzi dello stesso importo. Le '
+                .'causali le trovi unite nella descrizione del saldo: se dovevano restare distinte, '
+                .'la strada è registrarle come movimenti, non come saldi di apertura.',
+            );
         }
 
-        return $risultato;
+        return array_values($accumulate);
+    }
+
+    /**
+     * Due causali che si fondono in una riga sola, senza ripetere la stessa parola due volte.
+     *
+     * Il caso frequente non è «due motivi diversi» ma **lo stesso motivo scritto identico** su
+     * due righe della stessa unità — «conguaglio 2024/2025» per il proprietario e per
+     * l'inquilino. Concatenare alla cieca produrrebbe «conguaglio 2024/2025 · conguaglio
+     * 2024/2025», che sembra un difetto anche quando non lo è.
+     */
+    private function uniscoCausali(?string $prima, ?string $seconda): ?string
+    {
+        $pezzi = array_values(array_unique(array_filter(
+            [$prima, $seconda],
+            fn (?string $c) => $c !== null && trim($c) !== '',
+        )));
+
+        return $pezzi === [] ? null : implode(' · ', $pezzi);
     }
 
     /**
@@ -364,7 +441,19 @@ final class LivelloSaldi implements LivelloImport
      */
     private function risolviUnita(CanonicalSaldo $saldo, array $unita, array &$rilievi): ?Model
     {
-        $cercato = ltrim(trim($saldo->immobileRef), '0');
+        // ⚠️ **La chiave intera vince, quando c'è.** Il riparto di Danea porta solo il
+        // progressivo, ed è per quello che esiste la ricerca per coda qui sotto; il modello
+        // compilato a mano porta invece la chiave completa, e sulla coda si romperebbe: una
+        // sigla come «A-2» diventa la chiave `1-0-A-2`, la cui coda è «2» e non «A-2». Cercarla
+        // per intero non è solo più preciso — è **non ambiguo per costruzione**, mentre la
+        // ricerca per coda può trovare più candidati e allora si ferma a chiedere.
+        $chiaveIntera = trim($saldo->immobileRef);
+
+        if (isset($unita[$chiaveIntera])) {
+            return $unita[$chiaveIntera];
+        }
+
+        $cercato = ltrim($chiaveIntera, '0');
 
         $candidati = [];
 
@@ -425,7 +514,7 @@ final class LivelloSaldi implements LivelloImport
      * @param  list<Rilievo>  $rilievi
      * @param  list<Rilievo>  $avvisi
      */
-    private function risolviSoggetto(CanonicalSaldo $saldo, array $soggetti, array &$rilievi, array &$avvisi): ?Model
+    private function risolviSoggetto(CanonicalSaldo $saldo, array $soggetti, array &$rilievi, array &$avvisi, bool $fonteManuale): ?Model
     {
         $cercato = $this->normalizzaNome($saldo->soggettoNome ?? '');
 
@@ -459,11 +548,17 @@ final class LivelloSaldi implements LivelloImport
             }
         }
 
+        // ⚠️ Il rimedio dipende da **da dove arrivano i saldi**: nominare «il riparto» a chi ha
+        // compilato un foglio Excel a mano lo manda a cercare un file che non ha mai avuto.
         $rilievi[] = Rilievo::errore(
             'saldi.soggetto_non_trovato',
-            sprintf('Il riparto porta un saldo per «%s», che non è fra le persone importate.', $saldo->soggettoNome),
-            'Il riparto e l\'elenco unità devono venire dallo stesso condominio. Se la persona '
-            .'compare solo nel riparto, importala prima dal livello «Persone».',
+            sprintf('C\'è un saldo intestato a «%s», che non è fra le persone importate.', $saldo->soggettoNome),
+            $fonteManuale
+                ? 'Il nome va scritto identico a come compare nel foglio «2 persone». Se quella '
+                .'posizione segue la casa e non la persona, lascia la colonna «persona» vuota: '
+                .'diventa un saldo solidale sull\'unità.'
+                : 'Il riparto e l\'elenco unità devono venire dallo stesso condominio. Se la '
+                .'persona compare solo nel riparto, importala prima dal livello «Persone».',
             $saldo->rigaSorgente,
         );
 

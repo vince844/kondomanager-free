@@ -24,11 +24,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import Alert from '@/components/Alert.vue';
 import InputError from '@/components/InputError.vue';
-import { UploadCloud, FileSpreadsheet, PencilRuler, Sparkles, LoaderCircle, Info, ShieldCheck } from 'lucide-vue-next';
+import { UploadCloud, FileSpreadsheet, PencilRuler, Sparkles, LoaderCircle, Info, ShieldCheck, Building2 } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
 
 const props = defineProps<{
-  interrotto: null | {
+  /** Tutte le importazioni lasciate a metà, non solo l'ultima: uno studio ne apre più d'una. */
+  interrotte: {
     uuid: string;
     condominio: string | null;
     livello_corrente: string | null;
@@ -37,7 +38,7 @@ const props = defineProps<{
     posizione: number | null;
     livelli_totali: number;
     ha_scritto: boolean;
-  };
+  }[];
   formati: string[];
   /** Limite già scritto per l'utente («2 MB»), calcolato dal server: non è più il nostro tetto. */
   dimensione_massima: string;
@@ -46,17 +47,20 @@ const props = defineProps<{
 // Lo scarto chiede conferma in linea invece di un dialogo: la domanda è breve, la risposta è
 // una sola riga di testo, e un modale per due parole è un ostacolo in più su una cosa che
 // l'utente ha già deciso.
-const scartando = ref(false);
+//
+// ⚠️ Con più importazioni a metà la conferma non può essere un booleano: sarebbe **una sola**,
+// aperta su tutte le schede insieme, e un «Sì, scartala» armato su una riga diversa da quella
+// che si sta guardando è il modo più diretto di far cancellare la cosa sbagliata. Si tiene lo
+// uuid di quella in questione, e null quando non se ne sta scartando nessuna.
+const scartando = ref<string | null>(null);
 const scarto = useForm({});
 
-function scarta() {
-  if (!props.interrotto) return;
-
+function scarta(uuid: string) {
   // Lo stato va richiuso a mano: Inertia riusa il componente dopo il redirect, quindi senza
   // questo la conferma resta aperta — puntata sul lotto **successivo**, che l'utente non ha
-  // mai chiesto di scartare. Un «Sì, scartala» già armato su una cosa diversa.
-  scarto.delete(route('import.scarta', props.interrotto.uuid), {
-    onFinish: () => { scartando.value = false; },
+  // mai chiesto di scartare.
+  scarto.delete(route('import.scarta', uuid), {
+    onFinish: () => { scartando.value = null; },
   });
 }
 
@@ -122,28 +126,34 @@ const etichettaLivello = (chiave: string | null) => ({
       <Alert v-if="flashMessage" :message="flashMessage.message" :type="flashMessage.type" />
 
       <!-- Il lavoro a metà viene per primo: è l'unica cosa che nessun altro gli ricorderà -->
-      <Card v-if="props.interrotto" class="border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30">
+      <Card
+        v-for="b in props.interrotte"
+        :key="b.uuid"
+        class="border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30"
+      >
         <CardContent class="flex flex-wrap items-start justify-between gap-4 pt-6">
           <div>
-            <h2 class="font-semibold">Hai un'importazione ferma a metà</h2>
+            <h2 class="font-semibold">
+              {{ props.interrotte.length > 1 ? 'Importazione ferma a metà' : 'Hai un\'importazione ferma a metà' }}
+            </h2>
             <p class="mt-1 text-sm text-muted-foreground">
-              <template v-if="props.interrotto.condominio">{{ props.interrotto.condominio }} · </template>
-              <template v-if="props.interrotto.iniziata_il">iniziata il {{ props.interrotto.iniziata_il }} · </template>
-              {{ props.interrotto.file }} file caricat{{ props.interrotto.file === 1 ? 'o' : 'i' }}<template v-if="props.interrotto.livello_corrente">,
-                arrivata a <strong>{{ etichettaLivello(props.interrotto.livello_corrente) }}</strong><template
-                  v-if="props.interrotto.posizione"
-                > ({{ props.interrotto.posizione }} livelli su {{ props.interrotto.livelli_totali }})</template></template>
+              <template v-if="b.condominio">{{ b.condominio }} · </template>
+              <template v-if="b.iniziata_il">iniziata il {{ b.iniziata_il }} · </template>
+              {{ b.file }} file caricat{{ b.file === 1 ? 'o' : 'i' }}<template v-if="b.livello_corrente">,
+                arrivata a <strong>{{ etichettaLivello(b.livello_corrente) }}</strong><template
+                  v-if="b.posizione"
+                > ({{ b.posizione }} livelli su {{ b.livelli_totali }})</template></template>
             </p>
 
             <!--
               Chi ha già scritto qualcosa deve saperlo prima di premere «Scarta», non dopo: qui
               si chiude la sessione, non si disfa l'importazione.
             -->
-            <p v-if="scartando" class="mt-2 text-sm">
-              <template v-if="props.interrotto.ha_scritto">
+            <p v-if="scartando === b.uuid" class="mt-2 text-sm">
+              <template v-if="b.ha_scritto">
                 Scartandola chiudi questa sessione e cancelli i file caricati.
-                <strong>Quello che è già entrato in archivio resta</strong> — per toglierlo serve
-                l'annullamento, che arriva con la 1.10.1.
+                <strong>Quello che è già entrato in archivio resta</strong> — per toglierlo, oggi,
+                si va nelle schermate del condominio.
               </template>
               <template v-else>
                 Scartandola cancelli i file caricati. Niente è ancora entrato in archivio, quindi
@@ -154,15 +164,15 @@ const etichettaLivello = (chiave: string | null) => ({
 
           <div class="flex flex-wrap items-center gap-2">
             <!-- La distruttiva è la più smorzata delle due, ma c'è -->
-            <template v-if="scartando">
-              <Button variant="ghost" size="sm" @click="scartando = false">Lascia stare</Button>
-              <Button variant="destructive" size="sm" :disabled="scarto.processing" @click="scarta">
+            <template v-if="scartando === b.uuid">
+              <Button variant="ghost" size="sm" @click="scartando = null">Lascia stare</Button>
+              <Button variant="destructive" size="sm" :disabled="scarto.processing" @click="scarta(b.uuid)">
                 Sì, scartala
               </Button>
             </template>
             <template v-else>
-              <Button variant="ghost" @click="scartando = true">Scarta</Button>
-              <Link :href="route('import.riconoscimento', props.interrotto.uuid)">
+              <Button variant="ghost" @click="scartando = b.uuid">Scarta</Button>
+              <Link :href="route('import.riconoscimento', b.uuid)">
                 <Button>Riprendi</Button>
               </Link>
             </template>
@@ -217,6 +227,17 @@ const etichettaLivello = (chiave: string | null) => ({
               schermata di verifica.
               <span class="text-foreground/70">In Danea è l'export «Import/Export tramite Excel».</span>
             </p>
+            <!--
+              Il modello va nominato qui e non solo nella card più in basso: questo riquadro
+              risponde a «di quale condominio sono questi dati?», ed è la domanda su cui il
+              modello si comporta come il primo dei due casi — non come il secondo, che è quello
+              che costringe a scegliere la destinazione a mano.
+            -->
+            <p class="mt-2 text-muted-foreground">
+              <strong>Il modello Kondomanager sta nel primo gruppo</strong>: la sua copertina porta
+              il nome del condominio e le date dell'esercizio, quindi da lì creo tutto io. Se lasci
+              vuoto il nome, ricadi nel secondo — e ti chiederò dove metterli.
+            </p>
           </div>
 
           <div
@@ -227,9 +248,16 @@ const etichettaLivello = (chiave: string | null) => ({
             @drop.prevent="suDrop"
           >
             <UploadCloud class="mx-auto h-8 w-8 text-muted-foreground" />
-            <p class="mt-3 font-medium">Trascina qui i file del tuo vecchio gestionale</p>
+            <!--
+              ⚠️ Diceva «i file del tuo vecchio gestionale», ed era vero finché l'unica strada era
+              Danea. Da questa beta si carica **qui** anche il modello compilato a mano, che dal
+              vecchio gestionale non esce affatto: chi lo ha appena riempito si fermerebbe a
+              chiedersi se è il posto giusto.
+            -->
+            <p class="mt-3 font-medium">Trascina qui i file da importare</p>
             <p class="mt-1 text-sm text-muted-foreground">
-              Tutti insieme — ci pensiamo noi a capire cos'è ciascuno.
+              Gli export del vecchio gestionale, o il modello che hai compilato a mano. Tutti
+              insieme — ci pensiamo noi a capire cos'è ciascuno.
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
               {{ props.formati.join(', ').toUpperCase() }} · massimo {{ props.dimensione_massima }} per file
@@ -281,36 +309,60 @@ const etichettaLivello = (chiave: string | null) => ({
               Parto da zero
             </h3>
             <p class="text-sm text-muted-foreground">
-              Nessun dato da importare: creo il condominio a mano.
+              Nessun dato da importare, o troppo pochi perché valga la pena: creo il condominio a
+              mano e ci aggiungo unità e persone dalle sue schede.
             </p>
             <Link :href="route('condomini.create')">
-              <Button variant="outline" size="sm" class="mt-1">Crea un condominio</Button>
+              <Button variant="outline" size="sm" class="mt-1">
+                <Building2 class="mr-2 h-4 w-4" />
+                Crea un condominio
+              </Button>
             </Link>
           </CardContent>
         </Card>
 
         <!--
-          Le due strade che non ci sono ancora, dette come «non ci sono ancora».
+          ⚠️ **Questa carta è nata dentro «In arrivo», e ci è rimasta finché non c'è stato il
+          parser.** Il commento che la sostituisce diceva: «lasciarle con l'aria di un'azione
+          sarebbe la versione piccola del difetto che questo importatore esiste per non
+          commettere — qualcosa che sembra cliccabile e non fa niente». Vale ancora, al
+          contrario: il pulsante si accende **insieme** alla strada di ritorno, non prima. Un
+          modello che si scarica e non si può ricaricare sarebbe la stessa promessa mancata,
+          scoperta però dopo aver compilato quattro fogli.
 
-          Nel disegno erano due carte con un pulsante ciascuna — i modelli da scaricare e la
-          migrazione assistita — e nessuna delle due porta da nessuna parte oggi. Lasciarle con
-          l'aria di un'azione sarebbe la versione piccola del difetto che questo importatore
-          esiste per non commettere: qualcosa che sembra cliccabile e non fa niente.
+          Il file non è un allegato statico: `import.modello` lo **genera** a ogni richiesta con
+          lo stesso servizio che il parser sa rileggere.
         -->
-        <Card class="border-dashed">
+        <Card>
           <CardContent class="space-y-2 pt-6">
-            <h3 class="flex items-center gap-2 font-medium text-muted-foreground">
-              <PencilRuler class="h-5 w-5 shrink-0" />
-              In arrivo
+            <h3 class="flex items-center gap-2 font-medium">
+              <PencilRuler class="h-5 w-5 shrink-0 text-muted-foreground" />
+              Compilo a mano
             </h3>
             <p class="text-sm text-muted-foreground">
-              I <strong>modelli Excel</strong> da compilare a mano, per chi non ha un export
-              usabile, e la <strong>migrazione assistita</strong> — ci mandi i file e te la
-              consegniamo verificata. Nessuna delle due è attiva: oggi si parte da un export
-              del vecchio gestionale.
+              Dal vecchio gestionale non esce un export usabile: scarico il modello, lo compilo e
+              lo ricarico qui sopra.
             </p>
+            <a :href="route('import.modello')" download>
+              <Button variant="outline" size="sm" class="mt-1">
+                <FileSpreadsheet class="mr-2 h-4 w-4" />
+                Scarica il modello
+              </Button>
+            </a>
           </CardContent>
         </Card>
+
+        <!--
+          ⚠️ **Qui c'era «In arrivo», con dentro la migrazione assistita. È stata tolta il
+          30/08/2026, e non per ragioni di spazio.**
+
+          Quella carta annunciava un servizio — «ci mandi i file e te li consegniamo verificati» —
+          di cui non è ancora deciso nemmeno se sarà gratuito o a pagamento. Annunciarlo in
+          prodotto significa deciderlo: chi lo legge lo dà per compreso, e cambiare idea dopo
+          diventa una promessa ritirata invece di una scelta mai fatta.
+
+          Torna quando la decisione c'è, e allora dirà anche a che condizioni.
+        -->
       </div>
 
       <!--

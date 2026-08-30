@@ -154,6 +154,12 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea c
         Route::get('/', [ImportController::class, 'index'])->name('index');
         Route::post('/', [ImportController::class, 'store'])->name('store');
 
+        // Il modello vuoto da compilare a mano. Sta **prima** delle rotte con `{uuid}` per
+        // ragioni di ordine — `modello` sarebbe altrimenti un uuid plausibile — e si genera a
+        // ogni richiesta invece di vivere in `public/`: così non esiste il caso, che si scopre
+        // sempre tardi, del file scaricato che non corrisponde più a quello che il parser legge.
+        Route::get('/modello', [ImportController::class, 'modello'])->name('modello');
+
         Route::get('/{uuid}/riconoscimento', [ImportController::class, 'riconoscimento'])
             ->name('riconoscimento');
 

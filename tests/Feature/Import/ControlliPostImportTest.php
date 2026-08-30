@@ -219,7 +219,10 @@ it('ogni codice di avviso che il motore produce è nel catalogo', function () {
 
     // Senza questa riga il test passerebbe anche se la scansione non trovasse niente — cioè
     // proprio nel caso in cui ha smesso di controllare qualcosa.
-    expect(array_unique($sorgente))->toHaveCount(28);
+    // 28 fino alla 1.11.0-beta.4. I sei in più sono gli avvisi del modello compilato a mano; gli
+    // ultimi tre — «foglio non riconosciuto», «righe fuse su una posizione» e «tabelle omonime» —
+    // vengono dalle due revisioni avversariali che hanno chiuso la beta.5.
+    expect(array_unique($sorgente))->toHaveCount(37);
 
     $catalogo = array_keys(CatalogoControlli::voci());
     $fuori = array_values(array_diff(array_unique($sorgente), $catalogo));
@@ -239,11 +242,14 @@ function utenteGestionale(): App\Models\User
     return $u;
 }
 
-it('il cruscotto mostra il richiamo solo finché c\'è qualcosa di aperto', function () {
-    // Senza questo richiamo la lista si raggiunge solo dalla schermata di esito — cioè da una
-    // pagina che si vede una volta e non si ritrova più, che è il problema che la lista esiste
-    // per risolvere. E deve sparire da solo: un condominio migrato mesi fa non deve portarsi in
-    // giro un riquadro che non serve più.
+it('il cruscotto smette di chiamare in causa, ma non porta via la ricevuta', function () {
+    // ⚠️ **Riscritto il 30/08/2026, dopo una domanda di un amministratore vero:** «ho chiuso la
+    // pagina di esito senza scaricare il rapporto, come ci torno?».
+    //
+    // Prima il richiamo spariva del tutto all'ultima voce chiusa. La metà giusta di quella regola
+    // resta — un condominio migrato mesi fa non deve portarsi in giro un allarme giallo — ma
+    // spariva con essa l'unica strada verso il **rapporto**, che è il documento che si allega al
+    // passaggio di consegne e che si cerca proprio mesi dopo, cioè quando i controlli sono chiusi.
     $lotto = lottoConAvviso([[
         'severita' => 'avviso',
         'codice' => 'tabella.parziale',
@@ -259,8 +265,21 @@ it('il cruscotto mostra il richiamo solo finché c\'è qualcosa di aperto', func
     $lotto->segna('tabelle:tabella.parziale', StatoControllo::Spuntato->value, 1);
 
     // Istanza nuova: la memoizzazione è per richiesta, non un fatto del dominio.
+    $dopo = app(App\Services\Dashboard\Widgets\ControlliPostImportWidget::class);
+
+    expect($dopo->isVisible($lotto->condominio_id))->toBeTrue()
+        // Zero voci aperte: il riquadro cambia faccia, da richiamo a ricevuta.
+        ->and($dopo->payload($lotto->condominio_id)['totale'])->toBe(0)
+        ->and($dopo->payload($lotto->condominio_id)['lotto']['uuid'])->toBe($lotto->uuid);
+});
+
+it('sul condominio mai importato il cruscotto non mostra niente', function () {
+    // La guardia economica, e la ragione per cui il riquadro non è invadente: un condominio senza
+    // importazioni — il caso normale — costa una query indicizzata e si esce.
+    $condominio = Condominio::factory()->create();
+
     expect(app(App\Services\Dashboard\Widgets\ControlliPostImportWidget::class)
-        ->isVisible($lotto->condominio_id))->toBeFalse();
+        ->isVisible($condominio->id))->toBeFalse();
 });
 
 it('un condominio mai importato non paga nessun verificatore', function () {

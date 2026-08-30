@@ -37,6 +37,15 @@ final readonly class CanonicalSaldo
          * e inventarla sarebbe decidere su denaro altrui. Resta sull'unità, in solido.
          */
         public bool $daNomeDiviso = false,
+        /**
+         * Perché quella posizione è aperta — «conguaglio 2024/2025», «rate non versate».
+         *
+         * Nessuna stampa di Danea la porta: il riparto è una griglia di importi, e la causale è
+         * precisamente ciò che va perso passando da un gestionale all'altro. La chiede invece il
+         * modello compilato a mano, dove chi scrive quella riga sa **perché** la sta scrivendo, e
+         * fra un anno sarà l'unico a saperlo. Finisce in `saldi.descrizione`.
+         */
+        public ?string $causale = null,
     ) {}
 
     public function isSolidale(): bool
@@ -52,6 +61,7 @@ final readonly class CanonicalSaldo
             'importo_cents' => $this->importoCents,
             'solidale' => $this->isSolidale(),
             'da_titolare_cessato' => $this->daTitolareCessato,
+            'causale' => $this->causale,
             'riga' => $this->rigaSorgente,
         ];
     }

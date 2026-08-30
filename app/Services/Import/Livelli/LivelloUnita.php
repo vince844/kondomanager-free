@@ -88,6 +88,8 @@ final class LivelloUnita implements LivelloImport
                 'unita.dati_assenti',
                 'Nessuno dei file caricati contiene le unità immobiliari.',
                 'Serve l\'export «Elenco unità» di Danea, oppure il modello «Unità immobiliari».',
+                // Un file che non c'è non è un'incoerenza: è una scelta di chi importa.
+                bloccante: false,
             );
         }
 

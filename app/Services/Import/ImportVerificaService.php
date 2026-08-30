@@ -24,6 +24,7 @@ use App\Services\Import\Parser\AnagraficaMillesimiParser;
 use App\Services\Import\Parser\BannerParser;
 use App\Services\Import\Parser\BilancioConsuntivoParser;
 use App\Services\Import\Parser\ElencoUnitaParser;
+use App\Services\Import\Parser\ModelloManualeParser;
 use App\Services\Import\Parser\RipartoConsuntivoParser;
 use Illuminate\Support\Facades\Storage;
 use Carbon\CarbonImmutable;
@@ -79,10 +80,33 @@ final class ImportVerificaService
         $immobiliCompatti = [];
         $immobiliRicchi = [];
 
+        // ⚠️ **Chi ha fornito che cosa.** Serve a due difetti trovati dalla revisione
+        // avversariale della beta.5, che sono lo stesso difetto visto da due lati: in un lotto
+        // che contiene il modello compilato a mano **e** una stampa di Danea, i lettori di Danea
+        // assegnavano canonici ed esiti con un `=` secco. Misurato: caricando il modello da solo
+        // l'esito dei saldi aveva un errore bloccante e `confermabile = false`; aggiungendo i due
+        // file di Danea lo stesso esito tornava a zero errori e **confermabile = true**. I due
+        // errori scritti a mano non erano stati risolti — erano stati cancellati.
+        //
+        // Il caso misto è legittimo e previsto (si esporta quel che si può e si scrive a mano il
+        // resto), ma è legittimo solo finché i file si **completano**. Due file che portano lo
+        // stesso livello sono un conflitto, e va detto, non risolto in silenzio prendendo l'ultimo.
+        $fonteCanonico = [];
+
         foreach ($batch->files as $file) {
             $tipo = $file->report_type === null ? null : ReportType::tryFrom($file->report_type);
 
             if ($tipo === null || ! $tipo->importabile()) {
+                continue;
+            }
+
+            // ⚠️ **Il modello manuale non passa di qui.** `foglio()` sceglie **un** foglio e
+            // scarta gli altri quattro: è la strada giusta per una stampa di Danea, dove il
+            // report è uno, ed è quella sbagliata per un file che è un report solo *scritto su
+            // cinque fogli*. Va intercettato prima della scelta, non dopo.
+            if ($tipo === ReportType::ModelloManuale) {
+                $this->leggiModello($file, $canonici, $fonteCanonico, $esiti, $letture, $immobiliRicchi);
+
                 continue;
             }
 
@@ -101,13 +125,13 @@ final class ImportVerificaService
             [$foglioLetto, $rigaIntestazione] = $foglio;
 
             match ($tipo) {
-                ReportType::RipartoConsuntivo => $this->leggiRiparto($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file),
-                ReportType::ElencoUnita => $this->leggiElencoUnita($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file, $immobiliRicchi),
-                ReportType::AnagraficaMillesimi => $this->leggiMillesimi($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file, $immobiliCompatti),
+                ReportType::RipartoConsuntivo => $this->leggiRiparto($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file),
+                ReportType::ElencoUnita => $this->leggiElencoUnita($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file, $immobiliRicchi),
+                ReportType::AnagraficaMillesimi => $this->leggiMillesimi($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file, $immobiliCompatti),
                 // Fino alla 1.11.0-beta.4 finiva nel `default`, cioè `leggiSoloBanner()`: se ne
                 // leggeva la testata e si buttava il contenuto, perché non esisteva un livello
                 // in cui i capitoli potessero atterrare.
-                ReportType::BilancioConsuntivo => $this->leggiBilancio($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file),
+                ReportType::BilancioConsuntivo => $this->leggiBilancio($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file),
                 // Gli altri report hanno una testata da cui ricavare condominio ed esercizio,
                 // anche se il loro contenuto va nell'archivio storico che la 1.10 non ha.
                 default => $this->leggiSoloBanner($foglioLetto, $canonici, $esiti),
@@ -211,6 +235,75 @@ final class ImportVerificaService
         $esiti = $this->togliDecisioniPrese($batch, $esiti);
 
         return compact('canonici', 'esiti', 'letture', 'dichiaratoDaiFile');
+    }
+
+    /**
+     * Registra un canonico dicendo **chi l'ha fornito**, e non lascia che il secondo cancelli il primo.
+     *
+     * Il primo file che porta un livello se lo tiene. Il secondo non sovrascrive: apre un errore
+     * che nomina entrambi i file e il dato conteso, così l'amministratore toglie quello di troppo
+     * invece di scoprire fra un mese quale dei due era finito in archivio.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @param  array<string, string>  $fonti
+     * @param  array<string, EsitoVerifica>  $esiti
+     */
+    private function registraCanonico(
+        array &$canonici,
+        array &$fonti,
+        array &$esiti,
+        string $chiave,
+        mixed $valore,
+        ImportFile $file,
+        string $etichetta,
+    ): void {
+        if ($valore === null || $valore === []) {
+            return;
+        }
+
+        if (! isset($canonici[$chiave])) {
+            $canonici[$chiave] = $valore;
+            $fonti[$chiave] = $file->nome_originale;
+
+            return;
+        }
+
+        if (($fonti[$chiave] ?? null) === $file->nome_originale) {
+            return;
+        }
+
+        $esiti[$chiave] = ($esiti[$chiave] ?? new EsitoVerifica(0))
+            ->con(Rilievo::errore(
+                'import.due_file_stesso_dato',
+                sprintf(
+                    'Due file portano %s: «%s» e «%s».',
+                    $etichetta,
+                    $fonti[$chiave] ?? 'un altro file',
+                    $file->nome_originale,
+                ),
+                'Uso il primo e ignoro il secondo, ma quale dei due sia quello giusto non lo posso '
+                .'sapere io. Togli dal caricamento quello di troppo e riprova: i file caricati '
+                .'possono completarsi a vicenda, non contraddirsi.',
+            ));
+    }
+
+    /**
+     * Somma un esito a quello che c'è già, invece di sostituirlo.
+     *
+     * ⚠️ Sostituire cancellava i rilievi del file letto prima — **compresi quelli bloccanti** — e
+     * il pulsante di conferma si sbloccava da solo. Vale in tutte le direzioni: non era il modello
+     * a essere fragile, era la regola a essere scritta in un posto solo.
+     *
+     * @param  array<string, EsitoVerifica>  $esiti
+     */
+    private function fondiEsito(array &$esiti, string $chiave, EsitoVerifica $esito): void
+    {
+        $esiti[$chiave] = isset($esiti[$chiave])
+            ? new EsitoVerifica(
+                $esiti[$chiave]->righeTotali + $esito->righeTotali,
+                [...$esiti[$chiave]->rilievi, ...$esito->rilievi],
+            )
+            : $esito;
     }
 
     /**
@@ -513,6 +606,12 @@ final class ImportVerificaService
                         daTitolareCessato: $r->daTitolareCessato,
                         rigaSorgente: $r->rigaSorgente,
                         daNomeDiviso: true,
+                        // Ogni campo non ripetuto in una ricostruzione torna al suo default, ed è
+                        // il modo in cui `fonte` era già sparita una volta. Oggi la causale non si
+                        // vede lo stesso su queste righe — il testo del nome diviso ha la
+                        // precedenza — ma perderla qui significa perderla anche per la fusione
+                        // solidale a valle, che la userebbe.
+                        causale: $r->causale,
                     );
                 }
 
@@ -520,6 +619,9 @@ final class ImportVerificaService
                     righe: $righe,
                     totaleRiferimentoCents: $saldi->totaleRiferimentoCents,
                     arrotondamentiCents: $saldi->arrotondamentiCents,
+                    // Si ricostruisce l'oggetto, quindi ogni campo non ripetuto qui torna al suo
+                    // default: la fonte sparirebbe e l'anteprima ricomincerebbe a dire «riparto».
+                    fonte: $saldi->fonte,
                 );
             }
         }
@@ -546,20 +648,21 @@ final class ImportVerificaService
      * @param  array<string, EsitoVerifica>  $esiti
      * @param  list<array{file: string, tipo: string, righe: int}>  $letture
      */
-    private function leggiRiparto(Foglio $foglio, int $riga, array &$canonici, array &$esiti, array &$letture, ImportFile $file): void
+    private function leggiRiparto(Foglio $foglio, int $riga, array &$canonici, array &$fonti, array &$esiti, array &$letture, ImportFile $file): void
     {
         $banner = (new BannerParser)->estrai($foglio);
         $this->registraBanner($banner, $canonici, $esiti);
 
         $saldi = (new RipartoConsuntivoParser)->estrai($foglio, $riga);
 
-        $canonici[LivelloSaldi::CHIAVE] = new CanonicalSaldiApertura(
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloSaldi::CHIAVE, new CanonicalSaldiApertura(
             righe: $saldi['saldi'],
             totaleRiferimentoCents: $saldi['totale_riferimento_cents'],
             arrotondamentiCents: $saldi['arrotondamenti_cents'],
-        );
+            fonte: 'riparto consuntivo',
+        ), $file, 'i saldi di apertura');
 
-        $esiti[LivelloSaldi::CHIAVE] = $saldi['esito'];
+        $this->fondiEsito($esiti, LivelloSaldi::CHIAVE, $saldi['esito']);
         $letture[] = ['file' => $file->nome_originale, 'tipo' => 'Saldi di apertura', 'righe' => $saldi['esito']->righeTotali];
     }
 
@@ -569,15 +672,15 @@ final class ImportVerificaService
      * @param  list<array{file: string, tipo: string, righe: int}>  $letture
      * @param  array<string, mixed>  $immobili
      */
-    private function leggiElencoUnita(Foglio $foglio, int $riga, array &$canonici, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
+    private function leggiElencoUnita(Foglio $foglio, int $riga, array &$canonici, array &$fonti, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
     {
         $letto = (new ElencoUnitaParser)->estrai($foglio, $riga);
 
-        $canonici[LivelloSoggetti::CHIAVE] = $letto['soggetti'];
-        $canonici[LivelloTitolarita::CHIAVE] = $letto['titolarita'];
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloSoggetti::CHIAVE, $letto['soggetti'], $file, 'le persone');
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloTitolarita::CHIAVE, $letto['titolarita'], $file, 'chi possiede cosa');
         $immobili = [...$immobili, ...$letto['immobili']];
 
-        $esiti[LivelloSoggetti::CHIAVE] = $letto['esito'];
+        $this->fondiEsito($esiti, LivelloSoggetti::CHIAVE, $letto['esito']);
         $letture[] = ['file' => $file->nome_originale, 'tipo' => 'Persone, unità e titolarità', 'righe' => $letto['esito']->righeTotali];
     }
 
@@ -587,14 +690,14 @@ final class ImportVerificaService
      * @param  list<array{file: string, tipo: string, righe: int}>  $letture
      * @param  array<string, mixed>  $immobili
      */
-    private function leggiMillesimi(Foglio $foglio, int $riga, array &$canonici, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
+    private function leggiMillesimi(Foglio $foglio, int $riga, array &$canonici, array &$fonti, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
     {
         $letto = (new AnagraficaMillesimiParser)->estrai($foglio, $riga);
 
-        $canonici[LivelloTabelle::CHIAVE] = $letto['tabelle'];
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloTabelle::CHIAVE, $letto['tabelle'], $file, 'le tabelle millesimali');
         $immobili = [...$immobili, ...$letto['immobili']];
 
-        $esiti[LivelloTabelle::CHIAVE] = $letto['esito'];
+        $this->fondiEsito($esiti, LivelloTabelle::CHIAVE, $letto['esito']);
         $letture[] = ['file' => $file->nome_originale, 'tipo' => 'Tabelle millesimali', 'righe' => $letto['esito']->righeTotali];
     }
 
@@ -612,6 +715,7 @@ final class ImportVerificaService
         Foglio $foglio,
         int $rigaIntestazione,
         array &$canonici,
+        array &$fonti,
         array &$esiti,
         array &$letture,
         ImportFile $file,
@@ -620,14 +724,80 @@ final class ImportVerificaService
 
         $letto = (new BilancioConsuntivoParser)->estrai($foglio, $rigaIntestazione);
 
-        $canonici[LivelloCapitoli::CHIAVE] = $letto['struttura'];
-        $esiti[LivelloCapitoli::CHIAVE] = $letto['esito'];
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloCapitoli::CHIAVE, $letto['struttura'], $file, 'i capitoli di spesa');
+        $this->fondiEsito($esiti, LivelloCapitoli::CHIAVE, $letto['esito']);
 
         $letture[] = [
             'file' => $file->nome_originale,
             'tipo' => 'Capitoli di spesa',
             'righe' => $letto['esito']->righeTotali,
         ];
+    }
+
+    /**
+     * Il modello compilato a mano: **un file, cinque fogli, tutti i canonici in un colpo solo**.
+     *
+     * ## Perché i suoi esiti si fondono invece di sovrascrivere
+     *
+     * Un lotto può contenere il modello **e** una stampa di Danea: capita a chi ha esportato
+     * quello che poteva e ha scritto a mano il resto, che è esattamente il caso per cui il
+     * modello esiste. Assegnare `$esiti[...] = ` cancellerebbe in silenzio i rilievi già letti
+     * dall'altro file, e con essi le decisioni ancora da prendere — cioè il pulsante di conferma
+     * si sbloccherebbe da solo. Si usa `con()`, che li accumula.
+     *
+     * I **canonici** invece non si fondono: il primo che arriva vince, come per il condominio
+     * nella testata. Fondere due elenchi di persone provenienti da due file scritti in momenti
+     * diversi è una cosa che nessuno può fare al posto dell'amministratore.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @param  array<string, EsitoVerifica>  $esiti
+     * @param  list<array{file: string, tipo: string, righe: int}>  $letture
+     * @param  array<string, mixed>  $immobili
+     */
+    private function leggiModello(ImportFile $file, array &$canonici, array &$fonti, array &$esiti, array &$letture, array &$immobili): void
+    {
+        $percorso = Storage::disk(ImportUploadService::DISCO)->path($file->percorso);
+
+        try {
+            $fogli = $this->reader->leggi($percorso);
+        } catch (RuntimeException) {
+            $esiti['file:'.$file->id] = new EsitoVerifica(0, [Rilievo::errore(
+                'file.illeggibile',
+                sprintf('Non riesco a rileggere «%s».', $file->nome_originale),
+                'Ricaricalo: potrebbe essere stato spostato o danneggiato dopo il caricamento.',
+            )]);
+
+            return;
+        }
+
+        $letto = (new ModelloManualeParser)->estrai($fogli);
+
+        // Il condominio passa dalla stessa porta della testata delle stampe: è là che vive il
+        // controllo «due file di due condomìni diversi», e il modello non ne è esente.
+        $this->registraBanner([
+            'condominio' => $letto['condominio'],
+            'esercizio' => $letto['esercizio'],
+            'esito' => new EsitoVerifica(0),
+        ], $canonici, $esiti);
+
+        foreach ($letto['esiti'] as $chiave => $esito) {
+            $this->fondiEsito($esiti, $chiave, $esito);
+        }
+
+        $immobili = [...$immobili, ...$letto['immobili']];
+
+        foreach ([
+            LivelloSoggetti::CHIAVE => [$letto['soggetti'], 'le persone'],
+            LivelloTitolarita::CHIAVE => [$letto['titolarita'], 'chi possiede cosa'],
+            LivelloTabelle::CHIAVE => [$letto['tabelle'], 'le tabelle millesimali'],
+            LivelloSaldi::CHIAVE => [$letto['saldi'], 'i saldi di apertura'],
+        ] as $chiave => [$valore, $etichetta]) {
+            $this->registraCanonico($canonici, $fonti, $esiti, $chiave, $valore, $file, $etichetta);
+        }
+
+        foreach ($letto['letture'] as $lettura) {
+            $letture[] = ['file' => $file->nome_originale, ...$lettura];
+        }
     }
 
     private function leggiSoloBanner(Foglio $foglio, array &$canonici, array &$esiti): void

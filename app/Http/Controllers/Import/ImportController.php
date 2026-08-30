@@ -15,8 +15,10 @@ use App\Services\Import\ImportContext;
 use App\Services\Import\ImportRunner;
 use App\Services\Import\ImportUploadService;
 use App\Services\Import\ImportVerificaService;
+use App\Services\Import\Livelli\LivelloCapitoli;
 use App\Services\Import\Livelli\LivelloCondominio;
 use App\Services\Import\Livelli\LivelloEsercizi;
+use App\Services\Import\ModelloManualeWriter;
 use App\Services\Import\Rilievo;
 use App\Services\Import\Severita;
 use App\Services\Import\ReportType;
@@ -76,31 +78,38 @@ class ImportController extends Controller
         // cui il buco sulla proprietà del lotto non richiedeva nemmeno di indovinare un uuid: la
         // schermata d'ingresso lo consegnava, insieme al nome del condominio altrui. Ora è il
         // proprio; l'amministratore continua a vederli tutti, che è il suo mestiere.
-        $interrotto = ImportBatch::query()
+        // ⚠️ **Tutte quelle a metà, non l'ultima.** Fino alla 1.11.0-beta.5 qui c'era un
+        // `first()`, e chi stava migrando tre condomìni — che è il caso normale di uno studio
+        // all'inizio, non un caso limite — ne vedeva ricordata **una sola**. Le altre due
+        // restavano in archivio con i loro file, invisibili: nessuna schermata le nominava e
+        // nessuno le avrebbe più riprese.
+        $interrotte = ImportBatch::query()
+            ->with('condominio')
             ->whereIn('stato', [ImportBatch::STATO_IN_CORSO, ImportBatch::STATO_PARZIALE])
             ->when(
                 $utente !== null && ! $utente->hasRole(RoleEnum::AMMINISTRATORE->value),
                 fn ($q) => $q->where(fn ($w) => $w->where('user_id', $utente->id)->orWhereNull('user_id')),
             )
+            ->withCount('files')
             ->latest()
-            ->first();
+            ->get();
 
         return Inertia::render('import/ImportHub', [
-            'interrotto' => $interrotto === null ? null : [
-                'uuid' => $interrotto->uuid,
-                'condominio' => $interrotto->condominio?->nome,
-                'livello_corrente' => $interrotto->livello_corrente,
+            'interrotte' => $interrotte->map(fn (ImportBatch $b) => [
+                'uuid' => $b->uuid,
+                'condominio' => $b->condominio?->nome,
+                'livello_corrente' => $b->livello_corrente,
                 // Formattata qui e non nel browser: una data ISO che il client deve
                 // interpretare è un modo di sbagliare fuso orario per niente.
-                'iniziata_il' => $interrotto->created_at?->format('d/m/Y H:i'),
-                'file' => $interrotto->files()->count(),
-                'posizione' => $this->posizione($interrotto->livello_corrente),
+                'iniziata_il' => $b->created_at?->format('d/m/Y H:i'),
+                'file' => $b->files_count,
+                'posizione' => $this->posizione($b->livello_corrente),
                 'livelli_totali' => count(ImportRunner::livelli()),
                 // Un lotto «parziale» ha già scritto qualcosa: scartarlo chiude la sessione,
                 // non annulla l'import. Dirlo qui è l'unico modo perché «Scarta» non sembri
                 // un pulsante che disfa.
-                'ha_scritto' => $interrotto->stato === ImportBatch::STATO_PARZIALE,
-            ],
+                'ha_scritto' => $b->stato === ImportBatch::STATO_PARZIALE,
+            ])->all(),
             'formati' => SpreadsheetReader::ESTENSIONI_AMMESSE,
             // Il limite si dichiara **prima** del caricamento, non si scopre dopo (§7) — e dalla
             // beta.60 è **quello vero del server**, non più solo il nostro tetto. Erano due numeri
@@ -109,6 +118,42 @@ class ImportController extends Controller
             // la voce di punta della 1.10.
             'dimensione_massima' => LimiteCaricamento::etichetta(self::tettoImportMb()),
         ]);
+    }
+
+    /**
+     * Il modello vuoto da compilare a mano.
+     *
+     * ## Generato a ogni richiesta, non servito da `public/`
+     *
+     * Un file statico si sarebbe scritto in tre righe, e sarebbe stato il difetto peggiore
+     * possibile per questa funzione: il modello e il parser che lo rilegge sono **due metà della
+     * stessa promessa**, e un file fermo in una cartella si stacca dalla prima modifica al parser
+     * senza che niente lo segnali. Chi lo scoprirebbe è l'amministratore, dopo aver compilato
+     * quattro fogli, al momento del caricamento — cioè nel punto più costoso di tutto il
+     * percorso. Generandolo qui, il file scaricato è per costruzione quello che sappiamo leggere.
+     *
+     * Il costo è una scrittura in cartella temporanea per download, su un file da 14 KB.
+     */
+    public function modello(ModelloManualeWriter $writer)
+    {
+        // ⚠️ **Si scrive sul file che `tempnam()` ha creato, senza aggiungergli `.xlsx`.**
+        //
+        // Concatenare l'estensione produceva un percorso **diverso** da quello creato: il writer
+        // scriveva là, `deleteFileAfterSend()` cancellava là, e lo stub da 0 byte restava. Un file
+        // orfano per ogni scaricamento, che nessuno avrebbe mai cancellato — sulla macchina di
+        // sviluppo se n'erano già accumulati alcune centinaia.
+        //
+        // Il nome sul disco non lo vede nessuno: quello che l'amministratore scarica lo decide il
+        // secondo argomento di `download()`. Così il file resta anche a 0600 e su un nome non
+        // prevedibile, che è quello che `tempnam()` garantisce e la concatenazione toglieva.
+        $percorso = tempnam(sys_get_temp_dir(), 'modello_');
+
+        $writer->scriviSu($percorso);
+
+        return response()->download(
+            $percorso,
+            'modello-import-kondomanager.xlsx',
+        )->deleteFileAfterSend();
     }
 
     /**
@@ -337,7 +382,7 @@ class ImportController extends Controller
             // cieco: si mostravano qui e si rispondevano là, e da qui non si passava — trovato
             // camminando dentro il flusso, non da un test.
             'senza_errori' => collect($letto['esiti'])->every(fn (EsitoVerifica $e) => $e->errori() === 0),
-            'passi' => $this->passi($letto),
+            'passi' => $this->passi($letto, $batch),
             'destinazione' => $this->destinazioneDaScegliere($batch, $letto),
         ]);
     }
@@ -430,11 +475,26 @@ class ImportController extends Controller
      * @param  array{esiti: array<string, EsitoVerifica>, canonici: array<string, mixed>}  $letto
      * @return list<array{chiave: string, etichetta: string, stato: string}>
      */
-    private function passi(array $letto): array
+    private function passi(array $letto, ImportBatch $batch): array
     {
+        // ⚠️ **Il passo dei capitoli sparisce quando nessuno lo ha mai chiesto.**
+        //
+        // Su un lotto fatto solo del modello compilato a mano, «Capitoli di spesa» compariva
+        // grigio, con la sua pallina numerata, in mezzo a sette passi verdi. Ma il modello il
+        // preventivo **non lo chiede**, ed è una scelta dichiarata: mostrare un passo mancante
+        // per un dato che non abbiamo mai domandato fa cercare all'amministratore un foglio che
+        // non esiste, e lo lascia col dubbio di aver saltato qualcosa. Nei file di Danea invece
+        // resta, perché là la stampa del bilancio consuntivo esiste e non averla è un fatto.
+        $soloModello = $batch->files->isNotEmpty() && $batch->files->every(
+            fn (ImportFile $f) => $f->report_type === ReportType::ModelloManuale->value,
+        );
+        // La mappa è un **ripiego**, non la regola: nei file di Danea unità, persone e titolarità
+        // viaggiano dentro un unico report, quindi il loro esito è uno solo e sta sotto
+        // `soggetti`. Il modello compilato a mano ha invece un foglio per ciascuno.
         $copertura = [
             'condominio' => 'condominio',
             'esercizi' => 'condominio',
+            'capitoli' => 'capitoli',
             'soggetti' => 'soggetti',
             'unita' => 'soggetti',
             'titolarita' => 'soggetti',
@@ -446,7 +506,21 @@ class ImportController extends Controller
 
         foreach (ImportRunner::livelli() as $livello) {
             $chiave = $livello->chiave();
-            $esito = $letto['esiti'][$copertura[$chiave] ?? ''] ?? null;
+
+            if ($chiave === LivelloCapitoli::CHIAVE && $soloModello && ! isset($letto['canonici'][$chiave])) {
+                continue;
+            }
+
+            // ⚠️ **L'esito del livello vince sul ripiego, quando esiste.** Senza questa riga il
+            // passo «Unità immobiliari» veniva giudicato con l'esito delle **persone**: su un
+            // modello con una riga di unità senza sigla — errore bloccante — lo stepper mostrava
+            // «Unità immobiliari · pronto» sopra la scheda che diceva in rosso qual era il
+            // problema, e il pulsante di conferma restava chiuso senza che i due si spiegassero a
+            // vicenda. Nel caso opposto tingeva di rosso un passo per un problema che non era suo.
+            // `capitoli` mancava del tutto dalla mappa, quindi quel passo era verde comunque.
+            $esito = $letto['esiti'][$chiave]
+                ?? $letto['esiti'][$copertura[$chiave] ?? '']
+                ?? null;
 
             $passi[] = [
                 'chiave' => $chiave,
@@ -617,6 +691,28 @@ class ImportController extends Controller
                 'url_condominio' => $batch->condominio_id === null
                     ? null
                     : route('admin.gestionale.index', $batch->condominio_id),
+                // ⚠️ **Dove si va a creare il preventivo che l'importazione non ha portato.**
+                //
+                // Serve alla riga «Capitoli di spesa · non nei tuoi file», che senza una strada
+                // lascia l'amministratore a chiedersi se ha saltato un foglio. Non ha saltato
+                // niente: il modello compilabile a mano il preventivo non lo chiede apposta.
+                //
+                // L'indirizzo si costruisce **qui** e non nel browser, come quello del
+                // condominio, e per la stessa ragione: la rotta vive sotto `{condominio}` **e**
+                // `{esercizio}`, e Ziggy non la espone. Se l'esercizio aperto non c'è, resta
+                // `null` e la schermata ripiega sul percorso scritto a parole.
+                'url_piano_conti' => (function () use ($batch) {
+                    if ($batch->condominio_id === null) {
+                        return null;
+                    }
+
+                    $esercizio = ImportVerificaService::esercizioApertoDi($batch->condominio_id);
+
+                    return $esercizio === null ? null : route(
+                        'admin.gestionale.esercizi.piani-conti.index',
+                        [$batch->condominio_id, $esercizio->id],
+                    );
+                })(),
                 // Dove questi stessi consigli si ritrovano fra tre giorni, quando l'uuid del
                 // lotto non ce l'ha più nessuno. Senza, la card «cosa conviene controllare»
                 // esiste per la durata di una schermata e poi non è più raggiungibile.
@@ -714,7 +810,22 @@ class ImportController extends Controller
             'soggetti' => 'Persone, unità e chi possiede cosa',
             'tabelle' => 'Tabelle millesimali',
             'saldi' => 'Saldi di apertura',
+            // ⚠️ **`unita` è comparso qui con il modello compilato a mano**, e senza questa riga
+            // il ripiego `?? $chiave` intitolava una scheda «unita» — minuscolo, senza accento,
+            // il nome interno di una costante. Nei file di Danea le unità arrivano dentro
+            // l'elenco unità, quindi il loro esito viaggia sotto `soggetti` e questa chiave non
+            // si era mai vista. Il modello invece ha un foglio suo, e le due voci restano
+            // distinte perché sono due fogli che l'amministratore compila separatamente: unirle
+            // gli impedirebbe di capire quale dei due ha un problema.
+            'unita' => 'Unità immobiliari',
         ];
+
+        // Quando le unità hanno una scheda loro, la scheda delle persone non le può rivendicare:
+        // l'amministratore che legge «Persone, unità e chi possiede cosa» sopra un contatore e
+        // «Unità immobiliari» sopra un altro non sa più quale dei due parla delle sue unità.
+        if (isset($esiti['unita'])) {
+            $etichette['soggetti'] = 'Persone e chi possiede cosa';
+        }
 
         $descritti = [];
 
@@ -815,6 +926,21 @@ class ImportController extends Controller
     private function cosaManca(ImportBatch $batch): array
     {
         $presenti = $batch->files->pluck('report_type')->filter()->all();
+
+        // ⚠️ **Il modello compilato a mano non ha stampe mancanti: le sostituisce tutte e tre.**
+        //
+        // Visto a video alla prima prova, e non era un dettaglio: sopra un modello riconosciuto
+        // al 100% con «Condominio · Unità · Persone · Tabelle · Saldi» comparivano tre righe che
+        // dicevano che mancavano l'elenco unità, il riparto e l'anagrafica millesimi — e la
+        // prima con un cartello rosso «senza, non si prosegue». Cioè: al primo file dell'unica
+        // strada pensata per chi da Danea non può esportare niente, la schermata rispondeva
+        // chiedendo tre export di Danea.
+        //
+        // Non è un elenco da correggere caso per caso: è che l'elenco parla di **stampe**, e chi
+        // arriva di qui non ne ha nessuna per definizione.
+        if (in_array(ReportType::ModelloManuale->value, $presenti, true)) {
+            return [];
+        }
 
         $attesi = [
             ReportType::ElencoUnita->value => [

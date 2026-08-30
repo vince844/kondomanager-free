@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import Alert from '@/components/Alert.vue';
-import { FileSpreadsheet, ChevronRight, Lock, AlertTriangle } from 'lucide-vue-next';
+import { FileSpreadsheet, ChevronRight, Lock, AlertTriangle, X } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
 
 interface FileRiconosciuto {
@@ -159,7 +159,16 @@ const utilizzabili = () => props.file.filter((f) => f.tipo && f.importabile).len
                         {{ t.etichetta }}
                       </option>
                     </select>
-                    <Button variant="ghost" size="sm" @click="escludi(f)">Escludi</Button>
+                    <!--
+                      Era `variant="ghost"`, cioè testo nudo accanto a una tendina con il bordo:
+                      l'unica azione distruttiva della schermata sembrava un'etichetta. Con il
+                      bordo si legge come ciò che è — un'azione — e resta comunque più discreta
+                      del pulsante primario, che è «Verifica i file».
+                    -->
+                    <Button variant="outline" size="sm" @click="escludi(f)">
+                      <X class="mr-1.5 h-3.5 w-3.5" />
+                      Escludi
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -241,19 +250,26 @@ const utilizzabili = () => props.file.filter((f) => f.tipo && f.importabile).len
         </Card>
       </Collapsible>
 
-      <div class="flex items-center justify-between border-t pt-4">
-        <span class="text-sm text-muted-foreground">
+      <!--
+        ⚠️ **«Sto solo leggendo» stava da solo sotto il pulsante, ed è il posto sbagliato.**
+
+        È la frase che toglie la paura a chi sta per premere un pulsante su un archivio che non è
+        suo, quindi va letta **mentre** si guarda quel pulsante, non dopo — sotto, in coda alla
+        pagina, arrivava quando la decisione era già stata presa. Sale accanto al conteggio dei
+        file, che è l'altra metà della stessa informazione: quanti ne uso, e che non scrivo niente.
+      -->
+      <div class="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+        <div class="text-sm text-muted-foreground">
           {{ utilizzabili() }} file su {{ props.file.length }} verranno usati
-        </span>
+          <span class="mt-0.5 flex items-center gap-1.5 text-xs">
+            <Lock class="h-3.5 w-3.5 shrink-0" />
+            Sto solo leggendo: niente è ancora entrato in Kondomanager.
+          </span>
+        </div>
         <Link :href="route('import.verifica', props.lotto.uuid)">
           <Button>Verifica i file →</Button>
         </Link>
       </div>
-
-      <p class="flex items-center gap-2 text-xs text-muted-foreground">
-        <Lock class="h-3.5 w-3.5" />
-        Sto solo leggendo. Niente è ancora entrato in Kondomanager.
-      </p>
     </div>
 
     <ImportGuide v-model:open="mostraGuida" />

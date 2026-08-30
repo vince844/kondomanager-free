@@ -224,7 +224,7 @@ it('propone di riprendere un\'importazione lasciata a metà', function () {
     $this->actingAs(utenteImport())
         ->get(route('import.index'))
         ->assertInertia(fn ($page) => $page
-            ->where('interrotto.livello_corrente', 'unita')
+            ->where('interrotte.0.livello_corrente', 'unita')
         );
 });
 
@@ -233,5 +233,5 @@ it('non propone di riprendere un\'importazione già completata', function () {
 
     $this->actingAs(utenteImport())
         ->get(route('import.index'))
-        ->assertInertia(fn ($page) => $page->where('interrotto', null));
+        ->assertInertia(fn ($page) => $page->where('interrotte', []));
 });

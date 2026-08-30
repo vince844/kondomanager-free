@@ -48,7 +48,7 @@ it('toglie dalla schermata d\'ingresso il lotto abbandonato', function () {
     $batch = lottoDaScartare();
 
     $this->actingAs($utente)->get(route('import.index'))
-        ->assertInertia(fn ($p) => $p->where('interrotto.uuid', $batch->uuid));
+        ->assertInertia(fn ($p) => $p->where('interrotte.0.uuid', $batch->uuid));
 
     $this->actingAs($utente)->delete(route('import.scarta', $batch->uuid))
         ->assertRedirect(route('import.index'));
@@ -57,7 +57,7 @@ it('toglie dalla schermata d\'ingresso il lotto abbandonato', function () {
         ->and($batch->fresh()->annullato_at)->not->toBeNull();
 
     $this->actingAs($utente)->get(route('import.index'))
-        ->assertInertia(fn ($p) => $p->where('interrotto', null));
+        ->assertInertia(fn ($p) => $p->where('interrotte', []));
 });
 
 it('cancella i file caricati, che sono dati altrui su un disco privato', function () {
@@ -93,8 +93,35 @@ it('dice a che punto era arrivata, in numero e non solo per nome', function () {
         ->assertInertia(fn ($p) => $p
             // Dalla 1.11.0-beta.4 i livelli sono otto: «Capitoli di spesa» sta terzo, subito
             // dopo gli esercizi, quindi «tabelle» è scivolato dal sesto al settimo posto.
-            ->where('interrotto.posizione', 7)
-            ->where('interrotto.livelli_totali', 8)
-            ->where('interrotto.ha_scritto', false)
+            ->where('interrotte.0.posizione', 7)
+            ->where('interrotte.0.livelli_totali', 8)
+            ->where('interrotte.0.ha_scritto', false)
         );
+});
+
+it('ricorda tutte le importazioni a metà, non solo l\'ultima', function () {
+    // ⚠️ **Chiesto da un amministratore vero: «e se sto importando più di un condominio?».**
+    //
+    // Qui c'era un `first()`: chi ne stava migrando tre — che all'inizio di uno studio è il caso
+    // normale, non un caso limite — se ne vedeva ricordare **una sola**. Le altre restavano in
+    // archivio con i loro file, senza che nessuna schermata le nominasse: la promessa «ti ricordo
+    // il lavoro a metà» valeva per uno solo dei tre lavori a metà.
+    $utente = utenteScarto();
+
+    $uuid = collect(range(1, 3))->map(function () use ($utente) {
+        return ImportBatch::create([
+            'user_id' => $utente->id,
+            'sorgente' => 'danea',
+            'stato' => ImportBatch::STATO_IN_CORSO,
+        ])->uuid;
+    });
+
+    $this->actingAs($utente)->get(route('import.index'))
+        ->assertInertia(fn ($p) => $p->has('interrotte', 3));
+
+    // E scartarne una lascia in pace le altre due.
+    $this->actingAs($utente)->delete(route('import.scarta', $uuid->first()));
+
+    $this->actingAs($utente)->get(route('import.index'))
+        ->assertInertia(fn ($p) => $p->has('interrotte', 2));
 });

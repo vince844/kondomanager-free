@@ -288,6 +288,9 @@ final class AnteprimaImport
 
         return [
             'righe' => count($saldi->righe),
+            'fonte' => $saldi->fonte ?? 'riparto consuntivo',
+            // Tre stati e non due: quadra, non quadra, **non c'era niente da quadrare**.
+            'verificabile' => $saldi->verificabile(),
             'totale_riferimento' => $saldi->totaleRiferimentoCents === null
                 ? null
                 : MoneyHelper::format($saldi->totaleRiferimentoCents),

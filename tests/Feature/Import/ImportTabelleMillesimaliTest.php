@@ -178,8 +178,19 @@ it('si rifiuta di scrivere i millesimi senza le unità a cui attaccarli', functi
 
     $esiti = (new ImportRunner)->esegui($ctx, [], LIVELLI_MILLESIMI);
 
+    // ⚠️ **Dalla 1.11.0-beta.5 «tabelle» viene tentato lo stesso, e salta per cascata.**
+    //
+    // Prima la catena si fermava al primo livello senza dati, e i successivi non comparivano
+    // affatto negli esiti. Ora un livello senza dati si salta e la catena prosegue — così un
+    // foglio lasciato in bianco non butta via il lavoro degli altri — e chi dipende da lui viene
+    // saltato a sua volta, dicendo **perché**: «non entra perché prima mancano le unità».
+    //
+    // Quello che conta è invariato, ed è la ragione per cui questo test esiste: **nessun
+    // millesimo entra senza le unità a cui appartiene.**
     expect($esiti['unita']->riuscito())->toBeFalse()
-        ->and($esiti)->not->toHaveKey('tabelle')
+        ->and($esiti['tabelle']->riuscito())->toBeFalse()
+        ->and($esiti['tabelle']->prerequisitiMancanti[0]->codice)->toBe('tabelle.dipendenza_saltata')
+        ->and($esiti['tabelle']->prerequisitiMancanti[0]->bloccante)->toBeFalse()
         ->and(Tabella::count())->toBe(0);
 });
 

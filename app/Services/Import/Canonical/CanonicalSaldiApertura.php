@@ -21,7 +21,29 @@ final readonly class CanonicalSaldiApertura
         public array $righe,
         public ?int $totaleRiferimentoCents,
         public int $arrotondamentiCents = 0,
+        /**
+         * Da dove vengono queste righe, in parole da mostrare — «riparto consuntivo», «foglio dei
+         * saldi».
+         *
+         * Serve all'anteprima, che fino alla beta.5 scriveva «posizioni dal riparto consuntivo»
+         * in modo fisso: con il modello compilato a mano quella frase nominava un file che
+         * l'amministratore non ha mai avuto, ed è precisamente il file che non poteva esportare.
+         */
+        public ?string $fonte = null,
     ) {}
+
+    /**
+     * C'è un totale con cui confrontarsi?
+     *
+     * ⚠️ Distinto da `quadra()`, e la distinzione non è accademica: senza totale `scartoCents()`
+     * è `null`, e `null === 0` in PHP è **falso**, quindi `quadra()` risponde «no». Detto a
+     * schermo diventava «non quadrano» in rosso su un lotto in cui non c'era niente da quadrare —
+     * la forma peggiore di allarme, quella che accusa chi non ha sbagliato.
+     */
+    public function verificabile(): bool
+    {
+        return $this->totaleRiferimentoCents !== null;
+    }
 
     public function sommaRigheCents(): int
     {

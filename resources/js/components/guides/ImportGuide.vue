@@ -10,7 +10,7 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import {
   DownloadCloud, FileSpreadsheet, Lock, Scale, Users, TriangleAlert,
-  ClipboardCheck, CircleHelp, Undo2,
+  ClipboardCheck, CircleHelp, Undo2, PencilRuler,
 } from 'lucide-vue-next';
 
 defineProps<{ open: boolean }>();
@@ -30,8 +30,9 @@ defineEmits(['update:open']);
             <SheetTitle class="text-2xl font-extrabold tracking-tight">Guida: importazione dati</SheetTitle>
           </div>
           <SheetDescription class="text-base text-slate-600 dark:text-slate-400">
-            Cosa esportare dal vecchio gestionale, cosa entra e cosa no, e in quale momento
-            preciso qualcosa viene scritto davvero.
+            Cosa esportare dal vecchio gestionale — o cosa fare se non esporta niente di
+            utilizzabile — cosa entra e cosa no, e in quale momento preciso qualcosa viene
+            scritto davvero.
           </SheetDescription>
         </SheetHeader>
 
@@ -53,13 +54,45 @@ defineEmits(['update:open']);
             </div>
           </section>
 
-          <!-- 2 — Cosa esportare -->
+          <!-- 2 — Le due strade -->
           <section>
             <h3 class="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-              <FileSpreadsheet class="h-5 w-5" /> Cosa esportare dal vecchio gestionale
+              <CircleHelp class="h-5 w-5" /> Da dove puoi arrivare
             </h3>
             <p class="mb-3">
-              Da Danea Domustudio servono tre stampe, esportate in Excel. Caricale
+              Oggi Kondomanager sa leggere <strong>due cose</strong>. Sono due strade, non due
+              qualità: quello che entra in archivio è identico, cambia solo da dove arriva.
+            </p>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <p class="mb-1 font-semibold text-slate-900 dark:text-white">1 · Da Danea Domustudio</p>
+                <p>
+                  Tre stampe esportate in Excel. È la strada più completa: porta anche i saldi con
+                  il totale su cui verificarli, e la struttura dei capitoli di spesa.
+                </p>
+              </div>
+              <div class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <p class="mb-1 font-semibold text-slate-900 dark:text-white">2 · Con il modello Kondomanager</p>
+                <p>
+                  Un file che ti do io, da compilare a mano. È la strada per chi arriva da un
+                  gestionale diverso, o da un foglio di calcolo tenuto negli anni.
+                </p>
+              </div>
+            </div>
+            <p class="mt-3 text-slate-600 dark:text-slate-400">
+              Da <strong>altri gestionali</strong> non leggo ancora niente di specifico: se il loro
+              export somiglia a quello di Danea può funzionare lo stesso — provalo, le prime tre
+              schermate non scrivono niente — altrimenti la strada è il modello.
+            </p>
+          </section>
+
+          <!-- 2-bis — Cosa esportare da Danea -->
+          <section>
+            <h3 class="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+              <FileSpreadsheet class="h-5 w-5" /> Strada 1 · cosa esportare da Danea
+            </h3>
+            <p class="mb-3">
+              Servono tre stampe, esportate in Excel. Caricale
               <strong>tutte insieme</strong>: al riconoscimento ci penso io.
             </p>
             <ul class="space-y-2">
@@ -97,11 +130,64 @@ defineEmits(['update:open']);
               <strong>totale scritto dentro il tuo riparto</strong>. Quel numero non te l'ho
               chiesto: l'ho letto nel file che hai appena caricato.
             </p>
-            <p>
+            <p class="mb-3">
               Se lo scarto non è zero significa che qualcosa non è stato letto, o è stato letto
               due volte, o il file è stato modificato dopo l'esportazione. In tutti e tre i casi
               i saldi <strong>non devono entrare</strong>: un saldo sbagliato non si nota subito,
               si trascina in ogni riparto successivo e finisce in un sollecito.
+            </p>
+            <p class="rounded-lg border border-slate-200 p-3 text-slate-600 dark:border-slate-800 dark:text-slate-400">
+              <strong>Con il modello compilato a mano questo controllo non c'è</strong>, e non è una
+              dimenticanza: il totale lo scriveresti tu, cioè la stessa mano che ha scritto le
+              righe, quindi non verificherebbe niente. Lì la schermata dice «niente da quadrare» e
+              ti chiede di confrontare la somma con l'ultimo rendiconto approvato prima di emettere
+              il primo piano rate.
+            </p>
+          </section>
+
+          <!-- 3-bis — Il modello compilabile a mano -->
+          <section>
+            <h3 class="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+              <PencilRuler class="h-5 w-5" /> Strada 2 · il modello da compilare a mano
+            </h3>
+            <p class="mb-3">
+              Dalla schermata di caricamento, riquadro <strong>«Compilo a mano»</strong>, scarichi
+              un file Excel già pronto: lo compili, lo ricarichi lì stesso e prosegue come
+              qualunque altra importazione — stessa verifica riga per riga, stessa anteprima prima
+              di scrivere.
+            </p>
+            <p class="mb-3">
+              Un file solo, con una copertina e quattro elenchi: <strong>le unità</strong>,
+              <strong>le persone</strong> con chi possiede cosa, <strong>le tabelle
+              millesimali</strong> e <strong>i saldi di apertura</strong>. Ogni foglio spiega in
+              testa cosa va scritto: leggi quelle due righe gialle, rispondono quasi a tutto.
+            </p>
+            <ul class="space-y-2">
+              <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <strong>La sigla dell'unità la scegli tu</strong> — «B1/1», «int. 3», «016» — ma va
+                ripetuta uguale negli altri fogli: è ciò che li tiene insieme. Uno spazio di
+                troppo non fa perdere la riga, te lo segnalo e la collego lo stesso.
+              </li>
+              <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <strong>Un foglio lasciato in bianco non blocca gli altri.</strong> Se i saldi non
+                li hai, o le tabelle le metti dopo, il resto entra lo stesso e ti dico cosa è
+                rimasto fuori.
+              </li>
+              <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <strong>Il preventivo di spesa non te lo chiedo.</strong> Nel modello entra solo
+                ciò che non posso ricostruire da solo; i capitoli li decidi tu dopo, dal piano dei
+                conti, ed è una schermata fatta apposta.
+              </li>
+              <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <strong>Nei saldi il segno conta:</strong> positivo = l'unità deve al condominio,
+                negativo = è in credito. Lascia vuota la colonna «persona» quando il debito segue
+                la casa e non chi ci abitava (art. 63 disp. att. c.c.).
+              </li>
+            </ul>
+            <p class="mt-3 text-slate-600 dark:text-slate-400">
+              Puoi anche <strong>mescolare le due strade</strong>: esporti quello che riesci e
+              scrivi a mano il resto. L'unica cosa che non posso fare è ricevere lo stesso dato da
+              due file diversi — in quel caso te lo dico e scegli tu quale togliere.
             </p>
           </section>
 
@@ -180,7 +266,7 @@ defineEmits(['update:open']);
               <li>
                 <strong>La prima nota e le rate versate degli esercizi chiusi.</strong> Di quei
                 file leggo solo la testata, per riconoscere condominio ed esercizio: l'archivio
-                storico arriva con la 1.10.1.
+                storico non c'è ancora.
               </li>
               <li>
                 <strong>Le pratiche e le attività.</strong> Kondomanager non le gestisce: se
@@ -190,6 +276,13 @@ defineEmits(['update:open']);
                 <strong>Il collegamento fra tabelle e capitoli di spesa.</strong> L'export non
                 dice quale spesa vada su quale tabella, e indovinarlo significherebbe decidere
                 come si dividono i soldi. Le tabelle entrano scollegate e te lo segnalo.
+              </li>
+              <li>
+                <strong>Il preventivo di spesa, se compili il modello a mano.</strong> Non te lo
+                chiedo apposta: è l'unica cosa che stai per decidere tu, e c'è una schermata fatta
+                per quello. Dai file di Danea invece i capitoli entrano, perché la stampa che li
+                porta ce l'hai già. In entrambi i casi gli <strong>importi entrano a zero</strong>:
+                un consuntivo è la fotografia dell'anno scorso, non il budget di quest'anno.
               </li>
             </ul>
           </section>
@@ -201,10 +294,16 @@ defineEmits(['update:open']);
             </h3>
             <p>
               Un'importazione lasciata a metà si <strong>scarta</strong> dalla schermata
-              d'ingresso: chiude la sessione e cancella i file caricati. Se qualcosa era già
-              entrato in archivio, quello resta — toglierlo è l'annullamento, che non ha una
-              scadenza ma una condizione (finché nessuna operazione ha usato quei dati) e arriva
-              con la 1.10.1.
+              d'ingresso: chiude la sessione e cancella i file caricati. Le trovi tutte lì, non
+              solo l'ultima.
+            </p>
+            <p class="mt-2">
+              Se qualcosa era già entrato in archivio, quello <strong>resta</strong>: toglierlo
+              sarebbe l'annullamento, che non ha una scadenza ma una condizione — finché nessuna
+              operazione ha usato quei dati — e <strong>non è ancora costruito</strong>. Per
+              disfare adesso: le voci si tolgono dalle schermate del condominio, e il condominio
+              intero si elimina dalla sua scheda, portando via tutto ciò che è entrato con quella
+              importazione.
             </p>
           </section>
 

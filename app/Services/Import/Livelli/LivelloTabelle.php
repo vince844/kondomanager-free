@@ -98,6 +98,8 @@ final class LivelloTabelle implements LivelloImport
                 'tabelle.dati_assenti',
                 'Nessuno dei file caricati contiene le tabelle millesimali.',
                 'Serve l\'export «Anagrafica + millesimi» di Danea, oppure il modello «Millesimi».',
+                // Un file che non c'è non è un'incoerenza: è una scelta di chi importa.
+                bloccante: false,
             );
         }
 

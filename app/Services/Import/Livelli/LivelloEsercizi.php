@@ -74,6 +74,8 @@ final class LivelloEsercizi implements LivelloImport
                 'Nessuno dei file caricati dichiara il periodo dell\'esercizio.',
                 'Serve una stampa con la testata completa, che riporti la riga «Periodo: … - …». '
                 .'In alternativa crea l\'esercizio a mano: le date non si possono dedurre dall\'anno.',
+                // Un file che non c'è non è un'incoerenza: è una scelta di chi importa.
+                bloccante: false,
             );
         }
 

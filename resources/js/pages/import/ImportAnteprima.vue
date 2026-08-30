@@ -52,6 +52,10 @@ const props = defineProps<{
     saldi: null | {
       righe: number; totale_riferimento: string | null; somma_righe: string;
       arrotondamenti: string; scarto: string | null; quadra: boolean;
+      /** Da dove vengono le righe: «riparto consuntivo», «foglio dei saldi». */
+      fonte: string;
+      /** C'è un totale con cui confrontarsi? Senza, non c'è né verde né rosso: non c'è giudizio. */
+      verificabile: boolean;
       da_titolari_cessati: number; importo_cessati: string;
     };
     totale_record: number;
@@ -315,28 +319,45 @@ const puoConfermare = computed(
             <CardTitle class="flex items-center gap-2 text-base">
               <Wallet class="h-4 w-4" /> Saldi di apertura
             </CardTitle>
-            <CardDescription>{{ props.anteprima.saldi.righe }} posizioni dal riparto consuntivo</CardDescription>
+            <CardDescription>{{ props.anteprima.saldi.righe }} posizioni dal {{ props.anteprima.saldi.fonte }}</CardDescription>
           </div>
-          <BadgeStato v-if="props.anteprima.saldi.quadra" stato="ok">quadrano</BadgeStato>
-          <Badge v-else variant="destructive">non quadrano</Badge>
+          <!--
+            ⚠️ **Tre stati, non due.** `quadra()` risponde «no» anche quando non c'era niente da
+            quadrare: senza totale `scartoCents()` è `null`, e in PHP `null === 0` è falso. A
+            schermo diventava un «non quadrano» rosso su un modello compilato a mano — dove il
+            totale non lo chiediamo apposta, perché lo scriverebbe la stessa persona che ha
+            scritto le righe. Accusare chi non ha sbagliato è il difetto che questo importatore
+            esiste per non commettere.
+          -->
+          <BadgeStato v-if="props.anteprima.saldi.verificabile && props.anteprima.saldi.quadra" stato="ok">quadrano</BadgeStato>
+          <Badge v-else-if="props.anteprima.saldi.verificabile" variant="destructive">non quadrano</Badge>
+          <Badge v-else variant="outline">niente da quadrare</Badge>
         </CardHeader>
 
         <CardContent class="space-y-3">
           <div
             class="rounded-lg border p-4 text-sm tabular-nums"
-            :class="props.anteprima.saldi.quadra
-              ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30'
-              : 'border-destructive/40 bg-destructive/5'"
+            :class="!props.anteprima.saldi.verificabile
+              ? 'bg-muted/40'
+              : props.anteprima.saldi.quadra
+                ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30'
+                : 'border-destructive/40 bg-destructive/5'"
           >
-            <div class="flex justify-between gap-6 py-0.5">
+            <div v-if="props.anteprima.saldi.verificabile" class="flex justify-between gap-6 py-0.5">
               <span>Saldo finale scritto nel tuo riparto</span>
-              <span>{{ props.anteprima.saldi.totale_riferimento ?? '—' }}</span>
+              <span>{{ props.anteprima.saldi.totale_riferimento }}</span>
             </div>
             <div class="flex justify-between gap-6 py-0.5">
               <span>Somma delle {{ props.anteprima.saldi.righe }} righe che sto importando</span>
               <span>{{ props.anteprima.saldi.somma_righe }}</span>
             </div>
-            <div class="flex justify-between gap-6 py-0.5 text-muted-foreground">
+            <!--
+              La riga degli arrotondamenti è una riga **del riparto di Danea**: dice che quella
+              stampa ne aveva una e che l'abbiamo assorbita nel totale. Su un foglio compilato a
+              mano non esiste, e mostrarla a zero fa cercare all'amministratore una riga che non
+              ha mai scritto.
+            -->
+            <div v-if="props.anteprima.saldi.verificabile" class="flex justify-between gap-6 py-0.5 text-muted-foreground">
               <span>arrotondamenti del riparto, assorbiti</span>
               <span>{{ props.anteprima.saldi.arrotondamenti }}</span>
             </div>
@@ -348,20 +369,26 @@ const puoConfermare = computed(
               <span>{{ props.anteprima.saldi.importo_cessati }}</span>
             </div>
             <div
+              v-if="props.anteprima.saldi.verificabile"
               class="mt-2 flex justify-between gap-6 border-t pt-2 font-semibold"
               :class="props.anteprima.saldi.quadra ? 'border-emerald-300 text-emerald-700 dark:border-emerald-900/60 dark:text-emerald-400' : 'border-destructive/40 text-destructive'"
             >
               <span>Scarto</span>
               <span class="flex items-center gap-1">
-                {{ props.anteprima.saldi.scarto ?? '—' }}
+                {{ props.anteprima.saldi.scarto }}
                 <CheckCircle2 v-if="props.anteprima.saldi.quadra" class="h-4 w-4" />
               </span>
             </div>
           </div>
 
-          <p class="text-xs text-muted-foreground">
+          <p v-if="props.anteprima.saldi.verificabile" class="text-xs text-muted-foreground">
             Il totale non te l'ho chiesto: è scritto dentro il file che hai caricato.
             Se non tornasse, non ti farei proseguire.
+          </p>
+          <p v-else class="text-xs text-muted-foreground">
+            Questo file non porta un totale di controllo, quindi la somma qui sopra non la posso
+            confrontare con niente: è la somma di quello che hai scritto tu. Confrontala con
+            l'ultimo rendiconto approvato prima di emettere il primo piano rate.
           </p>
         </CardContent>
       </Card>

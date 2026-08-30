@@ -1,0 +1,8 @@
+{
+ "features": [
+  "⚠️ QUESTA VERSIONE NON AGGIUNGE MIGRAZIONI. L'importazione da Danea impara a leggere una stampa che finora riconosceva e scartava: il «Bilancio consuntivo per conto», da cui nasce la struttura delle spese del condominio.",
+  "I CAPITOLI DI SPESA ENTRANO DA SOLI — Prima chi importava si ritrovava unità, persone, tabelle e saldi, e un piano dei conti vuoto: i capitoli andavano ribattuti a mano uno per uno, guardando una stampa che era già stata caricata. Ora dal bilancio consuntivo entrano i capitoli con le loro voci. Su un condominio vero sono 4 capitoli e 17 voci, lette senza un errore.",
+  "GLI IMPORTI ENTRANO A ZERO, ED È VOLUTO — Quello che il consuntivo porta è la fotografia di quanto si è speso l'anno scorso, non il preventivo di quest'anno: scriverlo come budget vorrebbe dire deliberare al posto dell'assemblea. La cifra dell'anno scorso finisce nella descrizione di ogni voce, dove si ritrova nel momento in cui serve, cioè quando scrivi il preventivo vero.",
+  "LE SPESE PERSONALI NON ENTRANO DUE VOLTE — Il bilancio stampa «Spese personali» come se fosse un capitolo. Non lo è: sono addebiti a singoli condòmini, e sono già dentro i saldi di apertura che l'importazione scrive. Importarle anche come capitolo le avrebbe contate due volte, e ripartite per millesimi avrebbero fatto pagare a tutti quello che devono singoli."
+ ]
+}

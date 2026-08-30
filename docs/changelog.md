@@ -7,6 +7,164 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.5] - Il Foglio Per Chi Non Ha Niente Da Esportare
+
+**Non aggiunge migrazioni.** Arriva il **modello Excel da compilare a mano**: la strada per chi dal
+vecchio gestionale non riesce a tirare fuori un export utilizzabile. Si scarica dalla schermata di
+importazione, si compila, si ricarica lì — e da lì in poi è un'importazione come tutte le altre,
+con la stessa verifica riga per riga e la stessa anteprima prima di scrivere.
+
+Fino a ieri l'importatore parlava una lingua sola: quella dei file di Danea. Chi arrivava da un
+gestionale che non esporta niente di leggibile — o da un foglio di calcolo tenuto a mano, che è più
+frequente di quanto sembri — non aveva nessuna strada che non fosse ribattere tutto a mano, unità
+per unità, dentro le schermate del prodotto.
+
+### Un file solo, cinque fogli
+
+Il modello è un `.xlsx` con una copertina e quattro elenchi: le unità, le persone con chi possiede
+cosa, le tabelle millesimali e i saldi di apertura. Un file solo e non cinque, perché un file è una
+cosa da scaricare e una da rimandare indietro.
+
+**Ogni foglio spiega sé stesso.** In testa a ciascuno ci sono due righe che dicono cosa va scritto e
+cosa cambia se lo si scrive in un altro modo — comprese le due cose che a distanza di un anno nessuno
+ricorda: che una cella vuota in una tabella millesimale significa «questa unità non partecipa», che è
+diverso da zero, e che nei saldi un importo **positivo** vuol dire che l'unità deve al condominio.
+
+**La sigla dell'unità la scegli tu.** «B1/1», «int. 3», «016»: è la colonna che tiene insieme i
+quattro elenchi, e va ripetuta uguale negli altri fogli. Se la scrivi con uno spazio di troppo la
+riga non si perde — la collego lo stesso e te lo dico, invece di scartarla in silenzio.
+
+### Un foglio lasciato in bianco non butta via gli altri
+
+È il cambiamento che vale anche per chi importa da Danea. Prima, qualunque dato mancante fermava la
+catena al primo livello che ne aveva bisogno, e tutto ciò che stava sotto restava fuori pur non
+dipendendone: senza il foglio delle persone, un lotto si fermava al quarto livello su otto e
+lasciava indietro unità, tabelle e saldi che erano stati compilati.
+
+Ora c'è una distinzione: «scrivere sarebbe incoerente» resta un muro, «quel file non c'è» diventa un
+salto — dichiarato, con il motivo. E quando tutto ciò che avevi fornito è entrato, l'esito dice
+**completata**, non più «interrotta»: dire «interrotta» a chi i saldi non li aveva è dargli la colpa
+di qualcosa che non ha sbagliato.
+
+### Le schermate non promettono più cose che non c'entrano
+
+Tre correzioni nate guardando il modello passare per le schermate vere:
+
+- il pannello «cosa manca» non chiede più tre stampe di Danea a chi ha appena caricato il modello —
+  cioè proprio a chi quelle stampe non può produrre;
+- il riquadro dei saldi ha un terzo stato. Il modello non porta un totale di controllo (lo
+  scriverebbe la stessa mano che ha scritto le righe), e la schermata annunciava «non quadrano» in
+  rosso su un lotto in cui non c'era niente da quadrare. Ora dice **niente da quadrare**, e spiega
+  che quella somma va confrontata con l'ultimo rendiconto approvato;
+- il riepilogo delle colonne lette mostra tutte quelle dei cinque fogli, non le tre della copertina.
+
+### Sette difetti trovati rileggendo il codice prima di rilasciarlo
+
+Prima di chiudere questa beta il codice nuovo è stato riletto da capo cercando apposta il modo di
+romperlo. Sette difetti sono usciti, tutti riprodotti su un file vero, e tutti della stessa
+famiglia: **un dato sbagliato che entra senza che nessuno lo segnali**. Sono corretti tutti.
+
+- Un **importo scritto in un modo che non capivamo** — «n.d.», ma anche «€ 120,50» con il simbolo
+  o «(45,00)» fra parentesi — entrava come **zero**, in silenzio. Ora il simbolo, le parentesi e
+  il meno in coda si leggono correttamente, e ciò che resta illeggibile diventa un errore di riga
+  invece di una morosità azzerata.
+- **«1.234» veniva letto come uno virgola due**, cioè mille volte più piccolo. Sugli importi il
+  punto è ora il separatore delle migliaia, che è ciò che significa in italiano; sui millesimi
+  resta un decimale, perché lì tre decimali sono normali.
+- Scrivere **l'anno al posto della data** — `data_inizio: 2025` — creava un esercizio nel **1905**
+  senza un avviso. Ora viene rifiutato con l'istruzione giusta.
+- **Rinominare un foglio** in un modo che ne richiamava un altro («4 saldi» → «saldi per unità») lo
+  faceva sparire per intero, senza una riga che lo dicesse. Ora viene ritrovato dalle sue colonne,
+  e un foglio che davvero non sappiamo leggere lo diciamo.
+- **Due righe di saldo della stessa persona** sulla stessa unità: la seconda non entrava, e il suo
+  importo spariva. Ora si sommano, con le due causali unite. Vale anche per chi importa da Danea.
+- Caricando **il modello insieme a una stampa del vecchio gestionale**, gli errori bloccanti del
+  file scritto a mano venivano cancellati e la conferma si sbloccava da sola. Ora nessun file
+  cancella i rilievi di un altro, e due file che portano lo stesso dato lo dicono invece di
+  scegliere in silenzio.
+
+Una seconda rilettura ne ha trovati altri **dodici**, e i due che pesavano di più erano stati
+classificati come minori:
+
+- **la sigla dell'unità era protetta solo sul primo foglio.** «016» restava «016» lì, ma negli
+  altri tre Excel lo salvava come il numero 16: per ogni unità con lo zero davanti — la
+  numerazione più comune di chi arriva da Danea — sparivano titolari, millesimi e saldi;
+- **due colonne millesimali con lo stesso nome**: la seconda cancellava la prima, e i millesimi
+  entravano ribaltati senza un avviso;
+- il foglio delle tabelle era **l'unico senza la riga «cancella gli esempi»**, quindi i millesimi
+  finti del modello potevano entrare come veri;
+- una data impossibile come **31/02/2026 diventava il 3 marzo** invece di essere rifiutata;
+- un millesimo scritto «45,5 mill.» **spariva** come se quell'unità non partecipasse;
+- un foglio **svuotato** dava un errore bloccante con scritto «riscarica il modello», a chi quel
+  foglio l'aveva lasciato in bianco apposta.
+
+### Le schermate dopo l'importazione
+
+- **«Cosa ho importato»** al posto di «cosa è entrato», e le righe a zero non dicono più «era già
+  a posto» ma **«non nei tuoi file»**, con sotto la spiegazione: il preventivo di spesa il modello
+  non lo chiede apposta, e c'è il collegamento al piano dei conti dove si crea.
+- I tre contatori — creati, uniti, saltati — dicono **cosa significano**. «Uniti» e «saltati» non
+  si distinguevano, ed è proprio lì che sta la promessa: quello che c'era già non lo tocco.
+- Il riquadro dello **scarto sui saldi** ha un consiglio in tutti i suoi stati, anche quando i
+  saldi non sono entrati perché non quadravano.
+- **Il rapporto in PDF si ritrova.** Chi chiudeva la pagina di esito senza scaricarlo non aveva
+  più modo di tornarci: il collegamento spariva appena i controlli erano finiti, cioè quando il
+  rapporto serve davvero. Ora sta in «Da controllare», dentro il condominio, e non se ne va.
+- Tolto il riferimento a una versione passata nella nota sull'annullamento: il comando non c'è
+  ancora, e adesso lo dice invece di dare una data che è già trascorsa.
+
+### Ritrovare il lavoro, giorni dopo
+
+- **Il richiamo sul cruscotto non sparisce più quando i controlli sono chiusi**: cambia faccia. Da
+  richiamo giallo con le cose da fare diventa una riga neutra — «questo condominio è arrivato da
+  un'importazione, ecco la ricevuta» — con dentro il PDF. La domanda «dov'è il rapporto?» arriva
+  mesi dopo, cioè esattamente quando prima il collegamento era già sparito.
+- **Tutte le importazioni lasciate a metà**, non solo l'ultima. Chi ne sta migrando tre — che
+  all'inizio di uno studio è la norma — se ne vedeva ricordare una sola: le altre restavano in
+  archivio senza che nessuna schermata le nominasse.
+- Nella lista «Da controllare», **«Metti da parte»** al posto di «Non mi riguarda», ed è un
+  pulsante come gli altri: l'unica azione che toglie una riga dalla lista non deve sembrare meno
+  di un'azione. E le due frasi che dicono chi ricontrolla una voce — io o tu — ora stanno nello
+  stesso posto e hanno la stessa forma.
+- Quando i saldi sono intestati a persone ma **le persone non sono state importate**, ora c'è un
+  messaggio solo invece di uno per riga, e non nomina più «il riparto» a chi ha compilato il
+  modello a mano.
+
+### Le due strade dette come due strade
+
+Finché l'unica origine era Danea, le schermate potevano parlare di «vecchio gestionale» e basta.
+Adesso non è più vero, e i testi lo dicono:
+
+- si trascinano **«i file da importare»** — gli export del vecchio gestionale *o* il modello
+  compilato a mano — non più «i file del tuo vecchio gestionale»;
+- il riquadro «il file dice a quale condominio appartiene?» spiega anche dove si colloca il
+  modello: la sua copertina porta il nome e le date, quindi sta nel gruppo dei file che si
+  presentano da soli;
+- **il passo «Capitoli di spesa» non compare più** quando si importa solo dal modello. Il
+  preventivo il modello non lo chiede, quindi un passo grigio in mezzo a sette verdi faceva
+  cercare un foglio che non esiste. Nei file di Danea resta, perché là quella stampa si può
+  esportare e non averla è un fatto;
+- la guida in-app distingue **«Strada 1 · da Danea»** e **«Strada 2 · il modello»**, e dice cosa
+  aspettarsi dagli altri gestionali.
+
+### Cruscotto
+
+- «Copertura bilancio» e «Inbox operativa» ora hanno **la stessa altezza** anche su un condominio
+  senza dati: prima la prima restava corta e la seconda al suo minimo, con un buco sotto. Quando la
+  copertura cresce continua a comandare lei, come già faceva.
+- Il riquadro «Da controllare dopo l'importazione» **dice come si chiude**. Le voci si chiudono in
+  due modi: alcune spariscono da sole appena il dato è a posto — le ricontrolla il sistema — le
+  altre restano finché non dici tu di averle guardate, perché il confronto è con documenti che
+  stanno fuori da Kondomanager. Senza dirlo il riquadro sembrava bloccato: si sistema un problema,
+  si torna al cruscotto e se ne trovano ancora tre.
+
+  Non ha un pulsante per chiuderlo, ed è voluto: sarebbe o un modo di nascondere senza aver
+  sistemato, o una spunta collettiva su cose non fatte — cioè la todolist che si spunta senza
+  lavorare, che è il difetto per cui questa lista è nata verificabile. La valvola esiste, ed è per
+  voce, dove è onesta e reversibile.
+
+---
+
 ## [1.11.0-beta.4] - Il Bilancio Che Veniva Letto E Buttato
 
 **Non aggiunge migrazioni.** L'importatore da Danea impara a leggere una stampa che finora

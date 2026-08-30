@@ -62,6 +62,8 @@ final class LivelloSoggetti implements LivelloImport
                 'Nessuno dei file caricati contiene le persone.',
                 'Serve l\'export «Elenco unità» di Danea, che è l\'unico a portare insieme nomi, '
                 .'codici fiscali e ruoli. In alternativa compila il modello «Anagrafiche».',
+                // Un file che non c'è non è un'incoerenza: è una scelta di chi importa.
+                bloccante: false,
             )];
         }
 

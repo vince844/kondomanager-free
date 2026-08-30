@@ -100,6 +100,15 @@ final class CatalogoControlli
                 perche: 'Se quel debito vada chiesto al vecchio proprietario o al nuovo è una '
                     .'valutazione giuridica, non una query.',
             ),
+            'saldi.righe_fuse_su_una_posizione' => new VoceCatalogo(
+                rotta: $saldi,
+                etichettaAzione: 'Vai ai saldi',
+                perche: 'Due righe del file riguardavano la stessa persona sulla stessa unità e le '
+                    .'ho sommate: in archivio una posizione per esercizio è tutto quello che c\'è. '
+                    .'Se le due cifre erano due cose distinte da tenere separate — un conguaglio e '
+                    .'una morosità — la strada non è il saldo di apertura ma un movimento, e quale '
+                    .'delle due sia lo sai solo tu.',
+            ),
             'saldi.da_nome_diviso' => new VoceCatalogo(
                 rotta: $saldi,
                 etichettaAzione: 'Vai ai saldi',
@@ -214,6 +223,67 @@ final class CatalogoControlli
             'soggetti.non_ricavabili_da_questo_report' => new VoceCatalogo(
                 perche: 'Il file caricato non conteneva le persone: la strada è un altro export, non '
                     .'una correzione in archivio.',
+            ),
+
+            // ── Il modello compilato a mano ─────────────────────────────────────────────────
+            //
+            // Nessuno di questi ha un verificatore, e non per pigrizia: sono tutti giudizi su un
+            // file che non esiste più. Una query sull'archivio direbbe com'è andata a finire, non
+            // se ciò che si è scritto era quello che l'amministratore intendeva — che è
+            // esattamente la domanda che questi avvisi pongono.
+            'modello.unita_ripetuta' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'La stessa sigla compariva due volte nel foglio: se erano due unità diverse '
+                    .'ne è entrata una sola, e quale delle due manchi lo sai solo tu guardando il file.',
+            ),
+            'modello.sigla_scritta_diversa' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Le righe si sono collegate lo stesso, ignorando spazi e maiuscole: non c\'è '
+                    .'niente di rotto in archivio. Resta però il file da uniformare prima di un '
+                    .'secondo caricamento, e quel file è sul tuo computer.',
+            ),
+            'modello.ruolo_assente' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Dove il ruolo mancava abbiamo scritto «proprietario», che è il caso più '
+                    .'frequente ma non è indifferente: a un inquilino non spettano le spese '
+                    .'straordinarie. Chi sia davvero il titolare lo dice solo il tuo archivio vecchio.',
+            ),
+            'modello.quote_non_fanno_cento' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Una somma diversa da 100 può essere giusta — un usufrutto accanto a una '
+                    .'nuda proprietà — oppure due comproprietari copiati male: la differenza fra i '
+                    .'due casi non sta nei numeri, sta nell\'atto.',
+            ),
+            'modello.totale_di_controllo_diverso' => new VoceCatalogo(
+                rotta: $tabelle,
+                etichettaAzione: 'Vai alle tabelle',
+                perche: 'La somma delle righe non corrisponde al totale scritto in fondo al foglio. '
+                    .'Di solito è una riga persa mentre si copiava, ma può anche essere il totale a '
+                    .'essere sbagliato: entrambi li ha scritti la stessa mano.',
+            ),
+            'modello.tabelle_omonime' => new VoceCatalogo(
+                rotta: $tabelle,
+                etichettaAzione: 'Vai alle tabelle',
+                perche: 'Due colonne del foglio si chiamavano uguale: ne è entrata una sola, la '
+                    .'prima. Se erano due ripartizioni diverse — due scale, due corpi scala — la '
+                    .'seconda va rifatta, e come si chiama lo decidi tu.',
+            ),
+            'modello.foglio_non_riconosciuto' => new VoceCatalogo(
+                perche: 'Un foglio del file non l\'ho letto perché non capisco a cosa corrisponda. '
+                    .'Se erano appunti tuoi non c\'è niente da fare; se erano dati, la strada è '
+                    .'rinominare il foglio come nel modello vuoto e ricaricare il file — non una '
+                    .'correzione in archivio.',
+            ),
+            'modello.tabelle_senza_nome' => new VoceCatalogo(
+                rotta: $tabelle,
+                etichettaAzione: 'Vai alle tabelle',
+                perche: 'Il foglio delle tabelle non aveva nessuna colonna intestata, quindi non è '
+                    .'entrata nessuna tabella: si rimedia ricaricando il file compilato, non '
+                    .'correggendo l\'archivio.',
             ),
         ];
     }

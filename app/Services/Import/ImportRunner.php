@@ -85,21 +85,66 @@ final class ImportRunner
 
         $esiti = [];
 
+        /** @var list<string> $saltati i livelli senza dati, che non fermano la catena */
+        $saltati = [];
+
         foreach (self::livelli() as $livello) {
             if ($soloLivelli !== null && ! in_array($livello->chiave(), $soloLivelli, true)) {
                 continue;
             }
 
-            $this->verificaOrdine($livello, $ctx);
+            // ⚠️ **La cascata si guarda PRIMA dei prerequisiti del livello, e l'ordine conta.**
+            // Un livello le cui dipendenze sono state saltate si lamenterebbe per conto suo —
+            // «titolarità: mancano i soggetti» — e quella lamentela è **bloccante**, quindi
+            // fermerebbe la catena vanificando il salto. La causa vera sta a monte, e va detta
+            // a monte: non è un errore, è la conseguenza di un foglio lasciato in bianco.
+            $cascata = $this->dipendenzeSaltate($livello, $saltati);
+
+            if ($cascata !== []) {
+                $esiti[$livello->chiave()] = EsitoCommit::bloccatoDaPrerequisiti(new PrerequisitoMancante(
+                    $livello->chiave().'.dipendenza_saltata',
+                    sprintf(
+                        '«%s» non entra perché prima manca %s.',
+                        $livello->etichetta(),
+                        count($cascata) === 1 ? '«'.$cascata[0].'»' : 'più di un livello: '.implode(', ', $cascata),
+                    ),
+                    'Non è un errore: è la conseguenza di un file che non hai caricato. Aggiungilo e '
+                    .'ricarica, oppure prosegui — questo livello lo puoi completare a mano più tardi.',
+                    bloccante: false,
+                ));
+
+                $saltati[] = $livello->chiave();
+
+                continue;
+            }
 
             $mancanti = $livello->verificaPrerequisiti($ctx);
 
+            // ⚠️ **Un livello senza dati si salta, non ferma la catena.**
+            //
+            // Fino alla 1.11.0-beta.5 qualunque prerequisito mancante faceva `return`, e i livelli
+            // successivi non venivano nemmeno tentati. Misurato: un lotto senza il foglio delle
+            // persone si fermava al **quarto** livello e lasciava fuori unità, tabelle e saldi —
+            // che dalle persone non dipendono affatto, e che erano stati compilati.
+            //
+            // La differenza è fra «scrivere sarebbe incoerente» e «quel file non c'è». Il primo
+            // resta un muro; il secondo è una scelta di chi importa, e non deve buttare via il
+            // lavoro degli altri fogli.
             if ($mancanti !== []) {
                 $esiti[$livello->chiave()] = EsitoCommit::bloccatoDaPrerequisiti(...$mancanti);
-                $this->segnaParziale($ctx->batch, $livello);
 
-                return $esiti;
+                if (array_filter($mancanti, fn (PrerequisitoMancante $p) => $p->bloccante) !== []) {
+                    $this->segnaParziale($ctx->batch, $livello);
+
+                    return $esiti;
+                }
+
+                $saltati[] = $livello->chiave();
+
+                continue;
             }
+
+            $this->verificaOrdine($livello, $ctx);
 
             // Una transazione per livello: se salta qui, il livello non è entrato **affatto**,
             // e la ripresa lo ritenta da capo invece di trovarlo a metà.
@@ -131,6 +176,29 @@ final class ImportRunner
      * Un'eccezione e non un rilievo, quindi: i rilievi si mostrano all'amministratore, e a lui
      * di un ordine sbagliato nella nostra lista non si può chiedere niente.
      */
+    /**
+     * Le dipendenze di questo livello che sono state saltate per mancanza di dati.
+     *
+     * Serve a distinguere due cose che `verificaOrdine()` confonderebbe: una dipendenza **non
+     * ancora eseguita** è un difetto nel nostro ordine dei livelli, e va gridata; una dipendenza
+     * **saltata** perché il suo file non c'era è normale, e va detta all'utente con calma.
+     *
+     * @param  list<string>  $saltati
+     * @return list<string> le etichette dei livelli saltati da cui questo dipende
+     */
+    private function dipendenzeSaltate(LivelloImport $livello, array $saltati): array
+    {
+        $etichette = [];
+
+        foreach (self::livelli() as $l) {
+            if (in_array($l->chiave(), $livello->dipendeDa(), true) && in_array($l->chiave(), $saltati, true)) {
+                $etichette[] = $l->etichetta();
+            }
+        }
+
+        return $etichette;
+    }
+
     private function verificaOrdine(LivelloImport $livello, ImportContext $ctx): void
     {
         foreach ($livello->dipendeDa() as $dipendenza) {

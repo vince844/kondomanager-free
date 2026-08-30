@@ -215,6 +215,11 @@ const confirmReject = () => {
 // raggiungere il piu' alto, mai il contrario — se Inbox ha molte attivita'
 // reali, sfonderebbe qualunque limite. Misuriamo Copertura Bilancio col
 // ResizeObserver e capiamo Inbox a quell'altezza, con scroll interno.
+//
+// ⚠️ **Si misura il BORDER box, non il content box.** `contentRect` esclude il bordo della card
+// (1px per lato), quindi l'altezza che si passava a Inbox era sempre 2px piu' bassa di quella
+// vera: le due schede non combaciavano mai del tutto, e su un fondo chiaro quei 2px si vedono.
+// `borderBoxSize` non c'e' su ogni browser, quindi resta `contentRect` come ripiego.
 const coperturaCardRef = ref<HTMLElement | null>(null);
 const coperturaHeight = ref<number | null>(null);
 let coperturaResizeObserver: ResizeObserver | null = null;
@@ -222,7 +227,10 @@ let coperturaResizeObserver: ResizeObserver | null = null;
 onMounted(() => {
     if (!coperturaCardRef.value) return;
     coperturaResizeObserver = new ResizeObserver((entries) => {
-        coperturaHeight.value = entries[0].contentRect.height;
+        const voce = entries[0];
+        const bordo = Array.isArray(voce.borderBoxSize) ? voce.borderBoxSize[0] : voce.borderBoxSize;
+
+        coperturaHeight.value = bordo?.blockSize ?? voce.contentRect.height;
     });
     coperturaResizeObserver.observe(coperturaCardRef.value);
 });
@@ -253,7 +261,18 @@ onUnmounted(() => {
 
                 <div class="md:col-span-1 lg:col-span-4 flex flex-col gap-6">
                     
-                    <div v-if="copertura" ref="coperturaCardRef" class="relative flex flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
+                    <!--
+                        ⚠️ `min-h-[430px]` e' lo **stesso pavimento** che ha Inbox Operativa, e va
+                        tenuto uguale ai due. Senza, su un condominio appena importato — copertura
+                        a zero, quindi card corta — Inbox restava al suo minimo e Copertura no: due
+                        schede affiancate di altezza diversa, con un buco sotto quella di sinistra.
+
+                        Non tocca il caso opposto, che e' quello gia' lavorato: quando Copertura
+                        cresce oltre i 430px comanda lei, e il ResizeObserver qui sopra porta Inbox
+                        alla stessa altezza mettendole lo scroll dentro. Il pavimento vale solo
+                        finche' non c'e' abbastanza contenuto da superarlo.
+                    -->
+                    <div v-if="copertura" ref="coperturaCardRef" class="relative flex min-h-[430px] flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
                         <div class="absolute -right-6 -top-6 text-slate-50 dark:text-slate-800/50 pointer-events-none transition-colors group-hover:text-slate-100 dark:group-hover:text-slate-800">
                             <Wallet class="h-32 w-32 opacity-50" />
                         </div>

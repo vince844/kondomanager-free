@@ -36,6 +36,13 @@ interface RilievoUI {
   rimedio: string | null;
   riga: number | null;
   colonna: string | null;
+  /**
+   * Il foglio, quando il file ne ha più d'uno — il modello compilabile a mano.
+   *
+   * Senza, «Riga 14» su un file a cinque fogli esiste cinque volte: il numero sembra preciso ed è
+   * ambiguo, che è precisamente il difetto che la regola sul numero di riga esiste per impedire.
+   */
+  foglio: string | null;
 }
 
 interface LivelloUI {
@@ -261,7 +268,12 @@ function salvaDestinazione() {
               <p class="flex items-start gap-2 font-medium">
                 <CircleAlert class="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <span>
-                  <template v-if="r.riga">Riga {{ r.riga }}<template v-if="r.colonna">, colonna «{{ r.colonna }}»</template> — </template>
+                  <template v-if="r.foglio || r.riga">
+                    <template v-if="r.foglio">Foglio «{{ r.foglio }}»<template v-if="r.riga">, riga {{ r.riga }}</template></template>
+                    <template v-else>Riga {{ r.riga }}</template>
+                    <template v-if="r.colonna">, colonna «{{ r.colonna }}»</template>
+                    —
+                  </template>
                   {{ r.messaggio }}
                 </span>
               </p>
@@ -277,7 +289,11 @@ function salvaDestinazione() {
               <p class="flex items-start gap-2 font-medium">
                 <CircleHelp class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                 <span>
-                  <template v-if="r.riga">Riga {{ r.riga }} — </template>{{ r.messaggio }}
+                  <template v-if="r.foglio || r.riga">
+                    <template v-if="r.foglio">Foglio «{{ r.foglio }}»<template v-if="r.riga">, riga {{ r.riga }}</template></template>
+                    <template v-else>Riga {{ r.riga }}</template>
+                    —
+                  </template>{{ r.messaggio }}
                 </span>
               </p>
               <p v-if="r.rimedio" class="mt-1 pl-6 text-muted-foreground">{{ r.rimedio }}</p>
@@ -296,7 +312,11 @@ function salvaDestinazione() {
               <CollapsibleContent class="space-y-2 pt-2">
                 <div v-for="(r, i) in livello.avvisi" :key="'a' + i" class="rounded-md bg-muted/50 p-3 text-sm">
                   <p>
-                    <template v-if="r.riga">Riga {{ r.riga }} — </template>{{ r.messaggio }}
+                    <template v-if="r.foglio || r.riga">
+                    <template v-if="r.foglio">Foglio «{{ r.foglio }}»<template v-if="r.riga">, riga {{ r.riga }}</template></template>
+                    <template v-else>Riga {{ r.riga }}</template>
+                    —
+                  </template>{{ r.messaggio }}
                   </p>
                   <p v-if="r.rimedio" class="mt-1 text-muted-foreground">{{ r.rimedio }}</p>
                 </div>

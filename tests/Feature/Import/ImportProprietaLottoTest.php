@@ -60,7 +60,7 @@ it('non mostra a un collega il lotto interrotto di un altro', function () {
 
     $this->actingAs(personaCheImporta())
         ->get(route('import.index'))
-        ->assertInertia(fn ($p) => $p->where('interrotto', null));
+        ->assertInertia(fn ($p) => $p->where('interrotte', []));
 });
 
 it('mostra il proprio, di lotto interrotto', function () {
@@ -69,7 +69,7 @@ it('mostra il proprio, di lotto interrotto', function () {
 
     $this->actingAs($alice)
         ->get(route('import.index'))
-        ->assertInertia(fn ($p) => $p->where('interrotto.uuid', $lotto->uuid));
+        ->assertInertia(fn ($p) => $p->where('interrotte.0.uuid', $lotto->uuid));
 });
 
 it('chiude tutte le porte del lotto a chi non è il proprietario', function () {

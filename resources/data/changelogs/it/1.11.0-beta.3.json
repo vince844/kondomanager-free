@@ -1,0 +1,9 @@
+{
+ "features": [
+  "⚠️ QUESTA VERSIONE NON AGGIUNGE MIGRAZIONI. Apre l'importazione da Danea a chi esporta i dati nel modo più naturale — l'«Import/Export tramite Excel» — e chiude un difetto di riservatezza che c'era da prima: l'importazione a metà di un collega era visibile e cancellabile da chiunque potesse importare.",
+  "ORA PUOI DIRE TU IN QUALE CONDOMINIO IMPORTARE — Danea offre due strade per tirare fuori i dati. Le stampe portano in testa il nome del condominio; gli export «Import/Export tramite Excel» no, sono elenchi puri. Chi arrivava di lì vedeva leggere correttamente unità, persone e tabelle, e poi si fermava senza spiegazione. Adesso, quando nessun file lo dice, la schermata di verifica ti chiede in quale condominio metterli.",
+  "L'ESERCIZIO NON TE LO CHIEDO, LO RICAVO — Sceglierlo a mano sarebbe stato il punto in cui si sbaglia più facilmente: la data di inizio dell'esercizio diventa la data di ogni titolarità scritta, quindi puntare all'anno sbagliato non produce nessun errore e nessun avviso, scrive numeri giusti nel periodo sbagliato. Uso l'esercizio aperto del condominio che hai scelto, e te lo dico prima.",
+  "GLI ESERCIZI STRAORDINARI DI DANEA DIVENTANO GESTIONI — Nel tuo vecchio gestionale un esercizio straordinario è un anno a sé; in Kondomanager è una gestione dentro l'esercizio che copre quel periodo. Ora l'importazione lo riconosce e te lo annuncia prima di scrivere.",
+  "L'IMPORTAZIONE DI UN COLLEGA NON È PIÙ DI TUTTI — Chiunque potesse importare vedeva l'ultima importazione a metà di chiunque altro, con il nome del condominio, e poteva riprenderla o cancellarla. Su nove indirizzi mancava del tutto il controllo di chi fosse il proprietario. Se nel tuo studio più persone usano Kondomanager, questo aggiornamento riguarda anche te."
+ ]
+}
