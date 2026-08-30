@@ -7,6 +7,79 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.7] - Il Pulsante Che Non Faceva Niente
+
+**Non aggiunge migrazioni.** Corregge la **scheda del fornitore**, che in certi casi rifiutava il
+salvataggio senza dire niente: nessun messaggio verde, nessun messaggio rosso, e i dati non salvati.
+Lo ha segnalato un amministratore sul forum.
+
+### Il rifiuto che non aveva dove comparire
+
+Il programma rifiutava davvero il salvataggio — un errore di validazione — ma su campi che la
+schermata non sapeva far comparire: **22 chiavi su 39** nella scheda di modifica non avevano nessun
+posto dove stampare il proprio errore, 20 su 38 in quella di creazione. La pagina si ricaricava
+identica e il pulsante sembrava non fare niente.
+
+Ora, quando un salvataggio viene rifiutato:
+
+- in testa al modulo compare un riquadro che **elenca cosa va corretto**, campo per campo;
+- la pagina **ci salta sopra da sola**, così l'avviso non nasce fuori schermo;
+- sotto ogni campo compare la sua riga rossa;
+- e appena correggi il campo, **l'avviso sparisce subito** invece di restare fino al salvataggio dopo.
+
+Il riquadro è la rete sotto l'elenco puntuale: mostra anche le chiavi che nessuno ha ancora collegato
+a un campo, comprese quelle dei campi che si aggiungeranno domani.
+
+### Fornitori che non si salvavano più, qualunque cosa toccassi
+
+Se un fornitore aveva la spunta **«soggetto a ritenuta d'acconto»** e il campo **«Codice tributo»**
+vuoto, la sua scheda era **impossibile da salvare**: bastava voler cambiare il numero di telefono. Il
+riquadro si chiama «Override manuale (facoltativo)» e il programma lo pretendeva lo stesso.
+
+Ora è davvero facoltativo, come dice. L'aliquota resta obbligatoria **solo** quando non hai scelto un
+regime di ritenuta, perché è l'unico caso in cui il calcolo non saprebbe che percentuale applicare.
+
+### Dati veri che venivano rifiutati
+
+- **Telefono, cellulare e fax** accettavano 20 caratteri, cioè meno di «06 1234567 / 333 1234567».
+  Ora ne accettano 50 — le colonne del database ne reggevano 255 da sempre.
+- **Giorni di scadenza** è diventata una casella numerica.
+- **Codice fiscale, nazione e provincia** avevano limiti più larghi della colonna: il rifiuto arrivava
+  dal database come errore generico invece che accanto al campo. Ora combaciano.
+- **Codice ATECO**: il messaggio dice cosa fare — «scrivi solo il codice, senza la descrizione».
+
+### L'indirizzo email già in uso adesso dice dove
+
+Il programma controlla che un indirizzo non sia già usato fra **anagrafiche, fornitori e condomìni**.
+Prima diceva solo «è già in uso», e toccava cercarlo a mano in tre archivi: ora dice in quale.
+
+### Il referente del fornitore non sparisce più
+
+Ogni salvataggio della scheda **toglieva al fornitore i suoi rappresentanti**, in silenzio e con il
+messaggio verde di successo. Il primo rappresentante è la controparte scritta sulle registrazioni,
+quindi da lì in poi le fatture nuove nascevano senza.
+
+I rappresentanti si gestiscono dalla **loro scheda**, dove ognuno ha il suo ruolo fra sei, e la
+scheda del fornitore non li tocca più. Alla creazione di un fornitore nuovo puoi indicarne subito
+uno, **scegliendone il ruolo** — prima nasceva senza, e la scheda dei rappresentanti lo mostrava con
+la colonna vuota.
+
+### Il comune si cerca, non si scrive
+
+Accanto al campo «Comune» c'è il pulsante di ricerca sull'**elenco ISTAT**, lo stesso già in uso sul
+condominio: scegliendo il comune si riempie anche la sigla della provincia. Il campo resta scrivibile
+a mano, perché i comuni cambiano nome e si fondono.
+
+### Dettagli
+
+«Comune», «CAP» e «Prov.» sono nell'ordine in cui si scrive un indirizzo. Telefono, cellulare e fax
+hanno un esempio nella casella. Partita IVA e codice fiscale hanno un segnaposto leggibile. Il
+pulsante «Salva modifiche» ha l'icona giusta e non si seleziona più per sbaglio al posto di premerlo.
+Nella scheda del fornitore i «referenti» si chiamano **«rappresentanti»** dappertutto, come già si
+chiamavano nella loro pagina.
+
+---
+
 ## [1.11.0-beta.6] - L'Importazione Che Si Poteva Disfare
 
 **Non aggiunge migrazioni.** Arriva l'**annullamento di un'importazione**: se hai caricato un

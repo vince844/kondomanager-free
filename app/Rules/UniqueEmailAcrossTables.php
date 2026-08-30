@@ -42,7 +42,13 @@ class UniqueEmailAcrossTables implements ValidationRule
                 }
 
                 if ($query->exists()) {
-                    $fail(__('validation.custom.email.unique_email_across_tables'));
+                    // Il messaggio dice **dove**, non solo che. «Questo indirizzo email è già in
+                    // uso» lascia l'amministratore a cercarlo a mano fra anagrafiche, fornitori e
+                    // condomìni: la collisione tipica è la stessa persona in due ruoli, e senza il
+                    // nome della tabella non ha modo di sapere quale delle tre guardare.
+                    $fail(__('validation.custom.email.unique_email_across_tables_in', [
+                        'dove' => __("validation.custom.email.sorgenti.{$table}"),
+                    ]));
                     return;
                 }
             }

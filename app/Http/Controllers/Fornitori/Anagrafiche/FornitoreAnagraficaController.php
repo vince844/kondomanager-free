@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Fornitori\Anagrafiche;
 
+use App\Enums\RuoloRappresentanteFornitore;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\Anagrafica\CreateFornitoreAnagraficaRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
@@ -65,6 +66,9 @@ class FornitoreAnagraficaController extends Controller
         return Inertia::render('fornitori/anagrafiche/AnagraficheNew', [
             'fornitore'   => $fornitore,
             'anagrafiche' => AnagraficaResource::collection($availableAnagrafiche),
+            // Dall'enum e non da una lista scritta a mano nella pagina: la stessa lista serve anche
+            // alla creazione del fornitore, e due copie che divergono le nota qualcuno, tre no.
+            'ruoli'       => RuoloRappresentanteFornitore::opzioni(),
         ]);
     }
 

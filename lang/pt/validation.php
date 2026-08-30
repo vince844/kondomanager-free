@@ -186,7 +186,13 @@ return [
             'unique' => 'O campo :attribute já está em uso',
             'lowercase' => 'O campo :attribute deve estar em minúsculas',
             'email' => 'O campo :attribute deve ser um endereço de email válido',
-            'unique_email_across_tables' => 'Este endereço de email já está em uso.'
+            'unique_email_across_tables' => 'Este endereço de email já está em uso.',
+            'unique_email_across_tables_in' => 'Este endereço de email já está em uso: consta em :dove.',
+            'sorgenti' => [
+                'anagrafiche' => 'uma ficha de pessoa',
+                'fornitori'   => 'outro fornecedor',
+                'condomini'   => 'um condomínio',
+            ],
         ],
         'email_secondaria' => [
             'required' => 'O campo :attribute é obrigatório',
@@ -194,11 +200,18 @@ return [
             'lowercase' => 'O campo :attribute deve estar em minúsculas',
             'email' => 'O campo :attribute deve ser um endereço de email válido'
         ],
+        'ruolo' => [
+            'required_with' => 'Escolhe também o papel do representante',
+        ],
+        'codice_ateco' => [
+            'max' => 'Escreve apenas o código, sem a descrição — por exemplo 43.22.01.',
+        ],
         'pec' => [
             'required' => 'O campo :attribute é obrigatório',
             'unique' => 'O campo :attribute já está em uso',
             'lowercase' => 'O campo :attribute deve estar em minúsculas',
-            'email' => 'O campo :attribute deve ser um endereço de email válido'
+            'email' => 'O campo :attribute deve ser um endereço de email válido',
+            'different' => 'O email certificado deve ser diferente do email comum: se a empresa tem um único endereço, deixa um dos dois campos vazio.',
         ],
         'name' => [
             'required' => 'O campo :attribute é obrigatório'

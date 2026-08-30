@@ -29,7 +29,7 @@ const topbarNavItems: LinkItem[] = [
   {
     type: 'link',
     icon: UsersRound,
-    title: 'Referenti',
+    title: 'Rappresentanti',
     href:  generatePath('fornitori/:fornitore/anagrafiche', { fornitore: fornitore.value.id }),
   },
   {

@@ -1,20 +1,23 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, Info, ShieldCheck, Truck, UserPlus } from 'lucide-vue-next';
+import { Save, LoaderCircle, Info, ShieldCheck, Truck, UserPlus } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import FormErrorSummary from '@/components/FormErrorSummary.vue';
+import CercaComune from '@/components/comuni/CercaComune.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { usePermission } from '@/composables/permissions';
+import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
 import { trans } from 'laravel-vue-i18n';
 import vSelect from "vue-select";
 import VueDatePicker from '@vuepic/vue-datepicker';
@@ -24,9 +27,11 @@ import type { Anagrafica } from '@/types/anagrafiche';
 import type { Categoria } from '@/types/categorie';
 
 type RegimeOption = { value: string; label: string };
+type RuoloOption = { id: string; label: string };
 
 const props = defineProps<{
   anagrafiche: Anagrafica[];
+  ruoliRappresentante: RuoloOption[];
   categorie: Categoria[];
   tipiRitenuta: RegimeOption[];
   natureRecipiente: RegimeOption[];
@@ -35,6 +40,12 @@ const props = defineProps<{
 const regimiProvvigioni = ['provvigioni_base_50', 'provvigioni_base_20'];
 
 const { generateRoute } = usePermission();
+
+// ⚠️ Qui il flash NON si disegna, ed è una scelta misurata dalla revisione della beta.7:
+// `FornitoreController::store()` rimanda **sempre** a `admin.fornitori.index`, sia in caso di
+// successo sia nel `catch`. Un `<Alert>` su questa pagina non potrebbe mai accendersi: sarebbe
+// codice morto che sembra una funzione. Sulla scheda di modifica invece serve, perché
+// `RedirectHelper::backOr()` può riportare proprio lì.
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
@@ -92,6 +103,7 @@ const form = useForm({
     pec: '',
     sito_web: '',
     anagrafica_id: '',
+  ruolo: '',
     soggetto_ritenuta: false,
     perc_ritenuta: '',
     perc_imponibile_ritenuta: '100',
@@ -122,12 +134,78 @@ const moneyOptions = ref({
   masked: true 
 })
 
+// Nomi leggibili per il riepilogo dei rifiuti in testa al modulo.
+const etichetteCampi: Record<string, string> = {
+    ragione_sociale: 'Ragione sociale',
+    partita_iva: 'Partita IVA',
+    codice_fiscale: 'Codice fiscale',
+    note: 'Note aggiuntive interne',
+    indirizzo: 'Indirizzo e civico',
+    cap: 'CAP',
+    comune: 'Comune',
+    provincia: 'Provincia',
+    nazione: 'Nazione',
+    telefono: 'Telefono fisso',
+    cellulare: 'Cellulare',
+    fax: 'Fax',
+    email: 'Email ordinaria',
+    pec: 'Email PEC',
+    sito_web: 'Sito internet',
+    anagrafica_id: 'Rappresentante',
+    ruolo: 'Ruolo rappresentante',
+    categoria_id: 'Categoria',
+    codice_ateco: 'Codice ATECO',
+    iscrizione_cciaa: 'Iscrizione CCIAA',
+    data_iscrizione_cciaa: 'Data iscrizione CCIAA',
+    numero_iscrizione_ordine: "Numero d'iscrizione all'ordine",
+    capitale_sociale: 'Capitale sociale',
+    iban_principale: 'IBAN principale',
+    modalita_pagamento_default: 'Modalità di pagamento',
+    giorni_scadenza: 'Giorni di scadenza',
+    tipo_ritenuta: 'Regime di ritenuta',
+    natura_percipiente: 'Natura del percipiente',
+    perc_ritenuta: '% da trattenere',
+    perc_imponibile_ritenuta: '% base imponibile',
+    codice_tributo: 'Codice tributo',
+    forfetario_dichiarato_il: 'Data della dichiarazione forfetaria',
+    forfetario_riferimento: 'Riferimento della dichiarazione forfetaria',
+    provvigioni_dichiarazione_il: 'Data della dichiarazione sulle provvigioni',
+};
+
+/**
+ * Il Comune scelto dall'elenco ISTAT riempie **due** campi: il nome e la sigla della provincia.
+ * Il CAP no, e non per dimenticanza: la tabella `comuni` non ha quella colonna — un comune può
+ * avere decine di CAP, quindi non è un dato che si possa dedurre dal nome. Resta a mano.
+ *
+ * Il campo non diventa una tendina: chi sa cosa scrivere continua a scriverlo. È la stessa scelta
+ * fatta sul Comune catastale del condominio, e la ragione è che i comuni si fondono e cambiano nome.
+ */
+const comuneScelto = (c: { nome: string; sigla: string }) => {
+  form.comune = c.nome;
+  form.provincia = c.sigla;
+};
+
+// La riga rossa sparisce appena il campo viene corretto, invece di restare finché non si salva
+// di nuovo: senza, il programma continua a segnalare un errore che l'utente ha già sistemato.
+usePuliziaErrori(form);
+
+const riepilogoErrori = ref<HTMLElement | null>(null);
+
 const submit = () => {
     form.post(route(generateRoute('fornitori.store')), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
-        } 
+        },
+        // Vedi FornitoriEdit.vue: senza questo un rifiuto su un campo lontano dal pulsante non si
+        // vede, e «Salva fornitore» sembra non fare niente.
+        onError: () => {
+            nextTick(() => {
+                const box = riepilogoErrori.value as HTMLElement | null;
+                box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                box?.focus?.();
+            });
+        },
     });
 };
 
@@ -151,6 +229,10 @@ const submit = () => {
 
       <form @submit.prevent="submit" class="space-y-6">
 
+        <div ref="riepilogoErrori" tabindex="-1" class="outline-none">
+          <FormErrorSummary :errors="form.errors" :labels="etichetteCampi" />
+        </div>
+
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
             <CardHeader class="pb-3 border-b border-dashed mb-4">
                 <CardTitle class="text-base font-semibold">Informazioni principali</CardTitle>
@@ -173,9 +255,14 @@ const submit = () => {
                         <InputError :message="form.errors.ragione_sociale" />
                     </div>
 
+                    <!-- La ragione sociale sta da sola sulla sua riga: rappresentante e ruolo
+                         vanno affiancati sotto, e senza questo riempitivo il primo dei due
+                         risalirebbe accanto a lei. -->
+                    <div class="hidden sm:block sm:col-span-3" aria-hidden="true"></div>
+
                     <div class="sm:col-span-3">
                         <div class="flex items-center gap-2 min-h-[24px]">
-                            <Label for="referente">Referente principale</Label>
+                            <Label for="referente">Rappresentante</Label>
                             <HoverCard>
                                 <HoverCardTrigger as-child>
                                 <button type="button" class="text-slate-400 hover:text-primary outline-none">
@@ -183,8 +270,13 @@ const submit = () => {
                                 </button>
                                 </HoverCardTrigger>
                                 <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
-                                    <h4 class="text-sm font-bold uppercase mb-2">Associazione Referente</h4>
-                                    <p class="text-xs text-slate-500 leading-relaxed">Puoi associare un'anagrafica esistente come referente per abilitare accessi dedicati al portale fornitori.</p>
+                                    <h4 class="text-sm font-bold uppercase mb-2">Il primo rappresentante</h4>
+                                    <p class="text-xs text-slate-500 leading-relaxed">
+                                        Puoi associare subito un'anagrafica esistente come rappresentante del fornitore, scegliendone il ruolo.
+                                    </p>
+                                    <p class="text-xs text-slate-500 leading-relaxed mt-2">
+                                        Un fornitore può avere più di un rappresentante, ognuno col suo ruolo: qui se ne indica il primo, gli altri si aggiungono dalla scheda «Rappresentanti».
+                                    </p>
                                 </HoverCardContent>
                             </HoverCard>
                         </div>
@@ -207,14 +299,42 @@ const submit = () => {
                     </div>
 
                     <div class="sm:col-span-3">
+                        <div class="flex items-center gap-2 min-h-[24px]">
+                            <Label for="ruolo">Ruolo rappresentante</Label>
+                            <HoverCard>
+                                <HoverCardTrigger as-child>
+                                <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                    <Info class="w-4 h-4" />
+                                </button>
+                                </HoverCardTrigger>
+                                <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                    <h4 class="text-sm font-bold uppercase mb-2">A cosa serve il ruolo</h4>
+                                    <p class="text-xs text-slate-500 leading-relaxed">
+                                        Dice a chi rivolgersi, e per cosa: il <strong>titolare</strong> firma, l'<strong>amministrativo</strong> tiene fatture e pagamenti, il <strong>commerciale</strong> fa i preventivi, il <strong>tecnico</strong> viene sul posto. Restano <strong>referente</strong>, per il contatto generico, e <strong>altro</strong>.
+                                    </p>
+                                </HoverCardContent>
+                            </HoverCard>
+                        </div>
+                        <v-select
+                            class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
+                            :options="ruoliRappresentante"
+                            v-model="form.ruolo"
+                            :reduce="(r: RuoloOption) => r.id"
+                            label="label"
+                            placeholder="Seleziona ruolo..."
+                        />
+                        <InputError :message="form.errors.ruolo" />
+                    </div>
+
+                    <div class="sm:col-span-3">
                         <Label for="partita_iva">Partita IVA</Label>
-                        <Input id="partita_iva" v-model="form.partita_iva" class="mt-1 bg-white" placeholder="Partita IVA" />
+                        <Input id="partita_iva" v-model="form.partita_iva" class="mt-1 bg-white" placeholder="Inserisci partita IVA" />
                         <InputError :message="form.errors.partita_iva" />
                     </div>
                     
                     <div class="sm:col-span-3">
                         <Label for="codice_fiscale">Codice fiscale</Label>
-                        <Input id="codice_fiscale" v-model="form.codice_fiscale" class="mt-1 bg-white" placeholder="Codice fiscale" />
+                        <Input id="codice_fiscale" v-model="form.codice_fiscale" class="mt-1 bg-white" placeholder="Inserisci codice fiscale" />
                         <InputError :message="form.errors.codice_fiscale" />
                     </div>
 
@@ -240,21 +360,24 @@ const submit = () => {
                         <InputError :message="form.errors.indirizzo" />
                     </div>
                     
+                    <div class="sm:col-span-3">
+                        <Label for="comune">Comune</Label>
+                        <div class="mt-1 flex items-center gap-2">
+                          <Input id="comune" v-model="form.comune" placeholder="Comune" class="bg-white" />
+                          <CercaComune @scelto="comuneScelto" />
+                        </div>
+                        <InputError :message="form.errors.comune" />
+                    </div>
+
                     <div class="sm:col-span-2">
                         <Label>CAP</Label>
                         <Input v-model="form.cap" placeholder="CAP" class="mt-1 bg-white" maxlength="5" />
                         <InputError :message="form.errors.cap" />
                     </div>
-                    
-                    <div class="sm:col-span-3">
-                        <Label>Comune</Label>
-                        <Input v-model="form.comune" placeholder="Comune" class="mt-1 bg-white" />
-                        <InputError :message="form.errors.comune" />
-                    </div>
-                    
+
                     <div class="sm:col-span-1">
                         <Label>Prov.</Label>
-                        <Input v-model="form.provincia" placeholder="Prov." class="mt-1 bg-white" maxlength="2" />
+                        <Input v-model="form.provincia" placeholder="Prov." class="mt-1 bg-white uppercase" maxlength="2" />
                         <InputError :message="form.errors.provincia" />
                     </div>
 
@@ -262,28 +385,34 @@ const submit = () => {
 
                     <div class="sm:col-span-2">
                         <Label>Telefono fisso</Label>
-                        <Input v-model="form.telefono" class="mt-1 bg-white" />
+                        <Input v-model="form.telefono" placeholder="Es: 06 1234567" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.telefono" />
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Cellulare</Label>
-                        <Input v-model="form.cellulare" class="mt-1 bg-white" />
+                        <Input v-model="form.cellulare" placeholder="Es: 333 1234567" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.cellulare" />
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Fax</Label>
-                        <Input v-model="form.fax" class="mt-1 bg-white" />
+                        <Input v-model="form.fax" placeholder="Es: 06 1234568" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.fax" />
                     </div>
 
                     <div class="sm:col-span-2">
                         <Label>Email ordinaria</Label>
                         <Input v-model="form.email" type="email" placeholder="email@esempio.it" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.email" />
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Email PEC</Label>
                         <Input v-model="form.pec" type="email" placeholder="pec@legalmail.it" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.pec" />
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Sito internet</Label>
                         <Input v-model="form.sito_web" placeholder="https://..." class="mt-1 bg-white" />
+                        <InputError :message="form.errors.sito_web" />
                     </div>
                 </div>
             </CardContent>
@@ -359,9 +488,10 @@ const submit = () => {
                                 </HoverCard>
                             </div>
                             <div class="relative mt-1">
-                                <Input v-model="form.giorni_scadenza" class="pr-8 text-right font-medium bg-white" />
+                                <Input v-model="form.giorni_scadenza" type="number" min="0" step="1" class="pr-8 text-right font-medium bg-white" />
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">gg</span>
                             </div>
+                            <InputError :message="form.errors.giorni_scadenza" />
                         </div>
                     </div>
 
@@ -410,6 +540,7 @@ const submit = () => {
                             <div>
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Riferimento documento conservato</Label>
                                 <Input v-model="form.forfetario_riferimento" placeholder="Es. dichiarazione del 12/01/2026 agli atti" class="h-10 bg-white dark:bg-slate-950" />
+                                <InputError :message="form.errors.forfetario_riferimento" class="mt-1" />
                             </div>
                         </div>
                     </Transition>
@@ -513,7 +644,7 @@ const submit = () => {
 
                                 <div class="sm:col-span-2">
                                     <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Codice Tributo</Label>
-                                    <Input v-model="form.codice_tributo" placeholder="Es. 1040" class="h-10 uppercase font-mono bg-slate-50 dark:bg-slate-900/50" />
+                                    <Input v-model="form.codice_tributo" placeholder="Es: 1040" class="h-10 uppercase placeholder:normal-case bg-slate-50 dark:bg-slate-900/50" />
                                     <InputError :message="form.errors.codice_tributo" class="mt-1" />
                                 </div>
                             </div>
@@ -534,6 +665,7 @@ const submit = () => {
                     <div class="sm:col-span-3">
                         <Label for="iscrizione_cciaa">Iscrizione CCIAA</Label>
                         <Input id="iscrizione_cciaa" v-model="form.iscrizione_cciaa" placeholder="Numero iscrizione CCIA" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.iscrizione_cciaa" />
                     </div>
                     
                     <div class="sm:col-span-3">
@@ -548,6 +680,7 @@ const submit = () => {
                             auto-apply
                             placeholder="Seleziona data"
                         />
+                        <InputError :message="form.errors.data_iscrizione_cciaa" />
                     </div>
 
                     <div class="sm:col-span-3">
@@ -560,12 +693,14 @@ const submit = () => {
                             placeholder="0,00"
                             class="mt-1"
                         />
+                        <InputError :message="form.errors.capitale_sociale" />
                         <p class="text-[11px] text-muted-foreground mt-1 italic">Es: 10.000,00</p>
                     </div>
                     
                     <div class="sm:col-span-3">
                         <Label for="codice_ateco">Codice ATECO</Label>
-                        <Input id="codice_ateco" v-model="form.codice_ateco" placeholder="Codice ateco" class="mt-1 bg-white" />
+                        <Input id="codice_ateco" v-model="form.codice_ateco" placeholder="Inserisci codice ATECO" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.codice_ateco" />
                     </div>
 
                     <div class="sm:col-span-6 mt-2 mb-2 border-t border-dashed"></div>
@@ -580,11 +715,13 @@ const submit = () => {
                             label="name"
                             placeholder="Seleziona categoria..."
                         />
+                        <InputError :message="form.errors.categoria_id" />
                     </div>
 
                     <div class="sm:col-span-3">
                         <Label for="numero_iscrizione_ordine">Iscrizione Albo/Ordine (se professionista)</Label>
                         <Input id="numero_iscrizione_ordine" v-model="form.numero_iscrizione_ordine" placeholder="Numero iscrizione albo" class="mt-1 bg-white" />
+                        <InputError :message="form.errors.numero_iscrizione_ordine" />
                     </div>
 
                     <div class="sm:col-span-6 mt-2">
@@ -606,7 +743,7 @@ const submit = () => {
         <div class="flex items-center justify-end gap-3">
             <Link
                 :href="route(generateRoute('fornitori.index'))"
-                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm select-none"
             >
                 Annulla
             </Link>
@@ -614,10 +751,10 @@ const submit = () => {
             <Button 
                 type="submit"
                 :disabled="form.processing" 
-                class="h-9 px-8 text-sm font-semibold shadow-md gap-2"
+                class="h-9 px-8 text-sm font-semibold shadow-md gap-2 select-none"
             >
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                <Plus v-else class="h-4 w-4" />
+                <Save v-else class="h-4 w-4" />
                 Salva fornitore
             </Button>
         </div>

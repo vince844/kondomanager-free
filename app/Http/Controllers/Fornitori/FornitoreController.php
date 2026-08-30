@@ -6,6 +6,7 @@ use App\Traits\OrdinaElenco;
 
 use App\Enums\Fiscale\NaturaPercipiente;
 use App\Enums\Fiscale\TipoRitenuta;
+use App\Enums\RuoloRappresentanteFornitore;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
@@ -84,6 +85,9 @@ class FornitoreController extends Controller
         return Inertia::render('fornitori/FornitoriNew', [
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
+            // I sei ruoli vengono dall'enum, non da una lista scritta a mano nella pagina: erano
+            // già duplicati fra `CreateFornitoreAnagraficaRequest` e `AnagraficheNew.vue`.
+            'ruoliRappresentante' => RuoloRappresentanteFornitore::opzioni(),
             ...$this->regimeFiscaleOptions(),
         ]);
     }
@@ -112,7 +116,12 @@ class FornitoreController extends Controller
 
             // 2. Associazione dell'Anagrafica come referente (se presente)
             if (!empty($data['anagrafica_id'])) {
-                $fornitore->referenti()->attach($data['anagrafica_id']);
+                // Con il ruolo, che la validazione rende obbligatorio appena si sceglie
+                // un'anagrafica: senza, nasceva una riga che la scheda «Rappresentanti» avrebbe
+                // rifiutato, e che lì compariva con la colonna Ruolo vuota.
+                $fornitore->referenti()->attach($data['anagrafica_id'], [
+                    'ruolo' => $data['ruolo'],
+                ]);
             }
 
             // 3. Creazione del Conto Corrente predefinito (se è stato inserito un IBAN)
@@ -214,13 +223,12 @@ class FornitoreController extends Controller
             // 1. Aggiorna i dati del fornitore (inclusi i campi fiscali e lo stato)
             $fornitore->update($validated);
 
-            // 2. Sincronizza l'Anagrafica (Referente Principale)
-            if (!empty($validated['anagrafica_id'])) {
-                $fornitore->referenti()->sync([$validated['anagrafica_id']]);
-            } else {
-                // Se viene svuotato il campo nel form, rimuoviamo l'associazione
-                $fornitore->referenti()->detach();
-            }
+            // 2. I rappresentanti non si toccano da qui, ed è una rimozione voluta della beta.7.
+            // Prima questo punto faceva `detach()` senza argomenti quando il modulo non mandava
+            // `anagrafica_id` — cioè portava via **tutti** i rappresentanti a ogni salvataggio, con
+            // il messaggio verde di successo. La correzione non è stata rimettere la casella (che
+            // non sa esprimere il `ruolo`, obbligatorio dall'altra parte) ma togliere del tutto la
+            // scrittura: la relazione si governa dalla scheda «Rappresentanti».
 
             // 3. Gestione del Conto Corrente (Tesoreria)
             // Se c'è un IBAN, lo aggiorniamo (o lo creiamo se non esisteva).
@@ -251,7 +259,9 @@ class FornitoreController extends Controller
                 $this->flashSuccess(__('fornitori.success_update_fornitore'))
             );
 
-        } catch (\Exception $e) {
+        // `\Throwable` e non `\Exception`, come già fa `store()`: un `TypeError` sfuggirebbe alla
+        // cattura e lascerebbe aperta la transazione aperta poco sopra.
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Error updating fornitore: ' . $e->getMessage());
 
@@ -298,7 +308,7 @@ class FornitoreController extends Controller
                 $this->flashSuccess(__('fornitori.success_delete_fornitore'))
             );
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Error deleting fornitore: ' . $e->getMessage());
 

@@ -21,6 +21,7 @@ import type { BreadcrumbItem } from '@/types';
 const props = defineProps<{
   fornitore: Fornitore;
   anagrafiche: Anagrafica[]
+  ruoli: { id: string; label: string }[]
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -29,32 +30,28 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Fornitori', href: route(generateRoute('fornitori.index')) },
   { title: props.fornitore.ragione_sociale, href: generatePath('fornitori/:fornitore', { fornitore: props.fornitore.id }) },
   { title: 'Rappresentanti', href: generatePath('fornitori/:fornitore/anagrafiche', { fornitore: props.fornitore.id }) },
-  { title: 'Associa Referente', href: '#' }
+  { title: 'Associa rappresentante', href: '#' }
 ];
 
 const pageGuides = computed(() => [
   {
     title: 'Anagrafiche di Riferimento',
-    description: 'Aggiungi referenti all\'anagrafica del fornitore per tenere traccia dei contatti.',
+    description: 'Aggiungi rappresentanti al fornitore per tenere traccia dei contatti.',
     icon: UserPlus,
     colorVariant: 'blue' as const
   },
   {
     title: 'Assegnazione Ruoli',
-    description: 'Definisci il ruolo di ogni referente per chiarire le responsabilità (es. Amministrativo, Tecnico).',
+    description: 'Definisci il ruolo di ogni rappresentante per chiarire le responsabilità (es. Amministrativo, Tecnico).',
     icon: ShieldCheck,
     colorVariant: 'emerald' as const
   }
 ]);
 
-const ruoli = [
-  { label: 'Titolare', id: 'titolare' },
-  { label: "Amministrativo", id: 'amministrativo' },
-  { label: "Commerciale", id: 'commerciale' },
-  { label: "Tecnico", id: 'tecnico' },
-  { label: "Referente", id: 'referente' },
-  { label: "Altro", id: 'altro' }
-];
+// I ruoli arrivano dal server (`RuoloRappresentanteFornitore`): erano scritti a mano qui **e**
+// dentro `CreateFornitoreAnagraficaRequest`, e la beta.7 stava per aggiungerne una terza copia
+// sulla creazione del fornitore.
+const ruoli = computed(() => props.ruoli);
 
 const form = useForm({
   anagrafica_id: '',
@@ -79,7 +76,7 @@ const submit = () => {
     <div class="px-6 py-8 space-y-6">
       
       <PageHeaderGuide
-        page-title="Associa referente"
+        page-title="Associa rappresentante"
         :page-subtitle="`Aggiungi un nuovo contatto per il fornitore ${props.fornitore.ragione_sociale}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
@@ -112,8 +109,15 @@ const submit = () => {
                                         </button>
                                     </HoverCardTrigger>
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
-                                        <h4 class="text-sm font-bold uppercase mb-2">Associazione anagrafica referente</h4>
-                                        <p class="text-xs text-slate-500 leading-relaxed">Puoi associare un'anagrafica al fornitore, se l'anagrafica è associata ad un utente allora potrà accedere al portale online per visualizzare i dati associati a questo fornitore.</p>
+                                        <h4 class="text-sm font-bold uppercase mb-2">Associare un rappresentante</h4>
+                                        <!-- ⚠️ Qui c'era scritto che l'anagrafica collegata a un utente «potrà accedere al
+                                             portale online per visualizzare i dati associati a questo fornitore».
+                                             Verificato il 30/08/2026: quel portale **non esiste**. Il ruolo `fornitore`
+                                             è a database con undici permessi, `anagrafiche.user_id` esiste, ma non c'è
+                                             nessun utente con quel ruolo, nessuna strada per crearne uno e nessuna area
+                                             riservata. Il testo prometteva una funzione non costruita: ora dice quello
+                                             che la schermata fa davvero. -->
+                                        <p class="text-xs text-slate-500 leading-relaxed">Puoi associare un'anagrafica al fornitore dichiarandone il ruolo, così si sa a chi rivolgersi e per cosa. La colonna «Accesso login» dell'elenco dice se quella persona ha già un utente del gestionale.</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>
@@ -179,7 +183,7 @@ const submit = () => {
                 >
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                     <Plus v-else class="h-4 w-4" />
-                    Associa referente
+                    Associa rappresentante
                 </Button>
             </div>
 

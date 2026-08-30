@@ -192,7 +192,13 @@ return [
             'unique' => 'Il campo :attribute è già in uso',
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
             'email' => 'Il campo :attribute deve essere un indirizzo email valido',
-            'unique_email_across_tables' => "Questo indirizzo email è già in uso."
+            'unique_email_across_tables' => "Questo indirizzo email è già in uso.",
+            'unique_email_across_tables_in' => "Questo indirizzo email è già in uso: risulta su :dove.",
+            'sorgenti' => [
+                'anagrafiche' => "un'anagrafica",
+                'fornitori'   => 'un altro fornitore',
+                'condomini'   => 'un condominio',
+            ],
         ],
         'email_secondaria' => [
             'required' => 'Il campo :attribute è richiesto',
@@ -200,11 +206,18 @@ return [
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
             'email' => 'Il campo :attribute deve essere un indirizzo email valido'
         ],
+        'ruolo' => [
+            'required_with' => 'Scegli anche il ruolo del rappresentante',
+        ],
+        'codice_ateco' => [
+            'max' => 'Scrivi solo il codice, senza la descrizione — per esempio 43.22.01',
+        ],
         'pec' => [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
-            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido',
+            'different' => "La PEC deve essere diversa dall'email ordinaria: se la ditta ha un solo indirizzo, lascia vuoto uno dei due campi",
         ],
         'name' => [
             'required' => 'Il campo :attribute è richiesto'

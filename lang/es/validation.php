@@ -180,7 +180,13 @@ return [
             'unique' => 'The :attribute field is already in use.',
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.',
-            'unique_email_across_tables' => 'This email address is already in use.'
+            'unique_email_across_tables' => 'This email address is already in use.',
+            'unique_email_across_tables_in' => 'Esta dirección de email ya está en uso: figura en :dove.',
+            'sorgenti' => [
+                'anagrafiche' => 'una ficha de persona',
+                'fornitori'   => 'otro proveedor',
+                'condomini'   => 'una comunidad',
+            ],
         ],
         'email_secondaria' => [
             'required' => 'The :attribute field is required.',
@@ -188,11 +194,18 @@ return [
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.'
         ],
+        'ruolo' => [
+            'required_with' => 'Elige también el rol del representante',
+        ],
+        'codice_ateco' => [
+            'max' => 'Escribe solo el código, sin la descripción — por ejemplo 43.22.01.',
+        ],
         'pec' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',
             'lowercase' => 'The :attribute field must be lowercase.',
-            'email' => 'The :attribute field must be a valid email address.'
+            'email' => 'The :attribute field must be a valid email address.',
+            'different' => 'El email certificado debe ser distinto del email ordinario: si la empresa tiene una sola dirección, deja vacío uno de los dos campos.',
         ],
         'name' => [
             'required' => 'The :attribute field is required.'
