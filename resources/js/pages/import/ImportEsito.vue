@@ -30,6 +30,8 @@ interface RigaRapporto {
   saltati: number;
   riuscito: boolean;
   gia_a_posto: boolean;
+  /** Saltato perché il dato non c'era: è un'assenza dichiarata, non un guasto. */
+  saltato: boolean;
   prerequisiti_mancanti: { codice: string; cosa_manca: string; rimedio: string }[];
   rilievi: { messaggio: string; rimedio: string | null; riga: number | null }[];
   avvisi: { messaggio: string; rimedio: string | null; riga: number | null }[];
@@ -273,7 +275,15 @@ const conteggi = computed(() => livelli.value.reduce(
                     Le due cose sono diverse e vanno dette diverse: «l'avevi già» (qualcosa nei
                     file, niente da scrivere) e «non c'era nei tuoi file» (niente da nessuna parte).
                   -->
-                  <Badge v-if="!l.riuscito" variant="destructive">fermato</Badge>
+                  <!--
+                    ⚠️ **«Saltato» prima di «fermato».** Un livello che non ha eseguito perché il
+                    file non c'era usciva in rosso con scritto «fermato»: chi non carica le tabelle
+                    millesimali — che è una scelta, non un errore — si vedeva un allarme addosso.
+                    La distinzione esiste dalla beta.5 su `PrerequisitoMancante::$bloccante`, ma
+                    non arrivava fin qui.
+                  -->
+                  <BadgeStato v-if="l.saltato" stato="neutro">non fornito</BadgeStato>
+                  <Badge v-else-if="!l.riuscito" variant="destructive">fermato</Badge>
                   <BadgeStato v-else-if="l.gia_a_posto && !l.creati && !l.uniti && !l.saltati" stato="neutro">
                     non nei tuoi file
                   </BadgeStato>

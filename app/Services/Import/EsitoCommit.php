@@ -70,6 +70,33 @@ final readonly class EsitoCommit
         return $this->riuscito() && $this->creati === 0;
     }
 
+    /**
+     * Il livello è stato **saltato** perché il dato non c'era — non si è fermato.
+     *
+     * ⚠️ È la stessa distinzione che dalla 1.11.0-beta.5 governa `PrerequisitoMancante::$bloccante`,
+     * ma mancava **nel rapporto**: `riuscito()` è falso in entrambi i casi, e la schermata di esito
+     * lo traduceva in un badge rosso «fermato» anche per un livello che nessuno aveva chiesto di
+     * eseguire. Chi non carica il file delle tabelle millesimali vedeva «Tabelle millesimali ·
+     * fermato», cioè un allarme su una cosa che non ha sbagliato.
+     *
+     * Trovato scattando la fotografia della schermata per la guida del sito: nessun test poteva
+     * accorgersene, perché il dato era coerente e a essere sbagliato era il significato.
+     */
+    public function saltato(): bool
+    {
+        if ($this->prerequisitiMancanti === [] || $this->rilievi !== []) {
+            return false;
+        }
+
+        foreach ($this->prerequisitiMancanti as $p) {
+            if ($p->bloccante) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function toArray(): array
     {
         return [
@@ -78,6 +105,7 @@ final readonly class EsitoCommit
             'saltati' => $this->saltati,
             'riuscito' => $this->riuscito(),
             'gia_a_posto' => $this->giaAPosto(),
+            'saltato' => $this->saltato(),
             'prerequisiti_mancanti' => array_map(fn (PrerequisitoMancante $p) => $p->toArray(), $this->prerequisitiMancanti),
             'rilievi' => array_map(fn (Rilievo $r) => $r->toArray(), $this->rilievi),
             'avvisi' => array_map(fn (Rilievo $r) => $r->toArray(), $this->avvisi),
