@@ -1,0 +1,11 @@
+{
+    "features": [
+        "⚠️ ESTA VERSÃO ACRESCENTA UMA MIGRAÇÃO: uma tabela nova para os códigos ATECO. Aplica-se sozinha com a atualização e não toca em nenhum dado existente.",
+        "O CÓDIGO ATECO JÁ NÃO SE ESCREVE DE MEMÓRIA — Ao lado do campo «Código ATECO» da ficha do fornecedor há um botão de pesquisa na classificação oficial do ISTAT: 3.257 códigos com o seu título. Podes procurar pelo código, ou pela atividade por palavras, e escolher da lista. O campo continua a poder ser escrito à mão.",
+        "VÊ-SE DE ONDE VEM CADA CÓDIGO — Por baixo de cada resultado aparece o ramo da classificação a que pertence, e ao lado do código se é uma categoria ou uma subcategoria: na certidão comercial está o código de seis dígitos, ou seja a subcategoria, e agora distingue-se num relance.",
+        "⚠️ O ATECO 2025 MUDOU OS NOMES, E O PROGRAMA DI-LO — Desde 1 de abril de 2025 a classificação mudou: o administrador de condomínio era 68.32.00, hoje é 68.32.01 «Gestione di beni immobili per conto terzi»; o condomínio era 97.00.02 e passou a 97.00.10. Procurando com as palavras antigas não se encontra nada, porque os títulos oficiais já não as contêm: quando a pesquisa não encontra, o programa diz-te quais são os dois códigos mais precisos.",
+        "A LISTA VIAJA COM O PROGRAMA — Nenhuma instalação precisa de internet para ter os códigos: chegam com a atualização, como já acontece com a lista dos municípios. Quem quiser pode recarregá-los à mão com «php artisan kondomanager:aggiorna-ateco».",
+        "E SABE-SE SEMPRE DE QUE CLASSIFICAÇÃO VÊM — No fundo da pesquisa está escrito «Classificazione ATECO 2025, pubblicata da ISTAT». Não é um ornamento: uma lista que não diz de onde vem envelhece em silêncio, e um código retirado sugerido pelo programa é um dado errado. Há também um comando que pergunta ao ISTAT se publicou uma revisão mais recente.",
+        "PORMENORES — A pesquisa encontra um código mesmo escrito sem os pontos («432201»), e procura as palavras separadamente, por isso «installazione ascensori» encontra «Installazione di ascensori e scale mobili». Os duplicados desapareceram: onde categoria e subcategoria têm exatamente o mesmo título — 725 casos em 920 — é proposta só a de seis dígitos."
+    ]
+}

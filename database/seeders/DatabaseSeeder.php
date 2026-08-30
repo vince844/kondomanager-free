@@ -34,6 +34,9 @@ class DatabaseSeeder extends Seeder
             TipologieImmobiliSeeder::class,
             CategoriaFornitoreSeeder::class,
             ComuniSeeder::class,
+            // ⚠️ Come per i Comuni, questo aggancio da solo **non basta**: copre la prima
+            // installazione, non l'aggiornamento. Il secondo è in `SystemFinalizer`.
+            AtecoSeeder::class,
         ]);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Services\System;
 
 use App\Services\UpdateService;
+use Database\Seeders\AtecoSeeder;
 use Database\Seeders\ComuniSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Exception;
@@ -42,6 +43,7 @@ class SystemFinalizer
         $this->runMigrationsWithRetry();
         $this->sincronizzaRuoliEPermessi();
         $this->caricaElencoComuni();
+        $this->caricaClassificazioneAteco();
         $this->alignDatabaseVersion();
         $this->clearSystemCaches();
         $this->ensureStorageLink();
@@ -137,6 +139,37 @@ class SystemFinalizer
             Log::info('Elenco comuni allineato');
         } catch (Exception $e) {
             Log::warning('Caricamento elenco comuni fallito', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Porta a database la classificazione ATECO, che viaggia come file nel repository.
+     *
+     * **Perché sta qui e non basta il seeder.** Vale parola per parola quello che è scritto sopra per
+     * i Comuni: `db:seed` intero non viene mai eseguito in aggiornamento, e `AtecoSeeder` è
+     * agganciato a `DatabaseSeeder`, cioè alla **prima installazione**. Senza questa riga la
+     * migrazione della 1.11.0-beta.8 creerebbe la tabella `codici_ateco` e la lascerebbe **vuota su
+     * ogni installazione aggiornata**: il pulsante accanto al campo «Codice ATECO» non troverebbe
+     * mai niente, per nessuno, senza un errore e senza un log.
+     *
+     * ⚠️ **E non è un timore teorico: è successo.** La prima stesura della beta.8 non aveva né questo
+     * aggancio né quello in `DatabaseSeeder`, e l'ha trovato la revisione avversariale con la suite
+     * verde — esattamente come per i Comuni nella beta.59.
+     *
+     * Non solleva: un aggiornamento non deve fallire perché un aiuto alla compilazione non si è
+     * popolato. Il difetto che resterebbe è un campo da riempire a mano, cioè come si faceva prima.
+     */
+    public function caricaClassificazioneAteco(): void
+    {
+        try {
+            Artisan::call('db:seed', [
+                '--class' => AtecoSeeder::class,
+                '--force' => true,
+            ]);
+
+            Log::info('Classificazione ATECO allineata');
+        } catch (Exception $e) {
+            Log::warning('Caricamento classificazione ATECO fallito', ['error' => $e->getMessage()]);
         }
     }
 

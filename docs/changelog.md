@@ -7,6 +7,65 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.8] - Il Codice Che Non Si Chiama Più Così
+
+⚠️ **Questa versione aggiunge una migrazione**: una tabella nuova per i codici ATECO. Si applica da
+sola con l'aggiornamento e **non tocca nessun dato esistente**.
+
+### Il codice ATECO non si scrive più a memoria
+
+Accanto al campo «Codice ATECO» della scheda fornitore c'è un pulsante di ricerca sulla
+classificazione ufficiale ISTAT: **3.257 codici** con il loro titolo. Si cerca il codice, oppure
+l'attività a parole — «impianti idraulici», «ascensori» — e si sceglie dall'elenco. Nel campo finisce
+**solo il codice**, mai il titolo.
+
+Il campo resta comunque scrivibile a mano, come quello del Comune: una classificazione invecchia per
+revisioni, e un elenco fermo non deve poter impedire di scrivere il codice giusto.
+
+### Si vede da dove viene ogni codice
+
+Sotto ogni risultato compare il ramo della classificazione a cui appartiene, e accanto al codice se è
+una **categoria** o una **sottocategoria**. Non è un dettaglio: sulla visura camerale c'è il codice a
+**sei cifre**, cioè la sottocategoria, e adesso si distingue a colpo d'occhio.
+
+### ⚠️ ATECO 2025 ha cambiato i nomi, e il programma te lo dice
+
+Dal 1° aprile 2025 la classificazione è cambiata, e i titoli non contengono più le parole con cui si
+cercava prima:
+
+| | prima | oggi |
+| :--- | :--- | :--- |
+| **amministratore** | `68.32.00` Amministrazione di condomini e gestione di immobili per conto terzi | `68.32.01` Gestione di beni immobili per conto terzi |
+| **condominio** | `97.00.02` Attività di condomini | `97.00.10` Attività di condomini come datori di lavoro per personale domestico |
+
+Cercando «amministrazione condomini» non si trova niente — non è un difetto, è che quelle parole nel
+titolo ufficiale non ci sono più. Quando la ricerca non trova, il programma **dice quali sono i due
+codici che servono più spesso** invece di lasciarti a indovinare.
+
+### L'elenco viaggia col programma
+
+Nessuna installazione ha bisogno di internet per avere i codici: arrivano con l'aggiornamento, come
+già succede per l'elenco dei Comuni. Chi vuole può ricaricarli a mano:
+
+```
+php artisan kondomanager:aggiorna-ateco
+```
+
+E in fondo alla ricerca c'è scritto **«Classificazione ATECO 2025, pubblicata da ISTAT»**. Non è un
+ornamento: un elenco che non dice da dove viene invecchia in silenzio, e un codice ritirato
+suggerito dal programma è un dato sbagliato. C'è anche un comando che chiede a ISTAT se ha
+pubblicato una revisione più recente — `kondomanager:verifica-fonte-ateco` — e che **non è
+pianificato**, perché nessuna installazione deve uscire in rete da sola.
+
+### Dettagli
+
+La ricerca trova un codice anche scritto **senza i punti** (`432201`), e cerca le parole
+separatamente: «installazione ascensori» trova «Installazione di ascensori e scale mobili», che è il
+titolo ufficiale. I doppioni sono spariti — dove categoria e sottocategoria hanno lo stesso identico
+titolo, e succede in **725 casi su 920**, viene proposta solo quella a sei cifre.
+
+---
+
 ## [1.11.0-beta.7] - Il Pulsante Che Non Faceva Niente
 
 **Non aggiunge migrazioni.** Corregge la **scheda del fornitore**, che in certi casi rifiutava il

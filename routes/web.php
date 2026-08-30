@@ -21,6 +21,7 @@ use App\Http\Middleware\CheckExternalCron;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use App\Http\Controllers\Ateco\CercaAtecoController;
 use App\Http\Controllers\Comuni\CercaComuniController;
 use Illuminate\Support\Facades\Route;
 
@@ -100,6 +101,26 @@ Route::get('/comuni/cerca', CercaComuniController::class)
         'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore|Visualizza condomini',
     ])
     ->name('comuni.cerca');
+
+/*
+|--------------------------------------------------------------------------
+| Ricerca dei codici ATECO — l'aiuto accanto al campo, che resta libero
+|--------------------------------------------------------------------------
+|
+| Stessa forma e stesse ragioni della ricerca dei Comuni qui sopra, compreso il motivo per cui sta
+| fuori dal gruppo `/admin`: il pulsante vive sulle due schede del fornitore, governate
+| dall'accesso al pannello. Registrata altrove, comparirebbe a chi poi riceve un 403.
+|
+| La classificazione è dato pubblico ISTAT e non contiene niente dell'installazione: il filtro serve
+| a rispettare la convenzione di casa, non a proteggere un segreto.
+*/
+Route::get('/ateco/cerca', CercaAtecoController::class)
+    ->middleware([
+        'auth',
+        'verified',
+        'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore',
+    ])
+    ->name('ateco.cerca');
 
 /*
 |--------------------------------------------------------------------------

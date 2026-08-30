@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import CercaComune from '@/components/comuni/CercaComune.vue';
+import CercaAteco from '@/components/ateco/CercaAteco.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -180,6 +181,16 @@ const etichetteCampi: Record<string, string> = {
  * Il campo non diventa una tendina: chi sa cosa scrivere continua a scriverlo. È la stessa scelta
  * fatta sul Comune catastale del condominio, e la ragione è che i comuni si fondono e cambiano nome.
  */
+/**
+ * Il codice scelto dall'elenco ISTAT riempie il campo con il **solo codice**, non con il titolo.
+ * È il codice che va in anagrafica: il titolo lo si è appena letto scegliendolo, e ripeterlo dentro
+ * la casella riprodurrebbe esattamente l'errore da cui è nata la beta.7 — «43.22.01 impianti
+ * idraulici» incollato dentro un campo che accetta solo il codice.
+ */
+const atecoScelto = (c: { codice: string }) => {
+  form.codice_ateco = c.codice;
+};
+
 const comuneScelto = (c: { nome: string; sigla: string }) => {
   form.comune = c.nome;
   form.provincia = c.sigla;
@@ -699,7 +710,10 @@ const submit = () => {
                     
                     <div class="sm:col-span-3">
                         <Label for="codice_ateco">Codice ATECO</Label>
-                        <Input id="codice_ateco" v-model="form.codice_ateco" placeholder="Inserisci codice ATECO" class="mt-1 bg-white" />
+                        <div class="mt-1 flex items-center gap-2">
+                          <Input id="codice_ateco" v-model="form.codice_ateco" placeholder="Inserisci codice ATECO" class="bg-white" />
+                          <CercaAteco @scelto="atecoScelto" />
+                        </div>
                         <InputError :message="form.errors.codice_ateco" />
                     </div>
 
