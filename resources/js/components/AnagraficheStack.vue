@@ -6,14 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Users, MapPin, ChevronRight, User, Percent } from 'lucide-vue-next';
-import { trans } from 'laravel-vue-i18n';
+import { trans, transChoice } from 'laravel-vue-i18n';
 import { coloreRuolo, etichettaRuolo } from '@/lib/gestionale/ruoli-immobile';
 
 const props = defineProps<{
     anagrafiche: Array<{
         id?: number | string;
         nome: string;
-        indirizzo?: string;
+        // ⚠️ Ammette `null` e non solo l'assenza: un indirizzo mancante a database **è** `null`, e
+        // costringere chi passa i dati a convertirlo in `undefined` è un giro inutile che si
+        // dimentica. Il template lo tratta già come falso, quindi qui cambia solo il tipo.
+        indirizzo?: string | null;
         email?: string;
         telefono?: string;
         url?: string; // 2. Aggiunta la prop opzionale url
@@ -114,7 +117,15 @@ const finalWidth = computed(() => {
                 </div>
             </div>
             <Badge variant="secondary" class="ml-2 px-3 py-1 text-sm bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700 font-bold">
-              {{ anagrafiche.length }} {{ trans('condomini.table.total') }}
+              <!--
+                ⚠️ **Una stringa sola con `transChoice`, non «numero + parola».** Il badge diceva
+                «1 Totali», che in italiano con uno non sta in piedi — e si vedeva su tutte e tre le
+                pagine che montano questo componente (condomini, unità, e dalla 1.11.0-beta.9 le
+                categorie di fornitore). Accostare un numero a una parola fissa funziona solo nella
+                lingua in cui il plurale non cambia niente. *(Nella stessa correzione: lo spagnolo
+                diceva «Totals», cioè inglese.)*
+              -->
+              {{ transChoice('condomini.table.total', anagrafiche.length, { count: String(anagrafiche.length) }) }}
             </Badge>
           </DrawerTitle>
         </DrawerHeader>

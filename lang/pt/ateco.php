@@ -20,7 +20,7 @@ return [
     'placeholder' => 'p. ex. 43.22.01, ou «instalações hidráulicas»',
     'searching' => 'A procurar…',
     'min_chars' => 'Escreve pelo menos dois caracteres.',
-    'not_found' => 'Nenhum código encontrado. Tenta com uma só palavra, ou procura pelo código: os títulos oficiais do ATECO 2025 estão em italiano e mudaram com a nova classificação. Os dois mais usados aqui: 68.32.01 para o administrador de condomínio e 97.00.10 para o condomínio como entidade empregadora.',
+    'not_found' => 'Nenhum código encontrado. Tenta com uma só palavra, ou escreve o código à mão: no ATECO 2025 muitos títulos oficiais mudaram e já não correspondem ao nome do ofício. Se o fornecedor és tu — os honorários do administrador registam-se aqui — o código é 68.32.01, que hoje se chama «gestione di beni immobili per conto terzi»; para o condomínio como empregador é 97.00.10.',
     'error' => 'Não consigo consultar a classificação. Tenta de novo, ou escreve o código à mão no campo.',
     'truncated' => 'Mostrados os primeiros :mostrati de :totale. Escreve mais algumas letras para restringir.',
     'source_version' => 'Classificação :versione, publicada pelo ISTAT.',

@@ -20,7 +20,7 @@ return [
     'placeholder' => 'p. ej. 43.22.01, o «instalaciones de fontanería»',
     'searching' => 'Buscando…',
     'min_chars' => 'Escribe al menos dos caracteres.',
-    'not_found' => 'Ningún código encontrado. Prueba con una sola palabra, o busca por código: los títulos oficiales de ATECO 2025 están en italiano y cambiaron con la nueva clasificación. Los dos más usados aquí: 68.32.01 para el administrador de fincas y 97.00.10 para la comunidad como empleadora.',
+    'not_found' => 'Ningún código encontrado. Prueba con una sola palabra, o escribe el código a mano: en ATECO 2025 muchos títulos oficiales han cambiado y ya no coinciden con el nombre del oficio. Si el proveedor eres tú — los honorarios del administrador se registran aquí — el código es 68.32.01, que hoy se llama «gestione di beni immobili per conto terzi»; para la comunidad como empleadora es 97.00.10.',
     'error' => 'No consigo consultar la clasificación. Inténtalo de nuevo, o escribe el código a mano en el campo.',
     'truncated' => 'Mostrados los primeros :mostrati de :totale. Escribe algunas letras más para acotar.',
     'source_version' => 'Clasificación :versione, publicada por ISTAT.',

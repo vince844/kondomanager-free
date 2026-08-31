@@ -20,7 +20,7 @@ return [
     'placeholder' => 'e.g. 43.22.01, or «plumbing systems»',
     'searching' => 'Searching…',
     'min_chars' => 'Type at least two characters.',
-    'not_found' => 'No code found. Try a single word, or search by code: the official ATECO 2025 titles are in Italian and changed with the new classification. The two most used here: 68.32.01 for the condominium administrator (now called «gestione di beni immobili per conto terzi») and 97.00.10 for the building as an employer.',
+    'not_found' => 'No code found. Try a single word, or type the code by hand: many official ATECO 2025 titles have changed and no longer match the name of the trade. If the supplier is you — the administrator\'s fee is recorded here — the code is 68.32.01, now called «gestione di beni immobili per conto terzi»; for the building as an employer it is 97.00.10.',
     'error' => 'I cannot query the classification. Try again, or type the code by hand in the field.',
     'truncated' => 'Showing the first :mostrati of :totale. Type a few more letters to narrow it down.',
     'source_version' => 'Classification :versione, published by ISTAT.',

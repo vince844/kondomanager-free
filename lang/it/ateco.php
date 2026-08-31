@@ -5,6 +5,13 @@
 // perché l'ATECO cambia per revisioni e nel file ISTAT una data non esiste — verificato cella per
 // cella. Vedi `LettoreStrutturaAteco`.
 
+// ⚠️ **Corretto il 30/08/2026, aprendo la beta.9.** La riga `not_found` diceva che i due codici
+// citati sono «i due che servono più spesso **qui**», e non è vero: questo campo tiene il codice
+// **del fornitore** — un idraulico, un ascensorista — mentre 68.32.01 e 97.00.10 sono il codice
+// dell'amministratore e quello del condominio. Restano citati perché il caso esiste davvero (il
+// compenso dell'amministratore si registra come fattura di un fornitore che è lui stesso), ma
+// dichiarato per quello che è, invece di spacciarlo per il caso normale.
+//
 // ⚠️ I due codici citati in `not_found` sono **di ATECO 2025 e vanno riletti a ogni revisione**.
 // Verificati sulla tabella caricata il 30/08/2026: 68.32.01 «Gestione di beni immobili per conto
 // terzi» e 97.00.10 «Attività di condomini come datori di lavoro per personale domestico» esistono
@@ -20,7 +27,7 @@ return [
     'placeholder' => 'es. 43.22.01, oppure «impianti idraulici»',
     'searching' => 'Cerco…',
     'min_chars' => 'Scrivi almeno due caratteri.',
-    'not_found' => 'Nessun codice trovato. Prova con una parola sola, oppure cerca direttamente il codice: in ATECO 2025 i titoli ufficiali sono cambiati. I due che servono più spesso qui: 68.32.01 per l\'amministratore di condominio (oggi si chiama «gestione di beni immobili per conto terzi») e 97.00.10 per il condominio come datore di lavoro.',
+    'not_found' => 'Nessun codice trovato. Prova con una parola sola, oppure scrivi il codice a mano: in ATECO 2025 molti titoli ufficiali sono cambiati e non corrispondono più al nome del mestiere. Se il fornitore sei tu — il compenso dell\'amministratore si registra da qui — il codice è 68.32.01, che oggi si chiama «gestione di beni immobili per conto terzi»; per il condominio come datore di lavoro è 97.00.10.',
     'error' => 'Non riesco a interrogare la classificazione. Riprova, oppure scrivi il codice a mano nel campo.',
     'truncated' => 'Mostrati i primi :mostrati di :totale. Scrivi qualche lettera in più per restringere.',
     'source_version' => 'Classificazione :versione, pubblicata da ISTAT.',

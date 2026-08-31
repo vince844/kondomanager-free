@@ -32,7 +32,12 @@ class DatabaseSeeder extends Seeder
             CategoriaDocumentoSeeder::class,
             CategoriaEventoSeeder::class,
             TipologieImmobiliSeeder::class,
-            CategoriaFornitoreSeeder::class,
+            // ⚠️ `CategoriaFornitoreSeeder` è stato **tolto** nella 1.11.0-beta.9, e non sostituito:
+            // le nove categorie iniziali le scrive la migrazione `seed_categorie_fornitore`.
+            // Il motivo è che da quella beta l'amministratore può cancellarle, e un seeder con
+            // `firstOrCreate` **le farebbe risorgere** al primo `db:seed`. Una migrazione gira una
+            // volta sola per costruzione. Vedi la Coda 103: le altre tre tabelle master hanno
+            // ancora quel difetto.
             ComuniSeeder::class,
             // ⚠️ Come per i Comuni, questo aggancio da solo **non basta**: copre la prima
             // installazione, non l'aggiornamento. Il secondo è in `SystemFinalizer`.

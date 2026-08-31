@@ -16,6 +16,8 @@ use App\Http\Controllers\Eventi\EventoController;
 use App\Http\Controllers\Eventi\FetchCategorieController as EventiFetchCategorieController;
 use App\Http\Controllers\Fornitori\Anagrafiche\FornitoreAnagraficaController;
 use App\Http\Controllers\Fornitori\Documenti\FornitoreDocumentoController;
+use App\Http\Controllers\Anagrafiche\Documenti\AnagraficaDocumentoController;
+use App\Http\Controllers\Fornitori\Categorie\CategoriaFornitoreController;
 use App\Http\Controllers\Fornitori\FornitoreController;
 use App\Http\Controllers\Fornitori\FornitoreSituazioneDebitoriaController;
 use App\Http\Controllers\Newsletter\NewsletterController;
@@ -62,6 +64,21 @@ Route::prefix('admin')->as('admin.')
             'anagrafiche' => 'anagrafica'
         ]);
 
+    // La scheda «Documenti» dell'anagrafica, dalla 1.11.0-beta.9: i documenti **della persona** —
+    // copia del documento d'identità, deleghe, contratti — che da qui si caricano, si rinominano e
+    // si eliminano, come già si fa sulla scheda del fornitore.
+    //
+    // `only()` e non un `resource` intero: manca `show`, perché un documento non ha una pagina di
+    // dettaglio — si apre il file, oppure lo si modifica. Registrarla vorrebbe dire una rotta verso
+    // un metodo inesistente in attesa di qualcuno, che su questo progetto è già costato due
+    // segnalazioni dal forum.
+    Route::resource('anagrafiche.documenti', AnagraficaDocumentoController::class)
+        ->only(['index', 'create', 'store', 'edit', 'update', 'destroy'])
+        ->parameters([
+            'anagrafiche' => 'anagrafica',
+            'documenti'   => 'documento',
+        ]);
+
     Route::resource('fornitori', FornitoreController::class)
         ->parameters([
             'fornitori' => 'fornitore'
@@ -72,6 +89,17 @@ Route::prefix('admin')->as('admin.')
     // inesistenti e rispondevano **500** a chiunque ci arrivasse per URL. I referenti di un
     // fornitore si aggiungono e si tolgono dall'elenco del fornitore; la scheda del singolo
     // referente non è mai esistita. Rimosse nella beta.62.
+    // Le categorie di fornitore, gestibili dalla 1.11.0-beta.9. `only()` e non un `resource` intero,
+    // per la ragione già scritta più sotto per le categorie dei documenti: una categoria non ha una
+    // pagina di dettaglio né una di creazione — si crea, si rinomina e si elimina dall'elenco, e
+    // dalla tendina del modulo del fornitore. `create`, `show` ed `edit` sarebbero tre rotte
+    // registrate verso metodi che non esistono, cioè tre **500** in attesa di qualcuno.
+    Route::resource('categorie-fornitore', CategoriaFornitoreController::class)
+        ->parameters([
+            'categorie-fornitore' => 'categoria'
+        ])
+        ->only(['index', 'store', 'update', 'destroy']);
+
     Route::resource('fornitori.anagrafiche', FornitoreAnagraficaController::class)
         ->only(['index', 'create', 'store', 'destroy'])
         ->parameters([

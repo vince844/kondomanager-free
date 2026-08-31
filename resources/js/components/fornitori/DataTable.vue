@@ -18,7 +18,10 @@ const props = defineProps<{
     per_page: number,
     last_page: number,
     total: number
-  }
+  },
+  // Attraversano solo: chi le usa e' la barra dei filtri.
+  categorie?: Array<{ id: number; name: string }>,
+  filters?: { ragione_sociale?: string | null; categoria_id?: number[] | null }
 }>()
 
 const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
@@ -57,7 +60,7 @@ const table = useVueTable({
 
 <template>
     <div class="flex items-center">
-      <DataTableToolbar :table="table" />
+      <DataTableToolbar :table="table" :categorie="props.categorie" :filters="props.filters" />
     </div>
   
   <div class="border rounded-md">

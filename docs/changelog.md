@@ -7,6 +7,93 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.9] - Il Dato Che C'Era E Non Si Vedeva
+
+⚠️ **Questa versione aggiunge una migrazione**: porta a database le categorie di fornitore, che
+prima erano scritte da un seeder. Si applica da sola con l'aggiornamento, **non tocca nessun dato
+esistente** e su un'installazione che quelle categorie ce le ha già non fa niente.
+
+### Le categorie dei fornitori adesso sono tue
+
+Erano nove righe fisse — Elettricista, Idraulico, Muratore… — e **non c'era nessun modo di
+cambiarle**: niente pagina, niente pulsante. Se il tuo autospurgo non c'era, o mettevi «Altro» o
+niente.
+
+Adesso c'è una pagina: **Rubrica → Elenco fornitori → «Gestisci le categorie»**. Da lì si creano, si
+rinominano e si eliminano. E il momento in cui ci si accorge che una categoria manca non è quello —
+è mentre stai registrando un fornitore, con mezza scheda compilata: accanto alla tendina «Categoria
+fornitore» c'è un **«+»** che la crea e te la lascia già selezionata, **senza farti perdere quello
+che hai scritto**.
+
+### E sono diciannove, non più nove
+
+Alle nove storiche se ne aggiungono **dieci**: termotecnico e caldaie, antennista e citofonia, fabbro
+e serramenti, imbianchino, autospurgo, disinfestazione, portierato e custodia, assicurazioni, utenze,
+studi professionali. Il criterio è uno solo — *spesa ricorrente di un condominio a cui corrisponde un
+fornitore che emette fattura* — e non risolve il problema, lo sposta: qualunque elenco fisso è
+sbagliato per qualcuno. Serve a darti un punto di partenza più onesto; la funzione vera è il pulsante
+per farti le tue.
+
+### ⚠️ «Mostrami tutti gli idraulici»: adesso il programma sa rispondere
+
+Ed è la parte che spiega tutto il resto. La categoria di un fornitore **arrivava già al tuo
+browser**, in ogni riga dell'elenco — e nessuna schermata la mostrava: niente colonna, niente filtro.
+Si poteva classificare un fornitore e poi non c'era, in nessun punto del programma, il modo di
+chiedere chi fosse cosa.
+
+Misurato su un'installazione vera: **sei fornitori su otto non avevano categoria**. Non perché
+mancassero quelle giuste — perché compilarla non serviva a niente.
+
+Da questa versione l'elenco fornitori ha la **colonna «Categoria»** e un **filtro** che ne accetta
+più d'una insieme (chi cerca chi può salire su un tetto vuole muratori *e* lattonieri nello stesso
+elenco). E nella pagina delle categorie il nome è un collegamento che porta dritto all'elenco già
+filtrato.
+
+### Chi usa una categoria si vede, e si raggiunge
+
+Nella pagina delle categorie, accanto a ognuna, ci sono le **iniziali dei fornitori** che la usano —
+lo stesso pannello dell'elenco condomini. Si apre, si vedono tutti con l'indirizzo, e da lì si entra
+nella loro scheda.
+
+Serve soprattutto quando provi a eliminarne una: se qualcuno la usa **non si elimina**, perché quei
+fornitori resterebbero senza categoria senza che nessuno te lo dica. Invece di un «no» secco, si apre
+una finestra che ti dice **chi**, con il collegamento per andarci a cambiare la categoria.
+
+### ⚠️ L'anagrafica adesso ha una scheda — prima era una pagina bianca
+
+Nella Rubrica, cliccando il nome di una persona, si apriva **una pagina completamente vuota**. Non un
+errore: proprio niente, senza nemmeno un messaggio. È un difetto che c'era da prima di questa
+versione ed è saltato fuori seguendo un collegamento nuovo.
+
+Adesso c'è una scheda vera, fatta come quella del fornitore, con due linguette:
+
+- **Dettagli** — recapiti, le unità che occupa con il **ruolo e la quota**, i condomìni in cui
+  compare, il documento d'identità, e se ha o no l'accesso all'area riservata (con la spiegazione di
+  come si dà, che è dal modulo dell'utente e non dall'invito);
+- **Documenti** — i documenti **della persona**: copia del documento d'identità, deleghe, contratti.
+  Si caricano, si rinominano e si eliminano da lì, con lo stesso modulo della scheda fornitore.
+
+Altre linguette si aggiungeranno: la struttura è fatta per quello.
+
+### Cose piccole, tutte trovate guardando le schermate
+
+- I **rappresentanti** di un fornitore, nell'elenco, adesso si cliccano e portano alla scheda della
+  persona. Prima erano testo morto.
+- Il conteggio delle persone nei pannelli diceva «**1 Totali**». Adesso dice «1 in totale», e la
+  correzione si vede anche nell'elenco condomini e in quello delle unità. *(Nella stessa passata: lo
+  spagnolo diceva «Totals», cioè inglese.)*
+- La ricerca del codice ATECO, quando non trova niente, suggeriva due codici presentandoli come «i
+  due che servono più spesso **qui**». Non era vero: quel campo tiene il codice **del fornitore**,
+  mentre quei due sono il tuo e quello del condominio. Restano citati — il compenso
+  dell'amministratore si registra come fattura di un fornitore che è lui stesso — ma detti per quello
+  che sono.
+- Il caricamento documenti del fornitore prometteva «PDF o immagine (JPG/PNG)» e poi le immagini le
+  rifiutava. Adesso dichiara quello che accetta davvero. *(Il supporto alle immagini è una richiesta
+  arrivata dal forum: arriverà, ma insieme all'anteprima — un file che si carica e poi non si apre
+  sarebbe peggio.)*
+
+---
+
 ## [1.11.0-beta.8] - Il Codice Che Non Si Chiama Più Così
 
 ⚠️ **Questa versione aggiunge una migrazione**: una tabella nuova per i codici ATECO. Si applica da

@@ -55,6 +55,17 @@ class FornitoreController extends Controller
             ->when($validated['ragione_sociale'] ?? false, function ($query, $ragioneSociale) {
                 $query->where('ragione_sociale', 'like', "%{$ragioneSociale}%");
             })
+            // ⚠️ **Il filtro per categoria, dalla 1.11.0-beta.9.**
+            //
+            // La categoria arrivava al browser in ogni riga — `with(['categoria'])` qui sopra,
+            // `FornitoreResource` la serializza — e **nessuno la mostrava né la usava**: niente
+            // colonna, niente filtro. Cioè si poteva classificare un fornitore e poi non c'era
+            // modo di chiedere «mostrami tutti gli idraulici». È molto probabilmente il motivo per
+            // cui, misurato il 30/08/2026, **sei fornitori su otto non avevano categoria**:
+            // compilarla non serviva a niente.
+            ->when($validated['categoria_id'] ?? false, function ($query, array $categorie) {
+                $query->whereIn('categoria_id', $categorie);
+            })
             ->tap(fn ($q) => $this->ordina($q, $validated, FornitoreIndexRequest::colonneOrdinabili(), predefinita: 'ragione_sociale', versoPredefinito: 'asc'))
             ->paginate($validated['per_page'])
             ->withQueryString();
@@ -67,7 +78,14 @@ class FornitoreController extends Controller
                 'per_page'     => $fornitori->perPage(),
                 'total'        => $fornitori->total(),
             ],
-            'filters' => $request->only(['ragione_sociale']), 
+            // Le categorie viaggiano **sempre**, non a richiesta: sono poche righe, e caricarle
+            // pigramente all'apertura del menù — come fa l'elenco documenti — costringe poi a
+            // ricaricarle a mano quando si arriva con il filtro già applicato, altrimenti la
+            // pillola sa di essere accesa e non sa scrivere su cosa. Quel difetto è costato una
+            // segnalazione di Vincenzo sull'elenco documenti: qui non può darsi.
+            'categorie' => CategoriaFornitore::orderBy('name')->get(['id', 'name']),
+
+            'filters' => $request->only(['ragione_sociale', 'categoria_id']), 
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);

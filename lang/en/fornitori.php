@@ -33,6 +33,7 @@ return [
      | Table
      | ------------------------------------------------------------------ */
     'table' => [
+        'category'                => 'Category',
         'name'           => 'Company Name',
         'address'        => 'Address',
         'contacts'       => 'Contacts',
@@ -41,6 +42,8 @@ return [
         'click_to_view'  => 'Click to view',
         'filter_by_name' => 'Search supplier...',
         'residents'      => 'Referents',
+        'representatives_title' => 'Supplier representatives',
+        'representatives_desc'  => 'The people who answer for this company. Open a record for their contact details.',
         'residents_desc' => 'List of contacts and referents associated with this supplier.',
     ],
 
@@ -87,4 +90,71 @@ return [
         'edit_compliance_desc'        => 'Update tax rates to allow the system to automatically calculate net payments.',
     ],
     
+
+    /* ------------------------------------------------------------------
+     | Supplier categories (1.11.0-beta.9)
+     | ------------------------------------------------------------------ */
+    'categorie' => [
+        'success_create'      => "The category was created successfully.",
+        'error_create'        => "An error occurred while creating the category.",
+        'success_update'      => "The category was updated successfully.",
+        'error_update'        => "An error occurred while updating the category.",
+        'success_delete'      => "The category was deleted successfully.",
+        'error_delete'        => "An error occurred while deleting the category.",
+        'in_uso'              => "{1} The category «:nome» was not deleted: one supplier is using it. Change its category and try again.|[2,*] The category «:nome» was not deleted: :quanti suppliers are using it. Change their category and try again.",
+
+        'head'                => "Supplier categories",
+        'title'               => "Supplier categories",
+        'description'         => "Create, rename and delete the categories you use to classify companies and professionals.",
+        'back'                => "Back to suppliers",
+
+        'new'                 => "New category",
+        'new_title'           => "Create new category",
+        'new_description'     => "Add a category to classify companies and professionals.",
+        'edit_title'          => "Edit category: :categoria",
+        'edit_description'    => "Here you can change the name and the description of the category.",
+
+        'name'                => "Name",
+        'name_placeholder'    => "For example: glazier",
+        'description_label'   => "Description",
+        'description_hint'    => "Optional: it only helps you remember what belongs here.",
+        'description_placeholder' => "What kind of suppliers this category collects",
+        'used_by'             => "Suppliers",
+        'suppliers_title'     => "Suppliers in this category",
+        'suppliers_desc'      => "Who is classified as «:categoria». Open a record to change its category.",
+
+        'actions'             => "Actions",
+        'edit'                => "Edit",
+        'delete'              => "Delete",
+        'blocked_title'       => "This category cannot be deleted",
+        'blocked_intro'       => "{1} One supplier is classified as «:categoria». While that is the case, deleting it would leave that supplier without a category.|[2,*] :count suppliers are classified as «:categoria». While that is the case, deleting it would leave them without a category.",
+        'blocked_how'         => "Open a record to change its category: once nobody uses this one, deletion works.",
+        'blocked_close'       => "Got it",
+        'delete_title'        => "Delete the category?",
+        'delete_description'  => "Suppliers using it would lose their category, so deletion only succeeds when nobody is using it.",
+        'save'                => "Save",
+        'cancel'              => "Cancel",
+
+        'filtro_non_valido'   => "The category filter is no longer valid: that category does not exist any more. Here is the full list.",
+        'clear_filters'       => "Clear filters",
+        'filter'              => "Filter by name...",
+        'no_results'          => "No category found.",
+        'empty'               => "There are no categories yet.",
+
+        'quick_add'           => "Create a new category",
+        'quick_add_title'     => "New supplier category",
+        'quick_add_description' => "Create it here and it stays selected: you do not lose what you already typed in the form.",
+        'quick_created'       => "Category created and selected.",
+        'manage'              => "Manage categories",
+
+        'guides' => [
+            'own_title'       => "Your own categories",
+            'own_desc'        => "The initial categories are a starting point: add the trades your buildings need and remove the ones you never use.",
+            'use_title'       => "What they are for",
+            'use_desc'        => "They classify companies and professionals in the supplier list and let you find them by type of work.",
+            'safe_title'      => "Protected deletion",
+            'safe_desc'       => "A category used by at least one supplier cannot be deleted: those suppliers must be moved first.",
+        ],
+    ],
+
 ];

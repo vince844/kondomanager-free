@@ -20,6 +20,7 @@ import MoneyInput from '@/components/MoneyInput.vue'
 import { usePermission } from '@/composables/permissions';
 import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
 import vSelect from "vue-select";
+import NuovaCategoriaFornitore from '@/components/fornitori/NuovaCategoriaFornitore.vue';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { trans } from 'laravel-vue-i18n';
@@ -232,6 +233,23 @@ const submit = () => {
         },
     });
 };
+
+/**
+ * Il «+» accanto alla tendina ha appena creato una categoria: qui la si seleziona.
+ *
+ * ⚠️ **Si cerca per nome, non per id, e non è un ripiego.** La richiesta del componente è un
+ * ricaricamento parziale (`only: ['categorie', ...]`), quindi quando arriva questo evento la prop
+ * `categorie` è già quella nuova; l'id però non torna indietro da nessuna parte, mentre il nome sì —
+ * ed è **unico a database**, garantito dalla regola `unique` della richiesta di creazione.
+ */
+function categoriaCreata(nome: string) {
+    const creata = props.categorie.find((c) => c.name === nome)
+
+    if (creata) {
+        form.categoria_id = creata.id
+    }
+}
+
 </script>
 
 <template>
@@ -680,14 +698,23 @@ const submit = () => {
 
                     <div class="sm:col-span-3">
                         <Label for="categoria_id">Categoria fornitore</Label>
-                        <v-select
-                            class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
-                            :options="categorie"
-                            v-model="form.categoria_id"
-                            :reduce="(d: Categoria) => d.id"
-                            label="name"
-                            placeholder="Seleziona categoria..."
-                        />
+                        <!--
+                          Il «+» accanto alla tendina: la categoria che manca ci si accorge che manca
+                          **qui**, con mezza scheda già compilata, non nella pagina delle categorie.
+                          Senza, la scelta sarebbe fra perdere quello che si è scritto e mettere
+                          «Altro» — e «Altro» è quello che poi resta lì per sempre.
+                        -->
+                        <div class="mt-1 flex items-center gap-2">
+                            <v-select
+                                class="w-full premium-select bg-white dark:bg-slate-950 min-w-0 flex-1"
+                                :options="categorie"
+                                v-model="form.categoria_id"
+                                :reduce="(d: Categoria) => d.id"
+                                label="name"
+                                placeholder="Seleziona categoria..."
+                            />
+                            <NuovaCategoriaFornitore @creata="categoriaCreata" />
+                        </div>
                         <InputError :message="form.errors.categoria_id" />
                     </div>
 

@@ -107,6 +107,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // stessa ragione sta qui: una migrazione fuori da questo dataset smette di essere presidiata.
     '2026_08_30_100000_create_codici_ateco_table',
 
+    // Aggiunta nella 1.11.0-beta.9: le categorie di fornitore iniziali, spostate dal seeder a una
+    // migrazione perché l'amministratore ora può cancellarle. Scrive **dati**, non schema, quindi la
+    // rieseguibilità qui vale doppio: senza la guardia per nome un secondo passaggio creerebbe nove
+    // doppioni.
+    '2026_08_31_090000_seed_categorie_fornitore',
+
     // Aggiunta nella beta.62: `immobili.numero_vani` da `integer` a `decimal(5,2)`, per le visure
     // catastali che riportano mezzi vani. È un `MODIFY` su tabella viva, quindi la stessa
     // categoria a rischio di `add_pertinenza_di_to_immobili` e

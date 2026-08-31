@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 use App\Models\Gestionale\RigaScrittura;
@@ -63,9 +64,29 @@ class Anagrafica extends Model
         return $this->belongsToMany(Comunicazione::class, 'anagrafica_comunicazione')->withTimestamps();
     }
 
+    /**
+     * I documenti dell'archivio di cui questa persona è **destinataria**.
+     *
+     * ⚠️ Da non confondere con `documentiPropri()`: qui la persona è *fra i destinatari* di un
+     * documento che vive nell'archivio (il verbale mandato a tutti), là il documento **è suo** —
+     * la copia del documento d'identità, una delega, un contratto d'affitto. Sono due domande
+     * diverse e due tabelle diverse, e tenerle separate è il motivo per cui hanno due nomi.
+     */
     public function documenti()
     {
         return $this->belongsToMany(Documento::class, 'anagrafica_documento');
+    }
+
+    /**
+     * I documenti **della persona**, quelli che l'amministratore archivia sulla sua scheda.
+     *
+     * Stessa forma che il fornitore ha da sempre (`Fornitore::documenti()`, morphMany su
+     * `documentable`): il documento appartiene al soggetto, e cancellando il soggetto se ne va con
+     * lui. Aggiunta nella 1.11.0-beta.9 insieme alla scheda dell'anagrafica.
+     */
+    public function documentiPropri(): MorphMany
+    {
+        return $this->morphMany(Documento::class, 'documentable');
     }
 
     public function eventi()

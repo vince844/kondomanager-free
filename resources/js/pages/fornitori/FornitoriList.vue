@@ -20,7 +20,10 @@ defineProps<{
     per_page: number,
     last_page: number,
     total: number
-  } 
+  },
+  /** Le categorie per il filtro, e i filtri gia' applicati: servono alla barra, in fondo. */
+  categorie?: Array<{ id: number; name: string }>,
+  filters?: { ragione_sociale?: string | null; categoria_id?: number[] | null }
 }>()
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -83,7 +86,7 @@ watch(flashMessage, (newValue) => {
           </div>
 
           <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4 mt-2">
-            <DataTable :columns="columns" :data="fornitori" :meta="meta" />
+            <DataTable :columns="columns" :data="fornitori" :meta="meta" :categorie="categorie" :filters="filters" />
           </div>
         </section>
       </div>

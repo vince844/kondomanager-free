@@ -151,9 +151,63 @@ class AnagraficaController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Anagrafica $anagrafica)
+    /**
+     * La scheda dell'anagrafica.
+     *
+     * ## ⚠️ Questo metodo aveva il corpo vuoto, e la pagina era bianca
+     *
+     * Fino alla 1.11.0-beta.9 qui c'era `//`. `Route::resource` registra comunque la rotta, quindi
+     * `admin/anagrafiche/{id}` rispondeva **200 con niente dentro**: pagina bianca, nessun errore,
+     * nessuna riga di log. E non era una rotta che nessuno raggiungeva —
+     * `resources/js/components/anagrafiche/columns.ts` ci punta col **nome della persona**
+     * nell'elenco della rubrica: bastava cliccare un nome.
+     *
+     * È la stessa famiglia del difetto arrivato dal forum nella beta.62 — `categorie.show`
+     * registrata verso un metodo inesistente, che rispondeva 500 — con una differenza che la rende
+     * peggiore: **un 500 lo si segnala, una pagina bianca fa pensare che sia colpa della propria
+     * connessione.** Trovato il 31/08/2026 seguendo un collegamento nuovo verso una destinazione
+     * vecchia, che è il momento in cui i difetti dormienti si svegliano.
+     *
+     * ## Cosa mostra
+     *
+     * Le stesse quattro famiglie di dati della scheda del fornitore, che è il modello dichiarato:
+     * recapiti, documento d'identità, i condomìni in cui la persona compare e le unità che occupa.
+     * I documenti stanno nella scheda accanto (`AnagraficaDocumentoController`), perché sono un
+     * elenco paginato e non un riquadro.
+     */
+    public function show(Anagrafica $anagrafica): Response
     {
-        //
+        $anagrafica->loadMissing([
+            'condomini',
+            'user',
+            // Le unità con il **ruolo** e la **quota**, che stanno sulla pivot: senza, la scheda
+            // direbbe «occupa tre unità» senza dire a che titolo, che è l'unica cosa che conta.
+            'immobili' => fn ($q) => $q->with('condominio:id,nome'),
+        ]);
+
+        return Inertia::render('anagrafiche/AnagraficheView', [
+            'anagrafica' => new AnagraficaResource($anagrafica),
+
+            // ⚠️ Le unità non passano da `AnagraficaResource`: quella è condivisa da mezzo
+            // programma e non carica la pivot. Si adattano qui, dove si sa cosa serve a questa
+            // schermata, invece di allargare una risorsa che altri usano per altro.
+            'immobili' => $anagrafica->immobili->map(fn ($immobile) => [
+                'id'          => $immobile->id,
+                // `etichettaEstesa` e non `etichetta`: qui lo spazio c'è, e «Int. 3 (Attico)»
+                // dice più di «Attico». La regola è scritta sul modello.
+                'etichetta'   => $immobile->etichetta_estesa,
+                'condominio'  => $immobile->condominio?->nome,
+                'tipologia'   => $immobile->pivot->tipologia,
+                'quota'       => $immobile->pivot->quota,
+                'attivo'      => (bool) $immobile->pivot->attivo,
+                'data_inizio' => $immobile->pivot->data_inizio,
+                'data_fine'   => $immobile->pivot->data_fine,
+            ])->values(),
+
+            // Il conteggio dei documenti serve alla scheda accanto: senza, la linguetta
+            // «Documenti» non sa dire se c'è qualcosa dentro prima che uno ci entri.
+            'documenti_count' => $anagrafica->documenti()->count(),
+        ]);
     }
 
     /**

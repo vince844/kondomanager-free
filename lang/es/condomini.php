@@ -50,7 +50,7 @@ return [
         'actions'        => 'Actions',
         'residents'      => 'Residents',
         'residents_desc' => 'Quickly view the complete list of people associated with this building.',
-        'total'          => 'Totals',
+        'total'          => '{1} 1 en total|[2,*] :count en total',
         'click_to_manage'=> 'Click to manage',
     ],
 

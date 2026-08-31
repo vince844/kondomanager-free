@@ -50,7 +50,7 @@ return [
         'actions'        => 'Azioni',
         'residents'      => 'Anagrafiche',
         'residents_desc' => 'Consulta rapidamente l\'elenco completo delle persone associate a questo condominio.',
-        'total'          => 'Totali',
+        'total'          => '{1} 1 in totale|[2,*] :count in totale',
         'click_to_manage'=> 'Clicca per gestire',
     ],
 
