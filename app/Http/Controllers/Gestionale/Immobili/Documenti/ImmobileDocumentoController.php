@@ -358,7 +358,11 @@ class ImmobileDocumentoController extends Controller
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
                 'created_by'   => $validated['created_by'] ?? $documento->created_by,
-                'category_id'  => $validated['category_id'] ?? $documento->category_id,
+                // ⚠️ Qui c'era `'category_id' => $validated['category_id'] ?? $documento->category_id`,
+                // ed era **già inerte**: il modulo di un documento d'unità non chiede la categoria,
+                // quindi `$validated['category_id']` non esisteva mai e la riga si limitava a
+                // riscrivere il valore che c'era. Dalla 1.11.0-beta.10 la colonna non c'è più, e i
+                // documenti di un soggetto restano senza categoria di proposito.
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
                 'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
             ]);

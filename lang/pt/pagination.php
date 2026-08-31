@@ -16,4 +16,22 @@ return [
     'previous' => '&laquo; Previous',
     'next' => 'Next &raquo;',
 
+
+    // As etiquetas abaixo pertencem aos botões da interface (as duas acima são da paginação
+    // gerada pelo servidor e contêm entidades HTML).
+    'controls' => [
+        'first'    => 'Primeira',
+        'previous' => 'Anterior',
+        'next'     => 'Seguinte',
+        'last'     => 'Última',
+
+        'first_page'    => 'Primeira página',
+        'previous_page' => 'Página anterior',
+        'next_page'     => 'Página seguinte',
+        'last_page'     => 'Última página',
+
+        'page'       => 'Página :page',
+        'more_pages' => 'Mais páginas',
+    ],
+
 ];

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
 import { Link, Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,10 @@ const form = useForm({
   name: props.documento?.name ?? '',
   description: props.documento?.description ?? '',
   is_published: !!props.documento?.is_published,
-  category_id: props.documento?.categoria?.id ?? null, 
+  // ⚠️ **Le categorie che il documento ha già, tutte.** Questo modulo si apre dalla categoria che
+  // il condòmino stava sfogliando: mandandone una sola, correggere il nome di un documento che ne
+  // ha tre **ne cancellerebbe due**, senza errore e senza messaggio.
+  categorie: (props.documento?.categorie ?? []).map((c: Categoria) => c.id),
   file: null as File | null,
 });
 
@@ -226,7 +230,7 @@ const submit = () => {
 
                         <!-- Label + info icon -->
                         <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
-                          <Label for="stato">Categoria</Label>
+                          <Label for="categorie">{{ trans('documenti.label.category') }}</Label>
                           <HoverCard>
                             <HoverCardTrigger as-child>
                               <button type="button" class="cursor-pointer">
@@ -235,9 +239,11 @@ const submit = () => {
                             </HoverCardTrigger>
                             <HoverCardContent class="w-80">
                               <div class="space-y-1">
-                                <h4 class="text-sm font-semibold">Categoria documento</h4>
+                                <h4 class="text-sm font-semibold">Categorie del documento</h4>
                                 <p class="text-sm">
-                                  Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
+                                  Un documento può stare in più categorie, e si trova dentro ognuna:
+                                  il verbale dell'assemblea che approva il bilancio può stare sotto
+                                  «Verbali» e sotto «Bilanci». Almeno una è obbligatoria.
                                 </p>
                               </div>
                             </HoverCardContent>
@@ -249,15 +255,16 @@ const submit = () => {
                           <v-select
                             :options="localCategories"
                             label="name"
-                            v-model="form.category_id"
+                            multiple
+                            v-model="form.categorie"
                             :reduce="(option: Categoria) => option.id"
                             placeholder="Seleziona categoria"
                             class="flex-1"
-                            @update:modelValue="form.clearErrors('category_id')" 
+                            @update:modelValue="form.clearErrors('categorie')"
                           />
                         </div>
 
-                        <InputError :message="form.errors.category_id" />
+                        <InputError :message="form.errors.categorie" />
                       </div>
                     </div>
 

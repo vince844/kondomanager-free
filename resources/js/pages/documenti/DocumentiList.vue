@@ -25,7 +25,7 @@ const props = defineProps<{
    * barra dei filtri per **dichiarare** su cosa è filtrato l'elenco: senza, chi arriva dal nome
    * di una categoria vede una pagina filtrata che sembra completa.
    */
-  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null }
+  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null, is_published?: boolean[] | null }
 }>();
 
 const page = usePage<{ flash: { message?: Flash } }>();

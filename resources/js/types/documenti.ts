@@ -41,7 +41,10 @@ export interface Documento {
     anagrafica: Anagrafica;
   };
   anagrafiche: Anagrafica[];
-  categoria: Categoria;
+  /** ⚠️ Plurale dalla 1.11.0-beta.10: un documento può stare in più categorie. */
+  categorie: Categoria[];
+  /** La data di caricamento in forma leggibile («03/07/2026»), accanto al «tre mesi fa». */
+  created_at_data: string;
 }
 
 // Aggiungi queste interfacce
@@ -55,7 +58,8 @@ export interface BaseDocumentForm {
 
 export interface AdminDocumentForm extends BaseDocumentForm {
   condomini_ids: number[];
-  category_id: string | number | null;
+  /** ⚠️ Un array dalla 1.11.0-beta.10: almeno una categoria, e possibilmente più d'una. */
+  categorie: number[];
 }
 
 export interface FornitoreDocumentForm extends BaseDocumentForm {
@@ -69,5 +73,5 @@ export interface ImmobileDocumentForm extends BaseDocumentForm {
 // Mantieni anche l'interfaccia generica se serve
 export interface DocumentForm extends BaseDocumentForm {
   condomini_ids?: number[];
-  category_id?: string | number | null;
+  categorie?: number[];
 }

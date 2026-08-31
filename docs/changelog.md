@@ -7,6 +7,106 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.10] - Il Documento Che Stava In Un Posto Solo
+
+⚠️ **Questa versione aggiunge tre migrazioni**, e una di esse **cambia la struttura**: il legame fra
+un documento e la sua categoria passa da una colonna a una tabella a sé, perché le categorie ora
+sono più d'una. Il travaso dei dati esistenti è automatico e si applica con l'aggiornamento.
+
+### Un documento può stare in più categorie
+
+È una **richiesta arrivata dal forum**: *«sarebbe utile poter assegnare a un documento archiviato più
+categorie, attualmente è possibile associarlo a un'unica categoria. In alcuni casi aiuterebbe la
+ricerca dei documenti»*.
+
+Adesso si può. Il verbale dell'assemblea che approva il bilancio si trova sotto **«Verbali»** e sotto
+**«Bilanci»**, e compare in tutti e due gli elenchi — anche in quello che il condòmino sfoglia nella
+sua area. La ricerca per più categorie insieme c'era già; quello che mancava era che un documento
+potesse *starci* in più d'una.
+
+Nell'elenco la colonna mostra le prime due etichette e poi un **`+N`**, con l'elenco completo
+passandoci sopra: una cella che cresce all'infinito rende le righe illeggibili.
+
+### ⚠️ Cosa **non** cambia, e conviene saperlo
+
+I documenti caricati su un **fornitore, un'unità immobiliare o un'anagrafica** restano **senza
+categoria**, come prima. Non è una dimenticanza: quei moduli la categoria non la chiedono affatto,
+perché quei documenti vivono sulla scheda del loro soggetto e si trovano lì. Renderli categorizzabili
+è una domanda legittima, ma è un'altra decisione.
+
+Per l'archivio invece la categoria è **obbligatoria**: almeno una. Un documento d'archivio senza
+categoria non compare in nessuna vista per categoria e si trova solo cercandolo per nome — è il modo
+in cui i documenti si perdono.
+
+### L'ordinamento per categoria è stato tolto
+
+Cliccare l'intestazione «Categoria» ordinava l'elenco. Con più categorie per documento
+quell'ordinamento **non ha una risposta**: un documento che sta in «Bilanci» e in «Verbali» dove va?
+Le uniche vie erano inventare una regola che nessuno ha chiesto, o lasciare che il programma
+ordinasse per qualcosa di arbitrario. L'intestazione non è più cliccabile.
+
+Al suo posto l'elenco ha guadagnato **due cose che servono di più**: una colonna con la **data** del
+documento — quella vera, non «tre mesi fa», che in una tabella non si confronta — e un **filtro sullo
+stato**, accanto a quelli per categoria e condominio.
+
+### ⚠️ Anche il condòmino può scegliere le categorie, e prima non poteva
+
+Il modulo con cui il condòmino carica un documento in archivio **non aveva un campo per la
+categoria**: quella veniva presa dalla cartella da cui era entrato, in silenzio, e non si poteva né
+vederla né cambiarla. Il modulo di *modifica* invece il campo ce l'aveva — quindi l'unico modo per
+mettere un documento in due categorie era salvarlo e poi riaprirlo.
+
+Adesso il campo c'è anche al caricamento, con **già dentro la categoria da cui si è arrivati**: chi
+non vuole pensarci salva e basta, chi vuole aggiungerne altre lo fa subito.
+
+### La paginazione dell'area del condòmino era in inglese
+
+«First», «Previous», «Next», «Last» sotto ogni elenco della sua area — bacheca, segnalazioni,
+documenti, agenda. Adesso è nella lingua del programma, comprese le etichette che leggono i lettori
+di schermo.
+
+### Adesso si vede chi c'è dietro le sigle
+
+Le colonne **«Condomini»** e **«Anagrafiche»** mostravano dei cerchietti con le iniziali, e il nome
+solo passandoci sopra: da lì non si legge un indirizzo e non ci si va. Adesso si aprono, come già
+succede nell'elenco condomini, e ogni riga porta alla scheda — quella dell'anagrafica esiste dalla
+versione scorsa.
+
+### ⚠️ Eliminare una categoria: il messaggio diceva il falso
+
+La finestra di conferma avvisava: *«eliminerà la categoria e tutti i documenti ad essa associati»*.
+**Non è mai stato vero** — il programma si rifiuta di eliminare una categoria che ha documenti, e non
+ne tocca nessuno. Chi leggeva quel messaggio non cliccava, convinto di perdere il proprio archivio.
+
+Adesso le categorie dei documenti si comportano **come quelle dei fornitori**: nell'elenco c'è una
+colonna che dice **quanti** documenti usano ognuna, e provando a eliminarne una in uso si apre una
+finestra che dice **quali**, con il collegamento per andarci. La conferma vera compare solo sulle
+categorie che non usa nessuno.
+
+### ⚠️ La categoria «Fatture» non si rompe più se la rinomini
+
+Il programma cercava la categoria degli allegati delle fatture **dal suo nome**. Rinominandola — cosa
+che si poteva fare, ed è lecita — da quel momento **ogni allegato di fattura finiva in archivio senza
+categoria**, in silenzio.
+
+Adesso il programma la riconosce da una chiave interna che non cambia mai: l'etichetta resta tua, e
+puoi chiamarla come vuoi. La ricerca vecchia resta come ripiego, quindi la categoria si trova in più
+casi di prima e in nessuno di meno.
+
+### Le categorie dei documenti non risorgono più
+
+Erano scritte da un seeder che le rimetteva a ogni manutenzione: una categoria eliminata di proposito
+poteva **ricomparire da sola**, senza che niente lo dicesse. Ora le cinque iniziali le scrive una
+migrazione, che per costruzione gira una volta sola. È lo stesso lavoro fatto sulle categorie dei
+fornitori nella versione scorsa — e qui era più urgente, perché qui la cancellazione esisteva già.
+
+### Dettagli
+
+- Il pulsante «Gestisci le categorie» dell'elenco fornitori ha ora lo stesso aspetto di «Categorie»
+  dell'archivio: due pulsanti che portano alla stessa cosa non devono sembrare diversi.
+
+---
+
 ## [1.11.0-beta.9] - Il Dato Che C'Era E Non Si Vedeva
 
 ⚠️ **Questa versione aggiunge una migrazione**: porta a database le categorie di fornitore, che

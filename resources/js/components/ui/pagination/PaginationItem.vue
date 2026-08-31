@@ -4,6 +4,7 @@ import type { HTMLAttributes } from "vue"
 import type { ButtonVariants } from '@/components/ui/button'
 import { reactiveOmit } from "@vueuse/core"
 import { PaginationListItem } from "reka-ui"
+import { trans } from "laravel-vue-i18n"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from '@/components/ui/button'
 
@@ -21,6 +22,7 @@ const delegatedProps = reactiveOmit(props, "class", "size", "isActive")
 <template>
   <PaginationListItem
     data-slot="pagination-item"
+    :aria-label="trans('pagination.controls.page', { page: String(props.value) })"
     v-bind="delegatedProps"
     :class="cn(
       buttonVariants({

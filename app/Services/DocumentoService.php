@@ -65,7 +65,7 @@ class DocumentoService
      */
     protected function getAdminBaseQuery(array $validated): Builder
     {
-        return Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria'])
+        return Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categorie'])
                         ->whereNull('documentable_type')
                         ->orderBy('created_at', 'desc');
     }
@@ -80,7 +80,7 @@ class DocumentoService
             return Documento::query()->whereRaw('0 = 1'); // empty result set
         }
 
-        return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categoria'])
+        return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categorie'])
             ->where('is_published', true)
             ->where('is_approved', true)
             ->whereNull('documentable_type')
@@ -102,7 +102,22 @@ class DocumentoService
         return $query
             ->when($validated['search'] ?? false, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->when($validated['name'] ?? false, fn($q, $n) => $q->where('name', 'like', "%{$n}%"))
-            ->when($validated['category_id'] ?? false, fn($q, $c) => $q->whereIn('category_id', $c))
+            // ⚠️ **`whereHas` e non `whereIn` su una colonna** (1.11.0-beta.10): il filtro cerca
+            // i documenti che stanno in **almeno una** delle categorie chieste. Il parametro si
+            // chiama ancora `category_id` di proposito — è il nome che viaggia nell'indirizzo, che
+            // la barra dei filtri reidrata e che il nome di una categoria usa per linkare qui:
+            // rinominarlo romperebbe i collegamenti salvati senza dare niente in cambio.
+            ->when(
+                // ⚠️ `?? false` non basta qui: `[false]` — cioè «mostrami i privati» — è un valore
+                // legittimo che `when()` scarterebbe come vuoto. Si guarda l'**esistenza** della
+                // chiave e che l'elenco non sia vuoto.
+                ! empty($validated['is_published']),
+                fn ($q) => $q->whereIn('is_published', array_map('boolval', $validated['is_published']))
+            )
+            ->when($validated['category_id'] ?? false, fn ($q, $c) => $q->whereHas(
+                'categorie',
+                fn ($sub) => $sub->whereIn('categorie_documento.id', $c)
+            ))
             // AGGIUNTO: Filtro Many-to-Many per Condomini
             ->when($validated['condominio_id'] ?? false, function ($q, $condominioIds) {
                 $q->whereHas('condomini', function ($subQ) use ($condominioIds) {
@@ -112,7 +127,15 @@ class DocumentoService
     }
 
     /**
-     * Get counts grouped by category without ordering (fixes MySQL ONLY_FULL_GROUP_BY issue).
+     * Quanti documenti per ogni categoria, per le schede dell'archivio del condòmino.
+     *
+     * ⚠️ **Dalla 1.11.0-beta.10 la somma di questi conteggi può superare il numero dei documenti**,
+     * ed è corretto: un documento che sta in «Bilanci» e in «Verbali» viene contato in tutte e due,
+     * perché in tutte e due lo si trova. Ogni conteggio è vero per la **sua** categoria; è la somma
+     * a non voler dire niente, e infatti nessuno la mostra.
+     *
+     * Il raggruppamento è passato dalla colonna al **legame**: si conta sulla tabella ponte, non su
+     * `documenti.category_id` che non esiste più.
      */
     public function getUserDocumentCountsByCategoria(Anagrafica $anagrafica, Collection $condominioIds): Collection
     {
@@ -120,9 +143,10 @@ class DocumentoService
 
         $query->getQuery()->orders = null; // Remove orderBy to avoid SQL error
 
-        return $query->selectRaw('category_id, COUNT(*) as count')
-                     ->groupBy('category_id')
-                     ->pluck('count', 'category_id');
+        return $query->join('documento_categoria as dc', 'dc.documento_id', '=', 'documenti.id')
+                     ->selectRaw('dc.categoria_documento_id as categoria_id, COUNT(*) as count')
+                     ->groupBy('dc.categoria_documento_id')
+                     ->pluck('count', 'categoria_id');
     }
 
     /**
@@ -134,8 +158,12 @@ class DocumentoService
         int $categoriaId,
         array $validated = []
     ): LengthAwarePaginator {
+        // ⚠️ `whereHas` sul legame, non più `where('category_id', …)`: un documento compare
+        // nell'elenco di **ogni** categoria a cui appartiene, che è il motivo per cui le categorie
+        // multiple sono state chieste — il verbale che approva il bilancio si trova sotto
+        // «Verbali» e sotto «Bilanci».
         $query = $this->getScopedBaseQuery($anagrafica, $condominioIds, $validated)
-                      ->where('category_id', $categoriaId);
+                      ->whereHas('categorie', fn ($q) => $q->where('categorie_documento.id', $categoriaId));
 
         return $query->orderBy('created_at', 'desc')
                      ->tap(fn ($q) => $this->ordina($q, $validated, DocumentoIndexRequest::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))

@@ -287,6 +287,7 @@ return [
             'is_published' => 'document status',
             'condomini_ids' => 'buildings',
             'category_id' => 'category',
+            'categorie' => 'categories',
         ],
         'categorie' => [
             'name' => 'name',

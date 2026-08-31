@@ -18,7 +18,7 @@ return [
     'error_notify_new_document'      => 'The document was created, but an error occurred sending the notification.',
     'error_notify_approved_document' => 'The document was approved, but an error occurred sending the notification.',
     'error_notify_updated_document' => "The document was updated, but an error occurred while sending the notification.",
-    'category_has_documents'         => 'This category contains documents. Move or delete them before deleting the category.',
+    'category_has_documents'         => 'The category was not deleted: there are documents using it. Remove it from those documents and try again.',
     'success_delete_category'        => 'The document category was deleted successfully.',
     'error_delete_category'          => 'An error occurred while deleting the document category.',
     'success_create_category'        => 'The document category was created successfully.',
@@ -79,8 +79,12 @@ return [
     'table' => [
         'name'                  => 'Document name',
         'category'              => 'Category',
+        'no_category'                   => 'no category',
+        'date'                          => 'Date',
         'buildings'             => 'Buildings',
+        'buildings_desc'                => 'The buildings this document is linked to. Open a record to see its details.',
         'residents'             => 'Residents',
+        'residents_desc'                => 'The people this document is shared with. Open a record to see their contact details.',
         'status'                => 'Status',
         'filter_by'             => 'Filter by name...',
         'approved_tooltip'      => 'Approved - click to remove approval',
@@ -94,6 +98,7 @@ return [
         'sort_desc'             => 'Descending',
         'categories' => [
             'name'        => 'Category name',
+            'documents'     => 'Documents',
             'description' => 'Category description',
             'filter_by'   => 'Filter by name...',
             'no_results'  => 'No results found.',
@@ -108,7 +113,7 @@ return [
         'notify_update' => "Email the people who already received this document",
         'name'                          => 'Document name',
         'description'                   => 'Document description',
-        'category'                      => 'Category',
+        'category'                      => 'Categories',
         'buildings'                     => 'Buildings',
         'residents'                     => 'Residents',
         'visibility'                    => 'Document visibility',
@@ -156,7 +161,7 @@ return [
         'document_supported_types'      => 'Only the PDF format is allowed.',
         'categories' => [
             'delete_category_title'       => 'Are you sure you want to delete this category?',
-            'delete_category_description' => 'This action cannot be undone. It will delete the category and all associated documents.',
+            'delete_category_description' => 'This action cannot be undone. Documents are not touched: a category that holds any cannot be deleted.',
         ],
     ],
 
@@ -197,7 +202,7 @@ return [
     'tooltip' => [
         'notify_update' => "Sends an email to those who were already recipients, telling them the document has changed. Leave it off if you are fixing a typo: anyone added now receives it anyway, because for them it is new.",
         'visibility' => 'If set to private, only administrators will be able to view the document.',
-        'category'   => 'Select a category to better organize documents, or create a new one.',
+        'category'   => 'A document can belong to several categories, and it is found inside each of them. Select at least one, or create a new one.',
     ],
 
     /* ------------------------------------------------------------------
@@ -298,5 +303,14 @@ return [
         'categories_assoc_desc'     => 'Every document you upload to the archive can be assigned to one of these categories.',
         'categories_search_title'   => 'Quick Search',
         'categories_search_desc'    => 'Filtering the archive by category allows you to instantly find files during meetings.',
-    ]
+    ],
+
+    'categoria_bloccata' => [
+        'titolo' => 'This category cannot be deleted',
+        'intro'  => '{1} One document is using «:nome». While that is the case, deleting it would leave that document without a category.|[2,*] :count documents are using «:nome». While that is the case, deleting it would leave them without a category.',
+        'come'   => 'Open a document and remove this category from its list: once nobody uses it, deletion works.',
+        'chiudi' => 'Got it',
+        'usata'  => '{0} None|{1} 1 document|[2,*] :count documents',
+    ],
+
 ];

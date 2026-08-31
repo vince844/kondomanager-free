@@ -54,7 +54,7 @@ class DashboardController extends Controller
                     ->limit(3)->latest()->get()
             ),
             'documenti' => DocumentoResource::collection(
-                Documento::with(['createdBy.anagrafica', 'condomini', 'anagrafiche', 'categoria'])
+                Documento::with(['createdBy.anagrafica', 'condomini', 'anagrafiche', 'categorie'])
                     ->whereNull('documentable_type')
                     ->latest()->limit(3)->get()
             ),

@@ -96,4 +96,39 @@ describe('la barra dei filtri si reidrata da quello che il server ha applicato',
     expect(categoria.setFilterValue).not.toHaveBeenCalled();
     expect(condominio.setFilterValue).not.toHaveBeenCalled();
   });
+
+  it('⚠️ lo stato torna come STRINGA, perché è così che sono fatte le opzioni', () => {
+    // 1.11.0-beta.10. Il server manda booleani veri (`is_published: [false]`), ma le opzioni del
+    // filtro sfaccettato sono costruite con `String(s.value)`: reidratando con `false` la pillola
+    // si accenderebbe senza trovare l'opzione corrispondente, e resterebbe senza etichetta.
+    const nameFilter = { value: '' };
+    const categoria = colonnaFinta();
+    const condominio = colonnaFinta();
+    const stato = colonnaFinta();
+
+    reidratraFiltri({ is_published: [false] }, nameFilter, categoria, condominio, stato);
+
+    expect(stato.setFilterValue).toHaveBeenCalledWith(['false']);
+    expect(categoria.setFilterValue).not.toHaveBeenCalled();
+  });
+
+  it('i due stati insieme si reidratano tutti e due', () => {
+    const nameFilter = { value: '' };
+    const stato = colonnaFinta();
+
+    reidratraFiltri({ is_published: [true, false] }, nameFilter, undefined, undefined, stato);
+
+    expect(stato.setFilterValue).toHaveBeenCalledWith(['true', 'false']);
+  });
+
+  it('la colonna dello stato è facoltativa: le altre barre non devono cambiare per averla', () => {
+    // Il quinto parametro è stato aggiunto dopo, e la firma vecchia deve continuare a valere: una
+    // barra senza filtro di stato chiama con quattro argomenti e non deve esplodere.
+    const nameFilter = { value: '' };
+    const categoria = colonnaFinta();
+    const condominio = colonnaFinta();
+
+    expect(() => reidratraFiltri({ is_published: [true] }, nameFilter, categoria, condominio))
+      .not.toThrow();
+  });
 });

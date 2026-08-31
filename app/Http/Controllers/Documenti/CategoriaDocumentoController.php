@@ -42,7 +42,12 @@ class CategoriaDocumentoController extends Controller
         // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
         $validated['per_page'] = $this->righePerPagina($request);
 
-        $query = CategoriaDocumento::query();
+        // ⚠️ **Il conteggio e le righe arrivano con l'elenco**, come nelle categorie di
+        // fornitore: servono a dire «questa non si può eliminare» **prima** che l'utente ci provi,
+        // e a dirgli **quali** documenti lo impediscono invece di lasciarlo a cercarli.
+        $query = CategoriaDocumento::query()
+            ->withCount('documenti')
+            ->with(['documenti' => fn ($q) => $q->select('documenti.id', 'documenti.name')->orderBy('documenti.name')]);
 
         // Apply filters if present
         if (!empty($validated['name'])) {
@@ -54,7 +59,19 @@ class CategoriaDocumentoController extends Controller
             ->paginate($validated['per_page'])->withQueryString();
 
         return Inertia::render('documenti/categories/CategorieList', [
-            'categorie' => CategoriaDocumentoResource::collection($categorie)->resolve(), 
+            'categorie' => $categorie->map(fn (CategoriaDocumento $c) => [
+                'id'              => $c->id,
+                'name'            => $c->name,
+                'description'     => $c->description,
+                'documenti_count' => $c->documenti_count,
+
+                // La forma è quella che serve alla finestra «non si può eliminare»: nome e
+                // collegamento all'archivio filtrato su quel documento.
+                'documenti' => $c->documenti->map(fn ($d) => [
+                    'id'   => $d->id,
+                    'name' => $d->name,
+                ])->values(),
+            ])->values(),
             'meta' => [
                 'current_page' => $categorie->currentPage(),
                 'last_page'    => $categorie->lastPage(),

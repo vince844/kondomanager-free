@@ -58,6 +58,13 @@ class DocumentoController extends Controller
         return Inertia::render('documenti/user/DocumentiNew', [
             'condomini' => CondominioResource::collection($condomini),
             'categoria' => (int) $validated['categoria'],
+            // ⚠️ **L'elenco completo, dalla 1.11.0-beta.10.** Prima non serviva: la categoria era
+            // una sola e arrivava dall'indirizzo, invisibile. Ora il condòmino può aggiungerne —
+            // ed è il senso della beta — quindi il modulo deve poterle mostrare. Senza questa
+            // riga il campo ci sarebbe e resterebbe vuoto, che è peggio del campo assente.
+            'categories' => CategoriaDocumentoResource::collection(
+                CategoriaDocumento::orderBy('name')->get()
+            ),
             // Il limite lo decide il server, non noi.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]);
@@ -95,10 +102,11 @@ class DocumentoController extends Controller
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
                 'created_by'   => $validated['created_by'],
-                'category_id'  => $validated['category_id'],
                 'is_published' => $validated['is_published'],
                 'is_approved'  => $validated['is_approved'],
             ]);
+
+            $documento->categorie()->attach($validated['categorie']);
 
             $documento->condomini()->attach($validated['condomini_ids']);
 
@@ -151,7 +159,7 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
-        $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
+        $documento->loadMissing(['categorie', 'condomini', 'anagrafiche']);
 
         return Inertia::render('documenti/user/DocumentiEdit', [
             'documento'   => new DocumentoResource($documento),
@@ -199,10 +207,19 @@ class DocumentoController extends Controller
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
                 'created_by'   => $validated['created_by'] ?? $documento->created_by,
-                'category_id'  => $validated['category_id'] ?? $documento->category_id,
                 'is_published' => $validated['is_published'],
                 'is_approved'  => $validated['is_approved'],
             ]);
+
+            // ⚠️ **Solo se il modulo le ha mandate, ed è la protezione che conta di più qui.**
+            // Il condòmino arriva a questo modulo da **una** categoria, quella che stava sfogliando.
+            // Se il modulo ne mandasse una sola, un condòmino che corregge il nome di un documento
+            // che sta in tre categorie **ne cancellerebbe due senza saperlo** — nessun errore,
+            // nessun messaggio. È la ragione per cui la tendina multipla va anche qui, e non solo
+            // nei moduli dell'amministratore.
+            if (isset($validated['categorie'])) {
+                $documento->categorie()->sync($validated['categorie']);
+            }
 
             DB::commit();
 

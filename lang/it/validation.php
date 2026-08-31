@@ -302,6 +302,7 @@ return [
             'is_published' => 'stato documento',
             'condomini_ids' => 'condomini',
             'category_id' => 'categoria',
+            'categorie' => 'categorie',
         ],
         'categorie' => [
             'name' => 'nome',

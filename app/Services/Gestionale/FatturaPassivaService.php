@@ -354,9 +354,15 @@ class FatturaPassivaService
             // 5. Salvataggio File
             if ($file) {
                 $path = $file->storeAs('documenti/'.$condominioId, $file->hashName(), 'local');
-                $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
 
-                $fattura->documenti()->create([
+                // ⚠️ **Per chiave stabile, non per etichetta.** Cercava `where('name', 'Fatture')`,
+                // e bastava che l'amministratore rinominasse la categoria perché ogni allegato di
+                // fattura finisse in archivio **senza categoria**, in silenzio (Coda 106).
+                // `perFatture()` cerca lo slug e ricade sull'etichetta, quindi trova la categoria
+                // in più casi di prima e mai in meno.
+                $categoriaFatture = CategoriaDocumento::perFatture();
+
+                $documento = $fattura->documenti()->create([
                     'name' => $file->getClientOriginalName(),
                     'description' => 'Fattura passiva n. '.$data['numero_documento'],
                     'path' => $path,
@@ -365,8 +371,15 @@ class FatturaPassivaService
                     'created_by' => Auth::id() ?? 1,
                     'is_published' => false,
                     'is_approved' => true,
-                    'category_id' => $categoriaFatture ? $categoriaFatture->id : null,
                 ]);
+
+                // ⚠️ **Il legame, non più la colonna** (1.11.0-beta.10). E resta condizionato:
+                // se la categoria non c'è l'allegato si salva lo stesso, senza categoria, com'era
+                // prima. Toglierlo trasformerebbe una degradazione in un errore in faccia a chi
+                // sta registrando una fattura.
+                if ($categoriaFatture) {
+                    $documento->categorie()->attach($categoriaFatture->id);
+                }
             }
 
             // 6. Contabilità (Partita Doppia)
@@ -853,9 +866,11 @@ class FatturaPassivaService
                 }
 
                 $path = $file->storeAs('documenti/'.$fattura->condominio_id, $file->hashName(), 'local');
-                $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
 
-                $fattura->documenti()->create([
+                // Per chiave stabile, non per etichetta: vedi il gemello più sopra e la Coda 106.
+                $categoriaFatture = CategoriaDocumento::perFatture();
+
+                $documento = $fattura->documenti()->create([
                     'name' => $file->getClientOriginalName(),
                     'description' => 'Fattura passiva n. '.$fattura->numero_documento,
                     'path' => $path,
@@ -864,8 +879,12 @@ class FatturaPassivaService
                     'created_by' => Auth::id() ?? 1,
                     'is_published' => false,
                     'is_approved' => true,
-                    'category_id' => $categoriaFatture?->id,
                 ]);
+
+                // Il legame, non più la colonna: vedi il gemello più sopra.
+                if ($categoriaFatture) {
+                    $documento->categorie()->attach($categoriaFatture->id);
+                }
             }
 
             // 11. Aggiorna task Inbox `pagamento_fornitore` se data_scadenza cambiata

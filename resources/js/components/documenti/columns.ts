@@ -3,10 +3,12 @@ import { router } from '@inertiajs/vue3';
 import DropdownAction from '@/components/documenti/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/documenti/DataTableColumnHeader.vue';
 import { publishedConstants } from '@/lib/documenti/constants';
+import { cellaCategorie } from '@/lib/documenti/categorie-cella';
 import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
 import { Permission }  from "@/enums/Permission";
 import { Badge } from '@/components/ui/badge';
+import AnagraficheStack from '@/components/AnagraficheStack.vue';
 import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
@@ -70,18 +72,70 @@ export const columns: ColumnDef<Documento>[] = [
     }
   },
   {
-    accessorKey: 'categoria',
+    /*
+     * La data di caricamento.
+     *
+     * ⚠️ **La data vera, non «tre mesi fa».** La risorsa manda tutte e due: la forma umana serve
+     * alle schede, dove si legge come una frase; in una colonna di tabella non si confronta a
+     * occhio e non dice niente a chi cerca il verbale di una certa assemblea.
+     */
+    accessorKey: 'created_at_data',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.date') }),
+    enableSorting: false,
+    cell: ({ row }) => h(
+      'span',
+      { class: 'text-xs text-slate-500 tabular-nums whitespace-nowrap' },
+      row.original.created_at_data ?? '—'
+    ),
+  },
+  {
+    /*
+     * Le categorie del documento — **più d'una**, dalla 1.11.0-beta.10.
+     *
+     * ⚠️ **Non ordinabile, e non è una mancanza.** «Ordina per categoria» non ha una risposta
+     * quando un documento sta in «Bilanci» **e** in «Verbali»: le uniche vie sarebbero inventare
+     * una regola che nessuno ha chiesto («la prima in ordine alfabetico») o lasciare che la
+     * libreria ordini per qualcosa di arbitrario. È la stessa ragione per cui la colonna dei
+     * condomìni qui sotto non si ordina, e l'ordinamento e' stato tolto anche dal server.
+     */
+    id: 'categorie',
+    enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.category') }),
 
     cell: ({ row }) => {
-      const categoria = row.original.categoria;
+      /*
+       * ⚠️ **Le decisioni stanno in `lib/documenti/categorie-cella.ts`, non qui.**
+       *
+       * Quante etichette mostrare, in che ordine, e cosa dire quando non ce n'è nessuna sono tre
+       * decisioni, non una formattazione: dentro una funzione `cell` non si potevano provare senza
+       * montare la tabella intera. È la stessa estrazione già fatta per la reidratazione dei filtri
+       * (beta.62) e per la conferma di eliminazione (beta.9), e per lo stesso motivo — un difetto
+       * che vive solo nel template passa sotto una suite verde.
+       *
+       * Qui resta il **come**: i `Badge`, le classi, il `title` che si legge passandoci sopra
+       * perché l'elemento non è disabilitato.
+       */
+      const cella = cellaCategorie(row.original.categorie, 2);
 
-      return h('div', { class: 'flex space-x-2 items-center' }, [
-        categoria
+      if (cella.vuoto) {
+        // Non un vuoto, ma **uno stato**: i documenti caricati su un fornitore o un'unità non
+        // hanno categoria di proposito, e chi li vede qui deve capire che è così e non un errore.
+        return h('span', { class: 'text-xs italic text-slate-400' }, trans('documenti.table.no_category'));
+      }
+
+      return h('div', { class: 'flex items-center gap-1 whitespace-nowrap' }, [
+        ...cella.visibili.map((categoria) =>
+          h(Badge, { variant: 'outline', class: 'rounded-md', key: categoria.id }, () => categoria.name)
+        ),
+        cella.restanti > 0
           ? h(
               Badge,
-              { variant: 'outline', class: 'rounded-md' },
-              () => categoria.name
+              {
+                variant: 'secondary',
+                class: 'rounded-md cursor-default',
+                title: cella.titolo,
+              },
+              () => `+${cella.restanti}`
             )
           : null,
       ]);
@@ -106,68 +160,32 @@ export const columns: ColumnDef<Documento>[] = [
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.buildings') }),
   
     cell: ({ row }) => {
-      const condomini = row.original.condomini;
+      /*
+       * ⚠️ **Lo stesso cassettino delle anagrafiche, non pallini disegnati a mano.**
+       *
+       * Qui c'erano trenta righe di cerchietti sovrapposti con il nome dello stabile solo in un
+       * `title`: da lì non si legge l'indirizzo e non ci si va. `AnagraficheStack` apre il pannello
+       * con l'elenco completo, e ogni riga porta alla scheda del condominio.
+       *
+       * Il componente è nato per le persone, ma quello che gli serve — un nome, un indirizzo, un
+       * indirizzo web — ce l'ha anche uno stabile. Ruolo e quota sono facoltativi e non si passano.
+       */
+      const condomini = (row.original.condomini?.full ?? []).map((stabile: any) => ({
+        id: stabile.id,
+        nome: stabile.nome,
+        indirizzo: stabile.indirizzo,
+        // ⚠️ **`route()` diretta, non `generateRoute()`.** Le rotte dei condomìni **non** hanno il
+        // prefisso `admin.` — sono `condomini.show` e basta — mentre `generateRoute` lo aggiunge in
+        // base al ruolo. Con il prefisso, Ziggy lancia «route is not in the route list» e la cella
+        // resta **vuota**: non un errore a schermo, una colonna che sparisce.
+        url: route('condomini.show', { condominio: stabile.id }),
+      }));
 
-      if (!condomini || !Array.isArray(condomini.options) || !Array.isArray(condomini.full) || !condomini.options.length) {
-        return '—';
-      }
-    
-      const maxAvatars = 3;
-      const visibleCondomini = condomini.options.slice(0, maxAvatars);
-      const remainingCount = condomini.options.length - maxAvatars;
-    
-      const avatars = visibleCondomini.map((option, index) => {
-        const initials = option.label
-          .split(' ')
-          .map(word => word[0]?.toUpperCase())
-          .join('')
-          .slice(0, 2);
-    
-        const tooltip = condomini.full[index]?.nome || option.label;
-    
-        return h('div', {
-          key: `${option.label}-${index}`,
-          title: tooltip,
-          class: `
-            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
-            flex items-center justify-center border border-white shadow
-          `,
-          style: `
-            z-index: ${10 + index};
-            left: ${index * 18}px;
-            top: 50%;
-            transform: translateY(-50%);
-          `,
-        }, initials);
+      return h(AnagraficheStack, {
+        anagrafiche: condomini,
+        title: trans('documenti.table.buildings'),
+        description: trans('documenti.table.buildings_desc'),
       });
-    
-      if (remainingCount > 0) {
-        avatars.push(
-          h('div', {
-            key: 'more-condomini',
-            title: `+${remainingCount} altri condomini`,
-            class: `
-              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
-              flex items-center justify-center border border-white shadow
-            `,
-            style: `
-              z-index: 13;
-              left: ${maxAvatars * 18}px;
-              top: 50%;
-              transform: translateY(-50%);
-            `,
-          }, `+${remainingCount}`)
-        );
-      }
-    
-      return h('div', {
-        class: 'relative flex items-center h-10',
-      }, avatars);
-    },
-  
-    filterFn: (row, id, value) => {
-      const condomini = row.original.condomini?.options ?? [];
-      return condomini.some((condominio: Building) => value.includes(condominio.value));
     },
   },
   {
@@ -189,69 +207,43 @@ export const columns: ColumnDef<Documento>[] = [
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.residents') }),
   
     cell: ({ row }) => {
-      const anagrafiche = row.original.anagrafiche;
-    
-      if (!Array.isArray(anagrafiche) || anagrafiche.length === 0) {
-        return '—';
-      }
-    
-      const maxAvatars = 3;
-      const visibleAnagrafiche = anagrafiche.slice(0, maxAvatars);
-      const remainingCount = anagrafiche.length - maxAvatars;
-    
-      const avatars = visibleAnagrafiche.map((item, index) => {
-        const initials = item.nome
-          ?.split(' ')
-          .map(word => word[0]?.toUpperCase())
-          .join('')
-          .slice(0, 2) || '?';
-    
-          const tooltip = item.nome || '—';
-    
-        return h('div', {
-          key: `${item.nome}-${index}`,
-          title: tooltip,
-          class: `
-            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
-            flex items-center justify-center border border-white shadow
-          `,
-          style: `
-            z-index: ${10 + index};
-            left: ${index * 18}px;
-            top: 50%;
-            transform: translateY(-50%);
-          `,
-        }, initials);
-      });
-    
-      if (remainingCount > 0) {
-        avatars.push(
-          h('div', {
-            key: 'more-anagrafiche',
-            title: `+${remainingCount} altre persone`,
-            class: `
-              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
-              flex items-center justify-center border border-white shadow
-            `,
-            style: `
-              z-index: ${10 + maxAvatars};
-              left: ${maxAvatars * 18}px;
-              top: 50%;
-              transform: translateY(-50%);
-            `,
-          }, `+${remainingCount}`)
-        );
-      }
-    
-      return h('div', {
-        class: 'relative flex items-center h-10',
-      }, avatars);
-    },
+      /*
+       * ⚠️ **`AnagraficheStack`, non trenta righe di avatar disegnati a mano.**
+       *
+       * Qui c'erano gli stessi cerchietti sovrapposti del componente condiviso, riscritti a mano
+       * con i `title` come unico modo di leggere i nomi: da un `title` non si copia un indirizzo,
+       * non si vede chi sono davvero, e soprattutto non ci si va. Il componente apre invece il
+       * pannello con l'elenco completo, e dalla 1.11.0-beta.9 ogni riga porta alla **scheda della
+       * persona** — che dalla stessa beta esiste, dove prima c'era una pagina bianca.
+       *
+       * Ed è lo stesso pannello dell'elenco condomini, delle unità e delle categorie di fornitore:
+       * chi lo ha imparato una volta lo sa usare ovunque.
+       */
+      const anagrafiche = (row.original.anagrafiche ?? []).map((persona: any) => ({
+        ...persona,
+        url: route(generateRoute('anagrafiche.show'), { anagrafica: persona.id }),
+      }));
 
+      return h(AnagraficheStack, {
+        anagrafiche,
+        title: trans('documenti.table.residents'),
+        description: trans('documenti.table.residents_desc'),
+      });
+    },
   },
   {
     accessorKey: 'is_published',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.status') }),
+    /*
+     * ⚠️ **Non ordinabile dalla 1.11.0-beta.10, e il filtro è il motivo.**
+     *
+     * Ordinare per due soli valori mette in cima tutti i pubblici o tutti i privati, che è quello
+     * che il **filtro** nella barra fa meglio e senza far sparire il resto dalla vista. Il server
+     * ha già tolto `is_published` da `DocumentoIndexRequest::colonneOrdinabili()`: lasciare qui la
+     * freccia avrebbe prodotto un'intestazione che si clicca e non fa niente — la richiesta parte,
+     * la validazione la rifiuta, la tabella torna identica.
+     */
+    enableSorting: false,
     cell: ({ row }) => {
 
       const value = Boolean(row.getValue('is_published'));

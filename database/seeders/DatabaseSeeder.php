@@ -29,15 +29,22 @@ class DatabaseSeeder extends Seeder
 
         // 3. Tabelle Master: Le facciamo girare sempre
         $this->call([          
-            CategoriaDocumentoSeeder::class,
             CategoriaEventoSeeder::class,
             TipologieImmobiliSeeder::class,
-            // ⚠️ `CategoriaFornitoreSeeder` è stato **tolto** nella 1.11.0-beta.9, e non sostituito:
-            // le nove categorie iniziali le scrive la migrazione `seed_categorie_fornitore`.
-            // Il motivo è che da quella beta l'amministratore può cancellarle, e un seeder con
-            // `firstOrCreate` **le farebbe risorgere** al primo `db:seed`. Una migrazione gira una
-            // volta sola per costruzione. Vedi la Coda 103: le altre tre tabelle master hanno
-            // ancora quel difetto.
+            // ⚠️ **Due seeder di categorie sono stati tolti, e non sostituiti da altri seeder.**
+            //
+            // `CategoriaFornitoreSeeder` nella 1.11.0-beta.9, `CategoriaDocumentoSeeder` nella
+            // .10: le loro righe iniziali le scrivono ora le migrazioni `seed_categorie_fornitore`
+            // e `seed_categorie_documento`. Il motivo è che l'amministratore può **cancellare**
+            // quelle categorie, e un seeder con `firstOrCreate` **le farebbe risorgere** al primo
+            // `db:seed` — senza dirlo. Una migrazione gira una volta sola per costruzione.
+            //
+            // Per i documenti il difetto non era teorico: la voce «Elimina» sulle categorie
+            // dell'archivio esiste da prima, quindi la risurrezione poteva già succedere.
+            //
+            // ⚠️ **Restano questi due qui sopra**, ed è la Coda 103: `CategoriaEventoSeeder` è il
+            // peggiore dei quattro, perché usa `updateOrCreate` e quindi riscrive anche le
+            // descrizioni che l'amministratore ha cambiato.
             ComuniSeeder::class,
             // ⚠️ Come per i Comuni, questo aggancio da solo **non basta**: copre la prima
             // installazione, non l'aggiornamento. Il secondo è in `SystemFinalizer`.

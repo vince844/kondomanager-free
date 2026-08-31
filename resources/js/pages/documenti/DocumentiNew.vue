@@ -83,7 +83,8 @@ const form = useForm<AdminDocumentForm>({
   description: '',
   is_published: true,
   condomini_ids: [],
-  category_id: null,
+  // ⚠️ Un **array** dalla 1.11.0-beta.10: un documento può stare in più categorie.
+  categorie: [] as number[],
   file: null,
   anagrafiche: []
 })
@@ -124,7 +125,8 @@ const createCategory = async (): Promise<void> => {
 
     const newCat = response.data
     localCategories.value.push(newCat)
-    form.category_id = newCat.id
+    // La categoria appena creata si **aggiunge** a quelle scelte, non le sostituisce.
+    form.categorie = [...form.categorie, newCat.id]
 
     newCategoryName.value = ''
     newCategoryDescription.value = ''
@@ -327,10 +329,11 @@ const submit = (): void => {
                                 class="w-full premium-select bg-white dark:bg-slate-950 flex-1"
                                 :options="localCategories"
                                 label="name"
-                                v-model="form.category_id"
+                                multiple
+                                v-model="form.categorie"
                                 :reduce="(option: Categoria) => option.id"
                                 :placeholder="trans('documenti.placeholder.category')"
-                                @update:modelValue="form.clearErrors('category_id')" 
+                                @update:modelValue="form.clearErrors('categorie')"
                             />
                             <Sheet>
                                 <SheetTrigger as-child>
@@ -376,7 +379,7 @@ const submit = (): void => {
                                 </SheetContent>
                             </Sheet>
                         </div>
-                        <InputError :message="form.errors.category_id" />
+                        <InputError :message="form.errors.categorie" />
                     </div>
 
                     <div class="sm:col-span-3">

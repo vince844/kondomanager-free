@@ -11,7 +11,12 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
-import { trans } from 'laravel-vue-i18n';
+import { trans, transChoice } from 'laravel-vue-i18n';
+import { Link } from '@inertiajs/vue3';
+import { ChevronRight } from 'lucide-vue-next';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import type { Categoria } from '@/types/categorie';
 
 const props = defineProps<{
@@ -26,6 +31,7 @@ const form = useForm({
 const categoriaID = ref<number | null>(null)
 const isEditCategorySheetOpen = ref(false)
 const isAlertOpen = ref(false)
+const isBloccataOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
@@ -39,10 +45,27 @@ function handleEdit(categoria: Categoria) {
   }, 200)
 }
 
+/**
+ * ⚠️ **Due finestre, non una.**
+ *
+ * Se qualche documento usa la categoria non si apre la conferma — che chiederebbe di decidere una
+ * cosa che il server rifiuterà comunque — ma la finestra che dice **quali** documenti la usano.
+ * È la stessa forma delle categorie di fornitore, dalla 1.11.0-beta.9.
+ *
+ * *(La conferma, fino alla .10, prometteva anche una cosa falsa: «eliminerà la categoria e tutti i
+ * documenti ad essa associati». Il controller non li ha mai toccati — rifiuta e basta — quindi il
+ * messaggio spaventava per una distruzione che non poteva avvenire.)*
+ */
 function handleDelete(categoria: Categoria) {
-  categoriaID.value = categoria.id
   isDropdownOpen.value = false
+
   setTimeout(() => {
+    if ((categoria.documenti_count ?? 0) > 0) {
+      isBloccataOpen.value = true
+      return
+    }
+
+    categoriaID.value = categoria.id
     isAlertOpen.value = true
   }, 200)
 }
@@ -116,6 +139,44 @@ const editCategory = () => {
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
+
+  <Dialog v-model:open="isBloccataOpen">
+    <DialogContent class="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>{{ trans('documenti.categoria_bloccata.titolo') }}</DialogTitle>
+        <DialogDescription>
+          {{ transChoice('documenti.categoria_bloccata.intro', categoria.documenti_count ?? 0, {
+            count: String(categoria.documenti_count ?? 0),
+            nome: categoria.name,
+          }) }}
+        </DialogDescription>
+      </DialogHeader>
+
+      <!--
+        L'elenco è cliccabile: la finestra non si limita a dire di no, porta dove si risolve —
+        l'archivio filtrato su quel documento. I dati ci sono già, arrivano con l'elenco.
+      -->
+      <ul class="max-h-64 space-y-1 overflow-y-auto">
+        <li v-for="d in categoria.documenti ?? []" :key="d.id">
+          <Link
+            :href="route(generateRoute('documenti.index'), { name: d.name })"
+            class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
+          >
+            <span class="min-w-0 truncate font-semibold">{{ d.name }}</span>
+            <ChevronRight class="w-4 h-4 shrink-0 text-slate-400" />
+          </Link>
+        </li>
+      </ul>
+
+      <p class="text-xs text-slate-500">{{ trans('documenti.categoria_bloccata.come') }}</p>
+
+      <DialogFooter>
+        <Button variant="outline" @click="isBloccataOpen = false">
+          {{ trans('documenti.categoria_bloccata.chiudi') }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"

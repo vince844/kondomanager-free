@@ -114,6 +114,9 @@ class DocumentoController extends Controller
                 ...(isset($validated['condominio_id'])
                     ? ['condominio_id' => array_map('strval', $validated['condominio_id'])]
                     : []),
+                ...(isset($validated['is_published'])
+                    ? ['is_published' => array_map('boolval', $validated['is_published'])]
+                    : []),
             ],
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
@@ -183,10 +186,12 @@ class DocumentoController extends Controller
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
                 'created_by'   => $validated['created_by'],
-                'category_id'  => $validated['category_id'],
                 'is_published' => $validated['is_published'],
                 'is_approved'  => $validated['is_approved'],
             ]);
+
+            // Le categorie sono un legame, non più una colonna: si attaccano dopo la creazione.
+            $documento->categorie()->attach($validated['categorie']);
 
             $documento->condomini()->attach($validated['condomini_ids']);
 
@@ -240,7 +245,7 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
-        $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
+        $documento->loadMissing(['categorie', 'condomini', 'anagrafiche']);
 
         return Inertia::render('documenti/DocumentiEdit', [
             'documento'   => new DocumentoResource($documento),
@@ -306,10 +311,16 @@ class DocumentoController extends Controller
                 'created_by'   => $validated['created_by'] ?? $documento->created_by,
                 // ⚠️ Lo mette il server, non il modulo: vedi la nota gemella negli altri due.
                 'updated_by'   => Auth::id(),
-                'category_id'  => $validated['category_id'] ?? $documento->category_id,
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
                 'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
             ]);
+
+            // ⚠️ `sync` **solo se il modulo le ha mandate**: un `sync([])` su una richiesta che non
+            // le porta cancellerebbe tutte le categorie del documento senza che nessuno l'abbia
+            // chiesto. La regola di validazione è `sometimes`, quindi l'assenza è legittima.
+            if (isset($validated['categorie'])) {
+                $documento->categorie()->sync($validated['categorie']);
+            }
 
             if (isset($validated['condomini_ids'])) {
                 $documento->condomini()->sync($validated['condomini_ids']);

@@ -113,6 +113,19 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // doppioni.
     '2026_08_31_090000_seed_categorie_fornitore',
 
+    // Aggiunta nella beta.10, gemella di quella qui sopra: le cinque categorie dei documenti
+    // passano dal seeder a una migrazione, **per lo stesso motivo e con più urgenza** — la voce
+    // «Elimina» sulle categorie dell'archivio esiste da prima, quindi la risurrezione da `db:seed`
+    // poteva già succedere. Anche questa scrive **dati**: senza la guardia per nome un secondo
+    // passaggio creerebbe cinque doppioni.
+    '2026_08_31_120000_seed_categorie_documento',
+
+    // Aggiunta nella beta.10: la colonna `slug` sulle categorie dei documenti, con il backfill
+    // della sola riga «Fatture». Ha **due** guardie separate — una sulla colonna e una sul dato —
+    // perché su MySQL il DDL non è transazionale e un'esecuzione morta a metà deve poter fare al
+    // secondo tentativo solo la metà che manca.
+    '2026_08_31_130000_add_slug_to_categorie_documento',
+
     // Aggiunta nella beta.62: `immobili.numero_vani` da `integer` a `decimal(5,2)`, per le visure
     // catastali che riportano mezzi vani. È un `MODIFY` su tabella viva, quindi la stessa
     // categoria a rischio di `add_pertinenza_di_to_immobili` e

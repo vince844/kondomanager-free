@@ -7,6 +7,14 @@ export type FiltriDalServer = {
   name?: string | null;
   category_id?: number[] | null;
   condominio_id?: number[] | null;
+
+  /**
+   * ⚠️ **Booleani veri dal server, stringhe nello stato della tabella** (1.11.0-beta.10).
+   * Le opzioni del filtro sfaccettato sono costruite con `String(s.value)`, perché un valore di
+   * opzione deve essere confrontabile e stampabile: reidratare qui con `false` invece di `'false'`
+   * accenderebbe una pillola senza etichetta, che è il difetto che questo file esiste per togliere.
+   */
+  is_published?: boolean[] | null;
 };
 
 /**
@@ -58,6 +66,7 @@ export function reidratraFiltri(
   nomeFiltro: Ref<string> | { value: string },
   colonnaCategoria: ColonnaFiltrabile | undefined,
   colonnaCondominio: ColonnaFiltrabile | undefined,
+  colonnaStato?: ColonnaFiltrabile | undefined,
 ): void {
   if (filtri?.name) {
     nomeFiltro.value = filtri.name;
@@ -69,5 +78,11 @@ export function reidratraFiltri(
 
   if (filtri?.condominio_id?.length) {
     colonnaCondominio?.setFilterValue(filtri.condominio_id);
+  }
+
+  // Il parametro è **facoltativo**: le altre barre che chiamano questa funzione non hanno un filtro
+  // di stato, e non devono cambiare per averne uno.
+  if (filtri?.is_published?.length) {
+    colonnaStato?.setFilterValue(filtri.is_published.map(String));
   }
 }

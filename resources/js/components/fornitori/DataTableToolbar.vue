@@ -136,12 +136,18 @@ function pulisciFiltri() {
       Nessuna guardia di permesso, come la rotta: chi è entrato in questa schermata ha già superato
       il filtro del pannello di amministrazione, che è lo stesso che protegge quella.
     -->
+    <!--
+      ⚠️ Stesso stile del pulsante «Categorie» dell'archivio documenti — scuro con l'icona
+      colorata — e non una variante chiara. Due pulsanti che portano alla stessa **cosa** in due
+      schermate diverse devono avere lo stesso aspetto, altrimenti chi li usa deve impararli due
+      volte. *(Allineato il 31/08/2026, chiudendo la beta.10.)*
+    -->
     <Link
       as="button"
       :href="route(generateRoute('categorie-fornitore.index'))"
-      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Tags class="w-3.5 h-3.5 text-slate-500" />
+      <Tags class="w-3.5 h-3.5 text-blue-400" />
       <span>{{ trans('fornitori.categorie.manage') }}</span>
     </Link>
 

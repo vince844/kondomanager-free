@@ -18,7 +18,7 @@ return [
     'error_notify_new_document'      => 'O documento foi criado, mas ocorreu um erro no envio da notificação.',
     'error_notify_approved_document' => 'O documento foi aprovado, mas ocorreu um erro no envio da notificação.',
     'error_notify_updated_document' => "O documento foi atualizado, mas ocorreu um erro no envio da notificação.",
-    'category_has_documents'         => 'Esta categoria contém documentos. Mova-os ou elimine-os antes de eliminar a categoria.',
+    'category_has_documents'         => 'A categoria não foi eliminada: há documentos que a usam. Tira-a desses documentos e tenta de novo.',
     'success_delete_category'        => 'A categoria de documentos foi eliminada com sucesso.',
     'error_delete_category'          => 'Ocorreu um erro durante a eliminação da categoria de documentos.',
     'success_create_category'        => 'A categoria de documentos foi criada com sucesso.',
@@ -79,8 +79,12 @@ return [
     'table' => [
         'name'                  => 'Nome do documento',
         'category'              => 'Categoria',
+        'no_category'                   => 'sem categoria',
+        'date'                          => 'Data',
         'buildings'             => 'Condomínios',
+        'buildings_desc'                => 'Os edifícios a que este documento está ligado. Abre uma ficha para ver os seus dados.',
         'residents'             => 'Registos',
+        'residents_desc'                => 'As pessoas com quem este documento foi partilhado. Abre uma ficha para ver os contactos.',
         'status'                => 'Estado',
         'filter_by'             => 'Filtrar por nome...',
         'approved_tooltip'      => 'Aprovado - clique para remover aprovação',
@@ -94,6 +98,7 @@ return [
         'sort_desc'             => 'Descendente',
         'categories' => [
             'name'        => 'Nome da categoria',
+            'documents'     => 'Documentos',
             'description' => 'Descrição da categoria',
             'filter_by'   => 'Filtrar por nome...',
             'no_results'  => 'Nenhum resultado encontrado.',
@@ -108,7 +113,7 @@ return [
         'notify_update' => "Avisar por email quem já recebeu este documento",
         'name'                          => 'Nome do documento',
         'description'                   => 'Descrição do documento',
-        'category'                      => 'Categoria',
+        'category'                      => 'Categorias',
         'buildings'                     => 'Condomínios',
         'residents'                     => 'Registos',
         'visibility'                    => 'Visibilidade do documento',
@@ -156,7 +161,7 @@ return [
         'document_supported_types'      => 'Apenas é permitido o formato PDF.',
         'categories' => [
             'delete_category_title'       => 'Tem a certeza de que pretende eliminar esta categoria?',
-            'delete_category_description' => 'Esta ação é irreversível. Eliminará a categoria e todos os documentos associados.',
+            'delete_category_description' => 'Esta ação é irreversível. Os documentos não são tocados: uma categoria que contenha algum não se pode eliminar.',
         ],
     ],
 
@@ -197,7 +202,7 @@ return [
     'tooltip' => [
         'notify_update' => "Envia um email a quem já era destinatário, a dizer que o documento mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-o de qualquer forma, porque para ele é novo.",
         'visibility' => 'Se definida como privada, apenas os administradores poderão visualizar o documento.',
-        'category'   => 'Selecione uma categoria para organizar melhor os documentos, ou crie uma nova.',
+        'category'   => 'Um documento pode estar em várias categorias, e encontra-se dentro de cada uma. Selecione pelo menos uma, ou crie uma nova.',
     ],
 
     /* ------------------------------------------------------------------
@@ -298,5 +303,14 @@ return [
         'categories_assoc_desc'     => 'Cada documento que carregar no arquivo poderá ser atribuído a uma destas categorias.',
         'categories_search_title'   => 'Pesquisa Rápida',
         'categories_search_desc'    => 'Filtrar o arquivo por categoria permite encontrar instantaneamente os ficheiros durante as assembleias.',
-    ]
+    ],
+
+    'categoria_bloccata' => [
+        'titolo' => 'Esta categoria não se pode eliminar',
+        'intro'  => '{1} Há um documento que usa «:nome». Enquanto for assim, eliminá-la deixá-lo-ia sem categoria.|[2,*] Há :count documentos que usam «:nome». Enquanto for assim, eliminá-la deixá-los-ia sem categoria.',
+        'come'   => 'Abre um documento e tira esta categoria da sua lista: quando já ninguém a usar, a eliminação funciona.',
+        'chiudi' => 'Percebi',
+        'usata'  => '{0} Nenhum|{1} 1 documento|[2,*] :count documentos',
+    ],
+
 ];

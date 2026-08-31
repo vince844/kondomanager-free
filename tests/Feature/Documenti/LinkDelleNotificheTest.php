@@ -104,11 +104,13 @@ beforeEach(function () {
         'path'         => 'documenti/a1b2c3d4.pdf',
         'mime_type'    => 'application/pdf',
         'file_size'    => 122880,
-        'category_id'  => CategoriaDocumento::firstOrCreate(['name' => 'Verbali'])->id,
         'is_published' => true,
         'is_approved'  => true,
         'created_by'   => $autore->id,
     ]);
+
+    // Con il legame, non con la colonna: vedi 1.11.0-beta.10.
+    $this->documento->categorie()->attach(CategoriaDocumento::firstOrCreate(['name' => 'Verbali'])->id);
 
     $ruoloAdmin = SpatieRole::firstOrCreate(['name' => Role::AMMINISTRATORE->value, 'guard_name' => 'web']);
     $ruoloAdmin->givePermissionTo(

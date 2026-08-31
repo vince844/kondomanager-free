@@ -37,7 +37,14 @@ class UpdateDocumentoRequest extends FormRequest
             'created_by'      => ['sometimes', 'required', 'exists:users,id'],
             'is_approved'     => ['sometimes', 'required', 'boolean'],
             'is_published'    => ['sometimes', 'required', 'boolean'],
-            'category_id'     => ['sometimes', 'required', 'integer', Rule::exists('categorie_documento', 'id')],
+            // ⚠️ **Almeno una, dalla 1.11.0-beta.10.** Un documento d'archivio senza categoria non
+            // compare in nessuna vista per categoria e si trova solo cercandolo per nome: è il modo
+            // in cui i documenti si perdono. L'obbligo vive **qui**, nei moduli dell'archivio, e non
+            // a livello di schema: i documenti caricati su un soggetto — fornitore, unità,
+            // anagrafica — non hanno categoria di proposito, e un vincolo sul database romperebbe
+            // quei caricamenti.
+            'categorie'       => ['sometimes', 'required', 'array', 'min:1'],
+            'categorie.*'     => ['integer', 'exists:categorie_documento,id'],
             'condomini_ids'   => ['sometimes', 'required', 'array', 'min:1'],
             'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
             'anagrafiche'     => ['sometimes', 'nullable', 'array'],
@@ -74,7 +81,7 @@ class UpdateDocumentoRequest extends FormRequest
             'description'   => __('validation.attributes.documenti.description'),
             'is_published'  => __('validation.attributes.documenti.is_published'),
             'condomini_ids' => __('validation.attributes.documenti.condomini_ids'),
-            'category_id'   => __('validation.attributes.documenti.category_id'),
+            'categorie'     => __('validation.attributes.documenti.categorie'),
         ];
     }
 }

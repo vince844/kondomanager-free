@@ -70,7 +70,13 @@ const truncatedName = (name: string, length: number = 80) => {
                             {{ trans('documenti.visibility.sent_on_by_category', {
                                 date: documento.created_at,
                                 name: documento.created_by.user.name,
-                                category: documento.categoria.name.toLowerCase()
+                                // Le categorie sono più d'una: si elencano tutte, in ordine
+                                // alfabetico, perché la frase dice «nella categoria …» e leggerne
+                                // una sola quando ce ne sono tre sarebbe una mezza verità.
+                                category: [...(documento.categorie ?? [])]
+                                    .map((c) => c.name.toLowerCase())
+                                    .sort((a, b) => a.localeCompare(b, 'it'))
+                                    .join(', ')
                             }) }}
                         </p>
 

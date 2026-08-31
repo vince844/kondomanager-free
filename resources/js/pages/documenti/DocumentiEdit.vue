@@ -97,7 +97,8 @@ const form = useForm({
   condomini_ids: props.documento?.condomini?.options?.map((c: any) => c.value) ?? [],
   is_published: props.documento?.is_published !== undefined ? Boolean(props.documento.is_published) : true,
   anagrafiche: (props.documento?.anagrafiche ?? []).map((anagrafica: Anagrafica) => anagrafica.id),
-  category_id: props.documento?.categoria?.id ?? null, 
+  // ⚠️ Le categorie **che il documento ha già**: mandarne una sola cancellerebbe le altre.
+  categorie: (props.documento?.categorie ?? []).map((c: Categoria) => c.id),
   file: null as File | null,
   // Parte sempre spenta — vedi la nota gemella in `comunicazioni/ComunicazioniEdit.vue`.
   avvisa_destinatari: false,
@@ -201,7 +202,7 @@ const createCategory = async (): Promise<void> => {
 
     const newCat = response.data
     localCategories.value.push(newCat)
-    form.category_id = newCat.id
+    form.categorie = [...form.categorie, newCat.id]
 
     newCategoryName.value = ''
     newCategoryDescription.value = ''
@@ -452,10 +453,11 @@ const submit = (): void => {
                                 class="w-full premium-select bg-white dark:bg-slate-950 flex-1"
                                 :options="localCategories"
                                 label="name"
-                                v-model="form.category_id"
+                                multiple
+                                v-model="form.categorie"
                                 :reduce="(option: Categoria) => option.id"
                                 :placeholder="trans('documenti.placeholder.category')"
-                                @update:modelValue="form.clearErrors('category_id')" 
+                                @update:modelValue="form.clearErrors('categorie')"
                             />
                             <Sheet>
                                 <SheetTrigger as-child>
@@ -501,7 +503,7 @@ const submit = (): void => {
                                 </SheetContent>
                             </Sheet>
                         </div>
-                        <InputError :message="form.errors.category_id" />
+                        <InputError :message="form.errors.categorie" />
                     </div>
 
                     <div class="sm:col-span-3">

@@ -47,19 +47,37 @@ function creaAnagrafica(array $override = []): Anagrafica
     ], $override));
 }
 
-function creaDocumento(string $nome, CategoriaDocumento $categoria, int $utente): Documento
+/**
+ * Un documento di prova.
+ *
+ * ⚠️ **La categoria è facoltativa, e quasi sempre non c'è** (1.11.0-beta.10). I documenti di questo
+ * file sono in gran parte **documenti di un soggetto** — associati a un'anagrafica con
+ * `documentable()` — e quelli la categoria non ce l'hanno **di proposito**: i loro moduli non la
+ * chiedono. Solo il documento *ricevuto*, che è d'archivio, ne ha una.
+ *
+ * Prima qui c'era `'category_id' => $categoria->id`, ed era una riga muta: `category_id` non è
+ * `$fillable`, quindi l'assegnazione di massa la **scartava in silenzio** e il fixture dichiarava
+ * una categoria che il documento non aveva. È il rovescio del taglio netto della beta.10 — i
+ * lettori dimenticati esplodono, gli *scrittori* per assegnazione di massa no.
+ */
+function creaDocumento(string $nome, int $utente, ?CategoriaDocumento $categoria = null): Documento
 {
-    return Documento::create([
+    $documento = Documento::create([
         'name'         => $nome,
         'description'  => 'Documento di prova.',
         'path'         => 'documenti/prova.pdf',
         'mime_type'    => 'application/pdf',
         'file_size'    => 9,
         'created_by'   => $utente,
-        'category_id'  => $categoria->id,
         'is_published' => true,
         'is_approved'  => true,
     ]);
+
+    if ($categoria) {
+        $documento->categorie()->attach($categoria->id);
+    }
+
+    return $documento;
 }
 
 beforeEach(function () {
@@ -139,16 +157,17 @@ it('⚠️ la scheda documenti elenca i documenti DELLA persona, non quelli che 
     $anagrafica = creaAnagrafica();
     $categoria = CategoriaDocumento::create(['name' => 'Verbali', 'description' => 'Assemblee']);
 
-    $suo = creaDocumento('Carta d\'identità', $categoria, $this->user->id);
+    $suo = creaDocumento('Carta d\'identità', $this->user->id);
     $suo->documentable()->associate($anagrafica)->save();
 
     // Ricevuto ma non suo: **non** deve comparire.
-    $ricevuto = creaDocumento('Verbale assemblea 2026', $categoria, $this->user->id);
+    // Questo è d'archivio — attaccato all'anagrafica come destinataria — e la categoria ce l'ha.
+    $ricevuto = creaDocumento('Verbale assemblea 2026', $this->user->id, $categoria);
     $anagrafica->documenti()->attach($ricevuto->id);
 
     // E di un'altra persona: nemmeno.
     $altraPersona = creaAnagrafica(['nome' => 'Anna Verdi']);
-    $altrui = creaDocumento('Documento di un altro', $categoria, $this->user->id);
+    $altrui = creaDocumento('Documento di un altro', $this->user->id);
     $altrui->documentable()->associate($altraPersona)->save();
 
     $this->get(route('admin.anagrafiche.documenti.index', ['anagrafica' => $anagrafica->id]))
@@ -210,8 +229,7 @@ it('⚠️ non si può toccare il documento di un\'altra persona cambiando l\'id
     $anagrafica = creaAnagrafica();
     $altra = creaAnagrafica(['nome' => 'Anna Verdi']);
 
-    $categoria = CategoriaDocumento::create(['name' => 'Verbali', 'description' => 'Assemblee']);
-    $documentoAltrui = creaDocumento('Documento di Anna', $categoria, $this->user->id);
+    $documentoAltrui = creaDocumento('Documento di Anna', $this->user->id);
     $documentoAltrui->documentable()->associate($altra)->save();
 
     $this->put(route('admin.anagrafiche.documenti.update', [
@@ -303,8 +321,7 @@ it('⚠️ non si apre il modulo di modifica del documento di un\'altra persona'
     $anagrafica = creaAnagrafica();
     $altra = creaAnagrafica(['nome' => 'Anna Verdi']);
 
-    $categoria = CategoriaDocumento::create(['name' => 'Verbali', 'description' => 'Assemblee']);
-    $suoDiLei = creaDocumento('Documento di Anna', $categoria, $this->user->id);
+    $suoDiLei = creaDocumento('Documento di Anna', $this->user->id);
     $suoDiLei->documentable()->associate($altra)->save();
 
     // Senza la guardia il modulo si aprirebbe **con i dati di Anna dentro**, raggiunto dalla scheda
