@@ -7,6 +7,33 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.11] - Il File Che Poteva Fermare Il Server
+
+Questa versione **non aggiunge niente che si veda**. Non è dimenticanza: è la prima di più beta —
+lo abbiamo deciso così apposta, per non dover promettere una data unica su un lavoro grande — che
+costruiscono la lettura delle fatture elettroniche XML ricevute dal fornitore, richiesta sul forum
+il 29/08/2026. Qui c'è solo la fondazione: un servizio interno che sa leggere il file. Nessuna
+schermata lo usa ancora.
+
+### Cosa fa, quando qualcuno lo userà
+
+Legge un file FatturaPA — XML in chiaro o la busta firmata `.p7m` che arriva davvero dallo SdI — e
+ne ricava fornitore, righe, imponibile e IVA dichiarati, scadenze di pagamento, ritenuta d'acconto
+quando c'è. Non decide da solo cosa non torna: se le righe di dettaglio non sommano all'imponibile
+che la fattura dichiara — succede, e non è sempre un errore — lo segnala invece di sceglierne uno
+in silenzio. Provato contro i tre file di esempio che l'Agenzia delle Entrate pubblica per questo
+scopo, incluso un lotto con due fatture nello stesso file.
+
+### ⚠️ Un file da 49 KB poteva far esaurire la memoria del server
+
+La revisione prima del rilascio ha trovato che un file XML costruito ad arte — un'unica riga di
+testo ripetuta ottomila volte tramite un'entità XML — faceva scalare la memoria fino a spegnere il
+processo, senza che nessun messaggio d'errore lo raccontasse. Una FatturaPA vera non usa mai questo
+meccanismo: il servizio adesso rifiuta in blocco qualunque file che lo dichiari, prima ancora di
+provare a leggerlo.
+
+---
+
 ## [1.11.0-beta.10] - Il Documento Che Stava In Un Posto Solo
 
 ⚠️ **Questa versione aggiunge tre migrazioni**, e una di esse **cambia la struttura**: il legame fra

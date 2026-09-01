@@ -1,0 +1,7 @@
+{
+    "features": [
+        "THIS VERSION ADDS NOTHING VISIBLE — That's not an oversight: it's the first of several betas that build the reading of electronic XML invoices received from suppliers, requested on the forum on 08/29/2026. This one is just the foundation: an internal service that knows how to read the file. No screen uses it yet.",
+        "WHAT IT DOES, ONCE SOMETHING USES IT — It reads a FatturaPA file, plain XML or the signed .p7m envelope that actually arrives from the Italian Revenue Agency's exchange system, and extracts the supplier, line items, declared taxable amount and VAT, payment due dates, and withholding tax when present. It doesn't decide on its own what doesn't add up: if the detail lines don't sum to the taxable amount the invoice declares — it happens, and isn't always an error — it flags it instead of silently picking one. Tested against the three example files the Revenue Agency publishes for this purpose, including a batch with two invoices in the same file.",
+        "⚠️ A 49 KB FILE COULD EXHAUST THE SERVER'S MEMORY — The review before release found that a deliberately crafted XML file, a single line of text repeated eight thousand times through an XML entity, made memory usage climb until it killed the process, with no error message to explain it. A real FatturaPA file never uses this mechanism: the service now rejects outright any file that declares one, before even attempting to read it."
+    ]
+}
