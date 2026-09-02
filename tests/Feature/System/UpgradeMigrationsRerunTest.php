@@ -153,4 +153,15 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // idempotenza sta nell'esclusione degli utenti che la riga ce l'hanno già: al secondo giro non
     // trova nessuno, e soprattutto non riaccende quello che qualcuno avesse spento nel frattempo.
     '2026_08_22_090100_seed_preferenze_notifica_di_modifica',
+
+    // Aggiunta nella beta.13: allarga con `condominio_id` l'indice unico di `fatture_passive`,
+    // che bloccava la stessa terna fra condomìni diversi. È la categoria a rischio più alto del
+    // dataset — due DDL su una tabella popolata, e in mezzo ai due l'indice unico **non esiste**
+    // — e ha una particolarità che nessun'altra qui dentro ha: l'indice vecchio regge la chiave
+    // esterna su `fornitore_id`, quindi l'ordine dei due statement non è libero. Si crea prima il
+    // nuovo (con `fornitore_id` in testa, così subentra) e solo dopo si toglie il vecchio;
+    // l'ordine opposto dà errore 1553, incontrato scrivendola. Le due guardie leggono **le
+    // colonne** degli indici, non la loro esistenza, e reggono anche lo stato «tutti e due
+    // presenti» che un'interruzione fra i due statement lascia — provato a mano ricreandolo.
+    '2026_09_02_090000_scope_unique_fattura_al_condominio',
 ]);

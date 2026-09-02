@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { useFattureSimili } from '@/composables/useFattureSimili';
+import { watchDebounced } from '@vueuse/core';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { centsToEuro } from '@/lib/gestionale/money';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
@@ -332,6 +334,48 @@ const isDataDocumentoVecchia = computed(() => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 30;
 });
+
+// ── Duplicati (decisione D4, 1.11.0-beta.13) ────────────────────────────────
+// ⚠️ Fornitore e numero documento sono READ-ONLY in Modifica (vedi il blocco «Fornitore»
+// più sotto e il template di FatturaShow.vue): il livello FORTE, ancorato proprio a quei
+// due campi, non può mai trovare qui niente di diverso dalla fattura stessa — che
+// `escludiFatturaId` esclude comunque. Il livello che conta in questa schermata è lo
+// STANDARD: data e importi restano modificabili, ed è raggiungibile davvero — misurato in
+// Fase 0.2, `aggiornaFattura()` riscrive `data_documento` e le righe senza controllo.
+const { simili: fattureSimili, cercaSimili: cercaFattureSimili, reset: resetFattureSimili } = useFattureSimili();
+
+const formatDataBreve = (iso: string) => iso ? new Date(iso).toLocaleDateString('it-IT') : '';
+
+watchDebounced(
+    [
+        () => form.data_documento,
+        () => totali.value.totale_documento_cents,
+        // ⚠️ Senza questa fonte, cambiare Fattura <-> Nota di Credito col toggle non
+        // riesaminava il banner: restava quello dell'ultimo tipo documento controllato,
+        // anche dopo la normalizzazione del segno per le NC (A2, beta.13). In Nuovo
+        // c'è già (FatturaRegisterNew.vue) — qui mancava. Trovato dalla revisione
+        // avversariale della beta.13.
+        () => form.tipo_documento,
+    ],
+    () => {
+        if (!form.fornitore_id) {
+            resetFattureSimili();
+            return;
+        }
+
+        cercaFattureSimili({
+            condominioId: props.condominio.id,
+            esercizioId: form.esercizio_id,
+            fornitoreId: form.fornitore_id,
+            numeroDocumento: form.numero_documento,
+            totaleDocumentoCents: totali.value.totale_documento_cents,
+            dataDocumento: form.data_documento,
+            tipoDocumento: form.tipo_documento,
+            escludiFatturaId: props.fattura.id,
+        });
+    },
+    { debounce: 400, immediate: true }
+);
 
 const sforoBudgetTotaleCents = computed(() =>
     budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
@@ -684,9 +728,31 @@ const pageGuides = [
                         <!-- N. Documento (Read-Only in Edit) -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento</Label>
-                            <div class="h-9 px-3 flex items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+                            <!-- ⚠️ **Prima era `:class="{ 'border-red-500': ... }"` accanto alle classi base,
+                                 ed era codice morto**: `border-slate-200`/`dark:border-slate-700` restavano
+                                 sempre nell'elenco delle classi, e in Tailwind v4 il CSS compilato ordina
+                                 le palette alfabeticamente (`red` prima di `slate`) — in chiaro `slate`
+                                 vinceva sempre l'ultima dichiarazione; in scuro `dark:border-slate-700`
+                                 ha specificità maggiore e vince comunque. Il bordo non cambiava mai colore.
+                                 Trovato dalla revisione avversariale della beta.13, misurato sul CSS
+                                 servito. Ora è un ternario che SOSTITUISCE le classi invece di affiancarle. -->
+                            <div class="h-9 px-3 flex items-center bg-slate-50 dark:bg-slate-800 border rounded-md"
+                                :class="form.errors.numero_documento ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'">
                                 <span class="uppercase text-base tracking-widest text-slate-700 dark:text-slate-300">{{ form.numero_documento }}</span>
                             </div>
+                            <!-- ⚠️ Il campo è read-only qui, ma la guardia server-side
+                                 (`UpdateFatturaRequest::guardiaNumeroDocumentoCollidente()`) può
+                                 comunque respingere il salvataggio — l'errore arriva sotto questa
+                                 stessa chiave. Senza questo paragrafo l'utente non vedeva niente:
+                                 nessuna riga del form era legata a `numero_documento`, quindi il
+                                 rifiuto del server passava in sessione e restava invisibile.
+                                 ⚠️ `dark:text-red-400`, non `text-red-600` da solo: su sfondo scuro
+                                 `text-red-600` misura 3,70:1 contro slate-900, sotto la soglia AA
+                                 (4,5:1) per testo piccolo — verificato calcolando il contrasto reale,
+                                 non a occhio. `red-400` sale a 6,45:1. -->
+                            <p v-if="form.errors.numero_documento" class="text-[11px] text-red-600 dark:text-red-400 font-medium">
+                                {{ form.errors.numero_documento }}
+                            </p>
                         </div>
 
                         <!-- Date -->
@@ -706,6 +772,23 @@ const pageGuides = [
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                             <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
                             <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
+                        </div>
+
+                        <!-- Duplicati (decisione D4) — qui sotto emerge solo il livello STANDARD,
+                             perché fornitore e numero sono fissi in questa schermata. -->
+                        <div v-if="fattureSimili.length > 0" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                            <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            <div class="flex flex-col gap-1">
+                                <div v-for="f in fattureSimili" :key="f.id">
+                                    <strong>{{ f.motivo === 'forte' ? 'Possibile duplicato:' : 'Fattura simile già registrata:' }}</strong>
+                                    n. {{ f.numero_documento }} del {{ formatDataBreve(f.data_documento) }}, {{ euro(f.totale_documento) }}<span v-if="f.is_pregresso"> (pregressa)</span>.
+                                    <Link
+                                        :href="route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: f.id })"
+                                        target="_blank"
+                                        class="underline font-semibold"
+                                    >Vedi la fattura</Link>
+                                </div>
+                            </div>
                         </div>
 
                         <hr class="border-slate-100 dark:border-slate-800">

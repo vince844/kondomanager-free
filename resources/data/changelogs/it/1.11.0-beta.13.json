@@ -1,0 +1,8 @@
+{
+    "features": [
+        "UN AVVISO QUANDO UNA FATTURA SEMBRA GIÀ REGISTRATA — Mentre si compila una fattura, in Registrazione e in Modifica, il sistema controlla da solo se ne esiste già una simile: stesso fornitore e stesso numero nello stesso esercizio, oppure stesso importo al centesimo entro una settimana. Se trova qualcosa lo dice con un avviso e un link alla fattura esistente, ma non blocca mai — un canone o un'utenza allo stesso importo ogni mese non è un doppione, e l'ultima parola resta all'amministratore.",
+        "IL MESSAGGIO QUANDO È DAVVERO LO STESSO DOCUMENTO — Diverso dall'avviso sopra: quando fornitore, numero e data coincidono esattamente con una fattura già registrata, il salvataggio viene rifiutato. Prima falliva senza dire niente, nessun errore visibile. Ora un messaggio spiega cosa è successo, sia in registrazione sia stornando due fatture gemelle lo stesso giorno.",
+        "L'INDICE CHE BLOCCAVA FRA UN CONDOMINIO E L'ALTRO, NON DENTRO — La protezione dal doppio inserimento esisteva già ma non comprendeva il condominio: bloccava anche fatture legittime dello stesso fornitore su due palazzi diversi dello stesso studio. Ora resta dentro un condominio, dove ha senso, e sparisce fra un condominio e l'altro.",
+        "NUMERO DOCUMENTO E FORNITORE NON SI CAMBIANO PIÙ AGGIRANDO IL MODULO — In Modifica erano già di sola lettura a video: ora lo sono anche lato server, una rete di sicurezza in più verificata nella stessa beta."
+    ]
+}

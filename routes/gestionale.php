@@ -9,6 +9,7 @@ use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaContr
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
+use App\Http\Controllers\Gestionale\Movimenti\FetchFattureSimiliController;
 use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
@@ -362,6 +363,12 @@ Route::prefix('/gestionale/{condominio}')
     // --- CICLO PASSIVO: FATTURE ---
     Route::get('/fatture', [FatturaPassivaController::class, 'index'])
         ->name('fatture.index');
+
+    // Decisione D4 (1.11.0-beta.13): interrogato mentre il modulo si compila, per il
+    // controllo duplicati a due livelli, mai bloccante. Sta prima di 'fetch-*' con
+    // trattino per coerenza col resto del gruppo, dopo 'create' perché è lì che serve.
+    Route::get('/fetch-fatture-simili', FetchFattureSimiliController::class)
+        ->name('fetch-fatture-simili');
 
     Route::get('/fatture/create', [FatturaPassivaController::class, 'create'])
         ->name('fatture.create');

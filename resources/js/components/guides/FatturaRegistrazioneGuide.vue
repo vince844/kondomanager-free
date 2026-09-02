@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Info, AlertTriangle, Zap, Home, History } from 'lucide-vue-next';
+import { FileText, Info, AlertTriangle, Zap, Home, History, Copy } from 'lucide-vue-next';
 
 defineProps<{
     open: boolean;
@@ -66,6 +66,17 @@ defineEmits(['update:open']);
                 I totali sono calcolati al centesimo con le stesse regole della registrazione, ritenuta
                 compresa: il <strong>netto da pagare</strong> che leggi qui è quello che troverai nell'elenco
                 fatture dopo il salvataggio.
+              </div>
+            </div>
+            <div class="p-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800/50 flex gap-3">
+              <Copy class="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div class="text-[13px] text-amber-800 dark:text-amber-200/90 leading-relaxed">
+                Mentre compili, il sistema controlla da solo se una fattura simile esiste già — stesso
+                fornitore e stesso numero nello stesso esercizio, oppure stesso importo al centesimo entro
+                una settimana. Se trova qualcosa te lo dice con un avviso sotto le date, ma <strong>non ti
+                blocca mai</strong>: decidi tu se è davvero un doppione o una coincidenza (una manutenzione
+                ricorrente allo stesso importo, per esempio). Lo stesso avviso compare anche riaprendo una
+                fattura in Modifica.
               </div>
             </div>
           </TabsContent>

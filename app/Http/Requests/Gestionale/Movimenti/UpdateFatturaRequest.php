@@ -4,6 +4,7 @@ namespace App\Http\Requests\Gestionale\Movimenti;
 
 use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
+use App\Services\Gestionale\Duplicati\RicercaFattureSimili;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -112,7 +113,90 @@ class UpdateFatturaRequest extends FormRequest
             }
 
             $this->guardiaNaturaPercipienteMancante($validator);
+            $this->guardiaNumeroDocumentoCollidente($validator);
         });
+    }
+
+    /**
+     * ⚠️ **Questo blocco, ed è deliberato**: non contraddice la decisione D4 («due livelli,
+     * mai bloccanti»), perché non è quella domanda. D4 riguarda l'incertezza — «questa nuova
+     * fattura *potrebbe* somigliare a un'altra, decidi tu» — ed è per questo che resta un
+     * avviso: il sistema non è sicuro, e un falso positivo è normale.
+     *
+     * Qui la domanda è diversa. `fornitore_id` e `numero_documento` sono **read-only a
+     * video** in questa schermata (vedi il blocco «Fornitore (Read-Only in Edit)» del
+     * template, e `numero_documento` reso come testo, non input): l'interfaccia non offre
+     * mai un modo di *cambiarli*. Se il numero arriva **cambiato** e per giunta uguale a
+     * quello di un'altra fattura viva dello stesso fornitore nello stesso esercizio, non è
+     * un'ambiguità da segnalare — è una richiesta che aggira un vincolo che il client
+     * dichiara di rispettare da solo: o è un bug del client, o è un tentativo di far
+     * combaciare due identità che non possono esserlo.
+     *
+     * ⛔ **Rettifica dopo la revisione avversariale della beta.13.** Questo docblock diceva
+     * «se `numero_documento` arriva uguale a quello di un'altra fattura», senza la parola
+     * *cambiato*, e la guardia faceva letteralmente quello: bloccava ogni salvataggio in cui
+     * il numero collideva, anche quando nessuno l'aveva toccato. Era il ragionamento a essere
+     * rovesciato — proprio *perché* il campo è read-only, il modulo rispedisce **sempre** il
+     * numero identico, quindi la collisione preesiste al salvataggio invece di essere prodotta
+     * da esso. Con due fatture gemelle (stesso numero, date diverse: uno stato che D4
+     * permette apposta) diventavano entrambe non salvabili, e bastava cambiare l'importo.
+     * Sorvegliare il numero **cambiato**, non il numero collidente.
+     *
+     * ⚠️ **Misurato, non teorico**: `numero_documento` qui è validato solo con
+     * `required|string|max:50`, senza `unique`, e `FatturaPassivaService::aggiornaFattura()`
+     * lo riscrive davvero. L'indice `unique_ft_condominio` non basta a coprirlo: include
+     * `data_documento`, che D4-forte non richiede — una data diversa lo bypassa.
+     */
+    private function guardiaNumeroDocumentoCollidente($validator): void
+    {
+        $fattura = $this->route('fattura');
+        $numero = trim((string) $this->input('numero_documento'));
+
+        if ($fattura === null || $numero === '') {
+            return;
+        }
+
+        // ⚠️ **Se il numero non è cambiato non c'è niente da sorvegliare, e ometterlo era un
+        // blocco vero.** D4 non è bloccante in registrazione, quindi il prodotto permette
+        // deliberatamente due fatture dello stesso fornitore, stesso esercizio, stesso numero e
+        // **date diverse** (`unique_ft_condominio` include `data_documento`, quindi non le ferma).
+        // Senza questa uscita anticipata la guardia trovava la gemella a ogni salvataggio di
+        // *entrambe*, e rifiutava anche una modifica che il numero non lo tocca nemmeno — cambiare
+        // il solo importo bastava. Il campo è read-only a video, quindi il modulo rispedisce
+        // sempre lo stesso valore: dall'interfaccia il blocco non era aggirabile in alcun modo.
+        //
+        // Il docblock qui sopra sbagliava la premessa: proprio *perché* è read-only il client
+        // manda sempre il numero identico, e la collisione preesiste al salvataggio invece di
+        // essere prodotta da esso. Quello che va sorvegliato è il numero **cambiato**, non il
+        // numero collidente. Trovato dalla revisione avversariale della beta.13, riprodotto da
+        // sei revisori indipendenti sulle sole rotte HTTP.
+        //
+        // Il confronto ricalca `RicercaFattureSimili::forte()` (`LOWER(TRIM(...))`, riga 112):
+        // se differissero, un numero con spazi o maiuscole diverse sfuggirebbe a questa uscita e
+        // verrebbe poi intercettato dalla ricerca, tornando esattamente al blocco di prima.
+        if (mb_strtolower($numero) === mb_strtolower(trim((string) $fattura->numero_documento))) {
+            return;
+        }
+
+        $collide = app(RicercaFattureSimili::class)
+            ->cerca(
+                condominioId: $fattura->condominio_id,
+                esercizioId: $fattura->esercizio_id,
+                fornitoreId: $fattura->fornitore_id,
+                numeroDocumento: $numero,
+                totaleDocumentoCents: null,
+                dataDocumento: null,
+                tipoDocumento: $fattura->tipo_documento,
+                escludiFatturaId: $fattura->id,
+            )
+            ->contains(fn ($f) => $f->motivo === RicercaFattureSimili::FORTE);
+
+        if ($collide) {
+            $validator->errors()->add(
+                'numero_documento',
+                'Esiste già un\'altra fattura di questo fornitore con lo stesso numero documento in questo esercizio. Fornitore e numero non sono modificabili da qui: se il numero è cambiato davvero, storna e registra di nuovo.'
+            );
+        }
     }
 
     /**

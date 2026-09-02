@@ -27,6 +27,16 @@
 import { describe, expect, test, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 
+// ⚠️ Il controllo duplicati (decisione D4, 1.11.0-beta.13) chiama `useFattureSimili`, che fa
+// un vero `axios.get` **al montaggio** (`watchDebounced(..., { immediate: true })`, apposta:
+// su una fattura già esistente serve controllare subito, non solo al primo tocco). Senza
+// questo mock il test partiva davvero in rete dentro jsdom — nessuna asserzione lo notava,
+// perché il composable inghiotte l'errore e mette `simili` a `[]`, ma è esattamente il rischio
+// misurato dalla Fase 0.2 della beta.13 su questo stesso file: una richiesta reale, lenta e
+// non deterministica, nascosta dentro un test che sembra passare.
+const axios = vi.hoisted(() => ({ get: vi.fn(async () => ({ data: [] })) }));
+vi.mock('axios', () => ({ default: axios }));
+
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
     Head: { template: '<span />' },
@@ -175,5 +185,38 @@ describe('riapertura in modifica di una fattura ordinaria', () => {
         const wrapper = render(fatturaOrdinaria());
 
         expect(importoPrimaRiga(wrapper)).toBe(1000);
+    });
+});
+
+describe('il controllo duplicati (D4) si ricalcola quando cambia il tipo documento', () => {
+    /**
+     * ⚠️ **Trovato dalla revisione avversariale della beta.13.** `tipo_documento` viaggia
+     * nel payload della ricerca (`cercaFattureSimili({..., tipoDocumento: form.tipo_documento})`)
+     * ma non era fra le fonti del `watchDebounced`: cambiare il toggle Fattura <-> Nota di
+     * Credito non riesaminava il banner, che restava quello dell'ultimo tipo controllato —
+     * proprio dopo A2 (beta.13), che ha reso il livello standard sensibile al segno, cioè al
+     * tipo documento. In `FatturaRegisterNew.vue` la fonte c'era già.
+     */
+    test('passare da fattura a nota di credito rilancia la ricerca coi dati aggiornati', async () => {
+        vi.useFakeTimers();
+        try {
+            const wrapper = render(fatturaOrdinaria());
+
+            // La chiamata immediata al montaggio (immediate: true).
+            await vi.advanceTimersByTimeAsync(450);
+            axios.get.mockClear();
+
+            const bottoneNC = wrapper.findAll('button').find((b) => b.text().includes('Nota Credito'));
+            expect(bottoneNC).toBeTruthy();
+            await bottoneNC!.trigger('click');
+
+            await vi.advanceTimersByTimeAsync(450);
+
+            expect(axios.get).toHaveBeenCalled();
+            const [, config] = axios.get.mock.calls.at(-1)!;
+            expect((config as { params: Record<string, unknown> }).params.tipo_documento).toBe('nota_credito');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

@@ -8,8 +8,10 @@ use App\Models\Condominio;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\Duplicati\CollisioneUnicaFattura;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Traits\HandleFlashMessages;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -216,6 +218,28 @@ class StornoFatturaController extends Controller
 
             DB::commit();
             return back()->with($this->flashSuccess("Storno eseguito! Nota di Credito n. {$protocolloNC} generata."));
+
+        } catch (UniqueConstraintViolationException $e) {
+            DB::rollBack();
+
+            // ⚠️ **Preesistente, non introdotto dalla beta.13** — questo storno collide con
+            // l'indice unico su `fatture_passive` da quando l'indice esiste (24/02/2026):
+            // stornando lo stesso giorno due fatture dello stesso fornitore con lo stesso
+            // numero, la nota di credito generata (`STORNO-<numero>` più la data odierna)
+            // collide con l'altro storno. Prima di questa riga il messaggio grezzo di
+            // `$e->getMessage()` arrivava a video con host, porta e nome del database MySQL —
+            // trovato dalla revisione avversariale della beta.13. La stringa tecnica resta nel
+            // log, non più in faccia all'amministratore.
+            Log::error("Errore Storno Fattura ID {$fattura->id} (indice unico): " . $e->getMessage());
+
+            if (! CollisioneUnicaFattura::rilevata($e)) {
+                return back()->with($this->flashError('Impossibile stornare il documento: errore tecnico durante il salvataggio.'));
+            }
+
+            return back()->with($this->flashError(
+                'Esiste già uno storno di questo fornitore con lo stesso numero e la stessa data. '
+                .'Riprova, o contatta l\'assistenza se il problema persiste.'
+            ));
 
         } catch (\Exception $e) {
             DB::rollBack();

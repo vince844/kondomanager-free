@@ -24,6 +24,7 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Immobile;
 use App\Models\Saldo;
+use App\Services\Gestionale\Duplicati\CollisioneUnicaFattura;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Services\Gestionale\PagamentoFornitoreService;
 use App\Services\Gestionale\SpesaPerVoceService;
@@ -33,6 +34,7 @@ use App\Traits\HasEsercizio;
 use App\Traits\PaginaElenco;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -305,6 +307,24 @@ class FatturaPassivaController extends Controller
             Log::error('ERRORE 404: '.$e->getMessage());
 
             return back()->withErrors(['error' => 'Risorsa non trovata. Verifica fornitore, conto e gestione.']);
+
+        } catch (UniqueConstraintViolationException $e) {
+            // ⚠️ **Decisione D2, 1.11.0-beta.13.** Prima di questa guardia, una collisione
+            // contro l'indice unico finiva nel `catch (\Exception)` generico qui sotto: la
+            // sessione riceveva l'errore sotto la chiave `error`, ma né `FatturaRegisterNew.vue`
+            // né `FatturaRegisterEdit.vue` renderizzano quella chiave da nessuna parte — un
+            // salvataggio bloccato non mostrava niente, il pulsante tornava semplicemente
+            // cliccabile. Il riconoscimento è in `CollisioneUnicaFattura`, testabile senza
+            // database reale (vedi il docblock lì).
+            if (! CollisioneUnicaFattura::rilevata($e)) {
+                throw $e;
+            }
+
+            Log::error("Fattura duplicata bloccata dall'indice unico: ".$e->getMessage());
+
+            return back()->withErrors([
+                'numero_documento' => 'Esiste già una fattura di questo fornitore con lo stesso numero documento e la stessa data. Verifica il numero prima di salvare di nuovo.',
+            ]);
 
         } catch (\Exception $e) {
             Log::error('FATAL ERROR NEL SERVICE: '.$e->getMessage());
@@ -836,6 +856,21 @@ class FatturaPassivaController extends Controller
 
         } catch (FatturaModificaVietataException $e) {
             return back()->withErrors(['modifica_vietata' => $e->getMessage()]);
+
+        } catch (UniqueConstraintViolationException $e) {
+            if (! CollisioneUnicaFattura::rilevata($e)) {
+                throw $e;
+            }
+
+            // ⚠️ Può capitare anche qui nonostante `guardiaNumeroDocumentoCollidente()`: quella
+            // guardia guarda solo dentro lo stesso esercizio (D4-forte), l'indice
+            // `unique_ft_condominio` no — è scoped al condominio. Due fatture con lo stesso
+            // fornitore, numero e data ma in esercizi diversi passano la guardia e arrivano qui.
+            Log::error("Fattura duplicata bloccata dall'indice unico in modifica, ID {$fattura->id}: ".$e->getMessage());
+
+            return back()->withErrors([
+                'numero_documento' => 'Esiste già una fattura di questo fornitore con lo stesso numero documento e la stessa data.',
+            ]);
 
         } catch (\Exception $e) {
             Log::error("Errore modifica fattura ID {$fattura->id}: ".$e->getMessage());

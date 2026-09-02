@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
+import { useFattureSimili } from '@/composables/useFattureSimili';
+import { watchDebounced } from '@vueuse/core';
 import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
 import ModalSpesaImprevista from '@/components/gestionale/movimenti/fatture/ModalSpesaImprevista.vue';
 import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
@@ -337,6 +339,44 @@ const isDataDocumentoVecchia = computed(() => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 30;
 });
+
+// ── Duplicati (decisione D4, 1.11.0-beta.13) ────────────────────────────────
+// ⚠️ Segnale INDIPENDENTE da `transactionStatus`: quel computed restituisce una stringa sola
+// fra CRITICAL_BUDGET/WARNING_CASH/SAFE, a precedenza rigida, e pilota banner, colore ed
+// etichetta del pulsante. Un quarto valore lì dentro nasconderebbe uno sforo o sarebbe
+// nascosto da esso — il duplicato non ha niente a che vedere con lo sforo di budget, e
+// nemmeno con `is_pregresso`: le pregresse SI segnalano, sono il caso a più alto rischio.
+const { simili: fattureSimili, cercaSimili: cercaFattureSimili, reset: resetFattureSimili } = useFattureSimili();
+
+/** La data che arriva dal server è `YYYY-MM-DD`; il banner la scrive nel formato del resto della pagina. */
+const formatDataBreve = (iso: string) => iso ? new Date(iso).toLocaleDateString('it-IT') : '';
+
+watchDebounced(
+    [
+        () => form.fornitore_id,
+        () => form.numero_documento,
+        () => form.data_documento,
+        () => totali.value.totale_documento_cents,
+        () => form.tipo_documento,
+    ],
+    () => {
+        if (!form.fornitore_id) {
+            resetFattureSimili();
+            return;
+        }
+
+        cercaFattureSimili({
+            condominioId: props.condominio.id,
+            esercizioId: form.esercizio_id,
+            fornitoreId: form.fornitore_id,
+            numeroDocumento: form.numero_documento,
+            totaleDocumentoCents: totali.value.totale_documento_cents,
+            dataDocumento: form.data_documento,
+            tipoDocumento: form.tipo_documento,
+        });
+    },
+    { debounce: 400 }
+);
 
 const sforoBudgetTotaleCents = computed(() =>
     budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
@@ -892,6 +932,24 @@ const pageGuides = [
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                             <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
                             <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
+                        </div>
+
+                        <!-- Duplicati (decisione D4) — stessa forma del banner sopra: ambra, sotto
+                             i campi che l'hanno prodotto, testo visibile, e handleSubmit() non lo
+                             guarda mai: due livelli, sempre avviso, mai blocco. -->
+                        <div v-if="fattureSimili.length > 0" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                            <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            <div class="flex flex-col gap-1">
+                                <div v-for="f in fattureSimili" :key="f.id">
+                                    <strong>{{ f.motivo === 'forte' ? 'Possibile duplicato:' : 'Fattura simile già registrata:' }}</strong>
+                                    n. {{ f.numero_documento }} del {{ formatDataBreve(f.data_documento) }}, {{ euro(f.totale_documento) }}<span v-if="f.is_pregresso"> (pregressa)</span>.
+                                    <Link
+                                        :href="route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: f.id })"
+                                        target="_blank"
+                                        class="underline font-semibold"
+                                    >Vedi la fattura</Link>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Checkbox pregresso -->

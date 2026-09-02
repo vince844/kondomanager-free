@@ -7,6 +7,52 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.13] - La Fattura Che Si Registrava Due Volte
+
+**Tocca il database:** una migrazione idempotente allarga l'indice univoco su `fatture_passive`
+(`unique_ft` → `unique_ft_condominio`), descritto più sotto.
+
+È il terzo passo di un percorso più lungo — leggere una fattura da un file XML invece che
+digitarla — e arriva prima del pezzo che si vede, perché prima serve chiudere una porta: oggi
+niente impedisce di registrare due volte lo stesso documento, e un file letto automaticamente
+aumenta quel rischio invece di ridurlo.
+
+### Un avviso quando una fattura sembra già registrata
+
+Mentre si compila una fattura — in Registrazione e in Modifica — il sistema controlla da solo se
+ne esiste già una simile, su due livelli. **Forte**: stesso fornitore e stesso numero documento
+nello stesso esercizio. **Standard**: stesso fornitore, stesso importo lordo al centesimo, data
+entro una settimana. Se trova qualcosa lo dice con un avviso sotto le date, con un collegamento
+alla fattura esistente — ma **non blocca mai**: un canone o un'utenza allo stesso importo ogni
+mese non è un doppione, ed è per questo che la finestra è di sette giorni e non di trenta.
+L'ultima parola resta all'amministratore.
+
+### Il messaggio quando è davvero lo stesso documento
+
+Diverso dall'avviso sopra: quando fornitore, numero e data coincidono **esattamente** con una
+fattura già a database, il salvataggio viene rifiutato — non perché il sistema abbia deciso al
+posto di chi registra, ma perché a quel punto non è più un sospetto: è la stessa identità.
+Prima, in questo caso preciso, il salvataggio falliva **senza dire niente**: nessun errore visibile,
+il pulsante tornava semplicemente cliccabile. Ora un messaggio spiega cosa è successo. Lo stesso
+vale stornando due fatture gemelle lo stesso giorno, un caso distinto che poteva mostrare
+l'errore tecnico del database invece di una spiegazione.
+
+### L'indice che bloccava fra un condominio e l'altro, non dentro
+
+L'indice univoco che protegge dal doppio inserimento esisteva già, ma senza saperlo nessuno: non
+comprendeva il condominio, quindi bloccava anche fatture legittime dello stesso fornitore su due
+palazzi diversi — un fornitore condiviso da più condomìni dello stesso studio è la norma, non
+l'eccezione. Ora la protezione resta dentro un condominio, dove ha senso, e sparisce fra un
+condominio e l'altro, dove non ne aveva.
+
+### Numero documento e fornitore non si cambiano più aggirando il modulo
+
+In Modifica, numero documento e fornitore sono già di sola lettura a video: ora lo sono anche lato
+server. Non è un caso che riguardi l'uso normale del programma — è una rete di sicurezza in più,
+verificata nella stessa beta.
+
+---
+
 ## [1.11.0-beta.12] - L'Allegato Che Non Aveva Una Strada Sua
 
 Nasce da una segnalazione sul forum: *«dopo aver registrato una fattura passiva non c'è più la
