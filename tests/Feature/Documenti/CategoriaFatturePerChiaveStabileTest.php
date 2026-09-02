@@ -111,8 +111,13 @@ it('il servizio delle fatture usa la chiave stabile, non l\'etichetta', function
     // Guardia strutturale: se qualcuno rimettesse `where('name', 'Fatture')` nel servizio, il
     // difetto tornerebbe e nessuno degli altri test se ne accorgerebbe — perché tutti provano il
     // metodo del modello, non il suo chiamante.
+    //
+    // ⚠️ Il conteggio era 2 (una chiamata in registraFattura(), una in aggiornaFattura(), stesso
+    // blocco duplicato). La 1.11.0-beta.12 (Coda 102) ha estratto quel blocco in un unico metodo
+    // privato — creaDocumentoFattura(), condiviso anche dal nuovo aggiungiDocumento() — quindi la
+    // chiamata resta una sola: il conteggio doveva scendere, non essere aggirato.
     $servizio = file_get_contents(app_path('Services/Gestionale/FatturaPassivaService.php'));
 
-    expect(substr_count($servizio, 'CategoriaDocumento::perFatture()'))->toBe(2)
+    expect(substr_count($servizio, 'CategoriaDocumento::perFatture()'))->toBe(1)
         ->and(str_contains($servizio, "CategoriaDocumento::where('name', 'Fatture')"))->toBeFalse();
 });

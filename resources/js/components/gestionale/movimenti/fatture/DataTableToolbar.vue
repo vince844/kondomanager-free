@@ -1,15 +1,27 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, usePage, Link } from '@inertiajs/vue3';
+import { usePage, Link } from '@inertiajs/vue3';
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Zap, X } from 'lucide-vue-next';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RangeCalendar } from '@/components/ui/range-calendar';
+import { getLocalTimeZone, DateFormatter, parseDate, CalendarDate } from '@internationalized/date';
+import { Search, Plus, Zap, X, Calendar as CalendarIcon } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
+
+// Stesso Popover + RangeCalendar già usato nel toolbar di Eventi
+// (resources/js/components/eventi/DataTableToolbar.vue) per lo stesso identico
+// bisogno — un intervallo di date su un elenco — invece di due input type="date"
+// nudi che l'amministratore doveva interpretare da soli.
+// ⚠️ Anno a quattro cifre, non `dateStyle: 'short'`: quello scrive `01/09/26` mentre la colonna
+// «Date» della tabella subito sotto scrive `01/09/2026` (`toLocaleDateString('it-IT')`), e due
+// formati della stessa data nella stessa schermata si notano.
+const df = new DateFormatter('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 defineProps<{ table: Table<any> }>();
 const page = usePage<{
@@ -28,8 +40,73 @@ const condominioId = computed(() => page.props.condominio.id);
 
 const globalFilter = ref(page.props.filters?.search || '');
 const statoPagamento = ref(page.props.filters?.stato_pagamento || '');
-const dataDa = ref(page.props.filters?.data_da || '');
-const dataA = ref(page.props.filters?.data_a || '');
+
+// ⚠️ `parseDate()` **lancia** su tutto ciò che non è esattamente `YYYY-MM-DD` valido — provato:
+// `pippo`, `01/09/2026`, `2026-9-1`, `''` e perfino `2026-02-30` («Value out of range»), quindi
+// una regex da sola non basterebbe. E il valore arriva da fuori: `FatturaPassivaController`
+// **non valida** `data_da`/`data_a` e li rimanda grezzi nei props, quindi un indirizzo con una
+// data storta è raggiungibile con un segnalibro vecchio o un collegamento incollato male.
+// Senza questa guardia l'eccezione parte nel `<script setup>` e Vue non disegna il componente:
+// spariscono la barra dei filtri, «Azzera filtri» e **«Nuova fattura»**, cioè l'azione principale
+// della pagina. Un valore illeggibile deve valere «nessun filtro», che è il degrado che dava
+// l'`<input type="date">` di prima.
+const leggiData = (v: unknown) => {
+  if (typeof v !== 'string' || v === '') return undefined;
+  try {
+    return parseDate(v);
+  } catch {
+    return undefined;
+  }
+};
+
+// `dateRange` porta i `CalendarDate` che il componente capisce; `data_da`/`data_a` (i nomi
+// che il backend si aspetta) si ricavano da lì, non il contrario.
+//
+// ⚠️ Un intervallo rovesciato va raddrizzato **in ingresso**: `RangeCalendar` scambia i due
+// capi solo in uscita, quando li scegli tu, quindi un `?data_da=10/09&data_a=01/09` scritto a
+// mano nell'indirizzo resterebbe rovesciato per sempre — il calendario lo mostrerebbe al
+// contrario e il server risponderebbe con un elenco vuoto senza che niente lo spieghi.
+const inizioLetto = leggiData(page.props.filters?.data_da);
+const fineLetta = leggiData(page.props.filters?.data_a);
+const daRaddrizzare = !!(inizioLetto && fineLetta && inizioLetto.compare(fineLetta) > 0);
+
+const dateRange = ref<{ start: any; end: any }>(
+  daRaddrizzare ? { start: fineLetta, end: inizioLetto } : { start: inizioLetto, end: fineLetta }
+);
+
+// ⚠️ Il verso di una data **sola** vive qui, non dentro `dateRange`, e la ragione è misurata:
+// `RangeCalendar` normalizza `{ start: undefined, end: X }` rimettendo X come inizio, quindi
+// tenere il verso nel modello del calendario significa vederselo riscrivere sotto — l'indirizzo
+// diceva «fino al 10/09» e il pulsante «Dal 10/09». Il calendario tiene sempre la data come
+// inizio, che è come vuole ragionare lui; il significato lo teniamo noi.
+const versoSingola = ref<'dal' | 'fino'>(
+  !inizioLetto && fineLetta ? 'fino' : 'dal'
+);
+
+// Con la sola `data_a` nell'indirizzo il calendario deve comunque ricevere la data come inizio,
+// altrimenti non la disegna selezionata.
+if (!inizioLetto && fineLetta) {
+  dateRange.value = { start: fineLetta, end: undefined };
+}
+
+// Il pannello del calendario: serve saperlo chiuso per decidere quando un intervallo a metà
+// va considerato una scelta finita (vedi il watch più sotto).
+const calendarioAperto = ref(false);
+
+// ⚠️ Niente `.toDate(timezone)` + `.toISOString()`: un `CalendarDate` non ha ora né fuso,
+// «30 agosto» e basta, ma convertirlo in `Date` lo ancora alla mezzanotte locale — e
+// `toISOString()` la riporta in UTC, che su un fuso **avanti** rispetto a UTC manda la data
+// al giorno prima. Misurato: `new Date(2026, 8, 30)` a Roma (UTC+2 in estate) dà `2026-09-29`,
+// a New York (UTC-4) dà `2026-09-30`. Cioè il difetto colpisce **noi** e non gli altri, che è
+// il verso opposto di come questo commento lo raccontava nella prima stesura.
+// `CalendarDate` sa già scriversi in `YYYY-MM-DD` da solo, senza passare da un'ora che non ha.
+//
+// ⚠️ `instanceof CalendarDate` e non `typeof date.toString`: `toString` ce l'hanno tutti gli
+// oggetti, quindi il controllo precedente accettava qualunque cosa finisse in `dateRange` e ne
+// scriveva la rappresentazione nell'indirizzo (`[object Object]` compreso).
+const convertCalendarDateToString = (date: unknown): string | undefined => {
+  return date instanceof CalendarDate ? date.toString() : undefined;
+};
 
 const { filtra } = useTabellaServer(() =>
   route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
@@ -39,33 +116,138 @@ const { filtra } = useTabellaServer(() =>
 // lascerebbe in piedi quello di prima e non ci sarebbe più modo di svuotarlo.
 // `stato_approvazione` non ha un controllo qui (arriva dalla card «sfori motivati»):
 // non si passa, così il composable lo riporta com'è insieme a righe per pagina e ordinamento.
+// I due capi che vanno davvero al server: con un intervallo completo sono inizio e fine, con una
+// data sola dipende dal verso scelto — ed è l'unico punto in cui `versoSingola` conta.
+const capiDaInviare = () => {
+  const inizio = convertCalendarDateToString(dateRange.value.start) || null;
+  const fine = convertCalendarDateToString(dateRange.value.end) || null;
+
+  if (inizio && !fine && versoSingola.value === 'fino') {
+    return { data_da: null, data_a: inizio };
+  }
+  return { data_da: inizio, data_a: fine };
+};
+
 const applyFilters = () => {
+  const { data_da, data_a } = capiDaInviare();
   filtra({
     search: globalFilter.value || null,
     stato_pagamento: statoPagamento.value || null,
-    data_da: dataDa.value || null,
-    data_a: dataA.value || null,
+    data_da,
+    data_a,
   })
 }
 
 watchDebounced(globalFilter, applyFilters, { debounce: 300 })
-watch([statoPagamento, dataDa, dataA], applyFilters)
+watch(statoPagamento, applyFilters)
+
+// ⚠️ **Una sola richiesta per ogni intenzione dell'utente**, ed è una guardia contro un difetto
+// misurato, non un'ottimizzazione.
+//
+// `vai()` in useTabellaServer **scarta** (non accoda) una richiesta se un'altra è in volo:
+// `if (inCorso.value) return`, e `inCorso` torna false solo a round-trip concluso. Su un
+// calendario a intervallo i due clic — inizio e fine — sono l'interazione normale e cadono
+// dentro quella finestra: la seconda richiesta spariva, il pulsante mostrava «01/09 – 10/09»
+// e l'indirizzo portava solo `data_da`. Il filtro dichiarava un intervallo e ne applicava
+// un altro, in silenzio e in modo permanente.
+//
+// ⚠️ La prima diagnosi era sbagliata e vale la pena scriverlo: avevo attribuito la perdita a un
+// watch non profondo e «corretto» con `deep: true`. La verifica a video era passata **solo perché
+// avevo messo una pausa fra i due clic** — una pausa che un utente vero non fa. La causa era la
+// guardia, non la profondità del watch.
+//
+// Qui si interroga il server quando la scelta è **finita**: intervallo completo, oppure svuotato.
+// Un intervallo a metà è uno stato transitorio del calendario, non un filtro che qualcuno ha
+// chiesto — e se l'utente chiude il pannello lasciandolo a metà, quella diventa la sua scelta e
+// la manda il watch su `calendarioAperto` qui sotto (così «dal 1° settembre in poi», che i due
+// campi separati permettevano, non si perde).
+watch(dateRange, () => {
+  const { start, end } = dateRange.value;
+  if (start && !end) return;
+  applyFilters();
+});
+
+watch(calendarioAperto, (aperto) => {
+  if (aperto) return;
+  const { start, end } = dateRange.value;
+  if (start && !end) applyFilters();
+});
+
+// Se l'intervallo arrivava rovesciato dall'indirizzo, raddrizzarlo solo a video non basta:
+// il server continuerebbe a rispondere con la coppia rovesciata (elenco vuoto) mentre il
+// pulsante mostra un intervallo sensato — cioè di nuovo un filtro che dichiara una cosa e ne
+// applica un'altra. Si riallinea una volta sola, all'apertura.
+if (daRaddrizzare) applyFilters();
 
 const isFiltered = computed(() =>
-  !!(globalFilter.value || statoPagamento.value || dataDa.value || dataA.value || page.props.filters?.stato_approvazione)
+  !!(globalFilter.value || statoPagamento.value || dateRange.value.start || dateRange.value.end || page.props.filters?.stato_approvazione)
 )
 
+const formattedRange = computed(() => {
+  const start = dateRange.value.start?.toDate ? dateRange.value.start.toDate(getLocalTimeZone()) : undefined;
+  const end = dateRange.value.end?.toDate ? dateRange.value.end.toDate(getLocalTimeZone()) : undefined;
+
+  // ⚠️ Il ripiego dice **quale** data si filtra, non «una data qualunque»: in questo modulo le
+  // date sono tre (documento, scadenza, pagamento) e qui si filtra la data del documento —
+  // informazione che prima viveva solo nel `title` dei due campi, cioè si vedeva solo col mouse
+  // sopra e mai su un touch. Serve ancora di più quando questo filtro andrà sulle altre pagine,
+  // dove la data filtrata è un'altra (negli incassi è la data di registrazione).
+  if (start && end) return `${df.format(start)} – ${df.format(end)}`;
+  if (start) return versoSingola.value === 'fino' ? `Fino al ${df.format(start)}` : `Dal ${df.format(start)}`;
+  return 'Data documento';
+});
+
+// ⚠️ Il calendario tratta il primo clic **sempre** come inizio: «tutte le fatture fino al 31/12»
+// — che i due campi separati permettevano, e che il server sa ancora fare — non era più
+// esprimibile da nessuna sequenza di clic. Invece di rimettere due campi, si chiede il verso
+// **solo nel momento in cui la domanda esiste**: quando è stata scelta una data sola.
+const soloUnaData = computed(() => !!dateRange.value.start && !dateRange.value.end);
+
+// Nessuno dei due tocca `dateRange`: cambiano il significato, non il dato del calendario.
+// La richiesta la manda il watch sulla chiusura del pannello, così ne parte una sola.
+const usaComeInizio = () => {
+  versoSingola.value = 'dal';
+  calendarioAperto.value = false;
+};
+
+const usaComeFine = () => {
+  versoSingola.value = 'fino';
+  calendarioAperto.value = false;
+};
+
+// ⚠️ La guardia non è pignoleria: `clearDateFilter` riassegna un oggetto **nuovo**, e il watch
+// scatta sull'identità, non sul contenuto. Senza questo `return`, «Cancella» a filtro già vuoto
+// faceva ripartire un giro completo di richiesta al server per non cambiare niente.
+const clearDateFilter = () => {
+  const { start, end } = dateRange.value;
+  if (!start && !end) return;
+  // Il verso torna al predefinito insieme al dato: un «fino al» dimenticato si applicherebbe
+  // alla prossima data scelta, che nessuno ha chiesto.
+  versoSingola.value = 'dal';
+  dateRange.value = { start: undefined, end: undefined };
+};
+
+// ⚠️ L'azzeramento passa dal composable come ogni altro filtro, invece di affiancargli un
+// `router.get` a mano. Prima ne partivano **tre** di richieste da un clic solo — quella scritta
+// qui più quelle dei watch che scattavano sulle assegnazioni — e le ultime due ricostruivano i
+// parametri da `page.props.filters`, che a quel punto è ancora quello vecchio: `stato_approvazione`
+// tornava dentro. Effetto per l'amministratore: arrivato dalla card «sfori motivati», «Azzera
+// filtri» non toglieva il filtro sugli sfori, e ricliccarlo rifaceva lo stesso giro.
+// In `vai()` un `null` significa **togli**, quindi vanno nominati tutti, compreso
+// `stato_approvazione`, che non ha un controllo in questa barra ma è comunque un filtro attivo.
 const resetFilters = () => {
   globalFilter.value = ''
   statoPagamento.value = ''
-  dataDa.value = ''
-  dataA.value = ''
+  versoSingola.value = 'dal'
+  dateRange.value = { start: undefined, end: undefined }
 
-  router.get(
-    route(generateRoute('gestionale.fatture.index'), { condominio: condominioId.value }),
-    { page: 1 },
-    { preserveState: true, replace: true, preserveScroll: true }
-  )
+  filtra({
+    search: null,
+    stato_pagamento: null,
+    stato_approvazione: null,
+    data_da: null,
+    data_a: null,
+  })
 }
 
 </script>
@@ -80,10 +262,14 @@ const resetFilters = () => {
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
           <Search class="h-4 w-4" />
         </div>
+        <!-- ⚠️ Serve anche `md:text-xs`: la classe base dell'Input è `text-base md:text-sm`,
+             e una `text-xs` liscia perde contro la variante responsive da `md` in su. Con il
+             solo `text-xs` la ricerca restava a 14px mentre gli altri filtri della riga stanno
+             a 12px — misurato: era una correzione che non correggeva niente sul desktop. -->
         <Input
           placeholder="Filtra per numero o fornitore..."
           v-model="globalFilter"
-          class="pl-9 h-8 w-[200px] lg:w-[250px]"
+          class="pl-9 h-8 w-[200px] lg:w-[250px] text-xs md:text-xs"
         />
       </div>
 
@@ -99,9 +285,42 @@ const resetFilters = () => {
         </SelectContent>
       </Select>
 
-      <!-- Intervallo data documento -->
-      <Input type="date" v-model="dataDa" class="h-8 w-[140px] text-xs" title="Data documento da" />
-      <Input type="date" v-model="dataA" class="h-8 w-[140px] text-xs" title="Data documento a" />
+      <!-- Intervallo data documento — Popover + RangeCalendar, lo stesso componente già
+           usato nel toolbar di Eventi per lo stesso bisogno. -->
+      <Popover v-model:open="calendarioAperto">
+        <PopoverTrigger as-child>
+          <Button
+            variant="outline"
+            class="h-8 justify-start text-left font-normal text-xs w-[210px]"
+            :class="!(dateRange.start || dateRange.end) && 'text-muted-foreground'"
+          >
+            <CalendarIcon class="mr-2 h-3.5 w-3.5 shrink-0" />
+            {{ formattedRange }}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-auto p-0">
+          <!-- ⚠️ Con il pulsante in basso nella pagina (elenco filtrato corto) Floating UI
+               ribalta il pannello sopra la riga dei filtri, per non tagliarlo fuori dallo
+               schermo: stesso comportamento del calendario di Eventi, non un difetto di qui.
+               ⚠️ Da NON riscrivere come «l'altezza non dipende dal numero di mesi»: quella era
+               una misura singola (settembre 2026, 370px identici a uno e due mesi) scambiata per
+               una legge. `fixedWeeks` esiste in reka-ui ma questo wrapper non lo passa, quindi il
+               default è `false` e un mese con sei settimane è più alto. -->
+          <RangeCalendar v-model="dateRange" initial-focus :number-of-months="2" />
+          <div class="p-2 border-t flex items-center justify-between gap-2">
+            <!-- Compare solo quando la domanda ha senso: una data sola scelta. -->
+            <div v-if="soloUnaData" class="flex items-center gap-1.5">
+              <span class="text-xs text-muted-foreground">Una data sola:</span>
+              <Button variant="secondary" size="sm" class="h-7 text-xs" @click="usaComeInizio">dal</Button>
+              <Button variant="secondary" size="sm" class="h-7 text-xs" @click="usaComeFine">fino al</Button>
+            </div>
+            <span v-else></span>
+            <Button variant="outline" size="sm" @click="clearDateFilter">
+              Cancella
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
 
       <!-- Reset -->
       <Button

@@ -145,18 +145,32 @@ const executeApprovaBase = () => {
     });
 };
 
-// Esecuzione Download PDF
+// ⚠️ **Fino alla 1.11.0-beta.11 una fattura aveva al massimo un allegato**
+// (aggiornaFattura() cancellava il precedente prima di salvarne uno), quindi
+// `documenti[0]` era «il documento», non «il primo di N». Dalla beta.12
+// (Coda 102) gli allegati si accumulano: prendere ciecamente [0] sceglieva
+// un file a caso senza dirlo — trovato dalla revisione avversariale.
+// Con un solo allegato si scarica ancora direttamente, com'era; con più di
+// uno si va al Dettaglio, dove FatturaShow.vue li elenca tutti — non si
+// sceglie per l'amministratore, si mostra dove sono tutti.
+const haUnicoAllegato = computed(() => (props.fattura.documenti?.length ?? 0) === 1);
+const haPiuAllegati = computed(() => (props.fattura.documenti?.length ?? 0) > 1);
+
 const downloadPdf = () => {
-    if (props.fattura.documenti && props.fattura.documenti.length > 0) {
-        const documentoId = props.fattura.documenti[0].id;
-        
-        // Usiamo window.location.href per i file binari, aggirando le chiamate XHR di Inertia
-        window.location.href = route(generateRoute('gestionale.fatture.download'), {
-            condominio: props.condominioId,
-            fattura: props.fattura.id,
-            documento: documentoId
-        });
-    }
+    if (!haUnicoAllegato.value) return;
+
+    const documentoId = props.fattura.documenti[0].id;
+
+    // Usiamo window.location.href per i file binari, aggirando le chiamate XHR di Inertia
+    window.location.href = route(generateRoute('gestionale.fatture.download'), {
+        condominio: props.condominioId,
+        fattura: props.fattura.id,
+        documento: documentoId
+    });
+};
+
+const vaiAgliAllegati = () => {
+    router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: props.condominioId, fattura: props.fattura.id }));
 };
 </script>
 
@@ -180,12 +194,20 @@ const downloadPdf = () => {
         <Eye class="w-4 h-4 mr-2" /> Dettagli
       </DropdownMenuItem>
 
-      <DropdownMenuItem 
-        v-if="fattura.documenti && fattura.documenti.length > 0"
-        @click="downloadPdf" 
+      <DropdownMenuItem
+        v-if="haUnicoAllegato"
+        @click="downloadPdf"
         class="cursor-pointer"
       >
         <Download class="w-4 h-4 mr-2" /> Scarica documento
+      </DropdownMenuItem>
+
+      <DropdownMenuItem
+        v-if="haPiuAllegati"
+        @click="vaiAgliAllegati"
+        class="cursor-pointer"
+      >
+        <Download class="w-4 h-4 mr-2" /> Vedi allegati ({{ fattura.documenti.length }})
       </DropdownMenuItem>
       
       <DropdownMenuItem 

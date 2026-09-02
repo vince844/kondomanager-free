@@ -8,6 +8,7 @@ use App\Enums\StatoPagamentoFattura;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Gestionale\Movimenti\StoreFatturaDocumentoRequest;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
 use App\Http\Requests\Gestionale\Movimenti\UpdateFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -827,7 +828,6 @@ class FatturaPassivaController extends Controller
             $this->service->aggiornaFattura(
                 $fattura,
                 $request->validated(),
-                $request->file('file')
             );
 
             return redirect()
@@ -989,6 +989,86 @@ class FatturaPassivaController extends Controller
             return redirect()->back()->with(
                 $this->flashError(__('documenti.error_downloading_document') ?? 'Errore durante il download del documento.')
             );
+        }
+    }
+
+    /**
+     * Allega un documento a una fattura già registrata (Coda 102, 1.11.0-beta.12).
+     *
+     * Non passa da aggiornaFattura(): niente scritture da ricreare, niente allegati
+     * esistenti da cancellare. Consentito anche a esercizio chiuso e su una fattura
+     * stornata — un documento è una prova, non un fatto contabile.
+     *
+     * ⚠️ **Il `Gate` c'è**, a differenza di una prima stesura che l'aveva tolto
+     * motivando l'assenza con «nessun'altra azione di questo controller passa dalla
+     * policy dei documenti» — falso: `download()` (sotto) ci passa già, sullo stesso
+     * modello. La revisione avversariale della beta.12 l'ha preso: senza il Gate un
+     * utente col solo permesso di pannello poteva allegare un file che poi
+     * `download()` gli avrebbe negato di riaprire.
+     */
+    public function storeDocumento(StoreFatturaDocumentoRequest $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        Gate::authorize('create', Documento::class);
+
+        try {
+            $this->service->aggiungiDocumento($fattura, $request->file('file'));
+
+            return back()->with($this->flashSuccess('Documento allegato con successo.'));
+
+        } catch (\Exception $e) {
+            Log::error("Errore allegando documento alla fattura ID {$fattura->id}: ".$e->getMessage());
+
+            return back()->with($this->flashError('Errore durante il caricamento del documento: '.$e->getMessage()));
+        }
+    }
+
+    /**
+     * Rimuove un documento allegato a una fattura (Coda 102, 1.11.0-beta.12).
+     *
+     * Stesso controllo anti-IDOR di download(): un documento allegabile da qui deve
+     * appartenere davvero a questa fattura, non essere un id indovinato.
+     *
+     * ⚠️ **Guardia sullo stato, aggiunta dopo la revisione avversariale della
+     * beta.12 — asimmetrica rispetto a storeDocumento() di proposito.** Allegare è
+     * consentito anche a esercizio chiuso (un documento è una prova, non riscrive un
+     * bilancio — decisione di Vincenzo, 01/09/2026). *Eliminare* no: `Documento` non
+     * usa SoftDeletes, quindi la cancellazione è definitiva e senza traccia, e prima
+     * di questa beta un allegato non era mai cancellabile da nessuna schermata su una
+     * fattura in uno di questi stati. La stessa ragione che giustifica di aggiungere
+     * una prova vieta di distruggerla: si riusa `motivoBloccoModifica()`, lo stesso
+     * elenco di stati che già blocca la Modifica.
+     */
+    public function destroyDocumento(Condominio $condominio, FatturaPassiva $fattura, Documento $documento): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        if ($documento->documentable_id !== $fattura->id || $documento->documentable_type !== FatturaPassiva::class) {
+            abort(403, 'Azione non autorizzata. Il documento non appartiene a questa fattura.');
+        }
+
+        Gate::authorize('delete', $documento);
+
+        if ($motivo = $this->service->motivoBloccoModifica($fattura)) {
+            return back()->with($this->flashError(
+                "Non è possibile eliminare l'allegato: {$motivo} (la cancellazione di un documento non ha uno storno: è definitiva)."
+            ));
+        }
+
+        try {
+            if (Storage::disk('local')->exists($documento->path)) {
+                Storage::disk('local')->delete($documento->path);
+            }
+
+            $documento->delete();
+
+            return back()->with($this->flashSuccess('Documento eliminato con successo.'));
+
+        } catch (\Exception $e) {
+            Log::error("Errore eliminando documento dalla fattura ID {$fattura->id}: ".$e->getMessage());
+
+            return back()->with($this->flashError('Errore durante l\'eliminazione del documento.'));
         }
     }
 }

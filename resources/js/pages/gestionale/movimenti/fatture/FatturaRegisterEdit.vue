@@ -128,7 +128,6 @@ const props = defineProps<{
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
-const fileInput = ref<HTMLInputElement | null>(null);
 const showSuccessModal = ref(false);
 const showModificaVietataModal = ref(false);
 const showPresaAttoSforoModal = ref(false);
@@ -198,7 +197,8 @@ const form = useForm({
         concorre_base_ritenuta: true,
     }],
     coperture: [] as any[],
-    file: null as File | null,
+    // ⚠️ Niente più 'file' qui (Coda 102, 1.11.0-beta.12): l'allegato si carica dal
+    // Dettaglio, che non passa dalla riscrittura delle scritture contabili.
 });
 
 // Since fornitore is read-only and not passed in props.fornitori
@@ -735,12 +735,11 @@ const pageGuides = [
                             <Input v-model="form.iban_fornitore" class="h-9 text-sm" placeholder="IT00 0000..." />
                         </div>
 
-                        <!-- Allegato -->
-                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 transition-colors" @click="fileInput?.click()">
-                            <FileText class="w-5 h-5 text-slate-300 mx-auto mb-1" />
-                            <p class="text-[11px] text-slate-400 font-medium">{{ form.file ? form.file.name : 'Allega documento (PDF, XML, P7M)' }}</p>
-                            <input type="file" ref="fileInput" class="hidden" accept=".pdf,.xml,.p7m,.jpg,.jpeg,.png" @change="(e: any) => form.file = e.target.files[0]" />
-                        </div>
+                        <!-- ⚠️ L'allegato non si carica più da qui (Coda 102, 1.11.0-beta.12):
+                             questo modulo torna a occuparsi solo di importo, fornitore,
+                             competenza — i fatti che la guardia contabile protegge davvero.
+                             Per allegare un documento vai al Dettaglio della fattura, anche
+                             a esercizio chiuso. -->
                     </div>
 
                     <!-- Footer con totali e pulsante -->

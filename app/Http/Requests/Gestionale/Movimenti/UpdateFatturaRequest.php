@@ -6,7 +6,6 @@ use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use App\Support\LimiteCaricamento;
 
 /**
  * Valida i dati per la modifica di una fattura passiva aperta.
@@ -62,17 +61,26 @@ class UpdateFatturaRequest extends FormRequest
                 'nullable', 'string', Rule::in(array_column(NaturaRigaRitenuta::cases(), 'value')),
             ],
 
-            'file' => ['nullable', 'file', 'mimes:pdf,xml,p7m,jpg,png',
-                // Il tetto di questa porta resta **10 MB, il suo**: un allegato di fattura è un
-                // documento singolo, non un archivio. Quello che cambia è che adesso non promette
-                // mai più di quanto il server accetti davvero.
-                'max:'.LimiteCaricamento::regolaMax(10.0)],
+            // ⚠️ Niente più 'file' salvato qui (Coda 102, 1.11.0-beta.12): allegare passava da
+            // aggiornaFattura(), che riscrive la contabilità per un file e cancellava ogni
+            // allegato esistente. L'upload vive ora in StoreFatturaDocumentoRequest, su una
+            // rotta a sé che non tocca le scritture.
+            //
+            // ⚠️ **'prohibited', non l'assenza della chiave.** Senza validazione un file
+            // inviato comunque — un bundle vecchio ancora aperto in una scheda durante un
+            // aggiornamento dell'applicazione, o un'integrazione ferma al contratto
+            // precedente — veniva ignorato in silenzio: nessun errore, nessun salvataggio,
+            // e la risposta restava «Fattura aggiornata con successo». Trovato dalla
+            // revisione avversariale della beta.12. Ora fallisce con un messaggio che dice
+            // dove allegare davvero, invece di far sparire un file sotto una conferma.
+            'file' => ['prohibited'],
         ];
     }
 
     public function messages(): array
     {
         return [
+            'file.prohibited' => 'Non è più possibile allegare un documento da qui: usa il pulsante «Allega» nella pagina di dettaglio della fattura.',
             'righe.required'                          => 'Devi inserire almeno una voce di spesa.',
             'righe.*.descrizione.required'            => 'La causale della riga è obbligatoria.',
             'righe.*.importo_imponibile.required'     => "L'importo è obbligatorio.",

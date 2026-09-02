@@ -394,6 +394,13 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/fatture/{fattura}/download/{documento}', [FatturaPassivaController::class, 'download'])
         ->name('fatture.download');
+
+    // Allegati fuori dalla riscrittura contabile — Coda 102, 1.11.0-beta.12.
+    Route::post('/fatture/{fattura}/documenti', [FatturaPassivaController::class, 'storeDocumento'])
+        ->name('fatture.documenti.store');
+
+    Route::delete('/fatture/{fattura}/documenti/{documento}', [FatturaPassivaController::class, 'destroyDocumento'])
+        ->name('fatture.documenti.destroy');
     
     // --- CICLO PASSIVO: PAGAMENTI (v1.9.1) ---
     Route::get('/pagamenti-fornitori', [PagamentoFornitoreController::class, 'index'])

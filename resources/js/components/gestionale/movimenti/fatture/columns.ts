@@ -1,7 +1,7 @@
 import { h } from 'vue'
 import DataTableColumnHeader from '@/components/gestionale/movimenti/fatture/DataTableColumnHeader.vue' 
 import DropdownAction from './DataTableRowActions.vue'
-import { Archive, AlertTriangle, CheckCircle, Clock, FileMinus, RotateCcw, Paperclip } from 'lucide-vue-next'
+import { Archive, AlertTriangle, CheckCircle, Clock, FileMinus, RotateCcw, Files } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { FatturaPassiva } from '@/types/gestionale/fatture'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -59,20 +59,31 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             );
         }
 
-        // 3. Link Download (se c'è un documento allegato)
+        // 3. Indicatore allegati (se c'è almeno un documento)
+        // ⚠️ Fino alla beta.11 era un link che scaricava direttamente, ed era
+        // «il documento» perché non poteva essercene più di uno. Dalla beta.12
+        // (Coda 102) gli allegati si accumulano: un link solo non sa più dire
+        // cosa farebbe click (scaricare quale?), quindi è tornato a essere solo
+        // un indicatore — vedere e scaricare si fa dal menu "..." o dal Dettaglio.
+        //
+        // ⚠️ Il numero si SCRIVE, non si mette nel `title`. La prima stesura lo
+        // affidava a un `title`: si vedeva solo col mouse sopra e su un touch non
+        // esisteva — la stessa cosa che questa beta ha corretto sul cestino del
+        // Dettaglio, violata qui venti righe dopo averla scritta.
+        //
+        // ⚠️ E l'icona non è `FileText`: in questo stesso modulo significa già
+        // «fattura» (FatturaRegisterNew.vue:719, accanto alla parola «Fattura») e
+        // su FatturaShow.vue:497 significa «NESSUN documento allegato», cioè
+        // l'opposto di quello che direbbe qui.
         if (fattura.documenti && fattura.documenti.length > 0) {
+            const n = fattura.documenti.length;
             documentMetaElements.push(
-                h('a', {
-                    href: route('admin.gestionale.fatture.download', { 
-                        condominio: condominioId, 
-                        fattura: fattura.id, 
-                        documento: fattura.documenti[0].id 
-                    }),
-                    class: 'text-slate-400 hover:text-indigo-600 transition-colors ml-2 flex items-center',
-                    title: 'Scarica PDF fattura',
-                    onClick: (e: Event) => e.stopPropagation() 
+                h('span', {
+                    class: 'inline-flex items-center gap-1 text-slate-400 ml-2 shrink-0',
                 }, [
-                    h(Paperclip, { class: 'w-3.5 h-3.5' })
+                    h(Files, { class: 'w-3.5 h-3.5' }),
+                    h('span', { class: 'text-[11px] tabular-nums' }, String(n)),
+                    h('span', { class: 'sr-only' }, n === 1 ? 'documento allegato' : 'documenti allegati'),
                 ])
             );
         }

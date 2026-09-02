@@ -9,6 +9,7 @@ use App\Enums\StatoPagamentoFattura;
 use App\Events\Gestionale\FatturaRegistrata;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Models\CategoriaDocumento;
+use App\Models\Documento;
 use App\Models\Evento;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
@@ -353,33 +354,7 @@ class FatturaPassivaService
 
             // 5. Salvataggio File
             if ($file) {
-                $path = $file->storeAs('documenti/'.$condominioId, $file->hashName(), 'local');
-
-                // ⚠️ **Per chiave stabile, non per etichetta.** Cercava `where('name', 'Fatture')`,
-                // e bastava che l'amministratore rinominasse la categoria perché ogni allegato di
-                // fattura finisse in archivio **senza categoria**, in silenzio (Coda 106).
-                // `perFatture()` cerca lo slug e ricade sull'etichetta, quindi trova la categoria
-                // in più casi di prima e mai in meno.
-                $categoriaFatture = CategoriaDocumento::perFatture();
-
-                $documento = $fattura->documenti()->create([
-                    'name' => $file->getClientOriginalName(),
-                    'description' => 'Fattura passiva n. '.$data['numero_documento'],
-                    'path' => $path,
-                    'mime_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                    'created_by' => Auth::id() ?? 1,
-                    'is_published' => false,
-                    'is_approved' => true,
-                ]);
-
-                // ⚠️ **Il legame, non più la colonna** (1.11.0-beta.10). E resta condizionato:
-                // se la categoria non c'è l'allegato si salva lo stesso, senza categoria, com'era
-                // prima. Toglierlo trasformerebbe una degradazione in un errore in faccia a chi
-                // sta registrando una fattura.
-                if ($categoriaFatture) {
-                    $documento->categorie()->attach($categoriaFatture->id);
-                }
+                $this->creaDocumentoFattura($fattura, $file);
             }
 
             // 6. Contabilità (Partita Doppia)
@@ -649,7 +624,7 @@ class FatturaPassivaService
         return null;
     }
 
-    public function aggiornaFattura(FatturaPassiva $fattura, array $data, ?UploadedFile $file = null): FatturaPassiva
+    public function aggiornaFattura(FatturaPassiva $fattura, array $data): FatturaPassiva
     {
         if ($motivo = $this->motivoBloccoModifica($fattura)) {
             throw new FatturaModificaVietataException($motivo);
@@ -660,7 +635,7 @@ class FatturaPassivaService
         $importoBefore = $fattura->netto_a_pagare;
 
         // ── Transazione atomica ──────────────────────────────────────────────
-        return DB::transaction(function () use ($fattura, $data, $file, $dataScadenzaBefore, $importoBefore) {
+        return DB::transaction(function () use ($fattura, $data, $dataScadenzaBefore, $importoBefore) {
 
             // 1. Pulizia scritture esistenti (identico a destroy())
             $fattura->load('righe', 'documenti', 'scritture', 'coperture');
@@ -856,38 +831,15 @@ class FatturaPassivaService
                 'tipo' => 'competenza',
             ]);
 
-            // 10. Gestione allegato: nuovo file → elimina vecchio → salva
-            if ($file) {
-                foreach ($fattura->documenti as $doc) {
-                    if (Storage::disk('local')->exists($doc->path)) {
-                        Storage::disk('local')->delete($doc->path);
-                    }
-                    $doc->delete();
-                }
-
-                $path = $file->storeAs('documenti/'.$fattura->condominio_id, $file->hashName(), 'local');
-
-                // Per chiave stabile, non per etichetta: vedi il gemello più sopra e la Coda 106.
-                $categoriaFatture = CategoriaDocumento::perFatture();
-
-                $documento = $fattura->documenti()->create([
-                    'name' => $file->getClientOriginalName(),
-                    'description' => 'Fattura passiva n. '.$fattura->numero_documento,
-                    'path' => $path,
-                    'mime_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                    'created_by' => Auth::id() ?? 1,
-                    'is_published' => false,
-                    'is_approved' => true,
-                ]);
-
-                // Il legame, non più la colonna: vedi il gemello più sopra.
-                if ($categoriaFatture) {
-                    $documento->categorie()->attach($categoriaFatture->id);
-                }
-            }
-
-            // 11. Aggiorna task Inbox `pagamento_fornitore` se data_scadenza cambiata
+            // 10. Aggiorna task Inbox `pagamento_fornitore` se data_scadenza cambiata
+            //
+            // ⚠️ La gestione dell'allegato NON vive più qui (Coda 102, 1.11.0-beta.12):
+            // allegare un documento passava da questo metodo, che riscrive tutte le
+            // scritture contabili per un file — e il ramo cancellava ogni allegato
+            // esistente prima di salvarne uno solo. I due difetti sono la stessa causa:
+            // l'allegato era saldato al form contabile. Ora si allega da
+            // FatturaPassivaService::aggiungiDocumento(), che non tocca contabilità né
+            // allegati preesistenti — vedi FatturaPassivaController::storeDocumento().
             $nuovaScadenza = $fattura->fresh()->data_scadenza;
             if ($nuovaScadenza && $dataScadenzaBefore !== $nuovaScadenza->format('Y-m-d')) {
                 Evento::where('meta->context->fattura_id', $fattura->id)
@@ -896,7 +848,7 @@ class FatturaPassivaService
                     ->update(['start_time' => $nuovaScadenza->setTime(9, 0)]);
             }
 
-            // 12. Audit trail
+            // 11. Audit trail
             Log::info("FatturaPassiva #{$fattura->id} modificata da utente #".(Auth::id() ?? 0), [
                 'netto_a_pagare_before' => $importoBefore,
                 'netto_a_pagare_after' => $fattura->fresh()->netto_a_pagare,
@@ -906,6 +858,89 @@ class FatturaPassivaService
 
             return $fattura->fresh();
         });
+    }
+
+    /**
+     * Allega un documento a una fattura già registrata (Coda 102, 1.11.0-beta.12).
+     *
+     * Deliberatamente FUORI dalla transazione contabile: un allegato non è un fatto
+     * contabile e non deve costare né una riscrittura delle scritture né passare dalla
+     * guardia `motivoBloccoModifica()`. È il motivo per cui questo metodo non chiama
+     * `aggiornaFattura()` — chiamarlo per un solo file avrebbe voluto dire tornare
+     * esattamente al difetto che risolve.
+     *
+     * Nessuna guardia sullo stato della fattura, di proposito: un documento è una prova,
+     * non riscrive un bilancio. Consentito anche a esercizio chiuso — decisione di
+     * Vincenzo, 01/09/2026.
+     *
+     * Non cancella gli allegati esistenti (a differenza del vecchio ramo in
+     * aggiornaFattura()): morphMany regge già più righe, il difetto era solo qui.
+     */
+    public function aggiungiDocumento(FatturaPassiva $fattura, UploadedFile $file): Documento
+    {
+        return $this->creaDocumentoFattura($fattura, $file);
+    }
+
+    /**
+     * Il salvataggio vero e proprio, condiviso fra registraFattura() e
+     * aggiungiDocumento(): stesso storage, stessa categoria per chiave stabile
+     * (Coda 106), stesso fallback silenzioso se la categoria manca.
+     */
+    private function creaDocumentoFattura(FatturaPassiva $fattura, UploadedFile $file): Documento
+    {
+        $path = $file->storeAs('documenti/'.$fattura->condominio_id, $file->hashName(), 'local');
+
+        // ⚠️ **`storeAs()` non solleva se scrive fallisce — restituisce `false`.**
+        // Il disco `local` ha `'throw' => false` (config/filesystems.php): un volume
+        // pieno o una cartella non scrivibile dopo un redeploy non lanciano
+        // un'eccezione, e senza questo controllo `false` finiva a database come
+        // `path`, MySQL lo scriveva come stringa "0", e l'amministratore leggeva
+        // «Documento allegato con successo» per un file che non esiste da nessuna
+        // parte. Trovato dalla revisione avversariale della beta.12, con una sonda
+        // che ha riprodotto esattamente questo.
+        if ($path === false) {
+            throw new \RuntimeException('Impossibile scrivere il file sul disco.');
+        }
+
+        try {
+            // ⚠️ **Per chiave stabile, non per etichetta.** Cercava `where('name', 'Fatture')`,
+            // e bastava che l'amministratore rinominasse la categoria perché ogni allegato di
+            // fattura finisse in archivio **senza categoria**, in silenzio (Coda 106).
+            // `perFatture()` cerca lo slug e ricade sull'etichetta, quindi trova la categoria
+            // in più casi di prima e mai in meno.
+            $categoriaFatture = CategoriaDocumento::perFatture();
+
+            $documento = $fattura->documenti()->create([
+                'name' => $file->getClientOriginalName(),
+                'description' => 'Fattura passiva n. '.$fattura->numero_documento,
+                'path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'created_by' => Auth::id() ?? 1,
+                'is_published' => false,
+                'is_approved' => true,
+            ]);
+
+            // ⚠️ **Il legame, non più la colonna** (1.11.0-beta.10). E resta condizionato:
+            // se la categoria non c'è l'allegato si salva lo stesso, senza categoria, com'era
+            // prima. Toglierlo trasformerebbe una degradazione in un errore in faccia a chi
+            // sta allegando un documento.
+            if ($categoriaFatture) {
+                $documento->categorie()->attach($categoriaFatture->id);
+            }
+        } catch (\Throwable $e) {
+            // ⚠️ **Il file è già sul disco quando questo blocco può fallire.** Senza
+            // questo cleanup, un INSERT respinto da MySQL (per esempio un nome file
+            // con byte non-UTF-8: errore 1366, trovato dalla revisione avversariale
+            // della beta.12) lascia un file orfano che nessuna riga punta più — e
+            // ogni tentativo dell'amministratore, dopo l'errore mostrato, ne lascia
+            // un altro.
+            Storage::disk('local')->delete($path);
+
+            throw $e;
+        }
+
+        return $documento;
     }
 
     /**

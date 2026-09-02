@@ -7,6 +7,96 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.12] - L'Allegato Che Non Aveva Una Strada Sua
+
+Nasce da una segnalazione sul forum: *«dopo aver registrato una fattura passiva non c'è più la
+possibilità di allegare il pdf della stessa. Penso bisogni cancellare la fattura e inserirla
+nuovamente»*. Non era vero nella forma in cui è stata scritta — il PDF si poteva ancora allegare,
+dal modulo di Modifica — ma dietro c'era un problema reale e più profondo: l'allegato di una fattura
+non aveva una strada propria, e passava dalla stessa porta di ogni altra modifica.
+
+### Allegare un documento non riscrive più la contabilità
+
+Prima, salvare un allegato rifaceva daccapo le scritture di competenza e di pagamento — anche
+quando l'unica cosa cambiata era il file. Adesso l'allegato ha una porta sua: si carica e si
+elimina dalla pagina **Dettaglio fattura**, senza toccare il libro giornale. Il modulo di Modifica
+non gestisce più i file: gli allegati vivono tutti nella card «Allegati» del Dettaglio.
+
+### Una fattura può avere più di un allegato
+
+Prima, l'ultimo file caricato **cancellava** quello precedente senza avviso: chi allegava la
+fattura e poi la quietanza si ritrovava con la sola quietanza. Adesso si allegano quanti documenti
+servono — il PDF originale, l'XML se arriva via SdI, la ricevuta del bonifico — e restano tutti,
+scaricabili uno per uno. Con più di tre allegati l'elenco scorre, invece di allungare la pagina
+all'infinito.
+
+### ⚠️ Il documento resta anche a fattura chiusa, ma non si può più togliere
+
+Un allegato si aggiunge anche su una fattura pagata, stornata o coperta da un esercizio ormai
+chiuso: un documento è una prova, e aggiungerla non riscrive un bilancio. **Eliminarlo però no**:
+una volta che la fattura non è più modificabile, l'allegato resta scaricabile ma non si cancella,
+per non alterare la documentazione di un fatto contabile ormai chiuso. Chi ha allegato il file
+sbagliato lo corregge caricandone uno nuovo accanto, non sostituendo quello vecchio.
+
+### La busta `.p7m` vera adesso si allega davvero
+
+Il controllo sul tipo di file si basava su come il sistema *riconosce* il contenuto, e una busta
+firmata `.p7m` — quella che arriva davvero dallo SdI — viene sempre riconosciuta come un formato
+generico: veniva **sempre rifiutata**, sia in creazione che in allegato successivo, senza che il
+messaggio d'errore spiegasse perché. Ora il controllo si basa sull'estensione del file, come già
+avviene per gli altri formati ammessi.
+
+### La conferma prima di eliminare un allegato ora è quella vera
+
+Il pulsante «Elimina» su un documento chiedeva conferma con il popup nativo del browser, non con la
+finestra dell'applicazione: su questa pagina poteva sembrare — ed era, in alcuni casi — che non
+succedesse niente al clic. Ora la conferma è la stessa finestra usata in tutto il resto del
+programma.
+
+### Nell'elenco si vede quanti allegati ha una fattura
+
+Prima la graffetta accanto al numero scaricava sempre il **primo** allegato, anche quando ce n'erano
+altri, e non diceva quanti fossero. Adesso al suo posto c'è un'icona con il **numero scritto
+accanto**: si legge a colpo d'occhio che una fattura ha due o tre documenti, senza doverci passare
+sopra col mouse — e su un telefono, dove il mouse non c'è, l'informazione esiste comunque. Per
+aprirli si passa dal menu della riga o dal Dettaglio, dove sono elencati tutti.
+
+### Il filtro per data dell'elenco fatture ora è un intervallo vero
+
+Erano due campi data separati e identici, che non dicevano né quale fosse l'inizio né **quale data**
+stessero filtrando — e in questo modulo le date sono tre. Adesso è un selettore unico con un
+calendario a due mesi, e quando è vuoto dice «Data documento», così si sa cosa si sta per filtrare.
+
+Si sceglie un intervallo cliccando due date. Scegliendone **una sola**, il calendario chiede cosa
+deve essere: **«dal»** o **«fino al»** — così «tutte le fatture fino al 31 dicembre» si può ancora
+chiedere, come si faceva con i due campi separati. Il tasto Esc annulla la scelta a metà, senza
+applicare niente.
+
+⚠️ **Tre difetti trovati provando la schermata dal vivo, e corretti qui.** Scegliendo due date in
+rapida successione, la seconda poteva non arrivare mai al filtro: l'elenco restava filtrato solo
+sulla prima mentre il pulsante mostrava l'intervallo completo, cioè **dichiarava un filtro e ne
+applicava un altro**. Un indirizzo con una data scritta male — un segnalibro vecchio, un
+collegamento incollato storto — faceva sparire l'intera barra dei filtri, compresi «Azzera filtri»
+e «Nuova fattura»: adesso una data illeggibile vale semplicemente «nessun filtro». E «Azzera filtri»
+non toglieva il filtro sugli **sfori motivati**: chi ci arrivava dalla card in cima restava
+bloccato lì senza capire perché.
+
+### Dettagli
+
+- Ogni allegato mostra **quando è stato caricato**, accanto alla dimensione del file.
+- Il testo del filtro «Filtra per numero o fornitore» era più grande degli altri filtri sulla stessa
+  riga: ora sono tutti della stessa dimensione.
+- Un intervallo di date scritto al contrario nell'indirizzo (fine prima dell'inizio) si raddrizza da
+  solo, invece di restare rovesciato e restituire un elenco sempre vuoto.
+- Il pulsante «Paga fattura» ha l'icona che il programma usa già per l'azione di pagare.
+- Il messaggio che spiega perché non si può eliminare un allegato diceva «per non alterare un fatto
+  contabile ormai chiuso», che è vero solo per una fattura pagata: su una stornata, una pregressa o
+  una con sforo da ratificare diceva una cosa falsa. Adesso la spiegazione vale in tutti i casi.
+- Quando il server rifiuta di eliminare un allegato, il messaggio si vede: prima restava in cima
+  alla pagina mentre si stava in fondo, e sembrava che il clic non avesse fatto niente.
+
+---
+
 ## [1.11.0-beta.11] - Il File Che Poteva Fermare Il Server
 
 Questa versione **non aggiunge niente che si veda**. Non è dimenticanza: è la prima di più beta —

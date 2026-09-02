@@ -51,7 +51,13 @@ class StoreFatturaRequest extends FormRequest
             
             'iban_fornitore'     => 'nullable|string',
             'dati_extra'         => 'nullable|array',
-            'file'               => ['nullable', 'file', 'mimes:pdf,xml,p7m,jpg,png',
+            // ⚠️ `extensions:`, non `mimes:` — stessa correzione di StoreFatturaDocumentoRequest,
+            // dalla revisione avversariale della beta.12 (Coda 102). `mimes:` guarda il
+            // contenuto: una busta .p7m è ASN.1 generico, `finfo` la vede
+            // `application/octet-stream` e la rifiuta SEMPRE, qualunque file .p7m reale.
+            // Correggerla solo nella rotta nuova e non qui avrebbe lasciato la
+            // registrazione a rifiutare lo stesso file dall'altra porta.
+            'file'               => ['nullable', 'file', 'extensions:pdf,xml,p7m,jpg,jpeg,png',
                 // Il tetto di questa porta resta **10 MB, il suo**: un allegato di fattura è un
                 // documento singolo, non un archivio. Quello che cambia è che adesso non promette
                 // mai più di quanto il server accetti davvero.

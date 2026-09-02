@@ -63,7 +63,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span>La graffetta indica un <strong>documento allegato</strong>: ci si clicca sopra per scaricare il PDF.</span>
+                  <span>L'icona del documento indica che c'è <strong>almeno un allegato</strong>: per scaricarlo o vederli tutti si apre il menu della riga o il Dettaglio della fattura.</span>
                 </li>
               </ul>
             </div>
