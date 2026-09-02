@@ -14,9 +14,9 @@ namespace App\DataTransferObjects\FatturaElettronica;
  *
  * ## ⚠️ Gli importi qui sono in CENTESIMI, e chi li consuma deve saperlo
  *
- * La convenzione del progetto (CLAUDE.md) è denaro in centesimi interi,
- * convertito una volta sola al confine d'ingresso: questo parser È quel
- * confine per i file XML, quindi converte lui con MoneyHelper::toCents().
+ * La convenzione del progetto è denaro in centesimi interi, convertito una
+ * volta sola al confine d'ingresso: questo parser È quel confine per i file
+ * XML, quindi converte lui con MoneyHelper::toCents().
  *
  * **Ma `FatturaPassivaService::registraFattura()` — l'unico punto di
  * scrittura delle fatture passive — riceve `righe.*.importo_imponibile`
@@ -26,8 +26,8 @@ namespace App\DataTransferObjects\FatturaElettronica;
  * un ×100 pronto e nessun tipo che lo fermi: entrambi i valori sono
  * numerici e plausibili. **Va convertito con MoneyHelper::fromCents()
  * prima di passarlo al servizio**, o il servizio va esteso per accettare
- * i centesimi esplicitamente. È la classe di difetto che CLAUDE.md
- * indica come «il bug del ×100 costato la beta.32».
+ * i centesimi esplicitamente. È la classe di difetto già pagata una volta:
+ * «il bug del ×100 costato la beta.32».
  *
  * ## ⚠️ Il segno non è normalizzato, e non può esserlo qui
  *
