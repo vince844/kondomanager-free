@@ -42,6 +42,27 @@ namespace App\DataTransferObjects\FatturaElettronica;
  * alla cieca: su una nota di credito già negativa la ribalterebbe in un
  * debito. La normalizzazione è una decisione di dominio e va presa dove
  * si registra il documento, guardando il segno effettivo.
+ *
+ * ## ⚠️ `fornitorePartitaIva` è solo `IdCodice`: la cifre, non il paese
+ *
+ * Trovato dalla revisione avversariale della beta.14. `IdFiscaleIVA` in FatturaPA è
+ * `IdPaese` + `IdCodice` — il paese non è decorazione, è ciò che dice se le cifre sono
+ * una partita IVA italiana o l'equivalente estero. Un `IdCodice` francese o tedesco può
+ * numericamente coincidere con una partita IVA italiana già in anagrafica: senza
+ * `fornitorePartitaIvaPaese`, `RicercaFornitoreXml` agganciava alla cieca un fornitore
+ * italiano che non c'entra niente. `Sede/Nazione` (→ `fornitoreNazione`) non basta a
+ * sostituirlo: è il paese della sede legale, un campo diverso che può divergere.
+ *
+ * ## `cessionarioCodiceFiscale`/`cessionarioDenominazione`: chi paga, non chi vende
+ *
+ * Aggiunti il 02/09/2026, decidendo con Vincenzo di restare nell'importazione XML
+ * dentro un condominio solo — «rimarrei nello stesso condominio per non complicarci
+ * la vita» — invece di smistare fra più condomìni. Un file intestato a un altro
+ * condominio va **rifiutato spiegando perché**, non ignorato o smistato in silenzio:
+ * senza questi due campi non c'era modo di saperlo, perché il parser non leggeva
+ * affatto `CessionarioCommittente`. `null` quando il file non lo dichiara con nome o
+ * cognome — a differenza del cedente, qui **non si rifiuta il file**: il confronto a
+ * valle si limita a non poter escludere nulla.
  */
 class FatturaPaFattura
 {
@@ -50,6 +71,7 @@ class FatturaPaFattura
      * @param  FatturaPaRiepilogo[]  $riepiloghi
      * @param  FatturaPaScadenza[]  $scadenze
      * @param  FatturaPaRitenuta[]  $ritenute
+     * @param  FatturaPaCassaPrevidenziale[]  $cassePrevidenziali
      */
     public function __construct(
         public readonly string $tipoDocumento,
@@ -58,6 +80,7 @@ class FatturaPaFattura
         public readonly ?string $causale,
         public readonly ?int $importoTotaleDocumentoCents,
         public readonly ?string $fornitorePartitaIva,
+        public readonly ?string $fornitorePartitaIvaPaese,
         public readonly ?string $fornitoreCodiceFiscale,
         public readonly string $fornitoreDenominazione,
         public readonly ?string $fornitoreIndirizzo,
@@ -67,6 +90,10 @@ class FatturaPaFattura
         public readonly ?string $fornitoreNazione,
         public readonly ?string $fornitoreEmail,
         public readonly ?string $fornitoreRegimeFiscale,
+        public readonly ?string $cessionarioCodiceFiscale,
+        public readonly ?string $cessionarioDenominazione,
+        /** @var FatturaPaCassaPrevidenziale[] */
+        public readonly array $cassePrevidenziali,
         public readonly array $righe,
         public readonly array $riepiloghi,
         public readonly array $scadenze,
@@ -125,19 +152,51 @@ class FatturaPaFattura
      * documento che non lo porta, quindi il confronto si può sempre fare.
      *
      * **Uno scarto non è necessariamente un errore del file**: è
-     * legittimo con spese accessorie, arrotondamenti, contributo cassa
-     * previdenziale o sconti di documento, che vivono nel riepilogo e non
-     * nelle righe. Ma non è nemmeno da nascondere — sull'esempio ufficiale
-     * FPR02 dell'Agenzia le righe fanno € 25,00 e il riepilogo dichiara
-     * € 27,00 senza nessuna di quelle causali.
+     * legittimo con spese accessorie, arrotondamenti o sconti di
+     * documento, che vivono nel riepilogo e non nelle righe. Ma non è
+     * nemmeno da nascondere — sull'esempio ufficiale FPR02 dell'Agenzia le
+     * righe fanno € 25,00 e il riepilogo dichiara € 27,00 senza nessuna di
+     * quelle causali.
      *
      * Serve a valle per **dirlo all'amministratore** invece di scegliere
      * un numero al posto suo: stessa filosofia della decisione D4 sui
      * duplicati, segnalare e non decidere.
+     *
+     * ⚠️ **Il contributo cassa previdenziale NON si sottrae qui, e c'è voluto un
+     * errore per capirlo.** Il 02/09/2026 una cassa geometri al 5% produceva uno
+     * scarto di € 160,00 su una fattura perfettamente corretta — «controlla gli
+     * importi» sul caso giusto, la forma peggiore di un avviso — e la spia è stata
+     * spenta sottraendo il contributo proprio da questa formula. **Il guasto è
+     * rimasto**: il contributo non entrava in nessuna riga, quindi la fattura si
+     * registrava in difetto di quell'importo senza che niente lo dicesse (Fase 1-bis,
+     * reperto 1: su una parcella da € 4.099,20 se ne registravano € 3.904,00).
+     *
+     * Ora il contributo diventa **una riga di spesa** a valle
+     * (`ImportaFatturaXmlController::mappaRighe()`), quindi `sommaRigheCents()` lo
+     * comprende già e sottrarlo lo toglierebbe due volte. Tolta la sottrazione,
+     * questa formula torna a fare il suo mestiere: dire quando il file **davvero**
+     * non torna.
      */
     public function scartoRigheRiepilogoCents(): int
     {
-        return $this->imponibileDichiaratoCents() - $this->sommaRigheCents();
+        return $this->imponibileDichiaratoCents() - $this->sommaRigheCents() - $this->contributoCassaPrevidenzialeCents();
+    }
+
+    /**
+     * La somma dei contributi cassa del documento, in centesimi.
+     *
+     * ⚠️ Serve **solo** allo scarto qui sopra, dove tiene conto del fatto che le righe
+     * arrivate dal file non comprendono ancora il contributo: chi confronta le righe
+     * dell'XML col riepilogo dell'XML deve escluderlo, perché nel riepilogo c'è e
+     * nelle `DettaglioLinee` no. Non è il numero da registrare — quello nasce dalla
+     * riga che il controller costruisce.
+     */
+    public function contributoCassaPrevidenzialeCents(): int
+    {
+        return array_sum(array_map(
+            fn (FatturaPaCassaPrevidenziale $c) => $c->importoContributoCents,
+            $this->cassePrevidenziali,
+        ));
     }
 
     public function righeNonQuadranoColRiepilogo(): bool

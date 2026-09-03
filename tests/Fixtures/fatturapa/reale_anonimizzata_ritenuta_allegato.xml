@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns2:FatturaElettronica xmlns:ns2="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>12345678911</IdCodice></IdTrasmittente>
+            <ProgressivoInvio>00001</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>0000001</CodiceDestinatario>
+            <PECDestinatario>pec1@pec.example.invalid</PECDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>12345678929</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>BNCGLI85M41H504H</CodiceFiscale>
+                <Anagrafica>
+                    <Nome>GIULIA</Nome>
+                    <Cognome>BIANCHI</Cognome>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DELLE MIMOSE</Indirizzo>
+                <NumeroCivico>11</NumeroCivico>
+                <CAP>00185</CAP>
+                <Comune>ROMA</Comune>
+                <Provincia>RM</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <Contatti>
+                <Telefono>061000001</Telefono>
+                <Email>esempio1@example.invalid</Email>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>12345678937</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>12345678937</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>ALFA SERVIZI SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DEI TIGLI</Indirizzo>
+                <NumeroCivico>12</NumeroCivico>
+                <CAP>00186</CAP>
+                <Comune>ROMA</Comune>
+                <Provincia>RM</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    <TerzoIntermediarioOSoggettoEmittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>12345678911</IdCodice></IdFiscaleIVA><CodiceFiscale>12345678911</CodiceFiscale><Anagrafica><Denominazione>BETA FORNITURE SRL</Denominazione></Anagrafica></DatiAnagrafici></TerzoIntermediarioOSoggettoEmittente><SoggettoEmittente>TZ</SoggettoEmittente></FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-07-01</Data>
+                <Numero>492</Numero>
+                <DatiRitenuta>
+                    <TipoRitenuta>RT01</TipoRitenuta>
+                    <ImportoRitenuta>181.96</ImportoRitenuta>
+                    <AliquotaRitenuta>20.00</AliquotaRitenuta>
+                    <CausalePagamento>A</CausalePagamento>
+                </DatiRitenuta>
+                <ImportoTotaleDocumento>1481.96</ImportoTotaleDocumento>
+                <Causale>PRESTAZIONE DI SERVIZI - VOCE 9</Causale>
+            </DatiGeneraliDocumento>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 1</Descrizione>
+                <PrezzoUnitario>909.80</PrezzoUnitario>
+                <PrezzoTotale>909.80</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <Ritenuta>SI</Ritenuta>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 2</Descrizione>
+                <PrezzoUnitario>45.00</PrezzoUnitario>
+                <PrezzoTotale>45.00</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 3</Descrizione>
+                <PrezzoUnitario>65.00</PrezzoUnitario>
+                <PrezzoTotale>65.00</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 4</Descrizione>
+                <PrezzoUnitario>16.00</PrezzoUnitario>
+                <PrezzoTotale>16.00</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>5</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 5</Descrizione>
+                <PrezzoUnitario>200.00</PrezzoUnitario>
+                <PrezzoTotale>200.00</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>6</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 6</Descrizione>
+                <PrezzoUnitario>9.10</PrezzoUnitario>
+                <PrezzoTotale>9.10</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>7</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 7</Descrizione>
+                <PrezzoUnitario>30.00</PrezzoUnitario>
+                <PrezzoTotale>30.00</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>8</NumeroLinea>
+                <Descrizione>PRESTAZIONE DI SERVIZI - VOCE 8</Descrizione>
+                <PrezzoUnitario>6.90</PrezzoUnitario>
+                <PrezzoTotale>6.90</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N1</Natura>
+                <ImponibileImporto>372.00</ImponibileImporto>
+                <Imposta>0.00</Imposta>
+                <RiferimentoNormativo>Art.15 c.1, 3)</RiferimentoNormativo>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>909.80</ImponibileImporto>
+                <Imposta>200.16</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <Allegati>
+            <NomeAttachment>allegato.pdf</NomeAttachment>
+            <FormatoAttachment>.pdf</FormatoAttachment>
+            <Attachment>JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgNTk1IDg0Ml0+PmVuZG9iagp0cmFpbGVyPDwvUm9vdCAxIDAgUj4+CiUlRU9GCg==</Attachment>
+        </Allegati>
+    </FatturaElettronicaBody>
+</ns2:FatturaElettronica>

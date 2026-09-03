@@ -7,6 +7,116 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.14] - Quello Che C'Era Scritto Nel File
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+È il passo che si vede di tutto il percorso cominciato tre beta fa: **una fattura passiva non si
+digita più, si carica**. Si sceglie il file XML che il fornitore ha mandato via PEC o che si è
+scaricato dal portale Fatture e Corrispettivi, e il modulo si compila da sé — numero, date, importi,
+righe, IBAN, fornitore.
+
+Il titolo però dice l'altra metà del lavoro, che è più grande della prima. Leggendo davvero le
+undici fatture vere di un amministratore è venuto fuori che **il file dichiara cose che non stavamo
+ascoltando**: un contributo di cassa previdenziale che non entrava in fattura, una ritenuta
+d'acconto che attraversava il sistema senza che nessuna schermata la mostrasse, un campo che dice
+quali righe entrano nella base della ritenuta e che veniva sovrascritto. Sono soldi, e sotto trovi
+tutto per esteso.
+
+### Si carica il file, il modulo si compila
+
+Nella schermata di registrazione, in testa, c'è una fascia con il pulsante **«Importa XML»**. Si
+possono caricare **più documenti insieme**: il sistema li legge tutti, ne mostra l'elenco con
+fornitore, data e importo, e si decide quale registrare per primo. Dopo il salvataggio ripropone
+quelli che restano, così un lotto si smaltisce senza tornare indietro a cercarli.
+
+Accetta **XML in chiaro e buste firmate `.p7m`**, ed è la stessa cosa che si può fare dal riquadro
+«Allega documento» in fondo al pannello: allegare il PDF e leggere l'XML restano due gesti diversi,
+ma un XML allegato lì viene letto lo stesso.
+
+### Il fornitore si crea dal file, senza uscire dalla pagina
+
+Se il fornitore non è ancora in anagrafica, un pulsante lo crea leggendo i dati dal documento —
+ragione sociale, partita IVA, indirizzo, PEC — e lo aggancia alla fattura che si sta registrando.
+Prima bisognava lasciare l'importo a metà, andare in anagrafica, e ricominciare.
+
+Il modale **propone** anche il regime di ritenuta quando il file lo dichiara e i conti tornano: il
+4% dell'appalto, il 20% del lavoro autonomo. Propone, non decide — la spunta si toglie e il regime
+si cambia prima di salvare.
+
+### Il contributo di cassa previdenziale entra in fattura
+
+Su una parcella di un professionista iscritto a una cassa — geometri, ingegneri, avvocati — il
+contributo integrativo del 4 o 5% è una voce a sé del documento, e **non veniva registrata**. Su una
+parcella vera del collaudo significava una fattura da € 3.904,00 al posto di € 4.099,20: **€ 195,20
+in meno**, senza che nulla lo segnalasse.
+
+Ora è una riga di spesa come le altre, con la sua aliquota IVA. E il file dice anche se quel
+contributo è soggetto a ritenuta d'acconto: **lo si legge dal documento invece di dedurlo**, così la
+risposta la dà chi ha emesso la fattura e non una nostra tabella da tenere aggiornata.
+
+### La ritenuta dichiarata dal file, messa a confronto con quella del modulo
+
+Il documento può dichiarare una ritenuta d'acconto. Se il fornitore in anagrafica non è segnato come
+soggetto a ritenuta, il modulo non ne trattiene nessuna — e prima **nessuna schermata diceva che le
+due cose non coincidevano**: la fattura si registrava a netto pieno, il condominio pagava tutto al
+fornitore e non versava niente all'Erario, restando comunque responsabile come sostituto d'imposta.
+
+Adesso i due numeri stanno uno sotto l'altro, con scritto perché non coincidono e cosa fare. **Si
+segnala e non si blocca**: l'anagrafica descrive il fornitore *oggi*, il file descrive *quel*
+documento, e nessuno dei due comanda sull'altro — può essere una casella dimenticata in anagrafica
+come una fattura di soli materiali da un fornitore che di solito fa appalti. L'ultima parola resta
+all'amministratore.
+
+Il confronto vale **in entrambi i versi**: se il modulo trattiene e il file non dichiara niente, lo
+dice ugualmente, perché l'assenza del blocco nel file non vuol dire che la ritenuta non sia dovuta.
+E quando i due importi coincidono lo conferma con una riga verde. Quando invece non c'è niente da
+dire — il caso di gran lunga più frequente — **non compare nulla**: un avviso che c'è sempre smette
+di essere letto in una settimana.
+
+### Un contributo previdenziale non è una ritenuta d'acconto
+
+Lo schema della fattura elettronica usa lo stesso blocco per sei cose diverse: due sono ritenute
+d'acconto, le altre quattro sono contributi previdenziali — INPS, ENASARCO, ENPAM. Non li versa il
+condominio: li versa il fornitore al proprio ente. Ora vengono distinti, e se il file ne dichiara
+uno lo si dice a parte, senza confonderlo con una trattenuta da operare.
+
+### Il file intestato a un altro condominio non entra
+
+Se il codice fiscale del destinatario scritto nel documento non è quello del condominio aperto, il
+file viene rifiutato spiegando a chi è intestato. Non è un avviso da scavalcare: la fattura
+sbagliata imputata al palazzo sbagliato è il tipo di errore che il rendiconto non perdona.
+
+Il controllo però ha bisogno del codice fiscale del condominio, e non tutti ce l'hanno — succede
+soprattutto a chi ha importato lo storico da un altro gestionale. In quel caso il lettore lo dice,
+con il collegamento all'anagrafica per rimediare: **avvisa senza bloccare**, perché in quel
+condominio ci si è entrati apposta.
+
+### Il lavoro scritto a mano non si perde più
+
+Se si è già compilato qualcosa nel modulo e poi si carica un XML, il sistema chiede conferma prima
+di sostituirlo. Prima le righe scritte a mano — capitoli assegnati, immobili delle spese private,
+spunte di sopravvenienza — sparivano in blocco senza un avviso e senza modo di tornare indietro.
+
+### Righe più piccole, tutte viste all'uso
+
+- Le **righe puramente descrittive da € 0,00** che molti fornitori mettono in fattura — numeri di
+  protocollo, riferimenti tecnici — non chiedono più un capitolo di spesa: non sono spese, e
+  restano nel documento come contenuto.
+- **Cancellando una riga, l'errore di un'altra non sparisce più.** Prima bastava togliere una voce
+  qualsiasi perché il messaggio rosso di un'altra svanisse: la riga sbagliata restava a schermo
+  senza più niente addosso, e il salvataggio veniva rifiutato di nuovo.
+- Il **messaggio di un file illeggibile** adesso dice cosa fare invece di riportare il testo tecnico
+  del lettore XML.
+- Registrando un altro documento, **non resta a schermo il messaggio rosso** di un file scartato
+  prima.
+- Il **pulsante della fascia** non promette più un elenco quando l'elenco è vuoto, e chiudendo il
+  lettore mentre sta ancora leggendo **il documento non si prende più il modulo** alle spalle.
+- Il cestino dell'elenco toglie un documento dalla coda **senza svuotare il modulo**: è un comando
+  dell'elenco, non della fattura che si sta compilando.
+
+---
+
 ## [1.11.0-beta.13] - La Fattura Che Si Registrava Due Volte
 
 **Tocca il database:** una migrazione idempotente allarga l'indice univoco su `fatture_passive`

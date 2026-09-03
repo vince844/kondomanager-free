@@ -2,6 +2,7 @@
 
 namespace App\Services\FatturaElettronica;
 
+use App\DataTransferObjects\FatturaElettronica\FatturaPaCassaPrevidenziale;
 use App\DataTransferObjects\FatturaElettronica\FatturaPaFattura;
 use App\DataTransferObjects\FatturaElettronica\FatturaPaRiepilogo;
 use App\DataTransferObjects\FatturaElettronica\FatturaPaRiga;
@@ -70,8 +71,27 @@ class FatturaPaParser
         libxml_use_internal_errors($precedente);
 
         if (! $caricato) {
-            $primo = $errori[0]->message ?? 'errore XML sconosciuto';
-            throw new FatturaPaParseException('File XML malformato: '.trim($primo));
+            // ⚠️ **Il gergo di libxml resta nel log, a schermo va che cosa fare.**
+            // Fino al 03/09/2026 il messaggio dell'eccezione finiva tale e quale sotto il
+            // riquadro «Allega documento» — «File XML malformato: Specification mandates
+            // value for attribute non» — corretto nel merito e inservibile per un
+            // amministratore di condominio, che non ha nessun modo di agire su una frase
+            // così. Il dettaglio serve a noi quando ci scrivono, quindi non si butta: si
+            // sposta dove lo leggiamo noi.
+            // ⚠️ **Il dettaglio viaggia sull'eccezione, non in un log scritto da qui.**
+            // Questo parser è senza framework di proposito — niente database, niente
+            // facade — ed è ciò che lo rende collaudabile in `tests/Unit` senza avviare
+            // Laravel. Un `Log::warning` qui dentro romperebbe quella proprietà: l'ho
+            // provato, e i test unitari sono diventati rossi con «A facade root has not
+            // been set». A scrivere nel log è il controller, che nel framework ci vive già.
+            $primo = $errori[0] ?? null;
+
+            throw new FatturaPaParseException(
+                'Questo non è un file XML valido: il contenuto risulta danneggiato o incompleto. '
+                .'Se lo hai scaricato dal portale Fatture e Corrispettivi o da una PEC, riscaricalo e riprova.',
+                dettaglioTecnico: $primo !== null ? trim($primo->message) : 'errore XML sconosciuto',
+                riga: $primo->line ?? null,
+            );
         }
 
         $xpath = new DOMXPath($dom);
@@ -86,10 +106,16 @@ class FatturaPaParser
             throw new FatturaPaParseException('Manca CedentePrestatore: non sembra una FatturaPA.');
         }
 
+        // ⚠️ Fratello di CedentePrestatore, non figlio: stesso genitore
+        // FatturaElettronicaHeader. A differenza del cedente, un cessionario mancante
+        // o malformato non fa rifiutare il file — vedi il docblock di
+        // FatturaPaFattura::$cessionarioCodiceFiscale.
+        $cessionario = $xpath->query('//FatturaElettronicaHeader/CessionarioCommittente')->item(0);
+
         $fatture = [];
         foreach ($bodies as $body) {
             if ($body instanceof DOMElement) {
-                $fatture[] = $this->parseBody($xpath, $cedente, $body);
+                $fatture[] = $this->parseBody($xpath, $cedente, $cessionario instanceof DOMElement ? $cessionario : null, $body);
             }
         }
 
@@ -113,12 +139,28 @@ class FatturaPaParser
      */
     private function rifiutaDoctype(string $xml): void
     {
-        // Si guarda solo il prologo: un DOCTYPE valido sta prima
-        // dell'elemento radice, e cercarlo in tutto il file darebbe falsi
-        // positivi su una descrizione che contiene quella parola.
-        $prologo = substr($xml, 0, 4096);
+        // ⚠️ **Il prologo si delimita, non si tronca a una lunghezza fissa.**
+        // Fino al 02/09/2026 questa riga era `substr($xml, 0, 4096)`, e bastava
+        // un commento XML legale di cinquemila caratteri prima del DOCTYPE per
+        // spingerlo oltre la finestra: la guardia non lo vedeva, l'espansione
+        // quadratica delle entità partiva lo stesso e il worker moriva di
+        // out-of-memory non catturabile. Riprodotto dalla revisione avversariale
+        // della beta.14 con un file da 214 KB, DOCTYPE al byte 5049.
+        //
+        // Il prologo è per definizione **tutto ciò che precede l'elemento
+        // radice**: lo si trova, invece di indovinarne la lunghezza. Un
+        // `<!DOCTYPE` più avanti nel documento non può dichiarare entità, quindi
+        // non è la stessa cosa e non va rifiutato — è la ragione per cui la
+        // finestra c'era, e resta valida.
+        $primoElemento = preg_match('/<[A-Za-z_:]/', $xml, $m, PREG_OFFSET_CAPTURE) === 1
+            ? $m[0][1]
+            : strlen($xml);
 
-        if (preg_match('/<!DOCTYPE/i', $prologo) === 1) {
+        // I commenti si tolgono prima di cercare: `<!-- <!DOCTYPE ... -->` nel
+        // prologo è legale e inerte, e rifiutarlo sarebbe un falso positivo.
+        $prologo = preg_replace('/<!--.*?-->/s', '', substr($xml, 0, $primoElemento));
+
+        if (preg_match('/<!DOCTYPE/i', (string) $prologo) === 1) {
             throw new FatturaPaParseException(
                 'Il file dichiara un DOCTYPE: una FatturaPA non ne ha mai uno, il file non è attendibile.'
             );
@@ -194,7 +236,7 @@ class FatturaPaParser
         return str_starts_with(ltrim($content, "\xEF\xBB\xBF \t\n\r\0\x0B"), '<');
     }
 
-    private function parseBody(DOMXPath $xpath, DOMElement $cedente, DOMElement $body): FatturaPaFattura
+    private function parseBody(DOMXPath $xpath, DOMElement $cedente, ?DOMElement $cessionario, DOMElement $body): FatturaPaFattura
     {
         $tipoDocumento = $this->testo($xpath, './DatiGenerali/DatiGeneraliDocumento/TipoDocumento', $body);
         $numero = $this->testo($xpath, './DatiGenerali/DatiGeneraliDocumento/Numero', $body);
@@ -223,6 +265,7 @@ class FatturaPaParser
                 ? null
                 : $this->cents($totaleDocumento, 'ImportoTotaleDocumento'),
             fornitorePartitaIva: $this->testo($xpath, './DatiAnagrafici/IdFiscaleIVA/IdCodice', $cedente),
+            fornitorePartitaIvaPaese: $this->testo($xpath, './DatiAnagrafici/IdFiscaleIVA/IdPaese', $cedente),
             fornitoreCodiceFiscale: $this->testo($xpath, './DatiAnagrafici/CodiceFiscale', $cedente),
             fornitoreDenominazione: $this->denominazione($xpath, $cedente),
             fornitoreIndirizzo: $this->testo($xpath, './Sede/Indirizzo', $cedente),
@@ -232,6 +275,11 @@ class FatturaPaParser
             fornitoreNazione: $this->testo($xpath, './Sede/Nazione', $cedente),
             fornitoreEmail: $this->testo($xpath, './Contatti/Email', $cedente),
             fornitoreRegimeFiscale: $this->testo($xpath, './DatiAnagrafici/RegimeFiscale', $cedente),
+            cessionarioCodiceFiscale: $cessionario === null
+                ? null
+                : $this->testo($xpath, './DatiAnagrafici/CodiceFiscale', $cessionario),
+            cessionarioDenominazione: $cessionario === null ? null : $this->denominazioneOpzionale($xpath, $cessionario),
+            cassePrevidenziali: $this->parseCassePrevidenziali($xpath, $body),
             righe: $this->parseRighe($xpath, $body),
             riepiloghi: $this->parseRiepiloghi($xpath, $body),
             scadenze: $this->parseScadenze($xpath, $body),
@@ -255,6 +303,86 @@ class FatturaPaParser
         }
 
         throw new FatturaPaParseException('CedentePrestatore senza Denominazione né Nome/Cognome.');
+    }
+
+    /**
+     * Stessa lettura di denominazione(), ma per il cessionario: `null` invece di
+     * un'eccezione quando manca. Il cedente è la porta d'ingresso del file — se non
+     * si sa CHI vende non c'è fattura da leggere — il cessionario qui serve solo al
+     * confronto «è per questo condominio?» (docs/lettura_xml_fatture_passive.md): un
+     * file altrimenti valido non deve smettere di leggersi per una FatturaPA scritta
+     * male su questo campo soltanto.
+     */
+    private function denominazioneOpzionale(DOMXPath $xpath, DOMElement $elemento): ?string
+    {
+        $denominazione = $this->testo($xpath, './DatiAnagrafici/Anagrafica/Denominazione', $elemento);
+        if ($denominazione !== null) {
+            return $denominazione;
+        }
+
+        $nome = $this->testo($xpath, './DatiAnagrafici/Anagrafica/Nome', $elemento);
+        $cognome = $this->testo($xpath, './DatiAnagrafici/Anagrafica/Cognome', $elemento);
+        if ($nome !== null || $cognome !== null) {
+            return trim(($nome ?? '').' '.($cognome ?? ''));
+        }
+
+        return null;
+    }
+
+    /**
+     * I blocchi `DatiCassaPrevidenziale` del documento.
+     *
+     * ⚠️ **Prima questo metodo restituiva una SOMMA, ed era la forma sbagliata.**
+     * Aggiunto il 02/09/2026 dal collaudo sui file veri del forum per spegnere un falso
+     * «le righe non quadrano» su una fattura corretta: il contributo vive in
+     * `DatiGeneraliDocumento`, non nelle righe, quindi lo scarto lo scambiava per un
+     * errore. La spia è stata spenta sottraendo il totale dallo scarto — **e il guasto
+     * è rimasto**: il contributo non entrava in nessuna riga, quindi la fattura si
+     * registrava in difetto di quell'importo, in silenzio. Su una parcella di geometra
+     * da € 4.099,20 significava registrarne € 3.904,00 (Fase 1-bis della beta.14,
+     * reperto 1, misurato sull'endpoint vero).
+     *
+     * La correzione è restituire i blocchi **interi**: a valle ognuno diventa una riga
+     * di spesa (vedi il docblock di `FatturaPaCassaPrevidenziale` per il perché è una
+     * riga e non una partita a sé), e per farlo servono aliquota IVA e assoggettamento
+     * a ritenuta, che una somma butta via.
+     *
+     * Lo schema ammette **più** blocchi (raro ma legittimo: due casse sullo stesso
+     * documento), e ognuno tiene la propria aliquota: per questo restituirli separati
+     * non è pedanteria — sommarli renderebbe impossibile dare a ciascuno la sua IVA.
+     *
+     * @return FatturaPaCassaPrevidenziale[]
+     */
+    private function parseCassePrevidenziali(DOMXPath $xpath, DOMElement $body): array
+    {
+        $casse = [];
+
+        foreach ($xpath->query('./DatiGenerali/DatiGeneraliDocumento/DatiCassaPrevidenziale', $body) as $nodo) {
+            if (! $nodo instanceof DOMElement) {
+                continue;
+            }
+
+            $importo = $this->testo($xpath, './ImportoContributoCassa', $nodo);
+            if ($importo === null) {
+                throw new FatturaPaParseException('DatiCassaPrevidenziale senza ImportoContributoCassa.');
+            }
+
+            $alCassa = $this->testo($xpath, './AlCassa', $nodo);
+            $aliquotaIva = $this->testo($xpath, './AliquotaIVA', $nodo);
+
+            $casse[] = new FatturaPaCassaPrevidenziale(
+                tipoCassa: $this->testo($xpath, './TipoCassa', $nodo),
+                aliquotaContributo: $alCassa === null ? null : (float) $alCassa,
+                importoContributoCents: $this->cents($importo, 'ImportoContributoCassa'),
+                aliquotaIva: $aliquotaIva === null ? null : (float) $aliquotaIva,
+                // Assente significa «no», che è il caso normale del contributo
+                // integrativo. Si legge invece di dedurlo dal TipoCassa: così la
+                // risposta la dà il documento, non una nostra tabella da mantenere.
+                soggettaRitenuta: strtoupper((string) $this->testo($xpath, './Ritenuta', $nodo)) === 'SI',
+            );
+        }
+
+        return $casse;
     }
 
     /**
@@ -359,6 +487,9 @@ class FatturaPaParser
                 data: $this->testo($xpath, './DataScadenzaPagamento', $dettaglio),
                 importoCents: $this->cents($importo, "ImportoPagamento (rata {$numero})"),
                 modalitaPagamento: $this->testo($xpath, './ModalitaPagamento', $dettaglio),
+                // IBAN è minOccurs="0": obbligatorio solo per i mezzi che lo richiedono
+                // (bonifico), lo XSD non lo impone per contanti o assegno.
+                iban: $this->testo($xpath, './IBAN', $dettaglio),
             );
         }
 

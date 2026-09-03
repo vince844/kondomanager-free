@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica versione="FPR12" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>20606060604</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>41</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>ABCDEF1</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10909090903</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>NREPLA75L03F205R</CodiceFiscale>
+                <Anagrafica>
+                    <Nome>Paolo</Nome>
+                    <Cognome>Neri</Cognome>
+                    <Titolo>Geometra</Titolo>
+                </Anagrafica>
+                <AlboProfessionale>Collegio dei Geometri</AlboProfessionale>
+                <ProvinciaAlbo>MI</ProvinciaAlbo>
+                <NumeroIscrizioneAlbo>1234</NumeroIscrizioneAlbo>
+                <DataIscrizioneAlbo>2001-02-13</DataIscrizioneAlbo>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Piazza dei Tigli</Indirizzo>
+                <NumeroCivico>14</NumeroCivico>
+                <CAP>20154</CAP>
+                <Comune>Milano</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <Contatti>
+                <Telefono>0200000001</Telefono>
+                <Fax>0200000002</Fax>
+                <Email>paolo.neri@example.it</Email>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <CodiceFiscale>97123456789</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>Condominio Demo KM</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via delle Acacie</Indirizzo>
+                <NumeroCivico>5</NumeroCivico>
+                <CAP>20131</CAP>
+                <Comune>Milano</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-05-14</Data>
+                <Numero>FPR 7/26</Numero>
+                <DatiCassaPrevidenziale>
+                    <TipoCassa>TC03</TipoCassa>
+                    <AlCassa>5.00</AlCassa>
+                    <ImportoContributoCassa>160.00</ImportoContributoCassa>
+                    <ImponibileCassa>3200.00</ImponibileCassa>
+                    <AliquotaIVA>22.00</AliquotaIVA>
+                    <Ritenuta>NO</Ritenuta>
+                </DatiCassaPrevidenziale>
+                <DatiRitenuta>
+                    <TipoRitenuta>RT01</TipoRitenuta>
+                    <ImportoRitenuta>128.00</ImportoRitenuta>
+                    <AliquotaRitenuta>4.00</AliquotaRitenuta>
+                    <CausalePagamento>W</CausalePagamento>
+                </DatiRitenuta>
+                <ImportoTotaleDocumento>3971.20</ImportoTotaleDocumento>
+                <Causale>1^ acconto con fattura n. FPR 90/2024 del 07/11/2024.</Causale>
+                <Causale>2^ acconto con fattura n. FPR 112/2024 del 31/12/2024.</Causale>
+                <Causale>Fattura per 3^ acconto pari al 20%.</Causale>
+                <Causale>Rif. proforma PRO 14/2025 del 28/03/2025</Causale>
+            </DatiGeneraliDocumento>
+            <DatiFattureCollegate>
+                <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+                <IdDocumento>FPR 90/2024</IdDocumento>
+                <Data>2024-11-07</Data>
+            </DatiFattureCollegate>
+            <DatiFattureCollegate>
+                <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+                <IdDocumento>FPR 112/2024</IdDocumento>
+                <Data>2024-12-31</Data>
+            </DatiFattureCollegate>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>Compensi per gli interventi di manutenzione straordinaria ai balconi della facciata principale e alla copertura, del condominio sito nel Comune di Milano (MI), in Via delle Acacie al civ. 12, identificato al N.C.E.U. al fg. 100 mapp. 5. Nello specifico:</Descrizione>
+                <Quantita>0.00</Quantita>
+                <PrezzoUnitario>0.00</PrezzoUnitario>
+                <PrezzoTotale>0.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <Descrizione>- Direzione Lavori (D.L.).</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>1600.00</PrezzoUnitario>
+                <PrezzoTotale>1600.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <Descrizione>- Coordinamento della Sicurezza in fase di Progettazione e di Esecuzuione (C.S.P. e C.S.E.) ai sensi del D.lgs 81/2008.</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>1600.00</PrezzoUnitario>
+                <PrezzoTotale>1600.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>3360.00</ImponibileImporto>
+                <Imposta>739.20</Imposta>
+                <EsigibilitaIVA>I</EsigibilitaIVA>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <DatiPagamento>
+            <CondizioniPagamento>TP02</CondizioniPagamento>
+            <DettaglioPagamento>
+                <Beneficiario>Neri Paolo</Beneficiario>
+                <ModalitaPagamento>MP05</ModalitaPagamento>
+                <DataScadenzaPagamento>2025-03-28</DataScadenzaPagamento>
+                <ImportoPagamento>4099.20</ImportoPagamento>
+                <IstitutoFinanziario>Banca Gamma</IstitutoFinanziario>
+                <IBAN>IT88D0404040404000000004444</IBAN>
+                <BIC>AAAAIT21645</BIC>
+            </DettaglioPagamento>
+        </DatiPagamento>
+    </FatturaElettronicaBody>
+</ns3:FatturaElettronica>

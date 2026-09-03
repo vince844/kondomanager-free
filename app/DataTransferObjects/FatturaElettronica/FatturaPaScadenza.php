@@ -17,6 +17,7 @@ class FatturaPaScadenza
         public readonly ?string $data,
         public readonly int $importoCents,
         public readonly ?string $modalitaPagamento,
+        public readonly ?string $iban,
     ) {
     }
 }

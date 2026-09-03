@@ -37,6 +37,69 @@ defineEmits(['update:open']);
 
           <!-- TAB: Percorso base -->
           <TabsContent value="base" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
+            <!-- Le tre spiegazioni dell'importazione XML vivono qui dalla beta.14
+                 (03/09/2026): stavano in testa alla pagina come tre schede, ma occupavano
+                 la prima schermata anche a chi stava solo registrando una fattura a mano.
+                 Deciso con Vincenzo: «lo scriviamo nella guida dell'header». -->
+            <section>
+              <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Partire dal file XML invece che dai campi</h3>
+              <p class="mb-3">
+                Se hai il file che il fornitore ha mandato allo SdI, non c'è niente da ricopiare: il pulsante
+                <strong>«Importa XML»</strong> in testa al modulo apre il lettore, e i campi si riempiono da soli.
+                Puoi caricarne <strong>molti insieme</strong> — li leggo tutti e ti presento l'elenco, poi scegli
+                quale registrare per primo. Dopo ogni registrazione ti ricordo quali restano.
+              </p>
+              <ul class="space-y-2 list-disc pl-5">
+                <li><strong>Lettura automatica</strong>: numero, data, importi, scadenza, IBAN, righe di dettaglio
+                    e ritenuta d'acconto arrivano dal file così come il fornitore li ha dichiarati.</li>
+                <li><strong>Fornitore riconosciuto</strong>: agganciato per partita IVA o codice fiscale. Se non
+                    è ancora in anagrafica lo crei da lì, senza lasciare la pagina e senza ricaricare il file.</li>
+                <li><strong>Capitolo proposto</strong>: suggerito dall'ultima fattura registrata per quello stesso
+                    fornitore, invece di sceglierlo ogni volta da zero. Resta sempre modificabile.</li>
+                <li>Il file letto diventa anche l'<strong>allegato</strong> della fattura: non serve caricarlo
+                    una seconda volta. Il PDF, se lo vuoi accanto all'XML, si allega dal Dettaglio fattura.</li>
+              </ul>
+              <p class="mt-3">
+                Una fattura intestata a un <strong>altro condominio</strong> viene rifiutata dicendotelo, invece di
+                entrare per sbaglio nei conti di questo: il confronto è sul codice fiscale del destinatario
+                dichiarato nel file. Se il file è già stato letto e nel modulo hai scritto qualcosa a mano, ti
+                chiedo conferma prima di sostituirlo.
+              </p>
+            </section>
+
+            <!-- ⚠️ Aggiunta chiudendo la beta.14: le tre cose che riguardano il DENARO.
+                 Stanno nella guida e non a schermo perché a schermo compaiono solo quando
+                 servono — un avviso che c'è sempre smette di essere letto in una settimana. -->
+            <section>
+              <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Ritenuta e cassa previdenziale: cosa faccio e cosa chiedo a te</h3>
+              <p class="mb-3">
+                Sono le tre cose del file che spostano davvero dei soldi, e su tutte e tre l'ultima parola resta a te.
+              </p>
+              <ul class="space-y-2 list-disc pl-5">
+                <li><strong>Il contributo di cassa previdenziale</strong> — il 4 o 5% che un geometra, un ingegnere
+                    o un avvocato addebita in parcella — entra come riga di spesa con la sua IVA, perché è parte del
+                    corrispettivo. E se quel contributo concorre alla base della ritenuta lo dice il documento
+                    stesso: leggo quello, invece di deciderlo io.</li>
+                <li><strong>Se il file dichiara una ritenuta e il fornitore in anagrafica non è segnato come
+                    soggetto</strong>, te lo dico e ti mostro i due importi uno sotto l'altro. Non blocco e non
+                    correggo niente: l'anagrafica descrive il fornitore <em>oggi</em>, il file descrive
+                    <em>quel</em> documento, e la differenza può essere una casella dimenticata come una fattura di
+                    soli materiali. Decidi tu.</li>
+                <li><strong>Vale anche al contrario</strong>: se io tratterrei una ritenuta e il file non ne
+                    dichiara nessuna, te lo dico ugualmente. Che il fornitore non la scriva non vuol dire che non sia
+                    dovuta — l'obbligo di versarla è del condominio, non suo.</li>
+                <li><strong>Un contributo previdenziale non è una ritenuta d'acconto.</strong> Se il file ne dichiara
+                    uno (INPS, ENASARCO, ENPAM) te lo nomino a parte: quello lo versa il fornitore al proprio ente,
+                    non tu con l'F24.</li>
+              </ul>
+              <p class="mt-3">
+                Creando un fornitore dal file, se l'aliquota dichiarata è chiara e i conti tornano ti propongo già
+                spuntata la casella della ritenuta e il regime giusto — <strong>proposti</strong>: li togli o li
+                cambi prima di salvare. Quando l'aliquota non basta a stabilire il regime lascio la scelta a te e ti
+                dico perché.
+              </p>
+            </section>
+
             <section>
               <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Panel + Ledger: dati a sinistra, voci a destra</h3>
               <p class="mb-3">

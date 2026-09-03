@@ -104,7 +104,15 @@ class UpdateFatturaRequest extends FormRequest
                     );
                 }
 
-                if (empty($riga['immobile_id']) && empty($riga['conto_id'])) {
+                // ⚠️ Stessa esenzione della registrazione: una riga da € 0,00 è contenuto
+                // del documento, non una spesa da collocare a budget. Senza, una fattura
+                // importata da XML con una riga descrittiva diventava **non modificabile** —
+                // ogni salvataggio veniva rifiutato su un capitolo che non ha senso chiedere.
+                // La condizione qui è diversa da quella di `StoreFatturaRequest` di proposito:
+                // là si esentano le sopravvenienze, qui le righe assegnate a un immobile.
+                $importoNullo = (float) ($riga['importo_imponibile'] ?? 0) === 0.0;
+
+                if (!$importoNullo && empty($riga['immobile_id']) && empty($riga['conto_id'])) {
                     $validator->errors()->add(
                         "righe.{$idx}.conto_id",
                         'Il capitolo di spesa è obbligatorio per righe non assegnate a un immobile.'

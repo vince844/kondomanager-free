@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RangeCalendar } from '@/components/ui/range-calendar';
 import { getLocalTimeZone, DateFormatter, parseDate, CalendarDate } from '@internationalized/date';
-import { Search, Plus, Zap, X, Calendar as CalendarIcon } from 'lucide-vue-next';
+import { Search, Plus, Zap, X, Calendar as CalendarIcon, UploadCloud } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
@@ -255,10 +255,25 @@ const resetFilters = () => {
 <template>
   <div class="flex flex-wrap items-center justify-between w-full gap-2">
 
-    <div class="flex flex-wrap items-center gap-2">
+    <!-- ⚠️ Tre pezzi che lavorano insieme, e nessuno dei tre è decorativo — misurati
+         a 1440, 1280 e 1024 px il 03/09/2026 dopo la segnalazione di Vincenzo
+         («il layout del filtro è sballato»).
+         1. `flex-nowrap` qui: i filtri non vanno mai a capo **fra di loro**. Era questo
+            il difetto originale — appena compariva «Azzera filtri» quel pulsante
+            scendeva da solo su una seconda riga mentre i tre pulsanti a destra
+            restavano centrati sulla prima: uno scalino.
+         2. `flex-1` + la ricerca elastica (sotto): la pressione di spazio la assorbe
+            la casella di ricerca, che si stringe da 250 a 140 px prima che succeda
+            altro. A 1440 basta questo e resta tutto su una riga.
+         3. `min-w-min`: sotto i ~673 px di contenuto minimo la riga **non si comprime
+            più**, e il `flex-wrap` del contenitore esterno fa scendere il gruppo dei
+            pulsanti **in blocco** (resta a destra grazie a `ml-auto`). Senza, il
+            contenuto veniva tagliato: a 1024 px si leggeva «Azz». -->
+    <div class="flex flex-nowrap items-center gap-2 flex-1 min-w-min">
 
-      <!-- Ricerca libera -->
-      <div class="relative">
+      <!-- Ricerca libera — l'unico elemento elastico della riga: `flex-1` con un
+           minimo sotto cui non scende e un massimo oltre cui non cresce. -->
+      <div class="relative flex-1 min-w-[140px] max-w-[250px]">
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
           <Search class="h-4 w-4" />
         </div>
@@ -269,13 +284,13 @@ const resetFilters = () => {
         <Input
           placeholder="Filtra per numero o fornitore..."
           v-model="globalFilter"
-          class="pl-9 h-8 w-[200px] lg:w-[250px] text-xs md:text-xs"
+          class="pl-9 h-8 w-full text-xs md:text-xs"
         />
       </div>
 
       <!-- Stato pagamento -->
       <Select v-model="statoPagamento">
-        <SelectTrigger class="h-8 w-[170px] text-xs style-chooser">
+        <SelectTrigger class="h-8 w-[170px] shrink-0 text-xs style-chooser">
           <SelectValue placeholder="Stato pagamento" />
         </SelectTrigger>
         <SelectContent position="popper" :style="{ width: 'var(--reka-select-trigger-width)' }">
@@ -291,7 +306,7 @@ const resetFilters = () => {
         <PopoverTrigger as-child>
           <Button
             variant="outline"
-            class="h-8 justify-start text-left font-normal text-xs w-[210px]"
+            class="h-8 justify-start text-left font-normal text-xs w-[210px] shrink-0"
             :class="!(dateRange.start || dateRange.end) && 'text-muted-foreground'"
           >
             <CalendarIcon class="mr-2 h-3.5 w-3.5 shrink-0" />
@@ -327,7 +342,7 @@ const resetFilters = () => {
         v-if="isFiltered"
         variant="ghost"
         @click="resetFilters"
-        class="h-8 px-2 lg:px-3 text-slate-500 hover:text-slate-700"
+        class="h-8 px-2 lg:px-3 shrink-0 text-slate-500 hover:text-slate-700"
       >
         <X class="h-4 w-4 mr-1 lg:mr-2" />
         <span class="hidden lg:inline">Azzera filtri</span>
@@ -336,7 +351,7 @@ const resetFilters = () => {
 
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0 ml-auto">
       <!-- La regolazione immediata è il fratello minore della fattura (costo → banca
            senza partita fornitore): vive qui accanto, non più nella barra movimenti. -->
       <Link
@@ -345,6 +360,28 @@ const resetFilters = () => {
       >
         <Zap class="w-3.5 h-3.5 text-amber-500" />
         Regolazione immediata
+      </Link>
+
+      <!-- Stessa rotta di «Nuova fattura», con `?modo=xml`: là il parametro non cambia
+           più la pagina (la fase «scelta» non esiste più dal 03/09/2026) ma **apre subito
+           la modale del lettore**.
+           ⚠️ Il pulsante resta, e non è un doppione: la ragione per cui la doppia porta
+           era sbagliata — Vincenzo, 02/09/2026: «la pagina a cui vengo rimandato è tale e
+           quale a quella della registrazione» — era che le due porte davano la stessa
+           identica schermata. Adesso danno due esiti diversi: modulo vuoto contro modulo
+           col lettore già aperto. E l'elenco è il punto dove il lavoro comincia, quindi
+           toglierlo costerebbe un clic in più sul percorso più frequente.
+           ⚠️ **«Importa» ovunque**, deciso con Vincenzo il 03/09/2026: lo stesso gesto
+           si chiamava in tre modi diversi (qui «Importa», nella fascia «Carica», nella
+           modale «Carica le fatture XML»). Vince «importare» perché è la parola del
+           dominio — è quella della guida e dell'importatore dati — mentre «caricare» è
+           solo il gesto di trasferire il file. -->
+      <Link
+        :href="route(generateRoute('gestionale.fatture.create'), { condominio: condominioId, modo: 'xml' })"
+        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 dark:border-slate-700 shadow-sm text-xs text-white font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-800 dark:hover:bg-slate-800 transition-colors"
+      >
+        <UploadCloud class="w-3.5 h-3.5 text-sky-400" />
+        Importa XML
       </Link>
 
       <Link

@@ -446,6 +446,23 @@ class FatturaPassivaService
                 foreach ($righeProcessate as $riga) {
                     $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
 
+                    // ⚠️ **Una riga da € 0,00 non produce nessuna scrittura, e non è un caso
+                    // di confine: gli XML veri ne sono pieni.** Cinque degli undici file di
+                    // collaudo portano righe puramente descrittive — numeri di protocollo,
+                    // riferimenti tecnici, intestazioni che introducono le voci successive —
+                    // con `PrezzoTotale` a 0.00. Sono contenuto del documento e restano in
+                    // `righe_fattura`; ma un DARE di € 0,00 non è una scrittura, è rumore, e
+                    // senza questa guardia una riga a zero e senza capitolo finiva nel ramo
+                    // «Impossibile allocare la riga» qui sotto: 500 con rollback, e l'intera
+                    // fattura persa (Fase 1-bis, reperto 3).
+                    //
+                    // Il confronto è con lo ZERO esatto, non con `<= 0`: una riga
+                    // legittimamente **negativa** — il conguaglio sugli oneri di sistema del
+                    // file 06 del collaudo — deve continuare a produrre la sua scrittura.
+                    if ($importoLordoRiga === 0) {
+                        continue;
+                    }
+
                     if (! empty($riga['immobile_id'])) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCreditiCondomini->id,
@@ -763,6 +780,17 @@ class FatturaPassivaService
 
             foreach ($righeProcessate as $riga) {
                 $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
+
+                // ⚠️ Stessa guardia della registrazione, e per lo stesso motivo: una riga da
+                // € 0,00 — quelle puramente descrittive che gli XML veri portano — non produce
+                // nessuna scrittura, e senza questo `continue` finiva nel ramo «impossibile
+                // allocare la riga» qui sotto. Qui pesa di più che nella registrazione: una
+                // fattura importata con una riga descrittiva sarebbe diventata **non
+                // modificabile**, perché ogni tentativo di salvataggio esplodeva (Fase 1-bis,
+                // reperto 3, avvertenza del critico avversariale).
+                if ($importoLordoRiga === 0) {
+                    continue;
+                }
 
                 if (! empty($riga['immobile_id'])) {
                     $scrittura->righe()->create([

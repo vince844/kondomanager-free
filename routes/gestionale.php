@@ -10,6 +10,7 @@ use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoControll
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\FetchFattureSimiliController;
+use App\Http\Controllers\Gestionale\Movimenti\ImportaFatturaXmlController;
 use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
@@ -369,6 +370,11 @@ Route::prefix('/gestionale/{condominio}')
     // trattino per coerenza col resto del gruppo, dopo 'create' perché è lì che serve.
     Route::get('/fetch-fatture-simili', FetchFattureSimiliController::class)
         ->name('fetch-fatture-simili');
+
+    // Beta.14, decisione 1 di apertura: legge l'XML e restituisce i dati per
+    // precompilare il form — non crea niente, il salvataggio resta 'fatture.store'.
+    Route::post('/fatture/importa-xml', ImportaFatturaXmlController::class)
+        ->name('fatture.importa-xml');
 
     Route::get('/fatture/create', [FatturaPassivaController::class, 'create'])
         ->name('fatture.create');

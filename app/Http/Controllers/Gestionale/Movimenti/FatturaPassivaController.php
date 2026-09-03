@@ -184,7 +184,7 @@ class FatturaPassivaController extends Controller
      * @param  Condominio  $condominio  Il condominio in cui si sta registrando la fattura.
      * @return Response Vista Inertia contenente il "Matrix Workspace" e tutte le dipendenze calcolate.
      */
-    public function create(Condominio $condominio): Response
+    public function create(Condominio $condominio, Request $request): Response
     {
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -211,6 +211,30 @@ class FatturaPassivaController extends Controller
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
+            // ⚠️ Deciso il 02/09/2026, aprendo la riprogettazione della UI: due pulsanti
+            // della stessa toolbar (`DataTableToolbar.vue`) puntano alla stessa rotta —
+            // «due porte, una stanza», la decisione di apertura della beta.14 — ma devono
+            // aprire porte VISIVAMENTE diverse: «Importa XML» mostra subito la dropzone,
+            // «Nuova fattura» il form vuoto. `?modo=xml` è la sola differenza fra le due
+            // `Link`; qualunque altro valore (o l'assenza del parametro) resta manuale.
+            'modalita_ingresso' => $request->query('modo') === 'xml' ? 'xml' : 'manuale',
+            /*
+             * ⚠️ **Senza codice fiscale il controllo «questa fattura è di questo
+             * palazzo?» non può girare, e prima taceva.** Leggendo un XML si confronta
+             * il `CessionarioCommittente` del file col codice fiscale del condominio
+             * (ImportaFatturaXmlController): se il condominio non ce l'ha, la guardia si
+             * salta — giustamente, non c'è niente da confrontare — ma l'amministratore
+             * non lo sapeva, e si ritrovava senza rete credendo di averla.
+             *
+             * Il caso non è teorico: la creazione a mano pretende il campo
+             * (CreateCondominioRequest: `required`), ma **l'importatore Danea può creare
+             * un condominio senza** — tanto che ha già un controllo post-import apposta
+             * (`Controlli\Verificatori\CodiceFiscaleDelCondominio`). Cioè capita
+             * proprio a chi sta caricando lo storico, che è anche chi più probabilmente
+             * importerà XML subito dopo. Misurato il 03/09/2026: 4 condomìni su 8 nel
+             * database di sviluppo hanno `codice_fiscale` a null.
+             */
+            'condominio_senza_codice_fiscale' => trim((string) $condominio->codice_fiscale) === '',
             ...$contestoBudget,
             'gestioni' => $condominio->gestioni()
                 ->where('gestioni.attiva', true)
@@ -817,10 +841,31 @@ class FatturaPassivaController extends Controller
             ->groupBy('fornitore_id')
             ->map(fn ($righe) => (float) $righe->first()->aliquota_iva);
 
+        // ⚠️ **Stessa forma di lavoro di $ultimeAliquoteIva qui sopra, non un meccanismo
+        // nuovo.** Deciso con Vincenzo il 02/09/2026, aprendo la riprogettazione della UI
+        // di importazione XML: il capitolo che pesa di più sul tempo dell'amministratore
+        // (28 righe da assegnare su 11 fatture vere, nel collaudo di
+        // docs/lettura_xml_fatture_passive.md) diventa una proposta invece di una scelta
+        // da zero. `whereNotNull('conto_id')` esclude le righe sopravvenienza e quelle
+        // legate a un immobile, che il servizio registra apposta senza capitolo
+        // (FatturaPassivaService::registraFattura(), «SMISTAMENTO INTELLIGENTE
+        // IMPREVISTI»): proporle come capitolo sarebbe proporre un buco.
+        $ultimiConti = DB::table('righe_fattura')
+            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->where('fatture_passive.condominio_id', $condominio->id)
+            ->whereNotNull('righe_fattura.conto_id')
+            ->select('fatture_passive.fornitore_id', 'righe_fattura.conto_id')
+            ->orderByDesc('fatture_passive.data_documento')
+            ->orderByDesc('righe_fattura.id')
+            ->get()
+            ->groupBy('fornitore_id')
+            ->map(fn ($righe) => (int) $righe->first()->conto_id);
+
         return [
-            'fornitori' => Fornitore::all()->map(function (Fornitore $f) use ($ultimeAliquoteIva) {
+            'fornitori' => Fornitore::all()->map(function (Fornitore $f) use ($ultimeAliquoteIva, $ultimiConti) {
                 $data = $f->toArray();
                 $data['ultima_aliquota_iva'] = $ultimeAliquoteIva->get($f->id);
+                $data['ultimo_conto_id'] = $ultimiConti->get($f->id);
 
                 return $data;
             }),
@@ -974,6 +1019,15 @@ class FatturaPassivaController extends Controller
             'utenteRatifica' => $utenteRatifica,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
+            // Il motivo autoritativo — sono quattro condizioni diverse (pagata, stornata,
+            // pregressa, sforo da ratificare) e il frontend ne teneva solo
+            // un'approssimazione booleana per abilitare/disabilitare i controlli. Un
+            // amministratore con lo sforo da ratificare vedeva lo stesso identico
+            // messaggio generico di uno con la fattura già pagata — segnalato da
+            // Vincenzo il 03/09/2026 («non mi spiego perché, la fattura non è ancora
+            // stata pagata»): il motivo vero c'era già lato server, mancava solo di
+            // arrivare qui.
+            'motivoBloccoModifica' => $this->service->motivoBloccoModifica($fattura),
         ]);
     }
 

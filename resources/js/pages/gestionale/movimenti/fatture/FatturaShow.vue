@@ -23,6 +23,7 @@ const props = defineProps<{
     esercizio: any;
     fattura: any;
     utenteRatifica: string | null;
+    motivoBloccoModifica: string | null;
 }>();
 
 const { euro } = useCurrencyFormatter();
@@ -92,19 +93,20 @@ const copertureFondo = computed(() => {
 const coperturePianificate = computed(() => copertureFondo.value.filter(c => c.stato === 'pianificata'));
 const copertureConfermate  = computed(() => copertureFondo.value.filter(c => c.stato === 'confermata'));
 
-// ⚠️ Approssimazione client-side dello stesso perimetro di
-// FatturaPassivaService::motivoBloccoModifica() — quella lato server resta
-// l'unica autoritativa (il messaggio d'errore reale arriva da lì se questo
-// controllo qui si sbagliasse). Stessa semplificazione già usata in
-// DataTableRowActions.vue per "isModificabile": non copre coperture di
-// sopravvenienza/fondo né i piani rate emessi, ma è il perimetro che il resto
-// del gestionale già considera "sufficiente per un avviso preventivo".
-const fatturaCongelata = computed(() =>
-    props.fattura.stato_pagamento !== 'aperta' ||
-    !!props.fattura.dati_extra?.is_stornata ||
-    !!props.fattura.is_pregresso ||
-    props.fattura.stato_approvazione === 'sforo_motivato'
-);
+// La stessa verità del server, non più una sua approssimazione: la prop arriva da
+// `FatturaPassivaService::motivoBloccoModifica()`, che è **anche** ciò che
+// `destroyDocumento()` interroga prima di cancellare un allegato.
+//
+// ⚠️ **Prima di questa correzione (03/09/2026) il perimetro qui era più stretto di
+// quello vero, e la differenza era visibile all'utente.** La copia locale elencava
+// quattro condizioni (pagata/parziale, stornata, pregressa, sforo da ratificare); il
+// server ne ha dieci — mancavano esercizio chiuso, coperture di sopravvenienza,
+// copertura dal fondo, sforo già ratificato in assemblea, piano rate emesso o
+// approvato. In quei sei casi il cestino appariva **attivo**: si cliccava, si
+// confermava un'eliminazione «definitiva», e il server la rifiutava con un flash. Ora
+// il pulsante è spento esattamente quando l'operazione è vietata, e il motivo mostrato
+// è quello che il server userebbe.
+const fatturaCongelata = computed(() => !!props.motivoBloccoModifica);
 
 const executeDownload = (documentoId: number) => {
     window.location.href = route(generateRoute('gestionale.fatture.download'), {
@@ -466,7 +468,10 @@ const eliminaDocumento = () => {
                              «Elimina — non consentito» come testo, non lo affida a un title. -->
                         <p v-if="fatturaCongelata && props.fattura.documenti?.length" class="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 mb-3">
                             <Lock class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                            <span>Fattura non modificabile: gli allegati restano scaricabili ma non si possono eliminare.</span>
+                            <!-- Il motivo esatto, non un «non modificabile» generico che valeva
+                                 identico per una fattura già pagata e per una con lo sforo ancora
+                                 da ratificare — segnalato da Vincenzo il 03/09/2026. -->
+                            <span>{{ props.motivoBloccoModifica }} Gli allegati restano scaricabili ma non si possono eliminare.</span>
                         </p>
                         <!-- 213px = 3 righe da 63px + 2 spazi da 12px (space-y-3): esattamente 3
                              allegati visibili, dal 4° in poi si scorre. -->
@@ -523,13 +528,13 @@ const eliminaDocumento = () => {
                                                     </Button>
                                                 </span>
                                             </TooltipTrigger>
-                                            <!-- ⚠️ La motivazione deve reggere in TUTTI i casi in cui
-                                                 `fatturaCongelata` è vera, e sono quattro: pagata o
-                                                 parziale, stornata, pregressa, sforo da ratificare.
-                                                 «Un fatto contabile ormai chiuso» descriveva solo il
-                                                 primo — sulle altre tre diceva una cosa falsa. -->
+                                            <!-- Il motivo esatto arriva da motivoBloccoModifica() — sono
+                                                 quattro condizioni diverse (pagata o parziale, stornata,
+                                                 pregressa, sforo da ratificare) e «un fatto contabile
+                                                 ormai chiuso» ne descriveva solo una, dicendo il falso
+                                                 sulle altre tre. Segnalato da Vincenzo il 03/09/2026. -->
                                             <TooltipContent v-if="fatturaCongelata" class="text-xs max-w-72">
-                                                Su una fattura non più modificabile gli allegati restano come sono. Per correggere un allegato sbagliato puoi caricarne uno nuovo accanto a questo.
+                                                {{ props.motivoBloccoModifica }} Per correggere un allegato sbagliato puoi caricarne uno nuovo accanto a questo.
                                             </TooltipContent>
                                             <TooltipContent v-else class="text-xs">
                                                 Elimina documento

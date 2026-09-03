@@ -257,6 +257,53 @@ it('senza rappresentante il ruolo non serve', function () {
 
 /*
 |--------------------------------------------------------------------------
+| La stessa rotta, chiamata da un modale invece che da una pagina intera
+|--------------------------------------------------------------------------
+| Aggiunto aprendo la riprogettazione della UI di importazione XML (02/09/2026):
+| il fornitore letto da un XML e non ancora in anagrafica si crea senza lasciare
+| la pagina di registrazione della fattura. store() negozia sull'Accept invece di
+| raddoppiare la rotta — stessa CreateFornitoreRequest, stessa Fornitore::create(),
+| stessi effetti collaterali di sopra: qui si verifica solo che l'esito cambi forma
+| (JSON invece di redirect), non che la logica di salvataggio sia diversa.
+*/
+
+it('con Accept: json risponde con il fornitore creato invece di un redirect', function () {
+    $risposta = $this->postJson(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale' => 'Fornitore da XML S.r.l.',
+        'partita_iva'     => '01234567897',
+    ]));
+
+    $risposta->assertCreated();
+    $fornitore = Fornitore::where('ragione_sociale', 'Fornitore da XML S.r.l.')->firstOrFail();
+    expect($risposta->json())->toBe([
+        'id' => $fornitore->id,
+        'ragione_sociale' => 'Fornitore da XML S.r.l.',
+    ]);
+});
+
+it('con Accept: json un payload non valido risponde 422 con gli errori, non un redirect', function () {
+    // Stessa regola di validazione delle altre righe di questo file (ragione_sociale
+    // required): qui si verifica solo che l'ESITO cambi forma con Accept: json.
+    $risposta = $this->postJson(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale' => '',
+    ]));
+
+    $risposta->assertStatus(422);
+    expect($risposta->json('errors'))->toHaveKey('ragione_sociale');
+});
+
+it('con Accept: json il percorso a pagina intera continua a rispondere con un redirect', function () {
+    // Controprova incrociata: la negoziazione non deve aver rotto il flusso esistente
+    // per chi arriva da Inertia (nessun header Accept: application/json esplicito).
+    $risposta = $this->post(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale' => 'Ditta Pagina Intera S.r.l.',
+    ]));
+
+    $risposta->assertRedirect(route('admin.fornitori.index'));
+});
+
+/*
+|--------------------------------------------------------------------------
 | La guardia di copertura — per questa schermata sola
 |--------------------------------------------------------------------------
 */

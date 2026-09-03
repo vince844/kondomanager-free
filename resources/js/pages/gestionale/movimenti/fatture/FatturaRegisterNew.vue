@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useForm, Head, router, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -9,17 +9,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle } from 'lucide-vue-next';
+import FormErrorSummary from '@/components/FormErrorSummary.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
+import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, ChevronRight, CheckCircle, LoaderCircle, HelpCircle, UploadCloud, ShieldCheck } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import { useFattureSimili } from '@/composables/useFattureSimili';
+import { useImportaFatturaXml, type EsitoImportazioneXml } from '@/composables/useImportaFatturaXml';
 import { watchDebounced } from '@vueuse/core';
 import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
 import ModalSpesaImprevista from '@/components/gestionale/movimenti/fatture/ModalSpesaImprevista.vue';
 import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
+import ModalCreaFornitoreDaXml from '@/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue';
+import ModalImportaXml from '@/components/gestionale/movimenti/fatture/ModalImportaXml.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
 import { calcolaTotali, risolviRegimeRitenuta } from '@/lib/gestionale/fatture/totali';
+import { confrontaRitenuta } from '@/lib/gestionale/fatture/confrontoRitenuta';
 import { euroToCents } from '@/lib/gestionale/fatture/money';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -58,6 +65,12 @@ interface Fornitore {
     codice_tributo?: string;
     regime_forfetario?: boolean;
     ultima_aliquota_iva?: number | null;
+    // Stessa forma di ultima_aliquota_iva, aggiunto il 02/09/2026 aprendo la
+    // riprogettazione della UI di importazione XML: il capitolo dell'ultima fattura
+    // di questo fornitore, proposto invece di lasciare la scelta da zero — 28 righe
+    // da assegnare su 11 fatture vere è il costo di tempo più alto misurato
+    // (docs/lettura_xml_fatture_passive.md).
+    ultimo_conto_id?: number | null;
     tipo_ritenuta?: string | null;
     natura_percipiente?: string | null;
 }
@@ -146,12 +159,561 @@ const props = defineProps<{
     fondi_riserva: FondoRiserva[];
     capienza_rata_zero: number;
     incassato_rata_zero: number;
+    // ⚠️ Deciso il 02/09/2026, riprogettando la UI dopo il confronto con Vincenzo su
+    // dove l'amministratore risparmia tempo davvero: «Importa XML» e «Nuova fattura»
+    // sono la stessa rotta (decisione 1 dell'apertura, «due porte, una stanza») ma non
+    // possono più aprirsi sulla stessa identica pagina — prima non c'era modo di
+    // distinguerle a colpo d'occhio. Assente o diverso da 'xml' = manuale.
+    modalita_ingresso?: 'xml' | 'manuale';
+    /** Senza, il controllo sull'intestatario dell'XML non può girare: vedi ModalImportaXml. */
+    condominio_senza_codice_fiscale?: boolean;
 }>();
 
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
 const fileInput = ref<HTMLInputElement | null>(null);
+
+// ---------------------------------------------------------------------------
+// Ingresso XML — una modale sopra il modulo, non una fase della pagina
+// (03/09/2026, seconda riprogettazione con Vincenzo)
+// ---------------------------------------------------------------------------
+/**
+ * ⚠️ **Qui c'era `faseAttiva`, ed è stato tolto.** Per un giorno la lettura XML è stata
+ * una fase di questa pagina: `?modo=xml` mostrava la dropzone al posto del modulo, e
+ * scegliendo un file si passava a `'revisione'`. Risolveva la domanda giusta — Vincenzo:
+ * «dov'è che l'amministratore risparmia tempo?» — ma introduceva **una porta a senso
+ * unico**: `faseAttiva` veniva messo a `'revisione'` in due punti e non tornava mai
+ * indietro. Chi cliccava «Nuova fattura», cominciava a compilare e poi si ricordava di
+ * avere l'XML doveva uscire dalla pagina e ricominciare.
+ *
+ * Ora il lettore è una modale (`ModalImportaXml`), raggiungibile in qualunque momento
+ * dalla fascia in testa al modulo. `?modo=xml` non cambia più la pagina: la apre
+ * subito, così il pulsante in elenco e qualunque collegamento salvato continuano a
+ * funzionare.
+ */
+const showImportaXmlModal = ref(props.modalita_ingresso === 'xml');
+
+/**
+ * Ogni apertura — e ogni chiusura — della modale è una **sessione a sé**, contata.
+ *
+ * ⚠️ Serve perché leggere un XML è una chiamata di rete con upload: fra il gesto che
+ * deposita il file e la risposta passano secondi, e in quei secondi la modale che ha
+ * ricevuto il file può non essere più quella a schermo. Chiedere alla fine
+ * `showImportaXmlModal` risponderebbe a un'altra domanda — «ce n'è una aperta *adesso*» —
+ * e sbaglierebbe proprio il caso di chi chiude e riapre durante l'attesa: la modale nuova
+ * gli si richiuderebbe sotto le dita, col modulo riempito da un file che aveva
+ * abbandonato. Il numero catturato al gesto risponde invece a «è ancora **quella**
+ * apertura», che è la domanda giusta.
+ *
+ * Il watch è il solo punto di incremento perché il flag si scrive da tre parti (il
+ * pulsante della fascia, il `v-model:show` della modale, `applicaFilePendente`): contare
+ * in ognuna significherebbe dimenticarsene in una.
+ */
+const sessioneModaleXml = ref(0);
+watch(showImportaXmlModal, () => { sessioneModaleXml.value++; });
+
+interface FilePendente {
+    file: File;
+    stato: 'in_corso' | 'pronto' | 'errore';
+    esito: EsitoImportazioneXml | null;
+    erroreMessaggio: string | null;
+}
+const filesPendenti = ref<FilePendente[]>([]);
+const trascinamentoAttivo = ref(false);
+const inputMultiplo = ref<HTMLInputElement | null>(null);
+
+/**
+ * Due domande diverse, due stati — fino al 03/09/2026 erano un ref solo, e tenerle
+ * insieme costava tre difetti (Fase 1-bis, reperti 8, 9 e 10).
+ *
+ * ⚠️ `provenienzaXml` è un **valore** (il nome del file), non un puntatore: risponde a
+ * «chi ha scritto quello che vedi nel modulo» e deve restare leggibile anche quando la
+ * voce che l'ha scritta non esiste più — a registrazione riuscita quella voce esce dalla
+ * coda mentre la fascia in testa, sotto la modale di successo, deve continuare a dirne il
+ * nome. Un puntatore, lì, andrebbe in bianco.
+ *
+ * ⚠️ `fileInLavorazione` è un **puntatore vivo dentro `filesPendenti`**, e serve a due
+ * cose sole: sottrarre dal conteggio del lotto il documento che l'amministratore ha
+ * davanti (`altriFileInCoda`) e sapere che cosa togliere dalla coda a registrazione
+ * riuscita. Vale la regola che prima non c'era: **muore con la voce che punta**. E non è
+ * mai valorizzato con un oggetto che nella coda non c'è — la porta «Allega documento»
+ * costruisce la sua voce al volo, e da lì resta `null` mentre la provenienza si scrive
+ * lo stesso. Era proprio quel puntatore fantasma a far dire al pulsante «Gestisci i
+ * file» aprendo poi un elenco vuoto, nel percorso più battuto di tutti.
+ */
+const provenienzaXml = ref<string | null>(null);
+const fileInLavorazione = ref<FilePendente | null>(null);
+
+/**
+ * Ogni file entra nel proprio riquadro, indipendente dagli altri: nessuno stato
+ * condiviso da sovrascrivere. È la stessa correzione, per costruzione, del difetto
+ * della richiesta-fuori-ordine trovato dalla revisione avversariale su
+ * `useImportaFatturaXml` — lì il difetto era un `form` unico riscritto da risposte in
+ * arrivo in ordine imprevedibile; qui non esiste un `form` unico finché non si sceglie
+ * quale file rivedere.
+ */
+async function gestisciFileMultipli(fileList: FileList | File[]) {
+    const file = Array.from(fileList);
+    if (file.length === 0) return;
+
+    // Il contesto del gesto, catturato adesso: vedi `sessioneModaleXml`.
+    const sessione = sessioneModaleXml.value;
+
+    const nuovi: FilePendente[] = file.map((f) => ({ file: f, stato: 'in_corso', esito: null, erroreMessaggio: null }));
+    filesPendenti.value.push(...nuovi);
+
+    await Promise.all(nuovi.map(async (voceGrezza) => {
+        const { importa, errore } = useImportaFatturaXml();
+        const esito = await importa(props.condominio.id, voceGrezza.file);
+
+        // ⚠️ Si scrive sull'oggetto letto DA `filesPendenti.value`, non sul
+        // riferimento grezzo di `nuovi`: Vue avvolge un oggetto in reattività nel
+        // momento in cui lo si legge attraverso l'array reattivo (`ref([])`), non
+        // quando lo si costruisce. Mutare `voceGrezza` direttamente cambia il
+        // valore in memoria ma bypassa il trap che notifica il re-render — il
+        // documento resterebbe bloccato su «Leggo il file...» per sempre, anche a
+        // lettura completata.
+        const voce = filesPendenti.value.find((v) => v.file === voceGrezza.file);
+        if (!voce) return; // rimosso dall'elenco nel frattempo
+
+        if (esito) {
+            voce.stato = 'pronto';
+            voce.esito = esito;
+        } else {
+            voce.stato = 'errore';
+            voce.erroreMessaggio = errore.value;
+        }
+    }));
+
+    // ⚠️ **La scorciatoia vale solo dentro l'apertura di modale che l'ha chiesta.** Chi
+    // ci ripensa e chiude mentre il file si legge si vedeva il modulo riempirsi da solo a
+    // modale sparita — e quel file diventava anche l'allegato della fattura, senza che
+    // nessuno l'avesse scelto (Fase 1-bis, reperto 9). Il file **resta in coda**:
+    // chiudere la modale scarta la scorciatoia, non la lettura, e da «Gestisci i file»
+    // lo si ritrova pronto.
+    //
+    // Il confronto è sul **numero di sessione**, non su `showImportaXmlModal`: alla fine
+    // della lettura una modale aperta può esserci lo stesso, solo che è un'altra — chi
+    // chiude e riapre se la vedrebbe richiudere sotto le dita, riempita da un file che
+    // aveva abbandonato.
+    if (sessione !== sessioneModaleXml.value) return;
+
+    // Un solo file, letto senza errori: si passa subito alla revisione, come già
+    // avveniva prima di questa beta — l'elenco di triage serve al caso multiplo, non
+    // deve aggiungere un clic in più al caso più comune. Stessa ragione della nota
+    // qui sopra: si legge lo stato aggiornato da `filesPendenti.value`, non da
+    // `nuovi[0]`, che è rimasto congelato allo stato con cui è stato creato.
+    const primoAggiornato = nuovi.length === 1 ? filesPendenti.value.find((v) => v.file === nuovi[0].file) : null;
+    if (primoAggiornato && primoAggiornato.stato === 'pronto' && primoAggiornato.esito) {
+        selezionaFilePendente(primoAggiornato);
+    }
+}
+
+/**
+ * C'è lavoro **scritto a mano** che l'importazione cancellerebbe?
+ *
+ * ⚠️ La distinzione che conta non è «il modulo è pieno» ma «da dove viene ciò che
+ * contiene»: se i dati sono arrivati da un altro file (`fileInLavorazione` valorizzato),
+ * sostituirli è il gesto normale di chi sta lavorando un lotto e chiedere conferma
+ * sarebbe solo un clic in più a ogni documento. Se invece l'amministratore stava
+ * compilando da sé, quel lavoro non si butta senza domandare (Fase 1-bis, reperto 6).
+ */
+function moduloHaLavoroAMano(): boolean {
+    // ⚠️ La domanda è **da dove vengono i campi**, non se una voce è ancora in coda: dopo
+    // il salvataggio, o dopo che quel file è stato tolto dall'elenco, il modulo continua a
+    // contenere roba arrivata da un file e sostituirla resta il gesto normale di chi
+    // lavora un lotto. È esattamente ciò che questa funzione dichiara di distinguere, e
+    // con un puntatore alla coda al posto della provenienza lo diceva per sbaglio.
+    if (provenienzaXml.value) return false;
+
+    const righeCompilate = form.righe.some(
+        (r) => (r.descrizione ?? '').trim() !== '' || Number(r.importo_imponibile) !== 0 || r.conto_id !== null,
+    );
+
+    // ⚠️ **Il fornitore scelto NON conta come lavoro da proteggere**, ed è una
+    // calibratura, non una dimenticanza: è un clic solo, e il file lo riscrive comunque
+    // con quello che dichiara. Contandolo, chiedeva conferma anche a chi sceglie il
+    // fornitore e poi importa il suo XML — che è il gesto normale, non un incidente.
+    return righeCompilate || form.numero_documento.trim() !== '';
+}
+
+/**
+ * Il documento scelto che aspetta il via libera a sovrascrivere il lavoro a mano.
+ *
+ * ⚠️ **Il dato e l'interruttore sono due cose separate, e devono restare separate.**
+ * `AlertDialogAction` chiude il dialogo da sé, e la chiusura arriva *prima* di `confirm`:
+ * se fosse l'azzeramento di `fileDaConfermare` a spegnere la finestra, alla conferma qui
+ * ci sarebbe già `null` e il pulsante non farebbe assolutamente niente — nessun errore,
+ * nessun messaggio. È il difetto della 1.11.0-beta.9, spiegato per esteso in
+ * `useConfermaEliminazione.ts`, ed era tornato qui: i test lo mancavano perché chiamavano
+ * `confermaSovrascrittura()` invece di premere il pulsante.
+ */
+const fileDaConfermare = ref<FilePendente | null>(null);
+const confermaSovrascritturaAperta = ref(false);
+
+function chiediConfermaSovrascrittura(voce: FilePendente) {
+    fileDaConfermare.value = voce;
+    confermaSovrascritturaAperta.value = true;
+}
+
+function selezionaFilePendente(voce: FilePendente) {
+    if (!voce.esito) return;
+
+    if (moduloHaLavoroAMano()) {
+        chiediConfermaSovrascrittura(voce);
+        return;
+    }
+
+    applicaFilePendente(voce);
+}
+
+function confermaSovrascrittura() {
+    // Legge il dato per primo: a questo punto la finestra si è già chiusa.
+    const voce = fileDaConfermare.value;
+    fileDaConfermare.value = null;
+    confermaSovrascritturaAperta.value = false;
+    if (voce) applicaFilePendente(voce);
+}
+
+function annullaSovrascrittura() {
+    fileDaConfermare.value = null;
+    confermaSovrascritturaAperta.value = false;
+}
+
+function applicaFilePendente(voce: FilePendente) {
+    if (!voce.esito) return;
+
+    provenienzaXml.value = voce.file.name;
+
+    // ⚠️ Il puntatore si aggancia **solo se la voce sta davvero nella coda**, e la domanda
+    // si fa qui una volta invece che in ognuno dei tre chiamanti. Dalla porta «Allega
+    // documento» la voce è costruita al volo e in `filesPendenti` non è mai entrata:
+    // agganciarla comunque faceva promettere alla fascia un elenco che si apriva vuoto, e
+    // a `onSuccess` una rimozione che filtrava un oggetto assente, cioè non toglieva
+    // niente. La stessa riga copre la conferma di sovrascrittura arrivata su una voce che
+    // nel frattempo è stata cestinata.
+    //
+    // ⚠️ **Il documento si applica comunque**: la condizione riguarda il puntatore, non il
+    // ritorno. Una guardia in testa alla funzione (`if (!includes(voce)) return`) avrebbe
+    // fatto ripartire il difetto della beta.9 dall'altro capo — «Sostituisci con il file»
+    // che non fa assolutamente niente, senza errore e senza messaggio.
+    fileInLavorazione.value = filesPendenti.value.includes(voce) ? voce : null;
+
+    form.file = voce.file;
+    precompilaDaXml(voce.esito);
+    // Scelto il documento, la modale ha finito il suo lavoro: si torna al modulo, che è
+    // dove il documento va controllato e registrato.
+    showImportaXmlModal.value = false;
+}
+
+function rimuoviFilePendente(voce: FilePendente) {
+    filesPendenti.value = filesPendenti.value.filter((v) => v !== voce);
+
+    // ⚠️ Il puntatore muore con la voce che punta, e vale per **tutti e due** i chiamanti,
+    // per ragioni opposte: col cestino quella voce non esiste più e la fascia continuava a
+    // promettere «te lo ripropongo dopo il salvataggio» per un file appena buttato
+    // (reperto 10); a registrazione riuscita la voce è uscita dalla coda e
+    // `altriFileInCoda` deve smettere di sottrarla.
+    //
+    // ⚠️ La **provenienza** invece non si tocca, ed è una decisione, non una dimenticanza:
+    // quei campi li ha scritti quel file, e toglierlo dall'elenco non lo cambia. Il
+    // cestino è un comando dell'**elenco** — la sua etichetta dice «Togli X dall'elenco» —
+    // e un comando che sbianca in silenzio un modulo compilato, allegato compreso, sarebbe
+    // una sorpresa più grossa di quella che evita.
+    if (fileInLavorazione.value === voce) fileInLavorazione.value = null;
+}
+
+/** I documenti del lotto ancora da registrare — letti dalla modale di successo. */
+const filesInCodaPronti = computed(() => filesPendenti.value.filter((v) => v.stato === 'pronto'));
+
+/**
+ * Quelli che restano **oltre a quello aperto nel modulo**, per la fascia in testa.
+ *
+ * ⚠️ Non è `filesInCodaPronti`, e la differenza si vedeva a schermo: caricati due file
+ * e scelto il primo, la fascia diceva «Restano 2 documenti» mentre ne restava uno —
+ * contava anche quello che l'amministratore aveva davanti. La modale di successo usa
+ * invece `filesInCodaPronti` senza sottrazioni, ed è corretto così: là il documento
+ * registrato è già stato tolto dalla coda (`onSuccess`), quindi non c'è niente da
+ * escludere.
+ */
+const altriFileInCoda = computed(() =>
+    filesInCodaPronti.value.filter((v) => v !== fileInLavorazione.value),
+);
+
+/** Chiude la modale di successo e passa al prossimo documento del lotto scelto. */
+function continuaConProssimo(voce: FilePendente) {
+    showSuccessModal.value = false;
+    resettaFormPerNuovoDocumento();
+    selezionaFilePendente(voce);
+}
+
+/**
+ * Stima grezza dell'importo per la riga dell'elenco — non è il totale che l'XML
+ * dichiara (che questo endpoint non espone, decisione 5 dell'apertura: solo
+ * l'imponibile di riga passa il confine centesimi/euro), è imponibile + IVA sommati
+ * riga per riga. Basta a orientarsi nell'elenco, non è un valore da controllare.
+ *
+ * ⚠️ `euro()` (useCurrencyFormatter) si aspetta CENTESIMI per default
+ * (`fromCents: true`): le righe arrivano già in euro da questo controller
+ * (MoneyHelper::fromCents() applicato al confine, stessa decisione 5) — è la
+ * stessa conversione inversa che serve ovunque nel form si sommano importo_imponibile
+ * di più righe per un totale da passare a `euro()`.
+ */
+function totaleLordoStimatoCents(esito: EsitoImportazioneXml): number {
+    const euroTotali = esito.righe.reduce((s, r) => s + r.importo_imponibile * (1 + r.aliquota_iva / 100), 0);
+    return Math.round(euroTotali * 100);
+}
+
+function suDrop(e: DragEvent) {
+    trascinamentoAttivo.value = false;
+    if (e.dataTransfer?.files?.length) gestisciFileMultipli(e.dataTransfer.files);
+}
+
+function suSelezioneMultipla(e: Event) {
+    const files = (e.target as HTMLInputElement).files;
+    if (files?.length) gestisciFileMultipli(files);
+    (e.target as HTMLInputElement).value = ''; // permette di ricaricare lo stesso file due volte
+}
+
+// ---------------------------------------------------------------------------
+// Importazione XML — beta.14, decisione 1 di apertura («due porte, una stanza»)
+// ---------------------------------------------------------------------------
+const ESTENSIONI_XML = ['xml', 'p7m'];
+const { isLoading: importazioneInCorso, errore: erroreImportazione, importa: importaXml, reset: resetErroreImportazione } = useImportaFatturaXml();
+const esitoFornitoreXml = ref<EsitoImportazioneXml['fornitore'] | null>(null);
+const avvisiImportazioneXml = ref<EsitoImportazioneXml['avvisi'] | null>(null);
+
+/**
+ * La ritenuta d'acconto che il **file** dichiara, se ne dichiara una.
+ *
+ * ⚠️ Non entra in nessun calcolo: la trattenuta continua a dipendere solo
+ * dall'anagrafica del fornitore. Serve al confronto — vedi `confrontoRitenuta` — perché
+ * fino alla beta.14 questo dato attraversava il confine e non lo leggeva nessuno, e una
+ * parcella con ritenuta dichiarata si registrava a netto pieno senza che nessuna
+ * schermata lo dicesse (Fase 1-bis, reperti 2 e 12).
+ */
+const ritenutaLettaDaXml = ref<EsitoImportazioneXml['ritenuta']>(null);
+
+/**
+ * ⚠️ **Trovato dalla revisione avversariale della beta.14, corretto qui.** Il watch su
+ * `form.fornitore_id` (poco più sotto) scrive scadenza/IBAN/modalità di pagamento dai
+ * DEFAULT dell'anagrafica ogni volta che il fornitore cambia — è la sua funzione, utile
+ * quando l'utente sceglie un fornitore a mano. Ma `precompilaDaXml()` scrive PRIMA quegli
+ * stessi campi dal file (quando il file li dichiara) e POI `form.fornitore_id`, per
+ * agganciare o proporre il fornitore letto: quel secondo passaggio faceva scattare il
+ * watch, che sovrascriveva in silenzio ciò che il primo aveva appena scritto — l'IBAN su
+ * cui la fattura chiede di essere pagata spariva, sostituito da quello registrato.
+ *
+ * La guardia è **per campo**, non un blocco totale: se il file dichiara la scadenza ma
+ * non l'IBAN, solo la scadenza va protetta — l'IBAN deve continuare a prendere il default
+ * dell'anagrafica, com'è sempre stato. One-shot: letta e azzerata al primo cambio di
+ * `fornitore_id` successivo, che sia l'aggancio automatico, la scelta fra candidati
+ * ambigui (`scegliFornitoreXml`) o la creazione in linea di un fornitore mancante — un
+ * cambio di fornitore fatto a mano più avanti nella sessione torna al comportamento
+ * normale.
+ */
+const campiXmlDaPreservare = ref<{ scadenza: boolean; iban: boolean; modalitaPagamento: boolean } | null>(null);
+
+function estensioneDi(nomeFile: string): string {
+    return nomeFile.slice(nomeFile.lastIndexOf('.') + 1).toLowerCase();
+}
+
+async function gestisciFileSelezionato(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    // Resta allegato come sempre, XML compreso: chi importa vuole anche la
+    // prova originale agganciata alla fattura, non solo i dati letti da essa.
+    form.file = file;
+    esitoFornitoreXml.value = null;
+    avvisiImportazioneXml.value = null;
+    // Anche la ritenuta letta va via qui, insieme agli altri residui: allegare un PDF
+    // dopo aver importato un XML non deve lasciare a schermo il confronto del file
+    // precedente. Se il file nuovo è un XML, la lettura la riscrive fra un istante.
+    ritenutaLettaDaXml.value = null;
+    resetErroreImportazione();
+
+    if (!ESTENSIONI_XML.includes(estensioneDi(file.name))) {
+        return;
+    }
+
+    const esito = await importaXml(props.condominio.id, file);
+    if (!esito) return; // messaggio già in erroreImportazione
+
+    // ⚠️ **Il bersaglio è quello catturato al gesto (`file`), e qui si controlla che sia
+    // ancora lui.** Anche questa lettura dura secondi, e in quei secondi l'allegato può
+    // essere cambiato: un secondo file scelto da questo stesso riquadro, o un documento
+    // aperto dalla coda, che scrive `form.file` per conto suo. Applicare comunque
+    // significa riempire il modulo da un file che non è più quello allegato — vince
+    // l'ultima risposta arrivata invece dell'ultima chiesta. È la stessa domanda della
+    // sessione della modale, posta sull'altra porta.
+    if (form.file !== file) return;
+
+    // ⚠️ **Stessa guardia dell'altro ingresso, e non è una ripetizione oziosa.** L'XML
+    // entra da DUE porte — la modale del lettore e questo riquadro «Allega documento» —
+    // e proteggerne una sola significa che il difetto resta intero da questa parte. È il
+    // difetto trovato scrivendo la correzione stessa: la protezione era su
+    // `selezionaFilePendente()` e il test, che passa di qui, continuava a perdere il
+    // lavoro a mano.
+    const voce: FilePendente = { file, stato: 'pronto', esito, erroreMessaggio: null };
+
+    if (moduloHaLavoroAMano()) {
+        chiediConfermaSovrascrittura(voce);
+        return;
+    }
+
+    // ⚠️ Da questa porta si scrive la **provenienza** e basta: la voce è costruita qui e
+    // in coda non c'è mai entrata. Serve a due cose — che un secondo XML importato da qui
+    // non sembri lavoro a mano e non chieda una conferma senza senso, e che la fascia
+    // possa dire da quale file arrivano i dati anche per chi passa dal riquadro Allegato.
+    // Il puntatore alla coda, che qui non ha un referente, resta `null`: era proprio lui a
+    // far dire al pulsante «Gestisci i file» aprendo poi un elenco vuoto — e questa è la
+    // porta più battuta, non un caso di confine.
+    provenienzaXml.value = file.name;
+    precompilaDaXml(esito);
+}
+
+/**
+ * ⚠️ **Sostituisce, non precompila — ed è il contrario di come era scritta.**
+ *
+ * Fino al 03/09/2026 questa funzione scriveva un campo *solo se l'XML lo dichiarava*, e
+ * lasciava intatti gli altri. Era corretto quando il lettore XML era una **fase a senso
+ * unico**: si importava sempre su un modulo vuoto, quindi «non tocco» e «azzero» erano
+ * la stessa cosa. Da quando il lettore è una modale apribile in qualunque momento, non
+ * lo sono più: **il modulo può già contenere un altro documento**, e ciò che l'XML tace
+ * resta appiccicato al precedente (Fase 1-bis, reperti 4, 5, 7 e 15).
+ *
+ * Non è una sbavatura estetica. Dalla mappa delle catene
+ * (`docs/catene_fra_moduli.md`): dal fornitore dipendono `soggetto_ritenuta`,
+ * `regime_forfetario`, il codice tributo 1019/1020 e le percentuali — quindi netto da
+ * pagare, pagamento e **F24**. Un fornitore rimasto agganciato registra la fattura col
+ * **regime fiscale di un altro**; un IBAN rimasto manda il bonifico a un altro
+ * destinatario.
+ *
+ * La regola ora è: **ogni campo del documento viene riscritto**, con il valore del file
+ * o col valore vuoto. Quello che il file non dichiara non è «da conservare»: è
+ * **assente**, e va mostrato assente perché l'amministratore lo veda e lo compili.
+ *
+ * Restano fuori di proposito le cose che NON appartengono al documento letto:
+ * `esercizio_id` e `gestione_id` (il contesto in cui si sta lavorando) e le scelte già
+ * fatte sulle righe che il file non conosce — vedi sotto.
+ */
+function precompilaDaXml(esito: EsitoImportazioneXml) {
+    form.tipo_documento = esito.documento.tipo_documento;
+    form.numero_documento = esito.documento.numero_documento;
+    form.data_documento = esito.documento.data_documento;
+    form.data_scadenza = esito.documento.data_scadenza ?? '';
+    form.modalita_pagamento = esito.documento.modalita_pagamento ?? 'bonifico';
+    form.iban_fornitore = esito.documento.iban_fornitore ?? '';
+
+    // Il fornitore si riscrive SEMPRE: se il file nuovo non lo riconosce, il campo
+    // torna da scegliere invece di restare quello del documento prima.
+    form.fornitore_id = esito.fornitore.esito === 'trovato'
+        ? esito.fornitore.candidati[0].id
+        : null;
+
+    // ⚠️ La giustificazione di uno sforo è **del documento che l'ha richiesta**, non del
+    // modulo: sopravvivere a un cambio di documento significherebbe registrare la
+    // fattura nuova con la motivazione legale della precedente, e la ratifica
+    // assembleare verterebbe su una cifra che l'assemblea non ha mai visto.
+    form.dati_extra.override_budget = null;
+    form.dati_extra.log_legale_sopravvenienza = null;
+
+    if (esito.righe.length > 0) {
+        // ⚠️ Il fornitore per il prefill si cerca DIRETTAMENTE nell'esito (non da
+        // `selectedFornitore`, che legge `form.fornitore_id` — non ancora scritto a
+        // questo punto della funzione: le righe si costruiscono PRIMA del blocco
+        // fornitore qualche riga più sotto). Solo quando l'aggancio è certo
+        // (`trovato`, un candidato solo): su un esito ambiguo o non_trovato non c'è
+        // ancora un fornitore su cui basare la proposta.
+        const fornitoreAgganciato = esito.fornitore.esito === 'trovato'
+            ? fornitoriDisponibili.value.find(f => f.id === esito.fornitore.candidati[0].id)
+            : undefined;
+
+        form.righe = esito.righe.map((r) => ({
+            descrizione: r.descrizione,
+            conto_id: fornitoreAgganciato?.ultimo_conto_id ?? null,
+            immobile_id: null,
+            importo_imponibile: r.importo_imponibile,
+            aliquota_iva: r.aliquota_iva,
+            is_sopravvenienza: false,
+            // ⚠️ **Il flag lo dichiara il file, e riscriverlo a `true` scollegava la
+            // protezione dell'F24 costruita nella beta.14.** Il server calcola
+            // `concorre_base_ritenuta` per la riga del contributo cassa previdenziale
+            // leggendo il campo `<Ritenuta>` che lo schema FatturaPA ha apposta; qui
+            // veniva sovrascritto, quindi il contributo entrava nella base della ritenuta
+            // anche quando il file dice di no — si trattiene al fornitore più del dovuto e
+            // si versa all'Erario più del dovuto (trappola 1 di `docs/catene_fra_moduli.md`).
+            // `!== false` e non `=== true`: le righe ordinarie il campo non ce l'hanno, e
+            // per loro «concorre» resta il default corretto di tutta la catena.
+            concorre_base_ritenuta: r.concorre_base_ritenuta !== false,
+        }));
+    }
+
+    // Impostato PRIMA di scrivere form.fornitore_id, qualunque sia lo stato
+    // dell'aggancio: la guardia serve anche quando il fornitore verrà attaccato più
+    // tardi — dalla scelta fra ambigui o dalla creazione in linea di uno mancante.
+    campiXmlDaPreservare.value = {
+        scadenza: !!esito.documento.data_scadenza,
+        iban: !!esito.documento.iban_fornitore,
+        modalitaPagamento: !!esito.documento.modalita_pagamento,
+    };
+
+    // `form.fornitore_id` è già stato scritto sopra, insieme agli altri campi del
+    // documento: qui resta solo l'esito, che serve ai riquadri «agganciato per P.IVA» /
+    // «più fornitori possibili» / «da creare».
+    esitoFornitoreXml.value = esito.fornitore;
+
+    avvisiImportazioneXml.value = esito.avvisi;
+    // `?? null`: un esito senza la chiave (fixture vecchie, risposte parziali) vale
+    // «il file non dichiara ritenute», mai `undefined` che il confronto dovrebbe indovinare.
+    ritenutaLettaDaXml.value = esito.ritenuta ?? null;
+}
+
+function scegliFornitoreXml(id: number) {
+    form.fornitore_id = id;
+    esitoFornitoreXml.value = null;
+}
+
+const showCreaFornitoreModal = ref(false);
+
+/**
+ * Il fornitore appena creato dal modale — deciso il 02/09/2026 aprendo la
+ * riprogettazione della UI, la risposta di questa riprogettazione alla domanda posta
+ * da Vincenzo: «se un fornitore non è già registrato l'amministratore deve lasciare
+ * l'importo a metà [...] non credo che gli stiamo migliorando la vita».
+ *
+ * `campiXmlDaPreservare` è già pronto: `precompilaDaXml()` lo scrive PRIMA di sapere
+ * l'esito dell'aggancio, quindi resta impostato per il caso `non_trovato` finché
+ * `form.fornitore_id` non cambia per la prima volta — esattamente adesso.
+ */
+function gestisciFornitoreCreato(nuovo: {
+    id: number;
+    ragione_sociale: string;
+    soggetto_ritenuta?: boolean;
+    tipo_ritenuta?: string | null;
+    regime_forfetario?: boolean;
+}) {
+    fornitoriDisponibili.value.push({
+        id: nuovo.id,
+        ragione_sociale: nuovo.ragione_sociale,
+        // ⚠️ **Quello che il fornitore ha davvero, non `false` scritto a mano.** Questa
+        // riga era il secondo tempo del reperto 12: anche spuntando la casella nel modale,
+        // la copia locale nasceva non soggetta, quindi l'anteprima non mostrava nessuna
+        // trattenuta e il documento si registrava a netto pieno. Il server è già a posto —
+        // rilegge il fornitore dal database — ma a schermo l'amministratore vedeva un netto
+        // che al salvataggio cambiava.
+        soggetto_ritenuta: nuovo.soggetto_ritenuta ?? false,
+        tipo_ritenuta: nuovo.tipo_ritenuta ?? null,
+        regime_forfetario: nuovo.regime_forfetario ?? false,
+        ultima_aliquota_iva: null,
+        ultimo_conto_id: null,
+    });
+    form.fornitore_id = nuovo.id;
+    esitoFornitoreXml.value = null;
+}
+
 const showOverrideModal = ref(false);
 const showGuideCompleta = ref(false);
 const showSuccessModal = ref(false);
@@ -196,10 +758,71 @@ const form = useForm({
     file: null as File | null,
 });
 
+// ⚠️ Copia locale e mutabile di `props.fornitori`, aperta con questa riprogettazione
+// (02/09/2026): il fornitore creato in linea dal modale di importazione XML non può
+// finire nella prop — è statica, arriva dal server al caricamento della pagina, e
+// aggiungerci qualcosa senza una ricarica significherebbe un fornitore agganciato che
+// il resto del form non trova (`selectedFornitore` sotto tornerebbe `undefined`).
+const fornitoriDisponibili = ref<Fornitore[]>([...props.fornitori]);
+
 // ---------------------------------------------------------------------------
 // Computed
 // ---------------------------------------------------------------------------
-const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
+const selectedFornitore = computed(() => fornitoriDisponibili.value.find(f => f.id === form.fornitore_id));
+
+/**
+ * Nomi leggibili per il riquadro di riepilogo dei rifiuti (`FormErrorSummary`).
+ *
+ * ⚠️ **Le etichette delle righe si ricavano dalle chiavi che il server ha davvero
+ * mandato, non dalle righe che il form ha adesso.** Sono due insiemi che possono non
+ * coincidere — l'amministratore può togliere una riga dopo il rifiuto, e resterebbe un
+ * messaggio senza il suo «Riga N». Derivandole dagli errori l'etichetta c'è sempre e
+ * per qualunque campo di riga, anche uno aggiunto in futuro senza toccare questo
+ * elenco. Presidiato dai test: la prima stesura iterava su `form.righe` e il test con
+ * due righe in errore su un form da una riga sola l'ha smascherata subito.
+ *
+ * `righe.2.conto_id` → «Riga 3»: l'indice tecnico parte da zero, il registro che
+ * l'amministratore ha davanti è numerato da uno.
+ */
+const etichetteErrori = computed<Record<string, string>>(() => {
+    const etichette: Record<string, string> = {
+        numero_documento: 'Numero documento',
+        data_documento: 'Data documento',
+        data_scadenza: 'Scadenza',
+        fornitore_id: 'Fornitore',
+        gestione_id: 'Gestione',
+        conto_corrente_id: 'Conto addebito',
+        modalita_pagamento: 'Modalità di pagamento',
+        iban_fornitore: 'IBAN fornitore',
+        file: 'Allegato',
+    };
+
+    Object.keys(form.errors).forEach((chiave) => {
+        const riga = chiave.match(/^righe\.(\d+)\./);
+        if (riga) etichette[chiave] = `Riga ${Number(riga[1]) + 1}`;
+    });
+
+    return etichette;
+});
+
+/**
+ * Il riquadro va portato sotto gli occhi: su questa pagina il pulsante «Registra
+ * documento» sta in fondo alla colonna sinistra, il riepilogo in testa alla pagina, e
+ * senza questo salto un rifiuto resta fuori schermo — che è di nuovo «ho premuto e non
+ * è successo niente». Stessa soluzione di FornitoriNew.vue (righe 204-222).
+ */
+const riepilogoErrori = ref<HTMLElement | null>(null);
+
+function portaInVistaIlRiepilogo() {
+    nextTick(() => {
+        riepilogoErrori.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        riepilogoErrori.value?.focus?.();
+    });
+}
+
+// La riga rossa sparisce appena il campo viene corretto, invece di restare finché non
+// si salva di nuovo: senza, il programma continua a segnalare un errore già sistemato.
+usePuliziaErrori(form);
 
 /** Il forfetario esclude la ritenuta per legge, a prescindere da soggetto_ritenuta. */
 const fornitoreRitenutaAttiva = computed(() =>
@@ -227,6 +850,41 @@ const codiceTributoIndeterminabile = computed(() =>
     && !selectedFornitore.value?.natura_percipiente
     && !selectedFornitore.value?.codice_tributo
 );
+
+/**
+ * Il confronto fra la ritenuta dichiarata dal file e quella che il modulo tratterrebbe.
+ *
+ * ⚠️ **Non cambia nessun numero**: la logica è una funzione pura in
+ * `lib/gestionale/fatture/confrontoRitenuta.ts`, provata caso per caso su tutta la
+ * matrice senza montare questa pagina. Qui si legge solo il risultato.
+ *
+ * ⚠️ `provenienzaXml` come `daFile`: senza un file letto non c'è confronto possibile, e
+ * un modulo compilato a mano non deve vedersi contestare niente da nessuno.
+ */
+/**
+ * La somma delle righe che concorrono alla base ritenuta, **senza** la riduzione del
+ * regime — serve a verificare l'aliquota dichiarata dal file contro i numeri del file.
+ *
+ * ⚠️ Non si può usare `totali.base_ritenuta_cents`: quello è `baseCalcolo`, già ridotto
+ * da `percentualeBase()`, e soprattutto vale **zero** finché non c'è un fornitore con un
+ * regime — cioè esattamente nel caso in cui serve, quando il fornitore lo si sta creando.
+ * E non si può usare `totali.imponibile_cents`: comprende anche le righe escluse dalla
+ * base, e sbaglierebbe proprio sulle parcelle con contributo cassa previdenziale, dove la
+ * differenza fra i due numeri è tutta lì.
+ */
+const baseRitenutaGrezzaCents = computed(() => form.righe.reduce(
+    (somma, r) => r.concorre_base_ritenuta !== false ? somma + euroToCents(r.importo_imponibile) : somma,
+    0,
+));
+
+const confronto = computed(() => confrontaRitenuta({
+    ritenutaDaXml: ritenutaLettaDaXml.value,
+    ritenutaModuloCents: totali.value.ritenuta_cents,
+    fornitore: selectedFornitore.value,
+    tipoDocumento: form.tipo_documento,
+    applicaRitenuta: applicaRitenutaEffective.value,
+    daFile: provenienzaXml.value !== null,
+}));
 
 const hasSpesePrivate = computed(() => {
     if (!form.righe || !Array.isArray(form.righe)) return false;
@@ -426,6 +1084,25 @@ const gestioniFiltrate = computed(() => {
 watch(
     [() => form.fornitore_id, () => form.data_documento],
     ([newFornitoreId, newDataDoc], [oldFornitoreId, oldDataDoc]) => {
+        const fornitoreCambiato = newFornitoreId !== oldFornitoreId;
+
+        // ⚠️ **La guardia si legge SEMPRE, non solo quando cambia il fornitore.**
+        // Prima era `fornitoreCambiato ? campiXmlDaPreservare.value : null`, e su un
+        // caso reale non copriva niente: se l'amministratore sceglie il fornitore a mano
+        // e *poi* importa l'XML di quello stesso fornitore, il fornitore NON cambia — ma
+        // la data del documento sì, e la scadenza si ricalcola comunque (vedi il blocco
+        // più sotto, che reagisce anche alla sola data). Risultato: i giorni
+        // dell'anagrafica sovrascrivevano la scadenza dichiarata dal file, cioè il dato
+        // che il fornitore ha davvero scritto sulla fattura (Fase 1-bis, reperto 15).
+        //
+        // Il caso è raggiungibile solo da quando il lettore è una modale apribile in
+        // qualunque momento: prima si importava sempre su un modulo vuoto, dove il
+        // fornitore cambiava per forza.
+        //
+        // Resta **one-shot**: consumata al primo scatto dopo l'importazione, così una
+        // scelta successiva fatta a mano si comporta come sempre.
+        const daPreservare = campiXmlDaPreservare.value;
+        campiXmlDaPreservare.value = null;
 
         // 1. Aggiorna is_pregresso — SOLO quando cambia la data. Il watch scatta
         //    anche al cambio di fornitore: senza questo guard, ricalcolava il flag
@@ -437,7 +1114,7 @@ watch(
 
         // Il debito patrimoniale è per-fornitore: cambiando fornitore la selezione
         // precedente non è più tra le opzioni del menu, che mostrerebbe l'id grezzo.
-        if (newFornitoreId !== oldFornitoreId && form.saldo_patrimoniale_id) {
+        if (fornitoreCambiato && form.saldo_patrimoniale_id) {
             const debito = props.debiti_patrimoniali.find(d => d.id === form.saldo_patrimoniale_id);
             if (!debito || debito.fornitore_id !== newFornitoreId) {
                 form.saldo_patrimoniale_id = null;
@@ -446,18 +1123,22 @@ watch(
 
         // 2. Aggiorna campi derivati dal fornitore
         if (!newFornitoreId || !newDataDoc) return;
-        const f = props.fornitori.find(x => x.id === newFornitoreId);
+        const f = fornitoriDisponibili.value.find(x => x.id === newFornitoreId);
         if (!f) return;
 
-        if (newFornitoreId !== oldFornitoreId || newDataDoc !== oldDataDoc) {
+        if ((fornitoreCambiato || newDataDoc !== oldDataDoc) && !daPreservare?.scadenza) {
             const d = new Date(newDataDoc);
             d.setDate(d.getDate() + (f.giorni_scadenza || 30));
             form.data_scadenza = d.toISOString().substring(0, 10);
         }
 
-        if (newFornitoreId !== oldFornitoreId) {
-            form.iban_fornitore     = f.iban_principale || form.iban_fornitore;
-            form.modalita_pagamento = f.modalita_pagamento_default || form.modalita_pagamento;
+        if (fornitoreCambiato) {
+            if (!daPreservare?.iban) {
+                form.iban_fornitore = f.iban_principale || form.iban_fornitore;
+            }
+            if (!daPreservare?.modalitaPagamento) {
+                form.modalita_pagamento = f.modalita_pagamento_default || form.modalita_pagamento;
+            }
         }
     },
     { immediate: true }
@@ -482,7 +1163,10 @@ watch(() => form.is_pregresso, (attivo) => {
 // ---------------------------------------------------------------------------
 const addRiga = () => form.righe.push({
     descrizione:        '',
-    conto_id:           null,
+    // Stessa forma di aliquota_iva qui sotto: prefill col capitolo dell'ultima
+    // fattura di questo fornitore (calcolato dal backend), non una scelta da zero.
+    // `null` per un fornitore senza storico — non si inventa un capitolo qualsiasi.
+    conto_id:           selectedFornitore.value?.ultimo_conto_id ?? null,
     immobile_id:        null,
     importo_imponibile: 0,
     // Prefill con l'ultima aliquota usata per questo fornitore (calcolata dal
@@ -494,8 +1178,51 @@ const addRiga = () => form.righe.push({
     concorre_base_ritenuta: true,
 });
 
+/**
+ * Sposta le chiavi d'errore delle righe quando la voce `idx` viene tolta.
+ *
+ * ⚠️ **Gli indici delle voci sono anche le chiavi degli errori.** `righe.1.conto_id` non
+ * nomina *quella* voce: nomina la voce che in quel momento sta in seconda posizione.
+ * Togliendone una più in alto le voci scalano e le chiavi restavano ferme, quindi il
+ * percorso smetteva di puntare allo stesso dato e `usePuliziaErrori` concludeva che il
+ * campo era stato **corretto**: bastava cancellare una voce qualsiasi perché l'errore di
+ * un'altra sparisse da solo — dal riepilogo in testa e da sotto il campo — mentre la voce
+ * sbagliata restava a schermo, rinumerata e senza più niente di rosso addosso
+ * (Fase 1-bis, reperto 16).
+ *
+ * La regola è che l'errore appartiene alla **voce**, non alla sua posizione: la voce
+ * cancellata si porta via i propri errori, quelle sotto scalano di uno, quelle sopra non si
+ * toccano. Non è indovinare: è letteralmente ciò che il server ridirà da sé al salvataggio
+ * successivo, perché `StoreFatturaRequest` numera per posizione corrente.
+ *
+ * ⚠️ Il percorso vuole un campo in coda (`^righe\.\d+\.`) apposta: la chiave nuda `righe`
+ * — la regola `required|array|min:1` — non appartiene a nessuna voce e non deve muoversi.
+ */
+function rinumeraErroriRighe(idx: number) {
+    const errori = form.errors as unknown as Record<string, string>;
+    const posizione = (chiave: string) => Number(chiave.slice(6, chiave.indexOf('.', 6)));
+
+    const coinvolte = Object.keys(errori).filter(
+        (chiave) => /^righe\.\d+\./.test(chiave) && posizione(chiave) >= idx,
+    );
+    if (!coinvolte.length) return;
+
+    const scalate = coinvolte
+        .filter((chiave) => posizione(chiave) > idx)
+        .map((chiave) => [
+            chiave.replace(/^righe\.\d+\./, `righe.${posizione(chiave) - 1}.`),
+            errori[chiave],
+        ] as const);
+
+    form.clearErrors(...coinvolte);
+    if (scalate.length) form.setError(Object.fromEntries(scalate));
+}
+
 const removeRiga = (idx: number) => {
-    if (form.righe.length > 1) form.righe.splice(idx, 1);
+    if (form.righe.length <= 1) return;
+
+    form.righe.splice(idx, 1);
+    rinumeraErroriRighe(idx);
 };
 
 const showSpesaImprevistaModal = ref(false);
@@ -610,7 +1337,100 @@ const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | n
     doSubmit();
 };
 
+/**
+ * Riporta il form allo stato con cui si inizia un documento nuovo — usata sia da
+ * «Registra un'altra fattura» sia, in coda, quando si passa al prossimo file del
+ * lotto.
+ *
+ * ⚠️ **Non usa `form.reset()`.** Verificato dal vivo il 03/09/2026 registrando due
+ * documenti in sequenza dallo stesso lotto: dopo `form.reset()` l'IBAN del primo
+ * fornitore (Termotecnica Omega) restava nel campo mentre si stava rivedendo il
+ * secondo (Multiutility Nord, che l'XML non dichiara e la cui scheda in anagrafica
+ * non ce l'ha) — `reset()` non stava riportando i valori ai default passati a
+ * `useForm()` come atteso. Non isolata la causa esatta nel tempo a disposizione
+ * (sospetto legato al post/redirect Inertia appena concluso quando si chiama
+ * reset()); piuttosto che continuare a fidarsene, i campi si azzerano qui uno per
+ * uno, con gli stessi valori dell'inizializzazione di `useForm()` sopra — se quei
+ * default cambiano, vanno aggiornati anche qui.
+ */
+function resettaFormPerNuovoDocumento() {
+    form.clearErrors();
+    form.fornitore_id = null;
+    form.esercizio_id = props.esercizio?.id || null;
+    // ⚠️ **La gestione si ricalcola qui, non si azzera e basta.** `gestione_id` non
+    // nasce dall'inizializzazione di `useForm()` ma da un watcher su `form.esercizio_id`
+    // (più sotto): e quel watcher NON riparte, perché qui l'esercizio viene riassegnato
+    // allo **stesso** valore che aveva già e per Vue non è un cambiamento. Azzerandola e
+    // basta, dal secondo documento del lotto in poi la Gestione restava vuota e il
+    // server rifiutava il salvataggio («Il campo gestione id è richiesto») — cioè la
+    // funzione principale di questa beta, registrare più fatture di seguito, si rompeva
+    // al secondo giro. Trovato dalla Fase 1-bis (reperto 14), presidiato da un test.
+    form.gestione_id = form.esercizio_id && props.gestioni.length
+        ? props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id
+        : null;
+    form.tipo_documento = 'fattura';
+    form.is_pregresso = false;
+    form.data_competenza_originaria = '';
+    form.saldo_patrimoniale_id = null;
+    form.imponibile_pregresso = 0;
+    form.aliquota_iva_pregressa = 22;
+    form.numero_documento = '';
+    form.data_documento = new Date().toISOString().substring(0, 10);
+    form.data_scadenza = '';
+    form.conto_corrente_id = null;
+    form.modalita_pagamento = 'bonifico';
+    form.iban_fornitore = '';
+    form.applica_ritenuta = null;
+    form.dati_extra = {
+        fiscal: { cig: '', cup: '', motivo_esclusione_ritenuta: '', motivo_esclusione_ritenuta_note: '', conferma_codice_tributo_mancante: false },
+        competenza: { dal: '', al: '' },
+        override_budget: null,
+        log_legale_sopravvenienza: null,
+    };
+    form.stato_approvazione = 'approvata';
+    form.righe = [{
+        descrizione: '',
+        conto_id: null,
+        immobile_id: null,
+        importo_imponibile: 0,
+        aliquota_iva: 22,
+        is_sopravvenienza: false,
+        concorre_base_ritenuta: true,
+    }];
+    form.coperture = [];
+    form.file = null;
+
+    esitoFornitoreXml.value = null;
+    avvisiImportazioneXml.value = null;
+    campiXmlDaPreservare.value = null;
+    ritenutaLettaDaXml.value = null;
+    provenienzaXml.value = null;
+    // ⚠️ Anche l'errore di **lettura** del file, che vive nell'istanza di
+    // `useImportaFatturaXml()` e non fra questi ref: senza, il modulo per il documento
+    // nuovo si apriva con un messaggio rosso che parla di un file non più allegato, e
+    // l'amministratore cercava un problema che non esisteva (Fase 1-bis, reperto 17).
+    // Restava lì finché non si sceglieva un altro allegato — l'unico altro punto che lo
+    // azzera.
+    resetErroreImportazione();
+    fileInLavorazione.value = null;
+}
+
 const doSubmit = () => {
+    // ⚠️ **Il documento che sto spedendo si cattura QUI, non si rilegge quando la risposta
+    // arriva.** L'invio è un multipart con l'allegato: dura secondi, e in quei secondi la
+    // pagina resta viva — dalla fascia si riapre il lettore e si può aprire un altro
+    // documento del lotto, che è una cosa legittima e non va impedita disabilitando il
+    // pulsante. `fileInLavorazione` risponde a «che cosa c'è nel modulo adesso»;
+    // `onSuccess` ha bisogno di «che cosa ho spedito»: due domande diverse, dal momento in
+    // cui fra le due passa del tempo. Rileggendo il ref, dalla coda usciva il documento
+    // sbagliato — spariva quello mai inviato, e quello appena registrato veniva riproposto
+    // per una seconda registrazione (Fase 1-bis, reperto 8).
+    //
+    // La cattura sta in `doSubmit` e non in `handleSubmit` perché fra i due può passare la
+    // modale di sforo: il bersaglio è quello che parte, non quello che era a schermo
+    // quando si è premuto la prima volta.
+    const voceInviata = fileInLavorazione.value;
+
     form.transform((data) => {
         const payload = {
             ...data,
@@ -687,8 +1507,18 @@ const doSubmit = () => {
         forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
+            // Tolto dalla coda SUBITO, prima che la modale legga filesInCodaPronti:
+            // è la risposta a «carico due documenti, ne registro uno, dove trovo
+            // l'altro?» — la modale di chiusura lo mostra da sé, invece di lasciare
+            // che si cerchi da qualche altra parte.
+            if (voceInviata) rimuoviFilePendente(voceInviata);
             showSuccessModal.value = true;
         },
+        // Il riquadro di riepilogo sta in testa alla pagina, il pulsante in fondo alla
+        // colonna sinistra: senza questo salto un rifiuto resta fuori schermo, e per
+        // l'amministratore «ho premuto e non è successo niente» — lo stesso difetto,
+        // solo un po' più in là. Stessa soluzione di FornitoriNew.vue.
+        onError: portaInVistaIlRiepilogo,
     });
 };
 
@@ -701,11 +1531,26 @@ const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Registrazione' },
 ]);
 
+/**
+ * ⚠️ **Qui c'erano due terne di schede, una per fase, ed è tornata a essercene una
+ * sola.** Con la fase `scelta` è sparito anche il momento in cui la pagina parlava
+ * dell'importazione invece che della registrazione: adesso la pagina è sempre la
+ * registrazione, e l'XML è una scorciatoia per riempirla.
+ *
+ * Le tre spiegazioni dell'importazione (lettura automatica, fornitore riconosciuto,
+ * capitolo proposto) **non sono state buttate**: sono nella guida dell'header
+ * (`FatturaRegistrazioneGuide`), dove le ha volute Vincenzo il 03/09/2026 — lì le
+ * legge chi vuole capire come funziona, senza rubare la testa della pagina a chi sta
+ * solo registrando una fattura.
+ */
 const pageGuides = [
     { title: 'Panel + Ledger',   description: 'I dati principali a sinistra, le voci a destra come un registro contabile. Tutto visibile in un\'unica schermata.', icon: ArrowRightLeft, colorVariant: 'blue' as const },
     { title: 'Controllo Budget', description: 'Il sistema verifica il residuo per ogni capitolo di spesa in tempo reale, riga per riga.',                          icon: Zap,            colorVariant: 'amber' as const },
     { title: 'Audit Trail',      description: 'Ogni sforamento deve essere giustificato con motivazione legale prima della registrazione.',                         icon: ShieldAlert,    colorVariant: 'emerald' as const },
 ];
+
+const pageTitle = 'Registrazione fattura passiva';
+const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra.';
 </script>
 
 <template>
@@ -714,13 +1559,17 @@ const pageGuides = [
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
-                page-title="Registrazione fattura passiva"
-                page-subtitle="Inserisci i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra."
+                :page-title="pageTitle"
+                :page-subtitle="pageSubtitle"
                 :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
                 :video-url="null"
                 :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
                 back-text="Indietro"
+                :condominio="(props.condominio as any)"
+                :condomini="(props.condomini as any)"
+                :esercizio="(props.esercizio as any)"
+                :esercizi="(props.esercizi as any)"
             >
                 <template #actions>
                     <Button variant="outline" size="sm" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200" @click="showGuideCompleta = true">
@@ -729,6 +1578,87 @@ const pageGuides = [
                     </Button>
                 </template>
             </PageHeaderGuide>
+
+            <!-- ═══════════════════════════════════════════════════════════════════
+                 La fascia d'ingresso del lettore XML.
+                 Sostituisce la vecchia FASE «scelta» (una pagina intera con la
+                 dropzone al posto del modulo), eliminata il 03/09/2026 con Vincenzo:
+                 quella fase era una porta a senso unico — dal modulo non si tornava
+                 alla dropzone, e chi si ricordava dell'XML a metà compilazione doveva
+                 uscire dalla pagina e perdere quello che aveva scritto.
+                 Qui il lettore è raggiungibile sempre, e la pagina di registrazione
+                 resta una sola.
+                 ⚠️ La fascia NON sparisce dopo aver letto un file: cambia stato. È il
+                 punto — se sparisse tornerebbe la porta a senso unico, solo un po' più
+                 in là. E resta separata dal riquadro «Allega documento» in fondo al
+                 pannello: allegare il PDF e leggere l'XML sono due gesti diversi, e
+                 confonderli era l'obiezione che ha scartato l'altra soluzione.
+                 ═══════════════════════════════════════════════════════════════════ -->
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm px-4 py-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <UploadCloud class="w-3.5 h-3.5 text-primary" />
+                    </span>
+                    <div class="min-w-0">
+                        <!-- ⚠️ Il nome arriva da `provenienzaXml`, che è un **valore**: a
+                             registrazione riuscita la voce esce dalla coda mentre questa
+                             fascia è ancora montata sotto la modale di successo, e un
+                             puntatore andrebbe in bianco proprio lì. -->
+                        <template v-if="provenienzaXml">
+                            <p class="text-[13px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                                Compilato dal file {{ provenienzaXml }}
+                            </p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                                <template v-if="altriFileInCoda.length">
+                                    Resta{{ altriFileInCoda.length === 1 ? '' : 'no' }} {{ altriFileInCoda.length }}
+                                    {{ altriFileInCoda.length === 1 ? 'altro documento' : 'altri documenti' }} in questo lotto: te
+                                    {{ altriFileInCoda.length === 1 ? 'lo ripropongo' : 'li ripropongo' }} dopo il salvataggio.
+                                </template>
+                                <template v-else>
+                                    Controlla i campi qui sotto, poi registra.
+                                </template>
+                            </p>
+                        </template>
+                        <template v-else>
+                            <p class="text-[13px] font-bold text-slate-900 dark:text-slate-100">Hai il file XML della fattura?</p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                                Lo leggo e compilo io i campi — numero, data, importi e fornitore.
+                            </p>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ⚠️ L'etichetta guarda **l'elenco**, non da dove vengono i dati: questo
+                     pulsante apre la modale che elenca `filesPendenti`, e prometteva
+                     «Gestisci i file» anche a elenco vuoto — chi importa dal riquadro
+                     «Allega documento», che è la porta più battuta, lo apriva sulla sola
+                     dropzone. Un pulsante che promette un elenco deve aprire un elenco.
+                     Nessun `:disabled` durante l'invio, ed è voluto: guardare la coda
+                     mentre si aspetta è legittimo, e il documento spedito è già stato
+                     catturato da `doSubmit()`. -->
+                <Button type="button" class="h-8 rounded-lg font-medium text-xs px-3 shrink-0 gap-2" @click="showImportaXmlModal = true">
+                    <UploadCloud class="w-3.5 h-3.5 text-sky-400" />
+                    {{ filesPendenti.length ? 'Gestisci i file' : 'Importa XML' }}
+                </Button>
+            </div>
+
+
+            <!-- Riepilogo dei rifiuti del server — **lo stesso componente della scheda
+                 fornitore** (FornitoriNew/FornitoriEdit), non una seconda soluzione
+                 allo stesso problema: `FormErrorSummary` nasce nella beta.7 proprio da
+                 un rifiuto muto, e il suo docblock lo dice — «copre anche le chiavi che
+                 nessuno ha ancora collegato a un campo».
+                 ⚠️ Il difetto chiuso qui è esattamente quello: il template rende a
+                 fianco del campo solo `numero_documento`, `righe.N.descrizione` e
+                 `righe.N.conto_id`, quindi ogni altra chiave tornava dal server,
+                 popolava `form.errors` e non compariva da nessuna parte — il pulsante
+                 si riabilitava e basta. Provato dal vivo il 03/09/2026 leggendo la
+                 risposta XHR: `righe.2.conto_id`, invisibile. Stessa classe della
+                 Decisione D2 della beta.13 (il duplicato), risolta lì per un caso solo
+                 invece che per la regola. -->
+            <div ref="riepilogoErrori" tabindex="-1" class="outline-none">
+                <FormErrorSummary :errors="form.errors" :labels="etichetteErrori" />
+            </div>
 
             <!-- Banner warning -->
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
@@ -788,7 +1718,7 @@ const pageGuides = [
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornitore</Label>
                             <v-select
                                 v-model="form.fornitore_id"
-                                :options="fornitori"
+                                :options="fornitoriDisponibili"
                                 label="ragione_sociale"
                                 :reduce="(f: Fornitore) => f.id"
                                 placeholder="Cerca fornitore..."
@@ -1018,11 +1948,193 @@ const pageGuides = [
                             <Input v-model="form.iban_fornitore" class="h-9 text-sm" placeholder="IT00 0000..." />
                         </div>
 
-                        <!-- Allegato -->
-                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 transition-colors" @click="fileInput?.click()">
-                            <FileText class="w-5 h-5 text-slate-300 mx-auto mb-1" />
-                            <p class="text-[11px] text-slate-400 font-medium">{{ form.file ? form.file.name : 'Allega documento (PDF, XML, P7M)' }}</p>
-                            <input type="file" ref="fileInput" class="hidden" accept=".pdf,.xml,.p7m,.jpg,.jpeg,.png" @change="(e: any) => form.file = e.target.files[0]" />
+                        <!-- Allegato — un XML/P7M qui viene anche letto, non solo allegato (beta.14) -->
+                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" @click="fileInput?.click()">
+                            <LoaderCircle v-if="importazioneInCorso" class="w-5 h-5 text-primary mx-auto mb-1 animate-spin" />
+                            <FileText v-else class="w-5 h-5 text-slate-300 mx-auto mb-1" />
+                            <p class="text-[11px] text-slate-400 font-medium">
+                                {{ importazioneInCorso ? 'Leggo il file...' : (form.file ? form.file.name : 'Allega documento (PDF, XML, P7M)') }}
+                            </p>
+                            <input type="file" ref="fileInput" class="hidden" accept=".pdf,.xml,.p7m,.jpg,.jpeg,.png" @change="gestisciFileSelezionato" />
+                        </div>
+
+                        <!-- Esito della lettura XML -->
+                        <div v-if="erroreImportazione" class="flex items-start gap-2 px-2.5 py-2 bg-rose-50 dark:bg-rose-950/30 rounded-lg border border-rose-200 dark:border-rose-900/40">
+                            <AlertOctagon class="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                            <span class="text-[11px] text-rose-700 dark:text-rose-400">{{ erroreImportazione }}</span>
+                        </div>
+
+                        <template v-if="esitoFornitoreXml">
+                            <div v-if="esitoFornitoreXml.esito === 'trovato'" class="flex items-start gap-2 px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-900/40">
+                                <CheckCircle class="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                                <span class="text-[11px] text-emerald-800 dark:text-emerald-400">
+                                    Fornitore agganciato per {{ esitoFornitoreXml.letto_da_xml.partita_iva ? 'P.IVA' : 'codice fiscale' }}: <strong>{{ selectedFornitore?.ragione_sociale }}</strong>.
+                                </span>
+                            </div>
+
+                            <div v-else-if="esitoFornitoreXml.esito === 'ambiguo'" class="px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                                <div class="flex items-start gap-2 mb-1.5">
+                                    <HelpCircle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                    <span class="text-[11px] text-amber-800 dark:text-amber-400">
+                                        Più di un fornitore ha questa P.IVA — quale intendevi?
+                                    </span>
+                                </div>
+                                <div class="flex flex-wrap gap-1.5 pl-5">
+                                    <button v-for="c in esitoFornitoreXml.candidati" :key="c.id" type="button"
+                                        @click="scegliFornitoreXml(c.id)"
+                                        class="text-[10px] font-semibold px-2 py-1 rounded-md bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+                                        {{ c.ragione_sociale }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-else class="flex flex-col gap-2 px-2.5 py-2 bg-slate-100 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                                <div class="flex items-start gap-2">
+                                    <User class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                    <span class="text-[11px] text-slate-600 dark:text-slate-400">
+                                        Nessun fornitore trovato per <strong>{{ esitoFornitoreXml.letto_da_xml.denominazione }}</strong>
+                                        <template v-if="esitoFornitoreXml.letto_da_xml.partita_iva"> (P.IVA {{ esitoFornitoreXml.letto_da_xml.partita_iva }})</template>.
+                                        Puoi selezionarlo qui sopra se esiste già con un altro nome, o crearlo ora senza lasciare questa pagina.
+                                    </span>
+                                </div>
+                                <button type="button" @click="showCreaFornitoreModal = true"
+                                    class="self-start ml-5 text-[11px] font-bold px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                    Crea fornitore da questo file
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- ═══════════════════════════════════════════════════════════════════
+                             CONFRONTO SULLA RITENUTA — «il file dice questo, il modulo fa quello»
+                             ═══════════════════════════════════════════════════════════════════
+                             ⚠️ Fino alla beta.14 il dato del file arrivava qui e non lo
+                             leggeva nessuno: una parcella con ritenuta dichiarata si
+                             registrava a netto pieno, il condominio pagava tutto al
+                             fornitore e non versava niente all'Erario, restando comunque
+                             responsabile come sostituto d'imposta (Fase 1-bis, reperti 2 e 12).
+
+                             ⚠️ **Si segnala, non si blocca** — decisione di Vincenzo del
+                             03/09/2026. L'anagrafica descrive il fornitore *oggi*, il file
+                             descrive quel documento *allora*: nessuno dei due comanda
+                             sull'altro, quindi questa è una **discrepanza**, non un errore,
+                             e l'ultima parola è dell'amministratore.
+
+                             ⚠️ Quando non c'è niente da dire questi riquadri NON compaiono:
+                             `nessun_confronto` copre i due casi più frequenti di tutti. Un
+                             avviso che c'è sempre smette di essere letto in una settimana.
+                             ═══════════════════════════════════════════════════════════════════ -->
+                        <div v-if="confronto.stato === 'coincidono'" class="flex items-start gap-2 px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-900/40">
+                            <ShieldCheck class="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                            <span class="text-[11px] text-emerald-800 dark:text-emerald-400">
+                                Ritenuta d'acconto: il file ne dichiara {{ euro(confronto.fileCents) }} e il modulo trattiene lo stesso importo.
+                            </span>
+                        </div>
+
+                        <div v-else-if="confronto.stato === 'importi_diversi'" class="px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                            <div class="flex items-start gap-2">
+                                <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                <div class="text-[11px] text-amber-800 dark:text-amber-400 space-y-1">
+                                    <p class="font-bold">Il file e l'anagrafica non coincidono.</p>
+                                    <p>
+                                        Il file dichiara {{ euro(confronto.fileCents) }}. Il modulo trattiene {{ euro(confronto.moduloCents) }},
+                                        applicando il regime registrato in anagrafica<template v-if="selectedFornitore"> per {{ selectedFornitore.ragione_sociale }}</template>.
+                                    </p>
+                                    <p>
+                                        Nessuno dei due valori viene cambiato in automatico. Se il regime in anagrafica è sbagliato correggilo
+                                        prima di registrare; se è giusto, registra pure: il documento resta quello che è.
+                                    </p>
+                                    <Link v-if="selectedFornitore" :href="route(generateRoute('fornitori.edit'), { fornitore: selectedFornitore.id })"
+                                          target="_blank" class="inline-block font-bold underline underline-offset-2">Apri l'anagrafica del fornitore</Link>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else-if="confronto.stato === 'file_dichiara_modulo_no'" class="px-2.5 py-2 bg-rose-50 dark:bg-rose-950/20 rounded-lg border border-rose-200 dark:border-rose-900/40">
+                            <div class="flex items-start gap-2">
+                                <TriangleAlert class="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                                <div class="text-[11px] text-rose-800 dark:text-rose-400 space-y-1">
+                                    <p class="font-bold">Il file dichiara una ritenuta, il modulo non ne trattiene nessuna.</p>
+                                    <p>
+                                        Il documento dichiara una ritenuta d'acconto di {{ euro(confronto.fileCents) }}<template
+                                            v-if="ritenutaLettaDaXml"> (aliquota {{ ritenutaLettaDaXml.aliquota }}%<template
+                                            v-if="ritenutaLettaDaXml.tipo">, tipo {{ ritenutaLettaDaXml.tipo }}</template><template
+                                            v-if="ritenutaLettaDaXml.causale_pagamento">, causale {{ ritenutaLettaDaXml.causale_pagamento }}</template>)</template>.
+                                    </p>
+
+                                    <p v-if="confronto.motivo === 'fornitore_mancante'">
+                                        Il fornitore non è ancora agganciato: sceglilo qui sopra, o crealo dal file, e poi controlla che la ritenuta risulti.
+                                    </p>
+                                    <p v-else-if="confronto.motivo === 'non_soggetto'">
+                                        In anagrafica {{ selectedFornitore?.ragione_sociale }} non è segnato come soggetto a ritenuta, quindi il netto
+                                        da pagare qui sotto è l'intero importo del documento. Se la ritenuta è dovuta, il condominio deve trattenerla
+                                        e versarla con l'F24: segna il fornitore in anagrafica prima di registrare.
+                                    </p>
+                                    <p v-else-if="confronto.motivo === 'forfetario'">
+                                        {{ selectedFornitore?.ragione_sociale }} è registrato in regime forfetario, e sul forfetario la ritenuta non si
+                                        applica per legge: le due cose si contraddicono. Controlla il documento, o il regime in anagrafica, prima di registrare.
+                                    </p>
+                                    <p v-else-if="confronto.motivo === 'nota_credito'">
+                                        Su una nota di credito il modulo non applica la ritenuta, salvo spunta esplicita: è il comportamento previsto.
+                                        Controlla che sia quello che vuoi.
+                                    </p>
+                                    <p v-else-if="confronto.motivo === 'esclusa_a_mano'">
+                                        L'hai esclusa su questo documento, e resta esclusa: la scelta sul singolo documento vale più di quanto dichiara
+                                        il file. Controlla solo che il motivo indicato sia quello giusto.
+                                    </p>
+                                    <p v-else>
+                                        Il modulo calcola una trattenuta di {{ euro(0) }}: controlla che le righe concorrano alla base e che il regime
+                                        sul fornitore sia completo.
+                                    </p>
+
+                                    <Link v-if="selectedFornitore" :href="route(generateRoute('fornitori.edit'), { fornitore: selectedFornitore.id })"
+                                          target="_blank" class="inline-block font-bold underline underline-offset-2">Apri l'anagrafica del fornitore</Link>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else-if="confronto.stato === 'modulo_trattiene_file_tace'" class="px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                            <div class="flex items-start gap-2">
+                                <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                <div class="text-[11px] text-amber-800 dark:text-amber-400 space-y-1">
+                                    <p class="font-bold">Il file non dichiara nessuna ritenuta, il modulo ne trattiene {{ euro(confronto.moduloCents) }}.</p>
+                                    <p>
+                                        L'assenza del blocco nel file non vuol dire che la ritenuta non sia dovuta: l'obbligo è del condominio come
+                                        sostituto d'imposta, non del fornitore che la dichiara. Qui si applica il regime registrato in anagrafica<template
+                                        v-if="selectedFornitore"> per {{ selectedFornitore.ragione_sociale }}</template>.
+                                    </p>
+                                    <p>
+                                        Se su questo documento non va applicata, togli la spunta «applica ritenuta d'acconto su questo documento»
+                                        e indica il motivo.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- I contributi previdenziali (RT03…RT06) non sono ritenute d'acconto:
+                             li versa il fornitore al proprio ente, non il condominio con l'F24.
+                             Non li trattiamo, ma tacerli lascerebbe inspiegata la differenza fra
+                             il totale del file e quello a schermo (Fase 1-bis, reperto 19). -->
+                        <div v-if="avvisiImportazioneXml?.contributi_previdenziali_dichiarati?.length"
+                             class="flex items-start gap-2 px-2.5 py-2 bg-slate-50 dark:bg-slate-900/40 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <TriangleAlert class="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                            <span class="text-[11px] text-slate-700 dark:text-slate-400">
+                                Il file dichiara anche un contributo previdenziale ({{ avvisiImportazioneXml.contributi_previdenziali_dichiarati.join(', ') }}):
+                                non è una ritenuta d'acconto, il modulo non lo tratta e non entra nel confronto qui sopra.
+                            </span>
+                        </div>
+
+                        <div v-if="avvisiImportazioneXml?.lotto_con_altri_documenti" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                            <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <span class="text-[11px] text-amber-800 dark:text-amber-400">
+                                Il file contiene altri {{ avvisiImportazioneXml.lotto_con_altri_documenti }} documenti oltre a questo: precompilato solo il primo, gli altri vanno importati a parte.
+                            </span>
+                        </div>
+
+                        <div v-if="avvisiImportazioneXml?.righe_non_quadrano_col_riepilogo" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                            <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <span class="text-[11px] text-amber-800 dark:text-amber-400">
+                                Il totale dichiarato dal documento non coincide con la somma delle righe lette ({{ euro(avvisiImportazioneXml.scarto_righe_riepilogo_cents) }} di scarto). Controlla gli importi prima di registrare.
+                            </span>
                         </div>
                     </div>
 
@@ -1167,6 +2279,13 @@ const pageGuides = [
                                                     </div>
                                                 </template>
                                             </v-select>
+                                            <!-- L'errore sotto il campo che lo causa, stesso stile del
+                                                 resto del prodotto (InputError sulla scheda fornitore):
+                                                 il banner in testa dice QUANTE righe mancano, questo dice
+                                                 QUALE. -->
+                                            <p v-if="form.errors[`righe.${idx}.conto_id`]" class="text-[11px] text-red-600 dark:text-red-500 font-medium mt-1">
+                                                {{ form.errors[`righe.${idx}.conto_id`] }}
+                                            </p>
                                         </div>
 
                                         <!-- Unità -->
@@ -1237,6 +2356,7 @@ const pageGuides = [
                                                 </span>
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)"
+                                                :aria-label="`Togli la riga ${idx + 1}`"
                                                 class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
                                                 <Trash2 class="w-4 h-4" />
                                             </Button>
@@ -1400,6 +2520,7 @@ const pageGuides = [
 
                 </div>
             </div>
+
         </div>
 
         <!-- Modali -->
@@ -1425,37 +2546,117 @@ const pageGuides = [
             @confirm="handleSpesaImprevistaConfirm"
         />
 
-        <!-- Modale di successo -->
+        <!-- ⚠️ Il file è la fonte autorevole del documento, quindi vince: quello che si
+             protegge non è il contenuto ma **il lavoro di chi stava scrivendo**, che
+             prima spariva senza un avviso (Fase 1-bis, reperto 6). Non compare quando
+             si passa da un documento all'altro dello stesso lotto: là il modulo è pieno
+             di roba arrivata da un file, e chiedere sarebbe solo un clic in più. -->
+        <!-- ⚠️ `model-value` è l'interruttore, **non** `fileDaConfermare !== null`: la
+             chiusura non deve toccare il dato che la conferma sta per leggere. Vedi il
+             commento su `fileDaConfermare` e `useConfermaEliminazione.ts`. -->
+        <ConfirmDialog
+            :model-value="confermaSovrascritturaAperta"
+            title="Il modulo non è vuoto"
+            confirm-text="Sostituisci con il file"
+            cancel-text="Lascia com'è"
+            variant="warning"
+            @update:model-value="(v: boolean) => { if (!v) confermaSovrascritturaAperta = false; }"
+            @confirm="confermaSovrascrittura"
+            @cancel="annullaSovrascrittura"
+        >
+            Leggendo <strong>{{ fileDaConfermare?.file.name }}</strong> devo sostituire quello che hai già scritto
+            in questo modulo — righe, importi e dati del documento. Quello che hai compilato a mano andrà perso.
+        </ConfirmDialog>
+
+        <ModalImportaXml
+            v-model:show="showImportaXmlModal"
+            :files="filesPendenti"
+            :condominio-senza-codice-fiscale="props.condominio_senza_codice_fiscale"
+            :url-anagrafica-condominio="route('condomini.edit', { id: props.condominio.id })"
+            @aggiungi="gestisciFileMultipli"
+            @rimuovi="rimuoviFilePendente"
+            @seleziona="selezionaFilePendente"
+        />
+
+        <ModalCreaFornitoreDaXml
+            v-model:show="showCreaFornitoreModal"
+            :letto-da-xml="esitoFornitoreXml?.letto_da_xml ?? null"
+            :documento="{ modalita_pagamento: form.modalita_pagamento, data_documento: form.data_documento, data_scadenza: form.data_scadenza }"
+            :ritenuta="ritenutaLettaDaXml"
+            :base-imponibile-cents="baseRitenutaGrezzaCents"
+            @creato="gestisciFornitoreCreato"
+        />
+
+        <!-- Modale di successo — restyle in bianco/nero (03/09/2026), stesso registro
+             delle modali di conferma del prodotto: titolo a sinistra, nessuna icona
+             di stato ingombrante, si chiude solo dai due pulsanti (nessuna X: qui
+             uscire senza scegliere fra «torna all'elenco» e «registra un'altra» non
+             ha un significato chiaro). Quando il documento appena registrato veniva
+             da un lotto XML con altri file ancora da fare, la modale li elenca
+             invece di chiudersi e basta: è la risposta a «carico due documenti, ne
+             registro uno, dove trovo l'altro?» — non lo si cerca, riappare qui, una
+             riga per documento, cliccabile. -->
         <Teleport to="body">
             <div v-if="showSuccessModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-                <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center p-8 border border-slate-200 dark:border-slate-800 transform scale-100">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full overflow-hidden border border-slate-200 dark:border-slate-800"
+                    :class="filesInCodaPronti.length > 0 ? 'max-w-lg' : 'max-w-md'">
 
-                    <div class="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-5 border-4 border-emerald-100 dark:border-emerald-900/50">
-                        <CheckCircle class="w-10 h-10 text-emerald-500" />
+                    <div class="p-8" :class="filesInCodaPronti.length > 0 ? 'pb-5' : ''">
+                        <h3 class="font-black text-slate-900 dark:text-slate-100 text-2xl">
+                            {{ filesInCodaPronti.length > 0 ? 'Fattura registrata' : 'Operazione completata' }}
+                        </h3>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mt-3">
+                            <template v-if="filesInCodaPronti.length > 0">
+                                Il documento e le coperture contabili sono a posto. Resta{{ filesInCodaPronti.length > 1 ? 'no' : '' }}
+                                {{ filesInCodaPronti.length }} {{ filesInCodaPronti.length > 1 ? 'documenti' : 'documento' }} da rivedere in questo lotto.
+                            </template>
+                            <template v-else>
+                                Il documento e le coperture contabili sono stati registrati e bilanciati correttamente.
+                            </template>
+                        </p>
                     </div>
 
-                    <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-2">Operazione completata</h3>
-                    <p class="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
-                        Il documento e le coperture contabili sono stati registrati e bilanciati correttamente.
-                    </p>
+                    <!-- Lotto: i documenti ancora da registrare — riga cliccabile per intero,
+                         nessun cestino qui: si rimuove tornando alla lista di triage. -->
+                    <div v-if="filesInCodaPronti.length > 0" class="px-8 pb-6 space-y-2 max-h-64 overflow-y-auto">
+                        <button v-for="voce in filesInCodaPronti" :key="voce.file.name + voce.file.size"
+                            type="button"
+                            class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left"
+                            @click="continuaConProssimo(voce)">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                                    {{ voce.esito!.fornitore.letto_da_xml.denominazione }}
+                                </p>
+                                <p class="text-xs text-slate-400 truncate">
+                                    n. {{ voce.esito!.documento.numero_documento }} · {{ euro(totaleLordoStimatoCents(voce.esito!)) }}
+                                </p>
+                            </div>
+                            <ChevronRight class="w-4 h-4 text-slate-300 shrink-0" />
+                        </button>
+                    </div>
 
-                    <div class="flex flex-col gap-3">
-                        <!--
-                            Il reset avviene qui, al click esplicito dell'utente,
-                            non in onSuccess: il comportamento è più leggibile e prevedibile.
-                        -->
-                        <Button
-                            @click="() => { form.reset(); showSuccessModal = false; }"
-                            class="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[11px] shadow-lg shadow-emerald-600/20 transition-all">
-                            Registra un'altra fattura
-                        </Button>
+                    <div class="px-8 pb-8 flex justify-end" :class="filesInCodaPronti.length > 0 ? 'pt-1' : ''">
+                        <div class="flex flex-col-reverse sm:flex-row sm:gap-3 gap-2">
+                            <Button
+                                variant="outline"
+                                @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }))"
+                                class="h-11 px-6 rounded-xl font-bold">
+                                Torna all'elenco
+                            </Button>
 
-                        <Button
-                            variant="ghost"
-                            @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }))"
-                            class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                            Torna all'elenco fatture
-                        </Button>
+                            <!--
+                                Solo quando non resta nulla del lotto: se c'è ancora un
+                                documento da rivedere la CTA è una riga qui sopra, un secondo
+                                bottone "registrane un'altra" accanto sarebbe ambiguo su quale
+                                dei due percorsi imbocca.
+                            -->
+                            <Button
+                                v-if="filesInCodaPronti.length === 0"
+                                @click="() => { resettaFormPerNuovoDocumento(); showSuccessModal = false; }"
+                                class="h-11 px-6 rounded-xl font-bold">
+                                Registra un'altra
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>

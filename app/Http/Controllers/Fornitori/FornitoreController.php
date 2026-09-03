@@ -24,6 +24,7 @@ use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -116,10 +117,24 @@ class FornitoreController extends Controller
      * and creates the default bank account if an IBAN is provided.
      *
      * @param CreateFornitoreRequest $request Validated request data
-     * @return RedirectResponse Redirects to index with success/error message
+     * @return RedirectResponse|JsonResponse Redirects to index with success/error message
      * @since v1.9.0
+     *
+     * ⚠️ **Stesso endpoint, due esiti — negoziato sull'Accept, non duplicato.**
+     * Aggiunto aprendo la riprogettazione della UI di importazione XML (02/09/2026):
+     * il fornitore letto da un XML e non ancora in anagrafica va creato **senza
+     * lasciare la pagina** di registrazione della fattura, e `store()` fin qui
+     * rispondeva sempre con un redirect verso `admin.fornitori.index` — corretto per
+     * il form a pagina intera, ma per una chiamata da un modale significherebbe
+     * seguire il redirect e ricevere HTML al posto del fornitore appena creato.
+     *
+     * `CreateFornitoreRequest`, la creazione, gli effetti collaterali (referente,
+     * conto corrente) restano **identici in entrambi i casi**: è la stessa strada,
+     * non una seconda che rischia di divergere da questa — il commento su
+     * `anagrafica_id`/`ruolo` qui sotto ricorda cosa costa avere due strade per la
+     * stessa cosa.
      */
-    public function store(CreateFornitoreRequest $request): RedirectResponse
+    public function store(CreateFornitoreRequest $request): RedirectResponse|JsonResponse
     {
 
         // Otteniamo i dati validati.
@@ -154,17 +169,30 @@ class FornitoreController extends Controller
 
             DB::commit();
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'id' => $fornitore->id,
+                    'ragione_sociale' => $fornitore->ragione_sociale,
+                ], 201);
+            }
+
             return to_route('admin.fornitori.index')->with(
                 $this->flashSuccess(__('fornitori.success_create_fornitore'))
             );
 
         } catch (\Throwable $e) {
             DB::rollback();
-            
+
             Log::error('Error creating fornitore', [
                 'message'       => $e->getMessage(),
                 'trace'         => $e->getTraceAsString(),
             ]);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'errore' => __('fornitori.error_create_fornitore'),
+                ], 500);
+            }
 
             return to_route('admin.fornitori.index')->with(
                 $this->flashError(__('fornitori.error_create_fornitore'))

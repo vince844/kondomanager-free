@@ -188,10 +188,30 @@ class StoreFatturaRequest extends FormRequest
                     }
 
                     $isSopravvenienza = filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                    if (!$isSopravvenienza && empty($riga['conto_id'])) {
+
+                    // ⚠️ **Una riga da € 0,00 non chiede nessun capitolo, e non è un caso di
+                    // confine.** Cinque degli undici XML veri del collaudo portano righe
+                    // puramente descrittive — «PROTOCOLLO 10000-2025», «Riga ausiliaria
+                    // contenente informazioni tecniche» — con importo nullo: sono contenuto
+                    // del documento, non spese, e pretendere che l'amministratore le collochi
+                    // a budget è un attrito senza motivo, per giunta spiegato con un messaggio
+                    // che parla di capitolo obbligatorio senza dire perché lo chieda per zero
+                    // euro (Fase 1-bis, reperto 3).
+                    //
+                    // ⚠️ La guardia gemella di `UpdateFatturaRequest` chiede una cosa
+                    // **diversa** (esenta le righe con `immobile_id`, non le sopravvenienze):
+                    // le due non vanno unificate, va aggiunta a ognuna la sua esenzione.
+                    $importoNullo = (float) ($riga['importo_imponibile'] ?? 0) === 0.0;
+
+                    if (!$isSopravvenienza && !$importoNullo && empty($riga['conto_id'])) {
+                        // ⚠️ «Fuori preventivo» e non «imprevista»: è la parola che l'amministratore
+                        // ha davanti sul pulsante che attiva questo stato (FatturaRegisterNew.vue,
+                        // riquadro della riga). Il campo si chiama `is_sopravvenienza` e il messaggio
+                        // ne ricalcava il nome tecnico, mandando a cercare una spunta «imprevista»
+                        // che sullo schermo non esiste — segnalato da Vincenzo il 03/09/2026.
                         $validator->errors()->add(
                             "righe.{$idx}.conto_id",
-                            'Il capitolo di spesa è obbligatorio per righe non contrassegnate come impreviste.'
+                            'Il capitolo di spesa è obbligatorio, oppure segna la riga come «fuori preventivo».'
                         );
                     }
                 }

@@ -23,9 +23,17 @@ namespace App\Services\Import\Canonical;
 final readonly class CanonicalSoggetto
 {
     /**
-     * @param  list<string>  $telefoni  come arrivano: non normalizzati, perché `331 / 1053945` e
-     *                                  `377-19.17.332` sono entrambi numeri veri scritti male, e
-     *                                  normalizzarli qui significherebbe inventare un formato
+     * @param  list<string>  $telefoni  come arrivano: non normalizzati, perché `331 / 0000001` e
+     *                                  `377-00.00.002` sono entrambi numeri scritti male dalla
+     *                                  stessa anagrafica, e normalizzarli qui significherebbe
+     *                                  inventare un formato
+     *
+     * ⚠️ **I due esempi qui sopra sono finti, e devono restarlo.** Fino al 02/09/2026
+     * erano due numeri di telefono **veri**, arrivati dall'export Danea da cui nascono le
+     * fixture e sopravvissuti all'anonimizzazione proprio perché erano stati tenuti apposta
+     * come esempi di «formattazione disordinata reale»: il repository è pubblico, e un
+     * docblock si legge su GitHub senza nemmeno clonare. Un esempio di dato malformato si
+     * costruisce, non si preleva.
      * @param  array<string, string|null>|null  $recapitoSpedizioni
      */
     public function __construct(
