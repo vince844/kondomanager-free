@@ -63,7 +63,15 @@ class ImportaFatturaXmlController extends Controller
         // ⚠️ Un lotto (più `FatturaElettronicaBody`) è ammesso dallo schema, ma questa
         // porta ne precompila **una sola**: il modulo di registrazione è per un
         // documento alla volta. Il resto del lotto non si perde silenziosamente — va
-        // dichiarato, non scartato senza dirlo (Coda: import multiplo è la beta.16).
+        // dichiarato, non scartato senza dirlo.
+        //
+        // ⛔ **Il rimando alla beta.16 è stato tolto il 04/09/2026, perché era falso:**
+        // quella beta ha chiuso le Code 116, 117 e 114 e non ha toccato il lotto. È
+        // diventata la **Coda 128**, e con un'ammissione che qui va scritta: l'avviso a
+        // schermo dice «gli altri vanno importati a parte», e **non si può fare** —
+        // ricaricando lo stesso file si riottiene sempre il primo documento. È una
+        // promessa che il programma non mantiene. Misurato: **zero degli undici file
+        // veri di collaudo è un lotto**, quindi è raro, ma raro non vuol dire onesto.
         $fattura = $fatture[0];
 
         // ⚠️ **Decisione del 02/09/2026**: l'importazione resta dentro un condominio
