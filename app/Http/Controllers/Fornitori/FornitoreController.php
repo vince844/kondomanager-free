@@ -145,7 +145,13 @@ class FornitoreController extends Controller
             DB::beginTransaction();
 
             // 1. Creazione del Fornitore (i campi fiscali verranno salvati in automatico se presenti in $data)
-            $fornitore = Fornitore::create($data);
+            //
+            // ⚠️ `ritenuta_decisa_il` si scrive qui e non arriva dal modulo: non è un campo che
+            // l'amministratore compila, è la registrazione del fatto che **ha risposto**. Alla
+            // creazione ha sempre risposto, anche quando la risposta è «non soggetto a ritenuta»
+            // — ed è proprio quel «no» che senza questa riga resterebbe indistinguibile da un
+            // silenzio (Coda 116).
+            $fornitore = Fornitore::create($data + ['ritenuta_decisa_il' => now()]);
 
             // 2. Associazione dell'Anagrafica come referente (se presente)
             if (!empty($data['anagrafica_id'])) {
@@ -267,6 +273,16 @@ class FornitoreController extends Controller
             DB::beginTransaction();
 
             // 1. Aggiorna i dati del fornitore (inclusi i campi fiscali e lo stato)
+            //
+            // ⚠️ La data della decisione si aggiorna **solo se il riquadro fiscale è stato
+            // toccato**: chi sta cambiando l'IBAN non si è pronunciato sulla ritenuta, e
+            // segnare quella scheda come decisa registrerebbe una risposta che nessuno ha
+            // dato. È lo stesso criterio della presa d'atto di ieri, e viene dallo stesso
+            // trait proprio perché i due non possano divergere.
+            if ($request->costituisceUnaPresaDiPosizione($fornitore)) {
+                $validated['ritenuta_decisa_il'] = now();
+            }
+
             $fornitore->update($validated);
 
             // 2. I rappresentanti non si toccano da qui, ed è una rimozione voluta della beta.7.

@@ -364,6 +364,21 @@ class ImportaFatturaXmlController extends Controller
                 'nazione' => $fattura->fornitoreNazione,
                 'email' => $fattura->fornitoreEmail,
                 'regime_forfetario' => $fattura->fornitoreRegimeFiscale === 'RF19',
+
+                // ⚠️ **I due indizi della Coda 116, e sono indizi: non decidono niente.**
+                // Servono a *proporre* una risposta quando il modulo deve chiedere se quel
+                // fornitore sia soggetto a ritenuta — perché il file, da solo, non lo dice
+                // mai: l'obbligo è del condominio come sostituto d'imposta, non del
+                // fornitore che lo dichiara in fattura. Sei degli undici file veri non hanno
+                // nessun blocco `<DatiRitenuta>`, e uno di quei sei è un geometra su cui la
+                // ritenuta del 20% è dovuta.
+                //
+                // Un cedente **persona fisica** che fattura a un condominio è quasi sempre un
+                // professionista; una **cassa previdenziale** dichiarata lo conferma. Nessuno
+                // dei due è una prova, ed è la ragione per cui la risposta la dà comunque
+                // l'amministratore.
+                'e_persona_fisica' => $fattura->fornitoreEPersonaFisica,
+                'ha_cassa_previdenziale' => $fattura->cassePrevidenziali !== [],
             ],
         ];
     }

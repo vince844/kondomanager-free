@@ -164,4 +164,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // colonne** degli indici, non la loro esistenza, e reggono anche lo stato «tutti e due
     // presenti» che un'interruzione fra i due statement lascia — provato a mano ricreandolo.
     '2026_09_02_090000_scope_unique_fattura_al_condominio',
+    // Aggiunta nella beta.16 (Coda 116): una colonna sola su `fornitori`, per distinguere «no»
+    // da «non gliel'ha mai chiesto nessuno». Rischio basso — un `ADD COLUMN` nullable su una
+    // tabella popolata — ma porta un **backfill**, ed è quello a doverla far entrare qui: la
+    // guardia toglie e rifà la colonna, quindi una riesecuzione ricalcola anche il backfill.
+    // È idempotente perché il criterio non dipende dallo stato precedente della colonna, ma
+    // solo da `soggetto_ritenuta` / `tipo_ritenuta` / `regime_forfetario`, che il backfill non
+    // tocca: rieseguirla dà lo stesso insieme di fornitori marcati come già decisi.
+    '2026_09_04_090000_add_ritenuta_decisa_il_to_fornitori_table',
 ]);

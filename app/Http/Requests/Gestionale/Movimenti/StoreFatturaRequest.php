@@ -4,6 +4,7 @@ namespace App\Http\Requests\Gestionale\Movimenti;
 
 use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
+use App\Enums\Fiscale\TipoRitenuta;
 use App\Models\Fornitore;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -51,6 +52,14 @@ class StoreFatturaRequest extends FormRequest
             
             'iban_fornitore'     => 'nullable|string',
             'dati_extra'         => 'nullable|array',
+
+            // ⚠️ **Non è un campo della fattura: è la risposta a una domanda sul FORNITORE**
+            // (Coda 116), chiesta una volta sola quando nessuno si è mai pronunciato sulla sua
+            // ritenuta. Viaggia con la fattura perché è lì che la domanda viene fatta — nel
+            // momento in cui serve — ma il controller la scrive sull'anagrafica, non qui.
+            'posizione_ritenuta'        => 'nullable|array',
+            'posizione_ritenuta.soggetto' => 'nullable|boolean',
+            'posizione_ritenuta.tipo'   => ['nullable', Rule::in(array_column(TipoRitenuta::cases(), 'value'))],
             // ⚠️ `extensions:`, non `mimes:` — stessa correzione di StoreFatturaDocumentoRequest,
             // dalla revisione avversariale della beta.12 (Coda 102). `mimes:` guarda il
             // contenuto: una busta .p7m è ASN.1 generico, `finfo` la vede
@@ -229,7 +238,55 @@ class StoreFatturaRequest extends FormRequest
             }
 
             $this->guardiaNaturaPercipienteMancante($validator);
+            $this->guardiaPosizioneRitenutaMaiDecisa($validator);
         });
+    }
+
+    /**
+     * Un fornitore su cui **nessuno si è mai pronunciato** non passa senza una risposta.
+     *
+     * ## Perché è un obbligo e non un avviso
+     *
+     * ⚠️ **L'assenza del blocco `<DatiRitenuta>` non significa «nessuna ritenuta».** L'obbligo
+     * è del condominio come sostituto d'imposta, non del fornitore che lo scrive in fattura:
+     * sei degli undici XML veri non hanno quel blocco, e uno dei sei è un geometra su cui il
+     * 20% è dovuto. Oggi quel documento si registrava a netto pieno, in silenzio — il
+     * condominio pagava tutto al fornitore e all'Erario non versava niente, restandone
+     * responsabile.
+     *
+     * Un avviso ignorabile non basta, e la ragione è misurabile: ciò che si perde ignorandolo
+     * è denaro dovuto all'Erario, e il rimedio è più caro del gesto. Ma **non è nemmeno un
+     * blocco duro**, perché la risposta arriva già proposta dal documento: nel caso comune è
+     * una conferma, ed è chiesta **una volta sola nella vita del fornitore** — la data in
+     * `fornitori.ritenuta_decisa_il` è ciò che impedisce alla domanda di tornare.
+     *
+     * ⛔ **Non si applica ai fornitori già classificati**, che sono la stragrande maggioranza:
+     * chi ha già una posizione dichiarata non viene interrotto, mai.
+     */
+    private function guardiaPosizioneRitenutaMaiDecisa($validator): void
+    {
+        $fornitore = Fornitore::find($this->input('fornitore_id'));
+
+        if (! $fornitore || ! $fornitore->posizioneRitenutaMaiDecisa()) {
+            return;
+        }
+
+        // La risposta è arrivata: la validazione è soddisfatta. Ad applicarla al fornitore è
+        // il controller, non questa classe — una FormRequest che scrive a database sarebbe
+        // una sorpresa dentro un oggetto che tutti leggono come «controlla e basta».
+        if ($this->has('posizione_ritenuta.soggetto')) {
+            return;
+        }
+
+        $validator->errors()->add(
+            'posizione_ritenuta.soggetto',
+            sprintf(
+                'Su %s nessuno si è ancora pronunciato: dì se è soggetto a ritenuta d\'acconto. '
+                .'La fattura non lo dichiara mai — l\'obbligo è del condominio, non del fornitore — '
+                .'e la domanda ti viene fatta una volta sola.',
+                $fornitore->ragione_sociale
+            )
+        );
     }
 
     /**

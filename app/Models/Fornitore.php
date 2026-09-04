@@ -84,6 +84,7 @@ class Fornitore extends Model
         'forfetario_riferimento',
         'provvigioni_base_ridotta',
         'provvigioni_dichiarazione_il',
+        'ritenuta_decisa_il',
     ];
 
     /**
@@ -107,7 +108,41 @@ class Fornitore extends Model
         'forfetario_dichiarato_il'      => 'date',
         'provvigioni_base_ridotta'      => 'boolean',
         'provvigioni_dichiarazione_il'  => 'date',
+        'ritenuta_decisa_il'            => 'datetime',
     ];
+
+    /**
+     * Nessuno si è mai pronunciato sulla ritenuta di questo fornitore.
+     *
+     * ⚠️ **Non è la stessa cosa di «non è soggetto a ritenuta»**, ed è tutta la ragione per cui
+     * `ritenuta_decisa_il` esiste (Coda 116). `soggetto_ritenuta` è `NOT NULL default 0`: un
+     * fornitore appena censito e uno per cui la risposta è davvero no hanno lo stesso valore in
+     * colonna, quindi da soli non si distinguono. Con la data si distinguono, e la domanda si
+     * può fare **una volta sola** invece che a ogni fattura — che è la differenza fra un avviso
+     * che si legge e uno che in una settimana nessuno guarda più.
+     *
+     * ⛔ **Non va usato per decidere se applicare la ritenuta**: quello lo dicono
+     * `soggetto_ritenuta` e `tipo_ritenuta`, e continuano a dirlo da soli. Questo campo dice
+     * soltanto se qualcuno li ha guardati.
+     */
+    public function posizioneRitenutaMaiDecisa(): bool
+    {
+        // ⚠️ **La data non è l'unica prova che qualcuno abbia deciso, ed è la correzione del
+        // 04/09/2026.** La prima stesura guardava solo `ritenuta_decisa_il`, e chiedeva la
+        // posizione anche di fornitori palesemente classificati — quelli nati fuori dal
+        // modulo: un seeder, una factory, un'importazione. Il difetto si è visto subito,
+        // perché quattro test che registrano fatture sono diventati rossi su fornitori che
+        // la ritenuta ce l'avevano dichiarata.
+        //
+        // La regola vera: un «sì» si vede dai campi che lo esprimono, e non ha bisogno di una
+        // data che lo confermi. È il «no» a non avere modo di distinguersi dal silenzio, ed è
+        // per quello che la colonna esiste. Il backfill della migrazione resta utile — mette
+        // la data dove la decisione c'era — ma non è più l'unica cosa che regge la guardia.
+        return $this->ritenuta_decisa_il === null
+            && ! $this->soggetto_ritenuta
+            && $this->tipo_ritenuta === null
+            && ! $this->regime_forfetario;
+    }
 
     /**
      * Relazione: Un fornitore appartiene a una Categoria.

@@ -7,6 +7,132 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.16] - Quello Che La Fattura Non Dice
+
+🚨 **Tocca il database:** una colonna su `fornitori`, `ritenuta_decisa_il`. Migrazione idempotente,
+nel dataset di `UpgradeMigrationsRerunTest`, con backfill.
+
+È l'ultima dell'arco cominciato con la beta.11, e chiude tre code aperte dal collaudo della .14 —
+la **116**, la **117** e la **114**. Il titolo fa il paio con quello della .14, *Quello Che C'Era
+Scritto Nel File*, e non è un vezzo: quella beta ha imparato a leggere ciò che il documento
+dichiara, questa si occupa di ciò che **non dichiara mai**.
+
+⚠️ **La cartella di XML e lo smistamento fra condomìni non sono qui.** Erano il piano scritto per
+la .16, e aprendola sono stati misurati: nessuno dei due chiude un difetto — allargano. La ragione
+sta in roadmap; in due righe: servono una schermata nuova fuori dal contesto condominio, un
+permesso nuovo e una tabella, e oggi lo smistamento automatico funzionerebbe su **2 condomìni su
+8**, perché quattro non hanno il codice fiscale e due hanno stringhe che codici fiscali non sono.
+
+### La ritenuta che la fattura non dichiara (Coda 116)
+
+**Un documento senza blocco `<DatiRitenuta>` non significa che la ritenuta non sia dovuta.**
+L'obbligo è del condominio come sostituto d'imposta, non del fornitore che la scrive in fattura —
+ed è l'unico buco dell'importazione XML che **non si chiude leggendo meglio il file**: nessun campo
+può rispondere.
+
+🔬 **Misurato sugli undici XML veri: sei non hanno quel blocco.** Uno dei sei è il decimo file —
+un geometra, cassa previdenziale TC03, cedente persona fisica — su cui il 20% è dovuto. Finora
+quella fattura si registrava a netto pieno, in silenzio: il condominio pagava tutto al fornitore e
+all'Erario non versava niente, restandone responsabile.
+
+Adesso, la prima volta che si registra una fattura di un fornitore mai classificato, il modulo
+chiede se sia soggetto a ritenuta. **Una volta sola nella vita di quel fornitore**, e la risposta
+si applica **prima** della registrazione: la trattenuta vale già su quel documento, non sul
+successivo.
+
+### «No» e «non gliel'ha mai chiesto nessuno» erano la stessa cosa
+
+`fornitori.soggetto_ritenuta` è `NOT NULL default 0`: un fornitore appena censito e uno per cui la
+risposta è davvero no avevano **lo stesso valore in colonna**. Misurato in sviluppo: 9 su 13 in
+quello stato indistinto. Senza distinguerli, un «no» sarebbe tornato indistinguibile da un
+silenzio e la domanda si sarebbe ripresentata alla fattura dopo — cioè un avviso che non si può
+chiudere, che è quello che si impara a saltare.
+
+Da qui la colonna. ⚠️ **La prima stesura guardava solo quella data, ed era troppo stretta**: il
+programma chiedeva la posizione anche di fornitori palesemente classificati, quelli nati da un
+seeder o da un'importazione. Quattro test che registrano fatture sono diventati rossi e hanno
+dettato la regola giusta — **un «sì» si vede dai campi che lo esprimono e non ha bisogno di una
+data; è il «no» a non avere modo di distinguersi dal silenzio.**
+
+### La domanda arriva già con una risposta
+
+⛔ **Proposta, non decisione.** Il file porta indizi e vengono usati per proporre: `RF19` →
+forfetario, la ritenuta non si applica ed è un fatto dichiarato dal documento; un contributo di
+cassa previdenziale, o un cedente **persona fisica** invece che società, → lavoro autonomo al 20%,
+e lì è un indizio, non una prova. Ogni proposta dice **da dove viene** e resta modificabile.
+
+Per il terzo segnale il parser è stato allargato: `fornitoreEPersonaFisica` è un campo suo e non si
+deduce dalla stringa del nome, perché `fornitoreDenominazione` compone «Mario Rossi» e «ROSSI SRL»
+nello stesso modo. Nell'XML la distinzione è netta — `<Denominazione>` oppure `<Nome>`+`<Cognome>`
+— e va portata fin dentro il DTO invece che ricostruita a valle indovinando sui suffissi.
+
+### Quello che ha trovato il collaudo a video, e che nessun test poteva trovare
+
+🚨 **L'anteprima diceva un numero e il salvataggio ne faceva un altro.** Rispondendo «è soggetto
+a ritenuta, lavoro autonomo 20%», il riquadro dei totali continuava a dire **«Nessuna Ritenuta
+€ 0,00»** e il netto restava l'intero: `risolviRegimeRitenuta()` legge `soggetto_ritenuta`
+**dall'anagrafica salvata**, che su un fornitore mai classificato è falsa per definizione. La
+fattura poi si registrava con la trattenuta giusta — il controller applica la risposta prima —
+ma chi premeva «Registra» aveva davanti un altro importo.
+
+⚠️ **I test lato server non potevano prenderlo**: guardano la fattura a database, dove il numero
+era corretto. Il difetto stava **fra la risposta e lo schermo**, cioè dove guarda solo il collaudo
+a video. Corretto: l'anteprima usa il fornitore «come sarà dopo aver risposto», e su € 1.000,00
+mostra € 200,00 al 20% e € 40,00 al 4%.
+
+⛔ **E la prima stesura dei test non proteggeva la correzione.** Ricostruivano la logica del
+componente con una **replica**, in un file di libreria: riportando il `.vue` al difetto restavano
+tutti verdi. Sono stati riscritti sul componente montato davvero — lì la controprova morde su due
+test — e i vecchi **cancellati**, perché un test che sembra una protezione e non lo è è peggio di
+uno che manca. La lezione sta nel flusso di lavoro.
+
+Nello stesso giro, tre correzioni più piccole, tutte viste con gli occhi e non dai test:
+
+- **La stessa frase due volte** nel riquadro della domanda, a tre righe di distanza.
+- **Si parlava di un documento che non c'era**: registrando a mano, senza caricare nessun XML, la
+  spiegazione diceva «il documento non dice niente sulla natura del fornitore».
+- **Il menù del regime era quello nativo del sistema operativo** e stonava con la pagina: ora è
+  `v-select`, con le stesse etichette dell'anagrafica.
+
+### Un file XML non può più mettere in ginocchio il server (Coda 117)
+
+Non c'era **nessun tetto** al numero di righe lette: un XML formalmente valido da 10 MB produce
+**81.284 righe e 111 MB di picco**, su installazioni che spesso hanno `memory_limit=128M`.
+
+Il numero scelto è **mille**, e viene dai file veri: gli undici del collaudo hanno **al massimo 6
+righe**, le tre fixture ufficiali dell'Agenzia da 1 a 3. È oltre centosessanta volte il massimo mai
+osservato, quindi passa senza discutere anche una bolletta con una riga per contatore.
+
+⚠️ **Il tetto scatta prima che il file diventi un albero**, contando sulla stringa grezza come fa
+`rifiutaDoctype()`. Il disegno proposto quando la coda è stata aperta lo faceva scattare **dopo**
+ed era stato bocciato: a quel punto la memoria è già spesa. C'è un test apposta per quell'ordine —
+un file troppo lungo *e* malformato: se l'ordine è giusto vince il tetto, se no vince l'errore di
+sintassi. Senza quel test, spostare la guardia nel posto sbagliato non avrebbe fatto diventare
+rosso niente.
+
+### Il controllo sul codice fiscale del condominio (Coda 114)
+
+L'avviso dopo un'importazione diceva solo che senza codice fiscale «non si emettono documenti
+fiscali». Vero, e incompleto da quando esiste la lettura degli XML: senza quel dato salta anche la
+guardia che rifiuta una fattura intestata a un altro condominio — l'errore più caro da scoprire
+dopo, perché si porta dietro scritture in partita doppia e budget. Quel verificatore non aveva
+nessun test: adesso ne ha tre.
+
+### Corretto anche
+
+- **`TipoRitenuta` usato senza essere importato** in `StoreFatturaRequest`, in una riga che sarebbe
+  esplosa a ogni registrazione. ⚠️ `php -l` non lo vede, e i 22 test di
+  `FatturaPassivaControllerTest` sono passati lo stesso — **perché nessuno di loro registra una
+  fattura via HTTP**: `fatture.store` in quel file non compare. È un buco di copertura, e resta.
+- **Lo strumento con cui si misura il contrasto in tema scuro era cieco da diciassette giorni**:
+  leggeva i colori con un'espressione che dà per scontato `rgb()`, mentre Tailwind 4 emette
+  `oklch`. Ogni testo di palette su fondo scuro collassava sullo stesso valore, e in chiaro
+  *nascondeva* difetti veri. Trovato usandolo, non rileggendolo. Ora la conversione la fa il
+  browser. Sta in `docs/flusso_di_lavoro_rilascio.md`, insieme ad altri dieci rilievi della
+  rilettura di apertura.
+
+---
+
 ## [1.11.0-beta.15] - Il Codice Che Nessuno Aveva Scelto
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova.

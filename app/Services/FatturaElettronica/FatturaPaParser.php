@@ -48,6 +48,27 @@ use DOMXPath;
 class FatturaPaParser
 {
     /**
+     * Quante righe di dettaglio si accetta di leggere da un file.
+     *
+     * ⚠️ **Il numero è giustificato dai file veri, non scelto a occhio.** Gli undici XML del
+     * collaudo — fatture ricevute da condomìni amministrati — hanno **al massimo 6 righe**, 27
+     * in tutto; le tre fixture ufficiali dell'Agenzia ne hanno da 1 a 3. Mille è quindi oltre
+     * **centosessanta volte** il massimo mai osservato, e lascia passare senza discutere anche
+     * i casi che questa guardia non deve toccare: una bolletta di utenze con una riga per
+     * contatore, o un fornitore che consolida un anno di interventi.
+     *
+     * Dall'altra parte c'è la misura del 03/09/2026 che ha aperto la Coda 117: un XML
+     * formalmente valido da 10 MB di `<DettaglioLinee>` minime produce **81.284 righe** e
+     * **111 MB di picco**, su installazioni che spesso hanno `memory_limit=128M`.
+     *
+     * ⚠️ **Il tetto è una costante e non una voce di configurazione, di proposito.** Una
+     * manopola a mille righe non la troverebbe nessuno, e chi la trovasse non saprebbe su
+     * quale numero spostarla; un file legittimo che superi questo tetto è più probabilmente
+     * un segnale che qualcosa non va nel file, e va guardato invece che fatto passare.
+     */
+    private const MAX_RIGHE = 1000;
+
+    /**
      * @return FatturaPaFattura[]
      *
      * @throws FatturaPaParseException
@@ -57,6 +78,14 @@ class FatturaPaParser
         $xml = $this->estraiXml($content, $nomeFile);
 
         $this->rifiutaDoctype($xml);
+
+        // ⚠️ **Prima del DOM, e non è un dettaglio di ordine.** Il disegno proposto quando la
+        // Coda 117 è stata aperta faceva scattare il tetto dopo, ed è stato bocciato da un
+        // critico avversariale per una ragione dirimente: a quel punto `parse()` ha già
+        // costruito tutto, quindi la memoria è già stata spesa e la guardia protegge soltanto
+        // ciò che viene dopo. Qui si conta sulla stringa grezza — come fa `rifiutaDoctype()`,
+        // che è il precedente giusto in casa — e un file patologico non diventa mai un albero.
+        $this->rifiutaTroppeRighe($xml);
 
         $dom = new DOMDocument();
         $precedente = libxml_use_internal_errors(true);
@@ -137,6 +166,40 @@ class FatturaPaParser
      * file da 49 KB bastava a uccidere il processo con memory_limit a
      * 128M, e alzando il limite bastava scalare il payload.
      */
+    /**
+     * Rifiuta un file che dichiara più righe di quante se ne accetti di leggere.
+     *
+     * ⚠️ **La conta si fa sulla stringa, non sul DOM**, perché il DOM è esattamente ciò che si
+     * sta evitando di costruire. Verificato il 04/09/2026 su tutti e 25 gli XML in
+     * `tests/Fixtures/fatturapa/`: la conta grezza e quella per XPath danno lo stesso numero,
+     * zero discordanze.
+     *
+     * Il prefisso di namespace è ammesso dall'espressione anche se nessuno dei venticinque file
+     * lo usa su questo elemento: senza, un file prefissato sfuggirebbe al conteggio e la
+     * guardia si aprirebbe da sé, che è il modo in cui una guardia smette di esistere senza
+     * che nessun test se ne accorga.
+     */
+    private function rifiutaTroppeRighe(string $xml): void
+    {
+        $righe = preg_match_all('/<(?:[A-Za-z0-9_.-]+:)?DettaglioLinee[\s>]/', $xml);
+
+        if ($righe > self::MAX_RIGHE) {
+            // ⚠️ **Un file rifiutato senza spiegazione è peggio del difetto che la guardia
+            // chiude.** Il messaggio dice quante righe ha il file, quante se ne leggono, e
+            // che cosa significa un numero del genere — perché l'amministratore non può
+            // «spezzare il file», e mandarlo a cercare una soluzione che non esiste sarebbe
+            // il modo di far sembrare rotto il programma invece del documento.
+            throw new FatturaPaParseException(sprintf(
+                'Il file dichiara %s righe di dettaglio, e se ne leggono al massimo %s. '
+                .'Una fattura di condominio non arriva a numeri simili nemmeno con una riga per '
+                .'contatore: molto probabilmente il documento è corrotto o non è quello che sembra. '
+                .'Aprilo per controllarlo prima di riprovare.',
+                number_format($righe, 0, ',', '.'),
+                number_format(self::MAX_RIGHE, 0, ',', '.'),
+            ));
+        }
+    }
+
     private function rifiutaDoctype(string $xml): void
     {
         // ⚠️ **Il prologo si delimita, non si tronca a una lunghezza fissa.**
@@ -268,6 +331,9 @@ class FatturaPaParser
             fornitorePartitaIvaPaese: $this->testo($xpath, './DatiAnagrafici/IdFiscaleIVA/IdPaese', $cedente),
             fornitoreCodiceFiscale: $this->testo($xpath, './DatiAnagrafici/CodiceFiscale', $cedente),
             fornitoreDenominazione: $this->denominazione($xpath, $cedente),
+            // Il fatto si legge dove è netto — quale elemento c'è nell'XML — e non dalla
+            // stringa composta, dove «Mario Rossi» e «ROSSI SRL» si somigliano troppo.
+            fornitoreEPersonaFisica: $this->testo($xpath, './DatiAnagrafici/Anagrafica/Denominazione', $cedente) === null,
             fornitoreIndirizzo: $this->testo($xpath, './Sede/Indirizzo', $cedente),
             fornitoreCap: $this->testo($xpath, './Sede/CAP', $cedente),
             fornitoreComune: $this->testo($xpath, './Sede/Comune', $cedente),

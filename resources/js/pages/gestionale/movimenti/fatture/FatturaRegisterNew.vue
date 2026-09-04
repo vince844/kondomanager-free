@@ -27,6 +27,7 @@ import MoneyInput from '@/components/MoneyInput.vue';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
 import { calcolaTotali, risolviRegimeRitenuta } from '@/lib/gestionale/fatture/totali';
 import { confrontaRitenuta } from '@/lib/gestionale/fatture/confrontoRitenuta';
+import { proponiPosizioneRitenuta } from '@/lib/gestionale/fatture/posizioneRitenuta';
 import { euroToCents } from '@/lib/gestionale/fatture/money';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -720,6 +721,11 @@ const showSuccessModal = ref(false);
 
 const form = useForm({
     fornitore_id:       null as number | null,
+    // ⚠️ **Non è un campo della fattura: è la risposta a una domanda sul FORNITORE** (Coda
+    // 116). Viaggia con il documento perché è lì che la domanda si fa — nel momento in cui
+    // serve — ma il server la scrive sull'anagrafica. Resta `null` finché non si chiede, che
+    // è la stragrande maggioranza dei salvataggi.
+    posizione_ritenuta: null as { soggetto: boolean; tipo: string | null } | null,
     esercizio_id:       props.esercizio?.id || null,
     gestione_id:        null as number | null,
     tipo_documento:     'fattura',
@@ -880,11 +886,92 @@ const baseRitenutaGrezzaCents = computed(() => form.righe.reduce(
 const confronto = computed(() => confrontaRitenuta({
     ritenutaDaXml: ritenutaLettaDaXml.value,
     ritenutaModuloCents: totali.value.ritenuta_cents,
-    fornitore: selectedFornitore.value,
+    // Stessa ragione dei totali: se il file dichiara una ritenuta e qui si sta rispondendo
+    // «sì, soggetto», il confronto deve guardare la risposta e non l'anagrafica ancora vuota,
+    // altrimenti annuncia una discrepanza che l'amministratore ha appena chiuso.
+    fornitore: fornitoreConLaRisposta.value,
     tipoDocumento: form.tipo_documento,
     applicaRitenuta: applicaRitenutaEffective.value,
     daFile: provenienzaXml.value !== null,
 }));
+
+/**
+ * Il fornitore scelto è uno su cui **nessuno si è mai pronunciato** (Coda 116).
+ *
+ * ⚠️ Il flag arriva calcolato dal server: la regola — «non soggetto» e «mai chiesto» sono due
+ * cose diverse — vive in `Fornitore::posizioneRitenutaMaiDecisa()` e non va riscritta qui,
+ * altrimenti un giorno il modulo non chiederà ciò che il server pretende.
+ */
+/**
+ * I due regimi fra cui si può scegliere rispondendo alla domanda della Coda 116.
+ *
+ * ⚠️ Sono **due e non cinque**: sono gli unici che un condominio incontra davvero — l'appalto di
+ * opere e servizi e il lavoro autonomo. Provvigioni, non residenti e lavoro dipendente esistono
+ * nell'enum ma non si scelgono qui: metterli renderebbe la domanda un modulo fiscale invece che
+ * una risposta veloce, e chi ne ha bisogno passa dall'anagrafica del fornitore, dove ci sono
+ * tutti.
+ */
+const REGIMI_PROPONIBILI = [
+    // ⚠️ Le stesse parole che usa l'anagrafica (`TipoRitenuta::label()`), senza il rimando
+    // normativo fra parentesi: qui la colonna è stretta e «(art. 25-ter)» faceva tagliare la
+    // voce a metà, mentre chi risponde a questa domanda non sta cercando l'articolo di legge.
+    { value: 'appalto_4', label: 'Appalto di opere/servizi — 4%' },
+    { value: 'lavoro_autonomo_20', label: 'Lavoro autonomo — 20%' },
+];
+
+const posizioneDaChiedere = computed(() => selectedFornitore.value?.posizione_ritenuta_mai_decisa === true);
+
+/**
+ * La proposta, costruita da ciò che il documento dichiara.
+ *
+ * ⛔ **Proposta, non decisione**: nessun campo della fattura può dire se la ritenuta sia
+ * dovuta — l'obbligo è del condominio come sostituto d'imposta, non del fornitore che la
+ * scrive. Serve solo perché nel caso comune la risposta sia una conferma invece che una
+ * decisione da zero, e la spiegazione dice sempre da dove viene.
+ */
+/**
+ * Il fornitore **come sarà dopo che la risposta sarà salvata**, e non com'è adesso.
+ *
+ * ⚠️ **Senza questo l'anteprima mente, ed è stato trovato a video il 04/09/2026.** Rispondendo
+ * «è soggetto a ritenuta, lavoro autonomo 20%» il riquadro dei totali continuava a dire
+ * «Nessuna Ritenuta € 0,00» e il netto restava l'intero, perché `risolviRegimeRitenuta()`
+ * legge `soggetto_ritenuta` **dall'anagrafica salvata** — che per un fornitore mai classificato
+ * è falso per definizione. L'amministratore vedeva un numero e ne salvava un altro.
+ *
+ * ⛔ **I test Pest non potevano prenderlo**: guardano la fattura a database, dove la ritenuta
+ * c'era davvero perché il controller applica la risposta prima di registrare. Il difetto stava
+ * fra la risposta e lo schermo, cioè esattamente dove guarda solo il collaudo a video.
+ *
+ * Fuori dal caso della domanda restituisce il fornitore così com'è: non cambia niente per la
+ * stragrande maggioranza delle registrazioni.
+ */
+const fornitoreConLaRisposta = computed(() => {
+    const f = selectedFornitore.value;
+
+    if (!f || !posizioneDaChiedere.value || !form.posizione_ritenuta) {
+        return f;
+    }
+
+    return {
+        ...f,
+        soggetto_ritenuta: form.posizione_ritenuta.soggetto,
+        tipo_ritenuta: form.posizione_ritenuta.tipo,
+    };
+});
+
+const propostaPosizione = computed(() => proponiPosizioneRitenuta({
+    regime_forfetario: esitoFornitoreXml.value?.letto_da_xml?.regime_forfetario,
+    e_persona_fisica: esitoFornitoreXml.value?.letto_da_xml?.e_persona_fisica,
+    ha_cassa_previdenziale: esitoFornitoreXml.value?.letto_da_xml?.ha_cassa_previdenziale,
+}));
+
+// La proposta si scrive nel modulo appena la domanda compare, così il pulsante «Registra» non
+// viene rifiutato per un campo che l'amministratore vede già compilato davanti a sé.
+watch(posizioneDaChiedere, (serve) => {
+    form.posizione_ritenuta = serve
+        ? { soggetto: propostaPosizione.value.soggetto, tipo: propostaPosizione.value.tipo }
+        : null;
+}, { immediate: true });
 
 const hasSpesePrivate = computed(() => {
     if (!form.righe || !Array.isArray(form.righe)) return false;
@@ -902,7 +989,7 @@ const totali = computed(() => calcolaTotali({
     imponibile_pregresso:   form.imponibile_pregresso,
     aliquota_iva_pregressa: form.aliquota_iva_pregressa,
     righe:                  form.righe,
-    ritenuta:               risolviRegimeRitenuta(selectedFornitore.value, applicaRitenutaEffective.value),
+    ritenuta:               risolviRegimeRitenuta(fornitoreConLaRisposta.value, applicaRitenutaEffective.value),
 }));
 
 // Storico capitoli espanso
@@ -2023,6 +2110,71 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                              `nessun_confronto` copre i due casi più frequenti di tutti. Un
                              avviso che c'è sempre smette di essere letto in una settimana.
                              ═══════════════════════════════════════════════════════════════════ -->
+                        <!-- ⚠️ **La domanda che il file non può rispondere** (Coda 116).
+                             L'assenza di `<DatiRitenuta>` non significa «nessuna ritenuta»:
+                             l'obbligo è del condominio come sostituto d'imposta, non del
+                             fornitore che la dichiara in fattura. Sei degli undici file veri
+                             non hanno quel blocco, e uno dei sei è un geometra su cui il 20%
+                             è dovuto. Si chiede **una volta sola** nella vita del fornitore,
+                             con la risposta già proposta: nel caso comune è una conferma. -->
+                        <div v-if="posizioneDaChiedere && form.posizione_ritenuta" class="px-3 py-2.5 bg-indigo-50 dark:bg-indigo-950/20 rounded-lg border border-indigo-200 dark:border-indigo-900/40">
+                            <div class="flex items-start gap-2">
+                                <TriangleAlert class="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
+                                <div class="text-[11px] text-indigo-900 dark:text-indigo-300 space-y-2 w-full">
+                                    <p class="font-bold">
+                                        Su <template v-if="selectedFornitore">{{ selectedFornitore.ragione_sociale }}</template><template v-else>questo fornitore</template> nessuno si è ancora pronunciato.
+                                    </p>
+                                    <p>
+                                        La fattura non lo dichiara mai: la ritenuta d'acconto è un obbligo del
+                                        condominio, non del fornitore che la scrive in fattura. Te lo chiediamo una
+                                        volta sola, e la risposta resta sulla sua anagrafica.
+                                    </p>
+                                    <!-- ⚠️ **Solo se un documento c'è davvero.** Registrando a mano,
+                                         senza caricare nessun XML, la proposta cadeva nel ramo
+                                         «nessun segnale» e la frase parlava di «il documento» —
+                                         un documento che l'amministratore non ha mai aperto.
+                                         Trovato a video il 04/09/2026. -->
+                                    <p v-if="provenienzaXml" class="italic opacity-90">{{ propostaPosizione.spiegazione }}</p>
+
+                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+                                        <label class="flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                :checked="form.posizione_ritenuta.soggetto === false"
+                                                class="border-indigo-300"
+                                                @change="form.posizione_ritenuta = { soggetto: false, tipo: null }" />
+                                            <span>Non è soggetto a ritenuta</span>
+                                        </label>
+                                        <label class="flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                :checked="form.posizione_ritenuta.soggetto === true"
+                                                class="border-indigo-300"
+                                                @change="form.posizione_ritenuta = { soggetto: true, tipo: propostaPosizione.tipo ?? 'appalto_4' }" />
+                                            <span>È soggetto a ritenuta</span>
+                                        </label>
+
+                                        <!-- ⚠️ `v-select` e non un `<select>` nativo: il menù del
+                                             sistema operativo stona con tutta la pagina, ed è la
+                                             prima cosa che si nota a video. Osservazione di
+                                             Vincenzo, 04/09/2026. -->
+                                        <v-select
+                                            v-if="form.posizione_ritenuta.soggetto"
+                                            v-model="form.posizione_ritenuta.tipo"
+                                            :options="REGIMI_PROPONIBILI"
+                                            :reduce="(o: any) => o.value"
+                                            label="label"
+                                            :clearable="false"
+                                            :searchable="false"
+                                            append-to-body
+                                            class="premium-select text-xs w-full" />
+                                    </div>
+
+                                    <InputError :message="form.errors['posizione_ritenuta.soggetto']" class="mt-1" />
+                                </div>
+                            </div>
+                        </div>
+
                         <div v-if="confronto.stato === 'coincidono'" class="flex items-start gap-2 px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg border border-emerald-200 dark:border-emerald-900/40">
                             <ShieldCheck class="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                             <span class="text-[11px] text-emerald-800 dark:text-emerald-400">

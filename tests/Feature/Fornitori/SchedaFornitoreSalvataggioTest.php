@@ -464,3 +464,55 @@ it('e l\'aliquota scritta 4.00 invece di 4 non conta come blocco toccato', funct
         'telefono'          => '06 5550202',
     ]))->assertSessionHasNoErrors();
 });
+
+/*
+|--------------------------------------------------------------------------
+| «No» e «non gliel'ha mai chiesto nessuno» sono due cose diverse (Coda 116)
+|--------------------------------------------------------------------------
+|
+| `soggetto_ritenuta` è `NOT NULL default 0`: un fornitore appena censito e uno per cui la
+| risposta è davvero no hanno lo stesso valore in colonna. `ritenuta_decisa_il` registra che
+| qualcuno ha guardato — ed è ciò che permette di fare la domanda **una volta sola** invece
+| che a ogni fattura.
+*/
+
+it('creando un fornitore la posizione sulla ritenuta risulta decisa, anche rispondendo no', function () {
+    // ⚠️ È il caso che conta: il «no» esplicito deve valere quanto un sì. Senza, il fornitore
+    // appena creato tornerebbe subito nell'elenco di quelli da chiedere.
+    $this->post(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale'   => 'Ferramenta Senza Ritenuta',
+        'soggetto_ritenuta' => false,
+    ]))->assertSessionHasNoErrors();
+
+    $fornitore = Fornitore::where('ragione_sociale', 'Ferramenta Senza Ritenuta')->firstOrFail();
+
+    expect($fornitore->posizioneRitenutaMaiDecisa())->toBeFalse();
+});
+
+it('cambiando solo l\'IBAN la posizione resta quella che era: non decisa', function () {
+    // ⚠️ Il difetto da non introdurre. Chi cambia l'IBAN non si è pronunciato sulla ritenuta,
+    // e marcare quella scheda come decisa registrerebbe una risposta che nessuno ha dato —
+    // cioè spegnerebbe la domanda senza averla fatta.
+    $fornitore = creaFornitore(['soggetto_ritenuta' => false]);
+    $fornitore->update(['ritenuta_decisa_il' => null]);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore([
+        'soggetto_ritenuta' => false,
+        'iban_principale'   => 'IT60X0542811101000000123456',
+    ]))->assertSessionHasNoErrors();
+
+    expect($fornitore->fresh()->posizioneRitenutaMaiDecisa())->toBeTrue();
+});
+
+it('toccando il riquadro fiscale la posizione risulta decisa', function () {
+    $fornitore = creaFornitore(['soggetto_ritenuta' => false]);
+    $fornitore->update(['ritenuta_decisa_il' => null]);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore([
+        'soggetto_ritenuta'  => true,
+        'perc_ritenuta'      => 4,
+        'natura_percipiente' => 'soggetto_ires',
+    ]))->assertSessionHasNoErrors();
+
+    expect($fornitore->fresh()->posizioneRitenutaMaiDecisa())->toBeFalse();
+});

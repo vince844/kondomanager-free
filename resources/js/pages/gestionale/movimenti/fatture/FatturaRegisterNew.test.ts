@@ -1498,3 +1498,109 @@ describe('cancellando una riga, gli errori seguono la voce e non la posizione', 
         expect(vm.form.errors['righe.0.conto_id'], 'l\'errore era già al posto giusto').toBeTruthy();
     });
 });
+
+/*
+|--------------------------------------------------------------------------
+| L'anteprima deve guardare la risposta appena data (Coda 116)
+|--------------------------------------------------------------------------
+|
+| ⚠️ **Questi test nascono dal collaudo a video del 04/09/2026, e da un mio errore
+| nel modo di provare la correzione.** Il difetto era questo: rispondendo «è soggetto a
+| ritenuta, lavoro autonomo 20%» il riquadro dei totali continuava a dire «Nessuna Ritenuta
+| € 0,00» e il netto restava l'intero, perché `risolviRegimeRitenuta()` legge
+| `soggetto_ritenuta` **dall'anagrafica salvata** — falsa per definizione su un fornitore mai
+| classificato. L'amministratore vedeva un numero e ne salvava un altro.
+|
+| ⛔ **La prima stesura dei test non lo proteggeva.** Erano in
+| `lib/gestionale/fatture/posizioneRitenuta.test.ts` e pinavano la funzione più una **replica**
+| della logica del componente: riportando il `.vue` al difetto, nessun test diventava rosso.
+| Una guardia che nessun test fa fallire non è protetta — e una replica della logica è il modo
+| più elegante di scriverne una. Qui si esercita il componente vero.
+*/
+describe('la posizione sulla ritenuta chiesta al volo alimenta l\'anteprima', () => {
+    const MAI_CLASSIFICATO = {
+        id: 44,
+        ragione_sociale: 'Bianchi Marco',
+        soggetto_ritenuta: false,
+        tipo_ritenuta: null,
+        regime_forfetario: false,
+        posizione_ritenuta_mai_decisa: true,
+    };
+
+    /** Sceglie il fornitore e mette una riga da € 1.000,00 su un capitolo. */
+    async function conRigaDaMille(wrapper: ReturnType<typeof render>) {
+        const vm = wrapper.vm as any;
+        vm.form.fornitore_id = MAI_CLASSIFICATO.id;
+        await flushPromises();
+        vm.form.righe[0].conto_id = 55;
+        vm.form.righe[0].importo_imponibile = 1000;
+        await flushPromises();
+
+        return vm;
+    }
+
+    test('la domanda compare solo per chi non è mai stato classificato', async () => {
+        const wrapper = render([MAI_CLASSIFICATO]);
+        const vm = await conRigaDaMille(wrapper);
+
+        expect(vm.posizioneDaChiedere).toBe(true);
+        expect(wrapper.text()).toContain('nessuno si è ancora pronunciato');
+    });
+
+    test('rispondendo «lavoro autonomo» l\'anteprima trattiene il 20% su QUESTA fattura', async () => {
+        const wrapper = render([MAI_CLASSIFICATO]);
+        const vm = await conRigaDaMille(wrapper);
+
+        vm.form.posizione_ritenuta = { soggetto: true, tipo: 'lavoro_autonomo_20' };
+        await flushPromises();
+
+        // € 1.000,00 × 20% = € 200,00. Prima della correzione qui usciva 0.
+        expect(vm.totali.ritenuta_cents).toBe(20000);
+    });
+
+    test('e con l\'appalto trattiene il 4%, non un valore fisso', async () => {
+        const wrapper = render([MAI_CLASSIFICATO]);
+        const vm = await conRigaDaMille(wrapper);
+
+        vm.form.posizione_ritenuta = { soggetto: true, tipo: 'appalto_4' };
+        await flushPromises();
+
+        expect(vm.totali.ritenuta_cents).toBe(4000);
+    });
+
+    test('rispondendo «no» l\'anteprima non trattiene niente', async () => {
+        // ⚠️ Il controesempio: se bastasse «la domanda è aperta» per trattenere, un «no»
+        // esplicito mostrerebbe una ritenuta che il salvataggio poi non fa — cioè lo stesso
+        // difetto nel verso opposto.
+        const wrapper = render([MAI_CLASSIFICATO]);
+        const vm = await conRigaDaMille(wrapper);
+
+        vm.form.posizione_ritenuta = { soggetto: false, tipo: null };
+        await flushPromises();
+
+        expect(vm.totali.ritenuta_cents).toBe(0);
+    });
+
+    test('a un fornitore già classificato la risposta non si sovrappone all\'anagrafica', async () => {
+        const gia = {
+            ...MAI_CLASSIFICATO,
+            id: 45,
+            ragione_sociale: 'Termotecnica Omega Srl',
+            soggetto_ritenuta: true,
+            tipo_ritenuta: 'appalto_4',
+            posizione_ritenuta_mai_decisa: false,
+        };
+        const wrapper = render([gia]);
+        const vm = wrapper.vm as any;
+        vm.form.fornitore_id = gia.id;
+        await flushPromises();
+        vm.form.righe[0].conto_id = 55;
+        vm.form.righe[0].importo_imponibile = 1000;
+        // una risposta rimasta in giro non deve poter spegnere una ritenuta vera
+        vm.form.posizione_ritenuta = { soggetto: false, tipo: null };
+        await flushPromises();
+
+        expect(vm.posizioneDaChiedere).toBe(false);
+        expect(vm.totali.ritenuta_cents).toBe(4000);
+    });
+});

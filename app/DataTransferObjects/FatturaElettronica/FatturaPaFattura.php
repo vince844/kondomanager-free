@@ -90,6 +90,23 @@ class FatturaPaFattura
         public readonly ?string $fornitoreNazione,
         public readonly ?string $fornitoreEmail,
         public readonly ?string $fornitoreRegimeFiscale,
+        /**
+         * Il cedente si è dichiarato con **Nome e Cognome** invece che con una Denominazione.
+         *
+         * ⚠️ **Non si deduce dalla stringa del nome, e per questo è un campo suo.**
+         * `fornitoreDenominazione` compone «Mario Rossi» e «ROSSI IMPIANTI SRL» nello stesso
+         * modo: a valle i due sono indistinguibili senza rimettersi a indovinare su suffissi
+         * societari, che è proprio ciò che questo progetto non fa. Nell'XML invece la
+         * distinzione è netta — `<Denominazione>` oppure `<Nome>`+`<Cognome>` — e va portata
+         * fin qui invece che ricostruita.
+         *
+         * Serve alla Coda 116: un cedente persona fisica che fattura a un condominio è quasi
+         * sempre un professionista, quindi una ritenuta è probabilmente dovuta **anche quando
+         * il documento non la dichiara**. È un indizio da mostrare, mai una decisione da
+         * prendere: sui file veri due cedenti su undici sono persone fisiche, e uno dei due è
+         * proprio il geometra che la ritenuta non la scrive.
+         */
+        public readonly bool $fornitoreEPersonaFisica,
         public readonly ?string $cessionarioCodiceFiscale,
         public readonly ?string $cessionarioDenominazione,
         /** @var FatturaPaCassaPrevidenziale[] */

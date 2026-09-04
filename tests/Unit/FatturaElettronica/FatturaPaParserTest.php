@@ -519,3 +519,150 @@ it('un IBAN assente resta null, non una stringa vuota che sembra un dato', funct
         expect($scadenza->iban)->toBeNull();
     }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Il tetto alle righe (Coda 117)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Costruisce un XML formalmente valido con `$n` righe di dettaglio minime.
+ *
+ * ⚠️ **Si costruisce, non si preleva**: è la regola sull'anonimizzazione, e vale a maggior
+ * ragione qui — un file patologico non esiste in natura fra le fatture di un amministratore,
+ * e tenerne uno da 10 MB nel repository per provare una guardia sarebbe assurdo.
+ */
+function xmlConRighe(int $n): string
+{
+    $righe = str_repeat(
+        '<DettaglioLinee><NumeroLinea>1</NumeroLinea><Descrizione>x</Descrizione>'
+        .'<PrezzoTotale>1.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee>',
+        $n
+    );
+
+    return '<?xml version="1.0" encoding="UTF-8"?>'
+        .'<FatturaElettronica versione="FPR12"><FatturaElettronicaHeader>'
+        .'<CedentePrestatore><DatiAnagrafici><Anagrafica><Denominazione>Fornitore Prova</Denominazione></Anagrafica>'
+        .'</DatiAnagrafici></CedentePrestatore>'
+        .'<CessionarioCommittente><DatiAnagrafici><CodiceFiscale>90000000001</CodiceFiscale></DatiAnagrafici>'
+        .'</CessionarioCommittente></FatturaElettronicaHeader>'
+        .'<FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento>'
+        .'<TipoDocumento>TD01</TipoDocumento><Data>2026-06-10</Data><Numero>1</Numero>'
+        .'</DatiGeneraliDocumento></DatiGenerali>'
+        // Il riepilogo è obbligatorio a valle: senza, il file cadrebbe più avanti e i test
+        // sul confine non proverebbero il tetto ma la mancanza dei totali.
+        .'<DatiBeniServizi>'.$righe
+        .'<DatiRiepilogo><AliquotaIVA>22.00</AliquotaIVA>'
+        .'<ImponibileImporto>'.number_format($n, 2, '.', '').'</ImponibileImporto>'
+        .'<Imposta>'.number_format($n * 0.22, 2, '.', '').'</Imposta></DatiRiepilogo>'
+        .'</DatiBeniServizi>'
+        .'</FatturaElettronicaBody></FatturaElettronica>';
+}
+
+test('un file con più righe del tetto viene rifiutato', function () {
+    expect(fn () => (new FatturaPaParser)->parse(xmlConRighe(1001)))
+        ->toThrow(FatturaPaParseException::class, 'righe di dettaglio');
+});
+
+test('il messaggio dice quante righe ci sono e quante se ne leggono', function () {
+    // ⚠️ «Un file rifiutato senza spiegazione è peggio del difetto» — la coda lo scrive
+    // esplicitamente. L'amministratore non può spezzare un XML: se il messaggio non gli dice
+    // cosa sta guardando, il programma sembra rotto al posto del documento.
+    $messaggio = '';
+    try {
+        (new FatturaPaParser)->parse(xmlConRighe(1001));
+    } catch (FatturaPaParseException $e) {
+        $messaggio = $e->getMessage();
+    }
+
+    expect($messaggio)->toContain('1.001')->toContain('1.000');
+});
+
+test('esattamente al tetto il file passa', function () {
+    // Il confine si prova da tutte e due le parti: una guardia che rifiuta anche il caso
+    // ammesso è un difetto, non una protezione.
+    $fatture = (new FatturaPaParser)->parse(xmlConRighe(1000));
+
+    expect($fatture)->toHaveCount(1)
+        ->and($fatture[0]->righe)->toHaveCount(1000);
+});
+
+test('il tetto non tocca nessuno dei file veri', function () {
+    // ⚠️ Il controesempio che conta davvero: la coda avverte di non rifiutare documenti
+    // legittimi, ed esistono bollette con una riga per contatore. Gli undici file veri hanno
+    // al massimo 6 righe, ma è il fatto che vanno tutti a buon fine a doverlo dire.
+    $files = glob(__DIR__.'/../../Fixtures/fatturapa/collaudo_reali/*.xml');
+
+    expect($files)->not->toBeEmpty('le fixture di collaudo non sono state trovate');
+
+    foreach ($files as $f) {
+        expect(fn () => (new FatturaPaParser)->parse(file_get_contents($f)))
+            ->not->toThrow(FatturaPaParseException::class, basename($f).' viene rifiutato');
+    }
+});
+
+test('un prefisso di namespace non fa sfuggire il conteggio', function () {
+    // ⚠️ Senza il prefisso nell'espressione la guardia si aprirebbe da sé su un file
+    // prefissato, e nessun test se ne accorgerebbe: è il modo in cui una guardia smette di
+    // esistere restando scritta.
+    $prefissato = str_replace(
+        ['<DettaglioLinee>', '</DettaglioLinee>'],
+        ['<ns1:DettaglioLinee>', '</ns1:DettaglioLinee>'],
+        xmlConRighe(1001)
+    );
+
+    expect(fn () => (new FatturaPaParser)->parse($prefissato))
+        ->toThrow(FatturaPaParseException::class, 'righe di dettaglio');
+});
+
+test('il tetto scatta PRIMA che il file diventi un albero', function () {
+    // ⚠️ **È la prova che il disegno bocciato non torni dentro senza che nessuno se ne
+    // accorga.** Spostare la guardia dopo `loadXML()` non cambierebbe nessuno degli altri
+    // test — il file verrebbe rifiutato lo stesso — ma la memoria sarebbe già stata spesa,
+    // che è l'unica cosa che questa guardia esiste per non spendere.
+    //
+    // Il discriminante è un file **troppo lungo e anche malformato**: il tetto lo conta sulla
+    // stringa e lo respinge; il DOM, se lo vedesse per primo, si fermerebbe sulla sintassi.
+    // È il messaggio a dire quale dei due è arrivato prima.
+    $malformato = substr(xmlConRighe(1001), 0, -strlen('</FatturaElettronica>'));
+
+    $messaggio = '';
+    try {
+        (new FatturaPaParser)->parse($malformato);
+    } catch (FatturaPaParseException $e) {
+        $messaggio = $e->getMessage();
+    }
+
+    expect($messaggio)
+        ->toContain('righe di dettaglio')
+        ->not->toContain('malformato');
+});
+
+test('il cedente persona fisica si distingue dalla società, e non dalla forma del nome', function () {
+    // ⚠️ Serve alla Coda 116: un cedente persona fisica che fattura a un condominio è quasi
+    // sempre un professionista, quindi una ritenuta è probabilmente dovuta anche quando il
+    // documento non la dichiara. Il decimo file di collaudo è proprio quel caso — un geometra
+    // con cassa TC03 e nessun blocco `<DatiRitenuta>`.
+    $personaFisica = (new FatturaPaParser)->parse(
+        leggiFixtureFatturaPa('collaudo_reali/10-TD01-cassa-previdenziale-TC03-fatture-collegate.xml')
+    )[0];
+
+    $societa = (new FatturaPaParser)->parse(
+        leggiFixtureFatturaPa('collaudo_reali/07-TD01-ritenuta-RT02-causale-W.xml')
+    )[0];
+
+    expect($personaFisica->fornitoreEPersonaFisica)->toBeTrue()
+        ->and($societa->fornitoreEPersonaFisica)->toBeFalse();
+});
+
+test('sugli undici file veri le persone fisiche sono due, e non si contano dal nome', function () {
+    // Il numero è la misura del 04/09/2026, e serve a dimensionare quanto spesso l'indizio
+    // scatta: due su undici. Se un domani diventassero zero o dieci, questo test lo dice.
+    $fisiche = 0;
+    foreach (glob(__DIR__.'/../../Fixtures/fatturapa/collaudo_reali/*.xml') as $f) {
+        if ((new FatturaPaParser)->parse(file_get_contents($f))[0]->fornitoreEPersonaFisica) {
+            $fisiche++;
+        }
+    }
+
+    expect($fisiche)->toBe(2);
+});

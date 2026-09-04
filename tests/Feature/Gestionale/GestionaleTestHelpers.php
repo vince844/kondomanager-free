@@ -90,6 +90,12 @@ function setupContabile(): array
     $fornitoreId = DB::table('fornitori')->insertGetId([
         'ragione_sociale'            => 'Fornitore Test Srl',
         'soggetto_ritenuta'          => false,
+        // ⚠️ **La posizione si dichiara, non si lascia in bianco** (Coda 116, 04/09/2026).
+        // Dal 04/09 registrare una fattura di un fornitore su cui nessuno si è mai pronunciato
+        // chiede una risposta: `soggetto_ritenuta = false` da solo non dice «non soggetto»,
+        // dice «nessuno ha guardato», e sono due cose diverse. Qui il fornitore è uno sfondo,
+        // non il soggetto della prova: la posizione è decisa, ed è «non soggetto».
+        'ritenuta_decisa_il'         => now(),
         'perc_imponibile_ritenuta'   => 100,
         'perc_ritenuta'              => 4,
         'giorni_scadenza'            => 30,

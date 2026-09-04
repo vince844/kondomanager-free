@@ -457,3 +457,58 @@ it('il PDF distingue «non verificabile» da «non quadrano»', function () {
     expect($html)->toContain('non verificabile')
         ->and($html)->not->toContain('non quadrano');
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Il codice fiscale del condominio: due conseguenze, non una (Coda 114)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ⚠️ **Questo verificatore non aveva nessun test, e il suo messaggio era incompleto.**
+ *
+ * Diceva soltanto «senza, non si emettono documenti fiscali»: vero, e la metà della storia da
+ * quando esiste la lettura delle fatture XML. Senza codice fiscale salta anche la guardia di
+ * `ImportaFatturaXmlController` che confronta il `CessionarioCommittente` del file con il
+ * condominio aperto — cioè il controllo che intercetta «questa fattura non è di questo palazzo»,
+ * che è l'errore più caro da scoprire dopo perché si porta dietro scritture e budget.
+ *
+ * Il caso capita quasi solo qui: a mano il campo è obbligatorio, quindi manca proprio a chi sta
+ * caricando lo storico — e chi carica lo storico è anche chi importerà XML subito dopo.
+ */
+function esitoCodiceFiscale(?string $cf): App\Services\Import\Controlli\EsitoControllo
+{
+    $condominio = Condominio::factory()->create(['codice_fiscale' => $cf]);
+    $lotto = ImportBatch::create([
+        'sorgente' => 'danea',
+        'stato' => ImportBatch::STATO_COMPLETATO,
+        'condominio_id' => $condominio->id,
+        'completato_at' => now(),
+        'rapporto' => ['livelli' => [], 'generato_il' => now()->toIso8601String()],
+    ]);
+
+    return (new App\Services\Import\Controlli\Verificatori\CodiceFiscaleDelCondominio)->esegui($lotto, []);
+}
+
+it('senza codice fiscale nomina entrambe le conseguenze, non solo i documenti fiscali', function () {
+    $esito = esitoCodiceFiscale(null);
+
+    expect($esito->frase)
+        ->toContain('documenti fiscali')
+        ->toContain('XML');
+});
+
+it('con un codice fiscale malformato dice che il controllo sull\'intestatario non ha niente da confrontare', function () {
+    // ⚠️ Il caso non è teorico: nel database di sviluppo esistono «VRMCDM123» e «CDM234TST»,
+    // nati prima che qualcuno controllasse la forma del campo.
+    $esito = esitoCodiceFiscale('VRMCDM123');
+
+    expect($esito->frase)
+        ->toContain('undici cifre')
+        ->toContain('XML');
+});
+
+it('con un codice fiscale valido il controllo si chiude da solo', function () {
+    // Il controesempio: un controllo che resta aperto sempre non è un controllo.
+    $esito = esitoCodiceFiscale('97123456789');
+
+    expect($esito->frase)->not->toContain('XML');
+});

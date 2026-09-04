@@ -299,9 +299,49 @@ class FatturaPassivaController extends Controller
      * @param  Condominio  $condominio  Il condominio interessato.
      * @return RedirectResponse Reindirizza alla pagina precedente (back) per permettere inserimenti multipli.
      */
+    /**
+     * Scrive sull'anagrafica del fornitore la risposta data al volo durante la registrazione.
+     *
+     * ⚠️ **È una scrittura su un'altra entità, ed è voluta.** Registrare una fattura di norma
+     * non tocca il fornitore; qui sì, perché la domanda «è soggetto a ritenuta?» riguarda il
+     * fornitore e non il documento, e chiederla a ogni fattura invece che una volta sola
+     * produrrebbe un avviso che in una settimana nessuno legge più.
+     *
+     * `ritenuta_decisa_il` si scrive **sempre**, anche quando la risposta è «no»: è quel «no»
+     * che senza la data resterebbe indistinguibile da un silenzio, e farebbe tornare la
+     * domanda alla fattura successiva.
+     */
+    private function applicaPosizioneRitenuta(StoreFatturaRequest $request): void
+    {
+        if (! $request->has('posizione_ritenuta.soggetto')) {
+            return;
+        }
+
+        $fornitore = Fornitore::find($request->input('fornitore_id'));
+
+        if (! $fornitore || ! $fornitore->posizioneRitenutaMaiDecisa()) {
+            return;
+        }
+
+        $soggetto = $request->boolean('posizione_ritenuta.soggetto');
+
+        $fornitore->update([
+            'soggetto_ritenuta' => $soggetto,
+            'tipo_ritenuta' => $soggetto ? $request->input('posizione_ritenuta.tipo') : null,
+            'ritenuta_decisa_il' => now(),
+        ]);
+    }
+
     public function store(StoreFatturaRequest $request, Condominio $condominio): RedirectResponse
     {
         try {
+            // ⚠️ **Prima di registrare, non dopo.** La risposta sulla posizione fiscale del
+            // fornitore cambia se e quanto si trattiene: applicarla dopo significherebbe
+            // registrare la fattura con la posizione vecchia e correggere l'anagrafica per la
+            // prossima volta — cioè perdere esattamente il documento per cui la domanda è
+            // stata fatta (Coda 116).
+            $this->applicaPosizioneRitenuta($request);
+
             $this->service->registraFattura(
                 $request->validated(),
                 $condominio->id,
@@ -866,6 +906,12 @@ class FatturaPassivaController extends Controller
                 $data = $f->toArray();
                 $data['ultima_aliquota_iva'] = $ultimeAliquoteIva->get($f->id);
                 $data['ultimo_conto_id'] = $ultimiConti->get($f->id);
+                // ⚠️ **Calcolato qui e non a schermo, di proposito** (Coda 116). La regola —
+                // «nessuno si è mai pronunciato» non è «non è soggetto a ritenuta» — vive in
+                // `Fornitore::posizioneRitenutaMaiDecisa()`, e riscriverla in TypeScript
+                // creerebbe la condizione perché un giorno il modulo non chieda ciò che il
+                // server poi pretende, o viceversa.
+                $data['posizione_ritenuta_mai_decisa'] = $f->posizioneRitenutaMaiDecisa();
 
                 return $data;
             }),

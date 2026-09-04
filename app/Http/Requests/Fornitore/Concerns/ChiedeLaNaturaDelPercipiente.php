@@ -69,6 +69,20 @@ trait ChiedeLaNaturaDelPercipiente
     }
 
     /**
+     * Questa richiesta costituisce una **presa di posizione** sulla ritenuta del fornitore?
+     *
+     * ⚠️ Serve a `ritenuta_decisa_il` (Coda 116), che distingue «no» da «non gliel'ha mai
+     * chiesto nessuno». Alla creazione la risposta è sempre sì: il riquadro fiscale è nel
+     * modulo e chi salva l'ha avuto davanti. In modifica no — chi cambia l'IBAN non si è
+     * pronunciato su niente, e marcare quella scheda come decisa sarebbe registrare una
+     * risposta che nessuno ha dato, cioè il difetto che questa colonna esiste per chiudere.
+     */
+    public function costituisceUnaPresaDiPosizione(?Fornitore $esistente = null): bool
+    {
+        return $esistente === null || $this->bloccoFiscaleToccato($esistente);
+    }
+
+    /**
      * La presa d'atto: la scheda era **già** in questo stato e non la sto cambiando su
      * quel fronte.
      */
