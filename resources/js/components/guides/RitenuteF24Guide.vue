@@ -63,9 +63,17 @@ const soglia = (cents: number) =>
                         <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Dipende dal fornitore, non dalla spesa</h3>
                             <p>
-                                L'aliquota discende dalla natura del percipiente: <strong>4%</strong> per gli
-                                appalti di opere e servizi, <strong>20%</strong> per i professionisti. Non è il
-                                tipo di voce di spesa a stabilirla, ed è inutile cercarla nella fattura.
+                                L'aliquota discende dal <strong>regime di ritenuta</strong> del fornitore:
+                                <strong>4%</strong> per gli appalti di opere e servizi, <strong>20%</strong> per
+                                i professionisti. Non è il tipo di voce di spesa a stabilirla, ed è inutile
+                                cercarla nella fattura.
+                            </p>
+                            <p class="mt-2">
+                                La <strong>natura del percipiente</strong> è un'altra cosa, e sta accanto al
+                                regime nella scheda del fornitore: dice se chi riceve il pagamento è soggetto a
+                                IRPEF o a IRES, e decide il <strong>codice tributo</strong> con cui il denaro
+                                arriva all'Erario — 1019 oppure 1020. Serve solo negli appalti al 4%: negli
+                                altri regimi il codice è sempre lo stesso e non la si chiede.
                             </p>
                             <div class="mt-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                                 <AlertTriangle class="h-4 w-4 shrink-0" />

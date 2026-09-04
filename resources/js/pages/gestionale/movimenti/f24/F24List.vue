@@ -13,7 +13,7 @@
  * coperti da vitest — qui non si fa aritmetica.
  */
 import { computed, ref } from 'vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -55,6 +55,12 @@ const props = defineProps<{
     };
     soglie: { appalti_cents: number; professionisti_cents: number };
     da_calcolare: { numero: number; totale_cents: number };
+    /**
+     * I fornitori con ritenute da versare e **natura del percipiente sconosciuta**.
+     * Finché l'elenco non è vuoto, la delega non si può preparare: senza quel dato il
+     * codice tributo sarebbe 1019 o 1020 a caso (Coda 119).
+     */
+    fornitori_da_classificare: { id: number | null; ragione_sociale: string }[];
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -112,6 +118,19 @@ const oggi = new Date();
  */
 const serveRicalcolo = computed(() => props.da_calcolare.numero > 0);
 
+/**
+ * ⚠️ **Il blocco si dice PRIMA che si prema il pulsante.**
+ *
+ * `GeneraDelegheF24Action` rifiuta di preparare la delega se anche un solo fornitore non
+ * ha la natura del percipiente. Scoprirlo solo sbattendoci contro sarebbe un blocco che si
+ * subisce: qui l'elenco compare arrivando sulla pagina, con il collegamento a ciascuna
+ * anagrafica, così il rimedio è un clic e non una caccia fra tutti i fornitori pagati nel
+ * periodo.
+ *
+ * ⚠️ Compare **solo quando c'è**: un pannello permanente smette di essere letto.
+ */
+const daClassificare = computed(() => props.fornitori_da_classificare ?? []);
+
 const mostraGuida = ref(false);
 
 /**
@@ -121,16 +140,29 @@ const mostraGuida = ref(false);
  * volta è rumore. La spiegazione stabile — cosa fa il ricalcolo, perché il pulsante si
  * accende — sta nella guida della pagina, che è la superficie prevista dal flusso di lavoro.
  */
-const spiegazioneRicalcolo = computed(() =>
-    serveRicalcolo.value
+const spiegazioneRicalcolo = computed(() => {
+    // ⚠️ Quando manca la natura del percipiente il ricalcolo **non può riuscire**: l'azione
+    // si ferma prima di preparare qualsiasi delega. Lasciare il pulsante acceso significava
+    // invitare a una pressione che rispondeva ripetendo in rosso, sotto, la stessa frase già
+    // scritta nel pannello sopra — due messaggi identici a mezzo secondo di distanza per un
+    // gesto che non poteva funzionare. Il pannello è l'unico messaggio, e ha il rimedio.
+    if (daClassificare.value.length) {
+        return 'Prima completa la natura del percipiente dei fornitori elencati qui sopra: senza, il codice tributo non si può decidere.';
+    }
+
+    return serveRicalcolo.value
         ? `${props.da_calcolare.numero} ${props.da_calcolare.numero === 1 ? 'ritenuta operata non è' : 'ritenute operate non sono'} ancora in una delega: premi per ricalcolare lo scadenzario.`
-        : 'Lo scadenzario è allineato ai pagamenti registrati.'
-);
+        : 'Lo scadenzario è allineato ai pagamenti registrati.';
+});
 
 const dataIt = (d: string | null) =>
     d ? new Date(`${d.slice(0, 10)}T00:00:00`).toLocaleDateString('it-IT') : '—';
 
 const calcola = () => {
+    if (daClassificare.value.length) {
+        return;
+    }
+
     router.post(
         route(generateRoute('gestionale.f24.genera'), { condominio: props.condominio.id }),
         {},
@@ -161,6 +193,37 @@ const calcola = () => {
                     </Button>
                 </template>
             </PageHeaderGuide>
+
+            <!-- ⚠️ Coda 119: senza la natura del percipiente il codice tributo sarebbe
+                 1019 o 1020 a caso, e il denaro arriverebbe all'Erario sotto un codice che
+                 non è il suo. Si dice qui, con il rimedio a un clic, invece di far fallire
+                 il pulsante. -->
+            <div v-if="daClassificare.length" class="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/40 dark:bg-rose-950/20">
+                <div class="flex items-start gap-3">
+                    <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                    <div class="space-y-2 text-[13px] text-rose-800 dark:text-rose-300">
+                        <p class="font-bold">
+                            Non posso preparare l'F24: {{ daClassificare.length === 1 ? 'un fornitore non ha' : daClassificare.length + ' fornitori non hanno' }} la natura del percipiente.
+                        </p>
+                        <p>
+                            È il dato che decide il codice tributo — <strong>1019</strong> per chi è soggetto IRPEF,
+                            <strong>1020</strong> per chi è soggetto IRES. Senza, il versamento arriverebbe all'Erario
+                            sotto un codice scelto a caso, e si rimedia con l'Agenzia, non con una scrittura.
+                        </p>
+                        <ul class="space-y-1 pt-1">
+                            <li v-for="f in daClassificare" :key="f.id ?? f.ragione_sociale">
+                                <Link
+                                    v-if="f.id"
+                                    :href="route(generateRoute('fornitori.edit'), { fornitore: f.id })"
+                                    target="_blank"
+                                    class="font-bold underline underline-offset-2"
+                                >{{ f.ragione_sociale }}</Link>
+                                <span v-else class="font-bold">{{ f.ragione_sociale }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
 
             <div class="w-full">
                 <section class="w-full space-y-4">
@@ -220,19 +283,22 @@ const calcola = () => {
                                 <TooltipProvider :delay-duration="200">
                                     <Tooltip>
                                         <TooltipTrigger as-child>
+                                          <span class="inline-flex">
                                             <Button
-                                                :variant="serveRicalcolo ? 'default' : 'outline'"
+                                                :variant="serveRicalcolo && !daClassificare.length ? 'default' : 'outline'"
                                                 class="h-8"
-                                                :class="serveRicalcolo ? 'bg-amber-500 text-white hover:bg-amber-600' : ''"
+                                                :class="serveRicalcolo && !daClassificare.length ? 'bg-amber-500 text-white hover:bg-amber-600' : ''"
+                                                :disabled="daClassificare.length > 0"
                                                 @click="calcola"
                                             >
                                                 <RefreshCw class="mr-2 h-4 w-4" />
                                                 Aggiorna scadenze
                                                 <span
-                                                    v-if="serveRicalcolo"
+                                                    v-if="serveRicalcolo && !daClassificare.length"
                                                     class="ml-2 rounded bg-white/25 px-1.5 py-0.5 text-[10px] font-black"
                                                 >{{ props.da_calcolare.numero }}</span>
                                             </Button>
+                                          </span>
                                         </TooltipTrigger>
                                         <TooltipContent><p>{{ spiegazioneRicalcolo }}</p></TooltipContent>
                                     </Tooltip>

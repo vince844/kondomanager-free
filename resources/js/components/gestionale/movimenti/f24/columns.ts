@@ -46,19 +46,26 @@ export const createColumns = (condominioId: number, oggi: Date): ColumnDef<any>[
     {
         accessorKey: 'data_scadenza',
         header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Scadenza' }),
-        size: 200,
+        // 240 e non 200: il conto alla rovescia sta ora **accanto** alla data invece che
+        // sotto, e «Scaduta da 104 giorni» è la stringa più lunga che testoScadenza produce.
+        size: 240,
         cell: ({ row }) => {
             const d = row.original;
             const aperta = d.stato === 'bozza' || d.stato === 'confermata';
             const urgenza = urgenzaScadenza(d.data_scadenza, oggi);
 
-            return h('div', { class: 'flex flex-col gap-1' }, [
+            // ⚠️ **Su una riga sola, come tutte le altre celle.** Impilando data e conto
+            // alla rovescia questa cella era alta il doppio delle vicine, e siccome le
+            // celle a una riga si centrano in verticale, la data finiva più in alto di
+            // «Appalti 4%», «€ 17,80» e «Bozza»: la riga si leggeva a scalini. `flex-wrap`
+            // resta come rete, così su una colonna stretta va a capo invece di sforare.
+            return h('div', { class: 'flex flex-wrap items-center gap-2' }, [
                 h('span', { class: 'text-sm font-bold text-slate-900' }, dataIt(d.data_scadenza)),
                 // Il conto alla rovescia serve solo finché c'è qualcosa da fare: su una
                 // delega già versata direbbe «scaduta da 77 giorni» di un debito estinto.
                 aperta
                     ? h('span', {
-                        class: `w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${coloriUrgenza[urgenza]}`,
+                        class: `w-fit whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold ${coloriUrgenza[urgenza]}`,
                     }, testoScadenza(d.data_scadenza, oggi))
                     : h('span', { class: 'text-[11px] text-slate-400' },
                         d.data_versamento ? `versata il ${dataIt(d.data_versamento)}` : '—'),
@@ -80,12 +87,33 @@ export const createColumns = (condominioId: number, oggi: Date): ColumnDef<any>[
         enableSorting: false,
         cell: ({ row }) => {
             const righe = row.original.righe ?? [];
-            const codici = [...new Set(righe.map((r: any) => r.codice_tributo))].join(', ');
+            const codici = [...new Set(righe.map((r: any) => r.codice_tributo))];
 
-            return h('div', { class: 'flex flex-col' }, [
-                h('span', { class: 'font-mono text-sm text-slate-800' }, codici || '—'),
-                h('span', { class: 'text-[11px] text-slate-400' },
-                    `${righe.length} ${righe.length === 1 ? 'riga' : 'righe'}`),
+            // ⚠️ **Il conteggio delle righe si scrive solo quando aggiunge qualcosa.**
+            // Prima stava sempre, su una riga sua sotto il codice, e questo rendeva la cella
+            // alta due righe mentre «Tipo», «Importo» e «Stato» ne occupano una: il codice
+            // finiva più in alto di tutto il resto della riga, che è il difetto che Vincenzo
+            // ha visto a video. Ma non basta toglierlo, perché non è sempre ridondante: una
+            // delega può portare **due righe con lo stesso codice** e mesi diversi — la
+            // soglia del plafond accumula più mesi su una sola scadenza — e in quel caso
+            // contare i badge non dice quante righe avrà il modello. Quindi: si scrive
+            // quando i due numeri divergono, e in linea, così la cella resta alta una riga.
+            const contaRighe = righe.length > codici.length
+                ? `${righe.length} righe`
+                : null;
+
+            // Niente `font-mono`: per incolonnare le cifre basta `tabular-nums`, che non
+            // cambia il carattere dell'interfaccia. I badge vanno a capo perché 1019 e 1020
+            // finiscono insieme quando si versa per un professionista e per una società
+            // nello stesso mese.
+            return h('div', { class: 'flex flex-wrap items-center gap-1' }, [
+                ...(codici.length
+                    ? codici.map((codice) => h('span', {
+                        key: codice,
+                        class: 'rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium tabular-nums text-slate-700',
+                    }, codice))
+                    : [h('span', { class: 'text-sm text-slate-400' }, '—')]),
+                contaRighe ? h('span', { class: 'text-[11px] text-slate-400' }, contaRighe) : null,
             ]);
         },
     },

@@ -166,6 +166,23 @@ function statoIniziale() {
 
 const data = ref(statoIniziale());
 const salvando = ref(false);
+/**
+ * I campi per cui questa finestra stampa l'errore **sotto al campo**.
+ *
+ * Serve a decidere cosa NON ha un posto dove comparire: quelli finiscono nel riquadro in
+ * alto, invece di sparire. Va tenuto allineato ai `v-if="erroriCampo.*"` del template —
+ * ed è la ragione per cui il test di copertura guarda anche questo file.
+ */
+const CAMPI_CON_ERRORE_A_SCHERMO = [
+    'ragione_sociale',
+    'partita_iva',
+    'codice_fiscale',
+    'email',
+    'natura_percipiente',
+    'forfetario_dichiarato_il',
+    'forfetario_riferimento',
+];
+
 const erroreGenerale = ref<string | null>(null);
 const erroriCampo = ref<Record<string, string[]>>({});
 
@@ -252,7 +269,24 @@ async function salva() {
         emit('update:show', false);
     } catch (err: any) {
         if (err?.response?.status === 422) {
-            erroriCampo.value = err.response.data?.errors ?? {};
+            const errori = err.response.data?.errors ?? {};
+            erroriCampo.value = errori;
+
+            // ⚠️ **Un rifiuto su un campo che questa finestra non stampa sarebbe muto.**
+            // Qui gli errori si rendono a mano, campo per campo: finché l'elenco dei campi
+            // stampati e quello dei campi validati coincidono va bene, ma il secondo cresce
+            // dal server e il primo no. È già successo: quando la natura del percipiente è
+            // diventata obbligatoria (Coda 119, 03/09/2026) il pulsante sarebbe tornato da
+            // «Creo il fornitore...» a «Crea e aggancia» senza una parola. Invece di
+            // rincorrere l'elenco a ogni campo nuovo, ciò che non trova posto si raccoglie
+            // qui in alto — il messaggio è meno preciso di quello sotto al campo, ma esiste.
+            const orfani = Object.entries(errori)
+                .filter(([chiave]) => !CAMPI_CON_ERRORE_A_SCHERMO.includes(chiave))
+                .flatMap(([, messaggi]) => (messaggi as string[]));
+
+            if (orfani.length) {
+                erroreGenerale.value = orfani.join(' ');
+            }
         } else {
             erroreGenerale.value = 'Impossibile creare il fornitore. Riprova, o completa l\'anagrafica dalla pagina Fornitori.';
         }
@@ -417,6 +451,7 @@ async function salva() {
                                     label="label"
                                     placeholder="Chi riceve il pagamento…"
                                     append-to-body />
+                                <p v-if="erroriCampo.natura_percipiente" class="text-[11px] text-rose-600 font-medium mt-1">{{ erroriCampo.natura_percipiente[0] }}</p>
                                 <p v-if="naturaProposta" class="text-[10px] text-slate-500 mt-1">
                                     Proposta dal tipo <strong>{{ ritenuta?.tipo }}</strong> dichiarato dal file. Decide il codice tributo
                                     dell'F24: controllala, soprattutto se il fornitore è un ente non commerciale o una società di persone.

@@ -69,6 +69,8 @@ class GeneraDelegheF24Action
                 return collect();
             }
 
+            $this->bloccaSeLaNaturaNonSiSa($ritenute->all());
+
             $gruppi = $this->plafond->raggruppaPerScadenza($ritenute->all());
 
             $create = collect();
@@ -148,33 +150,22 @@ class GeneraDelegheF24Action
         // si riscrive. Disponibile dallo `schema_version` 2 dello snapshot.
         $snapshot = $pagamento->fornitore_snapshot ?? [];
 
-        if (! empty($snapshot['tipo_ritenuta'])) {
-            return TipoRitenuta::from($snapshot['tipo_ritenuta']);
-        }
-
-        if (isset($snapshot['perc_ritenuta'])) {
-            return ((int) $snapshot['perc_ritenuta']) === 20
-                ? TipoRitenuta::LAVORO_AUTONOMO_20
-                : TipoRitenuta::APPALTO_4;
+        if (! empty($snapshot['tipo_ritenuta']) || isset($snapshot['perc_ritenuta'])) {
+            return TipoRitenuta::dedotto(
+                $snapshot['tipo_ritenuta'] ?? null,
+                $snapshot['perc_ritenuta'] ?? null,
+            );
         }
 
         // Pagamenti registrati prima dello snapshot v2: si ricade sull'anagrafica.
+        //
+        // ⚠️ La deduzione sta nell'enum e non più qui: dal 03/09/2026 la usa anche la
+        // validazione dell'anagrafica, che deve sapere se la natura del percipiente serve
+        // — e la risposta dipende dal regime. Due copie della stessa deduzione sarebbero
+        // la condizione perché un giorno il modulo accetti un fornitore che l'F24 rifiuta.
         $fornitore = $pagamento->fornitore;
 
-        if ($fornitore?->tipo_ritenuta) {
-            return $fornitore->tipo_ritenuta instanceof TipoRitenuta
-                ? $fornitore->tipo_ritenuta
-                : TipoRitenuta::from($fornitore->tipo_ritenuta);
-        }
-
-        // Il default su APPALTO_4 non è una scorciatoia: è il regime della stragrande
-        // maggioranza dei fornitori di un condominio, ed è quello che la 1.9 applicava
-        // implicitamente con `perc_ritenuta = 4`. Escludere le anagrafiche non ancora
-        // classificate le renderebbe invisibili al versamento — peggio che collocarle nel
-        // regime che quasi certamente è il loro.
-        return ((int) ($fornitore->perc_ritenuta ?? 4)) === 20
-            ? TipoRitenuta::LAVORO_AUTONOMO_20
-            : TipoRitenuta::APPALTO_4;
+        return TipoRitenuta::dedotto($fornitore?->tipo_ritenuta, $fornitore?->perc_ritenuta);
     }
 
     /**
@@ -219,7 +210,122 @@ class GeneraDelegheF24Action
     }
 
     /** IRPEF o IRES: decide 1019 contro 1020, e non si deduce dal tipo di spesa. */
-    private function naturaPercipiente(PagamentoFornitore $pagamento): NaturaPercipiente
+    /**
+     * I fornitori con ritenute da versare e **natura del percipiente sconosciuta**.
+     *
+     * ⚠️ **È pubblico perché la schermata lo chiede PRIMA che si prema il pulsante.**
+     * Un blocco che si scopre solo fallendo è un blocco che si subisce: l'elenco dei
+     * fornitori da sistemare va mostrato quando si arriva sulla pagina, con il
+     * collegamento a ciascuna anagrafica, così il rimedio è un clic e non una caccia fra
+     * tutti quelli pagati nel periodo. La guardia in `esegui()` resta l'ultima riga —
+     * serve a chi arriva da fuori la schermata — non la prima.
+     *
+     * @param  array<int,array<string,mixed>>  $ritenute
+     * @return array<int,array{id:int|null, ragione_sociale:string}>
+     */
+    public function fornitoriDaClassificare(array $ritenute): array
+    {
+        $trovati = [];
+
+        foreach ($ritenute as $ritenuta) {
+            $pagamento = $ritenuta['pagamento'];
+
+            if ($this->naturaPercipiente($pagamento) !== null) {
+                continue;
+            }
+
+            // ⚠️ **Si chiede la natura solo dove decide qualcosa.** Fuori dall'appalto il
+            // codice tributo è fisso — 1040 o 1001 — e pretendere il campo fermerebbe la
+            // delega di chi paga soltanto un professionista per un dato che sul suo modello
+            // non cambia nulla. La prima stesura di questo blocco, la mattina del 03/09/2026,
+            // non faceva questa distinzione: bloccava sempre, e nel farlo diceva anche una
+            // cosa falsa, perché il messaggio parla di 1019 e 1020 che lì non c'entrano.
+            if (! $this->tipoRitenuta($pagamento)->dipendeDallaNatura()) {
+                continue;
+            }
+
+            $id = $pagamento->fornitore_id;
+            $nome = $pagamento->fornitore?->ragione_sociale
+                ?? ($pagamento->fornitore_snapshot['ragione_sociale'] ?? null)
+                ?? "fornitore #{$id}";
+
+            // Indicizzato per id: lo stesso fornitore con più pagamenti si nomina una volta.
+            $trovati[$id ?? $nome] = ['id' => $id, 'ragione_sociale' => $nome];
+        }
+
+        return array_values($trovati);
+    }
+
+    /**
+     * Le ritenute da versare, per chi ha bisogno di ispezionarle senza generare niente.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function ritenuteInAttesa(Condominio $condominio, int $esercizioId): array
+    {
+        return $this->ritenuteDaVersare($condominio, $esercizioId)->all();
+    }
+
+    /**
+     * Si ferma se anche **un solo** pagamento ha una natura del percipiente sconosciuta.
+     *
+     * ⚠️ **Non si genera una delega parziale.** L'alternativa — escludere i pagamenti non
+     * classificabili e produrre il resto — lascerebbe fuori ritenute che restano dovute
+     * alla stessa scadenza, e consegnerebbe un documento che sembra completo e non lo è:
+     * «incompleta e dichiarata» è comunque una consegna a metà. O la delega è giusta
+     * tutta, o non si fa e si dice perché.
+     *
+     * ⚠️ **È il passo che il design aveva già datato**: §2.4 M2 e §7 punto 7 — *«v1.10:
+     * warning bloccante con override. v1.11: blocco duro»*. La 1.10 ha dato una release
+     * di rodaggio con l'override alla registrazione della fattura
+     * (`conferma_codice_tributo_mancante`); qui il rodaggio finisce.
+     *
+     * Il messaggio nomina i fornitori uno per uno, perché «completa l'anagrafica» senza
+     * dire *quale* costringe a cercarli a mano fra tutti quelli pagati nel periodo.
+     *
+     * @param  array<int,array<string,mixed>>  $ritenute
+     *
+     * @throws \DomainException
+     */
+    private function bloccaSeLaNaturaNonSiSa(array $ritenute): void
+    {
+        $daClassificare = $this->fornitoriDaClassificare($ritenute);
+
+        if ($daClassificare === []) {
+            return;
+        }
+
+        $nomi = array_column($daClassificare, 'ragione_sociale');
+
+        throw new \DomainException(sprintf(
+            'Non posso preparare l\'F24: per %s manca la natura del percipiente, e senza quella '
+            .'il codice tributo sarebbe 1019 o 1020 a caso. Completa l\'anagrafica di %s e riprova.',
+            count($nomi) === 1 ? 'un fornitore' : count($nomi).' fornitori',
+            implode(', ', $nomi),
+        ));
+    }
+
+    /**
+     * La natura del percipiente di questo pagamento, o `null` se **nessuno la sa**.
+     *
+     * ⚠️ **Fino al 03/09/2026 qui c'era un ripiego silenzioso su `PERSONA_FISICA_IRPEF`**,
+     * e produceva il difetto peggiore di tutto il modulo: su una società senza natura
+     * classificata stampava **1019** invece di 1020, cioè il denaro arrivava all'Erario
+     * sotto un codice che non è il suo — senza nessun avviso, da nessuna parte. Si rimedia
+     * con l'Agenzia, non con una scrittura.
+     *
+     * `TipoRitenuta::codiceTributo()` **rifiuta un `null`** per costruzione: l'enum non
+     * accetta «non so». Era questo metodo a fabbricare un valore per superarlo — cioè a
+     * sovvertire una guardia che il tipo stava già facendo rispettare. Adesso l'assenza si
+     * propaga, e chi non sa si ferma: vedi `bloccaSeLaNaturaNonSiSa()`.
+     *
+     * ⚠️ Il **`codice_tributo` legacy dell'anagrafica non entra qui di proposito**, ed è
+     * una differenza voluta rispetto a `RitenutaService::calcolaRegimeNuovo()`, che invece
+     * lo usa come ripiego: là serve a non far fallire il calcolo di una fattura, qui
+     * stamperebbe sull'F24 un codice che nessuno ha scelto per **questo** versamento.
+     * Chiudere quella divergenza è la Coda 119; questo metodo non la anticipa.
+     */
+    private function naturaPercipiente(PagamentoFornitore $pagamento): ?NaturaPercipiente
     {
         $snapshot = $pagamento->fornitore_snapshot ?? [];
 
@@ -233,9 +339,7 @@ class GeneraDelegheF24Action
             return $valore;
         }
 
-        return $valore
-            ? NaturaPercipiente::from($valore)
-            : NaturaPercipiente::PERSONA_FISICA_IRPEF;
+        return $valore ? NaturaPercipiente::from($valore) : null;
     }
 
     private function creaDelega(Condominio $condominio, int $esercizioId, array $gruppo, array $righe): DelegaF24

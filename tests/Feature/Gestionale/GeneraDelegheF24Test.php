@@ -37,6 +37,14 @@ function ctxF24(int $percRitenuta = 4): array
         'soggetto_ritenuta' => true,
         'perc_ritenuta' => $percRitenuta,
         'perc_imponibile_ritenuta' => 100,
+        // ⚠️ **La natura si dichiara, non si lascia indovinare** (03/09/2026, Coda 119).
+        // Fino a quel giorno questo aiutante non la impostava, e i test qui sotto
+        // ottenevano 1019 dal **ripiego silenzioso** di `GeneraDelegheF24Action` — uno di
+        // loro lo commentava perfino «fornitore persona fisica → 1019», attribuendo a una
+        // classificazione un valore che nessuno aveva scelto. Erano test verdi che
+        // proteggevano il difetto invece del comportamento: tolto il ripiego, sono
+        // diventati rossi tutti insieme. Adesso il 1019 è **guadagnato**.
+        'natura_percipiente' => 'persona_fisica_irpef',
     ]);
     $ctx[3]->refresh();
 

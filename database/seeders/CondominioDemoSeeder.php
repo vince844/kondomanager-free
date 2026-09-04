@@ -599,6 +599,15 @@ class CondominioDemoSeeder extends Seeder
                 'soggetto_ritenuta'          => true,
                 'perc_imponibile_ritenuta'   => 100,
                 'perc_ritenuta'              => 4,
+                // ⚠️ **Una s.r.l. è soggetto IRES: codice tributo 1020, non 1019.**
+                // Fino al 03/09/2026 questo campo non c'era, e la demo mostrava una delega
+                // F24 con **1019** — il codice delle persone fisiche — perché
+                // `GeneraDelegheF24Action` ripiegava in silenzio su persona fisica quando la
+                // natura mancava. Il condominio dimostrativo esibiva quindi il difetto della
+                // Coda 119 come se fosse il comportamento normale, ed è il posto peggiore
+                // dove lasciarlo: è la schermata che un amministratore guarda per capire
+                // come funziona il programma.
+                'natura_percipiente'         => 'soggetto_ires',
                 'giorni_scadenza'            => 30,
                 'modalita_pagamento_default' => 'bonifico',
             ],

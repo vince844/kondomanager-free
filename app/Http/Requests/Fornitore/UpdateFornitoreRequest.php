@@ -4,6 +4,7 @@ namespace App\Http\Requests\Fornitore;
 
 use App\Enums\Fiscale\NaturaPercipiente;
 use App\Enums\Fiscale\TipoRitenuta;
+use App\Http\Requests\Fornitore\Concerns\ChiedeLaNaturaDelPercipiente;
 use App\Helpers\MoneyHelper;
 use App\Models\Fornitore;
 use App\Rules\UniqueEmailAcrossTables;
@@ -14,6 +15,8 @@ use Illuminate\Support\Str;
 
 class UpdateFornitoreRequest extends FormRequest
 {
+    use ChiedeLaNaturaDelPercipiente;
+
     public function authorize(): bool
     {
         return true;
@@ -92,13 +95,34 @@ class UpdateFornitoreRequest extends FormRequest
 
             // --- NUOVI CAMPI: Regime Fiscale Ritenuta (v1.10, Fase 1) ---
             'tipo_ritenuta'                => ['nullable', Rule::in(array_column(TipoRitenuta::cases(), 'value'))],
-            'natura_percipiente'           => ['nullable', Rule::in(array_column(NaturaPercipiente::cases(), 'value'))],
+            'natura_percipiente'           => ['nullable', Rule::requiredIf(
+                // ⚠️ In modifica si passa la scheda già a database: è quella che distingue
+                // «sto ereditando un'incompletezza» da «la sto creando adesso».
+                fn () => $this->laNaturaDelPercipienteServe($this->route('fornitore'))
+            ), Rule::in(array_column(NaturaPercipiente::cases(), 'value'))],
             'residente_fiscale'            => 'boolean',
             'regime_forfetario'            => 'boolean',
             'forfetario_dichiarato_il'     => 'nullable|date|required_if:regime_forfetario,true',
             'forfetario_riferimento'       => 'nullable|string|max:255',
             'provvigioni_base_ridotta'     => 'boolean',
             'provvigioni_dichiarazione_il' => 'nullable|date|required_if:provvigioni_base_ridotta,true',
+        ];
+    }
+
+
+    /**
+     * ⚠️ Il messaggio dice **perché**, non solo che manca.
+     *
+     * «Il campo natura del percipiente è obbligatorio» non aiuta chi non sa cosa sia: la
+     * frase deve portare il motivo per cui il programma non può cavarsela da solo, che è
+     * poi la stessa ragione scritta nel blocco dell'F24. Le due si devono somigliare,
+     * perché è lo stesso ostacolo incontrato in due momenti diversi.
+     */
+    public function messages(): array
+    {
+        return [
+            'natura_percipiente.required' => "Per un fornitore soggetto a ritenuta d'appalto serve la natura del percipiente: "
+                ."è il dato che decide il codice tributo dell'F24 — 1019 per chi è soggetto IRPEF, 1020 per chi è soggetto IRES.",
         ];
     }
 

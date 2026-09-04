@@ -146,7 +146,20 @@ class DelegaF24Controller extends Controller
             ],
         ];
 
+        // ⚠️ **Si dice PRIMA che si prema il pulsante, non dopo che fallisce.**
+        // `GeneraDelegheF24Action` rifiuta di preparare la delega se anche un solo
+        // fornitore non ha la natura del percipiente — senza, il codice tributo sarebbe
+        // 1019 o 1020 a caso (Coda 119). Ma scoprire un blocco solo sbattendoci contro è
+        // un blocco che si subisce: l'elenco arriva in pagina, con il collegamento a
+        // ciascuna anagrafica, così il rimedio è un clic.
+        $daClassificare = $esercizio
+            ? $this->genera->fornitoriDaClassificare(
+                $this->genera->ritenuteInAttesa($condominio, $esercizio->id)
+            )
+            : [];
+
         return Inertia::render('gestionale/movimenti/f24/F24List', [
+            'fornitori_da_classificare' => $daClassificare,
             'condominio' => $condominio,
             'condomini' => $this->getCondomini(),
             'esercizio' => $esercizio,

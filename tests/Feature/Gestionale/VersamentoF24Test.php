@@ -39,7 +39,15 @@ function azioneGenera(): GeneraDelegheF24Action
 function scenarioDelega(): array
 {
     $ctx = setupPagamentiService();
-    $ctx[3]->update(['soggetto_ritenuta' => true, 'perc_ritenuta' => 4, 'perc_imponibile_ritenuta' => 100]);
+    // ⚠️ `natura_percipiente` va dichiarata: dal 03/09/2026 `GeneraDelegheF24Action` non
+    // ripiega più su persona fisica quando non la sa, e senza questa riga lo scenario non
+    // arriva nemmeno a produrre la delega (Coda 119).
+    $ctx[3]->update([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta' => 4,
+        'perc_imponibile_ritenuta' => 100,
+        'natura_percipiente' => 'persona_fisica_irpef',
+    ]);
     $ctx[3]->refresh();
 
     [$condominio, $esercizio] = $ctx;

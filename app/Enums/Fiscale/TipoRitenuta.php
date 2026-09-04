@@ -100,8 +100,22 @@ enum TipoRitenuta: string
      * Il campo `fornitori.codice_tributo` odierno diventa derivato da qui,
      * sola lettura salvo override motivato.
      */
-    public function codiceTributo(NaturaPercipiente $natura): string
+    public function codiceTributo(?NaturaPercipiente $natura): string
     {
+        // ⚠️ **La natura può mancare, e qui non si inventa.** La firma è diventata
+        // nullable il 03/09/2026: fuori dall'appalto il codice è fisso e chiedere la
+        // natura fermerebbe una delega per un dato che non decide niente, quindi il
+        // chiamante ha il diritto di passare `null`. Sull'appalto invece il valore
+        // decide fra 1019 e 1020, e allora l'assenza è un errore da dichiarare — non
+        // un `?? PERSONA_FISICA_IRPEF` che manda all'Erario un codice a caso, che è
+        // esattamente il difetto da cui nasce la Coda 119.
+        if ($this === self::APPALTO_4 && $natura === null) {
+            throw new \DomainException(
+                'Il codice tributo dell\'appalto dipende dalla natura del percipiente '
+                .'(1019 per IRPEF, 1020 per IRES) e la natura non è stata dichiarata.'
+            );
+        }
+
         return match ($this) {
             self::APPALTO_4 => $natura->ires() ? '1020' : '1019',
             self::LAVORO_AUTONOMO_20 => '1040',
@@ -109,6 +123,63 @@ enum TipoRitenuta: string
             self::NON_RESIDENTE_30 => '1040',
             self::LAVORO_DIPENDENTE => '1001',
         };
+    }
+
+    /**
+     * Il regime che si applica, dato quel poco che si sa di un fornitore.
+     *
+     * ⚠️ **Esiste per non avere due deduzioni diverse della stessa cosa.** Fino al
+     * 03/09/2026 questa logica viveva dentro `GeneraDelegheF24Action::tipoRitenuta()`, ed
+     * era l'unico posto che ne avesse bisogno. Da quando anche la validazione
+     * dell'anagrafica deve sapere se la natura serve — e la risposta dipende dal regime —
+     * i posti sono due: riscriverla nel secondo avrebbe creato la condizione perché un
+     * giorno rispondano diversamente, cioè un modulo che accetta un fornitore che poi
+     * l'F24 rifiuta.
+     *
+     * Il ripiego su `APPALTO_4` non è una scorciatoia: è il regime della stragrande
+     * maggioranza dei fornitori di un condominio, ed è quello che la 1.9 applicava
+     * implicitamente con `perc_ritenuta = 4`. E soprattutto **non è tirare a indovinare**,
+     * perché il ramo che conta lo decide un fatto registrato: l'aliquota davvero applicata.
+     * Il `?? 4` finale è irraggiungibile dal modulo, dove `perc_ritenuta` è obbligatoria
+     * quando `tipo_ritenuta` manca.
+     */
+    public static function dedotto(self|string|null $tipo, int|float|string|null $percRitenuta): self
+    {
+        if ($tipo instanceof self) {
+            return $tipo;
+        }
+
+        if (! blank($tipo)) {
+            return self::from($tipo);
+        }
+
+        return ((int) ($percRitenuta ?? 4)) === 20
+            ? self::LAVORO_AUTONOMO_20
+            : self::APPALTO_4;
+    }
+
+    /**
+     * Se per questo regime la **natura del percipiente cambia il codice tributo**.
+     *
+     * Guardando `codiceTributo()` qui sopra si vede che la risposta è sì per un regime solo:
+     * l'appalto, dove IRPEF dà 1019 e IRES dà 1020. Tutti gli altri hanno un codice fisso —
+     * 1040 per lavoro autonomo, provvigioni e non residenti, 1001 per il lavoro dipendente —
+     * e la natura non li sposta di una virgola.
+     *
+     * ⚠️ **Serve a non pretendere un dato che non decide niente.** Il blocco che impedisce di
+     * preparare l'F24 senza la natura, nato il 03/09/2026 con la Coda 119, all'inizio non
+     * guardava il regime: si fermava sempre. Un condominio che paga soltanto un professionista
+     * al 20% si sarebbe visto rifiutare la delega per un campo che sul suo modello avrebbe
+     * scritto 1040 in ogni caso — e il messaggio gli avrebbe pure detto una cosa falsa, cioè
+     * che «il codice sarebbe 1019 o 1020 a caso».
+     *
+     * Non è la stessa cosa di «la natura non serve mai» per quei regimi: la Certificazione
+     * Unica (Fase 5) la userà comunque. Serve a stabilire quando la sua assenza è un ostacolo
+     * **al versamento**, che è l'unica cosa che il blocco dell'F24 protegge.
+     */
+    public function dipendeDallaNatura(): bool
+    {
+        return $this === self::APPALTO_4;
     }
 
     /** Causale CU associata al regime, dove applicabile (usata in Fase 5). */

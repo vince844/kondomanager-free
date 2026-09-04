@@ -7,6 +7,104 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.15] - Il Codice Che Nessuno Aveva Scelto
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Chiude la **Coda 119**, aperta da Vincenzo il 03/09/2026 guardando il riquadro rosa durante il
+collaudo della beta.14: *«ok la spunta, ma se poi me lo dimentico?»*. La domanda era sulla promessa
+di correggere a mano il codice tributo prima dell'F24. Seguendo la catena si è scoperto che quella
+promessa **non la riscuoteva nessuno**: mesi dopo, alla generazione della delega,
+`GeneraDelegheF24Action::naturaPercipiente()` non trovava la natura del percipiente e ripiegava in
+silenzio su `PERSONA_FISICA_IRPEF`, cioè stampava **1019** anche su un soggetto IRES, che vuole
+**1020**.
+
+Non è un errore contabile: la partita doppia resta giusta, perché il debito verso l'Erario si accende
+sul conto con `ruolo = debiti_erario_ritenute` per ruolo e mai per codice tributo. È peggio, in un
+certo senso — **il denaro arriva all'Erario sotto un codice che non è il suo, e si rimedia con
+l'Agenzia, non con una scrittura.**
+
+⚠️ **Il difetto era vivo nei dati.** La delega del condominio dimostrativo portava davvero `1019` per
+una s.r.l. Non è stato costruito un caso per la prova: è stato trovato aprendo la pagina.
+
+### Il ripiego silenzioso non c'è più
+
+`naturaPercipiente()` adesso restituisce `null` quando nessuno sa la risposta, e
+`bloccaSeLaNaturaNonSiSa()` solleva una `DomainException` che **nomina i fornitori**. Togliendo il
+ripiego sono diventati rossi **sedici test insieme**: erano verdi perché proteggevano il difetto —
+uno di loro commentava perfino «fornitore persona fisica → 1019», attribuendo a una classificazione
+un valore che nessuno aveva scelto. Adesso quel 1019 è guadagnato.
+
+### Il blocco è vivibile, e chiede solo dove decide
+
+Due correzioni dello stesso giorno, la seconda trovata riguardando il proprio lavoro:
+
+- **Si dice prima, non dopo.** Sopra lo scadenzario compare l'elenco dei fornitori da classificare,
+  con il collegamento a ciascuna anagrafica. Finché c'è, il pulsante «Aggiorna scadenze» è spento e
+  il tooltip dice perché: prima ne uscivano **due messaggi rossi identici** a mezzo secondo di
+  distanza — il pannello e l'esito di una pressione che non poteva riuscire.
+- **Non si chiede un dato che non decide niente.** `TipoRitenuta::codiceTributo()` fa dipendere il
+  codice dalla natura per un regime solo, l'appalto (1019/1020): altrove è sempre 1040, o 1001 per
+  il lavoro dipendente. La prima stesura bloccava sempre, e a un condominio che paga solo un
+  professionista avrebbe rifiutato la delega dicendogli pure una cosa falsa. Ora l'enum sa
+  rispondere a `dipendeDallaNatura()`, e `codiceTributo()` accetta una natura assente rifiutandola
+  solo dove conta, invece di pretenderne una inventata dal chiamante.
+
+### L'anagrafica la chiede, senza ripetere la beta.6
+
+⚠️ **La regola non è «obbligatoria se soggetto a ritenuta».** Quella è esattamente ciò che è costato
+la **beta.6**, ed è documentato dentro il file che si sarebbe dovuto modificare: i tre campi
+dell'override erano `required_if:soggetto_ritenuta,true`, e ogni fornitore già a database con la
+spunta e un campo vuoto diventò **impossibile da salvare**, anche solo per correggergli il telefono.
+
+Vincenzo ha scelto la **presa d'atto**, lo stesso schema già adottato per lo sforo di budget: l'obbligo
+scatta quando si crea il fornitore, quando si accende la spunta, o quando si tocca il blocco fiscale
+— cioè quando l'incompletezza la stai producendo adesso, non quando la stai ereditando. Una scheda
+già incompleta resta salvabile finché si cambia altro. Il pregresso lo prende il blocco sull'F24, nel
+momento in cui il dato serve davvero.
+
+La regola vive in un trait solo (`ChiedeLaNaturaDelPercipiente`) e la deduzione del regime è stata
+estratta nell'enum (`TipoRitenuta::dedotto()`), perché prima esisteva solo dentro l'azione F24:
+riscriverla nella validazione avrebbe creato la condizione perché un giorno il modulo accetti un
+fornitore che l'F24 rifiuta.
+
+### Un rifiuto non può essere muto
+
+La finestra «crea fornitore da XML» rende gli errori **a mano, campo per campo**, e la natura del
+percipiente non era fra quelli: un 422 su quella chiave avrebbe fatto tornare il pulsante da «Creo il
+fornitore...» a «Crea e aggancia» **senza una parola**. Peggio, la rete costruita per il difetto del
+forum del 30/08 guarda solo `FornitoriNew.vue` e `FornitoriEdit.vue`: sarebbe restata verde.
+
+Oltre all'errore sotto al campo è stato aggiunto un **ripiego strutturale**: ciò che non trova posto
+sotto a un campo compare in cima alla finestra. E la finestra ha finalmente un suo file di test, con
+una guardia che verifica che l'elenco dei campi «stampati» non menta — se mentisse, il ripiego
+scarterebbe un errore credendo che abbia già un posto suo.
+
+### Lo scadenzario si legge in riga
+
+La data con il conto alla rovescia e il codice tributo occupavano due righe mentre le altre colonne
+ne occupavano una: siccome le celle a una riga si centrano in verticale, la tabella si leggeva a
+scalini. Ora tutta la riga sta su una linea sola (scarto massimo misurato: 1,5 px) e il codice
+tributo è un badge come il tipo di versamento, senza carattere a spaziatura fissa.
+
+### Corretto anche
+
+- **Due date scritte in avanti** (04/09/2026 in commenti scritti il 03/09), in cinque file.
+- **`docs/design/f24_ritenute_design.md` §8, punti 4 e 5**: erano ancora elencati come difetti aperti
+  ed erano chiusi dalla 1.10 — l'iscrizione a `PagamentoStornato` e il calendario delle festività.
+  Verificati sul codice prima di scrivere le rettifiche.
+
+### Difetti misurati e lasciati scritti
+
+- **La pagina F24 non ha il tema scuro.** Sei elementi con `bg-white` senza variante `dark:`: le tre
+  schede dei totali, i due filtri e il riquadro della tabella. Viene dal modulo F24 della 1.10, non
+  da questa beta. Le superfici si correggono tutte insieme o si misurano e si lascia scritto.
+- **`prepareForValidation` trasforma una chiave assente in `false`.** Una chiamata che ometta
+  `soggetto_ritenuta` la vede diventare falsa: oggi i tre moduli mandano sempre il carico completo,
+  quindi non è raggiungibile, ma un client parziale azzererebbe in silenzio la ritenuta.
+
+---
+
 ## [1.11.0-beta.14] - Quello Che C'Era Scritto Nel File
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova.

@@ -347,3 +347,120 @@ it('rende a schermo ogni chiave validata della scheda fornitore', function (stri
         ['certificazione_iso', 'soggetto_ritenuta', 'residente_fiscale', 'regime_forfetario', 'provvigioni_base_ridotta', 'nazione'],
     ],
 ]);
+
+/*
+|--------------------------------------------------------------------------
+| La natura del percipiente: obbligatoria dove decide, presa d'atto sul resto
+|--------------------------------------------------------------------------
+|
+| Coda 119, punto 1 — scelta di Vincenzo del 03/09/2026.
+|
+| ⚠️ **La regola non è «obbligatoria se soggetto a ritenuta».** Quella l'abbiamo già
+| scritta una volta, sui tre campi dell'override, ed è la beta.6: ogni scheda già a
+| database con la spunta e il campo vuoto diventò impossibile da salvare, anche solo per
+| correggere un telefono. Qui l'obbligo è ristretto su tre fronti, e ogni test qui sotto
+| ne protegge uno: il regime (solo l'appalto fa dipendere il codice dalla natura), il
+| forfetario (che una ritenuta non la genera mai), e il pregresso (presa d'atto).
+*/
+
+it('alla creazione, un fornitore in appalto senza natura viene rifiutato', function () {
+    $this->post(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale'   => 'Edilizia Senza Natura S.r.l.',
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+    ]))->assertSessionHasErrors('natura_percipiente');
+});
+
+it('e il rifiuto dice perche, non solo che manca', function () {
+    // Un messaggio che dice «il campo è obbligatorio» non aiuta chi non sa cosa sia la
+    // natura del percipiente: deve portare il motivo, che è lo stesso del blocco sull'F24.
+    $risposta = $this->postJson(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale'   => 'Edilizia Senza Natura S.r.l.',
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+    ]));
+
+    $risposta->assertStatus(422);
+    expect($risposta->json('errors.natura_percipiente.0'))
+        ->toContain('1019')
+        ->toContain('1020');
+});
+
+it('al 20% invece non serve, perche li il codice tributo e 1040 comunque', function () {
+    // ⚠️ Il controesempio che tiene stretta la regola: senza questo, «obbligatoria
+    // sempre» passerebbe e chiederemmo un dato che sul modello F24 non cambia niente.
+    $this->post(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale'   => 'Studio Professionale Senza Natura',
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 20,
+    ]))->assertSessionHasNoErrors();
+});
+
+it('a un forfetario non si chiede, perche una ritenuta non la genera mai', function () {
+    // RitenutaService esce con MotivoEsclusioneRitenuta::FORFETARIO prima ancora di
+    // guardare soggetto_ritenuta: quel fornitore a un F24 non ci arriva.
+    $this->post(route('admin.fornitori.store'), payloadFornitore([
+        'ragione_sociale'          => 'Artigiano Forfetario',
+        'soggetto_ritenuta'        => true,
+        'perc_ritenuta'            => 4,
+        'regime_forfetario'        => true,
+        'forfetario_dichiarato_il' => '2026-01-01',
+    ]))->assertSessionHasNoErrors();
+});
+
+it('accendendo la spunta su una scheda esistente, la natura diventa obbligatoria', function () {
+    // Non è pregresso: l'incompletezza la sta producendo adesso chi sta salvando.
+    $fornitore = creaFornitore(['soggetto_ritenuta' => false]);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+    ]))->assertSessionHasErrors('natura_percipiente');
+});
+
+it('toccando il blocco fiscale di una scheda gia incompleta, la natura diventa obbligatoria', function () {
+    // La presa d'atto vale finché si sta cambiando altro. Chi mette le mani nel riquadro
+    // della ritenuta sta lavorando proprio lì: è il momento in cui il dato si chiede.
+    $fornitore = creaFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+    ]);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+        'tipo_ritenuta'     => 'appalto_4',   // prima era vuoto: il riquadro è stato toccato
+    ]))->assertSessionHasErrors('natura_percipiente');
+});
+
+it('ma cambiare solo l\'IBAN di quella stessa scheda continua a funzionare', function () {
+    // ⚠️ È la beta.6 che non deve ripetersi, ed è la ragione della presa d'atto.
+    $fornitore = creaFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+    ]);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+        'iban_principale'   => 'IT60X0542811101000000123456',
+    ]))->assertSessionHasNoErrors();
+
+    expect($fornitore->fresh()->iban_principale)->toBe('IT60X0542811101000000123456');
+});
+
+it('e l\'aliquota scritta 4.00 invece di 4 non conta come blocco toccato', function () {
+    // ⚠️ `perc_ritenuta` è decimal(5,2): a database torna «4.00», il modulo rimanda «4».
+    // Confrontarli come stringhe direbbe che il riquadro è stato toccato ogni volta, e la
+    // presa d'atto non varrebbe mai — cioè avremmo il blocco secco senza averlo scelto.
+    $fornitore = creaFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => 4,
+    ]);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore([
+        'soggetto_ritenuta' => true,
+        'perc_ritenuta'     => '4.00',
+        'telefono'          => '06 5550202',
+    ]))->assertSessionHasNoErrors();
+});
