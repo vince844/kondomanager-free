@@ -622,6 +622,22 @@ function precompilaDaXml(esito: EsitoImportazioneXml) {
     form.dati_extra.override_budget = null;
     form.dati_extra.log_legale_sopravvenienza = null;
 
+    // ⚠️ **Anche i campi del debito pregresso, non solo le righe.** Se la data del
+    // documento cade in un esercizio precedente, il watch qui sotto accende
+    // `is_pregresso` e la schermata smette di mostrare le righe: passa a un pannello
+    // che chiede un imponibile solo e un'aliquota sola. Finché questa funzione
+    // riempiva le sole righe, quel pannello restava a **zero** e l'amministratore
+    // doveva ribattere a mano numeri che il file dichiara — misurato il 05/09/2026 sui
+    // file di collaudo reali: sei degli undici sono datati in un esercizio precedente,
+    // e tutti e sei arrivavano a zero.
+    //
+    // Si scrivono comunque, anche quando il documento è corrente: costa niente, e
+    // rende il travaso indipendente dall'ordine in cui il watch sulla data scatta.
+    if (esito.documento.imponibile_dichiarato !== undefined) {
+        form.imponibile_pregresso = esito.documento.imponibile_dichiarato;
+        form.aliquota_iva_pregressa = esito.documento.aliquota_effettiva ?? 22;
+    }
+
     if (esito.righe.length > 0) {
         // ⚠️ Il fornitore per il prefill si cerca DIRETTAMENTE nell'esito (non da
         // `selectedFornitore`, che legge `form.fornitore_id` — non ancora scritto a

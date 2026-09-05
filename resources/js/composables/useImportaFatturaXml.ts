@@ -34,6 +34,15 @@ export interface EsitoImportazioneXml {
     data_scadenza: string | null
     modalita_pagamento: string | null
     iban_fornitore: string | null
+    /**
+     * I totali che il documento dichiara di sé nei blocchi DatiRiepilogo, in euro.
+     * Non sono la somma delle righe: servono al pannello del debito pregresso, che
+     * accetta un imponibile solo e un'aliquota sola. Vedi
+     * `FatturaPaFattura::imponibileDichiaratoCents()`.
+     */
+    imponibile_dichiarato?: number
+    imposta_dichiarata?: number
+    aliquota_effettiva?: number
   }
   righe: RigaImportataXml[]
   ritenuta: {

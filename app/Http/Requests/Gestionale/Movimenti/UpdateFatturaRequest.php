@@ -28,6 +28,21 @@ class UpdateFatturaRequest extends FormRequest
 
     public function rules(): array
     {
+        // ⚠️ **Il `min:0` vale solo per la nota di credito, e la distinzione è sostanziale.**
+        // Su una fattura ordinaria una riga negativa è legittima e frequente: è lo storno
+        // «Oneri di sistema» che ogni bolletta gas porta dentro il documento, e il motore
+        // contabile ora la registra correttamente come AVERE sul capitolo. Vietarla qui
+        // richiuderebbe con la validazione la porta appena aperta nel servizio.
+        //
+        // Su una **nota di credito** invece il segno lo mette già il moltiplicatore −1 di
+        // `FatturaPassivaService`: una riga digitata negativa lo annulla e riporta
+        // `netto_a_pagare` in positivo. A quel punto la guardia di `StornoFatturaController`
+        // — `if ($fattura->netto_a_pagare < 0)`, l'unica cosa che distingue una NC da una
+        // fattura vera al momento dello storno — non scatta più, e il documento diventa
+        // pagabile e stornabile pur restando una nota di credito (Coda 132, trovata dalla
+        // revisione avversariale della beta.17).
+        $isNotaCredito = $this->route('fattura')?->tipo_documento === 'nota_credito';
+
         return [
             'gestione_id' => [
                 'required',
@@ -53,7 +68,7 @@ class UpdateFatturaRequest extends FormRequest
 
             'righe'                      => 'required|array|min:1',
             'righe.*.descrizione'        => 'required|string',
-            'righe.*.importo_imponibile' => 'required|numeric',
+            'righe.*.importo_imponibile' => $isNotaCredito ? 'required|numeric|min:0' : 'required|numeric',
             'righe.*.aliquota_iva'       => 'required|numeric|min:0|max:100',
             'righe.*.conto_id'           => 'nullable|exists:conti,id',
             'righe.*.immobile_id'        => 'nullable|exists:immobili,id',
@@ -86,6 +101,8 @@ class UpdateFatturaRequest extends FormRequest
             'righe.*.descrizione.required'            => 'La causale della riga è obbligatoria.',
             'righe.*.importo_imponibile.required'     => "L'importo è obbligatorio.",
             'righe.*.importo_imponibile.numeric'      => "L'importo deve essere un numero.",
+            'righe.*.importo_imponibile.min'          => "Su una nota di credito l'importo di riga non può essere negativo: "
+                .'il segno lo mette già il tipo di documento. Scrivi la cifra da accreditare.',
             'gestione_id.required'                    => 'La gestione contabile è obbligatoria.',
         ];
     }

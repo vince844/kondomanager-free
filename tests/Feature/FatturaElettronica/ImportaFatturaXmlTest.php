@@ -552,3 +552,59 @@ test('un contributo cassa a zero non genera una riga da compilare', function () 
 
     expect($risposta->json('righe'))->toHaveCount(1);
 });
+
+/**
+ * I totali che il documento **dichiara di sé** viaggiano nel payload.
+ *
+ * ⚠️ **Non è un dato di comodo: senza, sei file reali su undici arrivavano a zero.**
+ * Una fattura datata in un esercizio precedente non si registra riga per riga — la
+ * schermata passa al pannello del debito pregresso, che chiede un imponibile solo e
+ * un'aliquota sola. Finché il controller mandava le sole righe, quel pannello restava
+ * vuoto e l'amministratore doveva **ribattere a mano** un importo che il file dichiara,
+ * cioè il contrario esatto di ciò che l'importatore promette in testa alla schermata.
+ * Misurato il 05/09/2026 sui file di collaudo: 01, 02, 05, 09, 10 e 11 — tutti quelli
+ * datati in un esercizio precedente — mostravano € 0,00.
+ *
+ * Il numero è quello del **riepilogo**, non la somma delle righe: è la regola che
+ * `FatturaPaFattura::imponibileDichiaratoCents()` enuncia nel proprio docblock — «è
+ * questo il numero da usare per registrare» — e che `sommaRigheCents()` dichiara
+ * esplicitamente sbagliata («usare questo per registrare è un difetto, non una
+ * scorciatoia»).
+ */
+test('il payload porta i totali dichiarati dal documento, non solo le righe', function () {
+    $condominio = Condominio::factory()->create();
+
+    $risposta = $this->actingAs($this->user)->postJson(
+        route('admin.gestionale.fatture.importa-xml', $condominio),
+        ['file' => fileFixtura('reale_anonimizzata_cassa_previdenziale.xml', 'fattura.xml')]
+    );
+
+    $risposta->assertOk();
+    $doc = $risposta->json('documento');
+
+    expect($doc)->toHaveKeys(['imponibile_dichiarato', 'imposta_dichiarata', 'aliquota_effettiva']);
+
+    // Coerenza interna: quello che dichiara come imponibile, per l'aliquota effettiva,
+    // deve riprodurre l'imposta dichiarata. È il controllo che rende il terzo campo
+    // verificabile invece che decorativo.
+    $atteso = round($doc['imponibile_dichiarato'] * $doc['aliquota_effettiva'] / 100, 2);
+    expect(abs($atteso - $doc['imposta_dichiarata']))->toBeLessThanOrEqual(0.01);
+
+    // E il totale del documento torna: imponibile + imposta.
+    expect($doc['imponibile_dichiarato'] + $doc['imposta_dichiarata'])->toBeGreaterThan(0);
+});
+
+test('su un documento senza IVA l aliquota effettiva è zero e non esplode', function () {
+    $condominio = Condominio::factory()->create();
+
+    $risposta = $this->actingAs($this->user)->postJson(
+        route('admin.gestionale.fatture.importa-xml', $condominio),
+        ['file' => fileFixtura('reale_anonimizzata_cassa_previdenziale.xml', 'fattura.xml')]
+    );
+
+    $doc = $risposta->json('documento');
+    // La guardia vera è sulla divisione: un imponibile a zero non deve produrre NaN,
+    // INF o un errore — restituisce 0 e basta.
+    expect($doc['aliquota_effettiva'])->toBeNumeric()
+        ->and(is_finite((float) $doc['aliquota_effettiva']))->toBeTrue();
+});

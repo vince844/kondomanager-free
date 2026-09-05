@@ -42,7 +42,6 @@ class FatturaPassivaService
             $ivaTotale = 0;
             $righeProcessate = [];
             $righeRitenuta = [];
-            $aliquotaPregressaSalvata = 22; // Default per il DB
 
             $dynamicContoComuneId = null;
             $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
@@ -55,7 +54,6 @@ class FatturaPassivaService
 
                 $imponibileTotale = $impPregresso;
                 $ivaTotale = $ivaPregressa;
-                $aliquotaPregressaSalvata = $aliqPregressa;
             } else {
                 foreach ($data['righe'] as $rigaInput) {
                     $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
@@ -168,8 +166,15 @@ class FatturaPassivaService
                 'is_pregresso' => $isPregresso,
                 'data_competenza_originaria' => $data['data_competenza_originaria'] ?? null,
                 'saldo_patrimoniale_id' => $data['saldo_patrimoniale_id'] ?? null,
-                'imponibile_pregresso' => $isPregresso ? $imponibileTotale : 0,
-                'aliquota_iva_pregressa' => $isPregresso ? $aliquotaPregressaSalvata : 0,
+                // ⚠️ **Qui c'erano `imponibile_pregresso` e `aliquota_iva_pregressa`, e non
+                // facevano niente** (Fase 1-bis della beta.18, rilievo 4). Non sono colonne di
+                // `fatture_passive` — 29 colonne, nessuna migrazione le crea — e il modello ha
+                // `$guarded = ['id']`, quindi Eloquent le scartava in silenzio: l'INSERT non le
+                // conteneva, e chi le rileggeva otteneva `null`. Lo storno di una pregressa le
+                // leggeva davvero (`StornoFatturaController`), otteneva zero, e generava una
+                // nota di credito vuota. Tolte invece di aggiungere due colonne: il dato non si
+                // perde, sta già in `importo_imponibile` e `importo_iva`, e lo storno lo legge
+                // da lì. Una riga che finge di salvare è peggio di una riga che manca.
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
                 'importo_iva' => $ivaTotale * $moltiplicatore,
                 'importo_ritenuta' => $ritenuta * $moltiplicatore,
@@ -456,7 +461,17 @@ class FatturaPassivaService
                 }
             } else {
                 foreach ($righeProcessate as $riga) {
-                    $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
+                    // ⚠️ **Si rimoltiplica per `$moltiplicatore`, e non è un refuso.** Le righe
+                    // in `$righeProcessate` hanno il segno del DOCUMENTO già applicato (righe
+                    // 97 e 99): su una nota di credito una riga digitata positiva è qui
+                    // negativa. Ma il verso della nota lo dà già «il filtro invertitore» in
+                    // fondo a questo metodo, che gira l'intera scrittura in un colpo solo.
+                    // Quello che serve qui è il segno **naturale** della riga — quello che
+                    // l'amministratore ha digitato — altrimenti su una NC ogni riga verrebbe
+                    // girata due volte. Poiché il moltiplicatore vale ±1, rimoltiplicare lo
+                    // annulla ed è esatto al centesimo.
+                    $importoSegnatoRiga = ($riga['importo_imponibile'] + $riga['importo_iva']) * $moltiplicatore;
+                    $importoLordoRiga = abs($importoSegnatoRiga);
 
                     // ⚠️ **Una riga da € 0,00 non produce nessuna scrittura, e non è un caso
                     // di confine: gli XML veri ne sono pieni.** Cinque degli undici file di
@@ -475,10 +490,25 @@ class FatturaPassivaService
                         continue;
                     }
 
+                    // ⚠️ **Il segno della riga sceglie il LATO, non si butta via.** Fino alla
+                    // beta.17 qui c'era `abs()` e basta, e ogni riga finiva in DARE con il suo
+                    // valore assoluto: una riga negativa — lo storno «Oneri di sistema» che
+                    // ogni bolletta gas porta dentro una fattura ordinaria — invece di
+                    // *ridurre* il DARE lo *aumentava*. L'AVERE, che nasce da `$netto` cioè da
+                    // una somma già con segno, restava giusto: da lì lo sbilancio, pari a due
+                    // volte la riga negativa, e `DoubleEntryValidator` respingeva l'intera
+                    // fattura («Sbilancio rilevato tra DARE e AVERE»). La guardia dello zero
+                    // qui sopra dichiarava già legittima la riga negativa; mancava il passo
+                    // dopo. In partita doppia l'importo è sempre positivo ed è `tipo_riga` a
+                    // portare il verso: una riga negativa è un AVERE **sullo stesso conto**,
+                    // che è anche il modo in cui il resto del sistema già la legge
+                    // (`SpesaPerVoceService` netta dare − avere per capitolo).
+                    $versoRiga = $importoSegnatoRiga < 0 ? 'avere' : 'dare';
+
                     if (! empty($riga['immobile_id'])) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCreditiCondomini->id,
-                            'tipo_riga' => 'dare',
+                            'tipo_riga' => $versoRiga,
                             'importo' => $importoLordoRiga,
                             'voce_spesa_id' => null,
                             'immobile_id' => $riga['immobile_id'],
@@ -489,7 +519,7 @@ class FatturaPassivaService
                         if ($contoBudget && $contoBudget->conto_contabile_id) {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                                'tipo_riga' => 'dare',
+                                'tipo_riga' => $versoRiga,
                                 'importo' => $importoLordoRiga,
                                 'voce_spesa_id' => $riga['conto_id'],
                                 'immobile_id' => null,
@@ -505,11 +535,26 @@ class FatturaPassivaService
 
             $anagraficaPrincipale = $fornitore->referenti()->first();
 
-            // AVERE 1: Debito verso Fornitore
+            // ⚠️ **Anche la testata sceglie il lato dal segno, non solo le righe di dettaglio.**
+            // Dare il verso calcolato alle righe e lasciarlo fisso qui è mezza correzione, e si
+            // rompe sul documento che vale meno di zero: la bolletta in cui il conguaglio a
+            // credito supera il consumo del periodo (riga +€ 50,00 e storno −€ 100,00). Lì le
+            // righe scrivono DARE 6100 / AVERE 12200, e una testata cablata su «avere»
+            // aggiungerebbe altri 6100 dalla parte sbagliata: ricomparirebbe «Sbilancio
+            // rilevato», cioè il messaggio che questa beta esiste per far sparire, spostato dal
+            // livello della riga a quello del documento (Fase 1-bis, rilievo 3).
+            //
+            // Il segno da guardare è quello **naturale** — prima del moltiplicatore — per la
+            // stessa ragione delle righe: il verso della nota di credito lo dà l'invertitore
+            // qui sotto, e leggere `$netto` (già moltiplicato) la farebbe girare due volte.
+            $nettoNaturale = $totaleDoc - $ritenuta;
+
+            // Debito verso Fornitore — AVERE su una fattura normale, DARE quando il documento
+            // è a credito perché gli storni di riga superano gli addebiti.
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga' => 'avere',
-                'importo' => abs($netto),
+                'tipo_riga' => $nettoNaturale < 0 ? 'dare' : 'avere',
+                'importo' => abs($nettoNaturale),
                 'anagrafica_id' => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
@@ -867,7 +912,12 @@ class FatturaPassivaService
             $anagraficaPrincipale = $fornitore->referenti()->first();
 
             foreach ($righeProcessate as $riga) {
-                $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
+                // ⚠️ Rimoltiplicazione per `$moltiplicatore` come nella registrazione: qui le
+                // righe hanno già il segno del documento, e il verso della nota di credito lo
+                // dà l'invertitore in fondo. Serve il segno naturale della riga — vedi il
+                // commento esteso in `registraFattura()`.
+                $importoSegnatoRiga = ($riga['importo_imponibile'] + $riga['importo_iva']) * $moltiplicatore;
+                $importoLordoRiga = abs($importoSegnatoRiga);
 
                 // ⚠️ Stessa guardia della registrazione, e per lo stesso motivo: una riga da
                 // € 0,00 — quelle puramente descrittive che gli XML veri portano — non produce
@@ -880,10 +930,17 @@ class FatturaPassivaService
                     continue;
                 }
 
+                // ⚠️ Stesso verso della registrazione, e per la stessa ragione — vedi il
+                // commento lungo in `registraFattura()`. Qui però il difetto mordeva due
+                // volte: una fattura con una riga negativa non solo non si registrava, ma
+                // nemmeno si **rimodificava**, perché `aggiornaFattura()` ricostruisce la
+                // scrittura da zero e ripassava dallo stesso `abs()`.
+                $versoRiga = $importoSegnatoRiga < 0 ? 'avere' : 'dare';
+
                 if (! empty($riga['immobile_id'])) {
                     $scrittura->righe()->create([
                         'conto_contabile_id' => $contoCreditiCondomini->id,
-                        'tipo_riga' => 'dare',
+                        'tipo_riga' => $versoRiga,
                         'importo' => $importoLordoRiga,
                         'voce_spesa_id' => null,
                         'immobile_id' => $riga['immobile_id'],
@@ -894,7 +951,7 @@ class FatturaPassivaService
                     if ($contoBudget && $contoBudget->conto_contabile_id) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                            'tipo_riga' => 'dare',
+                            'tipo_riga' => $versoRiga,
                             'importo' => $importoLordoRiga,
                             'voce_spesa_id' => $riga['conto_id'],
                         ]);
@@ -906,11 +963,14 @@ class FatturaPassivaService
                 }
             }
 
-            // Riga AVERE — Debito verso Fornitore
+            // Riga Debito verso Fornitore — stesso verso calcolato della registrazione, e per
+            // la stessa ragione: vedi il commento esteso in `registraFattura()`.
+            $nettoNaturale = $totaleDoc - $ritenuta;
+
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga' => 'avere',
-                'importo' => abs($netto),
+                'tipo_riga' => $nettoNaturale < 0 ? 'dare' : 'avere',
+                'importo' => abs($nettoNaturale),
                 'anagrafica_id' => $anagraficaPrincipale?->id,
             ]);
 

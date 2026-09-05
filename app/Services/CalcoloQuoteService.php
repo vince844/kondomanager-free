@@ -442,7 +442,20 @@ class CalcoloQuoteService
                     ->get();
 
                 foreach ($righe as $riga) {
-                    $imp = abs((int) ($riga->importo_imponibile + $riga->importo_iva));
+                    // ⚠️ **Il segno si tiene: qui si generano le quote VERE che i condòmini
+                    // pagano** (Fase 1-bis della beta.18, rilievo 5). Con `abs()` una rettifica
+                    // in diminuzione veniva ADDEBITATA invece che accreditata: righe di
+                    // sopravvenienza +€ 1.200,00 e −€ 200,00 sullo stesso capitolo davano un
+                    // naturale di € 1.400,00 invece di € 1.000,00, e il piano rate chiedeva
+                    // € 400,00 più del documento — due volte lo storno, la stessa firma
+                    // aritmetica del difetto corretto nel motore contabile.
+                    //
+                    // Il valore negativo non ha bisogno di trattamento speciale a valle:
+                    // l'accumulo per conto qui sotto somma già con il segno
+                    // (`$importiPerConto[...] += $importoComp`), la guardia `$naturale <= 0`
+                    // ferma il caso in cui gli storni superano gli addebiti, e la
+                    // distribuzione proporzionale è indifferente al segno del singolo peso.
+                    $imp = (int) ($riga->importo_imponibile + $riga->importo_iva);
                     if ($imp === 0) continue;
 
                     if (is_null($riga->immobile_id) && is_null($riga->conto_id)) {

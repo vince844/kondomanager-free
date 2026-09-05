@@ -7,6 +7,122 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.18] - Il Meno Che Diventava Più
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Una delle undici fatture reali usate per le prove — una bolletta del gas — contiene una riga in
+diminuzione: lo storno «Oneri di sistema», −€ 1,80. Il motore contabile la respingeva con un
+messaggio di sbilancio, e negli altri tre punti che quel tipo di riga attraversa — storno,
+modifica, piano rate — dove riusciva a passare produceva numeri gonfiati che quadravano lo
+stesso. Questa beta chiude quella famiglia intera, più la Coda 132.
+
+Il difetto d'origine è stato trovato registrando a video le fatture di prova per il tutorial
+sull'importazione XML: la bolletta del gas si rifiutava di entrare. La revisione avversariale
+del 05/09/2026 ne ha trovati altri cinque nella stessa area — tre esistenti da sempre, due
+introdotti dalla prima stesura della correzione — e uno l'ha trovato la verifica a video, dopo
+che tutti i test erano verdi.
+
+### La riga in diminuzione non passava affatto
+
+`FatturaPassivaService` scriveva ogni riga di dettaglio come DARE del suo **valore assoluto**.
+La riga da −€ 1,80 finiva a giornale come DARE € 1,80: contribuiva al totale invece di ridurlo.
+La testata valeva il totale vero del documento, € 100,15; la somma delle righe € 104,54 — lo
+scarto contato due volte, al lordo dell'IVA al 22%. `DoubleEntryValidator` faceva il suo mestiere
+e respingeva tutto con «Errore di integrità contabile».
+
+Ora il segno naturale della riga decide il verso: negativa → AVERE, positiva → DARE, importo
+sempre positivo come vuole lo schema. Sullo stesso capitolo di spesa, così la riduzione riduce.
+Sulle note di credito il segno resta uno solo — il moltiplicatore per −1 e il filtro
+invertitore lavoravano già insieme, e la prima stesura di questa correzione li aveva sommati,
+producendo una nota da DARE € 244,00 / AVERE € 0,00. Il test l'ha vista in pochi secondi.
+
+### Lo storno gonfiava la nota di credito (①)
+
+`StornoFatturaController` applicava `abs()` a ogni riga prima di rimandarla al servizio: la
+nota di credito generata valeva **più** della fattura che doveva annullare — € 134,20 contro
+€ 109,80 sul caso verificato. Restavano € 24,40 di credito verso il fornitore che non
+corrispondevano a nessun denaro, e il capitolo chiudeva con una spesa negativa che entrava nel
+rendiconto e si ripartiva ai condòmini. Tolto l'`abs()`: la nota è lo specchio esatto, e i due
+documenti si annullano a zero.
+
+### La modifica la faceva crescere in silenzio (②)
+
+`FatturaRegisterEdit.vue` idratava le righe con `Math.abs()` per tutti i tipi di documento. La
+riga negativa compariva senza il meno, e bastava riaprire la fattura per correggere una data e
+salvarla perché il totale passasse da € 109,80 a € 134,20 — nessun avviso, contabilità in
+quadratura, € 24,40 mai spesi caricati sul capitolo. L'`abs()` ora vale solo dove serve
+davvero, sulle note di credito, dove il segno lo mette il tipo di documento.
+
+### La testata sceglie il verso dal segno (③)
+
+Quando gli storni di riga superano gli addebiti — il conguaglio a credito più grande del
+consumo del periodo — il documento vale meno di zero: il fornitore deve a noi. La riga di
+testata era scritta come AVERE fisso del valore assoluto, e la registrazione veniva respinta
+con lo stesso messaggio di sbilancio. Ora il verso lo decide il netto: negativo → DARE.
+
+### Lo storno di una pregressa non scriveva niente (④)
+
+Una fattura registrata come debito di un esercizio precedente non ha righe di dettaglio:
+l'importo sta sui campi di testata. `StornoFatturaController` leggeva invece due colonne che
+**non esistono** in tabella — `imponibile_pregresso` e `aliquota_iva_pregressa` — e da un
+valore nullo ricavava zero. La nota di credito veniva creata **vuota**: la fattura risultava
+stornata, il debito restava a bilancio, niente lo segnalava. Ora i due valori si ricavano dai
+campi veri, e la nota vale quanto la fattura che annulla. Le due scritture morte che
+`FatturaPassivaService` faceva verso quelle stesse colonne inesistenti sono state tolte.
+
+### Le quote straordinarie addebitavano la riduzione (⑤)
+
+`CalcoloQuoteService` sommava le righe in valore assoluto: su un documento da € 1.000,00 con una
+rettifica in diminuzione da −€ 200,00 generava quote per € 1.400,00. I condòmini pagavano il 40%
+in più del documento. La riduzione ora riduce.
+
+### Sulla nota di credito il divieto adesso si vede (Coda 132)
+
+Digitare a mano un importo negativo su una nota di credito ne annullava il segno, riportava il
+totale in positivo e faceva sì che il programma non la riconoscesse più come nota di credito:
+diventava pagabile e stornabile come una fattura qualunque. La coda era aperta da tempo con un
+rimedio più largo — vietare il negativo ovunque — che questa beta ha dovuto restringere: sulla
+fattura ordinaria la riga in diminuzione è legittima, ed è esattamente il caso appena sistemato.
+Il divieto vale quindi solo sulla nota di credito.
+
+**La verifica a video ha trovato che il rifiuto non si vedeva.** Il server respingeva
+correttamente, ma la pagina di modifica non stampava alcun errore di riga: il pulsante tornava
+attivo e non succedeva niente. Un rifiuto muto è peggio del difetto che chiude. Ora il messaggio
+compare sotto la casella dell'importo e dice il perché: «Su una nota di credito il segno lo mette
+già il tipo di documento».
+
+### L'importazione XML perdeva gli importi di una pregressa
+
+Un file datato in un esercizio già chiuso apre il pannello del debito pregresso, che chiede un
+importo solo. L'importazione mandava le sole righe di dettaglio, che quel pannello non legge: il
+campo restava a € 0,00. **Su undici file reali di prova, sei sono datati 2024–2025** — su tutti e
+sei l'amministratore doveva ricopiare a mano un importo che il file dichiara, il contrario di
+quello che l'importazione promette. Ora imponibile, imposta e aliquota effettiva arrivano dal
+`DatiRiepilogo` del documento.
+
+### Verifica
+
+Tutte e undici le fatture reali di prova sono state registrate e controllate importo per
+importo — imponibile, IVA, totale, ritenuta — contro il valore dichiarato nell'XML, con le
+scritture verificate in quadratura una per una. Il file duplicato è stato correttamente
+rifiutato. Il caso con cassa previdenziale registra la cassa come riga propria; il caso con
+sconto in riga somma al totale dichiarato.
+
+### Cosa resta in coda
+
+Tre voci nuove, aperte e non chiuse qui:
+
+- **Coda 140** — cancellando una fattura la scrittura contabile resta orfana. Comportamento
+  preesistente, non introdotto da questa beta.
+- **Coda 141** — un secondo `abs()` sulle coperture in `CalcoloQuoteService`. Lasciato aperto di
+  proposito: nessuna delle lenti usate è riuscita a costruire uno scenario raggiungibile, e non
+  si tocca un calcolo di denaro senza un caso che lo dimostri.
+- **Coda 142** — l'IVA viene ricalcolata riga per riga invece di essere presa dal riepilogo
+  dichiarato, con scarti di 1 centesimo su alcuni documenti. Assegnata alla beta.19.
+
+---
+
 ## [1.11.0-beta.17] - Il Segno Che Nessuno Guardava
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova.

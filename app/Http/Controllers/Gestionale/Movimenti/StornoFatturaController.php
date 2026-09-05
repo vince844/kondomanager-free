@@ -108,8 +108,21 @@ class StornoFatturaController extends Controller
                 'totale_documento'           => abs($fattura->totale_documento / 100),
                 'netto_a_pagare'             => abs($fattura->netto_a_pagare / 100),
                 'is_pregresso'               => $fattura->is_pregresso,
-                'imponibile_pregresso'       => abs((float) $fattura->imponibile_pregresso / 100),
-                'aliquota_iva_pregressa'     => $fattura->aliquota_iva_pregressa,
+                // ⚠️ **Si leggono le colonne vere, non due attributi che non esistono**
+                // (Fase 1-bis della beta.18, rilievo 4). `imponibile_pregresso` e
+                // `aliquota_iva_pregressa` venivano scritte da `registraFattura()` ma non sono
+                // colonne di `fatture_passive` (29 colonne, nessuna migrazione le crea) e il
+                // modello ha `$guarded = ['id']`: Eloquent le scartava in silenzio, quindi
+                // rileggerle dava **sempre null**. Lo storno di una fattura pregressa nasceva
+                // così a zero: la fattura veniva marcata stornata e il giornale non veniva
+                // toccato — il debito restava a bilancio senza che niente lo segnalasse.
+                'imponibile_pregresso'       => abs((int) $fattura->importo_imponibile) / 100,
+                // L'aliquota si ricava dal rapporto fra i due importi salvati: è il verso
+                // inverso del calcolo che l'ha prodotta (`iva = imponibile * aliquota / 100`),
+                // e torna al centesimo perché entrambi sono colonne reali.
+                'aliquota_iva_pregressa'     => (int) $fattura->importo_imponibile !== 0
+                    ? round(abs((int) $fattura->importo_iva) / abs((int) $fattura->importo_imponibile) * 100, 2)
+                    : 0,
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
@@ -133,11 +146,29 @@ class StornoFatturaController extends Controller
                     'imponibile_calcolo' => $fattura->dati_extra['fiscal']['ritenuta_details']['imponibile_calcolo'] ?? null,
                 ] : null,
 
+                // ⚠️ **Niente `abs()` qui: lo storno deve essere lo specchio dell'originale,
+                // non la somma dei suoi valori assoluti** (Fase 1-bis della beta.18, rilievo 1).
+                // Una fattura ordinaria può contenere una riga negativa — lo storno «Oneri di
+                // sistema» che ogni bolletta gas porta dentro il documento — e la beta.18 la
+                // registra correttamente. Prendendo il valore assoluto riga per riga, la nota
+                // di credito diventava **più grande** della fattura che deve annullare: su una
+                // bolletta da € 109,80 (riga +€ 100,00 e storno −€ 10,00) nasceva una NC da
+                // € 134,20: restavano € 24,40 di credito verso il fornitore a cui non
+                // corrisponde nessun denaro, e un capitolo con spesa NEGATIVA che entra nel
+                // rendiconto e si ripartisce ai condòmini. Lo scarto era esattamente 2 × il
+                // lordo della riga negativa: la stessa firma aritmetica del difetto corretto
+                // nel servizio, migrata qui.
+                //
+                // `DoubleEntryValidator` non poteva vederlo: le due scritture quadrano ciascuna
+                // per sé, lo sbilancio è **fra** i due documenti.
+                //
+                // Il segno lo mette il moltiplicatore −1 del servizio, che riceve queste righe
+                // come le riceverebbe da un modulo: naturali.
                 'righe' => $fattura->righe->map(fn($r) => [
                     'descrizione'        => '[STORNO] ' . $r->descrizione,
-                    'importo_imponibile' => abs((float) $r->importo_imponibile / 100),
+                    'importo_imponibile' => (float) $r->importo_imponibile / 100,
                     'aliquota_iva'       => (float) $r->aliquota_iva,
-                    'importo_iva'        => abs((float) $r->importo_iva / 100),
+                    'importo_iva'        => (float) $r->importo_iva / 100,
                     'conto_id'           => $r->conto_id,
                     'immobile_id'        => $r->immobile_id,
                     // Propagati dall'originale per far tornare l'importo di ritenuta

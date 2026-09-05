@@ -462,3 +462,87 @@ test('concordanza ad personam: la spesa personale non finisce addosso a tutti', 
         ->toBe(100000)
         ->and($soggetto['per_tabella'][$base['tabella']->id]['importo'] ?? 0)->toBe(0);
 });
+
+// =============================================================================
+// FASE 1-bis DELLA BETA.18 — il segno delle righe, fin qui buttato via
+// =============================================================================
+
+/**
+ * Rilievo 5 — qui si generano le quote VERE che i condòmini pagano.
+ *
+ * `calcolaDaFattureStraordinarie()` prendeva il valore assoluto di ogni riga prima di sommarla,
+ * quindi una rettifica in diminuzione veniva ADDEBITATA invece che accreditata. Con righe di
+ * sopravvenienza +€ 1.200,00 e −€ 200,00 sullo stesso capitolo il naturale risultava € 1.400,00
+ * invece di € 1.000,00: i condòmini pagavano € 400,00 più del documento, cioè due volte lo
+ * storno — la stessa firma aritmetica del difetto corretto nel motore contabile.
+ *
+ * ⚠️ Il difetto era **latente** fino alla beta.17, perché una fattura con una riga negativa non
+ * si registrava affatto. È la correzione di questa beta ad averlo reso raggiungibile.
+ */
+test('una rettifica in diminuzione riduce le quote invece di aumentarle', function () {
+    $base    = baseStraordinario();
+    $fattura = fatturaCorrente($base);
+
+    inserisciRighe($fattura->id, [
+        ['conto_id' => $base['capitolo']->id, 'importo' => 120000, 'is_sopravvenienza' => true,
+            'descrizione' => 'Intervento straordinario'],
+        ['conto_id' => $base['capitolo']->id, 'importo' => -20000, 'is_sopravvenienza' => true,
+            'descrizione' => 'Rettifica in diminuzione'],
+    ]);
+
+    // importo_collegato = 0 → il fallback distribuisce il totale naturale, che è il ramo in cui
+    // il difetto si vedeva per intero.
+    $piano  = pianoStraordinario($base, $fattura, 0);
+    $totali = app(CalcoloQuoteService::class)->calcolaDaFattureStraordinarie($piano);
+
+    expect(sommaTotali($totali))->toBe(100000, 'Le quote devono valere il netto del documento, non la somma dei valori assoluti');
+});
+
+/**
+ * Rilievo 4 — lo storno di una fattura PREGRESSA non toccava il giornale.
+ *
+ * `registraFattura()` scriveva `imponibile_pregresso` e `aliquota_iva_pregressa` in `create()`,
+ * ma non sono colonne di `fatture_passive` e il modello ha `$guarded = ['id']`: Eloquent le
+ * scartava in silenzio, quindi rileggerle dava sempre `null`. `StornoFatturaController` leggeva
+ * proprio quelle, otteneva zero, e generava una nota di credito VUOTA — la fattura risultava
+ * stornata e il debito restava a bilancio, senza che niente lo segnalasse.
+ *
+ * ⚠️ Questo difetto è **indipendente dalla beta.18** e la precede: vale per ogni pregressa,
+ * righe negative o no. Chiuso qui su decisione di Vincenzo perché è una perdita di dati
+ * silenziosa e stava a una riga dal codice già in mano.
+ */
+test('lo storno di una fattura pregressa genera una nota di credito del suo importo, non vuota', function () {
+    $permesso = Spatie\Permission\Models\Permission::firstOrCreate(
+        ['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']
+    );
+    $ruolo = Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo($permesso);
+    $utente = App\Models\User::factory()->create();
+    $utente->assignRole($ruolo);
+
+    $base     = baseStraordinario();
+    $pregressa = registraPregresso($base);
+
+    expect((int) $pregressa->netto_a_pagare)->toBe(100000);
+
+    $risposta = test()->actingAs($utente)->post(
+        route('admin.gestionale.fatture.storno', [$base['condominio']->id, $pregressa->id])
+    );
+    $risposta->assertSessionHasNoErrors();
+
+    $nc = FatturaPassiva::where('condominio_id', $base['condominio']->id)
+        ->where('tipo_documento', 'nota_credito')
+        ->latest('id')->first();
+
+    expect($nc)->not->toBeNull()
+        ->and((int) $nc->netto_a_pagare)->toBe(-100000, 'La nota di credito deve valere quanto la pregressa che annulla');
+
+    // E deve aver toccato il giornale: una NC senza scrittura è il difetto stesso.
+    $righeNc = DB::table('fattura_scrittura')
+        ->where('fattura_passiva_id', $nc->id)
+        ->pluck('scrittura_contabile_id');
+
+    expect($righeNc)->not->toBeEmpty();
+    expect((int) DB::table('righe_scritture')->whereIn('scrittura_id', $righeNc)->sum('importo'))
+        ->toBeGreaterThan(0, 'Lo storno non ha scritto nulla a giornale');
+});

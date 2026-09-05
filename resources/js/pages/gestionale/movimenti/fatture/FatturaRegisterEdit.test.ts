@@ -186,6 +186,41 @@ describe('riapertura in modifica di una fattura ordinaria', () => {
 
         expect(importoPrimaRiga(wrapper)).toBe(1000);
     });
+
+    /**
+     * Fase 1-bis della beta.18, rilievo 2 — **il punto cieco del test qui sopra.**
+     *
+     * Il commento del gemello dice «non ha mai avuto il problema», e fino alla beta.17 era vero:
+     * una fattura ordinaria non poteva contenere una riga negativa, perché non si registrava
+     * affatto. Dalla beta.18 può — è lo storno «Oneri di sistema» che ogni bolletta gas porta
+     * dentro il documento — e su quella riga l'`abs()` incondizionato dell'idratazione mentiva.
+     *
+     * Il costo non era estetico: la casella mostrava +€ 10,00, qualunque salvataggio rispediva
+     * la riga positiva, `UpdateFatturaRequest` la accettava (il `min:0` vale solo sulle note di
+     * credito) e `aggiornaFattura()` ricostruiva tutto dalle righe. La bolletta si gonfiava **in
+     * silenzio** da € 109,80 a € 134,20 e il capitolo si caricava di € 24,40 mai spesi, con la
+     * scrittura che continuava a quadrare.
+     */
+    test('una riga negativa si precarica NEGATIVA: il segno appartiene alla riga, non al documento', () => {
+        const f = fatturaOrdinaria();
+        f.righe = [
+            { ...(f.righe as any[])[0], importo_imponibile: 100_000, importo_iva: 22_000, descrizione: 'Quota fissa' },
+            {
+                ...(f.righe as any[])[0],
+                id: 902,
+                importo_imponibile: -10_000,
+                importo_iva: -2_200,
+                descrizione: 'Spesa per Oneri di sistema',
+            },
+        ];
+
+        const wrapper = render(f);
+        const caselle = wrapper.findAllComponents({ name: 'MoneyInput' });
+
+        expect(caselle.length).toBeGreaterThan(1);
+        expect(caselle[0].props('modelValue')).toBe(1000);
+        expect(caselle[1].props('modelValue')).toBe(-100);
+    });
 });
 
 // ⛔ **Qui c'era il blocco «il controllo duplicati (D4) si ricalcola quando cambia il tipo

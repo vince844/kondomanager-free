@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica versione="FPR12" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>30707070705</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>12</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>ABCDEF1</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>30707070705</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>30707070705</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>Ferramenta Centrale S.r.l.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via dei Fabbri</Indirizzo>
+                <NumeroCivico>22</NumeroCivico>
+                <CAP>20121</CAP>
+                <Comune>Milano</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <Contatti>
+                <Telefono>0230000003</Telefono>
+                <Email>amministrazione@example.it</Email>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <CodiceFiscale>97123456789</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>Condominio Demo KM</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via delle Acacie</Indirizzo>
+                <NumeroCivico>5</NumeroCivico>
+                <CAP>20131</CAP>
+                <Comune>Milano</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-08-20</Data>
+                <Numero>FC 214/26</Numero>
+                <ImportoTotaleDocumento>219.60</ImportoTotaleDocumento>
+                <Causale>Fornitura materiali per la manutenzione del cancello carraio.</Causale>
+            </DatiGeneraliDocumento>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>Fornitura di cerniere, viteria e vernice antiruggine per la manutenzione del cancello carraio</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>180.00</PrezzoUnitario>
+                <PrezzoTotale>180.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>180.00</ImponibileImporto>
+                <Imposta>39.60</Imposta>
+                <EsigibilitaIVA>I</EsigibilitaIVA>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <DatiPagamento>
+            <CondizioniPagamento>TP02</CondizioniPagamento>
+            <DettaglioPagamento>
+                <Beneficiario>Ferramenta Centrale S.r.l.</Beneficiario>
+                <ModalitaPagamento>MP05</ModalitaPagamento>
+                <DataScadenzaPagamento>2026-09-20</DataScadenzaPagamento>
+                <ImportoPagamento>219.60</ImportoPagamento>
+                <IstitutoFinanziario>Banca Delta</IstitutoFinanziario>
+                <IBAN>IT77Z0303030303000000005555</IBAN>
+                <BIC>BBBBIT21987</BIC>
+            </DettaglioPagamento>
+        </DatiPagamento>
+    </FatturaElettronicaBody>
+</ns3:FatturaElettronica>

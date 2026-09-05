@@ -127,6 +127,22 @@ class ImportaFatturaXmlController extends Controller
     {
         $primaScadenza = $fattura->scadenze[0] ?? null;
 
+        // ⚠️ **I totali dichiarati viaggiano anche se il modulo di solito usa le righe**,
+        // e servono al ramo del debito pregresso. Una fattura datata in un esercizio
+        // precedente non si registra riga per riga: la schermata passa a un pannello che
+        // chiede un imponibile solo e un'aliquota sola (`imponibile_pregresso`). Finché
+        // questo controller mandava le sole righe, quel pannello restava a **zero** e
+        // l'amministratore doveva ribattere a mano un importo che il file dichiara —
+        // il contrario esatto di ciò che l'importatore promette in testa alla schermata.
+        // Misurato il 05/09/2026 sui file di collaudo: **sei degli undici** file reali
+        // sono datati in un esercizio precedente, e tutti e sei arrivavano a zero.
+        //
+        // Il numero è quello del riepilogo, non la somma delle righe: è la stessa regola
+        // che `FatturaPaFattura::imponibileDichiaratoCents()` enuncia nel proprio
+        // docblock — «è questo il numero da usare per registrare».
+        $imponibileDichiarato = $fattura->imponibileDichiaratoCents();
+        $impostaDichiarata = $fattura->impostaDichiarataCents();
+
         return [
             'tipo_documento' => $fattura->isNotaCredito() ? 'nota_credito' : 'fattura',
             'numero_documento' => $fattura->numeroDocumento,
@@ -134,6 +150,15 @@ class ImportaFatturaXmlController extends Controller
             'data_scadenza' => $primaScadenza?->data,
             'modalita_pagamento' => $this->mappaModalitaPagamento($primaScadenza?->modalitaPagamento),
             'iban_fornitore' => $primaScadenza?->iban,
+            'imponibile_dichiarato' => MoneyHelper::fromCents($imponibileDichiarato),
+            'imposta_dichiarata' => MoneyHelper::fromCents($impostaDichiarata),
+            // L'aliquota media effettiva del documento, per il campo unico del pannello
+            // pregresso. Su un documento a un'aliquota sola torna esattamente quella;
+            // su uno misto è la media pesata, ed è il numero più onesto disponibile in
+            // un campo che ne accetta uno solo.
+            'aliquota_effettiva' => $imponibileDichiarato !== 0
+                ? round($impostaDichiarata / $imponibileDichiarato * 100, 2)
+                : 0,
         ];
     }
 

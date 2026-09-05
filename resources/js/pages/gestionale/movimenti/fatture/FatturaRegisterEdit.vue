@@ -186,13 +186,25 @@ const form = useForm({
         descrizione: r.descrizione || '',
         conto_id: r.conto_id,
         immobile_id: r.immobile_id,
-        // Valore ASSOLUTO, e non è una difesa: su una nota di credito il database
-        // tiene le righe già negative (`FatturaPassivaService:696`), ma
-        // `aggiornaFattura()` vuole in ingresso la cifra digitata e il segno lo mette
-        // lui (`:682` e `:696`). Rimandandogli il negativo che ha scritto, `-1000 ×
-        // 100 × (-1)` torna positivo e la nota di credito diventa un costo.
-        // Il form lavora in valore assoluto: il segno appartiene al tipo di documento.
-        importo_imponibile: Math.abs(centsToEuro(r.importo_imponibile)),
+        // Valore assoluto **solo sulla nota di credito**, e la distinzione è la
+        // correzione della beta.18 (Fase 1-bis, rilievo 2). Su una NC il database tiene
+        // le righe già negative (`FatturaPassivaService:696`) mentre `aggiornaFattura()`
+        // vuole in ingresso la cifra digitata e il segno lo mette lui: rimandandogli il
+        // negativo che ha scritto, `-1000 × 100 × (-1)` torna positivo e la nota di
+        // credito diventa un costo.
+        //
+        // ⚠️ Su una fattura **ordinaria** la premessa che stava scritta qui — «il segno
+        // appartiene al tipo di documento» — non è più vera: dalla beta.18 una riga può
+        // essere legittimamente negativa (lo storno «Oneri di sistema» di una bolletta) e
+        // lì il segno appartiene alla RIGA. Con l'`abs()` incondizionato, riaprire quella
+        // bolletta per correggere una data e risalvarla la gonfiava **in silenzio** da
+        // € 109,80 a € 134,20, caricando il capitolo di € 24,40 che nessuno ha speso:
+        // la casella mostrava € 10,00 prima e dopo, e la scrittura ricostruita quadrava.
+        //
+        // Stessa forma già scelta lato server in `ImportaFatturaXmlController:164`.
+        importo_imponibile: props.fattura.tipo_documento === 'nota_credito'
+            ? Math.abs(centsToEuro(r.importo_imponibile))
+            : centsToEuro(r.importo_imponibile),
         aliquota_iva: r.aliquota_iva,
         is_sopravvenienza: false, // Edit non supporta sopravvenienze per fatture esistenti
         concorre_base_ritenuta: r.concorre_base_ritenuta ?? true,
@@ -1143,6 +1155,15 @@ const pageGuides = [
                                                 <TrendingDown class="w-3 h-3" />
                                                 <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                             </div>
+                                            <!-- ⚠️ Senza questa riga il divieto sull'importo negativo di una nota di
+                                                 credito (beta.18) rifiutava il salvataggio **in silenzio**: il server
+                                                 rispondeva con l'errore, ma la pagina mostrava soltanto quello sul
+                                                 numero documento e sulla causale. Si premeva «Salva» e non succedeva
+                                                 niente — la stessa forma di guasto già pagata con la Coda 102. -->
+                                            <p v-if="(form.errors as any)[`righe.${idx}.importo_imponibile`]"
+                                                class="text-[11px] text-red-600 dark:text-red-400 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.importo_imponibile`] }}
+                                            </p>
                                         </div>
 
                                         <!-- Aliquota IVA -->

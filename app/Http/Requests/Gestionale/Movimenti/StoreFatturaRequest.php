@@ -21,6 +21,14 @@ class StoreFatturaRequest extends FormRequest
     {
         $isPregresso = filter_var($this->input('is_pregresso', false), FILTER_VALIDATE_BOOLEAN);
 
+        // ⚠️ Vedi la nota estesa in UpdateFatturaRequest: il `min:0` sull'imponibile di riga
+        // vale **solo** per la nota di credito, dove il segno lo porta già il moltiplicatore
+        // −1 del servizio e una riga negativa lo annullerebbe, rimettendo `netto_a_pagare` in
+        // positivo e facendo cadere la guardia «Non puoi stornare una Nota di Credito».
+        // Sulla fattura ordinaria la riga negativa è legittima — lo storno «Oneri di sistema»
+        // di una bolletta — e il motore la registra come AVERE sul capitolo.
+        $isNotaCredito = $this->input('tipo_documento') === 'nota_credito';
+
         $rules = [
             'fornitore_id'    => 'required|exists:fornitori,id',
 
@@ -130,7 +138,7 @@ class StoreFatturaRequest extends FormRequest
             // Se è CORRENTE: Controlliamo le righe e il preventivo
             $rules['righe']                      = 'required|array|min:1';
             $rules['righe.*.descrizione']        = 'required|string';
-            $rules['righe.*.importo_imponibile'] = 'required|numeric';
+            $rules['righe.*.importo_imponibile'] = $isNotaCredito ? 'required|numeric|min:0' : 'required|numeric';
             $rules['righe.*.aliquota_iva']       = 'required|numeric|min:0|max:100';
             // Scopati per condominio: FatturaPassivaService risolve il capitolo con
             // Conto::find() e ne usa il conto_contabile_id per la riga DARE. Un id di
@@ -177,6 +185,8 @@ class StoreFatturaRequest extends FormRequest
             'righe.*.descrizione.required_with' => 'La causale della riga è obbligatoria.',
             'righe.*.conto_id.required_with' => 'Il capitolo di spesa è obbligatorio.',
             'righe.*.importo_imponibile.required_with' => 'L\'importo è obbligatorio.',
+            'righe.*.importo_imponibile.min'          => "Su una nota di credito l'importo di riga non può essere negativo: "
+                .'il segno lo mette già il tipo di documento. Scrivi la cifra da accreditare.',
         ];
     }
 
