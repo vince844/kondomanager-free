@@ -36,7 +36,13 @@ const isPagabile = computed(() =>
   props.fattura.stato_approvazione === 'approvata' &&
   props.fattura.stato_pagamento !== 'pagata' &&
   props.fattura.stato_pagamento !== 'stornata' &&
-  !props.fattura.dati_extra?.is_stornata
+  !props.fattura.dati_extra?.is_stornata &&
+  // ⚠️ Coda 124, revisione avversariale del 05/09/2026: `is_stornata` sta sull'ORIGINALE,
+  // non sulla nota che lo storno genera — quella resta `stato_pagamento='aperta'` e passava
+  // tutti i controlli sopra. Da quando la nota non è più compensabile automaticamente
+  // (Coda 124), offrirle «Registra pagamento» porta a un form che non la trova più nelle
+  // pendenze: un vicolo cieco muto, dove prima «funzionava» (ed era proprio il difetto).
+  !props.fattura.dati_extra?.nota_storno
 );
 
 // Lo storno è ammesso solo su una fattura senza pagamenti vivi: il denaro già
@@ -305,7 +311,7 @@ const vaiAgliAllegati = () => {
   <Teleport to="body">
       <ConfirmDialog 
           v-model="isDeleteModalOpen"
-          title="Elimina Fattura"
+          title="Elimina fattura"
           confirm-text="Elimina fisicamente"
           variant="destructive"
           @confirm="executeDelete"
@@ -320,10 +326,10 @@ const vaiAgliAllegati = () => {
           </div>
       </ConfirmDialog>
 
-      <ConfirmDialog 
+      <ConfirmDialog
           v-model="isStornoModalOpen"
-          title="Storno Contabile"
-          confirm-text="Genera Nota di Credito"
+          title="Storno contabile"
+          confirm-text="Genera nota di credito"
           variant="warning"
           @confirm="executeStorno"
       >
@@ -336,7 +342,7 @@ const vaiAgliAllegati = () => {
                   </div>
               </div>
               <p>
-                  Il sistema non eliminerà il documento originale, ma genererà automaticamente una <strong>Nota di Credito a pareggio</strong> per neutralizzare i costi nel Libro Giornale e ripristinare il budget nei capitoli di spesa.
+                  Il sistema non eliminerà il documento originale, ma genererà automaticamente una <strong>nota di credito a pareggio</strong> per neutralizzare i costi nel libro giornale e ripristinare il budget nei capitoli di spesa.
               </p>
           </div>
       </ConfirmDialog>
@@ -344,8 +350,8 @@ const vaiAgliAllegati = () => {
       <!-- Modale Ratifica Assembleare sforo_motivato → approvata -->
       <ConfirmDialog
           v-model="isApprovaSforoModalOpen"
-          title="Ratifica Assembleare — Sforo Motivato"
-          confirm-text="Conferma Ratifica"
+          title="Ratifica assembleare — sforo motivato"
+          confirm-text="Conferma ratifica"
           variant="default"
           :disabled="noteApprovazioneRatifica.trim().length < 10"
           @confirm="executeApprovaSforo"
@@ -389,7 +395,7 @@ const vaiAgliAllegati = () => {
       <!-- Modale Approvazione Base da_approvare → approvata -->
       <ConfirmDialog
           v-model="isApprovaBaseModalOpen"
-          title="Approva Fattura"
+          title="Approva fattura"
           confirm-text="Approva"
           variant="default"
           @confirm="executeApprovaBase"

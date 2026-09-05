@@ -76,6 +76,11 @@ defineEmits(['update:open']);
                 Sono le tre cose del file che spostano davvero dei soldi, e su tutte e tre l'ultima parola resta a te.
               </p>
               <ul class="space-y-2 list-disc pl-5">
+                <li><strong>Ogni riga ha una casella «Concorre alla base ritenuta»</strong>, spuntata di default:
+                    decide se quell'importo entra nel calcolo. Lascia spuntata la riga del compenso vero e proprio;
+                    togli la spunta a ciò che non è reddito del professionista — un contributo di cassa
+                    previdenziale, un rimborso spese documentato (art. 15 TUIR). Vale anche se stai scrivendo la
+                    fattura a mano, non solo quando arriva dal file.</li>
                 <li><strong>Il contributo di cassa previdenziale</strong> — il 4 o 5% che un geometra, un ingegnere
                     o un avvocato addebita in parcella — entra come riga di spesa con la sua IVA, perché è parte del
                     corrispettivo. E se quel contributo concorre alla base della ritenuta lo dice il documento

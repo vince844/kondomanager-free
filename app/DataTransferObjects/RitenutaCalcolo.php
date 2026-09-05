@@ -18,7 +18,7 @@ class RitenutaCalcolo
     public function __construct(
         public readonly bool $applicata,
         public readonly int $importo,
-        public readonly int $baseImponibile,
+        public readonly ?int $baseImponibile,
         public readonly float $aliquota,
         public readonly float $percentualeBase,
         public readonly ?string $codiceTributo,
@@ -91,7 +91,15 @@ class RitenutaCalcolo
         return new self(
             applicata: true,
             importo: $importoCents,
-            baseImponibile: $baseImponibile ?? $importoCents,
+            // ⚠️ **Niente ripiego sull'importo della ritenuta** (05/09/2026, revisione
+            // avversariale): il default `?? $importoCents` faceva passare la TRATTENUTA per
+            // la sua BASE — su una ritenuta del 4% scriveva 4.000 dove la base è 100.000.
+            // Si attiva quando l'originale ha `ritenuta_details` in forma vecchia, senza
+            // `imponibile_calcolo`: lo storno propaga null e il numero falso diventava
+            // definitivo, ripropagato a ogni salvataggio successivo. Oggi nessuno rilegge
+            // questo campo per calcolare qualcosa, ma è un dato fiscale e la Certificazione
+            // Unica lo leggerà: un campo assente è onesto, un numero plausibile e sbagliato no.
+            baseImponibile: $baseImponibile,
             aliquota: $aliquota ?? 0.0,
             percentualeBase: 100.0,
             codiceTributo: $codiceTributo,

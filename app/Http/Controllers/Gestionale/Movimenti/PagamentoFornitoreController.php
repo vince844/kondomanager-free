@@ -11,6 +11,7 @@ use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
 use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
+use App\Exceptions\Pagamenti\NotaStornoNonCompensabileException;
 use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
@@ -319,6 +320,14 @@ class PagamentoFornitoreController extends Controller
             // rumore in mezzo agli errori veri.
             return back()->withErrors(['idempotency_key_conflitto' => $e->getMessage()]);
 
+        } catch (NotaStornoNonCompensabileException $e) {
+            // Coda 124: un'allocazione punta a una nota nata da uno storno. Non dovrebbe
+            // arrivare qui — la schermata non le offre più — ma se ci arriva è una regola di
+            // dominio rispettata, non un guasto. Stesso motivo del catch sopra: nel catch
+            // generico finirebbe a Log::error con lo stack trace, come rumore fra gli errori
+            // veri. Trovato dalla revisione avversariale del 05/09/2026.
+            return back()->withErrors(['nota_storno_non_compensabile' => $e->getMessage()]);
+
         } catch (\Exception $e) {
             // Errore tecnico non previsto. La transazione atomica garantisce
             // che nessun dato parziale sia stato scritto nel DB.
@@ -352,6 +361,14 @@ class PagamentoFornitoreController extends Controller
                 StatoPagamentoFattura::APERTA->value,
                 StatoPagamentoFattura::PARZIALE->value,
             ])
+            // ⚠️ **Coda 124.** Non basta escludere la nota da storno da $noteCredito qui sotto:
+            // questa query pesca comunque TUTTI i documenti aperti del fornitore, nota da storno
+            // compresa, e il merge più in basso rigetta solo le note che sono ANCHE in
+            // $noteCredito — chiudere una porta senza chiudere questa lascerebbe la nota
+            // ugualmente selezionabile, solo passando per l'altra lista. La nota generata da uno
+            // storno non è un documento che il fornitore conosca: non ha senso pagarla né
+            // compensarla, va tolta da qui.
+            ->whereNull('dati_extra->nota_storno')
             ->with('righe')
             ->orderBy('data_scadenza')
             ->get()

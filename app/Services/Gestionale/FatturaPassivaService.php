@@ -189,6 +189,18 @@ class FatturaPassivaService
                     ),
                     'competenza' => $data['dati_extra']['competenza'] ?? null,
                     'override_budget' => $data['dati_extra']['override_budget'] ?? null,
+                    // ⚠️ **Coda 124, 04/09/2026.** Questo array sostituisce interamente
+                    // `dati_extra`: qualunque chiave che il chiamante avesse messo lì e che non
+                    // sia elencata qui viene persa in silenzio. `StornoFatturaController` passa
+                    // `nota_storno` per marcare la nota di credito generata dallo storno come
+                    // «non è un documento vero, non compensarla» — e quella chiave arrivava fin
+                    // qui per essere scartata. `PagamentoFornitoreService::trovaNoteCreditoCompensabili()`
+                    // filtra su questa chiave (`whereNull('dati_extra->nota_storno')`), quindi la
+                    // guardia era sempre vera: la nota da storno rientrava fra quelle offerte in
+                    // compensazione, e una fattura vera poteva risultare pagata senza che un euro
+                    // uscisse dalla cassa. Misurato con una sonda end-to-end il 04/09/2026, prima
+                    // di questa correzione.
+                    'nota_storno' => $data['dati_extra']['nota_storno'] ?? null,
                 ],
             ]);
 
@@ -723,13 +735,89 @@ class FatturaPassivaService
             // storno la propaga esplicitamente (design §8 punti 2 e 3).
             $richiestaApplicazioneRitenuta = $data['applica_ritenuta'] ?? ! $isNotaCredito;
 
-            $ritenutaCalcolo = app(RitenutaService::class)->calcola(
-                $fornitore,
-                $righeRitenuta,
-                $imponibileTotale,
-                $richiestaApplicazioneRitenuta,
-                Carbon::parse($data['data_documento'] ?? $fattura->data_documento),
-            );
+            // ⚠️ **Coda 123, 04/09/2026.** Una NC nata da uno storno porta una ritenuta
+            // GIÀ CONGELATA sull'importo reale dell'originale (`StornoFatturaController`
+            // passa `ritenuta_override` a `registraFattura()`, che la persiste in
+            // `dati_extra.fiscal.ritenuta_details` — vedi il commento lì). Ricalcolarla
+            // qui con `RitenutaService::calcola()` interroga l'anagrafica **attuale** del
+            // fornitore: se cambia fra lo storno e questa modifica (es. diventa
+            // forfetario), un salvataggio che tocca solo una descrizione o una data
+            // ricalcolerebbe una ritenuta diversa da quella davvero registrata — riaprendo
+            // lo stesso residuo fantasma su 2201/2202 che l'override dello storno
+            // (design §8 punto 2) doveva chiudere, stavolta dalla porta della modifica
+            // invece che da quella dello storno. Il congelamento si applica solo se
+            // l'imponibile non è cambiato: una NC da storno non dovrebbe mai vedere le
+            // proprie righe alterate in importo (il suo imponibile è per definizione lo
+            // specchio dell'originale), ma se succede il ricalcolo dal vivo resta l'unica
+            // opzione sensata, perché un importo congelato non avrebbe più relazione con
+            // un imponibile diverso da quello per cui era stato calcolato.
+            //
+            // ⚠️ **La fonte di verità è la fattura ORIGINALE, non la nota stessa** — e non è
+            // un dettaglio di stile: è la correzione di un difetto che la prima stesura di
+            // questa coda aveva introdotto, trovato dalla revisione avversariale del
+            // 05/09/2026 e provato con una sonda. Leggendo i campi della nota si costruiva
+            // una tagliola su DUE salvataggi: il primo con l'imponibile alterato passava dal
+            // ramo dal vivo e — poiché il passo 5 riscrive `ritenuta_details` e
+            // `importo_ritenuta` in ogni caso — cancellava il valore congelato dalla nota;
+            // il secondo, tornato all'imponibile giusto, congelava lo ZERO appena scritto,
+            // rendendo **permanente** il residuo fantasma sul 2202 che questa coda esiste per
+            // impedire. Misurato: ritenuta 0 e € 40,00 di AVERE senza contropartita.
+            // L'originale non ha questo problema perché è immodificabile per costruzione —
+            // `motivoBloccoModifica()` rifiuta ogni fattura già stornata — quindi il valore
+            // congelato resta recuperabile anche dopo un salvataggio uscito dal binario.
+            $eNotaDaStorno = ! empty($fattura->dati_extra['nota_storno'] ?? null);
+
+            $originaleStornato = $eNotaDaStorno
+                ? FatturaPassiva::where('condominio_id', $fattura->condominio_id)
+                    ->where('dati_extra->stornata_da_id', $fattura->id)
+                    ->first()
+                : null;
+
+            // Il ripiego sulla nota serve alle note nate prima che lo storno scrivesse
+            // `stornata_da_id`: peggiore dell'originale, ma meglio del ricalcolo dal vivo,
+            // che su un fornitore cambiato azzera la ritenuta in silenzio.
+            $fonteCongelamento = $originaleStornato ?? $fattura;
+
+            if ($eNotaDaStorno && ! $originaleStornato) {
+                Log::warning('Coda 123: nota da storno senza originale raggiungibile, congelamento letto dai campi della nota', [
+                    'fattura_id' => $fattura->id,
+                ]);
+            }
+
+            $imponibileOriginale = abs((int) $fonteCongelamento->importo_imponibile);
+
+            if ($eNotaDaStorno && $imponibileTotale === $imponibileOriginale) {
+                $dettagliCongelati = $fonteCongelamento->dati_extra['fiscal']['ritenuta_details'] ?? [];
+                $ritenutaCalcolo = RitenutaCalcolo::override(
+                    abs((int) $fonteCongelamento->importo_ritenuta),
+                    isset($dettagliCongelati['aliquota']) ? (float) $dettagliCongelati['aliquota'] : null,
+                    $dettagliCongelati['codice_tributo'] ?? null,
+                    isset($dettagliCongelati['imponibile_calcolo']) ? (int) $dettagliCongelati['imponibile_calcolo'] : null,
+                );
+            } else {
+                if ($eNotaDaStorno) {
+                    // Caso anomalo: le righe di una NC da storno sono state alterate in
+                    // importo. Non blocchiamo il salvataggio — non è lo scenario che
+                    // questa coda chiude — ma il ricalcolo dal vivo che segue non è più
+                    // protetto dal congelamento, e vale la pena saperlo se succede.
+                    // Non è più una condanna definitiva: rimettendo l'imponibile
+                    // dell'originale, il salvataggio successivo ritrova il valore congelato
+                    // là dove nessuno può averlo toccato.
+                    Log::warning('Coda 123: NC da storno modificata con imponibile diverso dall\'originale, ritenuta ricalcolata dal vivo', [
+                        'fattura_id' => $fattura->id,
+                        'imponibile_originale' => $imponibileOriginale,
+                        'imponibile_nuovo' => $imponibileTotale,
+                    ]);
+                }
+
+                $ritenutaCalcolo = app(RitenutaService::class)->calcola(
+                    $fornitore,
+                    $righeRitenuta,
+                    $imponibileTotale,
+                    $richiestaApplicazioneRitenuta,
+                    Carbon::parse($data['data_documento'] ?? $fattura->data_documento),
+                );
+            }
 
             $ritenuta = $ritenutaCalcolo->importo;
             $datiRitenuta = $ritenutaCalcolo->toLegacyDatiExtra();

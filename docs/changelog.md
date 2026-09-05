@@ -7,6 +7,138 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.17] - Il Segno Che Nessuno Guardava
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Chiude tre code aperte il 04/09/2026 nella stessa area — la nota di credito e lo storno nel
+ciclo passivo — e la Fase 1-bis (revisione avversariale del 05/09/2026) ha trovato che la prima
+stesura ne aveva rotte altre due, sullo stesso pezzo di dominio, prima di dichiararle chiuse.
+
+### Una nota di credito non consuma budget (Coda 122)
+
+**Segnalazione dal forum, 04/09/2026.** Registrando una nota di credito, il pannello di
+simulazione la trattava come una spesa: budget e cassa scendevano dove la contabilità li alza.
+Il segno esisteva già lato server (`FatturaPassivaService` moltiplica per −1 tutto ciò che
+registra come `nota_credito`), ma nessuno dei tre calcoli dell'anteprima — `budgetImpacts`,
+`rigaInSforo`, `bankForecast` — riceveva `tipo_documento` per saperlo.
+
+Sul caso del forum — nota da € 61,00, capitolo con € 1.178,00 di residuo, banca a € 117,85 — il
+pannello diceva «Usato € 61,00» invece di −€ 61,00, e «saldo post € 56,85» dove non usciva un
+euro. **Il numero atteso dall'utente era sbagliato quanto il nostro**: si aspettava € 178,85, il
+simmetrico. Ma una fattura non tocca mai un conto di liquidità (la scrittura è DARE capitolo /
+AVERE debiti fornitori) e una nota di credito non si incassa, si compensa. Il numero onesto è il
+saldo **invariato**, con l'uscita azzerata.
+
+La conseguenza più seria era di flusso: su un capitolo già consumato — il caso normale per una
+nota di credito — l'amministratore doveva inventare una giustificazione di sforo per un
+documento che il budget lo libera, e quella giustificazione finiva agli atti senza via
+d'uscita: una nota in `sforo_motivato` non è più modificabile, e non è stornabile.
+
+**La revisione avversariale del 05/09/2026 ha trovato due difetti che questa stessa correzione
+aveva introdotto.** `isOk` — il ramo che alimenta davvero il blocco, non il badge sotto il campo
+importo — non conosceva `tipo_documento`: su un capitolo già sforato una nota di credito apriva
+comunque lo sforo motivato, lo stesso vicolo cieco che la coda doveva chiudere. E la barra di
+consumo del capitolo, con `speso_cents` ora negativo, riceveva dal CSS una larghezza negativa che
+il browser scarta: si disegnava **piena** proprio dove il testo diceva «+€ 1.239,00». Corrette
+entrambe, con controprova.
+
+Il selettore Fattura/Nota di credito in modifica — cliccabile e senza alcun effetto sul
+salvataggio, difetto già noto ma non chiuso — è diventato un'etichetta di sola lettura col
+lucchetto: la prima correzione lo aveva reso disabilitato ma ancora a due caselle affiancate, e
+due caselle — una spenta, una colorata — dicono ancora «puoi scegliere» anche se non rispondono
+al clic.
+
+### La ritenuta di una nota da storno non si perde più (Coda 123)
+
+**Trovata indagando la Coda 122, indipendente da essa.** Quando si storna una fattura con
+ritenuta, l'importo trattenuto viene congelato sulla nota di credito generata
+(`ritenuta_override`, già esistente per lo storno stesso). Ma `aggiornaFattura()` non lo
+leggeva mai: riapriva sempre il ricalcolo sull'anagrafica **attuale** del fornitore. Se
+l'anagrafica cambiava fra lo storno e la modifica — ad esempio il fornitore diventava
+forfetario — bastava correggere una data per azzerare la ritenuta e lasciare un residuo verso
+l'Erario senza contropartita sul conto 2202. E dopo, quel residuo non si richiudeva più: la
+fattura originale era già stornata, e una nota di credito non è stornabile.
+
+**La revisione avversariale del 05/09/2026, seguita da una verifica a video della correzione
+stessa, ha trovato una tagliola nella prima stesura.** Il confronto per decidere se congelare
+leggeva la nota di credito stessa — mutabile — invece della fattura originale, immutabile per
+costruzione. Un primo salvataggio con l'imponibile sbagliato passava dal ricalcolo dal vivo e
+cancellava il valore congelato dalla nota; un secondo salvataggio, tornato all'imponibile
+giusto, congelava lo **zero** appena scritto. Il residuo fantasma diventava permanente — lo
+stesso identico danno che la coda doveva impedire, ricreato su un terzo percorso. Corretto
+risalendo sempre all'originale (`dati_extra->stornata_da_id`); la stessa tagliola viveva anche
+nell'anteprima del frontend, corretta passando una nuova prop `nota_storno_originale` dal
+controller.
+
+Verificato a video il flusso intero, incluso il caso con righe miste — una prestazione che
+concorre alla base ritenuta e un contributo di cassa previdenziale che non vi concorre —
+registrando davvero un pagamento e controllando che il task «Versare F24» generato riporti
+l'importo corretto.
+
+Corretti nello stesso giro: il toggle «Applica ritenuta d'acconto» e la casella «Concorre alla
+base ritenuta» restavano cliccabili su una nota congelata, ignorati in silenzio dal
+salvataggio — ora disabilitati con la spiegazione al posto della domanda, e quel riquadro non
+sparisce più quando il fornitore diventa forfetario (spariva insieme al resto, lasciando il
+numero corretto senza alcuna spiegazione del perché).
+
+### Una nota da storno non compare più come pagamento da compensare (Coda 124)
+
+**Trovata leggendo il codice della Coda 123.** Lo storno marca la nota generata con
+`dati_extra->nota_storno`, apposta per escluderla dalla compensazione automatica dei pagamenti.
+Ma la ricostruzione di `dati_extra` in `registraFattura()` scartava quella chiave insieme a
+tutto il resto: il filtro che doveva escluderla era sempre vero al contrario. **Misurato con una
+sonda end-to-end**: una fattura vera compensata con la nota nata da uno storno risultava
+«pagata», residuo zero, zero euro usciti dalla cassa — mentre il mastro dei debiti fornitori
+restava a debito. Corretto in tre punti: la ricostruzione di `dati_extra`, la query delle
+pendenze (che aveva un secondo buco indipendente), e una guardia di dominio nel servizio di
+pagamento come terza linea di difesa.
+
+Corretta insieme: la voce «Registra pagamento» restava offerta sul menu della nota da storno e
+portava a un form che non la trova più — un vicolo cieco muto, dove prima «funzionava» ed era
+proprio il difetto.
+
+### Altre correzioni dello stesso blocco
+
+- **Il badge «Stornata» e l'importo annullato non sono più barrati** nell'elenco fatture: la
+  riga sopra il testo è un segno tipografico per un prezzo o una parola cancellata, non per un
+  badge colorato — sembrava un errore di impaginazione.
+- **Un tooltip spiega «Concorre alla base ritenuta»** anche fuori dal contesto XML, utile
+  compilando una fattura a mano.
+- **`RitenutaCalcolo::override()` non scrive più l'importo della ritenuta al posto della sua
+  base** quando `imponibile_calcolo` manca: un default silenzioso trovato dalla revisione
+  avversariale.
+- **Il catch dedicato per `NotaStornoNonCompensabileException`**, come già esisteva per
+  `IdempotencyKeyConflittoException`: una regola di dominio rispettata non finisce più nel log
+  come guasto tecnico con stack trace.
+- Corretti cinque testi in maiuscolo di stile inglese («Genera Nota di Credito», «Elimina
+  Fattura», «Ratifica Assembleare — Sforo Motivato», «Conferma Ratifica», «Approva Fattura»,
+  «Fuori Preventivo») trovati verificando a video: in italiano solo la prima parola di una
+  frase è maiuscola.
+- **Il badge «Ritenuta» e la casella «Applica ritenuta d'acconto» ora mostrano la
+  percentuale** («Ritenuta 4%», «Applica ritenuta d'acconto 20%») invece di dire solo che il
+  fornitore ne è soggetto: prima bisognava aprire la sua scheda per saperlo. Aggiunto anche un
+  tooltip sulla casella, con lo stesso testo sulle quattro pagine dove il badge compare
+  (registrazione e modifica fattura, registrazione e modifica pagamento).
+- **La casella «Concorre alla base ritenuta» non è più blu**: stesso difetto di
+  «Applica ritenuta d'acconto» prima di questa beta — l'utility Tailwind `text-amber-600` non
+  colora l'accent-color nativo del checkbox, il browser disegnava il blu di default.
+- **Il modale «Saldo conto insufficiente» corretto**: il pulsante «Annulla» era uno stile
+  `ghost` che si leggeva come testo semplice, non come un pulsante; il titolo era in maiuscolo
+  a ogni parola.
+
+### Dieci rilievi restano aperti, spostati in roadmap (Coda 129-138)
+
+La revisione avversariale ha trovato 27 sospetti, 25 sopravvissuti a una confutazione
+indipendente. Undici erano introdotti da questa beta e sono stati corretti; dieci erano
+preesistenti nello stesso codice e non sono stati toccati — cinque assegnati alla beta.18
+(gate dell'eccedenza pregressa e della spesa imprevista ciechi al tipo documento, importi di
+riga negativi che aggirano la guardia di storno, la correzione della Coda 124 che vale solo per
+gli storni futuri), cinque in coda senza data (dettagli minori di presentazione e di audit).
+Dettaglio completo in `docs/roadmap.md`.
+
+---
+
 ## [1.11.0-beta.16] - Quello Che La Fattura Non Dice
 
 🚨 **Tocca il database:** una colonna su `fornitori`, `ritenuta_decisa_il`. Migrazione idempotente,

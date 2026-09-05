@@ -20,6 +20,7 @@ import {
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { costruisciAllocazioni, distribuisciNetting } from '@/lib/gestionale/fatture/netting';
+import { REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import { usePermission } from '@/composables/permissions';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -50,6 +51,7 @@ interface Fornitore {
     soggetto_ritenuta: boolean;
     perc_ritenuta?: number;
     perc_imponibile_ritenuta?: number;
+    tipo_ritenuta?: string | null;
     iban_principale?: string;
     modalita_pagamento_default?: string;
 }
@@ -238,6 +240,20 @@ const sforoTarget = ref<Pendenza | null>(null);
 const noteApprovazioneInline = ref('');
 
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
+
+/**
+ * L'aliquota da MOSTRARE nel badge «Ritenuta» del selettore fornitore — stesso gemello
+ * della funzione in FatturaRegisterNew.vue/FatturaRegisterEdit.vue, aggiunto il 05/09/2026:
+ * qui il badge diceva solo che il fornitore era soggetto a ritenuta, mai a quale percentuale.
+ */
+const aliquotaRitenutaVisualizzata = (f: { tipo_ritenuta?: string | null; perc_ritenuta?: number } | null | undefined): number => {
+    if (!f) return 0;
+    if (f.tipo_ritenuta && REGIMI_RITENUTA_PREVIEW[f.tipo_ritenuta]) {
+        return REGIMI_RITENUTA_PREVIEW[f.tipo_ritenuta].aliquota;
+    }
+    const legacy = Number(f.perc_ritenuta);
+    return Number.isFinite(legacy) ? legacy : 0;
+};
 
 // Metodi pagamento disponibili (porta aperta per futuri)
 const metodiPagamento = [
@@ -737,7 +753,7 @@ const pageGuides = [
                                 :reduce="(f: Fornitore) => f.id"
                                 placeholder="Cerca fornitore..."
                                 class="w-full">
-                                <template #option="{ ragione_sociale, partita_iva, codice_fiscale, soggetto_ritenuta }">
+                                <template #option="{ ragione_sociale, partita_iva, codice_fiscale, soggetto_ritenuta, tipo_ritenuta, perc_ritenuta }">
                                     <div class="flex items-center gap-3 py-1">
                                         <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
                                             <Briefcase class="w-4 h-4 text-slate-400" />
@@ -748,18 +764,18 @@ const pageGuides = [
                                                 <span v-if="partita_iva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ partita_iva }}</span>
                                                 <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
                                                 <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded-md px-1.5 py-0.5 leading-none">
-                                                    Ritenuta
+                                                    Ritenuta {{ aliquotaRitenutaVisualizzata({ tipo_ritenuta, perc_ritenuta }) }}%
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
                                 </template>
-                                <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
+                                <template #selected-option="{ ragione_sociale, soggetto_ritenuta, tipo_ritenuta, perc_ritenuta }">
                                     <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
                                         <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                         <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
                                         <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded-md px-1.5 py-0.5 leading-none shrink-0">
-                                            Ritenuta
+                                            Ritenuta {{ aliquotaRitenutaVisualizzata({ tipo_ritenuta, perc_ritenuta }) }}%
                                         </span>
                                     </div>
                                 </template>
@@ -1552,7 +1568,7 @@ const pageGuides = [
                             <div class="w-16 h-16 bg-white dark:bg-rose-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-rose-200/50 dark:shadow-rose-900/30 border border-rose-100 dark:border-rose-800">
                                 <Wallet class="w-8 h-8 text-rose-500" />
                             </div>
-                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Saldo Conto Insufficiente</h3>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Saldo conto insufficiente</h3>
                             <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/50 px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-800">
                                 <Scale class="w-3 h-3" /> Art. 1129 c.c.
                             </span>
@@ -1608,15 +1624,15 @@ const pageGuides = [
 
                             <!-- Azioni -->
                             <div class="flex gap-3 pt-2">
-                                <Button variant="ghost" @click="showInsufficientFundsModal = false"
-                                    class="flex-1 h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                <Button variant="outline" @click="showInsufficientFundsModal = false"
+                                    class="flex-1 h-12 rounded-xl font-bold border-slate-300 text-slate-600 hover:text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800">
                                     Annulla
                                 </Button>
                                 <Button @click="confirmOverdraft"
                                     :disabled="overdraftNote.trim().length < 10"
                                     class="flex-1 h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black uppercase tracking-widest text-[11px] transition-all">
                                     <Lock class="w-4 h-4 mr-2" />
-                                    Procedo — Assumo Responsabilità
+                                    Procedo — assumo responsabilità
                                 </Button>
                             </div>
                             <p v-if="overdraftNote.trim().length > 0 && overdraftNote.trim().length < 10" class="text-[10px] text-rose-500 text-center">

@@ -188,35 +188,21 @@ describe('riapertura in modifica di una fattura ordinaria', () => {
     });
 });
 
-describe('il controllo duplicati (D4) si ricalcola quando cambia il tipo documento', () => {
-    /**
-     * ⚠️ **Trovato dalla revisione avversariale della beta.13.** `tipo_documento` viaggia
-     * nel payload della ricerca (`cercaFattureSimili({..., tipoDocumento: form.tipo_documento})`)
-     * ma non era fra le fonti del `watchDebounced`: cambiare il toggle Fattura <-> Nota di
-     * Credito non riesaminava il banner, che restava quello dell'ultimo tipo controllato —
-     * proprio dopo A2 (beta.13), che ha reso il livello standard sensibile al segno, cioè al
-     * tipo documento. In `FatturaRegisterNew.vue` la fonte c'era già.
-     */
-    test('passare da fattura a nota di credito rilancia la ricerca coi dati aggiornati', async () => {
-        vi.useFakeTimers();
-        try {
-            const wrapper = render(fatturaOrdinaria());
-
-            // La chiamata immediata al montaggio (immediate: true).
-            await vi.advanceTimersByTimeAsync(450);
-            axios.get.mockClear();
-
-            const bottoneNC = wrapper.findAll('button').find((b) => b.text().includes('Nota Credito'));
-            expect(bottoneNC).toBeTruthy();
-            await bottoneNC!.trigger('click');
-
-            await vi.advanceTimersByTimeAsync(450);
-
-            expect(axios.get).toHaveBeenCalled();
-            const [, config] = axios.get.mock.calls.at(-1)!;
-            expect((config as { params: Record<string, unknown> }).params.tipo_documento).toBe('nota_credito');
-        } finally {
-            vi.useRealTimers();
-        }
-    });
-});
+// ⛔ **Qui c'era il blocco «il controllo duplicati (D4) si ricalcola quando cambia il tipo
+// documento», tolto il 05/09/2026.**
+//
+// Verificava che cliccare il toggle Fattura/Nota di Credito rilanciasse la ricerca duplicati
+// (trovato dalla revisione avversariale della beta.13). Quel toggle non esiste più: la
+// revisione avversariale della beta.17 ha trovato che `tipo_documento` è immutabile lato
+// server in modifica (`UpdateFatturaRequest` non lo accetta, `aggiornaFattura()` lo rilegge
+// sempre dal database) — ma il toggle restava cliccabile e pilotava tutta la simulazione di
+// budget/cassa di Coda 122, disinnescando una presa d'atto sforo con un click che sul
+// salvataggio non aveva alcun effetto. Reso non interattivo (vedi il template, «Toggle
+// Fattura / Nota Credito — SOLO VISUALIZZAZIONE in modifica»).
+//
+// La entry corrispondente nel `watchDebounced` di `() => form.tipo_documento` è rimasta nel
+// codice ma non scatta più: `form.tipo_documento` non cambia mai durante una sessione di
+// modifica, quindi non è un test che sarebbe rimasto verde per il motivo sbagliato — è uno
+// scenario che l'interfaccia non permette più di raggiungere. Tenerlo avrebbe voluto dire
+// simulare un cambio di `form.tipo_documento` via JS invece che via un gesto dell'utente:
+// esattamente la «replica» che la beta.16 aveva già imparato a non scrivere.

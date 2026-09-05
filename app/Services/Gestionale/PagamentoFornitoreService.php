@@ -19,6 +19,7 @@ use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\NessunEsercizioApertoException;
+use App\Exceptions\Pagamenti\NotaStornoNonCompensabileException;
 use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PagamentoGiaStornatoException;
 use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
@@ -1140,6 +1141,21 @@ class PagamentoFornitoreService
         if ((int) $fornitoriDistinti->first() !== (int) $data['fornitore_id']) {
             throw new AllocazioniInconsistentiException(
                 'Il fornitore delle fatture selezionate non corrisponde al fornitore del pagamento.'
+            );
+        }
+
+        // 2-bis. Nessuna nota da storno fra le allocazioni.
+        //
+        // ⚠️ **Coda 124, seconda linea di difesa.** La schermata non la offre più —
+        // `pendenze()` la esclude alla fonte — ma questa validazione gira su
+        // QUALUNQUE richiesta arrivi a `registraPagamento()`, costruita a mano o no.
+        // Se domani un altro elenco dimenticasse il filtro, il denaro si ferma qui e
+        // non a database.
+        $noteStorno = $fatture->filter(fn (FatturaPassiva $f) => ! empty($f->dati_extra['nota_storno'] ?? null));
+        if ($noteStorno->isNotEmpty()) {
+            throw new NotaStornoNonCompensabileException(
+                'Le seguenti note di credito sono state generate da uno storno e non sono compensabili: '.
+                $noteStorno->pluck('numero_documento')->implode(', ')
             );
         }
 

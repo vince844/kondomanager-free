@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
@@ -25,7 +26,7 @@ import ModalCreaFornitoreDaXml from '@/components/gestionale/movimenti/fatture/M
 import ModalImportaXml from '@/components/gestionale/movimenti/fatture/ModalImportaXml.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
-import { calcolaTotali, risolviRegimeRitenuta } from '@/lib/gestionale/fatture/totali';
+import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import { confrontaRitenuta } from '@/lib/gestionale/fatture/confrontoRitenuta';
 import { proponiPosizioneRitenuta } from '@/lib/gestionale/fatture/posizioneRitenuta';
 import { euroToCents } from '@/lib/gestionale/fatture/money';
@@ -836,9 +837,35 @@ const fornitoreRitenutaAttiva = computed(() =>
 );
 
 /**
+ * L'aliquota da MOSTRARE (badge fornitore, checkbox "Applica ritenuta d'acconto") — non
+ * quella da usare nel calcolo, che resta `risolviRegimeRitenuta`. Trovato mancante il
+ * 05/09/2026, su segnalazione diretta di Vincenzo: il badge «Ritenuta» diceva che il
+ * fornitore ne era soggetto, ma non A QUALE percentuale — 4%, 20%, altro? — costringendo ad
+ * aprire la scheda anagrafica per saperlo. Stessa priorità di `risolviRegimeRitenuta`: il
+ * regime nuovo (`tipo_ritenuta`) vince sul campo legacy `perc_ritenuta`.
+ */
+const aliquotaRitenutaVisualizzata = (f: { tipo_ritenuta?: string | null; perc_ritenuta?: number } | null | undefined): number => {
+    if (!f) return 0;
+    if (f.tipo_ritenuta && REGIMI_RITENUTA_PREVIEW[f.tipo_ritenuta]) {
+        return REGIMI_RITENUTA_PREVIEW[f.tipo_ritenuta].aliquota;
+    }
+    const legacy = Number(f.perc_ritenuta);
+    return Number.isFinite(legacy) ? legacy : 0;
+};
+
+/**
  * Stessa regola di default del backend (FatturaPassivaService): applicata
  * sempre tranne che sulle note di credito, salvo scelta esplicita dell'utente.
  */
+/**
+ * ⚠️ **Coda 122, 04/09/2026.** Il pannello di simulazione trattava una nota di credito come
+ * se fosse una spesa: mostrava il budget e la cassa diminuiti dove la contabilità li aumenta.
+ * Il segno esiste già lato server (`FatturaPassivaService` moltiplica per −1 tutto ciò che
+ * registra come `nota_credito`), ma nessuno dei tre calcoli dell'anteprima riceveva
+ * `tipo_documento` per saperlo — da qui in poi lo ricevono tutti da questo unico flag.
+ */
+const isNotaCredito = computed(() => form.tipo_documento === 'nota_credito');
+
 const applicaRitenutaEffective = computed<boolean>({
     get: () => form.applica_ritenuta ?? (form.tipo_documento !== 'nota_credito'),
     set: (val: boolean) => { form.applica_ritenuta = val; },
@@ -1025,13 +1052,37 @@ const budgetImpacts = computed(() => {
             gia_versato_cents: c.gia_versato_cents || 0,
             ultimi_movimenti:  c.ultimi_movimenti || []
         };
-        cur.speso_cents += spesaCents;
+        // ⚠️ **Coda 122.** Una nota di credito rettifica una spesa già fatta: sul capitolo
+        // libera budget, non lo consuma. Sommare il lordo come per una fattura mostrava un
+        // residuo che scendeva proprio mentre la contabilità lo faceva salire — la
+        // segnalazione del forum del 04/09/2026, misurata parola per parola: € 61,00 di
+        // nota abbassavano il residuo di € 61,00 invece di alzarlo.
+        cur.speso_cents += isNotaCredito.value ? -spesaCents : spesaCents;
         grouped.set(r.conto_id, cur);
     });
 
     return Array.from(grouped.values()).map(i => ({
         ...i,
-        isOk:        i.speso_cents <= i.residuo_cents,
+        // ⚠️ **Coda 122, seconda metà — scritta il 05/09/2026 dopo la revisione avversariale.**
+        // La prima stesura aveva messo la guardia «una nota non sfora mai» solo su
+        // `rigaInSforo`, che dipinge un badge e non ferma niente; il ramo che ferma davvero
+        // passa di qui — `isOk` alimenta `transactionStatus`, che alimenta `handleSubmit`,
+        // che apre `ModalOverrideBudget`. Su un capitolo GIÀ sforato (residuo negativo: il
+        // backend non lo clampa, ed è lo stato tipico proprio quando arriva una nota di
+        // credito, perché la nota arriva per rettificare quella sovrafatturazione) il
+        // confronto `-6100 <= -50000` è falso, e la nota finiva in «Sforo Budget»: semaforo
+        // rosso, sforo fantasma, e per registrare bisognava compilare la motivazione — che
+        // marca il documento `sforo_motivato`, cioè **non più modificabile** e nemmeno
+        // stornabile, perché una nota di credito non si storna. Vicolo cieco su un documento
+        // che il budget lo stava liberando. Misurato con una sonda: capitolo a −€ 500,00,
+        // nota da € 122,00, sforo annunciato € 378,00.
+        //
+        // Una nota di credito non può peggiorare un capitolo: `speso_cents` è negativo per
+        // costruzione (riga sopra) e il tipo documento vale per l'intero documento, quindi
+        // non esiste il caso misto. Lo stato pregresso del capitolo resta visibile nel
+        // residuo mostrato accanto: quello che qui si dichiara è se **questo documento**
+        // provoca uno sforo, e la risposta per una nota è sempre no.
+        isOk:        isNotaCredito.value ? true : i.speso_cents <= i.residuo_cents,
         delta_cents: i.residuo_cents - i.speso_cents,
         // Stima: presume che questa fattura rappresenti il costo TOTALE reale
         // della voce (nessun'altra spesa storica quest'anno) — il numero
@@ -1049,6 +1100,13 @@ const budgetImpacts = computed(() => {
  * e il pannello laterale rispondono deliberatamente a domande diverse.
  */
 const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+    // ⚠️ **Coda 122.** Una nota di credito non può mai sforare: libera budget, non lo
+    // consuma. Senza questa guardia, una nota su un capitolo già speso veniva scambiata per
+    // uno sforamento — falso allarme che chiedeva una motivazione, e se compilata marcava il
+    // documento `override_budget`: da lì non è più modificabile, solo stornabile e
+    // rifatto. Segnalato da Vincenzo come «attenzione» nella risposta al forum.
+    if (isNotaCredito.value) return false;
+
     if (!riga.conto_id) return false;
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
@@ -1066,10 +1124,17 @@ const bankForecast = computed(() => {
     if (!b) return null;
 
     const attualeCents = b.saldo_attuale_cents;
-    const spesaCents   = totali.value.netto_cents;
-    const postCents    = attualeCents - spesaCents;
 
-    return { attuale_cents: attualeCents, post_cents: postCents, isRed: postCents < 0 };
+    // ⚠️ **Coda 122.** Registrare una fattura non muove il conto: questa è una PREVISIONE di
+    // quanto uscirà quando la si pagherà. Una nota di credito però non si incassa mai, si
+    // COMPENSA — riduce un'uscita futura invece di generarne una propria — quindi da sola non
+    // ha nessuna uscita da prevedere. Prima mostrava un'uscita pari al suo importo, come se
+    // fosse una spesa: il saldo giusto è quello invariato, con l'uscita a zero. Risposta di
+    // Vincenzo al forum del 04/09/2026, confermata qui nel codice.
+    const spesaCents = isNotaCredito.value ? 0 : totali.value.netto_cents;
+    const postCents  = attualeCents - spesaCents;
+
+    return { attuale_cents: attualeCents, uscita_cents: spesaCents, post_cents: postCents, isRed: postCents < 0 };
 });
 
 const transactionStatus = computed(() => {
@@ -1757,7 +1822,9 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                     <p class="text-sm font-medium">
                         {{ transactionStatus === 'CRITICAL_BUDGET'
                             ? 'Sforamento budget rilevato — sarà necessaria una motivazione al momento della registrazione.'
-                            : 'Liquidità insufficiente sul conto selezionato.' }}
+                            : (isNotaCredito
+                                ? 'Il conto selezionato ha già un saldo negativo — indipendente da questo documento, che non genera nessuna uscita.'
+                                : 'Liquidità insufficiente sul conto selezionato.') }}
                     </p>
                 </div>
             </Transition>
@@ -1810,7 +1877,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                 :reduce="(f: Fornitore) => f.id"
                                 placeholder="Cerca fornitore..."
                                 class="w-full">
-                                <template #option="{ ragione_sociale, partita_iva, codice_fiscale, soggetto_ritenuta }">
+                                <template #option="{ ragione_sociale, partita_iva, codice_fiscale, soggetto_ritenuta, tipo_ritenuta, perc_ritenuta }">
                                     <div class="flex items-center gap-3 py-1">
                                         <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
                                             <Briefcase class="w-4 h-4 text-slate-400" />
@@ -1822,18 +1889,18 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                                 <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
                                                 <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
                                                 <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
-                                                    Ritenuta
+                                                    Ritenuta {{ aliquotaRitenutaVisualizzata({ tipo_ritenuta, perc_ritenuta }) }}%
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
                                 </template>
-                                <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
+                                <template #selected-option="{ ragione_sociale, soggetto_ritenuta, tipo_ritenuta, perc_ritenuta }">
                                     <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
                                         <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                         <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
                                         <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none shrink-0">
-                                            Ritenuta
+                                            Ritenuta {{ aliquotaRitenutaVisualizzata({ tipo_ritenuta, perc_ritenuta }) }}%
                                         </span>
                                     </div>
                                 </template>
@@ -1847,10 +1914,18 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                     <input type="checkbox"
                                         :checked="applicaRitenutaEffective"
                                         @change="applicaRitenutaEffective = ($event.target as HTMLInputElement).checked"
-                                        class="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
-                                    <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
-                                        Applica ritenuta d'acconto su questo documento
+                                        class="w-4 h-4 accent-slate-900 dark:accent-slate-300 rounded border-slate-300 focus:ring-amber-500 cursor-pointer shrink-0" />
+                                    <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400 whitespace-nowrap">
+                                        Applica ritenuta d'acconto {{ aliquotaRitenutaVisualizzata(selectedFornitore) }}%
                                     </span>
+                                    <TooltipProvider :delay-duration="200">
+                                        <Tooltip>
+                                            <TooltipTrigger as-child>
+                                                <HelpCircle class="w-3 h-3 text-amber-400 hover:text-amber-600 cursor-help" @click.prevent />
+                                            </TooltipTrigger>
+                                            <TooltipContent class="max-w-64"><p>Trattiene la ritenuta d'acconto sul totale del documento e la accantona per il versamento all'Erario. Va tolta solo per i casi previsti dalla legge — ad esempio un compenso occasionale sotto i € 25,82 annui, o un fornitore che dichiara un motivo di esclusione.</p></TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
                                 </label>
 
                                 <div v-if="!applicaRitenutaEffective" class="space-y-2 pt-1">
@@ -2319,8 +2394,14 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                 <span class="text-slate-500">€ 0,00</span>
                             </div>
 
+                            <!-- ⚠️ **Coda 122.** «Netto da pagare» su una nota di credito è la parola sbagliata
+                                 anche quando il numero fosse giusto: non è un debito che si paga, è un credito che
+                                 si spenderà in compensazione la prossima volta che si paga questo fornitore.
+                                 Segnalato da Vincenzo insieme al resto della coda, 04/09/2026. -->
                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
-                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Netto da pagare</span>
+                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    {{ isNotaCredito ? 'Importo a credito' : 'Netto da pagare' }}
+                                </span>
                                 <span class="font-black text-2xl" :class="totali.netto_cents > 0 ? 'text-emerald-400' : 'text-white'">
                                     {{ euro(totali.netto_cents) }}
                                 </span>
@@ -2395,7 +2476,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                                         ? 'bg-amber-50 border-amber-200 text-amber-600 shadow-sm dark:bg-amber-900/30 dark:border-amber-700/50 dark:text-amber-400'
                                                         : 'bg-transparent border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-500 dark:border-slate-700 dark:hover:bg-slate-800'">
                                                     <Zap class="w-3 h-3" :class="riga.is_sopravvenienza ? 'text-amber-500' : 'text-slate-400'" />
-                                                    <span>{{ riga.is_sopravvenienza ? 'Imprevista (Attiva)' : 'Fuori Preventivo' }}</span>
+                                                    <span>{{ riga.is_sopravvenienza ? 'Imprevista (attiva)' : 'Fuori preventivo' }}</span>
                                                 </button>
                                             </div>
 
@@ -2517,10 +2598,18 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
 
                                     <label v-if="fornitoreRitenutaAttiva && applicaRitenutaEffective" class="flex items-center gap-1.5 cursor-pointer select-none w-fit">
                                         <input type="checkbox" v-model="riga.concorre_base_ritenuta"
-                                            class="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
+                                            class="w-3.5 h-3.5 accent-slate-900 dark:accent-slate-300 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
                                         <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                             Concorre alla base ritenuta
                                         </span>
+                                        <TooltipProvider :delay-duration="200">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <HelpCircle class="w-3 h-3 text-slate-300 hover:text-slate-500 cursor-help" @click.prevent />
+                                                </TooltipTrigger>
+                                                <TooltipContent class="max-w-64"><p>Include o esclude questa riga dalla base su cui si calcola la ritenuta d'acconto. Un compenso professionale di solito concorre; un contributo di cassa previdenziale (INPS, ENPAM…) o un rimborso spese documentato di solito no — lo decide il contenuto della riga, non una regola fissa.</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
                                     </label>
                                 </div>
                             </div>
@@ -2580,7 +2669,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                             'bg-amber-500 animate-pulse': transactionStatus === 'WARNING_CASH',
                                             'bg-emerald-500':             transactionStatus === 'SAFE',
                                         }"></span>
-                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? 'Attenzione Cassa' : 'Tutto OK' }}
+                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? (isNotaCredito ? 'Conto già negativo' : 'Attenzione Cassa') : 'Tutto OK' }}
                                 </div>
                             </div>
 
@@ -2601,7 +2690,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                             <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
                                                 <div class="h-full rounded-full transition-all duration-500"
                                                     :class="impact.isOk ? 'bg-emerald-500' : 'bg-rose-500'"
-                                                    :style="{ width: Math.min((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 100) + '%' }">
+                                                    :style="{ width: Math.min(Math.max((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 0), 100) + '%' }">
                                                 </div>
                                             </div>
 
@@ -2644,9 +2733,17 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                                 <span class="text-slate-400">Saldo attuale</span>
                                                 <span class="text-white">{{ euro(bankForecast.attuale_cents) }}</span>
                                             </div>
-                                            <div class="flex justify-between text-xs">
+                                            <!-- ⚠️ **Coda 122.** Leggeva `totali.netto_cents` direttamente, bypassando la correzione
+                                                 fatta in `bankForecast`: anche dopo aver azzerato l'uscita nel calcolo, questa riga
+                                                 avrebbe continuato a mostrarla. Ora legge lo stesso valore che alimenta il saldo
+                                                 sotto, e per una nota di credito è zero. -->
+                                            <div v-if="!isNotaCredito" class="flex justify-between text-xs">
                                                 <span class="text-slate-400">Uscita prevista</span>
-                                                <span class="text-rose-400">- {{ euro(totali.netto_cents) }}</span>
+                                                <span class="text-rose-400">- {{ euro(bankForecast.uscita_cents) }}</span>
+                                            </div>
+                                            <div v-else class="flex justify-between text-xs">
+                                                <span class="text-slate-400">Uscita prevista</span>
+                                                <span class="text-slate-500 italic">nessuna: si compensa, non si incassa</span>
                                             </div>
                                         </div>
                                         <div class="pt-3 border-t border-slate-700 space-y-1">

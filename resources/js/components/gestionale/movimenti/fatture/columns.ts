@@ -194,10 +194,10 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
                 class: 'bg-blue-50 text-blue-700 border border-blue-200', 
                 icon: AlertTriangle 
             },
-            stornata: { 
-                label: 'Stornata', 
-                class: 'bg-slate-100 text-slate-500 border border-slate-200 decoration-slate-400 line-through', 
-                icon: RotateCcw 
+            stornata: {
+                label: 'Stornata',
+                class: 'bg-slate-100 text-slate-500 border border-slate-200',
+                icon: RotateCcw
             },
         };
 
@@ -250,10 +250,10 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
                         // 1. IL LORDO
                         h('span', { 
                             class: `font-black text-sm whitespace-nowrap transition-colors ${
-                                isStornata 
-                                    ? 'text-slate-400 line-through' 
+                                isStornata
+                                    ? 'text-slate-400'
                                     : (isNota ? 'text-emerald-600' : 'text-slate-900 group-hover:text-indigo-600')
-                            }` 
+                            }`
                         }, euro(totaleDoc)),
                         
                         // 2. IL NETTO / BONIFICO

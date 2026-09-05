@@ -557,9 +557,36 @@ class FatturaPassivaController extends Controller
         // la conterebbe due volte e farebbe scattare un falso "sforamento budget".
         $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio, $fattura);
 
+        // ⚠️ **Coda 123, 05/09/2026 — trovato verificando a video la correzione stessa.**
+        // L'anteprima di una NC da storno deve mostrare la ritenuta CONGELATA (stesso
+        // fix di FatturaPassivaService::aggiornaFattura(), che legge la fattura ORIGINALE
+        // e non la NC): senza questa prop, il frontend non ha modo di sapere quale fosse
+        // l'imponibile e la ritenuta dell'originale, e confrontava la NC con sé stessa. Va
+        // bene finché nessuno tocca mai l'imponibile della NC — ma se un salvataggio con
+        // l'imponibile sbagliato lo altera (il "caso anomalo" che il congelamento non copre),
+        // il termine di paragone del frontend si guasta insieme alla NC, e l'anteprima
+        // continuerebbe a mostrare zero anche dopo che l'amministratore rimette l'importo
+        // giusto — mentre il backend, che legge l'originale immutabile, salverebbe già
+        // correttamente. Stesso pattern di lettura di `aggiornaFattura()`.
+        $notaStornoOriginale = null;
+        if (! empty($fattura->dati_extra['nota_storno'] ?? null)) {
+            $originale = FatturaPassiva::where('condominio_id', $condominio->id)
+                ->where('dati_extra->stornata_da_id', $fattura->id)
+                ->first();
+
+            if ($originale) {
+                $notaStornoOriginale = [
+                    'importo_imponibile' => $originale->importo_imponibile,
+                    'importo_ritenuta' => $originale->importo_ritenuta,
+                    'ritenuta_details' => $originale->dati_extra['fiscal']['ritenuta_details'] ?? null,
+                ];
+            }
+        }
+
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
             'condominio' => $condominio,
             'fattura' => $fattura,
+            'nota_storno_originale' => $notaStornoOriginale,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             ...$contestoBudget,
