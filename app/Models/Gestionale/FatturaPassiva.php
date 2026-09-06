@@ -369,4 +369,38 @@ class FatturaPassiva extends Model
         ];
     }
 
+
+    /**
+     * Questa nota di credito è nata da uno **storno**, quindi non è compensabile né pagabile?
+     *
+     * ⚠️ **Due criteri, e il secondo esiste per le note già a database.** La correzione della
+     * Coda 124 marca le note nuove con `dati_extra.nota_storno`, ma le note generate **prima** di
+     * quella correzione quella chiave non ce l'hanno e restavano compensabili: il fornitore
+     * poteva vedersi decurtare un pagamento con una nota che non ha mai emesso. Era la Coda 133.
+     *
+     * Il secondo criterio non ha bisogno di nessuna migrazione, perché il legame esiste già ed è
+     * sempre esistito: quando `StornoFatturaController` genera la nota, **congela la fattura
+     * originale** scrivendole `dati_extra.stornata_da_id` con l'id della nota. Una nota puntata da
+     * una fattura è nata da uno storno, comunque sia stata marcata.
+     *
+     * ⚠️ **Il verso conta.** Si guarda chi *punta* questa nota, non cosa questa nota dichiara di
+     * sé: è ciò che permette di riconoscere le storiche senza toccarle. E lascia intatto il caso
+     * opposto — una nota di credito **vera**, emessa dal fornitore, non è puntata da nessuno e
+     * resta compensabile come sempre.
+     */
+    public function eNataDaStorno(): bool
+    {
+        if (! empty($this->dati_extra['nota_storno'] ?? null)) {
+            return true;
+        }
+
+        if ($this->tipo_documento !== 'nota_credito') {
+            return false;
+        }
+
+        return static::query()
+            ->where('condominio_id', $this->condominio_id)
+            ->whereJsonContains('dati_extra->stornata_da_id', $this->id)
+            ->exists();
+    }
 }

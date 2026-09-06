@@ -42,6 +42,16 @@ const isPagabile = computed(() =>
   // tutti i controlli sopra. Da quando la nota non è più compensabile automaticamente
   // (Coda 124), offrirle «Registra pagamento» porta a un form che non la trova più nelle
   // pendenze: un vicolo cieco muto, dove prima «funzionava» (ed era proprio il difetto).
+  // ⚠️ Coda 133: si guarda il flag calcolato dal server, non la sola chiave `nota_storno`.
+  // Le note generate prima della Coda 124 quella chiave non ce l'hanno, e questo menù
+  // continuava a offrire loro «Registra pagamento» — riaprendo per tutte le note storiche
+  // esattamente il vicolo cieco muto che il commento qui sopra dichiara chiuso.
+  // ⚠️ **Due criteri, e servono entrambi.** `e_nata_da_storno` lo calcola il server e copre anche
+  // le note generate prima della Coda 124, che la chiave non ce l'hanno (Coda 133). Ma questo
+  // componente è montato da più elenchi, e uno che non passi quel flag tornerebbe a offrire
+  // «Registra pagamento» **in silenzio**: la chiave resta come rete, perché il costo di tenerla è
+  // zero e il costo di sbagliarsi è un pagamento su un documento che il fornitore non ha emesso.
+  !props.fattura.e_nata_da_storno &&
   !props.fattura.dati_extra?.nota_storno
 );
 

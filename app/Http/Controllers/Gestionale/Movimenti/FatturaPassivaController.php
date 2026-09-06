@@ -130,7 +130,24 @@ class FatturaPassivaController extends Controller
         // eliminabile, guardava due condizioni su sette e sbagliava in entrambi
         // i versi — nascondeva la voce senza spiegare, o la mostrava e poi il
         // server la rifiutava.
-        $fatture->through(fn (FatturaPassiva $fattura) => $fattura->append('motivo_blocco_eliminazione'));
+        // ⚠️ **Il frontend non può calcolare da sé se una nota è nata da uno storno.** Le note
+        // generate prima della Coda 124 non hanno `dati_extra.nota_storno`, e il legame che le
+        // identifica sta sull'ALTRO documento (`stornata_da_id` sulla fattura originale): un menù
+        // che guarda solo la chiave le offre ancora «Registra pagamento», e il form si apre senza
+        // trovarle nelle pendenze — il vicolo cieco muto che la Coda 124 dichiarava chiuso.
+        // L'insieme si raccoglie in **una** query per tutto l'elenco, non una per fattura.
+        // Trovato dalla Fase 1-bis della beta.20, Coda 133.
+        $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
+
+        $fatture->through(function (FatturaPassiva $fattura) use ($idNoteDaStorno) {
+            $fattura->append('motivo_blocco_eliminazione');
+            $fattura->setAttribute(
+                'e_nata_da_storno',
+                ! empty($fattura->dati_extra['nota_storno'] ?? null) || in_array($fattura->id, $idNoteDaStorno, true),
+            );
+
+            return $fattura;
+        });
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -569,7 +586,7 @@ class FatturaPassivaController extends Controller
         // giusto — mentre il backend, che legge l'originale immutabile, salverebbe già
         // correttamente. Stesso pattern di lettura di `aggiornaFattura()`.
         $notaStornoOriginale = null;
-        if (! empty($fattura->dati_extra['nota_storno'] ?? null)) {
+        if ($fattura->eNataDaStorno()) {   // Coda 133: anche le note storiche, senza migrazione
             $originale = FatturaPassiva::where('condominio_id', $condominio->id)
                 ->where('dati_extra->stornata_da_id', $fattura->id)
                 ->first();
@@ -1088,7 +1105,9 @@ class FatturaPassivaController extends Controller
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaShow', [
             'condominio' => new CondominioResource($condominio),
-            'fattura' => $fattura,
+            // Coda 133: anche `FatturaShow` offre «Registra pagamento», e deve sapere se la
+            // nota è nata da uno storno — chiave o legame inverso. Qui il documento è uno solo.
+            'fattura' => $fattura->setAttribute('e_nata_da_storno', $fattura->eNataDaStorno()),
             'utenteRatifica' => $utenteRatifica,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,

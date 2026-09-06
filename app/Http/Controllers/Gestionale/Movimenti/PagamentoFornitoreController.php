@@ -353,6 +353,14 @@ class PagamentoFornitoreController extends Controller
 
         $fornitoreId = (int) $request->input('fornitore_id');
 
+        // ⚠️ **Coda 133 — le note da storno GIÀ a database.** La correzione della Coda 124 marca le
+        // note nuove con `dati_extra.nota_storno`; quelle generate prima non ce l'hanno e restavano
+        // selezionabili, quindi compensabili con un documento che il fornitore non ha mai emesso.
+        // Il legame per riconoscerle esiste da sempre e sta sull'ALTRO documento: la fattura
+        // stornata porta `dati_extra.stornata_da_id` con l'id della nota. Si raccolgono in un colpo
+        // solo — una query, non una per nota — e si escludono per id. Nessuna migrazione.
+        $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
+
         // Fatture aperte/parziali del fornitore
         // Fatture aperte/parziali del fornitore (incluse non approvate per mostrarle disabilitate)
         $pendenze = FatturaPassiva::where('condominio_id', $condominio->id)
@@ -369,6 +377,7 @@ class PagamentoFornitoreController extends Controller
             // storno non è un documento che il fornitore conosca: non ha senso pagarla né
             // compensarla, va tolta da qui.
             ->whereNull('dati_extra->nota_storno')
+            ->whereNotIn('id', $idNoteDaStorno)   // Coda 133: anche le storiche, vedi sopra
             ->with('righe')
             ->orderBy('data_scadenza')
             ->get()

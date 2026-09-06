@@ -1161,6 +1161,41 @@ const scartoDalDocumentoCents = computed<number>(() => {
 /** Quanto manca o quanto avanza, senza segno: il verso lo dice la frase. */
 const scartoAssolutoCents = computed<number>(() => Math.abs(scartoDalDocumentoCents.value));
 
+/**
+ * ⚠️ **`override_budget` e la sua motivazione appartengono al documento che li ha generati.**
+ *
+ * Il toggle Fattura/Nota di credito scrive `form.tipo_documento` e basta: i due campi restavano.
+ * Bastava quindi compilare la motivazione di uno sforo su una fattura, cambiare idea e commutare il
+ * documento in nota di credito, e la nota nasceva `sforo_motivato` — cioè **né modificabile né
+ * stornabile**, perché `motivoBloccoModifica()` la blocca e lo storno rifiuta le note. Un vicolo
+ * cieco costruito da due click che sembrano innocui.
+ *
+ * Il verso opposto è altrettanto sbagliato ma più silenzioso: una motivazione scritta quando il
+ * documento era una nota descrive uno sforo che quella nota non poteva produrre, e resta attaccata
+ * alla fattura in cui ci si è ricommutati.
+ *
+ * Si azzerano al **cambio**, non alla lettura: chi non tocca il toggle non perde niente. Coda 131.
+ */
+watch(() => form.tipo_documento, (nuovo, vecchio) => {
+    if (nuovo === vecchio || vecchio === undefined) return;
+
+    form.dati_extra.override_budget = null;
+    form.dati_extra.log_legale_sopravvenienza = null;
+
+    // ⚠️ **Anche il flag di riga, e nascondere il pulsante non bastava — anzi peggiorava.**
+    // Trovato dalla Fase 1-bis della beta.20 su una correzione della beta.20 stessa: togliere
+    // «Fuori preventivo» dalla vista lasciava acceso `is_sopravvenienza` su una riga che l'aveva
+    // già, e la select del capitolo resta `:disabled` quando quel flag è acceso. Risultato: riga
+    // senza capitolo, nessun comando per spegnerla, e al salvataggio «Integrità compromessa:
+    // impossibile allocare la riga» — un vicolo cieco identico a quello che la Coda 130 chiudeva.
+    //
+    // Il principio è lo stesso dei due campi qui sopra: **lo stato che appartiene a una fattura
+    // non sopravvive al diventare nota di credito.** Si spegne, non si nasconde.
+    if (nuovo === 'nota_credito') {
+        form.righe.forEach((riga: any) => { riga.is_sopravvenienza = false; });
+    }
+});
+
 // Storico capitoli espanso
 const expandedHistory = ref<Record<number, boolean>>({});
 const toggleHistory = (contoId: number) => {
@@ -1589,8 +1624,15 @@ const eccedenzaPregressaCents = computed(() => {
  */
 const handleSubmit = () => {
     // 1. Spesa imprevista CORRENTE
+    //
+    // ⚠️ **Una nota di credito non sfora mai un budget: lo libera.** Il pulsante che accende
+    // `is_sopravvenienza` adesso non le viene nemmeno offerto (vedi il template), ma la guardia
+    // sta anche qui perché una riga può portarsi dietro il flag da un'altra strada — un documento
+    // che era una fattura e viene commutato in nota col toggle, per esempio. È la stessa forma
+    // della Coda 122, che aveva già escluso le note dal calcolo dello sforo: quella correzione non
+    // era arrivata fino a questo cancello. Coda 130.
     const hasSpesaImprevistaCorrente = form.righe.some(r => r.is_sopravvenienza && !r.immobile_id);
-    if (!form.is_pregresso && hasSpesaImprevistaCorrente && !form.dati_extra.log_legale_sopravvenienza) {
+    if (!isNotaCredito.value && !form.is_pregresso && hasSpesaImprevistaCorrente && !form.dati_extra.log_legale_sopravvenienza) {
         spesaImprevistaMode.value = 'corrente';
         showSpesaImprevistaModal.value = true;
         return;
@@ -2649,7 +2691,19 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                             <div class="flex items-center justify-between mb-1.5 min-h-[28px]">
                                                 <Label class="text-[10px] font-bold uppercase text-slate-400">Capitolo di spesa</Label>
 
+                                                <!-- ⚠️ **Su una nota di credito non si offre.** «Fuori preventivo» dichiara una
+                                                     spesa imprevista che sfora il budget: una nota di credito il budget lo
+                                                     LIBERA, non lo consuma. Il pulsante restava attivo e scriveva
+                                                     `override_budget` su un documento che non sfora mai — e da lì il documento
+                                                     diventava `sforo_motivato`, cioè né modificabile né stornabile: un vicolo
+                                                     cieco. Si nasconde invece di disabilitarlo, perché un comando spento che
+                                                     nessuno può spiegare è rumore; qui la ragione è il tipo di documento, e
+                                                     l'etichetta accanto la dice. Coda 130. -->
+                                                <span v-if="isNotaCredito" class="text-[9px] font-bold uppercase tracking-wider text-slate-300 dark:text-slate-600">
+                                                    Una nota di credito libera budget
+                                                </span>
                                                 <button
+                                                    v-else
                                                     type="button"
                                                     @click="riga.is_sopravvenienza = !riga.is_sopravvenienza; riga.is_sopravvenienza && (riga.conto_id = null)"
                                                     class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all border outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"

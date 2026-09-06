@@ -7,6 +7,63 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.20] - Quello Che Quadrava Lo Stesso
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Il controllo che verifica la partita doppia diceva 🟢 su una contabilità sbagliata, e aveva ragione.
+Una fattura registrata per € 100,14 invece dei € 100,15 che il fornitore chiede **quadra
+perfettamente**: i due lati della scrittura sono sbagliati dello stesso importo, e nessuna somma
+tradisce niente. Quel controllo verificava che i conti fossero coerenti **con sé stessi**, non che
+fossero **giusti rispetto al documento** — e sono due domande diverse.
+
+Da questa versione ne fa una quinta. Per ogni fattura importata da XML confronta il totale registrato
+con quello che il fornitore ha dichiarato nel file, e lo scrive come **equazione con i numeri veri**:
+
+> `26G-00011672 · dichiarato dal fornitore € 100,15 = registrato € 100,15 · quadra`
+
+Non un indicatore «tutto ok» ma un'affermazione verificabile per ogni documento, che si legge anche
+quando l'esito è positivo — un controllo che si vede solo quando fallisce non permette di sapere se è
+stato eseguito. Lo stato complessivo distingue adesso tre casi invece di due: conti coerenti,
+**conti coerenti ma un documento registrato per un importo diverso da quello dichiarato**, e anomalia
+contabile vera. Il caso di mezzo non è un errore: dalla 1.11.0-beta.19 il programma avvisa e non
+blocca, quindi un importo diverso può essere stato scelto.
+
+⚠️ **Il confronto è possibile solo sulle fatture importate dalla beta.19 in poi**, perché sono le
+uniche che conservano i totali dichiarati dal fornitore. Su un archivio più vecchio la risposta dirà
+«nessuna fattura da confrontare» invece di far credere che sia tutto a posto.
+
+Quel controllo, fino a oggi, non aveva **nessun test**: se avesse smesso di vedere le anomalie
+avrebbe risposto 🟢 e nessuno l'avrebbe saputo. Adesso ne ha sette, e ciascuno gli mette davanti
+un'anomalia costruita apposta.
+
+### Tre vicoli ciechi chiusi
+
+Un vicolo cieco è un documento che il programma non permette più né di correggere né di annullare.
+Se ne chiudono tre, tutti sulle note di credito.
+
+- **«Fuori preventivo» non si offre più su una nota di credito.** Quel pulsante dichiara una spesa
+  imprevista che sfora il budget, e una nota di credito il budget lo **libera**: premendolo si
+  marcava il documento come sforo motivato, e da lì non era più né modificabile né stornabile.
+- **Cambiare il tipo di documento adesso azzera la motivazione dello sforo.** Bastava scriverla su
+  una fattura, cambiare idea e commutare in nota di credito: la motivazione restava attaccata a un
+  documento che non poteva averla prodotta, con lo stesso esito di prima.
+- **Le note di credito generate da uno storno prima della 1.11.0-beta.18 non sono più compensabili.**
+  Quella correzione valeva solo per le note nuove; quelle già in archivio restavano selezionabili, e
+  un fornitore poteva vedersi decurtare un pagamento con un documento che non ha mai emesso. Adesso
+  si riconoscono dal legame con la fattura che hanno annullato, senza bisogno di toccare i dati.
+
+### Cosa ha trovato la revisione, e cosa ha trovato lo schermo
+
+La revisione avversariale ha proposto diciassette rilievi, sei dei quali confermati e corretti. Due
+riguardavano **le correzioni di questa versione stessa**: chiudendo il primo vicolo cieco se ne era
+aperto un altro — il pulsante spariva ma il contrassegno restava acceso sulla riga, e il documento
+non si salvava più — e un test che dichiarava di proteggere il pagamento non provava niente, cosa
+dimostrata rimettendo il codice vecchio e vedendo tutte le 2.358 prove restare verdi.
+
+Il simbolo dell'euro scritto dopo l'importo invece che prima, in nove punti della risposta, non l'ha
+trovato la revisione: l'ha trovato aprire la pagina e guardarla.
+
 ## [1.11.0-beta.19] - Il Totale Che Non È Nostro
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova. I riepiloghi del documento

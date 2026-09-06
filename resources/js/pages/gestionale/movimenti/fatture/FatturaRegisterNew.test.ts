@@ -1826,3 +1826,146 @@ describe('su una fattura ricevuta il totale non è nostro: lo scarto dal documen
         expect(wrapper.text()).not.toContain('Il documento chiede');
     });
 });
+
+describe('Coda 130 — una nota di credito non sfora un budget: lo libera', () => {
+    // ⚠️ **Era un vicolo cieco, non solo un pulsante di troppo.** «Fuori preventivo» scriveva
+    // `override_budget` su una nota di credito; da lì il documento diventava `sforo_motivato`, e
+    // `motivoBloccoModifica()` lo rendeva non modificabile mentre lo storno lo rifiuta perché è una
+    // nota: l'amministratore restava con un documento che non poteva più sistemare in nessun modo.
+    // La Coda 122 aveva già escluso le note dal calcolo dello sforo — quella correzione non era
+    // arrivata fino a questo cancello.
+    test('su una nota di credito il pulsante non viene offerto', async () => {
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        expect(wrapper.text()).toContain('Fuori preventivo');   // su una fattura c'è
+
+        vm.form.tipo_documento = 'nota_credito';
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.text()).not.toContain('Fuori preventivo');
+        // E al suo posto si dice perché, invece di lasciare un buco muto.
+        expect(wrapper.text()).toContain('Una nota di credito libera budget');
+    });
+
+    test('il cancello non chiede la motivazione dell’imprevisto su una nota di credito', async () => {
+        // La riga può portarsi dietro il flag da un'altra strada: un documento compilato come
+        // fattura e poi commutato in nota col toggle. Il pulsante nascosto non basta.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        vm.form.righe[0].is_sopravvenienza = true;
+        vm.form.righe[0].immobile_id = null;
+        vm.form.tipo_documento = 'nota_credito';
+        await wrapper.vm.$nextTick();
+
+        vm.handleSubmit();
+        await wrapper.vm.$nextTick();
+
+        expect(vm.showSpesaImprevistaModal).toBe(false);
+    });
+
+    test('su una fattura ordinaria la motivazione viene ancora chiesta', async () => {
+        // Il controesempio: senza, nascondere il pulsante e spegnere il cancello sembrerebbe
+        // corretto anche se avesse spento la protezione per tutti.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        vm.form.righe[0].is_sopravvenienza = true;
+        vm.form.righe[0].immobile_id = null;
+        await wrapper.vm.$nextTick();
+
+        vm.handleSubmit();
+        await wrapper.vm.$nextTick();
+
+        expect(vm.showSpesaImprevistaModal).toBe(true);
+        expect(vm.spesaImprevistaMode).toBe('corrente');
+    });
+});
+
+describe('Coda 131 — lo sforo motivato appartiene al documento che l’ha generato', () => {
+    // ⚠️ **Due click innocui costruivano un vicolo cieco.** Si compila la motivazione di uno sforo
+    // su una fattura, si cambia idea, si commuta in nota di credito col toggle: `override_budget`
+    // restava, il server marcava il documento `sforo_motivato`, e da lì non era né modificabile
+    // (`motivoBloccoModifica()` lo blocca) né stornabile (lo storno rifiuta le note di credito).
+    function conSforoMotivato(wrapper: ReturnType<typeof render>) {
+        const vm = wrapper.vm as any;
+        vm.form.dati_extra.override_budget = { strategia: 'attesa_conguaglio', motivazione: 'Rottura improvvisa' };
+        vm.form.dati_extra.log_legale_sopravvenienza = { motivazione: 'Rottura improvvisa' };
+        return vm;
+    }
+
+    test('commutare in nota di credito azzera lo sforo motivato', async () => {
+        const wrapper = render();
+        const vm = conSforoMotivato(wrapper);
+
+        vm.form.tipo_documento = 'nota_credito';
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.dati_extra.override_budget).toBeNull();
+        expect(vm.form.dati_extra.log_legale_sopravvenienza).toBeNull();
+    });
+
+    test('anche il verso opposto: tornare a fattura non si porta dietro la motivazione della nota', async () => {
+        // Più silenzioso e altrettanto sbagliato: una motivazione scritta quando il documento era
+        // una nota descrive uno sforo che quella nota non poteva produrre.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+        vm.form.tipo_documento = 'nota_credito';
+        await wrapper.vm.$nextTick();
+
+        conSforoMotivato(wrapper);
+        vm.form.tipo_documento = 'fattura';
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.dati_extra.override_budget).toBeNull();
+    });
+
+    test('chi non tocca il toggle non perde la motivazione che ha appena scritto', async () => {
+        // ⚠️ Il controesempio che dà senso agli altri due: azzerare a ogni giro renderebbe
+        // impossibile registrare uno sforo, e i due test sopra resterebbero verdi lo stesso.
+        const wrapper = render();
+        const vm = conSforoMotivato(wrapper);
+
+        vm.form.numero_documento = 'FT-CAMBIATA';
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.dati_extra.override_budget).not.toBeNull();
+        expect(vm.form.dati_extra.override_budget.motivazione).toBe('Rottura improvvisa');
+    });
+});
+
+describe('Coda 130 — il flag non si nasconde, si spegne', () => {
+    // ⚠️ **Un difetto della correzione stessa, trovato dalla Fase 1-bis della beta.20.**
+    // Nascondere «Fuori preventivo» su una nota di credito lasciava `is_sopravvenienza` acceso su
+    // una riga che l'aveva già — e la select del capitolo resta `:disabled` quando quel flag è
+    // acceso. La riga restava senza capitolo, senza nessun comando per spegnerla, e il salvataggio
+    // moriva con «Integrità compromessa: impossibile allocare la riga». Cioè: chiudendo un vicolo
+    // cieco ne avevo aperto un altro, con lo stesso esito.
+    test('commutare in nota di credito spegne il flag sulle righe che ce l’hanno', async () => {
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        vm.form.righe[0].is_sopravvenienza = true;
+        vm.form.righe[0].conto_id = null;
+        await wrapper.vm.$nextTick();
+
+        vm.form.tipo_documento = 'nota_credito';
+        await wrapper.vm.$nextTick();
+
+        // Spento: la select del capitolo torna utilizzabile e la riga si può salvare.
+        expect(vm.form.righe[0].is_sopravvenienza).toBe(false);
+    });
+
+    test('su una fattura il flag resta acceso: si spegne solo diventando nota', async () => {
+        // Il controesempio: azzerarlo sempre renderebbe impossibile registrare una spesa imprevista.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        vm.form.righe[0].is_sopravvenienza = true;
+        vm.form.numero_documento = 'FT-QUALSIASI';
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.righe[0].is_sopravvenienza).toBe(true);
+    });
+});

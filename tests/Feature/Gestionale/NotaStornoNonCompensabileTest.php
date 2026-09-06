@@ -238,3 +238,124 @@ test('una nota di credito VERA, non nata da storno, resta compensabile come semp
     expect($fattura->fresh()->stato_pagamento->value)->toBe('pagata')
         ->and($notaVera->fresh()->stato_pagamento->value)->toBe('pagata');
 });
+
+/**
+ * ⚠️ **Coda 133 — le note «STORNO-» che erano già a database.**
+ *
+ * La correzione della Coda 124 marca le note nuove con `dati_extra.nota_storno`. Le note generate
+ * **prima** di quella correzione quella chiave non ce l'hanno: restavano selezionabili e
+ * compensabili, cioè un fornitore poteva vedersi decurtare un pagamento con un documento che non ha
+ * mai emesso. La correzione della Coda 124 valeva solo per il futuro.
+ *
+ * ⚠️ **Chiusa senza nessuna migrazione**, perché il legame per riconoscerle esiste da sempre e sta
+ * sull'ALTRO documento: `StornoFatturaController` congela la fattura originale scrivendole
+ * `dati_extra.stornata_da_id` con l'id della nota. Si guarda **chi punta la nota**, non cosa la nota
+ * dichiara di sé — ed è esattamente ciò che permette di riconoscere le storiche senza toccarle.
+ */
+function notaStornoStorica(array $ctx)
+{
+    $fattura = registraFatturaServiceTest($ctx, ['numero_documento' => 'FT-STORICA']);
+
+    // La nota come la generava il prodotto PRIMA della Coda 124: senza `nota_storno`.
+    $nota = App\Models\Gestionale\FatturaPassiva::create([
+        'condominio_id' => $ctx[0]->id,
+        'fornitore_id' => $ctx[3]->id,
+        'esercizio_id' => $ctx[1]->id,
+        'tipo_documento' => 'nota_credito',
+        'numero_documento' => 'STORNO-FT-STORICA',
+        'data_documento' => now()->format('Y-m-d'),
+        'data_scadenza' => now()->format('Y-m-d'),
+        'is_pregresso' => false,
+        'importo_imponibile' => -100_000,
+        'importo_iva' => -22_000,
+        'importo_ritenuta' => 0,
+        'totale_documento' => -122_000,
+        'netto_a_pagare' => -122_000,
+        'stato_pagamento' => 'aperta',
+        'stato_approvazione' => 'approvata',
+        'modalita_pagamento' => 'bonifico',
+        'dati_extra' => [],   // ⚠️ nessuna chiave `nota_storno`: è il punto
+    ]);
+
+    // Il congelamento dell'originale, che il prodotto ha sempre scritto.
+    $fattura->update(['dati_extra' => ['is_stornata' => true, 'stornata_da_id' => $nota->id]]);
+
+    return [$fattura, $nota];
+}
+
+test('una nota da storno GIÀ a database, senza la chiave, viene riconosciuta lo stesso', function () {
+    $ctx = setupPagamentiService();
+    [, $nota] = notaStornoStorica($ctx);
+
+    expect($nota->dati_extra['nota_storno'] ?? null)->toBeNull('la fixture deve essere senza chiave')
+        ->and($nota->fresh()->eNataDaStorno())->toBeTrue();
+});
+
+test('e l’elenco delle pendenze non la offre più', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, , , $fornitore] = $ctx;
+    [, $nota] = notaStornoStorica($ctx);
+
+    $risposta = $this->actingAs($this->user)
+        ->getJson(route('admin.gestionale.pagamenti-fornitori.pendenze', $condominio).'?fornitore_id='.$fornitore->id)
+        ->assertOk();
+
+    expect(collect($risposta['pendenze'])->pluck('id'))->not->toContain($nota->id);
+    expect(json_encode($risposta->json()))->not->toContain('STORNO-FT-STORICA');
+});
+
+test('e compensarla direttamente viene rifiutato dalla terza linea di difesa', function () {
+    // ⚠️ **Nella prima stesura questo test non compensava niente.** Il corpo era la stessa
+    // asserzione sul modello del test qui sopra, con un titolo che prometteva la terza linea di
+    // difesa. Trovato dalla Fase 1-bis della beta.20 nel modo che conta: rimettendo in
+    // `validaInput()` la vecchia forma `! empty($f->dati_extra['nota_storno'])` e rilanciando
+    // **la suite intera** — 2.358 verdi. La riga che protegge le note storiche dalla
+    // compensazione si poteva cancellare e nessun test se ne accorgeva.
+    //
+    // Adesso il percorso lo fa davvero, sul modello del gemello della Coda 124 qui sopra.
+    $ctx = setupPagamentiService();
+    [$condominio, , , $fornitore] = $ctx;
+    [, $notaStorica] = notaStornoStorica($ctx);
+
+    $fatturaVera = registraFatturaServiceTest($ctx, ['numero_documento' => 'FT-133-VERA']);
+    $service = app(App\Services\Gestionale\PagamentoFornitoreService::class);
+
+    $dati = datiPagamento($ctx, $fatturaVera, [
+        'allocazioni' => [[
+            'fattura_id'             => $fatturaVera->id,
+            'tipo'                   => TipoAllocazioneFattura::COMPENSAZIONE->value,
+            'importo_allocato_cents' => $fatturaVera->netto_a_pagare,
+        ], [
+            'fattura_id'             => $notaStorica->id,
+            'tipo'                   => TipoAllocazioneFattura::COMPENSAZIONE->value,
+            'importo_allocato_cents' => $fatturaVera->netto_a_pagare,
+        ]],
+    ]);
+
+    expect(fn () => $service->registraPagamento($dati))
+        ->toThrow(NotaStornoNonCompensabileException::class);
+
+    // Il denaro si ferma prima di scrivere: dopo il rifiuto niente è cambiato.
+    expect($fatturaVera->fresh()->stato_pagamento->value)->toBe('aperta')
+        ->and($fatturaVera->fresh()->residuo)->toBe($fatturaVera->netto_a_pagare);
+});
+
+test('una nota di credito vera non è puntata da nessuno e resta compensabile', function () {
+    // ⚠️ Il controesempio del criterio nuovo: se bastasse «essere una nota di credito», il netting
+    // vero smetterebbe di funzionare. Qui nessuna fattura la punta, e infatti passa.
+    $ctx = setupPagamentiService();
+    [$condominio, $esercizio, , $fornitore] = $ctx;
+
+    $vera = App\Models\Gestionale\FatturaPassiva::create([
+        'condominio_id' => $condominio->id, 'fornitore_id' => $fornitore->id,
+        'esercizio_id' => $esercizio->id, 'tipo_documento' => 'nota_credito',
+        'numero_documento' => 'NC-VERA-133', 'data_documento' => now()->format('Y-m-d'),
+        'data_scadenza' => now()->format('Y-m-d'), 'is_pregresso' => false,
+        'importo_imponibile' => -50_000, 'importo_iva' => -11_000, 'importo_ritenuta' => 0,
+        'totale_documento' => -61_000, 'netto_a_pagare' => -61_000,
+        'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata',
+        'modalita_pagamento' => 'bonifico', 'dati_extra' => [],
+    ]);
+
+    expect($vera->eNataDaStorno())->toBeFalse();
+});

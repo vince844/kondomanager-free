@@ -365,7 +365,7 @@ const eliminaDocumento = () => {
                                 {{ props.fattura.stato_pagamento === 'pagata' ? 'Saldato (Pagata)' : (props.fattura.stato_pagamento === 'aperta' ? 'Da Pagare (Aperta)' : 'Pagamento: ' + props.fattura.stato_pagamento) }}
                             </span>
                             <Button
-                                v-if="props.fattura.stato_pagamento !== 'pagata' && props.fattura.stato_approvazione === 'approvata' && !props.fattura.dati_extra?.nota_storno"
+                                v-if="props.fattura.stato_pagamento !== 'pagata' && props.fattura.stato_approvazione === 'approvata' && !props.fattura.e_nata_da_storno"
                                 @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: props.condominio.id, fornitore_id: props.fattura.fornitore_id, fattura_id: props.fattura.id }))"
                                 class="h-7 px-3 text-[11px] gap-1.5 shadow-sm font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none rounded-md"
                             >

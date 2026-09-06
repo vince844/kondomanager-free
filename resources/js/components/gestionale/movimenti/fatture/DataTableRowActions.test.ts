@@ -92,3 +92,20 @@ describe('DataTableRowActions — la nota da storno non è più pagabile', () =>
         expect((wrapper.vm as any).isPagabile).toBe(true);
     });
 });
+
+describe('Coda 133 — anche le note da storno GIÀ a database', () => {
+    // ⚠️ Le note generate prima della Coda 124 non hanno `dati_extra.nota_storno`: il server le
+    // riconosce dal legame inverso e lo dichiara con `e_nata_da_storno`. Senza questo test il
+    // componente poteva tornare a leggere la sola chiave senza che nulla diventasse rosso.
+    test('una nota storica, senza chiave ma col flag del server, non è pagabile', () => {
+        const wrapper = renderRowActions({
+            tipo_documento: 'nota_credito',
+            stato_pagamento: 'aperta',
+            stato_approvazione: 'approvata',
+            dati_extra: {},                 // nessuna chiave `nota_storno`
+            e_nata_da_storno: true,         // ...ma il server l'ha riconosciuta
+        });
+
+        expect(wrapper.text()).not.toContain('Registra pagamento');
+    });
+});
