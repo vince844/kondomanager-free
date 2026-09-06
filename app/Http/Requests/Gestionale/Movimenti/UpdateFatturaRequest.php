@@ -34,13 +34,24 @@ class UpdateFatturaRequest extends FormRequest
         // contabile ora la registra correttamente come AVERE sul capitolo. Vietarla qui
         // richiuderebbe con la validazione la porta appena aperta nel servizio.
         //
-        // Su una **nota di credito** invece il segno lo mette già il moltiplicatore −1 di
-        // `FatturaPassivaService`: una riga digitata negativa lo annulla e riporta
-        // `netto_a_pagare` in positivo. A quel punto la guardia di `StornoFatturaController`
-        // — `if ($fattura->netto_a_pagare < 0)`, l'unica cosa che distingue una NC da una
-        // fattura vera al momento dello storno — non scatta più, e il documento diventa
-        // pagabile e stornabile pur restando una nota di credito (Coda 132, trovata dalla
-        // revisione avversariale della beta.17).
+        // ⚠️ **Su una nota di credito il vincolo è sul DOCUMENTO, non sulla singola riga —
+        // corretto il 06/09/2026, beta.19.** Fin qui era `min:0` per riga, e la ragione scritta
+        // qui sotto era difendere la guardia `if ($fattura->netto_a_pagare < 0)` di
+        // `StornoFatturaController`. Quella guardia **non esiste più**: la beta.19 l'ha
+        // sostituita con `tipo_documento === 'nota_credito'`, perché leggeva il segno del netto
+        // e dava della nota di credito a una fattura ordinaria a credito. Tolta la premessa,
+        // il `min:0` è rimasto in piedi senza il motivo per cui era stato scritto — e ha
+        // cominciato a sparare su un valore legittimo.
+        //
+        // **Il valore legittimo è questo**: la nota che storna una fattura contenente una riga
+        // NEGATIVA porta quella riga POSITIVA a database (−1 × −1,80 = +1,80), e il modulo di
+        // modifica la rimanda come magnitudine, cioè **−1,80**. Con `min:0` quella nota non era
+        // più salvabile: nemmeno una data. E il messaggio diceva all'amministratore di scrivere
+        // 1,80 positivo — obbedendo, la nota si gonfiava da −€ 100,15 a −€ 104,54, cioè proprio
+        // il difetto che la stessa beta aveva appena chiuso.
+        //
+        // Quello che va difeso resta vero e si difende dove vive: **una nota di credito deve
+        // restare un credito**. Il controllo è sulla somma delle righe, in `withValidator()`.
         $isNotaCredito = $this->route('fattura')?->tipo_documento === 'nota_credito';
 
         return [
@@ -68,7 +79,7 @@ class UpdateFatturaRequest extends FormRequest
 
             'righe'                      => 'required|array|min:1',
             'righe.*.descrizione'        => 'required|string',
-            'righe.*.importo_imponibile' => $isNotaCredito ? 'required|numeric|min:0' : 'required|numeric',
+            'righe.*.importo_imponibile' => 'required|numeric',
             'righe.*.aliquota_iva'       => 'required|numeric|min:0|max:100',
             'righe.*.conto_id'           => 'nullable|exists:conti,id',
             'righe.*.immobile_id'        => 'nullable|exists:immobili,id',
@@ -111,6 +122,27 @@ class UpdateFatturaRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $righe = $this->input('righe', []);
+            $isNotaCreditoGuardia = $this->route('fattura')?->tipo_documento === 'nota_credito';
+
+            // ⚠️ **Una nota di credito deve restare un credito — il vincolo è sul documento.**
+            // Ha sostituito il `min:0` per riga (vedi il docblock di `rules()`): le singole righe
+            // di una nota possono essere negative, perché la nota che storna una fattura con una
+            // riga in diminuzione porta quella riga col segno opposto. Quello che non può
+            // succedere è che la SOMMA si ribalti: a quel punto il moltiplicatore −1 del servizio
+            // produrrebbe un documento di segno positivo che continua a chiamarsi nota di credito.
+            $sommaRighe = 0.0;
+            foreach ($righe as $riga) {
+                $sommaRighe += (float) ($riga['importo_imponibile'] ?? 0);
+            }
+
+            if ($isNotaCreditoGuardia && $sommaRighe <= 0) {
+                $validator->errors()->add(
+                    'righe',
+                    'Una nota di credito deve accreditare qualcosa: la somma delle righe è '
+                    .number_format($sommaRighe, 2, ',', '.').'. Le singole righe possono essere '
+                    .'negative — è il caso dello storno di una riga in diminuzione — ma il totale no.'
+                );
+            }
 
             foreach ($righe as $idx => $riga) {
                 $isSopravvenienza = filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);

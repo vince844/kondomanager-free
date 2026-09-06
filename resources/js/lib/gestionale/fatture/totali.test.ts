@@ -197,3 +197,166 @@ describe('risolviRegimeRitenuta', () => {
         expect(risolviRegimeRitenuta(null, true)).toBeNull();
     });
 });
+
+describe("calcolaTotali — l'imposta che il documento dichiara (Coda 142, beta.19)", () => {
+    // Il gruppo al 22 % del file 06 dei collaudi: tre righe (40,61 · 6,93 · −1,80) su un
+    // imponibile dichiarato di 45,74 e un'imposta dichiarata di 10,06. Arrotondando riga per
+    // riga si ottiene 8,93 + 1,52 − 0,40 = 10,05: un centesimo in meno di quello che il
+    // fornitore chiede, e il documento veniva salvato a € 100,14 invece di € 100,15.
+    const righeBolletta = [
+        { importo_imponibile: 40.61, aliquota_iva: 22, natura: null },
+        { importo_imponibile: 6.93, aliquota_iva: 22, natura: null },
+        { importo_imponibile: -1.8, aliquota_iva: 22, natura: null },
+    ];
+
+    it('mostra la stessa imposta che il server salverà, non la somma delle righe', () => {
+        const t = calcolaTotali({
+            is_pregresso: false,
+            righe: righeBolletta,
+            riepiloghi: [{ aliquota_iva: 22, natura: null, imposta: 10.06 }],
+            ritenuta: null,
+        });
+
+        expect(t.imponibile_cents).toBe(4574);
+        expect(t.iva_cents).toBe(1006);
+    });
+
+    it('senza riepiloghi resta il calcolo per riga di sempre', () => {
+        const t = calcolaTotali({ is_pregresso: false, righe: righeBolletta, ritenuta: null });
+
+        expect(t.iva_cents).toBe(1005);
+    });
+
+    it('una riga a zero non riceve centesimi, come nel server', () => {
+        const t = calcolaTotali({
+            is_pregresso: false,
+            righe: [
+                { importo_imponibile: 0, aliquota_iva: 22, natura: null },
+                { importo_imponibile: 33.33, aliquota_iva: 22, natura: null },
+                { importo_imponibile: 33.33, aliquota_iva: 22, natura: null },
+                { importo_imponibile: 33.34, aliquota_iva: 22, natura: null },
+            ],
+            riepiloghi: [{ aliquota_iva: 22, natura: null, imposta: 22.0 }],
+            ritenuta: null,
+        });
+
+        expect(t.iva_cents).toBe(2200);
+    });
+
+    it('tiene separati due gruppi con la stessa aliquota e nature diverse', () => {
+        // La chiave è la COPPIA aliquota/natura: due blocchi a 0 % con nature diverse sono
+        // due gruppi distinti, e il tracciato li dichiara separati apposta.
+        const t = calcolaTotali({
+            is_pregresso: false,
+            righe: [
+                { importo_imponibile: 100, aliquota_iva: 0, natura: 'N2.2' },
+                { importo_imponibile: 50, aliquota_iva: 0, natura: 'N4' },
+            ],
+            riepiloghi: [
+                // ⚠️ **Imposte DIVERSE, e non è un dettaglio.** Nella prima versione di questo
+                // test entrambi i gruppi dichiaravano imposta 0: l'asserzione `iva_cents === 0`
+                // non distingueva niente e il test restava verde anche cancellando del tutto la
+                // natura dalla chiave. Un test simmetrico non prova la separazione che dichiara
+                // di provare. Trovato dalla Fase 1-bis della beta.19, lente «test fragili».
+                { aliquota_iva: 0, natura: 'N2.2', imponibile: 100, imposta: 0 },
+                { aliquota_iva: 0, natura: 'N4', imponibile: 50, imposta: 7.5 },
+            ],
+            ritenuta: null,
+        });
+
+        expect(t.imponibile_cents).toBe(15000);
+        // 0 sul gruppo N2.2 e 750 su quello N4: se la natura non facesse parte della chiave i
+        // due gruppi collasserebbero in uno solo e questo numero sarebbe diverso.
+        expect(t.iva_cents).toBe(750);
+        expect(t.iva_righe_cents).toEqual([0, 750]);
+    });
+
+    it("sul pregresso l'imposta dichiarata vince sull'aliquota media arrotondata", () => {
+        // Il pannello pregresso ha un campo solo, quindi riceve la media pesata a due
+        // decimali, e da quella il calcolo ricostruisce l'imposta.
+        //
+        // ⚠️ **Sugli undici file di collaudo quella ricostruzione è esatta in tutti e undici**
+        // (verificato il 06/09/2026): la correzione non cambia nessuno di quei numeri. Ma il
+        // caso divergente esiste ed è costruibile — qui imponibile 100,05 con imposta 10,00 dà
+        // un'aliquota media di 10,00 che ricostruisce 10,01. Un centesimo inventato su un
+        // debito che resta a bilancio.
+        const conMedia = calcolaTotali({
+            is_pregresso: true, imponibile_pregresso: 100.05, aliquota_iva_pregressa: 10.0,
+            righe: [], ritenuta: null,
+        });
+        const conDichiarata = calcolaTotali({
+            is_pregresso: true, imponibile_pregresso: 100.05, aliquota_iva_pregressa: 10.0,
+            imposta_pregressa: 10.0, righe: [], ritenuta: null,
+        });
+
+        expect(conMedia.iva_cents).toBe(1001);      // il centesimo inventato
+        expect(conDichiarata.iva_cents).toBe(1000); // il numero che il documento dichiara
+    });
+});
+
+describe("calcolaTotali — l'IVA di ciascuna riga, per chi mostra e chi addebita", () => {
+    // Trovato guardando lo schermo, non leggendo il codice: registrato il file 06 dei
+    // collaudi, il dettaglio della fattura porta la riga «materia gas naturale» a € 8,46
+    // mentre il modulo, un secondo prima, ne mostrava € 8,45. Il totale del documento era
+    // giusto in entrambe le schermate — era la riga a mentire.
+    //
+    // La causa: `lordoRigaCents(imponibile, aliquota)` ricostruisce l'IVA dalla riga, e dalla
+    // beta.19 l'IVA di riga non è più ricostruibile dalla riga. Lo stesso numero serviva a tre
+    // cose che devono coincidere — il totale mostrato, la spesa addebitata al capitolo, la
+    // soglia di sforo — quindi anche il pannello budget addebitava un centesimo in meno di
+    // quanto la fattura avrebbe consumato.
+    const bollettaFile06 = {
+        is_pregresso: false as const,
+        ritenuta: null,
+        riepiloghi: [
+            { aliquota_iva: 22, natura: null, imponibile: 45.74, imposta: 10.06 },
+            { aliquota_iva: 0, natura: 'N2.2', imponibile: 44.35, imposta: 0 },
+        ],
+        righe: [
+            { importo_imponibile: 44.35, aliquota_iva: 0, natura: 'N2.2' },
+            { importo_imponibile: 40.61, aliquota_iva: 22, natura: null },
+            { importo_imponibile: 6.93, aliquota_iva: 22, natura: null },
+            { importo_imponibile: -1.80, aliquota_iva: 22, natura: null },
+        ],
+    };
+
+    it('espone l’IVA riga per riga, nello stesso ordine delle righe', () => {
+        const t = calcolaTotali(bollettaFile06);
+
+        expect(t.iva_righe_cents).toEqual([0, 893, 153, -40]);
+        // La somma è l'IVA di testata: se un giorno non lo fosse, la scrittura in partita
+        // doppia verrebbe respinta dal backend.
+        expect(t.iva_righe_cents.reduce((a, b) => a + b, 0)).toBe(t.iva_cents);
+    });
+
+    it('la riga che riceve il centesimo di compensazione non torna col calcolo per riga', () => {
+        // È il controesempio che dà senso alla proprietà: se qui i due numeri coincidessero,
+        // `iva_righe_cents` sarebbe una comodità e non una necessità.
+        const t = calcolaTotali(bollettaFile06);
+
+        const perRiga = Math.round((693 * 22) / 100);   // 152: quello che mostrava il modulo
+        expect(perRiga).toBe(152);
+        expect(t.iva_righe_cents[2]).toBe(153);         // quello che finisce a bilancio
+
+        // Tradotto in lordo di riga: € 8,45 contro € 8,46.
+        expect(693 + perRiga).toBe(845);
+        expect(693 + t.iva_righe_cents[2]).toBe(846);
+    });
+
+    it('senza riepiloghi resta il calcolo per riga, e le due strade coincidono', () => {
+        // Non regressione: la fattura digitata a mano non ha riepiloghi, e lì `iva_righe_cents`
+        // deve dire esattamente ciò che il modulo ha sempre mostrato.
+        const t = calcolaTotali({ ...bollettaFile06, riepiloghi: undefined });
+
+        expect(t.iva_righe_cents).toEqual([0, 893, 152, -40]);
+    });
+
+    it('sul pregresso è vuoto, perché non ci sono righe', () => {
+        const t = calcolaTotali({
+            is_pregresso: true, imponibile_pregresso: 100.0, aliquota_iva_pregressa: 22,
+            righe: [], ritenuta: null,
+        });
+
+        expect(t.iva_righe_cents).toEqual([]);
+    });
+});

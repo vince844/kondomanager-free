@@ -1604,3 +1604,225 @@ describe('la posizione sulla ritenuta chiesta al volo alimenta l\'anteprima', ()
         expect(vm.totali.ritenuta_cents).toBe(4000);
     });
 });
+
+/**
+ * L'esito dell'importazione del file 06 dei collaudi, la bolletta gas in cui il totale
+ * dichiarato e la somma delle righe divergono di un centesimo.
+ *
+ * Righe: 44,35 a 0 %/N2.2 · 40,61 · 6,93 · −1,80 al 22 %.
+ * Ricostruito dalle righe fa **100,14**; il documento dichiara **100,15**.
+ */
+const ESITO_FILE06 = {
+    ...ESITO_TROVATO,
+    documento: {
+        ...ESITO_TROVATO.documento,
+        numero_documento: '26G-00011672',
+        imponibile_dichiarato: 90.09,
+        imposta_dichiarata: 10.06,
+        aliquota_effettiva: 11.17,
+        riepiloghi: [
+            { aliquota_iva: 22, natura: null, imponibile: 45.74, imposta: 10.06 },
+            { aliquota_iva: 0, natura: 'N2.2', imponibile: 44.35, imposta: 0 },
+        ],
+    },
+    righe: [
+        { descrizione: 'Altre partite ed oneri', importo_imponibile: 44.35, aliquota_iva: 0, natura: 'N2.2' },
+        { descrizione: 'Spesa per il trasporto e la gestione del contatore', importo_imponibile: 40.61, aliquota_iva: 22, natura: null },
+        { descrizione: 'Spesa per la materia gas naturale', importo_imponibile: 6.93, aliquota_iva: 22, natura: null },
+        { descrizione: 'Spesa per Oneri di sistema', importo_imponibile: -1.80, aliquota_iva: 22, natura: null },
+    ],
+};
+
+describe("reperto A — l'importo dell'elenco è quello che il documento dichiara", () => {
+    // ⚠️ **Il reperto A era un commento falso, non un numero sbagliato**, e vale la pena
+    // dirlo qui perché il contrario sembra plausibile. `totaleLordoStimatoCents` ricostruiva
+    // il totale come `Σ imponibile × (1 + aliquota/100)`, arrotondando **una volta sola** alla
+    // fine: è «somma e arrotonda», la stessa strategia dei DatiRiepilogo, non «arrotonda e
+    // somma». Sul file 06 dei collaudi le due strade coincidono (100,1528 → € 100,15).
+    //
+    // Quello che era falso è il commento che la giustificava: diceva che l'endpoint non
+    // espone il totale dichiarato dall'XML. Vero fino alla beta.17, falso dalla beta.18. Il
+    // valore della correzione è che il numero diventa esatto **per costruzione** invece che
+    // per coincidenza — e i casi in cui le due strade divergono esistono, come il secondo
+    // test qui sotto costruisce.
+    test('sul file 06 dei collaudi le due strade danno lo stesso numero', async () => {
+        axios.post.mockResolvedValueOnce({ data: ESITO_FILE06 });
+        const wrapper = render();
+
+        await selezionaFile(wrapper, 'bolletta-gas.xml');
+
+        const vm = wrapper.vm as any;
+        expect(vm.totaleLordoStimatoCents(ESITO_FILE06)).toBe(10_015);
+    });
+
+    test("dove le due strade divergono, vince quella che il documento dichiara", async () => {
+        // Costruito, non pescato: un gruppo solo, imponibile 100,05 al 10 %. Il prodotto esatto
+        // è 110,055 e la ricostruzione lo arrotonda a € 110,06; il fornitore però ha dichiarato
+        // un'imposta di 10,00, quindi il documento vale € 110,05. Il numero da mostrare è il suo.
+        axios.post.mockResolvedValueOnce({ data: ESITO_TROVATO });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'fattura.xml');
+        const vm = wrapper.vm as any;
+
+        const righe = [{ descrizione: 'Prestazione', importo_imponibile: 100.05, aliquota_iva: 10, natura: null }];
+
+        const conDichiarato = {
+            ...ESITO_TROVATO,
+            documento: { ...ESITO_TROVATO.documento, imponibile_dichiarato: 100.05, imposta_dichiarata: 10.0 },
+            righe,
+        };
+        const senzaDichiarato = { ...ESITO_TROVATO, righe };
+
+        expect(vm.totaleLordoStimatoCents(conDichiarato)).toBe(11_005);
+        // Il ripiego, per un esito prodotto da una versione precedente dell'endpoint.
+        expect(vm.totaleLordoStimatoCents(senzaDichiarato)).toBe(11_006);
+    });
+});
+
+describe('reperto B — il campo aliquota del pannello pregresso torna a comandare', () => {
+    /** Importa il file 06 e apre il pannello del debito pregresso. */
+    async function conPannelloPregresso() {
+        axios.post.mockResolvedValueOnce({ data: ESITO_FILE06 });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'bolletta-gas.xml');
+
+        const vm = wrapper.vm as any;
+        vm.form.is_pregresso = true;
+        await wrapper.vm.$nextTick();
+        return { wrapper, vm };
+    }
+
+    test("l'imposta dichiarata vince sull'aliquota media, finché nessuno tocca i campi", async () => {
+        const { vm } = await conPannelloPregresso();
+
+        expect(vm.form.imponibile_pregresso).toBe(90.09);
+        expect(vm.form.imposta_pregressa).toBe(10.06);
+        // 11,17 % su 90,09 farebbe 10,06 per caso; il punto è che l'imposta NON viene da lì.
+        expect(vm.totali.iva_cents).toBe(1_006);
+        expect(vm.totali.totale_documento_cents).toBe(10_015);
+    });
+
+    test("cambiare l'aliquota adesso sposta il totale, invece di non fare niente", async () => {
+        // ⚠️ Il difetto: finché l'imposta dichiarata restava in vigore, digitare un'aliquota
+        // diversa non muoveva un centesimo. Un campo modificabile che il salvataggio ignora
+        // in silenzio — la stessa classe della Coda 123.
+        const { wrapper, vm } = await conPannelloPregresso();
+
+        vm.form.aliquota_iva_pregressa = 10;
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.imposta_pregressa).toBeNull();
+        // 90,09 al 10 % = 9,01 (arrotondato), non più 10,06.
+        expect(vm.totali.iva_cents).toBe(901);
+        expect(vm.totali.totale_documento_cents).toBe(9_910);
+    });
+
+    test("cambiare l'imponibile rinuncia anch'esso all'imposta del documento", async () => {
+        // Un'imposta dichiarata su un imponibile diverso da quello dichiarato non descrive
+        // più niente: sarebbe un numero orfano.
+        const { wrapper, vm } = await conPannelloPregresso();
+
+        vm.form.imponibile_pregresso = 100;
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.imposta_pregressa).toBeNull();
+        expect(vm.totali.iva_cents).toBe(1_117);   // 100 all'11,17 %
+    });
+
+    test("tornare ai numeri del documento ripristina l'imposta dichiarata", async () => {
+        // È la ragione per cui il confronto è con la coppia importata e non con un flag
+        // «l'utente ha scritto»: un ripensamento non deve costare il numero vero.
+        const { wrapper, vm } = await conPannelloPregresso();
+
+        vm.form.aliquota_iva_pregressa = 10;
+        await wrapper.vm.$nextTick();
+        expect(vm.form.imposta_pregressa).toBeNull();
+
+        vm.form.aliquota_iva_pregressa = 11.17;
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.imposta_pregressa).toBe(10.06);
+        expect(vm.totali.totale_documento_cents).toBe(10_015);
+    });
+
+    test('su una fattura compilata a mano il campo si comporta come ha sempre fatto', async () => {
+        // Non regressione: senza importazione non c'è nessuna coppia memorizzata, quindi
+        // nessuna rinuncia da fare e nessun comportamento nuovo.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        vm.form.is_pregresso = true;
+        vm.form.imponibile_pregresso = 100;
+        vm.form.aliquota_iva_pregressa = 22;
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.imposta_pregressa).toBeNull();
+        expect(vm.totali.iva_cents).toBe(2_200);
+    });
+});
+
+describe('su una fattura ricevuta il totale non è nostro: lo scarto dal documento si dice', () => {
+    // ⚠️ Il difetto più grave dei dodici della Fase 1-bis, perché gli altri sbagliano un
+    // centesimo mentre questo può sbagliare **l'intero debito verso il fornitore, in silenzio**.
+    // Se l'amministratore cancella una riga o ne corregge una, i totali a schermo si aggiornano
+    // coerenti con sé stessi e non dicono più niente sul documento che si sta registrando.
+    // Si segnala e non si blocca: l'amministratore è l'autorità sul proprio documento e
+    // un'importazione può anche aver letto male. Ma deve vedere **tutti e due i numeri**.
+    test('finché le righe sono quelle del file, nessun avviso', async () => {
+        axios.post.mockResolvedValueOnce({ data: ESITO_FILE06 });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'bolletta-gas.xml');
+
+        const vm = wrapper.vm as any;
+        expect(vm.totaleDichiaratoDalDocumentoCents).toBe(10_015);
+        expect(vm.scartoDalDocumentoCents).toBe(0);
+        expect(wrapper.text()).not.toContain('Il documento chiede');
+    });
+
+    test('cancellare una riga lo dice, con tutti e due i numeri', async () => {
+        axios.post.mockResolvedValueOnce({ data: ESITO_FILE06 });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'bolletta-gas.xml');
+        const vm = wrapper.vm as any;
+
+        vm.form.righe.splice(0, 1);            // via «Altre partite ed oneri», € 44,35
+        await wrapper.vm.$nextTick();
+
+        expect(vm.scartoDalDocumentoCents).toBe(-4_435);
+        // ⚠️ Lo spazio dopo il simbolo è uno spazio unificatore (U+00A0), non uno normale:
+        // confrontare con uno spazio semplice fa fallire un'asserzione giusta.
+        const testo = wrapper.text().replace(/\u00a0/g, ' ');
+        expect(testo).toContain('Il documento chiede');
+        expect(testo).toContain('€ 100,15');   // quello che il fornitore chiede
+        expect(testo).toContain('€ 55,80');    // quello che si sta per registrare
+        expect(testo).toContain('in meno');
+    });
+
+    test('anche aggiungere una riga lo dice, nel verso giusto', async () => {
+        axios.post.mockResolvedValueOnce({ data: ESITO_FILE06 });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'bolletta-gas.xml');
+        const vm = wrapper.vm as any;
+
+        vm.form.righe.push({ descrizione: 'Voce in più', natura: null, conto_id: null, immobile_id: null,
+            importo_imponibile: 10, aliquota_iva: 0, is_sopravvenienza: false, concorre_base_ritenuta: true });
+        await wrapper.vm.$nextTick();
+
+        expect(vm.scartoDalDocumentoCents).toBe(1_000);
+        expect(wrapper.text()).toContain('in più');
+    });
+
+    test('una fattura digitata a mano non ha nessun documento da tradire', async () => {
+        // Non regressione: senza importazione non c'è niente con cui contraddirsi, e l'avviso
+        // non deve comparire mai — altrimenti diventa rumore e si smette di leggerlo.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+
+        vm.form.righe[0].importo_imponibile = 500;
+        await wrapper.vm.$nextTick();
+
+        expect(vm.totaleDichiaratoDalDocumentoCents).toBeNull();
+        expect(vm.scartoDalDocumentoCents).toBe(0);
+        expect(wrapper.text()).not.toContain('Il documento chiede');
+    });
+});

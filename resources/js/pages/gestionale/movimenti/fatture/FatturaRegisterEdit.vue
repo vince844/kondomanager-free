@@ -17,6 +17,7 @@ import { watchDebounced } from '@vueuse/core';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { centsToEuro } from '@/lib/gestionale/money';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
+import { euroToCents } from '@/lib/gestionale/fatture/money';
 import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -202,9 +203,16 @@ const form = useForm({
         // la casella mostrava € 10,00 prima e dopo, e la scrittura ricostruita quadrava.
         //
         // Stessa forma già scelta lato server in `ImportaFatturaXmlController:164`.
-        importo_imponibile: props.fattura.tipo_documento === 'nota_credito'
-            ? Math.abs(centsToEuro(r.importo_imponibile))
-            : centsToEuro(r.importo_imponibile),
+        // ⚠️ **Si moltiplica per il segno del documento, non si prende il valore assoluto.**
+        // La correzione precedente aveva reso l'`abs()` condizionale al tipo documento, e
+        // bastava finché tutte le righe di una nota di credito erano negative. Non lo sono:
+        // la nota che storna una fattura con una riga NEGATIVA porta quella riga POSITIVA
+        // (−1 × −1,80 = +1,80). L'`abs()` la lasciava positiva, il server rimoltiplicava per
+        // −1, e riaprire la nota per cambiare una data la gonfiava da −€ 100,15 a −€ 104,54:
+        // € 4,39 di credito verso il fornitore che nessuno ha chiesto e che nessuno chiude.
+        // Moltiplicare per il segno è l'inverso esatto di ciò che fa il servizio, sempre.
+        // Trovato dalla Fase 1-bis della beta.19 (lenti «segno» e «persistenza»).
+        importo_imponibile: centsToEuro(r.importo_imponibile) * (props.fattura.tipo_documento === 'nota_credito' ? -1 : 1),
         aliquota_iva: r.aliquota_iva,
         is_sopravvenienza: false, // Edit non supporta sopravvenienze per fatture esistenti
         concorre_base_ritenuta: r.concorre_base_ritenuta ?? true,
@@ -321,11 +329,71 @@ const congelamentoRitenutaAttivo = computed(() =>
     }).imponibile_cents === imponibileOriginaleCongelamento.value
 );
 
+/**
+ * L'imposta che il documento ha dichiarato di sé quando è stato importato.
+ *
+ * ⚠️ **La modifica non riceve il file, ma il server la ricorda lo stesso — e l'anteprima deve
+ * ricordarla con lui.** Alla registrazione i `DatiRiepilogo` finiscono in
+ * `dati_extra.fiscal.riepiloghi_dichiarati`, e `FatturaPassivaService::aggiornaFattura()` li
+ * rilegge da lì per distribuire di nuovo l'imposta. Senza questi due campi `calcolaTotali()`
+ * qui ricadeva sul calcolo per riga: la pagina di modifica di una fattura importata mostrava
+ * € 100,14 mentre la fattura salvata, l'elenco e il dettaglio dicevano € 100,15 — e il
+ * salvataggio riscriveva 100,15, dando ragione a tutti tranne che alla schermata da cui si
+ * era salvato.
+ *
+ * È lo stesso principio già enunciato per la Coda 123 poco più sotto: **l'anteprima risponde
+ * «quanto verrà salvato», non «quanto direbbe la formula».**
+ *
+ * Le righe salvate non portano la natura IVA (non esiste una colonna che la conservi: il
+ * servizio la legge dal payload), quindi qui un gruppo distinto solo dalla natura non si
+ * riaggancia e ricade sul calcolo per riga — esattamente come fa il server sullo stesso
+ * salvataggio. È una degradazione simmetrica, non uno scostamento fra le due anteprime.
+ */
+const riepiloghiDichiarati = computed(
+    () => (props.fattura.dati_extra as any)?.fiscal?.riepiloghi_dichiarati ?? undefined,
+);
+const impostaPregressaDichiarata = computed(
+    () => (props.fattura.dati_extra as any)?.fiscal?.imposta_pregressa_dichiarata ?? undefined,
+);
+
+/**
+ * Il totale che il DOCUMENTO dichiara di sé. `null` per una fattura senza origine XML: non c'è
+ * niente con cui contraddirsi.
+ */
+const totaleDichiaratoDalDocumentoCents = computed<number | null>(() => {
+    const gruppi = riepiloghiDichiarati.value;
+    if (!Array.isArray(gruppi) || gruppi.length === 0) return null;
+
+    return Math.abs(Math.round(gruppi.reduce(
+        (s: number, g: any) => s + Number(g.imponibile ?? 0) + Number(g.imposta ?? 0), 0,
+    ) * 100));
+});
+
+/** La magnitudine di ciò che si sta per salvare. */
+const totaleRegistratoCents = computed<number>(() => Math.abs(totali.value.totale_documento_cents));
+
+/**
+ * ⚠️ **Su una fattura ricevuta il totale non è nostro**, e la modifica è il posto dove se ne
+ * perde di più il controllo: si riapre per una data e si finisce per toccare una riga. Il debito
+ * verso il fornitore è quello che il documento chiede, tutto intero. Si segnala e non si blocca —
+ * l'amministratore è l'autorità sul proprio documento — ma deve vedere tutti e due i numeri.
+ */
+const scartoDalDocumentoCents = computed<number>(() => {
+    const dichiarato = totaleDichiaratoDalDocumentoCents.value;
+    if (dichiarato === null) return 0;
+
+    return totaleRegistratoCents.value - dichiarato;
+});
+
+const scartoAssolutoCents = computed<number>(() => Math.abs(scartoDalDocumentoCents.value));
+
 const totali = computed(() => {
     const base = calcolaTotali({
         is_pregresso:           form.is_pregresso,
         imponibile_pregresso:   form.imponibile_pregresso,
         aliquota_iva_pregressa: form.aliquota_iva_pregressa,
+        imposta_pregressa:      impostaPregressaDichiarata.value,
+        riepiloghi:             riepiloghiDichiarati.value,
         righe:                  form.righe,
         ritenuta:               risolviRegimeRitenuta(selectedFornitore.value, applicaRitenutaEffective.value),
     });
@@ -366,13 +434,13 @@ const budgetImpacts = computed(() => {
         ultimi_movimenti: any[]
     }>();
 
-    form.righe.forEach((r: any) => {
+    form.righe.forEach((r: any, idx: number) => {
         if (!r.conto_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
 
         const residuoCents = c.residuo_budget || 0;
-        const spesaCents   = lordoRigaCents(r.importo_imponibile, r.aliquota_iva);
+        const spesaCents   = lordoRigaRegistratoCents(idx, r);
         const cur = grouped.get(r.conto_id) || {
             id:               c.id,
             nome:             c.nome,
@@ -404,7 +472,29 @@ const budgetImpacts = computed(() => {
  * conto possono sforare insieme senza che nessuna delle due sfori da sola. Il badge di riga
  * e il pannello laterale rispondono deliberatamente a domande diverse.
  */
-const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+/**
+ * Il lordo di una riga: il suo imponibile più **la sua** IVA, presa dai totali.
+ *
+ * ⚠️ **Non si ricalcola da imponibile e aliquota, e dalla beta.19 non si può.** Quando il
+ * documento dichiara la propria imposta nei `DatiRiepilogo`, l'imposta del gruppo si
+ * distribuisce fra le righe e un centesimo di compensazione finisce sulla riga col resto
+ * maggiore: `round(imponibile x aliquota / 100)` non lo vede. Misurato a schermo sul file 06
+ * dei collaudi — la riga «materia gas naturale» mostrava un totale di EUR 8,45 mentre la
+ * fattura registrata la porta a EUR 8,46.
+ *
+ * Serve a tre cose che devono dire lo stesso numero: il totale mostrato sulla riga, la spesa
+ * addebitata al capitolo nel pannello budget, e la soglia di sforo. Il ripiego su
+ * `lordoRigaCents` copre la riga appena aggiunta, prima che i totali si siano ricalcolati.
+ */
+const lordoRigaRegistratoCents = (idx: number, riga: { importo_imponibile: unknown; aliquota_iva: unknown }): number => {
+    const iva = totali.value.iva_righe_cents[idx];
+
+    return iva === undefined
+        ? lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)
+        : euroToCents(riga.importo_imponibile) + iva;
+};
+
+const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
     // ⚠️ Coda 122: una nota di credito non può mai sforare un budget che sta liberando.
     if (isNotaCredito.value) return false;
 
@@ -412,7 +502,7 @@ const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknow
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 
-    return lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva) > c.residuo_budget;
+    return lordoRigaRegistratoCents(idx, riga) > c.residuo_budget;
 };
 
 const bancheNormalizzate = computed(() =>
@@ -1151,7 +1241,7 @@ const pageGuides = [
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
                                                 placeholder="0,00" />
-                                            <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
+                                            <div v-if="rigaInSforo(idx, riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
                                                 <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                             </div>
@@ -1180,7 +1270,7 @@ const pageGuides = [
                                             <div class="text-right min-w-0 flex-1">
                                                 <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1 whitespace-nowrap">Totale Riga</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none whitespace-nowrap tabular-nums">
-                                                    {{ euro(lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)) }}
+                                                    {{ euro(lordoRigaRegistratoCents(idx, riga)) }}
                                                 </span>
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(Number(idx))"
@@ -1252,6 +1342,15 @@ const pageGuides = [
                                         <span class="font-black text-primary text-xl">{{ euro(totali.totale_documento_cents) }}</span>
                                     </div>
                                 </div>
+                            </div>
+                            <div v-if="scartoDalDocumentoCents !== 0" class="flex items-start gap-2 px-2.5 py-2 mt-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                                <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                <span class="text-[11px] text-amber-800 dark:text-amber-400">
+                                    Il documento chiede <strong>{{ euro(totaleDichiaratoDalDocumentoCents ?? 0) }}</strong>,
+                                    questa registrazione vale <strong>{{ euro(totaleRegistratoCents) }}</strong>
+                                    — {{ scartoDalDocumentoCents > 0 ? 'in più' : 'in meno' }} di {{ euro(scartoAssolutoCents) }}.
+                                    Salvandola così, il debito verso il fornitore non sarà quello che la fattura chiede.
+                                </span>
                             </div>
                         </div>
 

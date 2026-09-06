@@ -23,8 +23,11 @@ use Tests\TestCase;
  */
 uses(TestCase::class);
 
-const KM_RESTORE_TOK_SRC = 'km_restore_tok_src';
-const KM_RESTORE_TOK_DST = 'km_restore_tok_dst';
+// I database di prova portano un suffisso unico per checkout: senza, lanciare la suite
+// in TEST e in ufficiale insieme fa sfilare il database all'altra esecuzione. Vedi
+// `kmDatabaseDiProva()` in tests/Pest.php.
+defined('KM_RESTORE_TOK_SRC') || define('KM_RESTORE_TOK_SRC', kmDatabaseDiProva('km_restore_tok_src'));
+defined('KM_RESTORE_TOK_DST') || define('KM_RESTORE_TOK_DST', kmDatabaseDiProva('km_restore_tok_dst'));
 
 /**
  * Preambolo di sessione che il RestoreManager ri-emetterà a ogni step

@@ -148,7 +148,10 @@ describe('FatturaRegisterNew — la nota di credito libera budget, non lo consum
 
         const rigaCheSforerebbeComeFattura = { conto_id: CONTO.id, importo_imponibile: 2000, aliquota_iva: 22 };
 
-        expect(vm.rigaInSforo(rigaCheSforerebbeComeFattura)).toBe(false);
+        // ⚠️ L'indice è `form.righe.length`, cioè «una oltre l'ultima»: questa riga è
+        // sintetica e non sta nell'elenco, quindi non ha un'IVA distribuita nei totali e
+        // `rigaInSforo` ricade sul calcolo per riga. È il ripiego voluto, non una scorciatoia.
+        expect(vm.rigaInSforo(vm.form.righe.length, rigaCheSforerebbeComeFattura)).toBe(false);
     });
 
     test('su un capitolo GIÀ sforato la nota non finisce in «Sforo Budget»: isOk regge, non solo il badge', async () => {
@@ -213,7 +216,10 @@ describe('FatturaRegisterNew — la nota di credito libera budget, non lo consum
 
         const rigaCheSfora = { conto_id: CONTO.id, importo_imponibile: 2000, aliquota_iva: 22 };
 
-        expect(vm.rigaInSforo(rigaCheSfora)).toBe(true);
+        // ⚠️ L'indice è `form.righe.length`, cioè «una oltre l'ultima»: questa riga è
+        // sintetica e non sta nell'elenco, quindi non ha un'IVA distribuita nei totali e
+        // `rigaInSforo` ricade sul calcolo per riga. È il ripiego voluto, non una scorciatoia.
+        expect(vm.rigaInSforo(vm.form.righe.length, rigaCheSfora)).toBe(true);
     });
 
     test('la cassa resta invariata: nessuna uscita, nessuna entrata', async () => {
@@ -386,7 +392,10 @@ describe('FatturaRegisterEdit — stessa correzione, perché è lo stesso pannel
 
         const rigaCheSforerebbeComeFattura = { conto_id: CONTO.id, importo_imponibile: 2000, aliquota_iva: 22 };
 
-        expect(vm.rigaInSforo(rigaCheSforerebbeComeFattura)).toBe(false);
+        // ⚠️ L'indice è `form.righe.length`, cioè «una oltre l'ultima»: questa riga è
+        // sintetica e non sta nell'elenco, quindi non ha un'IVA distribuita nei totali e
+        // `rigaInSforo` ricade sul calcolo per riga. È il ripiego voluto, non una scorciatoia.
+        expect(vm.rigaInSforo(vm.form.righe.length, rigaCheSforerebbeComeFattura)).toBe(false);
     });
 
     test('l\'etichetta e la riga di cassa dicono la stessa cosa della registrazione', () => {

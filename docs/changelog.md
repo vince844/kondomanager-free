@@ -7,6 +7,79 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.19] - Il Totale Che Non È Nostro
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova. I riepiloghi del documento
+si conservano in `dati_extra`, che è una colonna JSON già esistente.
+
+Una fattura elettronica dichiara la propria IVA. Non la lascia dedurre: la scrive, gruppo per
+gruppo, nei blocchi `DatiRiepilogo` che il tracciato rende obbligatori per ogni coppia
+aliquota/natura. Fino a ieri Kondomanager quel numero lo ignorava e se lo ricalcolava per conto
+proprio, riga per riga, arrotondando ciascuna riga separatamente.
+
+Sulla maggior parte dei documenti le due strade coincidono. Su una bolletta del gas fra le undici
+usate per le prove no: il fornitore dichiara **€ 100,15** e il programma registrava **€ 100,14**.
+È la differenza fra «arrotonda e somma» e «somma e arrotonda», e la seconda è quella che la
+fattura elettronica prescrive.
+
+Da questa versione l'imposta che il documento dichiara viene distribuita fra le righe del suo
+gruppo, invece di essere ricalcolata. Il totale registrato è quello scritto sulla fattura, e lo è
+su tutti e undici i file reali di prova — verificato uno per uno, a video e nei test, su quattro
+percorsi: registrazione, modifica, storno e debito pregresso.
+
+### E se l'amministratore cambia una riga?
+
+Questa è la domanda che la versione ha dovuto risolvere, e la risposta è in due parti.
+
+«Imponibile 45,74, imposta 10,06» è una frase sola: prenderne la seconda metà senza controllare la
+prima significa applicare a righe qualsiasi un numero che ne descriveva altre. Quindi **l'imposta
+dichiarata di un gruppo vale finché le righe di quel gruppo sommano all'imponibile che il gruppo
+dichiara**; appena divergono, quel gruppo — e solo quello — torna al calcolo per riga. Spezzare
+una spesa fra due capitoli non cambia niente, perché la somma resta la stessa; correggere un
+importo sì, ed è giusto che sia così.
+
+La seconda parte è nuova e vale da sola la versione. **Su una fattura ricevuta il totale non è
+nostro:** il debito verso il fornitore è quello che il documento chiede, tutto intero. Se
+cancellando o modificando una riga la registrazione smette di valere quanto la fattura, adesso
+c'è un avviso che lo dice, con tutti e due i numeri:
+
+> Il documento chiede € 100,15, questa registrazione vale € 55,80 — in meno di € 44,35.
+> Registrandola così, il debito verso il fornitore non sarà quello che la fattura chiede.
+
+Segnala e non blocca: l'amministratore resta l'autorità sul proprio documento, e un'importazione
+può anche aver letto male. Ma prima non lo diceva nessuno.
+
+### Le altre correzioni
+
+Una revisione avversariale su questa versione ha trovato dodici difetti distinti, e sono tutti
+chiusi qui. I più gravi, oltre ai due sopra:
+
+- **Riaprire una nota di credito nata da uno storno la gonfiava.** Se la fattura originale
+  conteneva una riga in diminuzione, riaprire la nota per correggere una data la faceva passare da
+  −€ 100,15 a −€ 104,54: € 4,39 di credito verso il fornitore che non corrispondevano a niente.
+- **La stessa nota, riaperta e salvata, perdeva l'IVA dichiarata** e tornava a calcolarla per
+  riga, divergendo di un centesimo dalla fattura che doveva annullare.
+- **Svuotare l'aliquota del debito pregresso** mostrava zero IVA a schermo e ne salvava il 22 %:
+  su € 1.000,00, € 220,00 di debito che nessuno aveva digitato. Il campo adesso è obbligatorio,
+  perché né 22 né 0 sono quello che l'amministratore ha detto.
+- **Lo storno rifiutava una fattura ordinaria a credito** — quando gli storni di riga superano gli
+  addebiti — dicendole «non puoi stornare una nota di credito», che era anche il tipo di documento
+  sbagliato. Quel documento restava senza nessuna via di rettifica.
+- **Due blocchi di riepilogo sulla stessa aliquota si sovrascrivevano** invece di sommarsi, e le
+  due parti del programma che rispondono alla stessa domanda si contraddicevano: l'elenco dei file
+  avrebbe detto € 183,00 e la registrazione € 161,00.
+
+### Sotto il cofano
+
+Il calcolo che distribuisce un importo senza perdere centesimi viveva in due copie identiche
+dentro il motore di riparto, con l'avvertenza scritta di tenerle allineate a mano. Il ciclo passivo
+ne aveva bisogno e sarebbe nata la terza: ora è una funzione sola, e un test la confronta con una
+copia congelata dell'originale su duemila casi generati, perché da lì escono le quote che i
+condòmini pagano.
+
+I database temporanei usati dalle prove di backup avevano nomi fissi e si contendevano lo stesso
+nome fra due copie del progetto: adesso sono distinti, e le due suite si possono lanciare insieme.
+
 ## [1.11.0-beta.18] - Il Meno Che Diventava Più
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova.

@@ -18,8 +18,11 @@ use Tests\TestCase;
  */
 uses(TestCase::class);
 
-const KM_BACKUP_TEST_SRC = 'km_backup_test_src';
-const KM_BACKUP_TEST_DST = 'km_backup_test_dst';
+// I database di prova portano un suffisso unico per checkout: senza, lanciare la suite
+// in TEST e in ufficiale insieme fa sfilare il database all'altra esecuzione. Vedi
+// `kmDatabaseDiProva()` in tests/Pest.php.
+defined('KM_BACKUP_TEST_SRC') || define('KM_BACKUP_TEST_SRC', kmDatabaseDiProva('km_backup_test_src'));
+defined('KM_BACKUP_TEST_DST') || define('KM_BACKUP_TEST_DST', kmDatabaseDiProva('km_backup_test_dst'));
 
 function mysqlAdminPdo(): ?PDO
 {

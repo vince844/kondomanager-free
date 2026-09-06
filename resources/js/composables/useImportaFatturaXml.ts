@@ -6,10 +6,27 @@
 import { ref } from 'vue'
 import axios from 'axios'
 
+/**
+ * Un blocco `DatiRiepilogo` della fattura elettronica: è obbligatorio per ogni coppia
+ * aliquota/natura, ed è lì che il fornitore dichiara l'imposta che chiede.
+ */
+export interface RiepilogoIva {
+    aliquota_iva: number
+    natura: string | null
+    imponibile: number
+    imposta: number
+}
+
 export interface RigaImportataXml {
   descrizione: string
   importo_imponibile: number
   aliquota_iva: number
+  /**
+   * Insieme all'aliquota forma la CHIAVE del gruppo IVA, non è un'etichetta: `DatiRiepilogo`
+   * è dichiarato per coppia aliquota/natura, quindi due blocchi a 0 % con nature diverse sono
+   * due gruppi distinti.
+   */
+  natura?: string | null
   /**
    * ⚠️ **Presente solo sulle righe che il file classifica**, oggi quelle del contributo
    * cassa previdenziale: il server lo calcola dal campo `<Ritenuta>` di
@@ -43,6 +60,14 @@ export interface EsitoImportazioneXml {
     imponibile_dichiarato?: number
     imposta_dichiarata?: number
     aliquota_effettiva?: number
+    /**
+     * I riepiloghi IVA del documento, uno per coppia aliquota/natura.
+     *
+     * Servono alla registrazione riga per riga, non al pannello pregresso: l'imposta di un
+     * gruppo va distribuita fra le righe che vi appartengono, invece di essere ricalcolata
+     * riga per riga. Le due strade divergono di un centesimo appena un gruppo ha più righe.
+     */
+    riepiloghi?: RiepilogoIva[]
   }
   righe: RigaImportataXml[]
   ritenuta: {

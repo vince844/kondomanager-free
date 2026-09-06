@@ -241,3 +241,142 @@ describe('riapertura in modifica di una fattura ordinaria', () => {
 // scenario che l'interfaccia non permette più di raggiungere. Tenerlo avrebbe voluto dire
 // simulare un cambio di `form.tipo_documento` via JS invece che via un gesto dell'utente:
 // esattamente la «replica» che la beta.16 aveva già imparato a non scrivere.
+
+/**
+ * ⚠️ **La pagina di modifica mostrava un totale diverso da quello che avrebbe salvato.**
+ *
+ * Trovato dalla revisione avversariale della beta.19 (06/09/2026), su un difetto che la beta.19
+ * stessa aveva creato. Alla registrazione l'imposta dichiarata dai `DatiRiepilogo` viene
+ * distribuita fra le righe e conservata in `dati_extra.fiscal.riepiloghi_dichiarati`;
+ * `aggiornaFattura()` la rilegge da lì, e infatti riaprire e salvare **non** sgonfiava la
+ * fattura (provato in `tests/Feature/Gestionale/ImpostaDaRiepilogoTest.php`). Ma il modulo di
+ * modifica non passava quei riepiloghi a `calcolaTotali()` — il campo non esisteva proprio in
+ * questa pagina — e l'anteprima ricadeva sul calcolo per riga.
+ *
+ * Il risultato era la peggiore forma di disaccordo: elenco, dettaglio e database dicevano
+ * € 100,15, la schermata da cui si stava per salvare diceva € 100,14, e il salvataggio dava
+ * torto alla schermata. Anche la correzione del totale di riga (`lordoRigaRegistratoCents`)
+ * restava **inerte** qui, perché leggeva un `iva_righe_cents` costruito con la formula sbagliata.
+ */
+describe("modifica di una fattura importata — l'anteprima dice quanto verrà salvato", () => {
+    /** Il file 06 dei collaudi come lo si ritrova a database dopo la registrazione. */
+    function bollettaImportata() {
+        const f = fatturaOrdinaria();
+        f.numero_documento = '26G-00011672';
+        f.importo_imponibile = 9_009;
+        f.importo_iva = 1_006;
+        f.totale_documento = 10_015;
+        f.netto_a_pagare = 10_015;
+        f.dati_extra = {
+            fiscal: {
+                riepiloghi_dichiarati: [
+                    { aliquota_iva: 22, natura: null, imponibile: 45.74, imposta: 10.06 },
+                    { aliquota_iva: 0, natura: 'N2.2', imponibile: 44.35, imposta: 0 },
+                ],
+            },
+            competenza: null,
+            override_budget: null,
+        };
+        f.righe = [
+            { id: 401, descrizione: 'Altre partite ed oneri', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: 4_435, importo_iva: 0, aliquota_iva: '0.00', concorre_base_ritenuta: true },
+            { id: 402, descrizione: 'Spesa per il trasporto e la gestione del contatore', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: 4_061, importo_iva: 893, aliquota_iva: '22.00', concorre_base_ritenuta: true },
+            { id: 403, descrizione: 'Spesa per la materia gas naturale', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: 693, importo_iva: 153, aliquota_iva: '22.00', concorre_base_ritenuta: true },
+            { id: 404, descrizione: 'Spesa per Oneri di sistema', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: -180, importo_iva: -40, aliquota_iva: '22.00', concorre_base_ritenuta: true },
+        ];
+        return f;
+    }
+
+    test("riprende l'imposta dichiarata da dati_extra invece di ricalcolarla riga per riga", () => {
+        const vm = render(bollettaImportata()).vm as any;
+
+        // Senza i riepiloghi questa somma farebbe 1005, e il totale 10014.
+        expect(vm.totali.iva_cents).toBe(1006);
+        expect(vm.totali.totale_documento_cents).toBe(10_015);
+    });
+
+    test('la riga che riceve il centesimo di compensazione mostra il valore registrato', () => {
+        const vm = render(bollettaImportata()).vm as any;
+
+        // 693 + 153 = 846. Col calcolo per riga sarebbe 693 + 152 = 845.
+        expect(vm.totali.iva_righe_cents).toEqual([0, 893, 153, -40]);
+        expect(vm.lordoRigaRegistratoCents(2, vm.form.righe[2])).toBe(846);
+    });
+
+    test('una fattura senza riepiloghi dichiarati continua a calcolare per riga', () => {
+        // Non regressione: la fattura digitata a mano non ha `dati_extra.fiscal.riepiloghi_dichiarati`,
+        // e lì l'anteprima deve restare esattamente quella di sempre.
+        const vm = render(fatturaOrdinaria()).vm as any;
+
+        expect(vm.totali.iva_cents).toBe(22_000);
+        expect(vm.totali.totale_documento_cents).toBe(122_000);
+    });
+});
+
+/**
+ * ⚠️ **Riaprire una nota di credito le ribaltava le righe positive.**
+ *
+ * Trovato dalla Fase 1-bis della beta.19 (lenti «segno» e «persistenza»). Il round-trip usava
+ * `Math.abs()` sulle righe di una nota di credito: corretto finché sono tutte negative, sbagliato
+ * appena una è positiva — ed è positiva la riga che storna una riga **negativa** della fattura
+ * originale (−1 × −1,80 = +1,80). `abs()` la lasciava positiva, il server rimoltiplicava per −1,
+ * e la nota si gonfiava senza che nessun campo a schermo cambiasse.
+ *
+ * La correzione precedente aveva già affrontato questo difetto e l'aveva risolto a metà: aveva
+ * reso l'`abs()` condizionale al tipo documento invece di sostituirlo con la moltiplicazione per
+ * il segno, che è l'inverso esatto di quello che fa il servizio.
+ */
+describe('round-trip di una nota di credito con una riga positiva', () => {
+    function notaConRigaPositiva() {
+        const f = notaCredito();
+        f.importo_imponibile = -9_009;
+        f.importo_iva = -1_006;
+        f.totale_documento = -10_015;
+        f.netto_a_pagare = -10_015;
+        // Una nota nata dallo storno eredita i riepiloghi della fattura che annulla: le
+        // magnitudini sono positive, come li manda il controller.
+        f.dati_extra = {
+            fiscal: {
+                riepiloghi_dichiarati: [
+                    { aliquota_iva: 22, natura: null, imponibile: 45.74, imposta: 10.06 },
+                    { aliquota_iva: 0, natura: 'N2.2', imponibile: 44.35, imposta: 0 },
+                ],
+            },
+            competenza: null,
+            override_budget: null,
+        };
+        f.righe = [
+            { id: 501, descrizione: '[STORNO] Altre partite ed oneri', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: -4_435, importo_iva: 0, aliquota_iva: '0.00', concorre_base_ritenuta: true },
+            { id: 502, descrizione: '[STORNO] Trasporto', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: -4_061, importo_iva: -893, aliquota_iva: '22.00', concorre_base_ritenuta: true },
+            { id: 503, descrizione: '[STORNO] Materia gas', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: -693, importo_iva: -153, aliquota_iva: '22.00', concorre_base_ritenuta: true },
+            // ⚠️ Questa è POSITIVA: storna la riga negativa «Oneri di sistema» della fattura.
+            { id: 504, descrizione: '[STORNO] Oneri di sistema', conto_id: CONTO.id, immobile_id: null,
+                importo_imponibile: 180, importo_iva: 40, aliquota_iva: '22.00', concorre_base_ritenuta: true },
+        ];
+        return f;
+    }
+
+    test('la riga positiva resta negativa nel modulo, così il servizio la riporta positiva', () => {
+        const vm = render(notaConRigaPositiva()).vm as any;
+
+        // Il modulo mostra le magnitudini che, moltiplicate per −1 dal servizio, ridanno i valori
+        // salvati. Con `abs()` l'ultima sarebbe stata +1,80 e il salvataggio l'avrebbe messa a −1,80.
+        expect(vm.form.righe.map((r: any) => r.importo_imponibile))
+            .toEqual([44.35, 40.61, 6.93, -1.80]);
+    });
+
+    test('il totale mostrato è quello salvato, non uno gonfiato di due volte la riga', () => {
+        const vm = render(notaConRigaPositiva()).vm as any;
+
+        // Con `abs()` l'imponibile diventava 93,69 e il totale −€ 104,54: € 4,39 di credito
+        // verso il fornitore che nessuno ha chiesto.
+        expect(vm.totali.imponibile_cents).toBe(9_009);
+        expect(vm.totali.totale_documento_cents).toBe(10_015);
+    });
+});

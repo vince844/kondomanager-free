@@ -2,6 +2,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\MoneyHelper;
 use App\DataTransferObjects\RitenutaCalcolo;
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
@@ -38,6 +39,11 @@ class FatturaPassivaService
 
             $isPregresso = filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
+            // L'imposta che il documento dichiara per ogni gruppo IVA, gia ripartita fra le
+            // righe che vi appartengono. Vuota quando il documento non dichiara i propri
+            // riepiloghi (fattura digitata a mano): allora si calcola come si e sempre fatto.
+            $ivaDistribuita = $this->distribuisciImpostaDichiarata($data);
+
             $imponibileTotale = 0;
             $ivaTotale = 0;
             $righeProcessate = [];
@@ -50,15 +56,40 @@ class FatturaPassivaService
             if ($isPregresso) {
                 $impPregresso = (int) round(($data['imponibile_pregresso'] ?? 0) * 100);
                 $aliqPregressa = (float) ($data['aliquota_iva_pregressa'] ?? 22);
-                $ivaPregressa = (int) round(($impPregresso * $aliqPregressa) / 100);
+                // ⚠️ **Se il documento dichiara la propria imposta, quella vince sull'aliquota.**
+                // Il pannello del debito pregresso ha un campo solo, quindi l'importazione gli
+                // passa l'aliquota MEDIA del documento, arrotondata a due decimali. Su un
+                // documento a piu aliquote quella media non ricostruisce l'imposta vera, ed e
+                // una perdita di precisione in piu rispetto al calcolo per riga.
+                // ⚠️ **Misurato l'06/09/2026: sugli undici file di collaudo la ricostruzione e
+                // esatta in tutti e undici**, quindi questa correzione non cambia nessuno di
+                // quei numeri. Ma il caso divergente esiste ed e costruibile -- imponibile
+                // 100,05 con imposta 10,00 da un'aliquota media di 10,00 che ricostruisce
+                // 10,01, un centesimo inventato su un debito che resta a bilancio. Sei degli
+                // undici file passano da questo ramo, quindi la superficie e reale anche se
+                // il corpus non la colpisce. `imposta_dichiarata` viaggiava gia nel payload
+                // dalla beta.18 e veniva buttata.
+                $ivaPregressa = isset($data['imposta_pregressa'])
+                    ? (int) round($data['imposta_pregressa'] * 100)
+                    : (int) round(($impPregresso * $aliqPregressa) / 100);
 
                 $imponibileTotale = $impPregresso;
                 $ivaTotale = $ivaPregressa;
             } else {
-                foreach ($data['righe'] as $rigaInput) {
+                foreach ($data['righe'] as $indiceRiga => $rigaInput) {
                     $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
                     $aliq = (float) $rigaInput['aliquota_iva'];
-                    $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+                    // Se il documento dichiara la propria imposta, quella vince: la somma degli
+                    // arrotondamenti di riga non e l'imposta del documento, ed e la differenza
+                    // fra 10,05 e 10,06 sulla bolletta del file 06 dei collaudi.
+                    // Priorita: (1) l'imposta dichiarata dal documento, distribuita; (2) quella che
+                    // il chiamante impone riga per riga -- e lo storno, che deve essere lo specchio
+                    // esatto della fattura e non una sua riapprossimazione; (3) il calcolo per riga
+                    // di sempre, per la fattura digitata a mano.
+                    $ivaRiga = $ivaDistribuita[$indiceRiga]
+                        ?? (isset($rigaInput['importo_iva_dichiarata'])
+                            ? (int) round($rigaInput['importo_iva_dichiarata'] * 100)
+                            : (int) round(($impRiga * $aliq) / 100));
                     $isSopravvenienza = filter_var($rigaInput['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
                     $imponibileTotale += $impRiga;
@@ -190,6 +221,18 @@ class FatturaPassivaService
                         [
                             'ritenuta_details' => $datiRitenuta,
                             'motivo_esclusione_ritenuta' => $this->motivoEsclusioneRitenuta($ritenutaCalcolo, $data),
+                            // L'imposta che il documento dichiara per gruppo, conservata perché
+                            // modifica e storno la ritrovino invece di ricalcolarla dalle righe.
+                            // Nessuna migrazione: `dati_extra` è una colonna json che esiste già.
+                            'riepiloghi_dichiarati' => $data['riepiloghi']
+                                ?? $data['dati_extra']['fiscal']['riepiloghi_dichiarati']
+                                ?? null,
+                            // Stessa ragione, per il ramo del debito pregresso: senza questa la
+                            // nota di credito di uno storno ricostruirebbe l'imposta da
+                            // un'aliquota media arrotondata invece che dal numero dichiarato.
+                            'imposta_pregressa_dichiarata' => $data['imposta_pregressa']
+                                ?? $data['dati_extra']['fiscal']['imposta_pregressa_dichiarata']
+                                ?? null,
                         ]
                     ),
                     'competenza' => $data['dati_extra']['competenza'] ?? null,
@@ -740,15 +783,30 @@ class FatturaPassivaService
             $isNotaCredito = ($fattura->tipo_documento === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
 
+            // L'imposta che il documento dichiara per ogni gruppo IVA, gia ripartita fra le
+            // righe che vi appartengono. Vuota quando il documento non dichiara i propri
+            // riepiloghi (fattura digitata a mano): allora si calcola come si e sempre fatto.
+            $ivaDistribuita = $this->distribuisciImpostaDichiarata($data, $fattura);
+
             $imponibileTotale = 0;
             $ivaTotale = 0;
             $righeProcessate = [];
             $righeRitenuta = [];
 
-            foreach ($data['righe'] as $rigaInput) {
+            foreach ($data['righe'] as $indiceRiga => $rigaInput) {
                 $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
                 $aliq = (float) $rigaInput['aliquota_iva'];
-                $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+                // Se il documento dichiara la propria imposta, quella vince: la somma degli
+                // arrotondamenti di riga non e l'imposta del documento, ed e la differenza
+                // fra 10,05 e 10,06 sulla bolletta del file 06 dei collaudi.
+                // Priorita: (1) l'imposta dichiarata dal documento, distribuita; (2) quella che
+                // il chiamante impone riga per riga -- e lo storno, che deve essere lo specchio
+                // esatto della fattura e non una sua riapprossimazione; (3) il calcolo per riga
+                // di sempre, per la fattura digitata a mano.
+                $ivaRiga = $ivaDistribuita[$indiceRiga]
+                    ?? (isset($rigaInput['importo_iva_dichiarata'])
+                        ? (int) round($rigaInput['importo_iva_dichiarata'] * 100)
+                        : (int) round(($impRiga * $aliq) / 100));
 
                 $imponibileTotale += $impRiga;
                 $ivaTotale += $ivaRiga;
@@ -1229,5 +1287,169 @@ class FatturaPassivaService
         }
 
         return $nuovoConto->id;
+    }
+
+    /**
+     * Ripartisce fra le righe l'imposta che il documento dichiara nei propri `DatiRiepilogo`.
+     *
+     * **Perché non basta calcolarla riga per riga.** La fattura elettronica dichiara l'imposta
+     * per ogni coppia aliquota/natura, ed è quello il numero che il fornitore chiede. Calcolarla
+     * riga per riga significa arrotondare N volte e poi sommare, invece di sommare e arrotondare
+     * una volta sola: sul file 06 dei collaudi le tre righe al 22 % (40,61 · 6,93 · −1,80) danno
+     * 8,93 + 1,52 − 0,40 = **10,05**, mentre l'imponibile del gruppo (45,74) al 22 % fa **10,06**.
+     * Il documento vale € 100,15 e veniva registrato a € 100,14.
+     *
+     * La regola era già scritta nel progetto e il motore la contraddiceva: il docblock di
+     * `FatturaPaFattura::imponibileDichiaratoCents()` dice «è questo il numero da usare per
+     * registrare», quello di `sommaRigheCents()` dice «usare questo per registrare è un difetto,
+     * non una scorciatoia».
+     *
+     * **Tre guardie, e nessuna è teorica.**
+     *
+     * 1. **Peso zero, imposta zero, sempre.** Una riga descrittiva a € 0,00 — i file 04 e 09 ne
+     *    hanno — non deve mai ricevere un centesimo: una riga con lordo zero non produce
+     *    scrittura contabile, ma con un centesimo di IVA la produrrebbe **senza capitolo**, e
+     *    finirebbe nel ramo «impossibile allocare la riga»: 500 con rollback, fattura persa.
+     * 2. **Gruppo che non si può normalizzare.** Se le righe di un gruppo sommano a zero, non
+     *    c'è proporzione da rispettare: quel gruppo torna al calcolo per riga.
+     * 3. **Gruppo senza riepilogo, o riepilogo senza righe.** Si tocca solo ciò che combacia;
+     *    tutto il resto resta com'era. Verificato il 06/09/2026 sugli undici file di collaudo:
+     *    raggruppando per (aliquota, natura) l'imponibile ricostruito coincide con quello
+     *    dichiarato in **tutti e undici**, contributi cassa previdenziale compresi.
+     *
+     * ⚠️ **La somma delle imposte distribuite vale esattamente l'imposta del gruppo**, perché
+     * `distribuisciPesiNormalizzati()` lo garantisce. Non è un dettaglio estetico: `$ivaTotale`
+     * finisce nella riga di testata della scrittura contabile, e se le righe non sommassero a
+     * quel numero `DoubleEntryValidator` respingerebbe l'intera fattura.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int, int>  [indice della riga => imposta in centesimi]. Vuoto se il
+     *                          documento non dichiara riepiloghi utilizzabili.
+     */
+    private function distribuisciImpostaDichiarata(array $data, ?FatturaPassiva $esistente = null): array
+    {
+        // ⚠️ **La modifica non riceve il file, quindi non riceve i riepiloghi.** Senza questo
+        // ripiego una fattura importata a € 100,15 tornerebbe a € 100,14 al primo salvataggio —
+        // bastava correggere una data. È la firma esatta del difetto ② della beta.18: nessun
+        // avviso, contabilità in quadratura, importo diverso. Per questo l'imposta dichiarata
+        // si conserva in `dati_extra.fiscal.riepiloghi_dichiarati` alla registrazione e si
+        // rilegge da lì, invece di essere ricalcolata.
+        $riepiloghi = $data['riepiloghi']
+            ?? $esistente?->dati_extra['fiscal']['riepiloghi_dichiarati']
+            ?? null;
+        if (! is_array($riepiloghi) || $riepiloghi === [] || ! isset($data['righe']) || ! is_array($data['righe'])) {
+            return [];
+        }
+
+        // La chiave del gruppo è la COPPIA aliquota/natura, non la sola aliquota: il tracciato
+        // dichiara un riepilogo per coppia, e due blocchi a 0 % con nature diverse sono due
+        // gruppi distinti — il file 06 ne ha uno al 22 % e uno a 0 %/N2.2.
+        $chiave = static fn ($aliquota, $natura): string => number_format((float) $aliquota, 2, '.', '')
+            . '|' . ($natura === null || $natura === '' ? '' : (string) $natura);
+
+        // ⚠️ **Si SOMMA, non si assegna.** Il tracciato ammette piu' blocchi `DatiRiepilogo` sulla
+        // stessa coppia (`maxOccurs="unbounded"`, nessun vincolo di unicita' nello schema): due
+        // blocchi che differiscono solo per `RiferimentoNormativo` sono legittimi. Con
+        // un'assegnazione sopravviveva solo l'ultimo, e l'imposta degli altri spariva.
+        //
+        // La ragione decisiva non e' pero' quale file possa arrivare: e' che
+        // `FatturaPaFattura::impostaDichiarataCents()` somma gia' TUTTI i blocchi con
+        // `array_sum`, ed e' quel numero che l'elenco dei file mostra. Sullo stesso documento
+        // l'elenco avrebbe detto € 183,00 e la registrazione € 161,00 — due strade dello stesso
+        // codice che si contraddicono. Trovato dalla Fase 1-bis della beta.19, da sei lenti.
+        $impostaPerGruppo = [];
+        $imponibileDichiaratoPerGruppo = [];
+        $gruppiSenzaImponibile = [];
+        foreach ($riepiloghi as $gruppo) {
+            if (! isset($gruppo['aliquota_iva'])) {
+                continue;
+            }
+            $k = $chiave($gruppo['aliquota_iva'], $gruppo['natura'] ?? null);
+            $impostaPerGruppo[$k] = ($impostaPerGruppo[$k] ?? 0) + (int) round(($gruppo['imposta'] ?? 0) * 100);
+
+            // ⚠️ **L'assenza dell'imponibile non è uno zero.** Se il gruppo non lo dichiara non
+            // abbiamo il metro per giudicare se l'imposta descriva ancora queste righe, e la
+            // guardia 4 va semplicemente non applicata — trattare l'assenza come zero la farebbe
+            // scattare sempre, spegnendo l'imposta dichiarata su ogni documento.
+            if (array_key_exists('imponibile', $gruppo) && is_numeric($gruppo['imponibile'])) {
+                $imponibileDichiaratoPerGruppo[$k] = ($imponibileDichiaratoPerGruppo[$k] ?? 0)
+                    + (int) round($gruppo['imponibile'] * 100);
+            } else {
+                $gruppiSenzaImponibile[$k] = true;
+            }
+        }
+
+        // Un gruppo in cui anche un solo blocco tace l'imponibile non ha un metro attendibile.
+        foreach (array_keys($gruppiSenzaImponibile) as $k) {
+            unset($imponibileDichiaratoPerGruppo[$k]);
+        }
+
+        $pesiPerGruppo = [];
+        foreach ($data['righe'] as $i => $riga) {
+            $k = $chiave($riga['aliquota_iva'] ?? 0, $riga['natura'] ?? null);
+            if (! array_key_exists($k, $impostaPerGruppo)) {
+                continue;   // guardia 3: riga di un gruppo che il documento non dichiara
+            }
+            $pesiPerGruppo[$k][$i] = (int) round(($riga['importo_imponibile'] ?? 0) * 100);
+        }
+
+        $distribuita = [];
+        foreach ($pesiPerGruppo as $k => $pesi) {
+            // guardia 1: le righe a peso zero restano a zero e non entrano nel riparto.
+            //
+            // ⚠️ **È difensiva, non necessaria — e va detto invece di lasciar credere il
+            // contrario.** La Fase 1-bis della beta.19 ha misurato che toglierla non cambia
+            // nessun risultato: su 400.000 casi generati con una riga a peso zero e pesi misti,
+            // quella riga non riceve mai un centesimo nemmeno senza guardia, perché ha resto 0 e
+            // i resti positivi vincono sempre la compensazione. I due test che la nominavano
+            // passavano identici senza di essa.
+            //
+            // Resta perché il costo di sbagliarsi è asimmetrico: una riga a lordo zero non
+            // produce scrittura contabile, e un centesimo di IVA sopra la produrrebbe **senza
+            // capitolo**, finendo nel ramo «impossibile allocare la riga» — 500 con rollback,
+            // fattura persa. Una guardia che non serve costa nulla; quel ramo costa una fattura.
+            $conPeso = array_filter($pesi, static fn (int $w): bool => $w !== 0);
+            foreach (array_diff_key($pesi, $conPeso) as $i => $_) {
+                $distribuita[$i] = 0;
+            }
+            if ($conPeso === []) {
+                continue;
+            }
+
+            $somma = array_sum($conPeso);
+            if ($somma === 0) {
+                continue;   // guardia 2: nessuna proporzione possibile, si torna al calcolo di riga
+            }
+
+            // ⚠️ **Guardia 4 — l'imposta dichiarata descrive un imponibile dichiarato.**
+            // «Imponibile 45,74, imposta 10,06» e' una frase sola: prenderne la seconda meta'
+            // senza controllare la prima significa applicare a righe qualsiasi un numero che
+            // descriveva righe precise. Finche' le righe del gruppo sommano all'imponibile che
+            // il gruppo dichiara, l'imposta del documento vale; appena divergono, QUEL gruppo —
+            // e solo quello — torna al calcolo per riga, che e' il comportamento della beta.18.
+            //
+            // Fa funzionare il gesto legittimo piu' comune: spezzare una riga da 44,35 in due da
+            // 20,00 e 24,35 per addebitarle a capitoli diversi non cambia la somma del gruppo,
+            // quindi non costa il centesimo. E fa cedere quello che deve cedere: cambiare un
+            // importo, aggiungere o togliere una riga.
+            //
+            // ⚠️ Il confronto e' sull'imponibile del gruppo, non sul totale del documento: toccare
+            // una riga al 22 % non deve disturbare il gruppo a 0 %/N2.2.
+            $dichiarato = $imponibileDichiaratoPerGruppo[$k] ?? null;
+            if ($dichiarato !== null && array_sum($pesi) !== $dichiarato) {
+                foreach ($pesi as $i => $_) {
+                    unset($distribuita[$i]);   // anche le righe a peso zero tornano al calcolo di riga
+                }
+
+                continue;
+            }
+
+            $normalizzati = array_map(static fn (int $w): float => $w / $somma, $conPeso);
+            foreach (MoneyHelper::distribuisciPesiNormalizzati($normalizzati, $impostaPerGruppo[$k]) as $i => $iva) {
+                $distribuita[$i] = $iva;
+            }
+        }
+
+        return $distribuita;
     }
 }

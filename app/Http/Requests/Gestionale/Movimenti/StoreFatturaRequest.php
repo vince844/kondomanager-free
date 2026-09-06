@@ -124,7 +124,18 @@ class StoreFatturaRequest extends FormRequest
         if ($isPregresso) {
             // Se è PREGRESSO: Controlliamo le coperture e l'eccedenza
             $rules['imponibile_pregresso']       = 'required|numeric|min:0';
-            $rules['aliquota_iva_pregressa']     = 'nullable|numeric|min:0|max:100';
+            // ⚠️ **Obbligatoria come il suo imponibile, non `nullable`.**
+            // Il servizio ripiegava su `?? 22` e l'anteprima su `Number('') || 0`: svuotare il
+            // campo faceva vedere zero IVA e salvarne il 22 %, cioè € 220,00 di debito su
+            // € 1.000,00 che nessuno aveva digitato. Le due strade non si allineano inventando
+            // un valore — né 22 né 0 sono quello che l'amministratore ha detto: si chiede.
+            // Il modulo parte da 22, quindi obbligarla non costa nulla a chi non la tocca.
+            // Trovato dalla Fase 1-bis della beta.19, lente «parità PHP/TS».
+            $rules['aliquota_iva_pregressa']     = 'required|numeric|min:0|max:100';
+            // L'imposta che il documento dichiara di sé. Quando c'è vince sull'aliquota, che
+            // sul pannello pregresso è una media arrotondata a due decimali e su un documento
+            // a più aliquote non ricostruisce il numero vero.
+            $rules['imposta_pregressa']          = 'nullable|numeric|min:0';
             $rules['data_competenza_originaria'] = 'nullable|date';
             $rules['saldo_patrimoniale_id']      = 'nullable|integer|exists:saldi,id';
             
@@ -138,7 +149,7 @@ class StoreFatturaRequest extends FormRequest
             // Se è CORRENTE: Controlliamo le righe e il preventivo
             $rules['righe']                      = 'required|array|min:1';
             $rules['righe.*.descrizione']        = 'required|string';
-            $rules['righe.*.importo_imponibile'] = $isNotaCredito ? 'required|numeric|min:0' : 'required|numeric';
+            $rules['righe.*.importo_imponibile'] = 'required|numeric';
             $rules['righe.*.aliquota_iva']       = 'required|numeric|min:0|max:100';
             // Scopati per condominio: FatturaPassivaService risolve il capitolo con
             // Conto::find() e ne usa il conto_contabile_id per la riga DARE. Un id di
@@ -166,6 +177,23 @@ class StoreFatturaRequest extends FormRequest
                 'nullable', 'string', Rule::in(array_column(NaturaRigaRitenuta::cases(), 'value')),
             ];
         }
+
+        // ⚠️ **I riepiloghi IVA del documento, se ce li porta un file.**
+        // È l'unico dato nuovo che il form può mandare dalla beta.19, e da qui esce il numero
+        // che finisce nella riga di testata della scrittura contabile: va tipizzato, non
+        // accettato per fiducia. `natura` è nullable perché la maggior parte dei blocchi non
+        // ne ha una, ma quando c'è fa parte della CHIAVE del gruppo insieme all'aliquota.
+        $rules['riepiloghi']                 = 'nullable|array|max:50';
+        $rules['riepiloghi.*.aliquota_iva']  = 'required_with:riepiloghi|numeric|min:0|max:100';
+        $rules['riepiloghi.*.natura']        = 'nullable|string|max:10';
+        $rules['riepiloghi.*.imponibile']    = 'required_with:riepiloghi|numeric';
+        // ⚠️ Erano gli unici campi di denaro del blocco senza limite inferiore, e finiscono
+        // verbatim in `importo_iva` e `netto_a_pagare`. Un'imposta negativa non esiste in una
+        // fattura: il segno lo mette il tipo di documento, non l'importo.
+        $rules['riepiloghi.*.imposta']       = 'required_with:riepiloghi|numeric|min:0';
+
+        // La natura viaggia anche sulla riga: è ciò che la lega al suo gruppo.
+        $rules['righe.*.natura']             = 'nullable|string|max:10';
 
         return $rules;
     }
@@ -200,6 +228,29 @@ class StoreFatturaRequest extends FormRequest
             if (!$isPregresso) {
                 $righe = $this->input('righe', []);
                 $haLavoriPrivati = false;
+
+                // ⚠️ **Una nota di credito deve restare un credito — il vincolo è sul documento.**
+                // Ha sostituito il `min:0` per riga: le singole righe di una nota possono essere
+                // negative, perché la nota che storna una fattura con una riga in diminuzione
+                // porta quella riga col segno opposto. Quello che non può succedere è che la
+                // SOMMA si ribalti: il moltiplicatore −1 del servizio produrrebbe un documento di
+                // segno positivo che continua a chiamarsi nota di credito.
+                if ($this->input('tipo_documento') === 'nota_credito') {
+                    $sommaRighe = 0.0;
+                    foreach ($righe as $riga) {
+                        $sommaRighe += (float) ($riga['importo_imponibile'] ?? 0);
+                    }
+
+                    if ($sommaRighe <= 0) {
+                        $validator->errors()->add(
+                            'righe',
+                            'Una nota di credito deve accreditare qualcosa: la somma delle righe è '
+                            .number_format($sommaRighe, 2, ',', '.').'. Le singole righe possono '
+                            .'essere negative — è il caso dello storno di una riga in diminuzione — '
+                            .'ma il totale no.'
+                        );
+                    }
+                }
 
                 foreach ($righe as $idx => $riga) {
                     if (!empty($riga['immobile_id'])) {

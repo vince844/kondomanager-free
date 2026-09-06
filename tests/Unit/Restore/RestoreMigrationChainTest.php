@@ -29,7 +29,10 @@ use Tests\TestCase;
  */
 uses(TestCase::class);
 
-const KM_CHAIN_DB = 'km_restore_chain';
+// I database di prova portano un suffisso unico per checkout: senza, lanciare la suite
+// in TEST e in ufficiale insieme fa sfilare il database all'altra esecuzione. Vedi
+// `kmDatabaseDiProva()` in tests/Pest.php.
+defined('KM_CHAIN_DB') || define('KM_CHAIN_DB', kmDatabaseDiProva('km_restore_chain'));
 const KM_CHAIN_PROBE_TABLE = 'km_restore_chain_probe';
 
 function kmChainAdminPdo(): ?PDO

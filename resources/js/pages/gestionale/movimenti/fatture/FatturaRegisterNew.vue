@@ -17,7 +17,7 @@ import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOc
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import { useFattureSimili } from '@/composables/useFattureSimili';
-import { useImportaFatturaXml, type EsitoImportazioneXml } from '@/composables/useImportaFatturaXml';
+import { useImportaFatturaXml, type EsitoImportazioneXml, type RiepilogoIva } from '@/composables/useImportaFatturaXml';
 import { watchDebounced } from '@vueuse/core';
 import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
 import ModalSpesaImprevista from '@/components/gestionale/movimenti/fatture/ModalSpesaImprevista.vue';
@@ -451,10 +451,14 @@ function continuaConProssimo(voce: FilePendente) {
 }
 
 /**
- * Stima grezza dell'importo per la riga dell'elenco — non è il totale che l'XML
- * dichiara (che questo endpoint non espone, decisione 5 dell'apertura: solo
- * l'imponibile di riga passa il confine centesimi/euro), è imponibile + IVA sommati
- * riga per riga. Basta a orientarsi nell'elenco, non è un valore da controllare.
+ * L'importo del documento, per la riga dell'elenco dei file.
+ *
+ * ⚠️ **Era una «stima grezza», e il commento che lo diceva è invecchiato male.** Sosteneva che
+ * l'endpoint non esponesse il totale dichiarato dall'XML — la decisione 5 dell'apertura della
+ * beta.14, quando davvero passava il confine solo l'imponibile di riga. Dalla beta.18 l'endpoint
+ * manda `imponibile_dichiarato` e `imposta_dichiarata`, e dalla beta.19 sono anche i numeri con
+ * cui la fattura viene registrata: ricostruire il totale dalle righe mostrava nell'elenco un
+ * importo diverso da quello che si vede un clic dopo. Basta a orientarsi nell'elenco, non è un valore da controllare.
  *
  * ⚠️ `euro()` (useCurrencyFormatter) si aspetta CENTESIMI per default
  * (`fromCents: true`): le righe arrivano già in euro da questo controller
@@ -463,6 +467,20 @@ function continuaConProssimo(voce: FilePendente) {
  * di più righe per un totale da passare a `euro()`.
  */
 function totaleLordoStimatoCents(esito: EsitoImportazioneXml): number {
+    // Il totale che il documento dichiara di sé, quando c'è: imponibile e imposta dei
+    // `DatiRiepilogo`, gli stessi numeri con cui la fattura verrà poi registrata.
+    const { imponibile_dichiarato: imp, imposta_dichiarata: iva } = esito.documento;
+    if (imp !== undefined && iva !== undefined) {
+        // ⚠️ **La magnitudine, non il valore con segno.** A differenza dei `riepiloghi`, che il
+        // controller rende positivi per una nota di credito, questi due campi arrivano com'è
+        // scritto nell'XML: una TD04 con importi negativi li porta negativi. Senza `abs()`
+        // l'elenco dei file diceva −€ 61,00 e il modulo, un clic dopo, € 61,00. È una
+        // regressione introdotta passando ai totali dichiarati, trovata dalla Fase 1-bis.
+        return Math.abs(Math.round((imp + iva) * 100));
+    }
+
+    // Ripiego per un esito prodotto da una versione precedente dell'endpoint, che quei campi
+    // non mandava: imponibile + IVA sommati riga per riga. Può divergere di un centesimo.
     const euroTotali = esito.righe.reduce((s, r) => s + r.importo_imponibile * (1 + r.aliquota_iva / 100), 0);
     return Math.round(euroTotali * 100);
 }
@@ -636,6 +654,19 @@ function precompilaDaXml(esito: EsitoImportazioneXml) {
     if (esito.documento.imponibile_dichiarato !== undefined) {
         form.imponibile_pregresso = esito.documento.imponibile_dichiarato;
         form.aliquota_iva_pregressa = esito.documento.aliquota_effettiva ?? 22;
+        // La coppia che il DOCUMENTO ha scritto in questi due campi. Serve a distinguere il
+        // prefill da una modifica dell'amministratore — vedi il watcher più sotto.
+        pregressoComeImportato.value = {
+            imponibile: form.imponibile_pregresso,
+            aliquota: form.aliquota_iva_pregressa,
+            imposta: esito.documento.imposta_dichiarata ?? null,
+        };
+        // L'imposta dichiarata vince sull'aliquota media: quella è arrotondata a due
+        // decimali e su un documento a più aliquote non ricostruisce il numero vero.
+        form.imposta_pregressa = esito.documento.imposta_dichiarata ?? null;
+        // I riepiloghi per gruppo servono invece alla registrazione riga per riga: senza,
+        // l'IVA torna a essere la somma degli arrotondamenti di riga.
+        form.riepiloghi = esito.documento.riepiloghi ?? null;
     }
 
     if (esito.righe.length > 0) {
@@ -655,6 +686,13 @@ function precompilaDaXml(esito: EsitoImportazioneXml) {
             immobile_id: null,
             importo_imponibile: r.importo_imponibile,
             aliquota_iva: r.aliquota_iva,
+            // ⚠️ **La natura fa parte della CHIAVE del gruppo IVA, non è un'etichetta.**
+            // `DatiRiepilogo` è dichiarato per coppia aliquota/natura: due blocchi a 0 % con
+            // nature diverse sono due gruppi distinti. Senza questo campo la chiave degradava
+            // alla sola aliquota e il gruppo con natura non si riagganciava mai — il ramo
+            // esisteva nel server e nei tipi, e moriva qui. Trovato dalla Fase 1-bis della
+            // beta.19: il campo arrivava dall'endpoint e veniva buttato in questa mappatura.
+            natura: r.natura ?? null,
             is_sopravvenienza: false,
             // ⚠️ **Il flag lo dichiara il file, e riscriverlo a `true` scollegava la
             // protezione dell'F24 costruita nella beta.14.** Il server calcola
@@ -752,6 +790,8 @@ const form = useForm({
     // NUOVI CAMPI PER FATTURA PREGRESSA
     imponibile_pregresso:       0,
     aliquota_iva_pregressa:     22,
+    imposta_pregressa:          null as number | null,
+    riepiloghi:                 null as RiepilogoIva[] | null,
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
     data_scadenza:      '',
@@ -770,6 +810,8 @@ const form = useForm({
     stato_approvazione: 'approvata',
     righe: [{
         descrizione: '',
+        // Una riga digitata a mano non ha natura: nessun documento la dichiara.
+        natura: null as string | null,
         conto_id: null as number | null,
         immobile_id: null as number | null,
         importo_imponibile: 0,
@@ -1031,9 +1073,93 @@ const totali = computed(() => calcolaTotali({
     is_pregresso:           form.is_pregresso,
     imponibile_pregresso:   form.imponibile_pregresso,
     aliquota_iva_pregressa: form.aliquota_iva_pregressa,
+    imposta_pregressa:      form.imposta_pregressa,
+    riepiloghi:             form.riepiloghi,
     righe:                  form.righe,
     ritenuta:               risolviRegimeRitenuta(fornitoreConLaRisposta.value, applicaRitenutaEffective.value),
 }));
+
+/**
+ * L'imponibile e l'aliquota del pannello pregresso **così come li ha scritti il documento**,
+ * o `null` se il pannello è stato compilato a mano.
+ */
+const pregressoComeImportato = ref<{ imponibile: number; aliquota: number; imposta: number | null } | null>(null);
+
+/**
+ * ⚠️ **Il campo «IVA %» del pannello pregresso era un comando che non comandava.**
+ *
+ * Dalla beta.19 l'imposta di un documento importato è quella che il documento dichiara
+ * (`imposta_pregressa`), e `calcolaTotali()` la preferisce all'aliquota — giustamente: su un
+ * documento a più aliquote la media a due decimali non ricostruisce il numero vero. Ma il
+ * campo aliquota resta **modificabile**, e finché l'imposta dichiarata era in vigore
+ * cambiarlo non spostava niente: si digitava 10 al posto di 22 e il totale non si muoveva.
+ *
+ * È la stessa classe di difetto della Coda 123 — un controllo che sembra funzionare e che il
+ * salvataggio ignora in silenzio. Qui la risposta non è disabilitare il campo, che toglierebbe
+ * una correzione legittima: è prendere sul serio il gesto. **Toccare l'imponibile o l'aliquota
+ * significa dire «il documento non descrive quello che voglio registrare», e da quel momento
+ * l'imposta torna a essere calcolata da ciò che si vede a schermo.**
+ *
+ * Il confronto è con la coppia importata, non con un flag «l'utente ha scritto»: così il
+ * prefill non fa mai scattare la rinuncia, e riportare i campi ai valori del documento
+ * ripristina l'imposta dichiarata invece di lasciarla persa.
+ */
+watch(
+    () => [form.imponibile_pregresso, form.aliquota_iva_pregressa] as const,
+    ([imponibile, aliquota]) => {
+        const importato = pregressoComeImportato.value;
+        if (!importato) return;
+
+        const combacia = Number(imponibile) === Number(importato.imponibile)
+            && Number(aliquota) === Number(importato.aliquota);
+
+        if (combacia) {
+            // Si è tornati ai numeri del documento: l'imposta dichiarata torna in vigore.
+            form.imposta_pregressa = importato.imposta;
+            return;
+        }
+
+        form.imposta_pregressa = null;
+    },
+);
+
+/**
+ * Il totale che il DOCUMENTO dichiara di sé, sommando i suoi riepiloghi. `null` quando non c'è
+ * nessun documento con cui confrontarsi — una fattura digitata a mano non ha niente da tradire.
+ */
+const totaleDichiaratoDalDocumentoCents = computed<number | null>(() => {
+    const gruppi = form.riepiloghi;
+    if (!Array.isArray(gruppi) || gruppi.length === 0) return null;
+
+    return Math.abs(Math.round(gruppi.reduce(
+        (s: number, g: any) => s + Number(g.imponibile ?? 0) + Number(g.imposta ?? 0), 0,
+    ) * 100));
+});
+
+/**
+ * ⚠️ **Su una fattura ricevuta il totale non è nostro.**
+ *
+ * Il debito verso il fornitore è quello che il documento chiede, tutto intero. Se
+ * l'amministratore cancella una riga, ne aggiunge una o corregge un importo, la registrazione
+ * smette di valere quanto la fattura — e fino alla beta.19 **non glielo diceva nessuno**: i
+ * totali a schermo si limitavano ad aggiornarsi, coerenti con sé stessi e muti sul documento.
+ *
+ * Si segnala e non si blocca, com'è la scelta del progetto ovunque: l'amministratore è
+ * l'autorità sul proprio documento, e un'importazione può anche aver letto male. Ma deve
+ * saperlo, e deve vedere **tutti e due i numeri**.
+ */
+/** La magnitudine di ciò che si sta registrando, per confronto col documento. */
+const totaleRegistratoCents = computed<number>(() => Math.abs(totali.value.totale_documento_cents));
+
+const scartoDalDocumentoCents = computed<number>(() => {
+    const dichiarato = totaleDichiaratoDalDocumentoCents.value;
+    if (dichiarato === null) return 0;
+
+    return totaleRegistratoCents.value - dichiarato;
+});
+
+/** Quanto manca o quanto avanza, senza segno: il verso lo dice la frase. */
+const scartoAssolutoCents = computed<number>(() => Math.abs(scartoDalDocumentoCents.value));
 
 // Storico capitoli espanso
 const expandedHistory = ref<Record<number, boolean>>({});
@@ -1053,13 +1179,13 @@ const budgetImpacts = computed(() => {
         ultimi_movimenti: any[]
     }>();
 
-    form.righe.forEach(r => {
+    form.righe.forEach((r, idx) => {
         if (!r.conto_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
 
         const residuoCents = c.residuo_budget || 0;
-        const spesaCents   = lordoRigaCents(r.importo_imponibile, r.aliquota_iva);
+        const spesaCents   = lordoRigaRegistratoCents(idx, r);
         const cur = grouped.get(r.conto_id) || {
             id:                c.id,
             nome:              c.nome,
@@ -1115,7 +1241,29 @@ const budgetImpacts = computed(() => {
  * conto possono sforare insieme senza che nessuna delle due sfori da sola. Il badge di riga
  * e il pannello laterale rispondono deliberatamente a domande diverse.
  */
-const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+/**
+ * Il lordo di una riga: il suo imponibile più **la sua** IVA, presa dai totali.
+ *
+ * ⚠️ **Non si ricalcola da imponibile e aliquota, e dalla beta.19 non si può.** Quando il
+ * documento dichiara la propria imposta nei `DatiRiepilogo`, l'imposta del gruppo si
+ * distribuisce fra le righe e un centesimo di compensazione finisce sulla riga col resto
+ * maggiore: `round(imponibile x aliquota / 100)` non lo vede. Misurato a schermo sul file 06
+ * dei collaudi — la riga «materia gas naturale» mostrava un totale di EUR 8,45 mentre la
+ * fattura registrata la porta a EUR 8,46.
+ *
+ * Serve a tre cose che devono dire lo stesso numero: il totale mostrato sulla riga, la spesa
+ * addebitata al capitolo nel pannello budget, e la soglia di sforo. Il ripiego su
+ * `lordoRigaCents` copre la riga appena aggiunta, prima che i totali si siano ricalcolati.
+ */
+const lordoRigaRegistratoCents = (idx: number, riga: { importo_imponibile: unknown; aliquota_iva: unknown }): number => {
+    const iva = totali.value.iva_righe_cents[idx];
+
+    return iva === undefined
+        ? lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)
+        : euroToCents(riga.importo_imponibile) + iva;
+};
+
+const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
     // ⚠️ **Coda 122.** Una nota di credito non può mai sforare: libera budget, non lo
     // consuma. Senza questa guardia, una nota su un capitolo già speso veniva scambiata per
     // uno sforamento — falso allarme che chiedeva una motivazione, e se compilata marcava il
@@ -1127,7 +1275,7 @@ const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknow
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 
-    return lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva) > c.residuo_budget;
+    return lordoRigaRegistratoCents(idx, riga) > c.residuo_budget;
 };
 
 const bancheNormalizzate = computed(() =>
@@ -1331,6 +1479,8 @@ watch(() => form.is_pregresso, (attivo) => {
 // ---------------------------------------------------------------------------
 const addRiga = () => form.righe.push({
     descrizione:        '',
+    // Riga aggiunta a mano: nessun documento ne dichiara la natura IVA.
+    natura:             null,
     // Stessa forma di aliquota_iva qui sotto: prefill col capitolo dell'ultima
     // fattura di questo fornitore (calcolato dal backend), non una scelta da zero.
     // `null` per un fornitore senza storico — non si inventa un capitolo qualsiasi.
@@ -1542,6 +1692,9 @@ function resettaFormPerNuovoDocumento() {
     form.saldo_patrimoniale_id = null;
     form.imponibile_pregresso = 0;
     form.aliquota_iva_pregressa = 22;
+    form.imposta_pregressa = null;
+    pregressoComeImportato.value = null;
+    form.riepiloghi = null;
     form.numero_documento = '';
     form.data_documento = new Date().toISOString().substring(0, 10);
     form.data_scadenza = '';
@@ -1558,6 +1711,8 @@ function resettaFormPerNuovoDocumento() {
     form.stato_approvazione = 'approvata';
     form.righe = [{
         descrizione: '',
+        // Come la riga iniziale: digitata a mano, nessun documento ne dichiara la natura.
+        natura: null,
         conto_id: null,
         immobile_id: null,
         importo_imponibile: 0,
@@ -2373,6 +2528,16 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                             </span>
                         </div>
 
+<div v-if="scartoDalDocumentoCents !== 0" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                            <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <span class="text-[11px] text-amber-800 dark:text-amber-400">
+                                Il documento chiede <strong>{{ euro(totaleDichiaratoDalDocumentoCents ?? 0) }}</strong>,
+                                questa registrazione vale <strong>{{ euro(totaleRegistratoCents) }}</strong>
+                                — {{ scartoDalDocumentoCents > 0 ? 'in più' : 'in meno' }} di {{ euro(scartoAssolutoCents) }}.
+                                Registrandola così, il debito verso il fornitore non sarà quello che la fattura chiede.
+                            </span>
+                        </div>
+
                         <div v-if="avvisiImportazioneXml?.righe_non_quadrano_col_riepilogo" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
                             <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                             <span class="text-[11px] text-amber-800 dark:text-amber-400">
@@ -2581,7 +2746,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
                                                 placeholder="0,00" />
-                                            <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
+                                            <div v-if="rigaInSforo(idx, riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
                                                 <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                             </div>
@@ -2601,7 +2766,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                             <div class="text-right min-w-0 flex-1">
                                                 <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1 whitespace-nowrap">Totale Riga</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none whitespace-nowrap tabular-nums">
-                                                    {{ euro(lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)) }}
+                                                    {{ euro(lordoRigaRegistratoCents(idx, riga)) }}
                                                 </span>
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)"

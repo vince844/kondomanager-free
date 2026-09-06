@@ -159,11 +159,35 @@ class ImportaFatturaXmlController extends Controller
             'aliquota_effettiva' => $imponibileDichiarato !== 0
                 ? round($impostaDichiarata / $imponibileDichiarato * 100, 2)
                 : 0,
+            // ⚠️ **I riepiloghi viaggiano per GRUPPO, non come totale unico.**
+            // L'imposta di una fattura elettronica non è la somma degli arrotondamenti di
+            // riga: è dichiarata dal fornitore per ogni coppia aliquota/natura, e sul file 06
+            // dei collaudi le due strade danno 10,05 contro 10,06. Il totale di documento qui
+            // sopra serve al pannello del debito pregresso, che ha un campo solo; questo
+            // elenco serve alla registrazione riga per riga, che deve poter distribuire
+            // l'imposta di ciascun gruppo fra le righe che vi appartengono.
+            //
+            // Il segno segue la stessa convenzione delle righe: su una nota di credito le
+            // magnitudini viaggiano positive, perché è `FatturaPassivaService` ad applicare
+            // il moltiplicatore −1. Passare qui un importo già negativo farebbe due segni.
+            'riepiloghi' => array_map(
+                fn ($g) => [
+                    'aliquota_iva' => $g->aliquotaIva,
+                    'natura' => $g->natura,
+                    'imponibile' => MoneyHelper::fromCents(
+                        $fattura->isNotaCredito() ? abs($g->imponibileCents) : $g->imponibileCents
+                    ),
+                    'imposta' => MoneyHelper::fromCents(
+                        $fattura->isNotaCredito() ? abs($g->impostaCents) : $g->impostaCents
+                    ),
+                ],
+                $fattura->riepiloghi,
+            ),
         ];
     }
 
     /**
-     * @return array<int, array{descrizione: string, importo_imponibile: float, aliquota_iva: float}>
+     * @return array<int, array{descrizione: string, importo_imponibile: float, aliquota_iva: float, natura: ?string}>
      *
      * ⚠️ **Il segno si normalizza qui, guardando il tipo di documento — non prima.**
      * Trovato dalla revisione avversariale della beta.14: lo schema ammette una nota di
@@ -189,6 +213,11 @@ class ImportaFatturaXmlController extends Controller
                     $fattura->isNotaCredito() ? abs($riga->importoImponibileCents) : $riga->importoImponibileCents
                 ),
                 'aliquota_iva' => $riga->aliquotaIva,
+                // La natura fa parte della CHIAVE del gruppo IVA, non è un'etichetta.
+                // `DatiRiepilogo` è obbligatorio «per coppia aliquota/natura», quindi due
+                // blocchi a 0 % con nature diverse sono due gruppi distinti e vanno tenuti
+                // separati: il file 06 dei collaudi ne ha uno al 22 % e uno a 0 %/N2.2.
+                'natura' => $riga->natura,
             ],
             $fattura->righe,
         );
@@ -260,6 +289,11 @@ class ImportaFatturaXmlController extends Controller
                     $fattura->isNotaCredito() ? abs($cassa->importoContributoCents) : $cassa->importoContributoCents
                 ),
                 'aliquota_iva' => $cassa->aliquotaIva ?? $aliquotaDiRipiego,
+                // `DatiCassaPrevidenziale` non porta una natura propria nel tracciato: il
+                // contributo entra nel gruppo dell'aliquota che dichiara, senza natura.
+                // Verificato il 06/09/2026 sugli undici file di collaudo: raggruppando così,
+                // l'imponibile ricostruito coincide con quello dichiarato in **tutti e undici**.
+                'natura' => null,
                 'concorre_base_ritenuta' => $cassa->soggettaRitenuta,
             ],
             $conImporto,

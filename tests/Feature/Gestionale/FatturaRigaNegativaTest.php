@@ -259,20 +259,28 @@ it('lo storno di una fattura con riga negativa produce una nota di credito dello
 });
 
 /**
- * Coda 132 — la guardia `min:0` esiste **solo** sulla nota di credito.
+ * Coda 132 — una nota di credito deve restare un credito.
  *
- * Su una NC il segno lo porta già il moltiplicatore −1 del servizio: una riga digitata
- * negativa lo annulla e riporta `netto_a_pagare` in positivo. A quel punto
- * `StornoFatturaController` — che distingue una nota di credito da una fattura vera con
- * `if ($fattura->netto_a_pagare < 0)` e nient'altro — non la riconosce più, e il documento
- * diventa pagabile e stornabile pur restando una nota di credito.
+ * ⚠️ **Il vincolo si è spostato dalla riga al documento il 06/09/2026, nella beta.19**, e la
+ * ragione è che la sua premessa è caduta. Era `min:0` su ogni riga di una nota, e il motivo
+ * scritto era difendere `if ($fattura->netto_a_pagare < 0)` di `StornoFatturaController`,
+ * l'unica cosa che allora distingueva una NC da una fattura vera. La beta.19 ha sostituito
+ * quella guardia con `tipo_documento === 'nota_credito'`, perché scambiava per nota di credito
+ * una fattura ordinaria a credito. Tolta la premessa, il `min:0` è rimasto senza motivo — e ha
+ * cominciato a rifiutare un valore **legittimo**: la nota che storna una fattura contenente una
+ * riga in diminuzione porta quella riga col segno opposto, e il modulo di modifica la rimanda
+ * negativa. Con `min:0` quella nota non era più salvabile, nemmeno per correggere una data.
  *
- * ⚠️ **I due test sono una coppia e vanno letti insieme**: il primo pretende il divieto, il
- * secondo pretende che il divieto NON si allarghi alla fattura ordinaria. Senza il secondo,
- * un `min:0` messo su tutte le righe sembrerebbe corretto e richiuderebbe con la validazione
- * la porta che il motore contabile ha appena aperto.
+ * Quello che va difeso resta vero e adesso sta dove vive: **la somma** delle righe di una nota
+ * deve accreditare qualcosa. Le singole righe no.
+ *
+ * ⚠️ **I tre test sono un insieme e vanno letti insieme**: il primo pretende che una nota che si
+ * ribalta venga rifiutata; il secondo che il divieto non si allarghi alla fattura ordinaria; il
+ * terzo che una nota con una riga negativa e somma positiva **passi** — è il caso che il prodotto
+ * produce da solo stornando una bolletta, e senza quel test la correzione si potrebbe rifare
+ * all'indietro senza accorgersene.
  */
-it('su una nota di credito la validazione rifiuta una riga con imponibile negativo', function () {
+it('una nota di credito che si ribalta viene rifiutata, ma sul documento non sulla riga', function () {
     $ctx = setupPerRigaNegativa();
     [$condominio, , , , $capitolo] = $ctx;
 
@@ -305,14 +313,54 @@ it('su una nota di credito la validazione rifiuta una riga con imponibile negati
         $modifica,
     );
 
-    $risposta->assertSessionHasErrors(['righe.0.importo_imponibile']);
+    // Una riga sola a −100 fa somma −100: il documento si ribalterebbe, e va ancora rifiutato.
+    // Cambia dove: non più sulla singola riga ma su `righe`, perché è il documento a essere
+    // sbagliato, non quel numero.
+    $risposta->assertSessionHasErrors(['righe']);
 
-    // ⚠️ E il rifiuto deve **spiegarsi**, non essere il testo automatico di Laravel: la pagina
-    // di modifica mostra questo messaggio sotto la casella dell'importo (fino alla beta.18 non
-    // mostrava nulla per le righe, e il salvataggio falliva in silenzio).
-    $errori = session('errors')->get('righe.0.importo_imponibile');
+    // ⚠️ E il rifiuto deve **spiegarsi**, non essere il testo automatico di Laravel.
+    $errori = session('errors')->get('righe');
     expect($errori[0])->toContain('nota di credito')
-        ->and($errori[0])->toContain('segno');
+        ->and($errori[0])->toContain('somma delle righe');
+});
+
+it('una nota di credito con una riga negativa e somma positiva si salva', function () {
+    // ⚠️ **È il caso che il prodotto produce da solo**, e che fino alla beta.19 era bloccato.
+    // Stornando una bolletta con una riga in diminuzione (il file 06 dei collaudi), la nota di
+    // credito porta quella riga col segno opposto: il modulo di modifica la rimanda negativa, ed
+    // è il numero giusto — sarà il moltiplicatore −1 del servizio a riportarla positiva. Con la
+    // vecchia regola per riga la nota non era più salvabile, e il messaggio d'errore ordinava
+    // all'amministratore di scrivere il valore che avrebbe gonfiato la nota.
+    $ctx = setupPerRigaNegativa();
+    [$condominio, , , , $capitolo] = $ctx;
+
+    $servizio = new FatturaPassivaService();
+    $corpoNc = corpoConRigaNegativa($ctx, 'NC-MISTA', 'nota_credito');
+    $corpoNc['righe'] = [
+        ['descrizione' => 'Storno fornitura', 'importo_imponibile' => 100, 'aliquota_iva' => 22,
+            'conto_id' => $capitolo->id, 'is_sopravvenienza' => false],
+    ];
+    $nc = $servizio->registraFattura($corpoNc, $condominio->id);
+
+    $modifica = [
+        'gestione_id' => $corpoNc['gestione_id'],
+        'numero_documento' => 'NC-MISTA',
+        'data_documento' => $corpoNc['data_documento'],
+        'data_scadenza' => $corpoNc['data_scadenza'],
+        'modalita_pagamento' => 'bonifico',
+        'righe' => [
+            ['descrizione' => 'Storno fornitura', 'importo_imponibile' => 100, 'aliquota_iva' => 22,
+                'conto_id' => $capitolo->id],
+            // La riga che storna un «Oneri di sistema» negativo: somma 98,20, resta un credito.
+            ['descrizione' => '[STORNO] Oneri di sistema', 'importo_imponibile' => -1.80,
+                'aliquota_iva' => 22, 'conto_id' => $capitolo->id],
+        ],
+    ];
+
+    $this->actingAs($this->user)->put(
+        route('admin.gestionale.fatture.update', [$condominio->id, $nc->id]),
+        $modifica,
+    )->assertSessionHasNoErrors();
 });
 
 it('su una fattura ordinaria la stessa riga negativa passa la validazione', function () {

@@ -27,8 +27,19 @@ class StornoFatturaController extends Controller
             return back()->withErrors(['storno_vietato' => 'Questa fattura è già stata stornata in precedenza.']);
         }
 
-        if ($fattura->netto_a_pagare < 0) {
-            return back()->withErrors(['storno_vietato' => 'Non puoi stornare una Nota di Credito.']);
+        // ⚠️ **Si guarda il TIPO del documento, non il segno del netto.**
+        // La guardia leggeva `netto_a_pagare < 0` e dava della nota di credito a qualunque
+        // documento a credito. Ma una fattura ordinaria PUÒ essere a credito: le righe negative
+        // sono legittime (il file 06 dei collaudi ne ha una) e se gli storni di riga superano
+        // gli addebiti il netto è negativo su un documento di tipo `fattura`. Quel documento
+        // restava senza nessuna via di rettifica — la modifica rimanda allo storno, e lo storno
+        // negava adducendo un tipo di documento che non era il suo. Il messaggio, per giunta,
+        // nominava una nota di credito a chi aveva in mano una fattura.
+        // Trovato dalla Fase 1-bis della beta.19, lente «segno».
+        if ($fattura->tipo_documento === 'nota_credito') {
+            return back()->withErrors([
+                'storno_vietato' => 'Una nota di credito non si storna: rettifica la fattura che annulla, oppure registra il documento che il fornitore ha emesso.',
+            ]);
         }
 
         // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
@@ -123,6 +134,22 @@ class StornoFatturaController extends Controller
                 'aliquota_iva_pregressa'     => (int) $fattura->importo_imponibile !== 0
                     ? round(abs((int) $fattura->importo_iva) / abs((int) $fattura->importo_imponibile) * 100, 2)
                     : 0,
+                // ⚠️ **L'aliquota qui sopra e un ripiego, non un dato.** Si ricava dal rapporto
+                // fra i due importi salvati, e dalla beta.19 quel rapporto puo non essere piu
+                // un'aliquota vera: l'imposta di una fattura importata e quella che il documento
+                // dichiara, non `imponibile x aliquota`. Se il numero dichiarato e stato
+                // conservato, lo si passa e vince; l'aliquota resta solo per i documenti vecchi.
+                'imposta_pregressa'          => $fattura->dati_extra['fiscal']['imposta_pregressa_dichiarata'] ?? null,
+
+                // ⚠️ **I riepiloghi del documento si tramandano alla nota di credito.**
+                // Senza, la nota nasceva senza memoria: le righe copiate 1:1 portano
+                // `importo_iva_dichiarata` e quindi il primo salvataggio è giusto, ma
+                // `dati_extra.fiscal.riepiloghi_dichiarati` restava vuoto — e bastava riaprire
+                // la nota per correggere una data perché l'IVA tornasse al calcolo per riga:
+                // € 100,14 contro una fattura da € 100,15, con un centesimo di credito verso il
+                // fornitore che nessuno chiude. Lo stesso ripiego che la modifica di una fattura
+                // ha già, e che alla nota mancava. Trovato dalla Fase 1-bis della beta.19.
+                'riepiloghi'                 => $fattura->dati_extra['fiscal']['riepiloghi_dichiarati'] ?? null,
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
@@ -169,6 +196,16 @@ class StornoFatturaController extends Controller
                     'importo_imponibile' => (float) $r->importo_imponibile / 100,
                     'aliquota_iva'       => (float) $r->aliquota_iva,
                     'importo_iva'        => (float) $r->importo_iva / 100,
+                    // ⚠️ **Lo storno replica l'imposta registrata, non la ricalcola.**
+                    // Dalla beta.19 l'IVA di una fattura importata è quella che il documento
+                    // dichiara nei propri `DatiRiepilogo`, distribuita fra le righe: non
+                    // corrisponde più a `round(imponibile × aliquota / 100)`. Ricalcolarla qui
+                    // farebbe una nota di credito da € 100,14 contro una fattura da € 100,15,
+                    // e `DoubleEntryValidator` non se ne accorgerebbe — le due scritture
+                    // quadrano ciascuna per sé, e resterebbe un centesimo di credito verso il
+                    // fornitore che nessuno chiude. `importo_iva` da solo non basta: il
+                    // servizio lo ignora per costruzione, e questa chiave è il canale esplicito.
+                    'importo_iva_dichiarata' => (float) $r->importo_iva / 100,
                     'conto_id'           => $r->conto_id,
                     'immobile_id'        => $r->immobile_id,
                     // Propagati dall'originale per far tornare l'importo di ritenuta

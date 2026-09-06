@@ -112,9 +112,14 @@ const cSonoFornitoriDaCreare = computed(() =>
 );
 
 /**
- * Stima grezza dell'importo, per orientarsi nell'elenco — non è il totale che l'XML
- * dichiara (l'endpoint non lo espone: solo l'imponibile di riga passa il confine
- * centesimi/euro), è imponibile + IVA sommati riga per riga.
+ * L'importo del documento, per orientarsi nell'elenco dei file.
+ *
+ * ⚠️ **Era una «stima grezza», e il commento che lo diceva è invecchiato male.** Sosteneva che
+ * l'endpoint non esponesse il totale dichiarato dall'XML: vero fino alla beta.17, falso dalla
+ * beta.18, che manda `imponibile_dichiarato` e `imposta_dichiarata`. Dalla beta.19 quei numeri
+ * sono anche **quelli con cui la fattura viene registrata**, quindi ricostruire il totale dalle
+ * righe voleva dire mostrare nell'elenco un numero diverso da quello che si sarebbe visto un
+ * clic dopo — di un centesimo, sui documenti in cui un gruppo IVA ha più righe.
  *
  * ⚠️ `euro()` si aspetta CENTESIMI (`fromCents: true` di default) e le righe arrivano
  * già in euro: la conversione va fatta qui. Senza, mostrava «€ 4,88» al posto di
@@ -122,6 +127,20 @@ const cSonoFornitoriDaCreare = computed(() =>
  * l'elenco e va dritto al modulo.
  */
 function totaleLordoStimatoCents(esito: EsitoImportazioneXml): number {
+    // Il totale che il documento dichiara di sé, quando c'è: imponibile e imposta dei
+    // `DatiRiepilogo`, gli stessi numeri con cui la fattura verrà poi registrata.
+    const { imponibile_dichiarato: imp, imposta_dichiarata: iva } = esito.documento;
+    if (imp !== undefined && iva !== undefined) {
+        // ⚠️ **La magnitudine, non il valore con segno.** A differenza dei `riepiloghi`, che il
+        // controller rende positivi per una nota di credito, questi due campi arrivano com'è
+        // scritto nell'XML: una TD04 con importi negativi li porta negativi. Senza `abs()`
+        // l'elenco dei file diceva −€ 61,00 e il modulo, un clic dopo, € 61,00. È una
+        // regressione introdotta passando ai totali dichiarati, trovata dalla Fase 1-bis.
+        return Math.abs(Math.round((imp + iva) * 100));
+    }
+
+    // Ripiego per un esito prodotto da una versione precedente dell'endpoint, che quei campi
+    // non mandava: imponibile + IVA sommati riga per riga. Può divergere di un centesimo.
     const euroTotali = esito.righe.reduce((s, r) => s + r.importo_imponibile * (1 + r.aliquota_iva / 100), 0);
     return Math.round(euroTotali * 100);
 }

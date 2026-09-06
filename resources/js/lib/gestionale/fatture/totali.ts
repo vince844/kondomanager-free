@@ -17,7 +17,13 @@ import { euroToCents, ivaRigaCents, arrotonda } from './money';
  *
  * I tre punti in cui l'ordine conta:
  *
- * 1. **L'IVA si arrotonda per riga**, non sul totale. Con più righe le due strade divergono.
+ * 1. **L'IVA si arrotonda per riga QUANDO il documento non dichiara la propria.** Con più righe
+ *    le due strade divergono. Dalla 1.11.0-beta.19 una fattura importata da XML porta con sé i
+ *    propri `DatiRiepilogo`, e lì l'imposta non si ricalcola: si prende quella dichiarata per il
+ *    gruppo (aliquota, natura) e la si distribuisce fra le sue righe col metodo dei resti
+ *    maggiori, esattamente come fa `FatturaPassivaService::distribuisciImpostaDichiarata()`.
+ *    ⚠️ La regola del patto non è cambiata — è sempre «ogni operazione ricalca il PHP» — è
+ *    cambiato il PHP che va ricalcato.
  * 2. **La ritenuta si arrotonda due volte**: prima la base ridotta (`percBase`), poi la
  *    trattenuta. Sui regimi a base 50% o 20% il doppio arrotondamento sposta il risultato.
  * 3. **Il netto si calcola dai centesimi già arrotondati**, non dai grezzi. È il difetto
@@ -47,6 +53,13 @@ export const REGIMI_RITENUTA_PREVIEW: Record<string, { aliquota: number; base: n
 export interface RigaTotali {
     importo_imponibile: unknown;
     aliquota_iva: unknown;
+    /**
+     * La natura IVA della riga (N1…N7). ⚠️ **Fa parte della CHIAVE del gruppo, non è
+     * un'etichetta:** due righe alla stessa aliquota con nature diverse appartengono a due
+     * riepiloghi distinti. Era assente da questa interfaccia e il codice la leggeva con un
+     * cast — che è il modo in cui un campo scompare senza che nessuno se ne accorga.
+     */
+    natura?: string | null;
     is_sopravvenienza?: boolean;
     /** Contributo cassa, rimborsi art. 15, posa accessoria: fuori dalla base ritenuta. */
     concorre_base_ritenuta?: boolean;
@@ -63,7 +76,26 @@ export interface InputTotali {
     /** Solo per le fatture pregresse, che non hanno righe di dettaglio. */
     imponibile_pregresso?: unknown;
     aliquota_iva_pregressa?: unknown;
+    /** Presente solo per il pregresso di un documento che dichiara la propria imposta. */
+    imposta_pregressa?: unknown;
     righe: RigaTotali[];
+    /**
+     * I riepiloghi IVA che il documento dichiara, uno per coppia aliquota/natura.
+     * Quando ci sono, l'imposta di ogni gruppo si distribuisce fra le sue righe invece di
+     * essere ricalcolata: è ciò che il server fa al salvataggio, e l'anteprima deve mostrare
+     * lo stesso numero — altrimenti si riapre il difetto per cui esiste questo modulo.
+     */
+    riepiloghi?: {
+        aliquota_iva: unknown;
+        natura?: string | null;
+        imposta: unknown;
+        /**
+         * L'imponibile che il gruppo dichiara. ⚠️ **Non è decorativo:** è il metro con cui si
+         * decide se l'imposta dichiarata descriva ancora le righe che ha davanti. Vedi la
+         * guardia 4 in `distribuisciImpostaDichiarata()`.
+         */
+        imponibile?: unknown;
+    }[] | null;
     /** `null` quando la ritenuta non si applica: fornitore non soggetto, forfetario, esclusa sul documento. */
     ritenuta: RegimeRitenuta | null;
 }
@@ -81,6 +113,19 @@ export interface TotaliFattura {
     totale_documento_cents: number;
     netto_cents: number;
     ha_sopravvenienze: boolean;
+    /**
+     * L'IVA di ciascuna riga, nello stesso ordine di `input.righe`.
+     *
+     * ⚠️ **Esiste perché dalla beta.19 l'IVA di riga non è più ricostruibile dalla riga.**
+     * Quando il documento dichiara la propria imposta, un centesimo di compensazione può
+     * finire su una riga qualsiasi del gruppo: `round(imponibile × aliquota / 100)` non lo
+     * vede. Chi mostra o addebita il lordo di una riga deve prendere l'IVA da qui, altrimenti
+     * l'anteprima dice € 8,45 e la fattura registrata vale € 8,46 — misurato a schermo sul
+     * file 06 dei collaudi il 06/09/2026, ed è il difetto che questa proprietà chiude.
+     *
+     * Vuoto sul ramo del debito pregresso, che non ha righe di dettaglio.
+     */
+    iva_righe_cents: number[];
 }
 
 /**
@@ -122,6 +167,105 @@ const numero = (v: unknown): number => {
     return Number.isFinite(n) ? n : 0;
 };
 
+/**
+ * Ripartisce un importo in centesimi su pesi già normalizzati, col metodo dei resti maggiori.
+ *
+ * ⚠️ **Gemella di `MoneyHelper::distribuisciPesiNormalizzati()`**: stesso ordine, stessi
+ * arrotondamenti intermedi, stesso criterio su chi prende il centesimo avanzato. Se una delle
+ * due cambia, cambiano entrambe — è il patto in testa a questo file.
+ */
+const distribuisciPesiNormalizzati = (pesi: number[], totale: number): number[] => {
+    if (totale === 0) return pesi.map(() => 0);
+
+    const segno = totale < 0 ? -1 : 1;
+    const assoluto = Math.abs(totale);
+    const basi: number[] = [];
+    const resti: { i: number; resto: number }[] = [];
+    let sommaBasi = 0;
+
+    pesi.forEach((peso, i) => {
+        // `round(x, 8)` del PHP: qui si arrotonda all'ottavo decimale prima del floor.
+        const grezzo = Math.round(assoluto * peso * 1e8) / 1e8;
+        const base = Math.floor(grezzo);
+        basi[i] = base;
+        resti.push({ i, resto: grezzo - base });
+        sommaBasi += base;
+    });
+
+    let avanzo = assoluto - sommaBasi;
+    if (avanzo > 0) {
+        // `arsort` è stabile: a parità di resto vince chi viene prima. Qui serve lo stesso
+        // ordinamento stabile, altrimenti l'anteprima assegna il centesimo a un'altra riga.
+        resti.sort((a, b) => (b.resto - a.resto) || (a.i - b.i));
+        for (let k = 0; k < avanzo && k < resti.length; k++) basi[resti[k].i]++;
+    }
+
+    return basi.map((b) => b * segno);
+};
+
+/**
+ * L'imposta dichiarata dal documento, già ripartita fra le righe. Vuota quando il documento non
+ * dichiara riepiloghi utilizzabili. Le tre guardie sono quelle del PHP: peso zero → imposta
+ * zero; gruppo che somma a zero → si torna al calcolo di riga; riga fuori dai gruppi dichiarati
+ * → non si tocca.
+ */
+const distribuisciImpostaDichiarata = (input: InputTotali): Record<number, number> => {
+    const gruppi = input.riepiloghi;
+    if (!Array.isArray(gruppi) || gruppi.length === 0) return {};
+
+    const chiave = (aliquota: unknown, natura?: string | null): string =>
+        `${Number(aliquota ?? 0).toFixed(2)}|${natura ?? ''}`;
+
+    // ⚠️ Si SOMMA, non si assegna: il tracciato ammette piu' blocchi sulla stessa coppia, e
+    // `FatturaPaFattura::impostaDichiarataCents()` li somma gia' tutti. Vedi il gemello PHP.
+    const impostaPerGruppo: Record<string, number> = {};
+    const imponibileDichiaratoPerGruppo: Record<string, number> = {};
+    const senzaImponibile = new Set<string>();
+    gruppi.forEach((g) => {
+        const k = chiave(g.aliquota_iva, g.natura);
+        impostaPerGruppo[k] = (impostaPerGruppo[k] ?? 0) + euroToCents(g.imposta);
+
+        // ⚠️ L'assenza dell'imponibile non è uno zero: senza metro la guardia 4 non si applica.
+        if (g.imponibile === undefined || g.imponibile === null) {
+            senzaImponibile.add(k);
+        } else {
+            imponibileDichiaratoPerGruppo[k] = (imponibileDichiaratoPerGruppo[k] ?? 0) + euroToCents(g.imponibile);
+        }
+    });
+    senzaImponibile.forEach((k) => { delete imponibileDichiaratoPerGruppo[k]; });
+
+    const pesiPerGruppo: Record<string, { i: number; peso: number }[]> = {};
+    input.righe.forEach((r, i) => {
+        const k = chiave(r.aliquota_iva, r.natura);
+        if (!(k in impostaPerGruppo)) return;
+        (pesiPerGruppo[k] ??= []).push({ i, peso: euroToCents(r.importo_imponibile) });
+    });
+
+    const distribuita: Record<number, number> = {};
+    Object.entries(pesiPerGruppo).forEach(([k, righe]) => {
+        const conPeso = righe.filter((r) => r.peso !== 0);
+        righe.filter((r) => r.peso === 0).forEach((r) => { distribuita[r.i] = 0; });
+        if (conPeso.length === 0) return;
+
+        const somma = conPeso.reduce((t, r) => t + r.peso, 0);
+        if (somma === 0) return;
+
+        // ⚠️ Guardia 4 — l'imposta dichiarata descrive un imponibile dichiarato. Finche' le righe
+        // del gruppo sommano a quell'imponibile la si usa; appena divergono, QUEL gruppo torna al
+        // calcolo per riga. Stessa regola del gemello PHP, e per la stessa ragione.
+        const dichiarato = imponibileDichiaratoPerGruppo[k];
+        if (dichiarato !== undefined && righe.reduce((t, r) => t + r.peso, 0) !== dichiarato) {
+            righe.forEach((r) => { delete distribuita[r.i]; });
+            return;
+        }
+
+        const quote = distribuisciPesiNormalizzati(conPeso.map((r) => r.peso / somma), impostaPerGruppo[k]);
+        conPeso.forEach((r, j) => { distribuita[r.i] = quote[j]; });
+    });
+
+    return distribuita;
+};
+
 export const calcolaTotali = (input: InputTotali): TotaliFattura => {
     let imponibile = 0;
     let iva = 0;
@@ -130,19 +274,26 @@ export const calcolaTotali = (input: InputTotali): TotaliFattura => {
     let imponibileSopravvenienza = 0;
     let ivaSopravvenienza = 0;
     let baseRitenuta = 0;
+    const ivaRighe: number[] = [];
 
     if (input.is_pregresso) {
         // Nessuna riga di dettaglio: l'imponibile intero fa da base ritenuta, come il
         // `$imponibileTotaleFallback` che il service passa a RitenutaService.
         imponibile = euroToCents(input.imponibile_pregresso);
-        iva = ivaRigaCents(imponibile, input.aliquota_iva_pregressa);
+        // Come il PHP: l'imposta dichiarata vince sull'aliquota media arrotondata.
+        iva = input.imposta_pregressa !== undefined && input.imposta_pregressa !== null
+            ? euroToCents(input.imposta_pregressa)
+            : ivaRigaCents(imponibile, input.aliquota_iva_pregressa);
         imponibileOrdinario = imponibile;
         ivaOrdinaria = iva;
         baseRitenuta = imponibile;
     } else {
-        input.righe.forEach((r) => {
+        const ivaDistribuita = distribuisciImpostaDichiarata(input);
+
+        input.righe.forEach((r, i) => {
             const impRiga = euroToCents(r.importo_imponibile);
-            const ivaRiga = ivaRigaCents(impRiga, r.aliquota_iva);
+            const ivaRiga = ivaDistribuita[i] ?? ivaRigaCents(impRiga, r.aliquota_iva);
+            ivaRighe.push(ivaRiga);
 
             imponibile += impRiga;
             iva += ivaRiga;
@@ -183,5 +334,6 @@ export const calcolaTotali = (input: InputTotali): TotaliFattura => {
         totale_documento_cents: totaleDocumento,
         netto_cents: totaleDocumento - ritenuta,
         ha_sopravvenienze: imponibileSopravvenienza > 0,
+        iva_righe_cents: ivaRighe,
     };
 };

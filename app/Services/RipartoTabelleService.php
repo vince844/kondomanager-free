@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\RuoloAnagraficaImmobile;
+use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Tabella;
@@ -651,7 +652,7 @@ class RipartoTabelleService
             $wMergedNorm[$key] = $w / $pesoSoggetti;
         }
 
-        $alloc = $this->distribuisciImporto($wMergedNorm, $importoContoSegno);
+        $alloc = MoneyHelper::distribuisciPesiNormalizzati($wMergedNorm, $importoContoSegno);
 
         // Split per tabella: se il conto insiste su una sola tabella (caso
         // normale) l'intera quota va lì; altrimenti penny-perfect sui pesi
@@ -683,24 +684,12 @@ class RipartoTabelleService
             foreach ($pesiSogg as $tid => $w) {
                 $pesiNorm[$tid] = $w / $sommaPesi;
             }
-            foreach ($this->distribuisciImporto($pesiNorm, $importoSoggetto) as $tid => $parte) {
+            foreach (MoneyHelper::distribuisciPesiNormalizzati($pesiNorm, $importoSoggetto) as $tid => $parte) {
                 $cells[$tid][$key] = ($cells[$tid][$key] ?? 0) + $parte;
             }
         }
     }
 
-    /**
-     * Distribuisce un importo totale basandosi su un array di pesi normalizzati,
-     * garantendo una ripartizione "penny-perfect" senza perdita o creazione di centesimi.
-     *
-     * COPIA 1:1 di CalcoloQuoteService::distribuisciImporto — DEVE rimanere
-     * sincronizzata: la garanzia "riga stampata = rate_quote" dipende dal fatto
-     * che i due servizi arrotondino in modo bit-identico.
-     *
-     * @param array $weights Array di pesi normalizzati (somma = 1)
-     * @param int $importoTotale Importo totale da distribuire in centesimi
-     * @return array Importi penny-perfect calcolati
-     */
     /**
      * Dichiara la pseudo-colonna degli addebiti diretti, se non c'è già.
      *
@@ -727,45 +716,7 @@ class RipartoTabelleService
         ];
     }
 
-    private function distribuisciImporto(array $weights, int $importoTotale): array
-    {
-        $result = [];
-        if ($importoTotale === 0) {
-            foreach ($weights as $key => $_) { $result[$key] = 0; }
-            return $result;
-        }
-
-        $sign    = $importoTotale < 0 ? -1 : 1;
-        $totAbs  = abs($importoTotale);
-        $bases      = [];
-        $remainders = [];
-        $sumBase    = 0;
-
-        foreach ($weights as $key => $w) {
-            $raw   = round($totAbs * $w, 8);
-            $base  = (int) floor($raw);
-            $bases[$key]      = $base;
-            $remainders[$key] = $raw - $base;
-            $sumBase += $base;
-        }
-
-        $diff = $totAbs - $sumBase;
-        if ($diff > 0) {
-            arsort($remainders);
-            $keys = array_keys($remainders);
-            for ($i = 0; $i < $diff && $i < count($keys); $i++) {
-                $bases[$keys[$i]]++;
-            }
-        }
-
-        foreach ($bases as $key => $b) {
-            $result[$key] = $b * $sign;
-        }
-
-        return $result;
-    }
-
-    private function empty(): array
+private function empty(): array
     {
         return [
             'tabelle'               => [],

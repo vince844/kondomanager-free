@@ -501,7 +501,7 @@ class CalcoloQuoteService
                 foreach ($componenti as $i => $c) {
                     $pesi[$i] = $c['importo'] / $naturale;
                 }
-                $importiComponenti = $this->distribuisciImporto($pesi, $target);
+                $importiComponenti = MoneyHelper::distribuisciPesiNormalizzati($pesi, $target);
             }
 
             // -----------------------------------------------------------------
@@ -1244,7 +1244,7 @@ class CalcoloQuoteService
             $weights[$key] = $w / $pesoSoggetti; // Qui normalizziamo a 1 per il penny-perfect sull'importo decurtato
         }
 
-        $importiDistributi = $this->distribuisciImporto($weights, $importoContoSegno);
+        $importiDistributi = MoneyHelper::distribuisciPesiNormalizzati($weights, $importoContoSegno);
 
         // Sottrae quanto ciascuna unità ha GIÀ versato per questa voce: senza questo
         // passaggio una spesa già coperta in tutto o in parte verrebbe richiesta una
@@ -1491,49 +1491,4 @@ class CalcoloQuoteService
         return $this->nettingApplicato;
     }
 
-    /**
-     * Distribuisce un importo totale basandosi su un array di pesi normalizzati,
-     * garantendo una ripartizione "penny-perfect" senza perdita o creazione di centesimi.
-     *
-     * @param array $weights Array di pesi normalizzati (somma = 1)
-     * @param int $importoTotale Importo totale da distribuire in centesimi
-     * @return array Importi penny-perfect calcolati
-     */
-    private function distribuisciImporto(array $weights, int $importoTotale): array
-    {
-        $result = [];
-        if ($importoTotale === 0) {
-            foreach ($weights as $key => $_) { $result[$key] = 0; }
-            return $result;
-        }
-
-        $sign    = $importoTotale < 0 ? -1 : 1;
-        $totAbs  = abs($importoTotale);
-        $bases      = [];
-        $remainders = [];
-        $sumBase    = 0;
-
-        foreach ($weights as $key => $w) {
-            $raw   = round($totAbs * $w, 8);
-            $base  = (int) floor($raw);
-            $bases[$key]      = $base;
-            $remainders[$key] = $raw - $base;
-            $sumBase += $base;
-        }
-
-        $diff = $totAbs - $sumBase;
-        if ($diff > 0) {
-            arsort($remainders);
-            $keys = array_keys($remainders);
-            for ($i = 0; $i < $diff && $i < count($keys); $i++) {
-                $bases[$keys[$i]]++;
-            }
-        }
-
-        foreach ($bases as $key => $b) {
-            $result[$key] = $b * $sign;
-        }
-
-        return $result;
-    }
 }
