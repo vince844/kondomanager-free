@@ -32,6 +32,20 @@ class FetchFattureStraordinarieController extends Controller
                 ->where('fatture_passive.esercizio_id', $esercizioId)
                 ->where('fatture_passive.is_pregresso', false)
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+                // ⚠️ **Una fattura stornata non è più un fabbisogno da finanziare.**
+                //
+                // Nessuna delle due query escludeva le stornate. Misurato sulla rotta vera: dopo lo
+                // storno di una pregressa da € 610,00 il carrello continuava a offrirla identica —
+                // `residuo_da_finanziare: 610`, `importo_suggerito: 610` — e generando il piano
+                // quei soldi venivano **addebitati ai proprietari per un documento annullato**.
+                //
+                // Il difetto è precedente alla beta.22, ma è la stessa strada: la .22 rende lo
+                // storno di una pregressa capace di azzerare il capitolo che aveva inventato, e
+                // annunciarlo lasciando il carrello a chiedere quei soldi sarebbe stato vero a
+                // metà proprio sul denaro. Il filtro sta su entrambe le query perché l'omissione
+                // era su entrambe: la 1a la ereditava per le straordinarie ordinarie.
+                ->where('fatture_passive.stato_pagamento', '!=', 'stornata')
+
                 ->where(function($q) {
                     $q->where('righe_fattura.is_sopravvenienza', true)
                     ->orWhereNotNull('righe_fattura.immobile_id');
@@ -59,6 +73,8 @@ class FetchFattureStraordinarieController extends Controller
                 ->where('fatture_passive.esercizio_id', $esercizioId)
                 ->where('fatture_passive.is_pregresso', true)
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+                // Stesso filtro della 1a, stessa ragione: vedi il commento lì sopra.
+                ->where('fatture_passive.stato_pagamento', '!=', 'stornata')
                 ->where('fattura_coperture.tipo_copertura', 'sopravvenienza')
                 ->select(
                     'fatture_passive.id',

@@ -18,9 +18,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from '@/components/ui/empty';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft, ReceiptText } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -1014,25 +1015,71 @@ const submit = () => {
         </Card>
 
         <Card v-if="form.tipo === 'straordinario'" class="border-dashed border-amber-200 shadow-sm bg-amber-50/30">
-          <CardHeader class="pb-3 border-b border-amber-200/50 border-dashed mb-4">
+          <!--
+            ⚠️ **A carrello vuoto la card perde l'intestazione, e resta un riquadro solo.**
+            Non è il caso generale: l'intestazione è il segnaposto della sezione mentre si
+            scorre un modulo lungo, e negli altri due stati resta. Ma quando la gestione è
+            scelta e non c'è niente da ripartire, dentro la card vive **una frase sola** che
+            si spiega da sé — e sopra quella frase il titolo più la sua descrizione erano
+            due righe di preambolo per un contenuto di due righe.
+          -->
+          <CardHeader
+            v-if="isLoadingFatture || !form.gestione_id || fattureStraordinarie.length > 0"
+            class="pb-3 border-b border-amber-200/50 border-dashed mb-4"
+          >
             <CardTitle class="text-base font-semibold text-amber-900 flex items-center gap-2">
               <AlertTriangle class="w-5 h-5 text-amber-500" /> Il carrello delle fatture
             </CardTitle>
-            <CardDescription class="text-amber-700">Seleziona le fatture impreviste o ad personam da finanziare con questo piano.</CardDescription>
+            <!--
+              Descrive, non comanda. «Seleziona le fatture...» era un ordine impartito anche
+              nei due stati in cui non c'è niente da selezionare — la gestione non ancora
+              scelta, e la gestione senza fatture fuori preventivo — ed è quello che faceva
+              sembrare l'intestazione staccata dal corpo. L'invito a scegliere vive dove
+              scegliere si può: nell'elenco, che ha le caselle e il totale.
+            -->
+            <CardDescription class="text-amber-700">Le fatture impreviste o ad personam che questo piano può finanziare.</CardDescription>
           </CardHeader>
           <CardContent class="space-y-6">
             
+            <!--
+              ⚠️ **I commenti stanno QUI, sopra la catena, e non fra un ramo e l'altro.**
+              Vue tollera **un** nodo commento fra `v-if` e `v-else-if`, non due: con due
+              consecutivi la catena si spezza in silenzio, il corpo della card resta vuoto
+              e non c'è nessun errore in console. Misurato a video su questa stessa card.
+
+              Sui tre stati, che non hanno lo stesso peso:
+
+              - **«non hai ancora scelto»** è un'attesa, non un vuoto. La card «Saldi
+                pregressi», un dito più su, dice già questa identica cosa con una nota in
+                linea: darle qui uno stato vuoto centrato faceva parlare due riquadri
+                adiacenti in due lingue diverse per la stessa attesa.
+              - **«non c'è niente»** è il vuoto vero, e si prende lo stato grande — ma
+                **senza un titolo proprio**: la card ne ha già uno tre righe più su, e due
+                titoli in colonna si facevano concorrenza invece di leggersi insieme. Il
+                corpo **continua** l'intestazione — il fatto, poi la via d'uscita — invece
+                di ripeterla: «fatture impreviste o ad personam» sta già nella descrizione
+                della card, e ridirlo qui era ciò che faceva sembrare le due metà sconnesse.
+            -->
             <div v-if="isLoadingFatture" class="flex justify-center py-8 text-amber-600 gap-3">
               <LoaderCircle class="w-5 h-5 animate-spin" /><span>Ricerca fatture impreviste in corso...</span>
             </div>
             
-            <div v-else-if="!form.gestione_id" class="text-center py-8 text-slate-500 text-sm">
-              Seleziona prima una gestione contabile.
-            </div>
+            <p v-else-if="!form.gestione_id" class="flex items-start gap-2 text-sm text-amber-700/80">
+              <Info class="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+              <span>Scegli la gestione di riferimento qui sopra: le fatture fuori preventivo da ripartire compariranno qui.</span>
+            </p>
 
-            <div v-else-if="fattureStraordinarie.length === 0" class="text-center py-8 text-slate-500 text-sm">
-              Nessuna fattura straordinaria da finanziare in questa gestione.
-            </div>
+            <Empty v-else-if="fattureStraordinarie.length === 0" class="px-6 py-6 md:py-8">
+              <EmptyHeader class="max-w-md gap-3">
+                <EmptyMedia variant="icon" class="bg-amber-100/60 text-amber-600">
+                  <ReceiptText class="w-6 h-6" />
+                </EmptyMedia>
+                <EmptyDescription class="text-amber-800">
+                  Questa gestione non ha fatture fuori preventivo da ripartire.
+                  <span class="block mt-1 text-amber-700/70">Registrane una fra le fatture passive, oppure scegli un'altra gestione.</span>
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
 
             <div v-else class="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-sm">
               <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex justify-between items-center">
@@ -1064,7 +1111,22 @@ const submit = () => {
               </div>
             </div>
 
-            <div class="bg-white border border-amber-200 rounded-xl p-5 space-y-4">
+            <!--
+              ⚠️ **Lo scudo legale compare solo quando c'è qualcosa da autorizzare.**
+              È `required_if:tipo,straordinario` in `CreatePianoRateRequest:36-37`, quindi il
+              modulo lo pretendeva anche a carrello vuoto — ma lo stesso request rifiuta il
+              piano con «Devi selezionare almeno una fattura per creare un piano
+              straordinario» (:26-30). A carrello vuoto chiedeva dunque di giustificare una
+              spesa che non esiste, per un piano che non può nascere.
+
+              ⚠️ **La card, invece, resta.** Nasconderla toglierebbe l'unica cosa a schermo
+              che spiega perché il salvataggio fallirà: si compilerebbe tutto il modulo per
+              prendersi quell'errore alla fine, arrivato dal nulla.
+
+              I valori già scritti non vengono azzerati: cambiando di nuovo gestione il
+              riquadro riappare con dentro quello che l'amministratore aveva battuto.
+            -->
+            <div v-if="fattureStraordinarie.length > 0" class="bg-white border border-amber-200 rounded-xl p-5 space-y-4">
               <h4 class="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Info class="w-4 h-4 text-amber-500" /> Scudo Legale (Obbligatorio)
               </h4>

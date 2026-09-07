@@ -546,3 +546,61 @@ test('lo storno di una fattura pregressa genera una nota di credito del suo impo
     expect((int) DB::table('righe_scritture')->whereIn('scrittura_id', $righeNc)->sum('importo'))
         ->toBeGreaterThan(0, 'Lo storno non ha scritto nulla a giornale');
 });
+
+/**
+ * ⚠️ **Il carrello dello straordinario continuava a offrire una fattura stornata.**
+ *
+ * Nessuna delle due query di `FetchFattureStraordinarieController` escludeva le stornate.
+ * Misurato sulla rotta vera, prima della correzione: stornata una pregressa da € 610,00, il
+ * carrello la elencava identica — `residuo_da_finanziare: 610`, `importo_suggerito: 610` — e
+ * generando il piano su quella riga i soldi venivano **addebitati ai proprietari per un
+ * documento annullato** (€ 1.000,00 su un proprietario, nella misura del revisore).
+ *
+ * ⚠️ **Il ramo `stato_pagamento` era già lì e non veniva letto**: lo storno imposta
+ * `stato_pagamento = stornata`, quindi il dato per escluderla esisteva da sempre.
+ *
+ * ⚠️ **Il controllo PRIMA non è decorazione.** Senza di esso il test sarebbe verde anche con un
+ * carrello rotto che non offre nulla a nessuno — cioè proverebbe la correzione con lo stesso
+ * silenzio che un difetto peggiore produrrebbe.
+ *
+ * Difetto preesistente alla beta.22, chiuso lì su decisione di Vincenzo: la beta rende lo storno
+ * di una pregressa capace di azzerare il capitolo che aveva inventato, e annunciarlo lasciando il
+ * carrello a chiedere quei soldi sarebbe stato vero a metà proprio sul denaro.
+ */
+test('una pregressa stornata sparisce dal carrello dello straordinario', function () {
+    $permesso = Spatie\Permission\Models\Permission::firstOrCreate(
+        ['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']
+    );
+    $ruolo = Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo($permesso);
+    $utente = App\Models\User::factory()->create();
+    $utente->assignRole($ruolo);
+
+    $base      = baseStraordinario();
+    $pregressa = registraPregresso($base);
+
+    $url = route('admin.gestionale.fetch-fatture-straordinarie', $base['condominio']->id)
+        .'?esercizio_id='.$base['esercizio']->id
+        .'&gestione_id='.$base['gestione']->id;
+
+    // PRIMA: il carrello la offre davvero. Senza questa riga il test non prova niente.
+    $prima = test()->actingAs($utente)->getJson($url)->assertOk()->json();
+    // ⚠️ `toContain()` è variadico: passargli un messaggio lo trasforma in un secondo elemento
+    // da cercare, e il test fallisce dicendo il falso. Qui serve una forma che il messaggio lo
+    // accetti davvero.
+    $idPrima = collect($prima)->pluck('id')->all();
+    expect(in_array($pregressa->id, $idPrima, true))
+        ->toBeTrue('il carrello non offriva la fattura nemmeno prima: lo scenario non è quello che credo');
+
+    test()->actingAs($utente)->post(
+        route('admin.gestionale.fatture.storno', [$base['condominio']->id, $pregressa->id])
+    )->assertSessionHasNoErrors();
+
+    expect($pregressa->fresh()->stato_pagamento->value)->toBe('stornata', 'lo storno non è avvenuto');
+
+    // DOPO: non deve più comparire, a nessun importo.
+    $dopo = test()->actingAs($utente)->getJson($url)->assertOk()->json();
+    $idDopo = collect($dopo)->pluck('id')->all();
+    expect(in_array($pregressa->id, $idDopo, true))
+        ->toBeFalse('il carrello offre ancora una fattura annullata: generando il piano quei soldi finiscono addosso ai proprietari');
+});

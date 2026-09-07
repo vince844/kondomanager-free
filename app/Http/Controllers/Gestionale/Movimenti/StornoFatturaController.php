@@ -217,10 +217,18 @@ class StornoFatturaController extends Controller
                 // --- INIZIO FIX: RIMBORSO FONDO E COPERTURE ---
                 // Passiamo le stesse coperture. Il Service, essendo una Nota di Credito, 
                 // invertirà il DARE/AVERE rimborsando automaticamente il Fondo Riserva!
+                // ⚠️ **`conto_id` viaggia col proprio nome, oltre che dentro `fonte_id`.**
+                // `fonte_id` appiattisce tre campi diversi — saldo, conto, fondo — in uno solo, e a
+                // valle non è più possibile sapere quale dei tre fosse. Per una copertura di
+                // **sopravvenienza** quel campo è il **capitolo di spesa** che la fattura pregressa
+                // ha fatto creare, e serve per scriverne la contropartita sul mastro giusto: senza,
+                // il costo di quel capitolo sopravviveva allo storno e continuava a ripartirsi ai
+                // condòmini per un documento annullato. Coda 145.
                 'coperture' => $fattura->coperture->map(fn($c) => [
                     'tipo_copertura' => $c->tipo_copertura,
                     'importo'        => abs($c->importo / 100),
-                    'fonte_id'       => $c->saldo_id ?? $c->conto_id ?? $c->fondo_id
+                    'fonte_id'       => $c->saldo_id ?? $c->conto_id ?? $c->fondo_id,
+                    'conto_id'       => $c->conto_id,
                 ])->toArray(),
                 // --- FINE FIX ---
 
@@ -271,6 +279,48 @@ class StornoFatturaController extends Controller
                 if ($contoDaRipristinare) {
                     $contoDaRipristinare->importo = (int) $bump['importo_precedente_cents'];
                     $contoDaRipristinare->save();
+                }
+            }
+
+            // ⚠️ **E il capitolo che la fattura si era INVENTATA torna a zero anche come fabbisogno.**
+            //
+            // Il blocco qui sopra ripristina i capitoli che la fattura aveva solo *alzato*. Un
+            // capitolo di sopravvenienza invece la fattura lo **crea**, con
+            // `creaContoDinamicoSopravvenienza()`, e gli scrive dentro `importo = importoCent`:
+            // per quello il valore precedente è zero, e nessun `rata_integrativa_bump` lo nomina.
+            //
+            // 📏 **Misurato a video sulla beta.22**, dopo la correzione del giornale: il consuntivo
+            // della voce tornava a «—» e il totale calava di € 610,00, ma `conti.importo` restava
+            // 61000 e l'intestazione del piano dei conti continuava a dire «Sopravvenienze:
+            // € 610,00». La scheda della Coda 145 nominava **due** misure — `SpesaPerVoceService`
+            // e `conti.importo` — e la correzione del giornale ne chiudeva una sola.
+            //
+            // ⚠️ **Qui il ricalcolo è giusto, al contrario del blocco sopra.** Lì si ripristina il
+            // valore esatto perché un budget più alto può essere stato **deliberato in assemblea** e
+            // ricalcolarlo dallo speso lo cancellerebbe. Un capitolo di sopravvenienza non è mai
+            // stato deliberato: nasce dalla fattura e vale quanto quella fattura. Se sopra non è
+            // rimasto nulla, non vale più niente.
+            //
+            // La guardia è la misura, non la fiducia: si azzera solo se sul capitolo **non resta
+            // costo a giornale**, perché un'altra fattura può esservi stata addebitata dopo.
+            foreach ($fattura->coperture as $coperturaOriginale) {
+                if ($coperturaOriginale->tipo_copertura !== 'sopravvenienza' || ! $coperturaOriginale->conto_id) {
+                    continue;
+                }
+
+                $costoResiduo = (int) DB::table('righe_scritture')
+                    ->where('voce_spesa_id', $coperturaOriginale->conto_id)
+                    ->selectRaw("COALESCE(SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE -importo END), 0) as saldo")
+                    ->value('saldo');
+
+                if ($costoResiduo !== 0) {
+                    continue;
+                }
+
+                $capitoloInventato = Conto::lockForUpdate()->find($coperturaOriginale->conto_id);
+                if ($capitoloInventato) {
+                    $capitoloInventato->importo = 0;
+                    $capitoloInventato->save();
                 }
             }
 

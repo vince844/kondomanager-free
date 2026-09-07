@@ -387,6 +387,25 @@ class FatturaPassivaService
                         'nota_amministratore' => $copertura['nota_amministratore'] ?? null,
                     ]);
                 }
+
+                // ⚠️ **Il riferimento va sciolto, e non è pedanteria: senza, la fattura non si
+                // storna.** `foreach (... as &$copertura)` lascia `$copertura` legato all'ULTIMO
+                // elemento dell'array. Il ciclo più sotto (riga ~459) itera lo stesso array **per
+                // valore** e riusa lo stesso nome: a ogni giro riscrive quell'ultimo elemento,
+                // quindi con **due** coperture l'ultima viene letta come duplicato della penultima.
+                //
+                // 📏 **Misurato**: una pregressa da € 610,00 parzialmente coperta (rata_0 € 200,00
+                // + sopravvenienza € 410,00) veniva percorsa come `rata_0 | rata_0`. Il ramo della
+                // sopravvenienza non veniva mai raggiunto e lo storno moriva con «Sbilancio
+                // rilevato tra DARE (€ 610,00) e AVERE (€ 400,00)» — cioè 2 × 200. La fattura
+                // restava viva e il capitolo inventato continuava a pesare sul rendiconto.
+                //
+                // ⚠️ **Difetto preesistente, non introdotto dalla beta.22** — quella pregressa non
+                // è mai stata stornabile. Ma è ciò che rendeva **irraggiungibile** la correzione
+                // della Coda 145 proprio nello scenario che quella coda nomina: importo che supera
+                // il debito storico dichiarato, cioè due coperture. Trovato dalla Fase 1-bis della
+                // beta.22, da quattro lenti indipendenti.
+                unset($copertura);
             }
 
             // $totaleDoc è già assoluto
@@ -472,6 +491,43 @@ class FatturaPassivaService
                                 'importo' => abs($importoCoperturaCents),
                                 'note' => 'Debito pregresso con copertura da fondo (in attesa di giroconto di conferma)',
                             ]);
+                        } elseif ($copertura['tipo_copertura'] === 'sopravvenienza' && ! empty($copertura['conto_id'])) {
+                            // ⚠️ **Coda 145 — una copertura di sopravvenienza non è una copertura
+                            // da rata zero, e finire in `$totaleRata0` le faceva perdere la strada
+                            // di casa.** La fattura che l'ha generata ha scritto DARE sul mastro del
+                            // capitolo dinamico **con `voce_spesa_id`** (più sotto, ramo
+                            // `$eccedenzaCents`): è quell'etichetta che porta il costo dentro
+                            // `SpesaPerVoceService`, e da lì al piano dei conti, al dettaglio voce,
+                            // al drill-down, al PDF della distinta e al cruscotto — cinque posti,
+                            // mappati in `docs/catene_fra_moduli.md` riga 181.
+                            //
+                            // Sommandola a `$totaleRata0` la contropartita veniva scritta, ma su
+                            // `passate_gestioni` e **senza `voce_spesa_id`**: il costo sul capitolo
+                            // non si azzerava mai, e `passate_gestioni` riceveva un movimento che
+                            // nessuno aveva messo dall'altra parte. Le due scritture quadravano
+                            // ciascuna per sé, quindi `DoubleEntryValidator` taceva — la firma
+                            // «quadra lo stesso» che la beta.20 ha imparato a riconoscere.
+                            //
+                            // Adesso la contropartita torna **sullo stesso mastro e con lo stesso
+                            // `voce_spesa_id`** dell'originale: `SpesaPerVoceService` legge dal
+                            // giornale, quindi il costo si azzera da sé e tutti e cinque i posti a
+                            // valle tornano a posto senza che nessuno li tocchi. È anche ciò che il
+                            // docblock di quel servizio **afferma già** — «uno storno azzera».
+                            $contoSopravvenienza = Conto::find($copertura['conto_id']);
+
+                            if ($contoSopravvenienza && $contoSopravvenienza->conto_contabile_id) {
+                                $scrittura->righe()->create([
+                                    'conto_contabile_id' => $contoSopravvenienza->conto_contabile_id,
+                                    'tipo_riga' => 'dare',
+                                    'importo' => abs($importoCoperturaCents),
+                                    'voce_spesa_id' => $contoSopravvenienza->id,
+                                    'note' => 'Storno della sopravvenienza passiva: annulla il costo sul capitolo generato dalla fattura pregressa',
+                                ]);
+                            } else {
+                                // Senza il mastro non si può scrivere la contropartita giusta: si
+                                // torna al comportamento vecchio invece di perdere la riga.
+                                $totaleRata0 += $importoCoperturaCents;
+                            }
                         } else {
                             $totaleRata0 += $importoCoperturaCents;
                         }

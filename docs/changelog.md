@@ -7,6 +7,71 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.22] - Il Capitolo Che Sopravviveva Allo Storno
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova, nessun conto contabile nuovo.
+
+Quando una fattura arriva dopo la chiusura dell'esercizio, il programma non ha un capitolo dove
+metterla — quell'anno è chiuso — e allora ne **crea uno apposta**, chiedendo prima
+all'amministratore la motivazione legale. È il meccanismo della sopravvenienza passiva, ed è
+corretto: la spesa esiste, e va scritta da qualche parte.
+
+Stornando quella fattura, però, il capitolo **restava in piedi con il suo importo**. La contropartita
+dello storno finiva su `passate_gestioni` e senza l'etichetta della voce di spesa, quindi il costo
+non tornava mai indietro da dove era venuto: il piano dei conti, il dettaglio della voce e il
+rendiconto continuavano a mostrare una spesa che nessun documento giustificava più. Da questa
+versione lo storno la annulla **sullo stesso capitolo e con la stessa etichetta** con cui era stata
+scritta, e i due movimenti si elidono.
+
+⚠️ **E il capitolo smette anche di chiedere quei soldi.** Oltre al costo a consuntivo, quel capitolo
+portava un **fabbisogno** pari all'importo della fattura: nel piano dei conti restava una riga da
+€ 610,00 di preventivo per un documento annullato, e l'intestazione continuava a sommarla fra le
+sopravvenienze. Adesso lo storno azzera anche quello. La voce **resta visibile, a zero**: non viene
+cancellata, perché la traccia di cosa è successo deve restare consultabile.
+
+*(Questo secondo pezzo non l'hanno trovato i test: è emerso guardando la pagina, dopo che i test
+erano già verdi.)*
+
+### E due difetti che stavano sulla stessa strada
+
+⚠️ **Una pregressa coperta in parte non si poteva stornare affatto.** Quando l'importo supera il
+debito storico dichiarato, la copertura viene divisa in due — una parte a rata zero, il resto come
+sopravvenienza. In quel caso lo storno si interrompeva con un errore di quadratura e non succedeva
+niente: il documento restava vivo e l'amministratore non aveva modo di annullarlo. Il difetto
+**precede questa versione di diverse beta**, ma rendeva irraggiungibile proprio la correzione qui
+sopra, nello scenario che la descrive.
+
+⚠️ **Il piano rate straordinario continuava a proporre le fatture stornate.** Il carrello da cui si
+scelgono le spese da ripartire le offriva col loro importo pieno, già suggerito. Selezionandole,
+quei soldi venivano **addebitati ai proprietari per un documento che non esiste più**. La mancanza
+era su entrambe le liste del carrello, quindi la correzione vale anche per le fatture straordinarie
+dell'anno in corso.
+
+⚠️ **Gli importi già registrati non cambiano.** Nessuna scrittura esistente viene riscritta: ciò che
+è a bilancio oggi resta identico.
+
+### E il carrello, quando è vuoto, dice cosa fare
+
+Solo grafica, sulla stessa card. Quando non c'era niente da ripartire, il carrello mostrava una riga
+di testo sospesa in un riquadro vuoto. Adesso spiega **perché** è vuoto e **cosa fare** — registrare
+una fattura fuori preventivo, oppure scegliere un'altra gestione. E quando la gestione non è ancora
+stata scelta usa la **stessa nota** del riquadro dei saldi pregressi lì sopra, che dice già la stessa
+identica cosa: due riquadri adiacenti non devono parlare due lingue diverse per la stessa attesa.
+
+E l'intestazione della card **descrive invece di ordinare**: diceva «seleziona le fatture impreviste o
+ad personam» anche nei due stati in cui non c'è niente da selezionare — ed era quello, più del resto,
+a farla sembrare staccata da ciò che stava sotto.
+
+⚠️ **E lo «scudo legale» compare solo quando c'è una fattura da autorizzare.** Il riquadro che chiede
+il tipo di autorizzazione e gli estremi del verbale restava lì anche a carrello vuoto: chiedeva la
+delibera di una spesa che non esiste, per un piano che il programma **rifiuta comunque** — senza
+almeno una fattura selezionata un piano straordinario non si può creare. La card, invece, resta
+visibile: è l'unica cosa a schermo che spiega perché il salvataggio non andrebbe a buon fine. In quello
+stato la card perde però la propria **intestazione**: sopra una frase di due righe, un titolo più la
+sua descrizione erano più preambolo che contenuto. Resta un riquadro solo, che si spiega da sé.
+
+---
+
 ## [1.11.0-beta.21] - La Nota Che Sembrava Un Buco
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
