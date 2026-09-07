@@ -1969,3 +1969,59 @@ describe('Coda 130 — il flag non si nasconde, si spegne', () => {
         expect(vm.form.righe[0].is_sopravvenienza).toBe(true);
     });
 });
+
+describe('Coda 129 — una nota di credito di un esercizio chiuso non è una spesa imprevista', () => {
+    // ⚠️ **Queste tre prove nascono da una lacuna, non dalla correzione.** La beta.21 aveva
+    // chiuso due cancelli nel modulo e nessuno li presidiava: la Fase 1-bis li ha rimessi alla
+    // forma vecchia e la suite è rimasta verde su 129 test. Il difetto della Coda 129 l'ammini-
+    // stratore lo incontra **qui**, nel modulo che gli chiede la motivazione legale di una spesa
+    // imprevista su una nota di credito — non nel servizio.
+    function pregressaDaNotaDiCredito(wrapper: ReturnType<typeof render>) {
+        const vm = wrapper.vm as any;
+        vm.form.tipo_documento = 'nota_credito';
+        vm.form.is_pregresso = true;
+        vm.form.imponibile_pregresso = 500;
+        vm.form.aliquota_iva_pregressa = 22;
+        return vm;
+    }
+
+    test('l’eccedenza di una nota di credito pregressa è zero, non l’importo pieno', async () => {
+        // Il totale documento è senza segno: senza la guardia l'eccedenza valeva € 610,00 pieni.
+        const wrapper = render();
+        const vm = pregressaDaNotaDiCredito(wrapper);
+        await wrapper.vm.$nextTick();
+
+        expect(vm.eccedenzaPregressaCents).toBe(0);
+    });
+
+    test('il salvataggio non chiede la motivazione di uno sforo che non esiste', async () => {
+        const wrapper = render();
+        const vm = pregressaDaNotaDiCredito(wrapper);
+        await wrapper.vm.$nextTick();
+
+        vm.handleSubmit();
+        await wrapper.vm.$nextTick();
+
+        expect(vm.showSpesaImprevistaModal).toBe(false);
+    });
+
+    test('su una FATTURA pregressa scoperta la motivazione viene ancora chiesta', async () => {
+        // ⚠️ Il controesempio che tiene stretta la correzione: se la guardia si allargasse, una
+        // spesa imprevista di un esercizio chiuso entrerebbe senza che nessuno la giustifichi.
+        const wrapper = render();
+        const vm = wrapper.vm as any;
+        vm.form.tipo_documento = 'fattura';
+        vm.form.is_pregresso = true;
+        vm.form.imponibile_pregresso = 500;
+        vm.form.aliquota_iva_pregressa = 22;
+        await wrapper.vm.$nextTick();
+
+        expect(vm.eccedenzaPregressaCents).toBeGreaterThan(0);
+
+        vm.handleSubmit();
+        await wrapper.vm.$nextTick();
+
+        expect(vm.showSpesaImprevistaModal).toBe(true);
+        expect(vm.spesaImprevistaMode).toBe('pregressa');
+    });
+});

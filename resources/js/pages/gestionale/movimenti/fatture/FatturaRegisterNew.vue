@@ -1606,6 +1606,21 @@ const totaleCopertoPregressoCents = computed(() => {
 
 const eccedenzaPregressaCents = computed(() => {
     if (!form.is_pregresso) return 0;
+
+    // ⚠️ **Una nota di credito pregressa non ha nessuna eccedenza da giustificare.**
+    // Il ramo pregresso si accende sulla sola DATA — il watch guarda `data_documento` contro
+    // l'inizio esercizio e non il tipo documento — quindi una nota datata in un esercizio chiuso
+    // ci finiva dentro, e da lì `totale_documento_cents` (che è senza segno) la faceva sembrare
+    // un debito scoperto: il modulo chiedeva la motivazione legale di una **spesa imprevista** su
+    // un documento che le risorse le libera, e compilandola il server creava un capitolo di costo
+    // e una copertura `sopravvenienza`. Coda 129.
+    //
+    // ⚠️ **Il segno a bilancio era già giusto** (`FatturaPassivaService` applica il moltiplicatore
+    // −1 ai totali anche sul ramo pregresso): il difetto stava tutto nei cancelli che vengono
+    // prima. La correzione toglie tre comportamenti e non ne introduce nessuno — in particolare
+    // nessun conto «sopravvenienze attive», che `docs/pagamenti_fatture.md` ha deliberatamente
+    // rimandato alla 1.17.
+    if (isNotaCredito.value) return 0;
     const eccedenza = totali.value.totale_documento_cents - totaleCopertoPregressoCents.value;
     return eccedenza > 1 ? eccedenza : 0;
 });
@@ -1639,7 +1654,9 @@ const handleSubmit = () => {
     }
 
     // 2. Eccedenza PREGRESSA (Scenario C — fattura > coperture dichiarate)
-    if (form.is_pregresso && eccedenzaPregressaCents.value > 0 && !form.dati_extra.log_legale_sopravvenienza) {
+    // La guardia sta anche qui, non solo nel computed: la beta.20 ha già pagato due volte il
+    // prezzo di chiudere una porta e lasciarne aperta un'altra sullo stesso stato.
+    if (!isNotaCredito.value && form.is_pregresso && eccedenzaPregressaCents.value > 0 && !form.dati_extra.log_legale_sopravvenienza) {
         spesaImprevistaMode.value = 'pregressa';
         showSpesaImprevistaModal.value = true;
         return;
@@ -2656,6 +2673,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                             :capienza-rata-zero="capienza_rata_zero"
                             :incassato-rata-zero="incassato_rata_zero"
                             :totale-fattura-lordo-cents="totali.totale_documento_cents"
+                                    :is-nota-credito="isNotaCredito"
                             :bank-forecast="bankForecast" />
                     </div>
 

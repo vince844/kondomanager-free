@@ -24,6 +24,14 @@ const props = defineProps<{
     incassatoRataZero: number;
     /** Lordo del documento in CENTESIMI: arriva già arrotondato da calcolaTotali(). */
     totaleFatturaLordoCents: number;
+    /**
+     * ⚠️ **Il tipo di documento, e serve.** Questo pannello è il quarto lettore di `is_pregresso`
+     * che non lo guardava, ed è quello che l'amministratore vede davvero: il ramo pregresso si
+     * accende sulla sola data, quindi una nota di credito datata in un esercizio chiuso finiva
+     * qui e veniva mostrata come **scoperto** — col semaforo arancione e la promessa di un
+     * assistente fiscale che, dalla beta.21, non si apre più. Coda 129.
+     */
+    isNotaCredito?: boolean;
     bankForecast: { attuale_cents: number, post_cents: number, isRed: boolean } | null; 
     fatturePregresseRegistrate: any[];
 }>();
@@ -46,6 +54,10 @@ const fatturePregresseFornitore = computed(() => {
 const fatturaCents = computed(() => props.totaleFatturaLordoCents);
 
 const scopertoAttualeCents = computed(() => {
+    // ⚠️ **Una nota di credito non è mai scoperta: porta risorse, non le consuma.**
+    // Senza questa riga il pannello mostrava l'importo pieno della nota come scoperto da coprire.
+    if (props.isNotaCredito) return 0;
+
     const disponibileCents = debitoSelezionato.value?.importo_disponibile || 0;
 
     // Rimuoviamo la logica delle coperture extra dal calcolo dello scoperto

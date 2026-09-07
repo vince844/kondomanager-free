@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Gestionale\FatturaPassivaService;
+use Illuminate\Support\Facades\DB;
 
 uses(Illuminate\Foundation\Testing\RefreshDatabase::class);
 
@@ -347,4 +348,109 @@ it('la rinuncia è per gruppo: toccare il 22 % non disturba il gruppo a zero', f
     expect($perDescrizione['Spesa per la materia gas naturale'])->toBe(152);
     // Il 10 % tiene l'imposta dichiarata — 10,05 distribuiti 60/40, non 10,00 ricalcolati.
     expect($perDescrizione['Voce al 10%'] + $perDescrizione['Altra voce al 10%'])->toBe(1005);
+});
+
+/** Il mastro che il ramo pregresso pretende, e che `setupEcosistemaLifecycle()` non crea. */
+function creaMastroPassateGestioni(int $condominioId): void
+{
+    DB::table('conti_contabili')->insert([
+        'condominio_id' => $condominioId, 'ruolo' => 'passate_gestioni', 'codice' => 'PASS-GEST',
+        'nome' => 'Passate gestioni', 'tipo' => 'passivo', 'categoria' => 'debiti',
+        'attivo' => true, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+}
+
+/**
+ * ⚠️ **Coda 129 — una nota di credito di un esercizio chiuso non è una spesa imprevista.**
+ *
+ * Il ramo del debito pregresso si accende sulla sola **data**: una nota di credito datata prima
+ * dell'inizio esercizio ci finisce dentro, e da lì il totale — che è senza segno — la faceva
+ * sembrare un debito scoperto. Il modulo chiedeva la motivazione legale di una spesa imprevista, e
+ * compilandola il servizio creava un **capitolo di costo dinamico** e una copertura
+ * `sopravvenienza`: un costo inventato per registrare un provento.
+ *
+ * ⚠️ **Il segno a bilancio era già corretto** — `FatturaPassivaService` applica il moltiplicatore
+ * −1 ai totali anche sul ramo pregresso — quindi la correzione **toglie** tre comportamenti e non
+ * ne introduce nessuno. In particolare non introduce il conto «sopravvenienze attive», che
+ * `docs/pagamenti_fatture.md` ha deliberatamente rimandato alla 1.17.
+ */
+it('una nota di credito pregressa si registra come credito, senza capitoli inventati', function () {
+    $ctx = setupEcosistemaLifecycle();
+    [$condominio, $esercizio, $gestione, $fornitore] = $ctx;
+
+    creaMastroPassateGestioni($condominio->id);
+    $contiPrima = DB::table('conti')->count();
+
+    $fattura = app(FatturaPassivaService::class)->registraFattura([
+        'fornitore_id' => $fornitore->id,
+        'esercizio_id' => $esercizio->id,
+        'gestione_id' => $gestione->id,
+        'tipo_documento' => 'nota_credito',
+        'numero_documento' => 'NC-PREGRESSA-129',
+        'data_documento' => '2025-11-30',          // esercizio precedente, già chiuso
+        'data_scadenza' => '2025-12-31',
+        'modalita_pagamento' => 'bonifico',
+        'applica_ritenuta' => false,
+        'is_pregresso' => true,
+        'imponibile_pregresso' => 500.00,
+        'aliquota_iva_pregressa' => 22,
+        // ⚠️ **La motivazione VIENE passata, ed è il punto.** Lo scenario vero è quello in cui
+        // l'amministratore la compila, perché il modulo gliel'ha chiesta: è così che il difetto
+        // arrivava a giornale. Senza questo campo il ramo non verrebbe raggiunto comunque, e il
+        // test resterebbe verde anche togliendo la guardia — verificato mutando il servizio.
+        // La pretesa è che una nota di credito non prenda quella strada **nemmeno se il payload
+        // porta la motivazione**: il segno del documento vince sul campo.
+        'dati_extra' => [
+            'fiscal' => [], 'competenza' => null, 'override_budget' => null,
+            'log_legale_sopravvenienza' => ['motivazione' => 'Compilata perché il modulo l’ha chiesta'],
+        ],
+        'righe' => [],
+    ], $condominio->id);
+
+    // ① Si registra come CREDITO: il segno lo mette il tipo di documento, e lo faceva già.
+    expect($fattura->importo_imponibile)->toBe(-50_000)
+        ->and($fattura->importo_iva)->toBe(-11_000)
+        ->and($fattura->totale_documento)->toBe(-61_000);
+
+    // ② Nessun capitolo di spesa inventato per ospitare un provento.
+    expect(DB::table('conti')->count())->toBe($contiPrima, 'è stato creato un capitolo dinamico');
+
+    // ③ Nessuna copertura `sopravvenienza`: non copre niente, e su una nota avrebbe segno negativo.
+    expect($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->count())->toBe(0);
+});
+
+it('una FATTURA pregressa scoperta chiede ancora la motivazione: la protezione non si allarga', function () {
+    // ⚠️ Il controesempio, ed è quello che dà senso al test sopra: se la guardia avesse spento il
+    // cancello per tutti, una spesa imprevista di un esercizio chiuso entrerebbe senza che nessuno
+    // la giustifichi — cioè si romperebbe la funzione che quel cancello esiste per proteggere.
+    $ctx = setupEcosistemaLifecycle();
+    [$condominio, $esercizio, $gestione, $fornitore] = $ctx;
+
+    creaMastroPassateGestioni($condominio->id);
+    $contiPrima = DB::table('conti')->count();
+
+    app(FatturaPassivaService::class)->registraFattura([
+        'fornitore_id' => $fornitore->id,
+        'esercizio_id' => $esercizio->id,
+        'gestione_id' => $gestione->id,
+        'tipo_documento' => 'fattura',
+        'numero_documento' => 'FT-PREGRESSA-129',
+        'data_documento' => '2025-11-30',
+        'data_scadenza' => '2025-12-31',
+        'modalita_pagamento' => 'bonifico',
+        'applica_ritenuta' => false,
+        'is_pregresso' => true,
+        'imponibile_pregresso' => 500.00,
+        'aliquota_iva_pregressa' => 22,
+        'dati_extra' => [
+            'fiscal' => [],
+            'competenza' => null,
+            'override_budget' => null,
+            'log_legale_sopravvenienza' => ['motivazione' => 'Fattura emersa dopo la chiusura'],
+        ],
+        'righe' => [],
+    ], $condominio->id);
+
+    // Su una fattura il capitolo dinamico si crea ancora: è il comportamento voluto.
+    expect(DB::table('conti')->count())->toBeGreaterThan($contiPrima);
 });

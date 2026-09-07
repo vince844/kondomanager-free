@@ -393,7 +393,13 @@ class FatturaPassivaService
             $imponibileFatturaCents = abs($totaleDoc);
             $eccedenzaCents = $imponibileFatturaCents - $totaleCopertoPregresso;
 
-            if ($isPregresso && $eccedenzaCents > 0 && $logLegale) {
+            // ⚠️ **Terza porta, e la più importante: è questa che scrive a giornale.** Le due
+            // guardie del modulo impediscono di arrivarci, ma questo ramo gira su qualunque
+            // richiesta — costruita a mano o da un elenco che domani dimenticasse il filtro — e
+            // qui si crea un capitolo di spesa dinamico e una copertura `sopravvenienza` con
+            // importo negativo. Su una nota di credito è un costo inventato per registrare un
+            // provento. Coda 129.
+            if (! $isNotaCredito && $isPregresso && $eccedenzaCents > 0 && $logLegale) {
                 $nuovoContoIdPregresso = $this->creaContoDinamicoSopravvenienza(
                     $condominioId,
                     $data['gestione_id'],

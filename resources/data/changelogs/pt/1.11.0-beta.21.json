@@ -1,0 +1,8 @@
+{
+    "features": [
+        "UMA NOTA DE CRÉDITO DE UM ANO FECHADO JÁ NÃO É CONFUNDIDA COM UM DESCOBERTO — O programa reconhece os documentos de exercícios já fechados olhando só para a data, pelo que as notas de crédito também lá iam parar. A partir daí lia o valor sem sinal e concluía que havia um buraco a cobrir: pedia ao administrador a justificação legal de uma despesa imprevista, num documento que faz entrar dinheiro. Preenchendo-a, o programa criava mesmo um capítulo de despesa novo e uma cobertura em balanço — um custo inventado para registar um ganho.",
+        "O PAINEL DA DÍVIDA ANTERIOR JÁ NÃO PROMETE UMA AJUDA QUE NÃO CHEGA — Numa nota de crédito mostrava o valor total como descoberto, com o semáforo laranja e o anúncio de um assistente que ajudaria a justificá-lo. Agora indica zero, porque uma nota de crédito não tem nada a cobrir.",
+        "O VALOR REGISTADO NÃO MUDA, E JÁ ESTAVA CERTO — A nota de crédito de um exercício fechado era, e continua a ser, registada como crédito com valores negativos. Errado era só o que o programa fazia antes de lá chegar: esta versão retira quatro comportamentos e não introduz nenhum, incluindo nenhuma conta contabilística nova.",
+        "NUMA FATURA DE UM EXERCÍCIO FECHADO A JUSTIFICAÇÃO CONTINUA A SER PEDIDA — A proteção não se alargou: uma despesa imprevista que surge depois do fecho continua a exigir a justificação e o capítulo dedicado, que é o comportamento pretendido."
+    ]
+}

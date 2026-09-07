@@ -7,6 +7,51 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.21] - La Nota Che Sembrava Un Buco
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Una nota di credito che arriva da un fornitore e si riferisce a un anno già chiuso non è una brutta
+notizia: è denaro che torna. Il programma la trattava come il suo esatto contrario.
+
+Il ramo del **debito pregresso** si accende guardando solo la data: un documento datato prima
+dell'inizio dell'esercizio ci finisce dentro, che sia una fattura o una nota di credito. Da lì il
+programma leggeva l'importo **senza segno** e concludeva che ci fosse uno scoperto da coprire —
+quindi chiedeva all'amministratore la motivazione legale di una **spesa imprevista**, su un
+documento che le risorse le libera. E se la motivazione veniva compilata, creava per davvero un
+**capitolo di spesa nuovo** e una copertura a bilancio: un costo inventato per registrare un
+guadagno.
+
+Da questa versione non succede più, in nessuno dei quattro punti in cui poteva succedere: il calcolo
+dell'eccedenza, il controllo prima del salvataggio, il pannello che l'amministratore ha davanti, e
+il motore contabile — quest'ultimo anche se la richiesta arriva già compilata da fuori.
+
+⚠️ **L'importo registrato era già corretto** e non cambia: la nota si registrava, e si registra,
+come **credito** con gli importi negativi. Sbagliato era tutto ciò che veniva prima. Per questo la
+correzione **toglie** quattro comportamenti e non ne introduce nessuno — in particolare non
+introduce nessun conto contabile nuovo.
+
+### Il pannello diceva una cosa che non sarebbe più successa
+
+Il riquadro del debito pregresso mostrava la nota di credito come uno **scoperto** da coprire, col
+semaforo arancione e la promessa di un assistente che avrebbe aiutato a giustificarla. Chiuse le
+altre tre porte, quella promessa sarebbe rimasta lì senza che l'assistente si aprisse più: un
+messaggio sbagliato è meglio di un messaggio che promette qualcosa che non accade. Adesso il
+pannello dice zero, perché una nota di credito non ha niente da coprire.
+
+### Cosa ha trovato la revisione
+
+Nove rilievi proposti, tre confermati. Due riguardavano **questa correzione**: il pannello di cui
+sopra — la quarta porta, quella che l'amministratore guarda davvero — e il fatto che due delle
+correzioni non fossero protette da nessuna prova, dimostrato rimettendole com'erano e vedendo 129
+prove restare verdi.
+
+Il terzo non riguarda questa versione ed è più vecchio: stornando una fattura pregressa, il capitolo
+di spesa che quella fattura aveva fatto creare **non viene annullato**, e continua a pesare sul
+rendiconto per un documento che non esiste più. È stato riprodotto due volte e messo in programma
+per la versione successiva: tocca il libro giornale e la ripartizione, e questa versione era fatta
+di sole rimozioni.
+
 ## [1.11.0-beta.20] - Quello Che Quadrava Lo Stesso
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
