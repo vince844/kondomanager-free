@@ -1,0 +1,9 @@
+{
+    "features": [
+        "THE GENERAL LEDGER NOW READS LINE BY LINE — Clicking an entry's row opens its double-entry lines (account, debit, credit), the same table that used to live only in the detail view. This closes the misunderstanding the change was born from: the page showed a single total instead of the debit/credit breakdown, which is why the signs looked always positive.",
+        "THE GENERAL LEDGER CAN BE PRINTED — Line by line, in chronological form: date, protocol, account, debit, credit. The printout honours the same filters as the screen — period, status, movement type, searched text — and when any is active it declares them in a banner, with the total marked \"partial\": a document that may end up before an assembly or a court-appointed expert must not stay silent about its own scope.",
+        "THE PAGE DECLARES WHAT IT IS NOT — The General Ledger is the register of double-entry postings, not the cash register (income and expenses) required under art. 1130, paragraph 1, no. 7 of the Italian civil code, which is still to be built.",
+        "A LARGE PRINTOUT NO LONGER STALLS HALFWAY — A very active financial year could exhaust the server's memory while generating the PDF, with a fatal error leaving no trace in the logs. The table is now built in chunks, with the same look and a tenth of the memory; if a year is genuinely out of scale, the printout says so and asks to narrow the period instead of failing silently.",
+        "THREE SMALLER FIXES ON THE PRINTOUT — An invalid date filter value no longer crashes the printout; a multi-page document now identifies itself on every page, not just the first; a click near the detail button, without hitting it exactly, no longer opens the expansion panel instead."
+    ]
+}

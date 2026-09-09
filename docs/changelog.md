@@ -7,6 +7,56 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.23] - Il Giornale Che Ora Si Legge Riga Per Riga
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Un amministratore che tiene un corso di contabilità in partita doppia ha chiesto perché nel Libro
+Giornale i segni fossero sempre positivi, sia per i pagamenti che per i versamenti. La risposta
+immediata era corretta — il verso di una scrittura lo porta la colonna, dare o avere, non il segno
+— ma la domanda era il sintomo di un problema vero: un libro giornale è un documento **riga per
+riga**, e la nostra pagina era **scrittura per scrittura**, con una sola colonna «Importo» che
+sommava tutto insieme.
+
+**Ora un clic sulla riga apre le sue righe di partita doppia** — conto, dare, avere — la stessa
+tabella che prima viveva solo nel dettaglio. Chiude il malinteso senza far cambiare pagina.
+
+**E il Libro Giornale si stampa**, riga per riga, in forma cronologica classica: data, protocollo,
+conto, dare, avere — richiesto da un utente, non un'iniziativa nostra. La stampa rispetta gli
+stessi filtri della pagina, **tutti e cinque**: se l'amministratore ha già ristretto il periodo,
+lo stato, il tipo di movimento o cercato una causale, stampa solo quello — e lo dichiara in un
+riquadro, con il totale marcato «parziale», perché un documento che tace il proprio perimetro può
+finire in assemblea o davanti a un CTU con un numero che sembra completo e non lo è.
+
+⚠️ **La pagina dichiara anche cosa NON è.** Il Libro Giornale è il registro delle scritture in
+partita doppia — non è il registro di contabilità (entrate e uscite) che l'art. 1130, comma 1, n. 7
+c.c. impone. I due registri contengono righe diverse — un giroconto fra fondi, per dire, entra nel
+giornale ma non nel registro di legge — e non si possono fondere in una pagina sola. Quel secondo
+registro non esiste ancora: quando esisterà, questa pagina rimanderà lì per chi cerca entrate e
+uscite.
+
+### Una stampa grande non si blocca più a metà
+
+Misurato prima di prometterlo: un esercizio molto attivo può generare migliaia di righe, e mPDF
+tiene l'intera tabella in memoria per calcolare le colonne. Su un'installazione con la memoria
+tipica di questo prodotto, una tabella sola esauriva la memoria attorno alle mille righe — un
+volume che un condominio con bollette mensili e incassi rateali raggiunge da solo in un anno
+ordinario. L'esito non era un errore leggibile: era una pagina bianca, senza traccia nei log.
+
+La tabella ora si genera **a blocchi**: stesso aspetto, stesso tempo, un decimo della memoria. E
+quando un esercizio è davvero fuori scala, la stampa lo dice — chiede di restringere il periodo —
+invece di interrompersi in silenzio.
+
+### E alcune cose più piccole, trovate lungo la strada
+
+- Un valore di filtro non interpretabile nella data non manda più in errore la stampa: viene
+  trattato come «nessun filtro», la stessa tolleranza che l'elenco a schermo aveva già.
+- Un registro di più pagine ora si identifica su ognuna, non solo sulla prima.
+- Il clic vicino al pulsante di dettaglio, senza colpirlo esattamente, non apre più il pannello
+  al posto suo.
+
+---
+
 ## [1.11.0-beta.22] - Il Capitolo Che Sopravviveva Allo Storno
 
 **Non tocca il database:** nessuna migrazione, nessuna colonna nuova, nessun conto contabile nuovo.

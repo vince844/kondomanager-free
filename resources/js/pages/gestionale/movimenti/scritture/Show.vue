@@ -507,7 +507,7 @@ const confermaStorno = () => {
                                                 <span class="text-sm font-bold text-slate-800">
                                                     {{ riga.conto?.nome || 'Conto non specificato' }}
                                                 </span>
-                                                <span v-if="riga.conto?.codice" class="text-[10px] text-slate-400 font-mono">
+                                                <span v-if="riga.conto?.codice" class="text-[10px] text-slate-400 tabular-nums">
                                                     {{ riga.conto.codice }}
                                                 </span>
                                             </div>
@@ -525,8 +525,8 @@ const confermaStorno = () => {
                                                 <span v-if="riga.note" class="text-xs text-slate-400 italic">
                                                     {{ riga.note }}
                                                 </span>
-                                                <span v-if="!riga.cassa && !riga.voce_spesa && !riga.note" class="text-xs text-slate-300">
-                                                    —
+                                                <span v-if="!riga.cassa && !riga.voce_spesa && !riga.note" class="text-xs text-slate-400 italic">
+                                                    Nessun dettaglio aggiuntivo
                                                 </span>
                                             </div>
                                         </TableCell>

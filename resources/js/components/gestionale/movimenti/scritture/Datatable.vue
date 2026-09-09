@@ -8,7 +8,8 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from './DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
-import { ScrollText } from 'lucide-vue-next';
+import { ScrollText, ChevronRight } from 'lucide-vue-next';
+import RigheEspanse from './RigheEspanse.vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -30,6 +31,21 @@ const props = defineProps<{
 const { generateRoute } = usePermission();
 const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
   useTabellaServer(() => route(generateRoute('gestionale.esercizi.scritture.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id, }));
+
+// ⚠️ **Stesso idioma delle altre quattro liste che espandono una riga** (Comunicazioni, Eventi,
+// Documenti, Segnalazioni: `expandedIds` + `isExpanded`/`toggleExpanded`), non il modello di
+// espansione di TanStack — qui il pannello aperto non è una sotto-riga TanStack, è un `<tr>` in
+// più con `colspan`, deciso così in docs/registri_contabili.md §10.4 per non introdurre un
+// modello di riga per una cosa che riga non è.
+const expandedIds = ref<Set<number>>(new Set());
+const isExpanded = (id: number) => expandedIds.value.has(id);
+const toggleExpanded = (id: number) => {
+  if (expandedIds.value.has(id)) {
+    expandedIds.value.delete(id);
+  } else {
+    expandedIds.value.add(id);
+  }
+};
 
 const table = useVueTable({
   get data() { return props.data ?? [] },
@@ -66,6 +82,9 @@ const table = useVueTable({
       <Table v-if="table.getRowModel().rows?.length > 0" class="table-fixed w-full">
         <TableHeader>
           <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id" class="bg-gray-50/50">
+            <!-- Colonna del chevron: fuori dal modello TanStack, è il segnale visivo che la riga
+                 è cliccabile e si espande — vedi la nota sopra sul motivo della scelta. -->
+            <TableHead class="w-8 px-2" />
             <TableHead
               v-for="header in headerGroup.headers"
               :key="header.id"
@@ -81,20 +100,43 @@ const table = useVueTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow
-            v-for="row in table.getRowModel().rows" :key="row.id"
-            :data-state="row.getIsSelected() ? 'selected' : undefined"
-            class="hover:bg-gray-50/50 transition-colors"
-          >
-            <TableCell
-              v-for="cell in row.getVisibleCells()"
-              :key="cell.id"
-              class="px-4 py-3"
-              :style="{ width: cell.column.getSize() + 'px' }"
+          <template v-for="row in table.getRowModel().rows" :key="row.id">
+            <TableRow
+              :data-state="row.getIsSelected() ? 'selected' : undefined"
+              class="hover:bg-gray-50/50 transition-colors cursor-pointer"
+              @click="toggleExpanded(row.original.id)"
             >
-              <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-            </TableCell>
-          </TableRow>
+              <TableCell class="w-8 px-2 py-3">
+                <ChevronRight
+                  class="w-4 h-4 text-slate-400 transition-transform"
+                  :class="{ 'rotate-90': isExpanded(row.original.id) }"
+                />
+              </TableCell>
+              <!--
+                ⚠️ **`@click.stop` sull'icona non bastava.** La cella «azioni» è larga 50px, il
+                pulsante ne occupa 32: chi punta l'occhio e sbaglia di pochi pixel clicca il
+                `<td>`, non l'`<a>` dentro — e quello riapriva il pannello invece del dettaglio.
+                Fermato qui, sulla cella intera, non nel bottone: un bersaglio che fa il
+                contrario di quel che promette è peggio di uno stretto. Misurato dalla Fase 1-bis.
+              -->
+              <TableCell
+                v-for="cell in row.getVisibleCells()"
+                :key="cell.id"
+                class="px-4 py-3"
+                :style="{ width: cell.column.getSize() + 'px' }"
+                @click="cell.column.id === 'actions' ? $event.stopPropagation() : undefined"
+              >
+                <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+              </TableCell>
+            </TableRow>
+            <!-- Il pannello richiesto dal §10.1.1: le righe di partita doppia, senza cambiare
+                 pagina. `colspan` include la colonna del chevron: +1 sulle celle visibili. -->
+            <TableRow v-if="isExpanded(row.original.id)" class="bg-slate-50/40 hover:bg-slate-50/40">
+              <TableCell :colspan="row.getVisibleCells().length + 1" class="px-4 py-3">
+                <RigheEspanse :righe="row.original.righe" />
+              </TableCell>
+            </TableRow>
+          </template>
         </TableBody>
       </Table>
 

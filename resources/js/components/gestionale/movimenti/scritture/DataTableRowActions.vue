@@ -19,6 +19,7 @@ const { generateRoute } = usePermission()
     <Link
       :href="route(generateRoute('gestionale.scritture.show'), { condominio: props.condominioId, scrittura: props.scrittura.id })"
       title="Vedi dettaglio"
+      @click.stop
     >
       <span class="sr-only">Vedi dettaglio</span>
       <Eye class="h-4 w-4 text-slate-500" />

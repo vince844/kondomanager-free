@@ -11,7 +11,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { ScrollText, Scale, CheckCircle2, XCircle, AlertTriangle, ArrowDownCircle, ArrowUpCircle, ListTree } from 'lucide-vue-next';
+import { ScrollText, Scale, CheckCircle2, XCircle, AlertTriangle, ArrowDownCircle, ArrowUpCircle, ListTree, Printer } from 'lucide-vue-next';
 import Alert from "@/components/Alert.vue";
 import type { ScritturaRow } from '@/components/gestionale/movimenti/scritture/columns';
 import type { Building } from '@/types/buildings';
@@ -98,6 +98,20 @@ const registrandoApertura = ref<number | null>(null);
  * ce l'ha in colonna. Prima qui c'era solo il link alla pagina della cassa, dove nessun
  * pulsante registra l'apertura — il widget nominava la causa e non offriva niente.
  */
+/**
+ * §10.1.2 di docs/registri_contabili.md: la stampa richiesta da un utente, riga per riga. Gli
+ * stessi filtri della pagina — non "tutto l'esercizio" — perché è la lettura naturale di un
+ * pulsante sulla pagina già filtrata: `props.filters` è la fonte più affidabile per questo,
+ * più della query string del browser, perché è già ciò che il server ha interpretato.
+ */
+function stampaGiornale() {
+    window.open(route(generateRoute('gestionale.esercizi.scritture.print'), {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        ...props.filters,
+    }), '_blank');
+}
+
 function registraApertura(cassaId: number) {
     registrandoApertura.value = cassaId;
 
@@ -171,7 +185,7 @@ const quadraturaPatrimoniale = computed(() => {
 });
 
 const pageGuides = [
-    { title: 'Registro cronologico', description: 'Tutte le scritture contabili dell\'esercizio selezionato, in ordine di registrazione.', icon: ScrollText, colorVariant: 'blue' as const },
+    { title: 'Registro cronologico', description: 'Tutte le scritture contabili dell\'esercizio selezionato, in ordine di registrazione. Non sostituisce il registro di contabilità — entrate e uscite — previsto dall\'art. 1130, comma 1, n. 7 c.c.', icon: ScrollText, colorVariant: 'blue' as const },
     { title: 'Verifica quadratura', description: 'Il widget Stato Patrimoniale segnala se Attivo = Passivo + Risultato d\'esercizio torna, non se Attivo e Passivo coincidono fra loro. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
     { title: 'Cambia esercizio', description: 'Usa il selettore esercizio in alto per consultare le operazioni di anni precedenti.', icon: ArrowUpCircle, colorVariant: 'amber' as const },
 ];
@@ -190,7 +204,14 @@ const pageGuides = [
                 :condomini="(props.condomini as any)"
                 :esercizio="(props.esercizio as any)"
                 :esercizi="(props.esercizi as any)"
-            />
+            >
+                <template #actions>
+                    <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2" @click="stampaGiornale">
+                        <Printer class="w-4 h-4" />
+                        <span class="hidden sm:inline">Stampa</span>
+                    </Button>
+                </template>
+            </PageHeaderGuide>
 
             <div class="w-full">
                 <section class="w-full space-y-4">

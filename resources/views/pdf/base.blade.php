@@ -17,6 +17,18 @@
                     C.F. {{ $condominio->codice_fiscale }}
                 </div>
             @endif
+            {{--
+              ⚠️ **Facoltativo, e per un motivo preciso.** `Mpdf::SetHeader()` — l'API pensata per
+              questo — non produce nulla: viene chiamata dopo `WriteHTML()`, e questo blocco HTML
+              (`sethtmlpageheader`) ha comunque la precedenza. È inerte allo stesso modo in altri
+              sei controller di stampa del progetto, tutti fuori da questo diff — non li tocco.
+              Qui, dove serve davvero (un registro di più pagine che altrimenti si identifica
+              solo a pagina 1), il chiamante valorizza `$titolo_stampa`: chi non lo passa vede
+              esattamente l'intestazione di sempre, byte per byte.
+            --}}
+            @if(! empty($titolo_stampa ?? null))
+                <div style="font-size: 8pt; color: #667; margin-top: 2px;">{{ $titolo_stampa }}</div>
+            @endif
         </div>
     </htmlpageheader>
 

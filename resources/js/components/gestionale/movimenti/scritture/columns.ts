@@ -5,6 +5,20 @@ import { Calendar, AlertTriangle } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { ColumnDef } from '@tanstack/vue-table'
 
+/**
+ * Una riga di partita doppia (conto, dare/avere, dettaglio) — stessa forma sia nell'elenco che nel
+ * dettaglio di una scrittura: la serializzano entrambi con ScritturaContabileController::serializzaRighe().
+ */
+export interface RigaScritturaRow {
+  id: number
+  tipo_riga: 'dare' | 'avere'
+  importo: number
+  note: string | null
+  conto: { id: number; codice: string | null; nome: string } | null
+  cassa: { id: number; nome: string } | null
+  voce_spesa: { id: number; nome: string } | null
+}
+
 /** Riga del Libro Giornale come serializzata da ScritturaContabileController::index. */
 export interface ScritturaRow {
   id: number
@@ -19,6 +33,8 @@ export interface ScritturaRow {
   /** Importo in CENTESIMI (totale dare della scrittura). */
   importo: number
   is_quadrata: boolean
+  /** Le righe di partita doppia, per il pannello espanso — vedi Coda 145 dei registri contabili. */
+  righe: RigaScritturaRow[]
 }
 
 const { euro } = useCurrencyFormatter();

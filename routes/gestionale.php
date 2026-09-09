@@ -317,6 +317,10 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('esercizi/{esercizio}/scritture', [ScritturaContabileController::class, 'index'])
         ->name('esercizi.scritture.index');
 
+    // Stampa riga per riga (§10.1.2 di docs/registri_contabili.md) — stessi filtri dell'elenco.
+    Route::get('esercizi/{esercizio}/scritture/print', [ScritturaContabileController::class, 'stampa'])
+        ->name('esercizi.scritture.print');
+
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
     

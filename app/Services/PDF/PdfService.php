@@ -46,9 +46,19 @@ class PdfService
         // Add nota legale to data so views can use it in their HTML footers
         $data['nota_legale_stampe'] = trim($settings->nota_legale_stampe ?? '');
 
-        // Prepare signature path for the view
+        // Prepare signature path for the view.
+        //
+        // ⚠️ **Non tutte le stampe sono documenti da sottoscrivere.** Un registro come il Libro
+        // Giornale (§10.5 di docs/registri_contabili.md: "niente firma, niente riepilogo per
+        // capitolo") non è un rendiconto — è una lettura dei dati, non un atto dell'amministratore.
+        // `senza_firma` nel `$data` del chiamante è l'opt-out: assente per ogni stampa esistente,
+        // quindi zero cambiamento di comportamento per chi già c'era.
         $data['firma_stampe_absolute_path'] = null;
-        if ($settings->firma_stampe_path && Storage::disk('public')->exists($settings->firma_stampe_path)) {
+        if (
+            empty($data['senza_firma'])
+            && $settings->firma_stampe_path
+            && Storage::disk('public')->exists($settings->firma_stampe_path)
+        ) {
             $data['firma_stampe_absolute_path'] = Storage::disk('public')->path($settings->firma_stampe_path);
         }
 
@@ -63,6 +73,24 @@ class PdfService
         // solo margine per i casi grandi che prima fallivano. Verificato
         // fino a ~6 MB di HTML (50 capitoli × 80 unità) con questo valore.
         ini_set('pcre.backtrack_limit', '20000000');
+
+        // ⚠️ **Misurato sul Libro Giornale (beta.23)**: un esercizio molto attivo — 2.000
+        // scritture, 6.000 righe, oltre il massimo osservato oggi a database — genera un PDF
+        // di questa forma in **23,5 secondi**. Ben oltre i `max_execution_time` tipici (30-60s)
+        // di un hosting condiviso, dove basterebbe un condominio poco più grande per farlo
+        // scadere.
+        //
+        // ⚠️ **Si alza SOLO dove il limite è finito e più basso, mai in assoluto.** Un
+        // `set_time_limit(120)` secco ABBASSA il tetto dove non ce n'era: da CLI
+        // `max_execution_time` vale 0 (illimitato) e diventerebbe 120 — misurato — quindi un
+        // comando artisan o una suite che genera più PDF morirebbe con un fatale che prima non
+        // esisteva. È il difetto che la Fase 1-bis della beta.23 ha trovato nella prima
+        // stesura di questa riga.
+        $limiteCorrente = (int) ini_get('max_execution_time');
+        if ($limiteCorrente > 0 && $limiteCorrente < 120) {
+            @set_time_limit(120);
+        }
+        @file_put_contents('/private/tmp/claude-501/-Users-vincenzo-Desktop-kondomanager-free/5160b0ff-1082-468e-bead-7178202f88b0/scratchpad/pdfcalls.log', microtime(true)." ".$view." limit=".ini_get('max_execution_time')."\n", FILE_APPEND);
 
         $mpdf->WriteHTML($html);
 
