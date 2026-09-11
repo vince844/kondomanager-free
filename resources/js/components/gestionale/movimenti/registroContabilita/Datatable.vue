@@ -1,23 +1,22 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useTabellaServer } from '@/composables/useTabellaServer';
-import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import DataTablePagination from '@/components/DataTablePagination.vue';
-import DataTableToolbar from './DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
-import { ScrollText, ChevronRight } from 'lucide-vue-next';
-import RigheEspanse from './RigheEspanse.vue';
-import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { Landmark, ChevronRight } from 'lucide-vue-next';
+import DataTableToolbar from './DataTableToolbar.vue';
+import RigaEspansa from './RigaEspansa.vue';
+import type { ColumnDef } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
-import type { ScritturaRow } from './columns';
+import type { RegistroRow } from './columns';
 
 const props = defineProps<{
-  columns: ColumnDef<ScritturaRow>[],
-  data: ScritturaRow[],
+  columns: ColumnDef<RegistroRow>[],
+  data: RegistroRow[],
   condominio: Building,
   esercizio: Esercizio,
   meta: {
@@ -29,23 +28,13 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
-const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
-  useTabellaServer(() => route(generateRoute('gestionale.esercizi.scritture.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id, }));
-
-// ⚠️ **Stesso idioma delle altre quattro liste che espandono una riga** (Comunicazioni, Eventi,
-// Documenti, Segnalazioni: `expandedIds` + `isExpanded`/`toggleExpanded`), non il modello di
-// espansione di TanStack — qui il pannello aperto non è una sotto-riga TanStack, è un `<tr>` in
-// più con `colspan`, deciso così in docs/registri_contabili.md §10.4 per non introdurre un
-// modello di riga per una cosa che riga non è.
-const expandedIds = ref<Set<number>>(new Set());
-const isExpanded = (id: number) => expandedIds.value.has(id);
-const toggleExpanded = (id: number) => {
-  if (expandedIds.value.has(id)) {
-    expandedIds.value.delete(id);
-  } else {
-    expandedIds.value.add(id);
-  }
-};
+// Nessun ordinamento a schermo: il registro è cronologico per legge, e il saldo
+// progressivo perderebbe senso su un ordine diverso — vedi RegistroContabilitaService.
+const { suPaginazione } = useTabellaServer(() =>
+  route(generateRoute('gestionale.esercizi.registro-contabilita.index'), {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+  }));
 
 const table = useVueTable({
   get data() { return props.data ?? [] },
@@ -56,35 +45,51 @@ const table = useVueTable({
       pageIndex: props.meta.current_page - 1,
       pageSize: props.meta.per_page,
     },
-    get sorting() { return ordinamento.value },
   },
   manualPagination: true,
-  // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
-  manualSorting: true,
   onPaginationChange: updater => {
     const stato = table.getState().pagination
     const p = typeof updater === 'function' ? updater(stato) : updater
     suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
   },
-  onSortingChange: suOrdinamento,
   getCoreRowModel: getCoreRowModel(),
 })
+
+// Stesso idioma del Libro Giornale (vedi Datatable.vue delle scritture): un `<tr>` in più con
+// `colspan`, non il modello di espansione di TanStack — qui il pannello non è una sotto-riga
+// della libreria, è testo descrittivo che non serve al calcolo del saldo progressivo.
+const expandedIds = ref<Set<number>>(new Set());
+const isExpanded = (id: number) => expandedIds.value.has(id);
+const toggleExpanded = (id: number) => {
+  if (expandedIds.value.has(id)) {
+    expandedIds.value.delete(id);
+  } else {
+    expandedIds.value.add(id);
+  }
+};
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex items-center">
-      <DataTableToolbar :table="table" />
+      <DataTableToolbar />
     </div>
 
-    <div class="rounded-md border bg-white overflow-hidden">
+    <!-- `overflow-x-auto` e non `overflow-hidden`: con nove colonne dichiarate a larghezza fissa
+         (vedi columns.ts) uno schermo stretto taglierebbe le ultime invece di lasciarle
+         raggiungere. Qui la tabella scorre dentro il proprio riquadro, la pagina no.
 
-      <Table v-if="table.getRowModel().rows?.length > 0" class="table-fixed w-full">
+         `text-[13px]` è una deroga locale al 14px delle altre tabelle, e sta solo qui: nove
+         colonne al corpo normale mandano a capo descrizione e controparte, e un registro che
+         serve a essere consultato a colpo d'occhio non regge righe alte tre linee. Chiesto da
+         Vincenzo guardando la pagina accanto al Libro Giornale, che di colonne ne ha meno. -->
+    <div class="rounded-md border bg-white overflow-x-auto">
+      <Table v-if="table.getRowModel().rows?.length > 0" class="table-fixed w-full min-w-[1050px] text-[13px]">
         <TableHeader>
           <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id" class="bg-gray-50/50">
-            <!-- Colonna del chevron: fuori dal modello TanStack, è il segnale visivo che la riga
-                 è cliccabile e si espande — vedi la nota sopra sul motivo della scelta. -->
-            <TableHead class="w-8 px-2" />
+            <!-- Colonna del chevron: fuori dal modello TanStack, stesso motivo del Libro
+                 Giornale — è solo il segnale visivo che la riga si espande. -->
+            <TableHead class="w-6 pl-2 pr-0" />
             <TableHead
               v-for="header in headerGroup.headers"
               :key="header.id"
@@ -102,11 +107,10 @@ const table = useVueTable({
         <TableBody>
           <template v-for="row in table.getRowModel().rows" :key="row.id">
             <TableRow
-              :data-state="row.getIsSelected() ? 'selected' : undefined"
               class="hover:bg-gray-50/50 transition-colors cursor-pointer"
               @click="toggleExpanded(row.original.id)"
             >
-              <TableCell class="w-8 px-2 py-3">
+              <TableCell class="w-6 pl-2 pr-0 py-3">
                 <!-- Un pulsante vero, non un'icona: la riga si apre col mouse cliccando ovunque,
                      ma da tastiera serve un elemento focalizzabile. Tolta la colonna azioni, non
                      ne restava nessuno — trovato dalla revisione della beta.24. `.stop` perché
@@ -133,11 +137,9 @@ const table = useVueTable({
                 <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
               </TableCell>
             </TableRow>
-            <!-- Il pannello richiesto dal §10.1.1: le righe di partita doppia, senza cambiare
-                 pagina. `colspan` include la colonna del chevron: +1 sulle celle visibili. -->
             <TableRow v-if="isExpanded(row.original.id)" class="bg-slate-50/40 hover:bg-slate-50/40">
               <TableCell :colspan="row.getVisibleCells().length + 1" class="px-4 py-3">
-                <RigheEspanse :righe="row.original.righe" :scrittura-id="row.original.id" :condominio-id="props.condominio.id" />
+                <RigaEspansa :riga="row.original" />
               </TableCell>
             </TableRow>
           </template>
@@ -147,19 +149,21 @@ const table = useVueTable({
       <Empty v-else class="py-12 bg-slate-50/50">
         <EmptyHeader class="max-w-4xl">
           <EmptyMedia variant="icon" class="bg-violet-50/50 dark:bg-violet-900/20 text-violet-500">
-            <ScrollText class="w-8 h-8" />
+            <Landmark class="w-8 h-8" />
           </EmptyMedia>
-          <EmptyTitle>Nessuna scrittura trovata</EmptyTitle>
+          <EmptyTitle>Nessun movimento trovato</EmptyTitle>
           <EmptyDescription>
-            Non ci sono scritture contabili che corrispondono ai criteri. <br>
+            Non ci sono entrate o uscite reali che corrispondono ai criteri. <br>
             Modifica i filtri di ricerca o cambia esercizio.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-
     </div>
 
-    <div v-if="table.getRowModel().rows?.length > 0 && props.meta.last_page > 1" class="flex items-center justify-end">
+    <!-- Sempre visibile quando ci sono righe, non solo con due pagine: qui dentro vive anche il
+         selettore «righe per pagina», e su un registro che si consulta a colpo d'occhio quello
+         serve pure con una pagina sola. Stessa convenzione di Esercizi, Piani rate e Tabelle. -->
+    <div v-if="table.getRowModel().rows?.length > 0" class="flex items-center justify-end">
       <DataTablePagination :table="table" :meta="props.meta" />
     </div>
   </div>

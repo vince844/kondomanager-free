@@ -185,7 +185,21 @@ const quadraturaPatrimoniale = computed(() => {
 });
 
 const pageGuides = [
-    { title: 'Registro cronologico', description: 'Tutte le scritture contabili dell\'esercizio selezionato, in ordine di registrazione. Non sostituisce il registro di contabilità — entrate e uscite — previsto dall\'art. 1130, comma 1, n. 7 c.c.', icon: ScrollText, colorVariant: 'blue' as const },
+    {
+        title: 'Registro cronologico',
+        description: 'Tutte le scritture contabili dell\'esercizio selezionato, in ordine di registrazione. Non sostituisce il registro di contabilità — entrate e uscite, art. 1130, comma 1, n. 7 c.c.',
+        icon: ScrollText,
+        colorVariant: 'blue' as const,
+        // Dalla beta.24 la pagina esiste: prima era un rimando testuale a una voce di menu
+        // disattivata (§10.1.3 di docs/registri_contabili.md), ora è un link vero.
+        link: {
+            label: 'Vai al registro di contabilità (Prima nota)',
+            href: generatePath('gestionale/:condominio/esercizi/:esercizio/registro-contabilita', {
+                condominio: props.condominio.id,
+                esercizio: props.esercizio.id,
+            }),
+        },
+    },
     { title: 'Verifica quadratura', description: 'Il widget Stato Patrimoniale segnala se Attivo = Passivo + Risultato d\'esercizio torna, non se Attivo e Passivo coincidono fra loro. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
     { title: 'Cambia esercizio', description: 'Usa il selettore esercizio in alto per consultare le operazioni di anni precedenti.', icon: ArrowUpCircle, colorVariant: 'amber' as const },
 ];
@@ -350,7 +364,7 @@ const pageGuides = [
 
                         <div>
                             <DataTable
-                                :columns="createColumns(props.condominio.id, props.esercizio.id)"
+                                :columns="createColumns()"
                                 :data="props.scritture.data"
                                 :meta="props.scritture.meta"
                                 :condominio="props.condominio"

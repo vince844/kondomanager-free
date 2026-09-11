@@ -8,16 +8,31 @@
  * restano un buon motivo per aprire il dettaglio vero, non vanno duplicati qui.
  */
 import { computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Landmark, FileText } from 'lucide-vue-next';
+import { Landmark, FileText, ArrowUpRight } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { usePermission } from '@/composables/permissions';
 import type { RigaScritturaRow } from './columns';
 
 const props = defineProps<{
   righe: RigaScritturaRow[];
+  scritturaId: number;
+  condominioId: number;
 }>();
 
 const { euro } = useCurrencyFormatter();
+const { generateRoute } = usePermission();
+
+/**
+ * ⚠️ **Il link al dettaglio vive qui dalla beta.24.** Prima stava in una colonna «azioni» in coda
+ * alla tabella; toglierla senza mettere il rimando qui avrebbe lasciato questa pagina senza alcuna
+ * via verso il dettaglio della scrittura — che è il difetto che Vincenzo ha visto arrivare.
+ */
+const linkDettaglio = () => route(generateRoute('gestionale.scritture.show'), {
+  condominio: props.condominioId,
+  scrittura: props.scritturaId,
+});
 
 // Stessa regola di presentazione di Show.vue: prima le righe in DARE, poi in AVERE.
 const righeOrdinate = computed(() => {
@@ -71,5 +86,14 @@ const righeOrdinate = computed(() => {
         </TableRow>
       </TableBody>
     </Table>
+    <div class="px-4 py-2 border-t border-slate-100 bg-slate-50/40">
+      <Link
+        :href="linkDettaglio()"
+        class="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+      >
+        Vedi la scrittura per intero
+        <ArrowUpRight class="w-3 h-3" />
+      </Link>
+    </div>
   </div>
 </template>

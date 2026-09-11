@@ -49,7 +49,16 @@ class StoreRegolazioneImmediataRequest extends FormRequest
             ],
             'cassa_id' => [
                 'required',
-                Rule::exists('casse', 'id')->where('condominio_id', $condominioId),
+                // ⚠️ **Stessa regola di StorePagamentoFornitoreRequest (beta.19), che qui
+                // mancava.** Da un `fondo` non si paga: è una partizione del conto corrente, e
+                // il denaro accantonato si libera prima con un giroconto verso la banca. Senza
+                // questo vincolo un `cassa_id` di tipo fondo passava, l'azione scriveva AVERE
+                // sul fondo, e il registro di contabilità — che per D15 esclude le righe sui
+                // fondi — non mostrava un'uscita reale di denaro. Trovato dalla revisione
+                // della beta.24.
+                Rule::exists('casse', 'id')
+                    ->where('condominio_id', $condominioId)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
             ],
             'fornitore_id' => ['nullable', 'exists:fornitori,id'],
 
@@ -70,7 +79,7 @@ class StoreRegolazioneImmediataRequest extends FormRequest
         return [
             'esercizio_id.exists' => "L'esercizio selezionato non esiste o non è aperto.",
             'conto_id.exists' => 'Il capitolo di spesa selezionato non appartiene a questo condominio.',
-            'cassa_id.exists' => 'La cassa selezionata non appartiene a questo condominio.',
+            'cassa_id.exists' => 'La cassa selezionata non appartiene a questo condominio, oppure è un fondo: da un fondo non si paga, si libera prima il denaro con un giroconto verso la banca.',
             'importo.gt' => "L'importo deve essere maggiore di zero.",
             'causale.required' => 'La causale è obbligatoria: è ciò che rende leggibile il libro giornale.',
             'data_operazione.before_or_equal' => 'Non è possibile registrare un movimento con data futura.',

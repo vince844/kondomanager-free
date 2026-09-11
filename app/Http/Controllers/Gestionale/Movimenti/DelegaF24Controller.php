@@ -257,7 +257,15 @@ class DelegaF24Controller extends Controller
         $dati = $request->validate([
             'data_versamento' => ['required', 'date'],
             'conto_corrente_id' => ['required', 'integer', 'exists:conti_contabili,id'],
-            'cassa_id' => ['nullable', 'integer', 'exists:casse,id'],
+            // ⚠️ Scopata al condominio e ai soli tipi da cui si paga (beta.19): prima
+            // accettava la cassa di un altro condominio e una cassa `fondo`, e il versamento
+            // da un fondo spariva dal registro di contabilità (D15). Revisione della beta.24.
+            'cassa_id' => [
+                'nullable', 'integer',
+                \Illuminate\Validation\Rule::exists('casse', 'id')
+                    ->where('condominio_id', $condominio->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
+            ],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 

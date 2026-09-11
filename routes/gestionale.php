@@ -15,6 +15,7 @@ use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\RegistroContabilitaController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
@@ -320,6 +321,14 @@ Route::prefix('/gestionale/{condominio}')
     // Stampa riga per riga (§10.1.2 di docs/registri_contabili.md) — stessi filtri dell'elenco.
     Route::get('esercizi/{esercizio}/scritture/print', [ScritturaContabileController::class, 'stampa'])
         ->name('esercizi.scritture.print');
+
+    // Registro di contabilità (art. 1130, comma 1, n. 7 c.c.) — punto 1 della sequenza di
+    // docs/registri_contabili.md. È la voce "Prima nota" del menu Movimenti.
+    Route::get('esercizi/{esercizio}/registro-contabilita', [RegistroContabilitaController::class, 'index'])
+        ->name('esercizi.registro-contabilita.index');
+
+    Route::get('esercizi/{esercizio}/registro-contabilita/print', [RegistroContabilitaController::class, 'stampa'])
+        ->name('esercizi.registro-contabilita.print');
 
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');

@@ -66,8 +66,16 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
         type:  'link',
         icon:  Wallet,
         title: 'Prima nota',
-        href:  '#',
-        badge: 'In sviluppo',
+        // È il registro di contabilità ex art. 1130 n. 7 c.c. (punto 1 di
+        // docs/registri_contabili.md): stesso nome della voce, stessa regola di
+        // disabilitazione senza esercizio aperto di "Libro Giornale" qui sopra.
+        href:  esercizio.value
+            ? generatePath('gestionale/:condominio/esercizi/:esercizio/registro-contabilita', {
+                  condominio: condominio.value.id,
+                  esercizio:  esercizio.value.id,
+              })
+            : '#',
+        badge: esercizio.value ? undefined : 'Nessun esercizio aperto',
     },
 ];
 

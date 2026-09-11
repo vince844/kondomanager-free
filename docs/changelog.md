@@ -7,6 +7,119 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.24] - La Prima Nota Che Non Era Ancora Nata
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+La voce «Prima nota» era in barra da mesi, con il badge «In sviluppo» e un link che non portava da
+nessuna parte. Dietro quel segnaposto manca(va) l'unico registro che la legge impone davvero:
+l'**art. 1130, comma 1, n. 7 del codice civile** obbliga l'amministratore a tenere il *registro di
+contabilità*, dove «vengono annotati in ordine cronologico, entro trenta giorni da quello
+dell'effettuazione, i singoli movimenti in entrata ed in uscita». Il Libro Giornale, per quanto
+completo, è un'altra cosa: contiene tutte le scritture in partita doppia, comprese quelle che non
+muovono un euro.
+
+**Ora la pagina esiste, si legge e si stampa.** Per ogni movimento: la data effettiva — quella su
+cui il registro è ordinato, come chiede la norma — e accanto la data in cui è stato annotato, con
+un avviso quando fra le due passano più di trenta giorni. Poi la descrizione, la cassa che si è
+mossa, la controparte, entrata o uscita, e il saldo progressivo.
+
+**Compare solo il denaro che si muove davvero.** Una fattura registrata e non pagata non entra nel
+registro; un accantonamento verso il fondo di riserva nemmeno, perché quei soldi restano sullo
+stesso conto corrente — non sono usciti da nessuna parte. Un prelievo dalla banca ai contanti,
+invece, produce due righe: è corretto, ed è il motivo per cui questo registro non coincide con
+l'estratto conto della banca.
+
+**La controparte è ricostruita, non lasciata vuota.** Il nome di chi ha versato o di chi è stato
+pagato non vive in un posto solo: per un incasso è il condòmino, per un pagamento è il fornitore,
+per un versamento di ritenute è l'Erario, per un giroconto è l'altra cassa. La pagina li cerca in
+quest'ordine e mostra il primo che trova.
+
+**Ogni movimento ha il suo numero.** Le fonti che descrivono questo registro elencano il numero
+d'operazione fra i dati minimi, prima ancora della data: serve a citare un movimento senza doverlo
+descrivere — «operazione n. 47» invece di «quel bonifico di maggio». La numerazione è cronologica
+sull'esercizio e non cambia quando si filtra.
+
+**Filtrando un periodo, il saldo resta quello vero.** Se guardi solo giugno, la colonna «Saldo»
+continua a dire quanto c'era davvero sul conto in quei giorni — non il netto del mese. È la ragione
+per cui la legge vuole questo registro: dare «un continuo e diretto controllo, in tempo reale, della
+situazione contabile e delle somme a disposizione del condominio». I totali in testa, invece, sono
+dichiarati come parziali, perché quelli sì che si riferiscono ai soli movimenti mostrati. La stessa
+distinzione vale dentro il dettaglio per cassa: entrate e uscite di ogni cassa sono parziali quanto
+i totali e lo dicono in intestazione, il saldo di ognuna no.
+
+**La stampa non denuncia i tuoi ritardi.** A video il registro segnala i movimenti annotati oltre i
+trenta giorni dell'art. 1130, comma 1, n. 7 c.c.: è la vista con cui rimediare. In stampa no — il
+foglio che porti in assemblea riporta la sola data del movimento, l'unica che la norma chieda. Un
+registro che denuncia da solo i ritardi del suo autore, consegnato ai condòmini, è un'arma contro
+l'amministratore. Il pulsante «Stampa» ha due voci: **«Stampa per l'assemblea»** e **«Copia di
+controllo»**, che aggiunge le date di annotazione e segnala i ritardi. La seconda si dichiara tale
+in testa al foglio: due stampe dello stesso registro che si distinguono per una colonna sola sono
+indistinguibili una volta sul tavolo. Nella stessa riga di lavoro è sparito il saldo dal piede della
+tabella stampata: un saldo progressivo non si somma, e ricopiare l'ultima riga sotto l'etichetta
+«totale dell'esercizio» la faceva leggere come una somma che non è. Il saldo finale resta dichiarato
+una volta sola, in testa, con la data a cui si riferisce.
+
+**Un clic sulla riga apre il dettaglio**, con una cosa che la tabella non può dire: il saldo della
+**singola cassa** dopo quel movimento. La colonna «Saldo» è complessiva su tutte le casse reali,
+perché il registro di legge è un documento unico; con due conti reali, però, quel numero da solo
+non dice su quale dei due si è mosso il denaro.
+
+**La stampa ha un aspetto suo.** È la prima stampa del gestionale con caratteri propri — Inter per
+il testo, Fraunces per titoli e importi — invece di quello generico di serie: carta intestata del
+condominio, intestazioni in maiuscoletto, importi incolonnati, totali a doppio filetto. Chiude con
+una nota che spiega a chi legge come è fatto il registro, comprese **le operazioni stornate**, che
+restano stampate e marcate: il codice civile chiede che una scrittura contabile resti leggibile
+anche dove è stata corretta (art. 2219), e un registro che facesse sparire ciò che annulla non
+rispetterebbe quella regola.
+
+Il Libro Giornale, che nella beta precedente rimandava a questo registro con un riferimento
+testuale perché la pagina non esisteva ancora, ora ci rimanda con un link vero — sia a schermo sia
+nella stampa.
+
+**Le due pagine si comportano allo stesso modo.** In entrambi gli elenchi il rimando al dettaglio di
+una scrittura vive ora dentro il pannello che si apre cliccando la riga, e la colonna con l'icona in
+coda è sparita: era un secondo percorso per la stessa cosa, e nel Libro Giornale quel pannello non
+offriva alcuna via verso il dettaglio.
+
+**Questo registro è uno dei tre documenti del rendiconto, non il rendiconto.** L'art. 1130-bis c.c.
+lo compone di un registro di contabilità — quello di questa beta — un riepilogo finanziario e una
+nota sintetica esplicativa della gestione. Chi ci aveva scritto in estate chiedendo un rendiconto
+completo trova qui la prima metà, consegnata; la seconda arriverà in una versione dedicata, perché
+richiede un pezzo di motore che oggi manca — il risultato d'esercizio scritto a chiusura, non solo
+calcolato a video — e non ha senso promettere un fascicolo che non quadra ancora da solo.
+
+**Due limiti dichiarati sul foglio.** Il saldo del registro è al netto dei fondi accantonati, e per
+questo non coincide con l'estratto conto: ne differisce di quanto è vincolato. E il saldo
+progressivo parte da zero all'inizio dell'esercizio: il riporto dall'anno precedente arriverà con
+il rendiconto. Entrambe le cose sono scritte nella nota «Come leggere questo registro» e nelle
+schede della pagina — chi confronta il foglio con la banca deve saperlo dal foglio.
+
+### Bugfix
+
+- **Lo storno di un incasso ha ora la data dello storno, non quella dell'incasso.** Era l'unico
+  dei cinque storni del gestionale a retrodatare: nel registro di contabilità la rettifica si
+  infilava subito dopo l'incasso e ogni saldo fra le due date diceva che quei soldi non c'erano.
+- **Da un fondo non si paga, nemmeno con una regolazione immediata o un F24.** Pagamenti e
+  incassi rifiutavano già una cassa di tipo fondo; le altre due richieste no, e un pagamento
+  fatto da un fondo spariva dal registro. Il versamento F24 accetta inoltre solo casse del
+  condominio giusto.
+- **Lo storno di un versamento F24 non era collegato al versamento originale.** Era l'unico storno
+  del gestionale a non scrivere il legame con la scrittura di partenza, contro la regola che il
+  progetto applica ovunque («lo storno non elimina: scrive una scrittura uguale e contraria,
+  collegata»). Chi risaliva dallo storno all'originale — il nuovo registro per primo, che così
+  perdeva «Erario» come controparte — non lo trovava più. Gli storni F24 registrati prima di questa
+  beta restano senza collegamento e nel registro hanno la controparte vuota: sono pochi e solo su
+  installazioni beta, e non si tocca il database per riallinearli.
+- **Il tetto della stampa del registro ora deriva dalla memoria dell'installazione**, come quello
+  del Libro Giornale, invece di essere un numero fisso: un numero inventato più alto della soglia
+  già misurata avrebbe riportato la stampa a interrompersi in silenzio sulle installazioni piccole.
+- **Un `console.log` di debug nella pagina «Nuovo evento» finiva nel bundle di produzione.** Era lì
+  da prima di questa beta; l'ha trovato il controllo sui residui di debug nato dalla riga di
+  `PdfService` scappata nella beta.23. Tolto, nessun cambio di comportamento.
+
+---
+
 ## [1.11.0-beta.23] - Il Giornale Che Ora Si Legge Riga Per Riga
 
 **Non tocca il database:** nessuna migrazione, nessun dato nuovo.

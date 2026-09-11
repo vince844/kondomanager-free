@@ -93,7 +93,6 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
 watch(() => form.condomini_ids, fetchAnagrafiche);
 
 watch(showRecurrence, (enabled) => {
-  console.log(showRecurrence.value)
   if (!enabled) {
     form.recurrence_frequency = null;
     form.recurrence_interval = 1;

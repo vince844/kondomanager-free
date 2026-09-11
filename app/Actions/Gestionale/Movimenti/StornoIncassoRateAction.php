@@ -36,7 +36,17 @@ class StornoIncassoRateAction
                     'gestione_id'        => $scr->gestione_id,
                     'scrittura_padre_id' => $scr->id, // 🟢 LINK DIRETTO ALLA SCRITTURA ORIGINALE
                     'data_registrazione' => now(),
-                    'data_competenza'    => $scr->data_competenza,
+                    // ⚠️ **La rettifica ha la data in cui viene fatta, non quella dell'incasso.**
+                    // Era l'unico storno del gestionale a retrodatare (giroconto, regolazione
+                    // immediata, pagamento fornitore e F24 usano tutti `now()`), e nel registro
+                    // di contabilità — ordinato per data effettiva — la rettifica si infilava
+                    // subito dopo l'incasso: ogni saldo progressivo fra le due date era quello
+                    // di un conto su cui quel denaro non era mai entrato, mentre c'era. Chi
+                    // legge le rettifiche non dipende da questa data: l'estratto conto per
+                    // anagrafica ordina per `created_at` e `scrittura_id`, il sigillo si ancora
+                    // a `created_at`. Punto aperto di Coda 93, chiuso dalla revisione della
+                    // beta.24.
+                    'data_competenza'    => now(),
                     'causale'            => 'Storno: ' . $scr->causale,
                     'tipo_movimento'     => 'rettifica',
                     'stato'              => 'registrata',

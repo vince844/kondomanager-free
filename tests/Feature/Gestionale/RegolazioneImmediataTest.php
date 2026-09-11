@@ -447,3 +447,30 @@ test('l esercizio chiuso non è selezionabile per una regolazione immediata', fu
 
     $response->assertSessionHasErrors('esercizio_id');
 });
+
+/**
+ * ⚠️ **Da un fondo non si paga, e questa richiesta era l'unica a non saperlo.** La beta.19 aveva
+ * chiuso il varco su pagamenti e incassi (`whereIn('tipo', [...])`); qui un `cassa_id` di tipo
+ * `fondo` passava, l'azione scriveva AVERE sul fondo e il registro di contabilità — che per D15
+ * esclude le righe sui fondi — non mostrava un'uscita reale di denaro. Revisione della beta.24.
+ */
+test('una regolazione immediata da una cassa fondo viene rifiutata', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    $contoFondo = DB::table('conti_contabili')->insertGetId([
+        'condominio_id' => $condominio->id, 'codice' => 'FONDO-'.uniqid(), 'nome' => 'Fondo lavori',
+        'tipo' => 'attivo', 'categoria' => 'liquidita', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $fondo = DB::table('casse')->insertGetId([
+        'condominio_id' => $condominio->id, 'conto_contabile_id' => $contoFondo, 'nome' => 'Fondo lavori',
+        'tipo' => 'fondo', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $this->actingAs($this->user)->post(
+        route('admin.gestionale.regolazioni-immediate.store', $condominio),
+        datiRegolazioneImmediata($ctx, ['cassa_id' => $fondo])
+    )->assertSessionHasErrors('cassa_id');
+
+    expect(DB::table('scritture_contabili')->where('tipo_movimento', 'regolazione_immediata')->count())->toBe(0);
+});

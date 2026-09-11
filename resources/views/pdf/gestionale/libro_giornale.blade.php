@@ -54,11 +54,13 @@
 {{--
   ⚠️ Questo NON è il fascicolo di rendiconto (§10.5 di docs/registri_contabili.md): è il registro
   delle scritture in partita doppia, riga per riga. Chi cerca entrate/uscite trova quel registro
-  nel punto 1 della sequenza (art. 1130 n. 7 c.c.), non qui.
+  nella pagina «Prima nota» (punto 1 della sequenza, art. 1130 n. 7 c.c.), non qui — dalla
+  beta.24 non è più un rimando a una pagina inesistente.
 --}}
 <div style="font-size: 7.5pt; color: #888; font-style: italic; margin-bottom: 8px;">
     Registro cronologico delle scritture in partita doppia. Non sostituisce il registro di
-    contabilità (entrate e uscite) previsto dall'art. 1130, comma 1, n. 7 c.c.
+    contabilità (entrate e uscite) previsto dall'art. 1130, comma 1, n. 7 c.c. —
+    <a href="{{ route('admin.gestionale.esercizi.registro-contabilita.index', ['condominio' => $condominio, 'esercizio' => $esercizio]) }}" style="color: #2b6cb0;">vedi «Prima nota»</a>.
 </div>
 
 {{--

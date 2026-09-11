@@ -1,6 +1,5 @@
 import { h } from 'vue'
 import DataTableColumnHeader from '@/components/gestionale/movimenti/fatture/DataTableColumnHeader.vue'
-import DataTableRowActions from './DataTableRowActions.vue'
 import { Calendar, AlertTriangle } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -39,13 +38,13 @@ export interface ScritturaRow {
 
 const { euro } = useCurrencyFormatter();
 
-const badgeBase = 'inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider whitespace-nowrap';
+export const badgeBase = 'inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider whitespace-nowrap';
 
 /**
  * Macro-gruppo del tipo movimento, solo per la scelta del colore badge.
  * Rispecchia i commenti di raggruppamento in App\Enums\TipoMovimentoContabile.
  */
-const CATEGORIA_PER_TIPO: Record<string, 'passivo' | 'attivo' | 'prima_nota' | 'fiscale' | 'tecnico'> = {
+export const CATEGORIA_PER_TIPO: Record<string, 'passivo' | 'attivo' | 'prima_nota' | 'fiscale' | 'tecnico'> = {
   fattura_acquisto: 'passivo',
   nota_credito_fornitore: 'passivo',
   pagamento_fornitore: 'passivo',
@@ -72,7 +71,7 @@ const CATEGORIA_PER_TIPO: Record<string, 'passivo' | 'attivo' | 'prima_nota' | '
   riconciliazione_bancaria: 'tecnico',
 };
 
-const COLORI_CATEGORIA: Record<string, string> = {
+export const COLORI_CATEGORIA: Record<string, string> = {
   passivo: 'bg-rose-50 text-rose-700 border border-rose-200',
   attivo: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
   prima_nota: 'bg-amber-50 text-amber-700 border border-amber-200',
@@ -80,7 +79,7 @@ const COLORI_CATEGORIA: Record<string, string> = {
   tecnico: 'bg-violet-50 text-violet-700 border border-violet-200',
 };
 
-const COLORI_STATO: Record<string, string> = {
+export const COLORI_STATO: Record<string, string> = {
   bozza: 'bg-slate-100 text-slate-600 border border-slate-200',
   registrata: 'bg-blue-50 text-blue-700 border border-blue-200',
   riconciliata: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -92,7 +91,13 @@ const COLORI_STATO: Record<string, string> = {
 // sempre "Stornata/o": qui si allinea la stessa convenzione.
 export const STATO_LABELS: Record<string, string> = { annullata: 'Stornata' };
 
-export const createColumns = (condominioId: number, esercizioId: number): ColumnDef<ScritturaRow>[] => {
+/**
+ * ⚠️ **Niente colonna «azioni» dalla beta.24.** Il rimando al dettaglio della scrittura vive nel
+ * pannello che si apre sulla riga — qui e nel registro di contabilità, che è l'elenco gemello:
+ * un'icona in coda che duplica quel link costava una colonna e faceva comportare in modo diverso
+ * due pagine che mostrano lo stesso giornale. Deciso da Vincenzo il 09/09/2026.
+ */
+export const createColumns = (): ColumnDef<ScritturaRow>[] => {
   return [
     {
       accessorKey: 'numero_protocollo',
@@ -174,16 +179,6 @@ export const createColumns = (condominioId: number, esercizioId: number): Column
         return h('span', { class: `${badgeBase} ${COLORI_STATO[stato] ?? COLORI_STATO.bozza}` }, STATO_LABELS[stato] ?? stato);
       },
       enableSorting: false,
-    },
-    {
-      id: 'actions',
-      enableHiding: false,
-      size: 50,
-      cell: ({ row }) => h(DataTableRowActions, {
-        scrittura: row.original,
-        condominioId,
-        esercizioId,
-      }),
     },
   ];
 }

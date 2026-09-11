@@ -217,6 +217,16 @@ test('la scrittura di storno è uguale e contraria, e quadra', function () {
 
     expect($storno)->not->toBeNull();
     assertQuadraturaPerfetta($storno->id);
+
+    // ⚠️ Fase 1-bis, beta.24: mancava, ed è l'unico storno del progetto che non lo faceva —
+    // vedi il commento in StornaVersamentoF24Action. Senza questo collegamento un lettore che
+    // risale dallo storno all'originale (il registro di contabilità, in primis) non trova più
+    // la delega F24 e perde «Erario» come controparte.
+    $originale = DB::table('scritture_contabili')
+        ->where('condominio_id', $condominio->id)
+        ->where('tipo_movimento', TipoMovimentoContabile::PAGAMENTO_F24->value)
+        ->first();
+    expect((int) $storno->scrittura_padre_id)->toBe($originale->id);
 });
 
 test('lo storno pretende una motivazione', function () {

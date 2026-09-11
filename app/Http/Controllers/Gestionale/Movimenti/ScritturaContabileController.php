@@ -17,6 +17,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use App\Traits\PaginaElenco;
+use App\Traits\PdfRigheStampabili;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -47,7 +48,7 @@ class ScritturaContabileController extends Controller
         return [];
     }
 
-    use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco;
+    use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco, PdfRigheStampabili;
 
     /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
     private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
@@ -227,60 +228,6 @@ class ScritturaContabileController extends Controller
         }
 
         return $righe;
-    }
-
-    /**
-     * Quante righe di giornale questa installazione può stampare senza schiantarsi.
-     *
-     * ⚠️ **Non un numero inventato: deriva dal `memory_limit` vero dell'host.** Il costo di mPDF
-     * è lineare nelle righe, e con la tabella a blocchi (vedi il commento in
-     * `libro_giornale.blade.php`) è stato misurato su questo stesso template:
-     *
-     *   2.000 righe → 100 MB · 3.500 → 116 MB · 4.500 → 122 MB · 6.000 → oltre 128 MB (fatale)
-     *
-     * Da cui: **~78 MB di base** (Laravel + mPDF + font) e **~0,0105 MB per riga**. Il tetto si
-     * calcola su quei due numeri, con un margine dell'85% perché l'ultima allocazione di mPDF è
-     * un blocco unico da decine di MB (misurato: 32 MB) e va lasciato spazio.
-     *
-     * Con `memory_limit = 128M` — il parco installato dichiarato di questo prodotto — dà circa
-     * 4.000 righe, cioè oltre 1.300 scritture: molte volte il volume di un anno ordinario.
-     * Chi ha più memoria ottiene automaticamente un tetto più alto, senza configurare nulla.
-     */
-    private static function righeStampabili(): int
-    {
-        return self::righeStampabiliCon(ini_get('memory_limit'));
-    }
-
-    /**
-     * La formula, separata da `ini_get()` perché sia misurabile.
-     *
-     * Tenerle insieme rendeva il tetto testabile solo abbassando davvero il `memory_limit` del
-     * processo — cosa che fallisce appena la suite ha già allocato più di quel valore («Failed
-     * to set memory limit to 134217728 bytes, current usage is 210763776»). Il calcolo non ha
-     * bisogno dello stato del processo: gli basta la stringa.
-     *
-     * @param string|false $limite il valore grezzo di `memory_limit` ('128M', '1G', '-1', …)
-     */
-    private static function righeStampabiliCon($limite): int
-    {
-        // '-1' = nessun limite (tipico da riga di comando): nessun tetto da applicare.
-        if ($limite === false || (int) $limite === -1) {
-            return PHP_INT_MAX;
-        }
-
-        $unita = strtoupper(substr(trim((string) $limite), -1));
-        $valore = (float) $limite;
-        $mb = match ($unita) {
-            'G' => $valore * 1024,
-            'K' => $valore / 1024,
-            default => $unita === 'M' ? $valore : $valore / 1048576,
-        };
-
-        $disponibiliMb = ($mb * 0.85) - 78;
-
-        // Sotto la base non si stampa comunque nulla: si lascia un minimo simbolico, così
-        // l'errore che l'amministratore riceve resta questo messaggio e non un fatale.
-        return max(200, (int) ($disponibiliMb / 0.0105));
     }
 
     /**
