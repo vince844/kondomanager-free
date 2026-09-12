@@ -730,6 +730,42 @@ test('il ritardo di annotazione scatta oltre i trenta giorni, e non sul moviment
  * test lo tiene fermo sul caso che prima falliva in silenzio. Le righe dello storno stesso NON
  * sono marcate: sono la correzione, non l'operazione corretta.
  */
+/**
+ * ⚠️ `storno_credito` comincia come uno storno ma non lo è: è la quota pagata con un credito,
+ * figlia di un incasso che resta valido. Col criterio `LIKE 'storno_%'` quell'incasso usciva
+ * «stornato» in stampa. Trovato il 12/09/2026 sul condominio «Via roma», chiudendo la beta.25.
+ */
+test('un incasso con una quota pagata a credito (figlia storno_credito) NON è marcato stornato', function () {
+    [$condominio, $esercizio, $gestione] = setupRegistro();
+    $banca = creaCassaRegistro($condominio->id, 'banca', 'Banca');
+    $crediti = DB::table('conti_contabili')->insertGetId([
+        'condominio_id' => $condominio->id, 'codice' => '1101', 'nome' => 'Crediti', 'tipo' => 'attivo', 'categoria' => 'crediti',
+        'ruolo' => 'crediti_condomini', 'livello' => 1, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $incasso = creaScrittura([
+        'condominio_id' => $condominio->id, 'esercizio_id' => $esercizio->id, 'gestione_id' => $gestione->id,
+        'data_competenza' => '2026-03-01', 'data_registrazione' => '2026-03-01',
+        'causale' => 'Incasso rata', 'tipo_movimento' => TipoMovimentoContabile::INCASSO_RATA->value,
+    ]);
+    RigaScrittura::create(['scrittura_id' => $incasso->id, 'conto_contabile_id' => $banca->conto_contabile_id, 'cassa_id' => $banca->id, 'tipo_riga' => 'dare', 'importo' => 2457]);
+    RigaScrittura::create(['scrittura_id' => $incasso->id, 'conto_contabile_id' => $crediti, 'tipo_riga' => 'avere', 'importo' => 2457]);
+    // La figlia: credito usato per coprire altre quote. Solo conti di credito, nessuna cassa.
+    $credito = creaScrittura([
+        'condominio_id' => $condominio->id, 'esercizio_id' => $esercizio->id, 'gestione_id' => $gestione->id,
+        'data_competenza' => '2026-03-01', 'data_registrazione' => '2026-03-01',
+        'causale' => 'Quota pagata con credito', 'tipo_movimento' => TipoMovimentoContabile::STORNO_CREDITO->value,
+        'scrittura_padre_id' => $incasso->id,
+    ]);
+    RigaScrittura::create(['scrittura_id' => $credito->id, 'conto_contabile_id' => $crediti, 'tipo_riga' => 'dare', 'importo' => 10000]);
+    RigaScrittura::create(['scrittura_id' => $credito->id, 'conto_contabile_id' => $crediti, 'tipo_riga' => 'avere', 'importo' => 10000]);
+
+    $righe = collect(app(RegistroContabilitaService::class)->registro($esercizio));
+
+    expect($righe)->toHaveCount(1)
+        ->and($righe->first()['stornata'])->toBeFalse();
+});
+
 test('un giroconto stornato è marcato stornato anche se il DB lo lascia registrato', function () {
     [$condominio, $esercizio, $gestione] = setupRegistro();
     $banca = creaCassaRegistro($condominio->id, 'banca', 'Banca');

@@ -30,6 +30,18 @@ use Illuminate\Support\Facades\DB;
  *
  * Le scritture annullate (soft-deleted) sono sempre escluse.
  *
+ * DUE LETTURE, E SOLO UNA È UNA FOTOGRAFIA (D16, docs/registri_contabili.md). Con un
+ * `$esercizio` il motore somma le sole scritture di quell'esercizio: è il FLUSSO dell'anno, e dal
+ * secondo esercizio in poi non dice quanto c'è sui conti — non esiste chiusura né riapertura
+ * (Coda ㉜), quindi liquidità, crediti e debiti ereditati non ci sono. Con `$allaData` somma
+ * tutti i movimenti con `data_competenza ≤ data`, su tutti gli esercizi: è lo STOCK a quella
+ * data, cioè lo stato patrimoniale nel senso proprio. Le due letture quadrano entrambe — R6 è
+ * meccanica, dare = avere per scrittura — ma solo la seconda è vera come fotografia. La pagina
+ * Stato patrimoniale usa la seconda; il riquadro del Libro Giornale continua a usare la prima,
+ * invariata byte per byte.
+ *
+ * ⚠️ Chi chiama con entrambi chiede una cosa ambigua, e riceve un'eccezione invece di un numero.
+ *
  * @see docs/fondo_accantonato_e_quadratura_sp.md
  */
 class StatoPatrimonialeService
@@ -43,9 +55,15 @@ class StatoPatrimonialeService
      *     sbilancio:int, quadra:bool
      * }
      */
-    public function calcola(Condominio $condominio, ?Esercizio $esercizio = null): array
+    public function calcola(Condominio $condominio, ?Esercizio $esercizio = null, ?string $allaData = null, bool $escludiAperture = false): array
     {
-        $saldi = $this->saldiPerConto($condominio, $esercizio);
+        if ($esercizio !== null && $allaData !== null) {
+            throw new \InvalidArgumentException(
+                'Stato patrimoniale: o il flusso di un esercizio o la fotografia a una data, non entrambi.'
+            );
+        }
+
+        $saldi = $this->saldiPerConto($condominio, $esercizio, $allaData, $escludiAperture);
 
         $attivo  = $saldi->where('tipo', 'attivo');
         $passivo = $saldi->where('tipo', 'passivo');
@@ -80,6 +98,11 @@ class StatoPatrimonialeService
             ],
             'costi'                        => $costi,
             'ricavi'                       => $ricavi,
+            // Voce per voce anche per costi e ricavi: la pagina Stato patrimoniale deve poter dire
+            // QUALI costi stanno fra attività e passività, non solo quanti («e quali sono questi
+            // costi?» — Vincenzo, a video). Chiavi nuove, gli scalari sopra restano com'erano.
+            'costi_voci'                   => $saldi->where('tipo', 'costo')->values()->all(),
+            'ricavi_voci'                  => $saldi->where('tipo', 'ricavo')->values()->all(),
             'risultato_esercizio'          => $risultato,
             'liquidita_non_contabilizzata' => $liquiditaNonContabilizzata,
             'sbilancio'                    => $sbilancio,
@@ -96,27 +119,58 @@ class StatoPatrimonialeService
     /**
      * Saldo di ogni conto contabile, già orientato secondo la natura del conto.
      */
-    private function saldiPerConto(Condominio $condominio, ?Esercizio $esercizio)
+    /**
+     * @param  bool  $escludiAperture  con `$esercizio`: i FLUSSI dell'esercizio senza le scritture di
+     *                                 apertura (tipo `apertura`), che sono disponibilità iniziale e
+     *                                 non movimento — è il perimetro del riepilogo finanziario e del
+     *                                 risultato di gestione (D19). Irrilevante con `$allaData`.
+     */
+    private function saldiPerConto(Condominio $condominio, ?Esercizio $esercizio, ?string $allaData = null, bool $escludiAperture = false)
     {
         $query = DB::table('conti_contabili as cc')
             ->leftJoin('righe_scritture as rs', 'rs.conto_contabile_id', '=', 'cc.id')
-            ->leftJoin('scritture_contabili as sc', function ($join) use ($esercizio) {
+            ->leftJoin('scritture_contabili as sc', function ($join) use ($esercizio, $allaData, $escludiAperture) {
                 $join->on('rs.scrittura_id', '=', 'sc.id')
                      ->whereNull('sc.deleted_at');
 
                 if ($esercizio) {
                     $join->where('sc.esercizio_id', '=', $esercizio->id);
+                    if ($escludiAperture) {
+                        $join->where('sc.tipo_movimento', '<>', 'apertura');
+                    }
+                }
+
+                // D16: la fotografia taglia per data effettiva del movimento (D6), su tutti gli
+                // esercizi. Il confine per esercizio_id e quello per data possono divergere —
+                // una scrittura datata fuori dal suo esercizio — e qui vince la data, perché
+                // uno stato patrimoniale è «quanto c'era il giorno X», non «cosa ha scritto
+                // l'esercizio X». Il filtro sta nel JOIN e non nel WHERE per la stessa ragione
+                // di quello per esercizio: un conto senza righe entro la data deve restare a
+                // zero, non sparire dal LEFT JOIN.
+                // ⚠️ `< giorno dopo`, non `<= data`: su MySQL `data_competenza` è DATE e il confronto
+                // con 'Y-m-d' è inclusivo; su SQLite (i test) la colonna è testo 'Y-m-d 00:00:00' e
+                // '2025-12-31 00:00:00' <= '2025-12-31' è FALSO — la suite non poteva vedere un
+                // movimento datato il giorno stesso del taglio. Con «minore del giorno dopo» le due
+                // basi rispondono uguale. Trovato dalla revisione della beta.25.
+                if ($allaData !== null) {
+                    $join->where('sc.data_competenza', '<', \Carbon\Carbon::parse($allaData)->addDay()->format('Y-m-d'));
                 }
             })
             ->where('cc.condominio_id', $condominio->id)
             ->whereNull('cc.deleted_at')
-            ->groupBy('cc.id', 'cc.codice', 'cc.nome', 'cc.tipo', 'cc.categoria')
+            ->groupBy('cc.id', 'cc.codice', 'cc.nome', 'cc.tipo', 'cc.categoria', 'cc.ruolo', 'cc.parent_id', 'cc.livello')
             ->select([
                 'cc.id',
                 'cc.codice',
                 'cc.nome',
                 'cc.tipo',
                 'cc.categoria',
+                // Per la pagina (D18): le etichette si prendono dal RUOLO, non dalla categoria —
+                // «Gestione Rate» ha categoria `fondi` a database e non è un fondo. Gerarchia
+                // per la presentazione ad albero; nessuno dei tre entra in una somma.
+                'cc.ruolo',
+                'cc.parent_id',
+                'cc.livello',
                 DB::raw("COALESCE(SUM(CASE WHEN sc.id IS NULL THEN 0 WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE 0 END), 0) as dare"),
                 DB::raw("COALESCE(SUM(CASE WHEN sc.id IS NULL THEN 0 WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as avere"),
             ]);
@@ -136,6 +190,9 @@ class StatoPatrimonialeService
                 'nome'      => $riga->nome,
                 'tipo'      => $riga->tipo,
                 'categoria' => $riga->categoria,
+                'ruolo'     => $riga->ruolo,
+                'parent_id' => $riga->parent_id,
+                'livello'   => (int) $riga->livello,
                 'dare'      => $dare,
                 'avere'     => $avere,
                 'saldo'     => $saldo,

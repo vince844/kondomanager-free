@@ -7,6 +7,146 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.25] - La Fotografia Che Nessuno Aveva Scattato
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Lo stato patrimoniale esisteva come motore dalla 1.10.0-beta.25 e si vedeva come un riquadro con due
+totali sopra il Libro Giornale, più una modale che dichiarava di essere provvisoria. Ora è una
+**pagina** nella barra Movimenti — punto 3 della sequenza di `docs/registri_contabili.md`, decisioni
+D16–D20 scritte prima del codice — ed è la pagina con cui l'amministratore verifica se tutta la
+contabilità torna. Per questo ogni numero che mostra è coperto da test con valori attesi **calcolati
+a mano**, non letti dal motore stesso: prima di questa beta nessun test aveva costi diversi da zero né
+dati su due esercizi.
+
+**Una fotografia, non il flusso dell'anno.** Ogni saldo è quanto c'era sui conti a una data — oggi
+per l'esercizio aperto, la data di fine per uno chiuso — con dentro tutto ciò che è successo prima,
+anche negli esercizi precedenti. Non si elencano gli anni passati: il loro effetto sta nel numero. Il
+motore sommava solo le scritture dell'esercizio, che è il flusso dell'anno: dal secondo anno in poi
+liquidità, crediti e debiti ereditati sparivano, perché non esiste ancora una chiusura che li riporti.
+Il motore ha guadagnato una lettura per data; quella per esercizio resta com'era, e il riquadro sul
+Libro Giornale continua a usarla. I flussi dell'esercizio — riepilogo finanziario e risultato di
+gestione — restano invece per esercizio, come il Libro Giornale e il consuntivo: se una scrittura è
+datata fuori dal periodo del suo esercizio, la fotografia e il riepilogo non contano le stesse righe,
+e uno dei controlli lo misura invece di nasconderlo.
+
+**Attività + Costi = Passività, con i numeri veri.** In questa versione le quote emesse ai condòmini
+sono registrate come debito della gestione verso i condòmini — il conto «Gestione Rate» — non come
+ricavo. I costi registrati e non ancora conguagliati sono spese sostenute per conto dei condòmini,
+e **stanno nella colonna delle attività, elencati uno per uno** — quali fatture e quali spese — così
+le due colonne finiscono sullo stesso numero: «totale attività e costi da conguagliare» a sinistra,
+«totale passività» a destra, e sotto il verdetto «quadratura: quadra». È la stessa uguaglianza del
+dare = avere del Libro Giornale, e il riquadro del Libro Giornale ora la scrive nella stessa forma
+— prima diceva «più spese di quante addebitate» anche quando le quote emesse superavano le spese,
+perché senza conti di ricavo il suo «risultato» era solo «meno i costi»; e in fondo alla sua modale
+prometteva ancora «una pagina dedicata arriverà». Il risultato di gestione ha il suo nome: quote
+emesse meno costi dell'esercizio, l'avanzo o il disavanzo che andrà a conguaglio. La pagina non
+scrive «0 = 0» e non dichiara mai i conti «in pari». Le etichette delle voci vengono dal ruolo del
+conto, non dalla sua categoria a database: «Gestione Rate» ha categoria «fondi», e non è un fondo.
+
+**Sei controlli con un nome, e ognuno dice come rimediare.** Non sigle e non un semaforo:
+«Partita doppia» — totale dare = totale avere su tutte le scritture fino alla data, lo stesso
+numero del Libro Giornale, perché è la base di tutto il resto; è la somma dei movimenti e non dei
+saldi, quindi è più grande della quadratura patrimoniale, e la nota lo dice —, «Quadratura patrimoniale»,
+«Raccordo fra cassa e competenza», «Vincoli e casse fondo», «Liquidità e riepilogo», «Casse reali
+sotto zero». Ogni card mostra l'uguaglianza con gli importi, l'esito e una
+nota; quando non torna, spiega cosa è successo, cosa fare, e **porta con un pulsante nella pagina
+dove si fa** — la Prima nota già filtrata sulla cassa che è andata sotto zero, i Giroconti per
+accantonare in un fondo, le Casse per il conto senza cassa, il Libro Giornale per la scrittura
+datata fuori periodo. Il raccordo fra cassa e competenza — perché la liquidità è cambiata di una
+cifra e il risultato di gestione di un'altra — è derivato dalla nostra identità contabile, riga per
+riga con il nome della posta (fatture non pagate, ritenute non versate, quote non incassate), e non
+trascritto dal modello di riferimento. I controlli che il programma non può eseguire — il confronto
+con l'estratto conto, il riparto contro la spesa — non compaiono come se fossero fatti.
+
+**Liquidità libera e accantonata.** Banca e contanti da una parte, i fondi dall'altra, fondo per
+fondo con il suo vincolo. Il controllo «vincoli dichiarati ≤ liquidità accantonata nei fondi» è nella
+forma del modello di riferimento, ma con l'esito **per fondo**: € 200 assegnati a un fondo che ne
+tiene 50 è rosso e dice quanto manca; un vincolo dichiarato senza nessuna cassa fondo che lo tenga è
+una segnalazione, non un errore; un fondo generico pieno senza vincoli non è un'anomalia, e la
+pagina lo scrive. Un fondo senza sottotipo dichiarato è vincolato, non libero: solo il «generico»
+esplicito è liberamente utilizzabile. I fondi restano partizioni del conto corrente: il totale li
+conta una volta sola, e non compare nessuna passività inventata per farli quadrare.
+
+**Il riepilogo finanziario dell'esercizio.** Per ogni cassa: disponibilità iniziale, entrate,
+uscite, disponibilità finale — le quattro colonne che l'art. 1130-bis chiede. Ogni riga quadra da
+sé. I trasferimenti fra casse contano nelle righe — un accantonamento è un'uscita della banca e
+un'entrata del fondo — ma non nel totale, che espone i soli flussi con l'esterno; un incasso diviso
+su due casse nella stessa scrittura non fa più cadere la pagina. L'apertura di una cassa conta come
+disponibilità iniziale, non come entrata. **Una registrazione stornata non conta**: originale e
+storno si annullano — «più cento meno cento fa zero» — e non stanno né fra le entrate né fra le
+uscite, che così sono i flussi reali con l'esterno; la nota sotto la tabella dice quante coppie
+sono state tolte e per quanto, e nella Prima nota restano leggibili entrambe, come vuole l'art.
+2219. Una banca o una cassa contanti che sia scesa sotto zero anche per un solo giorno
+dell'esercizio è segnalata, con l'importo e la data — **a fine giornata**: la data di un movimento
+non ha l'ora, e una spesa stornata lo stesso giorno non è un'ora di scoperto.
+
+**A chi devo soldi, subito.** La card «Debiti» apre l'elenco delle fatture ancora da pagare —
+fornitore, documento, scadenza, residuo — e ogni riga ha un pulsante **«Paga»** che porta al
+pagamento con quella fattura già selezionata. In fondo, la somma dei residui è confrontata con il
+saldo del conto fornitori, e le ritenute da versare portano agli F24.
+
+**Provata su un condominio nuovo, azione per azione.** Prima di chiudere la beta la pagina è stata
+seguita passo passo su un condominio creato da zero: apertura della banca, fondo con giroconto,
+emissione delle rate, incasso, fattura con ritenuta, pagamento dalla modale, una spesa più grande
+del saldo, il suo storno, lo storno dell'incasso, il versamento F24, la stampa, un esercizio futuro.
+A ogni passo i numeri attesi erano calcolati a mano prima di aprire la pagina, e sono tornati tutti.
+Il test ha trovato una cosa: dopo lo storno di una spesa il controllo «sotto zero» restava rosso per
+un istante intra-giornata che non esiste — corretto come descritto sopra.
+
+**Esercizio non ancora iniziato.** Se la data di inizio è nel futuro, la pagina lo dice e non
+mostra una fotografia a oggi con dentro l'esercizio precedente: prima non c'era distinzione fra
+«ancora da aprire» e «aperto». La data «oggi» è quella dell'utente in Italia, non quella del server
+in UTC: alle 00:30 il giorno era ancora quello prima.
+
+**La stampa** usa la carta del registro di contabilità: caratteri propri, carta intestata, i
+prospetti a doppio filetto, uno sotto l'altro così che si spezzino fra le pagine. Senza firma, come
+gli altri due libri: è una fotografia calcolata, non un atto. **I tre libri scaricano con il loro
+nome** — `stato-patrimoniale-<condominio>-2026-al-2026-09-12.pdf`, `prima-nota-…`,
+`libro-giornale-…` — e non più come `print.pdf`, che è il nome che il browser inventa quando il
+programma non ne dichiara uno.
+
+**Seguendo i pulsanti si arriva in fondo.** Provato su un condominio con l'esercizio sbagliato e la
+banca senza apertura: tutti e due i rossi si chiudono seguendo solo i rimedi proposti. Perché
+succedesse, tre cose sono cambiate. «Liquidità e riepilogo» ora conta quante scritture stanno fuori
+dal periodo dell'esercizio: se sono tutte, o più della metà, dice che **sono le date dell'esercizio a
+essere sbagliate** e il pulsante porta a modificare l'esercizio — non a correggere dodici scritture
+una per una. «Casse reali sotto zero» distingue una banca **senza saldo di apertura e senza incassi**
+(«i pagamenti sono usciti da un conto che, per il programma, era vuoto») da un movimento sulla cassa
+sbagliata, e nel primo caso porta dritto a registrare il saldo iniziale — con le tre uscite possibili:
+c'erano soldi (registra il saldo), hanno versato (registra gli incassi), il conto era davvero a zero
+(il pagamento è sulla cassa sbagliata). E quel pulsante prima portava a un **no**: il form della cassa
+rifiutava il saldo di apertura se c'erano già movimenti, anche quando nessuna apertura era mai stata
+registrata — e il rifiuto non si vedeva nemmeno, la pagina si ricaricava in silenzio. Ora la **prima**
+apertura di una cassa che ne è priva si può registrare anche con movimenti sotto (va a inizio
+esercizio e aggiunge ciò che manca; modificarne una già registrata resta vietato), e un rifiuto
+compare sotto il campo.
+
+**Un incasso con una quota pagata a credito usciva «stornato».** Trovato chiudendo la beta su un
+condominio con due fondi e quattro storni: `storno_credito` comincia come uno storno ma è la quota
+coperta da un credito, figlia di un incasso che resta valido. Il criterio «figlia che comincia per
+storno_» — lo stesso della Prima nota dalla beta.24 — lo prendeva per uno storno: nella Prima nota
+quell'incasso era marcato «stornata», e nel riepilogo finanziario sparivano 24,57 dalle entrate
+della banca, con il controllo «Liquidità e riepilogo» rosso e una diagnosi sbagliata. Ora gli
+storni veri sono un elenco esplicito nel programma, e due test tengono fermo il caso.
+
+**Ritocchi visti al test.** Nel pagamento fornitore una ragione sociale lunga andava a capo dentro
+il menu e spingeva la × e la freccia su una seconda riga: ora il valore scelto sta su una riga e si
+tronca con i puntini (vale per ogni menu a scelta singola). L'anteprima della scrittura nella
+regolazione immediata e nel giroconto non usa più il carattere a spaziatura fissa. Nella
+situazione patrimoniale la colonna del codice è larga quanto il codice più lungo, non 64 pixel
+fissi.
+
+**Cosa si completa con gli altri moduli, e non è una dimenticanza.** In fondo alla pagina e in fondo
+al foglio: non elenca i condòmini che devono soldi, solo il totale — l'elenco per unità arriva con
+il modulo morosi e solleciti, e si aprirà da qui. Non confronta con l'estratto conto della banca —
+resta un controllo dell'amministratore finché non ci sarà la riconciliazione bancaria, che
+diventerà un controllo di questa pagina. Non chiude l'esercizio — quote e costi si accumulano dal
+primo, il cumulato da conguagliare è dichiarato, e la fotografia al 31/12 di un esercizio chiuso
+diventerà definitiva con la chiusura guidata. Sono i tre agganci previsti, non tre buchi.
+
+---
+
 ## [1.11.0-beta.24] - La Prima Nota Che Non Era Ancora Nata
 
 **Non tocca il database:** nessuna migrazione, nessun dato nuovo.

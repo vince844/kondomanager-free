@@ -23,6 +23,19 @@ class PdfService
      * @param array  $config Additional mPDF configuration to override defaults.
      * @return \Mpdf\Mpdf    The configured mPDF instance ready for output.
      */
+    /**
+     * Nome del file per i tre libri contabili: «prima-nota-condominio-rossi-2026.pdf», non «print.pdf»
+     * (il nome che il browser ricava dall'indirizzo quando la risposta non ne dichiara uno — visto al
+     * test reale della beta.25). Solo ASCII: `Str::slug` toglie accenti e spazi, e il nome resta
+     * leggibile in un elenco di download.
+     */
+    public static function nomeFile(string $libro, string $condominio, ?string $esercizio = null, ?string $suffisso = null): string
+    {
+        $parti = array_filter([$libro, \Illuminate\Support\Str::slug($condominio), $esercizio, $suffisso]);
+
+        return implode('-', $parti).'.pdf';
+    }
+
     public function generate(string $view, array $data = [], array $config = []): Mpdf
     {
         $settings = app(PrintSettings::class);

@@ -161,8 +161,11 @@ class RegistroContabilitaController extends Controller
             'margin_footer' => 8,
         ]);
 
-        return response($mpdf->Output('registro_contabilita.pdf', \Mpdf\Output\Destination::STRING_RETURN))
-            ->header('Content-Type', 'application/pdf');
+        $nomeFile = PdfService::nomeFile('prima-nota', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     /**

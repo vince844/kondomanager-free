@@ -188,10 +188,13 @@ class RegistroContabilitaService
                 // criterio perché `RiallineaFondiService` la usa per correzioni che non sono
                 // storni; gli incassi restano coperti dallo stato. Trovato dalla revisione della
                 // beta.24 fra i reperti che il tetto aveva lasciato non verificati.
+                // ⚠️ Elenco esplicito, non `LIKE 'storno_%'`: `storno_credito` è la quota pagata
+                // con un credito, figlia di un incasso VALIDO — col LIKE quell'incasso usciva
+                // «stornato» in stampa (trovato il 12/09/2026 sul condominio «Via roma»).
                 DB::raw("CASE WHEN sc.stato = 'annullata' OR EXISTS (
                     SELECT 1 FROM scritture_contabili f
                     WHERE f.scrittura_padre_id = sc.id
-                      AND f.tipo_movimento LIKE 'storno_%'
+                      AND f.tipo_movimento IN (".implode(',', array_map(fn ($t) => "'".$t."'", TipoMovimentoContabile::storniDiScrittura())).")
                       AND f.deleted_at IS NULL
                 ) THEN 1 ELSE 0 END as stornata"),
                 'sc.tipo_movimento',

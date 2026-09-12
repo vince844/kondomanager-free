@@ -207,6 +207,12 @@ class CassaController extends Controller
                 $this->flashSuccess('Risorsa aggiornata correttamente.')
             );
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Un rifiuto di dominio (tipo o saldo non modificabili) è un errore di campo: deve
+            // comparire sotto il campo, dove `form.errors` lo mostra. Inghiottito nel `Throwable`
+            // qui sotto diventava un flash che la pagina di modifica non espone: l'amministratore
+            // cliccava «Aggiorna» e la pagina si ricaricava in silenzio (12/09/2026).
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Errore aggiornamento cassa', [
                 'condominio_id' => $condominio->id,

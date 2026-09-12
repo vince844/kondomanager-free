@@ -396,7 +396,7 @@ function onKeydown(e: KeyboardEvent) {
                         <div class="rounded-lg border-l-2 border-emerald-400/80 bg-white/[0.04] px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
                                 <span class="text-[10px] font-black uppercase tracking-widest text-emerald-300">Dare</span>
-                                <span class="shrink-0 font-mono text-base tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
+                                <span class="shrink-0 text-base font-semibold tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
                                     {{ importoValido ? euro(form.importo) : '—' }}
                                 </span>
                             </div>
@@ -408,7 +408,7 @@ function onKeydown(e: KeyboardEvent) {
                         <div class="rounded-lg border-l-2 border-rose-400/80 bg-white/[0.04] px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
                                 <span class="text-[10px] font-black uppercase tracking-widest text-rose-300">Avere</span>
-                                <span class="shrink-0 font-mono text-base tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
+                                <span class="shrink-0 text-base font-semibold tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
                                     {{ importoValido ? euro(form.importo) : '—' }}
                                 </span>
                             </div>
@@ -437,7 +437,7 @@ function onKeydown(e: KeyboardEvent) {
                         <Info class="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
                             Nessuna fattura, nessuno stato di pagamento, nessuna scadenza.
-                            Un solo movimento a protocollo <span class="font-mono">RIM</span>.
+                            Un solo movimento a protocollo <span class="font-semibold">RIM</span>.
                         </span>
                     </div>
                 </div>

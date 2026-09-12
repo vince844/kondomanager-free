@@ -16,6 +16,7 @@ use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
 use App\Http\Controllers\Gestionale\Movimenti\RegistroContabilitaController;
+use App\Http\Controllers\Gestionale\Movimenti\StatoPatrimonialeController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
@@ -329,6 +330,13 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('esercizi/{esercizio}/registro-contabilita/print', [RegistroContabilitaController::class, 'stampa'])
         ->name('esercizi.registro-contabilita.print');
+
+    // Stato patrimoniale — punto 3 di docs/registri_contabili.md (D16–D20), beta.25.
+    Route::get('esercizi/{esercizio}/stato-patrimoniale', [StatoPatrimonialeController::class, 'index'])
+        ->name('esercizi.stato-patrimoniale.index');
+
+    Route::get('esercizi/{esercizio}/stato-patrimoniale/print', [StatoPatrimonialeController::class, 'stampa'])
+        ->name('esercizi.stato-patrimoniale.print');
 
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');

@@ -20,3 +20,20 @@
     color: black !important; /* Keep the text color dark for contrast */
   }
 
+
+/* Selezione singola di vue-select: il valore scelto sta su una riga e si tronca con i puntini.
+   Senza questo, una ragione sociale lunga andava a capo e spingeva la × e la freccia su una
+   seconda riga (visto nel pagamento fornitore). Solo `vs--single`: nelle selezioni multiple
+   le etichette devono poter andare a capo. */
+.vs--single .vs__selected-options {
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+.vs--single .vs__selected {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

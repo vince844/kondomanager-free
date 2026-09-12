@@ -137,6 +137,33 @@ enum TipoMovimentoContabile: string
         ]);
     }
 
+    /**
+     * Gli storni che sono la scrittura INVERSA di un'altra, collegata da `scrittura_padre_id`:
+     * originale e storno si annullano, e il registro marca l'originale «stornata». Elenco
+     * esplicito, non `LIKE 'storno_%'`: `storno_credito` comincia allo stesso modo ma è la quota
+     * pagata con un credito — figlia di un incasso che resta valido — e con il LIKE quell'incasso
+     * usciva «stornato» dalla Prima nota e sparivano 24,57 dal riepilogo finanziario (trovato il
+     * 12/09/2026 sul condominio «Via roma»). `storno_fattura` non porta il padre ma è uno storno
+     * vero, e sta nell'elenco per coerenza. Lo storno di un incasso non è qui: è una `rettifica`
+     * con l'originale in stato `annullata`.
+     */
+    public function isStornoDiScrittura(): bool
+    {
+        return in_array($this, [
+            self::STORNO_FATTURA,
+            self::STORNO_PAGAMENTO_FORNITORE,
+            self::STORNO_REGOLAZIONE_IMMEDIATA,
+            self::STORNO_PAGAMENTO_F24,
+            self::STORNO_GIROCONTO,
+        ]);
+    }
+
+    /** @return string[] i valori a database di `isStornoDiScrittura()`, per le query. */
+    public static function storniDiScrittura(): array
+    {
+        return array_values(array_map(fn ($c) => $c->value, array_filter(self::cases(), fn ($c) => $c->isStornoDiScrittura())));
+    }
+
     public function isCicloPassivo(): bool
     {
         return in_array($this, [

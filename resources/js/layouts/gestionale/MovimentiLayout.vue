@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import NavSezione from '@/components/NavSezione.vue';
 import { usePermission } from "@/composables/permissions";
-import { LogIn, LogOut, Wallet, Repeat2, FileText, BookOpen, Percent } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2, FileText, BookOpen, Percent, Scale } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -71,6 +71,21 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
         // disabilitazione senza esercizio aperto di "Libro Giornale" qui sopra.
         href:  esercizio.value
             ? generatePath('gestionale/:condominio/esercizi/:esercizio/registro-contabilita', {
+                  condominio: condominio.value.id,
+                  esercizio:  esercizio.value.id,
+              })
+            : '#',
+        badge: esercizio.value ? undefined : 'Nessun esercizio aperto',
+    },
+    {
+        type:  'link',
+        icon:  Scale,
+        title: 'Stato patrimoniale',
+        // Punto 3 di docs/registri_contabili.md (D16–D20): la fotografia dei conti alla data,
+        // il riepilogo finanziario dell'esercizio e i controlli di quadratura. Stessa regola di
+        // disabilitazione delle due voci sopra.
+        href:  esercizio.value
+            ? generatePath('gestionale/:condominio/esercizi/:esercizio/stato-patrimoniale', {
                   condominio: condominio.value.id,
                   esercizio:  esercizio.value.id,
               })

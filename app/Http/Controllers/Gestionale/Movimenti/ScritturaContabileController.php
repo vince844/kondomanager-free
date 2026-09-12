@@ -370,8 +370,11 @@ class ScritturaContabileController extends Controller
         // ma il corpo della risposta era vuoto per costruzione: nessun test, e nessun middleware
         // a valle, può ispezionare un PDF generato così. `Destination::STRING_RETURN` restituisce
         // i byte veri; il `Content-Type` fa lo stesso lavoro che faceva prima nel browser.
-        return response($mpdf->Output('libro_giornale.pdf', \Mpdf\Output\Destination::STRING_RETURN))
-            ->header('Content-Type', 'application/pdf');
+        $nomeFile = PdfService::nomeFile('libro-giornale', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     private function diagnosiSbilancio(Condominio $condominio, Esercizio $esercizio): array
