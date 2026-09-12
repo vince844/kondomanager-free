@@ -204,6 +204,11 @@ class StatoPatrimonialePaginaService
             ->with('fornitore:id,ragione_sociale')
             ->orderBy('data_scadenza')
             ->get()
+            // Una nota di credito nata da uno storno non è un credito da spendere: la sua scrittura ha
+            // già annullato il debito, e dalla beta.20 non è compensabile. Elencarla qui come credito
+            // aperto faceva comparire una «differenza» col conto fornitori che non esiste (Via delle
+            // Acacie, 12/09/2026: −100,15 di credito fantasma).
+            ->reject(fn ($f) => $f->netto_a_pagare < 0 && $f->eNataDaStorno())
             ->map(fn ($f) => [
                 'id' => $f->id,
                 'fornitore' => $f->fornitore?->ragione_sociale ?? '—',

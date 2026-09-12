@@ -84,7 +84,10 @@ non ha l'ora, e una spesa stornata lo stesso giorno non è un'ora di scoperto.
 **A chi devo soldi, subito.** La card «Debiti» apre l'elenco delle fatture ancora da pagare —
 fornitore, documento, scadenza, residuo — e ogni riga ha un pulsante **«Paga»** che porta al
 pagamento con quella fattura già selezionata. In fondo, la somma dei residui è confrontata con il
-saldo del conto fornitori, e le ritenute da versare portano agli F24.
+saldo del conto fornitori, e le ritenute da versare portano agli F24. Le note di credito nate da uno
+storno non compaiono: non sono un credito da spendere (dalla beta.20 non si possono compensare), e
+la loro scrittura ha già annullato il debito — elencarle faceva comparire una differenza col conto
+fornitori che non esiste.
 
 **Provata su un condominio nuovo, azione per azione.** Prima di chiudere la beta la pagina è stata
 seguita passo passo su un condominio creato da zero: apertura della banca, fondo con giroconto,
