@@ -30,6 +30,9 @@ class CassaResource extends JsonResource
 
         return [
             'id'          => $this->id,
+            // Il conto contabile della cassa: la porta verso il mastrino (D21.7). Nullo per le
+            // casse senza conto, che non hanno righe a giornale e quindi nessun mastrino.
+            'conto_contabile_id' => $this->conto_contabile_id ? (int) $this->conto_contabile_id : null,
             'nome'        => $this->nome,
             'tipo'        => $this->tipo, 
             'tipo_label'  => ucfirst($this->tipo), 

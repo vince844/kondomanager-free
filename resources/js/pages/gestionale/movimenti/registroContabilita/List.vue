@@ -143,7 +143,13 @@ const pageGuides = [
             }),
         },
     },
-    { title: 'Solo denaro che si muove davvero', description: 'Compaiono i movimenti su banca e contanti. Un accantonamento verso un fondo di riserva non è né un\'entrata né un\'uscita — il denaro resta sullo stesso conto corrente — e non compare. Per questo il saldo di cassa è al netto dei fondi accantonati, e non coincide con l\'estratto conto.', icon: Landmark, colorVariant: 'emerald' as const },
+    // ⚠️ Coda 149 (13/09/2026): la scheda diceva «il saldo è al netto dei fondi accantonati, e non
+    // coincide con l'estratto conto». Falso per il caso più comune: un accantonamento banca→fondo è
+    // ESCLUSO dal registro (queryBase, D15), quindi la riga banca continua a contarlo — come la
+    // banca. Al netto resta solo il denaro mai passato dalla cassa banca (un fondo aperto con un
+    // saldo suo). Le ragioni vere per cui non coincide: registro unico su tutte le casse reali (un
+    // prelievo verso i contanti compare due volte) e saldo che parte da zero a ogni esercizio.
+    { title: 'Solo denaro che si muove davvero', description: 'Compaiono i movimenti su banca e contanti. Un accantonamento verso un fondo di riserva non è né un\'entrata né un\'uscita — il denaro resta sullo stesso conto corrente — e non compare: la riga della banca continua a contarlo, come la banca. Il saldo in testa somma tutte le casse reali e parte da zero a ogni esercizio: per il confronto con l\'estratto conto vale il saldo della cassa nello Stato patrimoniale, che porta dentro anche il riporto.', icon: Landmark, colorVariant: 'emerald' as const },
     { title: 'Due date per ogni riga', description: 'La data del movimento, su cui il registro è ordinato, e accanto la data in cui è stato annotato: la norma dà trenta giorni, e uno scarto più lungo è segnalato.', icon: Scale3D, colorVariant: 'amber' as const },
 ];
 </script>

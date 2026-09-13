@@ -3,7 +3,10 @@
 namespace App\Services\Gestionale;
 
 use App\Enums\TipoMovimentoContabile;
+use App\Helpers\DateHelper;
 use App\Models\Esercizio;
+use App\Models\Gestionale\ContoContabile;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -158,6 +161,384 @@ class RegistroContabilitaService
     }
 
     /**
+     * Il mastrino di un conto contabile — la seconda proiezione della stessa query (D10, D21).
+     *
+     * Stessa fonte del registro — le righe di scrittura di un conto, in ordine cronologico —
+     * con due differenze che sono di natura, non di forma: la **restrizione** è un conto
+     * contabile qualunque e non le casse reali; il **perimetro è per data**, non per
+     * `esercizio_id`. Un estratto conto risponde a «cosa c'era sul conto a quella data»: è il
+     * dettaglio della fotografia dello Stato patrimoniale (D16), e deve chiudere sul suo numero
+     * sempre — anche quando una scrittura è datata fuori dal periodo del suo esercizio, che è il
+     * caso che il controllo R2 segnala. Il registro di contabilità resta per `esercizio_id`
+     * perché è un registro **numerato** dentro l'esercizio (D5, D15). Due nature, dichiarate.
+     *
+     * Il **riporto** è la somma di tutto ciò che precede il periodo, su tutti gli esercizi: è
+     * da lì che il saldo progressivo parte, non da zero come nel registro. Il saldo è nel verso
+     * naturale del conto — dare − avere per attivo e costo, avere − dare per passivo e ricavo —
+     * cioè la stessa convenzione di `StatoPatrimonialeService::saldiPerConto()`: il numero in
+     * fondo al mastrino è quello della riga da cui si è cliccato, senza conversioni.
+     *
+     * ⚠️ **Il saldo di apertura di una cassa non ancora registrato a giornale non è una riga e
+     * non si somma.** La fotografia lo conta (`liquidita_non_contabilizzata`), il mastrino no:
+     * la differenza si dichiara (`apertura_non_registrata`) invece di nasconderla in una riga
+     * inventata. È lo stesso importo che il controllo di quadratura patrimoniale segnala.
+     *
+     * @param  array{data_da?:string,data_a?:string,search?:string}  $filtri
+     * @return array<string, mixed>
+     */
+    public function mastrino(Esercizio $esercizio, ContoContabile $conto, array $filtri = []): array
+    {
+        ['dal' => $dal, 'al' => $al, 'stato' => $stato, 'riporto_al' => $riportoAl] = $this->periodo($esercizio);
+        $dopoAl = Carbon::parse($al)->addDay()->format('Y-m-d');
+        // Il riporto si ferma dove comincia il periodo — o dove finisce, se il periodo è vuoto
+        // perché l'esercizio è nel futuro: così riporto + righe = fotografia ad `al`, sempre.
+        $fineRiporto = min($dal, $dopoAl);
+
+        $naturaDare = in_array($conto->tipo->value, ['attivo', 'costo'], true);
+        $verso = fn (int $dare, int $avere) => $naturaDare ? $dare - $avere : $avere - $dare;
+
+        $base = fn () => DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', function ($join) {
+                $join->on('rs.scrittura_id', '=', 'sc.id')
+                    ->whereNull('sc.deleted_at');
+            })
+            ->where('rs.conto_contabile_id', $conto->id);
+
+        // ⚠️ `< giorno` e mai `<= giorno`: su SQLite `data_competenza` è testo 'Y-m-d 00:00:00'
+        // e il confronto con 'Y-m-d' esclude il giorno stesso — stessa trappola già pagata da
+        // StatoPatrimonialeService. Con «minore del giorno dopo» le due basi rispondono uguale.
+        $riporto = $base()
+            ->where('sc.data_competenza', '<', $fineRiporto)
+            ->selectRaw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE 0 END), 0) as dare")
+            ->selectRaw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as avere")
+            ->first();
+        $saldoRiporto = $verso((int) $riporto->dare, (int) $riporto->avere);
+
+        // Postdatate: righe oltre `al`. Non ha senso solo per un esercizio chiuso — lì «dopo la
+        // data di fine» è semplicemente l'esercizio successivo, non un'anomalia. Per uno futuro
+        // sì: una riga fra oggi e la data di inizio non è né riporto né riga, e va contata.
+        $postdatate = $stato !== 'chiuso'
+            ? (int) $base()->where('sc.data_competenza', '>=', $dopoAl)->count()
+            : 0;
+
+        // D21.9: il caso speculare delle righe di altri esercizi — una riga di QUESTO esercizio
+        // datata prima del suo inizio (una fattura pregressa) sta nel riporto. Contata, perché
+        // «il riporto contiene gli esercizi precedenti» sarebbe falso in silenzio.
+        $riportoProprie = (int) $base()
+            ->where('sc.esercizio_id', $esercizio->id)
+            ->where('sc.data_competenza', '<', $fineRiporto)
+            ->count();
+
+        $righe = $base()
+            ->leftJoin('casse as ca', 'ca.id', '=', 'rs.cassa_id')
+            ->leftJoin('esercizi as es', 'es.id', '=', 'sc.esercizio_id')
+            ->where('sc.data_competenza', '>=', $dal)
+            ->where('sc.data_competenza', '<', $dopoAl)
+            ->orderBy('sc.data_competenza')
+            ->orderBy('sc.id')
+            ->orderBy('rs.id')
+            ->select([
+                'rs.id as riga_id',
+                'sc.id as scrittura_id',
+                'sc.esercizio_id',
+                'es.nome as esercizio_nome',
+                'sc.data_competenza',
+                'sc.data_registrazione',
+                'sc.numero_protocollo',
+                'sc.causale',
+                'sc.note',
+                'sc.stato',
+                DB::raw($this->stornataSql().' as stornata'),
+                'sc.tipo_movimento',
+                'ca.nome as cassa_nome',
+                'rs.tipo_riga',
+                'rs.importo',
+                DB::raw($this->controparteSql().' as controparte'),
+            ])
+            ->get();
+
+        $saldo = $saldoRiporto;
+        $numero = 0;
+        $altriEsercizi = 0;
+
+        $tutte = $righe->map(function ($r) use (&$saldo, &$numero, &$altriEsercizi, $esercizio, $verso) {
+            $dare = $r->tipo_riga === 'dare' ? (int) $r->importo : null;
+            $avere = $r->tipo_riga === 'avere' ? (int) $r->importo : null;
+            $saldo += $verso($dare ?? 0, $avere ?? 0);
+            $numero++;
+
+            $altroEsercizio = (int) $r->esercizio_id !== (int) $esercizio->id;
+            if ($altroEsercizio) {
+                $altriEsercizi++;
+            }
+
+            return [
+                'id' => (int) $r->riga_id,
+                'scrittura_id' => (int) $r->scrittura_id,
+                'numero' => $numero,
+                'data' => Carbon::parse($r->data_competenza)->format('Y-m-d'),
+                'data_registrazione' => Carbon::parse($r->data_registrazione)->format('Y-m-d'),
+                'protocollo' => $r->numero_protocollo,
+                'descrizione' => $r->causale,
+                'controparte' => $r->controparte,
+                'stato' => $r->stato,
+                'stornata' => (bool) $r->stornata,
+                // Il nome dell'esercizio a cui la scrittura appartiene, solo quando non è quello
+                // del periodo: è l'anomalia che R2 segnala, vista dal conto (D21.2).
+                'altro_esercizio' => $altroEsercizio ? (string) $r->esercizio_nome : null,
+                // Presente solo sulle righe di cassa: serve alla ricerca (stessi campi del
+                // registro) e al pannello, non a una colonna.
+                'cassa' => (string) ($r->cassa_nome ?? ''),
+                'tipo_movimento' => $r->tipo_movimento,
+                'tipo_movimento_label' => TipoMovimentoContabile::tryFrom((string) $r->tipo_movimento)?->label()
+                    ?? $r->tipo_movimento,
+                'nota' => $r->note,
+                'dare' => $dare,
+                'avere' => $avere,
+                'saldo_progressivo' => $saldo,
+            ];
+        })->all();
+
+        // Senza il nome della cassa fra i campi cercati: sul mastrino di una cassa ogni riga lo
+        // porta, e una parola del nome avrebbe selezionato tutto dichiarandolo «ricerca».
+        $mostrate = $this->applicaFiltri($tutte, $filtri, ['descrizione', 'protocollo', 'controparte']);
+
+        // Come nel registro: il saldo dichiarato è quello alla data dell'ultima riga mostrata,
+        // sul periodo intero — non il netto delle righe filtrate. Una `data_a` fuori dal periodo
+        // si ritaglia dentro [riporto_al, al]: prima di riporto_al il riporto NON è il saldo a
+        // quella data (revisione della beta.26), e il controller già scarta i filtri che cadono
+        // tutti fuori dal periodo.
+        $dataFiltroA = $this->dataFiltro($filtri['data_a'] ?? null);
+        if ($dataFiltroA !== null) {
+            $dataFiltroA = max(min($dataFiltroA, $al), $riportoAl);
+        }
+        $dataRiferimento = $mostrate !== []
+            ? $mostrate[array_key_last($mostrate)]['data']
+            : ($dataFiltroA
+                ?? ($tutte !== [] ? $tutte[array_key_last($tutte)]['data'] : null));
+
+        $saldoAllaData = $saldoRiporto;
+        foreach ($tutte as $riga) {
+            if ($dataRiferimento !== null && $riga['data'] > $dataRiferimento) {
+                break;
+            }
+            $saldoAllaData = $riga['saldo_progressivo'];
+        }
+
+        // D21.9 (a): la liquidità di una cassa mai passata a giornale, dichiarata sopra il riporto.
+        $aperturaNonRegistrata = (int) DB::table('casse')
+            ->where('condominio_id', $conto->condominio_id)
+            ->where('conto_contabile_id', $conto->id)
+            ->sum('saldo_iniziale');
+
+        return [
+            'conto' => [
+                'id' => (int) $conto->id,
+                'codice' => $conto->codice,
+                'nome' => $conto->nome,
+                'tipo' => $conto->tipo->value,
+                'natura_dare' => $naturaDare,
+            ],
+            'periodo' => ['dal' => $dal, 'al' => $al, 'stato' => $stato],
+            // La data a cui il riporto è davvero il saldo: il giorno prima del periodo, oppure
+            // oggi per un esercizio non ancora cominciato (dove il riporto è la fotografia a oggi).
+            'riporto_al' => $riportoAl,
+            'riporto' => $saldoRiporto,
+            'riporto_dare' => (int) $riporto->dare,
+            'riporto_avere' => (int) $riporto->avere,
+            'righe' => $mostrate,
+            'totale_righe' => count($tutte),
+            'totale_dare' => (int) array_sum(array_column($mostrate, 'dare')),
+            'totale_avere' => (int) array_sum(array_column($mostrate, 'avere')),
+            'saldo_finale' => $tutte !== [] ? $tutte[array_key_last($tutte)]['saldo_progressivo'] : $saldoRiporto,
+            'saldo_alla_data' => $saldoAllaData,
+            'data_riferimento' => $dataRiferimento,
+            'altri_esercizi' => $altriEsercizi,
+            'riporto_proprie' => $riportoProprie,
+            'postdatate' => $postdatate,
+            'apertura_non_registrata' => $aperturaNonRegistrata,
+        ];
+    }
+
+    /**
+     * Il libro mastro dell'esercizio: i mastrini di tutti i conti foglia che hanno qualcosa da
+     * dire nel periodo — righe, oppure un riporto diverso da zero — nell'ordine del piano dei
+     * conti. È la stampa «tutti in una volta» chiesta da Vincenzo guardando la pagina: la stessa
+     * proiezione di `mastrino()`, ripetuta, senza filtri (un libro mastro è intero per
+     * definizione, e con un filtro sarebbe un estratto di ogni conto).
+     *
+     * @return array{periodo:array{dal:string,al:string,stato:string}, mastrini:array<int, array<string, mixed>>, righe_totali:int}
+     */
+    public function libroMastro(Esercizio $esercizio): array
+    {
+        $periodo = $this->periodo($esercizio);
+        $mastrini = [];
+        $righeTotali = 0;
+
+        foreach ($this->contiPerSelettore($esercizio) as $voce) {
+            $conto = ContoContabile::find($voce['id']);
+            if ($conto === null) {
+                continue;
+            }
+            $m = $this->mastrino($esercizio, $conto);
+            if ($m['righe'] === [] && $m['riporto'] === 0 && $m['apertura_non_registrata'] === 0) {
+                continue;
+            }
+            $mastrini[] = $m;
+            $righeTotali += count($m['righe']);
+        }
+
+        return ['periodo' => $periodo, 'mastrini' => $mastrini, 'righe_totali' => $righeTotali];
+    }
+
+    /**
+     * Il periodo del mastrino (D21.2): dal primo giorno dell'esercizio ad `al`, che è lo stesso
+     * della fotografia dello Stato patrimoniale — oggi per l'esercizio aperto, la data di fine
+     * per uno chiuso. Un esercizio non ancora cominciato ha un periodo vuoto e un riporto che
+     * vale la fotografia a oggi.
+     *
+     * ⚠️ «Oggi» è quello dell'utente (`DateHelper::oggiUtente()`, Europe/Rome), non `Carbon::today()`
+     * in UTC: fra le 00:00 e le 02:00 ora italiana le due pagine avrebbero tagliato a giorni
+     * diversi, e il mastrino non avrebbe più chiuso sul numero da cui si è cliccato. Trovato
+     * dalla revisione della beta.26 — la stessa lezione già scritta nel riepilogo finanziario.
+     *
+     * @return array{dal:string, al:string, stato:string, riporto_al:string}
+     */
+    public function periodo(Esercizio $esercizio): array
+    {
+        $oggi = DateHelper::oggiUtente();
+        $dal = $esercizio->data_inizio->format('Y-m-d');
+        $fine = $esercizio->data_fine->format('Y-m-d');
+        $stato = $dal > $oggi ? 'futuro' : ($fine < $oggi ? 'chiuso' : 'aperto');
+        $al = $stato === 'chiuso' ? $fine : $oggi;
+        $riportoAl = $stato === 'futuro' ? $al : Carbon::parse($dal)->subDay()->format('Y-m-d');
+
+        return ['dal' => $dal, 'al' => $al, 'stato' => $stato, 'riporto_al' => $riportoAl];
+    }
+
+    /**
+     * Le righe sorelle di alcune scritture — la contropartita vera del mastrino, anche quando
+     * sono più di una — per il pannello della riga. Si chiede solo per le righe a video, non
+     * per tutto il periodo: è un dettaglio che si apre una riga alla volta.
+     *
+     * @param  array<int>  $scrittureIds
+     * @return array<int, array<int, array{conto:string, codice:string, dare:?int, avere:?int, cassa:?string}>>
+     */
+    public function sorelle(array $scrittureIds): array
+    {
+        if ($scrittureIds === []) {
+            return [];
+        }
+
+        $righe = DB::table('righe_scritture as rs')
+            ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+            ->leftJoin('casse as ca', 'ca.id', '=', 'rs.cassa_id')
+            ->whereIn('rs.scrittura_id', $scrittureIds)
+            ->orderBy('rs.scrittura_id')
+            // Dare prima di avere, come nel Libro Giornale — per indice esplicito: su MySQL
+            // `tipo_riga` è un ENUM e `ORDER BY DESC` seguirebbe l'indice (avere prima), non il testo.
+            ->orderByRaw("CASE WHEN rs.tipo_riga = 'dare' THEN 0 ELSE 1 END")
+            ->orderBy('rs.id')
+            ->select(['rs.scrittura_id', 'rs.id', 'cc.codice', 'cc.nome', 'rs.tipo_riga', 'rs.importo', 'ca.nome as cassa'])
+            ->get();
+
+        $perScrittura = [];
+        foreach ($righe as $r) {
+            $perScrittura[(int) $r->scrittura_id][] = [
+                'id' => (int) $r->id,
+                'codice' => $r->codice,
+                'conto' => $r->nome,
+                'dare' => $r->tipo_riga === 'dare' ? (int) $r->importo : null,
+                'avere' => $r->tipo_riga === 'avere' ? (int) $r->importo : null,
+                'cassa' => $r->cassa,
+            ];
+        }
+
+        return $perScrittura;
+    }
+
+    /**
+     * I conti contabili foglia del condominio con il numero di righe nel periodo del mastrino:
+     * il selettore in testa alla pagina (D21.1). I mastri — chi ha figli — non hanno un
+     * mastrino: le righe stanno sulle foglie.
+     *
+     * @return array<int, array{id:int, codice:string, nome:string, tipo:string, righe:int}>
+     */
+    public function contiPerSelettore(Esercizio $esercizio): array
+    {
+        ['dal' => $dal, 'al' => $al] = $this->periodo($esercizio);
+        $dopoAl = Carbon::parse($al)->addDay()->format('Y-m-d');
+
+        $conteggi = DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', function ($join) {
+                $join->on('rs.scrittura_id', '=', 'sc.id')->whereNull('sc.deleted_at');
+            })
+            ->where('sc.condominio_id', $esercizio->condominio_id)
+            ->where('sc.data_competenza', '>=', $dal)
+            ->where('sc.data_competenza', '<', $dopoAl)
+            ->groupBy('rs.conto_contabile_id')
+            ->select('rs.conto_contabile_id', DB::raw('COUNT(*) as n'))
+            ->pluck('n', 'conto_contabile_id');
+
+        return ContoContabile::query()
+            ->where('condominio_id', $esercizio->condominio_id)
+            ->whereNotExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('conti_contabili as figli')
+                    ->whereColumn('figli.parent_id', 'conti_contabili.id')
+                    ->whereNull('figli.deleted_at');
+            })
+            ->orderBy('codice')
+            ->get(['id', 'codice', 'nome', 'tipo'])
+            ->map(fn ($c) => [
+                'id' => (int) $c->id,
+                'codice' => $c->codice,
+                'nome' => $c->nome,
+                'tipo' => $c->tipo->value,
+                'righe' => (int) ($conteggi[$c->id] ?? 0),
+            ])
+            ->all();
+    }
+
+    /**
+     * «Stornata» come espressione SQL, condivisa dalle proiezioni.
+     *
+     * ⚠️ **«Stornata» non è `stato = 'annullata'`, e la differenza è l'art. 2219.** Solo lo
+     * storno di un incasso marca l'originale `annullata`; giroconto, regolazione immediata,
+     * pagamento fornitore e F24 non lo fanno — scrivono la scrittura contraria con
+     * `scrittura_padre_id` e lasciano l'originale `registrata`. Guardando lo stato, tre storni
+     * su quattro uscivano in stampa senza marca sotto una legenda che promette il contrario. Il
+     * segnale che vale per tutti: esiste una figlia di tipo storno. `RETTIFICA` non entra nel
+     * criterio perché `RiallineaFondiService` la usa per correzioni che non sono storni; gli
+     * incassi restano coperti dallo stato. Trovato dalla revisione della beta.24.
+     * ⚠️ Elenco esplicito, non `LIKE 'storno_%'`: `storno_credito` è la quota pagata con un
+     * credito, figlia di un incasso VALIDO — col LIKE quell'incasso usciva «stornato» in stampa
+     * (trovato il 12/09/2026 sul condominio «Via roma»).
+     */
+    private function stornataSql(): string
+    {
+        $storni = implode(',', array_map(fn ($t) => "'".$t."'", TipoMovimentoContabile::storniDiScrittura()));
+
+        // Terzo ramo (revisione della beta.26): lo storno di una FATTURA non scrive
+        // `scrittura_padre_id` (la nota di credito generata non lo porta) e lascia l'originale
+        // `registrata`: sul registro non si vedeva, perché una fattura non ha righe di cassa; sul
+        // mastrino dei fornitori e dei costi la fattura stornata usciva senza marca. Il segnale
+        // che il documento lascia è `stato_pagamento = 'stornata'` sulla fattura collegata.
+        return "CASE WHEN sc.stato = 'annullata' OR EXISTS (
+                    SELECT 1 FROM scritture_contabili f
+                    WHERE f.scrittura_padre_id = sc.id
+                      AND f.tipo_movimento IN (".$storni.")
+                      AND f.deleted_at IS NULL
+                ) OR EXISTS (
+                    SELECT 1 FROM fattura_scrittura fs
+                    JOIN fatture_passive fp ON fp.id = fs.fattura_passiva_id
+                    WHERE fs.scrittura_contabile_id = sc.id
+                      AND fs.tipo = 'competenza'
+                      AND fp.stato_pagamento = 'stornata'
+                ) THEN 1 ELSE 0 END";
+    }
+
+    /**
      * Tutte le righe dell'esercizio, numerate e con i saldi progressivi: il registro di legge,
      * prima di qualunque filtro di visualizzazione.
      *
@@ -178,25 +559,8 @@ class RegistroContabilitaService
                 'sc.causale',
                 'sc.note',
                 'sc.stato',
-                // ⚠️ **«Stornata» non è `stato = 'annullata'`, e la differenza è l'art. 2219.**
-                // Solo lo storno di un incasso marca l'originale `annullata`; giroconto,
-                // regolazione immediata, pagamento fornitore e F24 non lo fanno — scrivono la
-                // scrittura contraria con `scrittura_padre_id` e lasciano l'originale
-                // `registrata`. Guardando lo stato, tre storni su quattro uscivano in stampa
-                // senza marca sotto una legenda che promette il contrario. Il segnale che vale
-                // per tutti: esiste una figlia di tipo `storno_*`. `RETTIFICA` non entra nel
-                // criterio perché `RiallineaFondiService` la usa per correzioni che non sono
-                // storni; gli incassi restano coperti dallo stato. Trovato dalla revisione della
-                // beta.24 fra i reperti che il tetto aveva lasciato non verificati.
-                // ⚠️ Elenco esplicito, non `LIKE 'storno_%'`: `storno_credito` è la quota pagata
-                // con un credito, figlia di un incasso VALIDO — col LIKE quell'incasso usciva
-                // «stornato» in stampa (trovato il 12/09/2026 sul condominio «Via roma»).
-                DB::raw("CASE WHEN sc.stato = 'annullata' OR EXISTS (
-                    SELECT 1 FROM scritture_contabili f
-                    WHERE f.scrittura_padre_id = sc.id
-                      AND f.tipo_movimento IN (".implode(',', array_map(fn ($t) => "'".$t."'", TipoMovimentoContabile::storniDiScrittura())).")
-                      AND f.deleted_at IS NULL
-                ) THEN 1 ELSE 0 END as stornata"),
+                // Il criterio di «stornata» è uno solo per tutte le proiezioni: vedi stornataSql().
+                DB::raw($this->stornataSql().' as stornata'),
                 'sc.tipo_movimento',
                 'ca.nome as cassa_nome',
                 'rs.tipo_riga',
@@ -281,7 +645,7 @@ class RegistroContabilitaService
      * @param  array{data_da?:string,data_a?:string,search?:string}  $filtri
      * @return array<int, array<string, mixed>>
      */
-    private function applicaFiltri(array $righe, array $filtri): array
+    private function applicaFiltri(array $righe, array $filtri, array $campi = ['descrizione', 'protocollo', 'controparte', 'cassa']): array
     {
         $da = ! empty($filtri['data_da']) ? $this->dataFiltro($filtri['data_da']) : null;
         $a = ! empty($filtri['data_a']) ? $this->dataFiltro($filtri['data_a']) : null;
@@ -293,7 +657,7 @@ class RegistroContabilitaService
             return $righe;
         }
 
-        return array_values(array_filter($righe, function (array $riga) use ($da, $a, $cerca) {
+        return array_values(array_filter($righe, function (array $riga) use ($da, $a, $cerca, $campi) {
             if ($da !== null && $riga['data'] < $da) {
                 return false;
             }
@@ -303,14 +667,9 @@ class RegistroContabilitaService
             }
 
             if ($cerca !== null) {
-                $campi = mb_strtolower(implode(' ', [
-                    $riga['descrizione'],
-                    $riga['protocollo'],
-                    (string) $riga['controparte'],
-                    $riga['cassa'],
-                ]));
+                $testo = mb_strtolower(implode(' ', array_map(fn ($c) => (string) ($riga[$c] ?? ''), $campi)));
 
-                if (! str_contains($campi, $cerca)) {
+                if (! str_contains($testo, $cerca)) {
                     return false;
                 }
             }
@@ -409,6 +768,14 @@ class RegistroContabilitaService
      * e in quel caso il ramo torna NULL e vale il nome della persona, come prima. Ristretto ai
      * due tipi di movimento in cui il tag ha quel significato. Revisione della beta.24.
      */
+    /*
+     * ➕ 13/09/2026, beta.26 (mastrino): **la fattura risolve il suo fornitore da `fattura_scrittura`.**
+     * Sul registro non serviva — una riga di cassa non appartiene mai a una scrittura di competenza —
+     * ma sul mastrino di «Debiti v/Fornitori» la riga della fattura usciva senza controparte, che
+     * per un mastrino fornitori è la colonna che conta. Il ramo sta dopo pagamenti ed Erario e prima
+     * delle sorelle: per un pagamento vince comunque `pagamenti_fornitori`, per una fattura (e per
+     * il suo storno, via padre) risponde il documento.
+     */
     private function controparteSql(): string
     {
         return "COALESCE(
@@ -430,12 +797,29 @@ class RegistroContabilitaService
                 FROM deleghe_f24 f24
                 WHERE f24.scrittura_contabile_id = sc.scrittura_padre_id
                 LIMIT 1),
+            (SELECT f.ragione_sociale
+                FROM fattura_scrittura fs
+                JOIN fatture_passive fp ON fp.id = fs.fattura_passiva_id
+                JOIN fornitori f ON f.id = fp.fornitore_id
+                WHERE fs.scrittura_contabile_id = sc.id
+                ORDER BY fs.id ASC
+                LIMIT 1),
+            (SELECT f.ragione_sociale
+                FROM fattura_scrittura fs
+                JOIN fatture_passive fp ON fp.id = fs.fattura_passiva_id
+                JOIN fornitori f ON f.id = fp.fornitore_id
+                WHERE fs.scrittura_contabile_id = sc.scrittura_padre_id
+                ORDER BY fs.id ASC
+                LIMIT 1),
             (SELECT CASE WHEN COUNT(DISTINCT f.id) = 1 THEN MIN(f.ragione_sociale) END
                 FROM righe_scritture rs5
                 JOIN anagrafica_fornitore af ON af.anagrafica_id = rs5.anagrafica_id
                 JOIN fornitori f ON f.id = af.fornitore_id
-                WHERE rs5.scrittura_id = rs.scrittura_id AND rs5.id != rs.id
+                WHERE rs5.scrittura_id = rs.scrittura_id
                   AND sc.tipo_movimento IN ('regolazione_immediata', 'storno_regolazione_immediata')),
+            (SELECT an0.nome
+                FROM anagrafiche an0
+                WHERE an0.id = rs.anagrafica_id),
             (SELECT an.nome
                 FROM righe_scritture rs3
                 JOIN anagrafiche an ON an.id = rs3.anagrafica_id

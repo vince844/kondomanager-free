@@ -19,10 +19,22 @@ const props = defineProps<{
   righe: RigaScritturaRow[];
   scritturaId: number;
   condominioId: number;
+  esercizioId: number;
 }>();
 
 const { euro } = useCurrencyFormatter();
-const { generateRoute } = usePermission();
+const { generateRoute, generatePath } = usePermission();
+
+/**
+ * La quarta porta del mastrino (beta.26, D21.7): davanti a una riga la domanda naturale è «e
+ * tutto il resto di questo conto?». Il nome del conto porta al suo mastrino, sull'esercizio in
+ * barra, con «indietro» che riporta qui.
+ */
+const linkMastrino = (contoId: number) => generatePath('gestionale/:condominio/esercizi/:esercizio/conti/:contoContabile/movimenti', {
+  condominio: props.condominioId,
+  esercizio: props.esercizioId,
+  contoContabile: contoId,
+}) + '?da=libro-giornale';
 
 /**
  * ⚠️ **Il link al dettaglio vive qui dalla beta.24.** Prima stava in una colonna «azioni» in coda
@@ -59,7 +71,13 @@ const righeOrdinate = computed(() => {
         <TableRow v-for="riga in righeOrdinate" :key="riga.id" class="hover:bg-slate-50/50 transition-colors">
           <TableCell>
             <div class="flex flex-col gap-0.5">
-              <span class="text-xs font-bold text-slate-800">{{ riga.conto?.nome || 'Conto non specificato' }}</span>
+              <Link
+                v-if="riga.conto"
+                :href="linkMastrino(riga.conto.id)"
+                class="text-xs font-bold text-slate-800 underline decoration-dotted decoration-slate-300 underline-offset-4 hover:text-primary hover:decoration-primary w-fit"
+                title="Apri il mastrino: tutti i movimenti di questo conto"
+              >{{ riga.conto.nome }}</Link>
+              <span v-else class="text-xs font-bold text-slate-800">Conto non specificato</span>
               <span v-if="riga.conto?.codice" class="text-[10px] text-slate-400 tabular-nums">{{ riga.conto.codice }}</span>
             </div>
           </TableCell>

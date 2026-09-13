@@ -8,7 +8,8 @@ import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Camera, Scale, ListChecks, Printer, Landmark, Users, Receipt, TrendingUp, CheckCircle2, XCircle, AlertTriangle, ArrowRight, ListTree, CalendarClock } from 'lucide-vue-next';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Camera, Scale, ListChecks, Printer, Landmark, Users, Receipt, TrendingUp, CheckCircle2, XCircle, AlertTriangle, ArrowRight, ListTree, CalendarClock, ChevronDown } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -17,7 +18,7 @@ interface Voce { id: number; codice: string; nome: string; tipo: string; categor
 interface Gruppo { gruppo: string; ordine: number; voci: Voce[]; totale: number }
 type Esito = 'quadra' | 'non_quadra' | 'segnalazione';
 interface Controllo { id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null; azione_parametro?: string | null }
-interface RigaRiepilogo { cassa_id: number; cassa: string; tipo: string; iniziale: number; entrate: number; uscite: number; finale: number; negativa: boolean; minimo: number | null; minimo_il: string | null }
+interface RigaRiepilogo { cassa_id: number; conto_contabile_id: number | null; cassa: string; tipo: string; iniziale: number; entrate: number; uscite: number; finale: number; negativa: boolean; minimo: number | null; minimo_il: string | null }
 interface Fondo { cassa: string; sottotipo: string | null; sottotipo_label: string; saldo: number; vincolato: boolean; vincolo_registrato: number; scoperto: number }
 interface Fattura { id: number; fornitore: string; numero: string | null; data: string | null; scadenza: string | null; residuo: number; nota_credito: boolean }
 
@@ -98,6 +99,11 @@ const etichettaAzione = (a: string | null) => ({ 'libro-giornale': 'Apri il Libr
 
 /* ─── Debiti: la modale delle fatture da pagare ─── */
 const debitiAperti = ref(false);
+// D21.7: ogni conto della situazione patrimoniale è la porta del suo mastrino — il dettaglio,
+// riga per riga, del numero che sta accanto. Stesso esercizio, stessa data della fotografia.
+const hrefMastrino = (contoId: number) => generatePath('gestionale/:condominio/esercizi/:esercizio/conti/:contoContabile/movimenti', {
+    condominio: props.condominio.id, esercizio: props.esercizio.id, contoContabile: contoId,
+});
 const hrefFatture = generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id });
 const hrefPaga = (f: Fattura) => generatePath('gestionale/:condominio/pagamenti-fornitori/create', { condominio: props.condominio.id }) + `?fattura_id=${f.id}`;
 const hrefF24 = generatePath('gestionale/:condominio/f24', { condominio: props.condominio.id });
@@ -107,6 +113,11 @@ const classeR8 = computed<Esito>(() => p.value.liquidita.esito_r8 === 'quadra' ?
 
 function stampa() {
     window.open(route(generateRoute('gestionale.esercizi.stato-patrimoniale.print'), base), '_blank');
+}
+
+/** Il libro mastro — tutti i mastrini dell'esercizio — si stampa anche da qui, che è la porta dei conti (beta.26). */
+function stampaLibroMastro() {
+    window.open(route(generateRoute('gestionale.esercizi.libro-mastro.print'), base), '_blank');
 }
 
 const pageGuides = [
@@ -131,10 +142,25 @@ const pageGuides = [
                 :esercizi="(props.esercizi as any)"
             >
                 <template #actions>
-                    <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2" @click="stampa">
-                        <Printer class="w-4 h-4" />
-                        <span class="hidden sm:inline">Stampa</span>
-                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                                <Printer class="w-4 h-4" />
+                                <span class="hidden sm:inline">Stampa</span>
+                                <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-72">
+                            <DropdownMenuItem class="flex-col items-start gap-0.5 py-2" @click="stampa">
+                                <span class="font-medium">Stato patrimoniale</span>
+                                <span class="text-[11px] text-slate-500 leading-snug">Questa pagina: card, controlli, situazione patrimoniale, liquidità e riepilogo.</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem class="flex-col items-start gap-0.5 py-2" @click="stampaLibroMastro">
+                                <span class="font-medium">Libro mastro</span>
+                                <span class="text-[11px] text-slate-500 leading-snug">Il mastrino di ogni conto movimentato, un conto per pagina, dal riporto all'ultimo saldo.</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </template>
             </PageHeaderGuide>
 
@@ -231,7 +257,7 @@ const pageGuides = [
                         <div class="rounded-md border bg-white mb-6">
                             <div class="px-4 py-3 border-b bg-gray-50/50 flex items-center justify-between">
                                 <h3 class="font-semibold text-slate-800 flex items-center gap-2"><Camera class="w-4 h-4 text-slate-500" /> Situazione patrimoniale al {{ formatData(p.data) }}</h3>
-                                <span class="text-[11px] text-slate-500">{{ p.stato_esercizio === 'chiuso' ? 'esercizio chiuso: fotografia alla data di fine' : 'fotografia a oggi' }}</span>
+                                <span class="text-[11px] text-slate-500">{{ p.stato_esercizio === 'chiuso' ? 'esercizio chiuso: fotografia alla data di fine' : 'fotografia a oggi' }} · un clic su un conto apre il suo mastrino</span>
                             </div>
                             <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x">
                                 <div v-for="lato in (['attivo', 'passivo'] as const)" :key="lato" class="p-4">
@@ -244,7 +270,7 @@ const pageGuides = [
                                                     <td class="pt-2 pb-1 px-2 text-right tabular-nums font-semibold text-slate-700 whitespace-nowrap">{{ euro(g.totale) }}</td>
                                                 </tr>
                                                 <tr v-for="v in g.voci" :key="v.id" class="border-b border-slate-100">
-                                                    <td colspan="2" class="py-1.5 px-2 text-slate-700 break-words"><span class="text-slate-400 tabular-nums mr-2">{{ v.codice }}</span>{{ v.nome }}</td>
+                                                    <td colspan="2" class="py-1.5 px-2 text-slate-700 break-words"><Link :href="hrefMastrino(v.id)" class="underline decoration-dotted decoration-slate-300 underline-offset-4 hover:text-primary hover:decoration-primary" title="Apri il mastrino: tutti i movimenti di questo conto"><span class="text-slate-400 tabular-nums mr-2">{{ v.codice }}</span>{{ v.nome }}</Link></td>
                                                     <td class="py-1.5 px-2 text-right tabular-nums whitespace-nowrap align-top" :class="importo(v.saldo)">{{ euro(v.saldo) }}</td>
                                                 </tr>
                                             </template>
@@ -261,7 +287,7 @@ const pageGuides = [
                                                     <td class="pt-2 pb-1 px-2 text-right tabular-nums font-semibold text-amber-800 whitespace-nowrap">{{ euro(p.situazione.costi) }}</td>
                                                 </tr>
                                                 <tr v-for="v in p.situazione.costi_voci" :key="'c' + v.id" class="border-b border-slate-100">
-                                                    <td colspan="2" class="py-1.5 px-2 text-slate-700 break-words"><span class="text-slate-400 tabular-nums mr-2">{{ v.codice }}</span>{{ v.nome }}</td>
+                                                    <td colspan="2" class="py-1.5 px-2 text-slate-700 break-words"><Link :href="hrefMastrino(v.id)" class="underline decoration-dotted decoration-slate-300 underline-offset-4 hover:text-primary hover:decoration-primary" title="Apri il mastrino: tutti i movimenti di questo conto"><span class="text-slate-400 tabular-nums mr-2">{{ v.codice }}</span>{{ v.nome }}</Link></td>
                                                     <td class="py-1.5 px-2 text-right tabular-nums whitespace-nowrap align-top" :class="importo(v.saldo)">{{ euro(v.saldo) }}</td>
                                                 </tr>
                                             </template>
@@ -271,7 +297,7 @@ const pageGuides = [
                                                     <td class="pt-2 pb-1 px-2 text-right tabular-nums font-semibold text-slate-700 whitespace-nowrap">{{ euro(p.situazione.ricavi) }}</td>
                                                 </tr>
                                                 <tr v-for="v in p.situazione.ricavi_voci" :key="'r' + v.id" class="border-b border-slate-100">
-                                                    <td colspan="2" class="py-1.5 px-2 text-slate-700 break-words"><span class="text-slate-400 tabular-nums mr-2">{{ v.codice }}</span>{{ v.nome }}</td>
+                                                    <td colspan="2" class="py-1.5 px-2 text-slate-700 break-words"><Link :href="hrefMastrino(v.id)" class="underline decoration-dotted decoration-slate-300 underline-offset-4 hover:text-primary hover:decoration-primary" title="Apri il mastrino: tutti i movimenti di questo conto"><span class="text-slate-400 tabular-nums mr-2">{{ v.codice }}</span>{{ v.nome }}</Link></td>
                                                     <td class="py-1.5 px-2 text-right tabular-nums whitespace-nowrap align-top" :class="importo(v.saldo)">{{ euro(v.saldo) }}</td>
                                                 </tr>
                                             </template>
@@ -383,7 +409,7 @@ const pageGuides = [
                                 <tbody>
                                     <tr v-for="r in p.riepilogo.righe" :key="r.cassa_id" class="border-b border-slate-100" :class="{ 'bg-rose-50': r.negativa }">
                                         <td class="py-2 px-4 text-slate-700">
-                                            {{ r.cassa }} <span class="text-[11px] text-slate-400">· {{ r.tipo }}</span>
+                                            <Link v-if="r.conto_contabile_id" :href="hrefMastrino(r.conto_contabile_id)" class="underline decoration-dotted decoration-slate-300 underline-offset-4 hover:text-primary hover:decoration-primary" title="Apri il mastrino del conto di questa cassa">{{ r.cassa }}</Link><template v-else>{{ r.cassa }}</template> <span class="text-[11px] text-slate-400">· {{ r.tipo }}</span>
                                             <div v-if="r.negativa" class="text-[11px] text-rose-700 font-semibold">sotto zero: {{ euro(r.minimo ?? 0) }} il {{ formatData(r.minimo_il) }}</div>
                                         </td>
                                         <td class="py-2 px-4 text-right tabular-nums align-top" :class="importo(r.iniziale)">{{ euro(r.iniziale) }}</td>

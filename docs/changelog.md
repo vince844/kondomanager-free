@@ -7,6 +7,97 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.26] - Tutti I Movimenti Della Banca
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+«Tutti i movimenti della banca» è la domanda quotidiana dell'amministratore, e finora non aveva una
+risposta: la Prima nota mette insieme tutte le casse e parte da zero a ogni esercizio, il Libro
+Giornale elenca le scritture e non i conti, lo Stato patrimoniale dà un saldo e non le righe che lo
+compongono. Ora ogni conto ha il suo **mastrino** — punto 2 della sequenza di
+`docs/registri_contabili.md`, decisioni D21 scritte prima del codice: dare, avere e saldo
+progressivo di quel conto, riga per riga, nel periodo dell'esercizio in barra. Sta sotto Movimenti
+come pagina figlia dello Stato patrimoniale, e un selettore in testa passa da un conto all'altro:
+le voci del piano dei conti che hanno righe, raggruppate per tipo, con il numero di movimenti nel
+periodo. Il nome del conto è il titolo; il codice interno sta accanto, piccolo, perché serve a chi
+cerca «1010.01» e non a chi cerca «Banca».
+
+**Il saldo parte dal riporto, non da zero.** La prima riga è quanto c'era sul conto il giorno prima
+dell'esercizio, con dentro tutto ciò che precede — anche gli esercizi passati — e l'ultima riga è il
+saldo di oggi (o della data di fine, per un esercizio chiuso). Per costruzione è **lo stesso numero
+della riga dello Stato patrimoniale** da cui si è cliccato: il mastrino è il dettaglio della
+fotografia e chiude sul suo numero, sempre, e un test con i valori a mano lo tiene fermo. Il perimetro
+è per data e non per esercizio: una scrittura datata fuori dal periodo del suo esercizio — il caso
+che il controllo «Liquidità e riepilogo» segnala — compare nel mastrino del periodo in cui cade, con
+il badge del suo esercizio, così mastrino e fotografia non divergono mai. Il saldo è nel verso
+naturale del conto — dare meno avere per attivo e costo, avere meno dare per passivo e ricavo — e
+va in rosso quando è contro natura: la banca sotto zero, il fornitore a credito.
+
+**Un clic sulla riga apre la contropartita.** Sotto ogni movimento compaiono le righe sorelle della
+scrittura — conto, dare, avere — cioè da dove viene o dove va il denaro, anche quando i conti sono
+più di uno; con la data di annotazione, lo stato, la nota e il rimando alla scrittura in partita
+doppia. La controparte in colonna è risolta con le stesse fonti della Prima nota — fornitore,
+erario, anagrafica, cassa — riusate e non riscritte; sul mastrino dei crediti ogni riga porta il
+suo condòmino, e non quello della riga accanto (la revisione lo ha trovato prima dell'uscita).
+Gli storni come nel registro: l'originale resta con la marca «stornata» — anche una fattura
+stornata, letta dallo stato della fattura — e lo storno è una riga come le altre.
+
+**Cosa dichiara invece di nascondere.** Sopra la tabella, quando ricorrono: un saldo di apertura
+di cassa **non ancora registrato a giornale** — la fotografia lo conta, il mastrino no, e la
+differenza è scritta, con il rimando al Libro Giornale dove si registra; le righe di **altri esercizi** dentro
+il periodo; le righe di **questo** esercizio datate prima del suo inizio, che stanno nel riporto
+(una fattura pregressa, per esempio); i movimenti **datati oltre la fine del periodo**, contati.
+Un esercizio non ancora cominciato ha un periodo vuoto e un riporto che vale la fotografia a oggi,
+e la pagina lo dice. «Oggi» è quello dell'utente in Italia, lo stesso dello Stato patrimoniale,
+anche alle 00:30.
+
+**Filtri che non inventano saldi.** Ricerca su descrizione, protocollo e controparte; intervallo di
+date dentro il periodo, e una data fuori dal periodo viene ignorata invece di produrre un saldo che
+non esiste. Filtrando, i totali dare e avere diventano parziali e lo dicono; il **saldo alla data
+resta quello vero**, e il riporto non si filtra mai. Un filtro senza esito lo dice in modo diverso
+da un conto senza movimenti: nel primo caso il saldo in testa è ancora quello del conto alla sua
+data, nel secondo è il riporto.
+
+**La stampa, e il libro mastro.** Il mastrino di un conto scarica come
+`mastrino-1010.01-<condominio>-2026.pdf`, in orizzontale, con la riga di riporto, le righe, i
+totali e il saldo finale; con un filtro attivo il foglio si dichiara «estratto parziale» ed elenca
+i filtri. E dal menù «Stampa» — nel mastrino e nello Stato patrimoniale — c'è **«Tutti i conti —
+libro mastro»**: un foglio solo con il mastrino di ogni conto movimentato, un conto per pagina,
+con l'indice in copertina, senza filtri, `libro-mastro-<condominio>-2026.pdf`. Un conto senza
+righe, senza riporto e senza apertura da dichiarare non stampa una pagina vuota. Stessa carta
+intestata delle altre tre stampe, senza firma: è un registro calcolato, non un atto.
+
+**Tre porte, e si torna da dove si è entrati.** Nello **Stato patrimoniale** ogni conto della
+situazione patrimoniale e ogni cassa del riepilogo finanziario è un link al suo mastrino, alla
+stessa data — la porta di chi sta indagando un rosso. In **Risorse e fondi** l'azione «Movimenti»
+sulla riga della cassa — la porta di chi pensa «la banca». Nel **Libro Giornale**, aprendo una
+scrittura, ogni conto del dettaglio porta al suo mastrino — la porta di chi si chiede «e su questo
+conto cos'altro è passato?». Il pulsante in testa riporta alla pagina da cui si è arrivati. La
+modale per voce di spesa del Piano dei conti resta com'è, e lo si dichiara: ha una regola di
+perimetro sua — esclude le fatture contestate, perché serve al budget — e unificarla con il mastrino
+è una decisione da prendere quando si farà quella lettura, non di nascosto qui.
+
+**Due correzioni alla Prima nota e al racconto della .25.** La scheda «Solo denaro che si muove
+davvero» e la nota in fondo alla stampa dicevano che il saldo del registro «è al netto dei fondi
+accantonati» e per questo non coincide con l'estratto conto. Non è così: un accantonamento fatto
+con giroconto non compare nel registro, quindi la riga della banca continua a contarlo — come la
+banca; il registro non vede solo il denaro mai passato dalla cassa banca. Le ragioni vere per cui
+non coincide sono altre due, e ora i testi dicono quelle: il saldo è unico su tutte le casse reali
+(un prelievo verso i contanti compare due volte) e parte da zero a ogni esercizio; per il confronto
+con l'estratto conto vale il saldo della cassa nello Stato patrimoniale, che porta dentro il
+riporto. La stessa frase stava nel changelog della beta.24, che ora porta la correzione accanto.
+E nel changelog della beta.25 le scritture «fuori periodo» della prova erano undici, non dodici: la
+dodicesima era l'apertura registrata durante la prova stessa.
+
+**Guardie.** Il conto di un altro condominio, o un mastro con conti figli, non si apre da qui:
+404. Diciannove test con valori attesi calcolati a mano — riporto da un esercizio precedente, conto
+passivo con saldo contro natura, coppia originale + storno, riga di un altro esercizio, apertura
+non a giornale, filtro con totali parziali e saldo vero, postdatata, esercizio futuro, confini di
+data con il formato di MySQL, la notte in UTC, il libro mastro — e la suite della Prima nota resta
+verde senza toccare un test: il registro non cambia di una riga.
+
+---
+
 ## [1.11.0-beta.25] - La Fotografia Che Nessuno Aveva Scattato
 
 **Non tocca il database:** nessuna migrazione, nessun dato nuovo.
@@ -113,8 +204,8 @@ programma non ne dichiara uno.
 banca senza apertura: tutti e due i rossi si chiudono seguendo solo i rimedi proposti. Perché
 succedesse, tre cose sono cambiate. «Liquidità e riepilogo» ora conta quante scritture stanno fuori
 dal periodo dell'esercizio: se sono tutte, o più della metà, dice che **sono le date dell'esercizio a
-essere sbagliate** e il pulsante porta a modificare l'esercizio — non a correggere dodici scritture
-una per una. «Casse reali sotto zero» distingue una banca **senza saldo di apertura e senza incassi**
+essere sbagliate** e il pulsante porta a modificare l'esercizio — non a correggere undici scritture
+una per una *(diceva «dodici»: la dodicesima è l'apertura registrata durante la prova stessa — corretto nella beta.26)*. «Casse reali sotto zero» distingue una banca **senza saldo di apertura e senza incassi**
 («i pagamenti sono usciti da un conto che, per il programma, era vuoto») da un movimento sulla cassa
 sbagliata, e nel primo caso porta dritto a registrare il saldo iniziale — con le tre uscite possibili:
 c'erano soldi (registra il saldo), hanno versato (registra gli incassi), il conto era davvero a zero
@@ -233,7 +324,9 @@ richiede un pezzo di motore che oggi manca — il risultato d'esercizio scritto 
 calcolato a video — e non ha senso promettere un fascicolo che non quadra ancora da solo.
 
 **Due limiti dichiarati sul foglio.** Il saldo del registro è al netto dei fondi accantonati, e per
-questo non coincide con l'estratto conto: ne differisce di quanto è vincolato. E il saldo
+questo non coincide con l'estratto conto: ne differisce di quanto è vincolato *(⚠️ falso, corretto
+nella beta.26: un accantonamento con giroconto non compare nel registro, quindi la riga della banca
+continua a contarlo — come la banca)*. E il saldo
 progressivo parte da zero all'inizio dell'esercizio: il riporto dall'anno precedente arriverà con
 il rendiconto. Entrambe le cose sono scritte nella nota «Come leggere questo registro» e nelle
 schede della pagina — chi confronta il foglio con la banca deve saperlo dal foglio.

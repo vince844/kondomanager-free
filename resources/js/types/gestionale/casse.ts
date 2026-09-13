@@ -8,6 +8,8 @@ export type SottotipoFondo = 'generico' | 'vincolato_lavori' | 'tfr' | 'morosita
 export interface Cassa {
     id: number;
     condominio_id?: number; 
+    /** Il conto contabile della cassa — la porta verso il mastrino; nullo se la cassa non ha un conto. */
+    conto_contabile_id?: number | null;
     
     nome: string;
     descrizione?: string;

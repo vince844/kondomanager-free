@@ -15,6 +15,7 @@ use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\MastrinoController;
 use App\Http\Controllers\Gestionale\Movimenti\RegistroContabilitaController;
 use App\Http\Controllers\Gestionale\Movimenti\StatoPatrimonialeController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
@@ -337,6 +338,19 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('esercizi/{esercizio}/stato-patrimoniale/print', [StatoPatrimonialeController::class, 'stampa'])
         ->name('esercizi.stato-patrimoniale.print');
+
+    // Il mastrino di un conto contabile — punto 2 di docs/registri_contabili.md (D21), beta.26.
+    // Pagina figlia dello Stato patrimoniale, non una voce della barra. Il conto si risolve
+    // dentro il condominio dell'esercizio (`Esercizio::contiContabili()`): scoped come le altre.
+    Route::get('esercizi/{esercizio}/conti/{contoContabile}/movimenti', [MastrinoController::class, 'index'])
+        ->name('esercizi.conti.movimenti');
+
+    Route::get('esercizi/{esercizio}/conti/{contoContabile}/movimenti/print', [MastrinoController::class, 'stampa'])
+        ->name('esercizi.conti.movimenti.print');
+
+    // Il libro mastro: tutti i mastrini dell'esercizio in un foglio solo.
+    Route::get('esercizi/{esercizio}/libro-mastro/print', [MastrinoController::class, 'stampaLibroMastro'])
+        ->name('esercizi.libro-mastro.print');
 
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');

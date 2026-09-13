@@ -1,11 +1,11 @@
 <script setup lang="ts">
 
 import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3"
+import { router, Link, usePage } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal, BookOpen } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Cassa } from '@/types/gestionale/casse'
 import type { Building } from '@/types/buildings'
@@ -17,7 +17,19 @@ const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
-const { generateRoute } = usePermission()
+const { generateRoute, generatePath } = usePermission()
+
+// La porta verso il mastrino (D21.7): «tutti i movimenti della banca» per chi pensa alla
+// cassa e non al conto 1010.01. Serve l'esercizio corrente, che la pagina riceve dal
+// controller; senza un esercizio aperto — o senza un conto contabile — la voce non compare.
+const pagina = usePage<{ esercizio?: { id: number } | null }>()
+const hrefMovimenti = (cassa: Cassa): string | null => {
+  const esercizio = pagina.props.esercizio
+  if (!esercizio || !cassa.conto_contabile_id) return null
+  return generatePath('gestionale/:condominio/esercizi/:esercizio/conti/:contoContabile/movimenti', {
+    condominio: condominio.id, esercizio: esercizio.id, contoContabile: cassa.conto_contabile_id,
+  }) + '?da=casse' // così il pulsante «indietro» del mastrino riporta qui
+}
 
 function handleDelete(targetCassa: Cassa) {
   cassaID.value = targetCassa.id
@@ -74,6 +86,13 @@ function deleteCassa() {
         >
           <FilePenLine class="w-4 h-4 text-xs" />
           Modifica
+        </Link>
+      </DropdownMenuItem>
+
+      <DropdownMenuItem v-if="hrefMovimenti(cassa)">
+        <Link :href="hrefMovimenti(cassa)!" class="flex items-center gap-2">
+          <BookOpen class="w-4 h-4 text-xs" />
+          Movimenti
         </Link>
       </DropdownMenuItem>
 

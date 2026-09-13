@@ -197,9 +197,14 @@
     <b>Come leggere questo registro.</b>
     Contiene i soli movimenti di denaro reale su banca e contanti: una fattura registrata e non
     pagata non vi compare, e un accantonamento verso un fondo nemmeno, perché quel denaro resta
-    sullo stesso conto corrente. <b>Per la stessa ragione il saldo di questo registro è al netto
-    dei fondi accantonati</b> e non coincide con l'estratto conto: ne differisce di quanto è
-    vincolato nei fondi. <b>Il saldo progressivo parte da zero all'inizio dell'esercizio</b>: è
+    sullo stesso conto corrente — <b>la riga della banca continua a contarlo, come la banca</b>.
+    {{-- ⚠️ Coda 149 (13/09/2026): diceva «al netto dei fondi accantonati … differisce di quanto è
+         vincolato». Falso per l'accantonamento con giroconto, che il registro esclude (D15): vedi
+         la scheda in pagina e docs/registri_contabili.md, D15. --}}
+    <b>Il saldo è unico su tutte le casse reali</b> — un prelievo verso i contanti compare due
+    volte, in uscita dalla banca e in entrata nei contanti — e per il confronto con l'estratto conto
+    vale il saldo della cassa nello Stato patrimoniale, che porta dentro anche il riporto.
+    <b>Il saldo progressivo parte da zero all'inizio dell'esercizio</b>: è
     il saldo dei movimenti di quest'anno e non comprende la disponibilità riportata
     dall'esercizio precedente. Le operazioni sono numerate in ordine cronologico di
     effettuazione.

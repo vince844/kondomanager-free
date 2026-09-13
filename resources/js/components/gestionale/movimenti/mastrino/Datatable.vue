@@ -1,25 +1,32 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useTabellaServer } from '@/composables/useTabellaServer';
-import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import DataTablePagination from '@/components/DataTablePagination.vue';
-import DataTableToolbar from './DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
-import { ScrollText, ChevronRight } from 'lucide-vue-next';
-import RigheEspanse from './RigheEspanse.vue';
-import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import { BookOpen, ChevronRight } from 'lucide-vue-next';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import DataTableToolbar from './DataTableToolbar.vue';
+import RigaEspansa from './RigaEspansa.vue';
+import type { ColumnDef } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
-import type { ScritturaRow } from './columns';
+import type { MastrinoRow } from './columns';
 
 const props = defineProps<{
-  columns: ColumnDef<ScritturaRow>[],
-  data: ScritturaRow[],
+  columns: ColumnDef<MastrinoRow>[],
+  data: MastrinoRow[],
   condominio: Building,
   esercizio: Esercizio,
+  contoId: number,
+  /** In centesimi: il saldo del conto il giorno prima del periodo (D21.2). */
+  riporto: number,
+  giornoPrima: string,
+  /** Righe del periodo intero, prima dei filtri: distingue «periodo vuoto» da «filtro senza esito». */
+  totaleRighe: number,
+  periodo: { dal: string; al: string; stato: string },
   meta: {
     current_page: number,
     per_page: number,
@@ -29,23 +36,15 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
-const { inCorso, ordinamento, suPaginazione, suOrdinamento } =
-  useTabellaServer(() => route(generateRoute('gestionale.esercizi.scritture.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id, }));
-
-// ⚠️ **Stesso idioma delle altre quattro liste che espandono una riga** (Comunicazioni, Eventi,
-// Documenti, Segnalazioni: `expandedIds` + `isExpanded`/`toggleExpanded`), non il modello di
-// espansione di TanStack — qui il pannello aperto non è una sotto-riga TanStack, è un `<tr>` in
-// più con `colspan`, deciso così in docs/registri_contabili.md §10.4 per non introdurre un
-// modello di riga per una cosa che riga non è.
-const expandedIds = ref<Set<number>>(new Set());
-const isExpanded = (id: number) => expandedIds.value.has(id);
-const toggleExpanded = (id: number) => {
-  if (expandedIds.value.has(id)) {
-    expandedIds.value.delete(id);
-  } else {
-    expandedIds.value.add(id);
-  }
-};
+const { euro } = useCurrencyFormatter();
+// Nessun ordinamento a schermo: un mastrino è cronologico, e il saldo progressivo
+// perderebbe senso su un ordine diverso.
+const { suPaginazione } = useTabellaServer(() =>
+  route(generateRoute('gestionale.esercizi.conti.movimenti'), {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+    contoContabile: props.contoId,
+  }));
 
 const table = useVueTable({
   get data() { return props.data ?? [] },
@@ -56,35 +55,43 @@ const table = useVueTable({
       pageIndex: props.meta.current_page - 1,
       pageSize: props.meta.per_page,
     },
-    get sorting() { return ordinamento.value },
   },
   manualPagination: true,
-  // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
-  manualSorting: true,
   onPaginationChange: updater => {
     const stato = table.getState().pagination
     const p = typeof updater === 'function' ? updater(stato) : updater
     suPaginazione(p.pageIndex + 1, p.pageSize, stato.pageSize)
   },
-  onSortingChange: suOrdinamento,
   getCoreRowModel: getCoreRowModel(),
 })
+
+const expandedIds = ref<Set<number>>(new Set());
+const isExpanded = (id: number) => expandedIds.value.has(id);
+const toggleExpanded = (id: number) => {
+  if (expandedIds.value.has(id)) {
+    expandedIds.value.delete(id);
+  } else {
+    expandedIds.value.add(id);
+  }
+};
+
+const formatData = (iso: string) => {
+  const [anno, mese, giorno] = iso.split('-');
+  return `${giorno}/${mese}/${anno}`;
+};
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex items-center">
-      <DataTableToolbar :table="table" />
+      <DataTableToolbar />
     </div>
 
-    <div class="rounded-md border bg-white overflow-hidden">
-
-      <Table v-if="table.getRowModel().rows?.length > 0" class="table-fixed w-full">
+    <div class="rounded-md border bg-white overflow-x-auto">
+      <Table class="table-fixed w-full min-w-[1000px] text-[13px]">
         <TableHeader>
           <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id" class="bg-gray-50/50">
-            <!-- Colonna del chevron: fuori dal modello TanStack, è il segnale visivo che la riga
-                 è cliccabile e si espande — vedi la nota sopra sul motivo della scelta. -->
-            <TableHead class="w-8 px-2" />
+            <TableHead class="w-6 pl-2 pr-0" />
             <TableHead
               v-for="header in headerGroup.headers"
               :key="header.id"
@@ -100,17 +107,22 @@ const table = useVueTable({
           </TableRow>
         </TableHeader>
         <TableBody>
+          <!-- La riga di riporto sta in testa alla PRIMA pagina soltanto: è il punto da cui il
+               saldo parte, non un movimento, e non ha numero. Sulle pagine successive il saldo
+               della prima riga mostrata porta già dentro tutto ciò che precede. -->
+          <TableRow v-if="meta.current_page === 1" class="bg-slate-50/70 hover:bg-slate-50/70 italic text-slate-500">
+            <TableCell class="w-6 pl-2 pr-0 py-2.5" />
+            <TableCell class="px-4 py-2.5" />
+            <TableCell class="px-4 py-2.5 tabular-nums">{{ formatData(giornoPrima) }}</TableCell>
+            <TableCell class="px-4 py-2.5" colspan="4">{{ periodo.stato === 'futuro' ? 'Riporto — saldo del conto a oggi: l\'esercizio non è ancora cominciato' : 'Riporto — saldo del conto all\'inizio del periodo' }}</TableCell>
+            <TableCell class="px-4 py-2.5 text-right tabular-nums font-bold not-italic" :class="riporto < 0 ? 'text-rose-600' : 'text-slate-700'">{{ euro(riporto) }}</TableCell>
+          </TableRow>
           <template v-for="row in table.getRowModel().rows" :key="row.id">
             <TableRow
-              :data-state="row.getIsSelected() ? 'selected' : undefined"
               class="hover:bg-gray-50/50 transition-colors cursor-pointer"
               @click="toggleExpanded(row.original.id)"
             >
-              <TableCell class="w-8 px-2 py-3">
-                <!-- Un pulsante vero, non un'icona: la riga si apre col mouse cliccando ovunque,
-                     ma da tastiera serve un elemento focalizzabile. Tolta la colonna azioni, non
-                     ne restava nessuno — trovato dalla revisione della beta.24. `.stop` perché
-                     il clic sul pulsante non deve risalire alla riga e richiudere il pannello. -->
+              <TableCell class="w-6 pl-2 pr-0 py-3">
                 <button
                   type="button"
                   class="inline-flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -133,33 +145,39 @@ const table = useVueTable({
                 <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
               </TableCell>
             </TableRow>
-            <!-- Il pannello richiesto dal §10.1.1: le righe di partita doppia, senza cambiare
-                 pagina. `colspan` include la colonna del chevron: +1 sulle celle visibili. -->
             <TableRow v-if="isExpanded(row.original.id)" class="bg-slate-50/40 hover:bg-slate-50/40">
               <TableCell :colspan="row.getVisibleCells().length + 1" class="px-4 py-3">
-                <RigheEspanse :righe="row.original.righe" :scrittura-id="row.original.id" :condominio-id="props.condominio.id" :esercizio-id="props.esercizio.id" />
+                <RigaEspansa :riga="row.original" />
               </TableCell>
             </TableRow>
           </template>
         </TableBody>
       </Table>
 
-      <Empty v-else class="py-12 bg-slate-50/50">
+      <Empty v-if="table.getRowModel().rows?.length === 0" class="py-10 bg-slate-50/50 border-t">
         <EmptyHeader class="max-w-4xl">
           <EmptyMedia variant="icon" class="bg-violet-50/50 dark:bg-violet-900/20 text-violet-500">
-            <ScrollText class="w-8 h-8" />
+            <BookOpen class="w-8 h-8" />
           </EmptyMedia>
-          <EmptyTitle>Nessuna scrittura trovata</EmptyTitle>
+          <EmptyTitle>{{ totaleRighe > 0 ? 'Nessuna riga corrisponde ai filtri' : 'Nessun movimento su questo conto' }}</EmptyTitle>
+          <!-- Due stati diversi, due frasi: con un filtro senza esito il saldo del conto NON è il
+               riporto — è quello dichiarato in testa, alla sua data — e ripeterlo qui con un altro
+               numero metteva due saldi sullo stesso schermo. Revisione della beta.26. -->
           <EmptyDescription>
-            Non ci sono scritture contabili che corrispondono ai criteri. <br>
-            Modifica i filtri di ricerca o cambia esercizio.
+            <template v-if="totaleRighe > 0">
+              Nel periodo questo conto ha {{ totaleRighe }} {{ totaleRighe === 1 ? 'movimento' : 'movimenti' }}: nessuno passa i filtri scelti. Il saldo dichiarato in testa resta quello vero alla sua data. <br>
+              Modifica i filtri o azzerali.
+            </template>
+            <template v-else>
+              Nel periodo non c'è nessuna riga: il saldo resta quello del riporto. <br>
+              Scegli un altro conto o cambia esercizio.
+            </template>
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-
     </div>
 
-    <div v-if="table.getRowModel().rows?.length > 0 && props.meta.last_page > 1" class="flex items-center justify-end">
+    <div v-if="table.getRowModel().rows?.length > 0" class="flex items-center justify-end">
       <DataTablePagination :table="table" :meta="props.meta" />
     </div>
   </div>

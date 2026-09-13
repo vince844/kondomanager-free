@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
 use App\Traits\RisolveIFigliDelleRotte;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Esercizio extends Model
 {
@@ -76,6 +78,20 @@ class Esercizio extends Model
     }
 
     /**
+     * I conti contabili del condominio di questo esercizio — cioè i conti su cui il mastrino
+     * (D21) si apre da `/esercizi/{esercizio}/conti/{contoContabile}/movimenti`.
+     *
+     * Il piano contabile è per condominio, non per esercizio: la relazione lega i due per
+     * `condominio_id`, che è esattamente il vincolo che lo scoped binding deve far valere —
+     * il conto di un altro condominio non si apre da qui, e risponde 404 senza una guardia
+     * scritta a mano nel controller.
+     */
+    public function contiContabili(): HasMany
+    {
+        return $this->hasMany(ContoContabile::class, 'condominio_id', 'condominio_id');
+    }
+
+    /**
      * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
      *
      * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel
@@ -89,6 +105,7 @@ class Esercizio extends Model
             'gestione'   => 'gestioni',
             'pianoConto' => 'pianiConti',
             'pianoRate'  => 'pianiRate',
+            'contoContabile' => 'contiContabili',
         ];
     }
 
