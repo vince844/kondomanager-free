@@ -319,6 +319,7 @@ class RipartoTabelleService
                 // Accumula nella struttura righe
                 if (!isset($righe[$immobileId])) {
                     $righe[$immobileId] = [
+                        'codice_immobile'  => $immobile->codice_immobile ?? '',
                         'interno'          => $immobile->interno ?? '',
                         'piano'            => $immobile->piano   ?? '',
                         'nome_immobile'    => $immobile->nome ?: ($immobile->codice_immobile ?? ''),
@@ -352,7 +353,21 @@ class RipartoTabelleService
         }
 
         // Ordina righe per interno
-        uasort($righe, fn($a, $b) => ($a['interno'] ?? '') <=> ($b['interno'] ?? ''));
+        // ⚠️ Ordine di lettura, non di inserimento (1.11.0-beta.27): interno in ordine naturale («2»
+        // prima di «10», «4 BIS» fra «4» e «5»), le unità senza interno — box, cantine — in fondo e
+        // per nome, il codice solo come ultimo spareggio. Il codice non può stare in testa: fuori
+        // dai seeder lo genera Immobile::booted() come C{condominio}-NNNN nell'ordine di creazione,
+        // è univoco e non si stampa, quindi deciderebbe da solo. Prima il `<=>` era già numerico sugli
+        // interni numerici; i difetti erano le unità senza interno (nell'ordine in cui il motore le
+        // incontrava) e i misti («10» prima di «4 BIS»). Componenti separati e non una stringa con
+        // «|»: il separatore è maggiore delle lettere e «4 BIS» finirebbe prima di «4».
+        // Stessa chiave nelle due stampe.
+        $confronto = fn (array $a, array $b) =>
+            ((($a['interno'] ?? '') === '') <=> (($b['interno'] ?? '') === ''))
+            ?: strnatcasecmp($a['interno'] ?? '', $b['interno'] ?? '')
+            ?: strnatcasecmp($a['nome_immobile'] ?? '', $b['nome_immobile'] ?? '')
+            ?: strnatcasecmp($a['codice_immobile'] ?? '', $b['codice_immobile'] ?? '');
+        uasort($righe, $confronto);
 
         // Ordina soggetti per ruolo (proprietario prima).
         //

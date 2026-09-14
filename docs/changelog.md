@@ -7,6 +7,77 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.27] - Il Riparto Che Sta In Un A4
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Un amministratore ha messo a confronto, sullo stesso condominio, il riparto per tabella di
+KondoManager e quello del programma che usava prima: «bello da vedere quello di KM ma solo da
+lontano… prova a stamparlo su carta e capisci subito». Aveva ragione. Con più di cinque tabelle il
+foglio diventava un A3 — che nessuna stampante di casa o di studio ha — e il browser lo ristampava
+su un A4 verticale, illeggibile e su due pagine; il suo programma metteva 48 righe e sei tabelle in
+un A4 orizzontale, a una pagina. Le due stampe del riparto — per tabella e per capitolo — ora
+escono **sempre in A4 orizzontale**: si sceglie l'orientamento, non il foglio. Margini stretti
+(8 mm ai lati, intestazione e piede misurati sul millimetro), corpo del carattere a 7 punti fino a
+sei colonne, colonne di servizio ridotte, celle compatte: quel condominio da 38 unità e 48 righe
+sta in due pagine per tabella e in due per capitolo, dove prima ne servivano due in A3 e quattro.
+
+**Blocchi bilanciati, totali una volta sola.** Con molte tabelle la stampa non rimpicciolisce il
+carattere: spezza le colonne in blocchi di pagina, e i blocchi sono **bilanciati** — dieci tabelle
+fanno 5 + 5, non 8 + 2 con un blocco quasi vuoto. Il blocco che porta le colonne dei totali (totale
+soggetto, percentuale, totale unità) ha tre colonne in più, e con sette o otto tabelle i numeri non
+ci stavano: quel blocco non supera le sei tabelle, e sette escono in 4 + 3. Le colonne e la riga
+dei **totali generali stanno solo nell'ultimo blocco**, dove chi legge ha visto tutte le colonne;
+i blocchi precedenti chiudono con i totali delle sole colonne del blocco e lo dicono in calce
+(«Continua nel blocco successivo»). Prima ogni blocco ripeteva i totali del documento intero, e la
+seconda pagina affermava un totale che le sue colonne contraddicevano (Coda 79, chiusa).
+
+**Si legge nell'ordine del palazzo.** Le righe escono per interno in ordine naturale — «2» prima di
+«10», «4 bis» fra «4» e «5» — poi le unità senza interno (box, cantine) per nome; l'ordine di
+inserimento non conta più. La cella dell'unità ha il nome in testa e una sola riga piccola sotto,
+«int. 3 · piano 1», solo quando c'è qualcosa da scrivere: un box senza interno non stampa più
+«Int. —» a vuoto, e un piano inserito come numero nudo («1», «T») prende la sua etichetta.
+
+**Il file ha un nome, e la risposta ha un corpo.** Le tre stampe del piano rate — scadenziario,
+riparto per tabella, riparto per capitolo — scaricano come `riparto-tabelle-<condominio>-2026.pdf`
+e simili, invece di `prospetto_rate.pdf` per tutte. Sotto c'era un difetto silenzioso: mPDF
+scriveva il PDF direttamente sull'uscita e la risposta di Laravel restava vuota — il browser
+vedeva il file, un test no. Ora la risposta porta i byte, e un test li misura.
+
+**Firma e piede nel margine.** La firma dell'amministratore, nelle due stampe del riparto, sta su
+una riga con l'etichetta, più bassa: prima il suo blocco finiva da solo su una terza pagina bianca.
+Il piè di pagina — data, nota legale, numero di pagina — ha una variante compatta che sta nei
+7 mm del margine: quello standard ne misura 10,6 e il suo filetto tagliava l'ultima riga e la
+firma, e le «due pagine» esistevano solo grazie a quella sovrapposizione.
+
+**Dettagli che si vedono su carta.** Nel riparto per capitolo le quote seguono i decimali della
+tabella, come nel riparto per tabella (prima erano tre fissi: lo stesso millesimo usciva «38,80» in
+una stampa e «38,400» nell'altra, e a sei colonne «159,570» si spezzava). Le intestazioni «TOT.
+SOGG.» e «mill. ‰» stanno su una riga; le percentuali della barra dei ruoli hanno la virgola
+(«75,9%»); la legenda dei ruoli dichiara anche il nudo proprietario («NP»), che le righe già
+stampavano, e le unità di misura che le colonne usano davvero (millesimi, quote, persone, kW,
+metri cubi); nelle due stampe la nuda proprietà sta accanto al proprietario, nello stesso posto.
+
+**Un condominio di prova con la forma di uno vero.** Fino a qui la leggibilità delle stampe era
+misurata su quattro unità e tre tabelle. Ora c'è `CondominioStampeSeeder`: 38 unità (17
+appartamenti, 17 box, 4 cantine), 48 righe, sei tabelle — acqua a consumo, acqua a quote fisse,
+una generale ridotta, generale, interrato, scale — cinque capitoli di preventivo per € 18.350,00,
+sei appartamenti e quattro box affittati, coppie con un nome solo, un ente fra gli inquilini,
+proprietari con più unità. La forma è quella segnalata; nomi, sede, numerazione, millesimi,
+consumi e importi sono costruiti. Diciotto test lo usano: formato e pagine letti **nel PDF** (non
+nelle variabili del modello), riga per riga uguale alle quote, blocchi 5 + 5 e 4 + 3 e 7 → 4 + 3,
+totali solo nell'ultimo blocco, ordine di lettura, decimali, etichetta del piano, firma
+configurata su disco finto con le due pagine che reggono, e l'altezza delle righe che non cambia
+fra un totale a quattro cifre e uno a cinque — il caso dei piani straordinari.
+
+**Cosa resta.** Nel riparto per capitolo della fixture compare una colonna «Fuori riparto» da
+€ 0,01 su otto righe: sono i centesimi che la cascata dei ruoli non assegna quando una voce è
+divisa 66,67/33,33 — il Code 77/78, che la beta.28 chiude con il dettaglio persistito del riparto.
+Un importo di riga a cinque cifre con sei tabelle, e una nota legale di più righe nel piede
+standard di tutte le stampe, restano annotati in coda.
+
+---
+
 ## [1.11.0-beta.26] - Tutti I Movimenti Della Banca
 
 **Non tocca il database:** nessuna migrazione, nessun dato nuovo.

@@ -591,6 +591,7 @@ class RipartoCapitoliService
 
             if (!isset($righe[$iid])) {
                 $righe[$iid] = [
+                    'codice_immobile'  => $immobile->codice_immobile ?? '',
                     'interno'          => $immobile->interno ?? '',
                     // Il nome serve alla stampa come ripiego quando l'interno non c'è: senza, la
                     // colonna dell'unità conteneva un solo trattino, e due posti auto dello stesso
@@ -617,9 +618,26 @@ class RipartoCapitoliService
         }
 
         // Ordinamento finale per interno immobile e ruoli dei soggetti
-        uasort($righe, fn($a, $b) => ($a['interno'] ?? '') <=> ($b['interno'] ?? ''));
+        // ⚠️ Ordine di lettura, non di inserimento (1.11.0-beta.27): interno in ordine naturale («2»
+        // prima di «10», «4 BIS» fra «4» e «5»), le unità senza interno — box, cantine — in fondo e
+        // per nome, il codice solo come ultimo spareggio. Il codice non può stare in testa: fuori
+        // dai seeder lo genera Immobile::booted() come C{condominio}-NNNN nell'ordine di creazione,
+        // è univoco e non si stampa, quindi deciderebbe da solo. Prima il `<=>` era già numerico sugli
+        // interni numerici; i difetti erano le unità senza interno (nell'ordine in cui il motore le
+        // incontrava) e i misti («10» prima di «4 BIS»). Componenti separati e non una stringa con
+        // «|»: il separatore è maggiore delle lettere e «4 BIS» finirebbe prima di «4».
+        // Stessa chiave nelle due stampe.
+        $confronto = fn (array $a, array $b) =>
+            ((($a['interno'] ?? '') === '') <=> (($b['interno'] ?? '') === ''))
+            ?: strnatcasecmp($a['interno'] ?? '', $b['interno'] ?? '')
+            ?: strnatcasecmp($a['nome_immobile'] ?? '', $b['nome_immobile'] ?? '')
+            ?: strnatcasecmp($a['codice_immobile'] ?? '', $b['codice_immobile'] ?? '');
+        uasort($righe, $confronto);
 
-        $ordineRuoli = ['proprietario' => 0, 'usufruttuario' => 1, 'inquilino' => 2];
+        // Ordina soggetti per ruolo (proprietario prima). Stessa scala della gemella per tabelle:
+        // `nuda_proprietario` cadeva sul `?? 9` e finiva **dopo l'inquilino** in questa stampa
+        // sola; sta accanto al proprietario, è lo stesso soggetto economico con l'usufrutto staccato.
+        $ordineRuoli = ['proprietario' => 0, 'nuda_proprietario' => 1, 'usufruttuario' => 2, 'inquilino' => 3];
         foreach ($righe as &$riga) {
             uasort($riga['soggetti'], fn($a, $b) =>
                 ($ordineRuoli[$a['ruolo_raw']] ?? 9) <=> ($ordineRuoli[$b['ruolo_raw']] ?? 9)
@@ -770,6 +788,7 @@ class RipartoCapitoliService
         $radiceId = $radice->id;
         $primoTabId = null;
         $primoTabQuota = 'mill.';
+        $primoTabDecimali = 2;
 
         // Peso che nessun soggetto può ricevere perché la cascata dei ruoli si è esaurita.
         // Si raccoglie per poterlo dire nei log, non per toglierlo dall'importo: vedi la nota
@@ -783,6 +802,7 @@ class RipartoCapitoliService
             if (!$primoTabId) {
                 $primoTabId = $tabella->id;
                 $primoTabQuota = $tabella->quota_label ?? ucfirst($tabella->quota ?? 'mill.');
+                $primoTabDecimali = (int) ($tabella->numero_decimali ?? 2);
             }
 
             $coeff = (float) $ctm->coefficiente;
@@ -955,6 +975,7 @@ class RipartoCapitoliService
                 $capitoliInfo[$radiceId] = [
                     'nome'               => $radice->nome,
                     'quota_label'        => $primoTabQuota,
+                    'decimali'           => $primoTabDecimali,
                     'tot_importo'        => 0,
                     'quota_mista'        => false,
                     '_prima_tabella_id'  => $primoTabId,

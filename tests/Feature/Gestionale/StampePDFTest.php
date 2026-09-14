@@ -323,6 +323,12 @@ describe('Stampa Scadenziario Rate', function () {
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/pdf');
+        // Beta.27: prima `Output(..., 'I')` scriveva il PDF sull'output buffer e il corpo della
+        // risposta Laravel era vuoto — questo test restava verde con zero byte. Ora i byte ci sono
+        // e il nome del file è parlante.
+        expect(strlen($response->getContent()))->toBeGreaterThan(1000)
+            ->and($response->getContent())->toStartWith('%PDF')
+            ->and($response->headers->get('Content-Disposition'))->toStartWith('inline; filename="scadenziario-rate-');
     });
 
     it('il totale per anagrafica combacia con il DB (aggregazione per anagrafica_id)', function () {

@@ -411,7 +411,11 @@ class CondominioDemoSeeder extends Seeder
             'is_capitolo'    => false,
             'nome'           => $nome,
             'tipo'           => 'spesa',
-            'natura_spesa'   => 'ordinaria',
+            // ⚠️ Qui c'era `'natura_spesa' => 'ordinaria'`: una colonna che `conti` non ha. Dal
+            // pulsante del prodotto passava — il modello è guarded e l'assegnazione di massa la
+            // scartava in silenzio (Coda 108) — ma `php artisan db:seed --class=CondominioDemoSeeder`
+            // gira senza guardie e moriva su «Unknown column». Trovato costruendo il seeder gemello
+            // delle stampe (beta.27).
             'importo'        => $importoCents,
             // ⚠️ **L'ancoraggio in partita doppia, e senza non si può fatturare.** È il conto di
             // costo su cui la fattura scriverà il DARE. `ContoController` lo risolve dal ruolo
