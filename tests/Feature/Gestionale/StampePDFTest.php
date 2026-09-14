@@ -237,6 +237,11 @@ describe('Stampa Distinta Spese', function () {
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/pdf');
+        // Beta.28: `Output(..., 'I')` scriveva il PDF sull'output buffer e il corpo della risposta
+        // restava vuoto — questo test era verde su zero byte. Ora i byte ci sono e il nome parla.
+        expect(strlen($response->getContent()))->toBeGreaterThan(1000)
+            ->and($response->getContent())->toStartWith('%PDF')
+            ->and($response->headers->get('Content-Disposition'))->toStartWith('inline; filename="distinta-spese-');
     });
 
     it('accetta il parametro di ordinamento senza rompere la stampa', function () {
@@ -456,6 +461,10 @@ describe('Stampa Ripartizione Spese', function () {
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/pdf');
+        // Beta.28: stessa trappola della distinta, stessa cura (vedi sopra).
+        expect(strlen($response->getContent()))->toBeGreaterThan(1000)
+            ->and($response->getContent())->toStartWith('%PDF')
+            ->and($response->headers->get('Content-Disposition'))->toStartWith('inline; filename="ripartizione-spese-');
     });
 
     it('il riparto aggrega per anagrafica (stessa logica dello scadenziario)', function () {

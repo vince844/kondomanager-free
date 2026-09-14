@@ -272,3 +272,31 @@ test('la delega registra il codice fiscale del condominio', function () {
     expect($delega->cf_contribuente)->toEqual($condominio->codice_fiscale)
         ->and($delega->denominazione_contribuente)->toEqual($condominio->nome);
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// La stampa del modello (beta.28)
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('il modello F24 risponde con il PDF nel corpo e col nome del file, non solo con lo status', function () {
+    // `Output(..., 'I')` scriveva il PDF sull'output buffer: il browser lo vedeva, la risposta
+    // Laravel era vuota e un test sullo status era verde su zero byte. Il commento nel controller
+    // diceva che «il nome del file resta quello che diamo noi»: era vero solo per l'echo di mPDF.
+    $ctx = ctxF24();
+    [$condominio, $esercizio] = $ctx;
+    pagaConRitenuta($ctx, '2026-03-10', 20_000);
+    $delega = azioneDeleghe()->esegui($condominio, $esercizio->id)->first();
+
+    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+    $permesso = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    $ruolo = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'amministratore', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo($permesso);
+    $user = \App\Models\User::factory()->create();
+    $user->assignRole($ruolo);
+
+    $risposta = $this->actingAs($user)->get(route('admin.gestionale.f24.modello', [$condominio, $delega]));
+
+    $risposta->assertOk()->assertHeader('Content-Type', 'application/pdf');
+    expect(strlen($risposta->getContent()))->toBeGreaterThan(1000)
+        ->and($risposta->getContent())->toStartWith('%PDF')
+        ->and($risposta->headers->get('Content-Disposition'))->toBe('inline; filename="'.app(\App\Services\Gestionale\ModelloF24Service::class)->nomeFile($delega).'"');
+});

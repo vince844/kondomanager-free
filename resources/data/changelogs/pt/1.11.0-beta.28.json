@@ -1,0 +1,8 @@
+{
+  "features": [
+    "AS QUATRO IMPRESSÕES QUE RESPONDIAM VAZIAS — Um defeito de família, encontrado no Livro Diário (beta.23) e nas impressões do plano de prestações (beta.27): «Output(..., 'I')» do mPDF escreve o PDF diretamente na saída e devolve uma cadeia vazia, pelo que o navegador recebia o ficheiro mas a resposta da aplicação estava vazia e nenhum teste a podia ler. Ficavam quatro impressões com a mesma forma — extrato de conta da pessoa, modelo F24, lista e rateio das despesas do plano de contas — e agora todas devolvem os bytes, com um nome de ficheiro declarado.",
+    "OS NOMES DOS FICHEIROS — Extrato de conta: «estratto-conto-<condomínio>-2026-<pessoa>.pdf» em vez de «EC_Nome_Apelido_Esercizio anno 2026.pdf». Lista e rateio das despesas: «distinta-spese-<condomínio>-2026-<plano>.pdf» e «ripartizione-spese-…» em vez de «distinta_spese.pdf», igual para todos; o plano de contas é um por gestão, e ordinária e extraordinária têm o seu. O comprovativo de pagamento ao fornecedor saía «Distinta_PAG-PAG-…», com o prefixo duplicado: agora «distinta-pagamento-pag-2026-00001-<data>.pdf».",
+    "TESTES ESCRITOS ANTES DA CORREÇÃO — Cinco: quatro falhavam com um corpo de zero bytes, o quinto no nome. Cada impressão tem agora uma asserção sobre os bytes e sobre o nome declarado. Não resta nenhum «Output(..., 'I')» em todo o módulo de gestão.",
+    "O QUE FICA — Os Code 77/78 com o detalhe persistido do rateio, que a beta.27 dava à .28, saem na .29: tocam na base de dados e são uma beta inteira."
+  ]
+}

@@ -7,6 +7,40 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.28] - Le Stampe Che Rispondono
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Una beta piccola, per chiudere un difetto di famiglia. La beta.23 l'aveva trovato nel Libro
+Giornale e la .27 nelle tre stampe del piano rate: `Output(..., 'I')` di mPDF scrive il PDF
+direttamente sull'uscita e restituisce una stringa vuota — il browser riceveva il file, ma la
+risposta dell'applicazione era vuota e nessun test poteva leggerla. La revisione della .27 ha
+contato le stampe rimaste con la stessa forma: **quattro** — l'estratto conto dell'anagrafica, il
+modello F24, la distinta e la ripartizione delle spese del piano dei conti. Ora tutte e quattro
+restituiscono i byte nella risposta, con un nome di file dichiarato.
+
+**I nomi.** Estratto conto: `estratto-conto-<condominio>-2026-<anagrafica>.pdf` invece di
+`EC_Nome_Cognome_Esercizio anno 2026.pdf`, spazi compresi. Distinta e ripartizione delle spese:
+`distinta-spese-<condominio>-2026-<piano>.pdf` e `ripartizione-spese-<condominio>-2026-<piano>.pdf`
+invece di `distinta_spese.pdf` e `ripartizione_spese.pdf`, uguali per tutti — il piano dei conti
+è uno per gestione, e un esercizio con ordinaria e straordinaria ne ha due. Il modello F24 tiene
+il suo nome (`F24-<protocollo>.pdf`), ma ora lo dichiara la risposta e non l'eco di mPDF. La
+distinta del pagamento fornitore non aveva il difetto — scaricava già con i byte — ma usciva come
+`Distinta_PAG-PAG-2026-00001_….pdf`, con il prefisso raddoppiato: ora `distinta-pagamento-pag-2026-00001-<data>.pdf`.
+
+**I test, scritti prima della cura.** Cinque: quattro fallivano con un corpo a zero byte, il quinto
+sul nome. Ogni stampa ora ha un'asserzione sui byte (`%PDF`, più di mille) e sul nome dichiarato —
+la forma che avrebbe visto il vuoto da mesi. In tutto il gestionale non resta nessun
+`Output(..., 'I')`.
+
+**Cosa resta.** I Code 77/78 col dettaglio persistito del riparto, che la .27 dava alla .28, escono
+nella **.29**: toccano il database e sono una beta intera. Un'anagrafica con un nome tutto fuori
+dall'alfabeto latino avrebbe un file senza il suo nome (lo slug è vuoto, il nome ripiega sul solo
+condominio e anno); l'estratto conto di un condominio senza esercizio aperto risponde 500 già
+da prima: annotati.
+
+---
+
 ## [1.11.0-beta.27] - Il Riparto Che Sta In Un A4
 
 **Non tocca il database:** nessuna migrazione, nessun dato nuovo.

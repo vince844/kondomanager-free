@@ -9,6 +9,7 @@ use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Services\PDF\PdfService;
+use Illuminate\Support\Str;
 use App\Support\OrdinamentoConti;
 use Illuminate\Http\Request;
 
@@ -86,8 +87,15 @@ class PianoContiPrintController extends Controller
 
         $mpdf->SetHeader($condominio->nome . '||Distinta Spese – ' . $esercizio->nome);
 
-        return response($mpdf->Output('distinta_spese.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // ⚠️ `Output(..., 'I')` scrive il PDF sull'output buffer e torna vuota: il browser lo riceveva
+        // dall'echo di mPDF, la risposta Laravel era vuota e un test sullo status era verde su zero
+        // byte (beta.28, Coda 151). E «distinta_spese.pdf» era uguale per ogni condominio; il piano
+        // dei conti è uno per gestione, e un esercizio con ordinaria e straordinaria ne ha due.
+        $nomeFile = PdfService::nomeFile('distinta-spese', $condominio->nome, $esercizio->data_inizio?->format('Y'), Str::slug($pianoConto->nome));
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     /**
@@ -183,7 +191,11 @@ class PianoContiPrintController extends Controller
 
         $mpdf->SetHeader($condominio->nome . '||Ripartizione Spese – ' . $esercizio->nome);
 
-        return response($mpdf->Output('ripartizione_spese.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // Stessa trappola e stessa cura della distinta, qui sopra.
+        $nomeFile = PdfService::nomeFile('ripartizione-spese', $condominio->nome, $esercizio->data_inizio?->format('Y'), Str::slug($pianoConto->nome));
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 }

@@ -663,8 +663,11 @@ class PagamentoFornitoreController extends Controller
 
         $mpdf = $pdfService->generate('pdf.gestionale.distinta', $data);
 
-        $filename = sprintf('Distinta_PAG-%s_%s.pdf',
-            $pagamento->scrittura->numero_protocollo ?? $pagamento->id,
+        // Il protocollo porta già il prefisso («PAG-2026-00001»): il nome usciva «Distinta_PAG-PAG-…».
+        // Forma della casa (beta.28): «distinta-pagamento-<protocollo>-<data>.pdf», solo ASCII.
+        $filename = PdfService::nomeFile(
+            'distinta-pagamento',
+            (string) ($pagamento->scrittura->numero_protocollo ?? $pagamento->id),
             $pagamento->data_pagamento?->format('Ymd') ?? date('Ymd')
         );
 

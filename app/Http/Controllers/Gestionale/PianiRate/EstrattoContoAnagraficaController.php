@@ -11,6 +11,7 @@ use App\Helpers\MoneyHelper;
 use App\Services\Gestionale\CreditoService;
 use App\Traits\HasEsercizio;
 use App\Services\PDF\PdfService;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 
@@ -70,11 +71,18 @@ class EstrattoContoAnagraficaController extends Controller
             'margin_top'  => 30,
         ]);
 
-        $nomeFile = 'EC_' . str_replace(' ', '_', $anagrafica->nome) . '_' . $esercizio->nome . '.pdf';
         $mpdf->SetHeader($condominio->nome . '||Estratto Conto – ' . $anagrafica->nome);
 
-        return response($mpdf->Output($nomeFile, 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // ⚠️ `Output(..., 'I')` scrive il PDF sull'output buffer e torna vuota: mPDF mandava da sé,
+        // con `header()` ed `echo`, intestazioni e corpo, e nella risposta Laravel non passava nulla —
+        // nessun test la guardava (beta.28, Coda 151; stessa cura del Libro Giornale e delle stampe
+        // del piano rate). Il nome era «EC_Nome_Cognome_Esercizio anno 2026.pdf», spazi compresi;
+        // ora ha la forma della casa: libro, condominio, anno, e l'anagrafica in coda.
+        $nomeFile = PdfService::nomeFile('estratto-conto', $condominio->nome, $esercizio->data_inizio?->format('Y'), Str::slug($anagrafica->nome));
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     // -------------------------------------------------------------------------
