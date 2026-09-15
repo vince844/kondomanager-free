@@ -172,4 +172,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // solo da `soggetto_ritenuta` / `tipo_ritenuta` / `regime_forfetario`, che il backfill non
     // tocca: rieseguirla dà lo stesso insieme di fornitori marcati come già decisi.
     '2026_09_04_090000_add_ritenuta_decisa_il_to_fornitori_table',
+    // Aggiunte nella beta.29 (il dettaglio del riparto persistito): una tabella nuova, `create`
+    // dentro `hasTable` con le FK nella stessa `create`; e il drop di due colonne di `rate_quote`
+    // mai scritte né lette, con le guardie separate per FK (MySQL, `information_schema`) e per
+    // colonna, e il `dropForeign` nello stesso blueprint su SQLite — il modello è
+    // `add_pertinenza_di_to_immobili`. La seconda è quella che qui conta: un drop rieseguito
+    // senza guardia dà errore 1091 sullo stato parziale che un timeout lascia.
+    '2026_09_14_200000_create_righe_riparto_table',
+    '2026_09_14_200100_drop_riga_fattura_id_and_voce_id_from_rate_quote_table',
 ]);

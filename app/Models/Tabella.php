@@ -83,13 +83,23 @@ class Tabella extends Model
     // Accessor: nome leggibile della quota
     public function getQuotaLabelAttribute(): string
     {
-        return match ($this->quota) {
+        return self::etichettaQuota((string) $this->quota);
+    }
+
+    /**
+     * L'etichetta dell'unità di misura di una tabella, scritta una volta sola: la leggono
+     * l'accessor qui sopra e le stampe del riparto (`MatriceRipartoBuilder`), che dal dettaglio
+     * congelato hanno il tipo di quota ma non il modello.
+     */
+    public static function etichettaQuota(string $quota): string
+    {
+        return match ($quota) {
             'millesimi' => 'Millesimi',
             'persone'  => 'Persone',
             'kwatt'    => 'kW',
             'mtcubi'   => 'Metri Cubi',
             'quote'    => 'Quote',
-            default    => ucfirst($this->quota),
+            default    => ucfirst($quota),
         };
     }
 }

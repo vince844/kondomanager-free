@@ -45,7 +45,8 @@ class QuotaTabella extends Model
      * ancora compilato» — la distinzione che questa beta ha appena introdotto.
      *
      * Dove il valore si formatta davvero: la pagina delle quote (`QuoteList.vue`) e la stampa del
-     * riparto (`RipartoTabelleService`), che fanno ciascuna il proprio `number_format` sul posto.
+     * riparto (i template `riparto_tabelle` e `riparto_capitoli`, con i `decimali` che
+     * `MatriceRipartoBuilder` legge dalla tabella), che fanno ciascuna il proprio `number_format`.
      * `numero_decimali` governa **come il valore si mostra**, mai cosa si conserva.
      */
 }

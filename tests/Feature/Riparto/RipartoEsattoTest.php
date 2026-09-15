@@ -35,12 +35,12 @@ it('riproduce il bug esatto del condominio T12', function () {
     $tabRisc = Tabella::create(['condominio_id' => $condominio->id, 'nome' => 'RISCALDAMENTO', 'quota' => 'millesimi']);
 
     $datiImmobili = [
-        1 => ['inq' => 'Ruatti Inq', 'prop' => 'Ruatti Rosina', 'asc' => 1, 'risc' => 156.404],
-        2 => ['prop' => 'Nardelli', 'asc' => 1, 'risc' => 161.191],
-        3 => ['inq' => 'Ghulam', 'prop' => 'Murrja', 'asc' => 2, 'risc' => 151.031],
-        4 => ['prop' => 'Mazzon', 'asc' => 2, 'risc' => 144.862],
-        5 => ['prop' => 'Zocca', 'asc' => 3, 'risc' => 192.393],
-        6 => ['prop' => 'Coletti', 'asc' => 3, 'risc' => 194.119],
+        1 => ['inq' => 'Inquilino 1', 'prop' => 'Proprietario 1', 'asc' => 1, 'risc' => 156.404],
+        2 => ['prop' => 'Proprietario 2', 'asc' => 1, 'risc' => 161.191],
+        3 => ['inq' => 'Inquilino 3', 'prop' => 'Proprietario 3', 'asc' => 2, 'risc' => 151.031],
+        4 => ['prop' => 'Proprietario 4', 'asc' => 2, 'risc' => 144.862],
+        5 => ['prop' => 'Proprietario 5', 'asc' => 3, 'risc' => 192.393],
+        6 => ['prop' => 'Proprietario 6', 'asc' => 3, 'risc' => 194.119],
     ];
 
     foreach ($datiImmobili as $i => $d) {
@@ -104,13 +104,13 @@ it('riproduce il bug esatto del condominio T12', function () {
     echo "TOTALE GENERALE (Dovrebbe essere 12550.00, quanto è?): " . ($matrice['tot_per_tabella'][$tabGen->id]/100) . "\n";
     echo "TOTALE RISCALDAMENTO (Dovrebbe essere 15300.00, quanto è?): " . ($matrice['tot_per_tabella'][$tabRisc->id]/100) . "\n";
     echo "TOTALE ASCENSORE: " . ($matrice['tot_per_tabella'][$tabAsc->id]/100) . "\n";
-    echo "\nNARDELLI:\n";
-    $nardelliRiga = $matrice['righe'][2]['soggetti'];
-    $nardelli = reset($nardelliRiga);
-    echo "Generale: " . ($nardelli['per_tabella'][$tabGen->id]['importo']/100) . " (Aspettato: 2091.69)\n";
-    echo "Ascensore: " . ($nardelli['per_tabella'][$tabAsc->id]['importo']/100) . " (Aspettato: 83.33)\n";
-    echo "Riscaldamento: " . ($nardelli['per_tabella'][$tabRisc->id]['importo']/100) . " (Aspettato: 2466.26)\n";
-    echo "Totale Sogg: " . ($nardelli['totale']/100) . " (Aspettato: 4641.28)\n";
+    echo "\nUNITÀ 2 (proprietario senza inquilino):\n";
+    $unita2Riga = $matrice['righe'][2]['soggetti'];
+    $unita2 = reset($unita2Riga);
+    echo "Generale: " . ($unita2['per_tabella'][$tabGen->id]['importo']/100) . " (Aspettato: 2091.69)\n";
+    echo "Ascensore: " . ($unita2['per_tabella'][$tabAsc->id]['importo']/100) . " (Aspettato: 83.33)\n";
+    echo "Riscaldamento: " . ($unita2['per_tabella'][$tabRisc->id]['importo']/100) . " (Aspettato: 2466.26)\n";
+    echo "Totale Sogg: " . ($unita2['totale']/100) . " (Aspettato: 4641.28)\n";
     
     if (abs($matrice['tot_per_tabella'][$tabRisc->id] - 1530000) > 2) {
         $this->fail("ERRORE: expected 1530000 but got " . $matrice['tot_per_tabella'][$tabRisc->id]);

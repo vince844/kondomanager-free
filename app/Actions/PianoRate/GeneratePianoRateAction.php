@@ -212,7 +212,8 @@ class GeneratePianoRateAction
                 'immobile_nome' => $s['immobile_id']
                     ? ($immobiliNomi[$s['immobile_id']] ?? 'Immobile #' . $s['immobile_id'])
                     : null,
-                'conto_nome'    => $contiNomi[$s['conto_id']] ?? 'Conto #' . $s['conto_id'],
+                // Senza conto (la riga ad personam non ne ha uno) il nome è nullo, non «Conto #».
+                'conto_nome'    => $s['conto_id'] ? ($contiNomi[$s['conto_id']] ?? 'Conto #' . $s['conto_id']) : null,
                 'tabella_nome'  => ($s['tabella_id'] ?? null)
                     ? ($tabelleNomi[$s['tabella_id']] ?? 'Tabella #' . $s['tabella_id'])
                     : null,
@@ -375,7 +376,9 @@ class GeneratePianoRateAction
             $pianoRate,
             $totaliPerImmobile,
             $dateRate,
-            $saldi
+            $saldi,
+            // Il dettaglio del riparto (beta.29): le righe che spiegano i totali, scritte con le quote.
+            $this->calcolatore->getRigheDettaglio()
         );
 
         // 6. LUCCHETTO SALDI

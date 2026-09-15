@@ -526,6 +526,37 @@
     @if($pianoRate->stato)
         &nbsp;·&nbsp; Stato del piano: <strong>{{ ucfirst($pianoRate->stato->value ?? $pianoRate->stato) }}</strong>
     @endif
+    @php
+        // La fonte del documento (beta.29): registrato alla generazione, ricostruito dai dati di
+        // oggi, o anteprima di un piano mai generato. Lo dice la matrice, non il template.
+        $fonte = $matrice['fonte'] ?? ['tipo' => 'ricostruito', 'generato_il' => null];
+        $generatoIl = $fonte['generato_il'] ?? null;
+        $generatoIl = $generatoIl ? \Illuminate\Support\Carbon::parse($generatoIl)->format('d/m/Y') : null;
+    @endphp
+    &nbsp;·&nbsp;
+    @if(($fonte['tipo'] ?? null) === 'registrato')
+        Riparto <strong>registrato</strong> alla generazione del {{ $generatoIl }}
+    @elseif(($fonte['tipo'] ?? null) === 'anteprima')
+        <strong>Anteprima</strong> — piano non ancora generato
+    @else
+        Riparto <strong>ricostruito</strong> dai dati attuali, non registrato
+    @endif
+    @php $pseudo = [\App\Services\RipartoTabelleService::COLONNA_GIA_VERSATO, \App\Services\RipartoTabelleService::COLONNA_PREGRESSO, \App\Services\RipartoTabelleService::COLONNA_DIRETTO, \App\Services\RipartoTabelleService::COLONNA_FUORI_RIPARTO]; @endphp
+    @if(array_intersect_key($tabelle, array_flip($pseudo)))
+        <br>
+        @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_GIA_VERSATO]))
+            <strong>Già versato:</strong> quanto l'unità aveva già corrisposto verso queste voci, che viene scomputato dal dovuto. Segue l'unità e non la persona (art. 63 disp. att. c.c.). Le colonne delle tabelle restano al deliberato.&nbsp;
+        @endif
+        @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_PREGRESSO]))
+            <strong>Saldi precedenti:</strong> i saldi delle gestioni chiuse, che non appartengono a nessuna tabella del preventivo corrente.&nbsp;
+        @endif
+        @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_DIRETTO]))
+            <strong>Addebito diretto:</strong> spese di una sola unità, con la riga di fattura, che nessuna tabella ripartisce.&nbsp;
+        @endif
+        @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_FUORI_RIPARTO]))
+            <strong>Fuori riparto:</strong> importo addebitato che il riparto ricostruito non spiega (dati cambiati dopo la generazione).
+        @endif
+    @endif
 </div>
 
 @endif
@@ -534,8 +565,12 @@
 <div style="margin-top: 4px; font-size: {{ $fontTiny }}; color: #888;
              border-top: 1px solid #d0dce8; padding-top: 3px;">
     Documento redatto ai sensi dell'art. 1123 c.c. — La ripartizione è calcolata in base
-    alle tabelle millesimali approvate in uso per l'esercizio indicato. In caso di discordanza
-    fa fede il verbale assembleare di approvazione del bilancio preventivo.
+    @if(($fonte['tipo'] ?? null) === 'registrato')
+    alle tabelle millesimali in uso al momento della generazione ({{ $generatoIl }}).
+    @else
+    alle tabelle millesimali approvate in uso per l'esercizio indicato.
+    @endif
+    In caso di discordanza fa fede il verbale assembleare di approvazione del bilancio preventivo.
 </div>
 
 @endsection

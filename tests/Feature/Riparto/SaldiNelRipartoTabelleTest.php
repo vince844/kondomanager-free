@@ -171,12 +171,15 @@ it('mostra dove finiscono i pregressi nel riparto per tabella', function () {
     $matrice = app(RipartoTabelleService::class)->buildMatrice($pianoRate);
 
     $totAmm     = $matrice['tot_per_tabella'][$tabAmm->id] ?? 0;
-    $totDiretto = $matrice['tot_per_tabella'][RipartoTabelleService::COLONNA_DIRETTO] ?? 0;
+    // Dalla 1.11.0-beta.29 il pregresso ha la sua colonna, «Saldi precedenti»: «Addebito diretto»
+    // contiene solo le spese ad personam, che qui non ci sono.
+    $totPregresso = $matrice['tot_per_tabella'][RipartoTabelleService::COLONNA_PREGRESSO] ?? 0;
+    expect($matrice['tot_per_tabella'][RipartoTabelleService::COLONNA_DIRETTO] ?? 0)->toBe(0);
 
     echo "\n=== RIPARTO PER TABELLA ===\n";
     echo "  AMMINISTRAZIONE:  € " . number_format($totAmm / 100, 2, ',', '.')
         . "   (deliberato: € 1.000,00)\n";
-    echo "  Addebito diretto: € " . number_format($totDiretto / 100, 2, ',', '.') . "\n";
+    echo "  Saldi precedenti: € " . number_format($totPregresso / 100, 2, ',', '.') . "\n";
     echo "  GRAN TOTALE:      € " . number_format($matrice['gran_totale'] / 100, 2, ',', '.') . "\n";
     echo "  SCARTO sulla colonna millesimale: € "
         . number_format(($totAmm - 100000) / 100, 2, ',', '.') . "\n";
@@ -200,18 +203,18 @@ it('mostra dove finiscono i pregressi nel riparto per tabella', function () {
     }
 
     // I due totali si spartiscono il gran totale.
-    expect($totAmm + $totDiretto)->toBe($matrice['gran_totale']);
+    expect($totAmm + $totPregresso)->toBe($matrice['gran_totale']);
     expect($matrice['gran_totale'])->toBe(506531);
 
     // La colonna millesimale vale il DELIBERATO, non un centesimo di più: il
     // pregresso — di chi ha peso in tabella e di chi non ne ha — sta tutto
-    // nella colonna degli addebiti diretti, che è dove appartiene.
+    // nella colonna «Saldi precedenti» (fino alla 1.11.0-beta.28 in «Addebito diretto»).
     //
     // Prima della correzione questa colonna valeva 121436: i € 214,36 di troppo
     // erano i pregressi dei proprietari attuali al netto di quelli dei titolari
     // cessati, già portati sull'unità per l'art. 63.
     expect($totAmm)->toBe(100000);
-    expect($totDiretto)->toBe(406531);
+    expect($totPregresso)->toBe(406531);
 });
 
 it('nasconde i crediti nella stampa e li conta comunque nei totali', function () {

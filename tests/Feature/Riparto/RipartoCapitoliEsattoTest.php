@@ -18,24 +18,24 @@ it('riproduce il riparto per capitoli del condominio T12', function () {
     $tabRisc = Tabella::create(['condominio_id' => $condominio->id, 'nome' => 'Riscaldamento', 'quota' => 'quote']);
 
     // 3. Setup Anagrafiche
-    $nardelli = \App\Models\Anagrafica::factory()->create(['nome' => 'NARDELLI']);
-    // Nardelli non ha inquilino, ha il 100% di spese
-    $immobileNardelli = \App\Models\Immobile::create(['condominio_id' => $condominio->id, 'tipo' => 'appartamento', 'interno' => '1', 'nome' => 'App 1', 'codice_immobile' => 'C1-001', 'descrizione' => 'Test']);
-    $immobileNardelli->anagrafiche()->attach($nardelli->id, ['tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()]);
+    $rossi = \App\Models\Anagrafica::factory()->create(['nome' => 'ROSSI']);
+    // Rossi non ha inquilino, ha il 100% di spese
+    $immobileRossi = \App\Models\Immobile::create(['condominio_id' => $condominio->id, 'tipo' => 'appartamento', 'interno' => '1', 'nome' => 'App 1', 'codice_immobile' => 'C1-001', 'descrizione' => 'Test']);
+    $immobileRossi->anagrafiche()->attach($rossi->id, ['tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()]);
 
-    \App\Models\QuotaTabella::create(['tabella_id' => $tabGen->id, 'immobile_id' => $immobileNardelli->id, 'valore' => 166.666]);
-    \App\Models\QuotaTabella::create(['tabella_id' => $tabAsc->id, 'immobile_id' => $immobileNardelli->id, 'valore' => 83.333]);
-    \App\Models\QuotaTabella::create(['tabella_id' => $tabRisc->id, 'immobile_id' => $immobileNardelli->id, 'valore' => 161.192]);
+    \App\Models\QuotaTabella::create(['tabella_id' => $tabGen->id, 'immobile_id' => $immobileRossi->id, 'valore' => 166.666]);
+    \App\Models\QuotaTabella::create(['tabella_id' => $tabAsc->id, 'immobile_id' => $immobileRossi->id, 'valore' => 83.333]);
+    \App\Models\QuotaTabella::create(['tabella_id' => $tabRisc->id, 'immobile_id' => $immobileRossi->id, 'valore' => 161.192]);
 
-    $ruattiP = \App\Models\Anagrafica::factory()->create(['nome' => 'RUATTI (P)']);
-    $ruattiI = \App\Models\Anagrafica::factory()->create(['nome' => 'RUATTI (I)']);
-    $immobileRuatti = \App\Models\Immobile::create(['condominio_id' => $condominio->id, 'tipo' => 'appartamento', 'interno' => '2', 'nome' => 'App 2', 'codice_immobile' => 'C1-002', 'descrizione' => 'Test']);
-    $immobileRuatti->anagrafiche()->attach($ruattiP->id, ['tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()]);
-    $immobileRuatti->anagrafiche()->attach($ruattiI->id, ['tipologia' => 'inquilino', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()]);
+    $bianchiP = \App\Models\Anagrafica::factory()->create(['nome' => 'BIANCHI (P)']);
+    $bianchiI = \App\Models\Anagrafica::factory()->create(['nome' => 'BIANCHI (I)']);
+    $immobileBianchi = \App\Models\Immobile::create(['condominio_id' => $condominio->id, 'tipo' => 'appartamento', 'interno' => '2', 'nome' => 'App 2', 'codice_immobile' => 'C1-002', 'descrizione' => 'Test']);
+    $immobileBianchi->anagrafiche()->attach($bianchiP->id, ['tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()]);
+    $immobileBianchi->anagrafiche()->attach($bianchiI->id, ['tipologia' => 'inquilino', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()]);
     
-    \App\Models\QuotaTabella::create(['tabella_id' => $tabGen->id, 'immobile_id' => $immobileRuatti->id, 'valore' => 166.666]);
-    \App\Models\QuotaTabella::create(['tabella_id' => $tabAsc->id, 'immobile_id' => $immobileRuatti->id, 'valore' => 166.666]);
-    \App\Models\QuotaTabella::create(['tabella_id' => $tabRisc->id, 'immobile_id' => $immobileRuatti->id, 'valore' => 167.575]);
+    \App\Models\QuotaTabella::create(['tabella_id' => $tabGen->id, 'immobile_id' => $immobileBianchi->id, 'valore' => 166.666]);
+    \App\Models\QuotaTabella::create(['tabella_id' => $tabAsc->id, 'immobile_id' => $immobileBianchi->id, 'valore' => 166.666]);
+    \App\Models\QuotaTabella::create(['tabella_id' => $tabRisc->id, 'immobile_id' => $immobileBianchi->id, 'valore' => 167.575]);
 
     for ($i = 0; $i < 4; $i++) {
         $extraP = \App\Models\Anagrafica::factory()->create(['nome' => 'EXTRA ' . $i]);

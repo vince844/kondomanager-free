@@ -265,11 +265,16 @@ it('un titolare staccato dopo la generazione non rompe la quadratura del documen
     // La garanzia legale regge: riga = addebitato, celle = riga, colonne = gran totale.
     verificaConcordanza($pianoRate, $matrice);
 
-    // E il residuo è finito dove ha un significato — la colonna che non appartiene a nessuna
-    // tabella millesimale — non spalmato su una tabella a caso.
+    // Dalla 1.11.0-beta.29 la stampa legge il dettaglio registrato alla generazione: il soggetto
+    // staccato ha ancora **la sua cella sulla tabella**, con il ruolo di allora, perché il documento
+    // racconta ciò che è stato deliberato e non la pivot di oggi. Fino alla .28 la stampa
+    // ricalcolava dal vivo, non trovava più i suoi pesi e appoggiava l'intero importo in «Addebito
+    // diretto» — cioè lo chiamava con il nome di una spesa ad personam che non era mai esistita.
     $sogg = $matrice['righe'][$immobili[1]->id]['soggetti'][$nudoProprietario->id];
-    expect($sogg['per_tabella'][RipartoTabelleService::COLONNA_DIRETTO]['importo'] ?? null)->toBe(60000)
-        ->and($sogg['per_tabella'][$tabella->id]['importo'] ?? 0)->toBe(0);
+    expect($sogg['per_tabella'][$tabella->id]['importo'] ?? null)->toBe(60000)
+        ->and($sogg['per_tabella'][RipartoTabelleService::COLONNA_DIRETTO]['importo'] ?? 0)->toBe(0)
+        ->and($sogg['ruolo_raw'])->toBe('nuda_proprietario')
+        ->and($matrice['fonte']['tipo'])->toBe('registrato');
 });
 
 /**
@@ -361,7 +366,7 @@ it('un titolare staccato dopo la generazione non fa sparire il suo importo dalla
         ->and($riga['totale'])->toBe(60000);
 });
 
-it('l\'importo del titolare staccato finisce nella colonna «Fuori riparto», non su un capitolo a caso', function () {
+it('il titolare staccato tiene la sua cella sul capitolo, con il millesimo di allora: «Fuori riparto» non compare nel registrato', function () {
     [$pianoRate, , $nudoProprietario, , $immobili] = scenarioNudaProprieta();
 
     DB::table('anagrafica_immobile')
@@ -372,23 +377,20 @@ it('l\'importo del titolare staccato finisce nella colonna «Fuori riparto», no
     $matrice = (new \App\Services\RipartoCapitoliService())->buildMatrice($pianoRate->fresh());
     $colonna = \App\Services\RipartoCapitoliService::COLONNA_FUORI_RIPARTO;
 
-    // ⚠️ **Perché non su un capitolo vero.** Il dettaglio per capitolo di un soggetto dissociato
-    // non è ricostruibile: `rate_quote.regole_calcolo` conserva `audit`, `importi`, `origine`,
-    // `parametri` e `dettagli_saldo`, e in `importi` solo `saldo_usato`, `totale_calcolato` e
-    // `quota_pura_gestione`. Attribuire l'importo a un capitolo sarebbe inventare un dato su un
-    // documento che va in assemblea.
-    expect($matrice['capitoli'])->toHaveKey($colonna)
-        ->and($matrice['capitoli'][$colonna]['nome'])->toBe('Fuori riparto')
-        // Nessuna dimensione di riparto: la sotto-colonna delle quote resta vuota invece di
-        // mostrare un totale «0», che sarebbe un numero finto.
-        ->and($matrice['capitoli'][$colonna]['senza_quote'])->toBeTrue()
-        ->and($matrice['tot_per_capitolo'][$colonna])->toBe(60000);
+    // ⚠️ Fino alla 1.11.0-beta.28 il dettaglio per capitolo di un soggetto dissociato **non era
+    // ricostruibile** (`rate_quote.regole_calcolo` porta solo `saldo_usato`, `totale_calcolato` e
+    // `quota_pura_gestione`), e l'unica colonna onesta era «Fuori riparto». Dalla .29 il dettaglio
+    // è registrato alla generazione: il soggetto staccato ha la sua cella **sul capitolo**, con il
+    // millesimo di allora, e «Fuori riparto» non compare — nel registrato è una guardia, non una
+    // colonna attesa.
+    expect($matrice['capitoli'])->not->toHaveKey($colonna)
+        ->and($matrice['fonte']['tipo'])->toBe('registrato');
 
     $perCapitolo = $matrice['righe'][$immobili[1]->id]['soggetti'][$nudoProprietario->id]['per_capitolo'];
+    $capitoli = array_filter(array_keys($matrice['capitoli']), 'is_int');
 
-    expect($perCapitolo[$colonna]['importo'])->toBe(60000)
-        // La quota resta nulla: il template stampa «—» invece di un millesimo che non esiste.
-        ->and($perCapitolo[$colonna]['quota'])->toBeNull();
+    expect(array_sum(array_map(fn ($c) => $perCapitolo[$c]['importo'], $capitoli)))->toBe(60000)
+        ->and(array_sum(array_map(fn ($c) => $matrice['tot_per_capitolo'][$c], $capitoli)))->toBe(100000);
 });
 
 it('il subentro fatto per intero non gonfia il documento', function () {
@@ -423,8 +425,12 @@ it('il subentro fatto per intero non gonfia il documento', function () {
 
     // L'importo dell'uscente resta visibile dove ha un significato, e il subentrante non porta
     // niente: non gli è stato addebitato niente.
+    // Dalla .29 l'uscente tiene la sua cella sul capitolo: niente «Fuori riparto», e il subentrante
+    // — che non era nel calcolo — non ha righe. Il documento resta quello deliberato.
     $colonna = \App\Services\RipartoCapitoliService::COLONNA_FUORI_RIPARTO;
-    expect($perCapitolo['tot_per_capitolo'][$colonna])->toBe(60000);
+    expect($perCapitolo['capitoli'])->not->toHaveKey($colonna)
+        ->and($perCapitolo['righe'][$immobili[1]->id]['soggetti'])->toHaveKey($nudoProprietario->id)
+        ->and($perCapitolo['righe'][$immobili[1]->id]['soggetti'])->not->toHaveKey($subentrante->id);
 });
 
 it('IL PRESIDIO CHE MANCAVA: la matrice per capitoli quadra con rate_quote, non solo con la gemella', function () {

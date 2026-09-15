@@ -175,7 +175,7 @@ class TabellaQuotaController extends Controller
                 // `ultima_lettura`; su quelle di tipo `riscaldamento` `coeff_dispersione`,
                 // `quota_fissa` e `quota_variabile`. Venivano validati, salvati nella colonna
                 // `coefficienti` — e **il motore di riparto non li apriva mai**: zero occorrenze
-                // in `CalcoloQuoteService` e `RipartoTabelleService`, che ripartiscono su
+                // in `CalcoloQuoteService` — e nella stampa, che allora ricalcolava per conto suo — che ripartisce su
                 // `valore` come per qualunque altra tabella.
                 //
                 // Non era un'etichetta che mente: era un modulo che raccoglieva letture dei

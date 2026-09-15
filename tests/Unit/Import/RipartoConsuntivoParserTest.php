@@ -230,15 +230,15 @@ it('segnala che la titolarità è cambiata in corso d\'anno, invece di buttare v
 });
 
 it('non confonde una particella del cognome con un ruolo o un separatore', function () {
-    // «DAL PONTE GIOVANNI», «DE MAGISTRIS GLORIA», «DI LUCA ANNA»: nel corpus vero ci sono, e
+    // Cognomi con la particella («DAL …», «DE …», «DI …», «D'…»): nei fogli veri ci sono, e
     // funzionano perché il nome è **un campo solo** e il confronto è sull'intera stringa
     // normalizzata. Questo test esiste perché qualcuno, un giorno, sarà tentato di spezzare
-    // nome e cognome sullo spazio: da lì in poi «DE MAGISTRIS» diventerebbe cognome «DE».
+    // nome e cognome sullo spazio: da lì in poi «DE SANTIS» diventerebbe cognome «DE».
     $foglio = new Foglio('Foglio1', [
         ['Unità', 'Ruolo', 'Denominazione', 'Saldo finale'],
-        ['01', 'Pr', 'DE MAGISTRIS GLORIA', '-100,00'],
-        ['02', 'Pr', 'DAL PONTE GIOVANNI', '-50,00'],
-        ['03', 'Pr', "D'AMICO LUCA /  DI LUCA ANNA", '-30,00'],
+        ['01', 'Pr', 'DE SANTIS PAOLA', '-100,00'],
+        ['02', 'Pr', 'DAL MONTE STEFANO', '-50,00'],
+        ['03', 'Pr', "D'ANGELO MARCO /  DI PIETRO ELENA", '-30,00'],
         ['', '', 'TOTALE COMPLESSIVO', '-180,00'],
     ]);
 
@@ -247,7 +247,7 @@ it('non confonde una particella del cognome con un ruolo o un separatore', funct
         (new RipartoConsuntivoParser)->estrai($foglio, 0)['saldi'],
     );
 
-    expect($nomi)->toBe(['DE MAGISTRIS GLORIA', 'DAL PONTE GIOVANNI', "D'AMICO LUCA /  DI LUCA ANNA"]);
+    expect($nomi)->toBe(['DE SANTIS PAOLA', 'DAL MONTE STEFANO', "D'ANGELO MARCO /  DI PIETRO ELENA"]);
 });
 
 it('legge un saldo testuale sopra i mille euro in formattazione italiana', function () {

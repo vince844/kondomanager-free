@@ -140,7 +140,8 @@ enum RuoloAnagraficaImmobile: string
      *
      * Il taglio va fatto solo quando la testa è davvero il ruolo richiesto. Metterlo qui, e non
      * nei chiamanti, è la stessa ragione per cui la catena vive in questa classe: la trappola era
-     * identica in `CalcoloQuoteService` e in `RipartoTabelleService`, scritta due volte.
+     * identica in `CalcoloQuoteService` e in `RipartoTabelleService`, scritta due volte (dalla
+     * 1.11.0-beta.29 la stampa legge il dettaglio registrato e la cascata vive solo nel motore).
      *
      * @return array<int, self>
      */

@@ -163,17 +163,17 @@ it('la colonna della tabella assorbe i saldi di apertura invece del solo prevent
     $matrice = app(RipartoTabelleService::class)->buildMatrice($pianoRate);
 
     $colonnaTabella = $matrice['tot_per_tabella'][$tabella->id] ?? 0;
-    $colonnaDiretto = $matrice['tot_per_tabella'][RipartoTabelleService::COLONNA_DIRETTO] ?? 0;
+    $colonnaPregresso = $matrice['tot_per_tabella'][RipartoTabelleService::COLONNA_PREGRESSO] ?? 0;
 
     dump([
         'colonna AMMINISTRAZIONE (cent)' => $colonnaTabella,
-        'colonna Addebito diretto (cent)' => $colonnaDiretto,
+        'colonna Saldi precedenti (cent)' => $colonnaPregresso,
         'gran totale (cent)' => $matrice['gran_totale'],
         'celle per soggetto' => collect($matrice['righe'])->mapWithKeys(fn ($r) => [
             $r['nome_immobile'] => collect($r['soggetti'])->mapWithKeys(fn ($s) => [
                 $s['nome'].' ('.$s['ruolo'].')' => [
                     'cella tabella' => $s['per_tabella'][$tabella->id]['importo'] ?? null,
-                    'cella diretto' => $s['per_tabella'][RipartoTabelleService::COLONNA_DIRETTO]['importo'] ?? null,
+                    'cella saldi precedenti' => $s['per_tabella'][RipartoTabelleService::COLONNA_PREGRESSO]['importo'] ?? null,
                     'totale riga'   => $s['totale'],
                 ],
             ])->all(),

@@ -113,14 +113,16 @@ class CalcoloQuoteService
     private array $nettingApplicato = [];
 
     /**
-     * Registro motore → stampa (beta.49, coda ⑩): quanto è stato **davvero** portato a riparto,
-     * per capitolo. `conto_id => centesimi con segno`, già al netto della decurtazione scoperti.
+     * Registro per conto (beta.49, coda ⑩): quanto è stato **davvero** portato a riparto, per
+     * capitolo. `conto_id => centesimi con segno`, già al netto della decurtazione scoperti e al
+     * lordo del netting.
      *
-     * Esiste perché `RipartoTabelleService` — il servizio che costruisce il PDF del riparto — se
+     * È nato perché `RipartoTabelleService` — il servizio che costruisce il PDF del riparto — se
      * lo ricalcolava da solo, e sbagliava: sullo straordinario leggeva `righe_fattura` con venti
      * righe che ignoravano `importo_collegato`, le coperture delle pregresse e la distinzione fra
-     * righe ordinarie e sopravvenienze. Il documento che va in assemblea non coincideva con gli
-     * addebiti.
+     * righe ordinarie e sopravvenienze. Fino alla 1.11.0-beta.28 lo leggeva quella stampa; dalla
+     * .29 le stampe leggono `righe_riparto`, e questo registro resta la somma di controllo delle
+     * righe `riparto` per conto (`RigheRipartoInvariantiTest`).
      */
     private array $importiRipartiti = [];
 
@@ -129,6 +131,33 @@ class CalcoloQuoteService
      * millesimale** e quindi non possono stare in una colonna del riparto.
      */
     private array $addebitiDiretti = [];
+
+    /**
+     * Il dettaglio del riparto (1.11.0-beta.29): **una riga per componente**, costruita nello stesso
+     * punto in cui tabella, valore del millesimo, ruolo e quota sono ancora in scope — a
+     * `distribuisciSuTabelle()` il motore li fonde in un peso solo e da lì in poi non esistono
+     * più. Le righe nascono **accanto** ai totali e ne sono la spiegazione: per ogni
+     * (anagrafica, immobile) la somma delle righe con soggetto è esattamente il totale del motore.
+     *
+     * Tipi: `riparto` (tabella × ruolo richiesto, importo con il segno del conto), `netting` (già
+     * versato, negativo, per conto e soggetto), `ad_personam` (con la riga di fattura),
+     * `quota_zero` (unità a 0 o NULL in una tabella: nessun soggetto, nessun importo).
+     *
+     * `GenerateRateQuotesAction` le scrive in `righe_riparto` insieme alle quote; le stampe le
+     * leggono invece di ricalcolare. Vuoto finché non si è chiamato uno dei due motori.
+     *
+     * @var list<array<string,mixed>>
+     */
+    private array $righeDettaglio = [];
+
+    /** Zeri documentati già registrati, per «tabella|immobile»: una riga sola, non una per conto. */
+    private array $zeriRegistrati = [];
+
+    /** Il netting per chiave «aid|iid» dell'ultima chiamata a `nettingGiaVersato()`. */
+    private array $ultimoNettingPerChiave = [];
+
+    /** @var array<int,Conto> radice per conto foglia, entro una chiamata */
+    private array $radiciCache = [];
 
     // =========================================================================
     // MOTORE ORDINARIO
@@ -160,6 +189,9 @@ class CalcoloQuoteService
         $this->importiRipartiti = [];
         $this->nettingApplicato = [];
         $this->addebitiDiretti  = [];
+        $this->righeDettaglio   = [];
+        $this->zeriRegistrati   = [];
+        $this->radiciCache      = [];
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
@@ -380,6 +412,9 @@ class CalcoloQuoteService
         $this->importiRipartiti = [];
         $this->nettingApplicato = [];
         $this->addebitiDiretti  = [];
+        $this->righeDettaglio   = [];
+        $this->zeriRegistrati   = [];
+        $this->radiciCache      = [];
 
         // Carichiamo le fatture col pivot: importo_collegato è la quota della
         // fattura effettivamente finanziata da QUESTO piano (residuo/split).
@@ -470,6 +505,8 @@ class CalcoloQuoteService
                         'immobile_id' => is_null($riga->immobile_id) ? null : (int) $riga->immobile_id,
                         'conto_id'    => is_null($riga->conto_id) ? null : (int) $riga->conto_id,
                         'importo'     => $imp,
+                        'riga_id'     => (int) $riga->id,
+                        'descrizione' => $riga->descrizione ?? null,
                     ];
                     $righeElaborate++;
                 }
@@ -513,7 +550,7 @@ class CalcoloQuoteService
                 if ($importoComp === 0) continue;
 
                 if (!is_null($c['immobile_id'])) {
-                    $this->addebitaDiretto($c['immobile_id'], $importoComp, $totali);
+                    $this->addebitaDiretto($c['immobile_id'], $importoComp, $totali, $c['riga_id'] ?? null, $c['conto_id'], $c['descrizione'] ?? null);
                     continue;
                 }
 
@@ -616,6 +653,94 @@ class CalcoloQuoteService
         return $this->addebitiDiretti;
     }
 
+    /**
+     * Il dettaglio del riparto, una riga per componente (vedi `$righeDettaglio`).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function getRigheDettaglio(): array
+    {
+        return $this->righeDettaglio;
+    }
+
+    /**
+     * Una riga del dettaglio con tutte le chiavi, così chi la scrive o la legge non deve
+     * chiedersi quali manchino.
+     *
+     * @param array<string,mixed> $campi
+     * @return array<string,mixed>
+     */
+    private function rigaDettaglio(string $tipo, array $campi): array
+    {
+        return array_merge([
+            'tipo'              => $tipo,
+            'anagrafica_id'     => null,
+            'immobile_id'       => null,
+            'conto_id'          => null,
+            'conto_nome'        => null,
+            'conto_radice_id'   => null,
+            'conto_radice_nome' => null,
+            'tabella_id'        => null,
+            'tabella_nome'      => null,
+            'tabella_quota'     => null,
+            'coefficiente'      => null,
+            'valore_millesimo'  => null,
+            'somma_valori'      => null,
+            'ruolo_richiesto'   => null,
+            'ruolo_risolto'     => null,
+            'quota_possesso'    => null,
+            'riga_fattura_id'   => null,
+            'riga_descrizione'  => null,
+            'importo'           => 0,
+        ], $campi);
+    }
+
+    /**
+     * La radice del conto **al momento della generazione**: la stampa per capitolo aggrega sulla
+     * radice, e spostare un sottoconto dopo l'assemblea non deve spostare una colonna di un
+     * documento registrato — per questo la riga porta `conto_radice_id` (1.11.0-beta.29). Sale per `parent` con una guardia sui cicli.
+     */
+    private function radiceDi(Conto $conto): Conto
+    {
+        if (isset($this->radiciCache[$conto->id])) {
+            return $this->radiciCache[$conto->id];
+        }
+
+        $radice = $conto;
+        $visti  = [$conto->id => true];
+        while ($radice->parent_id) {
+            $padre = $radice->parent;
+            if (!$padre || isset($visti[$padre->id])) break;
+            $visti[$padre->id] = true;
+            $radice = $padre;
+        }
+
+        return $this->radiciCache[$conto->id] = $radice;
+    }
+
+    /** Lo zero documentato di un'unità in una tabella: una riga per (tabella, immobile), qualunque sia il numero dei conti. */
+    private function registraZero(object $tabella, object $immobile, ?float $valore): void
+    {
+        $chiave = $tabella->id.'|'.$immobile->id;
+        if (isset($this->zeriRegistrati[$chiave])) return;
+        $this->zeriRegistrati[$chiave] = true;
+
+        $this->righeDettaglio[] = $this->rigaDettaglio('quota_zero', [
+            'immobile_id'      => (int) $immobile->id,
+            'tabella_id'       => (int) $tabella->id,
+            'tabella_nome'     => $tabella->nome,
+            'tabella_quota'    => self::etichettaQuota($tabella),
+            'valore_millesimo' => $valore,
+        ]);
+    }
+
+    private static function etichettaQuota(object $tabella): ?string
+    {
+        $quota = $tabella->quota ?? null;
+
+        return $quota instanceof \BackedEnum ? (string) $quota->value : ($quota === null ? null : (string) $quota);
+    }
+
     // =========================================================================
     // METODI PRIVATI
     // =========================================================================
@@ -627,7 +752,7 @@ class CalcoloQuoteService
      * @param int $importoCents L'importo in centesimi
      * @param array &$totali Array in cui accumulare la quota
      */
-    private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali): void
+    private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali, ?int $rigaFatturaId = null, ?int $contoId = null, ?string $descrizione = null): void
     {
         $occupanti = DB::table('anagrafica_immobile')
             ->where('immobile_id', $immobileId)
@@ -650,9 +775,27 @@ class CalcoloQuoteService
         }
 
         if ($destinatari->isEmpty()) {
-            Log::warning("addebitaDiretto: nessun titolare di diritto reale attivo per immobile_id={$immobileId}. Importo {$importoCents} centesimi non assegnato.", [
+            Log::warning("addebitaDiretto: nessun titolare di diritto reale attivo per immobile_id={$immobileId}. Importo {$importoCents} centesimi registrato come scoperto.", [
                 'ruoli_attivi' => $occupanti->pluck('tipologia')->unique()->values()->all(),
             ]);
+
+            // ⚠️ Fino alla beta.28 qui c'era solo il warning e l'importo **spariva dal piano**: la
+            // riparazione del balcone di un'unità senza proprietario censito non veniva chiesta a
+            // nessuno, e la generazione passava. È la stessa forma delle beta.32 e .47 (denaro che
+            // se ne va con un log): ora è uno scoperto con il suo motivo, la generazione si ferma e
+            // chiede la motivazione come per gli altri (1.11.0-beta.29).
+            $this->scopertiAccumulati[] = [
+                'immobile_id'     => $immobileId,
+                'conto_id'        => $contoId,
+                'tabella_id'      => null,
+                'ruolo_richiesto' => null,
+                'importo'         => abs($importoCents),
+                'motivo'          => 'ad_personam_senza_titolare',
+                // La riga con l'immobile non porta il conto (`FatturaPassivaService` lo azzera):
+                // a video la spesa si riconosce dalla sua descrizione, non da «Conto #».
+                'riga_descrizione' => $descrizione,
+            ];
+
             return;
         }
 
@@ -664,6 +807,10 @@ class CalcoloQuoteService
             $destinatari->pluck('quota', 'anagrafica_id')->map(fn ($q): float => (float) $q)->all()
         );
 
+        // Il conto e la sua radice dipendono dalla riga, non dal destinatario: si risolvono una volta.
+        $conto  = $contoId ? Conto::find($contoId) : null;
+        $radice = $conto ? $this->radiceDi($conto) : null;
+
         foreach ($destinatari as $destinatario) {
             $quotaDaPagare = $quote[$destinatario->anagrafica_id] ?? 0;
 
@@ -674,7 +821,7 @@ class CalcoloQuoteService
 
             $totali[$destinatario->anagrafica_id][$immobileId] += $quotaDaPagare;
 
-            // Registro per la stampa: questa spesa è di una sola unità e non passa da nessuna
+            // Registro degli addebiti diretti: questa spesa è di una sola unità e non passa da nessuna
             // tabella millesimale. La stampa la escludeva del tutto (documento vuoto quando la
             // fattura era tutta ad personam) oppure, se la riga aveva anche un conto, la
             // spalmava sulla tabella — cioè la riparazione del balcone dell'interno 4 risultava
@@ -684,6 +831,20 @@ class CalcoloQuoteService
                 'anagrafica_id' => (int) $destinatario->anagrafica_id,
                 'importo'       => $quotaDaPagare,
             ];
+
+            $this->righeDettaglio[] = $this->rigaDettaglio('ad_personam', [
+                'anagrafica_id'     => (int) $destinatario->anagrafica_id,
+                'immobile_id'       => $immobileId,
+                'conto_id'          => $conto?->id,
+                'conto_nome'        => $conto?->nome,
+                'conto_radice_id'   => $radice?->id,
+                'conto_radice_nome' => $radice?->nome,
+                'ruolo_risolto'     => (string) $destinatario->tipologia,
+                'quota_possesso'    => (float) $destinatario->quota,
+                'riga_fattura_id'   => $rigaFatturaId,
+                'riga_descrizione'  => $descrizione,
+                'importo'           => $quotaDaPagare,
+            ]);
         }
     }
 
@@ -818,6 +979,8 @@ class CalcoloQuoteService
     {
         $weights      = [];
         $pesiScoperti = [];
+        /** @var array<string,list<array<string,mixed>>> i componenti di ogni chiave «aid|iid», per il dettaglio */
+        $componenti   = [];
 
         /**
          * La quota di spesa che i coefficienti delle tabelle collegate **dichiarano** di coprire.
@@ -940,6 +1103,7 @@ class CalcoloQuoteService
                         'tabella_id'  => $tabella->id,
                         'conto_id'    => $conto->id,
                     ];
+                    $this->registraZero($tabella, $immobile, null);
 
                     continue;
                 }
@@ -949,6 +1113,7 @@ class CalcoloQuoteService
                 // [DIAG] Valore millesimale zero per immobile specifico
                 if ($valore <= 0.0) {
                     Log::debug("distribuisciSuTabelle: immobile ID={$immobile->id} ha valore millesimale zero nella tabella ID={$tabella->id}. Saltato.");
+                    $this->registraZero($tabella, $immobile, 0.0);
                     continue;
                 }
 
@@ -1038,6 +1203,7 @@ class CalcoloQuoteService
                         ->where('pivot.attivo', true)
                         ->where('pivot.tipologia', $rip->soggetto)
                         ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
+                    $ruoloRisolto = (string) $rip->soggetto;
 
                     // Rule Engine Livello 3: Risoluzione a cascata del ruolo (catena per natura).
                     // La catena vive in RuoloAnagraficaImmobile::catenaRiparto() — unico posto
@@ -1063,6 +1229,7 @@ class CalcoloQuoteService
                             if ($anagrafiche->isNotEmpty()) {
                                 Log::debug("distribuisciSuTabelle: ruolo '{$rip->soggetto}' assente su immobile "
                                     . "ID={$immobile->id}, risolto a cascata su '{$ruoloFallback->value}'.");
+                                $ruoloRisolto = $ruoloFallback->value;
                                 break;
                             }
                         }
@@ -1096,6 +1263,20 @@ class CalcoloQuoteService
                         $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
                         $key = $anag->id . '|' . $immobile->id;
                         $weights[$key] = ($weights[$key] ?? 0.0) + $weightAnagrafica;
+
+                        // Il componente, con tutto ciò che il peso sta per dimenticare (beta.29).
+                        $componenti[$key][] = [
+                            'tabella_id'       => (int) $tabella->id,
+                            'tabella_nome'     => $tabella->nome,
+                            'tabella_quota'    => self::etichettaQuota($tabella),
+                            'coefficiente'     => $coeff,
+                            'valore_millesimo' => $valore,
+                            'somma_valori'     => $sommaValori,
+                            'ruolo_richiesto'  => (string) $rip->soggetto,
+                            'ruolo_risolto'    => $ruoloRisolto,
+                            'quota_possesso'   => $quotaAnag,
+                            'peso'             => $weightAnagrafica,
+                        ];
                     }
                 }
             }
@@ -1221,14 +1402,14 @@ class CalcoloQuoteService
 
         $importoContoSegno = $importoConto < 0 ? -$importoDaDistribuirePennyPerfect : $importoDaDistribuirePennyPerfect;
 
-        // ─── Giuntura motore → stampa (beta.49, coda ⑩) ────────────────────────────────
+        // ─── Il punto in cui «quanto va su questo conto» è deciso (beta.49, coda ⑩) ────────
         //
-        // Da qui in poi «quanto va su questo conto» è deciso, e `RipartoTabelleService` legge
-        // questo registro invece di ricostruirselo da sé leggendo `righe_fattura`. Quelle venti
-        // righe erano un rimpiazzo ingenuo di `calcolaDaFattureStraordinarie()` e ne sbagliavano
-        // quattro cose: prendevano anche le righe ordinarie, ignoravano `importo_collegato`, non
-        // conoscevano le coperture delle pregresse (documento bianco) e spalmavano su tutti gli
-        // addebiti ad personam.
+        // Fino alla 1.11.0-beta.28 `RipartoTabelleService` leggeva questo registro invece di
+        // ricostruirselo da sé da `righe_fattura` — venti righe che erano un rimpiazzo ingenuo di
+        // `calcolaDaFattureStraordinarie()` e sbagliavano quattro cose: prendevano anche le righe
+        // ordinarie, ignoravano `importo_collegato`, non conoscevano le coperture delle pregresse
+        // (documento bianco) e spalmavano su tutti gli addebiti ad personam. Dalla .29 le stampe
+        // leggono le righe del dettaglio, e il registro resta la loro somma di controllo.
         //
         // ⚠️ **Il punto è qui e non prima della decurtazione**, ed è la correzione che la
         // revisione avversariale ha imposto al primo progetto: registrando `$importoConto` grezzo
@@ -1245,6 +1426,50 @@ class CalcoloQuoteService
         }
 
         $importiDistributi = MoneyHelper::distribuisciPesiNormalizzati($weights, $importoContoSegno);
+
+        // ─── Il dettaglio (beta.29): l'intero di ogni chiave, spaccato sui suoi componenti ─────
+        //
+        // Qui l'intero del Hare per (anagrafica, immobile) è deciso ed è quello che finirà nei
+        // totali, al lordo del netting. Con un componente solo la riga vale l'intero; con più
+        // componenti (conto su due tabelle, ripartizione per ruolo, cascata sulla stessa persona)
+        // un secondo Hare sui pesi dei componenti spacca l'intero senza crearne né perderne un
+        // centesimo: Σ righe = intero. La stampa per tabella fino alla 1.11.0-beta.28 lo faceva
+        // dal vivo sui pesi **aggregati per tabella**: qui è per componente, quindi quando una
+        // tabella porta più componenti sulla stessa chiave (una ripartizione per ruolo risolta a
+        // cascata sulla stessa persona) e il conto ha più tabelle, la spaccatura fra le colonne
+        // può differire di un centesimo dalla .28 — a totali per soggetto e per conto invariati,
+        // anche nella ristampa «ricostruita» di un piano vecchio.
+        $radice = $this->radiceDi($conto);
+        foreach ($importiDistributi as $key => $importoChiave) {
+            [$aid, $iid] = array_map('intval', explode('|', $key));
+            $comp = $componenti[$key] ?? [];
+            if ($comp === []) continue;
+
+            if (count($comp) === 1) {
+                $importiComponenti = [0 => $importoChiave];
+            } else {
+                $pesi = array_column($comp, 'peso');
+                $sommaPesi = array_sum($pesi);
+                $pesiNormalizzati = [];
+                foreach ($pesi as $i => $peso) {
+                    $pesiNormalizzati[$i] = $sommaPesi > 0 ? $peso / $sommaPesi : 1 / count($pesi);
+                }
+                $importiComponenti = MoneyHelper::distribuisciPesiNormalizzati($pesiNormalizzati, $importoChiave);
+            }
+
+            foreach ($comp as $i => $c) {
+                unset($c['peso']);
+                $this->righeDettaglio[] = $this->rigaDettaglio('riparto', $c + [
+                    'anagrafica_id'     => $aid,
+                    'immobile_id'       => $iid,
+                    'conto_id'          => $conto->id,
+                    'conto_nome'        => $conto->nome,
+                    'conto_radice_id'   => $radice->id,
+                    'conto_radice_nome' => $radice->nome,
+                    'importo'           => (int) ($importiComponenti[$i] ?? 0),
+                ]);
+            }
+        }
 
         // Sottrae quanto ciascuna unità ha GIÀ versato per questa voce: senza questo
         // passaggio una spesa già coperta in tutto o in parte verrebbe richiesta una
@@ -1268,6 +1493,23 @@ class CalcoloQuoteService
             : 1.0;
 
         $importiDistributi = $this->nettingGiaVersato($conto, $importiDistributi, $fattoreCopertura);
+
+        // La riga del già versato: negativa, per conto e soggetto — la terza chiave che
+        // `getNettingApplicato()` (per immobile) non ha: il già versato è una riga negativa per
+        // (conto, soggetto), non una colonna sulla riga di riparto (1.11.0-beta.29).
+        foreach ($this->ultimoNettingPerChiave as $key => $assorbitoChiave) {
+            if ($assorbitoChiave <= 0) continue;
+            [$aid, $iid] = array_map('intval', explode('|', $key));
+            $this->righeDettaglio[] = $this->rigaDettaglio('netting', [
+                'anagrafica_id'     => $aid,
+                'immobile_id'       => $iid,
+                'conto_id'          => $conto->id,
+                'conto_nome'        => $conto->nome,
+                'conto_radice_id'   => $radice->id,
+                'conto_radice_nome' => $radice->nome,
+                'importo'           => -$assorbitoChiave,
+            ]);
+        }
 
         foreach ($importiDistributi as $key => $importoCentesimi) {
             [$aid, $iid] = array_map('intval', explode('|', $key));
@@ -1297,6 +1539,7 @@ class CalcoloQuoteService
      */
     private function nettingGiaVersato(Conto $conto, array $importiDistributi, float $fattoreCopertura = 1.0): array
     {
+        $this->ultimoNettingPerChiave = [];
         $coperture = ContributoVersato::perImmobile(Conto::class, $conto->id);
 
         if ($coperture->isEmpty()) {
@@ -1445,13 +1688,15 @@ class CalcoloQuoteService
                 }
             }
 
-            // Il registro per la stampa: quanto è stato assorbito da questa unità su questo
+            // Il registro per immobile: quanto è stato assorbito da questa unità su questo
             // capitolo. Si somma invece di assegnare, perché un capitolo può essere finanziato
             // da più chiamate indipendenti (acconto e saldo) e ciascuna applica la sua quota.
             $assorbito = 0;
             foreach ($righe as $key => $lordoRiga) {
                 $importiDistributi[$key] = max(0, $lordoRiga - $quote[$key]);
                 $assorbito += min($quote[$key], $lordoRiga);
+                // Per chiave, non solo per immobile: è ciò che il dettaglio del riparto registra.
+                $this->ultimoNettingPerChiave[$key] = ($this->ultimoNettingPerChiave[$key] ?? 0) + min($quote[$key], $lordoRiga);
             }
             if ($assorbito > 0) {
                 $this->nettingApplicato[$conto->id][$immobileId] =

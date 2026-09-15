@@ -148,6 +148,16 @@ class PianoRate extends Model
     }
 
     /**
+     * Il dettaglio del riparto di questo piano (1.11.0-beta.29): una riga per componente, scritta
+     * alla generazione insieme alle quote. Vuoto per i piani generati prima della beta.29 — la
+     * stampa allora ricalcola e lo dichiara.
+     */
+    public function righeRiparto(): HasMany
+    {
+        return $this->hasMany(RigaRiparto::class);
+    }
+
+    /**
      * Ottiene tutte le Rate fisiche (scadenze) generate da questo piano.
      * Ogni rata conterrà a sua volta le singole quote addebitate ai condòmini.
      *

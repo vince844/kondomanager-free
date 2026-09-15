@@ -7,6 +7,82 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.29] - Il Riparto Che Si Ricorda
+
+**Tocca il database:** una tabella nuova, `righe_riparto`, e due colonne di `rate_quote` tolte
+(`riga_fattura_id` e `voce_id`, mai scritte né lette da quando esistono). Due migrazioni,
+entrambe rieseguibili. **E un cambio di comportamento in generazione:** una spesa di una sola
+unità (la riga di fattura con l'immobile) che non ha nessun proprietario, nudo proprietario o
+usufruttuario attivo a cui andare **ferma la generazione** come ogni altro scoperto e chiede la
+motivazione; fino a ieri il motore la perdeva con un avviso nei log e il piano si generava con
+quell'importo in meno, senza dirlo a nessuno.
+
+**Il riparto smette di essere un ricalcolo.** Il motore, nel punto in cui decide quanto spetta a
+chi, sa il conto, la tabella, il valore del millesimo, il ruolo risolto, la quota di possesso, la
+riga di fattura — e finora, subito dopo, li fondeva in un peso e li buttava via: `rate_quote`
+conservava il totale e basta. Le due stampe del riparto ricostruivano tutto al momento della
+stampa, ognuna con un'aritmetica sua: quella per tabella rifaceva i pesi dal vivo, quella per
+capitolo si rifaceva gli importi da `righe_fattura` e deduceva il già versato per differenza. I
+centesimi che le due ricostruzioni non sapevano spiegare finivano in «Fuori riparto» o sommati
+agli addebiti ad personam (Code 77 e 78); un contributo registrato dopo l'emissione faceva
+dichiarare uno sconto che nessuna quota aveva avuto; un titolare staccato dopo la generazione
+spariva da un documento e restava nell'altro. Ora il dettaglio si scrive **una volta, alla
+generazione, nella stessa transazione delle quote**: una riga per componente — tabella per
+tabella, ruolo per ruolo, il già versato come riga negativa per soggetto, la spesa ad personam
+con la sua riga di fattura, gli zeri documentati con il millesimo di allora — e per ogni soggetto
+la somma delle righe è esattamente la sua quota, altrimenti non si scrive niente, nemmeno le
+quote. Le stampe **leggono**: nessuna aritmetica di riparto in stampa, i centesimi sono quelli
+del motore riga per riga.
+
+**Il documento dice cosa sta guardando.** In legenda e nella nota legale: «riparto **registrato**
+alla generazione del gg/mm/aaaa», oppure «**ricostruito** dai dati attuali, non registrato» per i
+piani generati prima di questo aggiornamento — che restano tali, e chi li ha già emessi non li
+rigenera: quei documenti continuano a uscire come prima —, oppure «**anteprima**» per un piano non
+ancora generato. Rigenerare un piano sostituisce il dettaglio, come sostituisce le rate.
+
+**Cosa cambia nelle due stampe.** «Addebito diretto» contiene solo le spese ad personam — prima ci
+finiva il residuo del già versato, e l'unico condòmino con un intervento a suo carico leggeva
+«Addebito diretto −€ 100,00». Il pregresso ha la sua colonna, «Saldi precedenti», e il già versato
+la sua, «Già versato», anche nella stampa per tabella; sono colonne come le altre, e contano nella
+divisione in blocchi: un piano con cinque tabelle, saldi iniziali e un versamento registrato, che
+stava in una pagina, ora esce in due blocchi. «Fuori riparto» diventa una guardia: nel registrato
+non compare, e se comparisse è un errore che viene scritto nei log. Le pseudo-colonne stanno
+sempre in coda. Un titolare staccato dopo la generazione tiene la sua cella sulla tabella e sul
+capitolo, con il ruolo di allora; chi è subentrato dopo non compare, perché non era nel calcolo.
+Un conto o una tabella cancellati dopo la generazione non fanno sparire la colonna: resta, con il
+nome di allora e i millesimi congelati. La radice di ogni voce è congelata: spostare un sottoconto
+dopo l'assemblea non sposta una colonna. I soggetti a totale zero che il dettaglio spiega (quota
+interamente coperta dal già versato) compaiono in entrambe le stampe con le loro celle. Nella
+stampa per capitolo, un capitolo con voci su tabelle diverse mostra «—» al posto di un millesimo
+che non gli appartiene (prima mostrava quello della prima tabella). Due precisazioni al
+centesimo: nella stampa per tabella il totale di un soggetto è spaccato fra le colonne per
+componente, e su un conto con più tabelle *e* due ruoli risolti sulla stessa persona una colonna
+può muoversi di un centesimo rispetto a prima, a totali per soggetto e per conto invariati — vale
+anche per la ristampa «ricostruita» dei piani vecchi; e la spesa ad personam senza titolare, quando
+si accetta lo scoperto, non viene addebitata a nessuno, com'era, ma ora lo si sa.
+
+**Le guardie.** Il registro nasce **accanto** ai totali e non li tocca: i test che tengono fermo il
+motore — il condominio reale da 44 unità e 8 tabelle riprodotto al centesimo, il riparto esatto, i
+casi limite, la concordanza fra motore e stampa — sono verdi senza cambiare una riga. Venticinque
+test nuovi: sette invarianti del registro in memoria (le righe sommano ai totali per soggetto e ai
+registri per conto, il secondo Hare, il netting per soggetto, gli zeri, l'ad personam con la riga,
+lo scoperto nuovo), otto sulla scrittura (riconciliazione sul dato salvato con `quota_pura_gestione`,
+rigenerazione che sostituisce, cascata, rollback nei due versi, colonne tolte, il cancello dello
+scoperto), dieci sulle stampe (Coda 77 e 78 sullo scenario misurato dalla revisione, i tre stati
+della fonte, l'ordine delle colonne, il conto e la tabella cancellati, la radice congelata, gli zeri).
+Le due migrazioni sono nel test che le riesegue.
+
+**Pulizia.** Quattro test portavano nomi di persone e di condomìni veri, rimasti da fixture
+costruite su dati di amministratori: sostituiti con nomi inventati, numeri invariati.
+
+**Cosa resta.** Il subentro fatto *prima* della generazione resta attribuito al titolare attuale:
+`contributi_versati.anagrafica_id` esiste e il motore non la legge — si chiude con le beta dei
+subentri, che arrivano in questa versione. Il tipo di intervento e il flag abitazione principale
+non si congelano ancora: appartengono all'intervento e al soggetto-unità-anno, che il modello dati
+non ha. I conti di entrata restano un difetto del motore, non delle stampe.
+
+---
+
 ## [1.11.0-beta.28] - Le Stampe Che Rispondono
 
 **Non tocca il database:** nessuna migrazione, nessun dato nuovo.

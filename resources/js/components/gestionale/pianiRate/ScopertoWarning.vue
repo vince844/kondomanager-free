@@ -14,6 +14,8 @@ import { usePermission } from "@/composables/permissions";
  *   addebitarla. È il caso storico della v1.9.1, l'unico che questa tabella sapeva mostrare.
  * - `conto_senza_tabella` → il capitolo non ha nessuna tabella millesimale collegata.
  * - `tabella_senza_millesimi` → la tabella è collegata ma non ha immobili, o li ha tutti a zero.
+ * - `ad_personam_senza_titolare` → una spesa di una sola unità senza nessun titolare di diritto
+ *   reale a cui addebitarla (beta.29): prima si perdeva con un avviso nei log.
  * - `coefficienti_sotto_il_cento` → le tabelle collegate al capitolo dichiarano meno del 100%
  *   (beta.63). Non riguarda né un immobile né una tabella: **manca una tabella**, e quale sia lo
  *   sa solo l'amministratore. Senza un ramo suo cadeva nel caso storico e la riga consigliava di
@@ -28,8 +30,9 @@ import { usePermission } from "@/composables/permissions";
 export interface ScopertoCents {
     immobile_id: number | null;
     immobile_nome: string | null;
-    conto_id: number;
-    conto_nome: string;
+    conto_id: number | null;
+    conto_nome: string | null;
+    riga_descrizione?: string | null;
     tabella_id?: number | null;
     tabella_nome?: string | null;
     importo: number; // in cents
@@ -103,6 +106,16 @@ const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
                 ? `La tabella «${s.tabella_nome}» non ha millesimi utilizzabili`
                 : 'La tabella collegata non ha millesimi utilizzabili',
             azione: 'Assegna gli immobili alla tabella e inserisci i millesimi',
+        };
+    }
+
+    // Una spesa di una sola unità (la riga di fattura con l'immobile) che non ha nessun titolare
+    // di diritto reale a cui andare: fino alla 1.11.0-beta.28 il motore la perdeva con un
+    // avviso nei log e il piano si generava senza. Ora si ferma qui, come gli altri (beta.29).
+    if (s.motivo === 'ad_personam_senza_titolare') {
+        return {
+            cosa: `${s.immobile_nome ?? 'Un\'unità'} ha una spesa a suo carico ma nessun proprietario, nudo proprietario o usufruttuario attivo`,
+            azione: 'Registra il titolare dell\'unità, oppure togli l\'immobile dalla riga di fattura se la spesa è di tutti',
         };
     }
 
@@ -217,7 +230,7 @@ const handleProcedi = () => {
               <div class="font-medium text-slate-900">{{ descrizione(scoperto).cosa }}</div>
               <div class="text-[11px] text-slate-600 mt-0.5">{{ descrizione(scoperto).azione }}</div>
             </td>
-            <td class="px-4 py-2 text-slate-700">{{ scoperto.conto_nome }}</td>
+            <td class="px-4 py-2 text-slate-700">{{ scoperto.conto_nome ?? scoperto.riga_descrizione ?? '—' }}</td>
             <td class="px-4 py-2">
               <!-- Il ruolo esiste solo per la quota orfana: sulle altre due forme il badge
                    sarebbe una cornice vuota, che si legge come un dato mancante. -->

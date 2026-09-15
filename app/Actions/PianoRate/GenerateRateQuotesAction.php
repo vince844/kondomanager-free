@@ -7,6 +7,7 @@ use App\Exceptions\Gestionale\MetodoDistribuzioneSconosciutoException;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
+use App\Models\Gestionale\RigaRiparto;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,8 @@ class GenerateRateQuotesAction
         PianoRate $pianoRate,
         array $totaliPerImmobile,
         array $dateRate,
-        array $saldi = []
+        array $saldi = [],
+        array $dettaglio = []
     ): array {
         $numeroRate = count($dateRate);
         $rateCreate = 0;
@@ -46,6 +48,27 @@ class GenerateRateQuotesAction
 
         DB::beginTransaction();
         try {
+            // -----------------------------------------------------------------------------
+            // IL DETTAGLIO DEL RIPARTO (1.11.0-beta.29): prima delle rate, nella stessa transazione
+            // -----------------------------------------------------------------------------
+            //
+            // Le righe di `CalcoloQuoteService::getRigheDettaglio()` spiegano i totali che stiamo
+            // per spaccare in rate. Si scrivono qui e non nel motore perché questo è l'unico punto
+            // da cui passano tutte le porte della generazione (prima e rigenerazione): il dettaglio
+            // precedente si cancella **qui**, come le rate vengono cancellate da chi rigenera.
+            //
+            // ⚠️ Riconciliazione o niente: per ogni soggetto la somma delle righe deve essere
+            // esattamente il totale del motore — cioè, a valle, la somma delle sue quote pure di
+            // gestione. Se non torna, l'eccezione fa saltare **anche** le quote: un dettaglio che
+            // non spiega le quote non viene scritto, e nemmeno le quote che non sa spiegare.
+            // Con `$dettaglio` vuoto (chiamanti vecchi, test diretti) le quote si scrivono come prima;
+            // il dettaglio precedente del piano viene comunque cancellato, perché non spiegherebbe
+            // più le quote nuove — in stampa quel piano sarà «ricostruito».
+            RigaRiparto::where('piano_rate_id', $pianoRate->id)->delete();
+            if (!empty($dettaglio)) {
+                $this->scriviDettaglio($pianoRate, $totaliPerImmobile, $dettaglio, $now);
+            }
+
             // -----------------------------------------------------------------------------
             // FASE 0: CREAZIONE "RATA ZERO" (SALDO INIZIALE SEPARATO)
             // -----------------------------------------------------------------------------
@@ -324,6 +347,76 @@ class GenerateRateQuotesAction
             DB::rollBack();
             Log::error("Errore GenerateRateQuotesAction: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             throw $e;
+        }
+    }
+
+    /**
+     * Scrive le righe del dettaglio, dopo averle riconciliate con i totali del motore.
+     *
+     * @param array<int,array<int,int>> $totaliPerImmobile  [anagrafica_id][immobile_id] => centesimi
+     * @param list<array<string,mixed>> $dettaglio          le righe di `getRigheDettaglio()`
+     */
+    private function scriviDettaglio(PianoRate $pianoRate, array $totaliPerImmobile, array $dettaglio, Carbon $now): void
+    {
+        $sommeRighe = [];
+        foreach ($dettaglio as $riga) {
+            if (($riga['anagrafica_id'] ?? null) === null) continue; // quota_zero: nessun soggetto
+            $chiave = $riga['anagrafica_id'].'|'.$riga['immobile_id'];
+            $sommeRighe[$chiave] = ($sommeRighe[$chiave] ?? 0) + (int) $riga['importo'];
+        }
+
+        $attesi = [];
+        foreach ($totaliPerImmobile as $aid => $perImmobile) {
+            foreach ($perImmobile as $iid => $importo) {
+                $attesi["$aid|$iid"] = (int) $importo;
+            }
+        }
+
+        foreach ($attesi as $chiave => $totale) {
+            if (($sommeRighe[$chiave] ?? 0) !== $totale) {
+                throw new \RuntimeException(sprintf(
+                    'Dettaglio del riparto non riconciliato per il soggetto %s del piano %d: righe %d, totale del motore %d.',
+                    $chiave, $pianoRate->id, $sommeRighe[$chiave] ?? 0, $totale
+                ));
+            }
+        }
+        foreach ($sommeRighe as $chiave => $somma) {
+            if (!array_key_exists($chiave, $attesi)) {
+                throw new \RuntimeException("Dettaglio del riparto con un soggetto ({$chiave}) che il motore non ha nei totali del piano {$pianoRate->id}.");
+            }
+        }
+
+        $versione = (string) config('app.version', '1.9.0');
+        $daInserire = [];
+        foreach ($dettaglio as $riga) {
+            $daInserire[] = [
+                'piano_rate_id'     => $pianoRate->id,
+                'tipo'              => $riga['tipo'],
+                'anagrafica_id'     => $riga['anagrafica_id'] ?? null,
+                'immobile_id'       => $riga['immobile_id'] ?? null,
+                'conto_id'          => $riga['conto_id'] ?? null,
+                'conto_nome'        => $riga['conto_nome'] ?? null,
+                'conto_radice_id'   => $riga['conto_radice_id'] ?? null,
+                'conto_radice_nome' => $riga['conto_radice_nome'] ?? null,
+                'tabella_id'        => $riga['tabella_id'] ?? null,
+                'tabella_nome'      => $riga['tabella_nome'] ?? null,
+                'tabella_quota'     => $riga['tabella_quota'] ?? null,
+                'coefficiente'      => $riga['coefficiente'] ?? null,
+                'valore_millesimo'  => $riga['valore_millesimo'] ?? null,
+                'somma_valori'      => $riga['somma_valori'] ?? null,
+                'ruolo_richiesto'   => $riga['ruolo_richiesto'] ?? null,
+                'ruolo_risolto'     => $riga['ruolo_risolto'] ?? null,
+                'quota_possesso'    => $riga['quota_possesso'] ?? null,
+                'riga_fattura_id'   => $riga['riga_fattura_id'] ?? null,
+                'riga_descrizione'  => $riga['riga_descrizione'] ?? null,
+                'importo'           => (int) $riga['importo'],
+                'versione_calcolo'  => $versione,
+                'created_at'        => $now,
+                'updated_at'        => $now,
+            ];
+        }
+        foreach (array_chunk($daInserire, 500) as $chunk) {
+            RigaRiparto::insert($chunk);
         }
     }
 }
