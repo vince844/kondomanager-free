@@ -13,6 +13,7 @@ use App\Services\Import\PrerequisitoMancante;
 use App\Services\Import\Rilievo;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use App\Services\Riparto\RisolutoreTitolari;
 
 /**
  * Livello 6 — **chi possiede cosa**. È la ragione per cui esiste tutto il resto.
@@ -187,12 +188,12 @@ final class LivelloTitolarita implements LivelloImport
             // terna faceva dire «esiste già» e la riga del file non entrava: l'unità restava
             // senza titolare attivo, in silenzio. La lettura sopra e la guardia sui conflitti
             // guardano entrambe le sole righe attive: questa è la terza, e devono concordare.
-            $esiste = isset($vistiInQuestoGiro[$tripla]) || DB::table('anagrafica_immobile')
-                ->where('immobile_id', $immobile->getKey())
-                ->where('anagrafica_id', $soggetto->getKey())
-                ->where('tipologia', $t->ruolo->value)
-                ->where('attivo', true)
-                ->exists();
+            $esiste = isset($vistiInQuestoGiro[$tripla]) || app(RisolutoreTitolari::class)->vincolaQuery(
+                DB::table('anagrafica_immobile')
+                    ->where('immobile_id', $immobile->getKey())
+                    ->where('anagrafica_id', $soggetto->getKey())
+                    ->where('tipologia', $t->ruolo->value)
+            )->exists();
 
             if ($esiste) {
                 $saltati++;
@@ -304,9 +305,9 @@ final class LivelloTitolarita implements LivelloImport
         // Cosa c'è già, in una query sola: una per unità sarebbe una query per riga di file.
         $ids = collect($richieste)->map(fn ($r) => $r['immobile']->getKey())->unique()->values()->all();
 
-        $archivio = DB::table('anagrafica_immobile')
-            ->whereIn('immobile_id', $ids)
-            ->where('attivo', true)
+        $archivio = app(RisolutoreTitolari::class)->vincolaQuery(
+            DB::table('anagrafica_immobile')->whereIn('immobile_id', $ids)
+        )
             ->get(['immobile_id', 'anagrafica_id', 'tipologia'])
             ->groupBy(fn ($r) => $r->immobile_id.':'.$r->tipologia)
             ->map(fn ($righe) => $righe->pluck('anagrafica_id')->all());
@@ -360,9 +361,9 @@ final class LivelloTitolarita implements LivelloImport
 
         $ids = array_map(fn ($i) => $i->getKey(), array_values($unita));
 
-        $conTitolare = DB::table('anagrafica_immobile')
-            ->whereIn('immobile_id', $ids)
-            ->where('attivo', true)
+        $conTitolare = app(RisolutoreTitolari::class)->vincolaQuery(
+            DB::table('anagrafica_immobile')->whereIn('immobile_id', $ids)
+        )
             ->whereIn('tipologia', array_column(RuoloAnagraficaImmobile::titolariDiDirittoReale(), 'value'))
             ->distinct()
             ->count('immobile_id');

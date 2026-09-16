@@ -208,6 +208,11 @@ class PianoContiController extends Controller
         $addebitiRaw = DB::table('righe_fattura')
             ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
             ->leftJoin('immobili', 'righe_fattura.immobile_id', '=', 'immobili.id')
+            // ⚠️ Senza filtro su `attivo` e senza `RisolutoreTitolari`, com'era: è un'etichetta
+            // (i nomi accanto alla riga di fattura, concatenati per riga: con due proprietari escono
+            // due nomi, non due righe), non un addebito. Senza filtro su `attivo` un proprietario
+            // cessato compare accanto a quello attuale: censito nell'inventario B1 (§4.3), da chiudere
+            // con B2 quando il risolutore avrà i periodi — cambierebbe ciò che la pagina mostra.
             ->leftJoin('anagrafica_immobile', fn($j) => $j->on('immobili.id', '=', 'anagrafica_immobile.immobile_id')->where('anagrafica_immobile.tipologia', 'proprietario'))
             ->leftJoin('anagrafiche', 'anagrafica_immobile.anagrafica_id', '=', 'anagrafiche.id')
             ->where('fatture_passive.esercizio_id', $esercizio->id)

@@ -8,6 +8,8 @@ use App\Models\Gestione;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
+use App\Services\Riparto\RisolutoreTitolari;
+use App\Support\PeriodoCompetenza;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -52,6 +54,17 @@ class CalcoloQuoteService
     private ?Gestione $gestioneCorrente = null;
     private array $pivotOverrides = [];
     private ?\Carbon\Carbon $pianoRateCreatedAt = null;
+
+    /**
+     * Il periodo di competenza del calcolo in corso (B1, 1.11.0-beta.30). Arriva in coda a
+     * `calcolaPerGestione()` e a `calcolaDaFattureStraordinarie()`, nullable, e viene passato al
+     * risolutore dei titolari — che in B1 lo ignora: la regola è ancora `attivo === true`. È
+     * l'impianto su cui B2 farà entrare il tempo nei pesi (progetto `subentro_e_competenza_temporale.md`, §4.3).
+     */
+    private ?PeriodoCompetenza $periodo = null;
+
+    /** Chi risolve «chi è titolare di questa unità», in un posto solo. */
+    private readonly RisolutoreTitolari $titolari;
     
     /** @var array Accumulatore per le quote non assegnabili per mancanza di anagrafiche attive */
     private array $scopertiAccumulati = [];
@@ -163,6 +176,14 @@ class CalcoloQuoteService
     // MOTORE ORDINARIO
     // =========================================================================
 
+    public function __construct(?RisolutoreTitolari $titolari = null)
+    {
+        // Default esplicito e non iniezione obbligatoria: il motore è costruito a mano in una
+        // trentina di punti di quattro file di test (`new CalcoloQuoteService()`) e non ha
+        // dipendenze con stato.
+        $this->titolari = $titolari ?? new RisolutoreTitolari();
+    }
+
     /**
      * Calcola le quote per un'intera gestione (preventivo o rateizzazione).
      *
@@ -178,9 +199,10 @@ class CalcoloQuoteService
      *                          rileggere. Senza questo, un documento d'assemblea diventerebbe un
      *                          foglio bianco per una modifica avvenuta dopo l'emissione.
      */
-    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false): array
+    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, ?PeriodoCompetenza $periodo = null): array
     {
         $this->gestioneCorrente = $gestione;
+        $this->periodo          = $periodo;
         $this->pivotOverrides   = [];
         $this->pianoRateCreatedAt = $pianoRate?->created_at;
         $this->scopertiAccumulati = [];
@@ -404,8 +426,9 @@ class CalcoloQuoteService
      * @param PianoRate $pianoRate Il piano rate contenente le fatture straordinarie
      * @return array Quote calcolate, raggruppate per anagrafica_id e immobile_id
      */
-    public function calcolaDaFattureStraordinarie(PianoRate $pianoRate): array
+    public function calcolaDaFattureStraordinarie(PianoRate $pianoRate, ?PeriodoCompetenza $periodo = null): array
     {
+        $this->periodo            = $periodo;
         $this->scopertiAccumulati = [];
         $this->millesimiNonCompilati = [];
         $this->eccedenzeCopertura = [];
@@ -754,10 +777,10 @@ class CalcoloQuoteService
      */
     private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali, ?int $rigaFatturaId = null, ?int $contoId = null, ?string $descrizione = null): void
     {
-        $occupanti = DB::table('anagrafica_immobile')
-            ->where('immobile_id', $immobileId)
-            ->where('attivo', true)
-            ->get();
+        $occupanti = $this->titolari->vincolaQuery(
+            DB::table('anagrafica_immobile')->where('immobile_id', $immobileId),
+            $this->periodo
+        )->get();
 
         // Il ripiego di prima era **piatto**: non trovando un proprietario prendeva qualunque
         // occupante attivo, quindi anche l'inquilino — che verso il condominio non è debitore.
@@ -1199,8 +1222,7 @@ class CalcoloQuoteService
                      *
                      * Il presidio è `tests/Feature/Riparto/CatenaProporzioniAnelli34Test.php`.
                      */
-                    $anagrafiche = $immobile->anagrafiche
-                        ->where('pivot.attivo', true)
+                    $anagrafiche = $this->titolari->attiviAlla($immobile->anagrafiche, $this->periodo)
                         ->where('pivot.tipologia', $rip->soggetto)
                         ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
                     $ruoloRisolto = (string) $rip->soggetto;
@@ -1221,8 +1243,7 @@ class CalcoloQuoteService
                         foreach ($candidati as $ruoloFallback) {
                             // Stesso filtro sulla quota: un ripiego su un ruolo che non paga non
                             // è un ripiego, e la cascata deve poter proseguire fino al prossimo.
-                            $anagrafiche = $immobile->anagrafiche
-                                ->where('pivot.attivo', true)
+                            $anagrafiche = $this->titolari->attiviAlla($immobile->anagrafiche, $this->periodo)
                                 ->where('pivot.tipologia', $ruoloFallback->value)
                                 ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
 

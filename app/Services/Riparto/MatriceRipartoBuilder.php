@@ -36,6 +36,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class MatriceRipartoBuilder
 {
+    public function __construct(private readonly RisolutoreTitolari $titolari = new RisolutoreTitolari())
+    {
+    }
+
     public const COLONNA_DIRETTO = 'diretto';
     public const COLONNA_PREGRESSO = 'pregresso';
     public const COLONNA_GIA_VERSATO = 'gia_versato';
@@ -206,8 +210,15 @@ final class MatriceRipartoBuilder
             if (!$immobile || !$anagrafica) continue;
 
             // Il ruolo e la quota di possesso **di allora**, dalle righe; la pivot viva solo in mancanza.
+            // B1 (1.11.0-beta.30): la pivot viva passa dal risolutore dei titolari — prima la riga
+            // attiva; se il soggetto non ne ha più una attiva (spento dopo la generazione,
+            // `attivo = false`), la riga grezza come prima, perché la stampa non deve perdere il suo
+            // ruolo di allora; se è stato staccato del tutto non c'è riga e vale il default, come
+            // prima. Il ripiego è raggiungibile solo per i piani senza righe `riparto`/`ad_personam`
+            // per quel soggetto.
             $ctx = $contestoSoggetto[$k] ?? null;
-            $pivot = $immobile->anagrafiche->where('id', $aid)->first()?->pivot;
+            $pivot = $this->titolari->attiviAlla($immobile->anagrafiche)->where('id', $aid)->first()?->pivot
+                ?? $immobile->anagrafiche->where('id', $aid)->first()?->pivot;
             $ruoloRaw = $ctx['ruolo'] ?? ($pivot?->tipologia ?? 'proprietario');
             $quotaSogg = $ctx['quota'] ?? ($pivot?->quota ?? 100);
 

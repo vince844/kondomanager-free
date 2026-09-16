@@ -500,6 +500,9 @@ final class LivelloSaldi implements LivelloImport
      * appena scritta questo stesso lotto, o perché c'era già da prima (reimportazione,
      * condominio aperto a mano e completato dopo). Fidarsi del solo canonico direbbe «non è
      * titolare» a chi lo è da un anno.
+     *
+     * Senza filtro su `attivo`, di proposito: il saldo di un titolare **cessato** è ancora il suo.
+     * Per questo non passa da `RisolutoreTitolari` (inventario B1, progetto sul subentro §4.3).
      */
     private function haTitolarita(Model $anagrafica, Model $immobile): bool
     {

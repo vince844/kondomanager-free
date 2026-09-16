@@ -13,6 +13,8 @@ use App\Models\Gestionale\RigaRiparto;
 use App\Models\Gestione;
 use App\Models\Immobile;
 use App\Models\Tabella;
+use App\Services\CalcoloQuoteService;
+use App\Support\PeriodoCompetenza;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -99,6 +101,43 @@ it('la generazione scrive il dettaglio con le quote, e sul dato salvato ogni sog
         // L'unità 3, a zero su entrambe le tabelle, ha le sue due righe quota_zero e nessun importo.
         ->and($piano->righeRiparto()->where('tipo', 'quota_zero')->where('immobile_id', $immobili[3]->id)->count())->toBe(2)
         ->and((int) $piano->righeRiparto()->where('immobile_id', $immobili[3]->id)->sum('importo'))->toBe(0);
+});
+
+it('B1: ogni quota porta in regole_calcolo.parametri.titolarita_alla la dichiarazione «risoluzione atemporale», chiave additiva accanto ai parametri di sempre', function () {
+    // È l'impianto di B1 (progetto §4.3, decisione 17): il risolutore dei titolari risponde ancora
+    // come prima, e lo scrive nello snapshot perché fra due anni «perché questa rata è intestata a
+    // lui» abbia una risposta anche per i piani generati prima del pro rata. Tutti i lettori dello
+    // snapshot (14 punti in 10 file) leggono sottochiavi specifiche (`importi.*`, `audit.*`,
+    // `dettagli_saldo.*`): la chiave nuova non li tocca.
+    [, , $piano] = condominioScrittura(2);
+
+    app(GeneratePianoRateAction::class)->execute($piano);
+
+    $quote = RataQuote::whereIn('rata_id', $piano->rate()->pluck('id'))->get();
+    expect($quote)->not->toBeEmpty();
+    foreach ($quote as $q) {
+        $regole = $q->regole_calcolo;
+        expect($regole['parametri']['titolarita_alla'] ?? null)->toBe(['risoluzione' => 'atemporale'])
+            // I parametri di sempre restano dove erano.
+            ->and($regole['parametri'])->toHaveKey('metodo_distribuzione');
+    }
+});
+
+it('B1: il motore con un periodo di competenza esplicito dà lo stesso riparto, al centesimo, del motore senza periodo (invariante 1; B2 riscriverà questo test)', function () {
+    [, $gestione, $piano] = condominioScrittura(3);
+
+    $senza = new CalcoloQuoteService();
+    $totaliSenza = $senza->calcolaPerGestione($gestione, $piano, true);
+    $righeSenza = $senza->getRigheDettaglio();
+
+    $con = new CalcoloQuoteService();
+    $totaliCon = $con->calcolaPerGestione($gestione, $piano, true, new PeriodoCompetenza('2026-01-01', '2026-12-31'));
+    $righeCon = $con->getRigheDettaglio();
+
+    expect($totaliCon)->toBe($totaliSenza)
+        ->and($righeCon)->toBe($righeSenza)
+        ->and($totaliSenza)->not->toBeEmpty()
+        ->and(array_sum(array_map(fn ($imm) => array_sum($imm), $totaliSenza)))->toBe(133334);
 });
 
 it('la rigenerazione sostituisce il dettaglio: nessuna riga della generazione precedente sopravvive', function () {

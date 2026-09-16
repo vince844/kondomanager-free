@@ -15,6 +15,14 @@ use Illuminate\Support\Facades\Log;
 
 class GenerateRateQuotesAction
 {
+    /**
+     * `regole_calcolo.parametri.titolarita_alla` di B1: i titolari sono risolti come sempre
+     * (`attivo === true`, nessuna data), e la quota lo dichiara. B2 sostituirà questa costante con
+     * il riepilogo di piano `{ risoluzione: 'atemporale' | 'temporale', destinatari_cambiati, nota_cancello }`
+     * (progetto `subentro_e_competenza_temporale.md`, D5 e decisione 15).
+     */
+    public const TITOLARITA_ATEMPORALE = ['risoluzione' => 'atemporale'];
+
     public function execute(
         PianoRate $pianoRate,
         array $totaliPerImmobile,
@@ -106,7 +114,13 @@ class GenerateRateQuotesAction
                             ],
                             'parametri' => [
                                 'metodo_distribuzione'  => 'rata_zero',
-                                'numero_rata'           => 0
+                                'numero_rata'           => 0,
+                                // B1 (1.11.0-beta.30): come sono stati risolti i titolari. Chiave
+                                // additiva: i lettori dello snapshot leggono sottochiavi specifiche.
+                                // Il riepilogo di piano completo (`destinatari_cambiati`, `nota_cancello`)
+                                // arriva con B2; periodo, gradino e giorni stanno in `righe_riparto`,
+                                // non qui (D5 riscritta, decisione 15).
+                                'titolarita_alla'       => self::TITOLARITA_ATEMPORALE,
                             ],
                             'dettagli_saldo' => $datiSaldo['meta_storico'],
                             'audit' => [
@@ -267,7 +281,8 @@ class GenerateRateQuotesAction
                             'parametri' => [
                                 'metodo_distribuzione'  => $pianoRate->metodo_distribuzione,
                                 'numero_rata'           => $numeroRata,
-                                'totale_rate_piano'     => $numeroRate
+                                'totale_rate_piano'     => $numeroRate,
+                                'titolarita_alla'       => self::TITOLARITA_ATEMPORALE,
                             ],
                             'audit' => [
                                 'versione_calcolo'  => config('app.version', '1.9.0'), 

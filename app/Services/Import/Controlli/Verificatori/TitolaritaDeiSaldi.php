@@ -36,6 +36,8 @@ final class TitolaritaDeiSaldi implements VerificatoreControllo
         // persona: la domanda non li riguarda.
         $saldi = Saldo::whereIn('id', $id)->whereNotNull('anagrafica_id')->get();
 
+        // Senza filtro su `attivo`, come `LivelloSaldi::haTitolarita()`: un saldo intestato a un
+        // titolare cessato non è incoerente. Non passa dal risolutore (inventario B1, §4.3).
         $incoerenti = $saldi->filter(fn (Saldo $s) => ! DB::table('anagrafica_immobile')
             ->where('anagrafica_id', $s->anagrafica_id)
             ->where('immobile_id', $s->immobile_id)

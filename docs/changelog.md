@@ -7,6 +7,61 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.30] - Chi Paga, Deciso In Un Posto Solo
+
+**Non tocca il database: nessuna migrazione.** Due cose nei dati cambiano però forma, entrambe in
+modo additivo e senza bisogno di riallineare nulla di ciò che c'è già: le quote generate da questa
+versione in poi portano una chiave in più nel loro snapshot (`regole_calcolo.parametri.titolarita_alla`,
+vedi sotto), e le relazioni fra unità e persone passano da un modello dedicato che espone l'`id`
+della riga di titolarità — la **modifica di una titolarità scrive per riga e non scrive se nulla
+cambia**; con una riga per persona, che è il caso di ogni installazione, l'effetto è nullo.
+
+**Chi è titolare di questa unità, deciso in un posto solo.** Fino a ieri la domanda aveva venti
+risposte sparse in venti punti del programma — il motore di riparto, l'attribuzione dei saldi, la
+situazione debitoria, l'importatore, i verificatori, le stampe — ognuna con il suo filtro scritto a
+mano, quattordici con «solo i titolari attivi» e sei senza. Da oggi la risposta la dà un servizio
+solo, `RisolutoreTitolari`, con **la regola di sempre**: conta chi è segnato come attivo, e basta.
+È un lavoro di impianto, non una funzione: il cancello per farlo uscire era che il riparto restasse
+**identico al centesimo** su tutta la suite — il condominio reale da 44 unità e 8 tabelle, il
+riparto esatto, i casi limite, la concordanza fra motore e stampe — ed è passato con 2.516 test
+verdi senza cambiare una riga di quelli esistenti. È il primo blocco del pacchetto sui **subentri**
+della 1.11: questa versione mette il risolutore, la prossima farà entrare il tempo nel calcolo.
+
+**Quattro letture del ruolo rese deterministiche.** In quattro punti (il dettaglio del piano rate,
+l'incasso delle rate, la situazione debitoria e il comando di verifica dei saldi solidali) il ruolo
+di una persona sull'unità veniva letto «la prima riga che capita», senza un ordine: con una riga
+per persona era indifferente, e resta identico a prima. Quando la prossima versione ammetterà due
+periodi della stessa persona sulla stessa unità — chi vende e ricompra, l'inquilino che diventa
+proprietario — quelle letture sceglieranno prima la riga attiva, poi la più recente, invece di
+affidarsi al caso.
+
+**Il periodo di competenza esiste come primitivo, e per ora viene ignorato di proposito.** Il motore
+accetta in coda un periodo di competenza (`PeriodoCompetenza`: un intervallo di date, dove una data
+puntuale è un periodo lungo un giorno), lo trasporta fino al risolutore, e il risolutore non lo usa.
+Nessun punto del programma lo passa ancora. È il binario su cui la prossima versione farà correre il
+pro rata; qui serve a fissare le firme una volta sola.
+
+**Niente cambia a video.** Nessuna schermata, nessuna guida in-app, nessuna stampa è diversa: le
+due stampe del riparto, registrato e ricostruito, escono identiche, la situazione debitoria e le
+anagrafiche delle unità rispondono con gli stessi dati di prima.
+
+**Cosa questa versione NON fa, perché non lo si legga fra le righe.** Il subentro **non è ancora
+gestito**: le date di inizio e fine di una titolarità continuano a essere registrate e mostrate ma
+**non entrano in nessun calcolo**, come il programma dice già nelle sue schermate. Niente pro rata,
+niente «Registra passaggio», niente storico per periodo: è la 1.11.0-beta.31. Nella pagina del
+piano dei conti il nome accanto a una riga di fattura è ancora quello di ogni proprietario
+registrato, anche cessato, uno accanto all'altro: censito, si chiude con i periodi. E resta aperta
+una domanda per l'importatore — oggi la stessa persona può entrare con due ruoli diversi sulla
+stessa unità — che sta in roadmap, non qui.
+
+**Documentazione.** Aprendo questa versione il progetto sul subentro è stato riletto per intero
+contro il codice e riconciliato con una segnalazione arrivata dal forum (gli stessi due scenari già
+registrati ad agosto): il criterio di competenza è ora scritto una volta sola e nel verso giusto —
+la data della delibera decide per le spese straordinarie, il periodo di maturazione per le
+ordinarie —, la data della delibera per lo straordinario sarà **chiesta e non dedotta**, e otto
+decisioni nuove fissano la forma della prossima versione. Il verbale e il referto della revisione
+stanno nei documenti interni.
+
 ## [1.11.0-beta.29] - Il Riparto Che Si Ricorda
 
 **Tocca il database:** una tabella nuova, `righe_riparto`, e due colonne di `rate_quote` tolte

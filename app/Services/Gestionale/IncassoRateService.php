@@ -10,6 +10,7 @@ use App\Models\Gestionale\RigaScrittura;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Services\Riparto\RisolutoreTitolari;
 
 class IncassoRateService
 {
@@ -182,10 +183,13 @@ class IncassoRateService
         // Ottimizzarla richiederebbe caricare tutte le relazioni immobiliari all'inizio.
         // Dato che è una query per riga (veloce, su indici), per ora è accettabile.
         if ($rigaPagantePrinc && $rigaPagantePrinc->anagrafica_id && $rigaPagantePrinc->immobile_id) {
-            $ruoloDb = DB::table('anagrafica_immobile')
-                ->where('anagrafica_id', $rigaPagantePrinc->anagrafica_id)
-                ->where('immobile_id', $rigaPagantePrinc->immobile_id)
-                ->value('tipologia');
+            // Nessun filtro su `attivo`, come prima; B1 aggiunge solo l'ordine deterministico
+            // (vedi `RisolutoreTitolari::ordinePreferenza()`).
+            $ruoloDb = app(RisolutoreTitolari::class)->ordinePreferenza(
+                DB::table('anagrafica_immobile')
+                    ->where('anagrafica_id', $rigaPagantePrinc->anagrafica_id)
+                    ->where('immobile_id', $rigaPagantePrinc->immobile_id)
+            )->value('tipologia');
 
             if ($ruoloDb) {
                 $ruoloPagante = ucfirst($ruoloDb);

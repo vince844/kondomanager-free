@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\Riparto\RisolutoreTitolari;
 
 /**
  * Registrazione di quanto ciascuna unità ha GIÀ VERSATO verso una voce di spesa.
@@ -167,8 +168,8 @@ class ContributoVersatoController extends Controller
                 $q->select(DB::raw(1))
                     ->from('anagrafica_immobile as ai')
                     ->whereColumn('ai.immobile_id', 'i.id')
-                    ->where('ai.tipologia', 'proprietario')
-                    ->where('ai.attivo', true);
+                    ->where('ai.tipologia', 'proprietario');
+                app(RisolutoreTitolari::class)->vincolaQuery($q, null, 'ai');
             })
             ->pluck('i.id')
             ->all();

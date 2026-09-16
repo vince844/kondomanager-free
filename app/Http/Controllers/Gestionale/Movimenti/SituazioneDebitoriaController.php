@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Services\Riparto\RisolutoreTitolari;
 
 class SituazioneDebitoriaController extends Controller
 {
@@ -89,11 +90,17 @@ class SituazioneDebitoriaController extends Controller
                 // 1. RECUPERO RUOLO DALLA TUA TABELLA PIVOT
                 $ruoloIniziale = 'P'; // Default fallback
                 if ($q->anagrafica_id && $q->immobile_id) {
-                    $relazione = DB::table('anagrafica_immobile')
-                        ->where('anagrafica_id', $q->anagrafica_id)
-                        ->where('immobile_id', $q->immobile_id)
-                        ->where('attivo', true)
-                        ->first();
+                    // B1 (1.11.0-beta.30): titolarità dal risolutore, e ordine deterministico
+                    // — con una riga per coppia dall'interfaccia (guardia 1 del trait, sulle sole
+                    // FormRequest) è identico a prima; l'importatore può scriverne due con ruoli
+                    // diversi, e lì l'ordine di prima era indefinito; con due periodi (B2) non
+                    // sceglie più «la prima che capita».
+                    $titolari = app(RisolutoreTitolari::class);
+                    $relazione = $titolari->ordinePreferenza($titolari->vincolaQuery(
+                        DB::table('anagrafica_immobile')
+                            ->where('anagrafica_id', $q->anagrafica_id)
+                            ->where('immobile_id', $q->immobile_id)
+                    ))->first();
                         
                     if ($relazione) {
                         // Prende la prima lettera: 'proprietario' -> 'P', 'inquilino' -> 'I', 'usufruttuario' -> 'U'

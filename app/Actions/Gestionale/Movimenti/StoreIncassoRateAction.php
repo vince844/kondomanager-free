@@ -363,6 +363,9 @@ class StoreIncassoRateAction
                     $creditoDaAltroSoggetto = false;
 
                     if ($quoteCredito->isEmpty() && $quotaRef->credito_disponibile > 0) {
+                        // Senza filtro su `attivo` e di proposito (inventario B1, progetto sul
+                        // subentro §4.3): «hanno condiviso l'unità» vale anche per una titolarità
+                        // cessata, e `exists()` è indifferente all'ordine. Non passa dal risolutore.
                         $condividonoUnita = $quotaRef->immobile_id && DB::table('anagrafica_immobile')
                             ->where('immobile_id', $quotaRef->immobile_id)
                             ->where('anagrafica_id', $validated['pagante_id'])

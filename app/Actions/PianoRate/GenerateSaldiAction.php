@@ -10,6 +10,7 @@ use App\Models\Gestione;
 use App\Models\Saldo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\Riparto\RisolutoreTitolari;
 
 class GenerateSaldiAction
 {
@@ -228,10 +229,11 @@ class GenerateSaldiAction
      */
     private function risolviTitolari(Saldo $saldo, Gestione $gestione): array
     {
-        $occupanti = DB::table('anagrafica_immobile')
-            ->where('immobile_id', $saldo->immobile_id)
-            ->where('attivo', true)
-            ->get();
+        // Blocco B1 del progetto sul subentro (1.11.0-beta.30): chi è titolare lo decide
+        // `RisolutoreTitolari`, in un posto solo.
+        $occupanti = app(RisolutoreTitolari::class)->vincolaQuery(
+            DB::table('anagrafica_immobile')->where('immobile_id', $saldo->immobile_id)
+        )->get();
 
         foreach (RuoloAnagraficaImmobile::catenaSaldoSolidale($gestione->tipo) as $ruolo) {
             $titolari = $occupanti->where('tipologia', $ruolo->value)->values();

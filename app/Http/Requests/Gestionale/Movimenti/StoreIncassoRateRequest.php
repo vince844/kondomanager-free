@@ -49,6 +49,9 @@ class StoreIncassoRateRequest extends FormRequest
                         ->whereIn('id', fn ($sub) => $sub->select('anagrafica_id')
                             ->from('anagrafica_condominio')
                             ->where('condominio_id', $this->route('condominio')?->id))
+                        // Senza filtro su `attivo`, di proposito: anche un titolare cessato può
+                        // pagare una rata di quando c'era. Censito nell'inventario B1 (§4.3 del
+                        // progetto sul subentro) come punto che NON passa dal risolutore.
                         ->orWhereIn('id', fn ($sub) => $sub->select('anagrafica_immobile.anagrafica_id')
                             ->from('anagrafica_immobile')
                             ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')

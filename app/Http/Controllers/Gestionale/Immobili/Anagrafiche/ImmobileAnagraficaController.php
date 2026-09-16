@@ -202,6 +202,10 @@ class ImmobileAnagraficaController extends Controller
      */
     public function edit(Condominio $condominio, Immobile $immobile, Anagrafica $anagrafica): Response
     {
+        // Lavora **per persona**: con una riga per coppia dall'interfaccia (guardia 1 del trait,
+        // sulle sole FormRequest) è esatto; l'importatore può scriverne due con ruoli diversi, e lì
+        // l'ordine di prima era indefinito. Con B2 e i periodi la rotta dovrà ricevere l'`id` della
+        // riga — che la pivot espone dalla 1.11.0-beta.30 (`TitolaritaImmobile`) — e lavorare per periodo.
         $anagraficaPivot = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
         $esercizio = $this->getEsercizioCorrente($condominio);
 

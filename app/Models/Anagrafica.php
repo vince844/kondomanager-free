@@ -96,8 +96,14 @@ class Anagrafica extends Model
 
     public function immobili()
     {
+        // `id` nel pivot e modello dedicato dalla 1.11.0-beta.30 (B1 del progetto sul subentro):
+        // la riga di titolarità ha un'identità propria, perché B2 registrerà più periodi per la stessa
+        // persona e le rotte dovranno lavorare per periodo, non per persona. Nessun cast: vedi il
+        // docblock di `TitolaritaImmobile`.
         return $this->belongsToMany(Immobile::class, 'anagrafica_immobile')
+            ->using(TitolaritaImmobile::class)
             ->withPivot([
+                'id',
                 'tipologia',
                 'quota',
                 'tipologie_spese',

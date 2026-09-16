@@ -37,6 +37,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\Riparto\RisolutoreTitolari;
 
 class PianoRateController extends Controller
 {
@@ -755,10 +756,14 @@ class PianoRateController extends Controller
             ->map(function($s) use ($condominio, $gestione, $anteprima) {
                 $ruolo = null;
                 if ($s->anagrafica_id && $s->immobile_id) {
-                    $ruolo = DB::table('anagrafica_immobile')
-                        ->where('anagrafica_id', $s->anagrafica_id)
-                        ->where('immobile_id', $s->immobile_id)
-                        ->value('tipologia'); 
+                    // Nessun filtro su `attivo`, come prima (il saldo può essere di un titolare
+                    // cessato); B1 aggiunge solo l'ordine deterministico per quando B2 ammetterà
+                    // due periodi della stessa persona sulla stessa unità.
+                    $ruolo = app(RisolutoreTitolari::class)->ordinePreferenza(
+                        DB::table('anagrafica_immobile')
+                            ->where('anagrafica_id', $s->anagrafica_id)
+                            ->where('immobile_id', $s->immobile_id)
+                    )->value('tipologia');
                 }
 
                 return [
