@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Condomini;
 
 use App\Traits\OrdinaElenco;
 
+use App\Exceptions\LimiteCondominiRaggiunto;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Condominio\CreateCondominioRequest;
 use App\Http\Requests\Condominio\UpdateCondominioRequest;
@@ -146,6 +147,10 @@ class CondominioController extends Controller
             return to_route('condomini.index')->with(
                 $this->flashSuccess(__('condomini.success_create_building'))
             );
+
+        } catch (LimiteCondominiRaggiunto $e) {
+
+            return to_route('condomini.index')->with($this->flashError($e->getMessage()));
 
         } catch (\Exception $e) {
 
@@ -341,6 +346,9 @@ class CondominioController extends Controller
 
             return to_route('admin.gestionale.index', ['condominio' => $esito['condominio']->id])
                 ->with($esito['avvisi'] === [] ? $this->flashSuccess($messaggio) : $this->flashError($messaggio));
+
+        } catch (LimiteCondominiRaggiunto $e) {
+            return back()->with($this->flashError($e->getMessage()));
 
         } catch (\Throwable $e) {
             Log::error('Errore creando il condominio dimostrativo: '.$e->getMessage());

@@ -148,7 +148,9 @@ it('rifiuta più del credito disponibile, una cassa senza capienza, una data fut
 
     $this->actingAs($this->user)->postJson(rcRotta($s), array_merge($base, ['importo' => '20,01']))->assertUnprocessable()->assertJsonValidationErrors(['importo' => 'al massimo € 20,00']);
     $this->actingAs($this->user)->postJson(rcRotta($s), array_merge($base, ['importo' => '0,00']))->assertUnprocessable()->assertJsonValidationErrors('importo');
-    $this->actingAs($this->user)->postJson(rcRotta($s), array_merge($base, ['data_rimborso' => now()->addDay()->toDateString()]))->assertUnprocessable()->assertJsonValidationErrors('data_rimborso');
+    // «Domani» nel calendario dell'utente (Europe/Rome), come la regola: con `now()` (UTC) fra le 22 e
+    // le 24 UTC «domani» è già l'oggi di Roma e la data passa (rosso trovato il 20/09/2026 alle 23:30).
+    $this->actingAs($this->user)->postJson(rcRotta($s), array_merge($base, ['data_rimborso' => \App\Helpers\DateHelper::oggiUtenteImmutable()->addDay()->toDateString()]))->assertUnprocessable()->assertJsonValidationErrors('data_rimborso');
 
     // La cassa scende a € 10,00: il rimborso di € 20,00 non ci sta.
     $s->cassa->update(['saldo_iniziale' => -21000]);

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\System\SaluteController;
 use App\Http\Middleware\CheckForPendingUpdates;
 use App\Http\Middleware\CheckHasAnagrafica;
 use App\Http\Middleware\CheckRestoreMode;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
@@ -27,7 +29,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
-        health: '/up',
+        // `/up` non è più la rotta di salute di Laravel (200 appena l'app si avvia, database o
+        // no): risponde SaluteController, 200 solo a installazione chiusa e migrazioni applicate.
+        // Registrata qui, e non in routes/web.php, per restare fuori dal gruppo `web`: niente
+        // sessione e niente middleware dell'interfaccia per il controllo di salute.
+        then: function () {
+            Route::get('/up', SaluteController::class)->name('salute');
+        },
     )
     ->withMiddleware(function (Middleware $middleware) {
 

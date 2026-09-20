@@ -2,7 +2,7 @@
 
 namespace App\Livewire\Installer;
 
-use Illuminate\Database\Seeder;
+use App\Services\Installer\PreparaDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Wizard di installazione — orchestratore nativo KondoManager.
@@ -235,79 +234,17 @@ class InstallerWizard extends Component
                 throw new \Exception("We couldn't connect to your database. Please check your credentials.");
             }
 
-            $exitCode = Artisan::call('migrate:fresh', ['--force' => true]);
-            if ($exitCode !== 0) {
-                throw new \Exception('Database migration failed.');
-            }
-
-            // Ripristina connessione dopo migrate:fresh che può resettarla
-            DB::purge('mysql');
-            DB::reconnect('mysql');
-
-            // NOTA: la sincronizzazione di GeneralSettings->language (lingua scelta
-            // nel wizard) avviene nel listener MigrationsEnded in AppServiceProvider,
-            // non qui — perché durante la prima installazione pulita questo wizard
-            // custom NON viene usato (vedi docblock di classe), quindi un fix qui
-            // funzionerebbe solo per gli aggiornamenti, non per l'installazione iniziale.
-
-            // =====================================================
-            // FIX SPATIE PERMISSION CACHE
-            // Dopo migrate:fresh il DB è vuoto ma la cache Spatie
-            // contiene ancora i permessi precedenti. Senza questo
-            // purge il seeder trova dati stale e può fallire silenziosamente.
-            // Questo fix è stato proposto come PR al package eii/installer.
-            // =====================================================
-            if (class_exists(PermissionRegistrar::class)) {
-                app()[PermissionRegistrar::class]->forgetCachedPermissions();
-            }
-            Artisan::call('cache:clear');
-
-            // Seed — usa la chiave seeding.enabled per compatibilità
-            // con il package originale eii/installer
-            $seedingConfig = config('installer.requirements.seeding');
-
-            if ($seedingConfig && ($seedingConfig['enabled'] ?? false)) {
-                DB::beginTransaction();
-
-                try {
-                    $classes = $seedingConfig['classes'] ?? [];
-
-                    if (empty($classes)) {
-                        $seedExitCode = Artisan::call('db:seed', ['--force' => true]);
-                        if ($seedExitCode !== 0) {
-                            throw new \Exception('Default seeding failed: '.Artisan::output());
-                        }
-                    } else {
-                        foreach ($classes as $class) {
-                            if (class_exists($class) && is_subclass_of($class, Seeder::class)) {
-                                $seedExitCode = Artisan::call('db:seed', ['--class' => $class, '--force' => true]);
-                                if ($seedExitCode !== 0) {
-                                    throw new \Exception("Seeding failed for class [{$class}]: ".Artisan::output());
-                                }
-                            } else {
-                                Log::warning("Installer: Seeder class [{$class}] not found or invalid. Skipping.");
-                            }
-                        }
-                    }
-
-                    DB::commit();
-
-                } catch (\Throwable $e) {
-                    DB::rollBack();
-                    Log::error('Seeding rolled back: '.$e->getMessage());
-                    throw $e;
-                }
-            }
+            // Migrazioni, purge della cache dei permessi, seeder e storage:link vivono in
+            // App\Services\Installer\PreparaDatabase, condiviso con `km:install`
+            // (1.11.0-beta.32): qui, come sempre, con migrate:fresh — il wizard lavora su un
+            // database che dichiara vuoto.
+            $prepara = app(PreparaDatabase::class);
+            $prepara->migra(fresh: true);
+            $prepara->pulisciCache();
+            $prepara->seed();
         }
 
-        if (config('installer.requirements.link_storage')) {
-            try {
-                Artisan::call('storage:link');
-            } catch (\Exception $e) {
-                Log::error('Storage link creation failed: '.$e->getMessage());
-                throw new \Exception('Storage link creation failed.');
-            }
-        }
+        app(PreparaDatabase::class)->collegaStorage();
 
         // NON richiamare updateEnvSettings qui — già fatto all'inizio del metodo
         $this->progress['raw_env_data'] = $data;

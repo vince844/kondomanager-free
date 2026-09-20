@@ -7,7 +7,7 @@ use App\Livewire\Installer\MailSettings;
 use App\Livewire\Installer\ServerRequirements;
 use App\Livewire\Installer\Welcome;
 
-return [
+$impostazioni = [
 
     'app_name' => 'Kondomanager',
     'run_installer' => false,
@@ -162,3 +162,26 @@ return [
     ],
 
 ];
+
+/*
+|--------------------------------------------------------------------------
+| INSTALLER_ENABLED: lo stesso interruttore, ma dall'ambiente
+|--------------------------------------------------------------------------
+|
+| `run_installer` qui sopra è un letterale, e deve restarlo in quella forma: lo script che
+| costruisce lo zip pubblicato lo porta a `true` sostituendo quella riga, e nel repository resta
+| `false` (chi installa dai sorgenti non ha wizard, controllo aggiornamenti né aggiornamento
+| automatico: sono le tre cose che leggono questa chiave).
+|
+| In un container il codice è dentro l'immagine e non si ritocca: l'interruttore arriva
+| dall'ambiente. Se `INSTALLER_ENABLED` è presente vince sul letterale; se manca, vale il
+| letterale e non cambia niente per nessuno. Vale anche per chi si autoospita e vuole un'opzione
+| che sopravviva agli aggiornamenti: il `.env` è fra i file preservati, `config/` no.
+*/
+$installerEnabled = env('INSTALLER_ENABLED');
+
+if ($installerEnabled !== null && $installerEnabled !== '') {
+    $impostazioni['run_installer'] = filter_var($installerEnabled, FILTER_VALIDATE_BOOL);
+}
+
+return $impostazioni;

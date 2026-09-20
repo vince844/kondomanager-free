@@ -7,6 +7,78 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.32] - Il programma che si installa da solo
+
+**Non tocca il database: nessuna migrazione.** Cambia come si arriva a un database installato, non
+cosa c'è dentro. Per chi installa dallo zip con la procedura guidata non cambia niente, ed è stato
+provato dall'inizio alla fine su un database vuoto prima di chiudere: gli stessi passi, nello stesso
+ordine, con lo stesso risultato.
+
+**La procedura guidata, senza la procedura guidata.** I passi che il wizard di installazione faceva
+uno per uno — migrazioni, permessi, primo amministratore, dati iniziali, nome e lingua, chiusura —
+sono ora quattro servizi che il wizard chiama al posto dei suoi blocchi, e che un comando nuovo
+usa senza nessuno alla tastiera: `php artisan kondomanager:installa` (alias `km:install`). Legge
+`INSTALL_ADMIN_EMAIL` e `INSTALL_ADMIN_PASSWORD` (il nome è facoltativo, `APP_NAME` e `APP_LOCALE`
+per nome e lingua), aspetta che il database risponda, e su un database vuoto installa. Prima di
+scrivere una riga verifica di avere tutto: senza i dati dell'amministratore si ferma con il
+messaggio giusto e **nessuna tabella creata**. È ripetibile per costruzione: su un'installazione
+fatta non fa nulla e non fallisce; se trova un amministratore ma non il file di lock — chi ha
+installato dai sorgenti, un container ricreato — scrive il lock e basta. L'amministratore nasce
+**prima** dei dati iniziali, così l'utente di comodo del seeder non viene mai creato; da permessi a
+impostazioni è una transazione sola: un'installazione interrotta a metà lascia lo schema e niente
+altro, e al secondo avvio si rifà per intero. La password si usa una volta e non compare mai:
+non nell'output, non nei messaggi, non nella traccia di un errore.
+
+**Un database che si allinea al codice, anche senza la pagina di aggiornamento.** `php artisan
+kondomanager:aggiorna` fa i passi che l'aggiornamento dal pannello fa dopo aver deployato uno zip
+— migrazioni, permessi e mappa dei ruoli, elenco dei comuni, classificazione ATECO, versione
+registrata — per chi il codice lo cambia in un altro modo: un'immagine Docker nuova, un `git
+pull`. Senza, un permesso aggiunto dal codice resterebbe nel codice: è il guasto silenzioso già
+visto nella 1.9.1, che la revisione di questa versione ha visto ripresentarsi nel container.
+
+**L'interruttore dell'installer si può girare dall'ambiente.** `INSTALLER_ENABLED`, se presente,
+vince sul letterale di `config/installer.php` che accende procedura guidata, controllo degli
+aggiornamenti e aggiornamento automatico; se manca, vale il letterale e non cambia niente per
+nessuno. Serve dove il codice non si ritocca — un container — e a chi vuole spegnere gli
+aggiornamenti automatici con un'impostazione che sopravvive agli aggiornamenti stessi: il `.env` è
+fra i file preservati, `config/` no. Una guardia nei test pretende che la riga letterale resti nella
+forma che lo script di build dello zip sostituisce.
+
+**Un tetto al numero di condomini, per chi ospita il programma per altri.** `LIMITE_CONDOMINI`:
+assente, vuoto o zero vuol dire nessun limite, ed è il caso di ogni installazione autonoma. Con un
+tetto, la creazione oltre il tetto — dimostrativo compreso, che è un condominio anche lui — è
+rifiutata con un messaggio neutro, «questa installazione ha raggiunto il numero massimo di
+condomini consentiti», senza lasciare niente a metà. L'importatore non lo applica: porta dentro un
+archivio che esiste già.
+
+**`/up` dice la verità.** La rotta di salute rispondeva 200 appena l'applicazione si avviava,
+database o no: per un container era una bugia utile a nessuno. Ora risponde 200 solo se
+l'installazione è chiusa (lock, oppure un amministratore: chi ha installato dai sorgenti non ha mai
+avuto il lock), il database risponde e non ci sono migrazioni da applicare; 503 altrimenti. Sta
+fuori dal gruppo web (niente sessione aperta da un controllo ogni cinque secondi) e a chi arriva da
+internet dice solo lo stato; il dettaglio lo vede chi chiama dalla macchina o da una rete privata.
+Le migrazioni applicate che non hanno più un file — succede a chiunque abbia aggiornato attraverso
+più versioni — si contano e non rendono malata l'installazione.
+
+**L'immagine Docker canonica.** Un `Dockerfile` in radice a più stadi (Node e Composer non entrano
+nell'immagine finale, i pacchetti di compilazione nemmeno), `.dockerignore` (né `.env` né le cache
+di chi costruisce entrano nel contesto), `docker/production/` con nginx, php-fpm, worker delle code
+e scheduler sotto supervisor, log su stdout. Il primo avvio non è interattivo: l'entrypoint attende
+il database, installa se è vuoto, allinea se esiste, costruisce le cache **a runtime** (in fase di
+build le variabili non ci sono) e solo allora serve. Default sicuri: produzione, debug spento,
+cache, sessioni e code sul database, installer spento, proxy fidati sulle reti private. Con
+`APP_KEY` mancante si ferma e lo dice. Provata in locale su un MySQL usa e getta: primo avvio,
+riavvio, ricreazione senza volume. `docker/standard` e `docker/frankenphp` non sono toccati.
+
+**Manutenzione.** Con la cache sul database una riga scaduta sparisce solo se qualcuno la rilegge:
+una pulizia settimanale nello scheduler. Un test sui rimborsi che diventava rosso fra le 22 e le 24
+UTC («domani» calcolato in UTC contro l'«oggi» dell'utente a Roma) ora usa lo stesso calendario
+della regola.
+
+**Documentazione.** Piano esecutivo della versione con il verbale della revisione (otto rilievi,
+tutti applicati), variabili documentate in `.env.example`, piano dell'infrastruttura aggiornato con
+il nome reale del comando.
+
 ## [1.11.0-beta.31] - Il tempo entra nel calcolo
 
 **Tocca il database: undici migrazioni**, tutte rieseguibili e tutte nel test che le rilancia a metà

@@ -10,6 +10,7 @@ use App\Services\System\SystemFinalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission as SpatiePermission;
+use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
@@ -48,8 +49,12 @@ test('la modalità ripristino blocca le rotte normali con un 503 statico', funct
 test('la modalità ripristino lascia passare le rotte di ripristino e l health check', function () {
     app(RestoreMode::class)->enter('uuid-di-prova');
 
-    // /up health check resta raggiungibile
-    $this->get('/up')->assertOk();
+    // /up health check resta raggiungibile. Dalla 1.11.0-beta.32 risponde 200 solo su
+    // un'installazione fatta (lock o amministratore esistente): qui l'amministratore.
+    Role::findOrCreate('amministratore', 'web');
+    User::factory()->create()->assignRole('amministratore');
+
+    $this->get('/up')->assertOk()->assertJsonPath('stato', 'ok');
 
     // La rotta di stato risponde (senza token → 403, ma NON 503: è passata
     // dal blocco di modalità)

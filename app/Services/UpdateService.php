@@ -104,8 +104,10 @@ class UpdateService
     /**
      * Indica se gli aggiornamenti automatici sono abilitati per questa installazione.
      *
-     * Il flag viene impostato a true dal Wizard Laravel durante l'installazione
-     * iniziale (Scenario 1). Le installazioni manuali via FTP lo lasciano a false.
+     * Il flag lo decide il pacchetto, non il wizard: lo zip pubblicato porta
+     * `run_installer` a true (lo script di build attiva quella riga), il repository
+     * lo tiene a false. Dalla 1.11.0-beta.32 la variabile `INSTALLER_ENABLED`, se
+     * presente, vince sul letterale (container, o opt-out durevole nel `.env`).
      *
      * @return bool
      */

@@ -11,6 +11,7 @@ return [
     'error_edit_building'     => "Ocorreu um erro ao atualizar o condomínio.",
     'success_delete_building' => "O condomínio foi excluído com sucesso.",
     'error_delete_building'   => "Ocorreu um erro ao excluir o condomínio.",
+    'limite_condomini_raggiunto' => "Esta instalação atingiu o número máximo de condomínios permitidos.",
 
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)

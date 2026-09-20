@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 // ============================================================================
 // 0. HEARTBEAT — prova di vita dello scheduler.
@@ -23,6 +24,20 @@ Schedule::call(function () {
 Schedule::call(function () {
     Artisan::call('model:prune');
 })->name('system-prune')->daily(); 
+
+// ============================================================================
+// 1-bis. CACHE SCADUTA SUL DATABASE (1.11.0-beta.32)
+// ============================================================================
+// Con CACHE_STORE=database (l'immagine Docker) una riga scaduta sparisce solo quando qualcuno la
+// rilegge: quelle che nessuno rilegge restano per sempre. Una pulizia a settimana; la tabella
+// c'è in ogni installazione (migrazione di base), quindi gira ovunque e non costa niente dove la
+// cache è su file. `expiration` è un timestamp Unix. Le sessioni non hanno bisogno di questo:
+// Laravel le pulisce da solo (lotteria di `session.lottery`).
+Schedule::call(function () {
+    DB::table(config('cache.stores.database.table', 'cache'))
+        ->where('expiration', '<', now()->getTimestamp())
+        ->delete();
+})->name('pulizia-cache-scaduta')->weeklyOn(0, '03:30');
 
 // ============================================================================
 // 2. CONTROLLO AGGIORNAMENTI SISTEMA (Notifica Badge)

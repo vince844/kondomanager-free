@@ -2,14 +2,16 @@
 
 namespace App\Services;
 
+use App\Enums\ContoContabileCategoria;
+use App\Enums\ContoContabileTipo;
+use App\Exceptions\LimiteCondominiRaggiunto;
 use App\Models\Condominio;
 use App\Models\Esercizio;
-use App\Models\Gestione;
 use App\Models\Gestionale\ContoContabile;
+use App\Models\Gestione;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Enums\ContoContabileCategoria;
-use App\Enums\ContoContabileTipo; 
 
 /**
  * Gestisce la logica di business principale per la creazione e l'inizializzazione
@@ -24,28 +26,63 @@ class CondominioService
      * Vengono generati automaticamente: l'Esercizio corrente, la Gestione Ordinaria
      * e il Piano dei Conti standard (incluso il Fondo Passate Gestioni).
      *
-     * @param array $condominioData Dati validati per la creazione del condominio.
+     * @param  array  $condominioData  Dati validati per la creazione del condominio.
      * @return Condominio L'istanza del condominio appena creato.
+     *
+     * @throws LimiteCondominiRaggiunto Se `LIMITE_CONDOMINI` è impostato e già raggiunto.
      * @throws \Exception Se la transazione sul database fallisce.
      */
     public function createCondominioWithEsercizio(array $condominioData): Condominio
+    {
+        // Con un tetto, controllo e creazione stanno sotto lo stesso lock: due richieste
+        // simultanee all'ultimo posto libero non devono passare entrambe. Senza tetto (ogni
+        // installazione autonoma) niente lock: il comportamento resta quello di sempre.
+        if ((int) config('kondomanager.limite_condomini', 0) > 0) {
+            return Cache::lock('condominio.creazione', 10)->block(5, function () use ($condominioData) {
+                $this->verificaLimiteCondomini();
+
+                return $this->creaConStruttura($condominioData);
+            });
+        }
+
+        return $this->creaConStruttura($condominioData);
+    }
+
+    private function creaConStruttura(array $condominioData): Condominio
     {
         return DB::transaction(function () use ($condominioData) {
 
             // 1. Crea Condominio
             $condominio = Condominio::create($condominioData);
-            
+
             // 2. Crea Esercizio
             $esercizio = $this->createEsercizioForCondominio($condominio);
-            
+
             // 3. Crea Gestione Ordinaria e la collega all'Esercizio
             $this->createDefaultGestione($condominio, $esercizio);
-            
+
             // 4. Crea Conti (incluso il nuovo Fondo Passate Gestioni)
-            $this->ensureDefaultConti($condominio); 
-            
+            $this->ensureDefaultConti($condominio);
+
             return $condominio;
         });
+    }
+
+    /**
+     * Il tetto di `LIMITE_CONDOMINI` (config `kondomanager.limite_condomini`): 0 o assente vuol
+     * dire nessun limite. Si conta ciò che c'è, dimostrativo compreso: è un condominio anche lui,
+     * e si può rimuovere. Il controllo sta qui e non nel controller perché anche il dimostrativo
+     * passa da questo metodo; l'importatore non ci passa, ed è voluto (vedi config/kondomanager.php).
+     *
+     * @throws LimiteCondominiRaggiunto
+     */
+    public function verificaLimiteCondomini(): void
+    {
+        $limite = (int) config('kondomanager.limite_condomini', 0);
+
+        if ($limite > 0 && Condominio::count() >= $limite) {
+            throw new LimiteCondominiRaggiunto($limite);
+        }
     }
 
     /**
@@ -53,7 +90,7 @@ class CondominioService
      * * Imposta le date dall'inizio alla fine dell'anno solare corrente
      * e lo marca con lo stato 'aperto'.
      *
-     * @param Condominio $condominio Il condominio di riferimento.
+     * @param  Condominio  $condominio  Il condominio di riferimento.
      * @return Esercizio L'esercizio per l'anno corrente.
      */
     public function createEsercizioForCondominio(Condominio $condominio): Esercizio
@@ -64,7 +101,9 @@ class CondominioService
             ->whereYear('data_fine', $currentYear)
             ->first();
 
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         // Invariante "al più un esercizio aperto per condominio": va rispettata anche
         // qui, non solo nelle FormRequest. Questo è il percorso non-HTTP (creazione
@@ -79,23 +118,23 @@ class CondominioService
 
         return Esercizio::create([
             'condominio_id' => $condominio->id,
-            'nome'          => "Esercizio anno {$currentYear}",
-            'descrizione'   => "Esercizio anno {$currentYear}",
-            'data_inizio'   => now()->startOfYear(),
-            'data_fine'     => now()->endOfYear(),
-            'stato'         => 'aperto',
-            'note'          => 'Esercizio creato automaticamente.',
+            'nome' => "Esercizio anno {$currentYear}",
+            'descrizione' => "Esercizio anno {$currentYear}",
+            'data_inizio' => now()->startOfYear(),
+            'data_fine' => now()->endOfYear(),
+            'stato' => 'aperto',
+            'note' => 'Esercizio creato automaticamente.',
         ]);
     }
 
     /**
      * Crea la Gestione Ordinaria di base e la aggancia all'Esercizio indicato.
-     * * Questo "cassetto" è obbligatorio nel nuovo sistema Wallet (V 1.9+) 
+     * * Questo "cassetto" è obbligatorio nel nuovo sistema Wallet (V 1.9+)
      * per permettere l'inserimento dei Saldi Iniziali e della Rata 0
      * subito dopo la creazione del condominio.
      *
-     * @param Condominio $condominio Il condominio di riferimento.
-     * @param Esercizio $esercizio L'esercizio a cui collegare la gestione.
+     * @param  Condominio  $condominio  Il condominio di riferimento.
+     * @param  Esercizio  $esercizio  L'esercizio a cui collegare la gestione.
      * @return void
      */
     /**
@@ -125,20 +164,20 @@ class CondominioService
         // Controlliamo che non esista già per evitare duplicati
         $gestione = $condominio->gestioni()->where('tipo', $tipo)->first();
 
-        if (!$gestione) {
+        if (! $gestione) {
             $gestione = $condominio->gestioni()->create([
-                'nome'        => 'Gestione '.$tipo,
-                'tipo'        => $tipo,
-                'attiva'      => true,
+                'nome' => 'Gestione '.$tipo,
+                'tipo' => $tipo,
+                'attiva' => true,
                 'data_inizio' => $dataInizio ?? $esercizio->data_inizio,
-                'data_fine'   => $dataFine ?? $esercizio->data_fine,
+                'data_fine' => $dataFine ?? $esercizio->data_fine,
             ]);
 
             Log::info("Gestione {$tipo} creata per '{$condominio->nome}'");
         }
 
         // Assicuriamoci che questa gestione sia agganciata all'esercizio appena creato.
-        if (!$gestione->esercizi()->where('esercizio_id', $esercizio->id)->exists()) {
+        if (! $gestione->esercizi()->where('esercizio_id', $esercizio->id)->exists()) {
             $gestione->esercizi()->attach($esercizio->id);
             Log::info("Gestione {$tipo} agganciata all'Esercizio ID {$esercizio->id}");
         }
@@ -152,8 +191,7 @@ class CondominioService
      * (Cassa, Crediti, Debiti, Anticipi, Gestione Rate e Fondo Passate Gestioni)
      * rispettando scrupolosamente gli ENUM del database.
      *
-     * @param Condominio $condominio Il condominio a cui generare i conti.
-     * @return void
+     * @param  Condominio  $condominio  Il condominio a cui generare i conti.
      */
     public function ensureDefaultConti(Condominio $condominio): void
     {
@@ -168,14 +206,14 @@ class CondominioService
         $attivoRoot = ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'codice' => '1000'],
             [
-                'parent_id'   => null,
-                'nome'        => 'ATTIVO',
+                'parent_id' => null,
+                'nome' => 'ATTIVO',
                 'descrizione' => 'Sezione patrimoniale delle attività (liquidità e crediti)',
-                'tipo'        => ContoContabileTipo::ATTIVO->value,      
-                'categoria'   => ContoContabileCategoria::LIQUIDITA->value,   
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 0
+                'tipo' => ContoContabileTipo::ATTIVO->value,
+                'categoria' => ContoContabileCategoria::LIQUIDITA->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 0,
             ]
         );
 
@@ -183,14 +221,14 @@ class CondominioService
         $passivoRoot = ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'codice' => '2000'],
             [
-                'parent_id'   => null,
-                'nome'        => 'PASSIVO',
+                'parent_id' => null,
+                'nome' => 'PASSIVO',
                 'descrizione' => 'Sezione patrimoniale delle passività (debiti e fondi)',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,     
-                'categoria'   => ContoContabileCategoria::FONDI->value,       
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 0
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::FONDI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 0,
             ]
         );
 
@@ -200,15 +238,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'crediti_condomini'],
             [
-                'parent_id'   => $attivoRoot->id,
-                'codice'      => '1101',
-                'nome'        => 'Crediti verso Condomini',
+                'parent_id' => $attivoRoot->id,
+                'codice' => '1101',
+                'nome' => 'Crediti verso Condomini',
                 'descrizione' => 'Crediti vantati dal condominio per rate emesse e non ancora pagate',
-                'tipo'        => ContoContabileTipo::ATTIVO->value,
-                'categoria'   => ContoContabileCategoria::CREDITI->value,     
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::ATTIVO->value,
+                'categoria' => ContoContabileCategoria::CREDITI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -216,15 +254,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'cassa'],
             [
-                'parent_id'   => $attivoRoot->id,
-                'codice'      => '1001',
-                'nome'        => 'Cassa Contanti',
+                'parent_id' => $attivoRoot->id,
+                'codice' => '1001',
+                'nome' => 'Cassa Contanti',
                 'descrizione' => 'Fondo liquidità in contanti a disposizione del condominio',
-                'tipo'        => ContoContabileTipo::ATTIVO->value,
-                'categoria'   => ContoContabileCategoria::LIQUIDITA->value,   
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::ATTIVO->value,
+                'categoria' => ContoContabileCategoria::LIQUIDITA->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -232,31 +270,31 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'anticipi_condomini'],
             [
-                'parent_id'   => $passivoRoot->id,
-                'codice'      => '2101',
-                'nome'        => 'Anticipi da Condomini',
+                'parent_id' => $passivoRoot->id,
+                'codice' => '2101',
+                'nome' => 'Anticipi da Condomini',
                 'descrizione' => 'Somme versate in eccedenza dai condòmini (crediti a loro favore)',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,
-                'categoria'   => ContoContabileCategoria::DEBITI->value,      
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::DEBITI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
-        
+
         // D. Debiti v/Fornitori (Passività > Debiti)
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'debiti_fornitori'],
             [
-                'parent_id'   => $passivoRoot->id,
-                'codice'      => '2201',
-                'nome'        => 'Debiti v/Fornitori',
+                'parent_id' => $passivoRoot->id,
+                'codice' => '2201',
+                'nome' => 'Debiti v/Fornitori',
                 'descrizione' => 'Debiti verso i fornitori per fatture registrate e non ancora saldate',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,
-                'categoria'   => ContoContabileCategoria::DEBITI->value,      
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::DEBITI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -264,15 +302,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'debiti_erario_ritenute'],
             [
-                'parent_id'   => $passivoRoot->id,
-                'codice'      => '2202',
-                'nome'        => 'Debiti v/Erario per Ritenute',
+                'parent_id' => $passivoRoot->id,
+                'codice' => '2202',
+                'nome' => 'Debiti v/Erario per Ritenute',
                 'descrizione' => 'Trattenute operate da versare allo Stato tramite F24',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,
-                'categoria'   => ContoContabileCategoria::DEBITI->value,      
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::DEBITI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -280,15 +318,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'gestione_rate'],
             [
-                'parent_id'   => $passivoRoot->id, 
-                'codice'      => '3001',
-                'nome'        => 'Gestione Rate',
+                'parent_id' => $passivoRoot->id,
+                'codice' => '3001',
+                'nome' => 'Gestione Rate',
                 'descrizione' => 'Contropartita contabile per l\'emissione delle rate ai condòmini',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,     
-                'categoria'   => ContoContabileCategoria::FONDI->value,       
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::FONDI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -296,15 +334,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'passate_gestioni'],
             [
-                'parent_id'   => $passivoRoot->id,
-                'codice'      => '2301', 
-                'nome'        => 'Fondo Passate Gestioni',
+                'parent_id' => $passivoRoot->id,
+                'codice' => '2301',
+                'nome' => 'Fondo Passate Gestioni',
                 'descrizione' => 'Fondo per debiti e spese di competenza di esercizi precedenti',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,
-                'categoria'   => ContoContabileCategoria::FONDI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::FONDI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -312,15 +350,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'sopravvenienze_passive'],
             [
-                'parent_id'   => null, // Nessun parent patrimoniale, è un conto economico
-                'codice'      => '4001', 
-                'nome'        => 'Sopravvenienze Passive',
+                'parent_id' => null, // Nessun parent patrimoniale, è un conto economico
+                'codice' => '4001',
+                'nome' => 'Sopravvenienze Passive',
                 'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati (Art. 1130-bis c.c.)',
-                'tipo'        => ContoContabileTipo::COSTO->value, 
-                'categoria'   => ContoContabileCategoria::COSTI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1
+                'tipo' => ContoContabileTipo::COSTO->value,
+                'categoria' => ContoContabileCategoria::COSTI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -328,15 +366,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'costi_servizi'],
             [
-                'parent_id'   => null,
-                'codice'      => '6001',
-                'nome'        => 'Costi per Servizi',
+                'parent_id' => null,
+                'codice' => '6001',
+                'nome' => 'Costi per Servizi',
                 'descrizione' => 'Manutenzioni, pulizie, utenze e servizi generali del condominio',
-                'tipo'        => ContoContabileTipo::COSTO->value,
-                'categoria'   => ContoContabileCategoria::COSTI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1,
+                'tipo' => ContoContabileTipo::COSTO->value,
+                'categoria' => ContoContabileCategoria::COSTI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -344,15 +382,15 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'compensi_professionisti'],
             [
-                'parent_id'   => null,
-                'codice'      => '6002',
-                'nome'        => 'Compensi Professionisti',
+                'parent_id' => null,
+                'codice' => '6002',
+                'nome' => 'Compensi Professionisti',
                 'descrizione' => 'Amministratore, avvocati, tecnici e consulenti',
-                'tipo'        => ContoContabileTipo::COSTO->value,
-                'categoria'   => ContoContabileCategoria::COSTI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1,
+                'tipo' => ContoContabileTipo::COSTO->value,
+                'categoria' => ContoContabileCategoria::COSTI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
@@ -361,51 +399,51 @@ class CondominioService
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'spese_bancarie'],
             [
-                'parent_id'   => null,
-                'codice'      => '6003',
-                'nome'        => 'Spese Bancarie',
+                'parent_id' => null,
+                'codice' => '6003',
+                'nome' => 'Spese Bancarie',
                 'descrizione' => 'Commissioni su bonifici, spese tenuta conto e oneri bancari',
-                'tipo'        => ContoContabileTipo::COSTO->value,
-                'categoria'   => ContoContabileCategoria::COSTI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1,
+                'tipo' => ContoContabileTipo::COSTO->value,
+                'categoria' => ContoContabileCategoria::COSTI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
- 
+
         // K. IVA Acquisti (Attivo > Crediti)
         //    Non usato in v1.9.1. Preparato per v1.12 Fase B (Reverse Charge N6.x).
         //    Nel RC: DARE IVA Acquisti (credito verso erario) / AVERE IVA Vendite.
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'iva_acquisti'],
             [
-                'parent_id'   => $attivoRoot->id,
-                'codice'      => '1201',
-                'nome'        => 'IVA Acquisti',
+                'parent_id' => $attivoRoot->id,
+                'codice' => '1201',
+                'nome' => 'IVA Acquisti',
                 'descrizione' => 'IVA a credito su acquisti (usato per Reverse Charge in v1.12)',
-                'tipo'        => ContoContabileTipo::ATTIVO->value,
-                'categoria'   => ContoContabileCategoria::CREDITI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1,
+                'tipo' => ContoContabileTipo::ATTIVO->value,
+                'categoria' => ContoContabileCategoria::CREDITI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
- 
+
         // L. IVA Vendite (Passivo > Debiti)
         //    Non usato in v1.9.1. Preparato per v1.12 Fase B (Reverse Charge N6.x).
         //    Nel RC: DARE IVA Acquisti / AVERE IVA Vendite (debito verso erario).
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'iva_vendite'],
             [
-                'parent_id'   => $passivoRoot->id,
-                'codice'      => '2203',
-                'nome'        => 'IVA Vendite',
+                'parent_id' => $passivoRoot->id,
+                'codice' => '2203',
+                'nome' => 'IVA Vendite',
                 'descrizione' => 'IVA a debito (usato per Reverse Charge in v1.12)',
-                'tipo'        => ContoContabileTipo::PASSIVO->value,
-                'categoria'   => ContoContabileCategoria::DEBITI->value,
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1,
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::DEBITI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
