@@ -50,6 +50,12 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'message' => fn () => $request->session()->get('message'),
                 'scoperti_warning' => fn () => $request->session()->get('scoperti_warning'),
+                // B2, cancello (2): la risoluzione per periodo ha cambiato dei destinatari.
+                'destinatari_warning' => fn () => $request->session()->get('destinatari_warning'),
+                // …e, se il cancello è scattato rimuovendo una voce dal piano, quale voce: la rimozione riparte da lì.
+                'destinatari_warning_detach' => fn () => $request->session()->get('destinatari_warning_detach'),
+                // B2, S5: l'avviso verde dopo «Registra passaggio», con le due azioni del §6.4.
+                'passaggio_registrato' => fn () => $request->session()->get('passaggio_registrato'),
                 // Chiave separata e non accodata a `message`: il banner del flash viene
                 // dipinto e subito cancellato dal modale di conferma che gli si sostituisce
                 // (verificato a video sulla beta.46). Il suggerimento deve poter arrivare

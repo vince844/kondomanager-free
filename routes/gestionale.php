@@ -6,6 +6,7 @@ use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
 use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
 use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController;
+use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\PassaggioController;
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
@@ -155,10 +156,33 @@ Route::prefix('/gestionale/{condominio}')
     Route::resource('immobili', ImmobileController::class)
         ->parameters(['immobili' => 'immobile']);
 
+    // «Registra passaggio» (1.11.0-beta.31, B2 del progetto sul subentro): la pagina, il pannello
+    // «Cosa cambierà» calcolato dal server, la scrittura. Prima della resource sorella perché
+    // `passaggi` non deve essere letto come un `{titolarita}`.
+    Route::get('immobili/{immobile}/passaggi/create', [PassaggioController::class, 'create'])
+        ->name('immobili.passaggi.create');
+    Route::post('immobili/{immobile}/passaggi/anteprima', [PassaggioController::class, 'anteprima'])
+        ->name('immobili.passaggi.anteprima');
+    Route::post('immobili/{immobile}/passaggi', [PassaggioController::class, 'store'])
+        ->name('immobili.passaggi.store');
+    Route::post('immobili/{immobile}/passaggi/anagrafica', [PassaggioController::class, 'creaAnagrafica'])
+        ->name('immobili.passaggi.anagrafica');
+    // S6: la copia autentica del titolo arriva dopo il rogito; il «finché non la ricevi» deve potersi spegnere.
+    Route::patch('immobili/{immobile}/passaggi/{subentro}/copia-autentica', [PassaggioController::class, 'copiaAutentica'])
+        ->name('immobili.passaggi.copia-autentica');
+    // S6: le due righe del conguaglio si tolgono insieme e con una nota, mai una sola dal Wallet.
+    Route::delete('immobili/{immobile}/passaggi/{subentro}/conguaglio', [PassaggioController::class, 'annullaConguaglio'])
+        ->name('immobili.passaggi.annulla-conguaglio');
+
+    // ⚠️ `{titolarita}` e non più `{anagrafica}`: dalla 1.11.0-beta.31 `edit`, `update` e `destroy`
+    // ricevono l'**id della riga** di `anagrafica_immobile` (`TitolaritaImmobile`), non della persona.
+    // La stessa persona può avere due periodi sulla stessa unità — vende e ricompra, l'inquilino che
+    // diventa proprietario — e «quale dei due» lo dice solo la riga (decisione 13). I nomi delle rotte
+    // non cambiano; cambia il valore che il frontend passa (`titolarita: anagrafica.pivot.id`).
     Route::resource('immobili.anagrafiche', ImmobileAnagraficaController::class)
         ->parameters([
             'immobili' => 'immobile',
-            'anagrafiche' => 'anagrafica'
+            'anagrafiche' => 'titolarita'
         ]);
     
     // `except(['show'])`: `ImmobileDocumentoController` non implementa `show` — un documento si
@@ -311,6 +335,10 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/anagrafiche/{anagrafica}/estratto-conto/print', [EstrattoContoAnagraficaController::class, 'print'])
         ->name('anagrafiche.estratto-conto.print');
+
+    // B2, S6: il rimborso del credito dall'estratto conto — denaro che esce a fronte di una quota a credito.
+    Route::post('/anagrafiche/{anagrafica}/rimborsi', [\App\Http\Controllers\Gestionale\Rimborsi\RimborsoCreditoController::class, 'store'])
+        ->name('anagrafiche.rimborsi.store');
     
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
     ->name('esercizi.piani-rate.regenerate');

@@ -24,4 +24,14 @@ class DateHelper
     {
         return Carbon::now(config('app.user_timezone', 'Europe/Rome'))->toDateString();
     }
+
+    /**
+     * Lo stesso «oggi» dell'utente, come data immutabile: per `inCorsoIl()` e i confronti fra date. Fra le 00:00 e
+     * le 02:00 di Roma `CarbonImmutable::today()` (UTC) è ancora ieri: una titolarità che decorre da oggi
+     * risulterebbe non ancora in corso, e una finita ieri ancora in corso.
+     */
+    public static function oggiUtenteImmutable(): \Carbon\CarbonImmutable
+    {
+        return \Carbon\CarbonImmutable::parse(self::oggiUtente());
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili\Anagrafiche;
 
+use App\Helpers\DateHelper;
+use App\Models\Gestionale\Subentro;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\CreateImmobileAnagraficaRequest;
@@ -12,6 +14,8 @@ use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Immobile;
 use App\Models\Saldo;
+use App\Models\TitolaritaImmobile;
+use App\Services\Subentro\StoricoTitolarita;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +23,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Controller for managing the association of "Anagrafica" records
@@ -79,11 +84,36 @@ class ImmobileAnagraficaController extends Controller
             ->pluck('anagrafica_id')
             ->all();
 
+        // **La tabella mostra solo i titolari attuali** (§6.5 di `pertinenze_vendita_locazione.md`,
+        // livello 1): un periodo chiuso nella stessa tabella degli attivi, con un suffisso «(ex)», è
+        // il modo più veloce per intestare una rata a chi ha venduto. Lo storico — tutte le righe,
+        // come frasi — va nel pannello «Chi ha avuto questa unità» (`StoricoTitolarita`).
+        $oggi = DateHelper::oggiUtenteImmutable();
+        $storico = app(StoricoTitolarita::class)->perImmobile($immobile);
+        // Ordine fisso (§6.6): prima chi risponde verso il condominio — proprietario, nudo proprietario,
+        // usufruttuario — poi gli occupanti; a parità, per nome.
+        $ordine = ['proprietario' => 0, 'nuda_proprietario' => 1, 'usufruttuario' => 2, 'inquilino' => 3];
+        $immobile->setRelation('anagrafiche', $immobile->anagrafiche
+            ->filter(fn ($a) => $a->pivot->inCorsoIl($oggi))
+            ->sortBy([
+                fn ($a, $b) => ($ordine[$a->pivot->tipologia] ?? 9) <=> ($ordine[$b->pivot->tipologia] ?? 9),
+                fn ($a, $b) => strcmp((string) $a->nome, (string) $b->nome),
+            ])
+            ->values());
+        // Decisione 24: quali righe fanno parte di un passaggio registrato (il ruolo non si cambia) — una query.
+        $passaggi = Subentro::where('immobile_id', $immobile->id)->get(['riga_uscente_id', 'riga_entrante_id', 'tipologia', 'decorrenza', 'tipo_passaggio']);
+        $agganciate = $passaggi->flatMap(fn ($s) => [$s->riga_uscente_id, $s->riga_entrante_id])->filter()->map(fn ($id) => (int) $id)->flip()->all();
+        $triple = $passaggi->where('tipo_passaggio', 'usufrutto')->map(fn ($s) => $s->tipologia . '|' . $s->decorrenza->toDateString())->flip()->all();
+        $immobile->anagrafiche->each(fn ($a) => $a->pivot->setAttribute('agganciata_a_passaggio',
+            isset($agganciate[(int) $a->pivot->id]) || ($a->pivot->data_inizio !== null && isset($triple[$a->pivot->tipologia . '|' . $a->pivot->data_inizio->toDateString()]))));
+
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheList', [
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'immobile'   => new ImmobileResource($immobile),
             'anagraficheConQuoteEmesse' => $anagraficheConQuoteEmesse,
+            'storico' => $storico,
+            'oggi' => $oggi->toDateString(),
         ]);
     }
 
@@ -98,9 +128,12 @@ class ImmobileAnagraficaController extends Controller
     {
         $esercizio = $this->getEsercizioCorrente($condominio);
 
-        // Recupera gli ID delle anagrafiche GIA' associate a questo immobile
-        // per escluderle dalla lista (evita duplicati)
-        $idsGiaAssociati = $immobile->anagrafiche()->pluck('anagrafiche.id');
+        // Le anagrafiche con una titolarità **in corso oggi** su questo immobile: sono già qui, e si escludono
+        // dalla lista. Chi ha solo periodi chiusi torna selezionabile (S8-bis, L3-2): la stessa persona può avere
+        // due periodi sulla stessa unità (inv. 12) — chi vende e ricompra, chi vende la nuda proprietà e resta
+        // usufruttuario — e senza questo la strada «chiudi e riapri con un altro ruolo» non si poteva percorrere.
+        $oggi = DateHelper::oggiUtenteImmutable();
+        $idsGiaAssociati = $immobile->anagrafiche()->get()->filter(fn ($a) => $a->pivot->inCorsoIl($oggi))->pluck('id')->unique()->values();
 
         // Filtra le anagrafiche:
         // 1. Devono appartenere al Condominio (contesto)
@@ -200,13 +233,13 @@ class ImmobileAnagraficaController extends Controller
      * @param Anagrafica $anagrafica
      * @return Response
      */
-    public function edit(Condominio $condominio, Immobile $immobile, Anagrafica $anagrafica): Response
+    public function edit(Condominio $condominio, Immobile $immobile, TitolaritaImmobile $titolarita): Response
     {
-        // Lavora **per persona**: con una riga per coppia dall'interfaccia (guardia 1 del trait,
-        // sulle sole FormRequest) è esatto; l'importatore può scriverne due con ruoli diversi, e lì
-        // l'ordine di prima era indefinito. Con B2 e i periodi la rotta dovrà ricevere l'`id` della
-        // riga — che la pivot espone dalla 1.11.0-beta.30 (`TitolaritaImmobile`) — e lavorare per periodo.
-        $anagraficaPivot = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
+        // Lavora **per periodo** dalla 1.11.0-beta.31: la rotta riceve l'`id` della riga (`{titolarita}`),
+        // e la stessa persona con due periodi sulla stessa unità apre quello indicato, non il primo che
+        // la query restituisce. Fino alla beta.30 riceveva la persona e faceva `where('anagrafica_id')`.
+        $this->appartieneAllUnita($titolarita, $immobile);
+        $anagraficaPivot = $immobile->anagrafiche()->wherePivot('id', $titolarita->id)->first();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheEdit', [
@@ -215,6 +248,8 @@ class ImmobileAnagraficaController extends Controller
             'immobile'      => new ImmobileResource($immobile),
             'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all()),
             'anagrafica'    => $anagraficaPivot,
+            // Decisione 24: la riga fa parte di un passaggio registrato → il ruolo non si cambia da qui.
+            'agganciata_a_passaggio' => $titolarita->faParteDiUnPassaggio(),
         ]);
     }
 
@@ -227,21 +262,43 @@ class ImmobileAnagraficaController extends Controller
      * @param Anagrafica $anagrafica (L'anagrafica attualmente associata prima della modifica)
      * @return RedirectResponse
      */
-    public function update(UpdateImmobileAnagraficaRequest $request, Condominio $condominio, Immobile $immobile, Anagrafica $anagrafica): RedirectResponse
+    public function update(UpdateImmobileAnagraficaRequest $request, Condominio $condominio, Immobile $immobile, TitolaritaImmobile $titolarita): RedirectResponse
     {
+        $this->appartieneAllUnita($titolarita, $immobile);
         $data = $request->validated();
-        
+
+        $nuovoAnagraficaId = (int) $data['anagrafica_id'];
+        $vecchioAnagraficaId = (int) $titolarita->anagrafica_id;
+        $anagraficaCambiata = $nuovoAnagraficaId !== $vecchioAnagraficaId;
+
+        // Decisione 13: cambiare la persona su una riga con storia è un passaggio travestito da
+        // correzione, e il vecchio `detach()` + `attach()` cancellava il periodo. Correggere quota,
+        // date o note sulla **stessa** persona resta «Modifica associazione»: passa.
+        if ($anagraficaCambiata && $titolarita->haStoria()) {
+            throw ValidationException::withMessages([
+                'anagrafica_id' => 'Questa riga ha una storia — un periodo chiuso o un passaggio registrato — e la persona non si sostituisce: se il titolare è cambiato, usa «Registra passaggio». Qui puoi correggere ruolo, quota, date e note.',
+            ]);
+        }
+
+        // Decisione 24 (S8-11): il ruolo di una riga agganciata a un passaggio registrato (`subentri`, come uscente o
+        // entrante) è la chiave con cui il motore ritrova chi c'era prima (D7: il predecessore è sulla stessa
+        // tipologia) e con cui il passaggio dice cosa è passato: cambiarlo scollegherebbe il passaggio in silenzio.
+        $ruoloCambiato = (string) $data['tipologia'] !== (string) $titolarita->tipologia;
+        if ($ruoloCambiato && $titolarita->faParteDiUnPassaggio()) {
+            throw ValidationException::withMessages([
+                'tipologia' => 'Questa riga fa parte di un passaggio registrato e il suo ruolo non si cambia da qui: è la chiave con cui il programma lega il passaggio a chi c\'era prima e dopo. Qui puoi correggere quota, date e note. Un passaggio registrato oggi non si annulla dal programma (arriva con la prossima versione): se il tipo era sbagliato, chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.',
+            ]);
+        }
+
         try {
             DB::beginTransaction();
 
-            $nuovoAnagraficaId = (int) $data['anagrafica_id'];
-            $vecchioAnagraficaId = (int) $anagrafica->id;
-            $anagraficaCambiata = $nuovoAnagraficaId !== $vecchioAnagraficaId;
-
-            // 1. GESTIONE ASSOCIAZIONE (PIVOT)
+            // Per **riga** (`wherePivot('id')`), non per persona: con due periodi della stessa persona
+            // sulla stessa unità si tocca solo quello aperto dall'interfaccia (decisione 13).
             if ($anagraficaCambiata) {
-                // L'utente ha selezionato una persona diversa: scollega la vecchia, collega la nuova
-                $immobile->anagrafiche()->detach($vecchioAnagraficaId);
+                // Persona diversa su una riga **senza** storia: la riga era un errore di battitura, e si
+                // riscrive. Non è un subentro — quello passa da «Registra passaggio» e conserva il periodo.
+                $immobile->anagrafiche()->wherePivot('id', $titolarita->id)->detach($vecchioAnagraficaId);
 
                 $immobile->anagrafiche()->attach($nuovoAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
@@ -252,8 +309,7 @@ class ImmobileAnagraficaController extends Controller
                     'attivo'          => true,
                 ]);
             } else {
-                // Stessa persona: aggiorna solo i dati
-                $immobile->anagrafiche()->updateExistingPivot($vecchioAnagraficaId, [
+                $immobile->anagrafiche()->wherePivot('id', $titolarita->id)->updateExistingPivot($vecchioAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
                     'data_inizio'     => $data['data_inizio'],
@@ -274,7 +330,8 @@ class ImmobileAnagraficaController extends Controller
 
             Log::error('Error updating anagrafica for immobile', [
                 'immobile_id'       => $immobile->id,
-                'old_anagrafica_id' => $anagrafica->id,
+                'titolarita_id'     => $titolarita->id,
+                'old_anagrafica_id' => $titolarita->anagrafica_id,
                 'new_anagrafica_id' => $data['anagrafica_id'] ?? null,
                 'message'           => $e->getMessage(),
                 'trace'             => $e->getTraceAsString(),
@@ -295,12 +352,23 @@ class ImmobileAnagraficaController extends Controller
      * @param Anagrafica $anagrafica
      * @return RedirectResponse
      */
-    public function destroy(Condominio $condominio, Immobile $immobile, Anagrafica $anagrafica): RedirectResponse
+    public function destroy(Condominio $condominio, Immobile $immobile, TitolaritaImmobile $titolarita): RedirectResponse
     {
-        
+        $this->appartieneAllUnita($titolarita, $immobile);
+
+        // Decisione 13: una riga con storia si chiude, non si cancella. `ValidationException` e non
+        // `abort(422)`: dal browser Inertia la porta nel dialogo come errore di campo, dai test JSON
+        // è un 422 con il messaggio.
+        if ($titolarita->haStoria()) {
+            throw ValidationException::withMessages([
+                'titolarita' => 'Questa riga ha una storia — un periodo chiuso o un passaggio registrato — e non si cancella: il riparto e l\'estratto conto l\'hanno già raccontata. Per un cambio di titolare usa «Registra passaggio»; «Dissocia» resta per le associazioni scritte per sbaglio.',
+            ]);
+        }
+
         try {
-            // Detach the anagrafica from the immobile
-            $immobile->anagrafiche()->detach($anagrafica->id);
+            // Per riga, non per persona: `detach($anagraficaId)` da solo cancellerebbe tutti i periodi
+            // di questa persona sull'unità.
+            $immobile->anagrafiche()->wherePivot('id', $titolarita->id)->detach($titolarita->anagrafica_id);
 
             return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
@@ -311,7 +379,8 @@ class ImmobileAnagraficaController extends Controller
 
             Log::error('Error detaching anagrafica from immobile', [
                 'immobile_id'   => $immobile->id,
-                'anagrafica_id' => $anagrafica->id,
+                'titolarita_id' => $titolarita->id,
+                'anagrafica_id' => $titolarita->anagrafica_id,
                 'message'       => $e->getMessage(),
                 'trace'         => $e->getTraceAsString(),
             ]);
@@ -321,6 +390,16 @@ class ImmobileAnagraficaController extends Controller
                 'immobile'   => $immobile->id,
             ])->with($this->flashError(__('gestionale.error_detach_anagrafica')));
         }
-    }   
+    }
 
+    /**
+     * L'`id` della riga arriva dall'indirizzo, e l'indirizzo dice anche di quale unità si parla: se non
+     * combaciano è un 404, non un aggiornamento su un'unità che non è quella a schermo. Lo fa già il
+     * binding annidato del gruppo (`scopeBindings()` + `Immobile::relazioniDeiFigliNelleRotte()`); qui
+     * si ripete perché un controller non deve fidarsi di come è montato.
+     */
+    private function appartieneAllUnita(TitolaritaImmobile $titolarita, Immobile $immobile): void
+    {
+        abort_unless((int) $titolarita->immobile_id === (int) $immobile->id, 404);
+    }
 }

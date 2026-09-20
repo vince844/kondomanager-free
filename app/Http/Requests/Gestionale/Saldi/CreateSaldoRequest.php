@@ -58,9 +58,12 @@ class CreateSaldoRequest extends FormRequest
                 $gestioneId   = $this->input('gestione_id');
                 $immobileId   = $this->input('immobile_id');
 
+                // B2 (S5): le righe del conguaglio di un passaggio (`subentro_id`) non occupano lo slot —
+                // dopo un subentro l'entrante deve poter registrare un suo pregresso sulla stessa gestione.
                 $query = Saldo::where('esercizio_id', $esercizio->id)
                     ->where('gestione_id', $gestioneId)
-                    ->where('immobile_id', $immobileId);
+                    ->where('immobile_id', $immobileId)
+                    ->whereNull('subentro_id');
 
                 if (is_null($anagraficaId)) {
                     // Saldo solidale: max uno per (esercizio, gestione, immobile)

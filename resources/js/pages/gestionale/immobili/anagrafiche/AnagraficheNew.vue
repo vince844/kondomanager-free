@@ -59,8 +59,8 @@ const pageGuides = computed(() => [
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Periodo Validità',
-    description: "Registra le date di competenza dell'associazione. Il riparto non le legge ancora: un subentro va calcolato a mano.",
+    title: 'Periodo di validità',
+    description: "Da quando a quando questa riga vale. Dalla 1.11 il riparto le legge: chi ha una data di fine paga fino a quel giorno, e un passaggio a metà anno si divide per giorni. Per un cambio di titolare usa «Registra passaggio», che chiude e apre le righe insieme.",
     icon: CalendarDays,
     colorVariant: 'amber' as const
   }
@@ -146,7 +146,7 @@ const submit = () => {
                               <Info class="w-4 h-4" /> Chi vedi qui?
                             </h4>
                             <div class="text-sm space-y-2 text-slate-500">
-                              <p>Mostra le anagrafiche del condominio <strong>non ancora associate</strong> a questo immobile.</p>
+                              <p>Mostra le anagrafiche del condominio <strong>senza una titolarità in corso</strong> su questo immobile: chi ha solo periodi chiusi torna selezionabile (vende e ricompra, o resta con un altro ruolo).</p>
                               <Separator class="my-2"/>
                               <div class="text-xs">
                                 <span class="font-semibold text-slate-700">Manca qualcuno?</span><br>
@@ -279,7 +279,7 @@ const submit = () => {
                                 Le date servono a documentare il periodo di questa associazione — una compravendita, un cambio inquilino.
                               </p>
                               <p>
-                                <strong>Il riparto non le legge ancora:</strong> ripartisce su chi risulta attivo nel momento in cui generi. Finché è così, un subentro a metà anno va calcolato a mano.
+                                <strong>Il riparto le legge.</strong> Una data di fine ferma l'addebito a quel giorno; una data di inizio conta solo se c'è un predecessore chiuso sulla stessa unità (senza, la riga vale «da sempre»). Se nel periodo qualcuno cambia, la quota si divide per giorni; per lo straordinario conta invece il giorno della delibera. Un cambio di titolare si registra da «Registra passaggio», non a mano qui.
                               </p>
                               <Separator class="my-2"/>
                               <div class="text-xs text-slate-400 italic">

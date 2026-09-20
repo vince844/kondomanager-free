@@ -71,6 +71,7 @@ final class MatriceRipartoBuilder
         $sommaValori = [];  // tabella_id → denominatore congelato
         $tabellaDiRadice = []; // radice → tabella_id | false (mista)
         $contestoSoggetto = []; // «aid|iid» → [ruolo_risolto, quota_possesso]
+        $giorniSoggetto = []; // «aid|iid» → giorni di titolarità conteggiati (B2, S7), distinti
 
         $decimaliTabelle = Tabella::whereIn('id', array_values(array_unique(array_filter(array_column($dettaglio, 'tabella_id')))))
             ->pluck('numero_decimali', 'id')->all();
@@ -110,6 +111,11 @@ final class MatriceRipartoBuilder
                     }
                 }
                 $contestoSoggetto[$chiaveSoggetto] ??= ['ruolo' => $r['ruolo_risolto'], 'quota' => $r['quota_possesso']];
+                // B2, S7: i giorni conteggiati, dove il pro rata li ha scritti (decisione 15). Un soggetto può
+                // averne più d'uno (una voce sulla stagione e le altre sull'anno): si tengono tutti, distinti.
+                if (($r['giorni_titolarita'] ?? null) !== null) {
+                    $giorniSoggetto[$chiaveSoggetto][(int) $r['giorni_titolarita']] = true;
+                }
                 continue;
             }
 
@@ -254,11 +260,15 @@ final class MatriceRipartoBuilder
                 'soggetti'        => [],
                 'totale_immobile' => 0,
             ];
+            $giorni = array_keys($giorniSoggetto[$k] ?? []);
+            sort($giorni);
             $righe[$iid]['soggetti'][$aid] = [
                 'nome'       => $anagrafica->nome ?? '—',
                 'ruolo'      => $sigleRuolo[$ruoloRaw] ?? strtoupper(substr((string) $ruoloRaw, 0, 1)),
                 'ruolo_raw'  => $ruoloRaw,
                 'quota_sogg' => $quotaSogg,
+                // B2, S7: i giorni di titolarità conteggiati dal pro rata (vuoto = quota per intero).
+                'giorni'     => $giorni,
                 $chiaveCelle => $cellePerColonna,
                 'totale'     => $importoTotale,
             ];

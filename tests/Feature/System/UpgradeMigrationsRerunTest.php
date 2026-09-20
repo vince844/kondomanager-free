@@ -35,6 +35,10 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     $migration = require $path;
 
     $tabellePrima = collect(Schema::getTableListing())->sort()->values()->all();
+    // Anche gli indici (S8-28): la migrazione di luglio su `contributi_versati`, rieseguita dopo la beta.31 che
+    // ha sostituito il suo vincolo con quello per persona, non trovava più il proprio indice e rifaceva il dedup
+    // per unità — cancellando righe legittime — e ricreava il vincolo vecchio. Le tabelle non lo dicevano.
+    $indiciPrima = collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getIndexes($t))->pluck('name')->sort()->values()->all()])->all();
 
     // RefreshDatabase ha già eseguito l'intera catena: questa seconda chiamata
     // riproduce esattamente la ripresa dopo un'interruzione che ha applicato le
@@ -42,9 +46,11 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     $migration->up();
 
     // Una riesecuzione deve essere un no-op strutturale: nessuna tabella persa,
-    // nessuna tabella comparsa.
+    // nessuna tabella comparsa, nessun indice diverso.
     expect(collect(Schema::getTableListing())->sort()->values()->all())
-        ->toEqual($tabellePrima);
+        ->toEqual($tabellePrima)
+        ->and(collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getIndexes($t))->pluck('name')->sort()->values()->all()])->all())
+        ->toEqual($indiciPrima);
 })->with([
     // Aggiunta nella beta.43: era l'unica migrazione del percorso 1.9.1 → 1.10 rimasta fuori
     // dal dataset. È un `MODIFY` su un ENUM, quindi intrinsecamente rieseguibile — passa senza
@@ -180,4 +186,26 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // senza guardia dà errore 1091 sullo stato parziale che un timeout lascia.
     '2026_09_14_200000_create_righe_riparto_table',
     '2026_09_14_200100_drop_riga_fattura_id_and_voce_id_from_rate_quote_table',
+    // Aggiunte nella 1.11.0-beta.31 (B2, il tempo entra nel calcolo): sei migrazioni più un drop nel
+    // blocco S2 del piano esecutivo, un'ottava in S5 (le colonne del passaggio su `subentri`, due FK) e una nona
+    // dalla verifica di S5 (`piani_rate.esercizio_id`, con travaso). Due `create` dentro `hasTable` (`competenze_capitolo`, `subentri`);
+    // colonne con `hasColumn` per colonna (fatture_passive, righe_riparto); la FK `saldi.subentro_id` con
+    // le due guardie separate (colonna, poi `information_schema` su MySQL e `PRAGMA foreign_key_list` su
+    // SQLite) — la categoria a rischio più alto del dataset, come `add_pertinenza_di`; l'indice non unico
+    // con `Schema::hasIndex`; il drop di `tipologie_spese` con `hasColumn` **e** un conteggio che si ferma se
+    // la colonna ha valori. Il travaso da `dati_extra->competenza` scrive solo dove le colonne nuove sono
+    // nulle: rieseguito non travasa due volte (invariante 23 del progetto sul subentro).
+    '2026_09_18_200000_add_competenza_to_fatture_passive_table',
+    '2026_09_18_200100_create_competenze_capitolo_table',
+    '2026_09_18_200200_create_subentri_table',
+    '2026_09_18_200300_add_subentro_id_to_saldi_table',
+    '2026_09_18_200400_add_index_periodi_to_anagrafica_immobile_table',
+    '2026_09_18_200500_add_competenza_to_righe_riparto_table',
+    '2026_09_18_200600_drop_tipologie_spese_from_anagrafica_immobile_table',
+    '2026_09_19_180000_add_dettagli_passaggio_to_subentri_table',
+    // La nona (verifica S5, R8): colonna + FK + travaso solo sui nulli dove la gestione ha un esercizio solo.
+    '2026_09_20_090000_add_esercizio_id_to_piani_rate_table',
+    // La decima (S6): unique nuovo su contributi_versati con guardie `getIndexes`, due colonne su subentri.
+    '2026_09_20_100000_s6_contributi_per_persona_e_annullamento_conguaglio',
+    '2026_09_20_180000_add_titolarita_tratto_to_righe_riparto_table',
 ]);

@@ -29,6 +29,8 @@ const props = defineProps<{
   immobile: Immobile;
   anagrafiche: Anagrafica[];
   anagrafica: AnagraficaWithPivot;
+  /** La riga fa parte di un passaggio registrato: il ruolo non si cambia da «Modifica» (decisione 24). */
+  agganciata_a_passaggio?: boolean;
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -39,25 +41,27 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: props.condominio.nome, href: '#' },
   { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'Modifica Associazione', href: '#' },
+  { title: 'Modifica associazione', href: '#' },
 ]);
 
+// «Correggi un dato sbagliato, senza cambiare il titolare» (§6.3 di pertinenze_vendita_locazione.md):
+// questa pagina corregge; il cambio di titolare passa da «Registra passaggio», che conserva la storia.
 const pageGuides = computed(() => [
   {
-    title: 'Aggiornamento Ruolo',
-    description: "Modifica la tipologia di associazione o il soggetto collegato all'unità.",
+    title: 'Correggi, non sostituire',
+    description: "Ruolo, quota, date e note di questa riga. Se il titolare è cambiato, non cambiare la persona qui: usa «Registra passaggio».",
     icon: UserCheck,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Ricalcolo Quote',
-    description: "Modifica la percentuale di competenza per aggiornare i futuri riparti di spesa.",
+    title: 'Quota di competenza',
+    description: "La percentuale interna fra soggetti dello stesso ruolo. Vale per i riparti che verranno generati da ora in poi.",
     icon: Coins,
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Gestione Periodo',
-    description: "Imposta o varia le date di validità. Sono un'annotazione: il riparto non le legge ancora.",
+    title: 'Le date della riga',
+    description: "Da quando a quando questa riga vale. Una riga con un periodo chiuso o un passaggio registrato non si cancella e non cambia persona.",
     icon: CalendarDays,
     colorVariant: 'amber' as const
   }
@@ -85,10 +89,12 @@ const submit = () => {
     form.data_inizio = toBackend(form.data_inizio);
     form.data_fine   = toBackend(form.data_fine);
     
+    // Per **riga** (`titolarita: pivot.id`), non per persona: dalla 1.11.0-beta.31 la rotta lavora sul
+    // periodo aperto da qui, e la stessa persona con due periodi non si confonde (decisione 13).
     form.put(route(...generateRoute('gestionale.immobili.anagrafiche.update', { 
         condominio: props.condominio.id, 
         immobile: props.immobile.id,
-        anagrafica: props.anagrafica.id
+        titolarita: props.anagrafica.pivot.id
     })), {
         preserveScroll: true,
     });
@@ -103,7 +109,7 @@ const submit = () => {
 
       <PageHeaderGuide
         page-title="Modifica associazione"
-        :page-subtitle="`Gestione associazione per l'unità: ${immobile.nome}`"
+        :page-subtitle="`Correggi un dato sbagliato, senza cambiare il titolare: ${immobile.nome}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: props.immobile.id })"
@@ -140,7 +146,7 @@ const submit = () => {
                          <span class="font-bold">{{ nome }} {{ cognome }}</span>
                       </template>
                     </v-select>
-                    <p class="text-[10px] text-slate-400 mt-1 italic">L'anagrafica non è modificabile. Per cambiare soggetto, crea una nuova associazione.</p>
+                    <p class="text-[10px] text-slate-400 mt-1 italic">La persona non si cambia da qui. Se il titolare è cambiato, usa «Registra passaggio»: chiude questo periodo e ne apre uno nuovo, conservando la storia.</p>
                   </div>
 
                   <div class="sm:col-span-3">
@@ -152,8 +158,11 @@ const submit = () => {
                       v-model="form.tipologia"
                       :reduce="(d: DropdownType) => d.id"
                       placeholder="Scegli..."
+                      :disabled="props.agganciata_a_passaggio === true"
                     />
                     <InputError :message="form.errors.tipologia" />
+                    <!-- Decisione 24: il ruolo è la chiave con cui il motore lega il passaggio a chi c'era prima e dopo. -->
+                    <p v-if="props.agganciata_a_passaggio" class="text-[10px] text-amber-700 dark:text-amber-400 mt-1 italic">Questa riga fa parte di un passaggio registrato: il ruolo non si cambia da qui. Un passaggio registrato oggi non si annulla (arriva con la prossima versione): se il tipo era sbagliato, chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.</p>
                   </div>
 
                   <div class="sm:col-span-3">
@@ -220,7 +229,7 @@ const submit = () => {
                           </button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50 font-sans tracking-normal lowercase first-letter:uppercase">
-                          <p class="text-sm">Documenta la fine del periodo. <strong>Non interrompe gli addebiti:</strong> il riparto guarda chi è attivo alla generazione, non le date.</p>
+                          <p class="text-sm">L'ultimo giorno in cui questa riga vale. <strong>Interrompe gli addebiti:</strong> dalla 1.11 il riparto ferma la quota a quel giorno e, se qualcuno cambia nel periodo, divide per giorni. Le rate già emesse non cambiano: le regola il conguaglio del passaggio.</p>
                         </HoverCardContent>
                       </HoverCard>
                     </div>

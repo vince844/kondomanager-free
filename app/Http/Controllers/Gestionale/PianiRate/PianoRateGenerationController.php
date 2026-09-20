@@ -6,6 +6,7 @@ use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Actions\PianoRate\SyncOrphanChaptersAction;
 use App\Enums\StatoPianoRate;
 use App\Events\Gestionale\PianoRateStatusUpdated;
+use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
@@ -36,19 +37,20 @@ class PianoRateGenerationController extends Controller
             'orphan_ids' => 'nullable|array',
             'orphan_ids.*' => 'integer|exists:conti,id',
             'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
+            // B2, cancello (2) della decisione 14: stessa forma del cancello degli scoperti.
+            'nota_destinatari' => 'required_if:accetta_destinatari,true|nullable|string|min:10',
         ]);
 
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
         $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
+        $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
+        $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
 
-        // 1. Check Pagamenti (Blocco Totale)
-        $haPagamenti = $pianoRate->rate()
-            ->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))
-            ->exists();
-
-        if ($haPagamenti) {
+        // 1. Check Pagamenti (Blocco Totale). `haIncassiRegistrati()` legge `importo_pagato ≠ 0`: anche un
+        // credito compensato o rimborsato è un movimento che il ricalcolo cancellerebbe (B2, S6).
+        if ($pianoRate->haIncassiRegistrati()) {
             return back()->with($this->flashError(
-                "Impossibile ricalcolare: ci sono rate con incassi registrati. Annulla prima gli incassi."
+                "Impossibile ricalcolare: ci sono rate con incassi registrati, o crediti già usati in compensazione o rimborsati. Annulla prima quei movimenti."
             ));
         }
 
@@ -90,7 +92,10 @@ class PianoRateGenerationController extends Controller
             $stats = $generateAction->execute(
                 pianoRate: $pianoRate,
                 accettaScoperti: $accettaScoperti,
-                notaScoperti: $notaScoperti
+                notaScoperti: $notaScoperti,
+                accettaDestinatari: $accettaDestinatari,
+                notaDestinatari: $notaDestinatari,
+                esercizio: $esercizio,
             );
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
@@ -129,6 +134,9 @@ class PianoRateGenerationController extends Controller
         } catch (ScopertiNonAccettatiException $e) {
             DB::rollBack();
             return back()->with('scoperti_warning', $e->getScoperti());
+        } catch (DestinatariCambiatiException $e) {
+            DB::rollBack();
+            return back()->with('destinatari_warning', $e->getCambiamenti());
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore rigenerazione piano rate", ['error' => $e->getMessage()]);

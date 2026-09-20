@@ -25,7 +25,7 @@
             <div style="font-size: 7pt; font-weight: bold; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin-bottom: 3px;">Anagrafica</div>
             <div style="font-size: 11pt; font-weight: bold; color: #1e3a5f;">{{ $anagrafica->nome }}</div>
             @if($anagrafica->codice_fiscale)
-                <div style="font-size: 7.5pt; font-family: monospace; color: #666; margin-top: 2px;">CF: {{ $anagrafica->codice_fiscale }}</div>
+                <div style="font-size: 7.5pt; color: #666; margin-top: 2px;">CF: {{ $anagrafica->codice_fiscale }}</div>
             @endif
             @if($anagrafica->email)
                 <div style="font-size: 7.5pt; color: #555; margin-top: 1px;">✉ {{ $anagrafica->email }}</div>
@@ -88,6 +88,33 @@
     </tr>
 </table>
 
+{{-- CREDITO DISPONIBILE (B2, S6): è denaro del condòmino, e questo è il documento che gli si consegna --}}
+@if(($stats['credito_disponibile_raw'] ?? 0) > 0)
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 8pt;">
+    <tr>
+        <td style="padding: 6px 8px; border: 1px solid #90cdf4; border-radius: 3px; background: #ebf8ff;">
+            <span style="font-size: 6.5pt; font-weight: bold; text-transform: uppercase; color: #2b6cb0; letter-spacing: 0.5px;">Credito disponibile</span>
+            &nbsp;&nbsp;<span style="font-size: 10pt; font-weight: bold; color: #2b6cb0;">{{ $stats['credito_disponibile'] }}</span>
+            <span style="font-size: 7pt; color: #4a5568;">
+                &nbsp;— compensabile sulle prossime rate o rimborsabile{{ !empty($stats['compensabile_frase']) ? '. ' . $stats['compensabile_frase'] : '.' }}
+            </span>
+        </td>
+    </tr>
+</table>
+@endif
+
+{{-- CHI RISPONDE IN SOLIDO (B2, S7): la nota dell'art. 63 co. 4, calcolata dai passaggi registrati — non una quota --}}
+@foreach(($solidarieta ?? []) as $nota)
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt;">
+    <tr>
+        <td style="padding: 6px 8px; border: 1px solid #fbd38d; border-radius: 3px; background: #fffaf0; color: #7b341e;">
+            <span style="font-size: 6.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Chi risponde in solido · {{ $nota['immobile'] }}</span><br>
+            {{ $nota['testo'] }}
+        </td>
+    </tr>
+</table>
+@endforeach
+
 {{-- TITOLO SEZIONE MOVIMENTI --}}
 <div style="font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #1e3a5f; border-bottom: 1px solid #cbd5e0; padding-bottom: 3px; margin-bottom: 5px; display: flex; justify-content: space-between;">
     Movimenti contabili
@@ -110,11 +137,11 @@
         {{-- Riga Saldo Iniziale --}}
         <tr style="background: #fffbeb; border-bottom: 0.3px solid #e2e8f0;">
             <td style="padding: 4px 5px; color: #666; white-space: nowrap;">{{ $esercizio->data_inizio->format('d/m/Y') }}</td>
-            <td style="padding: 4px 5px; font-family: monospace; font-size: 6.5pt; color: #aaa;">—</td>
+            <td style="padding: 4px 5px; font-size: 6.5pt; color: #aaa;">—</td>
             <td style="padding: 4px 5px; font-weight: 600; color: #1e3a5f;">Saldo iniziale esercizio</td>
             <td style="padding: 4px 5px; text-align: right; color: #ccc;">—</td>
             <td style="padding: 4px 5px; text-align: right; color: #ccc;">—</td>
-            <td style="padding: 4px 5px; text-align: right; font-family: monospace; font-weight: bold; background: #f5f7fa; color: {{ $saldoInizialeCents > 0 ? '#c53030' : ($saldoInizialeCents < 0 ? '#276749' : '#718096') }};">
+            <td style="padding: 4px 5px; text-align: right; font-weight: bold; background: #f5f7fa; color: {{ $saldoInizialeCents > 0 ? '#c53030' : ($saldoInizialeCents < 0 ? '#276749' : '#718096') }};">
                 {{ $stats['saldo_iniziale'] }}
             </td>
         </tr>
@@ -123,7 +150,7 @@
         @foreach($timeline as $riga)
         <tr style="border-bottom: 0.3px solid #edf2f7; {{ $loop->even ? 'background: #fafbfc;' : '' }}">
             <td style="padding: 4px 5px; color: #444; white-space: nowrap; vertical-align: top;">{{ $riga['data'] }}</td>
-            <td style="padding: 4px 5px; font-family: monospace; font-size: 6.5pt; color: #999; vertical-align: top;">{{ $riga['protocollo'] ?? '—' }}</td>
+            <td style="padding: 4px 5px; font-size: 6.5pt; color: #999; vertical-align: top;">{{ $riga['protocollo'] ?? '—' }}</td>
             <td style="padding: 4px 5px; vertical-align: top;">
                 <div style="font-weight: 600; color: #1e3a5f;">
                     {{ $riga['descrizione'] }}
@@ -187,7 +214,7 @@
             </td>
             <td style="padding: 4px 5px; text-align: right; vertical-align: top; background: #f5f7fa; white-space: nowrap;">
                 @php $saldoRiga = $riga['saldo']; @endphp
-                <span style="font-family: monospace; font-weight: bold; color: {{ $saldoRiga > 0 ? '#c53030' : ($saldoRiga < 0 ? '#276749' : '#718096') }};">
+                <span style="font-weight: bold; color: {{ $saldoRiga > 0 ? '#c53030' : ($saldoRiga < 0 ? '#276749' : '#718096') }};">
                     € {{ number_format(abs($saldoRiga) / 100, 2, ',', '.') }}
                     {{ $saldoRiga > 0 ? '▲' : ($saldoRiga < 0 ? '▼' : '') }}
                 </span>
@@ -203,29 +230,29 @@
         </tr>
         @endif
     </tbody>
-    <tfoot>
-        <tr style="border-top: 2px solid #1e3a5f;">
-            <td colspan="3" style="padding: 6px 5px;"></td>
-            <td style="padding: 6px 5px; text-align: right; vertical-align: bottom;">
-                <div style="font-size: 6pt; text-transform: uppercase; color: #888; font-weight: 600; letter-spacing: 0.5px;">Totale addebiti</div>
-                <div style="font-size: 8.5pt; font-weight: bold; font-family: monospace; color: #1a202c;">{{ $stats['totale_addebiti'] }}</div>
-            </td>
-            <td style="padding: 6px 5px; text-align: right; vertical-align: bottom;">
-                <div style="font-size: 6pt; text-transform: uppercase; color: #888; font-weight: 600; letter-spacing: 0.5px;">Totale versato</div>
-                <div style="font-size: 8.5pt; font-weight: bold; font-family: monospace; color: #276749;">{{ $stats['totale_versamenti'] }}</div>
-            </td>
-            @php $saldoRaw = $stats['saldo_raw']; @endphp
-            <td style="padding: 6px 5px; text-align: right; vertical-align: bottom; background: #f5f8fc; border-left: 1px solid #cbd5e0;">
-                <div style="font-size: 6.5pt; text-transform: uppercase; color: #1e3a5f; font-weight: 800; letter-spacing: 0.5px;">Saldo finale</div>
-                <div style="font-size: 11pt; font-weight: bold; font-family: monospace; color: {{ $saldoRaw > 0 ? '#c53030' : ($saldoRaw < 0 ? '#276749' : '#4a5568') }};">
-                    {{ $stats['saldo_finale'] }}
-                </div>
-                <div style="font-size: 5.5pt; font-weight: bold; text-transform: uppercase; color: {{ $saldoRaw > 0 ? '#c53030' : ($saldoRaw < 0 ? '#276749' : '#718096') }};">
-                    {{ $saldoRaw > 0 ? 'DA VERSARE' : ($saldoRaw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
-                </div>
-            </td>
-        </tr>
-    </tfoot>
+</table>
+
+{{-- RIEPILOGO FINALE: celle larghe e senza a capo, così «€ 1.581,15» resta su una riga --}}
+@php $saldoRaw = $stats['saldo_raw']; @endphp
+<table style="width: 100%; border-collapse: collapse; margin-top: 6px; border-top: 2px solid #1e3a5f; font-size: 8pt;">
+    <tr>
+        <td style="padding: 6px 5px;"></td>
+        <td style="width: 130px; padding: 6px 8px; text-align: right; vertical-align: bottom; white-space: nowrap;">
+            <div style="font-size: 6pt; text-transform: uppercase; color: #888; font-weight: 600; letter-spacing: 0.5px;">Totale addebiti</div>
+            <div style="font-size: 9pt; font-weight: bold; color: #1a202c;">{{ $stats['totale_addebiti'] }}</div>
+        </td>
+        <td style="width: 130px; padding: 6px 8px; text-align: right; vertical-align: bottom; white-space: nowrap;">
+            <div style="font-size: 6pt; text-transform: uppercase; color: #888; font-weight: 600; letter-spacing: 0.5px;">Totale versato</div>
+            <div style="font-size: 9pt; font-weight: bold; color: #276749;">{{ $stats['totale_versamenti'] }}</div>
+        </td>
+        <td style="width: 170px; padding: 6px 10px; text-align: right; vertical-align: bottom; white-space: nowrap; background: {{ $saldoRaw > 0 ? '#fff5f5' : ($saldoRaw < 0 ? '#f0fff4' : '#f5f8fc') }}; border: 1px solid {{ $saldoRaw > 0 ? '#fc8181' : ($saldoRaw < 0 ? '#68d391' : '#cbd5e0') }}; border-radius: 3px;">
+            <div style="font-size: 6.5pt; text-transform: uppercase; color: #1e3a5f; font-weight: 800; letter-spacing: 0.5px;">Saldo finale</div>
+            <div style="font-size: 11pt; font-weight: bold; color: {{ $saldoRaw > 0 ? '#c53030' : ($saldoRaw < 0 ? '#276749' : '#4a5568') }};">{{ $stats['saldo_finale'] }}</div>
+            <div style="font-size: 5.5pt; font-weight: bold; text-transform: uppercase; color: {{ $saldoRaw > 0 ? '#c53030' : ($saldoRaw < 0 ? '#276749' : '#718096') }};">
+                {{ $saldoRaw > 0 ? 'DA VERSARE' : ($saldoRaw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
+            </div>
+        </td>
+    </tr>
 </table>
 
 {{-- NOTE LEGALI --}}

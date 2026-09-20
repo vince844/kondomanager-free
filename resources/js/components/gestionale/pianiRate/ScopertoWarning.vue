@@ -38,6 +38,8 @@ export interface ScopertoCents {
     importo: number; // in cents
     ruolo_richiesto: string | null;
     motivo?: string | null;
+    /** `giorni_senza_titolare` (decisione 22): i giorni del periodo in cui nessuno del ruolo era in vigore. */
+    giorni?: number | null;
 }
 
 const props = defineProps<{
@@ -116,6 +118,23 @@ const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
         return {
             cosa: `${s.immobile_nome ?? 'Un\'unità'} ha una spesa a suo carico ma nessun proprietario, nudo proprietario o usufruttuario attivo`,
             azione: 'Registra il titolare dell\'unità, oppure togli l\'immobile dalla riga di fattura se la spesa è di tutti',
+        };
+    }
+
+    // Decisione 22 (B2): il proprietario è uscito e nessuno gli è succeduto per una parte del periodo — la
+    // parte è di nessuno, e il programma non sceglie chi la paga.
+    if (s.motivo === 'giorni_senza_titolare') {
+        return {
+            cosa: `${s.immobile_nome ?? 'Un\'unità'}: per ${s.giorni ?? '?'} giorni del periodo di competenza nessun titolare è in vigore (chi è uscito non ha un successore registrato)`,
+            azione: 'Registra il passaggio a chi è entrato (Titolari → «Registra passaggio»); se l\'unità è davvero rimasta senza titolare, procedi con una nota: la parte resta scoperta',
+        };
+    }
+
+    // I titolari ci sono, ma nessuno copre un giorno dei tratti di competenza della voce (B2, S4).
+    if (s.motivo === 'titolari_fuori_competenza') {
+        return {
+            cosa: `${s.immobile_nome ?? 'Un\'unità'}: nessun titolare del ruolo richiesto è in vigore nei giorni di competenza di questa voce`,
+            azione: 'Controlla le date dei titolari e i tratti di competenza della voce; se è così, procedi con una nota',
         };
     }
 

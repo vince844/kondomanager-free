@@ -63,6 +63,9 @@ class UpdateFatturaRequest extends FormRequest
             'numero_documento'   => 'required|string|max:50',
             'data_documento'     => 'required|date',
             'data_scadenza'      => 'required|date',
+            // La competenza (B2, S6): entrambi gli estremi o nessuno, come in `StoreFatturaRequest`.
+            'competenza_dal'     => 'nullable|date|required_with:competenza_al',
+            'competenza_al'      => 'nullable|date|required_with:competenza_dal|after_or_equal:competenza_dal',
             'modalita_pagamento' => 'required|string',
             'iban_fornitore'     => 'nullable|string',
             'conto_corrente_id'  => 'nullable|exists:conti_contabili,id',
@@ -115,6 +118,9 @@ class UpdateFatturaRequest extends FormRequest
             'righe.*.importo_imponibile.min'          => "Su una nota di credito l'importo di riga non può essere negativo: "
                 .'il segno lo mette già il tipo di documento. Scrivi la cifra da accreditare.',
             'gestione_id.required'                    => 'La gestione contabile è obbligatoria.',
+            'competenza_dal.required_with'            => 'La competenza vuole entrambe le date: manca l\'inizio.',
+            'competenza_al.required_with'             => 'La competenza vuole entrambe le date: manca la fine.',
+            'competenza_al.after_or_equal'            => 'La fine della competenza non può precedere l\'inizio.',
         ];
     }
 

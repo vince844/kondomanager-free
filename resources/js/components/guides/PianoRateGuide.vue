@@ -108,8 +108,9 @@ defineEmits(['update:open']);
                                     <strong class="text-emerald-700 dark:text-emerald-400">Rata separata (Rata 0)</strong> —
                                     consigliata. I pregressi restano una riga a sé, distinta dalle rate dell'anno,
                                     e si vede a colpo d'occhio cosa viene da prima: è la scelta migliore quando c'è
-                                    stato un <strong>subentro</strong>. Il riparto però non calcola le competenze
-                                    per periodo — quella parte va fatta a mano.
+                                    stato un <strong>subentro</strong>. Le quote già emesse a chi è uscito si
+                                    regolano con il conguaglio del passaggio (una coppia di saldi a somma zero, che
+                                    la Rata 0 assorbe); le rate nuove il riparto le divide per giorni da sé.
                                 </p>
                                 <p>
                                     <strong>Somma alla prima rata</strong> — metodo tradizionale. La prima rata
@@ -182,6 +183,23 @@ defineEmits(['update:open']);
                                 Con <strong>«Genera calcolo scadenze subito»</strong> le rate nascono insieme al
                                 piano. Togliendo la spunta il piano resta senza rate, e le generi quando il preventivo
                                 è definitivo.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Quando un'unità cambia titolare nell'anno</h3>
+                            <p>
+                                Il riparto legge le date di ogni titolare. Sull'<strong>ordinario</strong> la quota di un'unità
+                                che cambia mano si divide <strong>per giorni</strong> fra chi esce e chi entra, sul periodo della
+                                gestione o — se una voce ha una competenza propria, come il riscaldamento sulla sua stagione —
+                                sui giorni di quella voce. Sullo <strong>straordinario</strong> conta un giorno solo: quello della
+                                delibera dell'assemblea, che per questo il piano chiede alla creazione; chi era titolare quel
+                                giorno risponde dell'intera spesa, anche se poi vende.
+                            </p>
+                            <p class="mt-2">
+                                Se generando il piano il programma vede che la competenza cambia i destinatari rispetto ai
+                                titolari di oggi, si ferma e lo mostra: chi entra, chi esce, per quanti giorni. Si va avanti con
+                                una spunta e una nota — è una presa d'atto, non un'approvazione al buio.
                             </p>
                         </section>
 

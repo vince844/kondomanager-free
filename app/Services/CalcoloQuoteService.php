@@ -8,7 +8,14 @@ use App\Models\Gestione;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
+use App\Enums\NaturaGestione;
+use App\Exceptions\Gestionale\RichiedeDeliberaException;
+use App\Models\Gestionale\CompetenzaCapitolo;
+use App\Services\Riparto\EsitoCompetenza;
+use App\Services\Riparto\GradinoCompetenza;
+use App\Services\Riparto\RisolutoreCompetenza;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +36,10 @@ use Illuminate\Support\Facades\Log;
  */
 class CalcoloQuoteService
 {
+    /** Le due nature della riga `netting` nel dettaglio (decisione 17), lette dal conguaglio del passaggio. */
+    public const NETTING_DELLA_PERSONA = 'già versato della persona';
+    public const NETTING_DELL_UNITA = 'già versato dell\'unità';
+
     /**
      * Quanto può mancare alla somma dei coefficienti prima che sia un difetto e non un
      * arrotondamento — espressa in frazione, cioè 0,0005 = 0,05 punti percentuali.
@@ -56,12 +67,54 @@ class CalcoloQuoteService
     private ?\Carbon\Carbon $pianoRateCreatedAt = null;
 
     /**
-     * Il periodo di competenza del calcolo in corso (B1, 1.11.0-beta.30). Arriva in coda a
-     * `calcolaPerGestione()` e a `calcolaDaFattureStraordinarie()`, nullable, e viene passato al
-     * risolutore dei titolari — che in B1 lo ignora: la regola è ancora `attivo === true`. È
-     * l'impianto su cui B2 farà entrare il tempo nei pesi (progetto `subentro_e_competenza_temporale.md`, §4.3).
+     * Il periodo di competenza del calcolo in corso: la base passata dal chiamante (`competenzaBase`),
+     * raffinata per capitolo (`impostaCompetenzaPerConto`) o per fattura straordinaria. Da B2 (1.11.0-beta.31,
+     * S4) governa `RisolutoreTitolari::attiviAlla()` (D7) e `pesiPerGiorni()` (D8); con `null` il calcolo
+     * è atemporale e identico alla beta.30 (invariante 1). Progetto `subentro_e_competenza_temporale.md`, §4.
      */
-    private ?PeriodoCompetenza $periodo = null;
+    private PeriodoCompetenza|InsiemePeriodi|null $periodo = null;
+
+    /**
+     * B2 (1.11.0-beta.31, S4): **la competenza di base del calcolo**, o `null` per il calcolo atemporale
+     * della beta.30. È ciò che il chiamante passa: per l'ordinario la cascata gestione → esercizio
+     * (`RisolutoreCompetenza::perOrdinaria(null, …)`), per lo straordinario la data della delibera
+     * (`perStraordinaria(null, null, $dataDelibera)`). Il motore la **raffina** da sé: per capitolo con i
+     * tratti di `competenze_capitolo` (decisione 20), per fattura straordinaria con la competenza
+     * dichiarata (decisione 11/12). `$periodo` qui sopra è il risultato di quel raffinamento, e cambia
+     * conto per conto.
+     */
+    private ?EsitoCompetenza $competenzaBase = null;
+
+    /** Il gradino della cascata che ha deciso `$periodo` per il conto in corso (`GradinoCompetenza`), o `null`. */
+    private ?string $gradinoCorrente = null;
+
+    /** `conto_id => id della riga di piano_rate_capitoli`, per leggere i tratti del capitolo (decisione 20). */
+    private array $pivotCapitoloIds = [];
+
+    /** Nello straordinario la competenza è per fattura e non per capitolo: il raffinamento per conto si spegne. */
+    private bool $competenzaPerConto = true;
+
+    /**
+     * Dove la risoluzione **temporale** ha cambiato qualcosa rispetto a quella atemporale: un titolare
+     * escluso dal periodo o un pro rata per giorni. È la base del cancello (2) della decisione 14 e di
+     * `titolarita_alla` nelle quote (decisione 15).
+     *
+     * @var list<array<string,mixed>>
+     */
+    private array $destinatariCambiati = [];
+    /** Sola lettura: una fattura straordinaria senza competenza né delibera è stata ripartita atemporale, e va detto. */
+    private bool $competenzaNonRisolta = false;
+    /** Straordinario: almeno una fattura ha avuto una competenza risolta (dichiarata o delibera). */
+    private bool $competenzaRisoltaPerFattura = false;
+    /**
+     * Straordinario: il totale del piano per conto, sommato su tutte le competenze. Il netting del già
+     * versato si applica in proporzione a «questa chiamata / nominale»: con due chiamate sullo stesso conto
+     * (due fatture con competenze diverse) e `conti.importo` a zero o più basso della somma, senza questo
+     * minimo la copertura si scontava per intero a ogni chiamata (verifica indipendente S4, critico).
+     *
+     * @var array<int, int> conto_id => centesimi
+     */
+    private array $nominaleMinimoPerConto = [];
 
     /** Chi risolve «chi è titolare di questa unità», in un posto solo. */
     private readonly RisolutoreTitolari $titolari;
@@ -169,6 +222,13 @@ class CalcoloQuoteService
     /** Il netting per chiave «aid|iid» dell'ultima chiamata a `nettingGiaVersato()`. */
     private array $ultimoNettingPerChiave = [];
 
+    /**
+     * La parte «della persona» dell'ultimo netting, per chiave (decisione 17): si congela come riga a sé nel
+     * dettaglio, così il conguaglio del passaggio la rilegge dal registro e non dalla tabella dei contributi di
+     * oggi (verifica S8-bis, L1-5).
+     */
+    private array $ultimoNettingPersonaPerChiave = [];
+
     /** @var array<int,Conto> radice per conto foglia, entro una chiamata */
     private array $radiciCache = [];
 
@@ -199,10 +259,34 @@ class CalcoloQuoteService
      *                          rileggere. Senza questo, un documento d'assemblea diventerebbe un
      *                          foglio bianco per una modifica avvenuta dopo l'emissione.
      */
-    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, ?PeriodoCompetenza $periodo = null): array
+    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, PeriodoCompetenza|EsitoCompetenza|null $periodo = null): array
     {
         $this->gestioneCorrente = $gestione;
-        $this->periodo          = $periodo;
+        // Decisione 12 anche dal ramo dei capitoli: una gestione **straordinaria** ripartita senza la data
+        // della delibera non scende al periodo dell'esercizio, si ferma. Alla generazione; la stampa in
+        // sola lettura non riceve mai un esito non risolto (`DettaglioRiparto` lo azzera prima).
+        $periodoNonRisolto = false;
+        if ($periodo instanceof EsitoCompetenza && $periodo->richiedeDelibera) {
+            if ($pianoRate !== null && ! $soloLettura) {
+                throw new RichiedeDeliberaException($pianoRate);
+            }
+            $periodo = null;
+            $periodoNonRisolto = true;
+        }
+        $natura = NaturaGestione::daStringa($gestione->tipo);
+        $this->impostaCompetenzaBase($periodo, $natura);
+        $this->competenzaNonRisolta = $periodoNonRisolto ?? false;
+        $this->competenzaRisoltaPerFattura = false;
+        $this->nominaleMinimoPerConto = [];
+        // I tratti di `competenze_capitolo` sono un gradino della sola cascata ORDINARIA (D3, decisioni 12 e 20:
+        // «lo straordinario resta un giorno»). Su una gestione straordinaria la competenza è la delibera — o
+        // quella dichiarata sulla fattura — e chi era titolare quel giorno risponde dell'intera spesa: un tratto
+        // scritto sulla pivot (a mano, da un import, da una UI che non lo ha fermato) non deve farla scivolare
+        // nel pro rata per giorni. Verifica S6, R1: prima di S6 nessuna riga scriveva i tratti e il ramo era
+        // irraggiungibile; la Request rifiuta i tratti sullo straordinario, e qui il motore non li legge comunque.
+        $this->competenzaPerConto = $natura !== NaturaGestione::Straordinaria;
+        $this->pivotCapitoloIds = [];
+        $this->destinatariCambiati = [];
         $this->pivotOverrides   = [];
         $this->pianoRateCreatedAt = $pianoRate?->created_at;
         $this->scopertiAccumulati = [];
@@ -229,6 +313,10 @@ class CalcoloQuoteService
                 $capitoliIds[] = $capitolo->id;
                 if (!is_null($capitolo->pivot->importo)) {
                     $this->pivotOverrides[$capitolo->id] = (int) $capitolo->pivot->importo;
+                }
+                // La riga di `piano_rate_capitoli` è la chiave dei tratti di competenza (decisione 20).
+                if (isset($capitolo->pivot->id)) {
+                    $this->pivotCapitoloIds[$capitolo->id] = (int) $capitolo->pivot->id;
                 }
             }
 
@@ -426,9 +514,17 @@ class CalcoloQuoteService
      * @param PianoRate $pianoRate Il piano rate contenente le fatture straordinarie
      * @return array Quote calcolate, raggruppate per anagrafica_id e immobile_id
      */
-    public function calcolaDaFattureStraordinarie(PianoRate $pianoRate, ?PeriodoCompetenza $periodo = null): array
+    public function calcolaDaFattureStraordinarie(PianoRate $pianoRate, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $soloLettura = false): array
     {
-        $this->periodo            = $periodo;
+        $this->impostaCompetenzaBase($periodo, NaturaGestione::Straordinaria);
+        $this->competenzaNonRisolta = false;
+        $this->competenzaRisoltaPerFattura = false;
+        $this->nominaleMinimoPerConto = [];
+        // Nello straordinario la competenza è **per fattura** (dichiarata, o la delibera): si decide qui
+        // sotto, fattura per fattura, e `distribuisciSuTabelle()` non deve raffinarla per capitolo.
+        $this->competenzaPerConto = false;
+        $this->pivotCapitoloIds = [];
+        $this->destinatariCambiati = [];
         $this->scopertiAccumulati = [];
         $this->millesimiNonCompilati = [];
         $this->eccedenzeCopertura = [];
@@ -460,8 +556,44 @@ class CalcoloQuoteService
         // chiamata: chiamarlo una volta per componente lo sottrarrebbe più volte
         // nella stessa esecuzione, anche a monte di qualunque split fra piani.
         $importiPerConto = [];
+        /** @var array<int, EsitoCompetenza> la competenza con cui ogni conto va ripartito; deve essere una sola per conto */
+        $competenzePerConto = [];
 
         foreach ($fatture as $fattura) {
+            // Decisioni 11 e 12: competenza dichiarata sulla fattura → data della delibera → **stop**.
+            // Senza competenza e senza delibera il motore non scende al periodo della gestione: si ferma
+            // e chiede la data, che è un fatto dell'assemblea e non del programma. In sola lettura
+            // (l'anteprima di `DettaglioRiparto`) non si ferma: quella fattura va atemporale e lo dice
+            // con `competenza_non_risolta`, mentre le fatture con la competenza dichiarata restano
+            // temporali come alla generazione (verifica S4: prima l'anteprima azzerava tutto). Vale per
+            // la natura **straordinaria** (che decide la gestione, decisione 11): un piano da fatture su
+            // una gestione ordinaria resta ordinario e pro rata — la competenza dichiarata sulla fattura,
+            // lì, non guida le rate (decisione 19) e si dichiara ignorata (`competenzaFatturaIgnorata`).
+            $esitoFattura = null;
+            if ($this->competenzaBase !== null) {
+                if ($this->competenzaBase->natura === NaturaGestione::Straordinaria) {
+                    $esitoFattura = (new RisolutoreCompetenza())->perStraordinaria(
+                        $fattura->competenza_dal,
+                        $fattura->competenza_al,
+                        $pianoRate->data_delibera_assemblea,
+                        divergenzaTipoPiano: $this->competenzaBase->divergenzaTipoPiano,
+                    );
+                    if ($esitoFattura->richiedeDelibera) {
+                        if (! $soloLettura) {
+                            throw new RichiedeDeliberaException($pianoRate, $fattura);
+                        }
+                        $esitoFattura = null;
+                        $this->competenzaNonRisolta = true;
+                    } else {
+                        $this->competenzaRisoltaPerFattura = true;
+                    }
+                } else {
+                    $esitoFattura = $fattura->competenza_dal !== null && $fattura->competenza_al !== null
+                        ? $this->competenzaBase->conFatturaIgnorata()
+                        : $this->competenzaBase;
+                }
+            }
+            $this->impostaCompetenzaCorrente($esitoFattura);
 
             // -----------------------------------------------------------------
             // 1. COMPONENTI STRAORDINARI DELLA FATTURA
@@ -577,14 +709,30 @@ class CalcoloQuoteService
                     continue;
                 }
 
-                $importiPerConto[$c['conto_id']] = ($importiPerConto[$c['conto_id']] ?? 0) + $importoComp;
+                // B2: l'accumulo è per (conto, competenza). Due fatture sullo stesso conto imprevisto con
+                // competenze diverse — una dichiarata, una alla delibera — non si fondono in un periodo che
+                // non è di nessuna delle due: sono due chiamate di `distribuisciSuTabelle()` sullo stesso
+                // conto, che il netting regge già (è proporzionale alla quota di ogni chiamata sul
+                // nominale: acconto e saldo). Senza competenza la chiave è il solo conto, come prima.
+                $chiave = $c['conto_id'] . '|' . ($esitoFattura === null ? '' : json_encode($esitoFattura->toArray()));
+                $importiPerConto[$chiave] = ($importiPerConto[$chiave] ?? 0) + $importoComp;
+                $competenzePerConto[$chiave] = $esitoFattura;
             }
         }
 
-        // Distribuzione: UNA sola chiamata per conto su tutto il piano, sul totale
+        // Il totale per conto su tutte le competenze: è il nominale minimo del netting (vedi la proprietà).
+        foreach ($importiPerConto as $chiave => $importoComp) {
+            $cid = (int) explode('|', (string) $chiave, 2)[0];
+            $this->nominaleMinimoPerConto[$cid] = ($this->nominaleMinimoPerConto[$cid] ?? 0) + abs($importoComp);
+        }
+
+        // Distribuzione: UNA sola chiamata per conto **e competenza** su tutto il piano, sul totale
         // accumulato da tutte le fatture/componenti che lo riguardano.
-        foreach ($importiPerConto as $contoId => $importoComp) {
+        foreach ($importiPerConto as $chiave => $importoComp) {
             if ($importoComp === 0) continue;
+
+            $contoId = (int) explode('|', (string) $chiave, 2)[0];
+            $this->impostaCompetenzaCorrente($competenzePerConto[$chiave] ?? null);
 
             $conto = Conto::with([
                 'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
@@ -715,7 +863,292 @@ class CalcoloQuoteService
             'riga_fattura_id'   => null,
             'riga_descrizione'  => null,
             'importo'           => 0,
+            // B2 (decisione 15): il congelato temporale, per riga. Nulli sulle righe atemporali.
+            'competenza_dal'    => null,
+            'competenza_al'     => null,
+            'gradino_competenza' => null,
+            'giorni_titolarita' => null,
+            'titolarita_dal'    => null,
+            'titolarita_al'     => null,
         ], $campi);
+    }
+
+    // =========================================================================
+    // B2 — la competenza temporale: base, raffinamento per conto, pesi per giorni
+    // =========================================================================
+
+    /** Il chiamante può passare un periodo nudo (i test) o l'esito della cascata: qui diventano una cosa sola. */
+    private function impostaCompetenzaBase(PeriodoCompetenza|EsitoCompetenza|null $periodo, NaturaGestione $natura): void
+    {
+        $this->competenzaBase = match (true) {
+            $periodo === null => null,
+            $periodo instanceof EsitoCompetenza => $periodo,
+            default => new EsitoCompetenza($natura, InsiemePeriodi::uno($periodo), GradinoCompetenza::Dichiarata),
+        };
+        $this->impostaCompetenzaCorrente($this->competenzaBase);
+    }
+
+    private function impostaCompetenzaCorrente(?EsitoCompetenza $esito): void
+    {
+        $this->periodo = $esito?->periodi;
+        $this->gradinoCorrente = $esito?->gradino?->value;
+    }
+
+    /**
+     * La competenza del capitolo che si sta ripartendo (decisione 20): se la riga di `piano_rate_capitoli`
+     * del conto — o della sua radice — dichiara dei tratti in `competenze_capitolo`, valgono quelli
+     * (gradino «capitolo»); altrimenti la base che il chiamante ha passato (gestione o esercizio).
+     * Con la base a `null` il calcolo resta atemporale e non si legge nulla.
+     */
+    private function impostaCompetenzaPerConto(Conto $conto): void
+    {
+        if ($this->competenzaBase === null || ! $this->competenzaPerConto) {
+            return;
+        }
+
+        $pivotId = $this->pivotCapitoloIds[$conto->id] ?? $this->pivotCapitoloIds[$this->radiceDi($conto)->id] ?? null;
+        $tratti = $pivotId !== null ? CompetenzaCapitolo::insiemePer($pivotId) : null;
+
+        $this->impostaCompetenzaCorrente($tratti !== null
+            ? new EsitoCompetenza($this->competenzaBase->natura, $tratti, GradinoCompetenza::Capitolo, divergenzaTipoPiano: $this->competenzaBase->divergenzaTipoPiano)
+            : $this->competenzaBase);
+    }
+
+    /**
+     * I pesi per giorni di una coppia (immobile, tipologia) — D8 del progetto — o `null` quando il motore
+     * deve eseguire **letteralmente** `quota / somma_quote`.
+     *
+     * Ritorna `null` in due casi, entrambi «niente pro rata»: calcolo atemporale; nessun titolare della
+     * coppia entra o esce nel periodo (l'uscita anticipata di D8, che è la garanzia d'identità in
+     * virgola mobile con la beta.30). Altrimenti la mappa `id riga → [peso, giorni]` con la somma dei
+     * pesi — che può essere **zero** se nessuno copre un giorno dei tratti: in quel caso chi chiama
+     * registra uno scoperto, non ripiega sulle quote — e la coppia finisce fra i destinatari cambiati
+     * (cancello 2).
+     *
+     * @param Collection<int, object> $righeCoppia   tutte le righe **attive** della coppia, anche fuori periodo
+     * @param Collection<int, object> $righeInPeriodo quelle che il risolutore ha lasciato passare
+     * @return array{pesi: array<int,float>, giorni: array<int,int>, somma: float}|null
+     */
+    private function pesiPerGiorni(Collection $righeCoppia, Collection $righeInPeriodo, int $immobileId, string $tipologia, ?int $contoId): ?array
+    {
+        if ($this->periodo === null) {
+            return null;
+        }
+        if (! $this->titolari->cambiaTitolaritaNelPeriodo($righeCoppia, $this->periodo)) {
+            return null;
+        }
+
+        $pesi = [];
+        $giorni = [];
+        $tratti = [];
+        foreach ($righeInPeriodo as $riga) {
+            $g = $this->titolari->giorniDiTitolarita($riga, $this->periodo, $righeCoppia);
+            $giorni[(int) $riga->id] = $g;
+            $pesi[(int) $riga->id] = (float) $riga->quota * $g;
+            // Il tratto che quei giorni coprono (migrazione 11): il conguaglio del passaggio divide su questo.
+            $tratti[(int) $riga->id] = $this->titolari->trattoEffettivo($riga, $this->periodo, $righeCoppia);
+        }
+        $somma = array_sum($pesi);
+        // Decisione 22 (S8-8): i giorni del periodo in cui nessuno della coppia è in vigore — chi esce senza un
+        // successore. Non si spalmano su chi c'era (pagherebbe giorni in cui non era titolare): chi chiama li
+        // manda all'anello successivo della cascata su quei giorni, o li registra come scoperto.
+        $scoperto = $this->titolari->giorniScoperti($righeCoppia, $this->periodo);
+        $giorniScoperti = $scoperto?->giorni() ?? 0;
+        // Tutti a zero giorni: i titolari passano il filtro del periodo ma nessuno copre un giorno dei
+        // tratti (unità posseduta solo nel buco fra due tratti di riscaldamento). Non si ripiega sulle
+        // quote — sarebbe chiedere una spesa a chi non l'ha maturata — e si torna con la somma a zero:
+        // chi chiama la registra come scoperto, con il suo motivo.
+        $this->registraCambiamento([
+            'immobile_id' => $immobileId,
+            'tipologia'   => $tipologia,
+            'conto_id'    => $contoId,
+            'motivo'      => 'pro_rata_giorni',
+            'gradino'     => $this->gradinoCorrente,
+            'periodo'     => $this->periodo->toArray(),
+            'giorni_periodo'  => $this->periodo->giorni(),
+            'giorni_scoperti' => $giorniScoperti,
+            'righe'       => array_map(fn ($id) => ['riga_id' => $id, 'giorni' => $giorni[$id]], array_keys($pesi)),
+        ]);
+
+        return ['pesi' => $pesi, 'giorni' => $giorni, 'tratti' => $tratti, 'somma' => $somma, 'giorni_scoperti' => $giorniScoperti, 'scoperto' => $scoperto, 'giorni_periodo' => $this->periodo->giorni()];
+    }
+
+    /**
+     * Decisione 22 (S8-8): a chi vanno i giorni in cui nessun titolare del ruolo risolto è in vigore. Agli anelli
+     * successivi della cascata, **valutati su quei giorni** (inquilino → usufruttuario → proprietario → nudo;
+     * proprietario → nudo e viceversa: sono lo stesso soggetto economico con l'usufrutto staccato o attaccato,
+     * e dopo una costituzione o un'estinzione la persona continua sull'anello gemello — verifica S8-bis, L2-1).
+     * La cascata **avanza sul residuo** (L2-3): ciò che il primo anello non copre passa al successivo, e solo
+     * ciò che nessun anello copre resta **scoperto** (`giorni_senza_titolare`) — chi esce senza nessun successore
+     * lascia giorni di nessuno, e la generazione si ferma con il suo motivo: non si tira a indovinare chi paga.
+     *
+     * I pesi delle righe sono normalizzati **per anello sui giorni che l'anello copre** (quota × giorni / somma
+     * dell'anello × giorni coperti): fra anelli la spesa si divide per giorni, non per quote, e con un anello solo
+     * i rapporti sono quelli di prima. `somma` è il totale dei giorni coperti.
+     *
+     * @param Collection<int, object> $righeUnita tutte le righe della pivot dell'unità (`attivo`, `tipologia`, `quota`, `data_inizio`, `data_fine`, `id`, `anagrafica_id`)
+     * @return array{ruolo: ?string, righe: list<array{riga: object, anagrafica_id: int, ruolo: string, giorni: int, peso: float, tratto: ?PeriodoCompetenza}>, somma: float, residuo_giorni: int}
+     */
+    private function ripiegoGiorniScoperti(Collection $righeUnita, string $ruoloRisolto, InsiemePeriodi $scoperto): array
+    {
+        $residuo = $scoperto;
+        $righe = [];
+        $somma = 0.0;
+        $primo = null;
+        foreach (RuoloAnagraficaImmobile::catenaRipiego($ruoloRisolto) as $ruolo) {
+            $righeCoppia = $righeUnita->filter(fn ($r) => ($r->tipologia ?? null) === $ruolo->value && (bool) ($r->attivo ?? false))->values();
+            $anello = [];
+            $sommaAnello = 0.0;
+            foreach ($righeCoppia as $riga) {
+                if ((float) ($riga->quota ?? 0) <= 0.0) {
+                    continue;
+                }
+                $g = $this->titolari->giorniDiTitolarita($riga, $residuo, $righeCoppia);
+                if ($g <= 0) {
+                    continue;
+                }
+                $anello[] = ['riga' => $riga, 'anagrafica_id' => (int) $riga->anagrafica_id, 'ruolo' => $ruolo->value, 'giorni' => $g, 'peso' => (float) $riga->quota * $g, 'tratto' => $this->titolari->trattoEffettivo($riga, $residuo, $righeCoppia)];
+                $sommaAnello += (float) $riga->quota * $g;
+            }
+            if ($anello === []) {
+                continue;
+            }
+            $primo ??= $ruolo->value;
+            $dopo = $this->titolari->giorniScoperti($righeCoppia, $residuo);
+            $copertiAnello = $residuo->giorni() - ($dopo?->giorni() ?? 0);
+            foreach ($anello as $r) {
+                $r['peso'] = $sommaAnello > 0 ? $r['peso'] / $sommaAnello * $copertiAnello : 0.0;
+                $righe[] = $r;
+            }
+            $somma += $copertiAnello;
+            if ($dopo === null) {
+                $residuo = null;
+                break;
+            }
+            $residuo = $dopo;
+        }
+
+        return ['ruolo' => $primo, 'righe' => $righe, 'somma' => $somma, 'residuo_giorni' => $residuo?->giorni() ?? 0];
+    }
+
+    /** Annota nel cancello (2) dove sono andati i giorni scoperti della coppia (decisione 22). */
+    private function annotaRipiego(int $immobileId, string $tipologia, ?int $contoId, array $ripiego): void
+    {
+        $chiave = implode('|', [$immobileId, $tipologia, $contoId ?? '', 'pro_rata_giorni']);
+        if (! isset($this->destinatariCambiati[$chiave])) {
+            return;
+        }
+        $this->destinatariCambiati[$chiave]['ripiego'] = [
+            'ruolo'  => $ripiego['ruolo'],
+            'righe'  => array_map(fn ($r) => ['riga_id' => (int) $r['riga']->id, 'giorni' => $r['giorni'], 'ruolo' => $r['ruolo']], $ripiego['righe']),
+            'giorni_residui' => $ripiego['residuo_giorni'],
+        ];
+    }
+
+    /**
+     * Il congelato temporale da scrivere sulla riga del dettaglio (decisione 15); vuoto se il calcolo è atemporale.
+     * Con il tratto (migrazione 11) la riga dice anche **quali** giorni copre, non solo quanti.
+     */
+    private function congelatoTemporale(?int $giorni, ?PeriodoCompetenza $tratto = null): array
+    {
+        if ($this->periodo === null) {
+            return [];
+        }
+
+        return [
+            'competenza_dal'     => $this->periodo->dal()->toDateString(),
+            'competenza_al'      => $this->periodo->al()->toDateString(),
+            'gradino_competenza' => $this->gradinoCorrente,
+            'giorni_titolarita'  => $giorni,
+            'titolarita_dal'     => $tratto?->dal->toDateString(),
+            'titolarita_al'      => $tratto?->al->toDateString(),
+        ];
+    }
+
+    /** Registra un titolare che il periodo ha escluso e che il calcolo atemporale avrebbe pagato (cancello 2). */
+    private function registraEsclusiDalPeriodo(Collection $attiviSenzaPeriodo, Collection $attiviNelPeriodo, int $immobileId, string $tipologia, ?int $contoId): void
+    {
+        if ($this->periodo === null) {
+            return;
+        }
+        $esclusi = $attiviSenzaPeriodo->pluck('id')->diff($attiviNelPeriodo->pluck('id'))->values();
+        if ($esclusi->isEmpty()) {
+            return;
+        }
+        $this->registraCambiamento([
+            'immobile_id' => $immobileId,
+            'tipologia'   => $tipologia,
+            'conto_id'    => $contoId,
+            'motivo'      => 'fuori_periodo',
+            'gradino'     => $this->gradinoCorrente,
+            'periodo'     => $this->periodo->toArray(),
+            'anagrafiche_escluse' => $esclusi->all(),
+        ]);
+    }
+
+    /**
+     * Gli esclusi dal periodo misurati sulla **cascata** (`distribuisciSuTabelle`): la stessa cascata dei
+     * ruoli, rifatta senza periodo, dice chi il calcolo atemporale avrebbe pagato; la differenza con chi
+     * il periodo ha lasciato è ciò che il cancello (2) deve mostrare. Registra sul ruolo risolto (o su
+     * quello atemporale, se il periodo ha esaurito la cascata).
+     *
+     * @param Collection<int, \App\Models\Anagrafica> $nelPeriodo i destinatari trovati con il periodo (può essere vuota)
+     */
+    private function registraEsclusiDopoCascata(\App\Models\Immobile $immobile, string $ruoloRichiesto, string $ruoloRisolto, Collection $nelPeriodo, int $contoId): void
+    {
+        if ($this->periodo === null) {
+            return;
+        }
+        $senzaPeriodo = collect();
+        $ruoloAtemporale = $ruoloRichiesto;
+        $candidati = [$ruoloRichiesto, ...array_map(fn ($r) => $r->value, RuoloAnagraficaImmobile::catenaRipiego($ruoloRichiesto))];
+        foreach ($candidati as $ruolo) {
+            $senzaPeriodo = $this->titolari->attiviAlla($immobile->anagrafiche)
+                ->where('pivot.tipologia', $ruolo)
+                ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
+            if ($senzaPeriodo->isNotEmpty()) {
+                $ruoloAtemporale = $ruolo;
+                break;
+            }
+        }
+        // Stesso ruolo: la differenza sono i singoli esclusi. Ruolo diverso: il periodo ha spostato la
+        // spesa a un altro anello della catena — tutti quelli dell'anello atemporale sono «fuori periodo».
+        $tipologia = $nelPeriodo->isEmpty() ? $ruoloAtemporale : $ruoloRisolto;
+        $confronto = $ruoloAtemporale === $ruoloRisolto && $nelPeriodo->isNotEmpty() ? $nelPeriodo : collect();
+        $this->registraEsclusiDalPeriodo($senzaPeriodo, $confronto, (int) $immobile->id, $tipologia, $contoId);
+    }
+
+    /**
+     * Una voce sola per (unità, ruolo, conto, motivo): `distribuisciSuTabelle` passa per ogni tabella e
+     * per ogni ripartizione dello stesso conto, e senza questa chiave il pannello del cancello (2)
+     * mostrava la stessa coppia due volte e `coppie` la contava due volte (verifica S4).
+     */
+    private function registraCambiamento(array $voce): void
+    {
+        $chiave = implode('|', [$voce['immobile_id'], $voce['tipologia'], $voce['conto_id'] ?? '', $voce['motivo']]);
+        $this->destinatariCambiati[$chiave] = $voce;
+    }
+
+    /**
+     * Dove la risoluzione temporale ha cambiato destinatari o pesi rispetto a quella atemporale.
+     * Vuoto sia con il calcolo atemporale sia quando nessun titolare cambia nel periodo: è la
+     * condizione del cancello (2) della decisione 14.
+     *
+     * `competenza_non_risolta` è vero solo in sola lettura, quando una parte del calcolo è andata
+     * atemporale perché la competenza non era risolvibile (straordinario senza delibera, decisione 12).
+     *
+     * @return array{temporale: bool, destinatari_cambiati: list<array<string,mixed>>, competenza_non_risolta: bool}
+     */
+    public function getRisoluzioneTemporale(): array
+    {
+        return [
+            // Una base non risolta (straordinario senza delibera) conta come temporale solo se almeno una
+            // fattura ha portato la sua competenza dichiarata.
+            'temporale'            => $this->competenzaBase !== null
+                && (! $this->competenzaBase->richiedeDelibera || $this->competenzaRisoltaPerFattura),
+            'destinatari_cambiati' => array_values($this->destinatariCambiati),
+            'competenza_non_risolta' => $this->competenzaNonRisolta,
+        ];
     }
 
     /**
@@ -781,6 +1214,10 @@ class CalcoloQuoteService
             DB::table('anagrafica_immobile')->where('immobile_id', $immobileId),
             $this->periodo
         )->get();
+        // Tutte le righe attive dell'unità, anche fuori periodo: servono a D7 (il predecessore) e a D8.
+        $occupantiSenzaPeriodo = $this->periodo === null
+            ? $occupanti
+            : $this->titolari->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobileId))->get();
 
         // Il ripiego di prima era **piatto**: non trovando un proprietario prendeva qualunque
         // occupante attivo, quindi anche l'inquilino — che verso il condominio non è debitore.
@@ -822,27 +1259,40 @@ class CalcoloQuoteService
             return;
         }
 
-        // Stessa primitiva del riparto dei saldi: resti maggiori, somma esatta. Prima qui
-        // l'arrotondamento lo assorbiva «l'ultimo», cioè chi capitava ultimo nell'ordine di
-        // ritorno del database — una regola che non si sa spiegare a chi la paga.
-        $quote = MoneyHelper::ripartisciPerQuote(
-            $importoCents,
-            $destinatari->pluck('quota', 'anagrafica_id')->map(fn ($q): float => (float) $q)->all()
+        // B2: chi il periodo ha escluso, e i pesi per giorni se qualcuno della coppia cambia (D7, D8).
+        // Gli esclusi si misurano sulla cascata: chi la stessa cascata avrebbe scelto SENZA periodo e
+        // qui non c'è più — non solo sul ruolo risolto nel periodo, altrimenti il proprietario uscito
+        // prima del periodo con il solo usufruttuario in corso non viene registrato (verifica S4).
+        $ruoloDestinatari = (string) $destinatari->first()->tipologia;
+        $righeCoppia = $occupantiSenzaPeriodo->where('tipologia', $ruoloDestinatari)->values();
+        $destinatariSenzaPeriodo = collect();
+        foreach (RuoloAnagraficaImmobile::titolariDiDirittoReale() as $ruolo) {
+            $destinatariSenzaPeriodo = $occupantiSenzaPeriodo->where('tipologia', $ruolo->value)->values();
+            if ($destinatariSenzaPeriodo->isNotEmpty()) {
+                break;
+            }
+        }
+        $this->registraEsclusiDalPeriodo(
+            $destinatariSenzaPeriodo->map(fn ($r) => (object) ['id' => (int) $r->anagrafica_id]),
+            $destinatari->map(fn ($r) => (object) ['id' => (int) $r->anagrafica_id]),
+            $immobileId, $ruoloDestinatari, $contoId,
         );
+        $perGiorni = $this->pesiPerGiorni($righeCoppia, $destinatari, $immobileId, $ruoloDestinatari, $contoId);
+        // Tutti a zero giorni sui tratti (l'unico titolare del ruolo sta nel buco fra due tratti): il vuoto è l'intero
+        // periodo e passa per il ripiego della decisione 22 come ogni altro vuoto (S8-bis, L2-4); scoperto
+        // «titolari_fuori_competenza» solo se neanche la cascata copre nulla.
 
         // Il conto e la sua radice dipendono dalla riga, non dal destinatario: si risolvono una volta.
         $conto  = $contoId ? Conto::find($contoId) : null;
         $radice = $conto ? $this->radiceDi($conto) : null;
-
-        foreach ($destinatari as $destinatario) {
-            $quotaDaPagare = $quote[$destinatario->anagrafica_id] ?? 0;
-
-            if ($quotaDaPagare === 0) continue;
-
-            if (!isset($totali[$destinatario->anagrafica_id])) $totali[$destinatario->anagrafica_id] = [];
-            if (!isset($totali[$destinatario->anagrafica_id][$immobileId])) $totali[$destinatario->anagrafica_id][$immobileId] = 0;
-
-            $totali[$destinatario->anagrafica_id][$immobileId] += $quotaDaPagare;
+        $scrivi = function (object $destinatario, int $quotaDaPagare, array $congelato) use (&$totali, $immobileId, $conto, $radice, $rigaFatturaId, $descrizione): void {
+            if ($quotaDaPagare === 0) {
+                return;
+            }
+            $aid = (int) $destinatario->anagrafica_id;
+            if (!isset($totali[$aid])) $totali[$aid] = [];
+            if (!isset($totali[$aid][$immobileId])) $totali[$aid][$immobileId] = 0;
+            $totali[$aid][$immobileId] += $quotaDaPagare;
 
             // Registro degli addebiti diretti: questa spesa è di una sola unità e non passa da nessuna
             // tabella millesimale. La stampa la escludeva del tutto (documento vuoto quando la
@@ -851,12 +1301,12 @@ class CalcoloQuoteService
             // ripartita su tutti. Vive in una colonna sua, fuori dalle tabelle.
             $this->addebitiDiretti[] = [
                 'immobile_id'   => $immobileId,
-                'anagrafica_id' => (int) $destinatario->anagrafica_id,
+                'anagrafica_id' => $aid,
                 'importo'       => $quotaDaPagare,
             ];
 
             $this->righeDettaglio[] = $this->rigaDettaglio('ad_personam', [
-                'anagrafica_id'     => (int) $destinatario->anagrafica_id,
+                'anagrafica_id'     => $aid,
                 'immobile_id'       => $immobileId,
                 'conto_id'          => $conto?->id,
                 'conto_nome'        => $conto?->nome,
@@ -867,7 +1317,71 @@ class CalcoloQuoteService
                 'riga_fattura_id'   => $rigaFatturaId,
                 'riga_descrizione'  => $descrizione,
                 'importo'           => $quotaDaPagare,
-            ]);
+            ] + $congelato);
+        };
+
+        if ($perGiorni === null) {
+            // Atemporale (beta.30, letterale): pesi per persona, sommati se la stessa persona ha due periodi
+            // sull'unità; una riga del dettaglio per persona. Stessa primitiva del riparto dei saldi: resti
+            // maggiori, somma esatta — prima l'arrotondamento lo assorbiva «l'ultimo», cioè chi capitava ultimo
+            // nell'ordine di ritorno del database, una regola che non si sa spiegare a chi la paga.
+            $pesi = [];
+            foreach ($destinatari as $d) {
+                $pesi[(int) $d->anagrafica_id] = ($pesi[(int) $d->anagrafica_id] ?? 0.0) + (float) $d->quota;
+            }
+            $quote = MoneyHelper::ripartisciPerQuote($importoCents, $pesi);
+            foreach ($destinatari->unique('anagrafica_id')->values() as $destinatario) {
+                $scrivi($destinatario, (int) ($quote[(int) $destinatario->anagrafica_id] ?? 0), $this->congelatoTemporale(null));
+            }
+
+            return;
+        }
+
+        // Temporale: **una riga del dettaglio per riga della pivot** (migrazione 11: ogni riga porta il suo tratto —
+        // la stessa persona con due periodi sull'unità ha due tratti, non una somma di giorni). Decisione 22: i
+        // giorni senza nessuno del ruolo vanno agli anelli successivi su quei giorni; il resto è scoperto.
+        $pesiRiga = [];
+        foreach ($destinatari as $d) {
+            $pesiRiga[(int) $d->id] = $perGiorni['pesi'][(int) $d->id] ?? 0.0;
+        }
+        $importoCoperto = $importoCents;
+        $quoteRipiego = [];
+        $righeRipiego = [];
+        if ($perGiorni['giorni_scoperti'] > 0) {
+            $importoScoperto = (int) round($importoCents * $perGiorni['giorni_scoperti'] / $perGiorni['giorni_periodo']);
+            $importoCoperto = $importoCents - $importoScoperto;
+            $ripiego = $this->ripiegoGiorniScoperti($occupantiSenzaPeriodo, $ruoloDestinatari, $perGiorni['scoperto']);
+            $importoResiduo = (int) round($importoCents * $ripiego['residuo_giorni'] / $perGiorni['giorni_periodo']);
+            if ($ripiego['righe'] !== []) {
+                $pesiRipiego = [];
+                foreach ($ripiego['righe'] as $r) {
+                    $pesiRipiego[(int) $r['riga']->id] = ($pesiRipiego[(int) $r['riga']->id] ?? 0.0) + $r['peso'];
+                    $righeRipiego[(int) $r['riga']->id] = $r;
+                }
+                $quoteRipiego = MoneyHelper::ripartisciPerQuote($importoScoperto - $importoResiduo, $pesiRipiego);
+            }
+            if ($importoResiduo !== 0) {
+                $this->scopertiAccumulati[] = [
+                    'immobile_id'     => $immobileId,
+                    'conto_id'        => $contoId,
+                    'tabella_id'      => null,
+                    'ruolo_richiesto' => $ruoloDestinatari,
+                    'importo'         => abs($importoResiduo),
+                    'motivo'          => $perGiorni['somma'] <= 0.0 && $ripiego['righe'] === [] ? 'titolari_fuori_competenza' : 'giorni_senza_titolare',
+                    'giorni'          => $ripiego['residuo_giorni'],
+                    'riga_descrizione' => $descrizione,
+                ];
+            }
+            $this->annotaRipiego($immobileId, $ruoloDestinatari, $contoId, $ripiego);
+        }
+
+        $quote = MoneyHelper::ripartisciPerQuote($importoCoperto, $pesiRiga);
+        foreach ($destinatari as $d) {
+            $rid = (int) $d->id;
+            $scrivi($d, (int) ($quote[$rid] ?? 0), $this->congelatoTemporale($perGiorni['giorni'][$rid] ?? 0, $perGiorni['tratti'][$rid] ?? null));
+        }
+        foreach ($righeRipiego as $rid => $r) {
+            $scrivi($r['riga'], (int) ($quoteRipiego[$rid] ?? 0), $this->congelatoTemporale($r['giorni'], $r['tratto']));
         }
     }
 
@@ -1000,6 +1514,9 @@ class CalcoloQuoteService
      */
     private function distribuisciSuTabelle(Conto $conto, int $importoConto, array &$totali): void
     {
+        // B2: la competenza del capitolo (tratti dichiarati → gestione → esercizio), o niente se atemporale.
+        $this->impostaCompetenzaPerConto($conto);
+
         $weights      = [];
         $pesiScoperti = [];
         /** @var array<string,list<array<string,mixed>>> i componenti di ogni chiave «aid|iid», per il dettaglio */
@@ -1256,6 +1773,13 @@ class CalcoloQuoteService
                         }
                     }
 
+                    // B2, cancello (2): chi il periodo ha escluso si registra DOPO la cascata, sul ruolo che il
+                    // periodo ha risolto, confrontandolo con chi la stessa cascata avrebbe trovato senza periodo.
+                    // Registrarlo prima, sul ruolo richiesto, taceva il caso comune: spesa «inquilino» senza
+                    // inquilino, cascata sul proprietario, e il proprietario uscito prima del periodo sparisce
+                    // dai destinatari senza che nessuno lo dica (verifica indipendente S4, 19/09).
+                    $this->registraEsclusiDopoCascata($immobile, (string) $rip->soggetto, $ruoloRisolto, $anagrafiche, (int) $conto->id);
+
                     // Tracciamento e bucket dello scoperto se cascata esaurita
                     if ($anagrafiche->isEmpty()) {
                         $pesiScoperti[] = [
@@ -1277,11 +1801,80 @@ class CalcoloQuoteService
                     $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
                     if ($sommaQuote <= 0.0) $sommaQuote = 1.0;
 
+                    /*
+                     * B2 — il tempo entra nei pesi (D8). Se nel periodo del capitolo qualcuno di questa
+                     * coppia (immobile, ruolo risolto) entra o esce, il peso di ogni titolare è
+                     * `quota × giorni` normalizzato sulla somma della coppia. Se **nessuno cambia**,
+                     * `$perGiorni` è nullo e l'espressione eseguita è **letteralmente** quella della
+                     * beta.30, `quota / somma_quote`: è la garanzia d'identità in virgola mobile che
+                     * l'invariante 1 pretende, e per questo è un `if` e non una formula unica con
+                     * i giorni a 1.
+                     */
+                    $perGiorni = $this->pesiPerGiorni(
+                        $this->titolari->attiviAlla($immobile->anagrafiche)->where('pivot.tipologia', $ruoloRisolto)->map(fn ($a) => $a->pivot)->values(),
+                        $anagrafiche->map(fn ($a) => $a->pivot)->values(),
+                        (int) $immobile->id, $ruoloRisolto, (int) $conto->id,
+                    );
+                    // Tutti a zero giorni sui tratti: il vuoto è l'intero periodo e passa per il ripiego qui sotto (L2-4).
+                    // Decisione 22: la fetta dei giorni in cui nessuno della coppia è in vigore va all'anello successivo
+                    // della cascata su quei giorni; ciò che neanche la cascata copre è scoperto, con il suo motivo.
+                    $weightCoperto = $weightRip;
+                    if ($perGiorni !== null && $perGiorni['giorni_scoperti'] > 0) {
+                        $weightScoperto = $weightRip * $perGiorni['giorni_scoperti'] / $perGiorni['giorni_periodo'];
+                        $weightCoperto = $weightRip - $weightScoperto;
+                        $ripiego = $this->ripiegoGiorniScoperti(
+                            $immobile->anagrafiche->map(fn ($a) => $a->pivot)->values(),
+                            $ruoloRisolto, $perGiorni['scoperto'],
+                        );
+                        $weightResiduo = $weightRip * $ripiego['residuo_giorni'] / $perGiorni['giorni_periodo'];
+                        $weightRipiego = $weightScoperto - $weightResiduo;
+                        foreach ($ripiego['righe'] as $r) {
+                            $w = $weightRipiego * $r['peso'] / $ripiego['somma'];
+                            if ($w <= 0.0) continue;
+                            $key = $r['anagrafica_id'] . '|' . $immobile->id;
+                            $weights[$key] = ($weights[$key] ?? 0.0) + $w;
+                            $componenti[$key][] = [
+                                'tabella_id'       => (int) $tabella->id,
+                                'tabella_nome'     => $tabella->nome,
+                                'tabella_quota'    => self::etichettaQuota($tabella),
+                                'coefficiente'     => $coeff,
+                                'valore_millesimo' => $valore,
+                                'somma_valori'     => $sommaValori,
+                                'ruolo_richiesto'  => (string) $rip->soggetto,
+                                'ruolo_risolto'    => $r['ruolo'],
+                                'quota_possesso'   => (float) $r['riga']->quota,
+                                'peso'             => $w,
+                            ] + $this->congelatoTemporale($r['giorni'], $r['tratto']);
+                        }
+                        if ($weightResiduo > 0.0) {
+                            $pesiScoperti[] = [
+                                'immobile_id'     => $immobile->id,
+                                'tabella_id'      => $tabella->id,
+                                'ruolo_richiesto' => $rip->soggetto,
+                                'peso'            => $weightResiduo,
+                                // Nessun titolare del ruolo copre un giorno dei tratti e neanche la cascata: era il motivo di S4.
+                                'motivo'          => $perGiorni['somma'] <= 0.0 && $ripiego['righe'] === [] ? 'titolari_fuori_competenza' : 'giorni_senza_titolare',
+                                'giorni'          => $ripiego['residuo_giorni'],
+                            ];
+                        }
+                        $this->annotaRipiego((int) $immobile->id, $ruoloRisolto, (int) $conto->id, $ripiego);
+                    }
+
                     foreach ($anagrafiche as $anag) {
                         $quotaAnag = (float) $anag->pivot->quota;
                         if ($quotaAnag <= 0.0) continue;
 
-                        $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
+                        $giorniRiga = null;
+                        $trattoRiga = null;
+                        if ($perGiorni === null) {
+                            $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
+                        } else {
+                            $rigaId = (int) $anag->pivot->id;
+                            $giorniRiga = $perGiorni['giorni'][$rigaId] ?? 0;
+                            $trattoRiga = $perGiorni['tratti'][$rigaId] ?? null;
+                            $weightAnagrafica = $perGiorni['somma'] > 0.0 ? $weightCoperto * (($perGiorni['pesi'][$rigaId] ?? 0.0) / $perGiorni['somma']) : 0.0;
+                            if ($weightAnagrafica <= 0.0) continue; // zero giorni: presente ma non paga questo tratto
+                        }
                         $key = $anag->id . '|' . $immobile->id;
                         $weights[$key] = ($weights[$key] ?? 0.0) + $weightAnagrafica;
 
@@ -1297,7 +1890,7 @@ class CalcoloQuoteService
                             'ruolo_risolto'    => $ruoloRisolto,
                             'quota_possesso'   => $quotaAnag,
                             'peso'             => $weightAnagrafica,
-                        ];
+                        ] + $this->congelatoTemporale($giorniRiga, $trattoRiga);
                     }
                 }
             }
@@ -1405,6 +1998,8 @@ class CalcoloQuoteService
                         // è il caso originale della v1.9.1, e cambiarlo qui cambierebbe
                         // il significato delle righe già in archivio.
                         'motivo'          => $ps['motivo'] ?? null,
+                        // Decisione 22: i giorni senza nessun titolare, quando è quello il motivo.
+                        'giorni'          => $ps['giorni'] ?? null,
                     ];
                 }
             }
@@ -1518,18 +2113,28 @@ class CalcoloQuoteService
         // La riga del già versato: negativa, per conto e soggetto — la terza chiave che
         // `getNettingApplicato()` (per immobile) non ha: il già versato è una riga negativa per
         // (conto, soggetto), non una colonna sulla riga di riparto (1.11.0-beta.29).
+        // Due righe quando il versato ha due nature (decisione 17): quella **della persona** (la riga di
+        // `contributi_versati` con la sua anagrafica: è un suo pagamento, in un conguaglio resta suo) e quella
+        // **dell'unità** (senza persona: abbassa la spesa dell'unità, D8). Si distinguono dalla descrizione,
+        // che è ciò che `ConguaglioPassaggio::scomponiPerConto` rilegge; i lettori che sommano le righe
+        // `netting` (stampe, invarianti) non cambiano.
         foreach ($this->ultimoNettingPerChiave as $key => $assorbitoChiave) {
             if ($assorbitoChiave <= 0) continue;
             [$aid, $iid] = array_map('intval', explode('|', $key));
-            $this->righeDettaglio[] = $this->rigaDettaglio('netting', [
-                'anagrafica_id'     => $aid,
-                'immobile_id'       => $iid,
-                'conto_id'          => $conto->id,
-                'conto_nome'        => $conto->nome,
-                'conto_radice_id'   => $radice->id,
-                'conto_radice_nome' => $radice->nome,
-                'importo'           => -$assorbitoChiave,
-            ]);
+            $persona = min($assorbitoChiave, (int) ($this->ultimoNettingPersonaPerChiave[$key] ?? 0));
+            foreach ([[$persona, self::NETTING_DELLA_PERSONA], [$assorbitoChiave - $persona, self::NETTING_DELL_UNITA]] as [$importo, $descrizione]) {
+                if ($importo <= 0) continue;
+                $this->righeDettaglio[] = $this->rigaDettaglio('netting', [
+                    'anagrafica_id'     => $aid,
+                    'immobile_id'       => $iid,
+                    'conto_id'          => $conto->id,
+                    'conto_nome'        => $conto->nome,
+                    'conto_radice_id'   => $radice->id,
+                    'conto_radice_nome' => $radice->nome,
+                    'importo'           => -$importo,
+                    'riga_descrizione'  => $descrizione,
+                ]);
+            }
         }
 
         foreach ($importiDistributi as $key => $importoCentesimi) {
@@ -1543,12 +2148,18 @@ class CalcoloQuoteService
     }
 
     /**
-     * Netting del già-versato: da ogni quota lorda sottrae la copertura che quella
-     * UNITÀ ha già versato verso questa voce di spesa.
+     * Netting del già-versato: da ogni quota lorda sottrae la copertura già versata verso questa voce
+     * di spesa.
      *
-     * La copertura è per immobile (segue l'unità, non la persona: art. 63 disp. att.
-     * c.c.), quindi se l'unità ha più comproprietari va ripartita tra loro in
-     * proporzione alle rispettive quote lorde, penny-perfect.
+     * **Per persona dove si sa chi ha versato, per unità altrove** (decisione 17 del progetto sul
+     * subentro, 1.11.0-beta.31). Fino alla beta.30 la copertura era sempre dell'unità: dopo una vendita
+     * lo sconto passava all'acquirente e il venditore che aveva anticipato i lavori restava a mani
+     * vuote. Ora una riga con `anagrafica_id` sconta **la quota di quella persona**, con il tetto del suo
+     * lordo; quel che avanza — o l'intero versato, se quella persona non è più fra i destinatari — è
+     * un'eccedenza a suo nome (`getEccedenzeCopertura()`), da restituire o conguagliare, non uno sconto
+     * a chi le è subentrato. Le righe senza `anagrafica_id` (quelle storiche, scritte per unità) si
+     * comportano come prima: ripartite fra i comproprietari in proporzione alle quote lorde,
+     * penny-perfect.
      *
      * La quota netta non scende mai sotto zero: l'eventuale eccedenza — l'unità ha
      * versato più di quanto le spetta — non viene inghiottita in silenzio ma
@@ -1561,20 +2172,23 @@ class CalcoloQuoteService
     private function nettingGiaVersato(Conto $conto, array $importiDistributi, float $fattoreCopertura = 1.0): array
     {
         $this->ultimoNettingPerChiave = [];
-        $coperture = ContributoVersato::perImmobile(Conto::class, $conto->id);
+        $this->ultimoNettingPersonaPerChiave = [];
+        $copertureDettagliate = ContributoVersato::perImmobileESoggetto(Conto::class, $conto->id);
+        // La lettura per unità (somma di tutte le righe, con e senza persona) resta la base dei log e
+        // del caso storico; la parte per persona si applica prima, qui sotto.
+        $coperture = collect($copertureDettagliate)->map(fn (array $parti) => array_sum($parti));
 
         if ($coperture->isEmpty()) {
             return $importiDistributi;
         }
 
-        // D8 (docs/fondo_accantonato_e_quadratura_sp.md): la copertura è per
-        // IMMOBILE, non per soggetto. Su un conto con ripartizione mista
-        // (proprietario/inquilino) viene sottratta dal lordo aggregato
-        // dell'unità PRIMA che questo venga spaccato fra i soggetti — un
-        // versamento del solo proprietario finisce per scontare anche
-        // l'inquilino. Non bloccante (deciso di segnalare, non correggere): la
-        // UI (ContributiEdit.vue) lo mostra già in fase di inserimento, qui
-        // resta traccia anche lato motore, al momento in cui conta davvero.
+        // D8 (docs/fondo_accantonato_e_quadratura_sp.md): la copertura SENZA persona è
+        // dell'IMMOBILE. Su un conto con ripartizione mista (proprietario/inquilino)
+        // viene sottratta dal lordo aggregato dell'unità PRIMA che questo venga spaccato
+        // fra i soggetti — un versamento «dell'unità» sconta anche l'inquilino. Dalla
+        // beta.31 (decisione 17) la riga con `anagrafica_id` sconta solo il lordo di quella
+        // persona: l'avviso qui sotto riguarda le sole righe senza persona. Non bloccante:
+        // la UI (ContributiEdit.vue, «Versato da») lo dice in fase di inserimento.
         $haRipartizioneMista = $conto->tabelleMillesimali->contains(function ($ctm) {
             $rip = $ctm->ripartizioni;
             return $rip->isNotEmpty() && !($rip->count() === 1
@@ -1611,7 +2225,9 @@ class CalcoloQuoteService
         // capitolo resta scoperta, l'importo distribuito è decurtato ma il budget del conto no:
         // il rapporto scendeva sotto 1 anche in assenza di altre tranche, e la copertura storica
         // veniva scomputata solo in parte. Vedi `GiaVersatoSottoDecurtazioneTest`.
-        $totaleNominale = (int) round(abs((int) $conto->importo) * $fattoreCopertura);
+        // B2: mai sotto il totale che il piano straordinario distribuisce su questo conto (più chiamate,
+        // una per competenza): con `conti.importo` a zero la quota resta 1 solo se la chiamata è una.
+        $totaleNominale = max((int) round(abs((int) $conto->importo) * $fattoreCopertura), $this->nominaleMinimoPerConto[$conto->id] ?? 0);
         $totaleQuestaChiamata = abs(array_sum($importiDistributi));
         $quota = ($totaleNominale > 0 && $totaleQuestaChiamata < $totaleNominale)
             ? $totaleQuestaChiamata / $totaleNominale
@@ -1641,16 +2257,65 @@ class CalcoloQuoteService
         }
 
         foreach ($righePerImmobile as $immobileId => $righe) {
-            $coperturaStorica = (int) ($coperture[$immobileId] ?? 0);
+            $parti = $copertureDettagliate[$immobileId] ?? [];
+            if (array_sum($parti) <= 0) {
+                continue;
+            }
 
+            // Su una quota negativa (nota di credito) il netting non si applica.
+            if (array_sum($righe) <= 0) {
+                continue;
+            }
+
+            // ── Decisione 17: prima la parte **di ciascuna persona**, sulla sua sola riga ──────────────
+            foreach ($parti as $chiavePersona => $versatoPersona) {
+                if ($chiavePersona === '' || $versatoPersona <= 0) {
+                    continue;
+                }
+                $aid = (int) $chiavePersona;
+                $key = "{$aid}|{$immobileId}";
+                $coperturaPersona = $quota >= 1.0 ? (int) $versatoPersona : (int) floor($versatoPersona * $quota);
+                $lordoPersona = (int) ($righe[$key] ?? 0);
+                $applicataPersona = min($coperturaPersona, max(0, $lordoPersona));
+
+                if ($applicataPersona > 0) {
+                    $righe[$key] = $lordoPersona - $applicataPersona;
+                    $importiDistributi[$key] = $righe[$key];
+                    $this->ultimoNettingPerChiave[$key] = ($this->ultimoNettingPerChiave[$key] ?? 0) + $applicataPersona;
+                    $this->ultimoNettingPersonaPerChiave[$key] = ($this->ultimoNettingPersonaPerChiave[$key] ?? 0) + $applicataPersona;
+                    $this->nettingApplicato[$conto->id][$immobileId] = ($this->nettingApplicato[$conto->id][$immobileId] ?? 0) + $applicataPersona;
+                }
+                if ($coperturaPersona > $applicataPersona) {
+                    // Ha versato più della sua quota, o non è più fra i destinatari (ha venduto prima
+                    // della delibera): il resto è suo, non di chi gli è subentrato.
+                    $this->eccedenzeCopertura[] = [
+                        'immobile_id'   => $immobileId,
+                        'anagrafica_id' => $aid,
+                        'conto_id'      => $conto->id,
+                        'versato'       => $coperturaPersona,
+                        'dovuto'        => max(0, $lordoPersona),
+                        'eccedenza'     => $coperturaPersona - $applicataPersona,
+                    ];
+                }
+            }
+
+            // ── Poi la parte **dell'unità** (righe senza persona), come prima: pro-lordo fra i comproprietari ──
+            $coperturaStorica = (int) ($parti[''] ?? 0);
             if ($coperturaStorica <= 0) {
                 continue;
             }
 
             $lordoImmobile = array_sum($righe);
-
-            // Su una quota negativa (nota di credito) il netting non si applica.
             if ($lordoImmobile <= 0) {
+                if ($quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota)) {
+                    $this->eccedenzeCopertura[] = [
+                        'immobile_id' => $immobileId,
+                        'conto_id'    => $conto->id,
+                        'versato'     => $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota),
+                        'dovuto'      => 0,
+                        'eccedenza'   => $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota),
+                    ];
+                }
                 continue;
             }
 

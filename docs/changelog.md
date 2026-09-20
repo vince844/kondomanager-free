@@ -7,6 +7,148 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.31] - Il tempo entra nel calcolo
+
+**Tocca il database: undici migrazioni**, tutte rieseguibili e tutte nel test che le rilancia a metà
+(che da questa versione fotografa anche gli indici, non solo le tabelle). Nell'ordine: (1) due colonne
+di competenza sulle fatture, `competenza_dal/al`; (2) la tabella `competenze_capitolo`, i tratti di
+competenza di una voce del piano, come la stagione di riscaldamento; (3) la tabella `subentri`, i
+passaggi di titolarità registrati; (4) i suoi dettagli — documento del titolo, scadenza e regime
+della locazione, pertinenze come righe figlie; (5) `saldi.subentro_id`, la coppia del conguaglio, con
+vincolo `restrict`; (6) un indice sui periodi della pivot unità–persona; (7) il congelato temporale su
+`righe_riparto` — `competenza_dal/al`, `gradino_competenza`, `giorni_titolarita`; (8) la caduta di
+`anagrafica_immobile.tipologie_spese`, vuota da sempre; (9) `piani_rate.esercizio_id`, con travaso
+dai piani esistenti; (10) il vincolo dei contributi già versati che passa da «per unità» a «per unità
+e persona», e su `subentri` le due colonne dell'annullamento del conguaglio; (11) su `righe_riparto` il
+**tratto** di titolarità che ogni riga copre (`titolarita_dal/al`), non solo quanti giorni — è ciò che
+permette al conguaglio di dividere ogni riga sui suoi giorni senza ipotesi. Chi aggiorna non deve fare
+nulla: i piani già generati restano identici, atemporali, e lo dicono.
+
+**Le date entrano nel riparto.** Fino a ieri le date di inizio e fine di una titolarità erano
+registrate e ignorate; da oggi il motore le legge, e la regola è doppia, agganciata alla natura della
+gestione. Sull'**ordinario** la quota di un'unità che cambia mano nel periodo si divide **in
+proporzione ai giorni** fra chi esce e chi entra, sul periodo di competenza: quello dichiarato sulla
+voce (una o più tratti — il riscaldamento di zona E va dal 1º gennaio al 15 aprile e dal 15 ottobre al
+31 dicembre), altrimenti quello della gestione se ha le date, altrimenti quello dell'esercizio.
+Sullo **straordinario** conta un giorno solo, quello della delibera dell'assemblea (art. 63 disp. att.
+c.c.; Cass. 24654/2010 e 24236/2025): chi era titolare quel giorno risponde dell'intera spesa, anche
+se poi vende. Per questo la data della delibera è **chiesta alla creazione** del piano, senza valore
+predefinito, e senza di essa il motore **si ferma e la chiede** invece di inventare un periodo; con
+un intervento d'urgenza la delibera non esiste per costruzione e la competenza si dichiara sulle
+fatture, voce per voce («Costo maturato dal… al…» o «Spesa deliberata il…»). Il dettaglio congelato
+di ogni riga porta periodo, gradino e giorni, e le stampe del riparto lo dicono in legenda e accanto
+al nome — «(245 gg)» — così il foglio che va in assemblea racconta come è stato deciso.
+
+**Se la competenza cambia i destinatari, la generazione si ferma e lo mostra.** Chi entra, chi esce,
+per quanti giorni su quanti: si prosegue con una spunta e una nota di almeno dieci caratteri, che
+restano congelate nel piano. È una presa d'atto, non un'approvazione al buio. E quando chi esce non
+ha un successore — l'inquilino che va via a giugno e l'unità resta sfitta — i giorni scoperti non si
+spalmano su chi c'era: vanno agli anelli successivi della cascata su quei giorni (il proprietario per
+i 184 giorni sfitti; se l'usufruttuario copre una parte del vuoto e il proprietario il resto, ciascuno
+la sua), e il pannello lo dice. Un proprietario che esce senza nessun successore — nemmeno come nudo
+proprietario — lascia giorni di nessuno: la parte resta **scoperta**, con il suo motivo, e la
+generazione chiede una motivazione — il programma non sceglie chi paga al posto dell'amministratore.
+
+**«Registra passaggio».** Dall'elenco dei titolari di un'unità: vendita o donazione, inizio e fine di
+una locazione, costituzione ed estinzione dell'usufrutto. Una data sola, quella dell'atto: il periodo
+di chi esce si chiude il giorno prima, quello di chi entra si apre, la storia dell'unità resta intera.
+Il pannello «Cosa cambierà» è calcolato dal server su ciò che si sta scrivendo e ha quattro blocchi:
+l'anagrafica, le rate già emesse con il conguaglio proposto, chi resta obbligato (la solidarietà
+dell'art. 63 co. 4 per l'esercizio in corso e il precedente, l'obbligo di chi vende finché il
+condominio non riceve copia autentica del titolo, co. 5), cosa non cambia (millesimi, tabelle, teste
+in assemblea, pertinenze). Se il passaggio tocca rate emesse o cambia il destinatario di un piano
+già generato, la conferma chiede spunta e nota. Le pertinenze spuntate seguono; il PDF del titolo
+finisce fra i documenti dell'unità; la copia autentica si registra anche dopo, dallo storico; la
+scadenza di una locazione può mettere un promemoria in agenda. Lo storico «Chi ha avuto questa
+unità» elenca i periodi e i passaggi registrati con il loro vademecum. Una riga con storia non si
+cancella, la persona non si sostituisce e — se la riga fa parte di un passaggio — nemmeno il ruolo si
+cambia da «Modifica»: si corregge quota, date e note; un'unità con passaggi registrati non si
+elimina.
+
+**Il conguaglio delle rate già emesse.** Le rate emesse non si toccano — sono crediti già iscritti
+verso persone nominate. Il passaggio scrive **due righe di saldo che sommano a zero**: credito a chi
+esce e debito uguale a chi entra, per la parte di quota che spetta a chi entra in proporzione ai
+giorni (sullo straordinario, tutto da un lato secondo la delibera); portano un lucchetto viola, non si
+modificano una alla volta, e il piano successivo le assorbe nella rata 0 come qualunque saldo. Il
+calcolo è quello del pannello, al centesimo: **riga per riga**, ognuna sul tratto di titolarità che
+copre davvero (la persona che ha cambiato quota nell'anno ha due righe e due tratti; chi era già uscito
+alla generazione non passa nulla; il versato della persona resta suo), voce per voce quando una voce ha
+una competenza propria, al netto del già versato spaccato come fa il motore (la parte versata dalla
+persona resta sua, quella dell'unità abbassa la spesa), e comprende le rate ancora in bozza di un piano
+che ha già emesso a giornale — quel piano non si ricalcola più, e le sue bozze resteranno intestate a
+chi esce. Regge la
+catena dei passaggi nello stesso esercizio (chi compra a maggio e rivende a settembre conguaglia le
+quote del venditore di maggio) e l'estinzione dell'usufrutto con più nudi proprietari (una coppia
+ciascuno, per quota). Se le parti hanno regolato il conguaglio fra loro si rinuncia con una nota; se
+si scopre dopo, si annulla dallo storico finché nessun piano l'ha assorbito.
+
+**Il rimborso di un credito.** Dall'estratto conto di una persona con credito disponibile — chi ha
+venduto e ha una coppia di conguaglio a suo favore, chi ha pagato più del dovuto — l'amministratore
+registra il **rimborso**: cassa, data, importo fino al credito. Nasce una scrittura `rimborso
+condomino` (protocollo `RMB`), con la contropartita che dipende dall'origine del credito, stornabile
+come gli altri movimenti; il credito disponibile si aggiorna e si vede anche in stampa; nel widget
+«Crediti da compensare» ogni riga ha la seconda uscita «Estratto conto · rimborsa». Per la stessa
+pagina un difetto che c'era dalla 1.9.1: l'elenco dei movimenti confrontava il tipo di movimento con
+una stringa mentre era un'enumerazione, e rettifiche e storni non venivano riconosciuti come tali.
+
+**I contributi già versati seguono la persona.** Un versamento registrato con la persona sconta solo
+la sua quota; senza persona resta dell'unità. Con un passaggio dopo la generazione il versato di chi
+è uscito non scontava più lui ma chi era entrato.
+
+**Cambia anche in questi punti.** La data di inizio di una titolarità conta come decorrenza solo se
+ha un predecessore — la riga della stessa coppia chiusa il giorno prima, o il fatto di essere entrata
+con un passaggio registrato — altrimenti è la data del censimento e la riga è «aperta da sempre»: un
+comproprietario censito a giugno accanto a una vendita di febbraio fra altri due conta l'anno intero.
+«Oggi» è quello dell'utente, non del server (alle 23:30 chi entra da domani non è ancora titolare).
+Una rata emessa non si riporta in bozza se un passaggio registrato dopo l'emissione l'ha già
+conguagliata, al grano dell'esercizio del piano. Cambiare la data della delibera su uno
+straordinario già generato è ammesso, ma avvisa di ricalcolare, e l'emissione con le quote calcolate
+sulla data vecchia è rifiutata. Con «Urgenza» l'approvazione del piano non chiede una delibera che
+non esiste. Il calcolo del «deficit di cassa ereditato» non conta la coppia del conguaglio come
+provvista. Due comandi di diagnosi: `kondomanager:verifica-delibere` (i piani straordinari senza
+data, le fatture senza competenza) e `verifica-titolarita`, che non chiama «200» un passaggio con
+decorrenza futura. «Gestisci sforo» dalla dashboard apre il piano con la voce sforata **già
+selezionata** e l'importo dello sforo come importo da richiedere: prima arrivava solo la gestione,
+la voce andava ritrovata nel menu fra quelle esaurite, e l'avviso in testa parlava di «fatture nel
+carrello» — un carrello che sull'ordinario non esiste. La scheda «Competenza delle voci», quando il
+piano include tutto, elenca solo i capitoli con ancora qualcosa da finanziare (loro o una loro voce), e
+con più di sei voci si cerca per nome. Sull'integrativa la stessa scheda **ripropone la competenza già
+dichiarata** sulla voce nel piano madre («come nel piano …»), invece del periodo della gestione: prima il
+riscaldamento dichiarato sulla stagione tornava sull'anno intero nel piano dei 300 euro di sforo, e i
+giorni di chi vende e chi compra cambiavano fra i due piani senza che nessuno lo dicesse. Registrando
+una fattura, sotto la voce si legge la competenza che quella voce ha nel piano, con la regola: il
+riparto ordinario segue quei giorni, non la competenza dichiarata sulla fattura (decisione 19). La
+catena intera — fattura sulla voce con la stagione → sforo → integrativa → riparto — è nei test:
+100.000 divisi 105/78 giorni sul piano madre, 30.000 divisi 17.213/12.787 sull'integrativa, stessa
+stagione, piano madre intatto. E una riga di fattura ancora a zero non è più «sforo budget» su un
+capitolo già oltre il preventivo (il residuo negativo faceva dire «0 supera −282»): il semaforo si
+accende quando c'è un importo; la regola è una sola, `sforaBudget`, nota di credito mai, zero mai,
+poi lordo contro residuo. **Le pregresse**: la parte coperta dai saldi iniziali resta di chi aveva
+quel saldo (il passaggio non divide i saldi pregressi); l'eccedenza va a straordinario e la
+ripartisce la competenza dichiarata sulla fattura — il pannello ora lo chiede esplicitamente sulla
+pregressa, perché senza quella data decide la delibera di quest'anno, e dopo un passaggio pagherebbe
+chi è entrato per un costo di quando l'unità era di chi è uscito (provato nel motore: con «costo
+maturato 2025» tutto al venditore, senza → all'acquirente).
+
+**Cosa non fa, e lo dichiara.** La **successione** non è un tipo di passaggio: si registra come
+vendita con estremi «successione di…», e il vademecum parla di venditore; il tipo proprio, con gli
+eredi in comunione e i minorenni fuori dal bilancio, è la prossima versione. La **vendita con riserva
+d'usufrutto** (chi vende resta usufruttuario) non ha una sua via: il modulo la rifiuta e dice come
+registrarla a mano. Le rate in bozza di un piano già emesso a giornale restano a chi esce e si
+conguagliano, non passano a chi entra. I giorni «di nessuno» si misurano dove nessun titolare del
+ruolo è in vigore, non dove le quote sommano meno di cento. Gli storni gonfiano i totali «addebiti»
+e «versato» dell'estratto conto, da sempre.
+
+**Documentazione.** Il progetto sul subentro ha quattordici decisioni nuove (11–24) e la regola
+dell'apertura ereditata riscritta; le guide in-app «Registra passaggio», «Piano rate», «Dettaglio del
+piano» e «Saldi» hanno le schede sul pro rata, sul cancello e sulla coppia; i testi che dicevano «le
+date non entrano nel calcolo» sono stati riscritti. Cinque verifiche indipendenti (motore,
+registrazione, competenze e rimborso, revisione avversariale finale con 36 rilievi, e una seconda sulle
+sue correzioni con 23) stanno nei documenti interni con le loro correzioni; `kondomanager:verifica-
+titolarita` segnala anche la chiusura e apertura lo stesso giorno scritte a mano prima di questa versione.
+
+---
+
 ## [1.11.0-beta.30] - Chi Paga, Deciso In Un Posto Solo
 
 **Non tocca il database: nessuna migrazione.** Due cose nei dati cambiano però forma, entrambe in

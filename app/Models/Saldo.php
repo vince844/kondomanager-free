@@ -27,6 +27,7 @@ class Saldo extends Model
         'immobile_id',    // L'unità immobiliare specifica
         'gestione_id',    // La gestione a cui appartiene il debito/credito (Novità v1.9)
         'piano_rate_id',  // Il piano rate che ha assorbito questo saldo (chi ha chiuso il lucchetto)
+        'subentro_id',    // Il passaggio di titolarità che ha generato la riga di conguaglio (B2, D9); nullo per i saldi ordinari
         // Positivo = DEBITO del condòmino, negativo = CREDITO. È la convenzione di tutto il
         // progetto — vedi `docs/architettura_saldi_iniziali.md`. Il commento diceva il
         // contrario, e stava proprio sulla riga che chiunque legge per capire il segno.
@@ -50,6 +51,16 @@ class Saldo extends Model
     ];
 
     // --- RELAZIONI ---
+
+    /**
+     * Il passaggio di titolarità da cui nasce questa riga di conguaglio (B2, 1.11.0-beta.31). Le due
+     * righe della coppia — credito all'uscente, debito all'entrante — portano lo stesso `subentro_id`
+     * e sommano zero: `SaldoInizialeController` non ne tocca una sola (invariante 19).
+     */
+    public function subentro()
+    {
+        return $this->belongsTo(\App\Models\Gestionale\Subentro::class, 'subentro_id');
+    }
 
     /**
      * Ottiene la gestione associata a questo specifico saldo.

@@ -120,6 +120,8 @@ enum TipoMovimentoContabile: string
             self::PAGAMENTO_FORNITORE,
             self::PAGAMENTO_F24,
             self::REGOLAZIONE_IMMEDIATA,
+            // Dalla 1.11.0-beta.31 (B2, S6) è una scrittura vera: denaro che esce per un credito rimborsato.
+            self::RIMBORSO_CONDOMINO,
         ]);
     }
 

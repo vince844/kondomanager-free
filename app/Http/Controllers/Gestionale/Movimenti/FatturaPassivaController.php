@@ -728,9 +728,12 @@ class FatturaPassivaController extends Controller
             // ed è quello che il resto del codice usa già — `GenerateSaldiAction:28` e
             // `SaldoEsercizioService`. Qui e nella query gemella dei debiti fornitori era
             // l'unico posto rimasto a orientarsi su `anagrafica_id`.
+            // B2 (S5): la coppia di conguaglio di un passaggio somma zero — il debito di chi entra
+            // qui gonfierebbe la provvista senza che esista denaro nuovo. Fuori.
             $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $esercizio->id)
                 ->whereNull('fornitore_id')
+                ->whereNull('subentro_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 
@@ -878,8 +881,15 @@ class FatturaPassivaController extends Controller
         $conti = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
             ->with('parent')
             ->whereDoesntHave('sottoconti')
-            ->get()
-            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto) {
+            ->get();
+        // La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella,
+        // non la competenza dichiarata sulla fattura (decisione 19), e la riga lo dice dove si sceglie la voce.
+        $competenzePiano = app(\App\Services\Riparto\CompetenzaDichiarataPerVoce::class)->perConti(
+            $conti->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $conti->mapWithKeys(fn ($c) => [(int) $c->id => $c->parent_id !== null ? (int) $c->parent_id : null])->all(),
+        );
+        $conti = $conti
+            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto, $competenzePiano) {
                 $budgetApprovato = $conto->importo ?? 0;
                 $spesaAttuale = $spesePerConto->get($conto->id, 0);
                 $residuo = $budgetApprovato - $spesaAttuale;
@@ -907,6 +917,7 @@ class FatturaPassivaController extends Controller
                     'is_capiente' => $residuo >= 0,
                     'ultimi_movimenti' => $storicoRecente,
                     'gia_versato_cents' => (int) ($giaVersatoPerConto->get($conto->id) ?? 0),
+                    'competenza_piano' => $competenzePiano[(int) $conto->id] ?? null,
                 ];
             })
             ->sortBy('_sort_key')

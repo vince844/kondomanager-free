@@ -51,7 +51,7 @@ export function partenzaEreditata(dataPrimaScadenza: string | null | undefined):
 }
 
 /** La data in forma `YYYY-MM-DD`, o `null` se non è una data utilizzabile. */
-function soloData(valore: string | null | undefined): string | null {
+export function soloData(valore: string | null | undefined): string | null {
     if (valore === null || valore === undefined) {
         return null;
     }

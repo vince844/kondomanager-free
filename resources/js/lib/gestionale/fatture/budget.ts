@@ -25,3 +25,22 @@ export const lordoRigaCents = (imponibileEuro: unknown, aliquotaIva: unknown): n
 
     return imponibileCents + ivaRigaCents(imponibileCents, aliquotaIva);
 };
+
+/**
+ * «Questo documento provoca uno sforo?» — la domanda che accende il badge sulla riga, il semaforo in testa e la
+ * finestra della motivazione (`ModalOverrideBudget`). Tre regole, nell'ordine:
+ *
+ * - una nota di credito non sfora mai: libera budget, non lo consuma (Coda 122);
+ * - una spesa a zero non sfora niente: su un capitolo già oltre il preventivo (residuo negativo, il backend non lo
+ *   clampa) il confronto «0 <= −28.200» diceva sforo prima ancora che l'importo fosse battuto — segnalato da
+ *   Vincenzo a video il 20/09/2026;
+ * - altrimenti sfora ciò che supera il residuo (lordo contro residuo lordo, vedi `lordoRigaCents`).
+ *
+ * Lo stato pregresso del capitolo resta visibile nel residuo accanto: qui si giudica solo il documento.
+ */
+export const sforaBudget = (spesoCents: number, residuoCents: number, notaCredito = false): boolean => {
+    if (notaCredito) return false;
+    if (spesoCents <= 0) return false;
+
+    return spesoCents > residuoCents;
+};

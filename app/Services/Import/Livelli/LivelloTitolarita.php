@@ -210,7 +210,9 @@ final class LivelloTitolarita implements LivelloImport
                 // Lo schema ha default 100.00: la quota vera, quando esiste, sta solo nelle
                 // note del file (§17.4), e il parser la segnala invece di indovinarla.
                 'quota' => $t->quota ?? 100.00,
-                'data_inizio' => $esercizio->data_inizio,
+                // Solo la data: un Carbon intero su sqlite scrive anche l'ora, e il filtro SQL del risolutore
+                // e la collection devono leggere lo stesso giorno (invariante 4).
+                'data_inizio' => $esercizio->data_inizio->toDateString(),
                 'attivo' => true,
                 'created_at' => now(),
                 'updated_at' => now(),

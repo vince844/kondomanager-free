@@ -3,6 +3,7 @@
 import { computed, ref, watch, onMounted } from 'vue';
 import { Head, useForm, Link, router, usePage } from '@inertiajs/vue3';
 import ScopertoWarning, { type ScopertoCents } from '@/components/gestionale/pianiRate/ScopertoWarning.vue';
+import DestinatariWarning, { type DestinatarioCambiato } from '@/components/gestionale/pianiRate/DestinatariWarning.vue';
 import axios from 'axios';
 import vSelect from 'vue-select';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -21,17 +22,25 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from '@/components/ui/empty';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft, ReceiptText } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft, ReceiptText, CalendarRange, Search } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
+import {
+  ETICHETTE_PRESET, descriviTratti, periodoGestione, presetDaiTratti, trattiDelPreset, verificaTratti,
+  type PresetCompetenza, type Tratto,
+} from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import type { BreadcrumbItem } from '@/types';
 
 interface Capitolo {
   id: number;
   nome: string;
+  is_radice?: boolean;
+  parent_id?: number | null;
+  /** La competenza già dichiarata sulla voce in un piano di questa gestione (decisione 20): si propone, non si impone. */
+  competenza_dichiarata?: { piano_rate_id: number; piano: string; tratti: Tratto[] } | null;
   disabled: boolean;
   is_sforo: boolean;
   da_sposta_spesa?: boolean;
@@ -148,6 +157,10 @@ const { euro } = useCurrencyFormatter({ fromCents: false });
 const showBannerPreselezione = ref(false);
 // Salva gli ID fatture dal deep-link PRIMA che Inertia sovrascriva l'URL
 const preselectedFattureIds = ref<string[]>([]);
+// «Gestisci sforo» dalla dashboard punta una voce: si seleziona da sola appena i capitoli sono caricati, con
+// l'importo dello sforo come importo da richiedere. Prima arrivava solo la gestione, e l'amministratore doveva
+// ritrovare la voce nel menu fra quelle esaurite (verifica a video del 20/09/2026).
+const preselectedContoId = ref<number | null>(null);
 // Gestione puntata dal deep-link Dashboard: il lock del tipo e l'etichetta
 // "Integrativa" derivati da showBannerPreselezione restano validi SOLO
 // finché l'utente non cambia gestione a mano (stesso principio già usato
@@ -175,6 +188,10 @@ const weekdays = [
 const scopertiWarning = computed<ScopertoCents[] | null>(
     () => usePage<{ flash: { scoperti_warning?: ScopertoCents[] } }>().props.flash?.scoperti_warning ?? null
 )
+// B2, cancello (2): la risoluzione per periodo ha cambiato dei destinatari (decisione 14).
+const destinatariWarning = computed<DestinatarioCambiato[] | null>(
+    () => usePage<{ flash: { destinatari_warning?: DestinatarioCambiato[] } }>().props.flash?.destinatari_warning ?? null
+)
 
 const form = useForm({
   tipo: 'ordinario',
@@ -196,11 +213,17 @@ const form = useForm({
   recurrence_by_day: [] as string[],
   capitoli_ids: [] as number[],
   capitoli_config: [] as any[],
+  // B2, S6 (decisione 20): i tratti di competenza per voce, solo per le voci che escono dalla base.
+  competenze_capitoli: [] as { conto_id: number; tratti: Tratto[] }[],
   fatture_config: [] as any[], 
   tipo_autorizzazione: '',
   motivazione_autorizzazione: '',
+  // B2 (decisione 12): la data della delibera nasce con il piano, senza default.
+  data_delibera_assemblea: '' as string,
   accetta_scoperti: false as boolean,
   nota_scoperti: '' as string,
+  accetta_destinatari: false as boolean,
+  nota_destinatari: '' as string,
 })
 
 
@@ -210,6 +233,25 @@ const form = useForm({
  * suggerirla: se l'interfaccia dicesse una data e il server ne usasse un'altra, nessuna delle
  * due sarebbe sbagliata da sola.
  */
+/**
+ * La natura della gestione scelta decide se la delibera è obbligatoria (decisione 11: `gestioni.tipo`, non il
+ * tipo del piano): su una gestione straordinaria il giorno della delibera è la competenza di tutto il piano e
+ * il motore senza si ferma; con «Urgenza» la competenza va invece dichiarata sulla fattura.
+ */
+const gestioneScelta = computed(() => props.gestioni?.find(g => g.id === form.gestione_id) as any);
+const gestioneStraordinaria = computed(() => gestioneScelta.value?.tipo === 'straordinaria');
+const deliberaObbligatoria = computed(() => gestioneStraordinaria.value && form.tipo_autorizzazione !== 'urgenza');
+const mostraDataDelibera = computed(() => gestioneStraordinaria.value || form.tipo === 'straordinario');
+
+// Le fatture nel carrello senza competenza dichiarata: con «Urgenza» il riparto si ferma su ciascuna (verifica S6, R5).
+const fattureSenzaCompetenzaScelte = computed(() => fattureStraordinarie.value.filter(f => f.selezionata && !f.ha_competenza).length);
+
+// Con «Urgenza» il campo della delibera sparisce: il valore battuto prima non deve restare nel form e viaggiare
+// nascosto (verifica S6, R2). Il server non lo scriverebbe comunque; qui si dice la verità a video.
+watch(() => form.tipo_autorizzazione, (v) => {
+  if (v === 'urgenza') form.data_delibera_assemblea = '';
+});
+
 const partenzaSuggerita = computed<string | null>(() => {
   const gestione = props.gestioni?.find(g => g.id === form.gestione_id);
 
@@ -243,6 +285,11 @@ onMounted(() => {
     const id = urlParams.get('gestione_id');
     form.gestione_id = id ? Number(id) : null;
     preselectedGestioneId.value = form.gestione_id;
+  }
+
+  if (urlParams.has('conto_id')) {
+    const id = Number(urlParams.get('conto_id'));
+    preselectedContoId.value = Number.isFinite(id) && id > 0 ? id : null;
   }
 });
 
@@ -315,6 +362,103 @@ const toMoneyFieldString = (val: number | string | null | undefined): string => 
 const rimuoviCapitolo = (id: number) => {
   form.capitoli_ids = form.capitoli_ids.filter(cid => cid !== id);
 }
+
+// --- COMPETENZA DELLE VOCI (B2, S6, decisione 20) ---
+//
+// La tabella «Ripartizione manuale voci» esiste solo in emissione parziale; il piano madre di inizio anno
+// lascia le voci vuote e il server include da solo le foglie dei capitoli orfani. La stagione del
+// riscaldamento nasce proprio per quel piano, quindi questa sezione compare **sempre**: con le voci scelte
+// se ce ne sono, altrimenti con i capitoli radice — e una competenza dichiarata su un capitolo che poi
+// nel piano non entra (già in un altro piano attivo) il server la segnala nel messaggio, non la perde.
+interface CompetenzaVoce { preset: PresetCompetenza; manuali: Tratto[]; fonte?: string }
+const competenzeVoci = ref<Record<number, CompetenzaVoce>>({});
+
+// Il capitolo radice di una voce, risalendo `parent_id` nell'elenco piatto.
+const radiceDi = (c: Capitolo): number => {
+  let corrente = c;
+  const visti = new Set<number>();
+  while (corrente.parent_id != null && !visti.has(corrente.id)) {
+    visti.add(corrente.id);
+    const padre = capitoliDisponibili.value.find(x => x.id === corrente.parent_id);
+    if (!padre) break;
+    corrente = padre;
+  }
+  return corrente.id;
+};
+
+const vociPerCompetenza = computed<Capitolo[]>(() => {
+  // Sullo straordinario la competenza è la delibera (o quella dichiarata sulla fattura): niente periodi per voce
+  // (decisioni 12 e 20; verifica S6, R1). La natura è della gestione, non del tipo del piano.
+  if (form.tipo !== 'ordinario' || !form.gestione_id || gestioneStraordinaria.value) return [];
+  if (form.capitoli_ids.length > 0) {
+    return capitoliDisponibili.value.filter(c => form.capitoli_ids.includes(c.id));
+  }
+  // Piano che include tutto: i capitoli radice che hanno ancora qualcosa da finanziare, loro o una loro voce.
+  // Un capitolo esaurito con tutte le voci esaurite non entra nel piano, e una competenza dichiarata lì non
+  // servirebbe a nulla: a inizio anno sono tutti, su un'integrativa solo quelli che contano (verifica a video
+  // del 20/09/2026: tre capitoli esauriti in elenco e la voce sforata assente).
+  const radiciConResiduo = new Set(capitoliDisponibili.value.filter(c => !c.disabled).map(radiceDi));
+  return capitoliDisponibili.value.filter(c => (c.is_radice ?? c.nome.startsWith('[')) && radiciConResiduo.has(c.id));
+});
+
+// Con molte voci l'elenco scorre (400 px) e si cerca per nome; il filtro è solo di vista, la validazione
+// (`vociFuoriBase`, `competenzeConErrori`) resta su tutte.
+const filtroVociCompetenza = ref('');
+const mostraFiltroCompetenza = computed(() => vociPerCompetenza.value.length > 6);
+const vociPerCompetenzaVisibili = computed<Capitolo[]>(() => {
+  const q = filtroVociCompetenza.value.trim().toLowerCase();
+  if (!mostraFiltroCompetenza.value || q === '') return vociPerCompetenza.value;
+  return vociPerCompetenza.value.filter(v => v.nome.toLowerCase().includes(q));
+});
+
+const gestioneDelPiano = computed(() => props.gestioni.find(g => g.id === form.gestione_id) ?? null);
+const basePiano = computed(() => periodoGestione(gestioneDelPiano.value, props.esercizio));
+
+const competenzaDi = (id: number): CompetenzaVoce => {
+  if (!competenzeVoci.value[id]) {
+    // Se la voce ha già una competenza in un piano di questa gestione (il piano madre, per un'integrativa dopo uno
+    // sforo) si parte da quella, e si dice da dove viene: il default «periodo della gestione» rimetteva sull'anno
+    // intero il riscaldamento dichiarato sulla stagione, e i giorni di chi vende e chi compra cambiavano fra i due
+    // piani senza che nessuno lo dicesse (verifica a video del 20/09/2026). L'amministratore la vede e la cambia.
+    const dichiarata = capitoliDisponibili.value.find(c => c.id === id)?.competenza_dichiarata ?? null;
+    if (dichiarata && dichiarata.tratti.length > 0) {
+      const preset = presetDaiTratti(dichiarata.tratti, props.esercizio);
+      competenzeVoci.value[id] = { preset, manuali: preset === 'manuale' ? dichiarata.tratti.map(t => ({ ...t })) : [], fonte: dichiarata.piano };
+    } else {
+      competenzeVoci.value[id] = { preset: 'gestione', manuali: [] };
+    }
+  }
+  return competenzeVoci.value[id];
+};
+
+const trattiDiVoce = (id: number): Tratto[] => {
+  const c = competenzaDi(id);
+  return trattiDelPreset(c.preset, props.esercizio, c.manuali);
+};
+
+const erroreDiVoce = (id: number): string | null => {
+  const c = competenzaDi(id);
+  if (c.preset === 'gestione') return null;
+  const tratti = trattiDiVoce(id);
+  if (tratti.length === 0) return c.preset === 'manuale' ? 'Aggiungi almeno un tratto.' : 'L’esercizio non ha le date: il preset non si può calcolare.';
+  return verificaTratti(tratti, props.esercizio);
+};
+
+const cambiaPreset = (id: number, preset: PresetCompetenza) => {
+  const c = competenzaDi(id);
+  c.preset = preset;
+  // Cambiata a mano: non è più quella del piano da cui veniva.
+  c.fonte = undefined;
+  if (preset === 'manuale' && c.manuali.length === 0) c.manuali.push({ dal: '', al: '' });
+};
+
+const aggiungiTratto = (id: number) => { if (competenzaDi(id).manuali.length < 6) competenzaDi(id).manuali.push({ dal: '', al: '' }); };
+const togliTratto = (id: number, indice: number) => { competenzaDi(id).manuali.splice(indice, 1); };
+
+const vociFuoriBase = computed(() => vociPerCompetenza.value.filter(v => competenzaDi(v.id).preset !== 'gestione'));
+const competenzeConErrori = computed(() => vociFuoriBase.value.some(v => erroreDiVoce(v.id) !== null));
+
+const PRESET_ORDINE: PresetCompetenza[] = ['gestione', 'esercizio', 'stagione', 'manuale'];
 
 const totaleSelezionatoFormatted = computed(() => {
   const tot = capitoliDettaglio.value.reduce((acc, curr) => {
@@ -394,6 +538,16 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
     });
     
     capitoliDisponibili.value = resCap.data;
+
+    // La voce puntata dalla dashboard, se esiste in questa gestione ed è ancora finanziabile. Si consuma:
+    // se l'utente cambia gestione, non si ri-applica.
+    if (preselectedContoId.value !== null) {
+      const voce = capitoliDisponibili.value.find(c => c.id === preselectedContoId.value);
+      if (voce && !voce.disabled && !form.capitoli_ids.includes(voce.id)) {
+        form.capitoli_ids = [...form.capitoli_ids, voce.id];
+      }
+      preselectedContoId.value = null;
+    }
 
     // --- NUOVO: CARICHIAMO LE FATTURE STRAORDINARIE E PRESELEZIONIAMO ---
 
@@ -528,10 +682,23 @@ const handleProcedi = (nota: string) => {
   submit()
 }
 
+// Il primo cancello, se già accettato, resta nel form (useForm lo conserva fra un giro e l'altro): il
+// secondo non riapre il primo.
+const handleProcediDestinatari = (nota: string) => {
+  form.accetta_destinatari = true
+  form.nota_destinatari    = nota
+  submit()
+}
+
 const submit = () => {
   // 1. Prepariamo i capitoli solo se siamo in ordinario
   form.capitoli_config = form.tipo === 'ordinario' 
     ? capitoliDettaglio.value.map(c => ({ id: c.id, importo: c.importo_da_usare, note: c.note })) 
+    : [];
+
+  // La competenza per voce: solo le voci a video che escono dalla base (la base non si scrive).
+  form.competenze_capitoli = form.tipo === 'ordinario'
+    ? vociFuoriBase.value.map(v => ({ conto_id: v.id, tratti: trattiDiVoce(v.id) }))
     : [];
 
   // 2. Prepariamo le fatture solo se siamo in straordinario
@@ -596,10 +763,17 @@ const submit = () => {
             <AlertTriangle class="w-5 h-5" />
           </div>
           <div>
-            <h4 class="font-black text-sm uppercase tracking-wide">Risoluzione Scoperto</h4>
-            <p class="text-xs mt-1 text-amber-800/80 leading-relaxed">
-              Il sistema ha precompilato questo piano per finanziare le spese scoperte rilevate nella Dashboard. 
-              Le fatture sono state già inserite nel carrello qui in basso. Inserisci la causale (Scudo Legale) e procedi.
+            <h4 class="font-black text-sm uppercase tracking-wide">Risoluzione scoperto</h4>
+            <!-- Il testo segue la strada: lo sforo di una voce di preventivo non ha fatture nel carrello (il carrello
+                 esiste solo sullo straordinario), e dirlo mandava a cercare un riquadro che non c'è. -->
+            <p v-if="form.tipo === 'straordinario'" class="text-xs mt-1 text-amber-800/80 leading-relaxed">
+              Il programma ha precompilato questo piano per finanziare le spese scoperte rilevate nella dashboard.
+              Le fatture sono già nel carrello qui in basso: inserisci la causale e procedi.
+            </p>
+            <p v-else class="text-xs mt-1 text-amber-800/80 leading-relaxed">
+              Il programma ha precompilato questo piano per lo sforo di preventivo rilevato nella dashboard: la voce
+              sforata è già selezionata fra le voci di bilancio qui in basso, con l'importo dello sforo come importo
+              da richiedere. Controlla, dai un nome al piano e procedi.
             </p>
           </div>
         </div>
@@ -1011,6 +1185,64 @@ const submit = () => {
               </div>
             </div>
 
+            <!-- Competenza delle voci (B2, S6, decisione 20): sempre, anche quando il piano include tutto -->
+            <div v-if="vociPerCompetenza.length > 0" class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+              <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 flex flex-col gap-1">
+                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2"><CalendarRange class="w-4 h-4" /> Competenza delle voci</span>
+                <p class="text-[11px] text-slate-500 leading-relaxed">
+                  Il periodo su cui ogni voce matura: decide i giorni quando un'unità cambia titolare durante l'anno. Il default è il
+                  periodo della gestione<template v-if="basePiano"> ({{ descriviTratti([basePiano]) }})</template>; il riscaldamento di
+                  solito matura sulla sua stagione, non su tutto l'anno. Le voci lasciate sulla base non scrivono nulla.
+                  <template v-if="form.capitoli_ids.length === 0"> Qui ci sono i capitoli: una competenza sul capitolo vale per tutte le sue voci.</template>
+                </p>
+                <div v-if="mostraFiltroCompetenza" class="relative mt-2">
+                  <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input v-model="filtroVociCompetenza" type="search" placeholder="Cerca una voce per nome…"
+                         class="h-8 w-full sm:max-w-xs rounded-md border border-slate-200 bg-white pl-8 pr-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-primary" />
+                  <span v-if="filtroVociCompetenza.trim() !== ''" class="ml-2 text-[11px] text-slate-500">{{ vociPerCompetenzaVisibili.length }} su {{ vociPerCompetenza.length }}</span>
+                </div>
+              </div>
+              <div class="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+                <div v-if="vociPerCompetenzaVisibili.length === 0" class="p-4 text-xs text-slate-500">Nessuna voce con questo nome.</div>
+                <div v-for="voce in vociPerCompetenzaVisibili" :key="voce.id" class="p-3 hover:bg-slate-50 transition-colors">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-sm text-slate-900 truncate">{{ voce.nome }}</div>
+                      <div class="text-[11px] mt-1" :class="competenzaDi(voce.id).preset === 'gestione' ? 'text-slate-400' : 'text-primary font-medium'">
+                        {{ competenzaDi(voce.id).preset === 'gestione' ? (basePiano ? descriviTratti([basePiano]) : 'periodo della gestione') : descriviTratti(trattiDiVoce(voce.id)) }}
+                        <span v-if="competenzaDi(voce.id).fonte" class="text-slate-400 font-normal"> · come nel piano «{{ competenzaDi(voce.id).fonte }}»</span>
+                      </div>
+                    </div>
+                    <div class="shrink-0 w-full sm:w-72">
+                      <select
+                        :value="competenzaDi(voce.id).preset"
+                        @change="cambiaPreset(voce.id, ($event.target as HTMLSelectElement).value as PresetCompetenza)"
+                        class="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30 dark:bg-slate-950 dark:border-slate-700"
+                        :class="{ 'text-slate-400': competenzaDi(voce.id).preset === 'gestione' }">
+                        <option v-for="p in PRESET_ORDINE" :key="p" :value="p">{{ ETICHETTE_PRESET[p] }}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div v-if="competenzaDi(voce.id).preset === 'manuale'" class="mt-3 space-y-2">
+                    <div v-for="(t, i) in competenzaDi(voce.id).manuali" :key="i" class="flex flex-wrap items-center gap-2">
+                      <span class="text-[11px] text-slate-500 w-14">Tratto {{ i + 1 }}</span>
+                      <Input type="date" v-model="t.dal" class="h-9 w-40 text-xs" />
+                      <span class="text-slate-400 text-xs">–</span>
+                      <Input type="date" v-model="t.al" :min="t.dal || undefined" class="h-9 w-40 text-xs" />
+                      <button type="button" @click="togliTratto(voce.id, i)" class="text-slate-400 hover:text-red-500 p-1" :disabled="competenzaDi(voce.id).manuali.length === 1"><Trash2 class="w-4 h-4" /></button>
+                    </div>
+                    <button v-if="competenzaDi(voce.id).manuali.length < 6" type="button" @click="aggiungiTratto(voce.id)" class="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"><Plus class="w-3 h-3" /> Aggiungi un tratto</button>
+                  </div>
+
+                  <p v-if="erroreDiVoce(voce.id)" class="text-[11px] text-red-600 mt-2 flex items-center gap-1 font-medium bg-red-50 p-1.5 rounded">
+                    <AlertTriangle class="w-3 h-3 shrink-0" /> {{ erroreDiVoce(voce.id) }}
+                  </p>
+                  <InputError :message="(form.errors as Record<string, string>)[`competenze_capitoli.${vociFuoriBase.findIndex(v => v.id === voce.id)}`]" class="mt-1" />
+                </div>
+              </div>
+            </div>
+
           </CardContent>
         </Card>
 
@@ -1093,6 +1325,11 @@ const submit = () => {
                     <div class="flex-1 min-w-0">
                       <div class="font-bold text-sm text-slate-900 truncate">{{ fat.fornitore }} — Doc. {{ fat.numero_documento }}</div>
                       <div class="text-xs text-slate-500 mt-1">Data: {{ fat.data_documento }} | Già finanziato: {{ euro(fat.gia_finanziato) }}</div>
+                      <!-- B2, S6: la competenza dichiarata sulla fattura, che con «Urgenza» è l'unico gradino del riparto -->
+                      <div v-if="fat.ha_competenza" class="text-[10px] text-slate-500 mt-0.5">Competenza dichiarata: {{ fat.competenza }}</div>
+                      <div v-else-if="form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria && fat.selezionata" class="text-[10px] font-semibold text-amber-700 mt-0.5 flex items-center gap-1">
+                        <AlertTriangle class="w-3 h-3" /> Senza competenza dichiarata: il riparto si fermerà su questa fattura.
+                      </div>
                     </div>
                     <div class="flex flex-col items-end gap-1 shrink-0">
                       <span class="text-xs font-bold text-amber-600">Da finanziare: {{ euro(fat.residuo_da_finanziare) }}</span>
@@ -1148,6 +1385,43 @@ const submit = () => {
               </div>
             </div>
 
+
+          </CardContent>
+        </Card>
+
+        <!-- Fuori dalla card dello straordinario: la delibera è della GESTIONE (natura), e riguarda anche un piano
+             «ordinario» aperto su una gestione straordinaria. -->
+        <Card v-if="mostraDataDelibera" class="border-dashed shadow-sm" :class="deliberaObbligatoria ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-slate-50/50'">
+          <CardContent class="pt-6">
+            <!-- B2 (decisione 12): la data della delibera, obbligatoria e senza default quando la gestione è straordinaria
+                 e l'autorizzazione non è l'urgenza. È il giorno che decide chi paga (art. 63 disp. att. c.c.; Cass. 24654/2010):
+                 con un passaggio di proprietà, tutto a chi era titolare quel giorno. -->
+            <div class="bg-white border rounded-xl p-5 space-y-3" :class="deliberaObbligatoria ? 'border-amber-200' : 'border-slate-200'">
+              <h4 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Info class="w-4 h-4" :class="deliberaObbligatoria ? 'text-amber-500' : 'text-slate-400'" />
+                Data della delibera dell'assemblea <span v-if="deliberaObbligatoria" class="text-[10px] font-semibold uppercase tracking-widest text-amber-700">obbligatoria</span><span v-else class="text-[10px] font-normal text-slate-400">(facoltativa)</span>
+              </h4>
+              <template v-if="form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria">
+                <p class="text-xs text-slate-600 leading-relaxed">
+                  Intervento d'urgenza (art. 1135 c.c.): non c'è una delibera che faccia la competenza. La competenza di questa spesa si dichiara
+                  <strong>sulla fattura</strong> («costo maturato dal … al …» o «spesa deliberata il …»): senza, il riparto si ferma e lo dice.
+                  <template v-if="fattureSenzaCompetenzaScelte > 0"> <strong>{{ fattureSenzaCompetenzaScelte }}</strong> {{ fattureSenzaCompetenzaScelte === 1 ? 'fattura scelta non la ha' : 'fatture scelte non la hanno' }}: dichiarala prima di generare.</template>
+                </p>
+              </template>
+              <template v-else>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                  <div class="space-y-2">
+                    <Label for="data_delibera_assemblea">Deliberata il</Label>
+                    <Input id="data_delibera_assemblea" type="date" v-model="form.data_delibera_assemblea" class="bg-white" />
+                    <InputError :message="form.errors.data_delibera_assemblea" />
+                  </div>
+                  <p class="text-xs text-slate-600 leading-relaxed">
+                    <template v-if="gestioneStraordinaria">Su una gestione straordinaria è il giorno che decide chi paga: chi era titolare dell'unità alla delibera risponde dell'intera spesa, anche se poi vende. Nessuna data è proposta: la scrivi tu dal verbale.</template>
+                    <template v-else>Su una gestione ordinaria la data non cambia il riparto (che va in proporzione ai giorni di competenza): resta come riferimento del verbale.</template>
+                  </p>
+                </div>
+              </template>
+            </div>
           </CardContent>
         </Card>
 
@@ -1270,6 +1544,13 @@ const submit = () => {
             @procedi="handleProcedi"
             class="mb-4"
         />
+        <DestinatariWarning
+            v-if="destinatariWarning"
+            :destinatari="destinatariWarning"
+            :processing="form.processing"
+            @procedi="handleProcediDestinatari"
+            class="mb-4"
+        />
 
         <div class="flex items-center justify-end gap-3 pt-2">
           <Link
@@ -1279,7 +1560,7 @@ const submit = () => {
             Annulla
           </Link>
 
-          <Button type="submit" :disabled="form.processing" class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2">
+          <Button type="submit" :disabled="form.processing || competenzeConErrori" class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2">
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
             <Plus v-else class="h-4 w-4" />
             Salva piano rate

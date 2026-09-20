@@ -37,12 +37,19 @@ class SituazioneDebitoriaController extends Controller
         });
 
         // 3. Filtri Contestuali
+        // B2, S7: insieme alle rate, la nota di solidarietà dell'art. 63 co. 4 per chi è entrato (per persona)
+        // o sull'unità (per immobile): un fatto da sapere mentre si incassa, non una quota da incassare.
+        $note = [];
         if ($request->has('immobile_id') && $request->immobile_id) {
             $query->where('immobile_id', $request->immobile_id);
+            $immobile = \App\Models\Immobile::where('condominio_id', $condominio->id)->find($request->immobile_id);
+            $note = $immobile ? app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, null, $immobile) : [];
         } elseif ($request->has('anagrafica_id') && $request->anagrafica_id) {
             $query->where('anagrafica_id', $request->anagrafica_id);
+            $anagrafica = \App\Models\Anagrafica::find($request->anagrafica_id);
+            $note = $anagrafica ? app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica) : [];
         } else {
-            return response()->json(['rate' => []]);
+            return response()->json(['rate' => [], 'note_solidarieta' => []]);
         }
 
         // 4. Esecuzione
@@ -249,6 +256,6 @@ class SituazioneDebitoriaController extends Controller
         ->filter()
         ->values();
 
-        return response()->json(['rate' => $groupedRate]);
+        return response()->json(['rate' => $groupedRate, 'note_solidarieta' => array_map(fn ($n) => $n['testo'], $note)]);
     }
 }

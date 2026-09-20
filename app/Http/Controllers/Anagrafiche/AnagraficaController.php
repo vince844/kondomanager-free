@@ -200,8 +200,9 @@ class AnagraficaController extends Controller
                 'tipologia'   => $immobile->pivot->tipologia,
                 'quota'       => $immobile->pivot->quota,
                 'attivo'      => (bool) $immobile->pivot->attivo,
-                'data_inizio' => $immobile->pivot->data_inizio,
-                'data_fine'   => $immobile->pivot->data_fine,
+                // Carbon dalla beta.31 (cast di `TitolaritaImmobile`): il JSON resta `Y-m-d`.
+                'data_inizio' => $immobile->pivot->data_inizio?->toDateString(),
+                'data_fine'   => $immobile->pivot->data_fine?->toDateString(),
             ])->values(),
 
             // Il conteggio dei documenti serve alla scheda accanto: senza, la linguetta
@@ -299,6 +300,15 @@ class AnagraficaController extends Controller
         if ($anagrafica->condomini()->exists()) {
             return back()->with(
                 $this->flashError(__('anagrafiche.anagrafica_has_building'))
+            );
+        }
+
+        // B2 (S5, inv. 19): chi compare in un passaggio di titolarità registrato non si cancella. La FK di
+        // `saldi.anagrafica_id` è in cascata: sparirebbe una sola gamba della coppia di conguaglio, e lo
+        // storico dell'unità perderebbe il nome (verifica S5, R3).
+        if (\App\Models\Gestionale\Subentro::where('anagrafica_uscente_id', $anagrafica->id)->orWhere('anagrafica_entrante_id', $anagrafica->id)->exists()) {
+            return back()->with(
+                $this->flashError('Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione o usufrutto): non si può eliminare, perché lo storico delle unità e il conguaglio in saldi la nominano.')
             );
         }
     

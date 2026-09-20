@@ -223,6 +223,22 @@ defineEmits(['update:open']);
                                 <strong>si blocca se ci sono già incassi registrati</strong> su quella rata: va
                                 prima rimosso l'incasso.
                             </p>
+                            <p class="mt-2">
+                                Si blocca anche se, dopo l'emissione, è stato registrato un <strong>passaggio di
+                                titolarità</strong> che ha già conguagliato queste quote: rigenerare farebbe pagare due volte a
+                                chi è entrato. In quel caso il messaggio dice quale passaggio e da dove si annulla il conguaglio.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il conguaglio di un passaggio</h3>
+                            <p>
+                                Le rate già emesse non si toccano quando un'unità cambia titolare: a sistemare i conti è una
+                                <strong>coppia di saldi a somma zero</strong> — credito a chi esce, debito a chi entra, per la
+                                parte di quota che spetta a chi entra in proporzione ai giorni. La coppia sta nei saldi della
+                                gestione con un lucchetto viola, e il prossimo piano la assorbe nella Rata 0 come qualunque
+                                saldo. Si annulla solo tutta insieme, dallo storico dell'unità, finché nessun piano l'ha assorbita.
+                            </p>
                         </section>
 
                         <section>

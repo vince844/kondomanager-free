@@ -183,6 +183,9 @@ class SyncScadenziarioWithFattura implements ShouldQueue
             $rataZeroRichiesta = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $fattura->esercizio_id)
                 ->whereNull('fornitore_id')
+                // B2 (S5): la coppia del conguaglio di un passaggio somma zero e non è provvista — la gamba
+                // positiva da sola gonfierebbe la rata 0 (stessa esclusione di FatturaPassivaController).
+                ->whereNull('subentro_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 

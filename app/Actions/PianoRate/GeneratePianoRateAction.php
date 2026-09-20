@@ -10,7 +10,11 @@ use App\Models\Gestionale\Conto;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\Tabella;
+use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
+use App\Models\Anagrafica;
+use App\Models\Esercizio;
+use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\SaldoEsercizioService;
@@ -42,6 +46,13 @@ class GeneratePianoRateAction
      * @param array $saldiConfig Array contenente la configurazione di applicazione personalizzata per i saldi.
      * @param bool $accettaScoperti Se true, ignora le quote non coperte (scoperti) e procede con la generazione.
      * @param string|null $notaScoperti Motivazione obbligatoria che giustifica la generazione con scoperti (salvata a DB).
+     * @param bool $accettaDestinatari B2, cancello (2) della decisione 14: l'amministratore ha letto che la risoluzione per
+     *                                 periodo cambia dei destinatari e procede comunque.
+     * @param string|null $notaDestinatari La nota del cancello (2), congelata in `regole_calcolo.parametri.titolarita_alla`.
+     * @param Esercizio|null $esercizio L'esercizio di riferimento della competenza (i controller lo hanno dall'indirizzo);
+     *                                  senza, quello attivo della gestione.
+     * @throws DestinatariCambiatiException Se la risoluzione temporale cambia dei destinatari e $accettaDestinatari è false.
+     * @throws \App\Exceptions\Gestionale\RichiedeDeliberaException Straordinario senza data della delibera (decisione 12).
      *
      * @throws ScopertiNonAccettatiException Se vi sono quote scoperte e $accettaScoperti è false.
      * @throws \RuntimeException Se il calcolo non produce alcuna quota (errore di configurazione tabelle/anagrafiche).
@@ -53,7 +64,10 @@ class GeneratePianoRateAction
         ?bool $forzaApplicazioneSaldi = null, 
         array $saldiConfig = [],
         bool $accettaScoperti = false,
-        ?string $notaScoperti = null
+        ?string $notaScoperti = null,
+        bool $accettaDestinatari = false,
+        ?string $notaDestinatari = null,
+        ?Esercizio $esercizio = null,
     ): array
     {
         $pianoRate->refresh();
@@ -71,10 +85,24 @@ class GeneratePianoRateAction
         // =========================================================================
         // BIVIO ARCHITETTURALE
         // =========================================================================
+        // B2 (1.11.0-beta.31): la competenza di base — la cascata D3 con la natura della gestione
+        // (decisione 11) — la decide `CompetenzaDelPiano`, una volta sola per chi genera e chi stampa. Il
+        // motore la raffina per capitolo (tratti dichiarati, decisione 20) e per fattura (competenza
+        // dichiarata, decisione 12) e, dove il periodo cambia un destinatario o un peso, lo registra per
+        // il cancello (2). Con una gestione senza esercizio la competenza è nulla e il calcolo resta
+        // atemporale, com'era.
+        // Il piano ricorda l'esercizio con cui è generato (migrazione 9): è ciò che il conguaglio del
+        // passaggio e l'anteprima leggeranno, così la competenza è una sola per tutti (verifica S5, R8).
+        if ($esercizio !== null && (int) $pianoRate->esercizio_id !== (int) $esercizio->id) {
+            $pianoRate->esercizio_id = $esercizio->id;
+            $pianoRate->save();
+        }
+        $competenza = app(CompetenzaDelPiano::class)->perPiano($pianoRate, $esercizio);
+
         if ($pianoRate->tipo === 'straordinario') {
-            $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate);
+            $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate, $competenza);
         } else {
-            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
+            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate, false, $competenza);
         }
         // =========================================================================
 
@@ -147,9 +175,18 @@ class GeneratePianoRateAction
                     $immobiliNomiEcc = Immobile::whereIn('id', array_column($eccedenze, 'immobile_id'))
                         ->pluck('nome', 'id')
                         ->toArray();
+                    // B2 (decisione 17): l'eccedenza può essere di una PERSONA — chi ha versato più della sua quota,
+                    // o non è più fra i destinatari (ha venduto) — e allora si dice il nome, non solo l'unità
+                    // (Fase 1-bis S8-6): quel denaro è suo e va restituito a lui.
+                    $nomiPersoneEcc = \App\Models\Anagrafica::whereIn('id', array_filter(array_column($eccedenze, 'anagrafica_id')))
+                        ->pluck('nome', 'id')->toArray();
                     $dettaglioUnita = collect($eccedenze)
-                        ->map(fn ($e) => ($immobiliNomiEcc[$e['immobile_id']] ?? "Immobile #{$e['immobile_id']}")
-                            .': € '.number_format($e['eccedenza'] / 100, 2, ',', '.'))
+                        ->map(function ($e) use ($immobiliNomiEcc, $nomiPersoneEcc) {
+                            $unita = $immobiliNomiEcc[$e['immobile_id']] ?? "Immobile #{$e['immobile_id']}";
+                            $persona = ! empty($e['anagrafica_id']) ? ' — '.($nomiPersoneEcc[$e['anagrafica_id']] ?? "anagrafica #{$e['anagrafica_id']}").(($e['dovuto'] ?? 0) === 0 ? ' (non più destinatario)' : '') : '';
+
+                            return $unita.$persona.': € '.number_format($e['eccedenza'] / 100, 2, ',', '.');
+                        })
                         ->implode(', ');
 
                     InboxService::createTask(
@@ -327,6 +364,27 @@ class GeneratePianoRateAction
         }
         // =========================================================================
 
+        // =========================================================================
+        // CANCELLO (2) — decisione 14 del progetto sul subentro (B2, 1.11.0-beta.31)
+        // La risoluzione per periodo ha cambiato un destinatario o un peso rispetto a quella
+        // atemporale: si mostra **chi** e **perché**, e si procede solo con spunta e nota. Viene dopo
+        // il cancello degli scoperti, così i due non si sovrappongono nello stesso giro.
+        // =========================================================================
+        $risoluzione = $this->calcolatore->getRisoluzioneTemporale();
+        $cambiamenti = $risoluzione['destinatari_cambiati'];
+        if (!empty($cambiamenti) && !$accettaDestinatari) {
+            throw new DestinatariCambiatiException($this->arricchisciCambiamenti($cambiamenti));
+        }
+        $titolaritaAlla = empty($cambiamenti)
+            ? GenerateRateQuotesAction::TITOLARITA_ATEMPORALE
+            : [
+                'risoluzione'          => 'temporale',
+                'destinatari_cambiati' => true,
+                'nota_cancello'        => $notaDestinatari,
+                // Le coppie (unità, ruolo) cambiate, non le voci: una coppia compare in una voce per conto.
+                'coppie'               => count(array_unique(array_map(fn ($c) => $c['immobile_id'].'|'.$c['tipologia'], $cambiamenti))),
+            ];
+
         // 3. GESTIONE SALDI
         //
         // Ordine di precedenza, dal più esplicito al più debole:
@@ -378,7 +436,9 @@ class GeneratePianoRateAction
             $dateRate,
             $saldi,
             // Il dettaglio del riparto (beta.29): le righe che spiegano i totali, scritte con le quote.
-            $this->calcolatore->getRigheDettaglio()
+            $this->calcolatore->getRigheDettaglio(),
+            // B2 (decisione 15): come sono stati risolti i titolari, e la nota del cancello (2).
+            $titolaritaAlla
         );
 
         // 6. LUCCHETTO SALDI
@@ -483,5 +543,63 @@ class GeneratePianoRateAction
         }
 
         return [array_values(array_unique($ids)), $totale];
+    }
+
+    /**
+     * I cambiamenti del motore, con i nomi che la pagina mostra: l'unità, il conto, il ruolo e le
+     * persone. Stessa forma di lavoro dell'arricchimento degli scoperti qui sopra: una query per tipo.
+     *
+     * @param list<array<string,mixed>> $cambiamenti
+     * @return list<array<string,mixed>>
+     */
+    private function arricchisciCambiamenti(array $cambiamenti): array
+    {
+        $immobiliIds = array_unique(array_filter(array_column($cambiamenti, 'immobile_id')));
+        $contiIds    = array_unique(array_filter(array_column($cambiamenti, 'conto_id')));
+        $righeIds    = [];
+        $anagraficheIds = [];
+        foreach ($cambiamenti as $c) {
+            foreach ($c['righe'] ?? [] as $r) {
+                $righeIds[] = (int) $r['riga_id'];
+            }
+            foreach ($c['ripiego']['righe'] ?? [] as $r) {
+                $righeIds[] = (int) $r['riga_id'];
+            }
+            foreach ($c['anagrafiche_escluse'] ?? [] as $aid) {
+                $anagraficheIds[] = (int) $aid;
+            }
+        }
+
+        $immobiliNomi = Immobile::whereIn('id', $immobiliIds)->pluck('nome', 'id')->all();
+        $contiNomi    = Conto::whereIn('id', $contiIds)->pluck('nome', 'id')->all();
+        $righe = empty($righeIds) ? collect() : DB::table('anagrafica_immobile')
+            ->join('anagrafiche', 'anagrafiche.id', '=', 'anagrafica_immobile.anagrafica_id')
+            ->whereIn('anagrafica_immobile.id', $righeIds)
+            ->get(['anagrafica_immobile.id', 'anagrafica_immobile.anagrafica_id', 'anagrafica_immobile.data_inizio', 'anagrafica_immobile.data_fine', 'anagrafica_immobile.quota', 'anagrafiche.nome'])
+            ->keyBy('id');
+        $anagraficheNomi = empty($anagraficheIds) ? [] : Anagrafica::whereIn('id', $anagraficheIds)->pluck('nome', 'id')->all();
+
+        return array_map(function (array $c) use ($immobiliNomi, $contiNomi, $righe, $anagraficheNomi) {
+            $c['immobile_nome'] = $c['immobile_id'] ? ($immobiliNomi[$c['immobile_id']] ?? 'Immobile #' . $c['immobile_id']) : null;
+            $c['conto_nome'] = ($c['conto_id'] ?? null) ? ($contiNomi[$c['conto_id']] ?? 'Conto #' . $c['conto_id']) : null;
+            $c['righe'] = array_map(function (array $r) use ($righe) {
+                $riga = $righe->get($r['riga_id']);
+
+                return $r + [
+                    'anagrafica_id'   => $riga?->anagrafica_id,
+                    'anagrafica_nome' => $riga?->nome,
+                    'data_inizio'     => $riga?->data_inizio ? substr((string) $riga->data_inizio, 0, 10) : null,
+                    'data_fine'       => $riga?->data_fine ? substr((string) $riga->data_fine, 0, 10) : null,
+                    'quota'           => $riga?->quota,
+                ];
+            }, $c['righe'] ?? []);
+            $c['anagrafiche_escluse'] = array_map(fn ($aid) => ['anagrafica_id' => $aid, 'anagrafica_nome' => $anagraficheNomi[$aid] ?? 'Anagrafica #' . $aid], $c['anagrafiche_escluse'] ?? []);
+            // Decisione 22: chi ha preso i giorni scoperti, con il nome.
+            if (isset($c['ripiego']['righe'])) {
+                $c['ripiego']['righe'] = array_map(fn (array $r) => $r + ['anagrafica_id' => $righe->get($r['riga_id'])?->anagrafica_id, 'anagrafica_nome' => $righe->get($r['riga_id'])?->nome], $c['ripiego']['righe']);
+            }
+
+            return $c;
+        }, $cambiamenti);
     }
 }

@@ -226,6 +226,30 @@ defineEmits(['update:open']);
             </div>
           </section>
 
+          <!-- 8 — B2: la coppia del conguaglio di un passaggio -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">La coppia di un passaggio di titolarità</h3>
+            <p class="mb-3">
+              Quando registri un passaggio (vendita, locazione, usufrutto) e su quell'unità ci sono rate già emesse a chi esce, il programma scrive qui <strong>due righe a somma zero</strong>: un credito a chi esce e un debito uguale a chi entra, per la parte di quota che spetta a chi entra in proporzione ai giorni. Portano un lucchetto viola e la dicitura «conguaglio di un passaggio». Se il piano ha emesso a giornale solo alcune rate, la coppia copre anche quelle ancora in bozza: quel piano non si ricalcola più, e le sue bozze restano a chi esce.
+            </p>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul class="space-y-2">
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Non si modificano e non si cancellano una alla volta</strong>: la somma non farebbe più zero. Il prossimo piano rate della gestione le assorbe nella Rata 0 come qualunque saldo.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Se le parti hanno regolato il conguaglio in un altro modo</strong> (nel prezzo, con un accordo scritto), si annulla dallo storico dell'unità — Titolari → Storico → «Passaggi registrati» — con una nota: le due righe spariscono insieme. Solo finché nessun piano le ha assorbite; dopo, se il piano non ha emesso nulla, si riporta in bozza e si elimina, altrimenti resta il saldo manuale di segno opposto.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Chi esce con un credito</strong> lo vede nel suo estratto conto quando un piano ha assorbito la coppia: da lì si compensa su altre rate o si rimborsa dalla cassa.</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
         </div>
       </div>
     </SheetContent>

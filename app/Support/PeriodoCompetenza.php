@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Esercizio;
+use App\Models\Gestione;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -77,6 +79,44 @@ final class PeriodoCompetenza
         $data = $valore instanceof CarbonImmutable ? $valore->toDateString() : (string) $valore;
 
         return CarbonImmutable::parse($data, 'UTC')->startOfDay();
+    }
+
+    /** Il tratto comune con un altro periodo, estremi inclusi; `null` se non si toccano. */
+    public function intersezione(self $altro): ?self
+    {
+        $inizio = $this->dal->max($altro->dal);
+        $fine = $this->al->min($altro->al);
+
+        return $fine->lt($inizio) ? null : new self($inizio, $fine);
+    }
+
+    /**
+     * Il periodo di un esercizio; `null` se una delle due date manca (non dovrebbe: sono NOT NULL).
+     * Riceve il modello e ne legge le date come stringhe di calendario, qualunque sia il cast.
+     */
+    public static function daEsercizio(Esercizio $esercizio): ?self
+    {
+        return self::daDate($esercizio->data_inizio, $esercizio->data_fine);
+    }
+
+    /**
+     * Il periodo di una gestione, se è chiusa. Una gestione senza `data_fine` **attraversa più
+     * esercizi** (§6.3 del progetto: una «Straordinaria» con due lavori in mesi diversi non ha un
+     * periodo solo): non è un periodo di competenza, e la cascata di D3 scende all'esercizio.
+     */
+    public static function daGestione(Gestione $gestione): ?self
+    {
+        return self::daDate($gestione->data_inizio, $gestione->data_fine);
+    }
+
+    private static function daDate(mixed $dal, mixed $al): ?self
+    {
+        if ($dal === null || $al === null) {
+            return null;
+        }
+        $aStringa = fn (mixed $d): string => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : (string) $d;
+
+        return new self($aStringa($dal), $aStringa($al));
     }
 
     public function toArray(): array

@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use Illuminate\Validation\Rule;
+use App\Enums\NaturaGestione;
 use App\Actions\PianoRate\GeneratePianoRateAction;
+use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Enums\StatoPianoRate;
 use App\Enums\VisibilityStatus;
@@ -139,16 +142,15 @@ class PianoRateController extends Controller
             // generico) per non confondere un piano straordinario/integrativo
             // preesistente con un vero preventivo iniziale già emesso.
             //
-            // LIMITE NOTO: piani_rate non ha esercizio_id (una gestione può
-            // essere riagganciata a più esercizi nel tempo — vedi
-            // GestioneController::update()), quindi un preventivo iniziale
-            // di un esercizio precedente sulla stessa gestione può ancora
-            // far scattare l'etichetta "Integrativa" al primo piano del
-            // nuovo esercizio. Impatto: solo cosmetico (etichetta UI), non
-            // tocca calcoli, validazioni o dati salvati.
+            // Dalla 1.11.0-beta.31 `piani_rate.esercizio_id` esiste (migrazione 9) e la generazione lo
+            // scrive: il preventivo iniziale si cerca nell'esercizio di questa pagina, così un piano
+            // dell'anno prima sulla stessa gestione (riusata su più esercizi) non fa più scattare
+            // l'etichetta «Integrativa». I piani vecchi senza colonna (nulla) contano ancora: meglio
+            // un'etichetta prudente di un preventivo che si crede primo.
             $hasPianoEsistente = PianoRate::where('gestione_id', $gestioneSelezionata->id)
                 ->where('tipo', 'ordinario')
                 ->where('contesto_creazione', 'preventivo_iniziale')
+                ->where(fn ($q) => $q->where('esercizio_id', $esercizio->id)->orWhereNull('esercizio_id'))
                 ->exists();
 
         } else {
@@ -194,9 +196,13 @@ class PianoRateController extends Controller
     {
         $request->validate([
             'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
+            // B2, cancello (2) della decisione 14.
+            'nota_destinatari' => 'required_if:accetta_destinatari,true|nullable|string|min:10',
         ]);
         $validated = $request->validated();
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
+        $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
+        $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
         $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
 
         try {
@@ -237,6 +243,15 @@ class PianoRateController extends Controller
                 !empty($validated['capitoli_ids']) => 'libero_manuale', // Se l'utente ha cliccato check specifici
                 default => 'preventivo_iniziale', // Il piano madre di inizio anno
             };
+
+            // B2 (decisione 12): la data della delibera nasce con il piano, quando c'è. Su una gestione
+            // straordinaria la Request la pretende (salvo urgenza); altrove è un dato in più che non guida nulla.
+            // Con «Urgenza» la delibera non esiste per costruzione: una data battuta prima di scegliere l'urgenza
+            // (il campo sparisce dallo schermo, il valore resterebbe nel form) non si scrive, altrimenti il motore
+            // la userebbe come gradino senza che nessuno la veda più (verifica S6, R2).
+            if (! empty($validated['data_delibera_assemblea']) && ($validated['tipo_autorizzazione'] ?? null) !== 'urgenza') {
+                $pianoRate->data_delibera_assemblea = $validated['data_delibera_assemblea'];
+            }
 
             if ($tipoPiano === 'straordinario') {
                 // Usiamo le colonne dedicate presenti nella tabella piani_rate
@@ -386,6 +401,9 @@ class PianoRateController extends Controller
                     }
                 }
                 $pianoRate->capitoli()->sync($syncData);
+
+                // B2, S6 (decisione 20): i tratti di competenza per voce, sulla pivot appena nata.
+                $competenzeNonApplicate = $this->scriviCompetenzeCapitoli($pianoRate, $validated['competenze_capitoli'] ?? []);
             }
             // --- [FINE MODIFICA CHIRURGICA] ---
 
@@ -426,6 +444,9 @@ class PianoRateController extends Controller
                     forzaApplicazioneSaldi: $applicareSaldi, 
                     saldiConfig: $saldiConfigCents,
                     accettaScoperti: $accettaScoperti,
+                    accettaDestinatari: $accettaDestinatari,
+                    notaDestinatari: $notaDestinatari,
+                    esercizio: $esercizio,
                     notaScoperti: $notaScoperti
                 );
             }
@@ -458,11 +479,14 @@ class PianoRateController extends Controller
             // ----------------------------
 
             DB::commit();
-            return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
+            return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche, $competenzeNonApplicate ?? []);
 
         } catch (ScopertiNonAccettatiException $e) {
             DB::rollBack();
             return back()->withInput()->with('scoperti_warning', $e->getScoperti());
+        } catch (DestinatariCambiatiException $e) {
+            DB::rollBack();
+            return back()->withInput()->with('destinatari_warning', $e->getCambiamenti());
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -676,9 +700,13 @@ class PianoRateController extends Controller
      */
     public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
+        // Con «Urgenza» (art. 1135 co. 2 c.c.) non c'è una delibera da registrare: la data non si chiede e, se
+        // arriva, non si scrive — stessa guardia di `store()` (decisione 12, verifica S6 R2, S8-32). La
+        // competenza dello straordinario d'urgenza si dichiara sulle fatture del piano.
+        $urgenza = $pianoRate->tipo_autorizzazione === 'urgenza';
         $validated = $request->validate([
             'approvato'               => 'required|boolean',
-            'data_delibera_assemblea' => 'required_if:approvato,true|nullable|date',
+            'data_delibera_assemblea' => ['nullable', 'date', Rule::requiredIf(fn () => $request->boolean('approvato') && ! $urgenza)],
             'numero_verbale'          => 'nullable|string|max:50',
             'nota_approvazione'       => 'nullable|string|max:500',
         ]);
@@ -687,16 +715,22 @@ class PianoRateController extends Controller
         $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
         
         $updateData = ['stato' => $nuovoStato];
+        $dataPrecedente = $pianoRate->data_delibera_assemblea?->toDateString();
+        $dataCambiata = false;
 
         if ($validated['approvato']) {
-            $updateData['data_delibera_assemblea'] = $validated['data_delibera_assemblea'];
+            if (! $urgenza) {
+                $updateData['data_delibera_assemblea'] = $validated['data_delibera_assemblea'];
+                $dataCambiata = ! empty($validated['data_delibera_assemblea']) && $dataPrecedente !== null && $dataPrecedente !== \Carbon\CarbonImmutable::parse($validated['data_delibera_assemblea'])->toDateString();
+            }
             $updateData['numero_verbale']          = $validated['numero_verbale'] ?? null;
             $updateData['nota_approvazione']       = $validated['nota_approvazione'] ?? null;
             $updateData['approvato_da_user_id']    = Auth::id();
             $updateData['approvato_il']            = now();
         } else {
-            // Torna in bozza: azzera i dati legali e l'audit
-            $updateData['data_delibera_assemblea'] = null;
+            // Torna in bozza: azzera l'audit dell'approvazione, **non** la data della delibera — è un fatto
+            // dell'assemblea, non del programma, e senza di essa uno straordinario non si rigenera (decisione
+            // 12; verifica S6). Si riscrive alla prossima approvazione, se è cambiata.
             $updateData['numero_verbale']          = null;
             $updateData['nota_approvazione']       = null;
             $updateData['approvato_da_user_id']    = null;
@@ -714,9 +748,21 @@ class PianoRateController extends Controller
             $nuovoStato
         );
         
-        $messaggio = $validated['approvato'] 
-            ? 'Piano approvato e delibera registrata con successo.' 
-            : 'Piano riportato in bozza. Dati di delibera rimossi.';
+        // S8-22: su uno straordinario con quote già generate, cambiare la data della delibera sposta il gradino
+        // della competenza (decisione 12) ma le quote restano quelle calcolate con la data di prima. Si accetta
+        // la correzione e si dice di ricalcolare; l'emissione lo pretende (EmissioneRateController::store).
+        if ($dataCambiata && NaturaGestione::daStringa($pianoRate->gestione?->tipo) === NaturaGestione::Straordinaria && $pianoRate->rate()->exists()) {
+            $formato = fn (string $d) => \Carbon\CarbonImmutable::parse($d)->locale('it')->translatedFormat('j F Y');
+
+            return back()->with($this->flashWarning(sprintf(
+                'Data della delibera aggiornata dal %s al %s. Le quote già generate sono state calcolate con la data precedente: ricalcola il piano prima di emettere le rate.',
+                $formato($dataPrecedente), $formato($validated['data_delibera_assemblea'])
+            )));
+        }
+
+        $messaggio = $validated['approvato']
+            ? ($urgenza ? 'Piano approvato. Intervento d\'urgenza: nessuna delibera da registrare, la competenza è quella dichiarata sulle fatture.' : 'Piano approvato e delibera registrata con successo.')
+            : 'Piano riportato in bozza. La data della delibera resta registrata; verbale e note dell\'approvazione sono stati azzerati.';
 
         return back()->with($this->flashSuccess($messaggio));
     }
@@ -811,14 +857,13 @@ class PianoRateController extends Controller
         // 1. IL MURO CONTABILE: Controlli prima di permettere l'eliminazione
         
         // A. Controllo Incassi (Pagamenti registrati)
-        $hasPagamenti = $pianoRate->rate()->whereHas('rateQuote', function ($q) {
-            $q->where('importo_pagato', '>', 0);
-        })->exists();
+        // `importo_pagato ≠ 0`: un credito compensato o rimborsato è un movimento come un incasso (B2, S6).
+        $hasPagamenti = $pianoRate->haIncassiRegistrati();
 
         if ($hasPagamenti) {
             return back()->with($this->flashError(
-                'Impossibile eliminare il piano rate: risultano incassi già registrati. ' .
-                'Devi prima annullare le registrazioni di incasso associate a queste rate.'
+                'Impossibile eliminare il piano rate: ci sono incassi registrati, o crediti già usati in compensazione o rimborsati. ' .
+                'Annulla prima quei movimenti.'
             ));
         }
 
@@ -950,10 +995,19 @@ class PianoRateController extends Controller
      * @param int $capitoloId L'ID del conto/capitolo da sganciare
      * @return RedirectResponse Redirect alla vista di dettaglio con esito operazione
      */
-    public function detachCapitolo(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, $capitoloId)
+    public function detachCapitolo(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, $capitoloId)
     {
-        if ($pianoRate->rate()->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))->exists()) {
-            return back()->with($this->flashError("Impossibile modificare: ci sono incassi registrati."));
+        // B2, cancello (2): il ricalcolo dopo la rimozione può cambiare i destinatari rispetto al piano
+        // com'era (un titolare chiuso nel frattempo dall'elenco titolari). La presa d'atto è
+        // dell'amministratore, non del programma: stessa forma di `PianoRateGenerationController`.
+        $request->validate([
+            'nota_destinatari' => 'required_if:accetta_destinatari,true|nullable|string|min:10',
+        ]);
+        $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
+        $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
+
+        if ($pianoRate->haIncassiRegistrati()) {
+            return back()->with($this->flashError("Impossibile modificare: ci sono incassi registrati, o crediti già usati o rimborsati."));
         }
         
         if ($pianoRate->rate()->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))->exists()) {
@@ -1006,9 +1060,15 @@ class PianoRateController extends Controller
             }
 
             $pianoRate->rate()->delete();
+            // Gli scoperti erano già stati accettati alla generazione: la rimozione di una voce non li
+            // riapre. Il cancello (2) invece sì, se scatta: la generazione precedente può non averlo mai
+            // attraversato (verifica indipendente S4, 19/09).
             app(GeneratePianoRateAction::class)->execute(
                 pianoRate: $pianoRate,
-                accettaScoperti: true
+                accettaScoperti: true,
+                accettaDestinatari: $accettaDestinatari,
+                notaDestinatari: $notaDestinatari,
+                esercizio: $esercizio,
             ); 
             
             if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
@@ -1021,6 +1081,12 @@ class PianoRateController extends Controller
             DB::commit();
             return back()->with($this->flashSuccess("Voce rimossa e ricalcolata."));
             
+        } catch (DestinatariCambiatiException $e) {
+            // Il rollback annulla anche il detach: la voce è ancora nel piano finché non c'è la presa d'atto.
+            DB::rollBack();
+            return back()
+                ->with('destinatari_warning', $e->getCambiamenti())
+                ->with('destinatari_warning_detach', (int) $capitoloId);
         } catch (\Throwable $e) {
             DB::rollBack();
             return back()->with($this->flashError("Errore durante la rimozione: " . $e->getMessage()));
@@ -1038,11 +1104,75 @@ class PianoRateController extends Controller
      * @param array $statistiche Statistiche generate dalla action (non usate al momento)
      * @return RedirectResponse
      */
-    protected function redirectSuccess(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, array $validated, array $statistiche = []) 
+    /**
+     * Scrive in `competenze_capitolo` i tratti dichiarati per voce (B2, S6, decisione 20), **dopo** il
+     * `sync` della pivot, e torna i nomi delle voci a cui non è stato possibile applicarli.
+     *
+     * La regola segue il motore (`CalcoloQuoteService::impostaCompetenzaPerConto`): per un conto cerca la
+     * pivot del conto stesso, poi quella della radice. Quindi un tratto dichiarato su un conto che ha la
+     * sua pivot va lì; dichiarato su un padre la cui pivot è nata sulle foglie (selezione rapida, orfani) va
+     * su **ogni foglia** presente; dichiarato su una voce che nel piano non c'è — un capitolo già in un altro
+     * piano attivo, per esempio — non ha dove stare, e lo si dice invece di tacerlo.
+     *
+     * @return list<string> nomi delle voci non applicate
+     */
+    private function scriviCompetenzeCapitoli(PianoRate $pianoRate, array $competenze): array
+    {
+        if ($competenze === []) {
+            return [];
+        }
+
+        $pivotPerConto = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->pluck('id', 'conto_id');
+        $nonApplicate = [];
+
+        foreach ($competenze as $voce) {
+            $contoId = (int) $voce['conto_id'];
+            $tratti = collect($voce['tratti'])->map(fn ($t) => ['dal' => substr((string) $t['dal'], 0, 10), 'al' => substr((string) $t['al'], 0, 10)])->sortBy('dal')->values();
+
+            $pivotIds = [];
+            if ($pivotPerConto->has($contoId)) {
+                $pivotIds = [(int) $pivotPerConto[$contoId]];
+            } else {
+                $conto = Conto::with('sottoconti')->find($contoId);
+                foreach ($conto?->sottoconti ?? [] as $foglia) {
+                    if ($pivotPerConto->has($foglia->id)) {
+                        $pivotIds[] = (int) $pivotPerConto[$foglia->id];
+                    }
+                }
+            }
+
+            if ($pivotIds === []) {
+                $nonApplicate[] = Conto::whereKey($contoId)->value('nome') ?? "conto #{$contoId}";
+                continue;
+            }
+
+            foreach ($pivotIds as $pivotId) {
+                \App\Models\Gestionale\CompetenzaCapitolo::where('piano_rate_capitolo_id', $pivotId)->delete();
+                foreach ($tratti as $ordine => $t) {
+                    \App\Models\Gestionale\CompetenzaCapitolo::create([
+                        'piano_rate_capitolo_id' => $pivotId,
+                        'dal' => $t['dal'],
+                        'al' => $t['al'],
+                        'ordine' => $ordine,
+                    ]);
+                }
+            }
+        }
+
+        return $nonApplicate;
+    }
+
+    protected function redirectSuccess(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, array $validated, array $statistiche = [], array $competenzeNonApplicate = []) 
     {
         $message = !empty($validated['genera_subito']) 
             ? "Piano rate creato e generato con successo!" 
             : "Piano rate creato con successo!";
+
+        // B2, S6: una competenza dichiarata su una voce che nel piano non c'è non si perde in silenzio.
+        if ($competenzeNonApplicate !== []) {
+            $message .= sprintf(' La competenza dichiarata su «%s» non è stata applicata: %s nel piano (già in un altro piano attivo, o senza budget).',
+                implode('», «', $competenzeNonApplicate), count($competenzeNonApplicate) === 1 ? 'la voce non è' : 'le voci non sono');
+        }
             
         return redirect()->route('admin.gestionale.esercizi.piani-rate.show', [
             'condominio' => $condominio->id, 

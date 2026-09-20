@@ -49,6 +49,13 @@ class UpdateSaldoRequest extends FormRequest
                     return;
                 }
 
+                // B2 (inv. 19): la coppia di conguaglio di un passaggio somma zero per costruzione, e non si
+                // tocca a metà. Si corregge dal passaggio, o con un saldo manuale a parte.
+                if ($saldo->subentro_id !== null) {
+                    $validator->errors()->add('saldo', 'Questa riga è una delle due del conguaglio di un passaggio di titolarità (credito a chi esce, debito a chi entra, somma zero): non si modifica da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie le due righe insieme, con la tua nota; se un piano le ha già emesse, resta il saldo manuale di segno opposto.');
+                    return;
+                }
+
                 // Muro contabile: la soglia è l'EMISSIONE, non la generazione.
                 // Finché il piano non è emesso né incassato resta interamente
                 // riscrivibile — «Ricalcola» lo dimostra — quindi il saldo che

@@ -27,6 +27,9 @@ export interface FatturaPassiva {
     numero_protocollo?: string | null;
     data_documento: string;
     data_scadenza: string;
+    /** Competenza dichiarata (B2): entrambi o nessuno; `dal = al` è la delibera puntuale. 'Y-m-d'. */
+    competenza_dal?: string | null;
+    competenza_al?: string | null;
     is_pregresso: boolean;
 
     // Importi (in centesimi, come da database)
@@ -50,10 +53,6 @@ export interface FatturaPassiva {
             cig?: string;
             cup?: string;
             ritenuta_details?: any;
-        };
-        competenza?: {
-            dal?: string;
-            al?: string;
         };
         override_budget?: {
             motivazione: string;

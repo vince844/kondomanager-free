@@ -194,6 +194,11 @@ class FatturaPassivaService
                 'numero_documento' => $data['numero_documento'],
                 'data_documento' => $data['data_documento'],
                 'data_scadenza' => $data['data_scadenza'],
+                // La competenza dichiarata (B2, S6): le due colonne, entrambe o nessuna (la Request lo
+                // garantisce). Letta da `CalcoloQuoteService::calcolaDaFattureStraordinarie` quando il
+                // piano sta su una gestione straordinaria; sull'ordinario resta un fatto registrato.
+                'competenza_dal' => $data['competenza_dal'] ?? null,
+                'competenza_al' => $data['competenza_al'] ?? null,
                 'is_pregresso' => $isPregresso,
                 'data_competenza_originaria' => $data['data_competenza_originaria'] ?? null,
                 'saldo_patrimoniale_id' => $data['saldo_patrimoniale_id'] ?? null,
@@ -235,7 +240,8 @@ class FatturaPassivaService
                                 ?? null,
                         ]
                     ),
-                    'competenza' => $data['dati_extra']['competenza'] ?? null,
+                    // `competenza` non sta più qui dalla 1.11.0-beta.31: è nelle colonne
+                    // `competenza_dal/al` (la migrazione `2026_09_18_200000` ha travasato le vecchie).
                     'override_budget' => $data['dati_extra']['override_budget'] ?? null,
                     // ⚠️ **Coda 124, 04/09/2026.** Questo array sostituisce interamente
                     // `dati_extra`: qualunque chiave che il chiamante avesse messo lì e che non
@@ -788,10 +794,10 @@ class FatturaPassivaService
         if ($pivotPlan) {
             $piano = PianoRate::find($pivotPlan->piano_rate_id);
             if ($piano instanceof PianoRate) {
-                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))->exists();
+                $hasPagamenti = $piano->haIncassiRegistrati();
                 $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
                 if ($hasPagamenti || $hasEmissioni) {
-                    return 'La fattura è in un piano straordinario con rate già emesse: usa lo storno.';
+                    return 'La fattura è in un piano straordinario con rate già emesse, incassate o con crediti già compensati o rimborsati: usa lo storno.';
                 }
                 $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
                 if ($stato === 'approvato') {
@@ -835,6 +841,10 @@ class FatturaPassivaService
                 'numero_documento' => $data['numero_documento'],
                 'data_documento' => $data['data_documento'],
                 'data_scadenza' => $data['data_scadenza'],
+                // La competenza si modifica dall'edit come le altre date (B2, S6): la fattura arriva qui
+                // solo se `motivoBloccoModifica` è nullo, cioè fuori da ogni piano approvato.
+                'competenza_dal' => $data['competenza_dal'] ?? null,
+                'competenza_al' => $data['competenza_al'] ?? null,
                 'modalita_pagamento' => $data['modalita_pagamento'],
                 'iban_fornitore' => $data['iban_fornitore'] ?? null,
                 'conto_corrente_id' => $data['conto_corrente_id'] ?? $fattura->conto_corrente_id,
@@ -992,6 +1002,9 @@ class FatturaPassivaService
 
             // 5. Aggiorna importi sulla fattura
             $datiExtra = $fattura->dati_extra ?? [];
+            // La chiave `competenza` di prima della beta.31 (`{dal:'',al:''}` scritta a vuoto dal form): le
+            // colonne sono la sola sede, e una riga che passa dall'edit non se la porta più dietro.
+            unset($datiExtra['competenza']);
             $datiExtra['fiscal']['ritenuta_details'] = $datiRitenuta;
             $datiExtra['fiscal']['motivo_esclusione_ritenuta'] = $this->motivoEsclusioneRitenuta($ritenutaCalcolo, $data);
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Contributi;
 
+use App\Helpers\DateHelper;
 use App\Actions\Cassa\RegistraContributoInCassaAction;
 use App\Enums\EventoTipo;
 use App\Http\Controllers\Controller;
@@ -176,20 +177,58 @@ class ContributoVersatoController extends Controller
 
         $stimaSemplificata = $ripartizioneNonStandard || !empty($immobiliSenzaProprietarioAttivo);
 
-        // D8 (docs/fondo_accantonato_e_quadratura_sp.md): la copertura è per
-        // IMMOBILE, non per soggetto. Su un conto con ripartizione mista
-        // (proprietario/inquilino) il netting sottrae il versamento dal lordo
-        // aggregato dell'unità PRIMA di spaccarlo fra i soggetti — un versamento
-        // fatto dal solo proprietario finisce per scontare anche l'inquilino.
-        // Deciso di bloccare con avviso invece di correggere il calcolo: caso
-        // raro, verificare a mano finché non si presenta davvero.
+        // D8 (docs/fondo_accantonato_e_quadratura_sp.md) e decisione 17 (B2): la copertura senza persona
+        // è dell'IMMOBILE — su una ripartizione mista (proprietario/inquilino) il netting la sottrae dal
+        // lordo dell'unità prima di spaccarlo fra i soggetti, e un versamento «dell'unità» sconta anche
+        // l'inquilino. Dalla beta.31 la riga può portare la PERSONA («versato da»): allora sconta solo il
+        // lordo di quella persona, e l'avanzo resta a suo nome (eccedenza). L'avviso resta per le righe
+        // senza persona.
         $ripartizioneMista = $ripartizioneNonStandard;
 
         $giaVersato = ContributoVersato::query()
             ->where('target_type', Conto::class)
             ->where('target_id', $conto->id)
             ->get()
-            ->keyBy('immobile_id');
+            ->groupBy('immobile_id');
+
+        // Chi può aver versato, unità per unità: i titolari di diritto reale in corso OGGI (la pagina non ha
+        // una data del versamento: «alla data» qui vuol dire oggi, e lo si dice a video).
+        $oggi = DateHelper::oggiUtenteImmutable();
+        $titolariPerImmobile = \App\Models\TitolaritaImmobile::with('anagrafica:id,nome')
+            ->whereIn('immobile_id', array_keys($immobili))
+            ->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])
+            ->get()
+            ->filter(fn ($t) => $t->inCorsoIl($oggi))
+            ->groupBy('immobile_id')
+            ->map(fn ($righe) => $righe->map(fn ($t) => [
+                'id' => (int) $t->anagrafica_id, 'nome' => $t->anagrafica?->nome, 'tipologia' => $t->tipologia, 'quota' => (float) $t->quota, 'chiusa_il' => null,
+            ])->values()->all());
+
+        // Chi ha già una riga di versato su questa voce ma non è più titolare (ha venduto): resta nell'elenco con la
+        // sua titolarità chiusa, così la sua riga si legge, si conserva e la quota lorda è quella della sua quota
+        // storica — e l'acquirente può aggiungere la sua accanto (verifica S6, R15).
+        foreach ($giaVersato as $immobileId => $righeVersato) {
+            $presenti = collect($titolariPerImmobile->get($immobileId, []))->pluck('id')->all();
+            foreach ($righeVersato as $cv) {
+                if ($cv->anagrafica_id === null || in_array((int) $cv->anagrafica_id, $presenti, true)) {
+                    continue;
+                }
+                $storica = \App\Models\TitolaritaImmobile::with('anagrafica:id,nome')
+                    ->where('immobile_id', $immobileId)->where('anagrafica_id', $cv->anagrafica_id)
+                    ->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])
+                    ->orderByDesc('data_fine')->first();
+                $elenco = $titolariPerImmobile->get($immobileId, []);
+                $elenco[] = [
+                    'id' => (int) $cv->anagrafica_id,
+                    'nome' => $storica?->anagrafica?->nome ?? \App\Models\Anagrafica::whereKey($cv->anagrafica_id)->value('nome'),
+                    'tipologia' => $storica?->tipologia ?? 'proprietario',
+                    'quota' => (float) ($storica?->quota ?? 100),
+                    'chiusa_il' => $storica?->data_fine?->toDateString(),
+                ];
+                $titolariPerImmobile->put($immobileId, $elenco);
+                $presenti[] = (int) $cv->anagrafica_id;
+            }
+        }
 
         // Quote lorde penny-perfect: floor() per ciascun immobile, poi il resto
         // (mai negativo: la somma dei floor è sempre ≤ importo) va — un centesimo
@@ -220,26 +259,46 @@ class ContributoVersatoController extends Controller
             }
         }
 
-        $righe = collect($immobili)->map(function ($im) use ($lordi, $giaVersato) {
-            $cv = $giaVersato->get($im['id']);
+        // Una riga per (unità, persona): le righe registrate come stanno; un'unità senza righe ne ha una,
+        // con la persona già scelta se il proprietario in corso è uno solo (fatto, non deduzione), altrimenti
+        // «l'unità» finché l'amministratore non sceglie. La quota lorda della persona è quella dell'unità
+        // per la sua quota di possesso: è il tetto che il motore applica al suo versato.
+        $righe = collect($immobili)->flatMap(function ($im) use ($lordi, $giaVersato, $titolariPerImmobile) {
+            $lordoUnita = $lordi[$im['id']] ?? 0;
+            $titolari = collect($titolariPerImmobile->get($im['id'], []));
+            $rigaPer = function (?int $anagraficaId, ?ContributoVersato $cv) use ($im, $lordoUnita, $titolari) {
+                $t = $anagraficaId ? $titolari->firstWhere('id', $anagraficaId) : null;
+                $quotaPersona = $t ? (float) $t['quota'] : null;
 
-            return [
-                'immobile_id'    => $im['id'],
-                'nome'           => $im['nome'],
-                'interno'        => $im['interno'],
-                'millesimi'      => round($im['millesimi'], 2),
-                'quota_lorda'    => $lordi[$im['id']] ?? 0,
-                'gia_versato'    => (int) ($cv->importo_cents ?? 0),
-                'contributo_id'  => $cv->id ?? null,
-            ];
-        })->sortBy('interno')->values();
+                return [
+                    'chiave'         => $im['id'] . ':' . ($anagraficaId ?? 0),
+                    'immobile_id'    => $im['id'],
+                    'anagrafica_id'  => $anagraficaId,
+                    'nome'           => $im['nome'],
+                    'interno'        => $im['interno'],
+                    'millesimi'      => round($im['millesimi'], 2),
+                    'quota_lorda'    => $quotaPersona !== null ? (int) round($lordoUnita * $quotaPersona / 100) : $lordoUnita,
+                    'quota_lorda_unita' => $lordoUnita,
+                    'gia_versato'    => (int) ($cv->importo_cents ?? 0),
+                    'contributo_id'  => $cv?->id,
+                ];
+            };
+            $esistenti = collect($giaVersato->get($im['id'], []));
+            if ($esistenti->isNotEmpty()) {
+                return $esistenti->map(fn ($cv) => $rigaPer($cv->anagrafica_id ? (int) $cv->anagrafica_id : null, $cv));
+            }
+            $proprietari = $titolari->where('tipologia', 'proprietario');
+
+            return [$rigaPer($proprietari->count() === 1 ? (int) $proprietari->first()['id'] : null, null)];
+        })->sortBy([['interno', 'asc'], ['anagrafica_id', 'asc']])->values();
 
         // La natura e la nota sono per-VOCE, non per-riga: tutte le righe di uno
         // stesso salvataggio le condividono (vedi update()). Una qualunque basta.
-        $naturaCorrente      = $giaVersato->first()?->natura ?? ContributoVersato::NATURA_FONDO_VINCOLATO;
-        $descrizioneCorrente = $giaVersato->first()?->descrizione;
-        $liquiditaStato      = $giaVersato->first()?->liquidita_stato;
-        $cassaIdCorrente     = $giaVersato->first()?->cassa_id;
+        $primaRiga           = $giaVersato->flatten()->first();
+        $naturaCorrente      = $primaRiga?->natura ?? ContributoVersato::NATURA_FONDO_VINCOLATO;
+        $descrizioneCorrente = $primaRiga?->descrizione;
+        $liquiditaStato      = $primaRiga?->liquidita_stato;
+        $cassaIdCorrente     = $primaRiga?->cassa_id;
 
         // Elenco casse/fondi per il selettore dello Scenario A. Include anche i
         // fondi (a differenza del selettore di PagamentoFornitoreController, che
@@ -276,6 +335,7 @@ class ContributoVersatoController extends Controller
                 'gestione'      => $conto->pianoConto?->gestione?->nome,
             ],
             'righe'              => $righe,
+            'titolari'           => $titolariPerImmobile,
             'natura'             => $naturaCorrente,
             'descrizione'        => $descrizioneCorrente,
             'stima_semplificata' => $stimaSemplificata,
@@ -315,6 +375,9 @@ class ContributoVersatoController extends Controller
                 Rule::exists('immobili', 'id')->where('condominio_id', $condominio->id),
             ],
             'righe.*.gia_versato'    => ['required', 'integer', 'min:0'],
+            // B2, decisione 17: chi ha versato. Nullo = «l'unità» (la riga storica, D8); con la persona il motore
+            // sconta solo il suo lordo. La persona deve essere titolare di diritto reale dell'unità, in corso oggi.
+            'righe.*.anagrafica_id'  => ['nullable', 'integer', Rule::exists('anagrafiche', 'id')],
             'descrizione'            => ['nullable', 'string', 'max:255'],
             // "Dove sono questi soldi?" (beta.27, D8-bis). Nessun required_if
             // qui apposta: cassa_id/nota_acconto servono SOLO alla prima
@@ -333,6 +396,31 @@ class ContributoVersatoController extends Controller
             ],
             'nota_acconto'           => ['nullable', 'string', 'max:1000'],
         ]);
+
+        // La persona di ogni riga è un titolare in corso dell'unità, e la coppia (unità, persona) è una sola.
+        $oggi = DateHelper::oggiUtenteImmutable();
+        $viste = [];
+        foreach ($dati['righe'] as $i => $riga) {
+            $chiave = $riga['immobile_id'] . ':' . ($riga['anagrafica_id'] ?? 0);
+            if (isset($viste[$chiave])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(["righe.{$i}.anagrafica_id" => 'La stessa persona compare due volte sulla stessa unità.']);
+            }
+            $viste[$chiave] = true;
+            // Una riga a zero non si scrive: non c'è niente da controllare (verifica S6, R15).
+            if (! empty($riga['anagrafica_id']) && (int) $riga['gia_versato'] > 0) {
+                $titolare = \App\Models\TitolaritaImmobile::where('immobile_id', $riga['immobile_id'])->where('anagrafica_id', $riga['anagrafica_id'])
+                    ->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])->get()
+                    ->first(fn ($t) => $t->inCorsoIl($oggi));
+                // Chi ha venduto resta col suo versato: la riga esiste già a database ed è un fatto storico che si
+                // conserva, non una dichiarazione nuova. Il motore la legge a suo nome (nettingGiaVersato: «il resto è
+                // suo, non di chi gli è subentrato»). 422 solo per una persona mai titolare e mai registrata (R15).
+                $storica = $titolare === null && ContributoVersato::where('target_type', Conto::class)->where('target_id', $conto->id)
+                    ->where('immobile_id', $riga['immobile_id'])->where('anagrafica_id', $riga['anagrafica_id'])->exists();
+                if ($titolare === null && ! $storica) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(["righe.{$i}.anagrafica_id" => 'Questa persona non è oggi titolare di diritto reale di questa unità, e non ha un versato già registrato su questa voce.']);
+                }
+            }
+        }
 
         // Un fondo vincolato (delibera ex art. 1135 c.c.) non può finire su una
         // cassa liberamente prelevabile per imprevisti: altrimenti quei soldi
@@ -411,6 +499,7 @@ class ContributoVersatoController extends Controller
                     'target_type'     => Conto::class,
                     'target_id'       => $conto->id,
                     'immobile_id'     => $riga['immobile_id'],
+                    'anagrafica_id'   => $riga['anagrafica_id'] ?? null,
                     'importo_cents'   => (int) $riga['gia_versato'],
                     'natura'          => $dati['natura'],
                     'origine'         => 'migrazione',

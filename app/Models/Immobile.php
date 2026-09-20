@@ -175,13 +175,24 @@ class Immobile extends Model
                 'id',
                 'tipologia',
                 'quota',
-                'tipologie_spese',
+                // `tipologie_spese` è caduta con la 1.11.0-beta.31 (decisione 8 del progetto sul subentro).
                 'data_inizio',
                 'data_fine',
                 'attivo',
                 'note',
             ])
             ->withTimestamps();
+    }
+
+    /**
+     * Le righe di titolarità dell'unità come modello proprio, non come pivot di `anagrafiche()`:
+     * servono a chi lavora **per periodo** — le rotte di modifica e «Dissocia» dalla 1.11.0-beta.31,
+     * lo storico «Chi ha avuto questa unità», «Registra passaggio» — e a scoprire dall'`id` di una
+     * riga se appartiene davvero a questa unità (`PassaggioController`, `ImmobileAnagraficaController`).
+     */
+    public function titolarita()
+    {
+        return $this->hasMany(TitolaritaImmobile::class, 'immobile_id');
     }
 
     /**
@@ -247,9 +258,23 @@ class Immobile extends Model
     protected function relazioniDeiFigliNelleRotte(): array
     {
         return [
+            // `{anagrafica}` non è più un parametro delle rotte dell'unità dalla 1.11.0-beta.31 (le
+            // rotte di modifica ricevono `{titolarita}`), ma la coppia resta: costa nulla e protegge
+            // chi la reintroducesse.
             'anagrafica' => 'anagrafiche',
+            // La riga di titolarità cercata **dentro** l'unità: `/immobili/3/anagrafiche/1322` con una
+            // riga 1322 di un'altra unità risponde 404 già qui, prima del controller.
+            'titolarita' => 'titolarita',
             'documento' => 'documenti',
+            // Il passaggio registrato cercato dentro l'unità (S6: `PATCH passaggi/{subentro}/copia-autentica`).
+            'subentro' => 'subentri',
         ];
+    }
+
+    /** I passaggi registrati su questa unità (`subentri`, B2). */
+    public function subentri(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Gestionale\Subentro::class, 'immobile_id');
     }
 
 }

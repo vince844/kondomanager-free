@@ -50,6 +50,9 @@ trait HasProtocolNumber
             // `PREFISSO-ANNO-NNNNN`. Con `AP` il generatore produrrebbe `AP-2026-00001`,
             // che accanto a `AP-000011` confonde due famiglie invece di unirle.
             'apertura'                    => 'APE',
+            // 1.11.0-beta.31 (B2, S6): il rimborso del credito a chi esce. `RIM` era già della
+            // regolazione immediata, quindi `RMB`: due famiglie diverse non condividono un prefisso.
+            'rimborso_condomino'          => 'RMB',
             default                       => 'SCR',
         };
 

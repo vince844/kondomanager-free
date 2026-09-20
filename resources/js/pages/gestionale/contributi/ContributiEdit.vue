@@ -20,13 +20,21 @@ import {
 } from 'lucide-vue-next';
 
 interface Riga {
+  /** `${immobile_id}:${anagrafica_id ?? 0}`: una riga per (unità, persona). */
+  chiave: string;
   immobile_id: number;
+  /** Chi ha versato (B2, decisione 17): nullo = «l'unità», la riga storica. */
+  anagrafica_id: number | null;
   nome: string;
   interno: string | null;
   millesimi: number;
-  quota_lorda: number;   // centesimi
+  quota_lorda: number;   // centesimi — della persona, se c'è; dell'unità altrimenti
+  quota_lorda_unita: number;
   gia_versato: number;   // centesimi
 }
+
+/** `chiusa_il`: la titolarità è finita (ha venduto) ma la persona ha un versato registrato su questa voce e resta in elenco (S6, R15). */
+interface Titolare { id: number; nome: string | null; tipologia: string; quota: number; chiusa_il?: string | null }
 
 interface CassaOpzione {
   id: number;
@@ -40,6 +48,8 @@ const props = defineProps<{
   condominio: Building;
   voce: { id: number; nome: string; importo_cents: number; gestione: string | null };
   righe: Riga[];
+  /** I titolari di diritto reale in corso oggi, per unità: le scelte di «Versato da». */
+  titolari: Record<number, Titolare[]>;
   natura: 'fondo_vincolato' | 'avanzo';
   descrizione: string | null;
   // true quando questa voce ha ripartizioni per soggetto non standard
@@ -48,9 +58,9 @@ const props = defineProps<{
   // al momento della generazione del piano rate può calcolare un valore diverso.
   stima_semplificata: boolean;
   // true quando la voce ha una ripartizione per soggetto (proprietario/inquilino):
-  // il "già versato" è per unità, non per soggetto — un versamento fatto da uno
-  // solo dei due finisce comunque per scontare anche l'altro (D8, docs/fondo_
-  // accantonato_e_quadratura_sp.md). Non bloccato: solo segnalato.
+  // un «già versato» SENZA persona è dell'unità — un versamento fatto da uno solo
+  // dei due finisce per scontare anche l'altro (D8). Con la persona (B2, decisione 17)
+  // sconta solo il suo lordo. Non bloccato: solo segnalato per le righe senza persona.
   ripartizione_mista: boolean;
   // "Dove sono questi soldi?" (D8-bis). null finché non ancora dichiarato per
   // questa voce: in tal caso la modale si apre alla prima dichiarazione con
@@ -66,9 +76,51 @@ const { toast } = useToast();
 
 // ── Stato ──────────────────────────────────────────────────────────────────
 // Gli importi si editano in EURO (stringa), si inviano in centesimi.
-const versato = ref<Record<number, string>>(
-  Object.fromEntries(props.righe.map(r => [r.immobile_id, (r.gia_versato / 100).toFixed(2)]))
+// Le righe sono locali: si può aggiungere una seconda persona sulla stessa unità (dopo una vendita il
+// venditore e l'acquirente hanno ciascuno il proprio versato sulla voce), e cambiare «Versato da».
+const righe = ref<Riga[]>(props.righe.map(r => ({ ...r })));
+const versato = ref<Record<string, string>>(
+  Object.fromEntries(props.righe.map(r => [r.chiave, (r.gia_versato / 100).toFixed(2)]))
 );
+const titolariDi = (immobileId: number): Titolare[] => props.titolari?.[immobileId] ?? [];
+const quotaLordaPer = (r: Riga, anagraficaId: number | null) => {
+  const t = anagraficaId ? titolariDi(r.immobile_id).find(x => x.id === anagraficaId) : null;
+  return t ? Math.round(r.quota_lorda_unita * t.quota / 100) : r.quota_lorda_unita;
+};
+const cambiaPersona = (r: Riga, anagraficaId: number | null) => {
+  const nuovaChiave = `${r.immobile_id}:${anagraficaId ?? 0}`;
+  if (righe.value.some(x => x !== r && x.chiave === nuovaChiave)) {
+    toast({ title: 'Persona già presente', description: 'Questa persona ha già una riga su questa unità.', variant: 'destructive' });
+    return;
+  }
+  versato.value[nuovaChiave] = versato.value[r.chiave] ?? '0.00';
+  delete versato.value[r.chiave];
+  r.chiave = nuovaChiave;
+  r.anagrafica_id = anagraficaId;
+  r.quota_lorda = quotaLordaPer(r, anagraficaId);
+};
+const ETICHETTE_RUOLO: Record<string, string> = { proprietario: 'proprietario', nuda_proprietario: 'nudo proprietario', usufruttuario: 'usufruttuario', inquilino: 'inquilino' };
+
+/** C'è un titolare IN CORSO non ancora usato su questa unità: solo allora «+ persona» ha qualcuno da aggiungere. */
+const personaLibera = (immobileId: number): Titolare | undefined => {
+  const usate = new Set(righe.value.filter(x => x.immobile_id === immobileId).map(x => x.anagrafica_id));
+  return titolariDi(immobileId).find(t => !t.chiusa_il && !usate.has(t.id));
+};
+const aggiungiPersona = (r: Riga) => {
+  const usate = new Set(righe.value.filter(x => x.immobile_id === r.immobile_id).map(x => x.anagrafica_id));
+  const libera = personaLibera(r.immobile_id);
+  const anagraficaId = libera ? libera.id : (usate.has(null) ? null : null);
+  if (!libera && usate.has(null)) return;
+  const nuova: Riga = { ...r, chiave: `${r.immobile_id}:${anagraficaId ?? 0}`, anagrafica_id: anagraficaId, quota_lorda: quotaLordaPer(r, anagraficaId), gia_versato: 0 };
+  const idx = righe.value.lastIndexOf(righe.value.filter(x => x.immobile_id === r.immobile_id).slice(-1)[0]);
+  righe.value.splice(idx + 1, 0, nuova);
+  versato.value[nuova.chiave] = '0.00';
+};
+const togliRiga = (r: Riga) => {
+  if (righe.value.filter(x => x.immobile_id === r.immobile_id).length <= 1) return;
+  righe.value = righe.value.filter(x => x !== r);
+  delete versato.value[r.chiave];
+};
 
 // La guida in header: qui si prendono le due decisioni che il programma non può dedurre
 // (natura del versamento e stato della liquidità), ed era l'unica delle tre pagine del
@@ -123,30 +175,34 @@ const cents = (v: string | number | undefined) => Math.round(parse(v) * 100);
 // ── Il gesto che fa risparmiare tempo ──────────────────────────────────────
 // L'accantonamento si raccoglie quasi sempre per millesimi: l'amministratore
 // digita il totale una volta sola e il sistema lo ripartisce, penny-perfect.
-const millesimiTotali = computed(() => props.righe.reduce((a, r) => a + r.millesimi, 0));
+// I millesimi si contano una volta per unità, anche con più righe (persone) sulla stessa unità.
+const millesimiTotali = computed(() => Object.values(Object.fromEntries(righe.value.map(r => [r.immobile_id, r.millesimi]))).reduce((a, m) => a + m, 0));
+// Il peso di una riga: i millesimi dell'unità per la quota della persona (100 % se «l'unità»).
+const pesoRiga = (r: Riga) => r.quota_lorda_unita > 0 ? r.millesimi * (r.quota_lorda / r.quota_lorda_unita) : r.millesimi;
 
 const ripartisciPerMillesimi = () => {
   const totale = cents(totaleRaccolto.value);
-  if (totale <= 0 || millesimiTotali.value <= 0) return;
+  const pesoTotale = righe.value.reduce((a, r) => a + pesoRiga(r), 0);
+  if (totale <= 0 || pesoTotale <= 0) return;
 
   let assegnato = 0;
-  props.righe.forEach((r, i) => {
-    const quota = i === props.righe.length - 1
+  righe.value.forEach((r, i) => {
+    const quota = i === righe.value.length - 1
       ? totale - assegnato                                     // l'ultimo assorbe il resto
-      : Math.floor((totale * r.millesimi) / millesimiTotali.value);
+      : Math.floor((totale * pesoRiga(r)) / pesoTotale);
     assegnato += quota;
-    versato.value[r.immobile_id] = (quota / 100).toFixed(2);
+    versato.value[r.chiave] = (quota / 100).toFixed(2);
   });
 };
 
 const azzera = () => {
-  props.righe.forEach(r => { versato.value[r.immobile_id] = '0.00'; });
+  righe.value.forEach(r => { versato.value[r.chiave] = '0.00'; });
 };
 
 // ── Effetto sul riparto, calcolato mentre si digita ─────────────────────────
 const righeCalcolate = computed(() =>
-  props.righe.map(r => {
-    const versatoC = cents(versato.value[r.immobile_id]);
+  righe.value.map(r => {
+    const versatoC = cents(versato.value[r.chiave]);
     const residuo = Math.max(0, r.quota_lorda - versatoC);
     return {
       ...r,
@@ -209,9 +265,10 @@ const eseguiSalvataggio = () => {
     {
       natura: natura.value,
       descrizione: descrizione.value || null,
-      righe: props.righe.map(r => ({
+      righe: righe.value.map(r => ({
         immobile_id: r.immobile_id,
-        gia_versato: cents(versato.value[r.immobile_id]),
+        anagrafica_id: r.anagrafica_id,
+        gia_versato: cents(versato.value[r.chiave]),
       })),
       liquidita_stato: liquiditaStato.value,
       cassa_id: liquiditaStato.value === 'registrata_in_cassa' ? cassaIdSelezionata.value : null,
@@ -361,10 +418,10 @@ const guide = [
           <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <p class="text-[11px] text-amber-800 leading-relaxed">
             Questa voce ha una <strong>ripartizione per soggetto</strong> (proprietario/
-            inquilino). Il già versato è registrato per unità, non per soggetto: viene
-            sottratto dal totale dell'immobile <strong>prima</strong> di dividerlo fra
-            proprietario e inquilino. Se il versamento riguarda solo uno dei due,
-            verifica a mano il piano rate generato — il software non lo distingue.
+            inquilino). Una riga registrata come «l'unità» viene sottratta dal totale
+            dell'immobile <strong>prima</strong> di dividerlo fra proprietario e inquilino,
+            quindi sconta entrambi. Se il versamento è di una persona sola, scegli chi in
+            «Versato da»: lo sconto va solo alla sua quota, e l'eventuale avanzo resta a suo nome.
           </p>
         </div>
       </div>
@@ -443,6 +500,7 @@ const guide = [
             <thead>
               <tr class="text-[10px] uppercase tracking-wide text-slate-400 border-b">
                 <th class="text-left px-6 py-3 font-bold">Unità</th>
+                <th class="text-left px-3 py-3 font-bold">Versato da</th>
                 <th class="text-right px-3 py-3 font-bold">Millesimi</th>
                 <th class="text-right px-3 py-3 font-bold">Quota dovuta</th>
                 <th class="text-right px-3 py-3 font-bold">Già versato</th>
@@ -452,7 +510,7 @@ const guide = [
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="r in righeCalcolate" :key="r.immobile_id" class="hover:bg-slate-50/60">
+              <tr v-for="r in righeCalcolate" :key="r.chiave" class="hover:bg-slate-50/60">
                 <td class="px-6 py-2.5">
                   <div class="flex items-center gap-2">
                     <Building2 class="w-3.5 h-3.5 text-slate-300" />
@@ -460,6 +518,19 @@ const guide = [
                       <div class="font-semibold text-slate-800 text-xs">{{ r.nome }}</div>
                       <div v-if="r.interno" class="text-[10px] text-slate-400">Int. {{ r.interno }}</div>
                     </div>
+                  </div>
+                </td>
+                <!-- B2, decisione 17: chi ha versato. «L'unità» è la riga storica (sconta tutti i soggetti, D8);
+                     con la persona lo sconto va solo al suo lordo. I titolari sono quelli in corso oggi. -->
+                <td class="px-3 py-2.5">
+                  <div class="flex items-center gap-1.5">
+                    <select :value="r.anagrafica_id ?? ''" @change="cambiaPersona(righe.find(x => x.chiave === r.chiave)!, ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value))"
+                      class="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 max-w-[11rem]">
+                      <option value="">l'unità (senza persona)</option>
+                      <option v-for="t in titolariDi(r.immobile_id)" :key="t.id" :value="t.id">{{ t.nome }} · {{ ETICHETTE_RUOLO[t.tipologia] ?? t.tipologia }} {{ t.quota }} %<template v-if="t.chiusa_il"> · titolarità chiusa il {{ new Date(t.chiusa_il + 'T00:00:00').toLocaleDateString('it-IT') }}</template></option>
+                    </select>
+                    <button v-if="personaLibera(r.immobile_id)" type="button" @click="aggiungiPersona(righe.find(x => x.chiave === r.chiave)!)" class="text-[11px] text-indigo-600 hover:underline whitespace-nowrap" title="Un'altra persona ha versato su questa unità">+ persona</button>
+                    <button v-if="righe.filter(x => x.immobile_id === r.immobile_id).length > 1" type="button" @click="togliRiga(righe.find(x => x.chiave === r.chiave)!)" class="text-[11px] text-slate-400 hover:text-rose-600">togli</button>
                   </div>
                 </td>
                 <td class="px-3 py-2.5 text-right text-xs text-slate-500 tabular-nums">
@@ -471,7 +542,7 @@ const guide = [
                 <td class="px-3 py-2.5">
                   <div class="relative w-32 ml-auto">
                     <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">€</span>
-                    <MoneyInput v-model="versato[r.immobile_id]" :money-options="moneyOptions"
+                    <MoneyInput v-model="versato[r.chiave]" :money-options="moneyOptions"
                       class="pl-5 h-8 text-right text-xs font-semibold" />
                   </div>
                 </td>
@@ -488,7 +559,7 @@ const guide = [
             </tbody>
             <tfoot>
               <tr class="border-t-2 border-slate-200 bg-slate-50 font-bold text-xs">
-                <td class="px-6 py-3">Totali</td>
+                <td class="px-6 py-3" colspan="2">Totali</td>
                 <td class="px-3 py-3 text-right tabular-nums text-slate-500">{{ millesimiTotali.toFixed(2) }}</td>
                 <td class="px-3 py-3 text-right tabular-nums">{{ euro(totali.lordo) }}</td>
                 <td class="px-3 py-3 text-right tabular-nums text-indigo-700">{{ euro(totali.versato) }}</td>

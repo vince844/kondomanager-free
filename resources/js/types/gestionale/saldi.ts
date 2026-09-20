@@ -19,6 +19,10 @@ export interface Saldo {
    * piano — vedi `SaldoInizialeController::esponiLucchettoCalcolato()`.
    */
   e_bloccato: boolean;
+  /** Una delle due righe del conguaglio di un passaggio di titolarità (B2): si tolgono insieme, mai una sola. */
+  e_conguaglio?: boolean;
+  subentro_id?: number | null;
+  subentro?: { id: number; decorrenza: string; tipo_passaggio: string } | null;
   origine: string;
   gestione_id: number;
   anagrafica_id: number | null;
@@ -39,7 +43,11 @@ export interface AnagraficaConSaldi {
   cognome: string;
   saldi?: Saldo[]; 
   pivot?: {
+    id?: number;
     tipologia: string;
+    /** B2: il periodo della riga; `data_fine` compilata = titolare uscito (la riga resta per i suoi saldi). */
+    data_inizio?: string | null;
+    data_fine?: string | null;
   };
 }
 

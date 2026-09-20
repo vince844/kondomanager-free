@@ -54,6 +54,10 @@ class FetchFattureStraordinarieController extends Controller
                     'fatture_passive.id',
                     'fatture_passive.numero_documento',
                     'fatture_passive.data_documento',
+                    // B2, S6 (verifica R5): il carrello dice se la fattura ha la competenza dichiarata — con
+                    // «Urgenza» è l'unico gradino, e senza il riparto si ferma su quella fattura.
+                    'fatture_passive.competenza_dal',
+                    'fatture_passive.competenza_al',
                     'fornitori.ragione_sociale as fornitore',
                     DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_straordinario')
                 )
@@ -61,6 +65,8 @@ class FetchFattureStraordinarieController extends Controller
                     'fatture_passive.id',
                     'fatture_passive.numero_documento',
                     'fatture_passive.data_documento',
+                    'fatture_passive.competenza_dal',
+                    'fatture_passive.competenza_al',
                     'fornitori.ragione_sociale'
                 )
                 ->get();
@@ -80,6 +86,10 @@ class FetchFattureStraordinarieController extends Controller
                     'fatture_passive.id',
                     'fatture_passive.numero_documento',
                     'fatture_passive.data_documento',
+                    // B2, S6 (verifica R5): il carrello dice se la fattura ha la competenza dichiarata — con
+                    // «Urgenza» è l'unico gradino, e senza il riparto si ferma su quella fattura.
+                    'fatture_passive.competenza_dal',
+                    'fatture_passive.competenza_al',
                     'fornitori.ragione_sociale as fornitore',
                     DB::raw('SUM(fattura_coperture.importo) as totale_straordinario')
                 )
@@ -87,6 +97,8 @@ class FetchFattureStraordinarieController extends Controller
                     'fatture_passive.id',
                     'fatture_passive.numero_documento',
                     'fatture_passive.data_documento',
+                    'fatture_passive.competenza_dal',
+                    'fatture_passive.competenza_al',
                     'fornitori.ragione_sociale'
                 )
                 ->get();
@@ -128,7 +140,13 @@ class FetchFattureStraordinarieController extends Controller
                         'gia_finanziato'        => MoneyHelper::fromCents($giaFinanziatoCents),
                         'residuo_da_finanziare' => MoneyHelper::fromCents($residuoCents),
                         'importo_suggerito'     => MoneyHelper::fromCents($residuoCents), 
-                        'selezionata'           => false
+                        'selezionata'           => false,
+                        'ha_competenza'         => $f->competenza_dal !== null && $f->competenza_al !== null,
+                        'competenza'            => $f->competenza_dal !== null && $f->competenza_al !== null
+                            ? ($f->competenza_dal === $f->competenza_al
+                                ? 'deliberata il ' . Carbon::parse($f->competenza_dal)->format('d/m/Y')
+                                : Carbon::parse($f->competenza_dal)->format('d/m/Y') . ' – ' . Carbon::parse($f->competenza_al)->format('d/m/Y'))
+                            : null,
                     ];
                 }
             }

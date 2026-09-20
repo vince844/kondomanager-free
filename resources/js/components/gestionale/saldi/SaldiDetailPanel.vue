@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed, ref } from "vue";
-import { router } from "@inertiajs/vue3";
+import { router, usePage } from "@inertiajs/vue3";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import { Pencil, Trash2, Lock, Plus, Users, Coins, TrendingUp, TrendingDown, ChevronDown, Building2, User, AlertTriangle } from "lucide-vue-next";
 import MoneyInput from '@/components/MoneyInput.vue';
@@ -59,6 +59,14 @@ const pianoCheTieneIlLucchetto = computed(() => saldoBloccatoSelezionato.value?.
 const lucchettoSenzaTitolare = computed(() =>
   !!saldoBloccatoSelezionato.value && !saldoBloccatoSelezionato.value.piano_rate_id
 );
+
+/** Una gamba del conguaglio di un passaggio (B2): la modale spiega, senza «Sblocca» e senza «annulla l'emissione». */
+const lucchettoDiConguaglio = computed(() => !!saldoBloccatoSelezionato.value?.e_conguaglio);
+const dataPassaggio = (iso?: string | null) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—');
+// La rete sotto le azioni: il 422 di «Modifica»/«Elimina» (chiave `saldo`) non aveva nessun lettore qui (verifica S5, R4).
+// `usePage()` è indefinito fuori da un'app Inertia (i test montano il componente da solo): si legge con prudenza.
+const page = usePage<{ errors?: Record<string, string> }>() as { props?: { errors?: Record<string, string> } } | undefined;
+const erroreSaldo = computed(() => page?.props?.errors?.saldo ?? null);
 
 function apriModaleLucchetto(saldo: any) {
   saldoBloccatoSelezionato.value = saldo;
@@ -135,8 +143,9 @@ const gestioniGroups = computed<GestioneGroup[]>(() =>
     // non è ancora stato emesso. Sono il caso che la beta.44 rende di nuovo raggiungibile,
     // e vanno accompagnati da un avviso: correggerli non aggiorna da solo le quote già
     // generate — serve «Ricalcola» sul piano.
+    // Le righe del conguaglio di un passaggio (B2) non sono correggibili a mano: l'avviso non le riguarda.
     const daRicalcolare = [...crediti, ...debiti]
-      .some(r => !r.saldo.e_bloccato && r.saldo.piano_rate_id !== null);
+      .some(r => !r.saldo.e_bloccato && !r.saldo.e_conguaglio && r.saldo.piano_rate_id !== null);
 
     return { gestione: g, crediti, debiti, totaleCrediti, totaleDebiti, netto, daRicalcolare }; 
   })
@@ -252,6 +261,9 @@ function submitAddModal() {
 
 <template>
   <div class="p-6 space-y-6 relative">
+    <div v-if="erroreSaldo" role="alert" class="mb-3 rounded-lg border border-rose-200 bg-rose-50 dark:border-rose-900/40 dark:bg-rose-900/10 px-4 py-3 text-sm text-rose-900 dark:text-rose-200 flex items-start gap-2">
+      <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" /><span>{{ erroreSaldo }}</span>
+    </div>
 
     <div class="flex items-start justify-between gap-4 flex-wrap">
       <div>
@@ -310,13 +322,15 @@ function submitAddModal() {
         <div class="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
       </div>
       <div class="flex flex-wrap gap-2">
-        <div v-for="a in immobile.anagrafiche" :key="a.id" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 shadow-sm">
+        <!-- B2: una riga chiusa (chi ha venduto) resta qui perché i suoi saldi sono ancora dell'unità, ma si vede che è chiusa. -->
+        <div v-for="a in immobile.anagrafiche" :key="a.pivot?.id ?? a.id" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm"
+             :class="a.pivot?.data_fine ? 'border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30 opacity-80' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60'">
           <div class="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-[11px] font-bold text-indigo-600 dark:text-indigo-300 shrink-0">
             {{ initials(a.nome, a.cognome) }}
           </div>
           <div>
             <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 leading-tight">{{ a.nome }}</p>
-            <p class="text-[10px] uppercase tracking-wider text-slate-400 leading-tight">{{ a.pivot?.tipologia }}</p>
+            <p class="text-[10px] uppercase tracking-wider text-slate-400 leading-tight">{{ a.pivot?.tipologia }}<template v-if="a.pivot?.data_fine"> · fino al {{ String(a.pivot.data_fine).slice(0, 10).split('-').reverse().join('/') }}</template></p>
           </div>
         </div>
         <p v-if="!immobile.anagrafiche?.length" class="text-sm text-slate-400 italic">Nessun soggetto associato</p>
@@ -409,7 +423,13 @@ function submitAddModal() {
                       <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0">
                         {{ euro(Math.abs(item.saldo.saldo_iniziale)) }}
                       </span>
-                      <button v-if="item.saldo.e_bloccato" 
+                      <button v-if="item.saldo.e_conguaglio"
+                              @click.prevent="apriModaleLucchetto(item.saldo)"
+                              class="text-indigo-400 hover:text-indigo-600 transition-colors shrink-0"
+                              :title="`Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le due righe si tolgono insieme`">
+                        <Lock class="w-3 h-3" />
+                      </button>
+                      <button v-else-if="item.saldo.e_bloccato" 
                               @click.prevent="apriModaleLucchetto(item.saldo)" 
                               class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
                               title="Saldo Bloccato">
@@ -478,7 +498,13 @@ function submitAddModal() {
                       <span class="text-xs font-semibold text-red-600 dark:text-red-400 shrink-0">
                         {{ euro(item.saldo.saldo_iniziale) }}
                       </span>
-                      <button v-if="item.saldo.e_bloccato" 
+                      <button v-if="item.saldo.e_conguaglio"
+                              @click.prevent="apriModaleLucchetto(item.saldo)"
+                              class="text-indigo-400 hover:text-indigo-600 transition-colors shrink-0"
+                              :title="`Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le due righe si tolgono insieme`">
+                        <Lock class="w-3 h-3" />
+                      </button>
+                      <button v-else-if="item.saldo.e_bloccato" 
                               @click.prevent="apriModaleLucchetto(item.saldo)" 
                               class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
                               title="Saldo Bloccato">
@@ -657,8 +683,8 @@ function submitAddModal() {
                 <Lock class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <h3 class="text-lg font-bold text-amber-900 dark:text-amber-300">Saldo bloccato dal sistema</h3>
-                <p class="text-xs text-amber-700/70 dark:text-amber-400/60 font-medium">Integrazione piano rate attiva</p>
+                <h3 class="text-lg font-bold text-amber-900 dark:text-amber-300">{{ lucchettoDiConguaglio ? 'Conguaglio di un passaggio' : 'Saldo bloccato dal sistema' }}</h3>
+                <p class="text-xs text-amber-700/70 dark:text-amber-400/60 font-medium">{{ lucchettoDiConguaglio ? 'Due righe a somma zero, si tolgono insieme' : 'Integrazione piano rate attiva' }}</p>
               </div>
             </div>
             <button @click="showLockedInfoModal = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/50 dark:bg-slate-800/50 p-1.5 rounded-full transition-colors">
@@ -668,8 +694,21 @@ function submitAddModal() {
           
           <div class="p-8 space-y-6 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
 
+            <!-- B2: una gamba del conguaglio di un passaggio di titolarità (inv. 19) -->
+            <template v-if="lucchettoDiConguaglio">
+              <p class="text-base">
+                Questa riga è una delle due del <strong>conguaglio del passaggio del {{ dataPassaggio(saldoBloccatoSelezionato?.subentro?.decorrenza) }}</strong>:
+                credito a chi esce, debito a chi entra, somma esattamente zero. Le due righe si tolgono <strong>insieme</strong>,
+                mai una sola — altrimenti il conguaglio non farebbe più zero.
+              </p>
+              <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
+                <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Se le parti hanno regolato il conguaglio in un altro modo, <strong>annullalo dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»): toglie le due righe insieme, con la tua nota, finché nessun piano le ha assorbite.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite ma non ha ancora emesso nulla, riportalo in bozza ed eliminalo (il lucchetto si riapre), poi annulla il conguaglio dallo storico. Se ha già emesso o incassato, le quote sono in mano ai condòmini: la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+              </div>
+            </template>
+
             <!-- Caso normale: il lucchetto ha un titolare, e adesso lo diciamo -->
-            <template v-if="!lucchettoSenzaTitolare">
+            <template v-else-if="!lucchettoSenzaTitolare">
               <p class="text-base">
                 Questo saldo è stato assorbito dal piano rate
                 <strong>«{{ pianoCheTieneIlLucchetto?.nome ?? 'collegato a questa gestione' }}»</strong>,

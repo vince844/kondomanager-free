@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Models\Gestionale\RigaRiparto;
+use App\Enums\NaturaGestione;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
@@ -62,6 +64,22 @@ class EmissioneRateController extends Controller
   
         if ($pianoRate->stato !== StatoPianoRate::APPROVATO) {
             return back()->with($this->flashError('Devi approvare il piano rate prima di poter emettere le rate.'));
+        }
+
+        // S8-22: qui la quota diventa denaro. Se le righe congelate dello straordinario portano una delibera diversa
+        // da quella registrata sul piano (data corretta dopo la generazione), le quote sono stantie: si ricalcola
+        // prima — ed è ancora possibile, perché nessuna rata è emessa.
+        if (NaturaGestione::daStringa($pianoRate->gestione?->tipo) === NaturaGestione::Straordinaria && $pianoRate->data_delibera_assemblea !== null) {
+            $stantia = RigaRiparto::where('piano_rate_id', $pianoRate->id)->where('gradino_competenza', 'delibera')
+                ->whereDate('competenza_dal', '!=', $pianoRate->data_delibera_assemblea->toDateString())->value('competenza_dal');
+            if ($stantia !== null) {
+                $formato = fn ($d) => \Carbon\CarbonImmutable::parse($d)->locale('it')->translatedFormat('j F Y');
+
+                return back()->with($this->flashError(sprintf(
+                    'Le quote di questo piano sono state calcolate con la delibera del %s, ma il piano registra una delibera del %s: ricalcola il piano prima di emettere.',
+                    $formato($stantia), $formato($pianoRate->data_delibera_assemblea)
+                )));
+            }
         }
 
         $request->validate([
@@ -376,13 +394,40 @@ class EmissioneRateController extends Controller
 
     public function destroy(Request $request, Condominio $condominio, PianoRate $pianoRate, Rata $rata)
     {
+        // `≠ 0` e non `> 0`: una quota a credito compensata o rimborsata ha `importo_pagato` negativo (B2, S6).
         $haPagamenti = DB::table('rate_quote')
             ->where('rata_id', $rata->id)
-            ->where('importo_pagato', '>', 0)
+            ->where('importo_pagato', '!=', 0)
             ->exists();
 
         if ($haPagamenti) {
-            return back()->with($this->flashError('Impossibile annullare: ci sono già incassi registrati.'));
+            return back()->with($this->flashError('Impossibile annullare: ci sono già incassi registrati, o crediti già usati o rimborsati su questa rata.'));
+        }
+
+        // B2 (S5, D9): se un passaggio di titolarità ha già conguagliato le quote emesse di questo piano
+        // (coppia in `saldi` con `subentro_id` sulla stessa gestione, **registrato dopo la generazione**
+        // della rata — `rate.data_emissione` è scritta alla generazione, e la decorrenza può essere
+        // anteriore: un rogito di dicembre registrato a febbraio conguaglia tutto l'anno), riportare la
+        // rata in bozza e rigenerarla farebbe pagare due volte a chi entra — il pro rata del motore E il
+        // conguaglio. Si rifiuta e si dice dove guardare (verifica S5, R1).
+        // Al grano della coppia (S8-19): dalla R9 ogni gamba porta l'esercizio del piano che l'ha prodotta, quindi
+        // con `esercizio_id` noto si guarda solo quello — una gestione riusata su due esercizi non blocca il piano
+        // dell'anno prima. Piani senza `esercizio_id` (prima della migrazione 9): come prima, conservativo.
+        $passaggiConguagliati = \App\Models\Gestionale\Subentro::query()
+            ->whereHas('saldi', fn ($q) => $q->where('gestione_id', $pianoRate->gestione_id)
+                ->when($pianoRate->esercizio_id !== null, fn ($q) => $q->where('esercizio_id', $pianoRate->esercizio_id)))
+            ->where('subentri.created_at', '>=', $rata->data_emissione ?? $rata->created_at)
+            ->with(['uscente', 'entrante'])
+            ->get();
+        if ($passaggiConguagliati->isNotEmpty()) {
+            $chi = $passaggiConguagliati->map(fn ($s) => trim(($s->uscente?->nome ?? '?') . ' → ' . ($s->entrante?->nome ?? '?')) . ' (' . $s->decorrenza->format('d/m/Y') . ')')->implode('; ');
+
+            // Tre capoversi: il dialogo li rispetta (`whitespace-pre-line`), e letti insieme erano un blocco.
+            return back()->with($this->flashError(
+                "Un passaggio di titolarità registrato dopo l'emissione ha già conguagliato le quote emesse su questa gestione per l'esercizio del piano, con due righe in saldi: {$chi}."
+                . "\n\nAnnullare l'emissione e rigenerare il piano farebbe pagare due volte a chi è entrato."
+                . "\n\nLe due righe del conguaglio non si tolgono una alla volta: dallo storico dell'unità («Passaggi registrati») si annulla il conguaglio intero, con una nota, finché nessun piano le ha assorbite. Se un piano le ha assorbite senza aver emesso nulla, riportalo in bozza ed eliminalo prima; se ha già emesso o incassato, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione."
+            ));
         }
 
         $esercizio = $this->getEsercizioCorrente($condominio);

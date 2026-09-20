@@ -36,6 +36,9 @@ class FatturaPassiva extends Model
         'data_scadenza'                 => 'date',
         'is_pregresso'                  => 'boolean',
         'data_competenza_originaria'    => 'date',
+        // B2 (1.11.0-beta.31): il periodo di competenza dichiarato. Nullo = cascata di D3.
+        'competenza_dal'                => 'date:Y-m-d',
+        'competenza_al'                 => 'date:Y-m-d',
         'dati_extra'                    => 'array',
         'importo_imponibile'            => 'integer',
         'importo_iva'                   => 'integer',

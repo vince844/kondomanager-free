@@ -828,7 +828,7 @@ onUnmounted(() => {
                                             </p>
 
                                             <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia)" 
-                                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}`">
+                                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}&conto_id=${orfano.id}`">
                                                 <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm shrink-0">
                                                     Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
                                                 </Button>

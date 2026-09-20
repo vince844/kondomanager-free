@@ -55,6 +55,8 @@ class RigaRiparto extends Model
         'tabella_id', 'tabella_nome', 'tabella_quota', 'coefficiente',
         'valore_millesimo', 'somma_valori', 'ruolo_richiesto', 'ruolo_risolto', 'quota_possesso',
         'riga_fattura_id', 'riga_descrizione', 'importo', 'versione_calcolo',
+        // B2 (1.11.0-beta.31, decisione 15): il congelato temporale, per riga. Nulli = riga atemporale.
+        'competenza_dal', 'competenza_al', 'gradino_competenza', 'giorni_titolarita', 'titolarita_dal', 'titolarita_al',
     ];
 
     protected $casts = [
@@ -63,6 +65,11 @@ class RigaRiparto extends Model
         'valore_millesimo' => 'float',
         'somma_valori'     => 'float',
         'quota_possesso'   => 'float',
+        'competenza_dal'   => 'date:Y-m-d',
+        'competenza_al'    => 'date:Y-m-d',
+        'titolarita_dal'   => 'date:Y-m-d',
+        'titolarita_al'    => 'date:Y-m-d',
+        'giorni_titolarita' => 'integer',
     ];
 
     public function pianoRate(): BelongsTo

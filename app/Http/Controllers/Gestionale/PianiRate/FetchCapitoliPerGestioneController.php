@@ -10,6 +10,7 @@ use App\Models\Gestione;
 use App\Models\Gestionale\BudgetMovement;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
+use App\Services\Riparto\CompetenzaDichiarataPerVoce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -125,7 +126,16 @@ class FetchCapitoliPerGestioneController extends Controller
             $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap);
             $capitoliFinanziabiliRaw = collect($coverageService->getCapitoliFinanziabili($analisiBilancio, $vociDaSpostaSpesa))->keyBy('id');
 
-            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap) {
+            // La competenza già dichiarata sulla voce in un piano di questa gestione (decisione 20): la scheda
+            // «Competenza delle voci» la propone invece del periodo della gestione, dicendo da quale piano viene.
+            $dichiarate = app(CompetenzaDichiarataPerVoce::class)->perConti(
+                $conti->pluck('id')->map(fn ($id) => (int) $id)->all(),
+                $conti->mapWithKeys(fn ($c) => [(int) $c->id => $c->parent_id !== null ? (int) $c->parent_id : null])->all(),
+                (int) $gestioneId,
+                (int) $esercizioId,
+            );
+
+            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap, $dichiarate) {
                 // Troviamo il budget per l'interfaccia
                 $budgetTeorico = (int) $c->importo;
                 if ($budgetTeorico === 0 && $c->sottoconti->isNotEmpty()) {
@@ -174,7 +184,11 @@ class FetchCapitoliPerGestioneController extends Controller
                     'disabled'        => $isDisabled,
                     'is_sforo'        => $isSforo,
                     'da_sposta_spesa' => $daSpostaSpesa,
-                    'note'            => $nota
+                    'note'            => $nota,
+                    // B2, S6: la sezione «Competenza delle voci» elenca le radici quando il piano include tutto.
+                    'is_radice'       => $c->parent_id === null,
+                    'parent_id'       => $c->parent_id,
+                    'competenza_dichiarata' => $dichiarate[(int) $c->id] ?? null,
                 ];
             });
 

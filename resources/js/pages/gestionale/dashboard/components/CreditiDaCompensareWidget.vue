@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { Wallet, ArrowRight } from 'lucide-vue-next';
+import { router } from '@inertiajs/vue3';
+
+// Un `<a>` dentro un `<a>` non è HTML valido (la riga intera è già un link): la seconda uscita è un bottone che naviga.
+const apriEstrattoConto = (url: string) => router.visit(url);
 
 defineProps<{
     crediti: Array<{
@@ -15,6 +19,8 @@ defineProps<{
         copre: string;
         rata_bersaglio_id: number | null;
         url: string;
+        /** L'estratto conto della persona: dove il credito si rimborsa (B2, S6). */
+        url_estratto_conto?: string;
     }>;
 }>();
 </script>
@@ -65,11 +71,19 @@ defineProps<{
                             ? 'text-blue-700/80 dark:text-blue-300/80'
                             : 'text-slate-400 dark:text-slate-500 italic'"
                     >{{ c.copre }}</span>
+                    <!-- La seconda uscita: il rimborso sta nell'estratto conto, e per chi è uscito dal condominio è
+                         l'unica. `@click.stop` perché la riga intera è già un link verso «Nuovo incasso». -->
+                    <button
+                        v-if="c.url_estratto_conto"
+                        type="button"
+                        @click.stop.prevent="apriEstrattoConto(c.url_estratto_conto)"
+                        class="inline-block text-[10px] mt-0.5 font-medium text-slate-500 hover:text-blue-700 underline underline-offset-2 dark:text-slate-400 dark:hover:text-blue-300"
+                    >Estratto conto · rimborsa</button>
                 </component>
             </div>
 
             <p class="text-[9px] text-slate-400 mt-3 leading-tight">
-                Le righe cliccabili aprono "Nuovo incasso" già puntato sulla rata che il credito copre. Quelle in grigio non hanno nulla da compensare.
+                Le righe cliccabili aprono "Nuovo incasso" già puntato sulla rata che il credito copre. Quelle in grigio non hanno nulla da compensare. Per restituire il denaro invece di compensarlo: «Estratto conto · rimborsa».
             </p>
         </div>
     </div>

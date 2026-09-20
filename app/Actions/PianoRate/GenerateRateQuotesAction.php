@@ -16,10 +16,13 @@ use Illuminate\Support\Facades\Log;
 class GenerateRateQuotesAction
 {
     /**
-     * `regole_calcolo.parametri.titolarita_alla` di B1: i titolari sono risolti come sempre
-     * (`attivo === true`, nessuna data), e la quota lo dichiara. B2 sostituirà questa costante con
-     * il riepilogo di piano `{ risoluzione: 'atemporale' | 'temporale', destinatari_cambiati, nota_cancello }`
-     * (progetto `subentro_e_competenza_temporale.md`, D5 e decisione 15).
+     * `regole_calcolo.parametri.titolarita_alla` di B1, e — da B2 — di ogni calcolo in cui la risoluzione
+     * per periodo **non ha cambiato destinatari né pesi** rispetto a quella atemporale (decisione 15
+     * ➕ 19/09/2026): la quota dichiara che chi paga è lo stesso di sempre. Il periodo e il gradino della
+     * singola riga stanno in `righe_riparto` (`competenza_dal/al`, `gradino_competenza`), non qui. Quando
+     * invece il periodo ha cambiato qualcuno, `GeneratePianoRateAction` scrive al suo posto
+     * `{ risoluzione: 'temporale', destinatari_cambiati: true, nota_cancello, coppie }` — la presa d'atto
+     * del cancello (2), decisione 14.
      */
     public const TITOLARITA_ATEMPORALE = ['risoluzione' => 'atemporale'];
 
@@ -28,7 +31,8 @@ class GenerateRateQuotesAction
         array $totaliPerImmobile,
         array $dateRate,
         array $saldi = [],
-        array $dettaglio = []
+        array $dettaglio = [],
+        array $titolaritaAlla = self::TITOLARITA_ATEMPORALE
     ): array {
         $numeroRate = count($dateRate);
         $rateCreate = 0;
@@ -117,10 +121,10 @@ class GenerateRateQuotesAction
                                 'numero_rata'           => 0,
                                 // B1 (1.11.0-beta.30): come sono stati risolti i titolari. Chiave
                                 // additiva: i lettori dello snapshot leggono sottochiavi specifiche.
-                                // Il riepilogo di piano completo (`destinatari_cambiati`, `nota_cancello`)
-                                // arriva con B2; periodo, gradino e giorni stanno in `righe_riparto`,
-                                // non qui (D5 riscritta, decisione 15).
-                                'titolarita_alla'       => self::TITOLARITA_ATEMPORALE,
+                                // B2 (decisione 15): `{risoluzione:'temporale', destinatari_cambiati, nota_cancello}`
+                                // dove il periodo ha cambiato qualcosa; periodo, gradino e giorni stanno in
+                                // `righe_riparto`, non qui.
+                                'titolarita_alla'       => $titolaritaAlla,
                             ],
                             'dettagli_saldo' => $datiSaldo['meta_storico'],
                             'audit' => [
@@ -282,7 +286,7 @@ class GenerateRateQuotesAction
                                 'metodo_distribuzione'  => $pianoRate->metodo_distribuzione,
                                 'numero_rata'           => $numeroRata,
                                 'totale_rate_piano'     => $numeroRate,
-                                'titolarita_alla'       => self::TITOLARITA_ATEMPORALE,
+                                'titolarita_alla'       => $titolaritaAlla,
                             ],
                             'audit' => [
                                 'versione_calcolo'  => config('app.version', '1.9.0'), 
@@ -425,6 +429,15 @@ class GenerateRateQuotesAction
                 'riga_fattura_id'   => $riga['riga_fattura_id'] ?? null,
                 'riga_descrizione'  => $riga['riga_descrizione'] ?? null,
                 'importo'           => (int) $riga['importo'],
+                // B2 (decisione 15): il congelato temporale per riga; nulli sulle righe atemporali.
+                // `insert()` salta i cast: le date arrivano già come `Y-m-d` dal motore.
+                'competenza_dal'    => $riga['competenza_dal'] ?? null,
+                'competenza_al'     => $riga['competenza_al'] ?? null,
+                'gradino_competenza' => $riga['gradino_competenza'] ?? null,
+                'giorni_titolarita' => $riga['giorni_titolarita'] ?? null,
+                // Migrazione 11 (S8-bis): il tratto che quei giorni coprono, non solo il conteggio.
+                'titolarita_dal'    => $riga['titolarita_dal'] ?? null,
+                'titolarita_al'     => $riga['titolarita_al'] ?? null,
                 'versione_calcolo'  => $versione,
                 'created_at'        => $now,
                 'updated_at'        => $now,

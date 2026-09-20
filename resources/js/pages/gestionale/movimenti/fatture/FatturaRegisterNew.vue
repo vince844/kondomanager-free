@@ -13,7 +13,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
-import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, ChevronRight, CheckCircle, LoaderCircle, HelpCircle, UploadCloud, ShieldCheck } from 'lucide-vue-next';
+import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, ChevronRight, CheckCircle, LoaderCircle, HelpCircle, UploadCloud, ShieldCheck, CalendarRange } from 'lucide-vue-next';
+import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import { useFattureSimili } from '@/composables/useFattureSimili';
@@ -21,11 +22,12 @@ import { useImportaFatturaXml, type EsitoImportazioneXml, type RiepilogoIva } fr
 import { watchDebounced } from '@vueuse/core';
 import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
 import ModalSpesaImprevista from '@/components/gestionale/movimenti/fatture/ModalSpesaImprevista.vue';
+import CompetenzaFattura from '@/components/gestionale/movimenti/fatture/CompetenzaFattura.vue';
 import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
 import ModalCreaFornitoreDaXml from '@/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue';
 import ModalImportaXml from '@/components/gestionale/movimenti/fatture/ModalImportaXml.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
-import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
+import { lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
 import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import { confrontaRitenuta } from '@/lib/gestionale/fatture/confrontoRitenuta';
 import { proponiPosizioneRitenuta } from '@/lib/gestionale/fatture/posizioneRitenuta';
@@ -118,6 +120,8 @@ interface Conto {
         importo: number
         is_pregresso?: boolean
     }[]
+    /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
+    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
 }
 
 interface Banca {
@@ -170,6 +174,14 @@ const props = defineProps<{
     /** Senza, il controllo sull'intestatario dell'XML non può girare: vedi ModalImportaXml. */
     condominio_senza_codice_fiscale?: boolean;
 }>();
+// La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella, non la
+// competenza dichiarata su questa fattura (decisione 19). Si dice sotto la voce, dove si sceglie.
+const competenzaPianoDi = (contoId: number | null | undefined) => {
+    if (!contoId) return null;
+    const c = props.conti.find((x) => x.id === contoId);
+    return c?.competenza_piano ?? null;
+};
+
 
 // ---------------------------------------------------------------------------
 // Form
@@ -795,6 +807,10 @@ const form = useForm({
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
     data_scadenza:      '',
+    // La competenza (B2, S6): due estremi sulla testata, entrambi o nessuno. «Deliberata il» = stessa
+    // data nei due campi. Non sta più in `dati_extra`: il service scrive le colonne.
+    competenza_dal:     '',
+    competenza_al:      '',
     conto_corrente_id:  null as number | null,
     modalita_pagamento: 'bonifico',
     iban_fornitore:     '',
@@ -803,7 +819,6 @@ const form = useForm({
     applica_ritenuta: null as boolean | null,
     dati_extra: {
         fiscal:     { cig: '', cup: '', motivo_esclusione_ritenuta: '', motivo_esclusione_ritenuta_note: '', conferma_codice_tributo_mancante: false },
-        competenza: { dal: '', al: '' },
         override_budget:          null as any,
         log_legale_sopravvenienza: null as any
     },
@@ -854,6 +869,8 @@ const etichetteErrori = computed<Record<string, string>>(() => {
         numero_documento: 'Numero documento',
         data_documento: 'Data documento',
         data_scadenza: 'Scadenza',
+        competenza_dal: 'Competenza (dal)',
+        competenza_al: 'Competenza (al)',
         fornitore_id: 'Fornitore',
         gestione_id: 'Gestione',
         conto_corrente_id: 'Conto addebito',
@@ -1259,7 +1276,8 @@ const budgetImpacts = computed(() => {
         // non esiste il caso misto. Lo stato pregresso del capitolo resta visibile nel
         // residuo mostrato accanto: quello che qui si dichiara è se **questo documento**
         // provoca uno sforo, e la risposta per una nota è sempre no.
-        isOk:        isNotaCredito.value ? true : i.speso_cents <= i.residuo_cents,
+        // La regola è una sola, in `sforaBudget` (nota di credito mai; a zero mai; poi lordo contro residuo).
+        isOk:        !sforaBudget(i.speso_cents, i.residuo_cents, isNotaCredito.value),
         delta_cents: i.residuo_cents - i.speso_cents,
         // Stima: presume che questa fattura rappresenti il costo TOTALE reale
         // della voce (nessun'altra spesa storica quest'anno) — il numero
@@ -1310,7 +1328,7 @@ const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_impon
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 
-    return lordoRigaRegistratoCents(idx, riga) > c.residuo_budget;
+    return sforaBudget(lordoRigaRegistratoCents(idx, riga), c.residuo_budget, isNotaCredito.value);
 };
 
 const bancheNormalizzate = computed(() =>
@@ -1406,6 +1424,9 @@ const vociInSforo = computed(() =>
             residuoNettoStimatoCents: i.residuoNettoStimatoCents,
         }))
 );
+
+/** La gestione scelta è straordinaria: il pannello della competenza lo dice, senza promettere che decida. */
+const gestioneSceltaStraordinaria = computed(() => props.gestioni.find(g => g.id === form.gestione_id)?.tipo === 'straordinaria');
 
 const gestioniFiltrate = computed(() => {
     if (!form.esercizio_id) return [];
@@ -1684,6 +1705,14 @@ const handleSpesaImprevistaConfirm = (payload: any) => {
     // La modale ora emette già i campi corretti, non serve più il remap manuale!
     form.dati_extra.log_legale_sopravvenienza = payload;
 
+    // Un fatto, una domanda (B2, S6): la «Data assemblea» del modale è la stessa data che la competenza
+    // chiama «spesa deliberata il». Se la testata è ancora vuota la si precompila; se l'amministratore
+    // aveva già dichiarato un periodo, quello resta.
+    if (payload.origine_decisionale === 'delibera_assembleare' && payload.data_assemblea && !form.competenza_dal && !form.competenza_al) {
+        form.competenza_dal = payload.data_assemblea;
+        form.competenza_al = payload.data_assemblea;
+    }
+
     if (payload.is_ordinario) {
         form.dati_extra.override_budget = {
             motivazione:           payload.motivazione_sforo,
@@ -1757,13 +1786,14 @@ function resettaFormPerNuovoDocumento() {
     form.numero_documento = '';
     form.data_documento = new Date().toISOString().substring(0, 10);
     form.data_scadenza = '';
+    form.competenza_dal = '';
+    form.competenza_al = '';
     form.conto_corrente_id = null;
     form.modalita_pagamento = 'bonifico';
     form.iban_fornitore = '';
     form.applica_ritenuta = null;
     form.dati_extra = {
         fiscal: { cig: '', cup: '', motivo_esclusione_ritenuta: '', motivo_esclusione_ritenuta_note: '', conferma_codice_tributo_mancante: false },
-        competenza: { dal: '', al: '' },
         override_budget: null,
         log_legale_sopravvenienza: null,
     };
@@ -2251,6 +2281,15 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
                             </div>
                         </div>
+
+                        <!-- Competenza (B2, S6): due estremi sulla testata, letti dal riparto straordinario -->
+                        <CompetenzaFattura
+                            v-model:dal="form.competenza_dal"
+                            v-model:al="form.competenza_al"
+                            :gestione-straordinaria="gestioneSceltaStraordinaria"
+                            :pregressa="form.is_pregresso"
+                            :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
+
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                             <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
                             <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
@@ -2771,6 +2810,10 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                                  QUALE. -->
                                             <p v-if="form.errors[`righe.${idx}.conto_id`]" class="text-[11px] text-red-600 dark:text-red-500 font-medium mt-1">
                                                 {{ form.errors[`righe.${idx}.conto_id`] }}
+                                            </p>
+                                            <p v-if="competenzaPianoDi(riga.conto_id)" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-start gap-1">
+                                                <CalendarRange class="w-3 h-3 mt-0.5 shrink-0" />
+                                                <span>Nel piano «{{ competenzaPianoDi(riga.conto_id)!.piano }}» questa voce matura su {{ descriviTratti(competenzaPianoDi(riga.conto_id)!.tratti) }}: il riparto ordinario segue quei giorni, non la competenza dichiarata sulla fattura.</span>
                                             </p>
                                         </div>
 

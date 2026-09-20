@@ -54,6 +54,11 @@ class StoreFatturaRequest extends FormRequest
             'numero_documento'   => 'required|string|max:50',
             'data_documento'     => 'required|date',
             'data_scadenza'      => 'required|date',
+            // La competenza (B2, S6): entrambi gli estremi o nessuno. Il motore con uno solo scende al
+            // gradino successivo in silenzio (`RisolutoreCompetenza::dichiarata()` vuole tutti e due),
+            // quindi la metà si rifiuta qui, non si tollera. `dal = al` è la delibera puntuale (D2).
+            'competenza_dal'     => 'nullable|date|required_with:competenza_al',
+            'competenza_al'      => 'nullable|date|required_with:competenza_dal|after_or_equal:competenza_dal',
             'conto_corrente_id'  => 'nullable|exists:conti_contabili,id',
             'modalita_pagamento' => 'required|string',
             'stato_approvazione' => 'required|in:da_approvare,approvata,contestata,sforo_motivato',
@@ -210,6 +215,9 @@ class StoreFatturaRequest extends FormRequest
             'imponibile_pregresso.required_if' => 'L\'importo della fattura pregressa è obbligatorio.',
             'righe.required_unless' => 'Devi inserire almeno una voce di spesa.',
             'numero_documento.required' => 'Il numero documento è obbligatorio.',
+            'competenza_dal.required_with' => 'La competenza vuole entrambe le date: manca l\'inizio.',
+            'competenza_al.required_with' => 'La competenza vuole entrambe le date: manca la fine.',
+            'competenza_al.after_or_equal' => 'La fine della competenza non può precedere l\'inizio.',
             'righe.*.descrizione.required_with' => 'La causale della riga è obbligatoria.',
             'righe.*.conto_id.required_with' => 'Il capitolo di spesa è obbligatorio.',
             'righe.*.importo_imponibile.required_with' => 'L\'importo è obbligatorio.',

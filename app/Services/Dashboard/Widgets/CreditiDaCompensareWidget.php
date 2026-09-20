@@ -61,6 +61,9 @@ class CreditiDaCompensareWidget implements DashboardWidget
                     'copre'                  => $comp['frase'],
                     'rata_bersaglio_id'      => $bersaglio['rata_id'] ?? null,
                     'url'                    => route('admin.gestionale.movimenti-rate.create', $parametri),
+                    // B2, S6: la seconda uscita della riga. Il rimborso vive nell'estratto conto della persona — è lì
+                    // che sta il pulsante «Rimborsa il credito» — e per chi è uscito dal condominio è l'unica strada.
+                    'url_estratto_conto'     => route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominioId, 'anagrafica' => $c['anagrafica_id']]),
                 ];
             })
             ->values()

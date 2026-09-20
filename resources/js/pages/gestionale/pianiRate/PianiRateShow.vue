@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
 import ScopertoWarning, { type ScopertoCents } from '@/components/gestionale/pianiRate/ScopertoWarning.vue';
+import DestinatariWarning, { type DestinatarioCambiato } from '@/components/gestionale/pianiRate/DestinatariWarning.vue';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from "@/components/ui/button";
@@ -71,9 +72,16 @@ const openSpaccato = (item: any) => {
 
 const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
-const page = usePage<{ flash: { message?: Flash, scoperti_warning?: ScopertoCents[] } }>();
+const page = usePage<{ flash: { message?: Flash, scoperti_warning?: ScopertoCents[], destinatari_warning?: DestinatarioCambiato[] } }>();
 const flashMessage = computed(() => page.props.flash.message);
 const scopertiWarning = computed<ScopertoCents[] | null>(() => page.props.flash?.scoperti_warning ?? null);
+// B2, cancello (2): la risoluzione per periodo ha cambiato dei destinatari (decisione 14).
+const destinatariWarning = computed<DestinatarioCambiato[] | null>(() => page.props.flash?.destinatari_warning ?? null);
+// Se il cancello (2) è scattato rimuovendo una voce, la presa d'atto fa ripartire la rimozione, non la rigenerazione.
+const detachInAttesa = computed<number | null>(() => (page.props.flash as any)?.destinatari_warning_detach ?? null);
+// Qui non c'è `useForm`: la spunta del primo cancello non sopravvive da sola al giro del secondo, e senza
+// questa memoria il pannello degli scoperti si ripresenterebbe dopo aver accettato i destinatari.
+const scopertiAccettati = ref<{ nota: string } | null>(null);
 
 const localeCode = computed(() => {
     const raw = String((page.props as any).locale ?? 'pt').toLowerCase();
@@ -93,8 +101,11 @@ const approvalDateFormat = computed(() => {
 });
 const showApprovazioneModal = ref(false);
 
+// B2 (decisione 12): **nessun default «oggi»** sulla data della delibera. La misura in produzione diceva che la
+// colonna coincideva col giorno del clic: una data che nessuno ha scelto non è un fatto dell'assemblea. Se il
+// piano la ricorda già (creata con lui, o da un'approvazione precedente), si ripropone quella.
 const formApprovazione = ref({
-    data_delibera_assemblea: new Date().toISOString().split('T')[0],
+    data_delibera_assemblea: (props.pianoRate as any).data_delibera_assemblea ? String((props.pianoRate as any).data_delibera_assemblea).slice(0, 10) : '',
     numero_verbale: '',
     nota_approvazione: '',
 });
@@ -166,18 +177,22 @@ const toggleCapitoli = () => {
     }
 };
 
-const executeDetachItem = () => {
-    if (!itemToDelete.value) return;
+const executeDetachItem = (presaDAtto?: { nota: string }) => {
+    const capitoloId = itemToDelete.value?.id ?? detachInAttesa.value;
+    if (!capitoloId) return;
     router.delete(route('admin.gestionale.piani-rate.capitoli.detach', {
         condominio: props.condominio.id,
         esercizio: props.esercizio.id,
         pianoRate: props.pianoRate.id,
-        capitolo: itemToDelete.value.id
+        capitolo: capitoloId
     }), {
+        data: presaDAtto ? { accetta_destinatari: true, nota_destinatari: presaDAtto.nota } : {},
         preserveScroll: true,
-        onSuccess: () => {
+        onSuccess: (page) => {
             isDeleteItemModalOpen.value = false;
             itemToDelete.value = null;
+            // Il cancello (2): il controller torna indietro con il pannello, e la voce è ancora nel piano.
+            if ((page.props as any).flash?.destinatari_warning) return;
             showFeedback('Voce rimossa', 'Il piano è stato ricalcolato senza la voce selezionata.', false);
         },
         onError: (errors) => {
@@ -236,6 +251,10 @@ const isAlertOpen = ref(false);
 const rataToAnnullareId = ref<number | null>(null);
 const isRecalculateAlertOpen = ref(false);
 
+// Con «Urgenza» (art. 1135 co. 2 c.c.) non c'è una delibera da registrare: il modale non chiede la data e il
+// server non la scrive (S8-32); la competenza dello straordinario d'urgenza è dichiarata sulle fatture.
+const isUrgenza = computed(() => (props.pianoRate as any).tipo_autorizzazione === 'urgenza');
+
 const toggleStatoPiano = (newValue: boolean) => {
     if (isProcessingStatus.value) return;
     if (!newValue) {
@@ -243,7 +262,7 @@ const toggleStatoPiano = (newValue: boolean) => {
         return;
     }
     formApprovazione.value = {
-        data_delibera_assemblea: new Date().toISOString().split('T')[0],
+        data_delibera_assemblea: (props.pianoRate as any).data_delibera_assemblea ? String((props.pianoRate as any).data_delibera_assemblea).slice(0, 10) : '',
         numero_verbale: '',
         nota_approvazione: '',
     };
@@ -251,7 +270,7 @@ const toggleStatoPiano = (newValue: boolean) => {
 };
 
 const confermaApprovazione = () => {
-    if (!formApprovazione.value.data_delibera_assemblea) return;
+    if (!isUrgenza.value && !formApprovazione.value.data_delibera_assemblea) return;
     showApprovazioneModal.value = false;
     eseguiCambioStato(true, formApprovazione.value);
 };
@@ -417,6 +436,11 @@ const ricalcoloNonRiuscito = (page: any): boolean => {
     const scoperti = flash.scoperti_warning;
     if (Array.isArray(scoperti) && scoperti.length > 0) return true;
 
+    // Il cancello (2) torna con lo stesso `back()`: senza questa riga «Operazione Completata» comparirebbe
+    // sopra il pannello che dice chi cambia — lo stesso difetto del 10/08/2026, su una terza via.
+    const destinatari = flash.destinatari_warning;
+    if (Array.isArray(destinatari) && destinatari.length > 0) return true;
+
     return flash.message?.type === 'error';
 };
 
@@ -452,6 +476,7 @@ const executeRecalculate = () => {
 
 const handleProcedi = (nota: string) => {
     isProcessingRecalculate.value = true;
+    scopertiAccettati.value = { nota };
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id,
@@ -473,6 +498,37 @@ const handleProcedi = (nota: string) => {
             if (ricalcoloNonRiuscito(page)) return;
 
             showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con motivazione per le quote scoperte.', false);
+        },
+        onFinish: () => {
+            isProcessingRecalculate.value = false;
+        }
+    });
+};
+
+// Il cancello (2): si rigenera con la presa d'atto sui destinatari, e con quella sugli scoperti se c'era già stata.
+// Se il cancello era scattato rimuovendo una voce, riparte quella rimozione.
+const handleProcediDestinatari = (nota: string) => {
+    if (detachInAttesa.value) {
+        executeDetachItem({ nota });
+        return;
+    }
+    isProcessingRecalculate.value = true;
+    router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id
+    }), {
+        orphan_ids: selectedOrphanIds.value,
+        accetta_destinatari: true,
+        nota_destinatari: nota,
+        ...(scopertiAccettati.value ? { accetta_scoperti: true, nota_scoperti: scopertiAccettati.value.nota } : {}),
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: (page) => {
+            isRecalculateAlertOpen.value = false;
+            if (ricalcoloNonRiuscito(page)) return;
+            showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con la presa d\'atto sui destinatari cambiati.', false);
         },
         onFinish: () => {
             isProcessingRecalculate.value = false;
@@ -743,6 +799,13 @@ const printRipartoCapitoli = () => {
               :scoperti="scopertiWarning"
               :processing="isProcessingRecalculate"
               @procedi="handleProcedi"
+              class="mb-4"
+          />
+          <DestinatariWarning
+              v-if="destinatariWarning"
+              :destinatari="destinatariWarning"
+              :processing="isProcessingRecalculate"
+              @procedi="handleProcediDestinatari"
               class="mb-4"
           />
 
@@ -1535,11 +1598,17 @@ const printRipartoCapitoli = () => {
                     </div>
                     <div>
                         <h3 class="font-black text-emerald-900 text-lg">Approvazione piano rate</h3>
-                        <p class="text-xs text-emerald-700/70 mt-1">Registra i dati della delibera assembleare prima di rendere esecutivo il piano (Art. 1135 c.c.).</p>
+                        <p class="text-xs text-emerald-700/70 mt-1">
+                            <template v-if="isUrgenza">Intervento d'urgenza (art. 1135 co. 2 c.c.): verbale e note sono facoltativi, la competenza è dichiarata sulle fatture.</template>
+                            <template v-else>Registra i dati della delibera assembleare prima di rendere esecutivo il piano (art. 1135 c.c.).</template>
+                        </p>
                     </div>
                 </div>
                 <div class="p-6 space-y-4">
-                    <div class="space-y-1.5">
+                    <div v-if="isUrgenza" class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed">
+                        Intervento d'urgenza: nessuna delibera da registrare, la competenza è dichiarata sulla fattura.
+                    </div>
+                    <div v-else class="space-y-1.5">
                         <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">{{ trans('gestionale.piani_rate.show.approval_modal.deliberation_date_label') }}</Label>
                         <VueDatePicker :teleport="true"
                             v-model="formApprovazione.data_delibera_assemblea"
@@ -1576,7 +1645,7 @@ const printRipartoCapitoli = () => {
                         <Button variant="outline" class="flex-1 h-11 rounded-xl font-bold" @click="annullaApprovazione">Annulla</Button>
                         <Button 
                             class="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black"
-                            :disabled="!formApprovazione.data_delibera_assemblea || isProcessingStatus"
+                            :disabled="(!isUrgenza && !formApprovazione.data_delibera_assemblea) || isProcessingStatus"
                             @click="confermaApprovazione"
                         >
                             <span v-if="isProcessingStatus" class="flex items-center gap-2">

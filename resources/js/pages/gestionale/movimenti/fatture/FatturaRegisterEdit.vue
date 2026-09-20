@@ -9,14 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info } from 'lucide-vue-next';
+import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info, CalendarRange } from 'lucide-vue-next';
+import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useFattureSimili } from '@/composables/useFattureSimili';
 import { watchDebounced } from '@vueuse/core';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { centsToEuro } from '@/lib/gestionale/money';
-import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
+import CompetenzaFattura from '@/components/gestionale/movimenti/fatture/CompetenzaFattura.vue';
+import { lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
 import { euroToCents } from '@/lib/gestionale/fatture/money';
 import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import vSelect from 'vue-select';
@@ -98,6 +100,8 @@ interface Conto {
         importo: number
         is_pregresso?: boolean
     }[]
+    /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
+    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
 }
 
 interface Banca {
@@ -134,6 +138,14 @@ const props = defineProps<{
     // commento gemello in FatturaPassivaController::edit().
     nota_storno_originale: { importo_imponibile: number; importo_ritenuta: number; ritenuta_details: Record<string, unknown> | null } | null;
 }>();
+// La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella, non la
+// competenza dichiarata su questa fattura (decisione 19). Si dice sotto la voce, dove si sceglie.
+const competenzaPianoDi = (contoId: number | null | undefined) => {
+    if (!contoId) return null;
+    const c = props.conti.find((x) => x.id === contoId);
+    return c?.competenza_piano ?? null;
+};
+
 
 // ---------------------------------------------------------------------------
 // Form
@@ -159,6 +171,9 @@ const form = useForm({
     conto_corrente_id:  props.fattura.conto_corrente_id,
     modalita_pagamento: props.fattura.modalita_pagamento,
     iban_fornitore:     props.fattura.iban_fornitore || '',
+    // La competenza (B2, S6) arriva dalle colonne, come 'Y-m-d' (cast del Model), non più da `dati_extra`.
+    competenza_dal:     props.fattura.competenza_dal || '',
+    competenza_al:      props.fattura.competenza_al || '',
     // FIX (revisione avversariale): un booleano esplicito qui, sempre, faceva
     // scattare required_if:applica_ritenuta,false in UpdateFatturaRequest per
     // OGNI fattura di un fornitore non soggetto a ritenuta (il caso comune) —
@@ -178,7 +193,6 @@ const form = useForm({
             motivo_esclusione_ritenuta_note: props.fattura.dati_extra?.fiscal?.motivo_esclusione_ritenuta_note || '',
             conferma_codice_tributo_mancante: props.fattura.dati_extra?.fiscal?.conferma_codice_tributo_mancante || false,
         },
-        competenza: props.fattura.dati_extra?.competenza || { dal: '', al: '' },
         override_budget: null as any,
         log_legale_sopravvenienza: null as any
     },
@@ -460,7 +474,8 @@ const budgetImpacts = computed(() => {
         // guardia serve QUI e non solo sul badge di riga, perché è `isOk` ad alimentare
         // `transactionStatus` e la modale di presa d'atto. Spiegazione estesa nel gemello
         // di `FatturaRegisterNew.vue`.
-        isOk:        isNotaCredito.value ? true : i.speso_cents <= i.residuo_cents,
+        // La regola è una sola, in `sforaBudget` (nota di credito mai; a zero mai; poi lordo contro residuo).
+        isOk:        !sforaBudget(i.speso_cents, i.residuo_cents, isNotaCredito.value),
         delta_cents: i.residuo_cents - i.speso_cents
     }));
 });
@@ -502,7 +517,7 @@ const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_impon
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 
-    return lordoRigaRegistratoCents(idx, riga) > c.residuo_budget;
+    return sforaBudget(lordoRigaRegistratoCents(idx, riga), c.residuo_budget, isNotaCredito.value);
 };
 
 const bancheNormalizzate = computed(() =>
@@ -586,6 +601,9 @@ watchDebounced(
 const sforoBudgetTotaleCents = computed(() =>
     budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
 );
+
+/** La gestione scelta è straordinaria: il pannello della competenza lo dice, senza promettere che decida. */
+const gestioneSceltaStraordinaria = computed(() => props.gestioni.find(g => g.id === form.gestione_id)?.tipo === 'straordinaria');
 
 const gestioniFiltrate = computed(() => {
     if (!form.esercizio_id) return [];
@@ -1019,6 +1037,15 @@ const pageGuides = [
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
                             </div>
                         </div>
+
+                        <!-- Competenza (B2, S6): due estremi sulla testata, letti dal riparto straordinario -->
+                        <CompetenzaFattura
+                            v-model:dal="form.competenza_dal"
+                            v-model:al="form.competenza_al"
+                            :gestione-straordinaria="gestioneSceltaStraordinaria"
+                            :pregressa="form.is_pregresso"
+                            :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
+
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                             <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
                             <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
@@ -1195,6 +1222,10 @@ const pageGuides = [
                                                     </div>
                                                 </template>
                                             </v-select>
+                                            <p v-if="competenzaPianoDi(riga.conto_id)" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-start gap-1">
+                                                <CalendarRange class="w-3 h-3 mt-0.5 shrink-0" />
+                                                <span>Nel piano «{{ competenzaPianoDi(riga.conto_id)!.piano }}» questa voce matura su {{ descriviTratti(competenzaPianoDi(riga.conto_id)!.tratti) }}: il riparto ordinario segue quei giorni, non la competenza dichiarata sulla fattura.</span>
+                                            </p>
                                         </div>
 
                                         <!-- Unità -->

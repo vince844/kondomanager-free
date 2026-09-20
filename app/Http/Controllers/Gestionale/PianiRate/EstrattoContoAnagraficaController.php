@@ -8,7 +8,9 @@ use App\Models\Esercizio;
 use App\Models\Anagrafica;
 use App\Models\Gestionale\RataQuote;
 use App\Helpers\MoneyHelper;
+use App\Models\Gestionale\Cassa;
 use App\Services\Gestionale\CreditoService;
+use App\Services\Gestionale\SaldoCassaService;
 use App\Traits\HasEsercizio;
 use App\Services\PDF\PdfService;
 use Illuminate\Support\Str;
@@ -39,8 +41,66 @@ class EstrattoContoAnagraficaController extends Controller
             'esercizio'  => $esercizio,
             'anagrafica' => $anagrafica,
             'timeline'   => $timeline,
-            'stats'      => $stats
+            'stats'      => $stats,
+            'rimborso'   => $this->datiRimborso($condominio, $anagrafica),
+            // B2, S7: la solidarietà dell'art. 63 co. 4 verso chi è entrato — una nota, non una quota.
+            'solidarieta' => app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica),
         ]);
+    }
+
+    /**
+     * Ciò che il modulo «Rimborsa il credito» deve sapere (B2, S6): le quote a credito della persona in
+     * questo condominio, ognuna con la sua origine (da saldi o da eccedenza: la contropartita cambia), e le
+     * casse da cui il denaro può uscire, col saldo. Finché nessun piano ha assorbito la coppia del
+     * passaggio, il credito di chi esce vive in `saldi` e qui non c'è una quota: il box lo dice.
+     *
+     * @return array{quote: list<array<string,mixed>>, casse: list<array<string,mixed>>, credito_in_saldi: int}
+     */
+    private function datiRimborso(Condominio $condominio, Anagrafica $anagrafica): array
+    {
+        $quote = RataQuote::whereHas('rata.pianoRate', fn ($p) => $p->where('condominio_id', $condominio->id))
+            ->where('anagrafica_id', $anagrafica->id)
+            ->where(fn ($q) => $q->whereRaw('importo_pagato > importo')->orWhere('importo', '<', 0))
+            ->with(['rata.pianoRate.gestione:id,nome', 'immobile:id,nome,interno'])
+            ->get()
+            ->filter(fn (RataQuote $q) => $q->credito_disponibile > 0)
+            ->map(fn (RataQuote $q) => [
+                'id'                   => $q->id,
+                'rata'                 => $q->rata?->numero_rata,
+                'piano'                => $q->rata?->pianoRate?->nome,
+                'gestione'             => $q->rata?->pianoRate?->gestione?->nome,
+                'immobile'             => $q->immobile ? $q->immobile->nome . ($q->immobile->interno ? " (Int. {$q->immobile->interno})" : '') : null,
+                'origine'              => (int) $q->importo < 0 ? 'saldi' : 'eccedenza',
+                'credito_cents'        => (int) $q->credito_disponibile,
+                'credito_formattato'   => MoneyHelper::format((int) $q->credito_disponibile),
+                // Come stringa italiana: è il valore che il campo importo propone, e la conversione in
+                // centesimi avviene una volta sola, nella Request.
+                'credito_euro'         => number_format($q->credito_disponibile / 100, 2, ',', '.'),
+            ])->values()->all();
+
+        $saldoCassa = app(SaldoCassaService::class);
+        $casse = Cassa::where('condominio_id', $condominio->id)
+            ->whereIn('tipo', ['banca', 'contanti'])
+            ->where('attiva', true)
+            ->orderBy('nome')
+            ->get()
+            ->map(fn (Cassa $c) => [
+                'id'               => $c->id,
+                'nome'             => $c->nome,
+                'tipo'             => $c->tipo,
+                'saldo_cents'      => $saldoCassa->saldoDisponibile($c),
+                'saldo_formattato' => MoneyHelper::format($saldoCassa->saldoDisponibile($c)),
+            ])->values()->all();
+
+        // La coppia del passaggio non ancora assorbita: credito vero, ma ancora in `saldi`.
+        $creditoInSaldi = (int) $anagrafica->saldi()
+            ->where('condominio_id', $condominio->id)
+            ->where('is_applicato', false)
+            ->whereNotNull('subentro_id')
+            ->where('saldo_iniziale', '<', 0)
+            ->sum('saldo_iniziale');
+
+        return ['quote' => $quote, 'casse' => $casse, 'credito_in_saldi' => abs($creditoInSaldi)];
     }
 
     /**
@@ -64,6 +124,7 @@ class EstrattoContoAnagraficaController extends Controller
             'timeline'           => $timeline,
             'stats'              => $stats,
             'saldoInizialeCents' => $saldoInizialeCents,
+            'solidarieta'        => app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica),
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.estratto_conto_anagrafica', $data, [
@@ -107,7 +168,7 @@ class EstrattoContoAnagraficaController extends Controller
                 $q->where('condominio_id', $condominio->id);
             })
             ->whereNull('cassa_id')
-            ->with(['scrittura.gestione', 'rata', 'immobile']) 
+            ->with(['scrittura.gestione', 'scrittura.padre:id,tipo_movimento', 'rata', 'immobile']) 
             ->orderBy('created_at', 'asc') 
             ->orderBy('id', 'asc')
             ->get();
@@ -175,13 +236,22 @@ class EstrattoContoAnagraficaController extends Controller
             
             $waterfallStart = $runningBalance;
             $tipoMovimento = $riga->scrittura->tipo_movimento ?? 'generico';
+            // ⚠️ `tipo_movimento` è un Backed Enum dalla v1.9.1: confrontarlo con `=== 'rettifica'` era sempre
+            // falso, e i rami «storno incasso» e «prelievo dal salvadanaio» qui sotto non si accendevano mai —
+            // la rettifica in DARE pesava la quota pura invece dell'importo stornato, senza etichetta né icona.
+            // Trovato costruendo il ramo del rimborso (1.11.0-beta.31, B2 S6): si confronta il valore.
+            if ($tipoMovimento instanceof \BackedEnum) {
+                $tipoMovimento = $tipoMovimento->value;
+            }
             
             // CALCOLO DARE E AVERE PROGRESSIVI (Motore Partita Doppia)
             if ($riga->tipo_riga === 'dare') {
                 
                 // Le rettifiche (storni) e gli utilizzi credito (salvadanaio) in Dare 
                 // re-incrementano fisicamente il debito globale.
-                if ($tipoMovimento === 'rettifica' || $tipoMovimento === 'storno_credito') {
+                // Il rimborso del credito (B2, S6) pesa l'importo contabile, come la rettifica: con `quotaPura`
+                // la quota a credito della rata zero vale 0, e il saldo resterebbe «a credito» dopo il bonifico.
+                if ($tipoMovimento === 'rettifica' || $tipoMovimento === 'storno_credito' || $tipoMovimento === 'rimborso_condomino') {
                     $importoDaSommare = $importoContabile;
                 } else {
                     // Emissione standard (ignora i crediti figurativi)
@@ -206,7 +276,12 @@ class EstrattoContoAnagraficaController extends Controller
             if ($tipoMovimento === 'emissione_rata') $icona = 'bill';
             if ($tipoMovimento === 'incasso_rata')   $icona = 'payment';
             if ($tipoMovimento === 'saldo_iniziale') $icona = 'landmark';
-            if ($tipoMovimento === 'rettifica' || $tipoMovimento === 'storno_credito') $icona = 'rotate-ccw'; 
+            // Lo storno (rettifica) e il prelievo dal salvadanaio (storno_credito) sono due fatti diversi: il primo
+            // annulla, il secondo compensa. Fino alla beta.31 finivano nella stessa icona — e l'importo del prelievo
+            // compariva barrato come fosse annullato (verifica S6, R18).
+            if ($tipoMovimento === 'rettifica') $icona = 'rotate-ccw';
+            if ($tipoMovimento === 'storno_credito') $icona = 'coins';
+            if ($tipoMovimento === 'rimborso_condomino') $icona = 'banknote';
             
             $dettagli  = [];
             $breakdown = null;
@@ -236,6 +311,21 @@ class EstrattoContoAnagraficaController extends Controller
                             'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
                         ];
                     }
+                    // CASO B-bis: RIMBORSO DEL CREDITO (B2, S6) — denaro uscito dalla cassa a chi aveva il credito
+                    elseif ($tipoMovimento === 'rimborso_condomino') {
+                        $dettagli[] = [
+                            'type'   => 'info',
+                            'text'   => 'Rimborso del credito' . ($riga->scrittura->stato === 'annullata' ? ' (stornato)' : '') . ' — ' . $labelBase,
+                            'status' => null,
+                        ];
+                        $breakdown = [
+                            'type'             => 'rimborso',
+                            'start'            => MoneyHelper::fromCents($waterfallStart),
+                            'cost'             => MoneyHelper::fromCents($importoContabile),
+                            'end'              => MoneyHelper::fromCents($waterfallEnd),
+                            'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
+                        ];
+                    }
                     // CASO B: PRELIEVO DAL SALVADANAIO
                     elseif ($tipoMovimento === 'storno_credito') {
                         $dettagli[] = [
@@ -244,7 +334,7 @@ class EstrattoContoAnagraficaController extends Controller
                             'status' => null
                         ];
                         $breakdown = [
-                            'type'             => 'storno', 
+                            'type'             => 'compensazione', 
                             'start'            => MoneyHelper::fromCents($waterfallStart),
                             'cost'             => MoneyHelper::fromCents($importoContabile), 
                             'end'              => MoneyHelper::fromCents($waterfallEnd),
@@ -292,10 +382,12 @@ class EstrattoContoAnagraficaController extends Controller
                     // CASO D: AVERE (Incassi, Compensazioni, e RESTITUZIONE CREDITI DA STORNI)
                     
                     if ($tipoMovimento === 'rettifica') {
-                        // FIX CHIRURGICO: Identifica le scritture in AVERE generate da uno Storno
+                        // FIX CHIRURGICO: Identifica le scritture in AVERE generate da uno Storno.
+                        // B2, S6: se lo storno è di un rimborso, lo si dice — il credito torna sulla quota.
+                        $padreRimborso = ($riga->scrittura->padre?->tipo_movimento?->value ?? null) === 'rimborso_condomino';
                         $dettagli[] = [
                             'type'   => 'rata',
-                            'text'   => "Ripristino credito nel salvadanaio",
+                            'text'   => $padreRimborso ? "Storno del rimborso: il credito torna disponibile" : "Ripristino credito nel salvadanaio",
                             'status' => 'stornata' 
                         ];
                     } elseif ($tipoMovimento === 'storno_credito') {
@@ -342,7 +434,12 @@ class EstrattoContoAnagraficaController extends Controller
                 'dare'        => $dare, 
                 'avere'       => $avere,
                 'saldo'       => $waterfallEnd, 
-                'breakdown'   => $breakdown 
+                'breakdown'   => $breakdown,
+                // B2, S6: il rimborso si storna dalla sua riga (stessa strada degli incassi).
+                'scrittura_id'    => $riga->scrittura_id,
+                'tipo_movimento'  => $tipoMovimento,
+                'stato_scrittura' => $riga->scrittura->stato,
+                'stornabile'      => ($tipoMovimento === 'rimborso_condomino') && $riga->scrittura->stato !== 'annullata',
             ];
         });
 

@@ -106,7 +106,7 @@ class Anagrafica extends Model
                 'id',
                 'tipologia',
                 'quota',
-                'tipologie_spese',
+                // `tipologie_spese` è caduta con la 1.11.0-beta.31 (decisione 8 del progetto sul subentro).
                 'data_inizio',
                 'data_fine',
                 'attivo',

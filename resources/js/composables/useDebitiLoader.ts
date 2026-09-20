@@ -1,7 +1,12 @@
 import axios from 'axios';
+import { ref } from 'vue';
 import type { Rata } from '@/types/gestionale/rata';
 
 export function useDebitiLoader() {
+
+    // B2, S7: l'ultima risposta porta anche le note di solidarietà dell'art. 63 co. 4 (chi è entrato risponde
+    // con chi è uscito): il chiamante le legge da qui dopo `fetchDebiti`, l'elenco delle rate resta com'era.
+    const noteSolidarieta = ref<string[]>([]);
 
     const fetchDebiti = async (
         routeFn: any,
@@ -12,6 +17,7 @@ export function useDebitiLoader() {
     ): Promise<Rata[]> => {
         
         if (!params.anagrafica_id && !params.immobile_id) {
+            noteSolidarieta.value = [];
             return [];
         }
 
@@ -22,6 +28,7 @@ export function useDebitiLoader() {
             });
             
             const res = await axios.get(url);
+            noteSolidarieta.value = Array.isArray(res.data.note_solidarieta) ? res.data.note_solidarieta : [];
             
             return res.data.rate.map((r: any) => ({
                 ...r,
@@ -36,6 +43,7 @@ export function useDebitiLoader() {
     };
 
     return {
-        fetchDebiti
+        fetchDebiti,
+        noteSolidarieta,
     };
 }

@@ -31,6 +31,7 @@ class PianoRate extends Model
 
     protected $fillable = [
         'gestione_id',
+        'esercizio_id',
         'condominio_id',
         'nome',
         'descrizione',
@@ -76,12 +77,19 @@ class PianoRate extends Model
     */
 
     /**
-     * Il piano ha incassi registrati su almeno una quota.
+     * Il piano ha movimenti di denaro su almeno una quota: incassi, ma anche crediti già usati in
+     * compensazione o rimborsati.
+     *
+     * Fino alla 1.11.0-beta.31 il filtro era `importo_pagato > 0`: una quota a credito consumata da uno
+     * `storno_credito` o da un rimborso ha `importo_pagato` **negativo** e passava — il piano risultava
+     * ricalcolabile, «Ricalcola» cancellava le quote (e la pivot in cascata) e il credito rinasceva intero
+     * con il denaro già uscito o già compensato (B2, S6). La pivot `quota_scrittura` è la sola verità:
+     * qualunque importo diverso da zero è un fatto contabile che il piano non può più riscrivere.
      */
     public function haIncassiRegistrati(): bool
     {
         return $this->rate()
-            ->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))
+            ->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '!=', 0))
             ->exists();
     }
 
@@ -121,6 +129,12 @@ class PianoRate extends Model
      *
      * @return BelongsTo
      */
+    /** L'esercizio con cui il piano è stato generato (B2, migrazione 9); nullo sui piani vecchi non travasati. */
+    public function esercizio(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Esercizio::class, 'esercizio_id');
+    }
+
     public function gestione(): BelongsTo
     {
         return $this->belongsTo(Gestione::class);
@@ -190,8 +204,10 @@ class PianoRate extends Model
      */
     public function capitoli(): BelongsToMany
     {
+        // `id` nel pivot dalla 1.11.0-beta.31: la riga di `piano_rate_capitoli` è la chiave dei tratti di
+        // competenza del capitolo (`competenze_capitolo.piano_rate_capitolo_id`, decisione 20).
         return $this->belongsToMany(Conto::class, 'piano_rate_capitoli', 'piano_rate_id', 'conto_id')
-                    ->withPivot(['importo', 'note']) 
+                    ->withPivot(['id', 'importo', 'note'])
                     ->withTimestamps();
     }
 

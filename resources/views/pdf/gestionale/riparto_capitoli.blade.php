@@ -301,6 +301,10 @@
                                 ({{ floatval($soggetto['quota_sogg']) }}%)
                             </span>
                         @endif
+                        @if (!empty($soggetto['giorni']))
+                            {{-- B2, S7: i giorni conteggiati dal pro rata; più valori se le voci hanno competenze diverse --}}
+                            <span style="font-size: {{ $fontTiny }}; color: #2b6cb0; font-weight: normal;">({{ implode('/', $soggetto['giorni']) }} gg)</span>
+                        @endif
                     </td>
 
                     {{-- ── Sigla ruolo ──────────────────────────────── --}}
@@ -471,6 +475,28 @@
         <strong>Anteprima</strong> — piano non ancora generato
     @else
         Riparto <strong>ricostruito</strong> dai dati attuali, non registrato
+    @endif
+    @php
+        // B2, S7: la competenza che ha deciso i destinatari — periodo, gradino, e quanti soggetti hanno
+        // una quota in proporzione ai giorni. Il documento dice cosa ha guardato, non solo cosa ha calcolato.
+        $legenda = $fonte['legenda'] ?? ['gradini' => [], 'periodo' => null, 'soggetti_pro_rata' => 0];
+        $nomiGradini = ['dichiarata' => 'competenza dichiarata sulla fattura', 'delibera' => 'giorno della delibera dell\'assemblea', 'capitolo' => 'competenza della voce', 'gestione' => 'periodo della gestione', 'esercizio' => 'periodo dell\'esercizio'];
+        $gradiniTesto = implode(', ', array_map(fn ($g) => $nomiGradini[$g] ?? $g, $legenda['gradini'] ?? []));
+        $periodoTesto = $legenda['periodo'] ? \Illuminate\Support\Carbon::parse($legenda['periodo']['dal'])->format('d/m/Y') . ' – ' . \Illuminate\Support\Carbon::parse($legenda['periodo']['al'])->format('d/m/Y') : null;
+    @endphp
+    &nbsp;·&nbsp;
+    @if(($fonte['risoluzione'] ?? 'atemporale') === 'temporale')
+        Competenza <strong>per periodo</strong>{{ $periodoTesto ? ' ' . $periodoTesto : '' }}{{ $gradiniTesto ? ' (' . $gradiniTesto . ')' : '' }}:
+        @if(($legenda['soggetti_pro_rata'] ?? 0) > 0)
+            <strong>{{ $legenda['soggetti_pro_rata'] }}</strong> {{ $legenda['soggetti_pro_rata'] === 1 ? 'soggetto ha una quota' : 'soggetti hanno una quota' }} in proporzione ai giorni di titolarità — il numero fra parentesi accanto al nome («gg»).
+        @else
+            nessun cambio di titolare nel periodo, quote per intero.
+        @endif
+        @if(!empty($fonte['competenza_non_risolta']))
+            Su una o più fatture la competenza non è risolta (manca la delibera): quelle voci sono ripartite senza date.
+        @endif
+    @else
+        Riparto <strong>senza date</strong>: titolari attivi alla generazione, nessun pro rata{{ ($fonte['tipo'] ?? null) === 'ricostruito' ? ' (piano di una versione precedente)' : '' }}.
     @endif
     @php $pseudo = [\App\Services\RipartoCapitoliService::COLONNA_GIA_VERSATO, \App\Services\RipartoCapitoliService::COLONNA_PREGRESSO, \App\Services\RipartoCapitoliService::COLONNA_DIRETTO, \App\Services\RipartoCapitoliService::COLONNA_FUORI_RIPARTO]; @endphp
     @if(array_intersect_key($capitoli, array_flip($pseudo)))

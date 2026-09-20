@@ -48,8 +48,10 @@ class StornoIncassoController extends Controller
         // {scrittura} arriva grezzo dalla rotta (nessun binding per tipo_movimento):
         // senza questo controllo, l'id di una scrittura di QUALSIASI altro tipo
         // (es. un giroconto) verrebbe accettato e stornato come se fosse un incasso.
-        if ($scrittura->tipo_movimento !== TipoMovimentoContabile::INCASSO_RATA) {
-            abort(403, 'Questa scrittura non è un incasso rata: lo storno non è applicabile.');
+        // Dalla 1.11.0-beta.31 (B2, S6) anche il rimborso di un credito passa da qui: la stessa `rettifica`
+        // rovescia le righe e la pivot, e il credito torna disponibile sulla quota.
+        if (! in_array($scrittura->tipo_movimento, [TipoMovimentoContabile::INCASSO_RATA, TipoMovimentoContabile::RIMBORSO_CONDOMINO], true)) {
+            abort(403, 'Questa scrittura non è un incasso rata né un rimborso di credito: lo storno non è applicabile.');
         }
 
         if ($scrittura->stato === 'annullata') {

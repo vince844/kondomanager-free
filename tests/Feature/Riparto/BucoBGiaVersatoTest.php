@@ -269,7 +269,9 @@ test('ECCEDENZA: la generazione del piano rate apre un task Inbox, non solo un l
     bbGiaVersato($sc, $b, 30_000); // ha versato esattamente il dovuto → nessuna eccedenza
 
     $piano = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Piano Test Eccedenza', 'attivo' => true, 'numero_rate' => 1,
     ]);
 
@@ -297,7 +299,9 @@ test('ECCEDENZA REGRESSIONE: rigenerare lo stesso piano non duplica il task Inbo
     bbGiaVersato($sc, $b, 30_000);
 
     $piano = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Piano Test Eccedenza', 'attivo' => true, 'numero_rate' => 1,
     ]);
 
@@ -328,7 +332,9 @@ test('ECCEDENZA REGRESSIONE: actionUrl resta valido anche senza un esercizio con
         ->update(['attiva' => false]);
 
     $piano = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Piano Test Eccedenza', 'attivo' => true, 'numero_rate' => 1,
     ]);
 
@@ -411,6 +417,8 @@ test('BUCO B RISOLTO: due piani rate (acconto+saldo) sullo stesso capitolo non d
 
     $pianoAcconto = \App\Models\Gestionale\PianoRate::create([
         'gestione_id'   => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15',
         'condominio_id' => $sc->condominio->id,
         'nome'          => 'Acconto',
         'attivo'        => true,
@@ -419,6 +427,8 @@ test('BUCO B RISOLTO: due piani rate (acconto+saldo) sullo stesso capitolo non d
 
     $pianoSaldo = \App\Models\Gestionale\PianoRate::create([
         'gestione_id'   => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15',
         'condominio_id' => $sc->condominio->id,
         'nome'          => 'Saldo',
         'attivo'        => true,
@@ -454,6 +464,8 @@ test('BUCO B RISOLTO: senza rateizzazione in tranche, un solo piano rate si comp
 
     $piano = \App\Models\Gestionale\PianoRate::create([
         'gestione_id'   => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15',
         'condominio_id' => $sc->condominio->id,
         'nome'          => 'Rata Unica',
         'attivo'        => true,
@@ -546,6 +558,8 @@ test('BUCO B RISOLTO: un\'unità interamente coperta lascia comunque una riga a 
 
     $piano = \App\Models\Gestionale\PianoRate::create([
         'gestione_id'   => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15',
         'condominio_id' => $sc->condominio->id,
         'nome'          => 'Piano Test Copertura Totale',
         'attivo'        => true,
@@ -594,6 +608,8 @@ test('BUCO B RISOLTO: la stampa "Riparto per Capitolo" mostra l\'importo netto, 
 
     $piano = \App\Models\Gestionale\PianoRate::create([
         'gestione_id'   => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15',
         'condominio_id' => $sc->condominio->id,
         'nome'          => 'Piano Test Stampa Capitoli',
         'attivo'        => true,
@@ -636,14 +652,18 @@ test('GUARDIA: due piani sullo stesso conto che sommano oltre il budget, con gi�
     bbGiaVersato($sc, $a, 100_000); // già versato: copre l'intero budget originale
 
     $pianoBase = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Base', 'attivo' => true,
     ]);
     $pianoBase->capitoli()->attach($sc->conto->id, ['importo' => 100_000]);
     (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione, $pianoBase); // non lancia: da solo è nei limiti
 
     $pianoIntegrativo = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Integrativo', 'attivo' => true,
     ]);
     $pianoIntegrativo->capitoli()->attach($sc->conto->id, ['importo' => 10_000]); // lo sforo, €100
@@ -664,14 +684,18 @@ test('GUARDIA: se il budget della voce viene aggiornato al fabbisogno reale, i d
     $sc->conto->forceFill(['importo' => 110_000])->save();
 
     $pianoBase = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Base', 'attivo' => true,
     ]);
     $pianoBase->capitoli()->attach($sc->conto->id, ['importo' => 100_000]);
     $quoteBase = (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione, $pianoBase);
 
     $pianoIntegrativo = \App\Models\Gestionale\PianoRate::create([
-        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'gestione_id' => $sc->gestione->id,
+        // B2 (decisione 12): la gestione è straordinaria e il motore vuole la data della delibera.
+        'data_delibera_assemblea' => '2026-01-15', 'condominio_id' => $sc->condominio->id,
         'nome' => 'Integrativo', 'attivo' => true,
     ]);
     $pianoIntegrativo->capitoli()->attach($sc->conto->id, ['importo' => 10_000]);

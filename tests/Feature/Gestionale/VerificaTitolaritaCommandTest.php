@@ -132,3 +132,39 @@ it('non modifica niente', function () {
 
     expect(DB::table('anagrafica_immobile')->orderBy('id')->get()->toJson())->toBe($prima);
 });
+
+it('S8-13 — un passaggio registrato con decorrenza futura (venditore chiuso al 14/10, acquirente dal 15/10) non è una comproprietà a 200: entra solo nel segnale della data di fine', function () {
+    $c = Condominio::factory()->create(['nome' => 'Passaggio futuro']);
+    unitaConTitolari($c, '7', [
+        ['nome' => 'Venditore Anna',  'quota' => 100, 'data_fine' => now()->addDays(24)->toDateString()],
+        ['nome' => 'Compratore Luca', 'quota' => 100, 'data_inizio' => now()->addDays(25)->toDateString()],
+    ]);
+
+    $this->artisan('kondomanager:verifica-titolarita', ['--condominio' => $c->id])
+        ->doesntExpectOutputToContain('Quote che non fanno 100')
+        ->expectsOutputToContain('Data fine compilata')
+        ->assertSuccessful();
+});
+
+it('S8-bis L2-5 — una coppia scritta a mano con chiusura e apertura lo STESSO giorno (30/6 e 30/6, somma 200 quel giorno) viene segnalata: per D7 stretto la seconda riga non ha un predecessore', function () {
+    $c = Condominio::factory()->create(['nome' => 'Stesso giorno']);
+    unitaConTitolari($c, '9', [
+        ['nome' => 'Venditore Anna',  'quota' => 100, 'data_inizio' => '2019-03-03', 'data_fine' => '2026-06-30'],
+        ['nome' => 'Compratore Luca', 'quota' => 100, 'data_inizio' => '2026-06-30'],
+    ]);
+
+    $this->artisan('kondomanager:verifica-titolarita', ['--condominio' => $c->id])
+        ->expectsOutputToContain('Chiusura e apertura lo stesso giorno')
+        ->expectsOutputToContain('Sposta la chiusura al giorno prima')
+        ->assertSuccessful();
+
+    // Il passaggio registrato bene (30/6 e 1/7) non è segnalato.
+    $ok = Condominio::factory()->create(['nome' => 'Giorno dopo']);
+    unitaConTitolari($ok, '10', [
+        ['nome' => 'Venditore Anna',  'quota' => 100, 'data_inizio' => '2019-03-03', 'data_fine' => '2026-06-30'],
+        ['nome' => 'Compratore Luca', 'quota' => 100, 'data_inizio' => '2026-07-01'],
+    ]);
+    $this->artisan('kondomanager:verifica-titolarita', ['--condominio' => $ok->id])
+        ->doesntExpectOutputToContain('Chiusura e apertura lo stesso giorno')
+        ->assertSuccessful();
+});

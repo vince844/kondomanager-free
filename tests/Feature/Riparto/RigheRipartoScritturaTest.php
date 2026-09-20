@@ -123,7 +123,11 @@ it('B1: ogni quota porta in regole_calcolo.parametri.titolarita_alla la dichiara
     }
 });
 
-it('B1: il motore con un periodo di competenza esplicito dà lo stesso riparto, al centesimo, del motore senza periodo (invariante 1; B2 riscriverà questo test)', function () {
+// ➕ B2 S4 (1.11.0-beta.31): il test di B1 è rimasto vero nella sostanza — D8, l'uscita anticipata: se nessun
+// titolare cambia nel periodo, i pesi sono letteralmente quota / somma_quote e il riparto è identico al
+// centesimo. Cambia solo il congelato per riga (decisione 15): il periodo e il gradino sono scritti, i giorni
+// no, perché non c'è stato pro rata. Il gemello con un subentro dentro il periodo è in `MotoreTemporaleTest`.
+it('D8: con un periodo di competenza esplicito e nessun titolare che cambia, il riparto è identico al centesimo a quello senza periodo; le righe portano periodo e gradino, non i giorni', function () {
     [, $gestione, $piano] = condominioScrittura(3);
 
     $senza = new CalcoloQuoteService();
@@ -134,10 +138,28 @@ it('B1: il motore con un periodo di competenza esplicito dà lo stesso riparto, 
     $totaliCon = $con->calcolaPerGestione($gestione, $piano, true, new PeriodoCompetenza('2026-01-01', '2026-12-31'));
     $righeCon = $con->getRigheDettaglio();
 
+    $spoglia = fn (array $righe) => array_map(function (array $r) {
+        unset($r['competenza_dal'], $r['competenza_al'], $r['gradino_competenza'], $r['giorni_titolarita']);
+        return $r;
+    }, $righe);
+
     expect($totaliCon)->toBe($totaliSenza)
-        ->and($righeCon)->toBe($righeSenza)
+        ->and($spoglia($righeCon))->toBe($spoglia($righeSenza))
         ->and($totaliSenza)->not->toBeEmpty()
-        ->and(array_sum(array_map(fn ($imm) => array_sum($imm), $totaliSenza)))->toBe(133334);
+        ->and(array_sum(array_map(fn ($imm) => array_sum($imm), $totaliSenza)))->toBe(133334)
+        // Il calcolo atemporale non congela nulla.
+        ->and(collect($righeSenza)->pluck('competenza_dal')->unique()->all())->toBe([null])
+        ->and(collect($righeSenza)->pluck('gradino_competenza')->unique()->all())->toBe([null]);
+
+    // Il calcolo temporale congela periodo e gradino su ogni riga di riparto; i giorni restano nulli (nessun pro rata).
+    $riparto = collect($righeCon)->where('tipo', 'riparto');
+    expect($riparto)->not->toBeEmpty()
+        ->and($riparto->pluck('competenza_dal')->unique()->all())->toBe(['2026-01-01'])
+        ->and($riparto->pluck('competenza_al')->unique()->all())->toBe(['2026-12-31'])
+        ->and($riparto->pluck('gradino_competenza')->unique()->all())->toBe(['dichiarata'])
+        ->and($riparto->pluck('giorni_titolarita')->unique()->all())->toBe([null])
+        // E il cancello (2) non ha niente da dire: nessun destinatario è cambiato.
+        ->and($con->getRisoluzioneTemporale())->toBe(['temporale' => true, 'destinatari_cambiati' => [], 'competenza_non_risolta' => false]);
 });
 
 it('la rigenerazione sostituisce il dettaglio: nessuna riga della generazione precedente sopravvive', function () {

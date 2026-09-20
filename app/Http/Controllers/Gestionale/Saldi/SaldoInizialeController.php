@@ -42,7 +42,7 @@ class SaldoInizialeController extends Controller
                     $q->where('esercizio_id', $esercizioAttivo->id)
                       // pianoRate serve alla UI per dire QUALE piano tiene il lucchetto,
                       // invece di limitarsi a mostrare un'icona muta.
-                      ->with(['gestione:id,nome,tipo', 'anagrafica:id,nome', 'pianoRate:id,nome']);
+                      ->with(['gestione:id,nome,tipo', 'anagrafica:id,nome', 'pianoRate:id,nome', 'subentro:id,decorrenza,tipo_passaggio']);
                 },
                 'palazzina',
                 'scala',
@@ -101,6 +101,10 @@ class SaldoInizialeController extends Controller
             $saldo->e_bloccato = $saldo->piano_rate_id !== null
                 ? ($immutabilita[$saldo->piano_rate_id] ?? true)
                 : (bool) $saldo->is_applicato;
+            // B2 (S5, inv. 19): una gamba della coppia di conguaglio di un passaggio. Stato **a parte** da
+            // `e_bloccato`: non è un lucchetto da riaprire né un piano da annullare, e resta vero anche
+            // dopo che un piano l'ha assorbita (verifica S5, R4).
+            $saldo->e_conguaglio = $saldo->subentro_id !== null;
         }
     }
 
@@ -171,6 +175,8 @@ class SaldoInizialeController extends Controller
             "Questo saldo è intestato al piano rate «{$saldo->pianoRate?->nome}»: per liberarlo agisci su quel piano, non a mano."
         );
 
+        abort_if($saldo->subentro_id !== null, 403, 'Questa riga è una delle due del conguaglio di un passaggio: il lucchetto lo mette e lo toglie il piano che la assorbe.');
+
         abort_unless($saldo->is_applicato, 400, 'Questo saldo è già libero.');
 
         $saldo->update(['is_applicato' => false]);
@@ -194,6 +200,14 @@ class SaldoInizialeController extends Controller
     public function destroy(Condominio $condominio, Saldo $saldo)
     {
         abort_unless($saldo->condominio_id === $condominio->id, 403);
+
+        // B2 (inv. 19): una gamba sola della coppia di conguaglio non si cancella — la somma non farebbe
+        // più zero. 422 e non 403: è un errore di campo che il pannello sa mostrare, come per «Modifica».
+        if ($saldo->subentro_id !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'saldo' => 'Questa riga è una delle due del conguaglio di un passaggio di titolarità (somma zero): non si cancella da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie le due righe insieme, con la tua nota.',
+            ]);
+        }
 
         // La riga, non la gestione. Il flag `gestioni.saldo_applicato` è un
         // derivato dalla beta.32: usarlo qui come autorità significava vietare

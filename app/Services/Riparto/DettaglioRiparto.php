@@ -5,6 +5,7 @@ namespace App\Services\Riparto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\RigaRiparto;
 use App\Services\CalcoloQuoteService;
+use App\Services\Riparto\CompetenzaDelPiano;
 use Illuminate\Support\Carbon;
 
 /**
@@ -40,35 +41,98 @@ final class DettaglioRiparto
         if ($registrate->isNotEmpty()) {
             $prima = $registrate->first();
 
+            $righe = $registrate->map(fn (RigaRiparto $r) => self::rigaDaModello($r))->all();
+
             return [
-                'righe' => $registrate->map(fn (RigaRiparto $r) => self::rigaDaModello($r))->all(),
+                'righe' => $righe,
                 'fonte' => [
                     'tipo'        => self::REGISTRATO,
                     'generato_il' => $prima->created_at,
                     'versione'    => $prima->versione_calcolo,
+                    // B2: registrate con un periodo se almeno una riga lo porta (decisione 15).
+                    'risoluzione' => $registrate->contains(fn (RigaRiparto $r) => $r->competenza_dal !== null) ? 'temporale' : 'atemporale',
+                    'competenza'  => null,
+                    'competenza_non_risolta' => false,
+                    'legenda'     => self::legendaCompetenza($righe),
                 ],
             ];
         }
 
         // Il ripiego: il motore al momento della stampa, in sola lettura — la guardia di
         // sovra-finanziamento è di generazione, non di rilettura (vedi `calcolaPerGestione`).
+        $haQuote = $pianoRate->rate()->whereHas('rateQuote')->exists();
+
+        // B2, decisione 16: il ramo **ricostruito** — quote di un piano della 1.10.x, righe mai scritte —
+        // resta **atemporale**, come il motore che lo ha generato, e la stampa lo dichiara. L'anteprima
+        // di un piano senza quote invece deve dire ciò che la generazione farà, e la generazione è
+        // temporale: stessa competenza di `GeneratePianoRateAction`, decisa in un posto solo. Se la
+        // competenza non è risolvibile (straordinario senza delibera), l'anteprima non si ferma — è una
+        // stampa — ma il motore, in sola lettura, va atemporale **solo dove** non può risolvere (la
+        // fattura senza competenza dichiarata) e lo scrive in `fonte.competenza_non_risolta`: le fatture
+        // con la competenza dichiarata restano temporali, come alla generazione (verifica S4, 19/09).
+        $competenza = $haQuote ? null : app(CompetenzaDelPiano::class)->perPiano($pianoRate);
+
         $motore = app(CalcoloQuoteService::class);
         $gestione = $pianoRate->gestione;
         if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture()->exists()) {
-            $motore->calcolaDaFattureStraordinarie($pianoRate);
+            $motore->calcolaDaFattureStraordinarie($pianoRate, $competenza, soloLettura: true);
         } elseif ($gestione) {
-            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true);
+            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true, periodo: $competenza);
         }
-
-        $haQuote = $pianoRate->rate()->whereHas('rateQuote')->exists();
+        $risoluzione = $motore->getRisoluzioneTemporale();
+        $righe = $motore->getRigheDettaglio();
 
         return [
-            'righe' => $motore->getRigheDettaglio(),
+            'righe' => $righe,
             'fonte' => [
                 'tipo'        => $haQuote ? self::RICOSTRUITO : self::ANTEPRIMA,
                 'generato_il' => null,
                 'versione'    => null,
+                // B2: come sono stati risolti i titolari in questa lettura (per la legenda di S7).
+                'risoluzione' => $risoluzione['temporale'] ? 'temporale' : 'atemporale',
+                'competenza'  => $competenza?->toArray(),
+                'competenza_non_risolta' => $risoluzione['competenza_non_risolta'],
+                'legenda'     => self::legendaCompetenza($righe),
             ],
+        ];
+    }
+
+    /**
+     * Ciò che la legenda delle stampe dice sulla competenza (B2, S7): i gradini che hanno deciso i periodi,
+     * l'arco fra il primo `dal` e l'ultimo `al` delle righe, e quanti soggetti hanno una quota in proporzione
+     * ai giorni (`giorni_titolarita` è scritto solo sulle righe pro rata: dove nessuno cambia, è nullo).
+     *
+     * @param list<array<string,mixed>> $righe
+     * @return array{gradini: list<string>, periodo: ?array{dal: string, al: string}, soggetti_pro_rata: int}
+     */
+    public static function legendaCompetenza(array $righe): array
+    {
+        $gradini = [];
+        $dal = null;
+        $al = null;
+        $soggetti = [];
+        foreach ($righe as $r) {
+            if (($r['tipo'] ?? null) !== 'riparto') {
+                continue;
+            }
+            if (! empty($r['gradino_competenza'])) {
+                $gradini[$r['gradino_competenza']] = true;
+            }
+            if (! empty($r['competenza_dal'])) {
+                $dal = $dal === null || $r['competenza_dal'] < $dal ? $r['competenza_dal'] : $dal;
+            }
+            if (! empty($r['competenza_al'])) {
+                $al = $al === null || $r['competenza_al'] > $al ? $r['competenza_al'] : $al;
+            }
+            if (($r['giorni_titolarita'] ?? null) !== null && ! empty($r['anagrafica_id'])) {
+                $soggetti[(int) $r['anagrafica_id']] = true;
+            }
+        }
+
+        return [
+            'gradini'           => array_keys($gradini),
+            'periodo'           => $dal !== null && $al !== null ? ['dal' => $dal, 'al' => $al] : null,
+            'soggetti_pro_rata' => count($soggetti),
         ];
     }
 
@@ -95,6 +159,11 @@ final class DettaglioRiparto
             'riga_fattura_id'   => $r->riga_fattura_id,
             'riga_descrizione'  => $r->riga_descrizione,
             'importo'           => (int) $r->importo,
+            // B2 (decisione 15): il congelato temporale, nella stessa forma delle righe del motore.
+            'competenza_dal'    => $r->competenza_dal?->toDateString(),
+            'competenza_al'     => $r->competenza_al?->toDateString(),
+            'gradino_competenza' => $r->gradino_competenza,
+            'giorni_titolarita' => $r->giorni_titolarita,
         ];
     }
 }

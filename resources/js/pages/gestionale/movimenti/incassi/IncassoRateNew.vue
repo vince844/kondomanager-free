@@ -105,7 +105,7 @@ const {
     pagaScadute: pagaScaduteComposable
 } = usePaymentDistribution();
 
-const { fetchDebiti: fetchDebitiAPI } = useDebitiLoader();
+const { fetchDebiti: fetchDebitiAPI, noteSolidarieta } = useDebitiLoader();
 
 const searchMode = ref<'persona' | 'immobile'>('persona');
 const selectedImmobileId = ref<number | null>(null);
@@ -1304,6 +1304,15 @@ onMounted(async () => {
                                         L'importo che stai incassando copre già tutte le rate in elenco: il credito
                                         resta dov'è. Abbassa l'importo versato se vuoi usarlo al suo posto.
                                     </span>
+                                </div>
+                            </div>
+
+                            <!-- B2, S7: la solidarietà dell'art. 63 co. 4 — un fatto da sapere mentre si incassa, non una rata -->
+                            <div v-for="(nota, i) in noteSolidarieta" :key="'sol' + i" class="bg-amber-50/80 border-b border-amber-100 px-4 py-2.5 flex items-start gap-3 text-amber-900 shrink-0">
+                                <div class="p-1 bg-amber-100 rounded-full mt-0.5 shrink-0"><Info class="w-4 h-4 text-amber-600" /></div>
+                                <div>
+                                    <span class="text-xs font-bold block mb-0.5">Chi risponde in solido</span>
+                                    <span class="text-[11px] leading-snug block opacity-90">{{ nota }}</span>
                                 </div>
                             </div>
 

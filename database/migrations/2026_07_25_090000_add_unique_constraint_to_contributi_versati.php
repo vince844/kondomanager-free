@@ -33,7 +33,9 @@ return new class extends Migration
         // un secondo tentativo fallirebbe con "Duplicate key name" e bloccherebbe
         // per sempre un aggiornamento che la pagina di conferma dichiara
         // riprendibile. Il vincolo c'è già: non resta nulla da fare.
-        if (Schema::hasIndex('contributi_versati', 'cv_target_immobile_unique')) {
+        // Dalla 1.11.0-beta.31 il vincolo è per persona (`cv_target_immobile_persona_unique`): su un database
+        // già migrato il dedup per unità qui sotto non deve più girare, cancellerebbe righe legittime.
+        if (Schema::hasIndex('contributi_versati', 'cv_target_immobile_unique') || Schema::hasIndex('contributi_versati', 'cv_target_immobile_persona_unique')) {
             return;
         }
 
