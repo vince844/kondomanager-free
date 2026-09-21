@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Http\Resources\User\UserResource;
+use App\Support\FunzioniInstallazione;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -31,6 +32,10 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'version' => config('app.version'),
             'is_demo' => env('IS_DEMO', false),
+
+            // Cosa questa installazione sa fare (aggiornamenti in app, pianificatore esterno,
+            // backup, archiviazione esterna): una mappa sola, vedi App\Support\FunzioniInstallazione.
+            'funzioni' => fn () => FunzioniInstallazione::mappa(),
             
             // Dati per Vue I18n
             'locale' => app()->getLocale(),

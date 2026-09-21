@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Documenti\Utenti;
 
 use App\Events\Documenti\NotifyAdminOfCreatedDocumento;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
 use App\Http\Requests\Documento\Utenti\UpdateDocumentoRequest;
@@ -19,7 +20,6 @@ use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasAnagrafica;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -93,7 +93,7 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+            $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
             $documento = Documento::create([
                 'name'         => $validated['name'],
@@ -187,12 +187,10 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::disk('local')->exists($documento->path)) {
-                    Storage::disk('local')->delete($documento->path);
-                }
+                app(ArchivioDocumenti::class)->elimina($documento->path);
 
                 $uploadedFile = $request->file('file');
-                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
                 // Update file related fields
                 $documento->path = $path;
@@ -249,9 +247,7 @@ class DocumentoController extends Controller
             DB::beginTransaction();
 
             // Delete the file from storage
-            if (Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             // Delete the database record
             $documento->delete();
@@ -298,13 +294,13 @@ class DocumentoController extends Controller
 
         try {
 
-            if (!Storage::disk('local')->exists($documento->path)) {
+            if (!app(ArchivioDocumenti::class)->esiste($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found'))
                 );
             }
 
-            return Storage::disk('local')->download($documento->path, $documento->nomeDiScaricamento());
+            return app(ArchivioDocumenti::class)->scarica($documento->path, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
 

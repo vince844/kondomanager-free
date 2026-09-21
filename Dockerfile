@@ -103,6 +103,9 @@ FROM base AS runtime
 # né aggiornamento automatico (l'aggiornamento è un'immagine nuova).
 # TRUSTED_PROXIES=PRIVATE_SUBNETS: davanti c'è sempre un proxy (Traefik, Coolify, il router di
 # casa) che si connette da rete privata; da internet non è falsificabile.
+# KM_CONTAINER=1: dice al programma che è nell'immagine. L'unica conseguenza: i documenti su disco
+# locale senza un volume sono effimeri, e /up risponde 503 finché non c'è un volume su
+# /var/www/storage o DOCUMENTI_DISK=s3 (config/kondomanager.php).
 ENV APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \
@@ -111,7 +114,14 @@ ENV APP_ENV=production \
     SESSION_DRIVER=database \
     QUEUE_CONNECTION=database \
     INSTALLER_ENABLED=false \
-    TRUSTED_PROXIES=PRIVATE_SUBNETS
+    TRUSTED_PROXIES=PRIVATE_SUBNETS \
+    KM_CONTAINER=1
+
+# L'ancora al repository: GitHub collega il package a kondomanager-free da questa etichetta, e
+# chi fa `docker pull` sa da dove viene l'immagine.
+LABEL org.opencontainers.image.source="https://github.com/vince844/kondomanager-free" \
+      org.opencontainers.image.description="KondoManager, gestionale open source per il condominio" \
+      org.opencontainers.image.licenses="AGPL-3.0"
 
 RUN rm -f /etc/nginx/sites-enabled/default
 COPY docker/production/nginx.conf /etc/nginx/conf.d/default.conf

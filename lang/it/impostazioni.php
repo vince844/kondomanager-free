@@ -110,6 +110,8 @@ return [
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
+        'installazione_title' => 'Questa installazione',
+        'installazione_description' => 'Quanti condomini, quanto spazio e quali funzioni: i fatti di questa installazione',
         'settings_head' => 'Settings',
         'settings_title' => 'Impostazioni applicazione',
         'settings_description' => 'Di seguito un elenco di tutte le impostazioni configurabili per l\'applicazione',
@@ -173,6 +175,7 @@ return [
         'backup_retention' => 'Backup da conservare',
         'backup_retention_help' => 'Numero di backup completati da mantenere sul server: al termine di ogni nuovo backup, i più vecchi oltre questo limite vengono eliminati automaticamente.',
         'backups_disabled_badge' => 'Disabilitati',
+        'backup_documenti_esterni' => 'I documenti sono su un disco esterno (S3) e non entrano in questo archivio: contiene il database e i file di lavoro. I documenti stanno già fuori da questa macchina.',
         'backup_running_badge' => 'Backup in corso',
         'backup_type_title' => 'Tipo di backup',
         'backup_type_full' => 'Completo',
@@ -211,6 +214,8 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
+        'installazione_title' => 'Questa installazione',
+        'installazione_description' => 'Limiti, spazio e funzioni attive di questa installazione',
         'general_settings_title' => 'Impostazioni generali',
         'general_settings_description' => 'Impostazioni generali di configurazione dell\'applicazione',
         'users_settings_title' => 'Gestione utenti',
@@ -375,5 +380,27 @@ return [
         'backup_security_desc' => 'L\'archivio contiene tutti i dati e le chiavi dell\'applicazione. Scaricalo e custodiscilo in un luogo sicuro: chiunque lo possieda può leggere i dati.',
         'backup_restore_title' => 'Come si ripristina',
         'backup_restore_desc' => 'Il database si reimporta con phpMyAdmin (db/database.sql) e i file si copiano dalla cartella files dell\'archivio. La procedura passo-passo è nella documentazione ufficiale.',
+    ],
+    'installazione' => [
+        'condomini' => 'Condomini',
+        'condomini_desc' => 'I condomini gestiti da questa installazione',
+        'condomini_dimostrativi' => 'Più :n dimostrativi, che contano nel tetto',
+        'illimitato' => 'illimitato',
+        'spazio' => 'Spazio dei documenti',
+        'spazio_desc' => 'Documenti caricati e firma delle stampe, sommati',
+        'funzioni' => 'Funzioni',
+        'funzioni_desc' => 'Cosa è acceso in questa installazione: si decide da fuori, non da qui',
+        'funzione_aggiornamenti_in_app' => 'Aggiornamenti dal pannello',
+        'funzione_pianificatore_esterno' => 'Pianificatore esterno',
+        'funzione_backup' => 'Backup interni',
+        'funzione_archiviazione_esterna' => 'Archiviazione esterna',
+        'si' => 'sì',
+        'no' => 'no',
+        'documenti' => 'Dove stanno i documenti',
+        'documenti_esterni' => 'su un disco esterno (S3)',
+        'documenti_su_volume' => 'su un volume separato',
+        'documenti_effimeri' => 'sul disco locale',
+        'versione' => 'Versione',
+        'gestione_piano' => 'Gestisci il tuo piano',
     ],
 ];

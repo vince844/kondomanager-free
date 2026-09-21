@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Anagrafiche\Documenti;
 
 use App\Http\Controllers\Controller;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Http\Requests\Anagrafica\Documento\AnagraficaDocumentoIndexRequest;
 use App\Http\Requests\Anagrafica\Documento\CreateAnagraficaDocumentoRequest;
 use App\Http\Requests\Anagrafica\Documento\UpdateAnagraficaDocumentoRequest;
@@ -16,7 +17,6 @@ use App\Traits\OrdinaElenco;
 use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -146,7 +146,7 @@ class AnagraficaDocumentoController extends Controller
         try {
             $file = $request->file('file');
 
-            $percorso = $file->storeAs('documenti', $file->hashName(), 'local');
+            $percorso = app(ArchivioDocumenti::class)->salva($file);
 
             $anagrafica->documentiPropri()->create([
                 'name'         => $validated['name'],
@@ -186,7 +186,7 @@ class AnagraficaDocumentoController extends Controller
                 // Il vecchio file si toglie solo dopo che il nuovo è stato scritto: al contrario,
                 // un errore a metà lascerebbe una riga che punta a un file che non c'è più.
                 $file = $request->file('file');
-                $nuovoPercorso = $file->storeAs('documenti', $file->hashName(), 'local');
+                $nuovoPercorso = app(ArchivioDocumenti::class)->salva($file);
 
                 $vecchioPercorso = $documento->path;
 
@@ -194,9 +194,7 @@ class AnagraficaDocumentoController extends Controller
                 $documento->mime_type = $file->getClientMimeType();
                 $documento->file_size = $file->getSize();
 
-                if ($vecchioPercorso && Storage::disk('local')->exists($vecchioPercorso)) {
-                    Storage::disk('local')->delete($vecchioPercorso);
-                }
+                app(ArchivioDocumenti::class)->elimina($vecchioPercorso);
             }
 
             $documento->update([
@@ -224,9 +222,7 @@ class AnagraficaDocumentoController extends Controller
         abort_unless($this->appartiene($documento, $anagrafica), 404);
 
         try {
-            if ($documento->path && Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             $documento->delete();
         } catch (\Throwable $e) {

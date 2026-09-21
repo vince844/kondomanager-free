@@ -65,6 +65,9 @@ class BackupSettingsController extends Controller
             'retention_keep_last' => $settings->retention_keep_last,
             // Solo se la password è impostata, MAI il valore in chiaro
             'backup_has_password' => $passwordStore->has(),
+            // Con i documenti su un disco S3 (1.11.0-beta.33) l'archivio non li contiene: stanno
+            // già fuori dalla macchina. Va detto qui, dove uno si aspetta di trovarli.
+            'documenti_esterni' => config('kondomanager.disco_documenti', 'local') !== 'local',
         ]);
     }
 

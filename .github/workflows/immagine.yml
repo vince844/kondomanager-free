@@ -1,0 +1,128 @@
+# L'immagine Docker canonica, costruita e pubblicata a ogni tag di versione.
+#
+# Si attiva sui tag `v*` (v1.11.0, v1.11.0-beta.33…): il tag comanda, non il ramo. Una stabile
+# (tag senza `-`) esce anche come `latest`; una beta esce solo con il suo numero. Prima del push
+# l'immagine viene avviata davvero con un MySQL di servizio: deve installarsi da sola dalle
+# variabili d'ambiente e rispondere 200 su /up entro due minuti — è lo stesso primo avvio che fa
+# un container di produzione. Se non ci riesce, niente push.
+#
+# Solo amd64: i server sono amd64 e arm64 sotto emulazione raddoppia i tempi; si aggiunge quando
+# serve. Il file deve stare anche sul ramo di versione: GitHub Actions lo legge dal commit taggato.
+
+name: Immagine Docker
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMMAGINE: ghcr.io/${{ github.repository_owner }}/kondomanager-core
+
+jobs:
+  immagine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: kondo
+          MYSQL_USER: kondo
+          MYSQL_PASSWORD: kondo
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag dell'immagine
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            versione="${GITHUB_REF_NAME#v}"
+          else
+            versione="prova-${GITHUB_SHA::7}"
+          fi
+          echo "versione=$versione" >> "$GITHUB_OUTPUT"
+          case "$versione" in
+            *-*|prova-*) echo "latest=false" >> "$GITHUB_OUTPUT" ;;
+            *)           echo "latest=true"  >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Immagine: $IMMAGINE:$versione (latest: $(grep latest "$GITHUB_OUTPUT" | tail -1))"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (senza push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMMAGINE }}:${{ steps.tag.outputs.versione }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Nessun .env e nessun pacchetto di sviluppo dentro l'immagine
+        run: |
+          docker run --rm --entrypoint sh "$IMMAGINE:${{ steps.tag.outputs.versione }}" -c '
+            test ! -e /var/www/.env || { echo ".env presente nell immagine"; exit 1; }
+            test ! -d /var/www/vendor/phpunit || { echo "pacchetti di sviluppo presenti"; exit 1; }
+            test ! -d /var/www/node_modules || { echo "node_modules presente"; exit 1; }
+            php -m | grep -q pdo_mysql && php -m | grep -q intl && echo "estensioni ok"
+          '
+
+      - name: Primo avvio vero, con installazione dalle variabili
+        run: |
+          # Il volume su storage/: nel container i documenti senza volume sono effimeri e /up
+          # risponde 503 di proposito (KM_CONTAINER=1). Qui si prova il caso giusto.
+          docker run -d --name km --network host -v km-storage:/var/www/storage \
+            -e APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" \
+            -e APP_URL=http://127.0.0.1:8080 \
+            -e DB_HOST=127.0.0.1 -e DB_DATABASE=kondo -e DB_USERNAME=kondo -e DB_PASSWORD=kondo \
+            -e INSTALL_ADMIN_EMAIL=ci@esempio.it -e INSTALL_ADMIN_PASSWORD=ci-password-1 \
+            -e MAIL_MAILER=log \
+            "$IMMAGINE:${{ steps.tag.outputs.versione }}"
+          # --network host: nginx ascolta su :80 dell'host del runner.
+          # 90 giri da 2 s: il primo avvio fa 160 migrazioni, comuni e ATECO su un runner piccolo.
+          codice=000
+          for i in $(seq 1 90); do
+            codice=$(curl -s -o /tmp/up.json -w '%{http_code}' http://127.0.0.1/up || true)
+            if [ "$codice" = "200" ]; then echo "/up 200 dopo $((i*2)) s"; cat /tmp/up.json; break; fi
+            sleep 2
+          done
+          if [ "$codice" != "200" ]; then
+            echo "/up non è mai diventato 200 (ultimo: $codice)"
+            cat /tmp/up.json 2>/dev/null || true
+            docker logs km 2>&1 | tail -100 || true
+            exit 1
+          fi
+          docker exec km sh -c 'runuser -u www-data -- php artisan about --only=environment'
+          docker exec km sh -c 'runuser -u www-data -- php artisan kondomanager:stats --json'
+          docker rm -f km
+
+      - name: Login su ghcr.io
+        if: github.ref_type == 'tag'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: github.ref_type == 'tag'
+        run: |
+          docker push "$IMMAGINE:${{ steps.tag.outputs.versione }}"
+          if [ "${{ steps.tag.outputs.latest }}" = "true" ]; then
+            docker tag "$IMMAGINE:${{ steps.tag.outputs.versione }}" "$IMMAGINE:latest"
+            docker push "$IMMAGINE:latest"
+          fi

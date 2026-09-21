@@ -20,6 +20,10 @@ use Illuminate\Support\Facades\Schema;
  * permesso, senza questo passo, lo lascerebbe nel codice: è il guasto silenzioso della beta.55,
  * che la revisione della beta.32 ha visto ripresentarsi nel container.
  *
+ * I passi non sono elencati qui: sono `SystemFinalizer::passiDatabase()`, lo stesso elenco che
+ * percorre `finalize()`. Dalla 1.11.0-beta.33, dopo che la rilettura del flusso ha trovato le due
+ * vie con due elenchi diversi.
+ *
  * Idempotente: su un database già allineato non cambia niente. Su un database vuoto si ferma:
  * quello è lavoro per `kondomanager:installa`.
  */
@@ -29,6 +33,14 @@ class AggiornaCommand extends Command
 
     protected $description = 'Allinea il database al codice in esecuzione (migrazioni, permessi, comuni, ATECO, versione); non fa nulla se è già allineato';
 
+    private const ETICHETTE = [
+        'migrazioni' => 'Migrazioni',
+        'ruoli_e_permessi' => 'Ruoli e permessi',
+        'comuni' => 'Elenco dei comuni',
+        'ateco' => 'Classificazione ATECO',
+        'versione' => 'Versione registrata',
+    ];
+
     public function handle(SystemFinalizer $finalizer): int
     {
         if (! Schema::hasTable('migrations') || ! Schema::hasTable('users')) {
@@ -37,11 +49,11 @@ class AggiornaCommand extends Command
             return self::FAILURE;
         }
 
-        $this->components->task('Migrazioni', fn () => $finalizer->runMigrationsWithRetry());
-        $this->components->task('Ruoli e permessi', fn () => $finalizer->sincronizzaRuoliEPermessi());
-        $this->components->task('Elenco dei comuni', fn () => $finalizer->caricaElencoComuni());
-        $this->components->task('Classificazione ATECO', fn () => $finalizer->caricaClassificazioneAteco());
-        $this->components->task('Versione registrata', fn () => $finalizer->alignDatabaseVersion());
+        // L'elenco è del finalizer, non di questo comando: le due vie d'aggiornamento percorrono
+        // gli stessi passi per costruzione (vedi SystemFinalizer::passiDatabase()).
+        foreach ($finalizer->passiDatabase() as $nome => $passo) {
+            $this->components->task(self::ETICHETTE[$nome] ?? $nome, $passo);
+        }
 
         return self::SUCCESS;
     }

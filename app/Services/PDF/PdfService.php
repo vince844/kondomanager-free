@@ -3,7 +3,7 @@
 namespace App\Services\PDF;
 
 use App\Settings\PrintSettings;
-use Illuminate\Support\Facades\Storage;
+use App\Services\Documenti\ArchivioDocumenti;
 use Mpdf\Mpdf;
 use Illuminate\Support\Facades\View;
 
@@ -66,13 +66,12 @@ class PdfService
         // capitolo") non è un rendiconto — è una lettura dei dati, non un atto dell'amministratore.
         // `senza_firma` nel `$data` del chiamante è l'opt-out: assente per ogni stampa esistente,
         // quindi zero cambiamento di comportamento per chi già c'era.
+        // Un percorso locale anche quando la firma sta su S3: mPDF vuole un file, non uno stream
+        // (`ArchivioDocumenti::percorsoLocalePubblico()` ne fa una copia temporanea in quel caso).
         $data['firma_stampe_absolute_path'] = null;
-        if (
-            empty($data['senza_firma'])
-            && $settings->firma_stampe_path
-            && Storage::disk('public')->exists($settings->firma_stampe_path)
-        ) {
-            $data['firma_stampe_absolute_path'] = Storage::disk('public')->path($settings->firma_stampe_path);
+        if (empty($data['senza_firma']) && $settings->firma_stampe_path) {
+            $data['firma_stampe_absolute_path'] = app(ArchivioDocumenti::class)
+                ->percorsoLocalePubblico($settings->firma_stampe_path);
         }
 
         $html = View::make($view, $data)->render();

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\Immobili\Documenti;
 
 use App\Http\Controllers\Controller;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Http\Requests\Gestionale\Immobile\Documento\CreateImmobileDocumentoRequest;
 use App\Http\Requests\Gestionale\Immobile\Documento\ImmobileDocumentoIndexRequest;
 use App\Http\Requests\Gestionale\Immobile\Documento\UpdateImmobileDocumentoRequest;
@@ -20,7 +21,6 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class ImmobileDocumentoController extends Controller
 {
@@ -186,7 +186,7 @@ class ImmobileDocumentoController extends Controller
 
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+            $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
             $documento = $immobile->documenti()->create([
                 'name'         => $validated['name'],
@@ -338,12 +338,10 @@ class ImmobileDocumentoController extends Controller
 
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::disk('local')->exists($documento->path)) {
-                    Storage::disk('local')->delete($documento->path);
-                }
+                app(ArchivioDocumenti::class)->elimina($documento->path);
 
                 $uploadedFile = $request->file('file');
-                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
                 // Update file related fields
                 $documento->path = $path;
@@ -442,9 +440,7 @@ class ImmobileDocumentoController extends Controller
     {
         try {
 
-            if (Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             $documento->delete();
 

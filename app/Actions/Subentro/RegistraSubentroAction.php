@@ -3,6 +3,7 @@
 namespace App\Actions\Subentro;
 
 use App\Enums\EventoTipo;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
@@ -21,7 +22,6 @@ use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -149,7 +149,7 @@ final class RegistraSubentroAction
                 //    `$path` è noto al catch anche se `create()` fallisce subito dopo (verifica S5, R5).
                 $documento = null;
                 if (($dati['allegato_titolo'] ?? null) instanceof UploadedFile) {
-                    $path = $dati['allegato_titolo']->storeAs('documenti', $dati['allegato_titolo']->hashName(), 'local');
+                    $path = app(ArchivioDocumenti::class)->salva($dati['allegato_titolo']);
                     $documento = $this->salvaDocumento($immobile, $dati['allegato_titolo'], $path, $tipo, $decorrenza, $uscente?->anagrafica?->nome, $entrante?->nome, $utente);
                     $subentro->update(['documento_id' => $documento->id]);
                 }
@@ -157,8 +157,8 @@ final class RegistraSubentroAction
                 return ['subentro' => $subentro->fresh(), 'anteprima' => $anteprima, 'coppie' => $coppie, 'documento' => $documento];
             });
         } catch (\Throwable $e) {
-            if ($path !== null && Storage::disk('local')->exists($path)) {
-                Storage::disk('local')->delete($path);
+            if ($path !== null && app(ArchivioDocumenti::class)->esiste($path)) {
+                app(ArchivioDocumenti::class)->elimina($path);
             }
             throw $e;
         }

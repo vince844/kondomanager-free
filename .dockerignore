@@ -13,23 +13,11 @@
 .env
 .env.*
 
-# Storia e strumenti
-.git
-.gitignore
-.gitattributes
-.github
-.claude
-.idea
-.vscode
-.fleet
-.nova
-.zed
-.DS_Store
-.editorconfig
-.prettierrc*
-.prettierignore
+# Niente file o cartelle nascosti dalla radice: storia git, configurazioni dell'editor e degli
+# strumenti, cartelle di lavoro. Nessuno serve a eseguire l'applicazione (i nascosti dentro le
+# sottocartelle, come public/.htaccess, non sono toccati da questa riga).
+.*
 eslint.config.*
-.phpactor.json
 
 # Dipendenze e artefatti: si ricostruiscono negli stadi di build, mai copiati
 # dall'host (vendor dell'host può essere di un'altra versione di PHP o con le
@@ -41,9 +29,12 @@ public/hot
 public/storage
 
 # Stato di runtime: la struttura di storage/ viene ricreata dal Dockerfile,
-# vuota. Qui si esclude il contenuto, non le cartelle.
-storage/app/private/*
-storage/app/public/*
+# vuota. Qui si esclude TUTTO il contenuto di storage/app — documenti, backup, file di lavoro,
+# font di mPDF — non le sole cartelle note: la prima stesura elencava private/ e public/ e
+# lasciava passare storage/app/backups/, cioè quattro backup del database di sviluppo, in
+# chiaro, dentro un'immagine pubblica (trovato il 21/09/2026 provando la 1.11.0-beta.33;
+# la .32 pubblicata è stata ritirata). `ContestoDiBuildPulitoTest` lo presidia.
+storage/app/*
 storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
@@ -52,6 +43,9 @@ storage/framework/views/*
 storage/installed.lock
 storage/*.key
 storage/pail
+
+# File del Finder, ovunque siano.
+**/.DS_Store
 
 # Le cache di bootstrap di chi costruisce: packages.php elenca i pacchetti di sviluppo (Pail,
 # Pint…) che nell'immagine non ci sono, e `package:discover` in fase di build si fermerebbe su
@@ -78,4 +72,3 @@ docker/standard
 docker/frankenphp
 docker/supervisord.conf
 Dockerfile
-.dockerignore

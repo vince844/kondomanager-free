@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Support\PersistenzaStorage;
 use Illuminate\Console\Command;
 
@@ -36,6 +37,47 @@ class VerificaPersistenzaCommand extends Command
         }
 
         $this->newLine();
+
+        if (! $esito['disco_riconosciuto']) {
+            $this->warn('  ! DOCUMENTI_DISK='.$esito['disco_richiesto'].' non è un valore conosciuto (local, s3): i documenti stanno sul disco locale.');
+            $this->newLine();
+        }
+
+        if ($esito['disco'] !== 'local') {
+            // Il disco S3 va provato davvero: le scritture con `throw => false` tacciono, e un
+            // bucket sbagliato si scoprirebbe al primo documento perso. Qui è un errore sempre,
+            // con o senza --rigoroso: l'entrypoint del container si ferma su questa riga.
+            try {
+                app(ArchivioDocumenti::class)->sonda();
+            } catch (\RuntimeException $e) {
+                $this->error('  ✗ '.$e->getMessage());
+                $this->newLine();
+
+                return self::FAILURE;
+            }
+
+            $this->info('  ✓ I documenti e la firma delle stampe stanno su un disco S3 ('.$esito['disco'].'): scrittura, rilettura e cancellazione di prova riuscite.');
+
+            if ($esito['persistente']) {
+                $this->line('    storage/app resta per backup, ripristino e file di lavoro, ed è su un volume separato.');
+                $this->newLine();
+
+                return self::SUCCESS;
+            }
+
+            $this->line('    storage/app resta per backup, ripristino e file di lavoro, e NON è su un volume separato:');
+            $this->line('    gli archivi di backup e il loro stato spariscono alla ricreazione del contenitore.');
+            $this->newLine();
+
+            if ($this->option('rigoroso') && ! app()->environment('local', 'testing')) {
+                $this->error('  ✗ --rigoroso: senza un volume i backup interni non sopravvivono. Dichiara il volume, o BACKUP_ENABLED=false se i backup li fa l\'infrastruttura.');
+                $this->newLine();
+
+                return self::FAILURE;
+            }
+
+            return self::SUCCESS;
+        }
 
         if ($esito['persistente']) {
             $this->info('  ✓ storage/app è su un volume separato: i file sopravvivono alla ricreazione del contenitore.');

@@ -4,7 +4,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart, Server } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -100,6 +100,12 @@ const apps = computed(() => [
     href: "/impostazioni/backups",
     disabled: !backupsEnabled.value,
     running: backupRunning.value,
+  },
+  {
+    name: 'impostazioni.dialogs.installazione_title',
+    logo: Server,
+    desc: 'impostazioni.dialogs.installazione_description',
+    href: "/impostazioni/installazione",
   },
   {
     name: 'impostazioni.dialogs.updates_title',

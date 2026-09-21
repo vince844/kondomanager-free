@@ -7,6 +7,82 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.33] - I documenti che sopravvivono al container
+
+**Non tocca il database: nessuna migrazione.** Tocca `composer.lock`: entra il driver S3 di
+Flysystem (`league/flysystem-aws-s3-v3`), con l'SDK Amazon potato al solo servizio S3 (6 MB invece
+di 68). Per chi si autoospita e per chi installa dallo zip **non cambia niente**: i documenti
+restano dove sono sempre stati, `storage/app/private/documenti`, con gli stessi nomi; i 172 test
+dei documenti sono passati senza modificarne uno.
+
+**I documenti hanno un disco, e il disco si sceglie.** Fino a ieri cinquanta punti in diciannove
+file scrivevano `local` e `public` a mano; ora un servizio solo, `ArchivioDocumenti`, sa dove
+stanno i file caricati — archivio, unità, fornitori, anagrafiche, fatture, titoli di subentro — e la
+firma delle stampe. `DOCUMENTI_DISK=local` (il predefinito) è il disco di sempre. `DOCUMENTI_DISK=s3`
+li mette su un bucket S3-compatibile — Cloudflare R2, Amazon S3, Backblaze B2, MinIO — con le
+variabili `AWS_*` standard di Laravel e un prefisso (`DOCUMENTI_PREFIX`) per tenere più
+installazioni nello stesso bucket. Su S3 il download scorre in streaming, la firma per le stampe
+si copia in una cartella temporanea (mPDF vuole un file), l'anteprima della firma è un indirizzo
+firmato a scadenza e il bucket resta privato. Cambiare il valore **non sposta** i file già caricati:
+vale per un'installazione che nasce così. Con i documenti su S3 il backup interno non li contiene, e
+la pagina dei backup lo dice.
+
+**Se S3 non risponde, lo si sa subito e non si perde niente.** La revisione ha trovato che una
+scrittura su un bucket sbagliato (token scaduto, endpoint irraggiungibile, `AWS_BUCKET` vuoto)
+taceva: sei schermate avrebbero risposto «creato» scrivendo una riga senza file. Ora un
+caricamento che non riesce è un errore, con il suo messaggio e nessuna riga; una firma
+irraggiungibile non ferma una stampa (esce senza firma, come sul disco locale con il file mancante);
+e `php artisan kondomanager:verifica-persistenza` — che l'immagine Docker lancia a ogni avvio —
+scrive, rilegge e cancella un oggetto di prova: un bucket sbagliato ferma il container con il
+messaggio giusto invece di perdere il primo documento in silenzio.
+
+**Nel container, documenti effimeri = non disponibile.** `/up` dice dove stanno i documenti
+(`esterni`, `su_volume`, `effimeri`) e, solo dentro l'immagine Docker (`KM_CONTAINER=1`), i
+documenti sul disco locale senza un volume rendono l'installazione non disponibile (503): chi
+orchestra i container non deve dire «pronta» a un'istanza che perde i file alla prima
+ricreazione. Fuori dal container non cambia niente. `verifica-persistenza` conosce il disco e
+avvisa quando, con S3, gli archivi di backup restano nel container senza volume.
+
+**Un tetto allo spazio, mostrato e non applicato.** `LIMITE_SPAZIO_MB` (assente, vuoto o 0 =
+nessun limite). L'uso si somma dalla colonna `file_size` dei documenti, che dice il vero, più la
+firma. Si mostra, non blocca: chi ospita misura e avvisa da fuori.
+
+**«Questa installazione».** Una pagina nuova nelle impostazioni con i fatti dell'installazione:
+condomini su tetto (i dimostrativi contano, e lo dice), spazio su tetto — **solo se c'è un tetto**,
+un totale senza conseguenza è una curiosità —, le funzioni accese (aggiornamenti dal pannello,
+pianificatore esterno, backup interni, archiviazione esterna), dove stanno i documenti, la
+versione, e un collegamento «Gestisci il tuo piano» solo se chi ospita ha dato un indirizzo
+(`GESTIONE_PIANO_URL`). Nessuna parola «piano» se manca. La mappa delle funzioni è condivisa a ogni
+pagina come `funzioni`. Testi in quattro lingue. `php artisan kondomanager:stats --json` dà gli
+stessi numeri a chi ospita.
+
+**Le due vie d'aggiornamento percorrono lo stesso elenco.** La rilettura del flusso in apertura ha
+trovato che `kondomanager:aggiorna` (immagine Docker, `git pull`) rielencava a mano cinque dei sette
+passi di `SystemFinalizer::finalize()` (pagina di aggiornamento, ripristino): un seeder nuovo
+agganciato a una sola delle due vie sarebbe mancato all'altra, in silenzio. Ora l'elenco è uno,
+`passiDatabase()`, percorso da entrambe, con un test che lo fissa e prova comuni e ATECO da tabelle
+vuote dal comando.
+
+**L'immagine pubblicata della beta.32 è stata ritirata.** Provando il container senza volume,
+`verifica-persistenza` contava file di backup in un'immagine appena nata: `.dockerignore` escludeva
+`storage/app/private` e `storage/app/public` **ma non `storage/app/backups`**, e l'immagine
+`1.11.0-beta.32` su ghcr.io conteneva quattro backup del database di sviluppo. L'unico download era
+il server di staging. Il package è stato cancellato; ora `.dockerignore` esclude `storage/app`
+intero e ogni file nascosto dalla radice, un test presidia il file, e il contesto di build è stato
+misurato (zero file sotto `storage/app`, nessun `.env`). Un'immagine si ispeziona prima del push:
+il workflow lo fa da solo.
+
+**Il workflow che pubblica l'immagine.** `.github/workflows/immagine.yml`: a ogni tag `v*`
+costruisce l'immagine amd64, la avvia davvero con un MySQL di servizio e un volume — installazione
+dalle variabili, `/up` 200 entro tre minuti, nessun `.env` né pacchetto di sviluppo dentro — e
+solo allora la pubblica su `ghcr.io/vince844/kondomanager-core` con il numero del tag; `latest`
+solo sulle stabili. L'immagine porta l'etichetta OCI con il repository di origine. La prova vera è
+il primo tag.
+
+**Documentazione.** Piano esecutivo con le sei decisioni, il verbale della revisione (dodici
+rilievi, tutti applicati) e il reperto dei backup; variabili documentate in `.env.example`; il
+contratto delle variabili nel piano dell'infrastruttura aggiornato con i nomi neutri del disco.
+
 ## [1.11.0-beta.32] - Il programma che si installa da solo
 
 **Non tocca il database: nessuna migrazione.** Cambia come si arriva a un database installato, non

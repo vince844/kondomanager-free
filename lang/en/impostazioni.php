@@ -110,6 +110,8 @@ return [
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
+        'installazione_title' => 'This installation',
+        'installazione_description' => 'How many buildings, how much storage and which functions: the facts of this installation',
         'settings_head' => 'Settings',
         'settings_title' => 'Application settings',
         'settings_description' => 'Below is a list of all configurable settings for the application.',
@@ -173,6 +175,7 @@ return [
         'backup_retention' => 'Backups to keep',
         'backup_retention_help' => 'Number of completed backups to keep on the server: after each new backup, older ones beyond this limit are deleted automatically.',
         'backups_disabled_badge' => 'Disabled',
+        'backup_documenti_esterni' => 'Documents live on an external disk (S3) and are not part of this archive: it contains the database and working files. Documents are already off this machine.',
         'backup_running_badge' => 'Backup in progress',
         'backup_type_title' => 'Backup type',
         'backup_type_full' => 'Full',
@@ -211,6 +214,8 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
+        'installazione_title' => 'This installation',
+        'installazione_description' => 'Limits, storage and enabled functions of this installation',
         'general_settings_title' => 'General settings',
         'general_settings_description' => 'General configuration settings for the application.',
         'users_settings_title' => 'User management',
@@ -381,5 +386,27 @@ return [
         'backup_security_desc' => 'The archive contains all application data and keys. Download it and store it in a safe place: anyone who owns it can read the data.',
         'backup_restore_title' => 'How to restore',
         'backup_restore_desc' => 'The database can be re-imported with phpMyAdmin (db/database.sql) and the files copied from the files folder of the archive. The step-by-step procedure is in the official documentation.',
+    ],
+    'installazione' => [
+        'condomini' => 'Buildings',
+        'condomini_desc' => 'The buildings managed by this installation',
+        'condomini_dimostrativi' => 'Plus :n demo buildings, which count towards the cap',
+        'illimitato' => 'unlimited',
+        'spazio' => 'Document storage',
+        'spazio_desc' => 'Uploaded documents and the print signature, added up',
+        'funzioni' => 'Functions',
+        'funzioni_desc' => 'What is switched on in this installation: decided from outside, not here',
+        'funzione_aggiornamenti_in_app' => 'In-app updates',
+        'funzione_pianificatore_esterno' => 'External scheduler',
+        'funzione_backup' => 'Built-in backups',
+        'funzione_archiviazione_esterna' => 'External storage',
+        'si' => 'yes',
+        'no' => 'no',
+        'documenti' => 'Where documents live',
+        'documenti_esterni' => 'on an external disk (S3)',
+        'documenti_su_volume' => 'on a separate volume',
+        'documenti_effimeri' => 'on the local disk',
+        'versione' => 'Version',
+        'gestione_piano' => 'Manage your plan',
     ],
 ];

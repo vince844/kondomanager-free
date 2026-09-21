@@ -32,6 +32,7 @@ const props = defineProps<{
   preflight: BackupPreflight;
   retention_keep_last: number;
   backup_has_password: boolean;
+  documenti_esterni?: boolean;
 }>()
 
 const page = usePage()
@@ -551,6 +552,9 @@ const statusBadgeClass = (status: string) => {
 
       <div v-if="flashMessage" class="py-2">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
+      <div v-if="props.documenti_esterni" class="py-2">
+        <Alert :message="trans('impostazioni.label.backup_documenti_esterni')" type="info" />
       </div>
       <div v-if="localSuccess" class="py-2">
         <Alert :message="localSuccess" type="success" />

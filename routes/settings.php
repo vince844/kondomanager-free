@@ -5,6 +5,7 @@ use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
 use App\Http\Controllers\Impostazioni\ImpostazioniStampeController;
+use App\Http\Controllers\Impostazioni\InstallazioneController;
 use App\Http\Controllers\Impostazioni\LogsController;
 use App\Http\Controllers\Impostazioni\MailSettingsController;
 use App\Http\Controllers\Impostazioni\RestoreController;
@@ -28,6 +29,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('impostazioni/stampe', [ImpostazioniStampeController::class, 'index'])
         ->name('impostazioni.stampe');
+
+    // «Questa installazione»: limiti, spazio, funzioni accese (1.11.0-beta.33).
+    Route::get('impostazioni/installazione', InstallazioneController::class)
+        ->name('impostazioni.installazione');
 
     Route::post('impostazioni/stampe', [ImpostazioniStampeController::class, 'store'])
         ->name('impostazioni.stampe.store');

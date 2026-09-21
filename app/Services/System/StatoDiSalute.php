@@ -4,6 +4,7 @@ namespace App\Services\System;
 
 use App\Services\Installer\ChiudiInstallazione;
 use App\Services\Installer\CreaAmministratore;
+use App\Support\PersistenzaStorage;
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +24,9 @@ use Illuminate\Support\Facades\DB;
  * «Installata» = c'è il file di lock, oppure c'è un amministratore: la seconda copre chi ha
  * installato dai sorgenti (`migrate` + `db:seed`), che il lock non l'ha mai avuto e non deve
  * ritrovarsi «non disponibile» per questo.
+ *
+ * Dalla 1.11.0-beta.33 conta anche dove stanno i documenti: `esterni` (S3), `su_volume` o
+ * `effimeri`. Solo nel container gli effimeri rendono l'installazione non disponibile.
  */
 class StatoDiSalute
 {
@@ -33,7 +37,7 @@ class StatoDiSalute
     ) {}
 
     /**
-     * @return array{sana: bool, installata: bool, database: string, migrazioni_pendenti: ?int, migrazioni_senza_file: ?int}
+     * @return array{sana: bool, installata: bool, database: string, migrazioni_pendenti: ?int, migrazioni_senza_file: ?int, documenti: string}
      */
     public function rileva(): array
     {
@@ -65,12 +69,20 @@ class StatoDiSalute
             $database = 'errore';
         }
 
+        // Nel container (KM_CONTAINER=1) i documenti effimeri — disco locale senza volume —
+        // rendono l'installazione non disponibile: chi orchestra non deve dire «pronta» a
+        // un'istanza che perde i file alla prima ricreazione. Fuori dal container si riporta e
+        // basta: su un server normale «non su volume» non vuol dire niente.
+        $documenti = PersistenzaStorage::statoDocumenti();
+        $documentiOk = ! (PersistenzaStorage::inContainer() && $documenti === 'effimeri');
+
         return [
-            'sana' => $installata && $database === 'ok' && $pendenti === 0,
+            'sana' => $installata && $database === 'ok' && $pendenti === 0 && $documentiOk,
             'installata' => $installata,
             'database' => $database,
             'migrazioni_pendenti' => $pendenti,
             'migrazioni_senza_file' => $senzaFile,
+            'documenti' => $documenti,
         ];
     }
 }

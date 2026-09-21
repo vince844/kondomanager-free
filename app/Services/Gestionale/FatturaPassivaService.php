@@ -3,6 +3,7 @@
 namespace App\Services\Gestionale;
 
 use App\Helpers\MoneyHelper;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\DataTransferObjects\RitenutaCalcolo;
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
@@ -25,7 +26,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class FatturaPassivaService
 {
@@ -1197,7 +1197,7 @@ class FatturaPassivaService
      */
     private function creaDocumentoFattura(FatturaPassiva $fattura, UploadedFile $file): Documento
     {
-        $path = $file->storeAs('documenti/'.$fattura->condominio_id, $file->hashName(), 'local');
+        $path = app(ArchivioDocumenti::class)->salva($file, 'documenti/'.$fattura->condominio_id);
 
         // ⚠️ **`storeAs()` non solleva se scrive fallisce — restituisce `false`.**
         // Il disco `local` ha `'throw' => false` (config/filesystems.php): un volume
@@ -1244,7 +1244,7 @@ class FatturaPassivaService
             // della beta.12) lascia un file orfano che nessuna riga punta più — e
             // ogni tentativo dell'amministratore, dopo l'errore mostrato, ne lascia
             // un altro.
-            Storage::disk('local')->delete($path);
+            app(ArchivioDocumenti::class)->elimina($path);
 
             throw $e;
         }

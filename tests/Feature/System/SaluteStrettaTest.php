@@ -17,6 +17,8 @@
  * 4. La rotta sta fuori dal gruppo `web`: niente sessione aperta da un controllo ogni 5 secondi.
  * 5. Database che non risponde → 503 con `database: errore`, senza eccezioni.
  * 6. Il dettaglio lo vede chi chiama da loopback o da rete privata (HEALTHCHECK, orchestratore);
+ *    lo stato dei documenti nei test è finto (`PersistenzaStorage::fingiStato`): quello vero dipende
+ *    dalle partizioni della macchina.
  *    da internet arriva solo lo stato: una rotta senza credenziali non racconta se il wizard è
  *    aperto o quante migrazioni mancano.
  */
@@ -35,6 +37,7 @@ beforeEach(function () {
 
 afterEach(function () {
     File::delete($this->lock);
+    \App\Support\PersistenzaStorage::fingiStato(null);
 });
 
 it('senza installazione risponde 503 e dice perché', function () {
@@ -133,3 +136,32 @@ it('da loopback o da rete privata risponde con il dettaglio', function (string $
         ->assertJsonPath('installata', false)
         ->assertJsonPath('database', 'ok');
 })->with(['127.0.0.1', '10.0.1.5', '172.18.0.3', '192.168.1.20']);
+
+/*
+ * Dalla 1.11.0-beta.33 `/up` dice anche dove stanno i documenti. Solo nel container
+ * (`kondomanager.container`) i documenti effimeri — disco locale senza volume — rendono
+ * l'installazione non disponibile; fuori dal container si riporta e basta. Qui la suite gira
+ * fuori da un volume: `statoDocumenti()` risponde «effimeri» per costruzione.
+ */
+it('fuori dal container i documenti effimeri si riportano ma non rendono malata l\'installazione', function () {
+    file_put_contents($this->lock, now()->toDateTimeString());
+    config(['kondomanager.container' => false]);
+    \App\Support\PersistenzaStorage::fingiStato('effimeri');
+
+    $this->get('/up')->assertOk()->assertJsonPath('documenti', 'effimeri');
+});
+
+it('nel container i documenti effimeri rendono l\'installazione non disponibile', function () {
+    file_put_contents($this->lock, now()->toDateTimeString());
+    config(['kondomanager.container' => true]);
+    \App\Support\PersistenzaStorage::fingiStato('effimeri');
+
+    $this->get('/up')->assertStatus(503)->assertJsonPath('documenti', 'effimeri')->assertJsonPath('installata', true);
+});
+
+it('nel container con i documenti su S3 l\'installazione è sana', function () {
+    file_put_contents($this->lock, now()->toDateTimeString());
+    config(['kondomanager.container' => true, 'kondomanager.disco_documenti' => 'documenti_s3']);
+
+    $this->get('/up')->assertOk()->assertJsonPath('documenti', 'esterni');
+});

@@ -40,13 +40,35 @@ class SystemFinalizer
         set_time_limit(0);
         @ini_set('max_execution_time', '0');
 
-        $this->runMigrationsWithRetry();
-        $this->sincronizzaRuoliEPermessi();
-        $this->caricaElencoComuni();
-        $this->caricaClassificazioneAteco();
-        $this->alignDatabaseVersion();
+        foreach ($this->passiDatabase() as $passo) {
+            $passo();
+        }
         $this->clearSystemCaches();
         $this->ensureStorageLink();
+    }
+
+    /**
+     * I passi che toccano il database, nell'ordine. **Un elenco solo, percorso da due vie**: da
+     * `finalize()` (pagina di aggiornamento, ripristino) e da `kondomanager:aggiorna` (immagine
+     * Docker a ogni avvio, `git pull`). Fino alla 1.11.0-beta.32 il comando li rielencava a mano:
+     * un dato di riferimento nuovo agganciato a una sola delle due vie mancava all'altra, in
+     * silenzio — lo stesso guasto della beta.55, in una forma che la suite non vedeva. Chi aggiunge
+     * un seeder mirato lo mette qui, e basta.
+     *
+     * Le chiavi sono i nomi che il comando stampa; `AggiornaCommandTest` pretende che siano
+     * esattamente questi, così un passo nuovo non può entrare senza che il test lo veda.
+     *
+     * @return array<string, callable(): void>
+     */
+    public function passiDatabase(): array
+    {
+        return [
+            'migrazioni' => fn () => $this->runMigrationsWithRetry(),
+            'ruoli_e_permessi' => fn () => $this->sincronizzaRuoliEPermessi(),
+            'comuni' => fn () => $this->caricaElencoComuni(),
+            'ateco' => fn () => $this->caricaClassificazioneAteco(),
+            'versione' => fn () => $this->alignDatabaseVersion(),
+        ];
     }
 
     /**

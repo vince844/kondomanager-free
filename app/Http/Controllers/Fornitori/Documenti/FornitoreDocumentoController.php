@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Fornitori\Documenti;
 
 use App\Traits\OrdinaElenco;
+use App\Services\Documenti\ArchivioDocumenti;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\Documento\CreateFornitoreDocumentoRequest;
@@ -19,7 +20,6 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class FornitoreDocumentoController extends Controller
 {
@@ -93,7 +93,7 @@ class FornitoreDocumentoController extends Controller
 
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+            $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
             $fornitore->documenti()->create([
                 'name'         => $validated['name'],
@@ -154,12 +154,10 @@ class FornitoreDocumentoController extends Controller
 
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::disk('local')->exists($documento->path)) {
-                    Storage::disk('local')->delete($documento->path);
-                }
+                app(ArchivioDocumenti::class)->elimina($documento->path);
 
                 $uploadedFile = $request->file('file');
-                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
                 // Update file related fields
                 $documento->path = $path;
@@ -200,9 +198,7 @@ class FornitoreDocumentoController extends Controller
     {
         try {
 
-            if (Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             $documento->delete();
 

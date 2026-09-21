@@ -64,7 +64,7 @@ final class PersistenzaStorage
      * Il verdetto completo: se è persistente, dove guarda, e **quanto c'è da perdere**.
      * I numeri servono: un avviso che dice «attenzione» senza dire quanto non lo legge nessuno.
      *
-     * @return array{persistente: bool, percorso: string, cartelle: array<string, array{file: int, byte: int}>}
+     * @return array{persistente: bool, percorso: string, cartelle: array<string, array{file: int, byte: int}>, disco: string, disco_richiesto: string, disco_riconosciuto: bool, documenti_persistenti: bool, in_container: bool}
      */
     public static function verdetto(): array
     {
@@ -75,11 +75,64 @@ final class PersistenzaStorage
             $cartelle[$nome] = self::misura($radice.DIRECTORY_SEPARATOR.$nome);
         }
 
+        $suVolume = self::suVolumeSeparato($radice);
+
         return [
-            'persistente' => self::suVolumeSeparato($radice),
+            'persistente' => $suVolume,
             'percorso' => $radice,
             'cartelle' => $cartelle,
+            // Dalla 1.11.0-beta.33 i documenti possono stare su un disco S3: allora sono
+            // persistenti qualunque cosa sia storage/app. `disco` è quello effettivo,
+            // `disco_richiesto` ciò che c'è nella variabile: se non coincidono, qualcuno ha
+            // scritto un valore che il programma non conosce, e va detto.
+            'disco' => (string) config('kondomanager.disco_documenti', 'local'),
+            'disco_richiesto' => (string) config('kondomanager.disco_documenti_richiesto', 'local'),
+            'disco_riconosciuto' => in_array(config('kondomanager.disco_documenti_richiesto', 'local'), ['local', 's3'], true),
+            'documenti_persistenti' => config('kondomanager.disco_documenti', 'local') !== 'local' || $suVolume,
+            'in_container' => self::inContainer(),
         ];
+    }
+
+    /**
+     * Siamo dentro l'immagine Docker canonica? Lo dice `KM_CONTAINER=1`, messo dal `Dockerfile`:
+     * una variabile, non un'euristica su `/.dockerenv` o sui cgroup, che su un VPS con Docker
+     * sbaglierebbe. Fuori dal container «non su volume» è la normalità di ogni server e non è
+     * un guasto; dentro, vuol dire che i documenti spariscono alla ricreazione.
+     */
+    public static function inContainer(): bool
+    {
+        return (bool) config('kondomanager.container', false);
+    }
+
+    /**
+     * Dove stanno i documenti, in una parola: `esterni` (disco S3), `su_volume` (locali, su un
+     * volume separato) o `effimeri` (locali, nel livello scrivibile). Non misura niente: due
+     * letture di configurazione e uno `stat`, così `/up` può chiederlo ogni cinque secondi.
+     */
+    public static function statoDocumenti(): string
+    {
+        if (self::$statoFinto !== null && app()->environment('testing')) {
+            return self::$statoFinto;
+        }
+
+        if (config('kondomanager.disco_documenti', 'local') !== 'local') {
+            return 'esterni';
+        }
+
+        return self::suVolumeSeparato(storage_path('app')) ? 'su_volume' : 'effimeri';
+    }
+
+    /** @var 'esterni'|'su_volume'|'effimeri'|null */
+    private static ?string $statoFinto = null;
+
+    /**
+     * Solo nei test: la risposta dipende dalle partizioni della macchina che li esegue (su un
+     * Linux con `/home` a parte `storage/app` È su un volume), e un test non deve dipendere da
+     * questo. `null` per tornare alla misura vera.
+     */
+    public static function fingiStato(?string $stato): void
+    {
+        self::$statoFinto = $stato;
     }
 
     /** @return array{file: int, byte: int} */

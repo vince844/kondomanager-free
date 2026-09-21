@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Traits\OrdinaElenco;
+use App\Services\Documenti\ArchivioDocumenti;
 
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\TipoMovimentoContabile;
@@ -41,7 +42,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -523,9 +523,7 @@ class FatturaPassivaController extends Controller
                 // ----------------------------------------
 
                 foreach ($fattura->documenti as $documento) {
-                    if (Storage::disk('local')->exists($documento->path)) {
-                        Storage::disk('local')->delete($documento->path);
-                    }
+                    app(ArchivioDocumenti::class)->elimina($documento->path);
                     $documento->delete();
                 }
 
@@ -1158,22 +1156,20 @@ class FatturaPassivaController extends Controller
 
         try {
             // 3. VERIFICA ESISTENZA
-            if (! Storage::disk('local')->exists($documento->path)) {
+            if (! app(ArchivioDocumenti::class)->esiste($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found') ?? 'File della fattura non trovato sul server.')
                 );
             }
 
-            // Otteniamo il percorso assoluto del file sul server
-            $percorsoAssoluto = Storage::disk('local')->path($documento->path);
-
+            // In streaming, non da un percorso assoluto: sul disco S3 un percorso non esiste.
             // `nomeDiScaricamento()` e non `$documento->name`: qui il nome nasce da
             // `getClientOriginalName()`, quindi **di norma** l'estensione ce l'ha già e il metodo
             // non tocca niente. Ma «di norma» non è «sempre» — un nome di file senza estensione
             // arriva da qualunque sistema che lo generi — e soprattutto la regola del nome di
             // scaricamento dev'essere **una sola** in tutto il progetto: è averla avuta in due
             // copie che ha prodotto la segnalazione dal forum sui documenti d'archivio.
-            return response()->download($percorsoAssoluto, $documento->nomeDiScaricamento());
+            return app(ArchivioDocumenti::class)->scarica($documento->path, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
             Log::error("Errore download fattura ID {$fattura->id}: ".$e->getMessage());
@@ -1249,9 +1245,7 @@ class FatturaPassivaController extends Controller
         }
 
         try {
-            if (Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             $documento->delete();
 

@@ -12,6 +12,7 @@
 #      aggiornamento richiede (permessi e ruoli, comuni, ATECO, versione registrata), prima di
 #      servire una sola richiesta. Senza lock: un'installazione ha un container solo, e un lock
 #      rimasto da un processo ucciso terrebbe fermo l'aggiornamento per un'ora senza dirlo;
+#   3-bis. la prova del disco dei documenti, se è S3;
 #   4. le cache di configurazione, rotte, viste ed eventi — qui, a runtime, e non nel build:
 #      in fase di build le variabili non ci sono, e una cache fatta lì congelerebbe i valori
 #      vuoti per sempre;
@@ -62,6 +63,11 @@ artisan kondomanager:installa --attendi="${KM_ATTESA_DATABASE:-120}"
 
 # 3. Allineamento al codice dell'immagine (migrazioni e seeder mirati).
 artisan kondomanager:aggiorna
+
+# 3-bis. Dove stanno i documenti. Con DOCUMENTI_DISK=s3 scrive e cancella un oggetto di prova:
+#        un bucket sbagliato ferma il container qui, con il messaggio, invece di perdere il primo
+#        documento in silenzio. Senza S3 e senza volume stampa l'avviso e va avanti: è /up a dirlo.
+artisan kondomanager:verifica-persistenza
 
 # 4. Cache di runtime.
 artisan optimize
