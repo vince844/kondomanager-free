@@ -5,8 +5,11 @@
  * («spesa deliberata il …», che scrive la stessa data nei due campi: è la delibera puntuale, D2).
  *
  * Il testo dice la verità intera: il motore la legge **solo** quando la fattura è ripartita da un piano su
- * una gestione straordinaria (decisione 19: sull'ordinario si va pro rata sulla base, e la dichiarazione
- * resta un fatto registrato per il rendiconto e il prospetto degli oneri). E va dichiarata prima di mettere
+ * una gestione straordinaria (decisione 19: sull'ordinario decide il periodo della voce nel piano, altrimenti quello
+ * della gestione o dell'esercizio, e la dichiarazione resta un fatto registrato). Il testo non dice chi la leggerà:
+ * prometteva «il rendiconto e il prospetto degli oneri», e il prospetto della beta.34 legge il preventivo; e non dice
+ * «la competenza della voce», perché in un piano da fatture su gestione ordinaria la voce non ne ha nessuna (verifica
+ * del 26/09/2026). E va dichiarata prima di mettere
  * la fattura in un piano, perché dentro un piano approvato la fattura non si modifica più.
  *
  * Entrambi gli estremi o nessuno: il motore con uno solo scende al gradino successivo in silenzio, quindi
@@ -112,9 +115,9 @@ const MODI: { id: Modo; label: string; icona: any }[] = [
 
         <p class="text-[10.5px] leading-relaxed text-slate-500">
             Guida le rate solo se la fattura è ripartita da un piano su una gestione straordinaria: lì paga chi era
-            titolare in quel periodo, o quel giorno. Sull'ordinario si registra e la leggono il rendiconto e il
-            prospetto degli oneri. Dichiarala prima di mettere la fattura in un piano: dentro un piano approvato la
-            fattura non si modifica più.
+            titolare in quel periodo, o quel giorno. Sull'ordinario resta un dato della fattura e non sposta le rate:
+            il riparto usa il periodo della voce nel piano o, se non ne ha uno, quello della gestione. Dichiarala prima
+            di mettere la fattura in un piano: dentro un piano approvato la fattura non si modifica più.
         </p>
         <!-- Coda 155 (1.11.0-beta.34): sulla straordinaria la data che decide per legge è la delibera, e «Costo maturato»
              è il primo gradino (decisione 12, non si tocca) — la scavalca. Il pannello lo dice; la pregressa no, perché lì
@@ -137,7 +140,7 @@ const MODI: { id: Modo; label: string; icona: any }[] = [
              l'unità era di chi è uscito (domanda di Vincenzo, 20/09/2026; il motore lo prova nel test «PREGRESSA»). -->
         <p v-if="pregressa && modo === 'nessuna'" class="text-[10.5px] leading-relaxed text-amber-700 dark:text-amber-400">
             Fattura pregressa: dichiara qui il periodo in cui il costo è maturato (l'esercizio passato). Se la parte non
-            coperta dai saldi iniziali finisce in un piano straordinario, senza questa data la ripartisce la delibera di
+            coperta dai saldi iniziali finisce in un piano su una gestione straordinaria, senza questa data la ripartisce la delibera di
             quest'anno — e dopo un passaggio pagherebbe chi è entrato, per un costo di quando l'unità era di chi è uscito.
         </p>
     </div>
