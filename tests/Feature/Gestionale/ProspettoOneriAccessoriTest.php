@@ -196,6 +196,26 @@ it('i piani in bozza non entrano e si nominano; un piano della 1.10 senza ripart
         ->and($p2['conduttori'][0]['totale'])->toBe(73000);
 });
 
+it('la stampa chiude la frase del totale diviso con il punto attaccato: «… che restano a chi le ha pagate.» (Fase 5 della beta.34)', function () {
+    $s = poScenario();
+    $inquilina = ($s['persona'])('Irma Nuova', 'POINQUILINX0');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'inizio_locazione', 'anagrafica_entrante_id' => $inquilina->id, 'decorrenza' => '2026-03-01', 'quota' => 100, 'tipologia' => 'inquilino',
+        'copia_autentica' => false, 'data_fine_locazione' => '2030-02-28', 'regime_contratto' => 'abitativo', 'pertinenze' => [],
+        'ho_letto' => true, 'nota_cancello' => 'Contratto registrato dopo il preventivo',
+    ])->assertSessionHasNoErrors();
+
+    $html = view('pdf.gestionale.prospetto_oneri_accessori', [
+        'condominio' => $s['c'], 'esercizio' => $s['e'], 'immobile' => $s['unita'],
+        'prospetto' => app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']),
+        'nota_legale_stampe' => '', 'firma_stampe_absolute_path' => null,
+    ])->render();
+    $testo = preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+    expect($testo)->toContain('€ 730,00, di cui € 612,00 ai conduttori e € 118,00 che restano a chi le ha pagate.')
+        ->not->toContain('pagate .');
+});
+
 it('la stampa: PDF inline dalla pagina dell\'unità, esercizio in query; un\'unità o un esercizio di un altro condominio rispondono 404', function () {
     $s = poScenario([['nome' => 'Ivo Primo', 'dal' => '2020-01-01', 'al' => null]]);
     $r = $this->actingAs($this->user)->get(route('admin.gestionale.immobili.prospetto-oneri', [$s['c'], $s['unita'], 'esercizio' => $s['e']->id]));

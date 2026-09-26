@@ -125,7 +125,7 @@
 @if($prospetto['totale_inquilino'] !== 0)
     <p style="font-size: 7.5pt; color: #555; margin-top: 12px;">
         {{-- R22 (Fase 1-bis): il totale del ruolo inquilino si legge diviso, non come debito di un conduttore. --}}
-        Totale delle voci che il riparto pone sul ruolo inquilino su questa unità nell'esercizio: <strong>{{ $euro($prospetto['totale_inquilino']) }}</strong>@if($prospetto['senza_conduttore']['totale'] !== 0), di cui {{ $euro($prospetto['totale_conduttori']) }} ai conduttori e {{ $euro($prospetto['senza_conduttore']['totale']) }} che restano a chi le ha pagate @endif.
+        Totale delle voci che il riparto pone sul ruolo inquilino su questa unità nell'esercizio: <strong>{{ $euro($prospetto['totale_inquilino']) }}</strong>{{ $prospetto['senza_conduttore']['totale'] !== 0 ? ', di cui ' . $euro($prospetto['totale_conduttori']) . ' ai conduttori e ' . $euro($prospetto['senza_conduttore']['totale']) . ' che restano a chi le ha pagate' : '' }}.
     </p>
 @endif
 

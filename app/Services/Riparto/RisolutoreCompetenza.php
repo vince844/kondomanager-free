@@ -23,8 +23,8 @@ use DateTimeInterface;
  *   della gestione, se chiusa → periodo dell'esercizio. L'approvazione del preventivo **non è
  *   costitutiva** (Cass. 24654/2010, 24069/2022): la delibera non è un gradino, e la firma non la
  *   accetta. La competenza dichiarata su una singola fattura del capitolo **non guida le rate**
- *   (decisione 19): il motore ordinario ripartisce il conto, non la fattura; quel dato lo leggeranno
- *   il prospetto oneri (B3) e il rendiconto (1.12).
+ *   (decisione 19): il motore ordinario ripartisce il conto, non la fattura; quel dato è per il
+ *   rendiconto (1.12). Il prospetto oneri della B3a (beta.34) legge il preventivo, non le fatture.
  *
  * Riceve date e periodi, non modelli, così i test non hanno bisogno del database. Chi ha i modelli li
  * traduce e chiama: `CompetenzaDelPiano::perPiano()` per la base del piano (generazione, anteprima,

@@ -159,21 +159,25 @@ function urlPassaggio(tipo: TipoPassaggio) {
               <span>Associa soggetto</span>
             </Link>
 
-            <!-- B3a: il prospetto degli oneri accessori — per unità, per esercizio; solo se c'è stato un inquilino. -->
+            <!-- B3a: il prospetto degli oneri accessori — per unità, per esercizio; solo se c'è stato un inquilino.
+                 L'etichetta si vede da 2xl in su, come «Stampe PDF» nei piani rate: con quattro pulsanti e un nome di
+                 condominio lungo la riga usciva dal bordo destro già a 1280 px (Fase 5 della beta.34). Sotto, il
+                 titolo del menu dice che cosa si sta aprendo. -->
             <DropdownMenu v-if="props.prospettoOneri && props.prospettoOneri.esercizi.length">
               <DropdownMenuTrigger as-child>
                 <button
                   type="button"
-                  class="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                  title="Le spese che il riparto pone a carico dell'inquilino, per conduttore e per giorni di conduzione"
+                  class="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 2xl:px-4 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  title="Prospetto oneri accessori: le spese che il riparto pone a carico dell'inquilino, per conduttore e per giorni di conduzione"
+                  aria-label="Prospetto oneri accessori"
                 >
                   <Printer class="w-3.5 h-3.5" />
-                  <span>Prospetto oneri accessori</span>
+                  <span class="hidden 2xl:inline">Prospetto oneri accessori</span>
                   <ChevronDown class="w-3 h-3 opacity-70" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" class="w-60">
-                <DropdownMenuLabel class="text-[10px] uppercase tracking-widest text-slate-400">Quale esercizio?</DropdownMenuLabel>
+              <DropdownMenuContent align="end" class="w-64">
+                <DropdownMenuLabel class="text-[10px] uppercase tracking-widest text-slate-400">Oneri accessori: quale esercizio?</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem v-for="e in props.prospettoOneri.esercizi" :key="e.id" class="cursor-pointer" @click="apriProspetto(e.id)">
                   <span class="text-sm">{{ e.nome }}</span>
