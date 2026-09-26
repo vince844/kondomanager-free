@@ -116,6 +116,18 @@ const MODI: { id: Modo; label: string; icona: any }[] = [
             prospetto degli oneri. Dichiarala prima di mettere la fattura in un piano: dentro un piano approvato la
             fattura non si modifica più.
         </p>
+        <!-- Coda 155 (1.11.0-beta.34): sulla straordinaria la data che decide per legge è la delibera, e «Costo maturato»
+             è il primo gradino (decisione 12, non si tocca) — la scavalca. Il pannello lo dice; la pregressa no, perché lì
+             il periodo di maturazione è proprio ciò che serve (caso reale del 23/09/2026, `richieste_utenti.md`). -->
+        <p v-if="gestioneStraordinaria && !pregressa && modo === 'periodo'" class="text-[10.5px] leading-relaxed text-amber-700 dark:text-amber-400">
+            Sulla straordinaria decide la delibera che approva lavori e prezzo (art. 63 disp. att. c.c.; Cass. 24654/2010).
+            «Costo maturato» la scavalca: con una vendita nel mezzo paga chi era titolare in questo periodo, non chi lo era
+            il giorno della delibera. Se la spesa è stata deliberata, usa «Spesa deliberata il …».
+        </p>
+        <p v-else-if="gestioneStraordinaria && !pregressa" class="text-[10.5px] leading-relaxed text-slate-500">
+            Sulla straordinaria decide la delibera che approva lavori e prezzo (art. 63 disp. att. c.c.; Cass. 24654/2010):
+            se la dichiari qui, il modo è «Spesa deliberata il …».
+        </p>
         <p v-if="gestioneStraordinaria && modo === 'nessuna'" class="text-[10.5px] leading-relaxed text-amber-700 dark:text-amber-400">
             La gestione di questa fattura è straordinaria: senza una competenza qui, il piano che la ripartisce userà la
             data della sua delibera, e senza nemmeno quella si fermerà.

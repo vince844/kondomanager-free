@@ -164,6 +164,9 @@ final class DettaglioRiparto
             'competenza_al'     => $r->competenza_al?->toDateString(),
             'gradino_competenza' => $r->gradino_competenza,
             'giorni_titolarita' => $r->giorni_titolarita,
+            // Migrazione 11: quali giorni copre la riga, non solo quanti — il prospetto oneri li legge (B3a).
+            'titolarita_dal'    => $r->titolarita_dal?->toDateString(),
+            'titolarita_al'     => $r->titolarita_al?->toDateString(),
         ];
     }
 }

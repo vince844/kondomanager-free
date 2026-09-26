@@ -10,6 +10,7 @@ use App\Models\Gestionale\RigaRiparto;
 use App\Models\Gestionale\Subentro;
 use App\Services\CalcoloQuoteService;
 use App\Services\Riparto\CompetenzaDelPiano;
+use App\Services\Riparto\PeriodoDellaRiga;
 use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
 use App\Support\ProRataTemporis;
@@ -43,8 +44,9 @@ use Illuminate\Support\Facades\DB;
  * quote emesse in proporzione alla quota pura. Le righe portano solo gli estremi dell'insieme
  * (decisione 15): i tratti veri si rileggono dalla tabella, non dalla riga.
  *
- * La coppia in `saldi` è **una per (gestione, unità)**, solo se l'importo è diverso da zero: credito
- * all'uscente (negativo), debito all'entrante (positivo), stesso `subentro_id` (invariante 19).
+ * La coppia in `saldi` è **una per (gestione, unità)**, solo se l'importo è diverso da zero, con lo stesso
+ * `subentro_id` e somma zero (invariante 19): di norma credito all'uscente e debito all'entrante, ma il verso lo dà il
+ * segno — con le bozze che passano a chi entra (decisione 25) la coppia può rovesciarsi.
  */
 final class ConguaglioPassaggio
 {
@@ -63,7 +65,7 @@ final class ConguaglioPassaggio
      *   pregressi: int, non_risolte: list<array{piano:string, motivo:string}>, frasi: list<string>
      * }
      */
-    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false): array
+    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false): array
     {
         $righe = $this->quoteConguagliabili((int) $uscente->id, $immobileIds);
         if ($righe->isEmpty()) {
@@ -94,7 +96,8 @@ final class ConguaglioPassaggio
         // La quota pura per (piano, unità, intestatario) — chi esce e i suoi predecessori (S8-3) — e, dove il piano ha
         // righe congelate per quell'intestatario, la sua scomposizione per conto e per tratto.
         $quotaPuraDi = fn ($r) => (int) (((is_string($r->regole_calcolo) ? json_decode($r->regole_calcolo, true) : (array) $r->regole_calcolo)['importi']['quota_pura_gestione']) ?? $r->importo);
-        $chiaveDi = fn ($r) => $r->piano_rate_id . '|' . $r->immobile_id . '|' . $r->anagrafica_id;
+        // Le quote passate con un passaggio precedente (B3a) fanno gruppo a sé: il loro riparto è di chi le aveva.
+        $chiaveDi = fn ($r) => $r->piano_rate_id . '|' . $r->immobile_id . '|' . $r->anagrafica_id . '|' . $r->righe_di;
         $quotaPuraPer = [];
         foreach ($righe as $r) {
             $quotaPuraPer[$chiaveDi($r)] = ($quotaPuraPer[$chiaveDi($r)] ?? 0) + $quotaPuraDi($r);
@@ -110,6 +113,29 @@ final class ConguaglioPassaggio
         $entrantePerQuota = [];
         $uscentePerQuota = [];
         $gruppi = $righe->groupBy($chiaveDi);
+        // Fase 1-bis della beta.34, R4 (decisione di Vincenzo del 26/09/2026): nella vendita della NUDA proprietà le
+        // ordinarie di un piano generato quando chi vende era proprietario pieno (righe risolte «proprietario») dalla
+        // costituzione dell'usufrutto sono dell'usufruttuario (art. 1004 c.c.), e si sono già regolate con quel
+        // passaggio: chi compra la nuda proprietà non ne risponde, come l'usufruttuario non risponde delle
+        // straordinarie (art. 1005 c.c.). Le ordinarie che il motore ha dato al nudo proprietario (righe risolte
+        // «nuda_proprietario», piano generato durante l'usufrutto) e tutte le straordinarie passano come sempre.
+        $ordinariaDellUsufruttuario = [];
+        if ($nudaProprieta) {
+            $costituito = Subentro::whereIn('immobile_id', $immobileIds)->where('tipo_passaggio', 'usufrutto')
+                ->where('anagrafica_uscente_id', $uscente->id)->where('decorrenza', '<=', $decorrenza->toDateString())
+                ->pluck('immobile_id')->map(fn ($id) => (int) $id)->flip()->all();
+            foreach ($gruppi as $chiave => $gruppo) {
+                $primo = $gruppo->first();
+                if (NaturaGestione::daStringa($piani[$primo->piano_rate_id]->gestione?->tipo) !== NaturaGestione::Ordinaria) {
+                    continue;
+                }
+                $ruoli = DB::table('righe_riparto')->where('piano_rate_id', $primo->piano_rate_id)->where('immobile_id', $primo->immobile_id)
+                    ->where('anagrafica_id', $primo->righe_di)->where('tipo', RigaRiparto::TIPO_RIPARTO)->pluck('ruolo_risolto');
+                // Senza righe (piano anteriore alla beta.29) vale il fatto registrato: un usufrutto costituito da chi vende.
+                $ordinariaDellUsufruttuario[$chiave] = $ruoli->isNotEmpty() ? $ruoli->contains('proprietario') : isset($costituito[(int) $primo->immobile_id]);
+            }
+        }
+        $esclusaDi = fn (string $chiave, NaturaGestione $natura) => ($soloOrdinario && $natura === NaturaGestione::Straordinaria) || ($ordinariaDellUsufruttuario[$chiave] ?? false);
         foreach ($gruppi as $chiave => $gruppo) {
             $primo = $gruppo->first();
             $piano = $piani[$primo->piano_rate_id];
@@ -118,9 +144,9 @@ final class ConguaglioPassaggio
             if ($esito === null || (! $straordinaria && ! $esito->risolto())) {
                 continue;
             }
-            $tratti = $straordinaria ? [] : $this->trattiPerConto((int) $piano->id);
-            $decorrenzaAcquisto = ! empty($primo->ereditata_da) && ! empty($primo->decorrenza_acquisto) ? CarbonImmutable::parse($primo->decorrenza_acquisto) : null;
-            $dettaglio = $this->scomponiPerConto((int) $piano->id, (int) $primo->immobile_id, (int) $primo->anagrafica_id, $tratti, $esito->risolto() ? $esito->periodi : null, $decorrenza, $straordinaria, $decorrenzaAcquisto);
+            $tratti = $straordinaria ? [] : PeriodoDellaRiga::trattiPerConto((int) $piano->id);
+            $decorrenzaAcquisto = (! empty($primo->ereditata_da) || ! empty($primo->passata_il)) && ! empty($primo->decorrenza_acquisto) ? CarbonImmutable::parse($primo->decorrenza_acquisto) : null;
+            $dettaglio = $this->scomponiPerConto((int) $piano->id, (int) $primo->immobile_id, (int) $primo->righe_di, $tratti, $esito->risolto() ? $esito->periodi : null, $decorrenza, $straordinaria, $decorrenzaAcquisto);
             if ($dettaglio === null) {
                 continue;
             }
@@ -205,7 +231,7 @@ final class ConguaglioPassaggio
             $primo = $gruppo->first();
             $piano = $piani[$primo->piano_rate_id];
             $esito = $esiti[$piano->id];
-            $esclusa = $soloOrdinario && NaturaGestione::daStringa($piano->gestione?->tipo) === NaturaGestione::Straordinaria;
+            $esclusa = $esclusaDi($chiave, NaturaGestione::daStringa($piano->gestione?->tipo));
             if ($esito === null || ! $esito->risolto() || $esclusa) {
                 continue;
             }
@@ -213,7 +239,7 @@ final class ConguaglioPassaggio
             $parti = ProRataTemporis::dividi($quotaPuraTot, $esito->periodi, $decorrenza);
             $pesi = $gruppo->mapWithKeys(fn ($r) => [(int) $r->id => (float) abs($quotaPuraDi($r))])->all();
             $voce = ['giorni' => ['giorni_uscente' => $parti['giorni_uscente'], 'giorni_entrante' => $parti['giorni_entrante'], 'giorni_periodo' => $parti['giorni_periodo']], 'entrante' => MoneyHelper::ripartisciPerQuote((int) $parti['entrante'], $pesi), 'uscente' => null];
-            if (! empty($primo->ereditata_da) && ! empty($primo->decorrenza_acquisto)) {
+            if ((! empty($primo->ereditata_da) || ! empty($primo->passata_il)) && ! empty($primo->decorrenza_acquisto)) {
                 $acquisto = ProRataTemporis::dividi($quotaPuraTot, $esito->periodi, CarbonImmutable::parse($primo->decorrenza_acquisto));
                 $voce['giorni'] = ['giorni_uscente' => max(0, $acquisto['giorni_entrante'] - $parti['giorni_entrante']), 'giorni_entrante' => min($parti['giorni_entrante'], $acquisto['giorni_entrante']), 'giorni_periodo' => $acquisto['giorni_entrante']];
                 $voce['uscente'] = MoneyHelper::ripartisciPerQuote(max(0, (int) $acquisto['entrante'] - (int) $parti['entrante']), $pesi);
@@ -230,14 +256,14 @@ final class ConguaglioPassaggio
             $chiave = $chiaveDi($r);
             $capitoli = $perCapitolo[$chiave] ?? null;
             $risolta = ($esito !== null && $esito->risolto()) || $capitoli !== null;
-            $esclusa = $soloOrdinario && $natura === NaturaGestione::Straordinaria;
+            $esclusa = $esclusaDi($chiave, $natura);
             $ereditata = ! empty($r->ereditata_da);
 
             if ($capitoli !== null && ! $esclusa) {
                 $parteEntrante = $entrantePerQuota[(int) $r->id] ?? 0;
                 // Per una quota del predecessore chi esce ha solo la parte fra acquisto e decorrenza; il resto era già
                 // del predecessore e non riguarda questo passaggio.
-                $parteUscente = $ereditata ? ($uscentePerQuota[(int) $r->id] ?? 0) : $quotaPura - $parteEntrante;
+                $parteUscente = $ereditata || ! empty($r->passata_il) ? ($uscentePerQuota[(int) $r->id] ?? 0) : $quotaPura - $parteEntrante;
                 $parti = ['uscente' => $parteUscente, 'entrante' => $parteEntrante] + $capitoli['giorni'];
             } elseif (isset($baseDivisa[$chiave]) && $risolta && ! $esclusa) {
                 $base = $baseDivisa[$chiave];
@@ -279,10 +305,27 @@ final class ConguaglioPassaggio
                 // S8-3: la quota è di un predecessore di chi esce; la competenza gli è passata alla sua decorrenza.
                 'ereditata_da'   => $r->ereditata_da ?? null,
                 'decorrenza_acquisto' => $r->decorrenza_acquisto ?? null,
+                // R11: passata a chi esce con un passaggio precedente (decisione 25), da quel giorno.
+                'passata_il'     => $r->passata_il ?? null,
                 // Decisione 21: quota ancora in bozza di un piano che non si può più ricalcolare.
                 'in_bozza'       => (bool) ($r->in_bozza ?? false),
+                'rata_id'        => (int) $r->rata_id,
+                'stato_rata'     => $r->stato_rata,
+                'importo_pagato' => (int) $r->importo_pagato,
+                'stato_quota'    => $r->stato_quota,
+                'intestatario_id' => (int) $r->anagrafica_id,
+                // B3a: la bozza passa a chi entra (decisione 25), e se no perché resta.
+                'passa'          => false,
+                'motivo_bozza'   => null,
             ];
         }
+
+        // R17: una bozza con un pagamento segnalato dal portale e non ancora verificato non passa a chi entra.
+        $segnalate = \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)
+            ->where('meta->status', 'reported')
+            ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $uscente->id))
+            ->get()->map(fn ($e) => (int) ($e->meta['context']['rata_id'] ?? 0))->filter()->flip()->all();
+        $quote = $this->decidiBozze($quote, $riassegnaBozze && $entrante !== null, $decorrenza, $segnalate);
 
         // Una coppia per (gestione, unità, esercizio del piano), solo se ≠ 0 (verifica S5, R9: due piani della
         // stessa gestione su esercizi diversi non si fondono su un esercizio solo). Dentro il gruppo i periodi
@@ -302,11 +345,18 @@ final class ConguaglioPassaggio
                     'uscente'        => (int) $p->sum('uscente'),
                     'entrante'       => (int) $p->sum('entrante'),
                     'entrante_formattato' => MoneyHelper::format((int) $p->sum('entrante')),
+                    // B3a: il preventivo delle bozze che passano a chi entra — lo paga con quelle, non con la coppia.
+                    'passate'        => (int) $p->where('passa', true)->sum('quota_pura'),
                     'per_capitolo'   => $p->first()['per_capitolo'],
                     'ereditata_da'   => $p->first()['ereditata_da'],
                     'decorrenza_acquisto' => $p->first()['decorrenza_acquisto'],
+                    'passata_il'     => $p->first()['passata_il'],
                 ])->values();
             $unico = $perPeriodo->count() === 1 ? $perPeriodo->first() : null;
+            // Decisione 25 (B3a): la parte di chi entra è sull'intero piano; la coppia è quella parte meno il preventivo
+            // delle bozze che da oggi sono sue. Calcolata sulle sole quote emesse gli farebbe pagare più dei suoi giorni.
+            $lordo = (int) $g->sum('entrante');
+            $passate = (int) $g->where('passa', true)->sum('quota_pura');
 
             return [
                 'gestione_id'    => $prima['gestione_id'],
@@ -324,8 +374,13 @@ final class ConguaglioPassaggio
                 'giorni_entrante' => $unico['giorni_entrante'] ?? null,
                 'giorni_periodo' => $unico['giorni_periodo'] ?? null,
                 'per_periodo'    => $perPeriodo->all(),
-                'importo'        => (int) $g->sum('entrante'),
-                'importo_formattato' => MoneyHelper::format((int) $g->sum('entrante')),
+                'importo'        => $lordo - $passate,
+                'importo_formattato' => MoneyHelper::format($lordo - $passate),
+                'importo_lordo'  => $lordo,
+                'importo_lordo_formattato' => MoneyHelper::format($lordo),
+                'bozze_passate'  => $g->where('passa', true)->count(),
+                'bozze_passate_importo' => $passate,
+                'bozze_passate_formattato' => MoneyHelper::format($passate),
                 'non_risolte'    => $g->where('non_risolta', true)->count(),
                 'escluse'        => $g->where('esclusa', true)->count(),
                 'esercizio_id'   => $prima['esercizio_id'],
@@ -342,12 +397,33 @@ final class ConguaglioPassaggio
 
         $totale = (int) array_sum(array_column($coppie, 'importo'));
 
-        // Decisione 21: le quote in bozza comprese, per piano e per intestatario (con la catena dei passaggi le bozze
-        // possono essere del predecessore, non di chi esce: la frase deve dire a chi resteranno intestate).
-        $inBozza = collect($quote)->where('in_bozza', true)
-            ->groupBy(fn ($q) => $q['piano'] . '|' . ($q['ereditata_da'] ?? $uscente->nome))
-            ->map(fn (Collection $g) => ['piano' => $g->first()['piano'], 'intestatario' => $g->first()['ereditata_da'] ?? $uscente->nome, 'n' => $g->count()])
+        // Decisione 21: le quote in bozza che restano a chi le ha, comprese nel conguaglio, per piano, intestatario e
+        // ragione (con la catena dei passaggi le bozze possono essere del predecessore, non di chi esce: la frase deve
+        // dire a chi resteranno intestate; con la B3a dice anche perché non passano).
+        $inBozza = collect($quote)->where('in_bozza', true)->where('passa', false)
+            ->groupBy(fn ($q) => $q['piano'] . '|' . ($q['ereditata_da'] ?? $uscente->nome) . '|' . $q['motivo_bozza'])
+            ->map(fn (Collection $g) => ['piano' => $g->first()['piano'], 'intestatario' => $g->first()['ereditata_da'] ?? $uscente->nome, 'n' => $g->count(), 'motivo' => $g->first()['motivo_bozza']])
             ->values()->all();
+
+        // Decisione 25 (B3a): le bozze che passano a chi entra — ciò che `RegistraSubentroAction` riscrive, quota per
+        // quota — e il loro riepilogo per piano, per le frasi e per il cancello.
+        $passano = collect($quote)->where('passa', true)->values();
+        $bozzeRiassegnate = $passano->map(fn ($q) => [
+            'rata_quote_id' => $q['rata_quote_id'], 'rata_id' => $q['rata_id'], 'piano_rate_id' => $q['piano_rate_id'], 'piano' => $q['piano'],
+            'immobile_id' => $q['immobile_id'], 'rata' => $q['rata'], 'scadenza' => $q['scadenza'],
+            'importo' => $q['importo'], 'quota_pura' => $q['quota_pura'], 'pregresso' => $q['pregresso'],
+        ])->all();
+        $riassegnazione = $passano->groupBy('piano_rate_id')->map(fn (Collection $p) => [
+            'piano_rate_id' => $p->first()['piano_rate_id'],
+            'piano'      => $p->first()['piano'],
+            'n'          => $p->pluck('rata_id')->unique()->count(),
+            'quote'      => $p->count(),
+            'dal'        => $p->min('scadenza'),
+            'al'         => $p->max('scadenza'),
+            'preventivo' => (int) $p->sum('quota_pura'),
+            'preventivo_formattato' => MoneyHelper::format((int) $p->sum('quota_pura')),
+            'pregresso'  => (int) $p->sum('pregresso'),
+        ])->values()->all();
 
         return [
             'stato'          => 'calcolato',
@@ -355,15 +431,84 @@ final class ConguaglioPassaggio
             'anagrafica_entrante_id' => $entrante?->id,
             'quote'          => $quote,
             'quote_in_bozza' => $inBozza,
+            'bozze_riassegnate' => $bozzeRiassegnate,
+            'riassegnazione' => $riassegnazione,
             'per_gestione'   => $perGestione->all(),
             'coppie'         => $coppie,
             'totale_entrante' => $totale,
             'totale_entrante_formattato' => MoneyHelper::format($totale),
+            // Con le bozze che passano la coppia può rovesciarsi (decisione 25): il verso lo dice il segno, la cifra è questa.
+            'totale_entrante_assoluto_formattato' => MoneyHelper::format(abs($totale)),
             'pregressi'      => (int) collect($quote)->sum('pregresso'),
             'non_risolte'    => $nonRisolte,
             'esercizi_dedotti' => $dedotti,
-            'frasi'          => $this->frasi($perGestione, $nonRisolte, $uscente->nome, $entrante?->nome, $decorrenza, $soloOrdinario, (int) collect($quote)->sum('pregresso'), $dedotti, $inBozza),
+            'frasi'          => $this->frasi($perGestione, $nonRisolte, $uscente->nome, $entrante?->nome, $decorrenza, $soloOrdinario, collect($quote)->where('passa', false)->groupBy(fn ($q) => $q['ereditata_da'] ?? $uscente->nome)->map(fn ($g) => (int) $g->sum('pregresso'))->filter()->all(), $dedotti, $inBozza, $riassegnazione),
         ];
+    }
+
+    /**
+     * Decisione 25 (B3a, 1.11.0-beta.34): quali bozze di un piano già a giornale passano a chi entra, e perché le
+     * altre restano. È la prassi degli amministratori (forum p=552): «si cambia il nome sulle rate che restano, senza
+     * rifare il riparto; il passato si regola con il conguaglio». Una bozza passa se:
+     *
+     * - il passaggio è una **vendita** (`$riassegna`): locazione e usufrutto restano alla decisione 21, perché lì chi
+     *   entra paga solo una parte delle voci e cambiare il nome sulla quota intera sposterebbe anche il resto;
+     * - è **di chi esce** — quella di un predecessore resta sua (decisione 21, S8-3);
+     * - **scade dalla decorrenza in poi**: una rata che scade prima del rogito era da pagare quando l'unità era sua;
+     * - **nessuno l'ha pagata**, nemmeno in parte, né ha segnalato dal portale di averla pagata: un anticipo di chi esce non
+     *   diventa di chi entra;
+     * - ha un **preventivo** (quota pura ≠ 0): una quota di soli saldi pregressi è tutta di chi esce;
+     * - il piano è **risolto** (competenza nota) e, se è **straordinario**, la spesa è **tutta di chi entra**
+     *   (delibera, o competenza dichiarata, dalla decorrenza in poi): una straordinaria di chi esce resta sua, una
+     *   divisa per competenza resta a chi esce e si conguaglia come prima;
+     * - **non è esclusa per legge** (R4, Fase 1-bis): nella vendita della nuda proprietà le ordinarie di un piano generato
+     *   prima dell'usufrutto sono dell'usufruttuario (art. 1004 c.c.) e restano fuori, come le straordinarie
+     *   nell'usufrutto (art. 1005 c.c.).
+     *
+     * Il saldo pregresso dentro una bozza che passa **non passa**: `RegistraSubentroAction` lo lascia a chi esce in una
+     * quota sua sulla stessa rata (decisione 25, punto 3). Vale con i tre metodi di distribuzione dei saldi: rata zero
+     * (la rata 0 è di soli pregressi e resta), prima rata, spalmati.
+     *
+     * @param list<array<string,mixed>> $quote
+     * @return list<array<string,mixed>>
+     */
+    private function decidiBozze(array $quote, bool $riassegna, CarbonImmutable $decorrenza, array $segnalate = []): array
+    {
+        $gruppi = collect($quote)->groupBy(fn ($q) => $q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']);
+        $giorno = $decorrenza->toDateString();
+        // R8: «divisa» si decide dai giorni, non dal segno di `uscente` — con il già versato della persona l'uscente di
+        // ogni quota può essere negativo anche su una spesa divisa per competenza. Una voce non risolta non è «tutta di
+        // chi entra».
+        $divisa = fn ($x) => $x['per_capitolo'] !== null
+            ? collect($x['per_capitolo'])->contains(fn ($c) => ! empty($c['non_risolta']) || (int) ($c['giorni_uscente'] ?? 0) > 0)
+            : (int) ($x['giorni_uscente'] ?? 0) > 0;
+
+        foreach ($quote as $i => $q) {
+            if (! $q['in_bozza']) {
+                continue;
+            }
+            $gruppo = $gruppi[$q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']];
+            $straordinaria = $q['natura'] === NaturaGestione::Straordinaria->value;
+            // R12: l'ordine conta — una quota di soli pregressi o esclusa per legge ha la sua ragione prima di tutte le altre.
+            $motivo = match (true) {
+                (int) $q['quota_pura'] === 0 => 'solo_pregresso',
+                $q['esclusa'] => $straordinaria ? 'straordinaria_del_nudo' : 'ordinaria_dell_usufruttuario',
+                ! $riassegna => 'passaggio',
+                ! empty($q['ereditata_da']) => 'predecessore',
+                $gruppo->contains(fn ($x) => $x['non_risolta']) => 'non_risolta',
+                $straordinaria && (int) $gruppo->sum('entrante') === 0 => 'straordinaria_di_chi_esce',
+                $straordinaria && $gruppo->contains($divisa) => 'straordinaria_divisa',
+                $q['stato_rata'] !== 'bozza' => 'passaggio',
+                $q['scadenza'] < $giorno => 'scade_prima',
+                (int) $q['importo_pagato'] !== 0 || ! in_array($q['stato_quota'], ['da_pagare', 'credito'], true) => 'pagata',
+                isset($segnalate[(int) $q['rata_id']]) => 'segnalata',
+                default => null,
+            };
+            $quote[$i]['passa'] = $motivo === null;
+            $quote[$i]['motivo_bozza'] = $motivo;
+        }
+
+        return $quote;
     }
 
     /**
@@ -430,37 +575,30 @@ final class ConguaglioPassaggio
                 ->orWhereIn('rate.piano_rate_id', DB::table('rate as r2')->join('rate_quote as q2', 'q2.rata_id', '=', 'r2.id')->whereNotNull('q2.scrittura_contabile_id')->select('r2.piano_rate_id')))
             ->where('rate_quote.stato', '!=', 'annullata')
             ->orderBy('rate.piano_rate_id')->orderBy('rate.numero_rata')
-            ->get(['rate_quote.id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata'])
+            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato as stato_quota', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata'])
             ->map(function ($r) use ($anagraficaId, $predecessori) {
                 $pred = (int) $r->anagrafica_id !== $anagraficaId ? ($predecessori[(int) $r->anagrafica_id] ?? null) : null;
                 $r->ereditata_da = $pred['nome'] ?? null;
                 $r->decorrenza_acquisto = $pred['decorrenza_acquisto'] ?? null;
                 $r->in_bozza = $r->stato_rata !== 'emessa';
+                // B3a: una quota passata a questa persona da un passaggio precedente porta con sé il riparto di chi la
+                // aveva (le `righe_riparto` restano del soggetto per cui il piano è stato generato): la scomposizione
+                // per conto si legge da lì, riportata alla quota con il `$fattore`.
+                $regole = is_string($r->regole_calcolo) ? json_decode($r->regole_calcolo, true) : (array) $r->regole_calcolo;
+                $r->righe_di = (int) ($regole['riassegnazione']['righe_di'] ?? $r->anagrafica_id);
+                // R11 (Fase 1-bis): la quota è di chi esce solo dal giorno in cui gli è passata; i giorni prima si sono
+                // regolati con quel passaggio. Si tratta come la quota di un predecessore per i giorni, non per il nome.
+                $passata = $regole['riassegnazione'] ?? null;
+                $r->passata_il = null;
+                if ($r->ereditata_da === null && is_array($passata) && (int) ($passata['righe_di'] ?? 0) !== (int) $r->anagrafica_id && ! empty($passata['decorrenza'])) {
+                    $r->decorrenza_acquisto = $passata['decorrenza'];
+                    $r->passata_il = $passata['decorrenza'];
+                }
 
                 return $r;
             });
     }
 
-    /**
-     * I tratti di competenza delle voci del piano (S6, decisione 20), per `conto_id` della pivot.
-     *
-     * @return array<int, InsiemePeriodi>
-     */
-    private function trattiPerConto(int $pianoRateId): array
-    {
-        $righe = DB::table('competenze_capitolo as cc')
-            ->join('piano_rate_capitoli as prc', 'prc.id', '=', 'cc.piano_rate_capitolo_id')
-            ->where('prc.piano_rate_id', $pianoRateId)
-            ->orderBy('cc.dal')
-            ->get(['prc.conto_id', 'cc.dal', 'cc.al']);
-
-        $perConto = [];
-        foreach ($righe->groupBy('conto_id') as $contoId => $tratti) {
-            $perConto[(int) $contoId] = new InsiemePeriodi(...$tratti->map(fn ($t) => new PeriodoCompetenza(substr((string) $t->dal, 0, 10), substr((string) $t->al, 0, 10)))->all());
-        }
-
-        return $perConto;
-    }
 
     /**
      * La quota di un intestatario (chi esce, o un suo predecessore) su un'unità, **riga per riga** dalle
@@ -498,10 +636,13 @@ final class ConguaglioPassaggio
             // negativa dello stesso conto e la quota pura emessa è già al netto — sommandola qui, `totale` torna a
             // essere la quota pura del piano e un conto interamente già versato pesa zero.
             ->whereIn('tipo', [RigaRiparto::TIPO_RIPARTO, RigaRiparto::TIPO_NETTING, RigaRiparto::TIPO_AD_PERSONAM])
-            ->get(['conto_id', 'conto_nome', 'conto_radice_id', 'importo', 'tipo', 'giorni_titolarita', 'competenza_dal', 'competenza_al', 'gradino_competenza', 'riga_descrizione', 'titolarita_dal', 'titolarita_al']);
+            ->get(['conto_id', 'conto_nome', 'conto_radice_id', 'tabella_id', 'ruolo_richiesto', 'ruolo_risolto', 'importo', 'tipo', 'giorni_titolarita', 'competenza_dal', 'competenza_al', 'gradino_competenza', 'riga_descrizione', 'titolarita_dal', 'titolarita_al']);
         if ($righe->isEmpty()) {
             return null;
         }
+        // Le righe di tutti sull'unità: servono a ricostruire i giorni di una riga di ripiego (Fase 1-bis della beta.34, R5).
+        $righeUnita = DB::table('righe_riparto')->where('piano_rate_id', $pianoRateId)->where('immobile_id', $immobileId)->where('tipo', RigaRiparto::TIPO_RIPARTO)
+            ->get(['conto_id', 'tabella_id', 'ruolo_richiesto', 'ruolo_risolto', 'giorni_titolarita', 'titolarita_dal', 'titolarita_al']);
 
         $giorno = fn ($d) => $d === null ? null : substr((string) $d, 0, 10);
         $lordi = $righe->whereIn('tipo', [RigaRiparto::TIPO_RIPARTO, RigaRiparto::TIPO_AD_PERSONAM]);
@@ -553,6 +694,16 @@ final class ConguaglioPassaggio
             $trattoRiga = $primo->titolarita_dal !== null && $primo->titolarita_al !== null ? new PeriodoCompetenza($giorno($primo->titolarita_dal), $giorno($primo->titolarita_al)) : null;
             $competenzaRiga = $competenza !== null && $trattoRiga !== null ? $competenza->intersezione($trattoRiga) : $competenza;
             $trattoFuoriCompetenza = $competenza !== null && $trattoRiga !== null && $competenzaRiga === null;
+            // Riga di ripiego (decisione 22) con i giorni senza titolare in due buchi: il tratto congelato è l'estensione
+            // (tutto l'anno) e i giorni veri sono meno. Si tolgono i tratti delle righe risolte sugli altri ruoli; se i
+            // giorni ancora non tornano la voce non si divide (Fase 1-bis della beta.34, R5: era un difetto della beta.31,
+            // che dava a chi entra 245/365 di una riga che copriva 120 giorni).
+            $trattoNonRicostruibile = false;
+            if ($competenzaRiga !== null && $trattoRiga !== null && ($primo->ruolo_risolto ?? null) !== null && $primo->ruolo_risolto !== $primo->ruolo_richiesto) {
+                $ricostruito = PeriodoDellaRiga::senzaGliAltri($competenzaRiga, $primo, $righeUnita);
+                $trattoNonRicostruibile = $ricostruito === null;
+                $competenzaRiga = $ricostruito;
+            }
 
             if ($competenzaRiga === null) {
                 $parti = ['uscente' => $lordo - $nu, 'entrante' => 0, 'giorni_uscente' => null, 'giorni_entrante' => null, 'giorni_periodo' => null, 'giorni_predecessore' => null];
@@ -582,7 +733,7 @@ final class ConguaglioPassaggio
                 'periodo'         => $competenzaRiga?->toArray(),
                 'tratto'          => $trattoRiga?->toArray(),
                 'non_risolta'     => $competenzaRiga === null,
-                'motivo'          => $trattoFuoriCompetenza ? 'tratto_fuori_competenza' : null,
+                'motivo'          => $trattoFuoriCompetenza ? 'tratto_fuori_competenza' : ($trattoNonRicostruibile ? 'tratto_non_ricostruibile' : null),
                 'competenza_oggi' => $trattoFuoriCompetenza ? $competenza->toArray() : null,
                 'giorni_uscente'  => $parti['giorni_uscente'],
                 'giorni_entrante' => $parti['giorni_entrante'],
@@ -637,26 +788,38 @@ final class ConguaglioPassaggio
      * @param list<string> $dedotti
      * @param list<array{piano: string, intestatario: string, n: int}> $inBozza
      */
-    private function frasi(Collection $perGestione, array $nonRisolte, string $uscente, ?string $entrante, CarbonImmutable $decorrenza, bool $soloOrdinario, int $pregressi, array $dedotti = [], array $inBozza = []): array
+    private function frasi(Collection $perGestione, array $nonRisolte, string $uscente, ?string $entrante, CarbonImmutable $decorrenza, bool $soloOrdinario, array $pregressi, array $dedotti = [], array $inBozza = [], array $riassegnazione = []): array
     {
         $entrante ??= 'chi entra';
         $frasi = ['Le rate già emesse non si toccano. Il conguaglio è proposto come due righe di saldo che sommano a zero, per gestione:'];
-        // Decisione 21: le bozze dei piani già a giornale sono comprese, e si dice quali — una riga a sé, perché
-        // l'anteprima sostituisce la riga d'apertura con la propria e tiene le altre.
+        // Decisione 25 (B3a): le bozze che passano a chi entra, piano per piano — prima di tutto, perché cambiano il
+        // numero che segue. Il pregresso dentro quelle bozze non passa e si dice.
+        foreach ($riassegnazione as $r) {
+            $frasi[] = $r['n'] === 1
+                ? sprintf('La rata in bozza del piano «%s» con scadenza il %s passa a %s: cambia l\'intestatario, non l\'importo (%s di preventivo, che da ora paga a suo nome).', $r['piano'], $this->data($r['dal']), $entrante, $r['preventivo_formattato'])
+                : sprintf('Le %d rate in bozza del piano «%s» con scadenza dal %s al %s passano a %s: cambia l\'intestatario, non l\'importo (%s di preventivo, che da ora paga a suo nome).', $r['n'], $r['piano'], $this->data($r['dal']), $this->data($r['al']), $entrante, $r['preventivo_formattato']);
+            if ($r['pregresso'] !== 0) {
+                $frasi[] = sprintf('Dentro %s c\'è %s di %s pregresso di %s: non passa, resta suo in una quota a parte sulla stessa rata.', $r['n'] === 1 ? 'questa rata' : 'queste rate', MoneyHelper::format(abs($r['pregresso'])), $r['pregresso'] > 0 ? 'debito' : 'credito', $uscente);
+            }
+        }
+        // Decisione 21: le bozze dei piani già a giornale che restano a chi le ha sono comprese, e si dice quali e
+        // perché — una riga a sé, perché l'anteprima sostituisce la riga d'apertura con la propria e tiene le altre.
         foreach ($inBozza as $b) {
-            $n = $b['n'];
-            $frasi[] = $n === 1
-                ? sprintf('Compresa la quota del piano «%s» non ancora emessa: il piano ha già emesso a giornale e non si può più ricalcolare, quindi resterà intestata a %s e si conguaglia qui.', $b['piano'], $b['intestatario'])
-                : sprintf('Comprese le %d quote del piano «%s» non ancora emesse: il piano ha già emesso a giornale e non si può più ricalcolare, quindi resteranno intestate a %s e si conguagliano qui.', $n, $b['piano'], $b['intestatario']);
+            $frasi[] = $this->fraseBozzeTrattenute($b, $uscente, $decorrenza);
         }
 
         foreach ($perGestione as $g) {
             $nome = $g['gestione'] ?? 'gestione';
+            // Decisione 25: con bozze che passano a chi entra la coppia è la sua parte dell'intero piano meno quelle.
+            $cd = $this->creditoDebito((int) $g['importo_lordo'], (int) $g['bozze_passate_importo'], $uscente, $entrante);
             if ($g['non_risolte'] > 0 && $g['importo'] === 0) {
                 continue; // la dice la riga delle non risolte
             }
             if ($g['escluse'] > 0 && $g['importo'] === 0) {
-                $frasi[] = sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s — le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $nome, MoneyHelper::format($g['quota_pura']), $uscente);
+                $frasi[] = $g['natura'] === NaturaGestione::Straordinaria->value
+                    ? sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s — le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $nome, MoneyHelper::format($g['quota_pura']), $uscente)
+                    // R4: vendita della nuda proprietà, piano generato prima dell'usufrutto.
+                    : sprintf('Sulla gestione %s: %s restano a %s — sono spese ordinarie, e dalla costituzione dell\'usufrutto sono dell\'usufruttuario (art. 1004 c.c.), già regolate con quel passaggio: chi compra la nuda proprietà non ne risponde.', $nome, MoneyHelper::format($g['quota_pura']), $uscente);
                 continue;
             }
             if ($g['natura'] === NaturaGestione::Straordinaria->value) {
@@ -670,18 +833,18 @@ final class ConguaglioPassaggio
                             ? ($ereditata !== ''
                                 ? sprintf('Sulla gestione %s (straordinaria): %s%s non passano a chi entra — la competenza di ogni voce, dichiarata sulla fattura o alla data della delibera, cade prima del passaggio:', $nome, MoneyHelper::format($p['quota_pura']), $ereditata)
                                 : sprintf('Sulla gestione %s (straordinaria): %s restano a %s — la competenza di ogni voce, dichiarata sulla fattura o alla data della delibera, cade prima del passaggio:', $nome, MoneyHelper::format($p['quota_pura']), $uscente))
-                            : sprintf('Sulla gestione %s (straordinaria): credito %s a %s, debito %s a %s%s — voce per voce, ognuna sulla sua competenza (dichiarata sulla fattura, o la data della delibera; art. 63 disp. att. c.c.):', $nome, $p['entrante_formattato'], $uscente, $p['entrante_formattato'], $entrante, $ereditata);
+                            : sprintf('Sulla gestione %s (straordinaria): %s%s — voce per voce, ognuna sulla sua competenza (dichiarata sulla fattura, o la data della delibera; art. 63 disp. att. c.c.):', $nome, $this->creditoDebito((int) $p['entrante'], (int) $p['passate'], $uscente, $entrante), $ereditata);
                         array_push($frasi, ...$this->frasiPerCapitolo($p['per_capitolo'], $uscente, $entrante, $decorrenza, true, $p['ereditata_da'] ?? null));
                         continue;
                     }
                     $delibera = $p['periodo'][0]['dal'] ?? null;
                     $frasi[] = $p['entrante'] === 0
                         ? sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s, perché l\'assemblea ha deliberato il %s, quando l\'unità era sua (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $nome, MoneyHelper::format($p['quota_pura']), $uscente, $this->data($delibera))
-                        : sprintf('Sulla gestione %s (straordinaria): credito %s a %s, debito %s a %s — la delibera del %s è del giorno del passaggio o successiva, la spesa è di chi entra (art. 63 disp. att. c.c.; Cass. 24654/2010).', $nome, $p['entrante_formattato'], $uscente, $p['entrante_formattato'], $entrante, $this->data($delibera));
+                        : sprintf('Sulla gestione %s (straordinaria): %s — la delibera del %s è del giorno del passaggio o successiva, la spesa è di chi entra (art. 63 disp. att. c.c.; Cass. 24654/2010).', $nome, $this->creditoDebito((int) $p['entrante'], (int) $p['passate'], $uscente, $entrante), $this->data($delibera));
                 }
                 continue;
             }
-            if ($g['importo'] === 0) {
+            if ($g['importo'] === 0 && $g['bozze_passate'] === 0) {
                 // Con giorni di chi entra > 0 la ragione non è la competenza: la quota pura è zero (versato dell'unità
                 // al 100 %, D8, o solo saldi pregressi) e non c'è nulla da dividere (L1-3). Gli intestatari sono quelli
                 // veri del gruppo — chi esce o un suo predecessore (L1-8).
@@ -697,15 +860,22 @@ final class ConguaglioPassaggio
                 if (! empty($p0['ereditata_da'])) {
                     // S8-3: la quota è emessa a un predecessore; passa la competenza che era passata a chi esce (L1-7: vale
                     // per vendita, locazione, usufrutto e per catene di qualunque lunghezza).
-                    $frasi[] = sprintf('Sulla gestione %s: credito %s a %s, debito %s a %s — la quota ordinaria (%s su %d %s) è emessa a %s: la sua competenza è passata a %s dal %s con un passaggio precedente, e quella parte (%d giorni) è divisa in proporzione ai giorni: %d a %s, %d a %s.',
-                        $nome, $g['importo_formattato'], $uscente, $g['importo_formattato'], $entrante,
+                    $frasi[] = sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è emessa a %s: la sua competenza è passata a %s dal %s con un passaggio precedente, e quella parte (%d giorni) è divisa in proporzione ai giorni: %d a %s, %d a %s.',
+                        $nome, $cd,
                         MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote',
                         $p0['ereditata_da'], $uscente, $this->data($p0['decorrenza_acquisto']), (int) $p0['giorni_periodo'],
                         (int) $g['giorni_uscente'], $uscente, (int) $g['giorni_entrante'], $entrante);
                     continue;
                 }
-                $frasi[] = sprintf('Sulla gestione %s: credito %s a %s, debito %s a %s — la quota ordinaria (%s su %d %s) è divisa in proporzione ai giorni di competenza: %d a %s, %d a %s.',
-                    $nome, $g['importo_formattato'], $uscente, $g['importo_formattato'], $entrante,
+                if (! empty($p0['passata_il'])) {
+                    // R11: la quota è di chi esce dal giorno del passaggio precedente; si dividono solo i suoi giorni.
+                    $frasi[] = sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è passata a %s il %s con il passaggio precedente, e quella parte (%d giorni) è divisa in proporzione ai giorni: %d a %s, %d a %s.',
+                        $nome, $cd, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote',
+                        $uscente, $this->data($p0['passata_il']), (int) $p0['giorni_periodo'], (int) $g['giorni_uscente'], $uscente, (int) $g['giorni_entrante'], $entrante);
+                    continue;
+                }
+                $frasi[] = sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è divisa in proporzione ai giorni di competenza: %d a %s, %d a %s.',
+                    $nome, $cd,
                     MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote',
                     (int) $g['giorni_uscente'], $uscente, (int) $g['giorni_entrante'], $entrante);
                 continue;
@@ -715,10 +885,10 @@ final class ConguaglioPassaggio
                 // predecessore (S8-3) la testa dice a chi è emessa e da quando la competenza è di chi esce (B2-1).
                 $p0 = $g['per_periodo'][0];
                 $frasi[] = ! empty($p0['ereditata_da'])
-                    ? sprintf('Sulla gestione %s: credito %s a %s, debito %s a %s — la quota ordinaria (%s su %d %s) è emessa a %s: la sua competenza è passata a %s dal %s con un passaggio precedente, e quella parte è divisa voce per voce, ognuna sui giorni della sua competenza:',
-                        $nome, $g['importo_formattato'], $uscente, $g['importo_formattato'], $entrante, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote', $p0['ereditata_da'], $uscente, $this->data($p0['decorrenza_acquisto']))
-                    : sprintf('Sulla gestione %s: credito %s a %s, debito %s a %s — la quota ordinaria (%s su %d %s) è divisa voce per voce, ognuna sui giorni della sua competenza:',
-                        $nome, $g['importo_formattato'], $uscente, $g['importo_formattato'], $entrante, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote');
+                    ? sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è emessa a %s: la sua competenza è passata a %s dal %s con un passaggio precedente, e quella parte è divisa voce per voce, ognuna sui giorni della sua competenza:',
+                        $nome, $cd, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote', $p0['ereditata_da'], $uscente, $this->data($p0['decorrenza_acquisto']))
+                    : sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è divisa voce per voce, ognuna sui giorni della sua competenza:',
+                        $nome, $cd, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote');
                 array_push($frasi, ...$this->frasiPerCapitolo($p0['per_capitolo'], $uscente, $entrante, $decorrenza, false, $p0['ereditata_da'] ?? null));
                 continue;
             }
@@ -726,7 +896,7 @@ final class ConguaglioPassaggio
             // che si leggono sono quelli che hanno prodotto l'importo (verifica S5, R10). Stesso periodo ma quote di
             // predecessori diversi o acquistate in date diverse (L1-6): non sono «piani con competenze diverse».
             $periodiDistinti = count(array_unique(array_map(fn ($p) => json_encode($p['periodo']), $g['per_periodo'])));
-            $frasi[] = sprintf('Sulla gestione %s: credito %s a %s, debito %s a %s, %s:', $nome, $g['importo_formattato'], $uscente, $g['importo_formattato'], $entrante, $periodiDistinti > 1 ? 'da piani con competenze diverse' : 'da quote emesse a intestatari diversi o acquistate in date diverse');
+            $frasi[] = sprintf('Sulla gestione %s: %s, %s:', $nome, $cd, $periodiDistinti > 1 ? 'da piani con competenze diverse' : 'da quote emesse a intestatari diversi o acquistate in date diverse');
             foreach ($g['per_periodo'] as $p) {
                 if (($p['per_capitolo'] ?? null) !== null) {
                     $emesseA = ! empty($p['ereditata_da']) ? sprintf(', emesse a %s; a %s dal %s', $p['ereditata_da'], $uscente, $this->data($p['decorrenza_acquisto'])) : '';
@@ -737,6 +907,8 @@ final class ConguaglioPassaggio
                 $tratti = implode(' + ', array_map(fn ($t) => $this->data($t['dal']) . '–' . $this->data($t['al']), $p['periodo'] ?? []));
                 if (! empty($p['ereditata_da'])) {
                     $tratti .= sprintf(', emesse a %s; a %s dal %s', $p['ereditata_da'], $uscente, $this->data($p['decorrenza_acquisto']));
+                } elseif (! empty($p['passata_il'])) {
+                    $tratti .= sprintf(', passate a %s il %s', $uscente, $this->data($p['passata_il']));
                 }
                 $frasi[] = $p['entrante'] === 0
                     ? sprintf('— %s (%d %s, competenza %s) restano a %s: la competenza finisce prima del %s.', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $tratti, $uscente, $this->data($decorrenza->toDateString()))
@@ -750,8 +922,9 @@ final class ConguaglioPassaggio
         if ($dedotti !== []) {
             $frasi[] = sprintf('%s «%s» non %s in quale esercizio %s generat%s (piano di una versione precedente): l\'esercizio è stato dedotto dalla data di creazione.', count($dedotti) === 1 ? 'Il piano' : 'I piani', implode('», «', $dedotti), count($dedotti) === 1 ? 'ricorda' : 'ricordano', count($dedotti) === 1 ? 'è stato' : 'sono stati', count($dedotti) === 1 ? 'o' : 'i');
         }
-        if ($pregressi !== 0) {
-            $frasi[] = sprintf('%s delle quote emesse a %s sono saldi pregressi (conguagli di esercizi passati o di un passaggio precedente): non si dividono, restano suoi.', MoneyHelper::format($pregressi), $uscente);
+        // R11: i pregressi per intestatario — quelli del predecessore non sono di chi esce.
+        foreach ($pregressi as $intestatario => $importo) {
+            $frasi[] = sprintf('%s delle quote intestate a %s sono saldi pregressi (conguagli di esercizi passati o di un passaggio precedente): non si dividono, restano suoi.', MoneyHelper::format($importo), $intestatario);
         }
 
         return $frasi;
@@ -781,6 +954,11 @@ final class ConguaglioPassaggio
                     $tratto = $this->data($c['tratto']['dal'] ?? null) . '–' . $this->data($c['tratto']['al'] ?? null);
                     $oggi = implode(' + ', array_map(fn ($t) => $this->data($t['dal']) . '–' . $this->data($t['al']), $c['competenza_oggi'] ?? []));
                     $frasi[] = sprintf('  · %s: %s, titolarità %s — la riga emessa copre un tratto che la competenza di oggi del piano (%s) non tocca: resta a %s, nessun conguaglio su questa voce finché il piano non è ricalcolato.', $c['conto'], $importo, $tratto, $oggi, $intestatario);
+                    continue;
+                }
+                if (($c['motivo'] ?? null) === 'tratto_non_ricostruibile') {
+                    // R5: una riga di ripiego i cui giorni non si ricostruiscono dalle altre righe della voce.
+                    $frasi[] = sprintf('  · %s: %s — pagata per i giorni in cui mancava chi doveva pagarla, e quei giorni non si ricostruiscono dal riparto registrato: resta a %s, nessun conguaglio su questa voce.', $c['conto'], $importo, $intestatario);
                     continue;
                 }
                 $frasi[] = sprintf('  · %s: %s — senza competenza dichiarata sulla fattura e senza delibera: resta a %s, nessun conguaglio su questa voce.', $c['conto'], $importo, $intestatario);
@@ -822,6 +1000,57 @@ final class ConguaglioPassaggio
         }
 
         return $frasi;
+    }
+
+    /**
+     * «credito X a chi esce, debito X a chi entra», e con le bozze che passano (decisione 25) anche da dove viene X:
+     * la parte di chi entra sull'intero piano meno il preventivo delle bozze che da ora paga a suo nome. Può
+     * rovesciarsi — con una rata che scade il giorno stesso del rogito le bozze coprono più dei suoi giorni — e
+     * allora il credito è di chi entra.
+     */
+    private function creditoDebito(int $lordo, int $passate, string $uscente, string $entrante): string
+    {
+        $netto = $lordo - $passate;
+        if ($passate === 0) {
+            return sprintf('credito %s a %s, debito %s a %s', MoneyHelper::format($netto), $uscente, MoneyHelper::format($netto), $entrante);
+        }
+        $parte = sprintf('la parte di %s sull\'intero piano è %s', $entrante, MoneyHelper::format($lordo));
+
+        return match (true) {
+            $netto > 0 => sprintf('credito %s a %s, debito %s a %s (%s, di cui %s con le rate in bozza che passano a suo nome)', MoneyHelper::format($netto), $uscente, MoneyHelper::format($netto), $entrante, $parte, MoneyHelper::format($passate)),
+            $netto < 0 => sprintf('credito %s a %s, debito %s a %s (%s, e le rate in bozza che passano a suo nome valgono %s: coprono più dei suoi giorni)', MoneyHelper::format(-$netto), $entrante, MoneyHelper::format(-$netto), $uscente, $parte, MoneyHelper::format($passate)),
+            default => sprintf('nessuna coppia (%s, esattamente quanto valgono le rate in bozza che passano a suo nome)', $parte),
+        };
+    }
+
+    /**
+     * Perché un gruppo di bozze resta a chi le ha (decisione 21, e dalla B3a la decisione 25 che ne fa passare le
+     * altre): la frase dice a chi resteranno intestate e, quando c'è, la ragione.
+     *
+     * @param array{piano: string, intestatario: string, n: int, motivo: ?string} $b
+     */
+    private function fraseBozzeTrattenute(array $b, string $uscente, CarbonImmutable $decorrenza): string
+    {
+        $n = $b['n'];
+        $uno = $n === 1;
+        $Quote = $uno ? 'La quota' : sprintf('Le %d quote', $n);
+        $comprese = $uno ? sprintf('Compresa la quota del piano «%s» non ancora emessa', $b['piano']) : sprintf('Comprese le %d quote del piano «%s» non ancora emesse', $n, $b['piano']);
+        $resteranno = $uno ? 'resterà intestata' : 'resteranno intestate';
+        $siConguagliano = $uno ? 'si conguaglia' : 'si conguagliano';
+
+        return match ($b['motivo'] ?? null) {
+            'scade_prima' => sprintf('%s che %s prima del %s: %s a %s e %s qui.', $comprese, $uno ? 'scade' : 'scadono', $this->data($decorrenza->toDateString()), $resteranno, $b['intestatario'], $siConguagliano),
+            'pagata' => sprintf('%s che %s già un pagamento: %s a %s e %s qui.', $comprese, $uno ? 'ha' : 'hanno', $resteranno, $b['intestatario'], $siConguagliano),
+            'segnalata' => sprintf('%s che %s un pagamento segnalato dal portale e non ancora verificato: %s a %s e %s qui — verifica la segnalazione prima.', $comprese, $uno ? 'ha' : 'hanno', $resteranno, $b['intestatario'], $siConguagliano),
+            'solo_pregresso' => sprintf('%s del piano «%s» non ancora %s %s solo di saldi pregressi di %s: %s sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $uno ? 'è fatta' : 'sono fatte', $b['intestatario'], $uno ? 'resterà' : 'resteranno'),
+            'straordinaria_di_chi_esce' => sprintf('%s del piano «%s» non ancora %s %s a %s: la spesa straordinaria è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            'straordinaria_divisa' => sprintf('%s: la spesa straordinaria si divide fra chi esce e chi entra per competenza, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
+            // R12: le quote che il conguaglio non tocca non «si conguagliano qui».
+            'straordinaria_del_nudo' => sprintf('%s del piano «%s» non ancora %s %s a %s: le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            'ordinaria_dell_usufruttuario' => sprintf('%s del piano «%s» non ancora %s %s a %s: sono spese ordinarie dell\'usufruttuario (art. 1004 c.c.), regolate alla costituzione dell\'usufrutto; chi compra la nuda proprietà non ne risponde.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            'non_risolta' => sprintf('%s del piano «%s» non ancora %s %s a %s, senza conguaglio: la competenza del piano non si può determinare.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            default => sprintf('%s: il piano ha già emesso a giornale e non si può più ricalcolare, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
+        };
     }
 
     private function vuoto(): array

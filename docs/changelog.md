@@ -7,6 +7,75 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.34] - Cambia il nome, non l'importo
+
+**Non tocca il database: nessuna migrazione.** Cambia come si registra una vendita su un piano rate già
+emesso in parte, nasce una stampa nuova per unità, e la revisione ha corretto un difetto di denaro del
+conguaglio che veniva dalla 1.11.0-beta.31.
+
+**Nella vendita, le rate in bozza passano a chi compra.** Fino a ieri, se il piano aveva già emesso a
+giornale anche una sola rata, le rate ancora in bozza restavano intestate a chi vende e il conguaglio
+le comprendeva tutte. Sul forum gli amministratori hanno detto come lavorano davvero: *si cambia il nome
+sulle rate che restano, senza rifare il riparto; il passato si regola con il conguaglio*. Ora è così. Le
+rate in bozza che scadono dal giorno del passaggio passano a chi compra: **cambia l'intestatario, non
+l'importo**, e il riparto deliberato non si tocca. Il conguaglio si calcola sull'**intero piano** e toglie
+ciò che chi compra paga già con quelle rate: dodici rate da € 100,00, quattro emesse, rogito il 1°
+maggio, e la coppia passa da € 805,48 a **€ 5,48**, con gli stessi totali per persona, al centesimo, sui
+giorni di ciascuno. Se le rate che passano coprono più dei giorni di chi compra — un rogito il giorno
+stesso della scadenza — la coppia si rovescia, e il pannello e l'avviso lo dicono nel verso giusto.
+
+Restano a chi vende, e si conguagliano come prima: le bozze **già scadute** prima del rogito, quelle
+**già pagate** anche in parte o con un pagamento segnalato dal portale e non ancora verificato, quelle di
+una **straordinaria che è sua** (deliberata quando l'unità era sua) o divisa fra i due per competenza. Il
+**saldo pregresso** dentro una bozza non passa mai: la bozza si divide, il preventivo a chi compra e il
+pregresso a chi vende in una quota sua sulla stessa rata. Vale con i tre modi di distribuire i saldi —
+rata zero, prima rata, spalmati — a debito e a credito. Vale anche con la rinuncia al conguaglio: le
+parti regolano fra loro la coppia, non chi paga le rate che devono ancora scadere. Nella **locazione** e
+nell'**usufrutto** le bozze restano a chi esce, come prima: lì chi entra paga solo una parte delle voci. I
+**promemoria del portale** seguono le quote: a chi vende spariscono quelli delle rate che non sono più
+sue, a chi compra arrivano. Le **stampe del riparto** mettono le rate passate in una colonna propria,
+«Passate con un passaggio», e l'**estratto conto** conta tutte e due le quote quando chi compra aveva già
+la sua sulla stessa rata.
+
+**La vendita della nuda proprietà non trascina l'ordinaria.** Dalla costituzione dell'usufrutto le spese
+ordinarie sono dell'usufruttuario (art. 1004 c.c.), e si regolano con quel passaggio. Se poi il nudo
+proprietario vende, chi compra la nuda proprietà non ne risponde: le rate ordinarie dei piani generati
+prima dell'usufrutto restano dove sono e non entrano nel conguaglio. Fino a ieri gliene faceva pagare una
+parte che l'usufruttuario aveva già rimborsato.
+
+**Il prospetto degli oneri accessori.** Dalla pagina dei titolari di un'unità che ha avuto un inquilino,
+«Prospetto oneri accessori» stampa, esercizio per esercizio, una sezione per ogni conduttore con le voci
+che il riparto pone a carico dell'inquilino: tabella e millesimi, quota inquilino, competenza, giorni,
+importo. Dice quali voci sono **già nelle sue rate** e quali ha **pagato il proprietario** perché nei
+giorni del piano nessun inquilino era registrato — una locazione registrata dopo la generazione — e
+quindi vanno rimborsate: le divide sui giorni di conduzione con la stessa regola del riparto, e i giorni
+senza nessun conduttore restano a chi ha pagato. È sul **preventivo**: il conguaglio definitivo si fa sul
+rendiconto. **Non è un riparto né una richiesta del condominio**: verso il condominio risponde il
+proprietario, e il prospetto è l'indicazione specifica delle spese che il conduttore ha diritto di avere
+prima di pagare. L'art. 9 L. 392/1978 lo cita solo per la locazione abitativa e per quella a uso diverso;
+per la locazione atipica e il comodato rimanda al contratto. Per questo il **regime del contratto** ora si
+chiede a ogni conduttore che entra, non più solo sul box.
+
+**Sulla straordinaria, il pannello della competenza dice che decide la delibera.** Registrando una fattura
+di una gestione straordinaria, «Costo maturato dal … al …» scavalca la data della delibera del piano: con
+una vendita nel mezzo paga chi era titolare in quel periodo, non chi lo era il giorno della delibera. Il
+pannello ora lo dice in chiaro e indica il modo giusto, «Spesa deliberata il …» (art. 63 disp. att. c.c.;
+Cass. 24654/2010).
+
+**Corretto dalla revisione — un difetto della 1.11.0-beta.31.** Quando il proprietario paga le voci
+dell'inquilino per i giorni in cui l'inquilino non c'era, e quei giorni sono due tratti (gennaio–febbraio
+e novembre–dicembre attorno a un contratto), il conguaglio di una vendita divideva la riga su tutto l'anno:
+chi comprava il 1° maggio riceveva 245/365 di una spesa che copriva 120 giorni, € 80,55 invece di € 61,00
+su quell'esempio. Ora i giorni si ricostruiscono dal riparto registrato, e se non tornano la voce non si
+divide.
+
+**I limiti, detti.** Il prospetto non unisce appartamento e box dello stesso conduttore. La «deroga
+dichiarata» — il rogito che mette tutto l'anno a carico di chi vende — è una versione a sé, decisa dalle
+risposte al forum. L'annullamento di un passaggio registrato arriva con la parte successiva dei subentri,
+insieme alla successione e alla vendita con riserva d'usufrutto.
+
+---
+
 ## [1.11.0-beta.33] - I documenti che sopravvivono al container
 
 **Non tocca il database: nessuna migrazione.** Tocca `composer.lock`: entra il driver S3 di

@@ -114,6 +114,16 @@ class ImmobileAnagraficaController extends Controller
             'anagraficheConQuoteEmesse' => $anagraficheConQuoteEmesse,
             'storico' => $storico,
             'oggi' => $oggi->toDateString(),
+            // B3a: il prospetto degli oneri accessori si offre solo se l'unità ha o ha avuto un inquilino, con la scelta
+            // dell'esercizio (la pagina conosce solo quello corrente).
+            'prospettoOneri' => DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id)->where('tipologia', 'inquilino')->exists()
+                ? [
+                    'url' => route('admin.gestionale.immobili.prospetto-oneri', [$condominio, $immobile]),
+                    'esercizi' => $condominio->esercizi()->orderByDesc('data_inizio')->get(['id', 'nome', 'data_inizio'])
+                        ->map(fn ($e) => ['id' => (int) $e->id, 'nome' => $e->nome])->values(),
+                    'corrente' => $esercizio?->id,
+                ]
+                : null,
         ]);
     }
 

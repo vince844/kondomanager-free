@@ -29,6 +29,11 @@ use Illuminate\Support\Facades\Log;
  * - «Saldi precedenti» (`pregresso`): `regole_calcolo.importi.saldo_usato` delle quote, che non
  *   passa dal motore e non è nel dettaglio.
  * - «Già versato» (`gia_versato`): le righe `netting`, negative, per soggetto (Coda 78).
+ * - «Passate con un passaggio» (`passate`): nel registrato, le quote in bozza che una vendita ha fatto passare a chi
+ *   entra (decisione 25, 1.11.0-beta.34). Le righe del riparto restano del soggetto per cui il piano è stato generato
+ *   (`regole_calcolo.riassegnazione.righe_di`), le quote cambiano intestatario: la colonna toglie la loro quota pura a chi
+ *   le aveva e la dà a chi le ha oggi, così ogni soggetto torna alla sua quota senza residuo (Fase 1-bis, R1). Nel
+ *   ricostruito e nell'anteprima no: lì le righe sono del motore di oggi, non di chi aveva la quota.
  * - «Fuori riparto» (`fuori_riparto`): **una guardia, non una colonna attesa**. Nel registrato la
  *   somma delle righe di un soggetto più il suo pregresso è la sua quota per costruzione: un
  *   residuo ≠ 0 è un errore, viene loggato come tale e la colonna compare per dirlo. Nel
@@ -44,6 +49,7 @@ final class MatriceRipartoBuilder
     public const COLONNA_PREGRESSO = 'pregresso';
     public const COLONNA_GIA_VERSATO = 'gia_versato';
     public const COLONNA_FUORI_RIPARTO = 'fuori_riparto';
+    public const COLONNA_PASSATE = 'passate';
 
     public function perTabelle(PianoRate $pianoRate): array
     {
@@ -159,6 +165,7 @@ final class MatriceRipartoBuilder
         $totaliReali = [];
         $pregresso = [];
         $quote = RataQuote::whereIn('rata_id', $pianoRate->rate()->pluck('id'))->get();
+        $registrato = $fonte['tipo'] === DettaglioRiparto::REGISTRATO;
         foreach ($quote as $rq) {
             if (!$rq->anagrafica_id || !$rq->immobile_id) continue;
             $k = $rq->anagrafica_id.'|'.$rq->immobile_id;
@@ -166,6 +173,17 @@ final class MatriceRipartoBuilder
             $regole = is_string($rq->regole_calcolo) ? json_decode($rq->regole_calcolo, true) : $rq->regole_calcolo;
             if (is_array($regole) && isset($regole['importi']['saldo_usato'])) {
                 $pregresso[$k] = ($pregresso[$k] ?? 0) + (int) round($regole['importi']['saldo_usato']);
+            }
+            // Decisione 25: la quota passata con una vendita. La sua quota pura si toglie a chi aveva le righe e si dà a
+            // chi ha la quota oggi; il soggetto delle righe resta in stampa anche se tutte le sue quote sono passate.
+            $righeDi = is_array($regole) ? (int) ($regole['riassegnazione']['righe_di'] ?? 0) : 0;
+            if ($registrato && $righeDi > 0 && $righeDi !== (int) $rq->anagrafica_id) {
+                $qp = (int) round($regole['importi']['quota_pura_gestione'] ?? ((int) $rq->importo - (int) ($regole['importi']['saldo_usato'] ?? 0)));
+                $kDi = $righeDi.'|'.$rq->immobile_id;
+                $this->dichiaraPseudoColonna($colonne, self::COLONNA_PASSATE, 'Passate con un passaggio');
+                $celle[self::COLONNA_PASSATE][$kDi] = ($celle[self::COLONNA_PASSATE][$kDi] ?? 0) - $qp;
+                $celle[self::COLONNA_PASSATE][$k] = ($celle[self::COLONNA_PASSATE][$k] ?? 0) + $qp;
+                $totaliReali[$kDi] ??= 0;
             }
         }
         $anteprima = $fonte['tipo'] === DettaglioRiparto::ANTEPRIMA;
@@ -347,7 +365,7 @@ final class MatriceRipartoBuilder
     private function pseudoColonneInCoda(array $colonne): array
     {
         $coda = [];
-        foreach ([self::COLONNA_DIRETTO, self::COLONNA_PREGRESSO, self::COLONNA_GIA_VERSATO, self::COLONNA_FUORI_RIPARTO] as $chiave) {
+        foreach ([self::COLONNA_DIRETTO, self::COLONNA_PREGRESSO, self::COLONNA_GIA_VERSATO, self::COLONNA_PASSATE, self::COLONNA_FUORI_RIPARTO] as $chiave) {
             if (isset($colonne[$chiave])) $coda[$chiave] = $colonne[$chiave];
         }
 

@@ -80,6 +80,10 @@ const eLocazione = computed(() => props.tipo === 'inizio_locazione' || props.tip
 // Il regime del contratto si chiede sul **box** (§6.6), cioè sulle unità di categoria `pertinenza`: su un
 // negozio o un ufficio (`unita_non_abitativa`) la locazione è per legge a uso diverso e la domanda non ha senso.
 const eBox = computed(() => props.immobile.tipologia?.categoria === 'pertinenza');
+// Fase 1-bis della beta.34, R18: dal prospetto degli oneri accessori il regime serve anche sull'appartamento — decide se
+// la nota cita l'art. 9 L. 392/1978 — e si chiede a ogni conduttore che entra, non solo sul box. Resta fuori il negozio.
+const chiediRegime = computed(() => props.immobile.tipologia?.categoria !== 'unita_non_abitativa'
+  && (props.tipo === 'inizio_locazione' || (props.tipo === 'fine_locazione' && !!form.anagrafica_entrante_id)));
 
 /** I titolari fra cui si sceglie «chi esce», secondo il tipo. */
 const RUOLI_USCENTE: Record<TipoPassaggio, string[]> = {
@@ -731,8 +735,8 @@ function urlTipo(t: TipoPassaggio) {
                     <span>{{ form.errors.tipologia }}</span>
                   </div>
 
-                  <div v-if="tipo === 'inizio_locazione' && eBox" class="sm:col-span-12">
-                    <Label for="regime_contratto" class="mb-1.5 block">Regime del contratto <span class="text-slate-400 font-normal">(sul box cambia cosa spetta all'inquilino)</span></Label>
+                  <div v-if="chiediRegime" class="sm:col-span-12">
+                    <Label for="regime_contratto" class="mb-1.5 block">Regime del contratto <span class="text-slate-400 font-normal">{{ eBox ? "(sul box cambia cosa spetta all'inquilino)" : '(lo legge il prospetto degli oneri accessori)' }}</span></Label>
                     <v-select id="regime_contratto" class="w-full bg-white dark:bg-slate-950 text-sm" :options="REGIMI" label="label" v-model="form.regime_contratto" :reduce="(r: any) => r.id" placeholder="Scegli il regime…" />
                     <InputError :message="form.errors.regime_contratto" />
                   </div>

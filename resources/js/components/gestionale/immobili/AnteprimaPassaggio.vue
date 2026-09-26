@@ -47,6 +47,9 @@ const haCoppie = computed(() => (conguaglio.value?.coppie.length ?? 0) > 0);
 // Le coppie hanno più di un «chi entra» (S8-30): si elencano con il nome, perché la tabella per gestione non lo dice.
 const piuEntranti = computed(() => new Set((conguaglio.value?.coppie ?? []).map(c => c.anagrafica_entrante_id)).size > 1);
 const notaTroppoCorta = computed(() => rinuncia.value && notaRinuncia.value.trim().length < 10);
+// Decisione 25 (B3a): le bozze che passano a chi entra, e la coppia che con loro può rovesciarsi.
+const riassegnazione = computed(() => conguaglio.value?.riassegnazione ?? []);
+const rovesciato = computed(() => (conguaglio.value?.totale_entrante ?? 0) < 0);
 const GRADINI: Record<string, string> = { dichiarata: 'competenza dichiarata', delibera: 'data della delibera', capitolo: 'competenza del capitolo', gestione: 'periodo della gestione', esercizio: 'periodo dell\'esercizio' };
 
 /** Oltre otto righe la tabella si piega: si vede l'inizio, il totale e «mostra tutte». */
@@ -167,6 +170,28 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
 
         <p v-for="(f, i) in dati.rate.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
 
+        <!-- Decisione 25 (B3a): le bozze che passano a chi entra — cambia l'intestatario, non l'importo. -->
+        <div v-if="riassegnazione.length" class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <table class="w-full table-fixed text-[12px]">
+            <colgroup><col class="w-[44%]" /><col class="w-[30%]" /><col class="w-[26%]" /></colgroup>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              <tr v-for="r in riassegnazione" :key="r.piano_rate_id" class="align-top">
+                <td class="px-3 py-1.5 text-slate-700 dark:text-slate-300 truncate" :title="r.piano">{{ r.piano }}</td>
+                <td class="px-3 py-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{{ r.n }} {{ r.n === 1 ? 'rata' : 'rate' }} · {{ dataBreve(r.dal) }}<template v-if="r.al !== r.dal">–{{ dataBreve(r.al) }}</template></td>
+                <td class="px-3 py-1.5 text-right tabular-nums font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">{{ r.preventivo_formattato }}</td>
+              </tr>
+            </tbody>
+            <tfoot class="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
+              <tr>
+                <td colspan="3" class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Bozze che passano a chi entra
+                  <span class="font-normal normal-case tracking-normal text-slate-400"> · cambia l'intestatario, non l'importo</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
         <!-- Il conguaglio proposto, per gestione: le due righe in saldi e la rinuncia motivata (S5). -->
         <div v-if="conguaglio" class="rounded-lg border border-indigo-200 dark:border-indigo-800/60 overflow-hidden">
           <table class="w-full table-fixed text-[12px]">
@@ -183,6 +208,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <!-- Straordinario: il gradino è quello congelato sulle righe (dichiarata sulla fattura, o la delibera), non un'etichetta fissa (S8-4). -->
                   <template v-else-if="g.natura === 'straordinaria'">{{ GRADINI[g.gradino[0]] ?? GRADINI.delibera }}<span v-if="g.gradino[0] === 'dichiarata' && g.periodo?.length" class="block">{{ dataBreve(g.periodo[0].dal) }}–{{ dataBreve(g.periodo[g.periodo.length - 1].al) }}<template v-if="g.giorni_uscente !== null && g.giorni_uscente !== undefined"> · giorni {{ g.giorni_uscente }} / {{ g.giorni_entrante }}</template></span><span v-else-if="g.periodo?.[0]"> · {{ dataBreve(g.periodo[0].dal) }}</span></template>
                   <template v-else>giorni {{ g.giorni_uscente ?? '—' }} / {{ g.giorni_entrante ?? '—' }}<span v-if="g.gradino[0]" class="block">{{ GRADINI[g.gradino[0]] ?? g.gradino[0] }}</span></template>
+                  <span v-if="g.bozze_passate > 0" class="block">intero piano {{ g.importo_lordo_formattato }} − bozze {{ g.bozze_passate_formattato }}</span>
                 </td>
                 <td class="px-3 py-1.5 text-right tabular-nums font-semibold whitespace-nowrap" :class="g.importo === 0 ? 'text-slate-400' : 'text-indigo-800 dark:text-indigo-300'">
                   {{ g.importo === 0 ? '—' : g.importo_formattato }}
@@ -200,10 +226,11 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             <tfoot class="bg-indigo-50/60 dark:bg-indigo-900/20 border-t border-indigo-200 dark:border-indigo-800/60">
               <tr>
                 <td colspan="2" class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-800 dark:text-indigo-300">
-                  <template v-if="haCoppie">Debito a chi entra, credito a chi esce</template>
+                  <template v-if="haCoppie && rovesciato">Credito a chi entra, debito a chi esce</template>
+                  <template v-else-if="haCoppie">Debito a chi entra, credito a chi esce</template>
                   <template v-else>Nessuna riga in saldi da questo passaggio</template>
                 </td>
-                <td class="px-3 py-1.5 text-right tabular-nums font-bold text-indigo-900 dark:text-indigo-200 whitespace-nowrap">{{ haCoppie ? conguaglio.totale_entrante_formattato : '—' }}</td>
+                <td class="px-3 py-1.5 text-right tabular-nums font-bold text-indigo-900 dark:text-indigo-200 whitespace-nowrap">{{ haCoppie ? conguaglio.totale_entrante_assoluto_formattato : '—' }}</td>
               </tr>
             </tfoot>
           </table>
@@ -214,6 +241,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
                 <span class="font-medium">Le parti hanno regolato il conguaglio fra loro</span>: non scrivere le due righe in saldi.
                 <span class="block text-[11px] text-slate-500">Vale fra venditore e acquirente («salvo diverso accordo», Cass. 11199/2021), non verso il condominio. La ragione resta nel passaggio.</span>
+                <span v-if="riassegnazione.length" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque a chi entra: la rinuncia riguarda solo le due righe in saldi.</span>
               </span>
             </label>
             <div v-if="rinuncia" class="pl-6 space-y-1">

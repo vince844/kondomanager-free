@@ -34,6 +34,7 @@ class RipartoCapitoliService
 {
     /** L'importo di un soggetto che nessuna colonna spiega: nel registrato non deve esistere. */
     public const COLONNA_FUORI_RIPARTO = MatriceRipartoBuilder::COLONNA_FUORI_RIPARTO;
+    public const COLONNA_PASSATE = MatriceRipartoBuilder::COLONNA_PASSATE;
     /** Lo sconto a chi aveva già versato, per soggetto, dal dettaglio (non più dedotto). */
     public const COLONNA_GIA_VERSATO = MatriceRipartoBuilder::COLONNA_GIA_VERSATO;
     /** I saldi degli esercizi precedenti (`regole_calcolo.importi.saldo_usato`), che non passano dal motore. */

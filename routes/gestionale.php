@@ -8,6 +8,7 @@ use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
 use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController;
 use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\PassaggioController;
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
+use App\Http\Controllers\Gestionale\Immobili\ProspettoOneriController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\FetchFattureSimiliController;
@@ -200,6 +201,10 @@ Route::prefix('/gestionale/{condominio}')
     // scrittura sullo stesso dato sarebbe due verità con due regole.
     Route::get('immobili/{immobile}/pertinenze', [ImmobileController::class, 'pertinenze'])
         ->name('immobili.pertinenze.index');
+
+    // B3a (1.11.0-beta.34): il prospetto degli oneri accessori dell'unità, per esercizio (in query).
+    Route::get('immobili/{immobile}/prospetto-oneri', [ProspettoOneriController::class, 'stampa'])
+        ->name('immobili.prospetto-oneri');
     
     // --- CASSE ---
     Route::resource('casse', CassaController::class)

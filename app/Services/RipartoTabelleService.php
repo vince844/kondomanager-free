@@ -52,6 +52,7 @@ class RipartoTabelleService
     public const COLONNA_PREGRESSO = MatriceRipartoBuilder::COLONNA_PREGRESSO;
     public const COLONNA_GIA_VERSATO = MatriceRipartoBuilder::COLONNA_GIA_VERSATO;
     public const COLONNA_FUORI_RIPARTO = MatriceRipartoBuilder::COLONNA_FUORI_RIPARTO;
+    public const COLONNA_PASSATE = MatriceRipartoBuilder::COLONNA_PASSATE;
 
     public function buildMatrice(PianoRate $pianoRate): array
     {

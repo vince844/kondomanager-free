@@ -180,22 +180,39 @@ class EstrattoContoAnagraficaController extends Controller
             ->unique()
             ->values();
 
+        // Più di una quota per (rata, unità) della stessa persona è possibile dalla 1.11.0-beta.34: chi compra da un
+        // comproprietario ha la sua quota e quella passata con la vendita (decisione 25). Un `keyBy` ne teneva una sola e
+        // la applicava a tutte e due le righe dell'emissione (Fase 1-bis, R3: € 40,00 in meno in un estratto conto).
         $quoteMap = RataQuote::whereIn('rata_id', $rataIds)
             ->where('anagrafica_id', $anagrafica->id)
+            ->orderBy('id')
             ->get()
-            ->keyBy(fn($q) => $q->rata_id . '_' . $q->immobile_id);
+            ->groupBy(fn($q) => $q->rata_id . '_' . $q->immobile_id);
+        $quoteUsate = [];
 
-        
         // --- STEP 2: PRE-ELABORAZIONE QUOTE PURE E SALDI USATI ---
-        $movimenti->each(function ($riga) use ($quoteMap) {
+        $movimenti->each(function ($riga) use ($quoteMap, &$quoteUsate) {
             $riga->quotaPura       = $riga->importo;
             $riga->saldoUsato      = 0;
             $riga->totaleRichiesto = $riga->importo;
             $riga->quotaRecord     = null;
 
             if ($riga->rata && $riga->tipo_riga === 'dare') {
-                $key   = $riga->rata->id . '_' . $riga->immobile_id;
-                $quota = $quoteMap->get($key);
+                $key    = $riga->rata->id . '_' . $riga->immobile_id;
+                $gruppo = $quoteMap->get($key) ?? collect();
+                $tipoMov = $riga->scrittura->tipo_movimento ?? null;
+                $tipoMov = $tipoMov instanceof \BackedEnum ? $tipoMov->value : $tipoMov;
+                if ($tipoMov === 'emissione_rata' && $gruppo->count() > 1) {
+                    // Una riga di emissione per quota: si abbina la quota di quella scrittura con lo stesso importo, poi
+                    // una qualsiasi non ancora usata, e se non ne restano la prima. Le altre righe (rettifiche, storni)
+                    // pesano l'importo contabile e non consumano quote.
+                    $quota = $gruppo->first(fn ($q) => ! isset($quoteUsate[$q->id]) && (int) $q->scrittura_contabile_id === (int) $riga->scrittura_id && (int) $q->importo === (int) $riga->importo)
+                        ?? $gruppo->first(fn ($q) => ! isset($quoteUsate[$q->id]))
+                        ?? $gruppo->first();
+                    $quoteUsate[$quota->id] = true;
+                } else {
+                    $quota = $gruppo->first();
+                }
 
                 if ($quota) {
                     $riga->quotaRecord = $quota;

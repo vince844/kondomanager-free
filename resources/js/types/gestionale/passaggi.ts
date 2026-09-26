@@ -63,12 +63,19 @@ export interface ConguaglioDati {
     quote: number; quota_pura: number; pregressi: number;
     giorni_uscente: number | null; giorni_entrante: number | null; giorni_periodo: number | null;
     importo: number; importo_formattato: string; non_risolte: number; escluse: number; esercizio_id: number | null;
+    /** Decisione 25 (B3a): la parte di chi entra sull'intero piano, e il preventivo delle bozze che passano a lui. `importo` è la differenza. */
+    importo_lordo: number; importo_lordo_formattato: string;
+    bozze_passate: number; bozze_passate_importo: number; bozze_passate_formattato: string;
   }[];
   /** Una per (gestione, unità), solo se ≠ 0: è ciò che finisce in `saldi`. */
   /** Chi entra sta dentro la coppia: con più nudi proprietari all'estinzione dell'usufrutto ogni coppia ha il suo (S8-30). */
   coppie: { gestione_id: number; gestione: string | null; immobile_id: number; esercizio_id: number | null; importo: number; importo_formattato?: string; anagrafica_entrante_id?: number; entrante_nome?: string }[];
   totale_entrante: number;
   totale_entrante_formattato: string;
+  /** Con le bozze che passano la coppia può rovesciarsi: il verso lo dice il segno di `totale_entrante`. */
+  totale_entrante_assoluto_formattato: string;
+  /** Decisione 25 (B3a): le bozze che passano a chi entra, riepilogate per piano. */
+  riassegnazione: { piano_rate_id: number; piano: string; n: number; quote: number; dal: string; al: string; preventivo: number; preventivo_formattato: string; pregresso: number }[];
   pregressi: number;
   non_risolte: { piano: string; motivo: string }[];
   frasi: string[];

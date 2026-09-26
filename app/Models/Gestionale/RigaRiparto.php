@@ -19,7 +19,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * Invariante, per costruzione e per test: per ogni (anagrafica, immobile) del piano,
  * Σ `importo` delle righe con soggetto = Σ `regole_calcolo.importi.quota_pura_gestione` delle
- * sue quote (il saldo non passa dal motore ed è nella quota, non qui).
+ * quote di cui è il soggetto del riparto (il saldo non passa dal motore ed è nella quota, non qui).
+ * Il soggetto del riparto di una quota è `regole_calcolo.riassegnazione.righe_di` quando una vendita
+ * l'ha fatta passare a chi entra (decisione 25, 1.11.0-beta.34), altrimenti la sua `anagrafica_id`:
+ * le righe restano di chi aveva la quota alla generazione, le quote cambiano intestatario.
  *
  * ## Le quattro forme
  *

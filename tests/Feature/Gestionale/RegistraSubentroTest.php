@@ -931,7 +931,7 @@ it('S8-30 — estinzione dell\'usufrutto con due nudi proprietari (60/40) e una 
     expect($vademecum)->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni');
 });
 
-it('decisione 21 (S8-1) — piano da 4 rate emesso in parte a giornale: la coppia copre TUTTE le quote di chi esce, comprese le tre in bozza (27.655 su 41.200, non 6.914), il cancello lo dice e le bozze restano sue', function () {
+it('decisione 21 (S8-1) — piano da 4 rate emesso in parte a giornale: la coppia copre TUTTE le quote di chi esce, comprese le tre in bozza (27.655 su 41.200, non 6.914), il cancello lo dice e le bozze restano sue perché scadono prima del rogito (decisione 25, B3a)', function () {
     $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
     $pianoId = DB::table('piani_rate')->insertGetId(['gestione_id' => $this->gestione->id, 'condominio_id' => $this->condominio->id, 'esercizio_id' => $this->esercizio->id, 'nome' => 'Piano 4 rate', 'numero_rate' => 4, 'giorno_scadenza' => 30, 'metodo_distribuzione' => 'tutte_rate', 'attivo' => true, 'stato' => 'approvato', 'tipo' => 'ordinario', 'contesto_creazione' => 'preventivo_iniziale', 'created_at' => now(), 'updated_at' => now()]);
     $scritturaId = DB::table('scritture_contabili')->insertGetId(['condominio_id' => $this->condominio->id, 'esercizio_id' => $this->esercizio->id, 'gestione_id' => $this->gestione->id, 'data_registrazione' => now(), 'data_competenza' => now(), 'numero_protocollo' => 'TEST-EM-21', 'causale' => 'Emissione', 'tipo_movimento' => 'emissione_rata', 'stato' => 'registrata', 'created_at' => now(), 'updated_at' => now()]);
@@ -946,8 +946,11 @@ it('decisione 21 (S8-1) — piano da 4 rate emesso in parte a giornale: la coppi
     // Prima: solo la rata 1 (10.300 × 245/365 = 6.914); le tre bozze sarebbero restate a Rossi senza conguaglio, perché il piano non si ricalcola più.
     expect($c['coppie'][0]['importo'])->toBe(27655)->and($c['quote'])->toHaveCount(4)
         ->and(collect($c['quote'])->where('in_bozza', true))->toHaveCount(3)
-        ->and($c['quote_in_bozza'])->toBe([['piano' => 'Piano 4 rate', 'intestatario' => 'Rossi Mario', 'n' => 3]])
-        ->and($anteprima['rate']['frasi'][1])->toContain('Comprese le 3 quote del piano «Piano 4 rate» non ancora emesse: il piano ha già emesso a giornale e non si può più ricalcolare')
+        // Le tre bozze scadono il 28 di febbraio, marzo e aprile, prima del rogito del 1° maggio: nella vendita non passano
+        // a chi entra (decisione 25) e la frase dice perché.
+        ->and($c['quote_in_bozza'])->toBe([['piano' => 'Piano 4 rate', 'intestatario' => 'Rossi Mario', 'n' => 3, 'motivo' => 'scade_prima']])
+        ->and($c['bozze_riassegnate'])->toBe([])
+        ->and($anteprima['rate']['frasi'][1])->toContain('Comprese le 3 quote del piano «Piano 4 rate» non ancora emesse che scadono prima del 1 maggio 2026: resteranno intestate a Rossi Mario e si conguagliano qui')
         ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('il piano «Piano 4 rate» ha 3 quote non ancora emesse intestate a Rossi Mario: non si può più ricalcolare, restano sue e sono comprese nel conguaglio')
         ->not->toContain('il destinatario cambierebbe');
 
@@ -1035,22 +1038,25 @@ it('S8-23 — la copia autentica non può essere stata ricevuta in un giorno fut
     expect(Subentro::count())->toBe(0);
 });
 
-it('decisione 21 + S8-3 — le bozze comprese possono essere del predecessore: dopo Rossi → Bianchi, alla vendita di Bianchi la frase dice che la bozza del piano di Rossi resterà intestata a Rossi, non a Bianchi (visto a video il 20/09)', function () {
+it('decisione 21 + S8-3 — le bozze comprese possono essere del predecessore: dopo Rossi → Bianchi, alla vendita di Bianchi la frase dice che la bozza del piano di Rossi resterà intestata a Rossi, non a Bianchi (visto a video il 20/09); dalla B3a è una bozza scaduta prima del primo rogito, l\'unica che resta a Rossi', function () {
     $verdi = rsPersona($this->condominio, 'Verdi Luca');
     $rigaRossi = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
     $pianoId = rsQuotaEmessa($this->gestione, $this->condominio, $this->immobile, $this->rossi, 36500);
     $scritturaId = DB::table('scritture_contabili')->insertGetId(['condominio_id' => $this->condominio->id, 'esercizio_id' => $this->esercizio->id, 'gestione_id' => $this->gestione->id, 'data_registrazione' => now(), 'data_competenza' => now(), 'numero_protocollo' => 'TEST-EM-S83', 'causale' => 'Emissione', 'tipo_movimento' => 'emissione_rata', 'stato' => 'registrata', 'created_at' => now(), 'updated_at' => now()]);
     DB::table('rate_quote')->where('anagrafica_id', $this->rossi->id)->update(['scrittura_contabile_id' => $scritturaId]);
-    $rataBozza = DB::table('rate')->insertGetId(['piano_rate_id' => $pianoId, 'numero_rata' => 2, 'data_scadenza' => '2026-09-30', 'importo_totale' => 3650, 'stato' => 'bozza', 'created_at' => now(), 'updated_at' => now()]);
-    DB::table('rate_quote')->insert(['rata_id' => $rataBozza, 'anagrafica_id' => $this->rossi->id, 'immobile_id' => $this->immobile->id, 'importo' => 3650, 'importo_pagato' => 0, 'stato' => 'da_pagare', 'tipo' => 'ordinaria', 'data_scadenza' => '2026-09-30', 'regole_calcolo' => json_encode(['importi' => ['quota_pura_gestione' => 3650, 'saldo_usato' => 0, 'totale_calcolato' => 3650]]), 'created_at' => now(), 'updated_at' => now()]);
+    // Scade il 15 aprile, prima del rogito del 1° maggio: resta a Rossi (decisione 25) anche dopo la prima vendita.
+    // Una bozza di settembre sarebbe passata a Bianchi e poi a Verdi: è il caso di `RiassegnazioneBozzeTest`.
+    $rataBozza = DB::table('rate')->insertGetId(['piano_rate_id' => $pianoId, 'numero_rata' => 2, 'data_scadenza' => '2026-04-15', 'importo_totale' => 3650, 'stato' => 'bozza', 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('rate_quote')->insert(['rata_id' => $rataBozza, 'anagrafica_id' => $this->rossi->id, 'immobile_id' => $this->immobile->id, 'importo' => 3650, 'importo_pagato' => 0, 'stato' => 'da_pagare', 'tipo' => 'ordinaria', 'data_scadenza' => '2026-04-15', 'regole_calcolo' => json_encode(['importi' => ['quota_pura_gestione' => 3650, 'saldo_usato' => 0, 'totale_calcolato' => 3650]]), 'created_at' => now(), 'updated_at' => now()]);
 
     $this->actingAs($this->user)->post($this->rotta, rsVendita($rigaRossi, $this->bianchi, ['ho_letto' => true, 'nota_cancello' => 'primo rogito, letto']))->assertRedirect()->assertSessionHasNoErrors();
+    expect(DB::table('rate_quote')->where('rata_id', $rataBozza)->value('anagrafica_id'))->toBe($this->rossi->id);
     $rigaBianchi = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $this->bianchi->id)->value('id');
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $this->immobile]), rsVendita($rigaBianchi, $verdi, ['decorrenza' => '2026-09-01', 'copia_autentica_il' => '2026-09-05']))->assertOk()->json();
 
     $frasi = implode("\n", $anteprima['rate']['frasi']);
     expect($frasi)->toContain('Compresa la quota del piano «Piano Ordinaria 2026 2026» non ancora emessa')->toContain('resterà intestata a Rossi Mario')->not->toContain('intestata a Bianchi Anna')
-        ->and($anteprima['rate']['conguaglio']['quote_in_bozza'])->toBe([['piano' => 'Piano Ordinaria 2026 2026', 'intestatario' => 'Rossi Mario', 'n' => 1]])
+        ->and($anteprima['rate']['conguaglio']['quote_in_bozza'])->toBe([['piano' => 'Piano Ordinaria 2026 2026', 'intestatario' => 'Rossi Mario', 'n' => 1, 'motivo' => 'predecessore']])
         // L1-9: il cancello usa lo stesso insieme del conguaglio anche per le bozze, con il nome del predecessore.
         ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('il piano «Piano Ordinaria 2026 2026» ha 1 quota non ancora emessa intestata a Rossi Mario: non si può più ricalcolare')->not->toContain('intestata a Bianchi Anna')
         // 36.500 + 3.650 = 40.150 × 122/365 = 13.420 a Verdi.

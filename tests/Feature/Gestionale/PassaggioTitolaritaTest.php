@@ -254,7 +254,7 @@ it('inv. 20 — il conguaglio guarda la competenza, non i pagamenti: con la quot
     expect($c['quote'][0])->toMatchArray(['quota_pura' => 31200, 'pregresso' => 10000, 'uscente' => 10258, 'entrante' => 20942])
         ->and($c['coppie'][0]['importo'])->toBe(20942)
         ->and($json['rate']['morosita'])->toMatchArray(['importo' => 41200, 'intestatario' => 'Rossi Mario'])
-        ->and(implode(' ', $json['rate']['frasi']))->toContain('€ 100,00 delle quote emesse a Rossi Mario sono saldi pregressi')
+        ->and(implode(' ', $json['rate']['frasi']))->toContain('€ 100,00 delle quote intestate a Rossi Mario sono saldi pregressi')
         ->toContain('Rossi Mario ha € 412,00 scaduti e non pagati. Restano suoi');
 });
 

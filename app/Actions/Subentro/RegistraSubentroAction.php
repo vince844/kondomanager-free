@@ -14,6 +14,7 @@ use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\TitolaritaImmobile;
 use App\Models\User;
+use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\AnteprimaPassaggio;
 use App\Services\Subentro\GuardieTitolarita;
@@ -145,6 +146,13 @@ final class RegistraSubentroAction
                     $coppie = $this->scriviCoppie($condominio, $subentro, $conguaglio, $decorrenza, $avvisi);
                 }
 
+                // 6-bis. Le bozze che passano a chi entra (decisione 25, B3a): cambia il nome, non l'importo. Anche con la
+                // rinuncia: le parti hanno regolato fra loro la coppia, non chi paga le rate che devono ancora scadere.
+                $riassegnate = 0;
+                if ($conguaglio !== null && ! empty($conguaglio['bozze_riassegnate'])) {
+                    $riassegnate = $this->riassegnaBozze($subentro, $conguaglio, $decorrenza, $utente);
+                }
+
                 // 7. Il PDF del titolo: documento dell'unità, dell'amministratore. Il file si scrive qui, così
                 //    `$path` è noto al catch anche se `create()` fallisce subito dopo (verifica S5, R5).
                 $documento = null;
@@ -154,7 +162,7 @@ final class RegistraSubentroAction
                     $subentro->update(['documento_id' => $documento->id]);
                 }
 
-                return ['subentro' => $subentro->fresh(), 'anteprima' => $anteprima, 'coppie' => $coppie, 'documento' => $documento];
+                return ['subentro' => $subentro->fresh(), 'anteprima' => $anteprima, 'coppie' => $coppie, 'riassegnate' => $riassegnate, 'documento' => $documento];
             });
         } catch (\Throwable $e) {
             if ($path !== null && app(ArchivioDocumenti::class)->esiste($path)) {
@@ -398,6 +406,105 @@ final class RegistraSubentroAction
         }
 
         return $scritte;
+    }
+
+    // --- Le bozze che passano (decisione 25, B3a) ----------------------------------------------------
+
+    /**
+     * Cambia l'intestatario delle bozze che il pannello ha detto che passano, **quota per quota** e con gli stessi
+     * numeri (anteprima = scrittura): l'importo della rata non cambia, il riparto non si rifà.
+     *
+     * - Ogni quota si rilegge con il lock e con le stesse condizioni del calcolo — ancora di chi esce, rata in bozza,
+     *   non emessa a giornale, non pagata: se nel frattempo una è stata emessa o incassata, non si scrive niente e si
+     *   chiede di ricaricare, invece di spostare una quota che non è più una bozza.
+     * - Il **saldo pregresso** dentro la quota (metodo «spalmati», o «prima rata» quando la prima è ancora in bozza)
+     *   non passa: la quota di chi entra porta il solo preventivo, e a chi esce resta una quota sua sulla stessa rata
+     *   con il pregresso, nella forma che il generatore dà alle quote di soli saldi (`tipo = saldo_iniziale`,
+     *   `quota_pura_gestione = 0`) — a debito l'emissione la chiude sul Fondo passate gestioni come la rata 0; a credito
+     *   la quota non si emette (come la rata 0 a credito) e il credito esce da lì con il rimborso o la compensazione.
+     * - `regole_calcolo.riassegnazione` ricorda da chi viene la quota, con quale passaggio e di chi è il riparto
+     *   (`righe_di`): le `righe_riparto` restano del soggetto per cui il piano è stato generato, e un passaggio
+     *   successivo le rilegge da lì.
+     * - I promemoria delle scadenze nel portale seguono le quote ({@see EventiRataCondomino}).
+     *
+     * @param array<string,mixed> $conguaglio `AnteprimaPassaggio::calcola()['rate']['conguaglio']`
+     */
+    private function riassegnaBozze(Subentro $subentro, array $conguaglio, CarbonImmutable $decorrenza, User $utente): int
+    {
+        $uscenteId = (int) $conguaglio['anagrafica_uscente_id'];
+        $entranteId = (int) $conguaglio['anagrafica_entrante_id'];
+        $adesso = now();
+        $rateToccate = [];
+
+        foreach ($conguaglio['bozze_riassegnate'] as $b) {
+            $quota = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
+                ->where('rate_quote.id', $b['rata_quote_id'])
+                ->where('rate_quote.anagrafica_id', $uscenteId)
+                ->where('rate.stato', 'bozza')
+                ->whereNull('rate_quote.scrittura_contabile_id')
+                ->where('rate_quote.importo_pagato', 0)
+                ->lockForUpdate()
+                ->first(['rate_quote.*']);
+            if ($quota === null) {
+                throw ValidationException::withMessages(['passaggio' => sprintf('La rata %d del piano «%s» non è più una bozza da passare a chi entra (è stata emessa o incassata mentre registravi): ricarica il pannello e riprova.', $b['rata'], $b['piano'])]);
+            }
+
+            $regole = is_string($quota->regole_calcolo) ? (json_decode($quota->regole_calcolo, true) ?: []) : [];
+            $quotaPura = (int) $b['quota_pura'];
+            $pregresso = (int) $quota->importo - $quotaPura;
+            $traccia = [
+                'da_anagrafica_id' => $uscenteId,
+                'subentro_id'      => $subentro->id,
+                'decorrenza'       => $decorrenza->toDateString(),
+                // Di chi è il riparto: di chi aveva la quota, o di chi l'aveva prima di lui (catena di passaggi).
+                'righe_di'         => (int) ($regole['riassegnazione']['righe_di'] ?? $uscenteId),
+                'il'               => $adesso->toIso8601String(),
+                'da'               => 'user_' . $utente->id,
+            ];
+
+            $regoleEntrante = $regole;
+            $regoleEntrante['riassegnazione'] = $traccia;
+            if ($pregresso !== 0) {
+                $regoleEntrante['importi'] = ['quota_pura_gestione' => $quotaPura, 'saldo_usato' => 0, 'totale_calcolato' => $quotaPura];
+                unset($regoleEntrante['dettagli_saldo'], $regoleEntrante['note_saldo']);
+            }
+            DB::table('rate_quote')->where('id', $quota->id)->update([
+                'anagrafica_id'  => $entranteId,
+                'importo'        => $quotaPura,
+                'stato'          => $quotaPura <= 0 ? 'credito' : 'da_pagare',
+                'regole_calcolo' => json_encode($regoleEntrante),
+                'updated_at'     => $adesso,
+            ]);
+
+            if ($pregresso !== 0) {
+                // A chi esce resta il suo pregresso, nella forma delle quote di soli saldi del generatore.
+                $diChiEsce = (array) $quota;
+                unset($diChiEsce['id']);
+                DB::table('rate_quote')->insert(array_replace($diChiEsce, [
+                    'anagrafica_id'  => $uscenteId,
+                    'importo'        => $pregresso,
+                    'importo_pagato' => 0,
+                    'stato'          => $pregresso <= 0 ? 'credito' : 'da_pagare',
+                    'tipo'           => 'saldo_iniziale',
+                    'regole_calcolo' => json_encode(array_filter([
+                        'origine'        => $regole['origine'] ?? null,
+                        'importi'        => ['quota_pura_gestione' => 0, 'saldo_usato' => $pregresso, 'totale_calcolato' => $pregresso],
+                        'parametri'      => $regole['parametri'] ?? null,
+                        'dettagli_saldo' => $regole['dettagli_saldo'] ?? null,
+                        'note_saldo'     => $regole['note_saldo'] ?? null,
+                        'divisa_da'      => ['rata_quote_id' => (int) $quota->id, 'subentro_id' => $subentro->id, 'decorrenza' => $decorrenza->toDateString()],
+                        'audit'          => $regole['audit'] ?? null,
+                    ], fn ($v) => $v !== null)),
+                    'created_at'     => $adesso,
+                    'updated_at'     => $adesso,
+                ]));
+            }
+            $rateToccate[(int) $quota->rata_id] = true;
+        }
+
+        app(EventiRataCondomino::class)->seguonoLeQuote(array_keys($rateToccate), [$uscenteId, $entranteId], $utente);
+
+        return count($conguaglio['bozze_riassegnate']);
     }
 
     // --- Documento e promemoria --------------------------------------------------------------------

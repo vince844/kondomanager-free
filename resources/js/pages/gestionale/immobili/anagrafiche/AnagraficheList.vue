@@ -24,7 +24,7 @@ import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
-import { UsersRound, ArrowRightLeft, PieChart, UserPlus, List, History, CalendarCheck, ChevronDown, Home, KeyRound, KeySquare, Landmark, CheckCircle2, Scale, ContactRound } from 'lucide-vue-next';
+import { UsersRound, ArrowRightLeft, PieChart, UserPlus, List, History, CalendarCheck, ChevronDown, Home, KeyRound, KeySquare, Landmark, CheckCircle2, Scale, ContactRound, Printer } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
@@ -37,12 +37,22 @@ const props = defineProps<{
   storico: StoricoTitolaritaDati;
   /** `Y-m-d`: il giorno a cui la tabella si riferisce. Oggi, finché il riparto non avrà una data sua. */
   oggi: string;
+  /** B3a: il prospetto degli oneri accessori, solo se l'unità ha o ha avuto un inquilino; `null` altrimenti. */
+  prospettoOneri?: { url: string; esercizi: { id: number; nome: string }[]; corrente: number | null } | null;
 }>();
+
+// Il prospetto si apre in una scheda nuova, come le altre stampe; l'esercizio va in query.
+const apriProspetto = (esercizioId: number) => {
+  if (!props.prospettoOneri) return;
+  window.open(`${props.prospettoOneri.url}?esercizio=${esercizioId}`, '_blank');
+};
 
 const { generatePath, generateRoute } = usePermission();
 
 interface PassaggioRegistrato {
   subentro_id: number; frase: string; coppie: number; conguaglio: string | null; rinuncia: boolean;
+  /** Decisione 25 (B3a): la coppia rovesciata (le bozze passate coprono più dei giorni di chi entra) e le bozze passate. */
+  conguaglio_rovesciato?: boolean; riassegnate?: number; riassegnate_frase?: string | null;
   documento: string | null; promemoria: string | null; avvisi: string[]; entrante: string | null;
   azioni: { estratto_conto: string | null; anagrafe: string | null };
 }
@@ -149,6 +159,29 @@ function urlPassaggio(tipo: TipoPassaggio) {
               <span>Associa soggetto</span>
             </Link>
 
+            <!-- B3a: il prospetto degli oneri accessori — per unità, per esercizio; solo se c'è stato un inquilino. -->
+            <DropdownMenu v-if="props.prospettoOneri && props.prospettoOneri.esercizi.length">
+              <DropdownMenuTrigger as-child>
+                <button
+                  type="button"
+                  class="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  title="Le spese che il riparto pone a carico dell'inquilino, per conduttore e per giorni di conduzione"
+                >
+                  <Printer class="w-3.5 h-3.5" />
+                  <span>Prospetto oneri accessori</span>
+                  <ChevronDown class="w-3 h-3 opacity-70" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="w-60">
+                <DropdownMenuLabel class="text-[10px] uppercase tracking-widest text-slate-400">Quale esercizio?</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem v-for="e in props.prospettoOneri.esercizi" :key="e.id" class="cursor-pointer" @click="apriProspetto(e.id)">
+                  <span class="text-sm">{{ e.nome }}</span>
+                  <span v-if="e.id === props.prospettoOneri.corrente" class="ml-auto text-[10px] text-slate-400">corrente</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <!-- Il verbo che conserva: primario, con la prima domanda già dentro. -->
             <DropdownMenu>
               <DropdownMenuTrigger as-child>
@@ -196,9 +229,11 @@ function urlPassaggio(tipo: TipoPassaggio) {
                 <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Passaggio registrato.</p>
                 <p class="text-sm text-emerald-900/90 dark:text-emerald-200/90">{{ passaggioRegistrato.frase }}</p>
                 <p v-if="passaggioRegistrato.coppie > 0" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
-                  Conguaglio scritto in saldi: {{ passaggioRegistrato.coppie }} {{ passaggioRegistrato.coppie === 1 ? 'coppia' : 'coppie' }} a somma zero, {{ passaggioRegistrato.conguaglio }} a debito di chi entra. Il prossimo piano rate le assorbe.
+                  Conguaglio scritto in saldi: {{ passaggioRegistrato.coppie }} {{ passaggioRegistrato.coppie === 1 ? 'coppia' : 'coppie' }} a somma zero, {{ passaggioRegistrato.conguaglio }} a {{ passaggioRegistrato.conguaglio_rovesciato ? 'credito' : 'debito' }} di chi entra. Il prossimo piano rate le assorbe.
                 </p>
                 <p v-else-if="passaggioRegistrato.rinuncia" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">Nessuna riga in saldi: hai indicato che il conguaglio è regolato fra le parti. La ragione è nel passaggio.</p>
+                <!-- Dopo la catena coppie/rinuncia, non in mezzo: un v-if fra i due legava il v-else-if a sé (Fase 1-bis, R7). -->
+                <p v-if="passaggioRegistrato.riassegnate_frase" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">{{ passaggioRegistrato.riassegnate_frase }}</p>
                 <p v-if="passaggioRegistrato.documento" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">Allegato fra i documenti dell'unità: «{{ passaggioRegistrato.documento }}» (solo per l'amministratore).</p>
                 <p v-if="promemoriaAParole" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">Promemoria in agenda per il {{ promemoriaAParole }}.</p>
                 <p v-for="(a, i) in passaggioRegistrato.avvisi" :key="i" class="text-[13px] text-amber-800 dark:text-amber-300">{{ a }}</p>

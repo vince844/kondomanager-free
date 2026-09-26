@@ -579,6 +579,9 @@
         @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_DIRETTO]))
             <strong>Addebito diretto:</strong> spese di una sola unità, con la riga di fattura, che nessuna tabella ripartisce.&nbsp;
         @endif
+        @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_PASSATE]))
+            <strong>Passate con un passaggio:</strong> rate non ancora emesse che una vendita ha intestato a chi è entrato (cambia l'intestatario, non l'importo): si tolgono a chi le aveva nel riparto e si danno a chi le paga.&nbsp;
+        @endif
         @if(isset($tabelle[\App\Services\RipartoTabelleService::COLONNA_FUORI_RIPARTO]))
             <strong>Fuori riparto:</strong> importo addebitato che il riparto ricostruito non spiega (dati cambiati dopo la generazione).
         @endif

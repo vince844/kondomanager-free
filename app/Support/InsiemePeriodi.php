@@ -128,6 +128,29 @@ final class InsiemePeriodi implements Countable, IteratorAggregate
     }
 
     /** @return list<array{dal: string, al: string}> */
+    /**
+     * L'insieme senza i giorni del tratto dato; `null` se non ne resta nessuno (1.11.0-beta.34, Fase 1-bis R5). Serve a
+     * ricostruire i giorni di una riga di ripiego, il cui tratto congelato è l'estensione di un insieme di buchi.
+     */
+    public function meno(PeriodoCompetenza $tratto): ?self
+    {
+        $parti = [];
+        foreach ($this->periodi as $p) {
+            if ($p->intersezione($tratto) === null) {
+                $parti[] = $p;
+                continue;
+            }
+            if ($p->dal->lt($tratto->dal)) {
+                $parti[] = new PeriodoCompetenza($p->dal, $tratto->dal->subDay());
+            }
+            if ($p->al->gt($tratto->al)) {
+                $parti[] = new PeriodoCompetenza($tratto->al->addDay(), $p->al);
+            }
+        }
+
+        return $parti === [] ? null : new self(...$parti);
+    }
+
     public function toArray(): array
     {
         return array_map(fn (PeriodoCompetenza $p) => $p->toArray(), $this->periodi);

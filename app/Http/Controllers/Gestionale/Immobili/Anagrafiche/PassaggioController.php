@@ -144,7 +144,11 @@ class PassaggioController extends Controller
                 'subentro_id' => $subentro->id,
                 'frase'       => $frase,
                 'coppie'      => $esito['coppie'],
-                'conguaglio'  => $esito['coppie'] > 0 ? ($anteprima['rate']['conguaglio']['totale_entrante_formattato'] ?? null) : null,
+                'conguaglio'  => $esito['coppie'] > 0 ? ($anteprima['rate']['conguaglio']['totale_entrante_assoluto_formattato'] ?? null) : null,
+                // Decisione 25: con le bozze che passano la coppia può rovesciarsi, e allora il credito è di chi entra.
+                'conguaglio_rovesciato' => $esito['coppie'] > 0 && (int) ($anteprima['rate']['conguaglio']['totale_entrante'] ?? 0) < 0,
+                'riassegnate' => $esito['riassegnate'] ?? 0,
+                'riassegnate_frase' => $this->fraseRiassegnate($anteprima['rate']['conguaglio']['riassegnazione'] ?? [], $subentro->entrante?->nome),
                 'rinuncia'    => $subentro->conguaglioRinunciato(),
                 'documento'   => $esito['documento']?->name,
                 'promemoria'  => $esito['promemoria']?->start_time?->toDateString(),
@@ -155,6 +159,24 @@ class PassaggioController extends Controller
                     'anagrafe'       => $entranteId ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,
                 ],
             ]);
+    }
+
+    /**
+     * «Le 8 rate in bozza del piano «Preventivo 2026» sono passate a Bianchi Anna»: la stessa cosa che il pannello
+     * diceva al futuro, detta al passato dopo la scrittura (decisione 25).
+     *
+     * @param list<array{piano: string, n: int}> $riassegnazione
+     */
+    private function fraseRiassegnate(array $riassegnazione, ?string $entrante): ?string
+    {
+        if ($riassegnazione === []) {
+            return null;
+        }
+        $parti = array_map(fn ($r) => $r['n'] === 1
+            ? sprintf('la rata in bozza del piano «%s» è passata', $r['piano'])
+            : sprintf('le %d rate in bozza del piano «%s» sono passate', $r['n'], $r['piano']), $riassegnazione);
+
+        return ucfirst(implode('; ', $parti)) . sprintf(' a %s: è cambiato l\'intestatario, non l\'importo.', $entrante ?? 'chi entra');
     }
 
     /**

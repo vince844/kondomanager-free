@@ -131,7 +131,7 @@ class AnteprimaPassaggio
             'invarianti' => [
                 'frasi' => $this->blocco4($tipo, $dati, $condominio, $immobile, $uscente, $entrante),
             ],
-            'cancello' => $this->cancello($tipo, $condominio, $immobileIds, $uscente, $tutteLeEmesse, $intestatari),
+            'cancello' => $this->cancello($tipo, $condominio, $immobileIds, $uscente, $tutteLeEmesse, $intestatari, $conguaglio['riassegnazione'] ?? [], $nomeEntrante),
         ];
     }
 
@@ -144,7 +144,7 @@ class AnteprimaPassaggio
      */
     public function conguaglio(string $tipo, array $dati, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?TitolaritaImmobile $nudo, array $immobileIds, CarbonImmutable $decorrenza): array
     {
-        $nessuno = ['stato' => 'nessuno', 'anagrafica_uscente_id' => null, 'anagrafica_entrante_id' => null, 'quote' => [], 'per_gestione' => [], 'coppie' => [], 'totale_entrante' => 0, 'totale_entrante_formattato' => MoneyHelper::format(0), 'pregressi' => 0, 'non_risolte' => [], 'frasi' => []];
+        $nessuno = ['stato' => 'nessuno', 'anagrafica_uscente_id' => null, 'anagrafica_entrante_id' => null, 'quote' => [], 'per_gestione' => [], 'coppie' => [], 'totale_entrante' => 0, 'totale_entrante_formattato' => MoneyHelper::format(0), 'pregressi' => 0, 'non_risolte' => [], 'frasi' => [], 'bozze_riassegnate' => [], 'riassegnazione' => []];
         if ($tipo === 'inizio_locazione') {
             return $nessuno; // la Request rifiuta già una riga uscente qui (S8-20); la promessa del docblock vale per ogni chiamante
         }
@@ -157,7 +157,10 @@ class AnteprimaPassaggio
             return $nessuno;
         }
 
-        $esito = $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $immobileIds, $decorrenza, soloOrdinario: $tipo === 'usufrutto');
+        // Decisione 25 (B3a): nella vendita le bozze di chi esce, dalla decorrenza in poi, passano a chi entra.
+        // R4 (Fase 1-bis, decisione del 26/09/2026): nella vendita della nuda proprietà le ordinarie di un piano generato
+        // prima dell'usufrutto restano fuori — sono dell'usufruttuario (art. 1004 c.c.).
+        $esito = $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $immobileIds, $decorrenza, soloOrdinario: $tipo === 'usufrutto', riassegnaBozze: $tipo === 'vendita', nudaProprieta: $tipo === 'vendita' && $uscente->tipologia === 'nuda_proprietario');
         if ($esito['stato'] === 'nessuna_rata') {
             return $nessuno;
         }
@@ -507,7 +510,7 @@ class AnteprimaPassaggio
      * chi esce (la sua parte passerebbe, in tutto o in parte, a chi entra); per l'inizio di una
      * locazione, esiste un piano sull'unità **e** almeno una voce a carico dell'inquilino.
      */
-    private function cancello(string $tipo, Condominio $condominio, array $immobileIds, ?TitolaritaImmobile $uscente, Collection $rateEmesse, array $intestatari = []): array
+    private function cancello(string $tipo, Condominio $condominio, array $immobileIds, ?TitolaritaImmobile $uscente, Collection $rateEmesse, array $intestatari = [], array $riassegnazione = [], ?string $entrante = null): array
     {
         $motivi = [];
 
@@ -547,8 +550,20 @@ class AnteprimaPassaggio
         if ($uscente !== null && $ricalcolabili->where('anagrafica_id', (int) $uscente->anagrafica_id)->isNotEmpty()) {
             $motivi[] = sprintf('un piano rate già generato intesta quote a %s: il destinatario cambierebbe', $uscente->anagrafica?->nome);
         }
+        // Decisione 25 (B3a): nella vendita le bozze di chi esce dalla decorrenza in poi passano a chi entra; le altre
+        // restano e sono comprese nel conguaglio. Il numero è quello del calcolo, non un secondo conteggio.
+        $passanoPerPiano = collect($riassegnazione)->mapWithKeys(fn ($r) => [(int) $r['piano_rate_id'] => (int) $r['quote']])->all();
         foreach ($immutabili as $p) {
-            $motivi[] = sprintf('il piano «%s» ha %d %s non ancora %s intestat%s a %s: non si può più ricalcolare, %s e %s compres%s nel conguaglio', $p->nome, $p->n, $p->n === 1 ? 'quota' : 'quote', $p->n === 1 ? 'emessa' : 'emesse', $p->n === 1 ? 'a' : 'e', $p->intestatario, $p->n === 1 ? 'resta sua' : 'restano sue', $p->n === 1 ? 'è' : 'sono', $p->n === 1 ? 'a' : 'e');
+            $passano = $uscente !== null && (int) $p->anagrafica_id === (int) $uscente->anagrafica_id ? min((int) $p->n, $passanoPerPiano[(int) $p->piano_rate_id] ?? 0) : 0;
+            $restano = (int) $p->n - $passano;
+            $testa = sprintf('il piano «%s» ha %d %s non ancora %s intestat%s a %s: non si può più ricalcolare', $p->nome, $p->n, $p->n === 1 ? 'quota' : 'quote', $p->n === 1 ? 'emessa' : 'emesse', $p->n === 1 ? 'a' : 'e', $p->intestatario);
+            $parti = array_filter([
+                $passano > 0 ? sprintf('%s a %s (cambia l\'intestatario, non l\'importo)', $passano === (int) $p->n ? ($passano === 1 ? 'passa' : 'passano') : sprintf('%d %s', $passano, $passano === 1 ? 'passa' : 'passano'), $entrante ?? 'chi entra') : null,
+                $restano > 0 ? ($passano > 0
+                    ? sprintf('%d %s %s compres%s nel conguaglio', $restano, $restano === 1 ? 'resta sua' : 'restano sue', $restano === 1 ? 'ed è' : 'e sono', $restano === 1 ? 'a' : 'e')
+                    : sprintf('%s %s compres%s nel conguaglio', $restano === 1 ? 'resta sua' : 'restano sue', $restano === 1 ? 'ed è' : 'e sono', $restano === 1 ? 'a' : 'e')) : null,
+            ]);
+            $motivi[] = $testa . ', ' . implode('; ', $parti);
         }
 
         if ($tipo === 'inizio_locazione') {
