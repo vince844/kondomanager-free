@@ -111,8 +111,16 @@ class FetchFattureStraordinarieController extends Controller
             // sui giorni di quest'anno, sulla straordinaria la dà a chi è titolare alla data della delibera, e con
             // «Urgenza» il riparto si ferma — in nessun caso sul periodo in cui il costo è maturato. Il testo lo sceglie
             // il carrello (`avvisoFatturaNelCarrello`), che conosce gestione e autorizzazione.
-            $rawFatture->each(fn ($f) => $f->is_pregresso = false);
-            $rawFattureProgresse->each(fn ($f) => $f->is_pregresso = true);
+            //
+            // ⚠️ Un ciclo, non `->each(fn ($f) => $f->is_pregresso = false)`: la funzione freccia restituisce il valore
+            // assegnato, e `Collection::each()` si ferma al primo `false`. Solo la prima fattura corrente aveva il campo, e
+            // con due correnti il carrello rispondeva «Errore interno» (trovato dopo il commit della beta.35).
+            foreach ($rawFatture as $f) {
+                $f->is_pregresso = false;
+            }
+            foreach ($rawFattureProgresse as $f) {
+                $f->is_pregresso = true;
+            }
             $rawFatture = $rawFatture->concat($rawFattureProgresse);
 
             $fattureIds = $rawFatture->pluck('id')->toArray();

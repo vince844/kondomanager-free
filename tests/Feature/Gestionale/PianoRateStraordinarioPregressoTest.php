@@ -765,6 +765,36 @@ test('R2 [beta.35] — il carrello segnala la pregressa registrata con un period
 });
 
 /*
+| Trovato il 27/09/2026 da una sonda per l'articolo del sito sullo storno, dopo il commit della beta.35: con DUE fatture
+| correnti fuori preventivo (o ad personam) il carrello rispondeva «Errore interno». La marcatura
+| `->each(fn ($f) => $f->is_pregresso = false)` restituisce `false`, e `Collection::each()` si ferma al primo `false`: solo
+| la prima fattura corrente aveva il campo, la seconda cadeva su «Undefined property». Le pregresse (`= true`) passavano,
+| ed è per questo che i test del carrello, tutti con pregresse o con una sola corrente, erano verdi.
+*/
+test('carrello [beta.35] — con più fatture correnti fuori preventivo e ad personam il carrello le offre tutte, accanto alle pregresse', function () {
+    $utente = utenteAdminPregressa();
+    $base = baseStraordinario();
+    $prima = fatturaCorrente($base);
+    inserisciRighe($prima->id, [['conto_id' => $base['capitolo']->id, 'importo' => 50000, 'is_sopravvenienza' => true]]);
+    $seconda = fatturaCorrente($base);
+    inserisciRighe($seconda->id, [['conto_id' => $base['capitolo']->id, 'importo' => 30000, 'is_sopravvenienza' => true]]);
+    $adPersonam = fatturaCorrente($base);
+    inserisciRighe($adPersonam->id, [['conto_id' => $base['capitolo']->id, 'immobile_id' => $base['immobileId'], 'importo' => 12000]]);
+    $pregressa = registraPregresso($base);
+
+    $url = route('admin.gestionale.fetch-fatture-straordinarie', $base['condominio']->id)
+        .'?esercizio_id='.$base['esercizio']->id.'&gestione_id='.$base['gestione']->id;
+    $voci = collect($this->actingAs($utente)->getJson($url)->assertOk()->json())->keyBy('id');
+
+    expect($voci->keys()->sort()->values()->all())->toBe(collect([$prima->id, $seconda->id, $adPersonam->id, $pregressa->id])->sort()->values()->all())
+        ->and($voci[$seconda->id]['is_pregresso'])->toBeFalse()
+        ->and($voci[$seconda->id]['senza_periodo'])->toBeFalse()
+        ->and($voci[$adPersonam->id]['is_pregresso'])->toBeFalse()
+        ->and($voci[$pregressa->id]['is_pregresso'])->toBeTrue()
+        ->and($voci[$seconda->id]['residuo_da_finanziare'])->toEqual(300);
+});
+
+/*
 | Coda 156 (1.11.0-beta.35) — «dentro un piano approvato la fattura non si modifica più» deve valere per OGNI piano che la
 | contiene: una fattura si può dividere fra più piani (il carrello offre il residuo), e la guardia leggeva solo la prima
 | riga della tabella ponte. La regola gemella dell'eliminazione (`FatturaPassiva::motivoBloccoEliminazione()`) li scorreva
