@@ -204,7 +204,10 @@ test('pregressa: la generazione del piano non lancia più la RuntimeException', 
     $base   = baseStraordinario();
     $piano  = pianoStraordinario($base, registraPregresso($base), 100000);
 
-    $stats = app(GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
+    // Dalla beta.35 (decisione 26) una pregressa senza periodo chiede la presa d'atto al cancello (2): il piano non sa
+    // se nell'anno in cui il costo è maturato l'unità era di qualcun altro. `registraPregresso` passa dal servizio,
+    // senza periodo, come le pregresse registrate prima della beta.35.
+    $stats = app(GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false, accettaDestinatari: true, notaDestinatari: 'Pregressa registrata senza periodo, letto il cancello');
 
     expect($stats)->toHaveKey('piano_rate_id')
         ->and($stats['piano_rate_id'])->toBe($piano->id);
@@ -396,7 +399,7 @@ function granTotaleStampa(PianoRate $piano): int
 test('concordanza pregressa: il riparto stampato non è un foglio bianco', function () {
     $base  = baseStraordinario();
     $piano = pianoStraordinario($base, registraPregresso($base), 100000);
-    app(GeneratePianoRateAction::class)->execute($piano);
+    app(GeneratePianoRateAction::class)->execute($piano, accettaDestinatari: true, notaDestinatari: 'Pregressa registrata senza periodo, letto il cancello'); // decisione 26: pregressa senza periodo
 
     // Una pregressa non ha `righe_fattura`: la stampa restituiva `empty()` e il PDF usciva
     // completamente vuoto, mentre le rate erano state emesse correttamente. È lo scenario della
@@ -414,7 +417,7 @@ test('concordanza pregressa: il riparto stampato non è un foglio bianco', funct
 test('concordanza finanziamento parziale: si stampa la parte finanziata, non l\'intera fattura', function () {
     $base  = baseStraordinario();
     $piano = pianoStraordinario($base, registraPregresso($base), 40000);
-    app(GeneratePianoRateAction::class)->execute($piano);
+    app(GeneratePianoRateAction::class)->execute($piano, accettaDestinatari: true, notaDestinatari: 'Pregressa registrata senza periodo, letto il cancello'); // decisione 26: pregressa senza periodo
 
     // La stampa sommava `imponibile + iva` senza guardare `importo_collegato`: su una fattura da
     // € 1.000,00 finanziata per € 400,00 mostrava il riparto di tutti e mille.
@@ -603,4 +606,458 @@ test('una pregressa stornata sparisce dal carrello dello straordinario', functio
     $idDopo = collect($dopo)->pluck('id')->all();
     expect(in_array($pregressa->id, $idDopo, true))
         ->toBeFalse('il carrello offre ancora una fattura annullata: generando il piano quei soldi finiscono addosso ai proprietari');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Decisione 26, punti 2 e 3 (1.11.0-beta.35) — il periodo della pregressa
+|--------------------------------------------------------------------------
+|
+| Una pregressa non si modifica dopo la registrazione (si storna), e il periodo in cui il costo è maturato lo conosce solo
+| chi registra: la «data di origine del debito» è un'altra cosa. Quindi, quando la pregressa ha una parte non coperta dai
+| saldi iniziali — la sola che finisce in un piano — il periodo è obbligatorio e si chiude prima dell'esercizio in cui la
+| fattura si registra. Le pregresse già registrate senza periodo il carrello le segnala.
+|
+| Passano dalla ROTTA: la regola sta nella richiesta, non nel servizio, perché lo storno e questi test chiamano il servizio
+| direttamente. Gli asserti guardano solo le chiavi in prova (`competenza_dal`, `competenza_al`), per non legarsi a ogni
+| altro campo che la richiesta chiederà in futuro.
+*/
+
+function utenteAdminPregressa(): App\Models\User
+{
+    $permesso = Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    $ruolo = Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo($permesso);
+    $utente = App\Models\User::factory()->create();
+    $utente->assignRole($ruolo);
+
+    return $utente;
+}
+
+/**
+ * Il corpo della richiesta per una pregressa da € 1.000,00 scoperta (nessuna copertura): tutta sopravvenienza.
+ *
+ * ⚠️ Con `applica_ritenuta` a false la richiesta pretende il motivo dell'esclusione: senza, i casi «va bene» qui sotto
+ * venivano respinti per quel campo e passavano lo stesso, perché guardavano solo gli errori sulla competenza — nessuna
+ * fattura registrata e test verde (R14 della Fase 1-bis). I casi validi ora controllano che la fattura esista.
+ */
+function corpoPregressaScoperta(array $base, array $extra = []): array
+{
+    return array_replace_recursive(datiBase([$base['condominio'], $base['esercizio'], $base['gestione'], $base['fornitore']], [
+        'data_documento' => '2025-11-20', 'data_scadenza' => '2025-12-20', 'stato_approvazione' => 'approvata', 'applica_ritenuta' => false,
+        'is_pregresso' => true, 'imponibile_pregresso' => 1000.00, 'aliquota_iva_pregressa' => 0, 'coperture' => [], 'righe' => [],
+        'dati_extra' => ['fiscal' => ['motivo_esclusione_ritenuta' => 'fuori_campo'], 'competenza' => null, 'override_budget' => null, 'log_legale_sopravvenienza' => [
+            'nome_voce' => 'Debito pregresso manutenzioni', 'origine_decisionale' => 'gestione_corrente', 'tipo_ripartizione' => 'millesimale',
+            'is_ordinario' => true, 'richiede_copertura' => true, 'motivazione_sforo' => 'Fattura del 2025 arrivata dopo la chiusura',
+            'tabella_millesimale_id' => $base['tabella']->id, 'percentuale_proprietario' => 100, 'percentuale_inquilino' => 0, 'percentuale_usufruttuario' => 0,
+        ]],
+    ]), $extra);
+}
+
+test('decisione 26 [beta.35] — una pregressa con una parte non coperta non si registra senza il periodo in cui il costo è maturato', function () {
+    $base = baseStraordinario();
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.fatture.store', $base['condominio']->id), corpoPregressaScoperta($base))
+        ->assertSessionHasErrors(['competenza_dal']);
+});
+
+test('decisione 26 [beta.35] — il periodo della pregressa si chiude prima dell\'esercizio in cui si registra: fino al 31/12/2025 va bene, fino al 15/01/2026 no', function () {
+    $base = baseStraordinario();
+    $utente = utenteAdminPregressa();
+    $url = route('admin.gestionale.fatture.store', $base['condominio']->id);
+
+    $this->actingAs($utente)->post($url, corpoPregressaScoperta($base, ['competenza_dal' => '2025-01-01', 'competenza_al' => '2026-01-15']))
+        ->assertSessionHasErrors(['competenza_al']);
+    $this->actingAs($utente)->post($url, corpoPregressaScoperta($base, ['competenza_dal' => '2025-01-01', 'competenza_al' => '2025-12-31']))
+        ->assertSessionHasNoErrors();
+
+    // Registrata davvero, con il periodo salvato e la parte scoperta come sopravvenienza.
+    $fattura = FatturaPassiva::where('condominio_id', $base['condominio']->id)->where('is_pregresso', true)->sole();
+    expect($fattura->competenza_dal?->format('Y-m-d') ?? $fattura->competenza_dal)->toBe('2025-01-01')
+        ->and($fattura->competenza_al?->format('Y-m-d') ?? $fattura->competenza_al)->toBe('2025-12-31')
+        ->and($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->sum('importo'))->toEqual(100000);
+});
+
+test('decisione 26 [beta.35] — una pregressa TUTTA coperta dai saldi iniziali non va in nessun piano: il periodo resta facoltativo; e una fattura corrente non lo chiede', function () {
+    $base = baseStraordinario();
+    $utente = utenteAdminPregressa();
+    $url = route('admin.gestionale.fatture.store', $base['condominio']->id);
+
+    $coperta = corpoPregressaScoperta($base, ['coperture' => [['tipo_copertura' => 'rata_0', 'importo' => 1000.00, 'fonte_id' => null]]]);
+    unset($coperta['dati_extra']['log_legale_sopravvenienza']);
+    $this->actingAs($utente)->post($url, $coperta)->assertSessionHasNoErrors();
+    expect(FatturaPassiva::where('condominio_id', $base['condominio']->id)->where('is_pregresso', true)->count())->toBe(1, 'la pregressa tutta coperta non è stata registrata');
+
+    $corrente = datiBase([$base['condominio'], $base['esercizio'], $base['gestione'], $base['fornitore']], [
+        'stato_approvazione' => 'approvata', 'applica_ritenuta' => false, 'dati_extra' => ['fiscal' => ['motivo_esclusione_ritenuta' => 'fuori_campo']],
+        'righe' => [['descrizione' => 'Manutenzione', 'importo_imponibile' => 100, 'aliquota_iva' => 22, 'conto_id' => $base['capitolo']->id, 'is_sopravvenienza' => false]],
+    ]);
+    $this->actingAs($utente)->post($url, $corrente)->assertSessionHasNoErrors();
+    expect(FatturaPassiva::where('condominio_id', $base['condominio']->id)->where('is_pregresso', false)->count())->toBe(1, 'la fattura corrente non è stata registrata');
+});
+
+test('R7 [beta.35] — la regola confronta date, non stringhe: un periodo scritto «gg-mm-aaaa» si giudica come quello ISO, in tutti e due i versi', function () {
+    $base = baseStraordinario();
+    $utente = utenteAdminPregressa();
+    $url = route('admin.gestionale.fatture.store', $base['condominio']->id);
+
+    // Dentro l'esercizio (inizia il 01/01/2026): va respinto anche se scritto all'europea.
+    $this->actingAs($utente)->post($url, corpoPregressaScoperta($base, ['competenza_dal' => '01-02-2026', 'competenza_al' => '15-06-2026']))
+        ->assertSessionHasErrors(['competenza_al']);
+    // Prima dell'esercizio: va accettato anche se scritto all'europea.
+    $this->actingAs($utente)->post($url, corpoPregressaScoperta($base, ['competenza_dal' => '01-01-2025', 'competenza_al' => '31-12-2025']))
+        ->assertSessionDoesntHaveErrors(['competenza_dal', 'competenza_al']);
+    // Il primo giorno dell'esercizio con un fuso orario positivo: è il 01/01, non il 31/12 in UTC (verifica delle correzioni).
+    $this->actingAs($utente)->post($url, corpoPregressaScoperta($base, ['competenza_dal' => '2025-01-01', 'competenza_al' => '2026-01-01T00:00:00+01:00']))
+        ->assertSessionHasErrors(['competenza_al']);
+});
+
+test('R8 [beta.35] — una pregressa con «coperture» che non è una lista riceve un errore di validazione, non un 500', function () {
+    $base = baseStraordinario();
+
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.fatture.store', $base['condominio']->id), corpoPregressaScoperta($base, ['coperture' => 'x']))
+        ->assertStatus(302)
+        ->assertSessionHasErrors(['coperture']);
+});
+
+test('decisione 26 [beta.35] — anche una copertura «sopravvenienza» messa a mano nella richiesta (la seconda porta) vuole il periodo', function () {
+    $base = baseStraordinario();
+    $corpo = corpoPregressaScoperta($base, ['coperture' => [['tipo_copertura' => 'sopravvenienza', 'importo' => 1000.00, 'fonte_id' => $base['capitolo']->id]]]);
+    unset($corpo['dati_extra']['log_legale_sopravvenienza']);
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.fatture.store', $base['condominio']->id), $corpo)
+        ->assertSessionHasErrors(['competenza_dal']);
+});
+
+test('decisione 26 [beta.35] — il carrello segnala la pregressa già registrata senza periodo, e non quella con il periodo', function () {
+    $utente = utenteAdminPregressa();
+    $base = baseStraordinario();
+    $senza = registraPregresso($base);
+    $con = registraPregresso($base);
+    $con->update(['competenza_dal' => '2025-01-01', 'competenza_al' => '2025-12-31']);
+
+    $url = route('admin.gestionale.fetch-fatture-straordinarie', $base['condominio']->id)
+        .'?esercizio_id='.$base['esercizio']->id.'&gestione_id='.$base['gestione']->id;
+    $voci = collect($this->actingAs($utente)->getJson($url)->assertOk()->json())->keyBy('id');
+
+    expect($voci[$senza->id]['is_pregresso'] ?? null)->toBeTrue()
+        ->and($voci[$senza->id]['senza_periodo'] ?? null)->toBeTrue()
+        ->and($voci[$con->id]['senza_periodo'] ?? null)->toBeFalse();
+});
+
+test('R2 [beta.35] — il carrello segnala la pregressa registrata con un periodo dentro l\'esercizio (la data dell\'assemblea che la finestra precompilava), e non quella chiusa prima', function () {
+    $utente = utenteAdminPregressa();
+    $base = baseStraordinario();
+    $dentro = registraPregresso($base);
+    $dentro->update(['competenza_dal' => '2026-03-10', 'competenza_al' => '2026-03-10']);
+    $prima = registraPregresso($base);
+    $prima->update(['competenza_dal' => '2025-01-01', 'competenza_al' => '2025-12-31']);
+    $senza = registraPregresso($base);
+
+    $url = route('admin.gestionale.fetch-fatture-straordinarie', $base['condominio']->id)
+        .'?esercizio_id='.$base['esercizio']->id.'&gestione_id='.$base['gestione']->id;
+    $voci = collect($this->actingAs($utente)->getJson($url)->assertOk()->json())->keyBy('id');
+
+    expect($voci[$dentro->id]['periodo_nell_esercizio'] ?? null)->toBeTrue()
+        ->and($voci[$prima->id]['periodo_nell_esercizio'] ?? null)->toBeFalse()
+        ->and($voci[$senza->id]['periodo_nell_esercizio'] ?? null)->toBeFalse();
+});
+
+/*
+| Coda 156 (1.11.0-beta.35) — «dentro un piano approvato la fattura non si modifica più» deve valere per OGNI piano che la
+| contiene: una fattura si può dividere fra più piani (il carrello offre il residuo), e la guardia leggeva solo la prima
+| riga della tabella ponte. La regola gemella dell'eliminazione (`FatturaPassiva::motivoBloccoEliminazione()`) li scorreva
+| già tutti.
+*/
+test('Coda 156 [beta.35] — fattura divisa fra un piano in bozza (collegato per primo) e uno approvato: la modifica è bloccata e il motivo nomina il piano approvato', function () {
+    $base = baseStraordinario();
+    $fattura = fatturaCorrente($base);
+    $nuovoPiano = fn (string $nome, string $stato) => PianoRate::create([
+        'gestione_id' => $base['gestione']->id, 'condominio_id' => $base['condominio']->id, 'nome' => $nome, 'stato' => $stato,
+        'tipo' => 'straordinario', 'numero_rate' => 2, 'metodo_distribuzione' => 'prima_rata',
+    ]);
+    $inBozza = $nuovoPiano('Facciata — prima parte', 'bozza');
+    $approvato = $nuovoPiano('Facciata — seconda parte', 'approvato');
+    $inBozza->fatture()->attach($fattura->id, ['importo_collegato' => 50000]);
+    $approvato->fatture()->attach($fattura->id, ['importo_collegato' => 50000]);
+
+    $motivo = (new FatturaPassivaService())->motivoBloccoModifica($fattura->fresh());
+    expect($motivo)->not->toBeNull()->and($motivo)->toContain('Facciata — seconda parte');
+
+    // Controllo: con tutti e due i piani in bozza la fattura resta modificabile.
+    $approvato->update(['stato' => 'bozza']);
+    expect((new FatturaPassivaService())->motivoBloccoModifica($fattura->fresh()))->toBeNull();
+});
+
+/*
+|--------------------------------------------------------------------------
+| R1 della Fase 1-bis (1.11.0-beta.35) — lo storno di una fattura che sta in un piano
+|--------------------------------------------------------------------------
+|
+| Lo storno non guardava i piani: la fattura annullata restava in `piano_rate_fatture`, il motore la leggeva senza
+| escludere le stornate e le rate la chiedevano ancora. Registrata di nuovo e messa in un piano nuovo, i condòmini la
+| pagavano due volte. La decisione 26 ci mandava l'amministratore col suo testo («storna e registra di nuovo»).
+|
+| Decisione di Vincenzo del 27/09/2026: lo storno segue la scala dell'eliminazione, con UNA regola per modifica,
+| eliminazione e storno. Finché il piano non ha incassato niente lo storno si rifiuta e dice la via; con incassi è
+| permesso, e la conferma avvisa che le rate restano. Un piano che contiene già una fattura stornata non si ricalcola.
+*/
+
+/**
+ * Una pregressa da € 1.000,00 in un piano da fatture già generato, portato al grado chiesto: `bozza`, `approvato`,
+ * `emesso` (una quota a giornale), `incassato` (una quota con un incasso).
+ *
+ * @return array{0: array, 1: FatturaPassiva, 2: PianoRate}
+ */
+function r1PianoConPregressa(string $grado): array
+{
+    $base = baseStraordinario();
+    $pregressa = registraPregresso($base);
+    $piano = pianoStraordinario($base, $pregressa, 100000);
+    $piano->update(['nome' => 'Facciata 2026']);
+    app(GeneratePianoRateAction::class)->execute($piano, accettaDestinatari: true, notaDestinatari: 'Pregressa registrata senza periodo, letto il cancello');
+
+    $quotaId = DB::table('rate_quote')->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
+        ->where('rate.piano_rate_id', $piano->id)->orderBy('rate_quote.id')->value('rate_quote.id');
+    expect($quotaId)->not->toBeNull('il piano non ha generato quote: lo scenario non è quello che credo');
+    $scritturaId = DB::table('scritture_contabili')->orderBy('id')->value('id');
+
+    match ($grado) {
+        'bozza' => null,
+        'approvato' => $piano->update(['stato' => 'approvato']),
+        'emesso' => DB::table('rate_quote')->where('id', $quotaId)->update(['scrittura_contabile_id' => $scritturaId]),
+        'incassato' => DB::table('rate_quote')->where('id', $quotaId)->update(['scrittura_contabile_id' => $scritturaId, 'importo_pagato' => 10000]),
+    };
+    if (in_array($grado, ['emesso', 'incassato'], true)) {
+        $piano->update(['stato' => 'approvato']);
+    }
+
+    return [$base, $pregressa->fresh(), $piano->fresh()];
+}
+
+function r1TotaleQuote(PianoRate $piano): int
+{
+    return (int) DB::table('rate_quote')->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
+        ->where('rate.piano_rate_id', $piano->id)->sum('rate_quote.importo');
+}
+
+test('R1 [beta.35] — una fattura in un piano che non ha ancora incassato niente non si storna: il motivo nomina il piano e dice la via, per ogni grado', function (string $grado, string $via) {
+    [$base, $pregressa, $piano] = r1PianoConPregressa($grado);
+    $utente = utenteAdminPregressa();
+
+    $risposta = $this->actingAs($utente)->post(route('admin.gestionale.fatture.storno', [$base['condominio']->id, $pregressa->id]));
+    $risposta->assertSessionHasErrors('storno_vietato');
+    $motivo = session('errors')->first('storno_vietato');
+
+    expect($motivo)->toContain('«Facciata 2026»')->toContain($via)
+        ->and($pregressa->fresh()->stato_pagamento->value)->toBe('aperta', 'lo storno è avvenuto lo stesso')
+        ->and(FatturaPassiva::where('tipo_documento', 'nota_credito')->count())->toBe(0)
+        // Il menu dell'elenco mostra lo stesso motivo che applica il server: è la stessa funzione.
+        ->and($pregressa->fresh()->motivoBloccoStorno())->toBe($motivo);
+})->with([
+    'in bozza' => ['bozza', 'Elimina prima il piano'],
+    'approvato, senza emissioni' => ['approvato', 'Riporta il piano in bozza ed eliminalo'],
+    'con rate emesse ma senza incassi' => ['emesso', 'Annulla le emissioni'],
+]);
+
+test('R1 [beta.35] — seguita la via (il piano eliminato), la fattura si storna', function () {
+    [$base, $pregressa, $piano] = r1PianoConPregressa('bozza');
+
+    $piano->fattureStraordinarie()->detach();
+    $piano->delete();
+
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.fatture.storno', [$base['condominio']->id, $pregressa->id]))
+        ->assertSessionHasNoErrors();
+    expect($pregressa->fresh()->stato_pagamento->value)->toBe('stornata');
+});
+
+test('R1 [beta.35] — con rate già incassate lo storno resta possibile, e l\'elenco porta l\'avviso che le rate del piano restano', function () {
+    [$base, $pregressa, $piano] = r1PianoConPregressa('incassato');
+    $utente = utenteAdminPregressa();
+
+    $props = $this->actingAs($utente)->get(route('admin.gestionale.fatture.index', $base['condominio']->id))
+        ->assertOk()->viewData('page')['props'];
+    $riga = collect($props['fatture']['data'])->firstWhere('id', $pregressa->id);
+    expect($riga['motivo_blocco_storno'])->toBeNull()
+        ->and($riga['avviso_storno'])->toContain('«Facciata 2026»')->toContain('restano');
+
+    $this->actingAs($utente)
+        ->post(route('admin.gestionale.fatture.storno', [$base['condominio']->id, $pregressa->id]))
+        ->assertSessionHasNoErrors();
+    expect($pregressa->fresh()->stato_pagamento->value)->toBe('stornata');
+});
+
+test('R1 [beta.35] — modifica, eliminazione e storno non si contraddicono: dove una dice «usa lo storno», lo storno è permesso', function (string $grado) {
+    [$base, $pregressa, $piano] = r1PianoConPregressa($grado);
+    // Una fattura corrente nello stesso piano: la pregressa non si modifica mai, e qui serve la regola del piano.
+    $corrente = fatturaCorrente($base);
+    $piano->fatture()->attach($corrente->id, ['importo_collegato' => 0]);
+    $corrente = $corrente->fresh();
+
+    $modifica = (new FatturaPassivaService())->motivoBloccoModifica($corrente);
+    $eliminazione = $corrente->motivoBloccoEliminazione();
+    $storno = $corrente->motivoBloccoStorno();
+
+    foreach (['modifica' => $modifica, 'eliminazione' => $eliminazione] as $azione => $motivo) {
+        if ($motivo !== null && str_contains(mb_strtolower($motivo), 'storno')) {
+            expect($storno)->toBeNull("la {$azione} manda allo storno ({$motivo}) e lo storno è rifiutato ({$storno})");
+        }
+    }
+    match ($grado) {
+        'bozza' => expect($modifica)->toBeNull()->and($eliminazione)->toBeNull()->and($storno)->toContain('Elimina prima il piano'),
+        'approvato' => expect($modifica)->toContain('riportalo in bozza')->and($eliminazione)->toContain('Riporta il piano in bozza'),
+        'emesso' => expect($modifica)->toContain('annulla le emissioni')->and($eliminazione)->toContain('Annulla le emissioni'),
+        'incassato' => expect($modifica)->toContain('usa lo storno')->and($eliminazione)->toContain('usa lo storno')->and($storno)->toBeNull(),
+    };
+})->with(['bozza', 'approvato', 'emesso', 'incassato']);
+
+test('R1 [beta.35] — un piano che contiene già una fattura stornata non si ricalcola: si ferma e la nomina, e le quote restano quelle di prima', function () {
+    [$base, $pregressa, $piano] = r1PianoConPregressa('bozza');
+    $prima = r1TotaleQuote($piano);
+    expect($prima)->toBe(100000);
+
+    // I dati di prima della beta: la fattura stornata quando lo storno non guardava i piani (StornoFatturaController).
+    $pregressa->update(['stato_pagamento' => 'stornata', 'dati_extra' => array_merge($pregressa->dati_extra ?? [], ['is_stornata' => true])]);
+
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$base['condominio']->id, $base['esercizio']->id, $piano->id]), [
+            'accetta_destinatari' => true, 'nota_destinatari' => 'Pregressa registrata senza periodo, letto il cancello',
+        ])
+        ->assertSessionHas('message', fn ($m) => $m['type'] === 'error'
+            && str_contains($m['message'], (string) $pregressa->numero_documento)
+            && str_contains($m['message'], 'stornata'));
+
+    expect(r1TotaleQuote($piano))->toBe($prima);
+});
+
+test('R1 [beta.35] — con la fattura in due piani conta il più avanzato: approvato (il primo) e uno che ha già incassato, la modifica manda allo storno e dice cosa fare prima', function () {
+    $base = baseStraordinario();
+    $corrente = fatturaCorrente($base);
+    // Il piano approvato nasce per primo: la regola non deve fermarsi al primo piano che trova.
+    $approvato = PianoRate::create([
+        'gestione_id' => $base['gestione']->id, 'condominio_id' => $base['condominio']->id, 'nome' => 'Tetto — prima parte',
+        'stato' => 'approvato', 'tipo' => 'straordinario', 'numero_rate' => 2, 'metodo_distribuzione' => 'prima_rata',
+    ]);
+    $approvato->fatture()->attach($corrente->id, ['importo_collegato' => 0]);
+
+    $pregressa = registraPregresso($base);
+    $incassato = pianoStraordinario($base, $pregressa, 100000);
+    $incassato->update(['nome' => 'Tetto — seconda parte']);
+    app(GeneratePianoRateAction::class)->execute($incassato, accettaDestinatari: true, notaDestinatari: 'Pregressa registrata senza periodo, letto il cancello');
+    $quotaId = DB::table('rate_quote')->join('rate', 'rate_quote.rata_id', '=', 'rate.id')->where('rate.piano_rate_id', $incassato->id)->value('rate_quote.id');
+    DB::table('rate_quote')->where('id', $quotaId)->update(['importo_pagato' => 10000]);
+    $incassato->fatture()->attach($corrente->id, ['importo_collegato' => 0]);
+
+    $modifica = (new FatturaPassivaService())->motivoBloccoModifica($corrente->fresh());
+
+    // Il piano che ha incassato decide che la strada è lo storno; quello approvato va eliminato prima.
+    expect($modifica)->toContain('«Tetto — prima parte»')->toContain('poi storna la fattura');
+});
+
+test('R4 [beta.35] — una pregressa che nel piano non ripartisce niente (copertura senza conto) non ferma il cancello con una frase falsa', function () {
+    $base = baseStraordinario();
+    $pregressa = registraPregresso($base);
+    // La copertura «sopravvenienza» senza conto: il motore la scarta (whereNotNull), e la fattura contribuisce € 0,00.
+    DB::table('fattura_coperture')->where('fattura_passiva_id', $pregressa->id)->update(['conto_id' => null]);
+    $corrente = fatturaCorrente($base);
+    inserisciRighe($corrente->id, [['conto_id' => $base['capitolo']->id, 'importo' => 50000, 'is_sopravvenienza' => true]]);
+
+    $piano = pianoStraordinario($base, $corrente, 50000);
+    $piano->fatture()->attach($pregressa->id, ['importo_collegato' => 100000]);
+
+    // Il cancello diceva «il piano la ripartisce sui giorni di …» per una fattura che nel piano non c'è.
+    $stats = app(GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
+    expect($stats)->toHaveKey('piano_rate_id');
+});
+
+test('R9 [beta.35] — sul flusso vero: aprire in modifica una fattura in un piano con rate emesse rimanda indietro e dice di annullare le emissioni', function () {
+    [$base, , $piano] = r1PianoConPregressa('emesso');
+    $corrente = fatturaCorrente($base);
+    $piano->fatture()->attach($corrente->id, ['importo_collegato' => 0]);
+
+    $this->actingAs(utenteAdminPregressa())
+        ->get(route('admin.gestionale.fatture.edit', [$base['condominio']->id, $corrente->id]))
+        ->assertRedirect()
+        ->assertSessionHas('message', fn ($m) => $m['type'] === 'error'
+            && str_contains($m['message'], '«Facciata 2026»')
+            && str_contains($m['message'], 'annulla le emissioni'));
+});
+
+test('R10 [beta.35] — la nota del cancello è obbligatoria anche quando la presa d\'atto arriva come «1» e non come true', function () {
+    [$base, , $piano] = r1PianoConPregressa('bozza');
+
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$base['condominio']->id, $base['esercizio']->id, $piano->id]), [
+            'accetta_destinatari' => '1',
+        ])
+        ->assertSessionHasErrors(['nota_destinatari']);
+    expect($piano->fresh()->titolarita_alla['nota_cancello'] ?? null)->toBeNull();
+});
+
+test('verifica delle correzioni [beta.35] — creare un piano con una fattura stornata nel frattempo (un\'altra scheda, una richiesta a mano) si rifiuta e la nomina', function () {
+    $base = baseStraordinario();
+    $pregressa = registraPregresso($base);
+    $pregressa->update(['stato_pagamento' => 'stornata', 'dati_extra' => array_merge($pregressa->dati_extra ?? [], ['is_stornata' => true])]);
+
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.esercizi.piani-rate.store', [$base['condominio']->id, $base['esercizio']->id]), [
+            'gestione_id' => $base['gestione']->id, 'nome' => 'Facciata 2026', 'tipo' => 'straordinario',
+            'tipo_autorizzazione' => 'delibera', 'motivazione_autorizzazione' => 'Delibera di prova',
+            'fatture_config' => [['id' => $pregressa->id, 'importo' => '1000,00']],
+            'metodo_distribuzione' => 'prima_rata', 'numero_rate' => 2, 'giorno_scadenza' => 10, 'capitoli_ids' => [], 'genera_subito' => true,
+        ])
+        ->assertSessionHasErrors(['fatture_config.0.id']);
+    expect(session('errors')->first('fatture_config.0.id'))->toContain((string) $pregressa->numero_documento)->toContain('stornata')
+        ->and(PianoRate::where('nome', 'Facciata 2026')->exists())->toBeFalse();
+});
+
+test('verifica delle correzioni [beta.35] — R10: una presa d\'atto «TRUE» o «On» senza nota non passa più', function (string $valore) {
+    [$base, , $piano] = r1PianoConPregressa('bozza');
+
+    $this->actingAs(utenteAdminPregressa())
+        ->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$base['condominio']->id, $base['esercizio']->id, $piano->id]), [
+            'accetta_destinatari' => $valore,
+        ])
+        ->assertSessionHasErrors();
+    expect($piano->fresh()->titolarita_alla['nota_cancello'] ?? null)->toBeNull();
+})->with(['TRUE', 'On', 'YES']);
+
+test('verifica delle correzioni [beta.35] — anche per la pregressa del piano la modifica che manda allo storno dice perché lo storno ora è rifiutato, e la via', function (string $grado, string $via) {
+    [, $pregressa] = r1PianoConPregressa($grado);
+
+    $modifica = (new FatturaPassivaService())->motivoBloccoModifica($pregressa);
+
+    // Prima: «Le fatture pregresse non sono modificabili direttamente: usa lo storno.», e lo storno la rifiutava.
+    expect($pregressa->motivoBloccoStorno())->not->toBeNull()
+        ->and($modifica)->toContain('non sono modificabili direttamente')->toContain('ora non è possibile')->toContain($via);
+})->with([
+    'in bozza' => ['bozza', 'Elimina prima il piano'],
+    'approvato' => ['approvato', 'Riporta il piano in bozza ed eliminalo'],
+    'con rate emesse' => ['emesso', 'Annulla le emissioni'],
+]);
+
+test('richiesta di Vincenzo del 27/09 [beta.35] — il cancello porta i dati della pregressa, non solo il numero: fornitore, data, importi, voce e il collegamento alla fattura', function () {
+    $base = baseStraordinario();
+    $pregressa = registraPregresso($base);
+    $piano = pianoStraordinario($base, $pregressa, 100000);
+
+    $voce = null;
+    try {
+        app(GeneratePianoRateAction::class)->execute($piano);
+    } catch (\App\Exceptions\Gestionale\DestinatariCambiatiException $e) {
+        $voce = collect($e->getCambiamenti())->firstWhere('motivo', 'pregressa_senza_periodo');
+    }
+
+    expect($voce)->not->toBeNull('il cancello non si è fermato sulla pregressa senza periodo')
+        ->and($voce['fattura'])->toMatchArray([
+            'numero'               => $pregressa->numero_documento,
+            'fornitore'            => $base['fornitore']->ragione_sociale,
+            'data_documento'       => $pregressa->data_documento->format('d/m/Y'),
+            'totale_formattato'    => \App\Helpers\MoneyHelper::format(100000),
+            'nel_piano_formattato' => \App\Helpers\MoneyHelper::format(100000),
+            'voce'                 => 'Debito Pregresso Straordinario',
+        ])
+        ->and($voce['fattura']['url'])->toContain('/fatture/' . $pregressa->id);
 });

@@ -71,11 +71,18 @@ export interface FatturaPassiva {
     updated_at: string;
 
     /**
-     * Perché la fattura non si può eliminare, calcolato dal server con tutti e
-     * sette i motivi; `null` (o assente) significa eliminabile. Non è una
+     * Perché la fattura non si può eliminare, calcolato dal server con tutti i
+     * motivi (otto dalla 1.11.0-beta.35); `null` (o assente) significa eliminabile. Non è una
      * colonna: viene aggiunto solo nell'elenco, con `append()`.
      */
     motivo_blocco_eliminazione?: string | null;
+
+    /**
+     * Perché la fattura non si può stornare, calcolato dal server (dalla 1.11.0-beta.35 guarda anche i piani rate); e,
+     * quando lo storno è permesso ma un piano ha già incassato, l'avviso che le rate restano. Solo nell'elenco.
+     */
+    motivo_blocco_storno?: string | null;
+    avviso_storno?: string | null;
 
     // Relazioni precaricate dal Backend (Eager Loading)
     fornitore?: FornitoreFattura;

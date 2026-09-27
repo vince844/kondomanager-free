@@ -109,3 +109,101 @@ describe('Coda 133 — anche le note da storno GIÀ a database', () => {
         expect(wrapper.text()).not.toContain('Registra pagamento');
     });
 });
+
+describe('DataTableRowActions — lo storno e i piani rate (1.11.0-beta.35, R1 della Fase 1-bis)', () => {
+    const MOTIVO = 'La fattura è nel piano rate «Facciata 2026», in bozza: dopo lo storno le sue rate la chiederebbero ancora. Elimina prima il piano, poi storna la fattura; le altre fatture del piano, se ce ne sono, tornano disponibili per un piano nuovo.';
+
+    test('con il motivo del server lo storno non si offre: la voce dice «non consentito», è cliccabile e apre la finestra con il perché del server', async () => {
+        const wrapper = mount(DataTableRowActions, {
+            props: { fattura: { ...FATTURA_BASE, netto_a_pagare: 100000, motivo_blocco_storno: MOTIVO }, condominioId: 18 },
+            global: {
+                stubs: {
+                    DropdownMenu: { template: '<div><slot /></div>' }, DropdownMenuContent: { template: '<div><slot /></div>' },
+                    DropdownMenuTrigger: { template: '<div><slot /></div>' }, DropdownMenuLabel: { template: '<div><slot /></div>' },
+                    // La voce stub inoltra `disabled` e il clic: una voce rimessa `disabled` farebbe fallire il test.
+                    DropdownMenuItem: { props: { disabled: Boolean }, emits: ['click'], template: '<div role="menuitem" :data-disabled="disabled ? \'\' : undefined" @click="!disabled && $emit(\'click\')"><slot /></div>' },
+                    DropdownMenuSeparator: true, ConfirmDialog: true, teleport: true,
+                    Button: { template: '<button><slot /></button>' },
+                },
+                mocks: { route: (n: string) => `/${n}` },
+            },
+        });
+
+        expect((wrapper.vm as any).puoStornare).toBe(false);
+        const voce = wrapper.findAll('[role="menuitem"]').find(v => v.text().includes('Storna — non consentito'))!;
+        expect(voce.attributes('data-disabled')).toBeUndefined();
+
+        await voce.trigger('click');
+
+        // Prima il motivo stava in un `title` su una voce disattivata, con `pointer-events: none`: non si leggeva mai.
+        expect(wrapper.text()).toContain('Storno non consentito');
+        expect(wrapper.text()).toContain(MOTIVO);
+    });
+
+    test('senza motivo lo storno resta offerto — il controesempio', () => {
+        const wrapper = renderRowActions({ ...FATTURA_BASE, netto_a_pagare: 100000, motivo_blocco_storno: null });
+
+        expect((wrapper.vm as any).puoStornare).toBe(true);
+        expect(wrapper.text()).not.toContain('non consentito');
+    });
+
+    test('con un piano che ha già incassato la conferma dello storno avvisa che le rate restano', () => {
+        const AVVISO = 'La fattura è nel piano rate «Facciata 2026», che ha già incassato rate. Lo storno annulla la fattura in contabilità, ma le rate del piano restano e continuano a chiederla.';
+        const wrapper = mount(DataTableRowActions, {
+            props: { fattura: { ...FATTURA_BASE, netto_a_pagare: 100000, avviso_storno: AVVISO }, condominioId: 18 },
+            global: {
+                stubs: {
+                    DropdownMenu: { template: '<div><slot /></div>' }, DropdownMenuContent: { template: '<div><slot /></div>' },
+                    DropdownMenuTrigger: { template: '<div><slot /></div>' }, DropdownMenuLabel: { template: '<div><slot /></div>' },
+                    DropdownMenuItem: { template: '<div><slot /></div>' }, DropdownMenuSeparator: true,
+                    // Le finestre stanno in un <Teleport to="body">: senza questo stub il loro contenuto non è nel wrapper.
+                    teleport: true,
+                    ConfirmDialog: { props: ['title'], template: '<section :data-titolo="title"><slot /></section>' },
+                    Button: { template: '<button><slot /></button>' },
+                },
+                mocks: { route: (n: string) => `/${n}` },
+            },
+        });
+
+        expect(wrapper.find('section[data-titolo="Storno contabile"]').text()).toContain(AVVISO);
+    });
+});
+
+
+describe('DataTableRowActions — le voci «non consentito» si leggono al clic (Coda 162, 1.11.0-beta.35)', () => {
+    // La voce vera ha `pointer-events: none` quando è `disabled`: il motivo in un `title` non si leggeva mai. Lo stub
+    // inoltra `disabled` come Boolean e blocca il clic, come la voce vera: rimetterla `disabled` fa fallire il test.
+    const monta = (fattura: Record<string, unknown>) => mount(DataTableRowActions, {
+        props: { fattura: { ...FATTURA_BASE, ...fattura }, condominioId: 18 },
+        global: {
+            stubs: {
+                DropdownMenu: { template: '<div><slot /></div>' }, DropdownMenuContent: { template: '<div><slot /></div>' },
+                DropdownMenuTrigger: { template: '<div><slot /></div>' }, DropdownMenuLabel: { template: '<div><slot /></div>' },
+                DropdownMenuItem: { props: { disabled: Boolean }, emits: ['click'], template: '<div role="menuitem" :data-disabled="disabled ? \'\' : undefined" @click="!disabled && $emit(\'click\')"><slot /></div>' },
+                DropdownMenuSeparator: true, ConfirmDialog: true, teleport: true,
+                Button: { template: '<button><slot /></button>' },
+            },
+            mocks: { route: (n: string) => `/${n}` },
+        },
+    });
+    const voce = (wrapper: ReturnType<typeof monta>, testo: string) => wrapper.findAll('[role="menuitem"]').find(v => v.text().includes(testo))!;
+
+    test('«Elimina — non consentito» apre la finestra con il motivo del server', async () => {
+        const MOTIVO = 'La fattura è nel piano rate «Tetto», che è approvato (art. 1135 c.c.). Riporta il piano in bozza per poterla eliminare.';
+        const wrapper = monta({ netto_a_pagare: 100000, motivo_blocco_eliminazione: MOTIVO });
+
+        await voce(wrapper, 'Elimina — non consentito').trigger('click');
+
+        expect(wrapper.text()).toContain('Eliminazione non consentita');
+        expect(wrapper.text()).toContain(MOTIVO);
+    });
+
+    test('«Storna — prima i pagamenti» apre la finestra con la via', async () => {
+        const wrapper = monta({ netto_a_pagare: 100000, stato_pagamento: 'pagata' });
+
+        await voce(wrapper, 'Storna — prima i pagamenti').trigger('click');
+
+        expect(wrapper.text()).toContain('Storno non consentito');
+        expect(wrapper.text()).toContain('storna prima il pagamento dalla sezione Pagamenti fornitori');
+    });
+});

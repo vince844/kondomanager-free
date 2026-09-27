@@ -11,6 +11,7 @@ use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\Tabella;
 use App\Exceptions\Gestionale\DestinatariCambiatiException;
+use App\Exceptions\Gestionale\FatturaStornataNelPianoException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Models\Anagrafica;
 use App\Models\Esercizio;
@@ -81,6 +82,16 @@ class GeneratePianoRateAction
             $pianoRate->load('gestione');
         }
         $gestione = $pianoRate->gestione;
+
+        // R1 della Fase 1-bis (1.11.0-beta.35): una fattura stornata quando lo storno non guardava i piani è rimasta nel
+        // suo piano, e il motore non esclude le stornate. Ci si ferma prima di scrivere qualunque cosa.
+        if ($pianoRate->tipo === 'straordinario') {
+            $stornate = $pianoRate->fatture->filter(fn ($f) => ($f->dati_extra['is_stornata'] ?? false)
+                || (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) === 'stornata');
+            if ($stornate->isNotEmpty()) {
+                throw new FatturaStornataNelPianoException($pianoRate, $stornate->values());
+            }
+        }
 
         // =========================================================================
         // BIVIO ARCHITETTURALE
@@ -367,13 +378,14 @@ class GeneratePianoRateAction
         // =========================================================================
         // CANCELLO (2) — decisione 14 del progetto sul subentro (B2, 1.11.0-beta.31)
         // La risoluzione per periodo ha cambiato un destinatario o un peso rispetto a quella
-        // atemporale: si mostra **chi** e **perché**, e si procede solo con spunta e nota. Viene dopo
-        // il cancello degli scoperti, così i due non si sovrappongono nello stesso giro.
+        // atemporale — o il piano contiene una pregressa registrata senza periodo (decisione 26) —:
+        // si mostra **chi** e **perché**, e si procede solo con spunta e nota. Viene dopo il cancello
+        // degli scoperti, così i due non si sovrappongono nello stesso giro.
         // =========================================================================
         $risoluzione = $this->calcolatore->getRisoluzioneTemporale();
         $cambiamenti = $risoluzione['destinatari_cambiati'];
         if (!empty($cambiamenti) && !$accettaDestinatari) {
-            throw new DestinatariCambiatiException($this->arricchisciCambiamenti($cambiamenti));
+            throw new DestinatariCambiatiException($this->arricchisciCambiamenti($cambiamenti, $pianoRate));
         }
         $titolaritaAlla = empty($cambiamenti)
             ? GenerateRateQuotesAction::TITOLARITA_ATEMPORALE
@@ -381,8 +393,9 @@ class GeneratePianoRateAction
                 'risoluzione'          => 'temporale',
                 'destinatari_cambiati' => true,
                 'nota_cancello'        => $notaDestinatari,
-                // Le coppie (unità, ruolo) cambiate, non le voci: una coppia compare in una voce per conto.
-                'coppie'               => count(array_unique(array_map(fn ($c) => $c['immobile_id'].'|'.$c['tipologia'], $cambiamenti))),
+                // Le coppie (unità, ruolo) cambiate, non le voci: una coppia compare in una voce per conto. La pregressa
+                // senza periodo (decisione 26) non è una coppia: chiede la nota, ma non cambia nessun destinatario.
+                'coppie'               => count(array_unique(array_map(fn ($c) => $c['immobile_id'].'|'.$c['tipologia'], array_filter($cambiamenti, fn ($c) => ($c['motivo'] ?? null) !== 'pregressa_senza_periodo')))),
             ];
 
         // 3. GESTIONE SALDI
@@ -552,8 +565,22 @@ class GeneratePianoRateAction
      * @param list<array<string,mixed>> $cambiamenti
      * @return list<array<string,mixed>>
      */
-    private function arricchisciCambiamenti(array $cambiamenti): array
+    private function arricchisciCambiamenti(array $cambiamenti, PianoRate $pianoRate): array
     {
+        // Le pregresse senza periodo (decisione 26): la finestra le nomina, e il solo numero non basta a riconoscerle —
+        // fornitore, data, importi e voce, più il collegamento alla fattura (richiesta di Vincenzo a video, 27/09/2026).
+        $fattureIds = array_values(array_unique(array_filter(array_map(
+            fn (array $c) => ($c['motivo'] ?? null) === 'pregressa_senza_periodo' ? (int) ($c['fattura_id'] ?? 0) : null,
+            $cambiamenti,
+        ))));
+        $pregresse = empty($fattureIds) ? collect() : FatturaPassiva::with('fornitore')->whereIn('id', $fattureIds)->get()->keyBy('id');
+        $nelPiano = empty($fattureIds) ? [] : DB::table('piano_rate_fatture')->where('piano_rate_id', $pianoRate->id)
+            ->whereIn('fattura_passiva_id', $fattureIds)->pluck('importo_collegato', 'fattura_passiva_id')->all();
+        $vociCopertura = empty($fattureIds) ? collect() : DB::table('fattura_coperture')
+            ->join('conti', 'conti.id', '=', 'fattura_coperture.conto_id')
+            ->whereIn('fattura_coperture.fattura_passiva_id', $fattureIds)->where('fattura_coperture.tipo_copertura', 'sopravvenienza')
+            ->pluck('conti.nome', 'fattura_coperture.fattura_passiva_id');
+
         $immobiliIds = array_unique(array_filter(array_column($cambiamenti, 'immobile_id')));
         $contiIds    = array_unique(array_filter(array_column($cambiamenti, 'conto_id')));
         $righeIds    = [];
@@ -579,7 +606,19 @@ class GeneratePianoRateAction
             ->keyBy('id');
         $anagraficheNomi = empty($anagraficheIds) ? [] : Anagrafica::whereIn('id', $anagraficheIds)->pluck('nome', 'id')->all();
 
-        return array_map(function (array $c) use ($immobiliNomi, $contiNomi, $righe, $anagraficheNomi) {
+        return array_map(function (array $c) use ($immobiliNomi, $contiNomi, $righe, $anagraficheNomi, $pregresse, $nelPiano, $vociCopertura) {
+            if (($c['motivo'] ?? null) === 'pregressa_senza_periodo' && ($f = $pregresse->get((int) ($c['fattura_id'] ?? 0)))) {
+                $c['fattura'] = [
+                    'id'                   => (int) $f->id,
+                    'numero'               => (string) $f->numero_documento,
+                    'fornitore'            => $f->fornitore?->ragione_sociale,
+                    'data_documento'       => $f->data_documento?->format('d/m/Y'),
+                    'totale_formattato'    => \App\Helpers\MoneyHelper::format((int) abs((int) $f->totale_documento)),
+                    'nel_piano_formattato' => isset($nelPiano[$f->id]) ? \App\Helpers\MoneyHelper::format((int) $nelPiano[$f->id]) : null,
+                    'voce'                 => $f->dati_extra['log_legale_sopravvenienza']['nome_voce'] ?? $vociCopertura->get($f->id),
+                    'url'                  => route('admin.gestionale.fatture.show', [$f->condominio_id, $f->id]),
+                ];
+            }
             $c['immobile_nome'] = $c['immobile_id'] ? ($immobiliNomi[$c['immobile_id']] ?? 'Immobile #' . $c['immobile_id']) : null;
             $c['conto_nome'] = ($c['conto_id'] ?? null) ? ($contiNomi[$c['conto_id']] ?? 'Conto #' . $c['conto_id']) : null;
             $c['righe'] = array_map(function (array $r) use ($righe) {

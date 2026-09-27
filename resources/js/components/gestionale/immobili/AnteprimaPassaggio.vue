@@ -23,6 +23,7 @@ import { AlertTriangle, CalendarClock, Info, LoaderCircle, Receipt, Scale, Shiel
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type { AnteprimaPassaggioDati } from '@/types/gestionale/passaggi';
+import { competenzaDellaGestione } from '@/lib/gestionale/passaggi/competenzaGestione';
 
 const props = defineProps<{
   dati: AnteprimaPassaggioDati | null;
@@ -206,7 +207,9 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <template v-if="g.non_risolte > 0 && g.importo === 0">competenza non determinabile</template>
                   <template v-else-if="g.escluse > 0 && g.importo === 0">straordinaria: resta al nudo proprietario</template>
                   <!-- Straordinario: il gradino è quello congelato sulle righe (dichiarata sulla fattura, o la delibera), non un'etichetta fissa (S8-4). -->
-                  <template v-else-if="g.natura === 'straordinaria'">{{ GRADINI[g.gradino[0]] ?? GRADINI.delibera }}<span v-if="g.gradino[0] === 'dichiarata' && g.periodo?.length" class="block">{{ dataBreve(g.periodo[0].dal) }}–{{ dataBreve(g.periodo[g.periodo.length - 1].al) }}<template v-if="g.giorni_uscente !== null && g.giorni_uscente !== undefined"> · giorni {{ g.giorni_uscente }} / {{ g.giorni_entrante }}</template></span><span v-else-if="g.periodo?.[0]"> · {{ dataBreve(g.periodo[0].dal) }}</span></template>
+                  <!-- Decisione 26 (1.11.0-beta.35): anche sull'ordinaria, una voce del piano rate straordinario con la competenza dichiarata sulla fattura mostra le sue date;
+                       con voci miste la colonna dice «voce per voce» (R5 della Fase 1-bis, `competenzaDellaGestione`). -->
+                  <template v-else-if="g.natura === 'straordinaria' || g.gradino.includes('dichiarata')">{{ competenzaDellaGestione(g, GRADINI).etichetta }}<span v-if="competenzaDellaGestione(g, GRADINI).intervallo" class="block">{{ competenzaDellaGestione(g, GRADINI).intervallo }}<template v-if="g.giorni_uscente !== null && g.giorni_uscente !== undefined"> · giorni {{ g.giorni_uscente }} / {{ g.giorni_entrante }}</template></span><span v-else-if="competenzaDellaGestione(g, GRADINI).giorno"> · {{ competenzaDellaGestione(g, GRADINI).giorno }}</span></template>
                   <template v-else>giorni {{ g.giorni_uscente ?? '—' }} / {{ g.giorni_entrante ?? '—' }}<span v-if="g.gradino[0]" class="block">{{ GRADINI[g.gradino[0]] ?? g.gradino[0] }}</span></template>
                   <span v-if="g.bozze_passate > 0" class="block">intero piano {{ g.importo_lordo_formattato }} − bozze {{ g.bozze_passate_formattato }}</span>
                 </td>

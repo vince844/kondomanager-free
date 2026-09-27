@@ -17,7 +17,9 @@ use App\Support\PeriodoCompetenza;
  *   dice solo da dove arrivano i numeri (capitoli o fatture). Se i due non concordano si va avanti con
  *   la natura e lo si dichiara (`divergenzaTipoPiano`).
  * - **Ordinaria**: periodo della gestione se chiusa, altrimenti dell'esercizio. I tratti per capitolo
- *   (`competenze_capitolo`) li applica il motore conto per conto: qui c'è la base su cui ripiega.
+ *   (`competenze_capitolo`) li applica il motore conto per conto, e nel piano da fatture la competenza
+ *   dichiarata sulla singola fattura la applica il motore fattura per fattura (decisione 26, 1.11.0-beta.35):
+ *   qui c'è la base su cui ripiega.
  *   Il periodo della gestione conta **solo per la parte che cade nell'esercizio del piano**: il prodotto
  *   riusa la stessa gestione ordinaria su più esercizi senza spostarne le date (`CondominioService::
  *   createDefaultGestione`, importatore), e un piano 2026 su una gestione datata 2025 non deve ereditare

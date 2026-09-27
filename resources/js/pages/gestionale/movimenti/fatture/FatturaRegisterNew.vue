@@ -27,7 +27,8 @@ import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/Modal
 import ModalCreaFornitoreDaXml from '@/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue';
 import ModalImportaXml from '@/components/gestionale/movimenti/fatture/ModalImportaXml.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
-import { lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
+import { descriviMargine, lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
+import { erroreDelPeriodoPregressa } from '@/lib/gestionale/fatture/periodoPregressa';
 import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import { confrontaRitenuta } from '@/lib/gestionale/fatture/confrontoRitenuta';
 import { proponiPosizioneRitenuta } from '@/lib/gestionale/fatture/posizioneRitenuta';
@@ -1646,6 +1647,12 @@ const eccedenzaPregressaCents = computed(() => {
     return eccedenza > 1 ? eccedenza : 0;
 });
 
+// Decisione 26, punto 2 (1.11.0-beta.35): una pregressa con una parte non coperta dai saldi iniziali vuole il periodo in
+// cui il costo è maturato, chiuso prima dell'esercizio della fattura. La regola sta in `StoreFatturaRequest`; qui la si
+// annuncia nel pannello e la si controlla prima dell'invio. L'esercizio è quello scelto sulla fattura.
+const periodoPregressaObbligatorio = computed(() => !isNotaCredito.value && form.is_pregresso && eccedenzaPregressaCents.value > 0);
+const inizioEsercizioFattura = computed(() => (props.esercizi ?? []).find((e: any) => e.id === form.esercizio_id)?.data_inizio ?? null);
+
 /**
  * Entry point unico per l'invio del form.
  *
@@ -1683,6 +1690,21 @@ const handleSubmit = () => {
         return;
     }
 
+    // 2-bis. Decisione 26: il periodo della pregressa con una parte non coperta. Dopo la finestra della spesa imprevista,
+    // che resta la prima domanda (Coda 129): confermata la motivazione, `handleSubmit` riparte e si ferma qui se il
+    // periodo manca o arriva dentro l'esercizio. La finestra non lo precompila con la data dell'assemblea di quest'anno.
+    const errorePeriodo = erroreDelPeriodoPregressa({
+        periodoObbligatorio: periodoPregressaObbligatorio.value,
+        dal: form.competenza_dal,
+        al: form.competenza_al,
+        inizioEsercizio: inizioEsercizioFattura.value,
+    });
+    if (errorePeriodo) {
+        form.setError(errorePeriodo.campo, errorePeriodo.messaggio);
+        portaInVistaIlRiepilogo();
+        return;
+    }
+
     // 3. Sforo budget CORRENTE
     if (!form.is_pregresso && transactionStatus.value === 'CRITICAL_BUDGET' && !form.dati_extra.override_budget) {
         showOverrideModal.value = true;
@@ -1708,7 +1730,9 @@ const handleSpesaImprevistaConfirm = (payload: any) => {
     // Un fatto, una domanda (B2, S6): la «Data assemblea» del modale è la stessa data che la competenza
     // chiama «spesa deliberata il». Se la testata è ancora vuota la si precompila; se l'amministratore
     // aveva già dichiarato un periodo, quello resta.
-    if (payload.origine_decisionale === 'delibera_assembleare' && payload.data_assemblea && !form.competenza_dal && !form.competenza_al) {
+    // Non sulla pregressa (decisione 26): la data dell'assemblea è di quest'anno, e il periodo di una pregressa si chiude
+    // prima dell'esercizio — precompilarla vorrebbe dire scrivere per l'amministratore una data che la regola rifiuta.
+    if (!form.is_pregresso && payload.origine_decisionale === 'delibera_assembleare' && payload.data_assemblea && !form.competenza_dal && !form.competenza_al) {
         form.competenza_dal = payload.data_assemblea;
         form.competenza_al = payload.data_assemblea;
     }
@@ -2288,6 +2312,8 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                             v-model:al="form.competenza_al"
                             :gestione-straordinaria="gestioneSceltaStraordinaria"
                             :pregressa="form.is_pregresso"
+                            :periodo-obbligatorio="periodoPregressaObbligatorio"
+                            :inizio-esercizio="inizioEsercizioFattura"
                             :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
 
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
@@ -2978,8 +3004,9 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                         <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
                                             <div class="flex justify-between items-start">
                                                 <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
-                                                <span class="text-xs font-black shrink-0" :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
-                                                    {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
+                                                <!-- Coda 157: segno e tono seguono il margine, non il giudizio sul documento (che resta al semaforo). -->
+                                                <span class="text-xs font-black shrink-0" :class="{ positivo: 'text-emerald-400', negativo: 'text-rose-400', neutro: 'text-slate-400' }[descriviMargine(impact.delta_cents).tono]">
+                                                    {{ euro(impact.delta_cents, descriviMargine(impact.delta_cents).opzioni) }}
                                                 </span>
                                             </div>
 
@@ -2992,7 +3019,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
 
                                             <div class="flex justify-between text-[9px] text-slate-500 font-medium">
                                                 <span>Usato: {{ euro(impact.speso_cents) }}</span>
-                                                <span>Budget: {{ euro(impact.residuo_cents) }}</span>
+                                                <span>Residuo: {{ euro(impact.residuo_cents) }}</span>
                                             </div>
 
                                             <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">

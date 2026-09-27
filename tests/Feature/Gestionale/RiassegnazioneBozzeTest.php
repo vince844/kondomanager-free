@@ -554,3 +554,196 @@ it('R17 — una bozza con un pagamento segnalato dal portale e non ancora verifi
         ->and(collect($anteprima['rate']['conguaglio']['quote_in_bozza'])->pluck('motivo')->all())->toBe(['segnalata']);
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| Decisione 26 (1.11.0-beta.35) — il piano da fatture su gestione ordinaria segue la competenza dichiarata
+|--------------------------------------------------------------------------
+|
+| Lo stesso condominio del forum, ma il piano è «da fatture» (`tipo = straordinario`) su una gestione ORDINARIA, come
+| quello che il pulsante «Finanzia spesa» apre dalla dashboard. Fino alla beta.34 la competenza dichiarata sulla fattura
+| si ignorava sull'ordinaria: la pregressa del 2025 si divideva sul 2026 e dopo la vendita del 1/5 chi entrava ne pagava
+| 245/365. Con la decisione 26 motore e conguaglio leggono la competenza della fattura, e le bozze di una voce che è tutta
+| di chi esce restano sue (niente andata e ritorno, come per la straordinaria nella decisione 25, punto 2).
+*/
+
+/**
+ * @param list<array{importo:int, pregressa?:bool, competenza?:?array{0:string,1:string}, ad_personam?:string}> $fatture tutte sullo stesso conto;
+ *   con `ad_personam` (la descrizione) la riga è addebitata direttamente all'unità, senza conto
+ */
+function rbScenarioDaFatture(array $fatture, string $metodo = 'prima_rata', int $saldoVenditore = 0): array
+{
+    static $seq = 0;
+    $seq++;
+    $c = Condominio::factory()->create();
+    $e = Esercizio::factory()->create(['condominio_id' => $c->id, 'nome' => 'Esercizio 2026', 'data_inizio' => '2026-01-01', 'data_fine' => '2026-12-31', 'stato' => 'aperto']);
+    $g = Gestione::factory()->create(['condominio_id' => $c->id, 'nome' => 'Ordinaria 2026', 'tipo' => 'ordinaria', 'data_inizio' => '2026-01-01', 'data_fine' => '2026-12-31']);
+    legaAEsercizio($e, $g->id);
+    $pc = PianoConto::create(['condominio_id' => $c->id, 'gestione_id' => $g->id, 'nome' => 'PC']);
+    $conto = Conto::create(['piano_conto_id' => $pc->id, 'nome' => 'Manutenzioni', 'tipo' => 'spesa', 'natura_spesa' => 'ordinaria', 'importo' => 0]);
+    $tabella = Tabella::create(['condominio_id' => $c->id, 'nome' => 'Proprietà', 'tipo' => 'standard', 'quota' => 'millesimi', 'attiva' => true]);
+    $ctm = DB::table('conto_tabella_millesimale')->insertGetId(['conto_id' => $conto->id, 'tabella_id' => $tabella->id, 'coefficiente' => 100, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('conto_tabella_ripartizioni')->insert(['conto_tabella_millesimale_id' => $ctm, 'soggetto' => 'proprietario', 'percentuale' => 100, 'created_at' => now(), 'updated_at' => now()]);
+    $unita = Immobile::create(['condominio_id' => $c->id, 'tipo' => 'appartamento', 'codice_immobile' => "RBF-{$seq}", 'nome' => 'Interno 1', 'interno' => '1']);
+    DB::table('quote_tabella')->insert(['tabella_id' => $tabella->id, 'immobile_id' => $unita->id, 'valore' => 1000.0, 'created_at' => now(), 'updated_at' => now()]);
+
+    $v = Anagrafica::forceCreate(['nome' => 'Venditore Ugo', 'email' => "rbf-v{$seq}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RBFVENDITOR' . str_pad((string) $seq, 5, '0', STR_PAD_LEFT)]);
+    $a = Anagrafica::forceCreate(['nome' => 'Acquirente Elsa', 'email' => "rbf-a{$seq}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RBFACQUIREN' . str_pad((string) $seq, 5, '0', STR_PAD_LEFT)]);
+    $v->condomini()->syncWithoutDetaching([$c->id]);
+    $a->condomini()->syncWithoutDetaching([$c->id]);
+    $rigaV = DB::table('anagrafica_immobile')->insertGetId(['anagrafica_id' => $v->id, 'immobile_id' => $unita->id, 'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
+    if ($saldoVenditore !== 0) {
+        Saldo::create(['esercizio_id' => $e->id, 'condominio_id' => $c->id, 'anagrafica_id' => $v->id, 'immobile_id' => $unita->id, 'gestione_id' => $g->id, 'saldo_iniziale' => $saldoVenditore, 'origine' => 'manuale', 'is_applicato' => false]);
+    }
+
+    $piano = PianoRate::create([
+        'gestione_id' => $g->id, 'condominio_id' => $c->id, 'esercizio_id' => $e->id, 'nome' => 'Spese da finanziare', 'stato' => 'approvato',
+        'tipo' => 'straordinario', 'numero_rate' => 12, 'giorno_scadenza' => 5, 'data_prima_scadenza' => '2026-01-05',
+        'metodo_distribuzione' => $metodo, 'applica_saldi' => true, 'data_delibera_assemblea' => null,
+    ]);
+    $fornitoreId = DB::table('fornitori')->insertGetId([
+        'ragione_sociale' => 'Manutenzioni Srl', 'soggetto_ritenuta' => false, 'ritenuta_decisa_il' => now(), 'perc_imponibile_ritenuta' => 100, 'perc_ritenuta' => 4,
+        'giorni_scadenza' => 30, 'modalita_pagamento_default' => 'bonifico', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    foreach ($fatture as $i => $f) {
+        $pregressa = (bool) ($f['pregressa'] ?? false);
+        $fattura = FatturaPassiva::create([
+            'condominio_id' => $c->id, 'fornitore_id' => $fornitoreId, 'esercizio_id' => $e->id, 'tipo_documento' => 'fattura', 'numero_documento' => "FT-RBF{$seq}-{$i}",
+            'data_documento' => $pregressa ? '2025-11-20' : '2026-01-02', 'data_scadenza' => '2026-02-01', 'is_pregresso' => $pregressa,
+            'importo_imponibile' => $f['importo'], 'importo_iva' => 0, 'importo_ritenuta' => 0, 'totale_documento' => $f['importo'], 'netto_a_pagare' => $f['importo'],
+            'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico',
+            'competenza_dal' => $f['competenza'][0] ?? null, 'competenza_al' => $f['competenza'][1] ?? null,
+        ]);
+        if ($pregressa) {
+            // La parte non coperta dai saldi iniziali: la copertura «sopravvenienza» sul conto, come la registra il servizio.
+            DB::table('fattura_coperture')->insert([
+                'fattura_passiva_id' => $fattura->id, 'tipo_copertura' => 'sopravvenienza', 'importo' => $f['importo'], 'stato' => 'pianificata',
+                'conto_id' => $conto->id, 'nota_amministratore' => 'Eccedenza fattura pregressa non coperta dai saldi iniziali', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } elseif (isset($f['ad_personam'])) {
+            DB::table('righe_fattura')->insert([
+                'fattura_passiva_id' => $fattura->id, 'conto_id' => null, 'immobile_id' => $unita->id, 'descrizione' => $f['ad_personam'], 'aliquota_iva' => 0,
+                'importo_imponibile' => $f['importo'], 'importo_iva' => 0, 'is_sopravvenienza' => false, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } else {
+            DB::table('righe_fattura')->insert([
+                'fattura_passiva_id' => $fattura->id, 'conto_id' => $conto->id, 'immobile_id' => null, 'descrizione' => 'Riparazione', 'aliquota_iva' => 0,
+                'importo_imponibile' => $f['importo'], 'importo_iva' => 0, 'is_sopravvenienza' => true, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $piano->fatture()->attach($fattura->id, ['importo_collegato' => $f['importo']]);
+    }
+    // A gennaio c'è solo il venditore: nessun cambio di titolare. La presa d'atto serve solo alle pregresse senza periodo.
+    app(GeneratePianoRateAction::class)->execute($piano, forzaApplicazioneSaldi: true, accettaDestinatari: true, notaDestinatari: 'Piano di prova da fatture', esercizio: $e);
+
+    return compact('c', 'e', 'g', 'unita', 'v', 'a', 'rigaV', 'piano', 'conto');
+}
+
+it('decisione 26 [beta.35] — pregressa 2025 da € 1.200,00 in un piano da fatture su gestione ordinaria, quattro rate emesse, vendita il 1/5: la voce è tutta di chi vende, nessun conguaglio, le otto bozze restano sue — e motore e conguaglio danno lo stesso numero', function () {
+    $s = rbScenarioDaFatture([['importo' => 120000, 'pregressa' => true, 'competenza' => ['2025-01-01', '2025-12-31']]]);
+    // La riga congelata porta la competenza della fattura: senza, il conguaglio non ha niente da leggere.
+    expect(DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->where('tipo', 'riparto')->pluck('gradino_competenza')->unique()->values()->all())->toBe(['dichiarata']);
+    rbEmettiFinoAdAprile($s);
+
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
+    $cg = $anteprima['rate']['conguaglio'];
+    // Prima della beta.35: 120000 × 245/365 = 80548 sull'intero piano, meno € 800,00 di bozze passate → coppia di € 5,48.
+    expect((int) $cg['totale_entrante'])->toBe(0)
+        ->and($cg['bozze_riassegnate'])->toBe([])
+        ->and(collect($cg['quote_in_bozza'])->pluck('motivo')->unique()->values()->all())->toBe(['fattura_di_chi_esce'])
+        ->and(collect($cg['quote_in_bozza'])->sum('n'))->toBe(8)
+        // Una voce sola, dichiarata: la testa mostra il suo periodo (R5 della Fase 1-bis, il controesempio).
+        ->and($cg['per_gestione'][0]['voce_per_voce'])->toBeFalse();
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), rbVendita($s))->assertSessionHasNoErrors();
+    $q = rbQuote($s);
+    expect($q['v_preventivo'])->toBe(120000)->and($q['a_preventivo'])->toBe(0)->and(rbCoppia($s))->toBe([0, 0]);
+
+    // Il motore sui titolari di oggi (venditore fino al 30/4, acquirente dal 1/5) dice lo stesso: il 2025 è del venditore.
+    $motore = new \App\Services\CalcoloQuoteService();
+    $totali = $motore->calcolaDaFattureStraordinarie($s['piano']->fresh(), app(\App\Services\Riparto\CompetenzaDelPiano::class)->perPiano($s['piano']->fresh(), $s['e']), soloLettura: true);
+    expect((int) array_sum($totali[$s['v']->id] ?? []))->toBe(120000)->and($totali[$s['a']->id] ?? null)->toBeNull();
+});
+
+it('decisione 26 [beta.35] — caso misto sullo stesso conto: pregressa 2025 da € 600,00 e imprevisto 2026 da € 600,00 senza periodo; a chi entra va solo la parte dell\'imprevisto (60000 × 245/365 = 40274) e le bozze restano a chi vende perché la voce è divisa', function () {
+    $s = rbScenarioDaFatture([
+        ['importo' => 60000, 'pregressa' => true, 'competenza' => ['2025-01-01', '2025-12-31']],
+        ['importo' => 60000],
+    ]);
+    rbEmettiFinoAdAprile($s);
+
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
+    $cg = $anteprima['rate']['conguaglio'];
+    expect((int) $cg['totale_entrante'])->toBe(40274)
+        ->and($cg['bozze_riassegnate'])->toBe([])
+        ->and(collect($cg['quote_in_bozza'])->pluck('motivo')->unique()->values()->all())->toBe(['fattura_divisa'])
+        // R5 della Fase 1-bis: una voce dichiarata e una no sulla stessa gestione — la testa non ha un periodo da mostrare.
+        ->and($cg['per_gestione'][0]['voce_per_voce'])->toBeTrue();
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), rbVendita($s))->assertSessionHasNoErrors();
+    expect(rbCoppia($s))->toBe([40274, -40274])->and(rbQuote($s)['v_preventivo'])->toBe(120000);
+});
+
+it('decisione 26 [beta.35] — controllo: lo stesso piano da fatture su gestione ordinaria SENZA competenza dichiarata non cambia (bozze a chi entra, coppia € 5,48 come nella decisione 25)', function () {
+    $s = rbScenarioDaFatture([['importo' => 120000]]);
+    rbEmettiFinoAdAprile($s);
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
+    expect((int) $anteprima['rate']['conguaglio']['totale_entrante'])->toBe(548)
+        ->and($anteprima['rate']['conguaglio']['bozze_riassegnate'])->toHaveCount(8);
+});
+
+it('R6 [beta.35] — nelle frasi voce per voce l\'addebito diretto all\'unità ha un nome, anche sull\'ordinaria: prima usciva «· : € 500,00»', function () {
+    $s = rbScenarioDaFatture([
+        ['importo' => 50000, 'ad_personam' => 'Riparazione citofono interno 1', 'competenza' => ['2026-03-01', '2026-08-31']],
+        ['importo' => 40000],
+    ]);
+    rbEmettiFinoAdAprile($s);
+
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
+    $frasi = implode("\n", $anteprima['rate']['conguaglio']['frasi']);
+
+    expect($frasi)->toContain('Riparazione citofono interno 1')->not->toContain('  · :');
+});
+
+it('verifica delle correzioni [beta.35] — R6: due addebiti diretti sulla stessa unità, con la stessa competenza, restano due voci con il loro nome e il loro importo', function () {
+    $s = rbScenarioDaFatture([
+        ['importo' => 50000, 'ad_personam' => 'Riparazione citofono interno 1', 'competenza' => ['2026-03-01', '2026-08-31']],
+        ['importo' => 30000, 'ad_personam' => 'Sostituzione vetro interno 1', 'competenza' => ['2026-03-01', '2026-08-31']],
+        ['importo' => 40000],
+    ]);
+    rbEmettiFinoAdAprile($s);
+
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
+    $frasi = implode("\n", $anteprima['rate']['conguaglio']['frasi']);
+
+    // Prima: «· Riparazione citofono interno 1: € 800,00 …», il nome della prima e la somma di tutte e due.
+    expect($frasi)->toContain('Riparazione citofono interno 1: € 500,00')->toContain('Sostituzione vetro interno 1: € 300,00');
+});
+
+it('verifica delle correzioni [beta.35] — R5: due piani da fatture sulla stessa gestione ordinaria, uno dichiarato e uno sulla base — la colonna dice «voce per voce»', function () {
+    // Piano 0: la pregressa 2025 dichiarata.
+    $s = rbScenarioDaFatture([['importo' => 60000, 'pregressa' => true, 'competenza' => ['2025-01-01', '2025-12-31']]]);
+    // Piano 1, sulla stessa gestione: una fattura corrente senza periodo, che va sui giorni della base.
+    $fornitoreId = DB::table('fornitori')->insertGetId(['ragione_sociale' => 'Secondo fornitore Srl', 'soggetto_ritenuta' => false, 'ritenuta_decisa_il' => now(), 'giorni_scadenza' => 30, 'modalita_pagamento_default' => 'bonifico', 'created_at' => now(), 'updated_at' => now()]);
+    $fattura = FatturaPassiva::create([
+        'condominio_id' => $s['c']->id, 'fornitore_id' => $fornitoreId, 'esercizio_id' => $s['e']->id, 'tipo_documento' => 'fattura', 'numero_documento' => 'FT-SECONDO',
+        'data_documento' => '2026-01-02', 'data_scadenza' => '2026-02-01', 'is_pregresso' => false, 'importo_imponibile' => 60000, 'importo_iva' => 0, 'importo_ritenuta' => 0,
+        'totale_documento' => 60000, 'netto_a_pagare' => 60000, 'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico',
+    ]);
+    DB::table('righe_fattura')->insert(['fattura_passiva_id' => $fattura->id, 'conto_id' => $s['conto']->id, 'immobile_id' => null, 'descrizione' => 'Riparazione', 'aliquota_iva' => 0, 'importo_imponibile' => 60000, 'importo_iva' => 0, 'is_sopravvenienza' => true, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now()]);
+    $secondo = PianoRate::create([
+        'gestione_id' => $s['g']->id, 'condominio_id' => $s['c']->id, 'esercizio_id' => $s['e']->id, 'nome' => 'Secondo piano', 'stato' => 'approvato',
+        'tipo' => 'straordinario', 'numero_rate' => 12, 'giorno_scadenza' => 5, 'data_prima_scadenza' => '2026-01-05', 'metodo_distribuzione' => 'prima_rata', 'applica_saldi' => false,
+    ]);
+    $secondo->fatture()->attach($fattura->id, ['importo_collegato' => 60000]);
+    app(GeneratePianoRateAction::class)->execute($secondo, accettaDestinatari: true, notaDestinatari: 'Secondo piano di prova', esercizio: $s['e']);
+    // Tutti e due emessi fino ad aprile: un piano che si può ancora ricalcolare non entra nel conguaglio.
+    rbEmettiFinoAdAprile($s);
+    rbEmettiFinoAdAprile(array_merge($s, ['piano' => $secondo]));
+
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
+    $gestione = collect($anteprima['rate']['conguaglio']['per_gestione'])->firstWhere('gestione_id', $s['g']->id);
+
+    expect($gestione['gradino'])->toContain('dichiarata')
+        ->and($gestione['voce_per_voce'])->toBeTrue();
+});

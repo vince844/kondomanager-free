@@ -7,6 +7,67 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.35] - La pregressa segue il suo periodo
+
+**Non tocca il database: nessuna migrazione.** Tre cambi di comportamento, in quest'ordine: lo storno di una fattura
+che sta in un piano rate; nel piano che finanzia le fatture la competenza dichiarata sulla fattura decide anche su una
+gestione ordinaria; il periodo diventa obbligatorio per le nuove pregresse con una parte non coperta dai saldi iniziali.
+
+**Lo storno di una fattura che sta in un piano rate.** Fino a ieri lo storno non guardava i piani: la fattura annullata
+restava nel suo piano, e le rate continuavano a chiederla. Registrata di nuovo e messa in un piano nuovo, i condòmini la
+pagavano due volte. Ora modifica, eliminazione e storno seguono una regola sola. Finché il piano non ha incassato niente,
+la fattura prima si toglie dal piano: su un piano in bozza lo storno chiede di eliminarlo, su uno approvato di riportarlo
+in bozza ed eliminarlo, su uno con rate emesse di annullare prima le emissioni; le altre fatture del piano tornano
+disponibili per un piano nuovo. Se il piano ha già incassato, lo storno resta possibile, perché la fattura è annullata
+davvero e la contabilità deve dirlo: la conferma avvisa, con il nome del piano, che le sue rate restano e che quanto i
+condòmini hanno versato per quella spesa va restituito o destinato con una delibera. Un piano che contiene già una
+fattura stornata non si ricalcola: si ferma e la nomina. La creazione di un piano rifiuta una fattura stornata nel
+frattempo. Ogni motivo che manda allo storno, quando lo storno è rifiutato, dice anche perché e che cosa fare prima.
+Nell'elenco delle fatture le voci «non consentito» si cliccano e aprono il motivo: il suggerimento al passaggio del
+mouse, fin qui, non compariva mai.
+
+**Nel piano da fatture decide la competenza della fattura, anche sull'ordinaria.** Il piano che finanzia le fatture
+fuori preventivo — quello che apre «Finanzia spesa» dalla dashboard — su una gestione ordinaria ignorava la competenza
+dichiarata sulla fattura e divideva la spesa sui giorni dell'esercizio: dopo una vendita, una fattura del 2025 la pagava
+in parte chi è entrato quest'anno. Ora la competenza dichiarata decide qualunque sia la gestione, nel motore e nel
+conguaglio del passaggio, che danno lo stesso numero. Una pregressa 2025 da € 1.200,00, quattro rate emesse, rogito il
+1° maggio: era una coppia da € 5,48 con otto bozze passate a chi compra; ora è tutta di chi vende, nessuna coppia, e le
+bozze restano sue. Un imprevisto dichiarato dal 1° marzo al 31 agosto si divide sui suoi giorni, 61 a chi vende e 123 a
+chi compra, non sui 365 dell'esercizio. Senza competenza dichiarata non cambia niente; nel piano per capitoli la
+competenza della fattura resta un dato della fattura e non sposta le rate.
+
+**Il periodo delle pregresse diventa obbligatorio.** Una pregressa con una parte non coperta dai saldi iniziali — la
+parte che finisce in un piano — non si registra più senza il periodo in cui il costo è maturato, e quel periodo si chiude
+prima dell'inizio dell'esercizio in cui la registri. Dopo non si potrebbe aggiungere: una pregressa non si modifica, si
+storna. Tutta coperta dai saldi, il periodo resta facoltativo. La finestra della motivazione non precompila più la
+competenza di una pregressa con la data dell'assemblea di quest'anno.
+
+**Le pregresse già registrate senza periodo non si indovinano.** Il carrello del piano le segnala e dice che cosa ne farà
+il riparto: sull'ordinaria i giorni di quest'anno, sulla straordinaria il giorno della delibera, con «Urgenza»
+l'arresto. Segnala anche quelle con un periodo dentro l'esercizio, come la data dell'assemblea che il modulo
+precompilava. Alla generazione il piano si ferma, dice su quali giorni la ripartisce e come rimediare, e chiede una nota
+anche quando nessun titolare cambia. La fattura si riconosce subito: fornitore e importo accanto al numero, e il numero
+apre il dettaglio con il collegamento alla fattura.
+
+**La creazione del piano mostra i rifiuti del server.** Una generazione fermata, o una gestione senza piano dei conti,
+fin qui non dicevano niente: si premeva «Salva piano rate» e non succedeva nulla di visibile. Ora il motivo compare
+accanto al pulsante, e resta finché non lo chiudi.
+
+**Nel modulo della fattura.** La regola «dentro un piano approvato la fattura non si modifica più» guarda tutti i piani
+della fattura, non il primo che trova. L'analisi del budget non mostra più «+€ -282,00» in verde: segno e colore seguono
+il numero, e l'etichetta dice «Residuo». I tre modi della competenza stanno in colonna, a tutta larghezza. Nel carrello
+del piano, sul telefono, l'importo da finanziare scende sotto il testo.
+
+**Corretti anche.** La nota della presa d'atto era facoltativa se la richiesta, costruita a mano, mandava «1» o «TRUE»
+al posto di un sì. Nel conguaglio di una vendita due addebiti diretti sulla stessa unità si fondevano in una voce sola,
+con il nome del primo e la somma dei due. Le date della competenza scritte all'europea si giudicavano come testo. Una
+pregressa con le coperture malformate dava un errore del server invece di un messaggio.
+
+**I limiti.** Come si rettifica un piano che ha già incassato per una fattura poi stornata è una scelta da fare con il
+rendiconto. Con un già versato sia della persona sia dell'unità sullo stesso conto, conguaglio e motore danno qualche
+euro di differenza, da prima di questa versione. Una copertura «sopravvenienza» senza conto non va dove dovrebbe. Il
+tema scuro del carrello delle fatture resta da sistemare.
+
 ## [1.11.0-beta.34] - Cambia il nome, non l'importo
 
 **Non tocca il database: nessuna migrazione.** Cambia come si registra una vendita su un piano rate già

@@ -201,3 +201,27 @@ it('S8-32 — un piano d\'urgenza si approva senza data della delibera (302, col
     $f = \App\Models\Gestionale\FatturaPassiva::find(doFattura($this->condominio, $this->esercizio));
     expect((new \App\Exceptions\Gestionale\RichiedeDeliberaException($piano, $f))->getMessage())->toContain('intervento d\'urgenza')->toContain('Dichiara il periodo di competenza sulla fattura')->not->toContain('Scrivi la data della delibera nel piano');
 });
+
+test('R20 [beta.35] — con «Urgenza» il messaggio d\'arresto per una pregressa non manda a modificarla: una pregressa si storna e si registra di nuovo', function () {
+    $g = doGestione($this->condominio, $this->esercizio, 'straordinaria');
+    $piano = doPianoGenerato($this->condominio, $g, null, 'urgenza');
+    $f = \App\Models\Gestionale\FatturaPassiva::find(doFattura($this->condominio, $this->esercizio));
+    $f->is_pregresso = true;
+
+    $messaggio = (new \App\Exceptions\Gestionale\RichiedeDeliberaException($piano, $f))->getMessage();
+
+    expect($messaggio)->toContain('intervento d\'urgenza')->toContain('si storna')->toContain('registrala di nuovo con il periodo')
+        ->not->toContain('Movimenti → fatture → modifica');
+});
+
+test('verifica delle correzioni [beta.35] — senza data della delibera e con una pregressa il messaggio non manda a dichiarare la competenza sulla fattura', function () {
+    $g = doGestione($this->condominio, $this->esercizio, 'straordinaria');
+    $piano = doPianoGenerato($this->condominio, $g, null, 'delibera');
+    $f = \App\Models\Gestionale\FatturaPassiva::find(doFattura($this->condominio, $this->esercizio));
+    $f->is_pregresso = true;
+
+    $messaggio = (new \App\Exceptions\Gestionale\RichiedeDeliberaException($piano, $f))->getMessage();
+
+    expect($messaggio)->toContain('Scrivi la data della delibera nel piano')->toContain('si storna e si registra di nuovo')
+        ->not->toContain('o la competenza sulla fattura');
+});

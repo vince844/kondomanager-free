@@ -195,9 +195,14 @@ class PianoRateController extends Controller
     public function store(CreatePianoRateRequest $request, Condominio $condominio, Esercizio $esercizio)
     {
         $request->validate([
-            'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
+            // `required_if_accepted` e non `required_if:…,true`: con «1» o «on» la regola di prima non chiedeva la nota, mentre
+            // `boolean()` qui sotto la presa d'atto la accettava lo stesso (R10 della Fase 1-bis, 1.11.0-beta.35). E la regola
+            // `boolean` sui due flag: `boolean()` legge anche «TRUE» e «On», che `accepted` non riconosce.
+            'accetta_scoperti' => 'nullable|boolean',
+            'accetta_destinatari' => 'nullable|boolean',
+            'nota_scoperti' => 'required_if_accepted:accetta_scoperti|nullable|string|min:10',
             // B2, cancello (2) della decisione 14.
-            'nota_destinatari' => 'required_if:accetta_destinatari,true|nullable|string|min:10',
+            'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
         ]);
         $validated = $request->validated();
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
@@ -1001,7 +1006,8 @@ class PianoRateController extends Controller
         // com'era (un titolare chiuso nel frattempo dall'elenco titolari). La presa d'atto è
         // dell'amministratore, non del programma: stessa forma di `PianoRateGenerationController`.
         $request->validate([
-            'nota_destinatari' => 'required_if:accetta_destinatari,true|nullable|string|min:10',
+            'accetta_destinatari' => 'nullable|boolean',
+            'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
         ]);
         $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
         $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;

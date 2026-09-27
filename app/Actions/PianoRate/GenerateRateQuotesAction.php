@@ -22,7 +22,9 @@ class GenerateRateQuotesAction
      * singola riga stanno in `righe_riparto` (`competenza_dal/al`, `gradino_competenza`), non qui. Quando
      * invece il periodo ha cambiato qualcuno, `GeneratePianoRateAction` scrive al suo posto
      * `{ risoluzione: 'temporale', destinatari_cambiati: true, nota_cancello, coppie }` — la presa d'atto
-     * del cancello (2), decisione 14.
+     * del cancello (2), decisione 14. Lo stesso quando il piano contiene una pregressa registrata senza
+     * periodo (decisione 26, 1.11.0-beta.35), che chiede la nota anche se nessun titolare cambia: allora
+     * `coppie` vale 0.
      */
     public const TITOLARITA_ATEMPORALE = ['risoluzione' => 'atemporale'];
 

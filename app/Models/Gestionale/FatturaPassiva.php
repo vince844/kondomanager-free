@@ -191,18 +191,20 @@ class FatturaPassiva extends Model
                  . 'Storna prima il giroconto di conferma dalla pagina Giroconti.';
         }
 
-        foreach ($this->pianiRate as $piano) {
-            if ($piano->eImmutabile()) {
-                return "La fattura è nel piano rate «{$piano->nome}», che ha già rate emesse o incassate. "
-                     . 'Annulla le emissioni di quel piano, oppure usa lo Storno.';
-            }
+        // I piani, con la regola unica di modifica, eliminazione e storno (`pianiConGrado()`, 1.11.0-beta.35): conta il
+        // piano più avanzato. Con rate emesse il motivo non propone più lo storno: finché il piano non ha incassato, lo
+        // storno lo rifiuta.
+        if ($voce = $this->pianoAlGrado('incassato', 'emesso', 'approvato')) {
+            $nome = $voce['piano']->nome;
 
-            $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
-
-            if ($stato === 'approvato') {
-                return "La fattura è nel piano rate «{$piano->nome}», che è approvato (art. 1135 c.c.). "
-                     . 'Riporta il piano in bozza per poterla eliminare.';
-            }
+            return match ($voce['grado']) {
+                'incassato' => $this->motivoBloccoStorno()
+                    ?? "La fattura è nel piano rate «{$nome}», che ha già incassato rate: non si elimina, usa lo storno.",
+                'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse. "
+                     . 'Annulla le emissioni di quel piano e riportalo in bozza per poterla eliminare.',
+                'approvato' => "La fattura è nel piano rate «{$nome}», che è approvato (art. 1135 c.c.). "
+                     . 'Riporta il piano in bozza per poterla eliminare.',
+            };
         }
 
         if ($this->stato_pagamento !== StatoPagamentoFattura::APERTA) {
@@ -210,14 +212,19 @@ class FatturaPassiva extends Model
                  . 'storna prima il pagamento dalla sezione Pagamenti fornitori, poi usa lo Storno sulla fattura.';
         }
 
+        // Le due guardie qui sotto mandano allo storno: se lo storno oggi è rifiutato per un piano rate, lo dicono con la
+        // via, come la modifica (verifica delle correzioni della Fase 1-bis, 1.11.0-beta.35).
+        $bloccoStorno = $this->motivoBloccoStorno();
+        $poi = $bloccoStorno ? ' Lo storno però ora non è possibile: ' . $bloccoStorno : '';
+
         if ($this->scritture->count() > 1) {
             return 'La fattura è collegata a più scritture contabili: eliminarla ne lascerebbe alcune senza '
-                 . 'documento. Usa lo Storno, che le chiude tutte in modo tracciato.';
+                 . 'documento. Usa lo Storno, che le chiude tutte in modo tracciato.' . $poi;
         }
 
         if (($this->esercizio?->stato) === 'chiuso') {
             return 'La fattura appartiene a un esercizio chiuso e già rendicontato: quel bilancio non si '
-                 . 'riscrive. Usa lo Storno, che registra la rettifica nell\'esercizio corrente.';
+                 . 'riscrive. Usa lo Storno, che registra la rettifica nell\'esercizio corrente.' . $poi;
         }
 
         return null;
@@ -231,6 +238,162 @@ class FatturaPassiva extends Model
     public function getMotivoBloccoEliminazioneAttribute(): ?string
     {
         return $this->motivoBloccoEliminazione();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | STORNO E PIANI RATE — una regola sola (1.11.0-beta.35, R1 della Fase 1-bis)
+    |--------------------------------------------------------------------------
+    */
+
+    /** @var list<array{piano: PianoRate, grado: string}>|null */
+    protected ?array $pianiConGradoLetti = null;
+
+    /**
+     * I piani rate che contengono questa fattura, ognuno con il grado a cui è arrivato: la base della regola unica di
+     * modifica, eliminazione e storno.
+     *
+     * Le tre guardie leggevano i piani ciascuna a modo suo, e si contraddicevano: la modifica mandava allo storno, e lo
+     * storno non guardava i piani — la fattura annullata restava in `piano_rate_fatture`, il motore la leggeva senza
+     * escludere le stornate e le rate la chiedevano ancora. Registrata di nuovo e messa in un piano nuovo, i condòmini la
+     * pagavano due volte. Decisione di Vincenzo del 27/09/2026: lo storno segue la scala dell'eliminazione.
+     *
+     * Quattro gradi, dal più avanzato: `incassato` (una quota ha un incasso, o un credito compensato o rimborsato:
+     * `importo_pagato ≠ 0`), `emesso` (una quota è a giornale), `approvato`, `bozza`. I movimenti si leggono prima dello
+     * stato, perché il server lascia riportare in bozza anche un piano già emesso.
+     *
+     * @return list<array{piano: PianoRate, grado: string}>
+     */
+    public function pianiConGrado(): array
+    {
+        return $this->pianiConGradoLetti ??= $this->pianiRate->sortBy('id')->values()->map(function (PianoRate $piano) {
+            $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
+
+            return ['piano' => $piano, 'grado' => match (true) {
+                $piano->haIncassiRegistrati() => 'incassato',
+                $piano->haRateEmesse() => 'emesso',
+                $stato === 'approvato' => 'approvato',
+                default => 'bozza',
+            }];
+        })->all();
+    }
+
+    /**
+     * Il piano più avanzato fra i gradi chiesti, cercati nell'ordine in cui si passano — o `null`. Con una fattura divisa
+     * fra più piani (Coda 156) non conta il primo piano, conta quello che chiede più passi: una fattura in un piano in
+     * bozza e in uno che ha già incassato si storna, non si modifica.
+     *
+     * @return array{piano: PianoRate, grado: string}|null
+     */
+    public function pianoAlGrado(string ...$gradi): ?array
+    {
+        foreach ($gradi as $grado) {
+            foreach ($this->pianiConGrado() as $voce) {
+                if ($voce['grado'] === $grado) {
+                    return $voce;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Perché questa fattura non si può stornare — o `null` se si può. Come `motivoBloccoEliminazione()`: il controller la
+     * chiama per decidere e l'elenco per spiegare, e ogni motivo dice la via d'uscita.
+     *
+     * Le prime quattro guardie vivevano in `StornoFatturaController` (stessi messaggi); quella sui piani è nuova. Finché
+     * un piano non ha incassato niente, la fattura prima si toglie dal piano — e in un piano da fatture l'unico modo è
+     * eliminarlo, perché una fattura sola non si stacca. Con incassi lo storno resta possibile: la fattura è annullata
+     * davvero e la contabilità deve dirlo; lo dice `avvisoStorno()`.
+     */
+    public function motivoBloccoStorno(): ?string
+    {
+        if ($this->dati_extra['is_stornata'] ?? false) {
+            return 'Questa fattura è già stata stornata in precedenza.';
+        }
+
+        // ⚠️ **Si guarda il TIPO del documento, non il segno del netto.**
+        // La guardia leggeva `netto_a_pagare < 0` e dava della nota di credito a qualunque
+        // documento a credito. Ma una fattura ordinaria PUÒ essere a credito: le righe negative
+        // sono legittime (il file 06 dei collaudi ne ha una) e se gli storni di riga superano
+        // gli addebiti il netto è negativo su un documento di tipo `fattura`. Quel documento
+        // restava senza nessuna via di rettifica — la modifica rimanda allo storno, e lo storno
+        // negava adducendo un tipo di documento che non era il suo. Il messaggio, per giunta,
+        // nominava una nota di credito a chi aveva in mano una fattura.
+        // Trovato dalla Fase 1-bis della beta.19, lente «segno».
+        if ($this->tipo_documento === 'nota_credito') {
+            return 'Una nota di credito non si storna: rettifica la fattura che annulla, oppure registra il documento che il fornitore ha emesso.';
+        }
+
+        // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
+        // credito: il denaro è già uscito dalla cassa e quel movimento va stornato per
+        // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
+        // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
+        // ancora allocati.
+        if ($this->stato_pagamento !== StatoPagamentoFattura::APERTA) {
+            return 'La fattura ha pagamenti registrati. Storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.';
+        }
+
+        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale — il
+        // fondo è già stato decurtato per questa fattura. Stornare la fattura
+        // lasciando in piedi il giroconto consumerebbe il fondo per un debito che
+        // non esiste più. Prima si storna il giroconto (la copertura torna in
+        // attesa), poi la fattura.
+        if ($this->coperture->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->isNotEmpty()) {
+            return 'La copertura dal fondo è già stata confermata con un giroconto. Storna prima il giroconto di conferma dalla pagina Giroconti, poi la fattura.';
+        }
+
+        $altre = 'le altre fatture del piano, se ce ne sono, tornano disponibili per un piano nuovo.';
+
+        // Il piano più avanzato fra quelli che non hanno incassato: è quello che chiede più passi.
+        if ($voce = $this->pianoAlGrado('emesso', 'approvato', 'bozza')) {
+            $nome = $voce['piano']->nome;
+
+            return match ($voce['grado']) {
+                'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse: dopo lo storno quelle rate la chiederebbero ancora. "
+                    . "Annulla le emissioni, riporta il piano in bozza ed eliminalo, poi storna la fattura; {$altre}",
+                'approvato' => "La fattura è nel piano rate «{$nome}», approvato: dopo lo storno le sue rate la chiederebbero ancora. "
+                    . "Riporta il piano in bozza ed eliminalo, poi storna la fattura; {$altre}",
+                'bozza' => "La fattura è nel piano rate «{$nome}», in bozza: dopo lo storno le sue rate la chiederebbero ancora. "
+                    . "Elimina prima il piano, poi storna la fattura; {$altre}",
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Cosa resta dopo lo storno di una fattura che sta in un piano che ha già incassato — o `null`. Lo mostra la conferma
+     * dello storno: il piano non si rettifica da solo, e il versato per una spesa annullata è una decisione dell'assemblea.
+     */
+    public function avvisoStorno(): ?string
+    {
+        $nomi = collect($this->pianiConGrado())
+            ->where('grado', 'incassato')
+            ->map(fn (array $voce) => '«' . $voce['piano']->nome . '»')
+            ->values();
+
+        if ($nomi->isEmpty()) {
+            return null;
+        }
+
+        $dove = $nomi->count() === 1
+            ? "La fattura è nel piano rate {$nomi->first()}, che ha già incassato rate."
+            : 'La fattura è nei piani rate ' . $nomi->slice(0, -1)->implode(', ') . ' e ' . $nomi->last() . ', che hanno già incassato rate.';
+
+        return $dove . ' Lo storno annulla la fattura in contabilità, ma le rate del piano restano e continuano a chiederla: '
+            . 'quanto i condòmini hanno versato per questa spesa va restituito o destinato con una delibera.';
+    }
+
+    public function getMotivoBloccoStornoAttribute(): ?string
+    {
+        return $this->motivoBloccoStorno();
+    }
+
+    public function getAvvisoStornoAttribute(): ?string
+    {
+        return $this->avvisoStorno();
     }
 
     // ── Scopes originali ─────────────────────────────────────────────────────

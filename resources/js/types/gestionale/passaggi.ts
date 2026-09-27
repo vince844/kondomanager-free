@@ -60,6 +60,8 @@ export interface ConguaglioDati {
   per_gestione: {
     gestione_id: number; gestione: string | null; immobile_id: number; immobile_nome: string;
     natura: 'ordinaria' | 'straordinaria'; gradino: string[]; periodo: { dal: string; al: string }[] | null;
+    /** Sull'ordinaria, voci dichiarate accanto ad altre: la competenza si legge voce per voce (R5 della Fase 1-bis). */
+    voce_per_voce?: boolean;
     quote: number; quota_pura: number; pregressi: number;
     giorni_uscente: number | null; giorni_entrante: number | null; giorni_periodo: number | null;
     importo: number; importo_formattato: string; non_risolte: number; escluse: number; esercizio_id: number | null;

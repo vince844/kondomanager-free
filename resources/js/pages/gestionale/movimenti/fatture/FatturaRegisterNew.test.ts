@@ -2024,4 +2024,36 @@ describe('Coda 129 — una nota di credito di un esercizio chiuso non è una spe
         expect(vm.showSpesaImprevistaModal).toBe(true);
         expect(vm.spesaImprevistaMode).toBe('pregressa');
     });
+
+    test('decisione 26 [beta.35] — confermata la motivazione, una pregressa scoperta senza periodo non parte: l\'errore va sulla competenza', async () => {
+        // La finestra della motivazione resta la prima domanda (il test qui sopra); rilanciato l'invio con la voce legale
+        // compilata, manca il periodo in cui il costo è maturato e il modulo si ferma prima di inviare.
+        // jsdom non implementa `scrollIntoView`: senza questa sostituzione il riepilogo degli errori lancia un rifiuto non
+        // gestito, i test passano tutti e vitest esce con 1. In cambio il test prova che il modulo porta in vista l'errore.
+        const portaInVista = vi.fn();
+        Element.prototype.scrollIntoView = portaInVista;
+
+        try {
+            const wrapper = render();
+            const vm = wrapper.vm as any;
+            vm.form.tipo_documento = 'fattura';
+            vm.form.is_pregresso = true;
+            vm.form.imponibile_pregresso = 500;
+            vm.form.aliquota_iva_pregressa = 22;
+            vm.form.dati_extra.log_legale_sopravvenienza = { nome_voce: 'Debito pregresso manutenzioni', origine_decisionale: 'gestione_corrente' };
+            await wrapper.vm.$nextTick();
+            expect(vm.periodoPregressaObbligatorio).toBe(true);
+
+            vm.handleSubmit();
+            await wrapper.vm.$nextTick();
+            await wrapper.vm.$nextTick();
+
+            expect(vm.form.errors.competenza_dal).toContain('periodo in cui il costo è maturato');
+            expect(vm.showSpesaImprevistaModal).toBe(false);
+            expect(vm.form.processing).toBeFalsy();
+            expect(portaInVista).toHaveBeenCalled();
+        } finally {
+            delete (Element.prototype as any).scrollIntoView;
+        }
+    });
 });

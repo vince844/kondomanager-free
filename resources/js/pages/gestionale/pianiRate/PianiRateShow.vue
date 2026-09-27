@@ -528,7 +528,7 @@ const handleProcediDestinatari = (nota: string) => {
         onSuccess: (page) => {
             isRecalculateAlertOpen.value = false;
             if (ricalcoloNonRiuscito(page)) return;
-            showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con la presa d\'atto sui destinatari cambiati.', false);
+            showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con la tua nota.', false);
         },
         onFinish: () => {
             isProcessingRecalculate.value = false;
@@ -805,6 +805,7 @@ const printRipartoCapitoli = () => {
               v-if="destinatariWarning"
               :destinatari="destinatariWarning"
               :processing="isProcessingRecalculate"
+              piano-esistente
               @procedi="handleProcediDestinatari"
               class="mb-4"
           />

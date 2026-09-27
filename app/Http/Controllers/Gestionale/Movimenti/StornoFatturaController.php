@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
-use App\Enums\StatoPagamentoFattura;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\Conto;
@@ -23,50 +22,14 @@ class StornoFatturaController extends Controller
 
     public function __invoke(Request $request, Condominio $condominio, FatturaPassiva $fattura, FatturaPassivaService $service)
     {
-        if ($fattura->dati_extra['is_stornata'] ?? false) {
-            return back()->withErrors(['storno_vietato' => 'Questa fattura è già stata stornata in precedenza.']);
-        }
-
-        // ⚠️ **Si guarda il TIPO del documento, non il segno del netto.**
-        // La guardia leggeva `netto_a_pagare < 0` e dava della nota di credito a qualunque
-        // documento a credito. Ma una fattura ordinaria PUÒ essere a credito: le righe negative
-        // sono legittime (il file 06 dei collaudi ne ha una) e se gli storni di riga superano
-        // gli addebiti il netto è negativo su un documento di tipo `fattura`. Quel documento
-        // restava senza nessuna via di rettifica — la modifica rimanda allo storno, e lo storno
-        // negava adducendo un tipo di documento che non era il suo. Il messaggio, per giunta,
-        // nominava una nota di credito a chi aveva in mano una fattura.
-        // Trovato dalla Fase 1-bis della beta.19, lente «segno».
-        if ($fattura->tipo_documento === 'nota_credito') {
-            return back()->withErrors([
-                'storno_vietato' => 'Una nota di credito non si storna: rettifica la fattura che annulla, oppure registra il documento che il fornitore ha emesso.',
-            ]);
-        }
-
-        // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
-        // credito: il denaro è già uscito dalla cassa e quel movimento va stornato per
-        // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
-        // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
-        // ancora allocati.
-        // withErrors e non flash: in una visita Inertia il flash impostato da back()
-        // non arriva a schermo, e l'operazione veniva rifiutata in silenzio. Il canale
-        // degli errori di validazione è quello che il frontend riceve sempre.
-        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            return back()->withErrors([
-                'storno_vietato' => 'La fattura ha pagamenti registrati. '
-                    .'Storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.',
-            ]);
-        }
-
-        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale — il
-        // fondo è già stato decurtato per questa fattura. Stornare la fattura
-        // lasciando in piedi il giroconto consumerebbe il fondo per un debito che
-        // non esiste più. Prima si storna il giroconto (la copertura torna in
-        // attesa), poi la fattura.
-        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->exists()) {
-            return back()->withErrors([
-                'storno_vietato' => 'La copertura dal fondo è già stata confermata con un giroconto. '
-                    .'Storna prima il giroconto di conferma dalla pagina Giroconti, poi la fattura.',
-            ]);
+        // Le guardie stanno sul model — `FatturaPassiva::motivoBloccoStorno()` — con i loro perché: l'elenco mostra lo
+        // stesso motivo che applica il server, come per l'eliminazione. Dalla 1.11.0-beta.35 guardano anche i piani rate
+        // (R1 della Fase 1-bis): una fattura annullata restava nel suo piano, e le rate la chiedevano ancora.
+        // withErrors e non flash: in una visita Inertia il flash impostato da back() non arriva a schermo, e
+        // l'operazione veniva rifiutata in silenzio. Il canale degli errori di validazione è quello che il frontend
+        // riceve sempre.
+        if ($motivo = $fattura->motivoBloccoStorno()) {
+            return back()->withErrors(['storno_vietato' => $motivo]);
         }
 
         $gestioneId = null;

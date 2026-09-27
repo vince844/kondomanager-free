@@ -140,7 +140,9 @@ class FatturaPassivaController extends Controller
         $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
 
         $fatture->through(function (FatturaPassiva $fattura) use ($idNoteDaStorno) {
-            $fattura->append('motivo_blocco_eliminazione');
+            // Lo storno ha la sua guardia sul model come l'eliminazione, e l'avviso per il piano che ha già incassato
+            // (1.11.0-beta.35, R1 della Fase 1-bis): il menu mostra lo stesso motivo che applicherebbe il server.
+            $fattura->append(['motivo_blocco_eliminazione', 'motivo_blocco_storno', 'avviso_storno']);
             $fattura->setAttribute(
                 'e_nata_da_storno',
                 ! empty($fattura->dati_extra['nota_storno'] ?? null) || in_array($fattura->id, $idNoteDaStorno, true),

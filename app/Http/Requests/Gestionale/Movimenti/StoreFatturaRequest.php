@@ -308,7 +308,51 @@ class StoreFatturaRequest extends FormRequest
 
             $this->guardiaNaturaPercipienteMancante($validator);
             $this->guardiaPosizioneRitenutaMaiDecisa($validator);
+            $this->guardiaPeriodoPregressaScoperta($validator);
         });
+    }
+
+    /**
+     * Decisione 26 (1.11.0-beta.35): una pregressa con una parte **non coperta** dai saldi iniziali — la copertura
+     * «sopravvenienza», l'unica che finisce in un piano — non si registra senza il periodo in cui il costo è maturato,
+     * e quel periodo si chiude **prima dell'esercizio** in cui la fattura si registra. Una pregressa non si modifica dopo
+     * (si storna) e il periodo lo conosce solo chi registra: dopo, il piano lo dovrebbe indovinare, e dopo una vendita
+     * lo pagherebbe chi è entrato. Tutta coperta dai saldi, non va in nessun piano e il periodo resta facoltativo.
+     *
+     * Sta qui e non nel servizio: lo storno e i test chiamano il servizio direttamente, con pregresse di prima.
+     */
+    private function guardiaPeriodoPregressaScoperta($validator): void
+    {
+        if (! filter_var($this->input('is_pregresso', false), FILTER_VALIDATE_BOOLEAN) || $this->input('tipo_documento') === 'nota_credito') {
+            return;
+        }
+        // Gli `after` girano anche quando le regole sono già fallite: con un campo che la regola legge già in errore, la
+        // regola tace — prima un `coperture` che non era una lista dava un 500 (R8 della Fase 1-bis).
+        if ($validator->errors()->hasAny(['coperture', 'coperture.*', 'competenza_dal', 'competenza_al', 'imponibile_pregresso', 'aliquota_iva_pregressa', 'imposta_pregressa'])) {
+            return;
+        }
+        // Le due porte della sopravvenienza: l'eccedenza con la voce legale (il modulo), o una copertura scritta a mano.
+        $eccedenza = \App\Services\Gestionale\FatturaPassivaService::eccedenzaPregressaCents($this->all());
+        $scoperta = ($eccedenza > 0 && $this->filled('dati_extra.log_legale_sopravvenienza'))
+            || collect($this->input('coperture', []))->contains(fn ($c) => ($c['tipo_copertura'] ?? null) === 'sopravvenienza');
+        if (! $scoperta) {
+            return;
+        }
+
+        $dal = $this->input('competenza_dal');
+        $al = $this->input('competenza_al');
+        if (blank($dal) || blank($al)) {
+            $validator->errors()->add('competenza_dal', 'Fattura pregressa con una parte non coperta dai saldi iniziali: dichiara il periodo in cui il costo è maturato. Quella parte finisce in un piano rate, e senza il periodo, dopo una vendita, la pagherebbe chi è entrato per un costo di quando l\'unità era di chi è uscito. Dopo non si potrà più aggiungere: una pregressa si storna, non si modifica.');
+
+            return;
+        }
+        $inizioEsercizio = \Illuminate\Support\Facades\DB::table('esercizi')->where('id', $this->input('esercizio_id'))->value('data_inizio');
+        if (\App\Services\Gestionale\FatturaPassivaService::periodoChiusoPrimaDellEsercizio($al, $inizioEsercizio) === false) {
+            $validator->errors()->add('competenza_al', sprintf(
+                'Il periodo di una fattura pregressa si chiude prima dell\'esercizio in cui la registri (inizia il %s): è un costo di un esercizio passato.',
+                \Carbon\Carbon::parse($inizioEsercizio)->format('d/m/Y'),
+            ));
+        }
     }
 
     /**

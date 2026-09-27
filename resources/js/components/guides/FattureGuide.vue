@@ -107,7 +107,7 @@ defineEmits(['update:open']);
                   <h4 class="font-bold">Storna</h4>
                 </div>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Genera una <strong>nota di credito</strong> che annulla la fattura lasciandone traccia. È la strada obbligata quando la fattura è già stata pagata, è finita in un piano rate emesso, o appartiene a un esercizio chiuso.
+                  Genera una <strong>nota di credito</strong> che annulla la fattura lasciandone traccia. È la strada obbligata quando la fattura è già stata pagata, è in un piano rate che ha già incassato, o appartiene a un esercizio chiuso.
                 </p>
               </div>
             </div>
@@ -125,7 +125,7 @@ defineEmits(['update:open']);
               <Ban class="w-4 h-4 inline-block -mt-0.5 text-slate-500" /> «Elimina — non consentito»
             </h3>
             <p class="mb-3">
-              Quando la voce è grigia, passa il mouse sopra: il <strong>motivo</strong> e il <strong>rimedio</strong> sono nel suggerimento. Sono sette situazioni diverse, e per ciascuna c'è una strada:
+              Quando la voce dice «non consentito», <strong>cliccala</strong>: si apre il <strong>motivo</strong> con il <strong>rimedio</strong>. Sono otto situazioni diverse, e per ciascuna c'è una strada:
             </p>
             <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
               <ul class="space-y-2">
@@ -135,7 +135,11 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>È in un piano rate con rate emesse o incassate</strong> → annulla le emissioni di quel piano, oppure storna.</span>
+                  <span><strong>È in un piano rate che ha già incassato</strong> → usa lo storno: le rate del piano restano, e quanto i condòmini hanno versato per quella spesa si regola con una delibera.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>È in un piano rate con rate emesse, ma senza incassi</strong> → annulla le emissioni di quel piano e riportalo in bozza.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -153,6 +157,12 @@ defineEmits(['update:open']);
             </div>
             <p class="mt-3 text-[13px] text-slate-500 dark:text-slate-400">
               Il motivo che leggi è esattamente quello che applicherebbe il sistema se provassi: non è una previsione, è la stessa regola.
+            </p>
+            <p class="mt-3">
+              <strong>«Storna — non consentito»</strong> segue la stessa scala. Una fattura dentro un piano rate che non ha ancora incassato
+              non si storna: le rate del piano la chiederebbero ancora. Prima si toglie dal piano — lo si riporta in bozza, annullando le
+              emissioni se ce ne sono, e lo si elimina — poi si storna la fattura, e le altre fatture del piano tornano disponibili per un
+              piano nuovo.
             </p>
           </section>
 

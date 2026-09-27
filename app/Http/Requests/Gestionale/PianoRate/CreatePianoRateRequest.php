@@ -98,7 +98,18 @@ class CreatePianoRateRequest extends FormRequest
                     }
                 },
             ],
-            'fatture_config.*.id'      => ['required_with:fatture_config', 'exists:fatture_passive,id'],
+            'fatture_config.*.id'      => ['required_with:fatture_config', 'exists:fatture_passive,id',
+                // Il carrello esclude le stornate solo quando si carica: stornata nel frattempo (un'altra scheda) o con una
+                // richiesta costruita a mano, la fattura entrava nel piano e le rate la chiedevano (verifica delle
+                // correzioni della Fase 1-bis, 1.11.0-beta.35).
+                function ($attribute, $value, $fail) {
+                    $f = \App\Models\Gestionale\FatturaPassiva::find($value);
+                    $stato = $f ? (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) : null;
+                    if ($f && (($f->dati_extra['is_stornata'] ?? false) || $stato === 'stornata')) {
+                        $fail("La fattura n. {$f->numero_documento} è stata stornata nel frattempo: toglila dal carrello.");
+                    }
+                },
+            ],
             'fatture_config.*.importo' => ['required_with:fatture_config'],
             
             // Scudo Legale (Obbligatorio per Art. 1135 c.c. se straordinario)

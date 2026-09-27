@@ -25,7 +25,13 @@ final class EsitoCompetenza
         public readonly bool $richiedeDelibera = false,
         /** `piani_rate.tipo` non concorda con `gestioni.tipo`: fa fede la natura, ma si dichiara (decisione 11). */
         public readonly bool $divergenzaTipoPiano = false,
-        /** Ordinaria con una competenza dichiarata sulla fattura, che qui non guida le rate (decisione 19). */
+        /**
+         * Una competenza dichiarata sulla fattura passata a `RisolutoreCompetenza::perOrdinaria()`, che la ignora
+         * (decisione 19). ⚠️ Oggi nessun chiamante la passa: l'unico che alzava il flag era il piano da fatture
+         * sull'ordinaria (`conFatturaIgnorata()`), tolto con la decisione 26 (1.11.0-beta.35), e il motore da capitoli
+         * non legge le fatture. Resta per chi passerà la competenza della fattura a `perOrdinaria()`; nello snapshot
+         * (`toArray()`) vale sempre `false`.
+         */
         public readonly bool $competenzaFatturaIgnorata = false,
     ) {
     }
@@ -33,15 +39,6 @@ final class EsitoCompetenza
     public function risolto(): bool
     {
         return ! $this->richiedeDelibera && $this->periodi !== null && $this->gradino !== null;
-    }
-
-    /**
-     * Lo stesso esito, con la dichiarazione che una competenza scritta sulla fattura è stata letta e non
-     * usata (decisione 19: su un capitolo ordinario la competenza della fattura non guida le rate).
-     */
-    public function conFatturaIgnorata(): self
-    {
-        return new self($this->natura, $this->periodi, $this->gradino, $this->richiedeDelibera, $this->divergenzaTipoPiano, true);
     }
 
     /** Il riepilogo che si congela accanto ai numeri (anteprima, `righe_riparto`, legenda). */

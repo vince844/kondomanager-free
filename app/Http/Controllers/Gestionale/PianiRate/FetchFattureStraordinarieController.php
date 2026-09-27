@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Helpers\MoneyHelper; 
+use App\Services\Gestionale\FatturaPassivaService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,7 +56,8 @@ class FetchFattureStraordinarieController extends Controller
                     'fatture_passive.numero_documento',
                     'fatture_passive.data_documento',
                     // B2, S6 (verifica R5): il carrello dice se la fattura ha la competenza dichiarata — con
-                    // «Urgenza» è l'unico gradino, e senza il riparto si ferma su quella fattura.
+                    // «Urgenza» è l'unico gradino, e senza il riparto si ferma su quella fattura. Dalla decisione 26
+                    // (1.11.0-beta.35) la competenza dichiarata decide il riparto anche su una gestione ordinaria.
                     'fatture_passive.competenza_dal',
                     'fatture_passive.competenza_al',
                     'fornitori.ragione_sociale as fornitore',
@@ -87,7 +89,8 @@ class FetchFattureStraordinarieController extends Controller
                     'fatture_passive.numero_documento',
                     'fatture_passive.data_documento',
                     // B2, S6 (verifica R5): il carrello dice se la fattura ha la competenza dichiarata — con
-                    // «Urgenza» è l'unico gradino, e senza il riparto si ferma su quella fattura.
+                    // «Urgenza» è l'unico gradino, e senza il riparto si ferma su quella fattura. Dalla decisione 26
+                    // (1.11.0-beta.35) la competenza dichiarata decide il riparto anche su una gestione ordinaria.
                     'fatture_passive.competenza_dal',
                     'fatture_passive.competenza_al',
                     'fornitori.ragione_sociale as fornitore',
@@ -103,7 +106,13 @@ class FetchFattureStraordinarieController extends Controller
                 )
                 ->get();
 
-            // Merge delle due liste
+            // Merge delle due liste. Decisione 26 (1.11.0-beta.35): ogni voce sa se è una pregressa, perché la pregressa
+            // senza periodo il carrello la segnala. Cosa ne fa il piano dipende dalla gestione: sull'ordinaria la divide
+            // sui giorni di quest'anno, sulla straordinaria la dà a chi è titolare alla data della delibera, e con
+            // «Urgenza» il riparto si ferma — in nessun caso sul periodo in cui il costo è maturato. Il testo lo sceglie
+            // il carrello (`avvisoFatturaNelCarrello`), che conosce gestione e autorizzazione.
+            $rawFatture->each(fn ($f) => $f->is_pregresso = false);
+            $rawFattureProgresse->each(fn ($f) => $f->is_pregresso = true);
             $rawFatture = $rawFatture->concat($rawFattureProgresse);
 
             $fattureIds = $rawFatture->pluck('id')->toArray();
@@ -120,6 +129,11 @@ class FetchFattureStraordinarieController extends Controller
                     ->pluck('gia_finanziato', 'fattura_passiva_id')
                     ->toArray();
             }
+
+            // R2 della Fase 1-bis: una pregressa registrata prima della beta.35 può avere come periodo la data
+            // dell'assemblea di quest'anno — la finestra della motivazione la precompilava. Il carrello la segnala con lo
+            // stesso confronto della regola di registrazione.
+            $inizioEsercizio = DB::table('esercizi')->where('id', $esercizioId)->value('data_inizio');
 
             $carrello = [];
             foreach ($rawFatture as $f) {
@@ -142,6 +156,10 @@ class FetchFattureStraordinarieController extends Controller
                         'importo_suggerito'     => MoneyHelper::fromCents($residuoCents), 
                         'selezionata'           => false,
                         'ha_competenza'         => $f->competenza_dal !== null && $f->competenza_al !== null,
+                        'is_pregresso'          => (bool) $f->is_pregresso,
+                        'senza_periodo'         => (bool) $f->is_pregresso && ($f->competenza_dal === null || $f->competenza_al === null),
+                        'periodo_nell_esercizio' => (bool) $f->is_pregresso && $f->competenza_dal !== null && $f->competenza_al !== null
+                            && FatturaPassivaService::periodoChiusoPrimaDellEsercizio($f->competenza_al, $inizioEsercizio) === false,
                         'competenza'            => $f->competenza_dal !== null && $f->competenza_al !== null
                             ? ($f->competenza_dal === $f->competenza_al
                                 ? 'deliberata il ' . Carbon::parse($f->competenza_dal)->format('d/m/Y')

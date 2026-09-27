@@ -19,7 +19,6 @@ use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoConto;
-use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\ScritturaContabile;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
@@ -195,8 +194,9 @@ class FatturaPassivaService
                 'data_documento' => $data['data_documento'],
                 'data_scadenza' => $data['data_scadenza'],
                 // La competenza dichiarata (B2, S6): le due colonne, entrambe o nessuna (la Request lo
-                // garantisce). Letta da `CalcoloQuoteService::calcolaDaFattureStraordinarie` quando il
-                // piano sta su una gestione straordinaria; sull'ordinario resta un fatto registrato.
+                // garantisce). Letta da `CalcoloQuoteService::calcolaDaFattureStraordinarie` nel piano da
+                // fatture, qualunque sia la gestione (decisione 26, 1.11.0-beta.35); nel piano da capitoli
+                // resta un fatto registrato (decisione 19).
                 'competenza_dal' => $data['competenza_dal'] ?? null,
                 'competenza_al' => $data['competenza_al'] ?? null,
                 'is_pregresso' => $isPregresso,
@@ -416,7 +416,9 @@ class FatturaPassivaService
 
             // $totaleDoc è già assoluto
             $imponibileFatturaCents = abs($totaleDoc);
-            $eccedenzaCents = $imponibileFatturaCents - $totaleCopertoPregresso;
+            // Sulla pregressa l'eccedenza viene da `eccedenzaPregressaCents()`, lo stesso metodo con cui la richiesta
+            // pretende il periodo (decisione 26): un calcolo solo, così la regola non può scattare sulla fattura sbagliata.
+            $eccedenzaCents = $isPregresso ? self::eccedenzaPregressaCents($data) : $imponibileFatturaCents - $totaleCopertoPregresso;
 
             // ⚠️ **Terza porta, e la più importante: è questa che scrive a giornale.** Le due
             // guardie del modulo impediscono di arrivarci, ma questo ramo gira su qualunque
@@ -728,44 +730,77 @@ class FatturaPassivaService
     }
 
     /**
-     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
-     *
-     * Permessa solo per fatture ordinarie completamente aperte (nessun pagamento,
-     * nessuna sopravvenienza, non pregresse, non in sforo pendente, esercizio aperto).
-     * Per tutti gli altri casi è obbligatorio lo storno.
-     *
-     * Effetti collaterali:
-     *  - Se `data_scadenza` cambia → aggiorna start_time del task Inbox `pagamento_fornitore`
-     *  - Il numero_protocollo è immutabile (identificativo contabile)
-     *  - Non riemette FatturaRegistrata (evita duplicazione task Inbox)
-     *
-     * @param  FatturaPassiva  $fattura  La fattura da aggiornare (con relazioni caricate).
-     * @param  array  $data  I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
-     * @param  UploadedFile|null  $file  Nuovo allegato (opzionale). Se presente sostituisce il precedente.
-     *
-     * @throws FatturaModificaVietataException Se la fattura non può essere modificata direttamente.
+     * L'eccedenza di una pregressa sulle coperture dichiarate, in centesimi: la parte che diventa una copertura
+     * «sopravvenienza» e finisce in un piano (decisione 26, 1.11.0-beta.35). La stessa aritmetica di
+     * `registraFattura()`: totale = imponibile + imposta (quella dichiarata vince sull'aliquota), meno le coperture.
      */
+    public static function eccedenzaPregressaCents(array $data): int
+    {
+        $imponibile = (int) round(((float) ($data['imponibile_pregresso'] ?? 0)) * 100);
+        $imposta = isset($data['imposta_pregressa'])
+            ? (int) round(((float) $data['imposta_pregressa']) * 100)
+            : (int) round(($imponibile * (float) ($data['aliquota_iva_pregressa'] ?? 22)) / 100);
+        $coperto = 0;
+        // La regola della richiesta la chiama anche quando la validazione è già fallita: un `coperture` che non è una
+        // lista, o una voce che non è un array, non deve diventare un errore 500 (R8 della Fase 1-bis).
+        foreach (is_array($data['coperture'] ?? null) ? $data['coperture'] : [] as $copertura) {
+            if (is_array($copertura)) {
+                $coperto += (int) round(((float) ($copertura['importo'] ?? 0)) * 100);
+            }
+        }
+
+        return abs($imponibile + $imposta) - $coperto;
+    }
+
+    /**
+     * Il periodo di una pregressa si chiude prima dell'esercizio in cui la fattura si registra? (decisione 26). Un
+     * confronto solo per la regola della richiesta e per l'avviso del carrello. Le date passano da Carbon: la regola
+     * `date` accetta anche formati non ISO («15-06-2026»), e il confronto fra stringhe li sbagliava in tutti e due i
+     * versi (R7 della Fase 1-bis). Si confrontano giorni di calendario, non istanti: «2026-01-01T00:00:00+01:00» è il primo
+     * giorno dell'esercizio anche se in UTC è ancora il 31/12 (verifica delle correzioni). Una data che non si legge non si
+     * giudica: la segnala già la regola `date`.
+     */
+    public static function periodoChiusoPrimaDellEsercizio(mixed $al, mixed $inizioEsercizio): ?bool
+    {
+        if (blank($al) || blank($inizioEsercizio) || ! is_string($al) && ! $al instanceof \DateTimeInterface) {
+            return null;
+        }
+        try {
+            return \Carbon\Carbon::parse($al)->toDateString() < \Carbon\Carbon::parse($inizioEsercizio)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function motivoBloccoModifica(FatturaPassiva $fattura): ?string
     {
         if ($fattura->stato_pagamento === StatoPagamentoFattura::STORNATA || ($fattura->dati_extra['is_stornata'] ?? false)) {
             return 'Fattura già stornata: non modificabile.';
         }
 
+        // Le guardie qui sotto mandano allo storno. Se lo storno oggi è rifiutato — la fattura sta in un piano che non ha
+        // incassato, o ha pagamenti (`FatturaPassiva::motivoBloccoStorno()`) — il motivo lo dice, con la via: prima una
+        // pregressa in un piano in bozza si sentiva dire «usa lo storno», e lo storno la rifiutava (verifica delle
+        // correzioni della Fase 1-bis, 1.11.0-beta.35).
+        $viaStorno = fn (string $perche, string $via = 'usa lo storno.') => ($blocco = $fattura->motivoBloccoStorno())
+            ? "{$perche}: si corregge con lo storno, che però ora non è possibile. {$blocco}"
+            : "{$perche}: {$via}";
+
         if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            return 'La fattura ha già un pagamento registrato. Usa lo storno.';
+            return $viaStorno('La fattura ha già un pagamento registrato');
         }
 
         $statoEsercizio = DB::table('esercizi')->where('id', $fattura->esercizio_id)->value('stato');
         if ($statoEsercizio === 'chiuso') {
-            return 'La fattura appartiene a un esercizio chiuso: usa lo storno.';
+            return $viaStorno('La fattura appartiene a un esercizio chiuso');
         }
 
         if ($fattura->is_pregresso) {
-            return 'Le fatture pregresse non sono modificabili direttamente: usa lo storno.';
+            return $viaStorno('Le fatture pregresse non sono modificabili direttamente');
         }
 
         if ($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists()) {
-            return 'La fattura ha coperture di sopravvenienza: usa lo storno.';
+            return $viaStorno('La fattura ha coperture di sopravvenienza');
         }
 
         // Beta.19: la copertura fondo — pianificata o confermata — fotografa lo sforo
@@ -773,11 +808,11 @@ class FatturaPassivaService
         // le coperture: una modifica lascerebbe un importo di copertura stantio,
         // confermabile con un giroconto sbagliato.
         if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->exists()) {
-            return 'La fattura ha una copertura dal fondo di riserva: usa lo storno e registrala di nuovo.';
+            return $viaStorno('La fattura ha una copertura dal fondo di riserva', 'usa lo storno e registrala di nuovo.');
         }
 
         if ($fattura->stato_approvazione === 'sforo_motivato') {
-            return 'La fattura ha uno sforo in attesa di ratifica assembleare: usa lo storno.';
+            return $viaStorno('La fattura ha uno sforo in attesa di ratifica assembleare');
         }
 
         // Le strategie conguaglio/rata integrativa non creano coperture, quindi il
@@ -786,29 +821,50 @@ class FatturaPassivaService
         // dello sforo in dati_extra riferiti a cifre che l'assemblea non ha mai
         // visto. Stessa regola della copertura: la ratifica fotografa la fattura.
         if (! empty($fattura->dati_extra['override_budget'])) {
-            return 'Lo sforo di questa fattura è stato motivato e ratificato in assemblea: usa lo storno e registrala di nuovo.';
+            return $viaStorno('Lo sforo di questa fattura è stato motivato e ratificato in assemblea', 'usa lo storno e registrala di nuovo.');
         }
 
-        // Controllo piano rate (replica del controllo in destroy())
-        $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
-        if ($pivotPlan) {
-            $piano = PianoRate::find($pivotPlan->piano_rate_id);
-            if ($piano instanceof PianoRate) {
-                $hasPagamenti = $piano->haIncassiRegistrati();
-                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
-                if ($hasPagamenti || $hasEmissioni) {
-                    return 'La fattura è in un piano straordinario con rate già emesse, incassate o con crediti già compensati o rimborsati: usa lo storno.';
-                }
-                $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
-                if ($stato === 'approvato') {
-                    return 'La fattura è in un piano approvato: usa lo storno.';
-                }
-            }
+        // Controllo piano rate, su OGNI piano che contiene la fattura (Coda 156, 1.11.0-beta.35): una fattura si può
+        // dividere fra più piani — il carrello offre il residuo — e la guardia leggeva solo la prima riga della tabella
+        // ponte, senza ordine: con la prima parte in un piano in bozza e la seconda in uno approvato la fattura restava
+        // modificabile. Conta il piano più avanzato, con la regola unica di modifica, eliminazione e storno
+        // (`FatturaPassiva::pianiConGrado()`, R1 della Fase 1-bis): la modifica mandava allo storno anche dove lo storno
+        // lascia la fattura nel piano, che continua a chiederla. Fra i gradi del piano, solo quello che ha già incassato
+        // manda allo storno (le guardie sopra lo fanno per altre ragioni, con `$viaStorno`).
+        if ($voce = $fattura->pianoAlGrado('incassato', 'emesso', 'approvato')) {
+            $nome = $voce['piano']->nome;
+
+            return match ($voce['grado']) {
+                'incassato' => $fattura->motivoBloccoStorno()
+                    ?? "La fattura è nel piano rate «{$nome}», che ha già incassato rate, o crediti già compensati o rimborsati: usa lo storno.",
+                'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse: annulla le emissioni e riportalo in bozza per modificarla.",
+                'approvato' => "La fattura è nel piano rate «{$nome}», che è approvato: riportalo in bozza per modificarla.",
+            };
         }
 
         return null;
     }
 
+    /**
+     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
+     *
+     * Permessa solo per fatture ordinarie completamente aperte (nessun pagamento,
+     * nessuna sopravvenienza, non pregresse, non in sforo pendente, esercizio aperto):
+     * i motivi sono in `motivoBloccoModifica()`. Con la fattura in un piano rate vale la
+     * regola unica di `FatturaPassiva::pianiConGrado()` (1.11.0-beta.35): piano approvato o
+     * con rate emesse → si riporta in bozza (annullando le emissioni) e si modifica; piano
+     * che ha già incassato → storno.
+     *
+     * Effetti collaterali:
+     *  - Se `data_scadenza` cambia → aggiorna start_time del task Inbox `pagamento_fornitore`
+     *  - Il numero_protocollo è immutabile (identificativo contabile)
+     *  - Non riemette FatturaRegistrata (evita duplicazione task Inbox)
+     *
+     * @param  FatturaPassiva  $fattura  La fattura da aggiornare (con relazioni caricate).
+     * @param  array  $data  I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
+     *
+     * @throws FatturaModificaVietataException Se la fattura non può essere modificata direttamente.
+     */
     public function aggiornaFattura(FatturaPassiva $fattura, array $data): FatturaPassiva
     {
         if ($motivo = $this->motivoBloccoModifica($fattura)) {

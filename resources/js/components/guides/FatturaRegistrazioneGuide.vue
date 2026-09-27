@@ -163,6 +163,12 @@ defineEmits(['update:open']);
                 il debito patrimoniale dei saldi iniziali, la capienza della rata zero, o altri fondi.
                 Il radar anti-duplicati ti avvisa se una fattura simile risulta già registrata.
               </p>
+              <p class="mb-2">
+                Se una parte <strong>non è coperta</strong> dai saldi iniziali, quella parte finisce in un piano rate
+                straordinario: allora il pannello «Competenza» chiede il <strong>periodo in cui il costo è
+                maturato</strong>, obbligatorio e chiuso prima di questo esercizio. Decide chi paga dopo una vendita:
+                senza, la pagherebbe chi è entrato. Una pregressa non si modifica dopo: si storna e si registra di nuovo.
+              </p>
             </section>
             <section>
               <div class="flex items-center gap-2 mb-2">
@@ -240,7 +246,8 @@ defineEmits(['update:open']);
                     e il consuntivo pure.</li>
                 <li><strong>Niente eliminazioni</strong>: una fattura registrata si corregge con lo
                     <strong>storno</strong> (nota di credito automatica) e una nuova registrazione. Se la fattura
-                    ha pagamenti o una copertura confermata, il sistema ti indica cosa stornare prima.</li>
+                    ha pagamenti, una copertura confermata o sta in un piano rate che non ha ancora incassato, il
+                    sistema ti indica cosa fare prima.</li>
                 <li><strong>La data documento conta</strong>: oltre 30 giorni fa scatta il promemoria dell'Art.
                     1130 (annotazione a registro entro 30 giorni); anteriore all'esercizio, la fattura diventa
                     pregressa da sola.</li>

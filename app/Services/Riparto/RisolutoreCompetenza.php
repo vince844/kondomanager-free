@@ -22,9 +22,9 @@ use DateTimeInterface;
  * - **Ordinaria** ({@see perOrdinaria()}): tratti di competenza del capitolo (decisione 20) → periodo
  *   della gestione, se chiusa → periodo dell'esercizio. L'approvazione del preventivo **non è
  *   costitutiva** (Cass. 24654/2010, 24069/2022): la delibera non è un gradino, e la firma non la
- *   accetta. La competenza dichiarata su una singola fattura del capitolo **non guida le rate**
- *   (decisione 19): il motore ordinario ripartisce il conto, non la fattura, e sull'ordinario quel dato
- *   oggi non lo legge nessun calcolo — nemmeno il prospetto oneri della B3a (beta.34), che legge il preventivo.
+ *   accetta. Nel **piano da capitoli** la competenza dichiarata su una singola fattura del capitolo **non guida le
+ *   rate** (decisione 19): il motore ordinario ripartisce il conto, non la fattura. Nel **piano da fatture** invece
+ *   l'unità è la fattura, e lì la competenza dichiarata prevale anche sull'ordinaria ({@see perFattura()}, decisione 26).
  *
  * Riceve date e periodi, non modelli, così i test non hanno bisogno del database. Chi ha i modelli li
  * traduce e chiama: `CompetenzaDelPiano::perPiano()` per la base del piano (generazione, anteprima,
@@ -87,6 +87,28 @@ class RisolutoreCompetenza
         }
 
         return new EsitoCompetenza($natura, InsiemePeriodi::uno($esercizio), GradinoCompetenza::Esercizio, divergenzaTipoPiano: $divergenzaTipoPiano, competenzaFatturaIgnorata: $ignorata);
+    }
+
+    /**
+     * Decisione 26 (1.11.0-beta.35): nel **piano da fatture** la competenza dichiarata sulla fattura (o sulla copertura)
+     * prevale qualunque sia la natura della gestione — è la decisione 11 («il primo gradino è comune e prevale sempre»)
+     * applicata anche all'ordinaria, dove l'unità di riparto è la fattura e non il conto. Senza competenza dichiarata
+     * resta la base del piano (sull'ordinaria gestione ∩ esercizio). La straordinaria passa da {@see perStraordinaria()},
+     * che mette già la dichiarata al primo gradino e sotto la delibera si ferma (decisione 12).
+     *
+     * @param DateTimeInterface|string|null $competenzaDal dichiarata sulla fattura
+     * @param DateTimeInterface|string|null $competenzaAl  idem; conta solo se ci sono entrambe
+     */
+    public function perFattura(
+        DateTimeInterface|string|null $competenzaDal,
+        DateTimeInterface|string|null $competenzaAl,
+        EsitoCompetenza $base,
+    ): EsitoCompetenza {
+        if ($dichiarata = $this->dichiarata($competenzaDal, $competenzaAl)) {
+            return new EsitoCompetenza($base->natura, InsiemePeriodi::uno($dichiarata), GradinoCompetenza::Dichiarata, divergenzaTipoPiano: $base->divergenzaTipoPiano);
+        }
+
+        return $base;
     }
 
     /** Dichiarata solo se ci sono entrambi gli estremi: una metà non è una competenza. */

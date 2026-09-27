@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { lordoRigaCents, sforaBudget } from './budget';
+import { descriviMargine, lordoRigaCents, sforaBudget } from './budget';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 
 describe('sforaBudget — «questo documento provoca uno sforo?»', () => {
     it('sfora ciò che supera il residuo, lordo contro residuo', () => {
@@ -23,5 +24,32 @@ describe('sforaBudget — «questo documento provoca uno sforo?»', () => {
     it('la soglia è il lordo della riga, come il residuo esposto dal backend', () => {
         expect(sforaBudget(lordoRigaCents(100, 22), 12100)).toBe(true);
         expect(sforaBudget(lordoRigaCents(100, 22), 12200)).toBe(false);
+    });
+});
+
+describe('descriviMargine — come si mostra il margine che resta sul capitolo (Coda 157)', () => {
+    const { euro } = useCurrencyFormatter();
+    const mostra = (delta: number) => euro(delta, descriviMargine(delta).opzioni);
+
+    it('il «+» solo quando il margine è positivo, e il tono segue il segno del numero', () => {
+        expect(descriviMargine(28200).tono).toBe('positivo');
+        expect(descriviMargine(1).tono).toBe('positivo');
+        expect(mostra(28200)).toBe('€\u00A0+282,00');
+    });
+
+    it('su un capitolo già oltre il preventivo il margine è negativo e si mostra negativo — prima usciva «+€ -282,00» in verde', () => {
+        // Condominio Test, «Manutenzione giardino»: preventivo € 1.243,00, speso € 1.525,00, documento ancora a zero.
+        expect(descriviMargine(-28200).tono).toBe('negativo');
+        expect(mostra(-28200)).toBe('€\u00A0-282,00');
+    });
+
+    it('a zero niente segno e tono neutro', () => {
+        expect(descriviMargine(0).tono).toBe('neutro');
+        expect(mostra(0)).toBe('€\u00A00,00');
+    });
+
+    it('il segno sta dopo il simbolo sia sopra sia sotto zero, come nel resto del riquadro (R19 della Fase 1-bis)', () => {
+        expect(mostra(50000).indexOf('+')).toBeGreaterThan(mostra(50000).indexOf('€'));
+        expect(mostra(-50000).indexOf('-')).toBeGreaterThan(mostra(-50000).indexOf('€'));
     });
 });

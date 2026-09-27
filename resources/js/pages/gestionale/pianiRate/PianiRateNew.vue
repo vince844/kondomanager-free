@@ -28,6 +28,9 @@ import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
+import { avvisoFatturaNelCarrello, senzaCompetenzaScelte } from '@/lib/gestionale/pianiRate/avvisoCarrello';
+import Alert from '@/components/Alert.vue';
+import type { Flash } from '@/types/flash';
 import {
   ETICHETTE_PRESET, descriviTratti, periodoGestione, presetDaiTratti, trattiDelPreset, verificaTratti,
   type PresetCompetenza, type Tratto,
@@ -244,7 +247,21 @@ const deliberaObbligatoria = computed(() => gestioneStraordinaria.value && form.
 const mostraDataDelibera = computed(() => gestioneStraordinaria.value || form.tipo === 'straordinario');
 
 // Le fatture nel carrello senza competenza dichiarata: con «Urgenza» il riparto si ferma su ciascuna (verifica S6, R5).
-const fattureSenzaCompetenzaScelte = computed(() => fattureStraordinarie.value.filter(f => f.selezionata && !f.ha_competenza).length);
+// Le pregresse a parte: non si dichiarano sulla fattura, si stornano e si registrano di nuovo (R20 della Fase 1-bis).
+const scelteSenzaCompetenza = computed(() => senzaCompetenzaScelte(fattureStraordinarie.value));
+
+// Che cosa dice il carrello sotto ogni fattura: dipende dalla gestione e dall'autorizzazione (R3 della Fase 1-bis).
+const contestoCarrello = computed(() => ({ gestioneStraordinaria: !!gestioneStraordinaria.value, urgenza: form.tipo_autorizzazione === 'urgenza' }));
+const avvisoDi = (fat: any) => avvisoFatturaNelCarrello(fat, contestoCarrello.value);
+
+// Il messaggio del server — una generazione fermata («Urgenza» con una pregressa senza periodo), una gestione senza piano
+// dei conti — e gli errori sulle fatture del carrello (una stornata nel frattempo). La pagina non li mostrava: «Salva»
+// non faceva niente di visibile, e il motivo stava solo nel log (verifica a video della 1.11.0-beta.35). Si mostrano
+// accanto al pulsante, dove è chi ha appena premuto.
+const flashMessage = computed(() => usePage<{ flash: { message?: Flash } }>().props.flash?.message ?? null);
+const erroriCarrello = computed(() => Object.entries(form.errors as Record<string, string>)
+  .filter(([campo]) => campo.startsWith('fatture_config'))
+  .map(([, messaggio]) => messaggio));
 
 // Con «Urgenza» il campo della delibera sparisce: il valore battuto prima non deve restare nel form e viaggiare
 // nascosto (verifica S6, R2). Il server non lo scriverebbe comunque; qui si dice la verità a video.
@@ -1314,24 +1331,31 @@ const submit = () => {
             </Empty>
 
             <div v-else class="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-sm">
-              <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex justify-between items-center">
+              <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex flex-wrap justify-between items-center gap-2">
                 <span class="text-xs font-bold text-amber-800 uppercase tracking-wider">Fatture disponibili</span>
                 <span class="text-sm font-bold text-amber-700 bg-white px-3 py-1 rounded border border-amber-200 shadow-sm">Totale richiesto: {{ totaleStraordinarioSelezionatoFormatted }}</span>
               </div>
               <div class="divide-y divide-amber-100 max-h-[350px] overflow-y-auto">
                 <div v-for="(fat) in fattureStraordinarie" :key="fat.id" class="p-3 hover:bg-amber-50/50 transition-colors" :class="{ 'bg-amber-50': fat.selezionata }">
-                  <div class="flex items-center gap-4">
-                    <Checkbox v-model="fat.selezionata" />
+                  <!-- Sul telefono la colonna di destra (da finanziare, importo) scende sotto il testo: in fila toglieva metà
+                       della larghezza agli avvisi, che andavano a capo ogni due parole (segnalato da Vincenzo a video,
+                       27/09/2026). Da `sm` in su la riga è quella di prima. -->
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                   <div class="flex flex-1 min-w-0 items-start gap-3 sm:items-center sm:gap-4">
+                    <Checkbox v-model="fat.selezionata" class="mt-0.5 sm:mt-0" />
                     <div class="flex-1 min-w-0">
-                      <div class="font-bold text-sm text-slate-900 truncate">{{ fat.fornitore }} — Doc. {{ fat.numero_documento }}</div>
+                      <div class="font-bold text-sm text-slate-900 break-words sm:truncate">{{ fat.fornitore }} — Doc. {{ fat.numero_documento }}</div>
                       <div class="text-xs text-slate-500 mt-1">Data: {{ fat.data_documento }} | Già finanziato: {{ euro(fat.gia_finanziato) }}</div>
-                      <!-- B2, S6: la competenza dichiarata sulla fattura, che con «Urgenza» è l'unico gradino del riparto -->
-                      <div v-if="fat.ha_competenza" class="text-[10px] text-slate-500 mt-0.5">Competenza dichiarata: {{ fat.competenza }}</div>
-                      <div v-else-if="form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria && fat.selezionata" class="text-[10px] font-semibold text-amber-700 mt-0.5 flex items-center gap-1">
-                        <AlertTriangle class="w-3 h-3" /> Senza competenza dichiarata: il riparto si fermerà su questa fattura.
+                      <!-- B2, S6 e decisione 26: la competenza dichiarata, o che cosa ne farà il riparto senza. Le varianti
+                           (gestione, «Urgenza», pregressa senza periodo o col periodo dentro l'esercizio) stanno in
+                           `avvisoFatturaNelCarrello`, provate una per una. -->
+                      <div v-if="avvisoDi(fat)?.tono === 'nota'" class="text-[10px] text-slate-500 mt-0.5">{{ avvisoDi(fat)?.testo }}</div>
+                      <div v-else-if="avvisoDi(fat)" class="text-[10px] font-semibold text-amber-700 mt-0.5 flex items-start gap-1">
+                        <AlertTriangle class="w-3 h-3 shrink-0 mt-px" /> <span>{{ avvisoDi(fat)?.testo }}</span>
                       </div>
                     </div>
-                    <div class="flex flex-col items-end gap-1 shrink-0">
+                   </div>
+                    <div class="flex items-center justify-between gap-2 pl-7 sm:pl-0 sm:flex-col sm:items-end sm:justify-start sm:gap-1 shrink-0">
                       <span class="text-xs font-bold text-amber-600">Da finanziare: {{ euro(fat.residuo_da_finanziare) }}</span>
                       <div class="w-32 relative" v-if="fat.selezionata">
                         <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
@@ -1405,7 +1429,8 @@ const submit = () => {
                 <p class="text-xs text-slate-600 leading-relaxed">
                   Intervento d'urgenza (art. 1135 c.c.): non c'è una delibera che faccia la competenza. La competenza di questa spesa si dichiara
                   <strong>sulla fattura</strong> («costo maturato dal … al …» o «spesa deliberata il …»): senza, il riparto si ferma e lo dice.
-                  <template v-if="fattureSenzaCompetenzaScelte > 0"> <strong>{{ fattureSenzaCompetenzaScelte }}</strong> {{ fattureSenzaCompetenzaScelte === 1 ? 'fattura scelta non la ha' : 'fatture scelte non la hanno' }}: dichiarala prima di generare.</template>
+                  <template v-if="scelteSenzaCompetenza.correnti > 0"> <strong>{{ scelteSenzaCompetenza.correnti }}</strong> {{ scelteSenzaCompetenza.correnti === 1 ? 'fattura scelta non la ha' : 'fatture scelte non la hanno' }}: dichiarala prima di generare.</template>
+                  <template v-if="scelteSenzaCompetenza.pregresse > 0"> <strong>{{ scelteSenzaCompetenza.pregresse }}</strong> {{ scelteSenzaCompetenza.pregresse === 1 ? 'pregressa scelta non ha il periodo' : 'pregresse scelte non hanno il periodo' }}: una pregressa non si modifica, si storna e si registra di nuovo con il periodo.</template>
                 </p>
               </template>
               <template v-else>
@@ -1551,6 +1576,11 @@ const submit = () => {
             @procedi="handleProcediDestinatari"
             class="mb-4"
         />
+
+        <div v-if="flashMessage || erroriCarrello.length" class="space-y-2">
+          <Alert v-if="flashMessage" :key="flashMessage.message" :message="flashMessage.message" :type="flashMessage.type" />
+          <Alert v-for="errore in erroriCarrello" :key="errore" :message="errore" type="error" />
+        </div>
 
         <div class="flex items-center justify-end gap-3 pt-2">
           <Link

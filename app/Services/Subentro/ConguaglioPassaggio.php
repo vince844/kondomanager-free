@@ -30,7 +30,8 @@ use Illuminate\Support\Facades\DB;
  * da dividere, come nel motore (S8-5). La competenza è la stessa del motore, decisa in un posto solo
  * (`CompetenzaDelPiano`, decisioni 11 e 12): ordinario → pro rata per giorni; straordinario → **per riga**
  * congelata (S8-4): la competenza dichiarata sulla fattura, altrimenti il giorno della delibera, tutto da
- * un lato. Straordinario senza competenza dichiarata e senza data della delibera: quel piano **si salta e
+ * un lato. Dalla decisione 26 (1.11.0-beta.35) anche sull'ordinario la riga che porta la competenza della sua
+ * fattura (gradino «dichiarata», piano rate straordinario su gestione ordinaria) si divide su quella, come il motore. Straordinario senza competenza dichiarata e senza data della delibera: quel piano **si salta e
  * si dice**, non si inventa un periodo (decisione 12); gestione senza esercizio: idem.
  *
  * Usufrutto (`soloOrdinario`): le spese straordinarie sono del nudo proprietario per legge (art. 1005 c.c.),
@@ -291,9 +292,10 @@ final class ConguaglioPassaggio
                 'quota_pura'     => $quotaPura,
                 'pregresso'      => (int) $r->importo - $quotaPura,
                 'gradino'        => $risolta ? ($capitoli !== null && $capitoli['dettagliato'] ? $capitoli['gradino'] : $esito->gradino?->value) : null,
-                'periodo'        => $risolta ? ($capitoli !== null && $natura === NaturaGestione::Straordinaria ? $capitoli['periodo'] : $esito->periodi?->toArray()) : null,
+                'periodo'        => $risolta ? ($capitoli !== null && ($natura === NaturaGestione::Straordinaria || ! empty($capitoli['competenza_per_fattura'])) ? $capitoli['periodo'] : $esito->periodi?->toArray()) : null,
                 // La divisione è per conto e il dettaglio sta qui (uguale per tutte le quote del piano sull'unità), quando dice qualcosa in più della testa.
                 'per_capitolo'   => $capitoli !== null && $capitoli['dettagliato'] && ! $esclusa ? $capitoli['conti'] : null,
+                'voce_per_voce'  => $risolta && $capitoli !== null && ! empty($capitoli['voce_per_voce']),
                 'giorni_uscente' => $parti['giorni_uscente'],
                 'giorni_entrante' => $parti['giorni_entrante'],
                 'giorni_periodo' => $parti['giorni_periodo'],
@@ -365,6 +367,12 @@ final class ConguaglioPassaggio
                 'immobile_nome'  => $prima['immobile_nome'],
                 'natura'         => $prima['natura'],
                 'gradino'        => $g->pluck('gradino')->filter()->unique()->values()->all(),
+                // Voce per voce anche quando a mescolare sono due piani della stessa gestione (uno dichiarato, uno sulla
+                // base): il gruppo non ha un periodo solo da mostrare (verifica delle correzioni, beta.35).
+                'voce_per_voce'  => $g->contains(fn ($q) => $q['voce_per_voce'] ?? false)
+                    || ($prima['natura'] !== NaturaGestione::Straordinaria->value
+                        && in_array('dichiarata', $g->pluck('gradino')->filter()->all(), true)
+                        && ($g->pluck('gradino')->filter()->unique()->count() > 1 || $perPeriodo->count() > 1)),
                 // Periodo e giorni a livello di gruppo solo quando il periodo è uno; altrimenti `per_periodo`.
                 'periodo'        => $unico['periodo'] ?? null,
                 'quote'          => $g->count(),
@@ -460,7 +468,9 @@ final class ConguaglioPassaggio
      * - ha un **preventivo** (quota pura ≠ 0): una quota di soli saldi pregressi è tutta di chi esce;
      * - il piano è **risolto** (competenza nota) e, se è **straordinario**, la spesa è **tutta di chi entra**
      *   (delibera, o competenza dichiarata, dalla decorrenza in poi): una straordinaria di chi esce resta sua, una
-     *   divisa per competenza resta a chi esce e si conguaglia come prima;
+     *   divisa per competenza resta a chi esce e si conguaglia come prima. Dalla decisione 26 vale lo stesso
+     *   sull'ordinario quando una voce porta la competenza dichiarata sulla fattura (`fattura_di_chi_esce`,
+     *   `fattura_divisa`): la pregressa del 2025 non passa a chi compra per tornare indietro nella coppia;
      * - **non è esclusa per legge** (R4, Fase 1-bis): nella vendita della nuda proprietà le ordinarie di un piano generato
      *   prima dell'usufrutto sono dell'usufruttuario (art. 1004 c.c.) e restano fuori, come le straordinarie
      *   nell'usufrutto (art. 1005 c.c.).
@@ -489,6 +499,10 @@ final class ConguaglioPassaggio
             }
             $gruppo = $gruppi[$q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']];
             $straordinaria = $q['natura'] === NaturaGestione::Straordinaria->value;
+            // Decisione 26 (1.11.0-beta.35): sull'ordinaria, una voce del piano da fatture con la competenza dichiarata
+            // sulla fattura segue la regola della straordinaria — passa solo se la spesa è tutta di chi entra. Altrimenti
+            // la bozza andrebbe a chi entra e tornerebbe indietro nella coppia (decisione 25, punto 2).
+            $perFattura = ! $straordinaria && $gruppo->contains(fn ($x) => collect($x['per_capitolo'] ?? [])->contains(fn ($c) => ($c['gradino'] ?? null) === 'dichiarata'));
             // R12: l'ordine conta — una quota di soli pregressi o esclusa per legge ha la sua ragione prima di tutte le altre.
             $motivo = match (true) {
                 (int) $q['quota_pura'] === 0 => 'solo_pregresso',
@@ -498,6 +512,8 @@ final class ConguaglioPassaggio
                 $gruppo->contains(fn ($x) => $x['non_risolta']) => 'non_risolta',
                 $straordinaria && (int) $gruppo->sum('entrante') === 0 => 'straordinaria_di_chi_esce',
                 $straordinaria && $gruppo->contains($divisa) => 'straordinaria_divisa',
+                $perFattura && (int) $gruppo->sum('entrante') === 0 => 'fattura_di_chi_esce',
+                $perFattura && $gruppo->contains($divisa) => 'fattura_divisa',
                 $q['stato_rata'] !== 'bozza' => 'passaggio',
                 $q['scadenza'] < $giorno => 'scade_prima',
                 (int) $q['importo_pagato'] !== 0 || ! in_array($q['stato_quota'], ['da_pagare', 'credito'], true) => 'pagata',
@@ -607,7 +623,9 @@ final class ConguaglioPassaggio
      *
      * - **Ordinario**: la competenza della riga è il tratto del pivot (del conto → della radice), altrimenti la base;
      *   gruppo per (conto, tratto di titolarità): la stessa persona con due righe sullo stesso conto — ha cambiato
-     *   quota nell'anno, o ha preso un ripiego — ha due gruppi, ciascuno sui suoi giorni (S8-bis L1-1).
+     *   quota nell'anno, o ha preso un ripiego — ha due gruppi, ciascuno sui suoi giorni (S8-bis L1-1). Eccezione
+     *   (decisione 26, 1.11.0-beta.35): una riga del piano da fatture con il gradino `dichiarata` usa la competenza
+     *   congelata sulla riga, come lo straordinario, e il gruppo è (conto, dal, al, tratto).
      * - **Straordinario (S8-4)**: la competenza è quella congelata **sulla riga** (`competenza_dal/al`, gradino
      *   `dichiarata` o `delibera`), gruppo per (conto, dal, al, tratto); riga senza competenza → la delibera del
      *   piano se c'è (`$base`), altrimenti il conto resta non risolto e per intero a chi esce.
@@ -622,11 +640,14 @@ final class ConguaglioPassaggio
      *   dell'unità abbassa la spesa da dividere; la parte della persona **non entra nella divisione**: è un pagamento
      *   di chi esce e resta suo (`versato_uscente`), tolto dalla sua parte dopo la divisione al lordo. Così `entrante`
      *   può superare `totale`: è l'eccedenza di chi esce, come nel motore. Piani pre-B2 (una riga sola, senza
-     *   descrizione): parte della persona zero.
+     *   descrizione): parte della persona zero. ⚠️ Con **tutte e due** le parti sullo stesso conto i centesimi non
+     *   coincidono con il motore, che toglie prima la parte della persona e divide quella dell'unità sulle righe già
+     *   ridotte (`CalcoloQuoteService::nettingGiaVersato`): qualche euro su € 700,00. Precedente alla beta.35, è
+     *   una scelta di dominio ancora da fare (decisione 17, D8): Coda 160.
      *
      * @param array<int, InsiemePeriodi> $tratti
      * @param ?InsiemePeriodi $base la competenza del piano quando è risolta (ordinario: base; straordinario: la delibera, usata come ripiego)
-     * @return ?array{totale:int, uscente:int, entrante:int, versato_uscente:int, non_risolte:int, gradino:?string, periodo:?array, giorni:array, dettagliato:bool, conti:list<array<string,mixed>>}
+     * @return ?array{totale:int, uscente:int, entrante:int, versato_uscente:int, non_risolte:int, gradino:?string, competenza_per_fattura:bool, voce_per_voce:bool, periodo:?array, giorni:array, dettagliato:bool, conti:list<array<string,mixed>>}
      */
     private function scomponiPerConto(int $pianoRateId, int $immobileId, int $anagraficaId, array $tratti, ?InsiemePeriodi $base, CarbonImmutable $decorrenza, bool $straordinaria = false, ?CarbonImmutable $decorrenzaAcquisto = null): ?array
     {
@@ -636,7 +657,7 @@ final class ConguaglioPassaggio
             // negativa dello stesso conto e la quota pura emessa è già al netto — sommandola qui, `totale` torna a
             // essere la quota pura del piano e un conto interamente già versato pesa zero.
             ->whereIn('tipo', [RigaRiparto::TIPO_RIPARTO, RigaRiparto::TIPO_NETTING, RigaRiparto::TIPO_AD_PERSONAM])
-            ->get(['conto_id', 'conto_nome', 'conto_radice_id', 'tabella_id', 'ruolo_richiesto', 'ruolo_risolto', 'importo', 'tipo', 'giorni_titolarita', 'competenza_dal', 'competenza_al', 'gradino_competenza', 'riga_descrizione', 'titolarita_dal', 'titolarita_al']);
+            ->get(['conto_id', 'conto_nome', 'conto_radice_id', 'tabella_id', 'ruolo_richiesto', 'ruolo_risolto', 'importo', 'tipo', 'giorni_titolarita', 'competenza_dal', 'competenza_al', 'gradino_competenza', 'riga_descrizione', 'riga_fattura_id', 'titolarita_dal', 'titolarita_al']);
         if ($righe->isEmpty()) {
             return null;
         }
@@ -647,7 +668,15 @@ final class ConguaglioPassaggio
         $giorno = fn ($d) => $d === null ? null : substr((string) $d, 0, 10);
         $lordi = $righe->whereIn('tipo', [RigaRiparto::TIPO_RIPARTO, RigaRiparto::TIPO_AD_PERSONAM]);
         $nettingRighe = $righe->where('tipo', RigaRiparto::TIPO_NETTING);
-        $chiave = fn ($r) => (int) ($r->conto_id ?? 0) . '|' . ($straordinaria ? $giorno($r->competenza_dal) . '|' . $giorno($r->competenza_al) : '') . '|' . $giorno($r->titolarita_dal) . '|' . $giorno($r->titolarita_al);
+        // Decisione 26 (1.11.0-beta.35): nel piano da fatture la riga porta la competenza della sua fattura anche sulla
+        // gestione ordinaria (gradino «dichiarata»), e si divide su quella, come la straordinaria — non sulla base. I
+        // piani generati prima (righe «gestione»/«esercizio») restano come sono stati calcolati: anteprima = scrittura.
+        $dichiarata = fn ($r) => ($r->gradino_competenza ?? null) === 'dichiarata' && $r->competenza_dal !== null && $r->competenza_al !== null;
+        // Un addebito diretto all'unità non ha conto: senza la sua riga nella chiave, due addebiti con la stessa competenza
+        // si fondevano in una voce sola, col nome del primo e la somma dei due (verifica delle correzioni, beta.35). Una
+        // voce per riga della fattura, come la scrive il motore.
+        $perRiga = fn ($r) => ($r->tipo ?? null) === RigaRiparto::TIPO_AD_PERSONAM ? '|riga:' . ($r->riga_fattura_id ?? $r->riga_descrizione ?? '') : '';
+        $chiave = fn ($r) => (int) ($r->conto_id ?? 0) . '|' . ($straordinaria || $dichiarata($r) ? $giorno($r->competenza_dal) . '|' . $giorno($r->competenza_al) : '') . '|' . $giorno($r->titolarita_dal) . '|' . $giorno($r->titolarita_al) . $perRiga($r);
         $gruppi = $lordi->groupBy($chiave);
         // Netting per conto (persona / unità), attribuito ai gruppi del conto in proporzione ai lordi.
         $nettingPerConto = [];
@@ -682,6 +711,9 @@ final class ConguaglioPassaggio
                 $rigaConCompetenza = $primo->competenza_dal !== null && $primo->competenza_al !== null;
                 $competenza = $rigaConCompetenza ? InsiemePeriodi::uno(new PeriodoCompetenza($giorno($primo->competenza_dal), $giorno($primo->competenza_al))) : $base;
                 $gradino = $rigaConCompetenza ? ($primo->gradino_competenza ?: 'dichiarata') : ($base !== null ? 'delibera' : null);
+            } elseif ($dichiarata($primo)) {
+                $competenza = InsiemePeriodi::uno(new PeriodoCompetenza($giorno($primo->competenza_dal), $giorno($primo->competenza_al)));
+                $gradino = 'dichiarata';
             } else {
                 $tratto = $tratti[$contoId] ?? $tratti[(int) ($primo->conto_radice_id ?? 0)] ?? null;
                 $competenza = $tratto ?? $base;
@@ -725,7 +757,11 @@ final class ConguaglioPassaggio
             }
             $conti[] = [
                 'conto_id'        => $contoId,
-                'conto'           => $primo->conto_nome,
+                // Una riga addebitata direttamente all'unità non ha un conto: il nome è la sua descrizione. Senza, la frase voce
+                // per voce usciva «· : € 500,00» — sulla straordinaria da sempre, sull'ordinaria dalla decisione 26 (R6 della
+                // Fase 1-bis).
+                'conto'           => $primo->conto_nome
+                    ?? (($primo->tipo ?? null) === RigaRiparto::TIPO_AD_PERSONAM && filled($primo->riga_descrizione ?? null) ? $primo->riga_descrizione : 'Addebito diretto all\'unità'),
                 'importo'         => $importo,
                 'importo_formattato' => MoneyHelper::format($importo),
                 'versato_uscente' => $np,
@@ -767,14 +803,20 @@ final class ConguaglioPassaggio
             'versato_uscente' => $versato,
             'non_risolte' => $nonRisolte,
             // Un gradino solo quando è uno; con più gradini (dichiarata + delibera) si dice il primo e le righe dicono il resto.
-            'gradino'  => $straordinaria ? ($gradini[0] ?? null) : 'capitolo',
+            'gradino'  => $straordinaria ? ($gradini[0] ?? null) : (in_array('dichiarata', $gradini, true) ? 'dichiarata' : 'capitolo'),
+            // Decisione 26: almeno una voce si divide sulla competenza della sua fattura (anche sull'ordinaria).
+            'competenza_per_fattura' => $straordinaria || in_array('dichiarata', $gradini, true),
+            // Sull'ordinaria, voci dichiarate accanto ad altre (o su periodi diversi): la testa non ha un periodo solo da
+            // mostrare, e l'anteprima dice «voce per voce» invece di «competenza dichiarata» con un intervallo che non è
+            // di nessuna voce (R5 della Fase 1-bis). Sulla straordinaria resta la regola di S8-4 (il primo gradino).
+            'voce_per_voce' => ! $straordinaria && in_array('dichiarata', $gradini, true) && (count($gradini) > 1 || count($periodi) > 1),
             'periodo'  => $periodi === [] ? null : array_values($periodi),
             'giorni'   => $giorni,
             // Il dettaglio voce per voce si mostra solo quando dice qualcosa che la testa non dice: una voce con
             // competenza propria, lo straordinario per riga, un versato di chi esce, una voce non risolta, la stessa
             // voce su due tratti (L1-1). Un ordinario tutto sulla base si legge come prima («divisa in proporzione ai
             // giorni: N a X, M a Y»).
-            'dettagliato' => $straordinaria || in_array('capitolo', $gradini, true) || $versato > 0 || $nonRisolte > 0 || count($conti) > $contiDistinti,
+            'dettagliato' => $straordinaria || in_array('capitolo', $gradini, true) || in_array('dichiarata', $gradini, true) || $versato > 0 || $nonRisolte > 0 || count($conti) > $contiDistinti,
             'conti'    => $conti,
         ];
     }
@@ -842,6 +884,14 @@ final class ConguaglioPassaggio
                         ? sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s, perché l\'assemblea ha deliberato il %s, quando l\'unità era sua (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $nome, MoneyHelper::format($p['quota_pura']), $uscente, $this->data($delibera))
                         : sprintf('Sulla gestione %s (straordinaria): %s — la delibera del %s è del giorno del passaggio o successiva, la spesa è di chi entra (art. 63 disp. att. c.c.; Cass. 24654/2010).', $nome, $this->creditoDebito((int) $p['entrante'], (int) $p['passate'], $uscente, $entrante), $this->data($delibera));
                 }
+                continue;
+            }
+            $dichiarataInTesta = collect($g['per_periodo'])->contains(fn ($p) => collect($p['per_capitolo'] ?? [])->contains(fn ($c) => ($c['gradino'] ?? null) === 'dichiarata'));
+            if ($dichiarataInTesta && $g['importo'] === 0 && $g['bozze_passate'] === 0 && count($g['per_periodo']) === 1 && empty($g['per_periodo'][0]['ereditata_da'])) {
+                // Decisione 26: la competenza dichiarata sulla fattura cade tutta prima del passaggio (la pregressa dell'anno
+                // prima): la voce è di chi esce, e le righe voce per voce dicono quale fattura e quale periodo.
+                $frasi[] = sprintf('Sulla gestione %s: nessun conguaglio — %s restano a %s: la competenza dichiarata sulla fattura cade prima del passaggio.', $nome, MoneyHelper::format($g['quota_pura']), $uscente);
+                array_push($frasi, ...$this->frasiPerCapitolo($g['per_periodo'][0]['per_capitolo'], $uscente, $entrante, $decorrenza, false));
                 continue;
             }
             if ($g['importo'] === 0 && $g['bozze_passate'] === 0) {
@@ -1045,6 +1095,9 @@ final class ConguaglioPassaggio
             'solo_pregresso' => sprintf('%s del piano «%s» non ancora %s %s solo di saldi pregressi di %s: %s sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $uno ? 'è fatta' : 'sono fatte', $b['intestatario'], $uno ? 'resterà' : 'resteranno'),
             'straordinaria_di_chi_esce' => sprintf('%s del piano «%s» non ancora %s %s a %s: la spesa straordinaria è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
             'straordinaria_divisa' => sprintf('%s: la spesa straordinaria si divide fra chi esce e chi entra per competenza, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
+            // Decisione 26: sull'ordinaria, la voce con la competenza dichiarata sulla fattura.
+            'fattura_di_chi_esce' => sprintf('%s del piano «%s» non ancora %s %s a %s: la competenza dichiarata sulla fattura cade prima del passaggio, la spesa è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            'fattura_divisa' => sprintf('%s: una voce del piano ha la competenza dichiarata sulla fattura e la spesa si divide voce per voce fra chi esce e chi entra, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
             // R12: le quote che il conguaglio non tocca non «si conguagliano qui».
             'straordinaria_del_nudo' => sprintf('%s del piano «%s» non ancora %s %s a %s: le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
             'ordinaria_dell_usufruttuario' => sprintf('%s del piano «%s» non ancora %s %s a %s: sono spese ordinarie dell\'usufruttuario (art. 1004 c.c.), regolate alla costituzione dell\'usufrutto; chi compra la nuda proprietà non ne risponde.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),

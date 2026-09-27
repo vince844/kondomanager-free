@@ -18,7 +18,7 @@ import { watchDebounced } from '@vueuse/core';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { centsToEuro } from '@/lib/gestionale/money';
 import CompetenzaFattura from '@/components/gestionale/movimenti/fatture/CompetenzaFattura.vue';
-import { lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
+import { descriviMargine, lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
 import { euroToCents } from '@/lib/gestionale/fatture/money';
 import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import vSelect from 'vue-select';
@@ -1419,8 +1419,9 @@ const pageGuides = [
                                         <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
                                             <div class="flex justify-between items-start">
                                                 <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
-                                                <span class="text-xs font-black shrink-0" :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
-                                                    {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
+                                                <!-- Coda 157: segno e tono seguono il margine, non il giudizio sul documento (che resta al semaforo). -->
+                                                <span class="text-xs font-black shrink-0" :class="{ positivo: 'text-emerald-400', negativo: 'text-rose-400', neutro: 'text-slate-400' }[descriviMargine(impact.delta_cents).tono]">
+                                                    {{ euro(impact.delta_cents, descriviMargine(impact.delta_cents).opzioni) }}
                                                 </span>
                                             </div>
 
@@ -1433,7 +1434,7 @@ const pageGuides = [
 
                                             <div class="flex justify-between text-[9px] text-slate-500 font-medium">
                                                 <span>Usato: {{ euro(impact.speso_cents) }}</span>
-                                                <span>Budget: {{ euro(impact.residuo_cents) }}</span>
+                                                <span>Residuo: {{ euro(impact.residuo_cents) }}</span>
                                             </div>
 
                                             <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">

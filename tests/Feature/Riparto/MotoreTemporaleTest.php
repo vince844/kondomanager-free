@@ -1130,3 +1130,127 @@ it('domanda di Vincenzo (20/09) — fattura PREGRESSA dell\'anno prima registrat
     expect(mtDi($totali2, $s2['persone']['acquirente']))->toBe(100001)
         ->and(mtDi($totali2, $s2['persone']['venditore']))->toBeNull();
 });
+
+/*
+|--------------------------------------------------------------------------
+| Decisione 26 (1.11.0-beta.35) — nel piano da fatture la competenza dichiarata prevale qualunque sia la gestione
+|--------------------------------------------------------------------------
+|
+| Fino alla beta.34 un piano da fatture su una gestione ORDINARIA ignorava la competenza dichiarata sulla fattura
+| (ramo `conFatturaIgnorata()`) e divideva per giorni sull'esercizio: la pregressa 2025 andava per 245/365 a chi è entrato
+| nel 2026. La decisione 11 diceva già che il primo gradino «è comune e prevale sempre»; la 26 la applica. Senza competenza
+| dichiarata non cambia nulla (test «decisione 11 [S4]» qui sopra, che resta com'è).
+*/
+
+/** Lo scenario uno su una gestione ordinaria e senza delibera: il piano da fatture resta «straordinario» di tipo. */
+function mtScenarioUnoOrdinario(array $competenzaFattura = [null, null]): array
+{
+    $s = mtScenarioUno(null, $competenzaFattura);
+    DB::table('gestioni')->where('id', $s['gestione']->id)->update(['tipo' => 'ordinaria']);
+    $s['gestione']->refresh();
+
+    return $s;
+}
+
+it('decisione 26 [beta.35] — piano da fatture su gestione ORDINARIA: la pregressa con «costo maturato» 2025 è tutta di chi era titolare nel 2025 (il venditore), come sulla straordinaria; prima si divideva 120/245 sul 2026', function () {
+    $s = mtScenarioUnoOrdinario();
+    mtRendiPregressa($s, '2025-01-01', '2025-12-31');
+    [$motore, $totali] = mtCalcolaStraordinario($s);
+    $riga = collect($motore->getRigheDettaglio())->firstWhere('tipo', 'riparto');
+
+    // Nel 2025 il venditore è solo: 100001 a lui, niente all'acquirente, riga atemporale (invariante 1).
+    expect(mtDi($totali, $s['persone']['venditore']))->toBe(100001)
+        ->and(mtDi($totali, $s['persone']['acquirente']))->toBeNull()
+        ->and(mtSomma($totali))->toBe(100001)
+        ->and($riga)->toMatchArray(['gradino_competenza' => 'dichiarata', 'competenza_dal' => '2025-01-01', 'competenza_al' => '2025-12-31', 'giorni_titolarita' => null]);
+});
+
+it('decisione 26 [beta.35] — anche un imprevisto dell\'anno: «costo maturato» 1/1–30/4/2026 su gestione ordinaria è tutto del venditore, e 1/3–31/8 si divide 61/123 sui giorni DICHIARATI, non sui 365 dell\'esercizio', function () {
+    $s = mtScenarioUnoOrdinario(['2026-01-01', '2026-04-30']);
+    [, $totali] = mtCalcolaStraordinario($s);
+    expect(mtDi($totali, $s['persone']['venditore']))->toBe(100001)
+        ->and(mtDi($totali, $s['persone']['acquirente']))->toBeNull();
+
+    $s2 = mtScenarioUnoOrdinario(['2026-03-01', '2026-08-31']);
+    [$motore2, $totali2] = mtCalcolaStraordinario($s2);
+    // 184 giorni: venditore 1/3–30/4 = 61, acquirente 1/5–31/8 = 123. 100001 × 61/184 = 33152,51 e × 123/184 = 66848,49:
+    // i resti maggiori danno il centesimo al venditore (,51 > ,49) → 33153 + 66848 = 100001.
+    expect(mtDi($totali2, $s2['persone']['venditore']))->toBe(33153)
+        ->and(mtDi($totali2, $s2['persone']['acquirente']))->toBe(66848)
+        ->and(collect($motore2->getRigheDettaglio())->where('tipo', 'riparto')->pluck('giorni_titolarita', 'anagrafica_id')->all())
+            ->toBe([$s2['persone']['venditore']->id => 61, $s2['persone']['acquirente']->id => 123])
+        ->and(collect($motore2->getRigheDettaglio())->where('tipo', 'riparto')->pluck('gradino_competenza')->unique()->values()->all())->toBe(['dichiarata']);
+});
+
+it('decisione 26 [beta.35] — due fatture sullo stesso conto con competenze dichiarate diverse: il cancello (2) nomina tutte e due le divisioni, non solo l\'ultima (la chiave del cambiamento non portava il periodo)', function () {
+    $s = mtScenarioUnoOrdinario(['2026-03-01', '2026-08-31']);
+    $f2 = FatturaPassiva::create([
+        'condominio_id' => $s['condominio']->id, 'fornitore_id' => $s['fattura']->fornitore_id, 'esercizio_id' => $s['esercizio']->id,
+        'tipo_documento' => 'fattura', 'numero_documento' => 'FT-S1-BIS', 'data_documento' => '2026-06-15', 'data_scadenza' => '2026-07-15',
+        'is_pregresso' => false, 'importo_imponibile' => 50000, 'importo_iva' => 0, 'importo_ritenuta' => 0, 'totale_documento' => 50000,
+        'netto_a_pagare' => 50000, 'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico',
+        'competenza_dal' => '2026-04-01', 'competenza_al' => '2026-05-31',
+    ]);
+    DB::table('righe_fattura')->insert([
+        'fattura_passiva_id' => $f2->id, 'conto_id' => $s['capitolo']->id, 'immobile_id' => null, 'descrizione' => 'Riparazione cancello',
+        'aliquota_iva' => 0, 'importo_imponibile' => 50000, 'importo_iva' => 0, 'is_sopravvenienza' => true, 'is_rateizzata' => false,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $s['piano']->fatture()->attach($f2->id, ['importo_collegato' => 50000]);
+
+    try {
+        app(GeneratePianoRateAction::class)->execute($s['piano']->fresh(), esercizio: $s['esercizio']);
+        $this->fail('Attesa DestinatariCambiatiException');
+    } catch (DestinatariCambiatiException $e) {
+        $proRata = collect($e->getCambiamenti())->where('motivo', 'pro_rata_giorni');
+        // 1/3–31/8 → 61/123; 1/4–31/5 → 30/31 (50000 × 30/61 = 24590,16).
+        expect($proRata)->toHaveCount(2)
+            ->and($proRata->pluck('periodo')->all())->toEqualCanonicalizing([
+                [['dal' => '2026-03-01', 'al' => '2026-08-31']],
+                [['dal' => '2026-04-01', 'al' => '2026-05-31']],
+            ]);
+    }
+});
+
+it('decisione 26 [beta.35] — pregressa GIÀ registrata senza periodo, su gestione ordinaria e senza nessun passaggio nell\'anno: il piano non indovina, si ferma e lo dice (si ripartisce sui giorni di quest\'anno), e con la nota genera', function () {
+    // Una sola titolare per tutto il 2026: nessun pro rata, e prima della beta.35 la generazione non si fermava.
+    $s = mtScenarioUnoOrdinario();
+    DB::table('anagrafica_immobile')->where('anagrafica_id', $s['persone']['acquirente']->id)->delete();
+    DB::table('anagrafica_immobile')->where('anagrafica_id', $s['persone']['venditore']->id)->update(['data_fine' => null]);
+    mtRendiPregressa($s, null, null);
+
+    try {
+        app(GeneratePianoRateAction::class)->execute($s['piano']->fresh(), esercizio: $s['esercizio']);
+        $this->fail('Attesa DestinatariCambiatiException');
+    } catch (DestinatariCambiatiException $e) {
+        $c = collect($e->getCambiamenti())->firstWhere('motivo', 'pregressa_senza_periodo');
+        expect($c)->not->toBeNull()
+            ->and($c['fattura_numero'])->toBe('FT-S1')
+            ->and($c['gradino'])->toBe('esercizio')
+            ->and($c['periodo'])->toBe([['dal' => '2026-01-01', 'al' => '2026-12-31']]);
+    }
+    expect($s['piano']->rate()->count())->toBe(0);
+
+    app(GeneratePianoRateAction::class)->execute($s['piano']->fresh(), accettaDestinatari: true, notaDestinatari: 'Pregressa del 2025 senza periodo: nel 2025 la titolare era la stessa', esercizio: $s['esercizio']);
+    expect(mtQuotePerPersona($s['piano']))->toBe([$s['persone']['venditore']->id => 100001]);
+    $regole = json_decode(DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $s['piano']->id)->value('rate_quote.regole_calcolo'), true);
+    // La pregressa senza periodo non è una coppia che cambia: la nota resta, le coppie sono zero.
+    expect($regole['parametri']['titolarita_alla'])->toMatchArray(['destinatari_cambiati' => true, 'nota_cancello' => 'Pregressa del 2025 senza periodo: nel 2025 la titolare era la stessa', 'coppie' => 0]);
+});
+
+it('decisione 26 [beta.35] — pregressa senza periodo su gestione STRAORDINARIA: decide la delibera di quest\'anno, e il piano lo dice con lo stesso motivo (gradino «delibera», il giorno della delibera)', function () {
+    $s = mtScenarioUno('2026-06-15');
+    DB::table('anagrafica_immobile')->where('anagrafica_id', $s['persone']['acquirente']->id)->delete();
+    DB::table('anagrafica_immobile')->where('anagrafica_id', $s['persone']['venditore']->id)->update(['data_fine' => null]);
+    mtRendiPregressa($s, null, null);
+
+    try {
+        app(GeneratePianoRateAction::class)->execute($s['piano']->fresh(), esercizio: $s['esercizio']);
+        $this->fail('Attesa DestinatariCambiatiException');
+    } catch (DestinatariCambiatiException $e) {
+        $c = collect($e->getCambiamenti())->firstWhere('motivo', 'pregressa_senza_periodo');
+        expect($c)->not->toBeNull()
+            ->and($c['gradino'])->toBe('delibera')
+            ->and($c['periodo'])->toBe([['dal' => '2026-06-15', 'al' => '2026-06-15']]);
+    }
+});

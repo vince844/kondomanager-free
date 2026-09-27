@@ -96,8 +96,9 @@ class CalcoloQuoteService
 
     /**
      * Dove la risoluzione **temporale** ha cambiato qualcosa rispetto a quella atemporale: un titolare
-     * escluso dal periodo o un pro rata per giorni. È la base del cancello (2) della decisione 14 e di
-     * `titolarita_alla` nelle quote (decisione 15).
+     * escluso dal periodo o un pro rata per giorni — e, dalla decisione 26 (1.11.0-beta.35), una pregressa
+     * registrata senza periodo, che non cambia nessun titolare ma chiede la nota. È la base del cancello (2)
+     * della decisione 14 e di `titolarita_alla` nelle quote (decisione 15).
      *
      * @var list<array<string,mixed>>
      */
@@ -556,7 +557,7 @@ class CalcoloQuoteService
         // chiamata: chiamarlo una volta per componente lo sottrarrebbe più volte
         // nella stessa esecuzione, anche a monte di qualunque split fra piani.
         $importiPerConto = [];
-        /** @var array<int, EsitoCompetenza> la competenza con cui ogni conto va ripartito; deve essere una sola per conto */
+        /** @var array<string, EsitoCompetenza> la competenza per (conto, competenza): due fatture sullo stesso conto con competenze diverse sono due chiamate */
         $competenzePerConto = [];
 
         foreach ($fatture as $fattura) {
@@ -566,9 +567,10 @@ class CalcoloQuoteService
             // (l'anteprima di `DettaglioRiparto`) non si ferma: quella fattura va atemporale e lo dice
             // con `competenza_non_risolta`, mentre le fatture con la competenza dichiarata restano
             // temporali come alla generazione (verifica S4: prima l'anteprima azzerava tutto). Vale per
-            // la natura **straordinaria** (che decide la gestione, decisione 11): un piano da fatture su
-            // una gestione ordinaria resta ordinario e pro rata — la competenza dichiarata sulla fattura,
-            // lì, non guida le rate (decisione 19) e si dichiara ignorata (`competenzaFatturaIgnorata`).
+            // la natura **straordinaria** (che decide la gestione, decisione 11). Su una gestione ordinaria
+            // la competenza dichiarata sulla fattura **prevale** anche qui (decisione 26, 1.11.0-beta.35:
+            // fino alla beta.34 la si ignorava e la pregressa del 2025 si divideva sui giorni del 2026);
+            // senza, il piano da fatture va pro rata sulla base come ogni ordinario.
             $esitoFattura = null;
             if ($this->competenzaBase !== null) {
                 if ($this->competenzaBase->natura === NaturaGestione::Straordinaria) {
@@ -588,9 +590,7 @@ class CalcoloQuoteService
                         $this->competenzaRisoltaPerFattura = true;
                     }
                 } else {
-                    $esitoFattura = $fattura->competenza_dal !== null && $fattura->competenza_al !== null
-                        ? $this->competenzaBase->conFatturaIgnorata()
-                        : $this->competenzaBase;
+                    $esitoFattura = (new RisolutoreCompetenza())->perFattura($fattura->competenza_dal, $fattura->competenza_al, $this->competenzaBase);
                 }
             }
             $this->impostaCompetenzaCorrente($esitoFattura);
@@ -679,6 +679,26 @@ class CalcoloQuoteService
             // -----------------------------------------------------------------
             $naturale = array_sum(array_column($componenti, 'importo'));
             if ($naturale <= 0) continue;
+
+            // Decisione 26, punto 3: una pregressa registrata senza periodo è un costo di un esercizio passato che il
+            // motore può ripartire solo sui giorni della base (o sul giorno della delibera). Il programma non sa se in
+            // quell'anno l'unità era di qualcun altro, quindi non indovina: lo dice al cancello (2), che chiede la nota
+            // anche quando nessun titolare cambia nell'anno. Solo se la fattura qui ripartisce qualcosa: una pregressa
+            // che non contribuisce (una copertura senza conto, scartata sopra) non ha giorni da dichiarare (R4 della
+            // Fase 1-bis).
+            if ($fattura->is_pregresso && ($fattura->competenza_dal === null || $fattura->competenza_al === null)
+                && $esitoFattura !== null && $esitoFattura->risolto()) {
+                $this->registraCambiamento([
+                    'immobile_id'    => null,
+                    'tipologia'      => '',
+                    'conto_id'       => null,
+                    'motivo'         => 'pregressa_senza_periodo',
+                    'fattura_id'     => (int) $fattura->id,
+                    'fattura_numero' => (string) $fattura->numero_documento,
+                    'gradino'        => $esitoFattura->gradino?->value,
+                    'periodo'        => $esitoFattura->periodi?->toArray(),
+                ]);
+            }
 
             $collegato = (int) ($fattura->pivot->importo_collegato ?? 0);
             $target    = $collegato > 0 ? $collegato : $naturale;
@@ -1034,7 +1054,7 @@ class CalcoloQuoteService
     /** Annota nel cancello (2) dove sono andati i giorni scoperti della coppia (decisione 22). */
     private function annotaRipiego(int $immobileId, string $tipologia, ?int $contoId, array $ripiego): void
     {
-        $chiave = implode('|', [$immobileId, $tipologia, $contoId ?? '', 'pro_rata_giorni']);
+        $chiave = $this->chiaveCambiamento(['immobile_id' => $immobileId, 'tipologia' => $tipologia, 'conto_id' => $contoId, 'motivo' => 'pro_rata_giorni', 'periodo' => $this->periodo?->toArray()]);
         if (! isset($this->destinatariCambiati[$chiave])) {
             return;
         }
@@ -1119,20 +1139,31 @@ class CalcoloQuoteService
     }
 
     /**
-     * Una voce sola per (unità, ruolo, conto, motivo): `distribuisciSuTabelle` passa per ogni tabella e
+     * Una voce sola per (unità, ruolo, conto, motivo, **periodo**): `distribuisciSuTabelle` passa per ogni tabella e
      * per ogni ripartizione dello stesso conto, e senza questa chiave il pannello del cancello (2)
-     * mostrava la stessa coppia due volte e `coppie` la contava due volte (verifica S4).
+     * mostrava la stessa coppia due volte e `coppie` la contava due volte (verifica S4). Il periodo è nella chiave
+     * dalla 1.11.0-beta.35: due fatture sullo stesso conto con competenze diverse sono due divisioni, e senza il
+     * periodo la seconda sovrascriveva la prima (latente sulla straordinaria dalla beta.31, raggiungibile
+     * sull'ordinaria con la decisione 26). La pregressa senza periodo porta anche la sua fattura.
      */
     private function registraCambiamento(array $voce): void
     {
-        $chiave = implode('|', [$voce['immobile_id'], $voce['tipologia'], $voce['conto_id'] ?? '', $voce['motivo']]);
-        $this->destinatariCambiati[$chiave] = $voce;
+        $this->destinatariCambiati[$this->chiaveCambiamento($voce)] = $voce;
+    }
+
+    private function chiaveCambiamento(array $voce): string
+    {
+        return implode('|', [
+            $voce['immobile_id'] ?? '', $voce['tipologia'] ?? '', $voce['conto_id'] ?? '', $voce['motivo'],
+            isset($voce['periodo']) ? json_encode($voce['periodo']) : '', $voce['fattura_id'] ?? '',
+        ]);
     }
 
     /**
-     * Dove la risoluzione temporale ha cambiato destinatari o pesi rispetto a quella atemporale.
-     * Vuoto sia con il calcolo atemporale sia quando nessun titolare cambia nel periodo: è la
-     * condizione del cancello (2) della decisione 14.
+     * Dove la risoluzione temporale ha cambiato destinatari o pesi rispetto a quella atemporale, più le
+     * pregresse registrate senza periodo (decisione 26, motivo `pregressa_senza_periodo`). Vuoto con il
+     * calcolo atemporale, e quando nessun titolare cambia nel periodo e non c'è nessuna di quelle
+     * pregresse: è la condizione del cancello (2) della decisione 14.
      *
      * `competenza_non_risolta` è vero solo in sola lettura, quando una parte del calcolo è andata
      * atemporale perché la competenza non era risolvibile (straordinario senza delibera, decisione 12).

@@ -55,6 +55,11 @@ const isPagabile = computed(() =>
   !props.fattura.dati_extra?.nota_storno
 );
 
+// Il perché del divieto sullo storno lo calcola il server (`FatturaPassiva::motivoBloccoStorno()`), come quello
+// sull'Elimina: dalla 1.11.0-beta.35 guarda anche i piani rate che contengono la fattura, e la riga non li conosce
+// (R1 della Fase 1-bis — una fattura stornata restava nel suo piano, e le rate la chiedevano ancora).
+const motivoStornoDalServer = computed<string | null>(() => props.fattura.motivo_blocco_storno ?? null);
+
 // Lo storno è ammesso solo su una fattura senza pagamenti vivi: il denaro già
 // uscito va rimesso a posto per primo, altrimenti resterebbe un'uscita di cassa
 // senza un debito che la giustifichi. Stessa regola della guardia server, esposta
@@ -62,7 +67,19 @@ const isPagabile = computed(() =>
 const puoStornare = computed(() =>
   !props.fattura.dati_extra?.is_stornata &&
   props.fattura.netto_a_pagare > 0 &&
-  props.fattura.stato_pagamento === 'aperta'
+  props.fattura.stato_pagamento === 'aperta' &&
+  !motivoStornoDalServer.value
+);
+
+// Aperta, ma lo storno è rifiutato (un piano rate che non ha incassato, un fondo già confermato): la voce resta cliccabile
+// e apre la finestra con il motivo del server e la via d'uscita. ⚠️ Non `disabled` con un `title`: la voce disattivata ha
+// `pointer-events: none`, il tooltip non compare mai e la tastiera la salta — il motivo non si leggeva da nessuna parte
+// (verifica delle correzioni della Fase 1-bis, 1.11.0-beta.35, confermata con Chromium sul CSS compilato).
+const stornoBloccatoDalServer = computed(() =>
+  !props.fattura.dati_extra?.is_stornata &&
+  props.fattura.netto_a_pagare > 0 &&
+  props.fattura.stato_pagamento === 'aperta' &&
+  !!motivoStornoDalServer.value
 );
 
 const stornoBloccatoDaPagamenti = computed(() =>
@@ -71,7 +88,7 @@ const stornoBloccatoDaPagamenti = computed(() =>
   ['pagata', 'parziale'].includes(props.fattura.stato_pagamento)
 );
 
-// Il perché del divieto sull'Elimina lo calcola il server, con tutti e sette i
+// Il perché del divieto sull'Elimina lo calcola il server, con tutti gli otto
 // motivi: `null` significa eliminabile. Il frontend non lo ricostruisce — quando
 // ci provava ne conosceva due, e sbagliava in entrambi i versi (voce nascosta
 // senza spiegazione, oppure mostrata e poi rifiutata dalla destroy).
@@ -88,6 +105,13 @@ const motivoStornoBloccato = computed(() =>
 // Messaggio della guardia server, se dovesse scattare comunque (difesa in profondità:
 // il blocco lato UI si basa sui dati della riga, che potrebbero essere obsoleti).
 const erroreStorno = ref<string | null>(null);
+// Il titolo della stessa finestra: la usano anche le voci «non consentito» dell'eliminazione e dello storno, che la aprono
+// al clic (Coda 162, 1.11.0-beta.35).
+const erroreTitolo = ref('Storno non consentito');
+const mostraDivieto = (titolo: string, motivo: string | null) => {
+  erroreTitolo.value = titolo;
+  erroreStorno.value = motivo;
+};
 
 // Stato dei Modali
 const isDeleteModalOpen = ref(false);
@@ -118,6 +142,7 @@ const executeDelete = () => {
 // Esecuzione Storno Contabile (Errore Consolidato)
 const executeStorno = () => {
     erroreStorno.value = null;
+    erroreTitolo.value = 'Storno non consentito';
 
     router.post(route(generateRoute('gestionale.fatture.storno'), {
         condominio: props.condominioId,
@@ -282,12 +307,12 @@ const vaiAgliAllegati = () => {
            sapere quale dei sette motivi lo riguardasse — né cosa fare per uscirne.
            Il motivo arriva dal server (`motivo_blocco_eliminazione`), quindi è
            esattamente quello che applicherebbe la destroy(): niente due guardie
-           che divergono. -->
+           che divergono. ⚠️ Al clic, non in un `title`: una voce disattivata ha
+           `pointer-events: none` e il suggerimento non compariva mai (Coda 162). -->
       <DropdownMenuItem
           v-else
-          disabled
-          class="opacity-60 cursor-not-allowed"
-          :title="motivoEliminaBloccato"
+          @click="mostraDivieto('Eliminazione non consentita', motivoEliminaBloccato)"
+          class="text-slate-500 cursor-pointer"
       >
           <Ban class="w-4 h-4 mr-2" /> Elimina — non consentito
       </DropdownMenuItem>
@@ -304,11 +329,18 @@ const vaiAgliAllegati = () => {
            aver aperto una modale che promette un'operazione poi rifiutata. -->
       <DropdownMenuItem
           v-else-if="stornoBloccatoDaPagamenti"
-          disabled
-          class="opacity-60 cursor-not-allowed"
-          :title="motivoStornoBloccato"
+          @click="mostraDivieto('Storno non consentito', motivoStornoBloccato)"
+          class="text-slate-500 cursor-pointer"
       >
           <Ban class="w-4 h-4 mr-2" /> Storna — prima i pagamenti
+      </DropdownMenuItem>
+
+      <DropdownMenuItem
+          v-else-if="stornoBloccatoDalServer"
+          @click="mostraDivieto('Storno non consentito', motivoStornoDalServer)"
+          class="text-slate-500 cursor-pointer"
+      >
+          <Ban class="w-4 h-4 mr-2" /> Storna — non consentito
       </DropdownMenuItem>
 
       <DropdownMenuItem v-if="fattura.dati_extra?.is_stornata" disabled class="opacity-50">
@@ -354,6 +386,15 @@ const vaiAgliAllegati = () => {
               <p>
                   Il sistema non eliminerà il documento originale, ma genererà automaticamente una <strong>nota di credito a pareggio</strong> per neutralizzare i costi nel libro giornale e ripristinare il budget nei capitoli di spesa.
               </p>
+              <!-- R1 della Fase 1-bis (1.11.0-beta.35): con un piano che ha già incassato lo storno resta possibile, ma il
+                   piano non si rettifica da solo. Il testo lo compone il server (`FatturaPassiva::avvisoStorno()`). -->
+              <div v-if="fattura.avviso_storno" class="bg-red-50 border border-red-200 text-red-800 p-3 rounded flex gap-3 items-start">
+                  <AlertTriangle class="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                      <p class="font-bold">Il piano rate resta com'è</p>
+                      <p class="text-xs mt-1">{{ fattura.avviso_storno }}</p>
+                  </div>
+              </div>
           </div>
       </ConfirmDialog>
 
@@ -431,7 +472,7 @@ const vaiAgliAllegati = () => {
               <div class="flex items-start gap-3">
                   <Ban class="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
                   <div>
-                      <h3 class="text-lg font-semibold">Storno non consentito</h3>
+                      <h3 class="text-lg font-semibold">{{ erroreTitolo }}</h3>
                       <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{ erroreStorno }}</p>
                   </div>
               </div>

@@ -197,9 +197,16 @@ defineEmits(['update:open']);
                                 giorno risponde dell'intera spesa, anche se poi vende.
                             </p>
                             <p class="mt-2">
+                                Nel piano che finanzia le fatture fuori preventivo conta la <strong>competenza dichiarata sulla
+                                fattura</strong>, anche su una gestione ordinaria: una fattura pregressa del 2025 resta a chi era
+                                titolare nel 2025, anche se l'unità è stata venduta quest'anno.
+                            </p>
+                            <p class="mt-2">
                                 Se generando il piano il programma vede che la competenza cambia i destinatari rispetto ai
-                                titolari di oggi, si ferma e lo mostra: chi entra, chi esce, per quanti giorni. Si va avanti con
-                                una spunta e una nota — è una presa d'atto, non un'approvazione al buio.
+                                titolari di oggi, si ferma e lo mostra: chi entra, chi esce, per quanti giorni. Si ferma anche
+                                quando una fattura pregressa non ha il periodo in cui il costo è maturato: dice su quali giorni
+                                la ripartirà e come rimediare. Si va avanti con una nota — è una presa d'atto, non
+                                un'approvazione al buio.
                             </p>
                         </section>
 
