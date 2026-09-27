@@ -805,7 +805,7 @@ test('R3 [1-bis] — con un piano parziale che ha incassato, la nota sull\'unit�
 
     expect($fattura->fresh()->motivoBloccoNotaCollegata(30000, 'registra la nota', $righe))->toBeNull()
         ->and($fattura->fresh()->avvisoNotaCollegata($righe))->toContain('parte precisa')->toContain('«Cornicione 2026»')
-            // Come si sistema di solito: deciso da Vincenzo il 28/09/2026 dopo la ricerca sulla legge.
+            // Come si sistema di solito: deciso da Vincenzo il 27/09/2026 dopo la ricerca sulla legge.
             ->toContain('conguaglio del consuntivo')->toContain('non fra condòmini');
 
     $corpo = ncCorpoNota($base, $fattura->id, 300, null, ['righe' => [0 => ['immobile_id' => $base['immobileId']]]]);

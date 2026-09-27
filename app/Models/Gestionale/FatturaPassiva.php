@@ -601,7 +601,7 @@ class FatturaPassiva extends Model
      * restituzione non si perde, W2 del terzo giro); sulla ripartizione quando cambia solo di chi è la parte.
      *
      * Chiude sempre con come si sistema di solito: il conguaglio nel consuntivo, verso il condominio. Deciso da Vincenzo
-     * il 28/09/2026 dopo la ricerca sulla legge — il credito e il debito di ciascuno sono verso il condominio, e una
+     * il 27/09/2026 dopo la ricerca sulla legge — il credito e il debito di ciascuno sono verso il condominio, e una
      * compensazione diretta fra condòmini non ha base (art. 1241 c.c.).
      */
     private function testoAvvisoIncassato(string $dove, ?int $inPiu, bool $nettoScende = false, bool $modifica = false): string
