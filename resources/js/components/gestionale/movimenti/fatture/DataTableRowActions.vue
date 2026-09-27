@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit, Ban } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit, Ban, Link2, Unlink } from 'lucide-vue-next'
+import { useFattureRettificabili } from '@/composables/useFattureRettificabili'
+import { etichettaCandidata, statoScelta } from '@/lib/gestionale/fatture/fatturaRettificata'
 
 const props = defineProps<{
   fattura: any,
@@ -111,6 +113,74 @@ const erroreTitolo = ref('Storno non consentito');
 const mostraDivieto = (titolo: string, motivo: string | null) => {
   erroreTitolo.value = titolo;
   erroreStorno.value = motivo;
+};
+
+// Coda 165 (1.11.0-beta.36): la nota di credito del fornitore e la fattura che rettifica. Il collegamento si fa qui per le
+// note già registrate — tutte quelle di prima di questa versione — e si toglie qui. Le regole le decide il server
+// (`motivo_blocco_collegamento` sulla nota, `motivo_blocco_nota` e `avviso_nota` su ogni fattura candidata): il menu le
+// legge. La nota nata da uno storno ha già il suo legame, e il menu non le offre niente.
+const eNotaDelFornitore = computed(() =>
+  props.fattura.tipo_documento === 'nota_credito' &&
+  !props.fattura.e_nata_da_storno &&
+  !props.fattura.dati_extra?.nota_storno
+);
+const eCollegata = computed(() => eNotaDelFornitore.value && !!props.fattura.fattura_rettificata_id);
+const puoCollegare = computed(() => eNotaDelFornitore.value && !eCollegata.value && !props.fattura.motivo_blocco_collegamento);
+const collegamentoBloccato = computed(() => eNotaDelFornitore.value && !eCollegata.value && !!props.fattura.motivo_blocco_collegamento);
+const numeroRettificata = computed(() => props.fattura.fattura_rettificata?.numero_documento ?? `#${props.fattura.fattura_rettificata_id}`);
+// Una nota contestata non conta nel netto: collegarla o scollegarla non cambia carrello e cruscotto (W8 del terzo giro).
+const notaContestata = computed(() => props.fattura.stato_approvazione === 'contestata');
+
+const isCollegaModalOpen = ref(false);
+const isScollegaModalOpen = ref(false);
+const fatturaScelta = ref<number | null>(null);
+const rettificabili = useFattureRettificabili();
+const scelta = computed(() => statoScelta(rettificabili.candidate.value, fatturaScelta.value));
+
+const apriCollega = () => {
+  fatturaScelta.value = null;
+  isCollegaModalOpen.value = true;
+  // La nota è già registrata: righe e importo li legge il server, e motivi e avvisi dicono dove riduce (R4 della 1-bis).
+  rettificabili.carica({
+    condominioId: props.condominioId,
+    fornitoreId: props.fattura.fornitore_id,
+    notaId: props.fattura.id,
+    perCollegare: true,
+  });
+};
+
+const esitoCollegamento = {
+  preserveScroll: true,
+  onSuccess: () => { isCollegaModalOpen.value = false; isScollegaModalOpen.value = false; },
+  onError: (errors: Record<string, string>) => {
+    isCollegaModalOpen.value = false;
+    isScollegaModalOpen.value = false;
+    if (errors.avviso_nota) {
+      // Il server ha trovato un avviso che la finestra non mostrava (le candidate sono cambiate nel frattempo).
+      mostraDivieto('Serve la conferma', `${errors.avviso_nota} Riapri «Collega a una fattura» per confermare.`);
+      return;
+    }
+    mostraDivieto('Collegamento non consentito', errors.collega_vietato ?? errors.fattura_rettificata_id ?? Object.values(errors)[0] ?? 'Operazione non consentita.');
+  },
+};
+
+const executeCollega = () => {
+  if (fatturaScelta.value === null || scelta.value.motivo) return;
+  router.post(route(generateRoute('gestionale.fatture.collega-fattura'), {
+    condominio: props.condominioId,
+    fattura: props.fattura.id,
+  }), {
+    fattura_rettificata_id: fatturaScelta.value,
+    // L'avviso di un piano che ha incassato si conferma cliccando «Collega»: il server lo ricontrolla (R3).
+    conferma_avviso_nota: !!scelta.value.avviso,
+  }, esitoCollegamento);
+};
+
+const executeScollega = () => {
+  router.post(route(generateRoute('gestionale.fatture.scollega-fattura'), {
+    condominio: props.condominioId,
+    fattura: props.fattura.id,
+  }), {}, esitoCollegamento);
 };
 
 // Stato dei Modali
@@ -292,6 +362,31 @@ const vaiAgliAllegati = () => {
         <CheckCircle2 class="w-4 h-4 mr-2" /> Segna come approvata
       </DropdownMenuItem>
 
+      <DropdownMenuItem
+        v-if="puoCollegare"
+        @click="apriCollega"
+        class="cursor-pointer"
+      >
+        <Link2 class="w-4 h-4 mr-2" /> Collega a una fattura
+      </DropdownMenuItem>
+
+      <DropdownMenuItem
+        v-if="collegamentoBloccato"
+        @click="mostraDivieto('Collegamento non consentito', fattura.motivo_blocco_collegamento)"
+        class="text-slate-500 cursor-pointer"
+      >
+        <Ban class="w-4 h-4 mr-2" /> Collega — non consentito
+      </DropdownMenuItem>
+
+      <DropdownMenuItem
+        v-if="eCollegata"
+        @click="isScollegaModalOpen = true"
+        class="cursor-pointer"
+      >
+        <!-- Il numero non va a capo a metà («FT-» / «36-B»): visto a video il 27/09/2026. -->
+        <Unlink class="w-4 h-4 mr-2 shrink-0" /> <span>Scollega dalla fattura <span class="whitespace-nowrap">n. {{ numeroRettificata }}</span></span>
+      </DropdownMenuItem>
+
       <DropdownMenuSeparator />
       
       <DropdownMenuItem
@@ -457,6 +552,67 @@ const vaiAgliAllegati = () => {
               </p>
               <p>
                   Una volta approvata, la fattura diventerà visibile nel registro pagamenti per poter essere saldata.
+              </p>
+          </div>
+      </ConfirmDialog>
+
+      <!-- Coda 165: la fattura che questa nota del fornitore rettifica. L'elenco e i motivi vengono dal server. -->
+      <ConfirmDialog
+          v-model="isCollegaModalOpen"
+          title="Collega a una fattura"
+          confirm-text="Collega"
+          variant="default"
+          :disabled="fatturaScelta === null || !!scelta.motivo"
+          @confirm="executeCollega"
+      >
+          <div class="space-y-3 text-sm text-slate-600">
+              <p>
+                  Quale fattura rettifica la nota di credito <strong>n. {{ fattura.numero_documento }}</strong>?
+                  <template v-if="notaContestata">La nota è contestata: finché resta tale, collegarla non cambia né il carrello dei piani rate né il cruscotto.</template>
+                  <template v-else>Collegandola, il carrello dei piani rate e il cruscotto conteranno la fattura al netto della nota.</template>
+              </p>
+              <p v-if="rettificabili.isLoading.value" class="text-xs text-slate-400">Cerco le fatture di questo fornitore…</p>
+              <p v-else-if="rettificabili.errore.value" class="text-xs text-rose-600">Non sono riuscito a caricare le fatture di questo fornitore. Riprova tra poco.</p>
+              <p v-else-if="rettificabili.candidate.value.length === 0" class="text-xs text-slate-500">
+                  Questo fornitore non ha fatture registrate in questo condominio che la nota possa rettificare.
+              </p>
+              <select
+                  v-else
+                  v-model="fatturaScelta"
+                  aria-label="Fattura che la nota rettifica"
+                  class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                  <option :value="null" disabled>Scegli la fattura</option>
+                  <option v-for="c in rettificabili.candidate.value" :key="c.id" :value="c.id">{{ etichettaCandidata(c) }}</option>
+              </select>
+              <div v-if="scelta.motivo" class="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded flex gap-3 items-start">
+                  <Ban class="w-5 h-5 shrink-0 mt-0.5" />
+                  <p class="text-xs">{{ scelta.motivo }}</p>
+              </div>
+              <div v-else-if="scelta.avviso" class="bg-red-50 border border-red-200 text-red-800 p-3 rounded flex gap-3 items-start">
+                  <AlertTriangle class="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                      <p class="font-bold">Il piano rate resta com'è</p>
+                      <p class="text-xs mt-1">{{ scelta.avviso }}</p>
+                  </div>
+              </div>
+          </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+          v-model="isScollegaModalOpen"
+          title="Scollega dalla fattura"
+          confirm-text="Scollega"
+          variant="default"
+          @confirm="executeScollega"
+      >
+          <div class="space-y-3 text-sm text-slate-600">
+              <p>
+                  La nota di credito <strong>n. {{ fattura.numero_documento }}</strong> non rettificherà più la fattura
+                  <strong>n. {{ numeroRettificata }}</strong>.
+                  <template v-if="notaContestata">È contestata, quindi il carrello dei piani rate e il cruscotto non cambiano.</template>
+                  <template v-else>Il carrello dei piani rate e il cruscotto torneranno a contare la fattura senza la nota.</template>
+                  Le rate già calcolate non cambiano, e la contabilità nemmeno.
               </p>
           </div>
       </ConfirmDialog>

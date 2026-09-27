@@ -515,7 +515,7 @@ class CalcoloQuoteService
      * @param PianoRate $pianoRate Il piano rate contenente le fatture straordinarie
      * @return array Quote calcolate, raggruppate per anagrafica_id e immobile_id
      */
-    public function calcolaDaFattureStraordinarie(PianoRate $pianoRate, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $soloLettura = false): array
+    public function calcolaDaFattureStraordinarie(PianoRate $pianoRate, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $soloLettura = false, bool $conNoteCollegate = true): array
     {
         $this->impostaCompetenzaBase($periodo, NaturaGestione::Straordinaria);
         $this->competenzaNonRisolta = false;
@@ -549,6 +549,15 @@ class CalcoloQuoteService
         $totali             = [];
         $righeElaborate     = 0;
         $copertureElaborate = 0;
+
+        // Coda 165 (1.11.0-beta.36): le note di credito del fornitore collegate alle fatture del piano. Una query per
+        // tutto il piano; chi non ha note non compare e si ripartisce come prima. `$conNoteCollegate = false` lo chiede
+        // solo la stampa **ricostruita** di un piano che ha già le quote (`DettaglioRiparto`): deve spiegare le quote che
+        // esistono, e una nota collegata dopo — con incassi le rate restano, per decisione — spostava l'addebito da
+        // un'unità all'altra sulla carta (R6 della Fase 1-bis).
+        $netti = $conNoteCollegate
+            ? \App\Services\Gestionale\NettoNoteCollegate::perFatture($fatture->pluck('id')->all())
+            : [];
 
         // Accumulatore per conto: più fatture (o più componenti della stessa
         // fattura) possono puntare allo STESSO conto imprevisto — due sopravvenienze
@@ -667,6 +676,14 @@ class CalcoloQuoteService
                 }
             }
 
+            // Coda 165: la nota collegata toglie dalla parte che il piano finanzia ciò che le sue righe dicono — l'unità
+            // di una riga ad personam, la voce di una riga fuori preventivo. Prima dello scaling su importo_collegato:
+            // con il pivot a zero il piano chiede così il netto, e con la nota su un'unità è quell'unità a non pagare
+            // più, non tutti in proporzione.
+            if (isset($netti[$fattura->id])) {
+                $componenti = \App\Services\Gestionale\NettoNoteCollegate::applicaAiComponenti($componenti, $netti[$fattura->id]['componenti']);
+            }
+
             if (empty($componenti)) continue;
 
             // -----------------------------------------------------------------
@@ -702,6 +719,16 @@ class CalcoloQuoteService
 
             $collegato = (int) ($fattura->pivot->importo_collegato ?? 0);
             $target    = $collegato > 0 ? $collegato : $naturale;
+            // Coda 165: con il pivot a zero («tutto») il piano chiede la fattura al netto delle note collegate. Le note
+            // sulla parte del piano le ha già tolte `NettoNoteCollegate::applicaAiComponenti`; qui morde il tetto del documento, cioè una
+            // nota non attribuibile che la parte a preventivo non basta ad assorbire. `FatturaPassiva::chiestoDaiPiani`
+            // legge lo stesso numero (R2 della Fase 1-bis).
+            if ($collegato === 0 && isset($netti[$fattura->id])) {
+                $target = min($naturale, $netti[$fattura->id]['netto']);
+                if ($target <= 0) {
+                    continue;
+                }
+            }
 
             // Finanziamento intero (target == naturale): ogni componente mantiene
             // il suo importo esatto → identico alla distribuzione riga-per-riga.

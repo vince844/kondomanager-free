@@ -15,7 +15,7 @@ import { mount } from '@vue/test-utils';
 
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
-    router: { visit: vi.fn() },
+    router: { visit: vi.fn(), post: vi.fn() },
     usePage: () => ({
         props: { auth: { user: { roles: ['amministratore'], permissions: [] } } },
     }),
@@ -205,5 +205,75 @@ describe('DataTableRowActions — le voci «non consentito» si leggono al clic 
 
         expect(wrapper.text()).toContain('Storno non consentito');
         expect(wrapper.text()).toContain('storna prima il pagamento dalla sezione Pagamenti fornitori');
+    });
+});
+
+describe('DataTableRowActions — la nota di credito del fornitore e la fattura che rettifica (Coda 165, 1.11.0-beta.36)', () => {
+    const NOTA = { ...FATTURA_BASE, tipo_documento: 'nota_credito', numero_documento: 'NC-7', netto_a_pagare: -30000, totale_documento: -30000, fornitore_id: 4 };
+    const monta = (fattura: Record<string, unknown>) => mount(DataTableRowActions, {
+        props: { fattura: { ...NOTA, ...fattura }, condominioId: 18 },
+        global: {
+            stubs: {
+                DropdownMenu: { template: '<div><slot /></div>' }, DropdownMenuContent: { template: '<div><slot /></div>' },
+                DropdownMenuTrigger: { template: '<div><slot /></div>' }, DropdownMenuLabel: { template: '<div><slot /></div>' },
+                DropdownMenuItem: { props: { disabled: Boolean }, emits: ['click'], template: '<div role="menuitem" :data-disabled="disabled ? \'\' : undefined" @click="!disabled && $emit(\'click\')"><slot /></div>' },
+                DropdownMenuSeparator: true, teleport: true,
+                ConfirmDialog: { props: ['title', 'modelValue'], template: '<section v-if="modelValue" :data-titolo="title"><slot /></section>' },
+                Button: { template: '<button><slot /></button>' },
+            },
+            mocks: { route: (n: string) => `/${n}` },
+        },
+    });
+    const voci = (w: ReturnType<typeof monta>) => w.findAll('[role="menuitem"]').map(v => v.text());
+
+    test('una nota non collegata offre «Collega a una fattura»', () => {
+        expect(voci(monta({ fattura_rettificata_id: null, motivo_blocco_collegamento: null }))).toContain('Collega a una fattura');
+    });
+
+    test('una nota collegata offre «Scollega» e nomina la fattura, non «Collega»', async () => {
+        const w = monta({ fattura_rettificata_id: 9, fattura_rettificata: { id: 9, numero_documento: 'FT-28', data_documento: '2025-12-22' }, motivo_blocco_collegamento: 'La nota rettifica già la fattura n. FT-28: per cambiarla, prima «Scollega».' });
+        expect(voci(w)).toContain('Scollega dalla fattura n. FT-28');
+        expect(voci(w).join('|')).not.toContain('Collega a una fattura');
+        expect(voci(w).join('|')).not.toContain('Collega — non consentito');
+
+        await w.findAll('[role="menuitem"]').find(v => v.text().includes('Scollega'))!.trigger('click');
+        expect(w.find('section[data-titolo="Scollega dalla fattura"]').text()).toContain('n. FT-28');
+    });
+
+    test('la nota nata da uno storno non offre niente: ha già il suo legame', () => {
+        const w = monta({ e_nata_da_storno: true, motivo_blocco_collegamento: 'Questa nota è nata da uno storno…' });
+        expect(voci(w).join('|')).not.toMatch(/Collega|Scollega/);
+    });
+
+    test('una fattura non offre il collegamento', () => {
+        const w = monta({ tipo_documento: 'fattura', netto_a_pagare: 100000, totale_documento: 100000 });
+        expect(voci(w).join('|')).not.toMatch(/Collega|Scollega/);
+    });
+
+    test('un divieto del server si legge al clic', async () => {
+        const w = monta({ fattura_rettificata_id: null, motivo_blocco_collegamento: 'Solo una nota di credito si collega a una fattura.' });
+        await w.findAll('[role="menuitem"]').find(v => v.text().includes('Collega — non consentito'))!.trigger('click');
+        expect(w.text()).toContain('Collegamento non consentito');
+        expect(w.text()).toContain('Solo una nota di credito si collega a una fattura.');
+    });
+});
+
+describe('DataTableRowActions — «Collega» manda la conferma quando la finestra mostra l\'avviso (R3 della Fase 1-bis)', () => {
+    test('con l\'avviso di un piano che ha incassato la conferma parte; senza, no', async () => {
+        const { router } = await import('@inertiajs/vue3');
+        const wrapper = renderRowActions({ ...FATTURA_BASE, tipo_documento: 'nota_credito', numero_documento: 'NC-7', fornitore_id: 4, fattura_rettificata_id: null, motivo_blocco_collegamento: null });
+        const vm = wrapper.vm as any;
+        const candidata = { id: 9, numero_documento: 'FT-9', data_documento: '2026-01-10', totale_documento: 100000, esercizio_nome: null, is_pregresso: false, gia_rettificato: 0, motivo_blocco_nota: null };
+
+        vm.rettificabili.candidate.value = [{ ...candidata, avviso_nota: 'Le rate restano.' }];
+        vm.fatturaScelta = 9;
+        await wrapper.vm.$nextTick();
+        vm.executeCollega();
+        expect((router.post as any).mock.calls.at(-1)[1]).toEqual({ fattura_rettificata_id: 9, conferma_avviso_nota: true });
+
+        vm.rettificabili.candidate.value = [{ ...candidata, avviso_nota: null }];
+        await wrapper.vm.$nextTick();
+        vm.executeCollega();
+        expect((router.post as any).mock.calls.at(-1)[1]).toEqual({ fattura_rettificata_id: 9, conferma_avviso_nota: false });
     });
 });

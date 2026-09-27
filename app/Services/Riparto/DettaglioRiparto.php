@@ -75,7 +75,9 @@ final class DettaglioRiparto
         $motore = app(CalcoloQuoteService::class);
         $gestione = $pianoRate->gestione;
         if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture()->exists()) {
-            $motore->calcolaDaFattureStraordinarie($pianoRate, $competenza, soloLettura: true);
+            // Coda 165: il ramo ricostruito spiega le quote che esistono, e una nota collegata dopo non le ha cambiate
+            // (con incassi le rate restano, per decisione): le note si applicano solo all'anteprima (R6 della Fase 1-bis).
+            $motore->calcolaDaFattureStraordinarie($pianoRate, $competenza, soloLettura: true, conNoteCollegate: ! $haQuote);
         } elseif ($gestione) {
             $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true, periodo: $competenza);
         }

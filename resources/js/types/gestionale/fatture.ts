@@ -84,6 +84,16 @@ export interface FatturaPassiva {
     motivo_blocco_storno?: string | null;
     avviso_storno?: string | null;
 
+    /**
+     * Coda 165 (1.11.0-beta.36): sulla nota di credito del fornitore, la fattura che rettifica (facoltativa). Colonna vera;
+     * la relazione `fattura_rettificata` arriva nell'elenco. `note_collegate` è il verso opposto, sulla fattura.
+     */
+    fattura_rettificata_id?: number | null;
+    fattura_rettificata?: { id: number; numero_documento: string; data_documento: string | null } | null;
+    note_collegate?: Array<{ id: number; numero_documento: string }>;
+    /** Perché questa nota non si collega a una fattura — `null` se si può. Solo nell'elenco, solo sulle note. */
+    motivo_blocco_collegamento?: string | null;
+
     // Relazioni precaricate dal Backend (Eager Loading)
     fornitore?: FornitoreFattura;
     documenti?: DocumentoFattura[]; // FIX: Aggiunta la relazione dei documenti

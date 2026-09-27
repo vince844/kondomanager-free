@@ -110,7 +110,10 @@ class FatturaPassivaController extends Controller
             // `coperture`, `pianiRate`, `scritture` ed `esercizio` servono a
             // motivoBloccoEliminazione(): caricate qui una volta, invece di
             // sette query per riga moltiplicate per le venti righe di pagina.
-            ->with(['fornitore', 'righe', 'documenti', 'coperture', 'pianiRate', 'scritture', 'esercizio'])
+            // `noteCollegate` e `fatturaRettificata` (Coda 165, 1.11.0-beta.36): le guardie di storno ed eliminazione
+            // guardano le note collegate, e il menu della nota dice quale fattura rettifica.
+            ->with(['fornitore', 'righe', 'documenti', 'coperture', 'pianiRate', 'scritture', 'esercizio',
+                'noteCollegate', 'fatturaRettificata:id,numero_documento,data_documento'])
             ->when($request->stato_pagamento, fn ($q, $v) => $q->where('stato_pagamento', $v))
             ->when($request->stato_approvazione, fn ($q, $v) => $q->where('stato_approvazione', $v))
             ->when($request->search, fn ($q, $v) => $q->where('numero_documento', 'like', "%{$v}%")
@@ -143,10 +146,12 @@ class FatturaPassivaController extends Controller
             // Lo storno ha la sua guardia sul model come l'eliminazione, e l'avviso per il piano che ha già incassato
             // (1.11.0-beta.35, R1 della Fase 1-bis): il menu mostra lo stesso motivo che applicherebbe il server.
             $fattura->append(['motivo_blocco_eliminazione', 'motivo_blocco_storno', 'avviso_storno']);
-            $fattura->setAttribute(
-                'e_nata_da_storno',
-                ! empty($fattura->dati_extra['nota_storno'] ?? null) || in_array($fattura->id, $idNoteDaStorno, true),
-            );
+            $eNataDaStorno = ! empty($fattura->dati_extra['nota_storno'] ?? null) || in_array($fattura->id, $idNoteDaStorno, true);
+            $fattura->setAttribute('e_nata_da_storno', $eNataDaStorno);
+            // Coda 165: perché questa nota non si collega a una fattura — `null` se si può. Sulle fatture non serve.
+            $fattura->setAttribute('motivo_blocco_collegamento', $fattura->tipo_documento === 'nota_credito'
+                ? $fattura->motivoBloccoCollegamento($eNataDaStorno)
+                : null);
 
             return $fattura;
         });
@@ -409,6 +414,14 @@ class FatturaPassivaController extends Controller
                 'numero_documento' => 'Esiste già una fattura di questo fornitore con lo stesso numero documento e la stessa data. Verifica il numero prima di salvare di nuovo.',
             ]);
 
+        } catch (\App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException $e) {
+            // Coda 165: il motivo, con la via, accanto al campo — non nella chiave generica, dove non si vede.
+            return back()->withErrors(['fattura_rettificata_id' => $e->getMessage()]);
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException $e) {
+            // Coda 165: il piano ha incassato — la nota si registra, dopo la spunta sotto il campo (R3, R7 della Fase 1-bis).
+            return back()->withErrors(['avviso_nota' => $e->getMessage()]);
+
         } catch (\Exception $e) {
             Log::error('FATAL ERROR NEL SERVICE: '.$e->getMessage());
             Log::error('Traccia: '.$e->getTraceAsString());
@@ -469,6 +482,14 @@ class FatturaPassivaController extends Controller
         // 2. ELIMINAZIONE FISICA E PULIZIA
         try {
             DB::transaction(function () use ($fattura, $fatturaOriginale, $contiImprevistiIds) {
+
+                // Coda 165 (1.11.0-beta.36): la guardia qui sopra legge senza lucchetto. Una nota del fornitore collegata
+                // nello stesso istante da un'altra scheda restava scollegata in silenzio (la chiave esterna mette null):
+                // si rilegge la fattura bloccata e si riguarda, come nello storno (verifica delle correzioni).
+                $bloccata = FatturaPassiva::lockForUpdate()->find($fattura->id);
+                if ($bloccata !== null && ($motivo = $bloccata->motivoBloccoEliminazione())) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
 
                 // --- LA RESURREZIONE ---
                 // Sciogliere il congelamento non basta: lo stato di pagamento va
@@ -538,6 +559,9 @@ class FatturaPassivaController extends Controller
 
             return back()->with($this->flashSuccess($msg));
 
+        } catch (\App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException $e) {
+            return back()->with($this->flashError('Operazione negata: '.$e->getMessage()));
+
         } catch (\Exception $e) {
             Log::error("Errore durante l'eliminazione fisica della fattura ID {$fattura->id}: ".$e->getMessage());
 
@@ -564,7 +588,8 @@ class FatturaPassivaController extends Controller
                 ->with($this->flashError($motivo));
         }
 
-        $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture']);
+        // `fatturaRettificata` (Coda 165): la modifica di una nota collegata dice quale fattura rettifica.
+        $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture', 'fatturaRettificata:id,numero_documento,data_documento']);
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -1003,6 +1028,14 @@ class FatturaPassivaController extends Controller
         } catch (FatturaModificaVietataException $e) {
             return back()->withErrors(['modifica_vietata' => $e->getMessage()]);
 
+        } catch (\App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException $e) {
+            // Coda 165: la nota collegata, modificata, ridurrebbe una fattura che un piano chiede ancora per intero.
+            return back()->withErrors(['fattura_rettificata_id' => $e->getMessage()]);
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException $e) {
+            // Coda 165: il piano ha incassato — la modifica si salva dopo la conferma, con un secondo invio (R5).
+            return back()->withErrors(['avviso_nota' => $e->getMessage()]);
+
         } catch (UniqueConstraintViolationException $e) {
             if (! CollisioneUnicaFattura::rilevata($e)) {
                 throw $e;
@@ -1101,6 +1134,9 @@ class FatturaPassivaController extends Controller
             // Beta.19: le coperture fondo alimentano il banner "conferma con
             // giroconto" (pianificata) / "coperta da GIR-…" (confermata).
             'coperture.scritturaGiroconto:id,numero_protocollo',
+            // Coda 165 (1.11.0-beta.36): la fattura che la nota rettifica, e le note collegate alla fattura.
+            'fatturaRettificata:id,numero_documento,data_documento',
+            'noteCollegate:id,numero_documento,data_documento,totale_documento,tipo_documento,fattura_rettificata_id,stato_approvazione',
         ]);
 
         // Caricamento del nome utente che ha ratificato se presente

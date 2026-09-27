@@ -11,6 +11,7 @@ use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\Tabella;
 use App\Exceptions\Gestionale\DestinatariCambiatiException;
+use App\Exceptions\Gestionale\FatturaRettificataNelPianoException;
 use App\Exceptions\Gestionale\FatturaStornataNelPianoException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Models\Anagrafica;
@@ -90,6 +91,31 @@ class GeneratePianoRateAction
                 || (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) === 'stornata');
             if ($stornate->isNotEmpty()) {
                 throw new FatturaStornataNelPianoException($pianoRate, $stornate->values());
+            }
+
+            // Coda 165 (1.11.0-beta.36): la fattura rettificata da una nota del fornitore collegata. Il criterio è il
+            // numero — i piani che la contengono chiedono più del suo netto? — non la presenza della nota: un piano fatto
+            // dal carrello dopo la nota chiede già il netto, e si ricalcola.
+            $netti = \App\Services\Gestionale\NettoNoteCollegate::perFatture($pianoRate->fatture->pluck('id')->all());
+            $eccedenze = [];
+            foreach ($pianoRate->fatture as $f) {
+                if (! isset($netti[$f->id])) {
+                    continue;
+                }
+                $f->loadMissing(['pianiRate', 'noteCollegate', 'righe', 'coperture']);
+                $chiesto = $f->chiestoDaiPiani();
+                if ($chiesto > $netti[$f->id]['netto']) {
+                    $eccedenze[] = [
+                        'numero' => (string) ($f->numero_documento ?? ('#' . $f->id)),
+                        'note' => (string) $f->elencoNoteCollegate('di', true),
+                        'netto' => $netti[$f->id]['netto'],
+                        'chiesto' => $chiesto,
+                        'piani' => $f->pianiRate->count(),
+                    ];
+                }
+            }
+            if ($eccedenze !== []) {
+                throw new FatturaRettificataNelPianoException($pianoRate, $eccedenze);
             }
         }
 

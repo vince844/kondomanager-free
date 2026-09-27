@@ -41,7 +41,7 @@ class FatturaPassivaService
             // L'imposta che il documento dichiara per ogni gruppo IVA, gia ripartita fra le
             // righe che vi appartengono. Vuota quando il documento non dichiara i propri
             // riepiloghi (fattura digitata a mano): allora si calcola come si e sempre fatto.
-            $ivaDistribuita = $this->distribuisciImpostaDichiarata($data);
+            $ivaDistribuita = self::distribuisciImpostaDichiarata($data);
 
             $imponibileTotale = 0;
             $ivaTotale = 0;
@@ -68,9 +68,7 @@ class FatturaPassivaService
                 // undici file passano da questo ramo, quindi la superficie e reale anche se
                 // il corpus non la colpisce. `imposta_dichiarata` viaggiava gia nel payload
                 // dalla beta.18 e veniva buttata.
-                $ivaPregressa = isset($data['imposta_pregressa'])
-                    ? (int) round($data['imposta_pregressa'] * 100)
-                    : (int) round(($impPregresso * $aliqPregressa) / 100);
+                $ivaPregressa = self::ivaPregressaCents($data, $impPregresso);
 
                 $imponibileTotale = $impPregresso;
                 $ivaTotale = $ivaPregressa;
@@ -85,10 +83,7 @@ class FatturaPassivaService
                     // il chiamante impone riga per riga -- e lo storno, che deve essere lo specchio
                     // esatto della fattura e non una sua riapprossimazione; (3) il calcolo per riga
                     // di sempre, per la fattura digitata a mano.
-                    $ivaRiga = $ivaDistribuita[$indiceRiga]
-                        ?? (isset($rigaInput['importo_iva_dichiarata'])
-                            ? (int) round($rigaInput['importo_iva_dichiarata'] * 100)
-                            : (int) round(($impRiga * $aliq) / 100));
+                    $ivaRiga = self::ivaDellaRigaCents($ivaDistribuita, $indiceRiga, $rigaInput, $impRiga);
                     $isSopravvenienza = filter_var($rigaInput['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
                     $imponibileTotale += $impRiga;
@@ -183,6 +178,40 @@ class FatturaPassivaService
                 $statoApprovazione = 'sforo_motivato';
             }
 
+            // Coda 165 (1.11.0-beta.36): la terza porta della scala, dopo la richiesta e il modulo — la attraversano anche i
+            // test e le chiamate dirette. Prima della creazione: il netto si legge dal database, e la nota non deve
+            // esserci ancora, o conterebbe due volte. Dentro la transazione, con la fattura bloccata.
+            if ($isNotaCredito && ! empty($data['fattura_rettificata_id'])) {
+                $rettificata = FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])
+                    ->lockForUpdate()->find((int) $data['fattura_rettificata_id']);
+                if ($rettificata === null || (int) $rettificata->condominio_id !== $condominioId
+                    || (int) $rettificata->fornitore_id !== (int) $fornitore->id) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException(
+                        'La fattura che la nota rettifica dev\'essere una fattura dello stesso fornitore, registrata in questo condominio.'
+                    );
+                }
+                // Le righe vere della nota, per il «di quanto» e per l'avviso: la nota pregressa non ne ha, vale la testata
+                // ed è non attribuibile (R1 e R4 della Fase 1-bis).
+                $righeNota = $righeProcessate === []
+                    ? [['conto_id' => null, 'immobile_id' => null, 'riduzione' => abs((int) $totaleDoc)]]
+                    : array_map(fn (array $r) => [
+                        'conto_id' => $r['conto_id'] ?? null,
+                        'immobile_id' => $r['immobile_id'] ?? null,
+                        'riduzione' => -((int) $r['importo_imponibile'] + (int) $r['importo_iva']),
+                    ], $righeProcessate);
+                // La nota contestata resta fuori da scala e avviso: non conta nel netto (V3 della verifica).
+                $contestata = $statoApprovazione === 'contestata';
+                if ($motivo = $rettificata->motivoBloccoNotaCollegata(abs((int) $totaleDoc), 'registra la nota', $righeNota, $contestata)) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+                // Con un piano che ha incassato la nota si registra, ma dopo una conferma: il modulo la chiede con la spunta,
+                // e qui la si pretende — un modulo che sbaglia non passa (R3 e R7 della Fase 1-bis).
+                if (! filter_var($data['conferma_avviso_nota'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    && ($avviso = $rettificata->avvisoNotaCollegata($righeNota, $contestata))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException($avviso);
+                }
+            }
+
             // 3. Creazione Fattura
             $fattura = FatturaPassiva::create([
                 'condominio_id' => $condominioId,
@@ -190,6 +219,9 @@ class FatturaPassivaService
                 'esercizio_id' => $data['esercizio_id'],
                 'conto_corrente_id' => $data['conto_corrente_id'] ?? null,
                 'tipo_documento' => $data['tipo_documento'],
+                // Coda 165 (1.11.0-beta.36): solo sulla nota. Una chiave che manca da questo elenco si perde in silenzio
+                // (vedi il commento su imponibile_pregresso qui sotto): il test la rilegge dal database.
+                'fattura_rettificata_id' => $isNotaCredito ? ($data['fattura_rettificata_id'] ?? null) : null,
                 'numero_documento' => $data['numero_documento'],
                 'data_documento' => $data['data_documento'],
                 'data_scadenza' => $data['data_scadenza'],
@@ -878,6 +910,13 @@ class FatturaPassivaService
         // ── Transazione atomica ──────────────────────────────────────────────
         return DB::transaction(function () use ($fattura, $data, $dataScadenzaBefore, $importoBefore) {
 
+            // Il netto della fattura che questa nota rettifica, prima della modifica (Coda 165). `false`: non serve.
+            // L'importo della nota prima della modifica: il tetto di una nota contestata scatta solo se cresce (W3).
+            $importoNotaPrima = abs((int) $fattura->totale_documento);
+            $nettoRettificataPrima = ($fattura->tipo_documento === 'nota_credito' && $fattura->fattura_rettificata_id !== null)
+                ? NettoNoteCollegate::perFattura((int) $fattura->fattura_rettificata_id)
+                : false;
+
             // 1. Pulizia scritture esistenti (identico a destroy())
             $fattura->load('righe', 'documenti', 'scritture', 'coperture');
             $scritture = $fattura->scritture;
@@ -914,7 +953,7 @@ class FatturaPassivaService
             // L'imposta che il documento dichiara per ogni gruppo IVA, gia ripartita fra le
             // righe che vi appartengono. Vuota quando il documento non dichiara i propri
             // riepiloghi (fattura digitata a mano): allora si calcola come si e sempre fatto.
-            $ivaDistribuita = $this->distribuisciImpostaDichiarata($data, $fattura);
+            $ivaDistribuita = self::distribuisciImpostaDichiarata($data, $fattura);
 
             $imponibileTotale = 0;
             $ivaTotale = 0;
@@ -1075,6 +1114,34 @@ class FatturaPassivaService
 
             // 6. Ricrea righe
             $fattura->righe()->createMany($righeProcessate);
+
+            // Coda 165 (1.11.0-beta.36): una nota collegata che, modificata, riduce di più la fattura che rettifica
+            // segue la scala della registrazione. Il confronto è fra il netto letto all'inizio della transazione e
+            // quello riletto adesso, con le righe nuove: gli stessi numeri che useranno carrello e motore.
+            if ($nettoRettificataPrima !== false) {
+                $rettificata = FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])
+                    ->lockForUpdate()->find($fattura->fattura_rettificata_id);
+                $statoNota = is_object($fattura->stato_approvazione) ? $fattura->stato_approvazione->value : $fattura->stato_approvazione;
+                $importoContestata = $statoNota === 'contestata' ? abs((int) $fattura->totale_documento) : 0;
+                if ($rettificata && ($motivo = $rettificata->motivoBloccoModificaNota($nettoRettificataPrima, 'modifica la nota', $importoContestata, $importoContestata > 0 ? $importoNotaPrima : 0))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+                // Con un piano che ha incassato: la modifica si salva dopo una conferma, chiesta con un secondo invio —
+                // il numero «dopo» esiste solo qui, a righe scritte (R5 della Fase 1-bis).
+                if ($rettificata && ! filter_var($data['conferma_avviso_nota'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    && ($avviso = $rettificata->avvisoModificaNota($nettoRettificataPrima))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException($avviso);
+                }
+            }
+
+            // Coda 165: una fattura con note collegate non scende sotto quanto le note già rettificano — la stessa regola
+            // del collegamento, «mai oltre il totale» (domanda aperta della Fase 1-bis).
+            if ($fattura->tipo_documento === 'fattura') {
+                // Un'istanza fresca: importi e righe si leggono come sono adesso, dentro la transazione.
+                if ($motivo = FatturaPassiva::with('noteCollegate')->find($fattura->id)?->motivoBloccoModificaFatturaRettificata()) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+            }
 
             // 7. Ricrea scrittura contabile con la stessa logica di registraFattura()
             $contoDebiti = ContoContabile::where('condominio_id', $fattura->condominio_id)
@@ -1421,6 +1488,52 @@ class FatturaPassivaService
     }
 
     /**
+     * L'IVA di una riga in registrazione, con le priorità di sempre: (1) l'imposta dichiarata dal documento, distribuita;
+     * (2) quella che il chiamante impone riga per riga (lo storno); (3) il calcolo per riga. Estratta perché la legge
+     * anche `StoreFatturaRequest` per il tetto della nota collegata: ricalcolando da sé, rifiutava per un centesimo la
+     * nota da XML che annulla la sua fattura (V2 della verifica delle correzioni della Fase 1-bis, beta.36).
+     *
+     * @param  array<int|string, int>  $ivaDistribuita  da `distribuisciImpostaDichiarata`
+     */
+    public static function ivaDellaRigaCents(array $ivaDistribuita, int|string $indiceRiga, array $riga, int $imponibileRigaCents): int
+    {
+        return $ivaDistribuita[$indiceRiga]
+            ?? (isset($riga['importo_iva_dichiarata'])
+                ? (int) round($riga['importo_iva_dichiarata'] * 100)
+                : (int) round(($imponibileRigaCents * (float) ($riga['aliquota_iva'] ?? 0)) / 100));
+    }
+
+    /** L'IVA del pannello della pregressa: l'imposta dichiarata vince sull'aliquota (vedi `registraFattura`). */
+    public static function ivaPregressaCents(array $data, int $imponibileCents): int
+    {
+        return isset($data['imposta_pregressa'])
+            ? (int) round($data['imposta_pregressa'] * 100)
+            : (int) round(($imponibileCents * (float) ($data['aliquota_iva_pregressa'] ?? 22)) / 100);
+    }
+
+    /**
+     * Il totale lordo che `registraFattura` scriverà per questi dati, in centesimi e senza segno: la stessa formula,
+     * non una copia. Per la richiesta, che controlla il tetto della nota collegata prima del servizio (V2).
+     */
+    public static function totaleLordoCents(array $data): int
+    {
+        if (filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $imponibile = (int) round(($data['imponibile_pregresso'] ?? 0) * 100);
+
+            return abs($imponibile + self::ivaPregressaCents($data, $imponibile));
+        }
+
+        $ivaDistribuita = self::distribuisciImpostaDichiarata($data);
+        $totale = 0;
+        foreach ((array) ($data['righe'] ?? []) as $indice => $riga) {
+            $imponibile = (int) round(((float) ($riga['importo_imponibile'] ?? 0)) * 100);
+            $totale += $imponibile + self::ivaDellaRigaCents($ivaDistribuita, $indice, (array) $riga, $imponibile);
+        }
+
+        return abs($totale);
+    }
+
+    /**
      * Ripartisce fra le righe l'imposta che il documento dichiara nei propri `DatiRiepilogo`.
      *
      * **Perché non basta calcolarla riga per riga.** La fattura elettronica dichiara l'imposta
@@ -1457,7 +1570,7 @@ class FatturaPassivaService
      * @return array<int, int>  [indice della riga => imposta in centesimi]. Vuoto se il
      *                          documento non dichiara riepiloghi utilizzabili.
      */
-    private function distribuisciImpostaDichiarata(array $data, ?FatturaPassiva $esistente = null): array
+    public static function distribuisciImpostaDichiarata(array $data, ?FatturaPassiva $esistente = null): array
     {
         // ⚠️ **La modifica non riceve il file, quindi non riceve i riepiloghi.** Senza questo
         // ripiego una fattura importata a € 100,15 tornerebbe a € 100,14 al primo salvataggio —

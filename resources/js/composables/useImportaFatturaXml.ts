@@ -5,6 +5,7 @@
 // del form e restituisce i dati per precompilarlo — non crea niente da solo.
 import { ref } from 'vue'
 import axios from 'axios'
+import type { FatturaRettificataDaXml } from '@/lib/gestionale/fatture/fatturaRettificata'
 
 /**
  * Un blocco `DatiRiepilogo` della fattura elettronica: è obbligatorio per ogni coppia
@@ -93,6 +94,11 @@ export interface EsitoImportazioneXml {
       regime_forfetario: boolean
     }
   }
+  /**
+   * Coda 165 (1.11.0-beta.36): sulla nota di credito, la fattura che il file dichiara di rettificare (`DatiFattureCollegate`)
+   * e se il server la propone. `null` sulle fatture; assente dai server di prima.
+   */
+  fattura_rettificata?: FatturaRettificataDaXml | null
   avvisi: {
     lotto_con_altri_documenti: number
     righe_non_quadrano_col_riepilogo: boolean

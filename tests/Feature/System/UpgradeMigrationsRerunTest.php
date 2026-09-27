@@ -208,4 +208,6 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // La decima (S6): unique nuovo su contributi_versati con guardie `getIndexes`, due colonne su subentri.
     '2026_09_20_100000_s6_contributi_per_persona_e_annullamento_conguaglio',
     '2026_09_20_180000_add_titolarita_tratto_to_righe_riparto_table',
+    // Coda 165 (beta.36): colonna più chiave esterna della tabella verso se stessa — due statement su MySQL.
+    '2026_09_27_090000_add_fattura_rettificata_id_to_fatture_passive_table',
 ]);

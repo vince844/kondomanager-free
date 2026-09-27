@@ -1,0 +1,12 @@
+{
+  "features": [
+    "TOCCA IL DATABASE — Una colonna nuova, fatture_passive.fattura_rettificata_id, con una migrazione rieseguibile e senza travaso di dati. Un solo tema: la nota di credito emessa dal fornitore, che finora il piano rate non vedeva.",
+    "IL PROBLEMA — La nota di credito del fornitore non si collegava a niente: la fattura annullata restava nel suo piano rate, le rate continuavano a chiederla e la fattura nuova entrava in un secondo piano. La stessa spesa chiesta due volte, € 2.000,00 per € 1.000,00, senza un avviso.",
+    "LA NOTA PORTA LA FATTURA CHE CORREGGE — Nel modulo, per una nota di credito, il campo «Fattura che la nota rettifica» fra le fatture dello stesso fornitore di qualunque esercizio. Dall'XML il programma la propone quando numero e data trovano una fattura sola. Le note già registrate si collegano con «Collega a una fattura» dal menu della nota; «Scollega» toglie il collegamento. Il dettaglio mostra il collegamento nei due versi.",
+    "LA STESSA REGOLA DELLO STORNO — Se la fattura sta in un piano che non ha incassato, la nota non si registra né si collega finché il piano non è tolto, e il riquadro dice come. Con incassi si registra dopo una conferma: le rate restano, e la differenza si sistema con una delibera, di solito nel conguaglio del consuntivo, fra ciascun condòmino e il condominio. Storno ed eliminazione di una fattura con note collegate si rifiutano, con la via.",
+    "LA FATTURA VALE AL NETTO — Carrello, creazione del piano, ricalcolo, motore, cruscotto e copertura delle voci leggono la fattura al netto delle note collegate. Il ricalcolo di un piano che chiede più del netto si ferma e dice di quanto; un piano fatto sul netto si ricalcola come sempre. Una nota sulla riga di un'unità toglie la quota a quell'unità, e mai più di quanto la fattura le addebita.",
+    "CASI PARTICOLARI — La nota sulla parte a preventivo non tocca il piano; la nota pregressa vale la sua testata; la nota contestata non conta finché resta tale, ma non supera il totale della fattura; spostare una nota collegata da un'unità a un'altra segue la stessa regola.",
+    "CORRETTI ANCHE — Una nota di credito con una riga ad personam positiva entrava nel carrello come fabbisogno, e il cruscotto la contava fra le fatture in sospeso.",
+    "I LIMITI — Una riga di nota non si può marcare «fuori preventivo»: su una fattura mista la nota riduce la parte della voce su cui la registri. Per un piano con importo € 0,00 già emesso o incassato gli avvisi non danno cifre."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "features": [
+    "ALTERA O BANCO DE DADOS — Uma coluna nova, fatture_passive.fattura_rettificata_id, com uma migração que pode ser executada de novo e sem transferência de dados. Um só tema: a nota de crédito emitida pelo fornecedor, que até agora o plano de parcelas não via.",
+    "O PROBLEMA — A nota de crédito do fornecedor não se ligava a nada: a fatura anulada ficava no seu plano de parcelas, as parcelas continuavam a cobrá-la e a fatura nova entrava num segundo plano. A mesma despesa cobrada duas vezes, € 2.000,00 por € 1.000,00, sem aviso.",
+    "A NOTA LEVA A FATURA QUE CORRIGE — No formulário, para uma nota de crédito, o campo «Fatura que a nota retifica» entre as faturas do mesmo fornecedor de qualquer exercício. A partir do XML o programa propõe-na quando número e data encontram uma só fatura. As notas já registadas ligam-se com «Ligar a uma fatura» no menu da nota; «Desligar» retira a ligação. O detalhe mostra a ligação nos dois sentidos.",
+    "A MESMA REGRA DO ESTORNO — Se a fatura está num plano que não cobrou nada, a nota não se regista nem se liga enquanto o plano não for retirado, e o quadro diz como. Com cobranças regista-se depois de uma confirmação: as parcelas ficam, e a diferença resolve-se com uma deliberação, normalmente no acerto do fecho de contas, entre cada condómino e o condomínio. O estorno e a eliminação de uma fatura com notas ligadas são recusados, com a saída.",
+    "A FATURA VALE PELO LÍQUIDO — O carrinho do plano, a criação do plano, o recálculo, o motor, o painel e a cobertura das rubricas leem a fatura líquida das notas ligadas. O recálculo de um plano que pede mais do que o líquido para e diz de quanto; um plano feito sobre o líquido recalcula-se como sempre. Uma nota na linha de uma unidade tira a quota a essa unidade, nunca mais do que a fatura lhe imputa.",
+    "CASOS PARTICULARES — A nota sobre a parte orçamentada da fatura não toca o plano; a nota de exercício anterior vale pelo seu cabeçalho; a nota contestada não conta enquanto o estiver, mas não ultrapassa o total da fatura; mudar uma nota ligada de uma unidade para outra segue a mesma regra.",
+    "CORRIGIDO TAMBÉM — Uma nota de crédito com uma linha individual positiva entrava no carrinho do plano como necessidade, e o painel contava-a entre as faturas pendentes.",
+    "OS LIMITES — Uma linha de nota não pode ser marcada «fora do orçamento»: numa fatura mista a nota reduz a parte da rubrica em que a registas. Para um plano com valor € 0,00 já emitido ou cobrado, os avisos não dão valores."
+  ]
+}

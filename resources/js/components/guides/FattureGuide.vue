@@ -117,6 +117,9 @@ defineEmits(['update:open']);
                 <strong>Lo storno è reversibile, e quasi nessuno lo sa.</strong> La nota di credito che genera è a sua volta una fattura aperta, quindi eliminabile: eliminandola, la fattura originale torna allo stato calcolato dai pagamenti reali. Se hai stornato per sbaglio, non sei in un vicolo cieco.
               </div>
             </div>
+            <div class="mt-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[13px] text-slate-600 dark:text-slate-400">
+              <strong class="text-slate-800 dark:text-slate-200">La nota di credito del fornitore.</strong> Quando è il fornitore a correggere una fattura, registri la sua nota e la colleghi alla fattura che rettifica: nel modulo, o dopo, con <strong>«Collega a una fattura»</strong> dal menu della nota (le note registrate prima di questa versione si collegano così). <strong>«Scollega»</strong> toglie il collegamento. Collegata, la fattura vale al netto della nota nei piani rate e nel cruscotto, e non si storna né si elimina finché la nota è collegata: prima si scollega o si elimina la nota.
+            </div>
           </section>
 
           <!-- 5 — Il divieto spiegato -->

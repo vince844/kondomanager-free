@@ -350,7 +350,32 @@ class FatturaPaParser
             riepiloghi: $this->parseRiepiloghi($xpath, $body),
             scadenze: $this->parseScadenze($xpath, $body),
             ritenute: $this->parseRitenute($xpath, $body),
+            fattureCollegate: $this->parseFattureCollegate($xpath, $body),
         );
+    }
+
+    /**
+     * I blocchi `DatiFattureCollegate` (0..N): la fattura che una nota di credito rettifica (Coda 165, 1.11.0-beta.36).
+     * Un blocco senza `IdDocumento` non dice niente e si salta — nello XSD è obbligatorio, ma rifiutare un file intero
+     * per un riferimento che serve solo a una proposta sarebbe sproporzionato.
+     *
+     * @return \App\DataTransferObjects\FatturaElettronica\FatturaPaFatturaCollegata[]
+     */
+    private function parseFattureCollegate(DOMXPath $xpath, DOMElement $body): array
+    {
+        $collegate = [];
+        foreach ($xpath->query('./DatiGenerali/DatiFattureCollegate', $body) as $nodo) {
+            $numero = $this->testo($xpath, './IdDocumento', $nodo);
+            if ($numero === null) {
+                continue;
+            }
+            $collegate[] = new \App\DataTransferObjects\FatturaElettronica\FatturaPaFatturaCollegata(
+                numero: $numero,
+                data: $this->testo($xpath, './Data', $nodo),
+            );
+        }
+
+        return $collegate;
     }
 
     private function denominazione(DOMXPath $xpath, DOMElement $cedente): string

@@ -61,6 +61,16 @@ class StornoFatturaController extends Controller
         try {
             DB::beginTransaction();
 
+            // Coda 165 (1.11.0-beta.36): la guardia qui sopra legge senza lucchetto. Una nota del fornitore collegata
+            // nello stesso istante da un'altra scheda («Collega a una fattura» blocca la fattura) passava lo stesso, e il
+            // credito verso il fornitore contava due volte. Si rilegge la fattura bloccata e si riguarda (Fase 1-bis).
+            $bloccata = FatturaPassiva::lockForUpdate()->find($fattura->id);
+            if ($bloccata === null || ($motivo = $bloccata->motivoBloccoStorno())) {
+                DB::rollBack();
+
+                return back()->withErrors(['storno_vietato' => $motivo ?? 'La fattura non esiste più.']);
+            }
+
             // FIX 1: LO SVUOTA-CESTINO
             // Eliminiamo fisicamente le vecchie scritture "soft-deleted" che bloccano la chiave univoca
             ScritturaContabile::onlyTrashed()

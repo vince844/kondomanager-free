@@ -73,7 +73,48 @@ class CreatePianoRateRequest extends FormRequest
                     $precedente = $t['al'];
                 }
             }
+
+            $this->guardiaFattureRettificate($validator);
         });
+    }
+
+    /**
+     * Coda 165 (1.11.0-beta.36): una fattura rettificata da una nota del fornitore collegata non si mette in un piano per
+     * più di quanto ne resta — il netto (`NettoNoteCollegate`), meno quello che altri piani ne chiedono già. È il confine
+     * d'ingresso della stessa regola che ferma il ricalcolo: meglio dirlo qui, sull'indice della fattura, che trovarlo
+     * alla generazione. Importo vuoto o zero vuol dire «tutto»: ciò che il motore ripartisce, mai oltre il netto.
+     *
+     * Le fatture senza note collegate restano come prima: il tetto generale dell'importo è la Coda 166.
+     */
+    private function guardiaFattureRettificate($validator): void
+    {
+        foreach ($this->input('fatture_config', []) as $i => $conf) {
+            if ($validator->errors()->has("fatture_config.{$i}.id") || empty($conf['id'])) {
+                continue;
+            }
+            $f = \App\Models\Gestionale\FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])->find($conf['id']);
+            if ($f === null || $f->tipo_documento !== 'fattura' || ($netto = $f->nettoNoteCollegate()) === null) {
+                continue;
+            }
+
+            $importo = \App\Helpers\MoneyHelper::toCents($conf['importo'] ?? '');
+            // Zero vuol dire «tutto», e «tutto» è ciò che il motore ripartisce: la parte del piano al netto delle note su
+            // quella parte, mai oltre il netto (R2 della Fase 1-bis — lo stesso numero di `chiestoDaiPiani`).
+            $chiesto = $importo > 0 ? $importo : max(0, min($netto['parte_piano'] - $netto['rettificato_piano'], $netto['netto']));
+            $gia = $f->chiestoDaiPiani();
+            $resta = max(0, $netto['netto'] - $gia);
+            $inPiu = $chiesto - $resta;
+            if ($inPiu <= 0) {
+                continue;
+            }
+
+            $validator->errors()->add("fatture_config.{$i}.importo",
+                "La fattura n. {$f->numero_documento}, al netto {$f->elencoNoteCollegate('di', true)}, vale "
+                . \App\Helpers\MoneyHelper::format($netto['netto'])
+                . ($gia > 0 ? ', e altri piani ne chiedono già ' . \App\Helpers\MoneyHelper::format($gia) : '')
+                . ': con questo importo il piano chiederebbe ' . \App\Helpers\MoneyHelper::format($inPiu)
+                . ' più di quanto ne resta. Metti al massimo ' . \App\Helpers\MoneyHelper::format($resta) . '.');
+        }
     }
 
     private function giorno(string $iso): string
@@ -107,6 +148,21 @@ class CreatePianoRateRequest extends FormRequest
                     $stato = $f ? (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) : null;
                     if ($f && (($f->dati_extra['is_stornata'] ?? false) || $stato === 'stornata')) {
                         $fail("La fattura n. {$f->numero_documento} è stata stornata nel frattempo: toglila dal carrello.");
+
+                        return;
+                    }
+                    // Coda 165 (1.11.0-beta.36): un piano finanzia fatture. Il carrello non offre le note, ma una
+                    // richiesta costruita a mano le faceva entrare — con una riga ad personam positiva, come fabbisogno.
+                    if ($f && $f->tipo_documento !== 'fattura') {
+                        $fail("Il documento n. {$f->numero_documento} è una nota di credito: un piano rate finanzia fatture. "
+                            . 'La nota riduce la fattura che rettifica: collegala a quella, dall\'elenco delle fatture.');
+
+                        return;
+                    }
+                    // …e una fattura annullata per intero da una nota del fornitore collegata non ha più niente da chiedere.
+                    if ($f && ($netto = $f->nettoNoteCollegate()) !== null && $netto['netto'] <= 0) {
+                        $fail("La fattura n. {$f->numero_documento} è annullata per intero {$f->elencoNoteCollegate('da', true)}: "
+                            . 'non resta niente da finanziare. Toglila dal carrello.');
                     }
                 },
             ],

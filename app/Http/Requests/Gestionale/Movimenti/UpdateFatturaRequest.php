@@ -55,6 +55,9 @@ class UpdateFatturaRequest extends FormRequest
         $isNotaCredito = $this->route('fattura')?->tipo_documento === 'nota_credito';
 
         return [
+            // Coda 165: la conferma dell'avviso quando la nota modificata rettifica una fattura in un piano che ha già
+            // incassato. Il servizio la chiede con un secondo invio (R5 della Fase 1-bis).
+            'conferma_avviso_nota' => 'nullable|boolean',
             'gestione_id' => [
                 'required',
                 Rule::exists('gestioni', 'id')->where('condominio_id', $this->route('condominio')->id),

@@ -380,30 +380,61 @@ class PianoContiController extends Controller
                             ? $piano->stato->value
                             : $piano->stato;
 
+                        // Coda 165: il piano con una fattura rettificata da note collegate e con le quote generate si legge da ciò
+                        // che ha registrato, tutto, come nella copertura del cruscotto (W1 del terzo giro, X2 del quarto).
+                        $conNote = \App\Services\Gestionale\NettoNoteCollegate::perFatture($piano->fattureStraordinarie->pluck('id')->all()) !== [];
+                        $registrato = $conNote
+                            ? \App\Services\Gestionale\NettoNoteCollegate::ripartoRegistratoPerConto((int) $piano->id)
+                            : null;
+                        // Quote senza righe (piano di prima della beta.29): senza note, come la stampa ricostruita (X1).
+                        if ($conNote && $registrato === null && $piano->rate()->whereHas('rateQuote')->exists()) {
+                            $conNote = false;
+                        }
+                        if ($registrato !== null) {
+                            foreach ($registrato as $contoId => $quota) {
+                                if ($quota <= 0) continue;
+                                $pianiStraordinariMap[$contoId][] = ['id' => $piano->id, 'nome' => $piano->nome, 'stato' => $statoPiano, 'importo' => $quota];
+                            }
+                            continue;
+                        }
+
                         foreach ($piano->fattureStraordinarie as $fattura) {
                             $importoFinanziato = (int) ($fattura->pivot->importo_collegato ?? 0);
                             if ($importoFinanziato <= 0) continue;
 
-                            $righeFattura = $righePerFattura->get($fattura->id, collect());
-                            if ($righeFattura->isEmpty()) continue;
+                            // Coda 165 (1.11.0-beta.36): con note di credito collegate, la parte per voce la dà la regola del
+                            // motore (`NettoNoteCollegate::ripartoPerConto`), come nella copertura del cruscotto (V6).
+                            $riparto = $conNote ? \App\Services\Gestionale\NettoNoteCollegate::ripartoPerConto((int) $fattura->id, $importoFinanziato) : null;
+                            $quotePerConto = [];
+                            if ($riparto !== null) {
+                                $quotePerConto = $riparto;
+                            } else {
+                                $righeFattura = $righePerFattura->get($fattura->id, collect());
+                                if ($righeFattura->isEmpty()) continue;
 
-                            $totaleComune = $righeFattura->sum(
-                                fn($r) => $r->importo_imponibile + $r->importo_iva
-                            );
-                            if ($totaleComune <= 0) continue;
+                                $totaleComune = $righeFattura->sum(
+                                    fn($r) => $r->importo_imponibile + $r->importo_iva
+                                );
+                                if ($totaleComune <= 0) continue;
 
-                            // Scala importo_collegato alla sola quota comune
-                            $totaleLordo = (int) ($totaleLordoPerFattura[$fattura->id] ?? $totaleComune);
-                            $importoFinanziatoScalato = $totaleLordo > 0
-                                ? (int) round(($totaleComune / $totaleLordo) * $importoFinanziato)
-                                : $importoFinanziato;
+                                // Scala importo_collegato alla sola quota comune
+                                $totaleLordo = (int) ($totaleLordoPerFattura[$fattura->id] ?? $totaleComune);
+                                $importoFinanziatoScalato = $totaleLordo > 0
+                                    ? (int) round(($totaleComune / $totaleLordo) * $importoFinanziato)
+                                    : $importoFinanziato;
 
-                            foreach ($righeFattura as $riga) {
-                                $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
-                                $quota = (int) round(($importoRiga / $totaleComune) * $importoFinanziatoScalato);
+                                // Come prima della beta: riga per riga, e una quota non positiva non si somma.
+                                foreach ($righeFattura as $riga) {
+                                    $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
+                                    $quotaRiga = (int) round(($importoRiga / $totaleComune) * $importoFinanziatoScalato);
+                                    if ($quotaRiga <= 0) continue;
+                                    $contoRiga = (int) $riga->conto_id;
+                                    $quotePerConto[$contoRiga] = ($quotePerConto[$contoRiga] ?? 0) + $quotaRiga;
+                                }
+                            }
+
+                            foreach ($quotePerConto as $contoId => $quota) {
                                 if ($quota <= 0) continue;
-
-                                $contoId = (int) $riga->conto_id;
 
                                 $trovato = false;
                                 foreach ($pianiStraordinariMap[$contoId] ?? [] as &$entry) {

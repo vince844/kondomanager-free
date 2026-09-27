@@ -109,6 +109,7 @@ class ImportaFatturaXmlController extends Controller
             'documento' => $this->mappaDocumento($fattura),
             'righe' => $this->mappaRighe($fattura),
             'fornitore' => $this->mappaFornitore($fattura, $ricercaFornitore),
+            'fattura_rettificata' => $this->mappaFatturaRettificata($fattura, $condominio, $ricercaFornitore),
             'ritenuta' => $this->mappaRitenuta($fattura),
             'avvisi' => [
                 'lotto_con_altri_documenti' => count($fatture) - 1,
@@ -388,6 +389,60 @@ class ImportaFatturaXmlController extends Controller
             'aliquota' => $ritenuta->aliquota,
             'causale_pagamento' => $ritenuta->causalePagamento,
         ];
+    }
+
+    /**
+     * La fattura che la nota di credito dichiara di rettificare (Coda 165, 1.11.0-beta.36; decisione 26, punto 6). Si
+     * **propone** — il campo del modulo resta modificabile — solo quando il file ne dichiara una sola, il fornitore è
+     * agganciato senza dubbi, e numero **e** data trovano una fattura sola di quel fornitore in questo condominio. In
+     * ogni altro caso nessuna proposta, e il modulo dice perché: una scelta sbagliata qui toglierebbe denaro dal piano
+     * sbagliato.
+     *
+     * @return array{esito: string, proposta: ?array, dichiarate: list<array{numero: string, data: ?string}>}|null
+     *         `null` per una fattura: il campo è solo della nota
+     */
+    private function mappaFatturaRettificata(FatturaPaFattura $fattura, Condominio $condominio, RicercaFornitoreXml $ricerca): ?array
+    {
+        if (! $fattura->isNotaCredito()) {
+            return null;
+        }
+
+        // Lo stesso riferimento ripetuto in due blocchi è una fattura sola, non due (Fase 1-bis).
+        $dichiarate = collect($fattura->fattureCollegate)
+            ->map(fn ($c) => ['numero' => $c->numero, 'data' => $c->data])
+            ->unique(fn (array $d) => mb_strtolower(trim($d['numero'])) . '|' . ($d['data'] ?? ''))
+            ->values()->all();
+        $esito = fn (string $e, ?array $proposta = null) => ['esito' => $e, 'proposta' => $proposta, 'dichiarate' => $dichiarate];
+
+        if ($dichiarate === []) {
+            return $esito('nessuna_dichiarata');
+        }
+        if (count($dichiarate) > 1) {
+            return $esito('piu_dichiarate');
+        }
+        if ($dichiarate[0]['data'] === null) {
+            return $esito('senza_data');
+        }
+
+        $fornitori = $ricerca->cerca($fattura->fornitorePartitaIva, $fattura->fornitorePartitaIvaPaese, $fattura->fornitoreCodiceFiscale);
+        if ($fornitori->count() !== 1) {
+            return $esito('fornitore_da_scegliere');
+        }
+
+        $servizio = new \App\Services\Gestionale\FattureRettificabili();
+        $trovate = $servizio->perRiferimento($condominio->id, (int) $fornitori->first()->id, $dichiarate[0]['numero'], $dichiarate[0]['data']);
+        if ($trovate->isEmpty()) {
+            return $esito('non_trovata');
+        }
+        // Due fatture con lo stesso numero e la stessa data: esistono, e il testo non deve dire il contrario (R8).
+        if ($trovate->count() > 1) {
+            return $esito('ambigua');
+        }
+        $trovata = $trovate->first();
+
+        $importoNota = abs($fattura->importoTotaleDocumentoCents ?? ($fattura->imponibileDichiaratoCents() + $fattura->impostaDichiarataCents()));
+
+        return $esito('proposta', $servizio->comeCandidata($trovata, $importoNota));
     }
 
     private function mappaFornitore(FatturaPaFattura $fattura, RicercaFornitoreXml $ricerca): array

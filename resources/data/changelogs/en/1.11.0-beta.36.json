@@ -1,0 +1,12 @@
+{
+  "features": [
+    "DATABASE CHANGE — A new column, fatture_passive.fattura_rettificata_id, with a re-runnable migration and no data backfill. One topic only: the supplier's credit note, which the instalment plan did not see until now.",
+    "THE PROBLEM — The supplier's credit note was linked to nothing: the cancelled invoice stayed in its instalment plan, the instalments kept charging it and the new invoice went into a second plan. The same expense charged twice, € 2,000.00 for € 1,000.00, without a warning.",
+    "THE NOTE CARRIES THE INVOICE IT CORRECTS — In the form, for a credit note, the field «Invoice corrected by the note» lists the invoices of the same supplier from any financial year. From the XML the program proposes it when number and date find exactly one invoice. Credit notes recorded before this version are linked with «Link to an invoice» from the note's menu; «Unlink» removes the link. The detail pages show the link both ways.",
+    "THE SAME RULE AS REVERSAL — If the invoice sits in a plan that has not collected anything, the note cannot be recorded or linked until the plan is removed, and the box says how. With collections it is recorded after a confirmation: the instalments stay, and the difference is settled by a resolution, usually in the year-end adjustment, between each owner and the condominium. Reversing or deleting an invoice with linked notes is refused, with the way out.",
+    "THE INVOICE COUNTS NET — The plan basket, plan creation, recalculation, the engine, the dashboard and budget coverage read the invoice net of its linked notes. Recalculating a plan that asks for more than the net stops and says by how much; a plan made on the net recalculates as usual. A note on a unit's line removes that unit's share, never more than the invoice charges it.",
+    "SPECIAL CASES — A note on the budgeted part of the invoice does not touch the plan; a prior-year note counts at its header amount; a disputed note does not count while disputed, but cannot exceed the invoice total; moving a linked note from one unit to another follows the same rule.",
+    "ALSO FIXED — A credit note with a positive individual line entered the plan basket as a cost, and the dashboard counted it among pending invoices.",
+    "LIMITS — A credit-note line cannot be marked «outside the budget»: on a mixed invoice the note reduces the part of the item you record it on. For a plan with amount € 0.00 already issued or collected, the warnings give no figures."
+  ]
+}

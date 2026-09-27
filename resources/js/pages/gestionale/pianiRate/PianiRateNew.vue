@@ -28,7 +28,7 @@ import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
-import { avvisoFatturaNelCarrello, senzaCompetenzaScelte } from '@/lib/gestionale/pianiRate/avvisoCarrello';
+import { avvisoFatturaNelCarrello, notaCollegataNelCarrello, senzaCompetenzaScelte } from '@/lib/gestionale/pianiRate/avvisoCarrello';
 import Alert from '@/components/Alert.vue';
 import type { Flash } from '@/types/flash';
 import {
@@ -1346,6 +1346,8 @@ const submit = () => {
                     <div class="flex-1 min-w-0">
                       <div class="font-bold text-sm text-slate-900 break-words sm:truncate">{{ fat.fornitore }} — Doc. {{ fat.numero_documento }}</div>
                       <div class="text-xs text-slate-500 mt-1">Data: {{ fat.data_documento }} | Già finanziato: {{ euro(fat.gia_finanziato) }}</div>
+                      <!-- Coda 165: la fattura rettificata da una nota del fornitore si offre al netto, e lo dice. -->
+                      <div v-if="notaCollegataNelCarrello(fat)" class="text-[10px] text-slate-500 mt-0.5">{{ notaCollegataNelCarrello(fat) }}</div>
                       <!-- B2, S6 e decisione 26: la competenza dichiarata, o che cosa ne farà il riparto senza. Le varianti
                            (gestione, «Urgenza», pregressa senza periodo o col periodo dentro l'esercizio) stanno in
                            `avvisoFatturaNelCarrello`, provate una per una. -->

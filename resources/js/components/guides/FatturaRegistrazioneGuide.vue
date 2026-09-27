@@ -117,6 +117,13 @@ defineEmits(['update:open']);
               <ul class="space-y-2 list-disc pl-5">
                 <li><strong>Fattura / Nota credito</strong>: il selettore in alto a sinistra. La nota di credito
                     inverte i segni contabili — la usi per stornare importi a favore del condominio.</li>
+                <li><strong>Fattura che la nota rettifica</strong>: per la nota di credito del fornitore, sotto il
+                    fornitore scegli la fattura che corregge (di qualunque esercizio); dall'XML la propone il
+                    programma quando numero e data la trovano senza dubbi. Collegata, la fattura vale al netto della
+                    nota nel carrello dei piani rate e nel cruscotto. Se la fattura sta in un piano rate che non ha
+                    ancora incassato, la nota non si registra finché il piano non è tolto, e il riquadro dice come; se
+                    il piano ha incassato si registra, dopo una conferma: le rate restano e la differenza si sistema
+                    con una delibera, di solito nel conguaglio del consuntivo.</li>
                 <li><strong>Ritenuta d'acconto</strong>: se il fornitore è soggetto a ritenuta (dalla sua
                     anagrafica), il modulo separa da solo il netto da pagare dalla quota per l'Erario.</li>
                 <li><strong>IVA a zero</strong>: perfettamente ammessa — professionisti in regime forfetario,

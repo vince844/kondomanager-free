@@ -8,7 +8,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench, BookOpen } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench, BookOpen, Link2 } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -60,7 +60,7 @@ const props = defineProps<{
     gestione_id: number | null;
     strategia: string;
     righe: Array<{
-        id: number;
+        id: number | string;
         tipo: string;
         importo: number;
         descrizione: string;
@@ -722,6 +722,8 @@ onUnmounted(() => {
                                                 <div class="flex items-start gap-2">
                                                     <div class="mt-0.5">
                                                         <User v-if="riga.tipo === 'ad_personam'" class="w-3.5 h-3.5 text-indigo-500" />
+                                                        <!-- Coda 165: la nota del fornitore collegata, che porta la fattura al netto. -->
+                                                        <Link2 v-else-if="riga.tipo === 'nota'" class="w-3.5 h-3.5 text-rose-500" />
                                                         <LayoutDashboard v-else class="w-3.5 h-3.5 text-amber-500" />
                                                     </div>
                                                     <div>

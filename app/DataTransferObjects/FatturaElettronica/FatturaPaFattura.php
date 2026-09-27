@@ -115,6 +115,13 @@ class FatturaPaFattura
         public readonly array $riepiloghi,
         public readonly array $scadenze,
         public readonly array $ritenute,
+        /**
+         * I documenti che il file dichiara di rettificare (`DatiFattureCollegate`, Coda 165). In coda e con un default:
+         * un campo che non tutti i file hanno, e che non tutti i chiamanti devono conoscere.
+         *
+         * @var FatturaPaFatturaCollegata[]
+         */
+        public readonly array $fattureCollegate = [],
     ) {
     }
 

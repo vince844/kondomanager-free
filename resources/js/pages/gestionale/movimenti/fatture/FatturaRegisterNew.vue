@@ -18,6 +18,8 @@ import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import { useFattureSimili } from '@/composables/useFattureSimili';
+import { useFattureRettificabili } from '@/composables/useFattureRettificabili';
+import { dettaglioCandidata, esitoCorrente, etichettaBreve, etichettaCandidata, righeNotaPerCandidate, statoScelta, testoEsitoXml, type FatturaRettificabile, type FatturaRettificataDaXml } from '@/lib/gestionale/fatture/fatturaRettificata';
 import { useImportaFatturaXml, type EsitoImportazioneXml, type RiepilogoIva } from '@/composables/useImportaFatturaXml';
 import { watchDebounced } from '@vueuse/core';
 import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
@@ -646,6 +648,19 @@ function precompilaDaXml(esito: EsitoImportazioneXml) {
         ? esito.fornitore.candidati[0].id
         : null;
 
+    // Coda 165: la fattura che la nota dichiara di rettificare, **proposta** solo quando il server l'ha trovata senza
+    // dubbi (numero e data, un fornitore solo, una fattura sola). Anche questo si riscrive sempre: un documento nuovo
+    // non eredita il collegamento del precedente.
+    form.fattura_rettificata_id = esito.fattura_rettificata?.proposta?.id ?? null;
+    esitoXmlRettificata.value = esito.fattura_rettificata ?? null;
+    form.conferma_avviso_nota = false;
+    form.clearErrors('fattura_rettificata_id', 'avviso_nota');
+    propostaDalFileFatta.value = form.fattura_rettificata_id !== null;
+    // Le candidate si ricaricano per ogni documento, anche quando fornitore e righe sono uguali a quelli di prima: nel
+    // lotto l'avviso e il «già rettificato» del documento precedente restavano a video (R7 della Fase 1-bis). Al tick
+    // dopo, quando anche le righe del file sono scritte.
+    nextTick(() => ricaricaRettificabili());
+
     // ⚠️ La giustificazione di uno sforo è **del documento che l'ha richiesta**, non del
     // modulo: sopravvivere a un cambio di documento significherebbe registrare la
     // fattura nuova con la motivazione legale della precedente, e la ratifica
@@ -797,6 +812,9 @@ const form = useForm({
     esercizio_id:       props.esercizio?.id || null,
     gestione_id:        null as number | null,
     tipo_documento:     'fattura',
+    // Coda 165 (1.11.0-beta.36): solo sulla nota di credito, la fattura che rettifica. Facoltativa.
+    fattura_rettificata_id: null as number | null,
+    conferma_avviso_nota: false,
     is_pregresso:       false,
     data_competenza_originaria: '',
     saldo_patrimoniale_id: null as number | null,
@@ -873,6 +891,8 @@ const etichetteErrori = computed<Record<string, string>>(() => {
         competenza_dal: 'Competenza (dal)',
         competenza_al: 'Competenza (al)',
         fornitore_id: 'Fornitore',
+        fattura_rettificata_id: 'Fattura che la nota rettifica',
+        avviso_nota: 'Fattura che la nota rettifica',
         gestione_id: 'Gestione',
         conto_corrente_id: 'Conto addebito',
         modalita_pagamento: 'Modalità di pagamento',
@@ -1212,6 +1232,101 @@ watch(() => form.tipo_documento, (nuovo, vecchio) => {
     if (nuovo === 'nota_credito') {
         form.righe.forEach((riga: any) => { riga.is_sopravvenienza = false; });
     }
+
+    // Coda 165: la fattura rettificata è della nota. Una fattura non ne ha.
+    if (nuovo === 'fattura') {
+        form.fattura_rettificata_id = null;
+        form.conferma_avviso_nota = false;
+        esitoXmlRettificata.value = null;
+    }
+});
+
+/*
+ * Coda 165 (1.11.0-beta.36; decisione 26, punto 6): la fattura che la nota di credito rettifica. L'elenco lo dà il server
+ * con i motivi della scala già scritti (`FattureRettificabili`): se la fattura sta in un piano che non ha incassato, la nota
+ * non si registra, e il riquadro dice la via prima dell'invio; se il piano ha incassato si registra, dopo una conferma.
+ * Si ricarica quando cambiano fornitore o importo: il «di quanto» dei motivi dipende dall'importo della nota.
+ */
+const rettificabili = useFattureRettificabili();
+const esitoXmlRettificata = ref<FatturaRettificataDaXml | null>(null);
+// La spunta viaggia col modulo: il servizio la pretende quando c'è un avviso (R3, R7 della Fase 1-bis).
+const confermaAvvisoNota = computed({
+    get: () => form.conferma_avviso_nota,
+    set: (v: boolean) => { form.conferma_avviso_nota = v; },
+});
+const sceltaRettificata = computed(() => statoScelta(rettificabili.candidate.value, form.fattura_rettificata_id));
+
+// Le righe della nota come le vedrà il server: il «di quanto» e la presenza dell'avviso dipendono da dove la nota riduce,
+// non solo dall'importo (R4 della Fase 1-bis).
+const righeNota = computed(() => righeNotaPerCandidate({
+    isPregresso: !!form.is_pregresso,
+    totaleCents: totali.value.totale_documento_cents,
+    righe: form.righe.map((r: any) => ({ conto_id: r.conto_id, immobile_id: r.immobile_id, lordoCents: lordoRigaCents(r.importo_imponibile, r.aliquota_iva) })),
+}));
+// La fattura dichiarata dal file, se è una e ha la data: il server la segna fra le candidate (R8).
+const dichiarataDalFile = computed(() => {
+    const d = esitoXmlRettificata.value?.dichiarate ?? [];
+    return d.length === 1 && d[0].data ? d[0] : null;
+});
+const esitoXmlCorrente = computed(() => esitoCorrente(esitoXmlRettificata.value, rettificabili.candidate.value, {
+    fornitoreScelto: !!form.fornitore_id,
+    caricamento: rettificabili.isLoading.value,
+    errore: rettificabili.errore.value,
+    sceltaId: form.fattura_rettificata_id,
+}));
+const testoXmlRettificata = computed(() => isNotaCredito.value ? testoEsitoXml(esitoXmlCorrente.value) : null);
+// La proposta dal file si fa una volta per documento, e solo a campo vuoto: chi l'ha tolta non se la ritrova.
+const propostaDalFileFatta = ref(false);
+
+const ricaricaRettificabili = () => {
+    if (form.tipo_documento !== 'nota_credito' || !form.fornitore_id) {
+        rettificabili.reset();
+        return;
+    }
+    rettificabili.carica({
+        condominioId: props.condominio.id,
+        fornitoreId: form.fornitore_id,
+        importoCents: totali.value.totale_documento_cents,
+        righe: righeNota.value,
+        numeroDichiarato: dichiarataDalFile.value?.numero ?? null,
+        dataDichiarata: dichiarataDalFile.value?.data ?? null,
+        contestata: form.stato_approvazione === 'contestata',
+    });
+};
+
+watchDebounced(
+    [() => form.tipo_documento, () => form.fornitore_id, () => JSON.stringify(righeNota.value), () => dichiarataDalFile.value?.numero, () => form.stato_approvazione],
+    ricaricaRettificabili,
+    { debounce: 300, immediate: true }
+);
+
+// A caricamento finito e riuscito: la proposta del file, se c'è da fare; e una scelta che non è fra le candidate del
+// fornitore attuale non resta appesa (cambiato il fornitore, la fattura di prima non è più sua).
+watch(() => rettificabili.candidate.value, (candidate: FatturaRettificabile[]) => {
+    if (rettificabili.isLoading.value || rettificabili.errore.value) return;
+    if (!propostaDalFileFatta.value && dichiarataDalFile.value && form.fattura_rettificata_id === null) {
+        const segnate = candidate.filter(c => c.corrisponde_al_file);
+        if (segnate.length === 1) form.fattura_rettificata_id = segnate[0].id;
+        propostaDalFileFatta.value = true;
+    }
+    if (form.fattura_rettificata_id !== null && !candidate.some(c => c.id === form.fattura_rettificata_id)) {
+        form.fattura_rettificata_id = null;
+    }
+});
+
+watch(() => form.fattura_rettificata_id, () => {
+    form.clearErrors('fattura_rettificata_id', 'avviso_nota');
+});
+// L'avviso del server vale per i dati con cui è stato calcolato: cambiano, e sparisce subito — non dopo il rinvio del
+// ricaricamento, quando si sarebbe confermata una cifra che non vale più (V5 della verifica).
+watch([() => form.tipo_documento, () => form.fornitore_id, () => JSON.stringify(righeNota.value), () => form.stato_approvazione], () => {
+    form.clearErrors('avviso_nota');
+});
+// Il testo che si vede: quello del server, se ha risposto, o quello delle candidate. La spunta vale per quel testo:
+// cambia, e si rispunta (R7, V5).
+const testoAvvisoMostrato = computed(() => form.errors.avviso_nota ?? sceltaRettificata.value.avviso);
+watch(testoAvvisoMostrato, () => {
+    confermaAvvisoNota.value = false;
 });
 
 // Storico capitoli espanso
@@ -1666,6 +1781,32 @@ const inizioEsercizioFattura = computed(() => (props.esercizi ?? []).find((e: an
  * irraggiungibile. La gestione dei pregressi avviene interamente via WidgetDoubleLock.
  */
 const handleSubmit = () => {
+    // 0. Coda 165: la nota collegata a una fattura in un piano. Il motivo del server blocca — lo ridirebbe il server, dopo
+    // l'invio; l'avviso di un piano che ha già incassato chiede una conferma esplicita, come lo storno.
+    if (isNotaCredito.value && form.fattura_rettificata_id !== null) {
+        // Prima che arrivino le candidate non si sa se la fattura è in un piano: si aspetta (R7 della Fase 1-bis).
+        if (rettificabili.errore.value) {
+            form.setError('fattura_rettificata_id', 'Non sono riuscito a caricare le fatture di questo fornitore: svuota il campo per registrare la nota scollegata, o riprova.');
+            portaInVistaIlRiepilogo();
+            return;
+        }
+        if (rettificabili.isLoading.value || !sceltaRettificata.value.scelta) {
+            form.setError('fattura_rettificata_id', 'Sto ancora caricando le fatture di questo fornitore: riprova fra un istante.');
+            portaInVistaIlRiepilogo();
+            return;
+        }
+        if (sceltaRettificata.value.motivo) {
+            form.setError('fattura_rettificata_id', sceltaRettificata.value.motivo);
+            portaInVistaIlRiepilogo();
+            return;
+        }
+        if (testoAvvisoMostrato.value && !confermaAvvisoNota.value) {
+            form.setError('fattura_rettificata_id', 'Conferma di aver letto l\'avviso sul piano rate, sotto la fattura che la nota rettifica.');
+            portaInVistaIlRiepilogo();
+            return;
+        }
+    }
+
     // 1. Spesa imprevista CORRENTE
     //
     // ⚠️ **Una nota di credito non sfora mai un budget: lo libera.** Il pulsante che accende
@@ -1799,6 +1940,10 @@ function resettaFormPerNuovoDocumento() {
         ? props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id
         : null;
     form.tipo_documento = 'fattura';
+    form.fattura_rettificata_id = null;
+    form.conferma_avviso_nota = false;
+    esitoXmlRettificata.value = null;
+    propostaDalFileFatta.value = false;
     form.is_pregresso = false;
     form.data_competenza_originaria = '';
     form.saldo_patrimoniale_id = null;
@@ -2250,6 +2395,57 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                 </label>
                             </div>
                         </Transition>
+
+                        <!-- Coda 165: la fattura che la nota di credito rettifica. Facoltativa; l'elenco e i motivi vengono dal server. -->
+                        <div v-if="isNotaCredito && form.fornitore_id" class="space-y-1.5">
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fattura che la nota rettifica</Label>
+                            <v-select
+                                v-model="form.fattura_rettificata_id"
+                                :options="rettificabili.candidate.value"
+                                :reduce="(c: FatturaRettificabile) => c.id"
+                                :get-option-label="etichettaCandidata"
+                                :loading="rettificabili.isLoading.value"
+                                placeholder="Nessuna: la nota resta scollegata"
+                                aria-label="Fattura che la nota rettifica"
+                                class="text-xs"
+                            >
+                                <template #option="c">
+                                    <div class="py-0.5 whitespace-normal">
+                                        <div class="font-semibold">{{ etichettaBreve(c) }}</div>
+                                        <div class="text-[10px] text-slate-500">{{ dettaglioCandidata(c) }}</div>
+                                    </div>
+                                </template>
+                                <template #selected-option="c">
+                                    <!-- Finché le candidate non arrivano, vue-select ha solo l'id: niente «n. undefined» (R8). -->
+                                    <span class="truncate">{{ c.numero_documento ? etichettaBreve(c) : 'Carico la fattura…' }}</span>
+                                </template>
+                                <template #no-options>Questo fornitore non ha fatture registrate in questo condominio.</template>
+                            </v-select>
+                            <p v-if="rettificabili.errore.value" class="text-[11px] text-rose-600">
+                                Non sono riuscito a caricare le fatture di questo fornitore. La nota si può registrare anche senza, e collegare dopo dall'elenco.
+                            </p>
+                            <p v-if="testoXmlRettificata" class="text-[11px] text-slate-500 leading-relaxed">{{ testoXmlRettificata }}</p>
+                            <p v-if="!form.fattura_rettificata_id && !testoXmlRettificata" class="text-[10px] text-slate-400 leading-relaxed">
+                                Collegata, la fattura vale al netto della nota nel carrello dei piani rate e nel cruscotto.
+                            </p>
+                            <div v-if="sceltaRettificata.motivo" class="p-3 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30">
+                                <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">{{ sceltaRettificata.motivo }}</p>
+                            </div>
+                            <div v-else-if="testoAvvisoMostrato" class="p-3 bg-red-50 dark:bg-red-900/10 rounded-lg border border-red-200 dark:border-red-900/30 space-y-2">
+                                <!-- Il testo del server, se ha risposto: lo calcola con le righe vere della nota. -->
+                                <p class="text-[11px] text-red-800 dark:text-red-300 leading-relaxed"><strong>Il piano rate resta com'è.</strong> {{ testoAvvisoMostrato }}</p>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" v-model="confermaAvvisoNota"
+                                        class="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" />
+                                    <span class="text-[11px] font-semibold text-red-800 dark:text-red-300">Ho letto: registro la nota collegata</span>
+                                </label>
+                            </div>
+                            <p v-if="form.errors.fattura_rettificata_id && !sceltaRettificata.motivo" class="text-[11px] text-red-600 font-medium">
+                                {{ form.errors.fattura_rettificata_id }}
+                            </p>
+                        </div>
+                        <!-- Senza fornitore il campo non c'è, ma il file può dichiarare una fattura: lo si dice (verifica delle correzioni). -->
+                        <p v-else-if="isNotaCredito && testoXmlRettificata" class="text-[11px] text-slate-500 leading-relaxed">{{ testoXmlRettificata }}</p>
 
                         <hr class="border-slate-100 dark:border-slate-800">
 

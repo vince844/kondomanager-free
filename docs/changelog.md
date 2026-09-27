@@ -7,6 +7,55 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.36] - La nota del fornitore sa quale fattura corregge
+
+**Tocca il database: una colonna nuova, `fatture_passive.fattura_rettificata_id`** (migrazione
+`2026_09_27_090000_add_fattura_rettificata_id_to_fatture_passive_table`, rieseguibile, senza travaso di dati). Un solo
+tema: la nota di credito emessa dal fornitore, che finora il piano rate non vedeva.
+
+**Il problema.** Quando una fattura elettronica è sbagliata, il fornitore emette una nota di credito e poi, se serve, una
+fattura nuova. La nota si registrava con la linguetta «Nota credito» o dall'XML, ma non si collegava a niente: la
+fattura annullata restava nel suo piano rate, le rate continuavano a chiederla, e la fattura nuova entrava in un secondo
+piano. La stessa spesa chiesta due volte, € 2.000,00 per € 1.000,00, senza un avviso. Le difese della beta.35 guardavano
+solo lo storno interno.
+
+**La nota porta la fattura che corregge.** Nel modulo, per una nota di credito, sotto il fornitore c'è il campo
+«Fattura che la nota rettifica»: si sceglie fra le fatture dello stesso fornitore di qualunque esercizio. Dall'XML il
+programma la propone da sé quando il file la dichiara e numero e data trovano una fattura sola; con più fatture
+dichiarate, o due fatture con lo stesso numero e la stessa data, non propone niente e lo dice. Nel lotto di più file la
+proposta si rifà quando la fattura del lotto è stata registrata dopo la lettura della nota. Le note registrate prima di
+questa versione non si collegano da sole: dal menu della nota c'è «Collega a una fattura», e «Scollega» toglie il
+collegamento. Il dettaglio della nota dice quale fattura corregge, quello della fattura quali note ha.
+
+**La stessa regola dello storno.** Se la fattura sta in un piano che non ha ancora incassato, la nota non si registra e
+non si collega finché il piano non è tolto: il riquadro sotto il campo dice quale piano e come. Se il piano ha già
+incassato, la nota si registra dopo una conferma, anche se la si modifica o la si collega dopo: le rate restano, e la
+conferma dice quanto chiedono più di quanto resta della fattura e che la differenza si sistema con una delibera, di
+solito nel conguaglio del consuntivo, fra ciascun condòmino e il condominio. Lo storno e l'eliminazione di una fattura con
+note collegate si rifiutano, con la via; una fattura con note collegate non si modifica sotto quanto le note rettificano.
+
+**La fattura vale al netto.** Il carrello del piano la offre al netto e scrive il perché; annullata per intero, sparisce.
+La creazione del piano rifiuta un importo oltre il netto e dice di quanto; il ricalcolo di un piano che chiede più del
+netto si ferma, nomina fattura e nota e dice di quanto, mentre un piano fatto sul netto si ricalcola come sempre. Il
+motore toglie la nota dalla parte giusta: una nota sulla riga di un'unità toglie la quota a quell'unità, una sulla voce
+fuori preventivo la toglie alla voce, e non si toglie mai a un'unità o a una voce più di quanto la fattura le addebita. Il
+cruscotto mostra la fattura al netto, con la riga della nota; la copertura delle voci legge la stessa regola. La stampa
+ricostruita di un piano che ha già le quote spiega le quote che esistono, senza la nota arrivata dopo.
+
+**Casi particolari.** Una nota sulla parte a preventivo della fattura non tocca il piano. La nota pregressa, registrata
+senza righe, vale la sua testata. Una nota contestata non conta finché resta tale, ma non supera comunque il totale della
+fattura. Spostare una nota collegata da un'unità a un'altra segue la stessa regola: cambia chi paga.
+
+**Corretti anche.** Una nota di credito con una riga ad personam positiva entrava nel carrello come fabbisogno; il
+cruscotto la contava fra le fatture in sospeso.
+
+**I limiti.** Una riga di nota non si può marcare «fuori preventivo»: su una fattura mista la nota riduce la parte della
+voce su cui la registri. Per un piano «tutto» (importo € 0,00) già emesso o incassato, quanto chiede per una fattura non
+si ricava più: gli avvisi non danno cifre e i conti lo contano per intero. L'importo zero nel carrello per le fatture
+senza note resta un difetto più vecchio di questa versione.
+
+---
+
 ## [1.11.0-beta.35] - La pregressa segue il suo periodo
 
 **Non tocca il database: nessuna migrazione.** Tre cambi di comportamento, in quest'ordine: lo storno di una fattura

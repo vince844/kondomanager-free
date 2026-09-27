@@ -7,7 +7,7 @@
  * grande e non toccato da questa beta se non nel punto preciso dell'importazione.
  */
 
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 const axios = vi.hoisted(() => ({ get: vi.fn(async () => ({ data: [] })), post: vi.fn() }));
@@ -2055,5 +2055,249 @@ describe('Coda 129 — una nota di credito di un esercizio chiuso non è una spe
         } finally {
             delete (Element.prototype as any).scrollIntoView;
         }
+    });
+});
+
+describe('Coda 165 (1.11.0-beta.36) — la fattura che la nota di credito rettifica', () => {
+    // Il rifiuto porta in vista il riepilogo degli errori, e jsdom non ha `scrollIntoView`. Per ogni test e non una volta
+    // sola: un test più su lo toglie quando finisce, e la raccolta dei describe avviene prima.
+    beforeEach(() => { Element.prototype.scrollIntoView = () => {}; });
+    afterAll(() => { delete (Element.prototype as any).scrollIntoView; });
+    const CANDIDATA = {
+        id: 7, numero_documento: 'FT-28', data_documento: '2025-12-22', totale_documento: 100000, esercizio_nome: '2025',
+        is_pregresso: false, gia_rettificato: 0, motivo_blocco_nota: null as string | null, avviso_nota: null as string | null,
+        corrisponde_al_file: true,
+    };
+    const ESITO_NOTA = {
+        ...ESITO_TROVATO,
+        documento: { ...ESITO_TROVATO.documento, tipo_documento: 'nota_credito', numero_documento: 'NC-XML-1' },
+        fattura_rettificata: { esito: 'proposta', proposta: CANDIDATA, dichiarate: [{ numero: 'FT-28', data: '2025-12-22' }] },
+    };
+    /**
+     * Il server delle candidate: risponde solo all'endpoint delle rettificabili, il resto resta vuoto. Una copia a ogni
+     * risposta, come il server vero: lo stesso array restituito due volte non fa scattare i watcher, e un ricaricamento
+     * passava inosservato (visto provando la mutazione della proposta ripetuta, Fase 1-bis).
+     */
+    const serviCandidate = (candidate: Array<Record<string, unknown>>) => axios.get.mockImplementation((async (url: string) =>
+        ({ data: String(url).includes('fetch-fatture-rettificabili') ? candidate.map((c) => ({ ...c })) : [] })) as any);
+    /** Il caricamento delle candidate è rimandato di 300 ms (si ricarica quando cambia l'importo). */
+    const attendiCandidate = async () => { await new Promise((r) => setTimeout(r, 350)); await flushPromises(); };
+    const premiSenzaAttese = async (wrapper: ReturnType<typeof render>) => {
+        inviato.post.mockClear();
+        await wrapper.findAll('button').find((b) => b.text().includes('Registra Documento'))!.trigger('click');
+        await wrapper.vm.$nextTick();
+    };
+
+    test('dall\'XML la fattura proposta dal server entra nel campo, e il modulo dice che è una proposta', async () => {
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        expect((wrapper.vm as any).form.tipo_documento).toBe('nota_credito');
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBe(7);
+        expect(wrapper.text()).toContain('è proposta qui sopra');
+        axios.get.mockReset();
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('una scelta che non è fra le fatture del fornitore non resta appesa', async () => {
+        serviCandidate([]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBeNull();
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('tornando a «Fattura» il collegamento si toglie', async () => {
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        (wrapper.vm as any).form.tipo_documento = 'fattura';
+        await flushPromises();
+
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBeNull();
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('con il motivo del server la nota non parte, e il motivo sta sotto il campo', async () => {
+        const MOTIVO = 'La fattura è nel piano rate «Cornicione 2026», in bozza: con la nota, le sue rate chiederebbero € 300,00 più di quanto resta della fattura. Elimina prima il piano, poi registra la nota.';
+        serviCandidate([{ ...CANDIDATA, motivo_blocco_nota: MOTIVO }]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        expect(wrapper.text()).toContain(MOTIVO);
+        await premiSenzaAttese(wrapper);
+
+        expect(inviato.post).not.toHaveBeenCalled();
+        expect((wrapper.vm as any).form.errors.fattura_rettificata_id).toBe(MOTIVO);
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('R8 [1-bis] — il file letto prima che la fattura esistesse: la candidata segnata dal server si propone, e il testo lo dice', async () => {
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: { ...ESITO_NOTA, fattura_rettificata: { esito: 'non_trovata', proposta: null, dichiarate: [{ numero: 'FT-28', data: '2025-12-22' }] } } });
+        const wrapper = render();
+
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBe(7);
+        expect(wrapper.text()).toContain('è proposta qui sopra');
+        expect(wrapper.text()).not.toContain('non ce n\'è una');
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('R8 [1-bis] — la proposta del file si fa una volta: tolta a mano, non torna al caricamento successivo', async () => {
+        // Il file letto quando la fattura non c'era: la proposta la fanno le candidate, non l'esito della lettura.
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: { ...ESITO_NOTA, fattura_rettificata: { esito: 'non_trovata', proposta: null, dichiarate: [{ numero: 'FT-28', data: '2025-12-22' }] } } });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBe(7, 'lo scenario: proposta dalle candidate');
+
+        (wrapper.vm as any).form.fattura_rettificata_id = null;
+        (wrapper.vm as any).form.righe[0].importo_imponibile = 40;
+        await attendiCandidate();
+
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBeNull();
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('R7 [1-bis] — prima che arrivino le candidate la nota non parte, e la proposta resta', async () => {
+        let sblocca: () => void = () => {};
+        const freno = new Promise<void>((r) => { sblocca = r; });
+        axios.get.mockImplementation((async (url: string) => {
+            if (String(url).includes('fetch-fatture-rettificabili')) { await freno; return { data: [CANDIDATA] }; }
+            return { data: [] };
+        }) as any);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await new Promise((r) => setTimeout(r, 350));
+
+        await premiSenzaAttese(wrapper);
+        expect(inviato.post).not.toHaveBeenCalled();
+        expect((wrapper.vm as any).form.errors.fattura_rettificata_id).toContain('Sto ancora caricando');
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBe(7);
+
+        sblocca();
+        await flushPromises();
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('R7 [1-bis] — la spunta non passa da un documento al successivo, e si spegne se l\'avviso cambia', async () => {
+        const AVVISO = 'La fattura è nel piano rate «Cornicione 2026», che ha già incassato rate. Le rate restano e chiedono € 300,00 più di quanto resta della fattura.';
+        serviCandidate([{ ...CANDIDATA, avviso_nota: AVVISO }]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        (wrapper.vm as any).form.conferma_avviso_nota = true;
+        serviCandidate([{ ...CANDIDATA, avviso_nota: AVVISO.replace('€ 300,00', '€ 400,00') }]);
+        (wrapper.vm as any).form.righe[0].importo_imponibile = 400;
+        await attendiCandidate();
+        expect((wrapper.vm as any).form.conferma_avviso_nota).toBe(false);
+
+        (wrapper.vm as any).form.conferma_avviso_nota = true;
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        await selezionaFile(wrapper, 'nota-2.xml');
+        expect((wrapper.vm as any).form.conferma_avviso_nota).toBe(false);
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('V5 [verifica] — l\'avviso del server sparisce appena cambiano i dati, e la spunta con lui; un documento nuovo non lo eredita', async () => {
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+        const vm = wrapper.vm as any;
+
+        vm.form.setError('avviso_nota', 'Le rate chiedono € 300,00 più di quanto resta della fattura.');
+        await wrapper.vm.$nextTick();
+        vm.form.conferma_avviso_nota = true;
+        vm.form.righe[0].importo_imponibile = 50;
+        await wrapper.vm.$nextTick();
+        expect(vm.form.errors.avviso_nota).toBeUndefined();
+        expect(vm.form.conferma_avviso_nota).toBe(false);
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('V5 [verifica] — un documento nuovo del lotto non eredita l\'avviso del server del documento prima, anche con le stesse righe', async () => {
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+        const vm = wrapper.vm as any;
+
+        // Stesse righe nel secondo file: l'unica cosa che può togliere l'avviso è il documento nuovo.
+        vm.form.setError('avviso_nota', 'Avviso del documento di prima.');
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        await selezionaFile(wrapper, 'nota-2.xml');
+        expect(vm.form.errors.avviso_nota).toBeUndefined();
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('verifica — senza fornitore agganciato il testo del file si legge lo stesso', async () => {
+        axios.post.mockResolvedValueOnce({ data: {
+            ...ESITO_NOTA,
+            fornitore: { ...ESITO_NOTA.fornitore, esito: 'non_trovato', candidati: [] },
+            fattura_rettificata: { esito: 'fornitore_da_scegliere', proposta: null, dichiarate: [{ numero: 'FT-28', data: '2025-12-22' }] },
+        } });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+
+        expect((wrapper.vm as any).form.fornitore_id).toBeNull();
+        expect(wrapper.text()).toContain('Scegli prima il fornitore');
+    });
+
+    test('con un piano che ha incassato l\'avviso del server arriva sotto il campo, con la spunta', async () => {
+        serviCandidate([CANDIDATA]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        (wrapper.vm as any).form.setError('avviso_nota', 'La fattura è nel piano rate «Cornicione 2026», che ha già incassato rate.');
+        await wrapper.vm.$nextTick();
+        expect(wrapper.text()).toContain('che ha già incassato rate');
+        expect(wrapper.findAll('label').some((l) => l.text().includes('Ho letto'))).toBe(true);
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
+    });
+
+    test('con un piano che ha incassato serve la conferma, poi la nota parte con il collegamento', async () => {
+        const AVVISO = 'La fattura è nel piano rate «Cornicione 2026», che ha già incassato rate. La nota riduce il debito verso il fornitore, ma le rate restano.';
+        serviCandidate([{ ...CANDIDATA, avviso_nota: AVVISO }]);
+        axios.post.mockResolvedValueOnce({ data: ESITO_NOTA });
+        const wrapper = render();
+        await selezionaFile(wrapper, 'nota.xml');
+        await attendiCandidate();
+
+        await premiSenzaAttese(wrapper);
+        expect(inviato.post).not.toHaveBeenCalled();
+        expect((wrapper.vm as any).form.errors.fattura_rettificata_id).toContain('Conferma');
+
+        const conferma = wrapper.findAll('label').find((l) => l.text().includes('Ho letto'))!.find('input');
+        await conferma.setValue(true);
+        const opzioni = await premiRegistra(wrapper);
+
+        expect(opzioni).toBeTruthy();
+        expect((wrapper.vm as any).form.fattura_rettificata_id).toBe(7);
+        axios.get.mockImplementation((async () => ({ data: [] })) as any);
     });
 });

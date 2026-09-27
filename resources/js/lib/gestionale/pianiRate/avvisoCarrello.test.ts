@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { avvisoFatturaNelCarrello, senzaCompetenzaScelte } from './avvisoCarrello';
+import { avvisoFatturaNelCarrello, notaCollegataNelCarrello, senzaCompetenzaScelte } from './avvisoCarrello';
 
 const ORDINARIA = { gestioneStraordinaria: false, urgenza: false };
 const DELIBERA = { gestioneStraordinaria: true, urgenza: false };
@@ -66,5 +66,27 @@ describe('senzaCompetenzaScelte — il riquadro dell\'urgenza conta a parte le p
             { ha_competenza: false, selezionata: false, senza_periodo: true },
             { ha_competenza: true, selezionata: true },
         ])).toEqual({ correnti: 1, pregresse: 1 });
+    });
+});
+
+describe('notaCollegataNelCarrello (Coda 165, 1.11.0-beta.36)', () => {
+    test('senza note collegate non dice niente', () => {
+        expect(notaCollegataNelCarrello({ totale_straordinario: 1000, totale_netto: 1000, note_collegate: [] })).toBeNull();
+        expect(notaCollegataNelCarrello({ totale_straordinario: 1000 })).toBeNull();
+    });
+
+    test('la fattura al netto dice di quanto e perché', () => {
+        expect(notaCollegataNelCarrello({ totale_straordinario: 1000, totale_netto: 700, note_collegate: [{ numero: 'NC-PAR', importo: 300 }] }))
+            .toBe('Al netto della nota di credito n. NC-PAR: la fattura vale € 700,00 per il piano, invece di € 1.000,00.');
+    });
+
+    test('più note si nominano tutte', () => {
+        expect(notaCollegataNelCarrello({ totale_straordinario: 1000, totale_netto: 500, note_collegate: [{ numero: 'A', importo: 200 }, { numero: 'B', importo: 300 }] }))
+            .toContain('delle note di credito n. A e n. B');
+    });
+
+    test('una nota che non riduce la parte del piano lo dice, senza dire dove sta (a preventivo o non attribuibile)', () => {
+        expect(notaCollegataNelCarrello({ totale_straordinario: 700, totale_netto: 700, note_collegate: [{ numero: 'NC-P', importo: 100 }] }))
+            .toBe('La nota di credito n. NC-P non riduce la parte che il piano finanzia, che resta € 700,00.');
     });
 });

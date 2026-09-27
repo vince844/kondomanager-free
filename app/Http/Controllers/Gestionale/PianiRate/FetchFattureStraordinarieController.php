@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Helpers\MoneyHelper; 
 use App\Services\Gestionale\FatturaPassivaService;
+use App\Services\Gestionale\NettoNoteCollegate;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,6 +33,9 @@ class FetchFattureStraordinarieController extends Controller
                 ->where('fatture_passive.condominio_id', $condominio->id)
                 ->where('fatture_passive.esercizio_id', $esercizioId)
                 ->where('fatture_passive.is_pregresso', false)
+                // Coda 165 (1.11.0-beta.36): solo fatture. Una nota di credito con una riga ad personam positiva (la
+                // «riga in diminuzione» di una nota che rettifica una fattura con uno sconto) entrava come fabbisogno.
+                ->where('fatture_passive.tipo_documento', 'fattura')
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
                 // ⚠️ **Una fattura stornata non è più un fabbisogno da finanziare.**
                 //
@@ -80,6 +84,7 @@ class FetchFattureStraordinarieController extends Controller
                 ->where('fatture_passive.condominio_id', $condominio->id)
                 ->where('fatture_passive.esercizio_id', $esercizioId)
                 ->where('fatture_passive.is_pregresso', true)
+                ->where('fatture_passive.tipo_documento', 'fattura')
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
                 // Stesso filtro della 1a, stessa ragione: vedi il commento lì sopra.
                 ->where('fatture_passive.stato_pagamento', '!=', 'stornata')
@@ -143,12 +148,31 @@ class FetchFattureStraordinarieController extends Controller
             // stesso confronto della regola di registrazione.
             $inizioEsercizio = DB::table('esercizi')->where('id', $esercizioId)->value('data_inizio');
 
+            // Coda 165 (1.11.0-beta.36): la fattura rettificata da una nota del fornitore collegata si offre **al netto**,
+            // e quella annullata per intero non si offre più. Il netto lo calcola `NettoNoteCollegate`, la stessa regola
+            // di creazione del piano, ricalcolo, motore e cruscotto. Una query per tutto il carrello, non una per fattura.
+            $netti = NettoNoteCollegate::perFatture($fattureIds);
+            // Per le fatture con note collegate, quanto chiedono già gli altri piani lo legge la stessa funzione della
+            // creazione del piano (`chiestoDaiPiani`): la somma dei pivot contava zero un piano «tutto», il carrello
+            // offriva di nuovo la fattura e la creazione rispondeva «Metti al massimo € 0,00» (V4 della verifica).
+            $giaPerNetti = [];
+            if ($netti !== []) {
+                $modelli = \App\Models\Gestionale\FatturaPassiva::with([
+                    'pianiRate' => fn ($q) => $currentPlanId ? $q->where('piani_rate.id', '!=', $currentPlanId) : $q,
+                    'righe', 'coperture', 'noteCollegate',
+                ])->whereIn('id', array_keys($netti))->get();
+                foreach ($modelli as $m) {
+                    $giaPerNetti[$m->id] = $m->chiestoDaiPiani();
+                }
+            }
+
             $carrello = [];
             foreach ($rawFatture as $f) {
                 // Calcolo in centesimi (Logica DB)
                 $totaleCents         = (int) $f->totale_straordinario;
-                $giaFinanziatoCents  = (int) ($finanziamenti[$f->id] ?? 0);
-                $residuoCents        = max(0, $totaleCents - $giaFinanziatoCents);
+                $nettoCents          = isset($netti[$f->id]) ? $netti[$f->id]['netto'] : $totaleCents;
+                $giaFinanziatoCents  = (int) ($giaPerNetti[$f->id] ?? $finanziamenti[$f->id] ?? 0);
+                $residuoCents        = max(0, $nettoCents - $giaFinanziatoCents);
 
                 if ($residuoCents > 0) {
                     // TRASFORMAZIONE IN EURO PER IL FRONTEND (Logica Anti-SAP: uniformità)
@@ -162,6 +186,15 @@ class FetchFattureStraordinarieController extends Controller
                         'gia_finanziato'        => MoneyHelper::fromCents($giaFinanziatoCents),
                         'residuo_da_finanziare' => MoneyHelper::fromCents($residuoCents),
                         'importo_suggerito'     => MoneyHelper::fromCents($residuoCents), 
+                        // Coda 165: la parte al netto delle note collegate, e le note — il carrello le nomina accanto alla
+                        // fattura, perché il residuo più basso del totale non resti un numero senza spiegazione.
+                        'totale_netto'          => MoneyHelper::fromCents($nettoCents),
+                        'note_collegate'        => array_map(fn (array $n) => [
+                            'id' => $n['id'],
+                            'numero' => $n['numero'],
+                            'data' => $n['data'] !== null ? Carbon::parse($n['data'])->format('d/m/Y') : null,
+                            'importo' => MoneyHelper::fromCents($n['importo']),
+                        ], $netti[$f->id]['note'] ?? []),
                         'selezionata'           => false,
                         'ha_competenza'         => $f->competenza_dal !== null && $f->competenza_al !== null,
                         'is_pregresso'          => (bool) $f->is_pregresso,

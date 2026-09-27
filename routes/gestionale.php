@@ -10,6 +10,7 @@ use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\PassaggioController;
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ProspettoOneriController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
+use App\Http\Controllers\Gestionale\Movimenti\CollegamentoNotaCreditoController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\FetchFattureSimiliController;
 use App\Http\Controllers\Gestionale\Movimenti\ImportaFatturaXmlController;
@@ -439,6 +440,11 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/fetch-fatture-simili', FetchFattureSimiliController::class)
         ->name('fetch-fatture-simili');
 
+    // Coda 165 (1.11.0-beta.36): le fatture che una nota di credito del fornitore può rettificare,
+    // con i motivi della scala già calcolati. In sola lettura, per il modulo e per «Collega a una fattura».
+    Route::get('/fetch-fatture-rettificabili', [CollegamentoNotaCreditoController::class, 'candidate'])
+        ->name('fetch-fatture-rettificabili');
+
     // Beta.14, decisione 1 di apertura: legge l'XML e restituisce i dati per
     // precompilare il form — non crea niente, il salvataggio resta 'fatture.store'.
     Route::post('/fatture/importa-xml', ImportaFatturaXmlController::class)
@@ -464,6 +470,14 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/fatture/{fattura}/storno', StornoFatturaController::class)
         ->name('fatture.storno');
+
+    // Coda 165: il collegamento fra la nota di credito del fornitore e la fattura che rettifica,
+    // per le note già registrate. {fattura} qui è la NOTA.
+    Route::post('/fatture/{fattura}/collega-fattura', [CollegamentoNotaCreditoController::class, 'collega'])
+        ->name('fatture.collega-fattura');
+
+    Route::post('/fatture/{fattura}/scollega-fattura', [CollegamentoNotaCreditoController::class, 'scollega'])
+        ->name('fatture.scollega-fattura');
     
     // --- APPROVAZIONE BASE: transizione da_approvare → approvata ---
     Route::post('/fatture/{fattura}/approva', [FatturaPassivaController::class, 'approva'])

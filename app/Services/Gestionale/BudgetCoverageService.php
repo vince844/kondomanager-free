@@ -220,9 +220,39 @@ class BudgetCoverageService
                     ->groupBy('fattura_passiva_id');
 
                 foreach ($straordinari as $piano) {
+                    // Coda 165: un piano con una fattura rettificata da note collegate e con le quote già generate si legge
+                    // da ciò che ha registrato — le note arrivate dopo non l'hanno cambiato (W1 del terzo giro). Tutto il
+                    // piano, anche le fatture senza note: le righe di riparto non portano la fattura (X2 del quarto giro).
+                    $conNote = NettoNoteCollegate::perFatture($piano->fattureStraordinarie->pluck('id')->all()) !== [];
+                    if ($conNote) {
+                        if (($registrato = NettoNoteCollegate::ripartoRegistratoPerConto((int) $piano->id)) !== null) {
+                            foreach ($registrato as $contoId => $quota) {
+                                if (isset($contiById[$contoId])) {
+                                    $map[$contoId] = ($map[$contoId] ?? 0) + $quota;
+                                }
+                            }
+                            continue;
+                        }
+                        // Le quote ci sono ma le righe no (piano generato prima della beta.29): si legge senza note, come
+                        // la stampa ricostruita (R6) — le rate restano quelle di prima (X1 del quarto giro).
+                        $conNote = ! $piano->rate()->whereHas('rateQuote')->exists();
+                    }
+
                     foreach ($piano->fattureStraordinarie as $fattura) {
                         $importoFinanziato = (int) ($fattura->pivot->importo_collegato ?? 0);
                         if ($importoFinanziato <= 0) continue;
+
+                        // Coda 165 (1.11.0-beta.36): con note di credito collegate, quanto il piano ripartisce su ogni voce
+                        // lo dice la stessa regola del motore — la scala sul lordo qui sotto ignorava la nota, e la voce
+                        // coperta per intero risultava in deficit (V6 della verifica delle correzioni della Fase 1-bis).
+                        if ($conNote && ($riparto = NettoNoteCollegate::ripartoPerConto((int) $fattura->id, $importoFinanziato)) !== null) {
+                            foreach ($riparto as $contoId => $quota) {
+                                if (isset($contiById[$contoId])) {
+                                    $map[$contoId] = ($map[$contoId] ?? 0) + $quota;
+                                }
+                            }
+                            continue;
+                        }
 
                         $righeFattura = $righe->get($fattura->id, collect());
                         if ($righeFattura->isEmpty()) continue;

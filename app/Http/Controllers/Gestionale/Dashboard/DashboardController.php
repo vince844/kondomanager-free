@@ -80,6 +80,8 @@ class DashboardController extends Controller
                     }
                 ])
                 ->where('esercizio_id', $esercizio->id)
+                // Coda 165 (1.11.0-beta.36): fatture, non note — come il carrello.
+                ->where('tipo_documento', 'fattura')
                 ->where('stato_approvazione', '!=', 'contestata')
                 ->where('stato_pagamento', '!=', 'stornata')
                 ->where(function ($query) {
@@ -104,6 +106,10 @@ class DashboardController extends Controller
                 ->get();
 
             $gestionePrincipaleId = $esercizio->gestioni->where('attiva', true)->first()?->id;
+
+            // Coda 165: la fattura rettificata da una nota del fornitore collegata è in sospeso solo per il suo netto, e
+            // quella annullata per intero non lo è più. La stessa regola del carrello (`NettoNoteCollegate`).
+            $netti = \App\Services\Gestionale\NettoNoteCollegate::perFatture($fattureScoperteRaw->pluck('id')->all());
 
             foreach ($fattureScoperteRaw as $fattura) {
                 $datiExtra = is_string($fattura->dati_extra) 
@@ -151,6 +157,18 @@ class DashboardController extends Controller
                             ];
                         }
                     }
+                }
+
+                if (isset($netti[$fattura->id]) && $totaleFatturaCents > $netti[$fattura->id]['netto']) {
+                    $note = $netti[$fattura->id]['note'];
+                    $righeMappate[] = [
+                        'id'          => 'n_' . $fattura->id,
+                        'tipo'        => 'nota',
+                        'importo'     => $netti[$fattura->id]['netto'] - $totaleFatturaCents,
+                        'descrizione' => count($note) === 1 ? 'Nota di credito collegata' : 'Note di credito collegate',
+                        'dettaglio'   => 'n. ' . implode(', n. ', array_column($note, 'numero')),
+                    ];
+                    $totaleFatturaCents = $netti[$fattura->id]['netto'];
                 }
 
                 if ($totaleFatturaCents > 0) {

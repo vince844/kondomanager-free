@@ -153,6 +153,12 @@ const competenzaPianoDi = (contoId: number | null | undefined) => {
 const showSuccessModal = ref(false);
 const showModificaVietataModal = ref(false);
 const showPresaAttoSforoModal = ref(false);
+// Coda 165 (1.11.0-beta.36): la nota collegata a una fattura in un piano. Il rifiuto della scala si legge e si corregge
+// senza lasciare la pagina (la finestra della modifica vietata porta al dettaglio e faceva perdere le modifiche); l'avviso
+// di un piano che ha incassato si conferma con un secondo invio — il server lo calcola a righe scritte (R5 della Fase 1-bis).
+const rifiutoNotaCollegata = ref<string | null>(null);
+const avvisoNotaDaConfermare = ref<string | null>(null);
+const confermaAvvisoNota = ref(false);
 const modificaVietataMsg = ref('');
 
 const form = useForm({
@@ -694,10 +700,18 @@ const confermaPresaAttoSforo = () => {
     doSubmit();
 };
 
+const confermaAvvisoESalva = () => {
+    avvisoNotaDaConfermare.value = null;
+    confermaAvvisoNota.value = true;
+    doSubmit();
+};
+
 const doSubmit = () => {
     form.transform((data) => {
         const payload = {
             ...data,
+            // Coda 165: vale solo per il secondo invio, dopo la conferma dell'avviso; il primo lo manda falso.
+            conferma_avviso_nota: confermaAvvisoNota.value,
             dati_extra: JSON.parse(JSON.stringify(data.dati_extra)),
             coperture: data.coperture ? JSON.parse(JSON.stringify(data.coperture)) : []
         }; 
@@ -769,7 +783,13 @@ const doSubmit = () => {
             if (errors.modifica_vietata) {
                 modificaVietataMsg.value = errors.modifica_vietata;
                 showModificaVietataModal.value = true;
+            } else if (errors.avviso_nota) {
+                avvisoNotaDaConfermare.value = errors.avviso_nota;
+            } else if (errors.fattura_rettificata_id) {
+                // Coda 165: il motivo ha la via dentro; la finestra si chiude e la modifica resta da correggere.
+                rifiutoNotaCollegata.value = errors.fattura_rettificata_id;
             }
+            confermaAvvisoNota.value = false;
         },
     });
 };
@@ -868,6 +888,17 @@ const pageGuides = [
                                     <AlertTriangle class="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
                                     <p class="text-[10px] text-rose-700 dark:text-rose-400 leading-relaxed">
                                         <strong>Nota di credito</strong> — documento emesso dal fornitore per rettificare una fattura.
+                                        <!-- Coda 165: il collegamento non si cambia da qui — «Scollega» e «Collega» stanno nell'elenco. -->
+                                        <template v-if="(props.fattura as any).fattura_rettificata && props.fattura.stato_approvazione === 'contestata'">
+                                            Rettifica la fattura <strong>n. {{ (props.fattura as any).fattura_rettificata.numero_documento }}</strong>,
+                                            ma è contestata: finché resta tale la fattura non ne tiene conto, e la modifica controlla solo che le
+                                            note non superino il suo totale.
+                                        </template>
+                                        <template v-else-if="(props.fattura as any).fattura_rettificata">
+                                            Rettifica la fattura <strong>n. {{ (props.fattura as any).fattura_rettificata.numero_documento }}</strong>,
+                                            che nel carrello dei piani rate vale al netto di questa nota. Se la fattura sta in un piano che non ha
+                                            ancora incassato, una modifica che la riduce di più si rifiuta.
+                                        </template>
                                     </p>
                                 </div>
                             </Transition>
@@ -1531,6 +1562,35 @@ const pageGuides = [
                     </div>
                 </div>
             </Transition>
+        </Teleport>
+
+        <!-- Coda 165: il rifiuto della scala sulla nota collegata (o sulla fattura con note collegate), e l'avviso di un
+             piano che ha già incassato da confermare. Tutte e due tornano al modulo, senza perdere le modifiche. -->
+        <Teleport to="body">
+            <div v-if="rifiutoNotaCollegata || avvisoNotaDaConfermare" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                    <div class="px-8 pt-8 pb-4 border-b border-slate-200 dark:border-slate-700">
+                        <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl">
+                            {{ rifiutoNotaCollegata ? 'La modifica non si può salvare' : 'Il piano rate resta com\'è' }}
+                        </h3>
+                    </div>
+                    <div class="p-8 space-y-5">
+                        <p class="text-sm leading-relaxed" :class="rifiutoNotaCollegata ? 'text-rose-700 dark:text-rose-400' : 'text-red-800 dark:text-red-300'">
+                            {{ rifiutoNotaCollegata ?? avvisoNotaDaConfermare }}
+                        </p>
+                        <div class="flex flex-col gap-3">
+                            <Button v-if="avvisoNotaDaConfermare && !rifiutoNotaCollegata" @click="confermaAvvisoESalva" :disabled="form.processing"
+                                class="w-full h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest text-[11px]">
+                                Ho letto: salvo la nota
+                            </Button>
+                            <Button variant="ghost" @click="() => { rifiutoNotaCollegata = null; avvisoNotaDaConfermare = null; }"
+                                class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                Torno al modulo
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </Teleport>
 
         <!-- Modale di presa d'atto sforo — non chiede una motivazione (che non verrebbe

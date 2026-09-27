@@ -346,6 +346,31 @@ const eliminaDocumento = () => {
                                     {{ props.fattura.data_scadenza ? new Date(props.fattura.data_scadenza).toLocaleDateString('it-IT') : 'N/D' }}
                                 </p>
                             </div>
+                            <!-- Coda 165 (1.11.0-beta.36): il collegamento fra la nota del fornitore e la fattura che rettifica,
+                                 nei due versi. Si cambia dall'elenco («Collega», «Scollega»), qui si legge. -->
+                            <div v-if="props.fattura.fattura_rettificata" class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fattura che la nota rettifica</p>
+                                <p class="text-sm text-slate-800 dark:text-slate-200">
+                                    <button type="button" class="font-bold underline underline-offset-2"
+                                        @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: props.fattura.fattura_rettificata.id }))">
+                                        n. {{ props.fattura.fattura_rettificata.numero_documento }}
+                                    </button>
+                                    <span v-if="props.fattura.fattura_rettificata.data_documento" class="text-slate-500"> del {{ new Date(props.fattura.fattura_rettificata.data_documento).toLocaleDateString('it-IT') }}</span>
+                                    <!-- Una nota contestata non conta nel netto (NettoNoteCollegate): lo si dice (testuale della Fase 1-bis). -->
+                                    <span v-if="props.fattura.stato_approvazione === 'contestata'" class="block text-xs text-slate-500 mt-1">La nota è contestata: finché resta tale, nel carrello dei piani rate e nel cruscotto la fattura non ne tiene conto.</span>
+                                    <span v-else class="block text-xs text-slate-500 mt-1">Nel carrello dei piani rate e nel cruscotto la fattura vale al netto di questa nota.</span>
+                                </p>
+                            </div>
+                            <div v-if="props.fattura.note_collegate?.length" class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ props.fattura.note_collegate.length === 1 ? 'Nota di credito del fornitore collegata' : 'Note di credito del fornitore collegate' }}</p>
+                                <p class="text-sm text-slate-800 dark:text-slate-200 flex flex-wrap gap-x-3 gap-y-1">
+                                    <button v-for="n in props.fattura.note_collegate" :key="n.id" type="button" class="font-bold underline underline-offset-2"
+                                        @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: n.id }))">
+                                        n. {{ n.numero_documento }} ({{ euro(n.totale_documento) }}<template v-if="n.stato_approvazione === 'contestata'">, contestata: non conta</template>)
+                                    </button>
+                                </p>
+                                <p v-if="props.fattura.note_collegate.some((n: any) => n.stato_approvazione !== 'contestata')" class="text-xs text-slate-500">Nel carrello dei piani rate e nel cruscotto la fattura vale al netto delle note collegate che non sono contestate.</p>
+                            </div>
                             <div v-if="props.fattura.dati_extra?.fiscal?.ritenuta_details" class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ritenuta d'Acconto</p>
                                 <p class="text-sm font-bold text-slate-800 dark:text-slate-200">

@@ -13,6 +13,8 @@
  * quest'anno, che la finestra della motivazione precompilava. Il server la segnala (`periodo_nell_esercizio`), e il
  * carrello lo dice accanto alla competenza.
  */
+import { euro } from '@/lib/gestionale/fatture/fatturaRettificata';
+
 export interface VoceCarrello {
     ha_competenza: boolean;
     competenza?: string | null;
@@ -76,4 +78,37 @@ export function senzaCompetenzaScelte(fatture: VoceCarrello[]): { correnti: numb
         correnti: scelte.filter(f => !f.senza_periodo).length,
         pregresse: scelte.filter(f => f.senza_periodo).length,
     };
+}
+
+/**
+ * Coda 165 (1.11.0-beta.36): la riga che spiega un «da finanziare» più basso della fattura. Il carrello offre la fattura
+ * rettificata da una nota del fornitore **al netto** (`NettoNoteCollegate`), e senza questa riga il numero più basso resta
+ * senza spiegazione. `null` se la fattura non ha note collegate. Gli importi arrivano in euro, come il resto del carrello.
+ */
+export interface VoceCarrelloConNote {
+    totale_straordinario: number;
+    totale_netto?: number;
+    note_collegate?: Array<{ numero: string; data?: string | null; importo: number }>;
+}
+
+export function notaCollegataNelCarrello(f: VoceCarrelloConNote): string | null {
+    const note = f.note_collegate ?? [];
+    if (note.length === 0) return null;
+
+    const nomi = note.map(n => `n. ${n.numero}`);
+    const quali = note.length === 1
+        ? `della nota di credito ${nomi[0]}`
+        : `delle note di credito ${nomi.slice(0, -1).join(', ')} e ${nomi[nomi.length - 1]}`;
+    const totale = Math.round(f.totale_straordinario * 100);
+    const netto = Math.round((f.totale_netto ?? f.totale_straordinario) * 100);
+
+    if (netto < totale) {
+        return `Al netto ${quali}: la fattura vale ${euro(netto)} per il piano, invece di ${euro(totale)}.`;
+    }
+
+    // Non si dice dove sta la nota: può essere sulla parte a preventivo, o su una voce o un'unità che la fattura non ha
+    // (testuale della Fase 1-bis — «parte a preventivo» era falso nel secondo caso, e per una pregressa).
+    return note.length === 1
+        ? `La nota di credito ${nomi[0]} non riduce la parte che il piano finanzia, che resta ${euro(totale)}.`
+        : `Le note di credito ${nomi.join(', ')} non riducono la parte che il piano finanzia, che resta ${euro(totale)}.`;
 }

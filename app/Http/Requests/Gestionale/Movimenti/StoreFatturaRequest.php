@@ -51,6 +51,19 @@ class StoreFatturaRequest extends FormRequest
             ],
             
             'tipo_documento'     => 'required|in:fattura,nota_credito',
+            // Coda 165 (1.11.0-beta.36): la fattura che la nota del fornitore rettifica. Facoltativa, solo sulla nota,
+            // verso una fattura dello stesso fornitore e condominio di QUALUNQUE esercizio (su un file vero il legame
+            // attraversa l'esercizio). La scala dei piani la applica `guardiaFatturaRettificata()` qui sotto.
+            'fattura_rettificata_id' => [
+                'nullable', 'integer', 'prohibited_unless:tipo_documento,nota_credito',
+                Rule::exists('fatture_passive', 'id')
+                    ->where('condominio_id', $this->route('condominio')->id)
+                    ->where('fornitore_id', $this->input('fornitore_id'))
+                    ->where('tipo_documento', 'fattura'),
+            ],
+            // La conferma dell'avviso quando la fattura sta in un piano che ha già incassato: la chiede il servizio, che
+            // conosce le righe vere; il modulo la manda con la spunta sotto il campo (R3, R7 della Fase 1-bis).
+            'conferma_avviso_nota' => 'nullable|boolean',
             'numero_documento'   => 'required|string|max:50',
             'data_documento'     => 'required|date',
             'data_scadenza'      => 'required|date',
@@ -206,6 +219,8 @@ class StoreFatturaRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'fattura_rettificata_id.exists' => 'La fattura che la nota rettifica dev\'essere una fattura dello stesso fornitore, registrata in questo condominio.',
+            'fattura_rettificata_id.prohibited_unless' => 'Solo una nota di credito rettifica una fattura.',
             'dati_extra.override_budget.motivazione.min' => 'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
             'dati_extra.override_budget.motivazione.required_with' => 'La motivazione è obbligatoria quando si supera il budget.',
             'dati_extra.override_budget.strategia_rientro.required_with' => 'Devi selezionare una strategia di rientro per lo sforo.',
@@ -309,7 +324,50 @@ class StoreFatturaRequest extends FormRequest
             $this->guardiaNaturaPercipienteMancante($validator);
             $this->guardiaPosizioneRitenutaMaiDecisa($validator);
             $this->guardiaPeriodoPregressaScoperta($validator);
+            $this->guardiaFatturaRettificata($validator);
         });
+    }
+
+    /**
+     * Coda 165 (1.11.0-beta.36; decisione 26, punto 6): la nota collegata a una fattura che sta in un piano che non ha
+     * incassato niente non si registra finché il piano non è tolto — la stessa scala dello storno. Il motivo è quello del
+     * modello (`FatturaPassiva::motivoBloccoNotaCollegata`), che il modulo mostra prima dell'invio: una riga di codice sola
+     * per decidere e per spiegare. Il servizio lo ricontrolla dentro la transazione (terza porta).
+     */
+    private function guardiaFatturaRettificata($validator): void
+    {
+        if (blank($this->input('fattura_rettificata_id')) || $this->input('tipo_documento') !== 'nota_credito') {
+            return;
+        }
+        if ($validator->errors()->hasAny(['fattura_rettificata_id', 'righe', 'righe.*', 'imponibile_pregresso', 'aliquota_iva_pregressa', 'imposta_pregressa', 'riepiloghi', 'riepiloghi.*'])) {
+            return;
+        }
+        $fattura = \App\Models\Gestionale\FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])
+            ->find((int) $this->input('fattura_rettificata_id'));
+        if ($fattura === null) {
+            return;
+        }
+        if ($motivo = $fattura->motivoBloccoNotaCollegata($this->importoLordoNotaCents(), 'registra la nota', null, $this->input('stato_approvazione') === 'contestata')) {
+            $validator->errors()->add('fattura_rettificata_id', $motivo);
+        }
+    }
+
+    /**
+     * La magnitudine lorda della nota in richiesta, in centesimi: quella che il servizio scriverà, con la sua formula
+     * (`FatturaPassivaService::totaleLordoCents`) — l'imposta dichiarata dall'XML, distribuita, vince sul calcolo per riga.
+     * Ricalcolata qui a parte, la nota che annulla una fattura importata veniva rifiutata per un centesimo (V2); la nota
+     * pregressa valeva 0 (R1).
+     */
+    private function importoLordoNotaCents(): int
+    {
+        // Gli stessi dati che il servizio riceve: `importo_iva_dichiarata` per riga non ha una regola, quindi non arriva
+        // al servizio dalla richiesta, e qui non deve contare (W4 del terzo giro).
+        $dati = $this->all();
+        if (is_array($dati['righe'] ?? null)) {
+            $dati['righe'] = array_map(fn ($r) => is_array($r) ? \Illuminate\Support\Arr::except($r, ['importo_iva_dichiarata']) : $r, $dati['righe']);
+        }
+
+        return \App\Services\Gestionale\FatturaPassivaService::totaleLordoCents($dati);
     }
 
     /**

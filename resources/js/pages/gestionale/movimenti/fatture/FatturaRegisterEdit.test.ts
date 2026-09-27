@@ -380,3 +380,40 @@ describe('round-trip di una nota di credito con una riga positiva', () => {
         expect(vm.totali.totale_documento_cents).toBe(10_015);
     });
 });
+
+describe('Coda 165 — la nota collegata in modifica (R5 della Fase 1-bis)', () => {
+    test('l\'avviso del server apre la finestra, e «Ho letto: salvo la nota» rimanda con la conferma', async () => {
+        const wrapper = render(notaCredito({ fattura_rettificata_id: 7, fattura_rettificata: { id: 7, numero_documento: 'FT-28', data_documento: '2026-01-10' } }));
+        const vm = wrapper.vm as any;
+        const conferme: boolean[] = [];
+        vm.form.post = vi.fn((_url: string, opzioni: any) => {
+            conferme.push(vm.confermaAvvisoNota);
+            if (conferme.length === 1) opzioni.onError({ avviso_nota: 'La fattura è nel piano rate «Cornicione 2026», che ha già incassato rate.' });
+        });
+
+        vm.doSubmit();
+        await wrapper.vm.$nextTick();
+        expect(vm.avvisoNotaDaConfermare).toContain('che ha già incassato rate');
+
+        vm.confermaAvvisoESalva();
+        await wrapper.vm.$nextTick();
+        expect(conferme).toEqual([false, true]);
+        expect(vm.avvisoNotaDaConfermare).toBeNull();
+        // La finestra sta in un Teleport sul body: smontare qui, o nella suite intera si disegna a ambiente già chiuso.
+        wrapper.unmount();
+    });
+
+    test('il rifiuto della scala resta nel modulo: la finestra si chiude senza lasciare la pagina', async () => {
+        const wrapper = render(notaCredito());
+        const vm = wrapper.vm as any;
+        vm.form.post = vi.fn((_url: string, opzioni: any) => opzioni.onError({ fattura_rettificata_id: 'La fattura è nel piano rate «Cornicione 2026», in bozza.' }));
+
+        vm.doSubmit();
+        await wrapper.vm.$nextTick();
+        expect(vm.rifiutoNotaCollegata).toContain('in bozza');
+        expect(vm.showModificaVietataModal).toBe(false);
+        vm.rifiutoNotaCollegata = null;
+        await wrapper.vm.$nextTick();
+        wrapper.unmount();
+    });
+});
