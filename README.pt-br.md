@@ -339,8 +339,14 @@ Este projeto é lançado sob a licença [AGPL-3.0](https://github.com/vince844/k
 - [Stefano B](https://github.com/borghiste) - Por ter reportado e corrigido um erro de segurança
 - Todos os contribuidores e programadores da comunidade de código aberto.
 
+[![Contribuidores do KondoManager](https://contrib.rocks/image?repo=vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/graphs/contributors)
+
+### Estrelas no GitHub:
+Obrigado a todos os que deram uma estrela ao projeto!
+
+[![Quem deu uma estrela ao KondoManager](https://kondomanager.com/assets/img/stargazers.svg)](https://github.com/vince844/kondomanager-free/stargazers)
+
 ### Apoiadores do Patreon:
-- **[Fabio Lembo Luscari]** — obrigado pelo seu apoio e por acreditar no projeto!
 - **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — obrigado pelo seu apoio e por acreditar no projeto!
 
 ---

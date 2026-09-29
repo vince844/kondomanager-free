@@ -413,8 +413,14 @@ Questo progetto è rilasciato sotto licenza [AGPL-3.0](https://github.com/vince8
 - [Stefano B](https://github.com/borghiste) - Per aver segnalato e risolto un bug di sicurezza
 - Tutti i contributori e sviluppatori della community open source.
 
+[![Contributori di KondoManager](https://contrib.rocks/image?repo=vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/graphs/contributors)
+
+### Stelle su GitHub:
+Grazie a tutte le persone che hanno messo una stella al progetto!
+
+[![Chi ha messo una stella a KondoManager](https://kondomanager.com/assets/img/stargazers.svg)](https://github.com/vince844/kondomanager-free/stargazers)
+
 ### Sostenitori Patreon:
-- **[Fabio Lembo Luscari]** — grazie per il tuo supporto e per credere nel progetto! 
 - **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — grazie per il tuo supporto e per credere nel progetto! 
 
 ---

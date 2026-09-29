@@ -336,8 +336,14 @@ This project is released under [AGPL-3.0](https://github.com/vince844/kondomanag
 - [Stefano B](https://github.com/borghiste) - For reporting and fixing a security bug
 - All contributors and developers of the open source community.
 
+[![KondoManager contributors](https://contrib.rocks/image?repo=vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/graphs/contributors)
+
+### Stargazers:
+Thanks to everyone who starred the project!
+
+[![KondoManager stargazers](https://kondomanager.com/assets/img/stargazers.svg)](https://github.com/vince844/kondomanager-free/stargazers)
+
 ### Patreon Supporters:
-- **[Fabio Lembo Luscari]** — thank you for your support and for believing in the project!
 - **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — thank you for your support and for believing in the project!
 
 ---
