@@ -334,10 +334,6 @@ Este projeto é lançado sob a licença [AGPL-3.0](https://github.com/vince844/k
 - [Vincenzo Vecchio](https://github.com/vince844) - Fundador do projeto e programador principal
 
 ### Contribuidores:
-- [Amnit Haldar](https://github.com/amit-eiitech) - Pela sua valiosa contribuição na criação da instalação guiada
-- [k3ntinhu](https://github.com/k3ntinhu) - Pela sua valiosa contribuição na configuração de contentores Docker e pela comunidade portuguesa
-- [Stefano B](https://github.com/borghiste) - Por ter reportado e corrigido um erro de segurança
-- Todos os contribuidores e programadores da comunidade de código aberto.
 
 [![Contribuidores do KondoManager](https://contrib.rocks/image?repo=vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/graphs/contributors)
 
