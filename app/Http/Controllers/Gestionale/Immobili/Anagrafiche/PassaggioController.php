@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Gestionale\Immobili\Anagrafiche;
 
 use App\Helpers\DateHelper;
 use App\Actions\Subentro\AnnullaConguaglioAction;
+use App\Actions\Subentro\AnnullaPassaggioAction;
 use App\Actions\Subentro\RegistraSubentroAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Anagrafica\CreateAnagraficaRequest;
@@ -20,6 +21,7 @@ use App\Traits\HasEsercizio;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -189,6 +191,11 @@ class PassaggioController extends Controller
         abort_unless((int) $subentro->immobile_id === (int) $immobile->id && (int) $subentro->condominio_id === (int) $condominio->id, 404);
         // Solo dal passaggio padre: la data si propaga alle pertinenze, e da un figlio non deve poter divergere (verifica S6, R12).
         abort_unless($subentro->subentro_padre_id === null, 404);
+        // Il binding trova anche un passaggio annullato (beta.37): una seconda scheda rimasta aperta riceve il rifiuto nel
+        // messaggio della pagina, prima della validazione, perché lo storico ricaricato non mostra più il campo della data.
+        if ($subentro->annullato()) {
+            return back()->with($this->flashError('Questo passaggio è stato annullato: la copia autentica non si registra più.'));
+        }
 
         $dati = $request->validate([
             // «Oggi» nel fuso dell'utente, non del server (verifica S6, R10): fra mezzanotte e le due il giorno è già cambiato solo a Roma.
@@ -215,6 +222,50 @@ class PassaggioController extends Controller
     }
 
     /**
+     * Annulla un passaggio registrato (1.11.0-beta.37, decisione 27): l'ultimo dell'unità, a rate intatte, rileggendo il
+     * suo registro al contrario. Le regole e i motivi del rifiuto stanno nell'action; qui si traducono in un 422 sulla
+     * chiave `passaggio`, che lo storico mostra, e nel messaggio finale con ciò che resta da fare.
+     */
+    public function annulla(Request $request, Condominio $condominio, Immobile $immobile, Subentro $subentro, AnnullaPassaggioAction $action): RedirectResponse
+    {
+        abort_unless((int) $subentro->immobile_id === (int) $immobile->id && (int) $subentro->condominio_id === (int) $condominio->id, 404);
+        // Una seconda scheda rimasta aperta: lo storico ricaricato mostra l'annullato senza modulo, quindi il rifiuto va nel
+        // messaggio della pagina e non sotto un campo che non c'è più.
+        if ($subentro->annullato()) {
+            return back()->with($this->flashError('Questo passaggio è già stato annullato.'));
+        }
+
+        $dati = $request->validate([
+            'nota_annullamento' => ['required', 'string', 'min:10', 'max:1000'],
+        ], [
+            'nota_annullamento.required' => 'Scrivi perché annulli il passaggio: la nota resta nello storico.',
+            'nota_annullamento.min' => 'La nota deve avere almeno dieci caratteri.',
+        ]);
+
+        try {
+            $esito = $action->execute($subentro, $dati['nota_annullamento'], $request->user());
+        } catch (ValidationException $e) {
+            // Due conferme quasi insieme (due schede, due utenti): la seconda ha passato il controllo qui sopra, ha aspettato
+            // la prima sotto lock e l'ha trovata annullata. Stesso messaggio della richiesta in sequenza: lo storico
+            // ricaricato non ha più il modulo sotto cui mostrare l'errore (giro di verifica, C-R8).
+            if ($subentro->fresh()?->annullato()) {
+                return back()->with($this->flashError('Questo passaggio è già stato annullato.'));
+            }
+            throw $e;
+        }
+
+        // Solo ciò che il passaggio aveva davvero toccato: una locazione non sposta rate, una rinuncia non scrive conguaglio.
+        $effetti = implode(' ', AnnullaPassaggioAction::frasiEffetti($esito, $esito['uscente'], $esito['entrante'], true));
+        if ($esito['avvisi'] === []) {
+            return back()->with($this->flashSuccess('Passaggio annullato. ' . $effetti . ' Resta nello storico, con la tua nota.'));
+        }
+
+        // Un avviso è una cosa ancora da fare: va in testa, in un messaggio che non si chiude da solo. Un successo si chiude
+        // dopo sei secondi, e la scheda dello storico resta aperta sopra la pagina (giro di verifica, L-R1).
+        return back()->with($this->flashWarning('Passaggio annullato. ' . implode(' ', $esito['avvisi']) . ' ' . $effetti . ' Resta nello storico, con la tua nota.'));
+    }
+
+    /**
      * Annulla il conguaglio di un passaggio (S6, voce 8): toglie insieme le righe di `saldi` del passaggio e
      * delle sue pertinenze, con una nota che resta. Le regole — solo righe libere, somma zero — stanno
      * nell'action; qui si traducono in un 422 sulla chiave `conguaglio`, che lo storico mostra.
@@ -222,6 +273,9 @@ class PassaggioController extends Controller
     public function annullaConguaglio(Request $request, Condominio $condominio, Immobile $immobile, Subentro $subentro, AnnullaConguaglioAction $action): RedirectResponse
     {
         abort_unless((int) $subentro->immobile_id === (int) $immobile->id && (int) $subentro->condominio_id === (int) $condominio->id, 404);
+        if ($subentro->annullato()) {
+            return back()->with($this->flashError('Questo passaggio è stato annullato, e il suo conguaglio con lui: non c\'è più niente da annullare.'));
+        }
 
         $dati = $request->validate([
             'nota_annullamento_conguaglio' => ['required', 'string', 'min:10', 'max:1000'],

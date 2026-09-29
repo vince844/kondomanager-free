@@ -33,6 +33,7 @@ class Subentro extends Model
         'riga_uscente_id', 'riga_entrante_id', 'tipologia', 'tipo_passaggio', 'decorrenza',
         'data_fine_locazione', 'regime_contratto', 'estremi_titolo', 'copia_autentica_il', 'documento_id',
         'nota', 'nota_cancello', 'nota_conguaglio', 'conguaglio_annullato_il', 'nota_annullamento_conguaglio', 'utente_id',
+        'annullato_il', 'annullato_da', 'nota_annullamento', 'registro',
     ];
 
     protected $casts = [
@@ -40,12 +41,44 @@ class Subentro extends Model
         'copia_autentica_il' => 'date:Y-m-d',
         'data_fine_locazione' => 'date:Y-m-d',
         'conguaglio_annullato_il' => 'datetime',
+        'annullato_il' => 'datetime',
+        'registro' => 'array',
     ];
+
+    /**
+     * Un passaggio annullato (1.11.0-beta.37, decisione 27) **resta nella tabella** — lo storico lo mostra, con la data,
+     * chi l'ha annullato e perché — ma nessun conto lo legge più: questo scope lo nasconde a ogni lettura del modello,
+     * relazioni comprese (`TitolaritaImmobile::subentriComeUscente()`, `Immobile::subentri()`, la nota di solidarietà,
+     * il conguaglio, il prospetto degli oneri, l'emissione). Chi deve vederlo lo chiede con `Subentro::conAnnullati()`:
+     * lo storico, l'annullamento stesso e il binding delle rotte (`Immobile::subentriConAnnullati`, per un rifiuto
+     * leggibile). Le guardie che impediscono di cancellare una persona o un'unità non lo vedono, per scelta (verbale
+     * della beta.37): le chiavi esterne verso `subentri` sono `nullOnDelete` o in cascata, e i nomi restano nel registro.
+     * Le letture dirette della tabella (`DB::table('subentri')`) non passano da qui e filtrano da sé.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('non_annullati', fn ($query) => $query->whereNull($query->getModel()->getTable() . '.annullato_il'));
+    }
+
+    public function scopeConAnnullati($query)
+    {
+        return $query->withoutGlobalScope('non_annullati');
+    }
+
+    public function annullato(): bool
+    {
+        return $this->annullato_il !== null;
+    }
 
     public function condominio(): BelongsTo { return $this->belongsTo(Condominio::class); }
     public function immobile(): BelongsTo { return $this->belongsTo(Immobile::class); }
     public function uscente(): BelongsTo { return $this->belongsTo(Anagrafica::class, 'anagrafica_uscente_id'); }
     public function entrante(): BelongsTo { return $this->belongsTo(Anagrafica::class, 'anagrafica_entrante_id'); }
+    public function annullatoDa(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'annullato_da');
+    }
+
     public function utente(): BelongsTo { return $this->belongsTo(User::class, 'utente_id'); }
 
     /** La coppia di conguaglio (D9): due righe, stesso `subentro_id`, somma zero. */

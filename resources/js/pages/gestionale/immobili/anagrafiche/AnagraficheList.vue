@@ -15,6 +15,7 @@
  */
 import { computed, ref } from "vue";
 import { Head, usePage, Link } from '@inertiajs/vue3';
+import { useGiroFlash } from '@/composables/useGiroFlash';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import DataTable from '@/components/gestionale/immobili/anagrafiche/DataTable.vue';
@@ -60,6 +61,8 @@ const page = usePage<{ flash: { message?: Flash; passaggio_registrato?: Passaggi
 // Dopo «Registra passaggio» l'avviso verde è quello dedicato (§6.4), con le due azioni: il flash generico tace.
 const passaggioRegistrato = computed(() => page.props.flash.passaggio_registrato ?? null);
 const flashMessage = computed(() => (passaggioRegistrato.value ? undefined : page.props.flash.message));
+// La scheda dello storico fa più azioni nella stessa visita: l'Alert si rimonta a ogni visita riuscita (L-R4).
+const giroFlash = useGiroFlash();
 const promemoriaAParole = computed(() => passaggioRegistrato.value?.promemoria
   ? new Date(passaggioRegistrato.value.promemoria + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })
   : null);
@@ -219,7 +222,7 @@ function urlPassaggio(tipo: TipoPassaggio) {
       <ImmobileLayout>
 
         <div v-if="flashMessage" class="py-3">
-            <Alert :message="flashMessage.message" :type="flashMessage.type" />
+            <Alert :key="giroFlash" :message="flashMessage.message" :type="flashMessage.type" />
         </div>
 
         <!-- §6.4: l'avviso verde dopo la registrazione, con due azioni al posto del ritorno all'elenco.

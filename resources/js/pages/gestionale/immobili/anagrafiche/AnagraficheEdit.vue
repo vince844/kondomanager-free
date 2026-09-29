@@ -162,7 +162,7 @@ const submit = () => {
                     />
                     <InputError :message="form.errors.tipologia" />
                     <!-- Decisione 24: il ruolo è la chiave con cui il motore lega il passaggio a chi c'era prima e dopo. -->
-                    <p v-if="props.agganciata_a_passaggio" class="text-[10px] text-amber-700 dark:text-amber-400 mt-1 italic">Questa riga fa parte di un passaggio registrato: il ruolo non si cambia da qui. Un passaggio registrato oggi non si annulla (arriva con la prossima versione): se il tipo era sbagliato, chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.</p>
+                    <p v-if="props.agganciata_a_passaggio" class="text-[10px] text-amber-700 dark:text-amber-400 mt-1 italic">Questa riga fa parte di un passaggio registrato: il ruolo non si cambia da qui. Se il passaggio è sbagliato, annullalo dallo storico dell'unità, se è l'ultimo e le sue rate sono intatte; correggere qui quota o date lo impedirebbe. Un passaggio registrato prima della 1.11.0-beta.37 si corregge a mano: chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.</p>
                   </div>
 
                   <div class="sm:col-span-3">

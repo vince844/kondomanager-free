@@ -32,7 +32,11 @@ final class AnnullaConguaglioAction
         }
 
         return DB::transaction(function () use ($subentro, $nota) {
-            $padre = Subentro::whereKey($subentro->subentro_padre_id ?? $subentro->id)->lockForUpdate()->firstOrFail();
+            $padre = Subentro::conAnnullati()->whereKey($subentro->subentro_padre_id ?? $subentro->id)->lockForUpdate()->firstOrFail();
+            // Il passaggio annullato mentre si annullava il conguaglio (beta.37): un rifiuto leggibile, non un 404.
+            if ($padre->annullato()) {
+                throw ValidationException::withMessages(['conguaglio' => 'Questo passaggio è stato annullato, e il suo conguaglio con lui: non c\'è più niente da annullare.']);
+            }
             if ($padre->conguaglioAnnullato()) {
                 throw ValidationException::withMessages(['conguaglio' => 'Il conguaglio di questo passaggio è già stato annullato.']);
             }
@@ -45,23 +49,7 @@ final class AnnullaConguaglioAction
 
             $assorbite = $righe->filter(fn (Saldo $s) => (bool) $s->is_applicato);
             if ($assorbite->isNotEmpty()) {
-                // Il criterio è `eImmutabile()` — rate emesse a giornale o movimenti di denaro — non lo stato del
-                // piano (verifica S6, R9): `is_applicato` si accende alla GENERAZIONE, e un piano approvato ma non
-                // ancora emesso è lo stato normale fra la delibera e l'emissione. Finché non ha emesso nulla la strada
-                // pulita esiste: torna in bozza, elimina il piano (il lucchetto si riapre), annulla qui, rifai il piano.
-                $piani = $assorbite->map(fn (Saldo $s) => $s->pianoRate)->filter()->unique('id');
-                $correggibili = $piani->reject(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
-                $immutabili = $piani->filter(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
-                $frase = 'Il conguaglio è già stato assorbito da un piano rate e non si annulla da qui.';
-                if ($correggibili !== []) {
-                    $frase .= sprintf(' %s «%s» non %s ancora emesso nulla: se %s approvat%s riportal%s in bozza, elimina il piano (il lucchetto si riapre) e torna qui; poi rifai il piano.',
-                        count($correggibili) === 1 ? 'Il piano' : 'I piani', implode('», «', $correggibili), count($correggibili) === 1 ? 'ha' : 'hanno',
-                        count($correggibili) === 1 ? 'è' : 'sono', count($correggibili) === 1 ? 'o' : 'i', count($correggibili) === 1 ? 'o' : 'i');
-                }
-                if ($immutabili !== []) {
-                    $frase .= sprintf(' %s «%s» %s già emesso in contabilità o con incassi registrati: le quote sono in mano ai condòmini, e la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.',
-                        count($immutabili) === 1 ? 'Il piano' : 'I piani', implode('», «', $immutabili), count($immutabili) === 1 ? 'è' : 'sono');
-                }
+                $frase = self::fraseAssorbite($assorbite, 'Il conguaglio è già stato assorbito da un piano rate e non si annulla da qui.', 'torna qui');
                 throw ValidationException::withMessages(['conguaglio' => $frase]);
             }
 
@@ -74,5 +62,33 @@ final class AnnullaConguaglioAction
 
             return $tolte;
         });
+    }
+
+    /**
+     * Che cosa fare quando il conguaglio è già assorbito da un piano, col criterio di `PianoRate::eImmutabile()` — rate
+     * emesse a giornale o movimenti di denaro, non lo stato del piano (verifica S6, R9): `is_applicato` si accende alla
+     * GENERAZIONE, e un piano approvato ma non ancora emesso è lo stato normale fra la delibera e l'emissione. Finché non
+     * ha emesso nulla la strada pulita esiste: torna in bozza, elimina il piano (il lucchetto si riapre), torna qui.
+     * La usa anche l'annullamento del passaggio (1.11.0-beta.37): una regola, due porte.
+     *
+     * @param \Illuminate\Support\Collection<int, Saldo> $assorbite righe con `is_applicato`, con `pianoRate` caricato
+     */
+    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno): string
+    {
+        $piani = $assorbite->map(fn (Saldo $s) => $s->pianoRate)->filter()->unique('id');
+        $correggibili = $piani->reject(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
+        $immutabili = $piani->filter(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
+        $frase = $apertura;
+        if ($correggibili !== []) {
+            $frase .= sprintf(' %s «%s» non %s ancora emesso nulla: se %s approvat%s riportal%s in bozza, elimina il piano (il lucchetto si riapre) e %s; poi rifai il piano.',
+                count($correggibili) === 1 ? 'Il piano' : 'I piani', implode('», «', $correggibili), count($correggibili) === 1 ? 'ha' : 'hanno',
+                count($correggibili) === 1 ? 'è' : 'sono', count($correggibili) === 1 ? 'o' : 'i', count($correggibili) === 1 ? 'o' : 'i', $ritorno);
+        }
+        if ($immutabili !== []) {
+            $frase .= sprintf(' %s «%s» %s già emesso in contabilità o con incassi registrati: le quote sono in mano ai condòmini, e la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.',
+                count($immutabili) === 1 ? 'Il piano' : 'I piani', implode('», «', $immutabili), count($immutabili) === 1 ? 'è' : 'sono');
+        }
+
+        return $frase;
     }
 }

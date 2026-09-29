@@ -15,6 +15,7 @@ use App\Models\Condominio;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\TitolaritaImmobile;
+use App\Services\Subentro\GuardieTitolarita;
 use App\Services\Subentro\StoricoTitolarita;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -175,6 +176,8 @@ class ImmobileAnagraficaController extends Controller
         $data = $request->validated();
 
         try {
+            DB::beginTransaction();
+            $this->ripassaLeGuardie($immobile, $data, null);
 
             // Assegnare un'unità a una persona la rende **condòmina di questo stabile**, e il
             // pivot `anagrafica_condominio` è dove quel fatto vive: lo leggono le altre parti
@@ -206,12 +209,18 @@ class ImmobileAnagraficaController extends Controller
                 'note'            => $data['note'] ?? null,
             ]);
 
+            DB::commit();
+
            return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
             ])->with($this->flashSuccess(__('gestionale.success_attach_anagrafica')));
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Throwable $e) {
+            DB::rollBack();
 
             Log::error('Error attaching anagrafica to immobile', [
                 'immobile_id'   => $immobile->id,
@@ -296,12 +305,13 @@ class ImmobileAnagraficaController extends Controller
         $ruoloCambiato = (string) $data['tipologia'] !== (string) $titolarita->tipologia;
         if ($ruoloCambiato && $titolarita->faParteDiUnPassaggio()) {
             throw ValidationException::withMessages([
-                'tipologia' => 'Questa riga fa parte di un passaggio registrato e il suo ruolo non si cambia da qui: è la chiave con cui il programma lega il passaggio a chi c\'era prima e dopo. Qui puoi correggere quota, date e note. Un passaggio registrato oggi non si annulla dal programma (arriva con la prossima versione): se il tipo era sbagliato, chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.',
+                'tipologia' => 'Questa riga fa parte di un passaggio registrato e il suo ruolo non si cambia da qui: è la chiave con cui il programma lega il passaggio a chi c\'era prima e dopo. Se il passaggio è sbagliato, annullalo dallo storico dell\'unità («Chi ha avuto questa unità» → «Annulla il passaggio…»): si può se è l\'ultimo e le sue rate sono intatte, e rimette come prima anche le rate passate a chi era entrato e il conguaglio. Un passaggio registrato prima della 1.11.0-beta.37 non si annulla: chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.',
             ]);
         }
 
         try {
             DB::beginTransaction();
+            $this->ripassaLeGuardie($immobile, $data, (int) $titolarita->id);
 
             // Per **riga** (`wherePivot('id')`), non per persona: con due periodi della stessa persona
             // sulla stessa unità si tocca solo quello aperto dall'interfaccia (decisione 13).
@@ -335,6 +345,9 @@ class ImmobileAnagraficaController extends Controller
                 'immobile'   => $immobile->id,
             ])->with($this->flashSuccess(__('gestionale.success_update_anagrafica')));
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Throwable $e) {
             DB::rollBack();
 
@@ -411,5 +424,31 @@ class ImmobileAnagraficaController extends Controller
     private function appartieneAllUnita(TitolaritaImmobile $titolarita, Immobile $immobile): void
     {
         abort_unless((int) $titolarita->immobile_id === (int) $immobile->id, 404);
+    }
+
+    /**
+     * Le guardie della FormRequest, ripassate dentro la transazione che scrive la riga, sulle righe rilette dopo aver
+     * bloccato l'unità (giro di verifica della 1.11.0-beta.37, C-R4). La FormRequest legge senza lock: un passaggio, o il
+     * suo annullamento che riapre la riga di chi era uscito, può committare fra la validazione e la scrittura, e la riga
+     * nuova passerebbe su uno stato che nessuno ha controllato (la stessa persona due volte, o le quote oltre 100). La
+     * riga di `immobili` è il punto in cui si mettono in fila `RegistraSubentroAction` e `AnnullaPassaggioAction`.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function ripassaLeGuardie(Immobile $immobile, array $data, ?int $rigaInModifica): void
+    {
+        Immobile::bloccaPerScrivere([$immobile->id]);
+
+        $nuova = [
+            'anagrafica_id' => (int) $data['anagrafica_id'],
+            'tipologia'     => (string) $data['tipologia'],
+            'quota'         => (float) $data['quota'],
+            'data_inizio'   => $data['data_inizio'] ?? DateHelper::oggiUtente(),
+            'data_fine'     => $data['data_fine'] ?? null,
+        ];
+        $errori = GuardieTitolarita::errori($immobile->titolarita()->get(), $nuova, $rigaInModifica);
+        if ($errori !== []) {
+            throw ValidationException::withMessages($errori);
+        }
     }
 }

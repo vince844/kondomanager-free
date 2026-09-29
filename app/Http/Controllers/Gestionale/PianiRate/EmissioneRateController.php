@@ -116,6 +116,14 @@ class EmissioneRateController extends Controller
         try {
             DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche) {
                 
+                // Le quote delle rate si bloccano come PRIMA istruzione: la scrittura va intestata al titolare di adesso, e
+                // i promemoria del portale riscritti più sotto con gli importi di adesso. Un passaggio che riassegna le bozze,
+                // o il suo annullamento (1.11.0-beta.37), può cambiare nome e importo delle quote mentre l'emissione è in
+                // volo; su MySQL l'istantanea delle letture nasce alla prima SELECT senza lock, quindi il lock va prima di
+                // tutto (giro di verifica della Fase 1-bis, C-R2). Non si bloccano prima le righe di `rate`: la
+                // registrazione blocca quota e rata insieme, e l'ordine inverso incrocerebbe le due operazioni.
+                DB::table('rate_quote')->whereIn('rata_id', (array) $request->rate_ids)->lockForUpdate()->pluck('id');
+
                 $rateSelezionate = Rata::with('rateQuote')
                     ->where('piano_rate_id', $pianoRate->id)
                     ->whereIn('id', $request->rate_ids)

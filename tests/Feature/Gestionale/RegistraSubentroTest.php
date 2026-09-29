@@ -981,7 +981,7 @@ it('decisione 24 (S8-11) — il ruolo di una riga agganciata a un passaggio regi
     // Entrante: cambiare il ruolo è rifiutato con il messaggio della decisione 24.
     $r = $this->actingAs($this->user)->putJson($rotta($rigaBianchi), ['anagrafica_id' => $this->bianchi->id, 'tipologia' => 'usufruttuario', 'quota' => 100, 'data_inizio' => '2026-05-01', 'data_fine' => null, 'note' => null]);
     $r->assertUnprocessable()->assertJsonValidationErrors('tipologia');
-    expect($r->json('errors.tipologia.0'))->toContain('fa parte di un passaggio registrato')->toContain('non si annulla dal programma')->not->toContain('annullane il conguaglio');
+    expect($r->json('errors.tipologia.0'))->toContain('fa parte di un passaggio registrato')->toContain('annullalo dallo storico')->not->toContain('prossima versione')->not->toContain('annullane il conguaglio');
     expect(DB::table('anagrafica_immobile')->where('id', $rigaBianchi)->value('tipologia'))->toBe('proprietario');
 
     // Uscente (riga chiusa): idem.

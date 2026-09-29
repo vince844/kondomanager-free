@@ -72,6 +72,27 @@ function annullaConguaglio(p: PassaggioRegistrato) {
   );
 }
 
+// Annullare il passaggio (1.11.0-beta.37, decisione 27): l'ultimo dell'unità, a rate intatte, con una nota che resta
+// nello storico. Il server dice se si può e perché no (`annullabile`): qui non si ricalcola niente. Se non si può, il
+// perché si legge con un clic, invece di un comando che sparisce senza spiegazioni (lezione della beta.35).
+const annullaPassaggioAperto = ref<number | null>(null);
+const motivoAperto = ref<number | null>(null);
+const formAnnullaPassaggio = useForm({ nota_annullamento: '' });
+
+function annullaPassaggio(p: PassaggioRegistrato) {
+  if (!props.condominioId || !props.immobileId) return;
+  formAnnullaPassaggio.delete(
+    route(generateRoute('gestionale.immobili.passaggi.annulla'), { condominio: props.condominioId, immobile: props.immobileId, subentro: p.id }),
+    {
+      preserveScroll: true,
+      onSuccess: () => { annullaPassaggioAperto.value = null; formAnnullaPassaggio.reset(); },
+      // Rifiutato perché lo stato è cambiato dopo l'apertura della pagina: lo storico ricaricato dice ora «non
+      // consentito», e il modulo col suo errore sparisce. Il perché si apre da solo, invece di un modulo che svanisce.
+      onError: (errori) => { if ((errori as Record<string, string>).passaggio) motivoAperto.value = p.id; },
+    },
+  );
+}
+
 // La copia autentica arriva dopo il rogito: un campo data per passaggio, e il vademecum si ricalcola.
 const copiaAperta = ref<number | null>(null);
 const formCopia = useForm({ copia_autentica_il: '' });
@@ -85,11 +106,15 @@ function registraCopia(p: PassaggioRegistrato) {
 }
 
 const sottotitolo = computed(() => {
-  const registrati = props.storico.subentri?.length ?? 0;
+  const registrati = (props.storico.subentri ?? []).filter((p) => !p.annullato).length;
+  const annullati = (props.storico.subentri ?? []).length - registrati;
   const chiusi = props.storico.periodi_chiusi ?? props.storico.passaggi;
+  // Un annullato resta in elenco qui sotto: il sottotitolo non può dire «nessun passaggio registrato» sopra di lui.
+  const eAnnullati = annullati === 0 ? '' : annullati === 1 ? ' Uno annullato, qui sotto.' : ` ${annullati} annullati, qui sotto.`;
+  if (registrati === 0 && annullati > 0) return chiusi === 0 ? `Nessun passaggio in vigore.${eAnnullati}` : `${chiusi === 1 ? 'Un periodo chiuso' : `${chiusi} periodi chiusi`}, nessun passaggio in vigore.${eAnnullati}`;
   if (registrati === 0 && chiusi === 0) return 'Nessun passaggio registrato: i titolari di oggi sono i primi che il programma conosce.';
   if (registrati === 0) return chiusi === 1 ? 'Un periodo chiuso, nessun passaggio registrato con «Registra passaggio».' : `${chiusi} periodi chiusi, nessun passaggio registrato con «Registra passaggio».`;
-  return registrati === 1 ? 'Un passaggio registrato.' : `${registrati} passaggi registrati.`;
+  return (registrati === 1 ? 'Un passaggio registrato.' : `${registrati} passaggi registrati.`) + eAnnullati;
 });
 
 /** «●———» in corso, «●——●» chiuso, «○———» non ancora iniziato. */
@@ -122,16 +147,20 @@ const TIPI: Record<string, string> = {
           </SheetDescription>
         </SheetHeader>
 
-        <div v-if="!storico.gruppi.length" class="text-sm text-slate-500 italic">
-          Nessun titolare registrato su questa unità.
-        </div>
-
-        <div v-else class="space-y-7">
+        <!-- Un contenitore solo: su un'unità rimasta senza titolari (un inizio locazione annullato) il passaggio annullato
+             deve vedersi lo stesso, perché lo storico è l'unico posto dove si vede (giro di verifica della beta.37, L-R2). -->
+        <div class="space-y-7">
+          <p v-if="!storico.gruppi.length" class="text-sm text-slate-500 italic">
+            Nessun titolare registrato su questa unità.
+          </p>
           <!-- Passaggi registrati (S6): uno per passaggio, col vademecum «chi resta obbligato» ricalcolato dai fatti -->
           <section v-if="passaggi.length">
             <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Passaggi registrati</h3>
             <ol class="space-y-4">
-              <li v-for="p in passaggi" :key="p.id" class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 p-4 space-y-3">
+              <li v-for="p in passaggi" :key="p.id" class="rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3" :class="p.annullato ? 'opacity-60 bg-white dark:bg-slate-900' : 'bg-slate-50/60 dark:bg-slate-800/40'">
+                <p v-if="p.annullato" class="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                  Annullato il {{ p.annullato_il }}<template v-if="p.annullato_da"> da {{ p.annullato_da }}</template><template v-if="p.nota_annullamento">: «{{ p.nota_annullamento }}»</template>.
+                </p>
                 <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                   <p class="text-sm">
                     <span class="font-semibold text-slate-900 dark:text-slate-100">{{ titoloPassaggio(p) }}</span>
@@ -145,7 +174,7 @@ const TIPI: Record<string, string> = {
                 </p>
                 <p v-if="p.pertinenze.length" class="text-[11px] text-slate-500 dark:text-slate-400">Insieme a: {{ p.pertinenze.join(', ') }}.</p>
 
-                <div class="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5">
+                <div v-if="!p.annullato" class="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5">
                   <p class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
@@ -173,14 +202,14 @@ const TIPI: Record<string, string> = {
                   </div>
                 </div>
 
-                <div class="rounded-md border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3">
+                <div v-if="!p.annullato" class="rounded-md border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3">
                   <p class="text-[10px] font-bold uppercase tracking-widest text-amber-800 dark:text-amber-300 mb-1.5 flex items-center gap-1.5"><ShieldCheck class="w-3 h-3" /> Chi resta obbligato</p>
                   <ul class="space-y-1.5">
                     <li v-for="(f, i) in p.obbligati" :key="i" class="text-[12px] leading-relaxed text-amber-950 dark:text-amber-100">{{ f }}</li>
                   </ul>
                 </div>
 
-                <div v-if="p.copia_autentica_attesa && condominioId && immobileId" class="text-[12px]">
+                <div v-if="!p.annullato && p.copia_autentica_attesa && condominioId && immobileId" class="text-[12px]">
                   <button v-if="copiaAperta !== p.id" type="button" @click="copiaAperta = p.id; formCopia.reset(); formCopia.clearErrors()" class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
                     Ho ricevuto la copia autentica del titolo…
                   </button>
@@ -195,6 +224,38 @@ const TIPI: Record<string, string> = {
                   </form>
                 </div>
                 <p v-else-if="p.copia_autentica_a_parole" class="text-[11px] text-slate-500 dark:text-slate-400">Copia autentica del titolo ricevuta il {{ p.copia_autentica_a_parole }}.</p>
+
+                <!-- Annullare il passaggio (beta.37): solo quando il server dice che si può; altrimenti il perché. -->
+                <div v-if="!p.annullato && condominioId && immobileId" class="text-[12px] border-t border-slate-200 dark:border-slate-700 pt-3">
+                  <template v-if="p.annullabile.si">
+                    <button v-if="annullaPassaggioAperto !== p.id" type="button" @click="annullaPassaggioAperto = p.id; formAnnullaPassaggio.reset(); formAnnullaPassaggio.clearErrors()" class="font-semibold text-rose-600 dark:text-rose-400 hover:underline">
+                      Annulla il passaggio…
+                    </button>
+                    <form v-else class="space-y-2" @submit.prevent="annullaPassaggio(p)">
+                      <ul class="space-y-1">
+                        <li v-for="(e, i) in p.annullabile.effetti" :key="i" class="text-[11px] text-slate-600 dark:text-slate-400">{{ e }}</li>
+                        <li class="text-[11px] text-slate-600 dark:text-slate-400">Il passaggio resta nello storico, annullato, con la tua nota.</li>
+                      </ul>
+                      <ul v-if="p.annullabile.avvisi.length" class="space-y-1">
+                        <li v-for="(a, i) in p.annullabile.avvisi" :key="i" class="text-[11px] text-amber-800 dark:text-amber-300">{{ a }}</li>
+                      </ul>
+                      <Input v-model="formAnnullaPassaggio.nota_annullamento" placeholder="Perché lo annulli (almeno dieci caratteri)…" class="h-8 text-xs" required minlength="10" />
+                      <div class="flex items-center gap-2">
+                        <button type="submit" :disabled="formAnnullaPassaggio.processing || formAnnullaPassaggio.nota_annullamento.trim().length < 10" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
+                          <LoaderCircle v-if="formAnnullaPassaggio.processing" class="w-3 h-3 animate-spin" /> Annulla il passaggio
+                        </button>
+                        <button type="button" @click="annullaPassaggioAperto = null" class="text-xs text-slate-500 hover:underline">Lascia com'è</button>
+                      </div>
+                      <p v-if="formAnnullaPassaggio.errors.nota_annullamento || (formAnnullaPassaggio.errors as Record<string, string>).passaggio" class="text-[11px] text-red-600 dark:text-red-400">{{ formAnnullaPassaggio.errors.nota_annullamento || (formAnnullaPassaggio.errors as Record<string, string>).passaggio }}</p>
+                    </form>
+                  </template>
+                  <template v-else-if="p.annullabile.motivo">
+                    <button type="button" @click="motivoAperto = motivoAperto === p.id ? null : p.id" class="text-[11px] text-slate-500 dark:text-slate-400 hover:underline">
+                      Annulla il passaggio — non consentito: perché?
+                    </button>
+                    <p v-if="motivoAperto === p.id" class="mt-1 text-[11px] text-slate-600 dark:text-slate-400">{{ p.annullabile.motivo }}</p>
+                  </template>
+                </div>
               </li>
             </ol>
           </section>
@@ -232,7 +293,7 @@ const TIPI: Record<string, string> = {
             </ol>
           </section>
 
-          <Accordion type="single" collapsible class="border-t border-dashed border-slate-200 dark:border-slate-700 pt-2">
+          <Accordion v-if="storico.righe.length" type="single" collapsible class="border-t border-dashed border-slate-200 dark:border-slate-700 pt-2">
             <AccordionItem value="tecnico" class="border-0">
               <AccordionTrigger class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 hover:text-slate-600 py-2">
                 Dettaglio tecnico

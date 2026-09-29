@@ -9,7 +9,7 @@
  * chiede il condòmino e non ha valore liberatorio (Cass. 7260/2024).
  */
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { ArrowRightLeft, BookOpen, CalendarDays, Scale, ShieldCheck } from 'lucide-vue-next';
+import { ArrowRightLeft, BookOpen, CalendarDays, Scale, ShieldCheck, Undo2 } from 'lucide-vue-next';
 
 defineProps<{ open: boolean }>();
 defineEmits(['update:open']);
@@ -95,6 +95,33 @@ defineEmits(['update:open']);
             </p>
             <p class="text-[13px] text-slate-500 dark:text-slate-400">
               L'attestazione dello stato dei pagamenti e delle liti in corso (art. 1130 n. 9 c.c.) la chiede il condòmino che vende; il notaio la pretende nella prassi, ma non ha valore liberatorio verso il condominio (Cass. 7260/2024).
+            </p>
+          </section>
+
+          <!-- 1.11.0-beta.37, decisione 27: l'annullamento dell'ultimo passaggio, a rate intatte. -->
+          <section>
+            <h3 class="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white mb-3">
+              <Undo2 class="w-5 h-5 text-indigo-500" /> Ho registrato un passaggio sbagliato
+            </h3>
+            <p class="mb-3">
+              Si annulla dallo storico dell'unità: nella pagina dei titolari il pulsante «Storico» apre «Chi ha avuto questa unità», e sotto il passaggio c'è «Annulla il passaggio…». Le pertinenze passate insieme all'unità tornano con lei, nella stessa operazione: nello storico della pertinenza quel passaggio non compare. Prima di confermare il programma dice che cosa torna come prima — le righe di titolarità scritte dal passaggio, le quote delle rate passate a chi era entrato — e, se c'è, che il conguaglio si toglie dai saldi della gestione; e dice che cosa resta da fare, per esempio ricalcolare di nuovo un piano generato o ricalcolato dopo il passaggio. Serve una nota di almeno dieci caratteri, che resta nello storico.
+            </p>
+            <p class="mb-3">
+              Si annulla <strong>solo l'ultimo passaggio</strong> dell'unità, e solo <strong>a rate intatte</strong>. Altrimenti, al posto del comando compare «Annulla il passaggio — non consentito: perché?», e con un clic si legge che cosa sistemare prima. Succede quando:
+            </p>
+            <ul class="list-disc pl-5 space-y-2 mb-3">
+              <li>sull'unità, o su una pertinenza passata con lei, c'è un passaggio con una data successiva, o con la stessa data e registrato dopo: si annulla prima quello;</li>
+              <li>una rata passata a chi era entrato è stata emessa; oppure sulla quota dell'unità in quella rata c'è un pagamento, anche solo sulla parte del saldo pregresso rimasta a chi era uscito; oppure chi era entrato o chi era uscito ha segnalato dal portale un pagamento di quella rata, non ancora verificato;</li>
+              <li>in un piano generato o ricalcolato dopo il passaggio, una quota che l'annullamento cambierebbe — di chi era entrato, di chi era uscito o di chi ha preso i giorni rimasti scoperti — è stata emessa o pagata, o ne è stato segnalato il pagamento dal portale e non è ancora verificato;</li>
+              <li>il conguaglio è già stato assorbito da un piano;</li>
+              <li>una riga di titolarità aperta, chiusa o cambiata dal passaggio è stata corretta a mano dopo;</li>
+              <li>una riga associata o modificata a mano dopo il passaggio si scontra con quella che tornerebbe: la stessa persona, nello stesso ruolo, due volte nello stesso periodo, oppure quote dello stesso ruolo oltre 100 nello stesso giorno. Il «perché?» dice come sistemarla.</li>
+            </ul>
+            <p class="mb-3">
+              Il passaggio annullato resta nello storico, con la data, chi l'ha annullato e la nota; nessun conto lo legge più.
+            </p>
+            <p class="text-[13px] text-slate-500 dark:text-slate-400">
+              Un passaggio registrato prima della 1.11.0-beta.37 non si annulla: il programma non teneva il registro di ciò che scriveva. Si corregge a mano, chiudendo la riga con una data di fine e registrando da «Associa soggetto» la titolarità giusta.
             </p>
           </section>
 

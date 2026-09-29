@@ -31,14 +31,8 @@ trait ValidatesImmobileAnagraficaPivot
                 'data_inizio'   => $this->input('data_inizio') ?: DateHelper::oggiUtente(),
                 'data_fine'     => $this->input('data_fine') ?: null,
             ];
-            $righe = $immobile->titolarita()->get();
-
-            if ($sovrapposta = GuardieTitolarita::sovrapposizioneStessaPersona($righe, $nuova, $currentRigaId)) {
-                $validator->errors()->add('anagrafica_id', GuardieTitolarita::messaggioSovrapposizione($sovrapposta));
-            }
-
-            if ($sforo = GuardieTitolarita::sforoQuotePerGiorno($righe, $nuova, $currentRigaId)) {
-                $validator->errors()->add($quotaField, GuardieTitolarita::messaggioSforo($nuova['tipologia'], $sforo));
+            foreach (GuardieTitolarita::errori($immobile->titolarita()->get(), $nuova, $currentRigaId, $quotaField) as $campo => $messaggio) {
+                $validator->errors()->add($campo, $messaggio);
             }
         });
     }

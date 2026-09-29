@@ -7,6 +7,61 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.37] - Il passaggio sbagliato si annulla
+
+**Tocca il database: quattro colonne nuove su `subentri`** (`annullato_il`, `annullato_da`, `nota_annullamento`,
+`registro`; migrazione `2026_09_28_100000_add_annullamento_to_subentri_table`, rieseguibile, senza travaso di dati). Un
+solo tema: annullare un passaggio di titolarità registrato per sbaglio.
+
+**Il problema.** Fino a ieri un passaggio registrato non si annullava. Con la data del rogito sbagliata, o la persona
+sbagliata, si correggeva a mano: si chiudevano righe, si riassociava, e le rate passate a chi era entrato e il conguaglio
+restavano dove il passaggio li aveva messi.
+
+**Dallo storico, l'ultimo passaggio, a rate intatte.** Nello storico dell'unità («Chi ha avuto questa unità»), sotto il
+passaggio, c'è «Annulla il passaggio…». Prima di confermare dice solo ciò che quel passaggio ha davvero toccato — le
+righe di titolarità che ha scritto, le quote delle rate passate a chi era entrato, con le regole di prima, il conguaglio
+— e che cosa resta da fare; serve una nota. Si annulla solo l'ultimo passaggio dell'unità, insieme alle pertinenze
+passate con lei, e solo se dopo il passaggio non ha rate emesse, pagamenti (anche di un altro condòmino) o pagamenti
+segnalati dal portale non ancora verificati su una quota che l'annullamento cambierebbe, se nessuna riga sua è stata
+corretta a mano, se una riga associata a mano dopo non si scontra con quella che tornerebbe e se il conguaglio non è già
+in un piano. Altrimenti il comando non c'è, e «perché?» dice che cosa sistemare prima: le rate emesse, piano per piano,
+con la via intera se ci sono già pagamenti; il conguaglio da annullare prima, quando l'annullamento dell'emissione lo
+chiede; il passaggio che viene dopo, e da quale storico si annulla; la riga in conflitto, con la via giusta a seconda che
+sia stata associata dopo o corretta da prima.
+
+**Il passaggio annullato resta.** Nello storico, con la data, chi l'ha annullato e la nota; nessun conto lo legge più:
+né il riparto, né la nota di solidarietà, né il prospetto degli oneri. Resta anche su un'unità che l'annullamento lascia
+senza titolari. La persona entrata per sbaglio si può cancellare, e lo storico la nomina ancora.
+
+**Il registro.** Da questa versione ogni passaggio scrive che cosa ha fatto — righe chiuse, aperte e modificate, quote
+spostate — e l'annullamento lo rilegge al contrario, riconoscendo le quote non dal solo id ma dalla traccia che il
+passaggio lascia dentro ciascuna (KondoManager dichiara MySQL 5.7+, e su MySQL 5.7 un riavvio può far riprendere a una
+quota nuova l'id di una sparita col suo piano). I passaggi registrati prima non hanno il registro: non si annullano, e il
+programma lo dice; si correggono a mano, da «Modifica associazione» e «Associa soggetto», come prima.
+
+**Quando l'annullamento non basta da solo.** Un piano generato o ricalcolato dopo il passaggio, non ancora emesso, con
+quote che l'annullamento cambierebbe — di chi era entrato, di chi era uscito o di chi ha preso i giorni rimasti scoperti
+— non ferma niente: l'annullamento avvisa di ricalcolarlo, con un messaggio che resta sulla pagina finché non lo chiudi.
+Un piano ricalcolato o eliminato che si era già portato via le bozze del passaggio non ferma niente nemmeno lui: non c'è
+più niente da rimettere.
+
+**Scritture contemporanee.** L'annullamento, la registrazione di un passaggio sulla stessa unità, l'emissione delle rate,
+la generazione di un piano e «Associa soggetto» / «Modifica associazione» non si sovrascrivono più a vicenda: si mettono
+in fila. L'emissione intesta la scrittura a chi possiede la quota nel momento in cui emette; una segnalazione dal
+portale in volo aspetta e poi rilegge lo stato di adesso; un piano che stava usando un saldo tolto nel frattempo si
+ferma, invece di generare quote su un numero che non esiste più.
+
+**Corretti anche.** Due testi dicevano che un passaggio registrato «non si annulla (arriva con la prossima versione)»:
+oggi si annulla dallo storico, e lo dicono. Nello storico la data di registrazione e quella dell'annullamento erano
+quelle del server: fra mezzanotte e le due a Roma indicavano il giorno prima. Il contatore dei promemoria in agenda
+restava vecchio per dieci minuti dopo un annullamento.
+
+**I limiti.** Non si annulla un passaggio in mezzo a una catena, né uno con rate emesse a chi era entrato: prima si
+annulla quello dopo, o l'emissione, con la via intera se ci sono già pagamenti. Il documento allegato al passaggio resta
+nell'archivio dell'unità. La vendita con riserva d'usufrutto arriva con la beta.38.
+
+---
+
 ## [1.11.0-beta.36] - La nota del fornitore sa quale fattura corregge
 
 **Tocca il database: una colonna nuova, `fatture_passive.fattura_rettificata_id`** (migrazione

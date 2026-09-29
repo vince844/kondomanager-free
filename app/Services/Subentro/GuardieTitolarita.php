@@ -99,6 +99,25 @@ final class GuardieTitolarita
         return null;
     }
 
+    /**
+     * Le due guardie insieme, come errori per campo: le usano la FormRequest di «Associa» e «Modifica» e, sotto lock, il
+     * controller che scrive la riga (giro di verifica della 1.11.0-beta.37, C-R4: la FormRequest legge senza lock).
+     *
+     * @return array<string, string>
+     */
+    public static function errori(Collection $righe, array $nuova, ?int $escludiRigaId = null, string $campoQuota = 'quota'): array
+    {
+        $errori = [];
+        if ($sovrapposta = self::sovrapposizioneStessaPersona($righe, $nuova, $escludiRigaId)) {
+            $errori['anagrafica_id'] = self::messaggioSovrapposizione($sovrapposta);
+        }
+        if ($sforo = self::sforoQuotePerGiorno($righe, $nuova, $escludiRigaId)) {
+            $errori[$campoQuota] = self::messaggioSforo((string) $nuova['tipologia'], $sforo);
+        }
+
+        return $errori;
+    }
+
     /** Il messaggio della guardia 2, con il ruolo come lo legge l'amministratore e il giorno dello sforo. */
     public static function messaggioSforo(string $tipologia, array $sforo): string
     {

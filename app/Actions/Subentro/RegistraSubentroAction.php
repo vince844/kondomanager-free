@@ -83,6 +83,11 @@ final class RegistraSubentroAction
                 $tipo = (string) $dati['tipo'];
                 $sottotipo = $dati['sottotipo'] ?? null;
 
+                // 0. L'unità e le pertinenze spuntate, bloccate prima di ogni lettura: `AnnullaPassaggioAction` blocca le
+                //    stesse righe, e un passaggio registrato mentre un altro si annulla non deve sfuggire ai suoi controlli
+                //    (Fase 1-bis della beta.37, A2: su MySQL l'istantanea nasce alla prima lettura senza lock).
+                Immobile::bloccaPerScrivere(collect([$immobile->id])->merge($dati['pertinenze'] ?? []));
+
                 // 1. La riga di chi esce, bloccata e riletta: due clic non chiudono due volte.
                 $uscente = null;
                 if (! empty($dati['riga_uscente'])) {
@@ -111,6 +116,7 @@ final class RegistraSubentroAction
 
                 // 3. Le righe della pivot, unità principale.
                 $entrante = $dati['entrante'] ?? null;
+                $this->registroRighe = [];
                 $esitoRighe = $this->applicaRighe($immobile, $tipo, $sottotipo, $uscente, $entrante, (float) $dati['quota'], (string) $dati['tipologia'], $decorrenza, $giornoPrima, 'quota');
 
                 // 4. Il passaggio.
@@ -132,6 +138,7 @@ final class RegistraSubentroAction
                     'nota_cancello'          => $anteprima['cancello']['richiesto'] ? trim((string) $dati['nota_cancello']) : null,
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
+                    'registro'               => $this->registro($uscente, $entrante),
                 ]);
 
                 // 5. Le pertinenze spuntate: la stessa operazione, una riga `subentri` ciascuna.
@@ -176,6 +183,35 @@ final class RegistraSubentroAction
         $esito['avvisi'] = $avvisi;
 
         return $esito;
+    }
+
+    /**
+     * Il registro delle righe toccate dall'unità in corso (1.11.0-beta.37, decisione 27 punto 8): ogni chiusura,
+     * apertura o modifica annota i valori di prima e di dopo, e l'annullamento li rilegge al contrario. Si azzera prima
+     * di ogni `applicaRighe()`: l'unità principale e ogni pertinenza hanno il loro, sulla loro riga di `subentri`.
+     *
+     * @var list<array<string, mixed>>
+     */
+    private array $registroRighe = [];
+
+    /** @return array<string, mixed> il registro di un'unità, nella forma che legge `AnnullaPassaggioAction` */
+    private function registro(?TitolaritaImmobile $uscente, ?Anagrafica $entrante): array
+    {
+        return [
+            'versione' => 1,
+            'righe'    => $this->registroRighe,
+            'quote'    => [],
+            // I nomi restano anche se la persona sparisce: la chiave esterna è `nullOnDelete`, e un passaggio annullato
+            // non impedisce di cancellare l'anagrafica creata per sbaglio (è spesso la ragione dell'annullamento).
+            'nomi'     => ['uscente' => $uscente?->anagrafica?->nome, 'entrante' => $entrante?->nome],
+            // L'ultima quota esistente al passaggio: le quote con un id più alto sono nate dopo (un piano ricalcolato con
+            // la titolarità nuova). Per id e non per ora: un piano generato e un passaggio nello stesso secondo non si
+            // distinguono dal `created_at`.
+            'quota_max_id' => (int) DB::table('rate_quote')->max('id'),
+            // Lo stesso per le righe di titolarità: una riga con un id più alto è stata associata dopo il passaggio, e se
+            // blocca l'annullamento la via è diversa da quella di una riga che c'era già (giro di verifica, G-3).
+            'riga_max_id' => (int) DB::table('anagrafica_immobile')->max('id'),
+        ];
     }
 
     // --- Le righe ---------------------------------------------------------------------------------
@@ -223,6 +259,8 @@ final class RegistraSubentroAction
                         ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values();
                     foreach ($nudi as $nudo) {
                         if ($nudo->data_inizio !== null && $nudo->data_inizio->equalTo($decorrenza)) {
+                            $this->registroRighe[] = ['operazione' => 'modificata', 'id' => (int) $nudo->id,
+                                'prima' => ['tipologia' => 'nuda_proprietario'], 'dopo' => ['tipologia' => 'proprietario']];
                             DB::table('anagrafica_immobile')->where('id', $nudo->id)->update(['tipologia' => 'proprietario', 'updated_at' => now()]);
                             $id = (int) $nudo->id;
                         } else {
@@ -255,6 +293,8 @@ final class RegistraSubentroAction
             return;
         }
         // Mai `attivo` (D10): una riga chiusa resta attiva con la sua `data_fine`. Per id, non per persona.
+        $this->registroRighe[] = ['operazione' => 'chiusa', 'id' => (int) $riga->id,
+            'prima' => ['data_fine' => $riga->data_fine?->toDateString()], 'dopo' => ['data_fine' => $giornoPrima->toDateString()]];
         DB::table('anagrafica_immobile')->where('id', $riga->id)->update(['data_fine' => $giornoPrima->toDateString(), 'updated_at' => now()]);
         $riga->data_fine = $giornoPrima;
     }
@@ -279,6 +319,8 @@ final class RegistraSubentroAction
             'anagrafica_id' => $persona->id, 'tipologia' => $tipologia, 'quota' => $quota,
             'data_inizio' => $decorrenza->toDateString(), 'data_fine' => null, 'attivo' => true,
         ]);
+        $this->registroRighe[] = ['operazione' => 'aperta', 'id' => (int) $riga->id,
+            'dopo' => ['anagrafica_id' => (int) $persona->id, 'tipologia' => $tipologia, 'quota' => round($quota, 2), 'data_inizio' => $decorrenza->toDateString(), 'data_fine' => null]];
         // La persona è del condominio (già così per «Associa»).
         $persona->condomini()->syncWithoutDetaching([$unita->condominio_id]);
 
@@ -310,6 +352,8 @@ final class RegistraSubentroAction
             if ($sforo = GuardieTitolarita::sforoQuotePerGiorno($righe, $nuova, (int) $stessoGiorno->id)) {
                 throw ValidationException::withMessages(['quota' => $unita->nome . ' — ' . mb_lcfirst(GuardieTitolarita::messaggioSforo($tipologia, $sforo))]);
             }
+            $this->registroRighe[] = ['operazione' => 'modificata', 'id' => (int) $stessoGiorno->id,
+                'prima' => ['quota' => round((float) $stessoGiorno->quota, 2)], 'dopo' => ['quota' => $nuovaQuota]];
             DB::table('anagrafica_immobile')->where('id', $stessoGiorno->id)->update(['quota' => $nuovaQuota, 'updated_at' => now()]);
 
             return (int) $stessoGiorno->id;
@@ -342,6 +386,7 @@ final class RegistraSubentroAction
             }
         }
 
+        $this->registroRighe = [];
         $esito = $this->applicaRighe($pertinenza, $tipo, $sottotipo, $uscenteLi, $entrante, 100.0, (string) $padre->tipologia, $decorrenza, $giornoPrima, 'uscente');
 
         Subentro::create([
@@ -360,6 +405,7 @@ final class RegistraSubentroAction
             'nota'                   => $padre->nota,
             'nota_cancello'          => $padre->nota_cancello,
             'utente_id'              => $utente->id,
+            'registro'               => $this->registro($uscenteLi, $entrante),
         ]);
     }
 
@@ -435,6 +481,7 @@ final class RegistraSubentroAction
         $entranteId = (int) $conguaglio['anagrafica_entrante_id'];
         $adesso = now();
         $rateToccate = [];
+        $registroQuote = [];
 
         foreach ($conguaglio['bozze_riassegnate'] as $b) {
             $quota = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
@@ -468,6 +515,10 @@ final class RegistraSubentroAction
                 $regoleEntrante['importi'] = ['quota_pura_gestione' => $quotaPura, 'saldo_usato' => 0, 'totale_calcolato' => $quotaPura];
                 unset($regoleEntrante['dettagli_saldo'], $regoleEntrante['note_saldo']);
             }
+            $voce = ['id' => (int) $quota->id, 'rata_id' => (int) $quota->rata_id,
+                'prima' => ['anagrafica_id' => $uscenteId, 'importo' => (int) $quota->importo, 'stato' => $quota->stato, 'regole_calcolo' => $quota->regole_calcolo],
+                'dopo' => ['anagrafica_id' => $entranteId, 'importo' => $quotaPura, 'stato' => $quotaPura <= 0 ? 'credito' : 'da_pagare'],
+                'gemella_id' => null];
             DB::table('rate_quote')->where('id', $quota->id)->update([
                 'anagrafica_id'  => $entranteId,
                 'importo'        => $quotaPura,
@@ -480,7 +531,7 @@ final class RegistraSubentroAction
                 // A chi esce resta il suo pregresso, nella forma delle quote di soli saldi del generatore.
                 $diChiEsce = (array) $quota;
                 unset($diChiEsce['id']);
-                DB::table('rate_quote')->insert(array_replace($diChiEsce, [
+                $voce['gemella_id'] = (int) DB::table('rate_quote')->insertGetId(array_replace($diChiEsce, [
                     'anagrafica_id'  => $uscenteId,
                     'importo'        => $pregresso,
                     'importo_pagato' => 0,
@@ -500,7 +551,12 @@ final class RegistraSubentroAction
                 ]));
             }
             $rateToccate[(int) $quota->rata_id] = true;
+            $registroQuote[] = $voce;
         }
+
+        $registro = $subentro->registro ?? [];
+        $registro['quote'] = $registroQuote;
+        $subentro->forceFill(['registro' => $registro])->save();
 
         app(EventiRataCondomino::class)->seguonoLeQuote(array_keys($rateToccate), [$uscenteId, $entranteId], $utente);
 

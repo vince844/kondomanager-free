@@ -170,6 +170,17 @@ export interface PassaggioRegistrato {
   /** Le frasi del vademecum, senza imperativi né futuro. */
   obbligati: string[];
   nota: string | null;
+  /** 1.11.0-beta.37: un passaggio annullato resta nello storico, annullato. */
+  annullato: boolean;
+  annullato_il: string | null;
+  /** Chi l'ha annullato (decisione 27.4); dal registro se l'utente non c'è più. */
+  annullato_da: string | null;
+  nota_annullamento: string | null;
+  /**
+   * La stessa regola del server (`AnnullaPassaggioAction::motivoBlocco`): se no, perché; se sì, che cosa torna come prima
+   * (`effetti`, solo ciò che il passaggio ha toccato) e che cosa resta da fare (`avvisi`).
+   */
+  annullabile: { si: boolean; motivo: string | null; avvisi: string[]; effetti: string[] };
 }
 
 export interface StoricoTitolaritaDati {

@@ -104,6 +104,14 @@ class SaldoEsercizioService
             ->when(!empty($consumati), fn ($q) => $q->whereNotIn('id', $consumati))
             ->update(['is_applicato' => false, 'piano_rate_id' => null]);
 
+        // 1-bis. Un saldo che il piano ha usato e che nel frattempo è sparito — tolto con il conguaglio di un passaggio, o
+        //    con il passaggio annullato — è dentro le quote appena calcolate: il piano chiederebbe un numero che non esiste
+        //    più. Ci si ferma e si torna indietro (giro di verifica della 1.11.0-beta.37, C-R3: difesa dietro il lock
+        //    delle unità che la generazione prende per prima).
+        if (!empty($consumati) && Saldo::whereIn('id', $consumati)->count() < count($consumati)) {
+            throw new \RuntimeException('Un saldo che il piano stava usando è stato tolto mentre il piano si generava (per esempio annullando un passaggio o il suo conguaglio): ricarica la pagina e rigenera il piano.');
+        }
+
         // 2. Blocca (o riconferma) i saldi assorbiti, intestandoli a questo piano.
         //    Il filtro sui fornitori è ridondante oggi (non entrano nella
         //    generazione) ma è la stessa difesa applicata in ogni altro punto:

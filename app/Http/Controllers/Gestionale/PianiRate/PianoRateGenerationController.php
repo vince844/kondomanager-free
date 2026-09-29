@@ -10,6 +10,7 @@ use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Immobile;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Traits\HandleFlashMessages;
@@ -72,6 +73,10 @@ class PianoRateGenerationController extends Controller
 
         try {
             DB::beginTransaction();
+            // Le unità del condominio, bloccate come PRIMA istruzione: la generazione legge titolari e saldi senza lock, e un
+            // passaggio o il suo annullamento che committasse nel frattempo lascerebbe quote calcolate su righe e saldi che
+            // non esistono più (giro di verifica della 1.11.0-beta.37, C-R3; `Immobile::bloccaPerScrivere`).
+            Immobile::bloccaDelCondominio((int) $condominio->id);
 
             // 3. Sincronizzazione Granulare
             $orphanIds = $validated['orphan_ids'] ?? [];

@@ -175,6 +175,11 @@ Route::prefix('/gestionale/{condominio}')
     // S6: le due righe del conguaglio si tolgono insieme e con una nota, mai una sola dal Wallet.
     Route::delete('immobili/{immobile}/passaggi/{subentro}/conguaglio', [PassaggioController::class, 'annullaConguaglio'])
         ->name('immobili.passaggi.annulla-conguaglio');
+    // 1.11.0-beta.37: l'annullamento dell'ultimo passaggio dell'unità, a rate intatte (decisione 27). Un passaggio
+    // annullato resta nello storico; il binding lo trova (`Immobile::subentriConAnnullati`), e una seconda richiesta
+    // riceve «già annullato» invece di un 404.
+    Route::delete('immobili/{immobile}/passaggi/{subentro}', [PassaggioController::class, 'annulla'])
+        ->name('immobili.passaggi.annulla');
 
     // ⚠️ `{titolarita}` e non più `{anagrafica}`: dalla 1.11.0-beta.31 `edit`, `update` e `destroy`
     // ricevono l'**id della riga** di `anagrafica_immobile` (`TitolaritaImmobile`), non della persona.

@@ -210,4 +210,6 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_09_20_180000_add_titolarita_tratto_to_righe_riparto_table',
     // Coda 165 (beta.36): colonna più chiave esterna della tabella verso se stessa — due statement su MySQL.
     '2026_09_27_090000_add_fattura_rettificata_id_to_fatture_passive_table',
+    // Beta.37: quattro colonne su subentri (annullamento e registro del passaggio) e la chiave esterna verso users.
+    '2026_09_28_100000_add_annullamento_to_subentri_table',
 ]);

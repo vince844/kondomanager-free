@@ -124,6 +124,8 @@ class RisolutoreTitolari
                         ->whereNotNull('predecessore.data_fine')
                         ->whereRaw("{$this->dataSql('predecessore.data_fine')} = {$this->giornoPrimaSql($this->dataSql("{$esterna}.data_inizio"))}"))
                     ->whereNotExists(fn ($sub) => $sub->from('subentri')
+                        // Un passaggio annullato (beta.37) non conta: lo scope del modello qui non arriva.
+                        ->whereNull('subentri.annullato_il')
                         ->where(fn ($w) => $w->whereColumn('subentri.riga_entrante_id', "{$esterna}.id")
                             // La tripla solo per l'usufrutto, come `entrataConPassaggio()` (B1-2).
                             ->orWhere(fn ($t) => $t->where('subentri.tipo_passaggio', 'usufrutto')
@@ -383,7 +385,8 @@ class RisolutoreTitolari
     private function entrataConPassaggio(object $riga): bool
     {
         if ($this->righeEntrateConPassaggio === null) {
-            $subentri = DB::table('subentri')->get(['riga_entrante_id', 'immobile_id', 'tipologia', 'decorrenza', 'tipo_passaggio']);
+            // Senza i passaggi annullati (beta.37): la lettura diretta non passa dallo scope del modello.
+            $subentri = DB::table('subentri')->whereNull('annullato_il')->get(['riga_entrante_id', 'immobile_id', 'tipologia', 'decorrenza', 'tipo_passaggio']);
             $this->righeEntrateConPassaggio = $subentri->pluck('riga_entrante_id')->filter()->map(fn ($id) => (int) $id)->flip()->all();
             // La tripla solo per l'usufrutto, l'unico passaggio che apre più righe con un record solo (l'estinzione con più
             // nudi): per vendita e locazione `riga_entrante_id` è esatto, e una riga censita a mano con la stessa data di

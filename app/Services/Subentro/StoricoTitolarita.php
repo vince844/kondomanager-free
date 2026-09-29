@@ -62,8 +62,11 @@ class StoricoTitolarita
         $passaggiRegistrati = $this->passaggiRegistrati($immobile);
         $periodiChiusi = $titolarita->whereNotNull('data_fine')->count();
 
+        // Un passaggio annullato (beta.37) resta in elenco ma non si conta: il pulsante dice quanti passaggi valgono.
+        $attivi = count(array_filter($passaggiRegistrati, fn (array $p) => ! $p['annullato']));
+
         return [
-            'passaggi' => count($passaggiRegistrati) > 0 ? count($passaggiRegistrati) : $periodiChiusi,
+            'passaggi' => $attivi > 0 ? $attivi : $periodiChiusi,
             'periodi_chiusi' => $periodiChiusi,
             'righe' => $righe->all(),
             'gruppi' => $gruppi,
@@ -81,13 +84,17 @@ class StoricoTitolarita
      */
     private function passaggiRegistrati(Immobile $immobile): array
     {
-        return Subentro::with(['uscente', 'entrante', 'pertinenze.immobile', 'saldi', 'pertinenze.saldi', 'condominio', 'immobile'])
+        // Anche gli annullati (beta.37): restano nello storico, annullati, e sono l'unico posto dove si vedono.
+        $annullamento = app(\App\Actions\Subentro\AnnullaPassaggioAction::class);
+
+        return Subentro::conAnnullati()->with(['uscente', 'entrante', 'pertinenze' => fn ($q) => $q->conAnnullati(), 'pertinenze.immobile', 'saldi', 'pertinenze.saldi', 'condominio', 'immobile', 'annullatoDa:id,name'])
             ->where('immobile_id', $immobile->id)
             ->whereNull('subentro_padre_id')
             ->orderByDesc('decorrenza')->orderByDesc('id')
             ->get()
-            ->map(function (Subentro $s) {
+            ->map(function (Subentro $s) use ($annullamento) {
                 $saldi = $s->saldi->merge($s->pertinenze->flatMap->saldi);
+                $motivo = $s->annullato() ? null : $annullamento->motivoBlocco($s);
                 $conguaglio = match (true) {
                     $s->conguaglioAnnullato() => 'annullato',
                     $s->conguaglioRinunciato() => 'rinunciato',
@@ -101,9 +108,10 @@ class StoricoTitolarita
                     'sottotipo' => $s->tipo_passaggio === 'usufrutto' ? ($s->tipologia === 'proprietario' ? 'estinzione' : 'costituzione') : null,
                     'decorrenza' => $s->decorrenza?->toDateString(),
                     'decorrenza_a_parole' => $s->decorrenza ? $this->data($s->decorrenza) : null,
-                    'registrato_il' => $s->created_at ? $this->data($s->created_at) : null,
-                    'uscente' => $s->uscente?->nome,
-                    'entrante' => $s->entrante?->nome,
+                    'registrato_il' => $s->created_at ? $this->giornoUtente($s->created_at) : null,
+                    // Dal registro se la persona non c'è più: un passaggio annullato non impedisce di cancellarla.
+                    'uscente' => $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? null),
+                    'entrante' => $s->entrante?->nome ?? ($s->registro['nomi']['entrante'] ?? null),
                     'estremi_titolo' => $s->estremi_titolo,
                     'copia_autentica_il' => $s->copia_autentica_il?->toDateString(),
                     'copia_autentica_a_parole' => $s->copia_autentica_il ? $this->data($s->copia_autentica_il) : null,
@@ -120,10 +128,23 @@ class StoricoTitolarita
                         'applicato' => $saldi->contains(fn ($x) => (bool) $x->is_applicato),
                         'nota' => $s->nota_conguaglio,
                         'nota_annullamento' => $s->nota_annullamento_conguaglio,
-                        'annullato_il' => $s->conguaglio_annullato_il ? $this->data($s->conguaglio_annullato_il) : null,
+                        'annullato_il' => $s->conguaglio_annullato_il ? $this->giornoUtente($s->conguaglio_annullato_il) : null,
                     ],
-                    'obbligati' => $this->frasiObbligati->daSubentro($s),
+                    'obbligati' => $s->annullato() ? [] : $this->frasiObbligati->daSubentro($s),
                     'nota' => $s->nota,
+                    'annullato' => $s->annullato(),
+                    'annullato_il' => $s->annullato_il ? $this->giornoUtente($s->annullato_il) : null,
+                    // Chi l'ha annullato (decisione 27.4): dal registro se l'utente non c'è più (la chiave è `nullOnDelete`).
+                    'annullato_da' => $s->annullato() ? ($s->annullatoDa?->name ?? ($s->registro['nomi']['annullato_da'] ?? 'un utente non più presente')) : null,
+                    'nota_annullamento' => $s->nota_annullamento,
+                    // Si può annullare? Stessa regola del server (`AnnullaPassaggioAction::motivoBlocco`), letta senza scrivere.
+                    'annullabile' => [
+                        'si' => ! $s->annullato() && $motivo === null,
+                        'motivo' => $s->annullato() ? null : $motivo,
+                        'avvisi' => ! $s->annullato() && $motivo === null ? $annullamento->avvisi($s) : [],
+                        // Che cosa torna come prima: solo ciò che questo passaggio ha toccato, detto prima di confermare.
+                        'effetti' => ! $s->annullato() && $motivo === null ? $annullamento->effetti($s) : [],
+                    ],
                 ];
             })->values()->all();
     }
@@ -220,5 +241,14 @@ class StoricoTitolarita
     private function data(CarbonImmutable|\DateTimeInterface $d): string
     {
         return CarbonImmutable::instance($d)->locale('it')->translatedFormat('j F Y');
+    }
+
+    /**
+     * Un istante registrato dal server (in UTC) come giorno dell'utente: fra mezzanotte e le due, a Roma, è già il giorno
+     * dopo (lo stesso fuso di `DateHelper::oggiUtente`). Le date senza ora — decorrenza, copia autentica — restano `data()`.
+     */
+    private function giornoUtente(\DateTimeInterface $d): string
+    {
+        return CarbonImmutable::instance($d)->setTimezone(config('app.user_timezone', 'Europe/Rome'))->locale('it')->translatedFormat('j F Y');
     }
 }

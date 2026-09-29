@@ -17,6 +17,7 @@ use App\Http\Requests\Gestionale\PianoRate\PianoRateIndexRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\PianiRate\PianoRateResource;
 use App\Models\Condominio;
+use App\Models\Immobile;
 use App\Models\Esercizio;
 use App\Models\Evento;
 use App\Models\Gestionale\BudgetMovement;
@@ -212,6 +213,10 @@ class PianoRateController extends Controller
 
         try {
             DB::beginTransaction();
+            // Le unità del condominio, bloccate come PRIMA istruzione: la generazione legge titolari e saldi senza lock, e un
+            // passaggio o il suo annullamento che committasse nel frattempo lascerebbe quote calcolate su righe e saldi che
+            // non esistono più (giro di verifica della 1.11.0-beta.37, C-R3; `Immobile::bloccaPerScrivere`).
+            Immobile::bloccaDelCondominio((int) $condominio->id);
 
             // 1. Validazione Gestione
             $gestione = Gestione::findOrFail($validated['gestione_id']);
@@ -1052,7 +1057,11 @@ class PianoRateController extends Controller
 
         try {
             DB::beginTransaction();
-            
+            // Le unità del condominio, bloccate come PRIMA istruzione: la generazione legge titolari e saldi senza lock, e un
+            // passaggio o il suo annullamento che committasse nel frattempo lascerebbe quote calcolate su righe e saldi che
+            // non esistono più (giro di verifica della 1.11.0-beta.37, C-R3; `Immobile::bloccaPerScrivere`).
+            Immobile::bloccaDelCondominio((int) $condominio->id);
+
             // Sgancia il capitolo, elimina le rate attuali e le ricalcola
             $pianoRate->capitoli()->detach($capitoloId);
             

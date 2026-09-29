@@ -26,8 +26,26 @@ class PaymentReportingController extends Controller
         if ($currentStatus === 'paid') return back()->with('error', 'Già pagata.');
         if ($currentStatus === 'reported') return back()->with('info', 'Già segnalato.');
 
-        DB::transaction(function () use ($request, $evento) {
-            
+        $persona = $evento->anagrafiche->first()?->id;
+
+        $esito = DB::transaction(function () use ($request, $evento, $persona) {
+            // Il promemoria riletto sotto lock (giro di verifica della 1.11.0-beta.37, C-R5): la registrazione di un
+            // passaggio o il suo annullamento possono averne appena riscritto importi e stato, o averlo tolto. La
+            // segnalazione parte da quelli, non dalla copia letta all'apertura della richiesta. Prima le righe ponte della
+            // persona, poi il promemoria: lo stesso ordine di `AnnullaPassaggioAction`, che altrimenti si incrocerebbe con
+            // l'aggancio del compito qui sotto.
+            if ($persona !== null) {
+                DB::table('anagrafica_evento')->where('anagrafica_id', $persona)->lockForUpdate()->pluck('id');
+            }
+            $evento = Evento::whereKey($evento->id)->lockForUpdate()->first();
+            if ($evento === null) {
+                return 'sparito';
+            }
+            $statoAdesso = $evento->meta['status'] ?? 'pending';
+            if ($statoAdesso === 'paid' || $statoAdesso === 'reported') {
+                return $statoAdesso;
+            }
+
             // 1. Rileva intento credito dal frontend
             $intentUsaCredito = $request->boolean('intent_usa_credito');
             // Nota: I valori dal frontend arrivano in centesimi
@@ -126,8 +144,15 @@ class PaymentReportingController extends Controller
                 $adminMeta['action_url'] = route('admin.gestionale.movimenti-rate.create', $actionUrlParams);
                 $adminEvent->update(['meta' => $adminMeta]);
             }
+
+            return null;
         });
 
-        return back()->with('success', 'Segnalazione inviata con successo.');
+        return match ($esito) {
+            'paid' => back()->with('error', 'Già pagata.'),
+            'reported' => back()->with('info', 'Già segnalato.'),
+            'sparito' => back()->with('error', 'Questa rata è cambiata nel frattempo: ricarica la pagina.'),
+            default => back()->with('success', 'Segnalazione inviata con successo.'),
+        };
     }
 }
