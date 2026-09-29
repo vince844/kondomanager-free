@@ -24,11 +24,22 @@ class EventoPolicy
      */
     public function view(User $user, Evento $evento): Response
     {
+        if (! $user->hasPermissionTo(Permission::VIEW_EVENTS->value)) {
+            return Response::deny(__('policies.view_events'));
+        }
 
-        return $user->hasPermissionTo(Permission::VIEW_EVENTS->value)  
-               ? Response::allow() 
+        // The creator may always view their own evento.
+        if ($evento->created_by === $user->id) {
+            return Response::allow();
+        }
+
+        // Otherwise the evento must belong to a condominio the user is associated with,
+        // so an event cannot be read across condomini by anyone holding the permission.
+        $condominioIds = $user->anagrafica?->condomini()->pluck('condomini.id') ?? collect();
+
+        return $evento->condomini()->whereIn('condomini.id', $condominioIds)->exists()
+               ? Response::allow()
                : Response::deny(__('policies.view_events'));
-               
     }
 
     /**
