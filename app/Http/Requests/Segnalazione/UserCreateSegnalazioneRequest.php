@@ -36,7 +36,22 @@ class UserCreateSegnalazioneRequest extends FormRequest
             'is_approved'   => 'required|boolean',
             'is_published'  => 'required|boolean',
             'is_private'    => 'sometimes|boolean',
-            'condominio_id' => ['required', 'integer', Rule::exists('condomini', 'id')],
+            'condominio_id' => [
+                'required',
+                'integer',
+                Rule::exists('condomini', 'id'),
+                // The reporter may only open a segnalazione for a condominio they belong to,
+                // not for any existing building id.
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $user = Auth::user();
+                    $belongs = $user?->anagrafica?->condomini()->whereKey($value)->exists() ?? false;
+                    if (! $belongs) {
+                        $fail(__('validation.exists', [
+                            'attribute' => __('validation.attributes.segnalazioni.condominio_id'),
+                        ]));
+                    }
+                },
+            ],
         ];
     }
 
