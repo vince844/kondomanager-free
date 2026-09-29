@@ -20,7 +20,9 @@
  *
  * **Cosa resta scoperto** (regola «ogni test dichiara cosa NON copre»): l'emissione è simulata a giornale come in
  * `RiassegnazioneBozzeTest`, non passa da `EmissioneRateController`; il documento allegato al passaggio (resta in
- * archivio: nessun test lo tocca); la vendita con riserva d'usufrutto, che arriva nella beta.38.
+ * archivio: nessun test lo tocca). La vendita con riserva d'usufrutto (beta.38) non è qui: l'annullamento semplice, le
+ * seconde riserve e l'annullamento dopo un piano generato ed emesso sono in `RiservaUsufruttoTest`, le catene annullate
+ * all'indietro nella griglia B di `InvariantiPassaggiTest`.
  *
  * **Le corse fra scritture** (Fase 1-bis, A2, e giro di verifica, C-R1–C-R6) non si provano qui: SQLite serializza gli
  * scrittori, e i lock non cambiano niente. Sono state provate a mano il 28/09/2026 su un MySQL 8.4 privato, con due

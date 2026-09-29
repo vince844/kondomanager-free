@@ -35,7 +35,9 @@ use Illuminate\Support\Facades\DB;
  * si dice**, non si inventa un periodo (decisione 12); gestione senza esercizio: idem.
  *
  * Usufrutto (`soloOrdinario`): le spese straordinarie sono del nudo proprietario per legge (art. 1005 c.c.),
- * quindi non si conguagliano mai con l'usufruttuario, qualunque sia la data della delibera.
+ * quindi non si conguagliano mai con l'usufruttuario, qualunque sia la data della delibera. Riserva d'usufrutto
+ * (`soloStraordinario`, 1.11.0-beta.38, decisione 28): lo specchio — chi vende resta usufruttuario e l'ordinaria la deve
+ * ancora lui (art. 1004 c.c.), quindi si conguaglia solo la straordinaria, con la regola della vendita.
  *
  * **Capitoli con tratti (S6, decisione 20).** Se il piano ha voci con una competenza propria in
  * `competenze_capitolo` (riscaldamento stagionale), la quota pura non è tutta sulla base: la si scompone
@@ -66,7 +68,7 @@ final class ConguaglioPassaggio
      *   pregressi: int, non_risolte: list<array{piano:string, motivo:string}>, frasi: list<string>
      * }
      */
-    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false): array
+    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false, bool $soloStraordinario = false): array
     {
         $righe = $this->quoteConguagliabili((int) $uscente->id, $immobileIds);
         if ($righe->isEmpty()) {
@@ -117,8 +119,8 @@ final class ConguaglioPassaggio
         // Fase 1-bis della beta.34, R4 (decisione di Vincenzo del 26/09/2026): nella vendita della NUDA proprietà le
         // ordinarie di un piano generato quando chi vende era proprietario pieno (righe risolte «proprietario») dalla
         // costituzione dell'usufrutto sono dell'usufruttuario (art. 1004 c.c.), e si sono già regolate con quel
-        // passaggio: chi compra la nuda proprietà non ne risponde, come l'usufruttuario non risponde delle
-        // straordinarie (art. 1005 c.c.). Le ordinarie che il motore ha dato al nudo proprietario (righe risolte
+        // passaggio: fra le parti non passano a chi compra la nuda proprietà, come le straordinarie non passano
+        // all'usufruttuario (art. 1005 c.c.) — verso il condominio i due rispondono in solido (art. 67 ult. co., decisione 28.4). Le ordinarie che il motore ha dato al nudo proprietario (righe risolte
         // «nuda_proprietario», piano generato durante l'usufrutto) e tutte le straordinarie passano come sempre.
         $ordinariaDellUsufruttuario = [];
         if ($nudaProprieta) {
@@ -136,7 +138,13 @@ final class ConguaglioPassaggio
                 $ordinariaDellUsufruttuario[$chiave] = $ruoli->isNotEmpty() ? $ruoli->contains('proprietario') : isset($costituito[(int) $primo->immobile_id]);
             }
         }
-        $esclusaDi = fn (string $chiave, NaturaGestione $natura) => ($soloOrdinario && $natura === NaturaGestione::Straordinaria) || ($ordinariaDellUsufruttuario[$chiave] ?? false);
+        // Rilievo B3 della Fase 1-bis (beta.38): la quota ordinaria di un predecessore raggiunto attraverso una vendita con
+        // riserva d'usufrutto non è mai passata a chi esce — l'ha tenuta chi vendeva, usufruttuario (art. 1004 c.c.) — e
+        // resta fuori, con o senza righe di riparto: per il tipo dell'anello (`predecessori()`), non per il ruolo risolto.
+        $esclusaDi = fn (string $chiave, NaturaGestione $natura) => ($soloOrdinario && $natura === NaturaGestione::Straordinaria)
+            || ($soloStraordinario && $natura === NaturaGestione::Ordinaria)
+            || ($ordinariaDellUsufruttuario[$chiave] ?? false)
+            || $gruppi[$chiave]->first()->riservata_da !== null;
         foreach ($gruppi as $chiave => $gruppo) {
             $primo = $gruppo->first();
             $piano = $piani[$primo->piano_rate_id];
@@ -307,6 +315,8 @@ final class ConguaglioPassaggio
                 // S8-3: la quota è di un predecessore di chi esce; la competenza gli è passata alla sua decorrenza.
                 'ereditata_da'   => $r->ereditata_da ?? null,
                 'decorrenza_acquisto' => $r->decorrenza_acquisto ?? null,
+                // Rilievo B3: l'ordinaria rimasta, con una vendita con riserva d'usufrutto, a chi è qui nominato.
+                'riservata_da'   => $r->riservata_da ?? null,
                 // R11: passata a chi esce con un passaggio precedente (decisione 25), da quel giorno.
                 'passata_il'     => $r->passata_il ?? null,
                 // Decisione 21: quota ancora in bozza di un piano che non si può più ricalcolare.
@@ -327,12 +337,12 @@ final class ConguaglioPassaggio
             ->where('meta->status', 'reported')
             ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $uscente->id))
             ->get()->map(fn ($e) => (int) ($e->meta['context']['rata_id'] ?? 0))->filter()->flip()->all();
-        $quote = $this->decidiBozze($quote, $riassegnaBozze && $entrante !== null, $decorrenza, $segnalate);
+        $quote = $this->decidiBozze($quote, $riassegnaBozze && $entrante !== null, $decorrenza, $segnalate, $soloStraordinario);
 
         // Una coppia per (gestione, unità, esercizio del piano), solo se ≠ 0 (verifica S5, R9: due piani della
         // stessa gestione su esercizi diversi non si fondono su un esercizio solo). Dentro il gruppo i periodi
         // possono differire (piani con competenze diverse): i giorni e le frasi sono **per periodo** (R10).
-        $perGestione = collect($quote)->groupBy(fn ($q) => $q['gestione_id'] . '|' . $q['immobile_id'] . '|' . ($q['esercizio_id'] ?? ''))->map(function (Collection $g) {
+        $perGestione = collect($quote)->groupBy(fn ($q) => $q['gestione_id'] . '|' . $q['immobile_id'] . '|' . ($q['esercizio_id'] ?? ''))->map(function (Collection $g) use ($uscente) {
             $prima = $g->first();
             $perPeriodo = $g->filter(fn ($q) => ! $q['non_risolta'] && ! $q['esclusa'])
                 ->groupBy(fn ($q) => json_encode([$q['periodo'], $q['per_capitolo'] === null ? null : $q['piano_rate_id'], $q['ereditata_da'], $q['decorrenza_acquisto']]))
@@ -391,6 +401,10 @@ final class ConguaglioPassaggio
                 'bozze_passate_formattato' => MoneyHelper::format($passate),
                 'non_risolte'    => $g->where('non_risolta', true)->count(),
                 'escluse'        => $g->where('esclusa', true)->count(),
+                // Testi T3 (beta.38): a chi sono intestate davvero le quote escluse — chi esce o un suo predecessore — e, per
+                // l'ordinaria rimasta con una riserva d'usufrutto (rilievo B3), chi l'ha tenuta.
+                'escluse_di'     => $g->where('esclusa', true)->map(fn ($q) => $q['ereditata_da'] ?? $uscente->nome)->unique()->values()->all(),
+                'riservata_da'   => $g->where('esclusa', true)->pluck('riservata_da')->filter()->unique()->values()->all(),
                 'esercizio_id'   => $prima['esercizio_id'],
             ];
         })->values();
@@ -410,7 +424,10 @@ final class ConguaglioPassaggio
         // dire a chi resteranno intestate; con la B3a dice anche perché non passano).
         $inBozza = collect($quote)->where('in_bozza', true)->where('passa', false)
             ->groupBy(fn ($q) => $q['piano'] . '|' . ($q['ereditata_da'] ?? $uscente->nome) . '|' . $q['motivo_bozza'])
-            ->map(fn (Collection $g) => ['piano' => $g->first()['piano'], 'intestatario' => $g->first()['ereditata_da'] ?? $uscente->nome, 'n' => $g->count(), 'motivo' => $g->first()['motivo_bozza']])
+            ->map(fn (Collection $g) => ['piano' => $g->first()['piano'], 'intestatario' => $g->first()['ereditata_da'] ?? $uscente->nome, 'n' => $g->count(), 'motivo' => $g->first()['motivo_bozza']]
+                // Rilievo B3: chi resta usufruttuario — chi vende nella riserva, chi ha venduto con riserva in una catena
+                // (le quote possono essere di chi gli aveva venduto prima).
+                + ($g->first()['motivo_bozza'] === 'ordinaria_riservata' ? ['usufruttuario' => $g->first()['riservata_da'] ?? $uscente->nome] : []))
             ->values()->all();
 
         // Decisione 25 (B3a): le bozze che passano a chi entra — ciò che `RegistraSubentroAction` riscrive, quota per
@@ -450,7 +467,7 @@ final class ConguaglioPassaggio
             'pregressi'      => (int) collect($quote)->sum('pregresso'),
             'non_risolte'    => $nonRisolte,
             'esercizi_dedotti' => $dedotti,
-            'frasi'          => $this->frasi($perGestione, $nonRisolte, $uscente->nome, $entrante?->nome, $decorrenza, $soloOrdinario, collect($quote)->where('passa', false)->groupBy(fn ($q) => $q['ereditata_da'] ?? $uscente->nome)->map(fn ($g) => (int) $g->sum('pregresso'))->filter()->all(), $dedotti, $inBozza, $riassegnazione),
+            'frasi'          => $this->frasi($perGestione, $nonRisolte, $uscente->nome, $entrante?->nome, $decorrenza, $soloOrdinario, $soloStraordinario, collect($quote)->where('passa', false)->groupBy(fn ($q) => $q['ereditata_da'] ?? $uscente->nome)->map(fn ($g) => (int) $g->sum('pregresso'))->filter()->all(), $dedotti, $inBozza, $riassegnazione),
         ];
     }
 
@@ -473,7 +490,8 @@ final class ConguaglioPassaggio
      *   `fattura_divisa`): la pregressa del 2025 non passa a chi compra per tornare indietro nella coppia;
      * - **non è esclusa per legge** (R4, Fase 1-bis): nella vendita della nuda proprietà le ordinarie di un piano generato
      *   prima dell'usufrutto sono dell'usufruttuario (art. 1004 c.c.) e restano fuori, come le straordinarie
-     *   nell'usufrutto (art. 1005 c.c.).
+     *   nell'usufrutto (art. 1005 c.c.); e le ordinarie che una vendita con riserva d'usufrutto ha lasciato a chi vendeva,
+     *   nella riserva stessa (decisione 28) e dopo, quando si rivende la nuda proprietà (rilievo B3 della beta.38).
      *
      * Il saldo pregresso dentro una bozza che passa **non passa**: `RegistraSubentroAction` lo lascia a chi esce in una
      * quota sua sulla stessa rata (decisione 25, punto 3). Vale con i tre metodi di distribuzione dei saldi: rata zero
@@ -482,7 +500,7 @@ final class ConguaglioPassaggio
      * @param list<array<string,mixed>> $quote
      * @return list<array<string,mixed>>
      */
-    private function decidiBozze(array $quote, bool $riassegna, CarbonImmutable $decorrenza, array $segnalate = []): array
+    private function decidiBozze(array $quote, bool $riassegna, CarbonImmutable $decorrenza, array $segnalate = [], bool $riserva = false): array
     {
         $gruppi = collect($quote)->groupBy(fn ($q) => $q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']);
         $giorno = $decorrenza->toDateString();
@@ -506,7 +524,9 @@ final class ConguaglioPassaggio
             // R12: l'ordine conta — una quota di soli pregressi o esclusa per legge ha la sua ragione prima di tutte le altre.
             $motivo = match (true) {
                 (int) $q['quota_pura'] === 0 => 'solo_pregresso',
-                $q['esclusa'] => $straordinaria ? 'straordinaria_del_nudo' : 'ordinaria_dell_usufruttuario',
+                // Riserva d'usufrutto (decisione 28): l'ordinaria resta a chi vende, che la deve come usufruttuario — nella
+                // riserva stessa e quando la nuda proprietà di chi esce viene da una riserva (rilievo B3).
+                $q['esclusa'] => $straordinaria ? 'straordinaria_del_nudo' : ($riserva || $q['riservata_da'] !== null ? 'ordinaria_riservata' : 'ordinaria_dell_usufruttuario'),
                 ! $riassegna => 'passaggio',
                 ! empty($q['ereditata_da']) => 'predecessore',
                 $gruppo->contains(fn ($x) => $x['non_risolta']) => 'non_risolta',
@@ -534,30 +554,53 @@ final class ConguaglioPassaggio
      * portano la competenza che gli è passata, e passano ancora. Si include anche chi ha rinunciato o annullato
      * la coppia: il conguaglio si propone, non si impone, e l'amministratore può rinunciare di nuovo.
      *
-     * @return array<int, array{nome: ?string, decorrenza_acquisto: string}> predecessore → quando chi esce ha acquistato
+     * **Una data per natura** (rilievo B3 della Fase 1-bis della beta.38). Ogni anello trasferisce l'ordinaria e la
+     * straordinaria insieme, dalla sua decorrenza, salvo la vendita con riserva d'usufrutto: quella trasferisce **solo la
+     * straordinaria**, perché l'ordinaria la tiene chi vende, che resta usufruttuario (art. 1004 c.c., decisione 28). Chi si
+     * raggiunge solo attraverso una riserva ha l'ordinaria a null e `riservata_da` (chi l'ha tenuta): le sue quote ordinarie
+     * non sono mai passate a chi esce, e il conguaglio le lascia fuori. I visti sono per (persona, natura): nella catena
+     * riserva → estinzione → vendita la straordinaria passa con la riserva e l'ordinaria con l'estinzione, e il secondo
+     * anello non si salta più perché la persona è «già vista». Senza riserve nella catena le due date coincidono.
+     *
+     * @return array<int, array{nome: ?string, decorrenza: array{ordinaria: ?string, straordinaria: ?string}, riservata_da: ?string}> predecessore → quando chi esce ne ha acquistato la competenza, per natura
      */
     public function predecessori(int $anagraficaId, array $immobileIds): array
     {
+        $nature = [NaturaGestione::Ordinaria->value, NaturaGestione::Straordinaria->value];
         $trovati = [];
         $frontiera = [$anagraficaId];
-        $visti = [$anagraficaId => true];
+        $visti = [$anagraficaId => array_fill_keys($nature, true)];
         while ($frontiera !== []) {
             $prossimi = [];
             foreach (Subentro::with('uscente:id,nome')->whereIn('immobile_id', $immobileIds)->whereIn('anagrafica_entrante_id', $frontiera)->whereNotNull('anagrafica_uscente_id')->orderBy('decorrenza')->get() as $s) {
                 $pid = (int) $s->anagrafica_uscente_id;
-                if (isset($visti[$pid])) {
+                $entrante = (int) $s->anagrafica_entrante_id;
+                if ($pid === $anagraficaId) {
                     continue;
                 }
-                $visti[$pid] = true;
-                // La data in cui la competenza di questo predecessore è passata a chi esce (verifica S8-bis, L1-6):
-                // al primo anello è la decorrenza del passaggio verso chi esce; agli anelli successivi è quella
-                // ereditata dal proprio antenato di primo anello — chi ha comprato da A il 1/3 e da B il 1/6 ha
-                // due date, una per quota.
-                $decorrenzaAcquisto = (int) $s->anagrafica_entrante_id === $anagraficaId
-                    ? $s->decorrenza->toDateString()
-                    : $trovati[(int) $s->anagrafica_entrante_id]['decorrenza_acquisto'];
-                $trovati[$pid] = ['nome' => $s->uscente?->nome, 'decorrenza_acquisto' => $decorrenzaAcquisto, 'riga_uscente_id' => $s->riga_uscente_id !== null ? (int) $s->riga_uscente_id : null];
-                $prossimi[] = $pid;
+                $trovati[$pid] ??= ['nome' => $s->uscente?->nome, 'decorrenza' => array_fill_keys($nature, null), 'riservata_da' => null];
+                $nuove = false;
+                foreach ($nature as $natura) {
+                    if (isset($visti[$pid][$natura])) {
+                        continue;
+                    }
+                    // La data in cui la competenza di questo predecessore è passata a chi esce (verifica S8-bis, L1-6):
+                    // al primo anello è la decorrenza del passaggio verso chi esce; agli anelli successivi è quella
+                    // ereditata dal proprio antenato di primo anello — chi ha comprato da A il 1/3 e da B il 1/6 ha
+                    // due date, una per quota. La riserva non trasferisce l'ordinaria, e chi viene prima di lei non la eredita.
+                    $trasferita = ! ($natura === NaturaGestione::Ordinaria->value && $s->riservaUsufrutto());
+                    $decorrenza = ! $trasferita ? null : ($entrante === $anagraficaId ? $s->decorrenza->toDateString() : $trovati[$entrante]['decorrenza'][$natura]);
+                    if ($decorrenza === null) {
+                        $trovati[$pid]['riservata_da'] ??= $trasferita ? $trovati[$entrante]['riservata_da'] : $s->uscente?->nome;
+                        continue;
+                    }
+                    $visti[$pid][$natura] = true;
+                    $trovati[$pid]['decorrenza'][$natura] = $decorrenza;
+                    $nuove = true;
+                }
+                if ($nuove) {
+                    $prossimi[] = $pid;
+                }
             }
             $frontiera = $prossimi;
         }
@@ -573,7 +616,8 @@ final class ConguaglioPassaggio
 
     /**
      * Le quote emesse a chi esce — e ai suoi predecessori (S8-3) — sulle unità del passaggio, con ciò che serve a
-     * decidere la competenza. Le righe ereditate portano `ereditata_da` e `decorrenza_acquisto`.
+     * decidere la competenza. Le righe ereditate portano `ereditata_da` e `decorrenza_acquisto` — la data della natura
+     * della gestione del piano (rilievo B3) — e, se quella natura non è mai passata a chi esce, `riservata_da`.
      */
     private function quoteConguagliabili(int $anagraficaId, array $immobileIds): Collection
     {
@@ -582,6 +626,8 @@ final class ConguaglioPassaggio
         return DB::table('rate_quote')
             ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
             ->join('immobili', 'immobili.id', '=', 'rate_quote.immobile_id')
+            ->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->leftJoin('gestioni', 'gestioni.id', '=', 'piani_rate.gestione_id')
             ->whereIn('rate_quote.immobile_id', $immobileIds)
             ->whereIn('rate_quote.anagrafica_id', [$anagraficaId, ...array_keys($predecessori)])
             // Decisione 21 (S8-1): le quote **emesse**, più quelle ancora in bozza dei piani che hanno già emesso a
@@ -591,11 +637,13 @@ final class ConguaglioPassaggio
                 ->orWhereIn('rate.piano_rate_id', DB::table('rate as r2')->join('rate_quote as q2', 'q2.rata_id', '=', 'r2.id')->whereNotNull('q2.scrittura_contabile_id')->select('r2.piano_rate_id')))
             ->where('rate_quote.stato', '!=', 'annullata')
             ->orderBy('rate.piano_rate_id')->orderBy('rate.numero_rata')
-            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato as stato_quota', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata'])
+            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato as stato_quota', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata', 'gestioni.tipo as natura_gestione'])
             ->map(function ($r) use ($anagraficaId, $predecessori) {
                 $pred = (int) $r->anagrafica_id !== $anagraficaId ? ($predecessori[(int) $r->anagrafica_id] ?? null) : null;
                 $r->ereditata_da = $pred['nome'] ?? null;
-                $r->decorrenza_acquisto = $pred['decorrenza_acquisto'] ?? null;
+                $r->decorrenza_acquisto = $pred['decorrenza'][NaturaGestione::daStringa($r->natura_gestione)->value] ?? null;
+                // Rilievo B3: l'ordinaria di chi ha venduto con riserva d'usufrutto non è mai passata a chi esce.
+                $r->riservata_da = $pred !== null && $r->decorrenza_acquisto === null ? ($pred['riservata_da'] ?? $pred['nome'] ?? 'chi ha venduto con riserva d\'usufrutto') : null;
                 $r->in_bozza = $r->stato_rata !== 'emessa';
                 // B3a: una quota passata a questa persona da un passaggio precedente porta con sé il riparto di chi la
                 // aveva (le `righe_riparto` restano del soggetto per cui il piano è stato generato): la scomposizione
@@ -830,7 +878,7 @@ final class ConguaglioPassaggio
      * @param list<string> $dedotti
      * @param list<array{piano: string, intestatario: string, n: int}> $inBozza
      */
-    private function frasi(Collection $perGestione, array $nonRisolte, string $uscente, ?string $entrante, CarbonImmutable $decorrenza, bool $soloOrdinario, array $pregressi, array $dedotti = [], array $inBozza = [], array $riassegnazione = []): array
+    private function frasi(Collection $perGestione, array $nonRisolte, string $uscente, ?string $entrante, CarbonImmutable $decorrenza, bool $soloOrdinario, bool $soloStraordinario, array $pregressi, array $dedotti = [], array $inBozza = [], array $riassegnazione = []): array
     {
         $entrante ??= 'chi entra';
         $frasi = ['Le rate già emesse non si toccano. Il conguaglio è proposto come due righe di saldo che sommano a zero, per gestione:'];
@@ -858,10 +906,23 @@ final class ConguaglioPassaggio
                 continue; // la dice la riga delle non risolte
             }
             if ($g['escluse'] > 0 && $g['importo'] === 0) {
+                // Testi T3 (beta.38): la frase nomina chi ha davvero le quote escluse — chi esce o un suo predecessore. Anche
+                // la straordinaria (cantiere C6, referto C3): nelle catene con l'usufrutto le quote possono essere emesse a chi
+                // aveva l'unità prima di chi esce.
+                $chi = implode(' e ', $g['escluse_di'] ?: [$uscente]);
                 $frasi[] = $g['natura'] === NaturaGestione::Straordinaria->value
-                    ? sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s — le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $nome, MoneyHelper::format($g['quota_pura']), $uscente)
-                    // R4: vendita della nuda proprietà, piano generato prima dell'usufrutto.
-                    : sprintf('Sulla gestione %s: %s restano a %s — sono spese ordinarie, e dalla costituzione dell\'usufrutto sono dell\'usufruttuario (art. 1004 c.c.), già regolate con quel passaggio: chi compra la nuda proprietà non ne risponde.', $nome, MoneyHelper::format($g['quota_pura']), $uscente);
+                    ? sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s — le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $nome, MoneyHelper::format($g['quota_pura']), $chi)
+                    : ($soloStraordinario
+                        // Riserva d'usufrutto (decisione 28): chi vende resta usufruttuario e l'ordinaria la deve ancora. Senza
+                        // pronomi (V3 della verifica a video): il programma non conosce il genere delle persone.
+                        ? sprintf('Sulla gestione %s: %s restano a %s — sono spese ordinarie, e %s resta usufruttuario (art. 1004 c.c.): non passano a %s.', $nome, MoneyHelper::format($g['quota_pura']), $chi, $uscente, $entrante)
+                        : ($g['riservata_da'] !== []
+                            // Rilievo B3 e testi T3 (beta.38): la nuda proprietà di chi esce viene da una riserva. L'usufrutto è
+                            // nato in quell'atto e non si è regolato niente: l'ordinaria non è mai passata a chi esce.
+                            ? sprintf('Sulla gestione %s: %s restano a %s — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare a %s: %s resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a %s.', $nome, MoneyHelper::format($g['quota_pura']), $chi, $uscente, implode(' e ', $g['riservata_da']), $entrante)
+                            // R4: vendita della nuda proprietà, piano generato prima dell'usufrutto. «Non ne risponde» era falso
+                            // verso il condominio (art. 67 ult. co.): fra le parti le paga l'usufruttuario (decisione 28.4).
+                            : sprintf('Sulla gestione %s: %s restano a %s — sono spese ordinarie, e dalla costituzione dell\'usufrutto sono dell\'usufruttuario (art. 1004 c.c.), già regolate con quel passaggio: non passano a chi compra la nuda proprietà.', $nome, MoneyHelper::format($g['quota_pura']), $chi)));
                 continue;
             }
             if ($g['natura'] === NaturaGestione::Straordinaria->value) {
@@ -880,8 +941,14 @@ final class ConguaglioPassaggio
                         continue;
                     }
                     $delibera = $p['periodo'][0]['dal'] ?? null;
+                    // Cantiere C6 (referto C3): con le quote di un predecessore (S8-3) «restano a chi esce, quando l'unità era sua»
+                    // era falso due volte — sono emesse al predecessore, e se la delibera viene prima del suo passaggio a chi
+                    // esce l'unità era del predecessore. La frase dice a chi sono emesse e di chi era l'unità alla delibera.
+                    $eraDi = ! empty($p['ereditata_da']) && $delibera !== null && ! empty($p['decorrenza_acquisto']) && $delibera < $p['decorrenza_acquisto'] ? $p['ereditata_da'] : $uscente;
                     $frasi[] = $p['entrante'] === 0
-                        ? sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s, perché l\'assemblea ha deliberato il %s, quando l\'unità era sua (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $nome, MoneyHelper::format($p['quota_pura']), $uscente, $this->data($delibera))
+                        ? (! empty($p['ereditata_da'])
+                            ? sprintf('Sulla gestione %s (straordinaria): le quote emesse a %s (%s) non passano a chi entra: l\'assemblea ha deliberato il %s, quando l\'unità era di %s (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $nome, $p['ereditata_da'], MoneyHelper::format($p['quota_pura']), $this->data($delibera), $eraDi)
+                            : sprintf('Sulla gestione %s (straordinaria): %s restano interamente a %s, perché l\'assemblea ha deliberato il %s, quando l\'unità era sua (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $nome, MoneyHelper::format($p['quota_pura']), $uscente, $this->data($delibera)))
                         : sprintf('Sulla gestione %s (straordinaria): %s — la delibera del %s è del giorno del passaggio o successiva, la spesa è di chi entra (art. 63 disp. att. c.c.; Cass. 24654/2010).', $nome, $this->creditoDebito((int) $p['entrante'], (int) $p['passate'], $uscente, $entrante), $this->data($delibera));
                 }
                 continue;
@@ -1077,7 +1144,7 @@ final class ConguaglioPassaggio
      * Perché un gruppo di bozze resta a chi le ha (decisione 21, e dalla B3a la decisione 25 che ne fa passare le
      * altre): la frase dice a chi resteranno intestate e, quando c'è, la ragione.
      *
-     * @param array{piano: string, intestatario: string, n: int, motivo: ?string} $b
+     * @param array{piano: string, intestatario: string, n: int, motivo: ?string, usufruttuario?: string} $b
      */
     private function fraseBozzeTrattenute(array $b, string $uscente, CarbonImmutable $decorrenza): string
     {
@@ -1100,7 +1167,11 @@ final class ConguaglioPassaggio
             'fattura_divisa' => sprintf('%s: una voce del piano ha la competenza dichiarata sulla fattura e la spesa si divide voce per voce fra chi esce e chi entra, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
             // R12: le quote che il conguaglio non tocca non «si conguagliano qui».
             'straordinaria_del_nudo' => sprintf('%s del piano «%s» non ancora %s %s a %s: le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
-            'ordinaria_dell_usufruttuario' => sprintf('%s del piano «%s» non ancora %s %s a %s: sono spese ordinarie dell\'usufruttuario (art. 1004 c.c.), regolate alla costituzione dell\'usufrutto; chi compra la nuda proprietà non ne risponde.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            // Decisione 28.4: non «non ne risponde» — verso il condominio ne risponde in solido (art. 67 ult. co.).
+            'ordinaria_dell_usufruttuario' => sprintf('%s del piano «%s» non ancora %s %s a %s: sono spese ordinarie dell\'usufruttuario (art. 1004 c.c.), regolate alla costituzione dell\'usufrutto; non passano a chi compra la nuda proprietà.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            // Riserva d'usufrutto (decisione 28): l'usufrutto nasce in questo atto, e chi vende lo tiene. Chi resta
+            // usufruttuario non è sempre l'intestatario: le quote possono essere di chi gli aveva venduto prima (rilievo B3).
+            'ordinaria_riservata' => sprintf('%s del piano «%s» non ancora %s %s a %s: sono spese ordinarie, e %s resta usufruttuario (art. 1004 c.c.) — non passano a chi compra la nuda proprietà.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario'], $b['usufruttuario'] ?? $b['intestatario']),
             'non_risolta' => sprintf('%s del piano «%s» non ancora %s %s a %s, senza conguaglio: la competenza del piano non si può determinare.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
             default => sprintf('%s: il piano ha già emesso a giornale e non si può più ricalcolare, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
         };

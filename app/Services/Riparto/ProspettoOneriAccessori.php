@@ -215,7 +215,8 @@ final class ProspettoOneriAccessori
      * R10 (Fase 1-bis): i pezzi del periodo per chi ha pagato davvero. Parte dal soggetto della riga (chi aveva la quota
      * alla generazione) e segue le vendite e le costituzioni d'usufrutto registrate sull'unità con decorrenza dentro il
      * periodo: prima della decorrenza ha pagato chi esce, dopo chi entra (le bozze gli passano o la coppia di conguaglio
-     * lo riporta ai suoi giorni — decisioni 21 e 25).
+     * lo riporta ai suoi giorni — decisioni 21 e 25). La vendita con riserva d'usufrutto (beta.38) non fa avanzare la
+     * catena: le ordinarie le paga ancora chi vende, che resta usufruttuario (art. 1004 c.c.).
      *
      * @return list<array{nome: ?string, periodo: InsiemePeriodi}>
      */
@@ -230,7 +231,7 @@ final class ProspettoOneriAccessori
             $passaggio = Subentro::where('immobile_id', $immobileId)->whereIn('tipo_passaggio', ['vendita', 'usufrutto'])
                 ->where('anagrafica_uscente_id', $chi)->whereNotNull('anagrafica_entrante_id')
                 ->whereDate('decorrenza', '>', $dal->toDateString())->whereDate('decorrenza', '<=', $periodo->al()->toDateString())
-                ->orderBy('decorrenza')->first();
+                ->orderBy('decorrenza')->get()->first(fn (Subentro $p) => ! $p->riservaUsufrutto());
             if ($passaggio === null) {
                 break;
             }

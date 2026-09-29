@@ -23,7 +23,7 @@ import { AlertTriangle, CalendarClock, Info, LoaderCircle, Receipt, Scale, Shiel
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type { AnteprimaPassaggioDati } from '@/types/gestionale/passaggi';
-import { competenzaDellaGestione } from '@/lib/gestionale/passaggi/competenzaGestione';
+import { competenzaDellaGestione, etichettaEsclusa } from '@/lib/gestionale/passaggi/competenzaGestione';
 
 const props = defineProps<{
   dati: AnteprimaPassaggioDati | null;
@@ -118,6 +118,10 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           <Users class="w-3.5 h-3.5" /> 1. Anagrafica
         </h4>
         <p v-for="(f, i) in dati.anagrafica.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
+        <!-- Decisione 28.6 (rilievo B2 della beta.38): la riserva su una quota lascia l'unità mista. Un avviso, non un cancello. -->
+        <p v-for="(a, i) in dati.anagrafica.avvisi ?? []" :key="`avviso-${i}`" class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/10 px-3 py-2 text-[13px] text-amber-900 dark:text-amber-200 leading-relaxed">
+          <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5 text-amber-600" /><span>{{ a }}</span>
+        </p>
         <p v-if="dati.anagrafica.pertinenze.length" class="text-xs text-slate-500 dark:text-slate-400">
           Pertinenze incluse: {{ dati.anagrafica.pertinenze.join(', ') }}.
         </p>
@@ -205,7 +209,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                 </td>
                 <td class="px-3 py-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
                   <template v-if="g.non_risolte > 0 && g.importo === 0">competenza non determinabile</template>
-                  <template v-else-if="g.escluse > 0 && g.importo === 0">straordinaria: resta al nudo proprietario</template>
+                  <!-- V1 della verifica a video (beta.38): l'etichetta dipende dalla natura — nella riserva resta fuori l'ordinaria. -->
+                  <template v-else-if="g.escluse > 0 && g.importo === 0">{{ etichettaEsclusa(g) }}</template>
                   <!-- Straordinario: il gradino è quello congelato sulle righe (dichiarata sulla fattura, o la delibera), non un'etichetta fissa (S8-4). -->
                   <!-- Decisione 26 (1.11.0-beta.35): anche sull'ordinaria, una voce del piano rate straordinario con la competenza dichiarata sulla fattura mostra le sue date;
                        con voci miste la colonna dice «voce per voce» (R5 della Fase 1-bis, `competenzaDellaGestione`). -->

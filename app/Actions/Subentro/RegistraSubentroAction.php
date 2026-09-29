@@ -138,7 +138,7 @@ final class RegistraSubentroAction
                     'nota_cancello'          => $anteprima['cancello']['richiesto'] ? trim((string) $dati['nota_cancello']) : null,
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
-                    'registro'               => $this->registro($uscente, $entrante),
+                    'registro'               => $this->registro($uscente, $entrante, $sottotipo),
                 ]);
 
                 // 5. Le pertinenze spuntate: la stessa operazione, una riga `subentri` ciascuna.
@@ -195,10 +195,13 @@ final class RegistraSubentroAction
     private array $registroRighe = [];
 
     /** @return array<string, mixed> il registro di un'unità, nella forma che legge `AnnullaPassaggioAction` */
-    private function registro(?TitolaritaImmobile $uscente, ?Anagrafica $entrante): array
+    private function registro(?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?string $sottotipo = null): array
     {
         return [
             'versione' => 1,
+            // La forma del passaggio quando il tipo non basta: costituzione o estinzione dell'usufrutto, e la vendita con
+            // riserva d'usufrutto (beta.38), che si legge da qui con `Subentro::riservaUsufrutto()`.
+            'sottotipo' => $sottotipo,
             'righe'    => $this->registroRighe,
             'quote'    => [],
             // I nomi restano anche se la persona sparisce: la chiave esterna è `nullOnDelete`, e un passaggio annullato
@@ -233,6 +236,17 @@ final class RegistraSubentroAction
 
         switch ($tipo) {
             case 'vendita':
+                if ($sottotipo === Subentro::RISERVA_USUFRUTTO) {
+                    // Riserva d'usufrutto (decisione 28): lo specchio della costituzione. Chi vende resta, sulla stessa
+                    // quota, come usufruttuario; chi compra entra nudo proprietario. Da `chiudi()`/`apriSommando()`, che
+                    // scrivono il registro: l'annullamento la disfa come ogni altro passaggio. Si somma come nella vendita
+                    // (decisione 28.6, rilievo B5 della Fase 1-bis): i due genitori che donano al figlio, ciascuno, la
+                    // nuda proprietà della sua metà, e chi vende che è già usufruttuario dell'altra metà.
+                    $this->chiudi($uscente, $giornoPrima);
+                    $this->apriSommando($unita, $uscente->anagrafica, 'usufruttuario', (float) $uscente->quota, $decorrenza, $giornoPrima);
+                    $rigaEntranteId = $this->apriSommando($unita, $entrante, 'nuda_proprietario', $quotaEntrante, $decorrenza, $giornoPrima);
+                    break;
+                }
                 $this->chiudi($uscente, $giornoPrima);
                 $rigaEntranteId = $this->apriSommando($unita, $entrante, $tipologiaEntrante, $quotaEntrante, $decorrenza, $giornoPrima);
                 break;
@@ -405,7 +419,7 @@ final class RegistraSubentroAction
             'nota'                   => $padre->nota,
             'nota_cancello'          => $padre->nota_cancello,
             'utente_id'              => $utente->id,
-            'registro'               => $this->registro($uscenteLi, $entrante),
+            'registro'               => $this->registro($uscenteLi, $entrante, $sottotipo),
         ]);
     }
 

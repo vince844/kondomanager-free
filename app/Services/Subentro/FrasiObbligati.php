@@ -30,8 +30,18 @@ use Illuminate\Support\Facades\DB;
 final class FrasiObbligati
 {
     /**
+     * L'eccezione dei saldi intestati all'unità (decisione 28.8 a), nella stessa forma qui e nella nota di solidarietà
+     * (`NotaSolidarieta`). Non dice a chi vadano: un piano straordinario generato dopo il passaggio li addebita al nudo
+     * proprietario nella riserva, e nella vendita piena li divide fra chi compra e chi vende (ramo B2 di `GenerateSaldiAction`,
+     * sentinella della Coda 174).
+     */
+    public const SALVO_SALDI_DELL_UNITA = ', salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano';
+
+    /**
      * @param 'vendita'|'inizio_locazione'|'fine_locazione'|'usufrutto' $tipo
-     * @param array{sottotipo?: ?string, copia_autentica?: bool, copia_autentica_il?: ?CarbonImmutable, regime_contratto?: ?string} $dati
+     * @param array{sottotipo?: ?string, copia_autentica?: bool, copia_autentica_il?: ?CarbonImmutable, regime_contratto?: ?string, immobili?: list<int>} $dati
+     *        `immobili`: l'unità e le pertinenze del passaggio, per sapere se hanno saldi intestati all'unità (decisione 28.8 a);
+     *        senza, la frase della vendita nomina l'eccezione comunque
      * @param Collection<int, TitolaritaImmobile> $proprietari  i proprietari che restano (fine locazione)
      * @param string|array|null $nudo  chi torna proprietario pieno all'estinzione dell'usufrutto: il nome, o con più nudi
      *                                 (S8-30) l'elenco `[{nome, quota}]` — le frasi li nominano tutti con la quota
@@ -46,9 +56,17 @@ final class FrasiObbligati
                 [$corrente, $precedente] = $this->esercizi($condominio, $dal);
                 $chiEntra = $entrante ?? 'Chi entra';
                 $chiEsce = $uscente ?? 'chi esce';
+                // Decisione 28.8 a: un saldo intestato all'unità (l'arretrato dell'appartamento, non di una persona) si addebita
+                // quando si genera il piano, e un piano generato dopo il passaggio può addebitarlo a chi compra (sul piano
+                // straordinario: tutto nella riserva, metà nella vendita piena). La frase lo dice quando l'unità o una pertinenza
+                // ne ha, senza dire a chi vada; se quei saldi debbano seguire chi era titolare nel periodo è la Coda 174.
+                $salvo = $this->saldiIntestatiAllUnita($dati['immobili'] ?? null) ? self::SALVO_SALDI_DELL_UNITA : '';
+                if (($dati['sottotipo'] ?? null) === Subentro::RISERVA_USUFRUTTO) {
+                    return $this->frasiRiserva($chiEntra, $chiEsce, $dalA, $corrente, $precedente, $dati, $registrato, $salvo);
+                }
                 $frasi = [sprintf(
-                    '%s risponde in solido con %s per i contributi di questa unità relativi all\'esercizio %s e all\'esercizio %s (art. 63 co. 4 disp. att. c.c.). Il programma non intesta nulla a %s: la nota resta qui e nella situazione debitoria dell\'unità, e chi paga in forza della solidarietà ha regresso verso il venditore per quanto ha pagato al condominio, salvo diverso accordo fra le parti (Cass. 11199/2021).',
-                    $chiEntra, $chiEsce, $corrente, $precedente, $chiEntra,
+                    '%s risponde in solido con %s per i contributi di questa unità relativi all\'esercizio %s e all\'esercizio %s (art. 63 co. 4 disp. att. c.c.). Il programma non intesta nulla a %s%s: la nota resta qui e nella situazione debitoria dell\'unità, e chi paga in forza della solidarietà ha regresso verso il venditore per quanto ha pagato al condominio, salvo diverso accordo fra le parti (Cass. 11199/2021).',
+                    $chiEntra, $chiEsce, $corrente, $precedente, $chiEntra, $salvo,
                 )];
                 $copiaIl = $dati['copia_autentica_il'] ?? null;
                 if (! ($dati['copia_autentica'] ?? false)) {
@@ -105,10 +123,40 @@ final class FrasiObbligati
                     return [sprintf('Dal %s %s torna proprietario pieno e risponde di tutte le spese dell\'unità. Le rate già emesse a %s restano sue.', $dalA, $nome ?? 'il nudo proprietario', $uscente ?? 'chi esce')];
                 }
 
-                return [sprintf('Dal %s verso il condominio rispondono entrambi, secondo la natura della spesa: ordinaria all\'usufruttuario %s (art. 1004 c.c.), straordinaria al nudo proprietario %s (art. 1005 c.c.). Come il programma li addebita è scritto nella guida «Ruoli e usufrutto».', $dalA, $entrante ?? 'che entra', $uscente ?? 'chi esce')];
+                // Decisione 29.3 (beta.38): dal 2013 verso il condominio nudo proprietario e usufruttuario rispondono in solido
+                // (art. 67 ult. co.); la natura della spesa conta fra le parti (artt. 1004 e 1005 c.c.). La forma è quella della
+                // riserva (`frasiRiserva`), con le persone scambiate: qui chi esce resta nudo proprietario.
+                return [sprintf('Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Come il programma li addebita è scritto nella guida «Ruoli e usufrutto».', $dalA, $uscente ?? 'chi esce', $entrante ?? 'chi entra')];
         }
 
         return [];
+    }
+
+    /**
+     * La vendita con riserva d'usufrutto (1.11.0-beta.38, decisione 28). Quello che è solido si afferma: dal giorno
+     * dell'atto nudo proprietario e usufruttuario rispondono in solido (art. 67 ult. co., testo verificato il
+     * 28/09/2026), e fra loro vale la natura della spesa (artt. 1004 e 1005 c.c.). Quello che non lo è si dice come punto
+     * aperto: se chi compra la nuda proprietà risponda anche dell'arretrato di chi vende (art. 63 co. 4) nessuna sentenza
+     * né commento lo chiarisce (ricerca del 29/09/2026) — decide l'amministratore (decisione 28.2). La copia autentica non
+     * libera chi vende: resta usufruttuario, e per i contributi successivi risponde in solido (decisione 28.3).
+     *
+     * @return list<string>
+     */
+    private function frasiRiserva(string $chiEntra, string $chiEsce, string $dalA, string $corrente, string $precedente, array $dati, bool $registrato, string $salvo): array
+    {
+        $frasi = [
+            // Decisione 28.5 (rilievo B1 della Fase 1-bis): fra le parti vale la natura della spesa, ma il programma addebita
+            // secondo i coefficienti — il rinvio alla guida è lo stesso della costituzione.
+            sprintf('Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Come il programma li addebita è scritto nella guida «Ruoli e usufrutto».', $dalA, $chiEntra, $chiEsce),
+            // Decisione 28.8 a: con un saldo intestato all'unità la frase nomina l'eccezione, come nella vendita piena.
+            sprintf('Se %s risponda anche dei contributi non pagati da %s negli esercizi %s e %s (art. 63 co. 4 disp. att. c.c.), come chi compra in una vendita piena, la giurisprudenza non l\'ha chiarito: decide l\'amministratore. Il programma non intesta nulla a %s per quel periodo%s.', $chiEntra, $chiEsce, $corrente, $precedente, $chiEntra, $salvo),
+        ];
+        $copiaIl = $dati['copia_autentica_il'] ?? null;
+        $frasi[] = $registrato && ($dati['copia_autentica'] ?? false) && $copiaIl !== null
+            ? sprintf('Copia autentica del titolo ricevuta il %s: per i contributi successivi %s non è liberato, perché resta usufruttuario e risponde in solido con il nudo proprietario (art. 67 ult. co. disp. att. c.c.).', $this->data($copiaIl), $chiEsce)
+            : sprintf('La copia autentica del titolo si registra come per ogni vendita, ma non libera %s: resta usufruttuario, e per i contributi successivi risponde in solido con il nudo proprietario (art. 67 ult. co. disp. att. c.c.).', $chiEsce);
+
+        return $frasi;
     }
 
     /**
@@ -131,10 +179,12 @@ final class FrasiObbligati
             : collect();
 
         $dati = [
-            'sottotipo'          => $tipo === 'usufrutto' ? ($subentro->tipologia === 'proprietario' ? 'estinzione' : 'costituzione') : null,
+            'sottotipo'          => $tipo === 'usufrutto' ? ($subentro->tipologia === 'proprietario' ? 'estinzione' : 'costituzione') : ($subentro->riservaUsufrutto() ? Subentro::RISERVA_USUFRUTTO : null),
             'copia_autentica'    => $subentro->copia_autentica_il !== null,
             'copia_autentica_il' => $subentro->copia_autentica_il ? CarbonImmutable::parse($subentro->copia_autentica_il->toDateString()) : null,
             'regime_contratto'   => $subentro->regime_contratto,
+            // Decisione 28.8 a: l'unità e le pertinenze passate con lo stesso atto.
+            'immobili'           => $this->immobiliDelPassaggio($subentro),
         ];
 
         return $this->frasi(
@@ -147,6 +197,18 @@ final class FrasiObbligati
                 : ($tipo === 'usufrutto' ? $subentro->entrante?->nome : null),
             registrato: true,
         );
+    }
+
+    /**
+     * L'unità di un passaggio registrato e le pertinenze passate con lo stesso atto (i passaggi figli): dove il vademecum e la
+     * nota di solidarietà cercano i saldi intestati all'unità (decisione 28.8 a). Per il passaggio di una pertinenza è la
+     * pertinenza sola.
+     *
+     * @return list<int>
+     */
+    public function immobiliDelPassaggio(Subentro $subentro): array
+    {
+        return array_values(array_filter([(int) $subentro->immobile_id, ...$subentro->pertinenze()->pluck('immobile_id')->map(fn ($id) => (int) $id)->all()]));
     }
 
     /**
@@ -179,6 +241,23 @@ final class FrasiObbligati
         $solare = $e->data_inizio->format('m-d') === '01-01' && $e->data_fine->format('m-d') === '12-31' && $e->data_inizio->year === $e->data_fine->year;
 
         return $solare ? (string) $e->data_inizio->year : sprintf('%s (dal %s al %s)', $e->nome, $this->data($e->data_inizio), $this->data($e->data_fine));
+    }
+
+    /**
+     * Le unità hanno saldi intestati all'unità (`anagrafica_id` nullo, non di un fornitore)? Sono quelli che
+     * `GenerateSaldiAction` (ramo B2) addebita ai titolari che legge quando il piano si genera (decisione 28.8 a). Applicati o
+     * no: la frase dice come il programma li tratta, e resta vera anche quando un piano li ha già assorbiti. Senza l'elenco
+     * delle unità la risposta è sì — la frase nomina l'eccezione, che è vera comunque.
+     *
+     * @param list<int>|null $immobileIds
+     */
+    public function saldiIntestatiAllUnita(?array $immobileIds): bool
+    {
+        if ($immobileIds === null) {
+            return true;
+        }
+
+        return $immobileIds !== [] && DB::table('saldi')->whereIn('immobile_id', $immobileIds)->whereNull('anagrafica_id')->whereNull('fornitore_id')->where('saldo_iniziale', '!=', 0)->exists();
     }
 
     /** I conti del condominio con almeno un coefficiente a carico dell'inquilino. */

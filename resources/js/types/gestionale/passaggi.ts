@@ -90,7 +90,12 @@ export interface AnteprimaPassaggioDati {
     entrante_dal: string;
     frase: string;
   };
-  anagrafica: { frasi: string[]; pertinenze: string[] };
+  anagrafica: {
+    frasi: string[];
+    pertinenze: string[];
+    /** Decisione 28.6 (beta.38): la riserva su una quota lascia un'unità mista che i piani non sanno dividere. Avviso, non cancello. */
+    avvisi: string[];
+  };
   rate: {
     /** `nessuno` quando non c'è chi esce o non ha quote emesse; `calcolato` quando il conguaglio è stato calcolato (S5). */
     stato: 'nessuno' | 'calcolato';
@@ -108,7 +113,12 @@ export interface AnteprimaPassaggioDati {
   };
   obbligati: { frasi: string[]; copia_autentica_mancante: boolean };
   invarianti: { frasi: string[] };
-  cancello: { richiesto: boolean; motivi: string[] };
+  /**
+   * Il cancello (1) della decisione 14. `motivi` chiedono la spunta; `informazioni` (beta.38, decisione del 29/09/2026) sono
+   * le quote che il passaggio non tocca — restano per legge a chi le ha, o la parte di chi entra è zero (decisione 28.8 c) —
+   * e si mostrano senza spunta.
+   */
+  cancello: { richiesto: boolean; motivi: string[]; informazioni?: string[] };
 }
 
 /** Una riga dello storico «Chi ha avuto questa unità» (`StoricoTitolarita`). */
@@ -130,6 +140,8 @@ export interface RigaStorico {
   note: string | null;
   subentro: {
     tipo_passaggio: string;
+    /** Lo stesso di `PassaggioRegistrato.sottotipo`: la riga si chiama come il suo passaggio (testi T7 della beta.38). */
+    sottotipo: 'costituzione' | 'estinzione' | 'riserva_usufrutto' | null;
     decorrenza: string | null;
     estremi_titolo: string | null;
     copia_autentica_il: string | null;
@@ -145,7 +157,8 @@ export interface RigaStorico {
 export interface PassaggioRegistrato {
   id: number;
   tipo_passaggio: 'vendita' | 'inizio_locazione' | 'fine_locazione' | 'usufrutto' | string;
-  sottotipo: 'costituzione' | 'estinzione' | null;
+  /** Costituzione o estinzione dell'usufrutto; nella vendita, la riserva d'usufrutto (beta.38). */
+  sottotipo: 'costituzione' | 'estinzione' | 'riserva_usufrutto' | null;
   decorrenza: string | null;
   decorrenza_a_parole: string | null;
   registrato_il: string | null;

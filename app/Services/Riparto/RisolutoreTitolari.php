@@ -2,6 +2,7 @@
 
 namespace App\Services\Riparto;
 
+use App\Models\Gestionale\Subentro;
 use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
 use Carbon\CarbonImmutable;
@@ -131,6 +132,12 @@ class RisolutoreTitolari
                             ->orWhere(fn ($t) => $t->where('subentri.tipo_passaggio', 'usufrutto')
                                 ->whereColumn('subentri.immobile_id', "{$esterna}.immobile_id")
                                 ->whereColumn('subentri.tipologia', "{$esterna}.tipologia")
+                                ->whereRaw("{$this->dataSql('subentri.decorrenza')} = {$this->dataSql("{$esterna}.data_inizio")}"))
+                            // E per la riga d'usufrutto riaperta dalla riserva, con la sua tipologia e non quella del
+                            // record (rilievo B4 della Fase 1-bis), come `entrataConPassaggio()`.
+                            ->orWhere(fn ($t) => Subentro::vincolaRiservaUsufrutto($t)
+                                ->whereColumn('subentri.immobile_id', "{$esterna}.immobile_id")
+                                ->where("{$esterna}.tipologia", 'usufruttuario')
                                 ->whereRaw("{$this->dataSql('subentri.decorrenza')} = {$this->dataSql("{$esterna}.data_inizio")}"))))));
     }
 
@@ -337,7 +344,8 @@ class RisolutoreTitolari
      *   a 200);
      * - (b) la riga è entrata con un passaggio registrato — `subentri.riga_entrante_id`, oppure, per il solo
      *   **usufrutto**, stessa unità, stessa tipologia e `data_inizio` = `decorrenza` del record (i più nudi che
-     *   tornano pieni insieme con un record solo): copre il nuovo inquilino dopo un vuoto di mesi, che per (a) non
+     *   tornano pieni insieme con un record solo), e per la vendita con riserva d'usufrutto la riga «usufruttuario»
+     *   di chi vende (rilievo B4 della beta.38): copre il nuovo inquilino dopo un vuoto di mesi, che per (a) non
      *   avrebbe un predecessore contiguo.
      *
      * Prima bastava una riga chiusa **prima o il giorno stesso** — qualunque, anche di una persona estranea al
@@ -378,6 +386,7 @@ class RisolutoreTitolari
      * è una colonna sola: nell'estinzione dell'usufrutto con due nudi tornano pieni entrambi lo stesso giorno, ma
      * solo il primo è «l'entrante» del record — il secondo per D7 sarebbe «aperto da sempre» e pagherebbe 365 giorni
      * (verifica S8-bis, L2-2). Stessa unità, stessa tipologia, `data_inizio` = `decorrenza`: è entrato con quello.
+     * Nella riserva d'usufrutto la tipologia della tripla è «usufruttuario», la riga riaperta di chi vende.
      */
     private ?array $righeEntrateConPassaggio = null;
     private ?array $tripleDiPassaggio = null;
@@ -388,10 +397,17 @@ class RisolutoreTitolari
             // Senza i passaggi annullati (beta.37): la lettura diretta non passa dallo scope del modello.
             $subentri = DB::table('subentri')->whereNull('annullato_il')->get(['riga_entrante_id', 'immobile_id', 'tipologia', 'decorrenza', 'tipo_passaggio']);
             $this->righeEntrateConPassaggio = $subentri->pluck('riga_entrante_id')->filter()->map(fn ($id) => (int) $id)->flip()->all();
-            // La tripla solo per l'usufrutto, l'unico passaggio che apre più righe con un record solo (l'estinzione con più
+            // La tripla solo per i passaggi che aprono più righe con un record solo. L'usufrutto (l'estinzione con più
             // nudi): per vendita e locazione `riga_entrante_id` è esatto, e una riga censita a mano con la stessa data di
-            // una vendita fra altri due non deve diventare «entrata con quel passaggio» (verifica strada b, B1-2).
-            $this->tripleDiPassaggio = $subentri->where('tipo_passaggio', 'usufrutto')->map(fn ($s) => (int) $s->immobile_id . '|' . $s->tipologia . '|' . substr((string) $s->decorrenza, 0, 10))->flip()->all();
+            // una vendita fra altri due non deve diventare «entrata con quel passaggio» (verifica strada b, B1-2). E la
+            // vendita con riserva d'usufrutto (decisione 28), che riapre anche la riga di chi vende come usufruttuario
+            // mentre `riga_entrante_id` è quella di chi compra: senza la tripla quella riga per D7 varrebbe da sempre, e
+            // un piano generato dopo le darebbe i giorni di chi era titolare prima (rilievo B4 della Fase 1-bis). Solo
+            // la tipologia «usufruttuario»: `subentri.tipologia` è quella di chi compra.
+            $riserve = Subentro::vincolaRiservaUsufrutto(DB::table('subentri')->whereNull('annullato_il'))->get(['immobile_id', 'decorrenza']);
+            $this->tripleDiPassaggio = $subentri->where('tipo_passaggio', 'usufrutto')->map(fn ($s) => (int) $s->immobile_id . '|' . $s->tipologia . '|' . substr((string) $s->decorrenza, 0, 10))
+                ->merge($riserve->map(fn ($s) => (int) $s->immobile_id . '|usufruttuario|' . substr((string) $s->decorrenza, 0, 10)))
+                ->flip()->all();
         }
         if (isset($riga->id) && isset($this->righeEntrateConPassaggio[(int) $riga->id])) {
             return true;

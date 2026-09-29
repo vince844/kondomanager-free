@@ -444,7 +444,10 @@ it('R4 — vendita della nuda proprietà dopo l\'usufrutto: le ordinarie del pia
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), $vendita)->assertOk()->json();
     expect($anteprima['rate']['conguaglio']['bozze_riassegnate'])->toBe([])
         ->and(collect($anteprima['rate']['conguaglio']['quote_in_bozza'])->pluck('motivo')->unique()->all())->toBe(['ordinaria_dell_usufruttuario'])
-        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('dell\'usufruttuario (art. 1004 c.c.)');
+        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('dell\'usufruttuario (art. 1004 c.c.)')
+        // Decisione 28.4 (beta.38): verso il condominio chi compra la nuda proprietà ne risponde in solido con
+        // l'usufruttuario (art. 67 ult. co.); fra le parti le paga l'usufruttuario. La frase non dice più «non ne risponde».
+        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->not->toContain('non ne risponde')->toContain('non passano a');
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), $vendita)->assertSessionHasNoErrors();
 
     $preventivo = fn (int $id) => (int) DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $s['piano']->id)->where('rate_quote.anagrafica_id', $id)->sum('rate_quote.importo');
@@ -653,7 +656,13 @@ it('decisione 26 [beta.35] — pregressa 2025 da € 1.200,00 in un piano da fat
         ->and(collect($cg['quote_in_bozza'])->pluck('motivo')->unique()->values()->all())->toBe(['fattura_di_chi_esce'])
         ->and(collect($cg['quote_in_bozza'])->sum('n'))->toBe(8)
         // Una voce sola, dichiarata: la testa mostra il suo periodo (R5 della Fase 1-bis, il controesempio).
-        ->and($cg['per_gestione'][0]['voce_per_voce'])->toBeFalse();
+        ->and($cg['per_gestione'][0]['voce_per_voce'])->toBeFalse()
+        // Decisione 28.8 c (beta.38): nessuna bozza cambia persona — la frase va fra le informazioni, non fra i motivi. Lo
+        // stesso per le quattro emesse: il conguaglio dà zero a chi compra per costruzione, e la spunta non serve.
+        ->and($anteprima['cancello']['informazioni'])->toContain('il piano «Spese da finanziare» ha 8 quote non ancora emesse intestate a Venditore Ugo: non si può più ricalcolare, restano sue: il conguaglio non le tocca')
+        ->and($anteprima['cancello']['informazioni'])->toContain('4 quote di rate già emesse a Venditore Ugo su questa unità: restano sue, questo passaggio non le tocca')
+        ->and($anteprima['cancello']['motivi'])->toBe([])
+        ->and($anteprima['cancello']['richiesto'])->toBeFalse();
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), rbVendita($s))->assertSessionHasNoErrors();
     $q = rbQuote($s);

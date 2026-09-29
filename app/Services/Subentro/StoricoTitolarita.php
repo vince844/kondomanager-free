@@ -105,7 +105,7 @@ class StoricoTitolarita
                 return [
                     'id' => $s->id,
                     'tipo_passaggio' => $s->tipo_passaggio,
-                    'sottotipo' => $s->tipo_passaggio === 'usufrutto' ? ($s->tipologia === 'proprietario' ? 'estinzione' : 'costituzione') : null,
+                    'sottotipo' => $this->sottotipo($s),
                     'decorrenza' => $s->decorrenza?->toDateString(),
                     'decorrenza_a_parole' => $s->decorrenza ? $this->data($s->decorrenza) : null,
                     'registrato_il' => $s->created_at ? $this->giornoUtente($s->created_at) : null,
@@ -185,6 +185,9 @@ class StoricoTitolarita
             'note' => $t->note,
             'subentro' => $subentro ? [
                 'tipo_passaggio' => $subentro->tipo_passaggio,
+                // Testi T7 della beta.38: la riga si chiama come il suo passaggio («Vendita o donazione con riserva
+                // d'usufrutto»), con lo stesso sottotipo della sezione dei passaggi.
+                'sottotipo' => $this->sottotipo($subentro),
                 'decorrenza' => $subentro->decorrenza?->toDateString(),
                 'estremi_titolo' => $subentro->estremi_titolo,
                 'copia_autentica_il' => $subentro->copia_autentica_il ? $this->data($subentro->copia_autentica_il) : null,
@@ -194,6 +197,15 @@ class StoricoTitolarita
                 'nota_conguaglio' => $subentro->nota_conguaglio,
             ] : null,
         ];
+    }
+
+    /**
+     * La forma del passaggio, per la sezione dei passaggi e per le righe che ha toccato: costituzione o estinzione
+     * dell'usufrutto (dalla `tipologia` di chi entra), nella vendita la riserva d'usufrutto (dal registro, beta.38).
+     */
+    private function sottotipo(Subentro $s): ?string
+    {
+        return $s->tipo_passaggio === 'usufrutto' ? ($s->tipologia === 'proprietario' ? 'estinzione' : 'costituzione') : ($s->riservaUsufrutto() ? Subentro::RISERVA_USUFRUTTO : null);
     }
 
     private function periodoAParole(?CarbonImmutable $dal, ?CarbonImmutable $al, bool $futuro): string

@@ -332,6 +332,48 @@ it('R10 — vendita dopo la generazione e locazione registrata dopo: le voci che
         ->toBe(['Paola Proprietaria' => [12000, 120], 'Aldo Compratore' => [24500, 245]]);
 });
 
+it('beta.38 — vendita con riserva d\'usufrutto: le ordinarie le paga ancora chi vende, ora usufruttuaria, e il prospetto nomina solo lei per tutto l\'anno', function () {
+    $s = poScenario();
+    $aldo = ($s['persona'])('Aldo Nudo', 'PONUDOPROP38');
+    $ivo = ($s['persona'])('Ivo Primo', 'POINQUILR38');
+    $rigaP = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['p']->id)->value('id');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'riga_uscente_id' => $rigaP, 'anagrafica_entrante_id' => $aldo->id, 'decorrenza' => '2026-05-01', 'quota' => 100,
+        'tipologia' => 'nuda_proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-05', 'estremi_titolo' => 'rep. 38', 'pertinenze' => [], 'ho_letto' => true,
+        'nota_cancello' => 'Vendita della nuda proprietà con riserva d\'usufrutto, letto',
+    ])->assertSessionHasNoErrors();
+    poLocazione($this, $s, ['tipo' => 'inizio_locazione', 'anagrafica_entrante_id' => $ivo->id, 'decorrenza' => '2026-01-01']);
+
+    // Nella vendita piena (R10) Aldo avrebbe pagato dal 1/5; con la riserva l'ordinaria resta a Paola (art. 1004 c.c.).
+    $pulizia = collect(app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e'])['conduttori'][0]['voci'])->where('conto', 'Pulizia scale');
+    expect($pulizia->mapWithKeys(fn ($v) => [$v['pagato_da'] => [$v['importo'], $v['giorni']]])->all())
+        ->toBe(['Paola Proprietaria' => [36500, 365]]);
+});
+
+it('beta.38 — riserva d\'usufrutto e poi estinzione dell\'usufrutto: le ordinarie le paga chi vendeva fino al giorno prima dell\'estinzione, e dal giorno dell\'estinzione il nudo proprietario tornato pieno; il prospetto nomina i due, con i loro giorni', function () {
+    $s = poScenario();
+    $aldo = ($s['persona'])('Aldo Nudo', 'PONUDOPRE38');
+    $ivo = ($s['persona'])('Ivo Primo', 'POINQUIE38');
+    $rigaP = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['p']->id)->value('id');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'riga_uscente_id' => $rigaP, 'anagrafica_entrante_id' => $aldo->id, 'decorrenza' => '2026-05-01', 'quota' => 100,
+        'tipologia' => 'nuda_proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-05', 'estremi_titolo' => 'rep. 38', 'pertinenze' => [], 'ho_letto' => true,
+        'nota_cancello' => 'Vendita della nuda proprietà con riserva d\'usufrutto, letto',
+    ])->assertSessionHasNoErrors();
+    $rigaUsu = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['p']->id)->where('tipologia', 'usufruttuario')->value('id');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'usufrutto', 'sottotipo' => 'estinzione', 'riga_uscente_id' => $rigaUsu, 'decorrenza' => '2026-09-01', 'quota' => 100, 'tipologia' => 'proprietario',
+        'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Estinzione dell\'usufrutto, letta',
+    ])->assertSessionHasNoErrors();
+    poLocazione($this, $s, ['tipo' => 'inizio_locazione', 'anagrafica_entrante_id' => $ivo->id, 'decorrenza' => '2026-01-01']);
+
+    // La riserva non fa avanzare la catena dei pagatori, l'estinzione sì: 36.500 × 243/365 = 24.300 a Paola (1/1–31/8),
+    // 36.500 × 122/365 = 12.200 ad Aldo (1/9–31/12).
+    $pulizia = collect(app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e'])['conduttori'][0]['voci'])->where('conto', 'Pulizia scale');
+    expect($pulizia->mapWithKeys(fn ($v) => [$v['pagato_da'] => [$v['importo'], $v['giorni']]])->all())
+        ->toBe(['Paola Proprietaria' => [24300, 243], 'Aldo Nudo' => [12200, 122]]);
+});
+
 it('R13 — un piano che non ricorda l\'esercizio: nel prospetto dell\'esercizio a cui la data di creazione lo attribuisce lo si dice in testa, in quello della sua gestione si nomina fra gli esclusi', function () {
     $s = poScenario([['nome' => 'Ivo Primo', 'dal' => '2020-01-01', 'al' => null]]);
     $e25 = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'chiuso']);

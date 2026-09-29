@@ -16,6 +16,9 @@
  * Il cancello (1) della decisione 14: se il passaggio tocca rate già emesse o cambia un destinatario
  * di un piano già generato, il pulsante resta disabilitato finché non si spunta «Ho letto cosa
  * cambierà» e non si scrive una nota di almeno dieci caratteri. Se non tocca nulla, è attivo subito.
+ * Le quote che il passaggio non tocca (`cancello.informazioni`, beta.38) si elencano sopra il pulsante,
+ * senza spunta: quelle che restano per legge a chi le ha e quelle in cui la parte di chi entra è zero
+ * (decisione 28.8 c).
  *
  * Da S5 `store` scrive (`RegistraSubentroAction`): il pannello porta gli importi del conguaglio proposto
  * per gestione e la rinuncia motivata; gli errori di dominio dell'action tornano come errori di campo.
@@ -106,7 +109,7 @@ const sottotipoIniziale = props.tipo === 'usufrutto'
 
 const form = useForm({
   tipo: props.tipo as string,
-  sottotipo: sottotipoIniziale as 'costituzione' | 'estinzione' | null,
+  sottotipo: sottotipoIniziale as 'costituzione' | 'estinzione' | 'riserva_usufrutto' | null,
   riga_uscente_id: (props.rigaPreselezionata ?? null) as number | null,
   anagrafica_entrante_id: null as number | null,
   // Senza valore predefinito, di proposito.
@@ -187,11 +190,31 @@ watch(candidatiUscente, (c) => {
   form.riga_uscente_id = c.length === 1 ? c[0].id : (c.some(t => t.id === form.riga_uscente_id) ? form.riga_uscente_id : null);
 }, { immediate: true });
 
+/**
+ * La vendita con riserva d'usufrutto (beta.38, decisione 28): chi vende resta, sulla stessa quota, come usufruttuario;
+ * chi compra entra nudo proprietario. Si dichiara con la casella — il programma non la deduce dal ruolo scelto, e il
+ * server rifiuta un nudo proprietario da un proprietario pieno senza la dichiarazione.
+ */
+const puoRiservare = computed(() => props.tipo === 'vendita' && uscente.value?.tipologia === 'proprietario');
+const riserva = computed({
+  get: () => form.sottotipo === 'riserva_usufrutto',
+  set: (v: boolean) => {
+    form.sottotipo = v ? 'riserva_usufrutto' : null;
+    form.tipologia = v ? 'nuda_proprietario' : (uscente.value?.tipologia ?? 'proprietario');
+    // La nuda proprietà di tutta la quota di chi vende: con meno resterebbe un pezzo di nessuno.
+    if (v && uscente.value) {
+      laQuotaCambia.value = false;
+      form.quota = String(uscente.value.quota);
+    }
+  },
+});
+watch(puoRiservare, (p) => { if (!p && riserva.value) riserva.value = false; });
+
 // Quota e ruolo precompilati da chi esce, non con 100 (§6.3, campi 4 e 5).
 watch(uscente, (u) => {
   if (!u) return;
   if (!laQuotaCambia.value) form.quota = String(u.quota);
-  if (props.tipo === 'vendita') form.tipologia = u.tipologia;
+  if (props.tipo === 'vendita') form.tipologia = riserva.value ? 'nuda_proprietario' : u.tipologia;
 }, { immediate: true });
 
 watch(() => form.sottotipo, (s) => {
@@ -225,7 +248,7 @@ const RUOLI = [
   { id: 'proprietario', label: 'Proprietario' },
   { id: 'nuda_proprietario', label: 'Nudo proprietario' },
 ];
-const ruoloModificabile = computed(() => props.tipo === 'vendita');
+const ruoloModificabile = computed(() => props.tipo === 'vendita' && !riserva.value);
 
 const REGIMI = [
   { id: 'abitativo', label: 'Abitativo (L. 431/1998)' },
@@ -336,6 +359,8 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
 // --- Il cancello (1) e la conferma --------------------------------------------------------------
 
 const cancelloRichiesto = computed(() => anteprima.value?.cancello.richiesto ?? false);
+// Le quote che restano per legge a chi le ha (beta.38, decisione del 29/09/2026): si dicono sempre, e non chiedono la spunta.
+const informazioniCancello = computed(() => anteprima.value?.cancello.informazioni ?? []);
 const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_letto && form.nota_cancello.trim().length >= 10));
 // La rinuncia al conguaglio vale solo se c'è una coppia proposta, e vuole la sua ragione.
 // La rinuncia vale solo se il pannello propone una coppia: se sparisce (cambio di controparte o di data) la
@@ -716,7 +741,7 @@ function urlTipo(t: TipoPassaggio) {
                     <Label for="quota" class="mb-1.5 block">Quota (%)</Label>
                     <Input id="quota" v-model="form.quota" :readonly="!laQuotaCambia && uscente !== null" inputmode="decimal"
                       class="w-full bg-white dark:bg-slate-950 tabular-nums" :class="!laQuotaCambia && uscente !== null ? 'text-slate-500' : ''" />
-                    <label v-if="uscente" class="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                    <label v-if="uscente && !riserva" class="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-600 dark:text-slate-400 cursor-pointer select-none">
                       <input type="checkbox" v-model="laQuotaCambia" class="w-3.5 h-3.5 accent-slate-900 dark:accent-slate-300 rounded border-slate-300" />
                       La quota cambia
                     </label>
@@ -727,6 +752,20 @@ function urlTipo(t: TipoPassaggio) {
                     <Label for="tipologia" class="mb-1.5 block">Ruolo</Label>
                     <v-select v-if="ruoloModificabile" class="w-full bg-white dark:bg-slate-950 text-sm" :options="RUOLI" label="label" v-model="form.tipologia" :reduce="(r: any) => r.id" :clearable="false" />
                     <div v-else class="h-9 flex items-center"><BadgeRuolo :ruolo="form.tipologia" taglia="md" /></div>
+                  </div>
+                  <!-- La riserva d'usufrutto si dichiara (decisione 28): solo quando vende un proprietario pieno. -->
+                  <div v-if="puoRiservare" class="sm:col-span-12">
+                    <label class="flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 cursor-pointer select-none transition-colors"
+                      :class="riserva ? 'bg-purple-50 border-purple-300 dark:bg-purple-900/20 dark:border-purple-800' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
+                      <input type="checkbox" v-model="riserva" class="w-4 h-4 mt-0.5 accent-purple-600 rounded border-slate-300" />
+                      <span class="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+                        <strong class="font-semibold text-slate-900 dark:text-slate-100">Chi vende o dona resta usufruttuario</strong> (vendita o donazione con riserva d'usufrutto)
+                        <span v-if="riserva" class="block text-slate-600 dark:text-slate-400">
+                          {{ uscente?.anagrafica.nome }} resta sulla stessa quota come usufruttuario, chi compra entra nudo proprietario. Nelle rate già emesse e nelle bozze dei piani già emessi l'ordinaria resta a chi vende; un piano generato o ricalcolato dopo addebita secondo i coefficienti della tabella (guida «Ruoli e usufrutto»). Le straordinarie seguono la competenza: la data della delibera, o quella dichiarata sulla fattura.
+                        </span>
+                      </span>
+                    </label>
+                    <InputError :message="form.errors.sottotipo" />
                   </div>
                   <!-- L'errore del ruolo è una frase intera (la via che esiste): un riquadro a tutta larghezza, non un testo
                        rosso accalcato sotto la colonna stretta. -->
@@ -789,7 +828,9 @@ function urlTipo(t: TipoPassaggio) {
                     <input type="checkbox" v-model="form.copia_autentica" class="w-4 h-4 mt-0.5 accent-slate-900 dark:accent-slate-300 rounded border-slate-300" />
                     <span class="flex flex-col">
                       <span class="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><FileSignature class="w-4 h-4 text-slate-400" /> Ho ricevuto copia autentica del titolo</span>
-                      <span class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">È l'unico campo con un effetto giuridico diretto: finché il condominio non la riceve, chi vende resta obbligato per i contributi successivi (art. 63 co. 5 disp. att. c.c.).</span>
+                      <!-- V4 della verifica a video (decisione 28.3): con la riserva la copia non libera chi vende, che resta usufruttuario. -->
+                      <span v-if="riserva" class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">Con la riserva d'usufrutto la copia non libera chi vende: resta usufruttuario, e per i contributi successivi risponde in solido con il nudo proprietario (art. 67 ult. co. disp. att. c.c.). Si registra comunque, come per ogni vendita.</span>
+                      <span v-else class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">È l'unico campo con un effetto giuridico diretto: finché il condominio non la riceve, chi vende resta obbligato per i contributi successivi (art. 63 co. 5 disp. att. c.c.).</span>
                     </span>
                   </label>
                   <div v-if="form.copia_autentica" class="pl-7">
@@ -840,6 +881,21 @@ function urlTipo(t: TipoPassaggio) {
             </Card>
 
             <!-- ---------------------------- Il cancello (1) e la conferma ---------------------------- -->
+            <!-- Beta.38, decisione del 29/09/2026: le quote che il passaggio lascia a chi le ha si dicono qui, con o senza
+                 cancello, e non chiedono la spunta. Il piede non dice perché, né cita articoli: le ragioni sono diverse (la
+                 legge, i soli saldi pregressi, una spesa tutta di chi esce, decisione 28.8 c) e le dice il pannello. -->
+            <div v-if="informazioniCancello.length && anteprima" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
+              <div class="flex items-start gap-3">
+                <Info class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                <div class="space-y-1">
+                  <p class="text-sm font-bold text-slate-800 dark:text-slate-200">Quote che questo passaggio non tocca</p>
+                  <ul class="text-[13px] text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-0.5">
+                    <li v-for="m in informazioniCancello" :key="m">{{ m }}</li>
+                  </ul>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400">Restano a chi le ha e nessuna cambia intestatario: per queste non serve la spunta.</p>
+                </div>
+              </div>
+            </div>
             <div v-if="cancelloRichiesto && anteprima" class="rounded-xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-900/10 p-5 space-y-4">
               <div class="flex items-start gap-3">
                 <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -856,7 +912,7 @@ function urlTipo(t: TipoPassaggio) {
               </label>
               <div>
                 <Label for="nota_cancello" class="mb-1.5 block text-amber-900 dark:text-amber-200">Perché lo registri così <span class="font-normal text-amber-700 dark:text-amber-400">(almeno dieci caratteri, resta con l'operazione)</span></Label>
-                <Textarea id="nota_cancello" v-model="form.nota_cancello" rows="2" class="w-full bg-white dark:bg-slate-950 resize-none border-amber-300" placeholder="es. rogito del 30/04, conguaglio concordato fra le parti" />
+                <Textarea id="nota_cancello" v-model="form.nota_cancello" rows="2" class="w-full bg-white dark:bg-slate-950 resize-none border-amber-300" placeholder="es. rogito del 30/04, date controllate con il notaio" />
                 <p class="text-[11px] mt-1" :class="form.nota_cancello.trim().length >= 10 ? 'text-emerald-700' : 'text-amber-700 dark:text-amber-400'">{{ form.nota_cancello.trim().length }}/10</p>
                 <InputError :message="form.errors.nota_cancello" />
               </div>

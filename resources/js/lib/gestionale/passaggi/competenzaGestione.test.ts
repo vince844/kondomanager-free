@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { competenzaDellaGestione } from './competenzaGestione';
+import { competenzaDellaGestione, etichettaEsclusa } from './competenzaGestione';
 
 const GRADINI = { dichiarata: 'competenza dichiarata', delibera: 'data della delibera', capitolo: 'competenza del capitolo' };
 
@@ -28,5 +28,15 @@ describe('competenzaDellaGestione — la colonna della competenza nell\'anteprim
     test('lo straordinario con la delibera: l\'etichetta e il giorno', () => {
         expect(competenzaDellaGestione({ natura: 'straordinaria', gradino: ['delibera'], periodo: [{ dal: '2026-06-15', al: '2026-06-15' }] }, GRADINI))
             .toEqual({ etichetta: 'data della delibera', intervallo: null, giorno: '15/06/2026' });
+    });
+});
+
+describe('etichettaEsclusa — la gestione che il conguaglio lascia fuori per legge (V1 della verifica a video, beta.38)', () => {
+    test('l\'ordinaria esclusa resta all\'usufruttuario: la riserva d\'usufrutto, la vendita della sola nuda proprietà', () => {
+        expect(etichettaEsclusa({ natura: 'ordinaria' })).toBe('ordinaria: resta all\'usufruttuario');
+    });
+
+    test('la straordinaria esclusa resta al nudo proprietario: la costituzione e l\'estinzione dell\'usufrutto', () => {
+        expect(etichettaEsclusa({ natura: 'straordinaria' })).toBe('straordinaria: resta al nudo proprietario');
     });
 });

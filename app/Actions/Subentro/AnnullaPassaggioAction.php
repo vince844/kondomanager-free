@@ -347,7 +347,8 @@ final class AnnullaPassaggioAction
         $entrante = $s->entrante?->nome ?? ($s->registro['nomi']['entrante'] ?? null);
 
         return match ($s->tipo_passaggio) {
-            'vendita' => 'la vendita' . ($uscente !== null ? " da {$uscente}" : '') . ($entrante !== null ? " a {$entrante}" : ''),
+            // Testi T8 della beta.38: «o donazione», come il tipo di base; la donazione della nuda proprietà è il caso più frequente.
+            'vendita' => ($s->riservaUsufrutto() ? 'la vendita o donazione con riserva d\'usufrutto' : 'la vendita') . ($uscente !== null ? " da {$uscente}" : '') . ($entrante !== null ? " a {$entrante}" : ''),
             'inizio_locazione' => 'l\'inizio locazione' . ($entrante !== null ? " a {$entrante}" : ''),
             'fine_locazione' => 'la fine locazione' . ($uscente !== null ? " di {$uscente}" : '') . ($entrante !== null ? ", con {$entrante} al suo posto" : ''),
             'usufrutto' => $s->tipologia === 'proprietario'
@@ -426,8 +427,10 @@ final class AnnullaPassaggioAction
      * Le quote nate dopo il passaggio sulle sue unità che l'annullamento cambierebbe: un piano generato o ricalcolato dopo,
      * con la titolarità di dopo. «Nate dopo»: oltre l'ultima quota che esisteva al passaggio (`registro.quota_max_id`,
      * per le quote generate nello stesso secondo) o create dopo di lui (per MySQL 5.7, dove un riavvio fa riusare gli id).
-     * «Che l'annullamento cambierebbe»: quelle di chi è entrato, e quelle il cui riparto su quell'unità (`righe_riparto`)
-     * ha un ruolo toccato dal passaggio, con una competenza che arriva alla decorrenza o oltre. L'annullamento cambia la
+     * «Che l'annullamento cambierebbe»: quelle il cui riparto su quell'unità (`righe_riparto`) ha un ruolo toccato dal
+     * passaggio, con una competenza che arriva alla decorrenza o oltre, chiunque ne sia il titolare, anche chi è entrato
+     * (rilievo B6 della beta.38: chi vende e resta usufruttuario è fra gli entrati, ma il consuntivo dell'anno prima,
+     * tutto suo, l'annullamento non lo cambia). L'annullamento cambia la
      * titolarità solo da lì in poi e solo su quei ruoli: il consuntivo dell'anno prima, o una spesa del solo proprietario
      * dopo una fine locazione, non cambiano e non contano; la parte dell'inquilino che dopo una fine locazione senza
      * nuovo inquilino va al proprietario (il ripiego della decisione 22) sì (giro di verifica, G-1). Una quota senza
@@ -474,15 +477,19 @@ final class AnnullaPassaggioAction
             ->get(['piano_rate_id', 'anagrafica_id', 'immobile_id', 'ruolo_richiesto', 'ruolo_risolto', 'competenza_al'])
             ->groupBy(fn ($r) => $r->piano_rate_id . ':' . $r->anagrafica_id . ':' . $r->immobile_id);
 
+        // Con il dettaglio del riparto decide il riparto, per chiunque; «è fra gli entrati» è il ripiego delle quote senza.
+        // Chi vende e resta usufruttuario, chi resta nudo, il comproprietario che somma e il nudo che torna pieno sono fra
+        // gli entrati ma erano titolari anche prima (rilievo B6 della beta.38); chi entra davvero ha righe col ruolo
+        // toccato e la competenza dalla decorrenza in poi, e resta.
         return $quote->filter(function ($q) use ($entrati, $toccati, $riparto) {
-            if (in_array((int) $q->anagrafica_id, $entrati, true)) {
-                return true;
+            $righe = $riparto->get($q->piano_rate_id . ':' . $q->anagrafica_id . ':' . $q->immobile_id);
+            if ($righe === null || $righe->isEmpty()) {
+                return in_array((int) $q->anagrafica_id, $entrati, true);
             }
             $t = $toccati[(int) $q->immobile_id] ?? ['dal' => '0000-00-00', 'ruoli' => []];
 
-            return ($riparto->get($q->piano_rate_id . ':' . $q->anagrafica_id . ':' . $q->immobile_id) ?? collect())
-                ->contains(fn ($r) => (in_array((string) $r->ruolo_richiesto, $t['ruoli'], true) || in_array((string) $r->ruolo_risolto, $t['ruoli'], true))
-                    && ($r->competenza_al === null || substr((string) $r->competenza_al, 0, 10) >= $t['dal']));
+            return $righe->contains(fn ($r) => (in_array((string) $r->ruolo_richiesto, $t['ruoli'], true) || in_array((string) $r->ruolo_risolto, $t['ruoli'], true))
+                && ($r->competenza_al === null || substr((string) $r->competenza_al, 0, 10) >= $t['dal']));
         })->values();
     }
 

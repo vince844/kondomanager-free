@@ -40,3 +40,12 @@ export function competenzaDellaGestione(g: GestioneConguaglio, gradini: Record<s
 
     return { etichetta, intervallo: null, giorno: periodo[0] ? dataBreve(periodo[0].dal) : null };
 }
+
+/**
+ * La colonna di una gestione che il conguaglio lascia fuori per legge (V1 della verifica a video, 1.11.0-beta.38). Diceva
+ * sempre «straordinaria: resta al nudo proprietario», la frase dell'usufrutto; nella vendita con riserva d'usufrutto, e nella
+ * vendita della sola nuda proprietà, a restare fuori è l'ordinaria, che resta all'usufruttuario (art. 1004 c.c.).
+ */
+export function etichettaEsclusa(g: Pick<GestioneConguaglio, 'natura'>): string {
+    return g.natura === 'straordinaria' ? 'straordinaria: resta al nudo proprietario' : 'ordinaria: resta all\'usufruttuario';
+}

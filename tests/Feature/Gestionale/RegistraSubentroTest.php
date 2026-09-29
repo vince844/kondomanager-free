@@ -1007,6 +1007,31 @@ it('decisione 24 (S8-11) — il ruolo di una riga agganciata a un passaggio regi
     expect(DB::table('anagrafica_immobile')->where('id', $rigaLibera)->value('tipologia'))->toBe('usufruttuario');
 });
 
+it('decisione 24, rilievo B7 della beta.38 — le righe che il passaggio ha scritto senza esserne l\'uscente né l\'entrante sono nel suo registro, e il loro ruolo non si cambia: il proprietario che resta nudo nella costituzione', function () {
+    $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
+    $this->actingAs($this->user)->post($this->rotta, [
+        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $this->bianchi->id,
+        'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [],
+    ])->assertRedirect();
+    $rigaNudo = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $this->rossi->id)->where('tipologia', 'nuda_proprietario')->value('id');
+
+    $this->actingAs($this->user)->putJson(route('admin.gestionale.immobili.anagrafiche.update', [$this->condominio, $this->immobile, $rigaNudo]), ['anagrafica_id' => $this->rossi->id, 'tipologia' => 'proprietario', 'quota' => 100, 'data_inizio' => '2026-05-01', 'data_fine' => null, 'note' => null])
+        ->assertUnprocessable()->assertJsonValidationErrors('tipologia');
+    expect(DB::table('anagrafica_immobile')->where('id', $rigaNudo)->value('tipologia'))->toBe('nuda_proprietario')
+        ->and(\App\Models\TitolaritaImmobile::findOrFail($rigaNudo)->faParteDiUnPassaggio())->toBeTrue();
+});
+
+it('decisione 24, rilievo B7 della beta.38 — nella vendita al comproprietario la riga di prima di chi compra, chiusa dal passaggio, non cambia ruolo: l\'annullamento la riaprirebbe con il ruolo sbagliato', function () {
+    $rigaRossi = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03', null, 50);
+    $rigaBianchi = rsRiga($this->immobile, $this->bianchi, 'proprietario', '2019-03-03', null, 50);
+    $this->actingAs($this->user)->post($this->rotta, rsVendita($rigaRossi, $this->bianchi, ['quota' => 50]))->assertRedirect();
+    expect(DB::table('anagrafica_immobile')->where('id', $rigaBianchi)->value('data_fine'))->toBe('2026-04-30');
+
+    $this->actingAs($this->user)->putJson(route('admin.gestionale.immobili.anagrafiche.update', [$this->condominio, $this->immobile, $rigaBianchi]), ['anagrafica_id' => $this->bianchi->id, 'tipologia' => 'inquilino', 'quota' => 50, 'data_inizio' => '2019-03-03', 'data_fine' => '2026-04-30', 'note' => null])
+        ->assertUnprocessable()->assertJsonValidationErrors('tipologia');
+    expect(DB::table('anagrafica_immobile')->where('id', $rigaBianchi)->value('tipologia'))->toBe('proprietario');
+});
+
 it('S8-21 — nella vendita chi entra ha il ruolo di chi esce: nuda → proprietario pieno e proprietario → nuda rispondono 422 con la via che esiste; nuda → nuda passa', function () {
     $neri = rsPersona($this->condominio, 'Neri Paolo');
     $rigaNudo = rsRiga($this->immobile, $this->rossi, 'nuda_proprietario', '2020-01-01');
@@ -1021,12 +1046,17 @@ it('S8-21 — nella vendita chi entra ha il ruolo di chi esce: nuda → propriet
 
     $this->actingAs($this->user)->postJson($anteprima, rsVendita($rigaNudo, $this->bianchi, ['tipologia' => 'nuda_proprietario']))->assertOk();
 
-    // Piena → nuda: la riserva d'usufrutto non ha ancora una via (B3), e il messaggio dice quale strada esiste.
+    // Piena → nuda senza dichiararla: dalla 1.11.0-beta.38 la riserva d'usufrutto ha una via, ma non si deduce
+    // (decisione 28): il messaggio dice come dichiararla. La registrazione vera è in RiservaUsufruttoTest.
     $altra = Immobile::forceCreate(['condominio_id' => $this->condominio->id, 'nome' => 'Interno 4', 'descrizione' => 'Appartamento', 'interno' => '4']);
     $rigaPieno = rsRiga($altra, $this->rossi, 'proprietario', '2019-03-03');
     $r2 = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $altra]), rsVendita($rigaPieno, $this->bianchi, ['tipologia' => 'nuda_proprietario']));
     $r2->assertUnprocessable()->assertJsonValidationErrors('tipologia');
-    expect($r2->json('errors.tipologia.0'))->toContain('riserva d\'usufrutto')->toContain('non è ancora prevista');
+    expect($r2->json('errors.tipologia.0'))->toContain('vendita o donazione con riserva d\'usufrutto')->toContain('spunta «Chi vende o dona resta usufruttuario»')
+        // Testi T6 della beta.38: la via a mano non vale quanto un passaggio — le righe aperte da «Associa soggetto» non
+        // hanno un predecessore e per il riparto valgono da sempre (D7 stretto, decisione 23).
+        ->toContain('senza conguaglio automatico. Per il riparto le righe aperte da «Associa soggetto» valgono da sempre: un piano generato o ricalcolato dopo addebita all\'usufruttuario le sue voci anche per i mesi prima dell\'atto')
+        ->not->toContain('non è ancora prevista');
 });
 
 it('S8-23 — la copia autentica non può essere stata ricevuta in un giorno futuro: 422 su anteprima e registrazione, con il testo del PATCH dallo storico', function () {

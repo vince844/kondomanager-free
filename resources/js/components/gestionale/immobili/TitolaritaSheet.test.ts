@@ -131,3 +131,41 @@ describe('TitolaritaSheet — annullare un passaggio', () => {
         spia.mockRestore();
     });
 });
+
+describe('TitolaritaSheet — la vendita o donazione con riserva d\'usufrutto (beta.38)', () => {
+    // Testi T8: «o donazione», come il tipo di base — la donazione della nuda proprietà è il caso più frequente.
+    test('lo storico la chiama con il suo nome, non «Vendita o donazione · riserva_usufrutto»', () => {
+        const testo = monta(passaggio({ sottotipo: 'riserva_usufrutto' })).text();
+        expect(testo).toContain('Vendita o donazione con riserva d\'usufrutto');
+        expect(testo).not.toContain('riserva_usufrutto');
+    });
+
+    test('una vendita senza riserva resta «Vendita o donazione»', () => {
+        const testo = monta(passaggio()).text();
+        expect(testo).toContain('Vendita o donazione');
+        expect(testo).not.toContain('riserva');
+    });
+
+    // Testi T7: la riga toccata dal passaggio si chiama come il passaggio, con la stessa funzione.
+    function riga(subentro: Record<string, unknown>, id = 31): any {
+        return {
+            id, anagrafica: { id: 5, nome: 'Venditore Ugo', codice_fiscale: null }, tipologia: 'usufruttuario', diritto: 'Usufrutto', quota: 100, attivo: true,
+            data_inizio: '2026-05-01', data_fine: null, in_corso: true, futuro: false, periodo: 'dal 1 maggio 2026 · in corso', durata: '4 mesi', note: null,
+            subentro: { tipo_passaggio: 'vendita', sottotipo: null, decorrenza: '2026-05-01', estremi_titolo: 'atto notaio Verdi, rep. 777', copia_autentica_il: null,
+                ruolo_nel_passaggio: 'continuazione', documento_url: null, nota_conguaglio: null, ...subentro },
+        };
+    }
+
+    test('le righe toccate dalla riserva hanno il nome del passaggio, non «vendita o donazione»', () => {
+        const testo = monta(passaggio(), { subentri: [], gruppi: [{ diritto: 'Usufrutto', righe: [riga({ sottotipo: 'riserva_usufrutto' })] }] }).text();
+        expect(testo).toContain('Vendita o donazione con riserva d\'usufrutto, atto notaio Verdi, rep. 777');
+        expect(testo).not.toContain('riserva_usufrutto');
+    });
+
+    test('la riga di una vendita senza riserva dice «Vendita o donazione», quella di una costituzione «Usufrutto · costituzione», come i loro passaggi', () => {
+        const testo = monta(passaggio(), { subentri: [], gruppi: [{ diritto: 'Proprietà', righe: [riga({}), riga({ tipo_passaggio: 'usufrutto', sottotipo: 'costituzione', estremi_titolo: 'rep. 9' }, 32)] }] }).text();
+        expect(testo).toContain('Vendita o donazione, atto notaio Verdi, rep. 777');
+        expect(testo).toContain('Usufrutto · costituzione, rep. 9');
+        expect(testo).not.toContain('riserva');
+    });
+});

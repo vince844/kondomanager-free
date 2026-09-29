@@ -101,9 +101,10 @@ class ImmobileAnagraficaController extends Controller
                 fn ($a, $b) => strcmp((string) $a->nome, (string) $b->nome),
             ])
             ->values());
-        // Decisione 24: quali righe fanno parte di un passaggio registrato (il ruolo non si cambia) — una query.
-        $passaggi = Subentro::where('immobile_id', $immobile->id)->get(['riga_uscente_id', 'riga_entrante_id', 'tipologia', 'decorrenza', 'tipo_passaggio']);
-        $agganciate = $passaggi->flatMap(fn ($s) => [$s->riga_uscente_id, $s->riga_entrante_id])->filter()->map(fn ($id) => (int) $id)->flip()->all();
+        // Decisione 24: quali righe fanno parte di un passaggio registrato (il ruolo non si cambia) — una query. Con le
+        // righe del registro, come `faParteDiUnPassaggio()` (rilievo B7 della beta.38).
+        $passaggi = Subentro::where('immobile_id', $immobile->id)->get(['riga_uscente_id', 'riga_entrante_id', 'tipologia', 'decorrenza', 'tipo_passaggio', 'registro']);
+        $agganciate = $passaggi->flatMap(fn ($s) => [$s->riga_uscente_id, $s->riga_entrante_id, ...$s->righeDelRegistro()])->filter()->map(fn ($id) => (int) $id)->flip()->all();
         $triple = $passaggi->where('tipo_passaggio', 'usufrutto')->map(fn ($s) => $s->tipologia . '|' . $s->decorrenza->toDateString())->flip()->all();
         $immobile->anagrafiche->each(fn ($a) => $a->pivot->setAttribute('agganciata_a_passaggio',
             isset($agganciate[(int) $a->pivot->id]) || ($a->pivot->data_inizio !== null && isset($triple[$a->pivot->tipologia . '|' . $a->pivot->data_inizio->toDateString()]))));
@@ -300,8 +301,9 @@ class ImmobileAnagraficaController extends Controller
         }
 
         // Decisione 24 (S8-11): il ruolo di una riga agganciata a un passaggio registrato (`subentri`, come uscente o
-        // entrante) è la chiave con cui il motore ritrova chi c'era prima (D7: il predecessore è sulla stessa
-        // tipologia) e con cui il passaggio dice cosa è passato: cambiarlo scollegherebbe il passaggio in silenzio.
+        // entrante, o nel suo registro: rilievo B7 della beta.38) è la chiave con cui il motore ritrova chi c'era
+        // prima (D7: il predecessore è sulla stessa tipologia) e con cui il passaggio dice cosa è passato: cambiarlo
+        // scollegherebbe il passaggio in silenzio.
         $ruoloCambiato = (string) $data['tipologia'] !== (string) $titolarita->tipologia;
         if ($ruoloCambiato && $titolarita->faParteDiUnPassaggio()) {
             throw ValidationException::withMessages([

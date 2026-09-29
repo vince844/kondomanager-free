@@ -184,7 +184,8 @@ class PassaggioController extends Controller
     /**
      * La copia autentica del titolo, registrata **dopo** il passaggio (S6, voce 7). Da quel giorno chi ha
      * venduto è liberato per i contributi successivi (art. 63 co. 5 disp. att. c.c.), e la frase «finché non
-     * la ricevi» del vademecum si spegne da sola: il testo si ricalcola dai fatti, non si riscrive.
+     * la ricevi» del vademecum si spegne da sola: il testo si ricalcola dai fatti, non si riscrive. Nella vendita con
+     * riserva d'usufrutto chi vende non è liberato (decisione 28.3): resta usufruttuario.
      */
     public function copiaAutentica(Request $request, Condominio $condominio, Immobile $immobile, Subentro $subentro): RedirectResponse
     {
@@ -213,6 +214,16 @@ class PassaggioController extends Controller
         $giorno = CarbonImmutable::parse($dati['copia_autentica_il'])->toDateString();
         $subentro->update(['copia_autentica_il' => $giorno]);
         $subentro->pertinenze()->update(['copia_autentica_il' => $giorno]);
+
+        // Vendita con riserva d'usufrutto (decisione 28.3, testi T1 della Fase 1-bis della beta.38): la copia si registra
+        // come per ogni vendita, ma non libera chi vende, che resta usufruttuario: lo dice come il vademecum (`FrasiObbligati`).
+        if ($subentro->riservaUsufrutto()) {
+            return back()->with($this->flashSuccess(sprintf(
+                'Copia autentica registrata, ricevuta il %s: per i contributi successivi %s non è liberato, perché resta usufruttuario e risponde in solido con il nudo proprietario (art. 67 ult. co. disp. att. c.c.).',
+                CarbonImmutable::parse($giorno)->locale('it')->translatedFormat('j F Y'),
+                $subentro->uscente?->nome ?? 'chi ha venduto',
+            )));
+        }
 
         return back()->with($this->flashSuccess(sprintf(
             'Copia autentica registrata: dal %s %s è liberato verso il condominio per i contributi successivi (art. 63 co. 5 disp. att. c.c.).',

@@ -76,11 +76,22 @@ class TitolaritaImmobile extends Pivot
      * La riga fa parte di un passaggio registrato: come uscente, come entrante, oppure è entrata con la stessa
      * decorrenza e tipologia di un passaggio su questa unità — `riga_entrante_id` è una colonna sola, e
      * nell'estinzione dell'usufrutto con più nudi il record ne nomina uno (decisione 24; verifica S8-bis, L2-2).
-     * È la stessa regola con cui `RisolutoreTitolari` riconosce il predecessore (D7 stretto, via b).
+     * ➕ Rilievo B7 della beta.38: oppure il passaggio l'ha scritta, e il suo registro la nomina per id — chi vende e
+     * resta usufruttuario nella riserva, il proprietario che resta nudo nella costituzione, la riga di prima del
+     * comproprietario che compra l'altra metà (chiusa dal passaggio: l'annullamento la riaprirebbe col ruolo cambiato).
+     * Uscente, entrante e tripla restano per i passaggi di prima della beta.37, che non hanno il registro.
+     * Il registro qui conta e in `RisolutoreTitolari` (D7 stretto, via b) no: là deciderebbe il riparto.
      */
     public function faParteDiUnPassaggio(): bool
     {
         if ($this->subentriComeUscente()->exists() || $this->subentriComeEntrante()->exists()) {
+            return true;
+        }
+
+        // Dallo scope del modello, senza i passaggi annullati: su MySQL 5.7 l'id di una riga che l'annullamento ha
+        // cancellato può tornare, dopo un riavvio, su una riga nuova.
+        if (Subentro::where('immobile_id', $this->immobile_id)->whereNotNull('registro')->get(['registro'])
+            ->contains(fn (Subentro $s) => in_array((int) $this->id, $s->righeDelRegistro(), true))) {
             return true;
         }
 

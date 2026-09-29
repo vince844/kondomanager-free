@@ -43,7 +43,12 @@ const TITOLI_PASSAGGIO: Record<string, string> = {
   usufrutto: 'Usufrutto',
 };
 
-function titoloPassaggio(p: PassaggioRegistrato): string {
+/**
+ * Il nome del passaggio, per la sezione dei passaggi e per le righe che ha toccato (testi T7 della beta.38). La riserva
+ * dice anche la donazione, come il tipo di base: la donazione della nuda proprietà è il caso più frequente (testi T8).
+ */
+function titoloPassaggio(p: Pick<PassaggioRegistrato, 'tipo_passaggio' | 'sottotipo'>): string {
+  if (p.tipo_passaggio === 'vendita' && p.sottotipo === 'riserva_usufrutto') return 'Vendita o donazione con riserva d\'usufrutto';
   const base = TITOLI_PASSAGGIO[p.tipo_passaggio] ?? p.tipo_passaggio;
   return p.sottotipo ? `${base} · ${p.sottotipo}` : base;
 }
@@ -122,13 +127,6 @@ function tratto(r: RigaStorico): string {
   if (r.futuro) return '○———';
   return r.in_corso || !r.data_fine ? '●———' : '●——●';
 }
-
-const TIPI: Record<string, string> = {
-  vendita: 'vendita o donazione',
-  inizio_locazione: 'inizio locazione',
-  fine_locazione: 'fine locazione',
-  usufrutto: 'usufrutto',
-};
 </script>
 
 <template>
@@ -283,7 +281,7 @@ const TIPI: Record<string, string> = {
                   <p v-if="r.subentro" class="flex items-start gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                     <FileSignature class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
-                      {{ TIPI[r.subentro.tipo_passaggio] ?? r.subentro.tipo_passaggio }}<template v-if="r.subentro.estremi_titolo">, {{ r.subentro.estremi_titolo }}</template><template v-if="r.subentro.copia_autentica_il"> · copia autentica ricevuta il {{ r.subentro.copia_autentica_il }}</template>
+                      {{ titoloPassaggio(r.subentro) }}<template v-if="r.subentro.estremi_titolo">, {{ r.subentro.estremi_titolo }}</template><template v-if="r.subentro.copia_autentica_il"> · copia autentica ricevuta il {{ r.subentro.copia_autentica_il }}</template>
                       <template v-if="r.subentro.documento_url"> · <a :href="r.subentro.documento_url" class="text-indigo-600 dark:text-indigo-400 hover:underline">titolo (PDF)</a></template>
                       <template v-if="r.subentro.nota_conguaglio"> · conguaglio regolato fra le parti: «{{ r.subentro.nota_conguaglio }}»</template>
                     </span>

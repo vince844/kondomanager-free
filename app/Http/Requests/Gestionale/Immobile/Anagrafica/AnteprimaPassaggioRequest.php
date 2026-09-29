@@ -44,7 +44,9 @@ class AnteprimaPassaggioRequest extends FormRequest
 
         return [
             'tipo' => ['required', Rule::in(Subentro::TIPI_PASSAGGIO)],
-            'sottotipo' => ['nullable', 'required_if:tipo,usufrutto', Rule::in(['costituzione', 'estinzione'])],
+            // L'usufrutto ha due forme; la vendita una sola, la riserva d'usufrutto (beta.38, decisione 28), che si
+            // dichiara e non si deduce. I sottotipi di un tipo non valgono per l'altro.
+            'sottotipo' => ['nullable', 'required_if:tipo,usufrutto', Rule::in($tipo === 'vendita' ? [Subentro::RISERVA_USUFRUTTO] : ['costituzione', 'estinzione'])],
             'riga_uscente_id' => [
                 // L'inizio di una locazione non ha chi esce (S8-20): una riga qui chiuderebbe il proprietario.
                 Rule::prohibitedIf(fn () => $tipo === 'inizio_locazione'),
@@ -162,14 +164,40 @@ class AnteprimaPassaggioRequest extends FormRequest
             }
 
             // S8-21: nella vendita chi entra ha il ruolo di chi esce. Nuda → piena farebbe entrare come proprietario
-            // pieno chi ha comprato solo la nuda (la quota ordinaria andrebbe a lui, art. 1004 c.c.); piena → nuda è la
-            // vendita con riserva d'usufrutto, che non ha ancora una sua via (B3): si dice quale strada esiste.
-            if ($uscente !== null && (string) $this->input('tipo') === 'vendita' && $this->filled('tipologia')
+            // pieno chi ha comprato solo la nuda (la quota ordinaria andrebbe a lui, art. 1004 c.c.). Piena → nuda è la
+            // vendita con riserva d'usufrutto (beta.38, decisione 28): ha una sua via, ma si dichiara — il programma non
+            // deduce che chi vende resta usufruttuario, e non sceglie al posto dell'amministratore.
+            $riserva = (string) $this->input('tipo') === 'vendita' && (string) $this->input('sottotipo') === Subentro::RISERVA_USUFRUTTO;
+            if ($uscente !== null && ! $riserva && (string) $this->input('tipo') === 'vendita' && $this->filled('tipologia')
                 && (string) $this->input('tipologia') !== (string) $uscente->tipologia
                 && in_array((string) $uscente->tipologia, ['proprietario', 'nuda_proprietario'], true)) {
                 $v->errors()->add('tipologia', (string) $uscente->tipologia === 'nuda_proprietario'
                     ? 'Chi vende la nuda proprietà la passa come nuda proprietà: chi compra entra come nudo proprietario. Se nello stesso atto si estingue anche l\'usufrutto, registra poi «Usufrutto → estinzione» con la stessa data.'
-                    : 'Nella vendita chi entra ha il ruolo di chi esce. La vendita con riserva d\'usufrutto (chi vende resta usufruttuario, chi compra è nudo proprietario) non è ancora prevista: registrala a mano — chiudi la riga di chi vende con una data di fine da «Modifica», poi da «Associa soggetto» apri chi compra come nudo proprietario e chi vende come usufruttuario — senza conguaglio automatico.');
+                    // Testi T6 della beta.38: la via a mano non vale quanto un passaggio. Le righe aperte da «Associa soggetto» non
+                    // hanno un predecessore e per il riparto valgono da sempre (D7 stretto, decisione 23). Testi T8: «o dona».
+                    : 'Nella vendita chi entra ha il ruolo di chi esce. Se chi vende o dona si tiene l\'usufrutto, è una vendita o donazione con riserva d\'usufrutto: spunta «Chi vende o dona resta usufruttuario». Se l\'usufrutto va a un\'altra persona, registrala a mano — chiudi la riga di chi vende con una data di fine da «Modifica associazione», poi da «Associa soggetto» apri chi compra come nudo proprietario e l\'usufruttuario — senza conguaglio automatico. Per il riparto le righe aperte da «Associa soggetto» valgono da sempre: un piano generato o ricalcolato dopo addebita all\'usufruttuario le sue voci anche per i mesi prima dell\'atto.');
+            }
+
+            // La riserva d'usufrutto (decisione 28): da un proprietario pieno, sulla sua quota intera — con meno
+            // resterebbe un usufrutto su tutta la quota e una nuda proprietà su una parte, e il resto di nessuno —, e chi
+            // compra entra nudo proprietario.
+            if ($riserva && $uscente !== null) {
+                if ((string) $uscente->tipologia !== 'proprietario') {
+                    $v->errors()->add('sottotipo', sprintf(
+                        'La riserva d\'usufrutto si dichiara quando vende un proprietario pieno: %s è %s, e non ha un usufrutto da riservarsi.',
+                        $uscente->anagrafica?->nome ?? 'chi vende',
+                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? (string) $uscente->tipologia),
+                    ));
+                }
+                if ($this->filled('tipologia') && (string) $this->input('tipologia') !== 'nuda_proprietario') {
+                    $v->errors()->add('tipologia', 'Nella vendita o donazione con riserva d\'usufrutto chi compra entra come nudo proprietario: chi vende resta usufruttuario.');
+                }
+                if ($this->filled('quota') && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
+                    $v->errors()->add('quota', sprintf(
+                        'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (%s %%): chi vende resta usufruttuario sulla stessa quota.',
+                        rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
+                    ));
+                }
             }
 
             // Nella locazione e nell'usufrutto chi entra non è già titolare dell'unità: un proprietario non

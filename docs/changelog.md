@@ -7,6 +7,77 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.38] - Chi vende resta, da usufruttuario
+
+**Non tocca il database.** Un tema: la vendita o donazione della nuda proprietà con riserva d'usufrutto, il caso dei
+genitori che donano la casa ai figli e continuano ad abitarci. E alcuni cambi di comportamento che valgono anche fuori
+dalla riserva, detti qui in testa.
+
+**Cambia anche fuori dalla riserva.**
+- Il pannello «Cosa cambierà» non chiede la spunta quando nessuna quota cambia persona. Le quote che restano a chi le ha —
+  per legge (l'ordinaria dell'usufruttuario, la straordinaria del nudo proprietario), perché sono di soli saldi pregressi,
+  o perché la spesa è tutta di chi vende — compaiono nel riquadro «Quote che questo passaggio non tocca», senza spunta.
+  Vale anche per la costituzione e l'estinzione dell'usufrutto, la vendita della sola nuda proprietà e la vendita piena.
+- La frase della costituzione d'usufrutto su chi resta obbligato era sbagliata: diceva che verso il condominio si
+  risponde «secondo la natura della spesa». Dal 2013 nudo proprietario e usufruttuario rispondono in solido (art. 67 ult.
+  co. disp. att. c.c.); la natura della spesa conta fra di loro. Cambia anche nello storico delle costituzioni già
+  registrate.
+- La nota di solidarietà: nella vendita della sola nuda proprietà nomina anche l'usufruttuario e l'art. 67, per nome solo
+  quando il programma sa con certezza su quale quota sta l'usufrutto; una vendita datata nell'anno prima ha la nota anche
+  se è registrato solo l'esercizio in corso; «nessuna quota è intestata a chi compra» dice l'eccezione dei saldi intestati
+  all'unità, che si addebitano quando si genera il piano.
+- Da «Modifica associazione» non si cambia più il ruolo di una riga che un passaggio ha toccato, anche chiusa e anche dei
+  passaggi già registrati con la versione precedente; quota, date e note sì. Per correggere il ruolo si annulla il
+  passaggio.
+- L'annullamento di un passaggio non avvisa più a vuoto per un consuntivo dell'anno prima generato dopo: quando il piano
+  ha il dettaglio del riparto, decide il riparto.
+- Nello storico le righe portano il nome del passaggio con la maiuscola, e l'usufrutto dice «Usufrutto · costituzione» o
+  «Usufrutto · estinzione».
+- L'esempio nella nota del cancello diceva «conguaglio concordato fra le parti», e chi lo seguiva scriveva la rinuncia
+  nella nota senza spuntarla: la coppia finiva nei saldi. Ora l'esempio è neutro.
+
+**La casella.** Nel modulo della vendita, «Chi vende o dona resta usufruttuario». Chi vende resta sulla stessa quota come
+usufruttuario, chi compra entra nudo proprietario; la quota è quella intera di chi vende, e la riserva si dichiara solo da
+un proprietario pieno. Nello storico il passaggio si chiama «Vendita o donazione con riserva d'usufrutto», e si annulla
+come ogni altro. L'usufrutto a una persona diversa da chi vende resta rifiutato: si registra a mano, e il messaggio ora
+dice anche che le righe aperte a mano valgono da sempre per il riparto.
+
+**Chi paga cosa.** Nelle rate già emesse e nelle bozze dei piani già emessi l'ordinaria resta a chi vende, che è
+usufruttuario (art. 1004 c.c.): non si conguaglia. La straordinaria segue la competenza — la data della delibera, o
+quella dichiarata sulla fattura — e dal giorno dell'atto è del nudo proprietario (art. 1005 c.c.). Un piano generato o
+ricalcolato dopo l'atto addebita invece secondo i coefficienti della tabella: le voci sul «Proprietario» vanno a chi
+compra la nuda proprietà. Perché l'ordinaria resti a chi vende, la voce va su «Usufruttuario», non su «Inquilino», che su
+un'unità affittata la farebbe pagare all'inquilino. Il pannello lo dice quando lo legge nel riparto di un piano non ancora
+emesso.
+
+**Chi resta obbligato.** Dal giorno dell'atto nudo proprietario e usufruttuario rispondono in solido verso il condominio
+(art. 67 ult. co.). Se chi compra la nuda proprietà risponda anche dell'arretrato di chi vende (art. 63 co. 4) la
+giurisprudenza non l'ha chiarito: il programma lo dice, e decide l'amministratore. La copia autentica si registra come in
+ogni vendita, ma non libera chi vende, che resta usufruttuario. La nota di solidarietà tiene separati l'arretrato e le
+quote successive all'atto.
+
+**I due genitori.** La seconda riserva sulla stessa unità — l'altro genitore che dona la propria metà — si somma alla
+prima, come nella vendita normale. Registrate tutte e due, l'unità torna coerente.
+
+**I limiti, detti.**
+- Un'unità in parte in piena proprietà e in parte in nuda proprietà e usufrutto (la riserva di un solo comproprietario,
+  con l'altro che resta proprietario pieno): i piani generati o ricalcolati non la sanno dividere, e il pannello lo avvisa
+  con nomi e quote. Si corregge prima della 1.11 stabile.
+- Nelle unità in usufrutto l'ordinaria sulle voci «Proprietario» va al nudo proprietario nei piani, mentre il conguaglio
+  sulle rate emesse la dà all'usufruttuario: si porta a una regola sola prima della 1.11 stabile, dopo aver sentito gli
+  amministratori sul forum.
+- Un saldo intestato all'unità, in un piano generato dopo un passaggio, va a chi è titolare quando si genera il piano: da
+  decidere prima della stabile. Le frasi ora lo dicono.
+- La vendita di una parte della propria quota non è prevista, e «La quota cambia» oggi la lascia registrare in modo
+  sbagliato: da decidere prima della stabile.
+- Quando muore uno dei due genitori usufruttuari, a chi va la sua parte d'usufrutto (l'accrescimento) arriva con la
+  successione.
+
+**Per chi sviluppa.** Un file di test nuovo e permanente, `InvariantiPassaggiTest`, controlla su tutte le combinazioni
+dei passaggi le regole che non devono mai rompersi: il passaggio non cambia il totale dell'unità, le coppie del
+conguaglio sommano a zero, l'anteprima è ciò che si scrive, l'annullamento rimette tutto com'era. Un tipo di passaggio
+nuovo si aggiunge all'elenco degli scenari con poche righe.
+
 ## [1.11.0-beta.37] - Il passaggio sbagliato si annulla
 
 **Tocca il database: quattro colonne nuove su `subentri`** (`annullato_il`, `annullato_da`, `nota_annullamento`,

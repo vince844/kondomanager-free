@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * Un passaggio di titolarità registrato: l'evento datato con un autore (tabella `subentri`, B2).
@@ -27,6 +28,14 @@ class Subentro extends Model
     protected $table = 'subentri';
 
     public const TIPI_PASSAGGIO = ['vendita', 'inizio_locazione', 'fine_locazione', 'usufrutto'];
+
+    /**
+     * La vendita con riserva d'usufrutto (1.11.0-beta.38, decisione 28): una **vendita** — per la solidarietà, la copia
+     * autentica e la regola delle straordinarie — in cui chi vende resta sulla stessa quota come usufruttuario. Il
+     * marcatore sta nel `registro` e non in una colonna: nessun passaggio registrato prima può esserlo, perché fino alla
+     * beta.38 la riserva era rifiutata.
+     */
+    public const RISERVA_USUFRUTTO = 'riserva_usufrutto';
 
     protected $fillable = [
         'condominio_id', 'immobile_id', 'subentro_padre_id', 'anagrafica_uscente_id', 'anagrafica_entrante_id',
@@ -68,6 +77,34 @@ class Subentro extends Model
     public function annullato(): bool
     {
         return $this->annullato_il !== null;
+    }
+
+    /** L'unico punto che dice se questo passaggio è una vendita con riserva d'usufrutto: vedi `RISERVA_USUFRUTTO`. */
+    public function riservaUsufrutto(): bool
+    {
+        return $this->tipo_passaggio === 'vendita' && ($this->registro['sottotipo'] ?? null) === self::RISERVA_USUFRUTTO;
+    }
+
+    /**
+     * La stessa domanda di `riservaUsufrutto()` in SQL, per chi legge `subentri` senza il modello: `RisolutoreTitolari`,
+     * nelle sue due forme (D7 via b, rilievo B4 della Fase 1-bis). `$tabella` è il nome con cui `subentri` compare nella
+     * query.
+     */
+    public static function vincolaRiservaUsufrutto(QueryBuilder $query, string $tabella = 'subentri'): QueryBuilder
+    {
+        return $query->where("{$tabella}.tipo_passaggio", 'vendita')->where("{$tabella}.registro->sottotipo", self::RISERVA_USUFRUTTO);
+    }
+
+    /**
+     * Gli id delle righe di titolarità che il passaggio ha scritto — chiuse, aperte o modificate —, letti dal registro
+     * (1.11.0-beta.37). Vuoto per un passaggio registrato prima, che il registro non l'ha. Lo leggono le due forme della
+     * decisione 24 (`TitolaritaImmobile::faParteDiUnPassaggio()` e l'elenco dei titolari), rilievo B7 della beta.38.
+     *
+     * @return list<int>
+     */
+    public function righeDelRegistro(): array
+    {
+        return collect($this->registro['righe'] ?? [])->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
     }
 
     public function condominio(): BelongsTo { return $this->belongsTo(Condominio::class); }
