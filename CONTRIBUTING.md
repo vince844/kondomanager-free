@@ -70,6 +70,8 @@ If you find a bug or have a suggestion:
 3. Include steps to reproduce (for bugs)
 4. Add relevant screenshots if applicable
 
+Please do not report security vulnerabilities in public issues: follow [SECURITY.md](SECURITY.md) instead.
+
 ## Pull Request Guidelines
 
 - Keep PRs focused on a single feature or fix
@@ -77,9 +79,13 @@ If you find a bug or have a suggestion:
 - Reference related issues in your PR description
 - Be responsive to feedback and comments
 
+## Contributor License Agreement
+
+Before we can merge your first pull request, you need to sign our [Contributor License Agreement](https://cla-assistant.io/vince844/kondomanager-free). CLA assistant asks you automatically when you open a pull request, and you sign only once. You keep the copyright in your work, and every contribution we use remains available under the AGPL-3.0-or-later (section 5 of the agreement).
+
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [AGPL-3.0 License](https://github.com/vince844/kondomanager-free?tab=AGPL-3.0-1-ov-file#readme).
+KondoManager is licensed under the [AGPL-3.0-or-later](https://github.com/vince844/kondomanager-free?tab=AGPL-3.0-1-ov-file#readme).
 
 ## Questions?
 
