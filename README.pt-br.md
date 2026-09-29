@@ -302,7 +302,7 @@ php artisan tinker
 
 Quem quiser contribuir para fazer crescer o projeto é sempre bem-vindo!
 
-Para poder contribuir, recomenda-se seguir as indicações descritas na [documentação oficial](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). Se quiser contribuir ativamente com melhorias simples ou correções, pode [procurar entre as issues](https://github.com/vince844/kondomanager-free/issues) abertas.
+Para poder contribuir, recomenda-se seguir as indicações descritas no [guia de contribuição](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING.md). No seu primeiro pull request, ser-lhe-á pedido que assine o [Contributor License Agreement](https://cla-assistant.io/vince844/kondomanager-free): o CLA assistant pede-o automaticamente e só é preciso assiná-lo uma vez. Se quiser contribuir ativamente com melhorias simples ou correções, pode [procurar entre as issues](https://github.com/vince844/kondomanager-free/issues) abertas.
 
 ---
 
@@ -317,6 +317,7 @@ Desenvolver software de código aberto requer muito empenho e dedicação. Ficar
 ## Feedback & Suporte
 
 - **Feedback:** Utilize a secção ["Issues" ou "Discussions"](https://github.com/vince844/kondomanager-free/issues) deste repositório.
+- **Vulnerabilidades de segurança:** Não abra uma issue pública; comunique-as em privado, como explicado em [SECURITY.md](https://github.com/vince844/kondomanager-free/blob/main/SECURITY.md).
 - **Suporte:** Para pedidos de personalização ou suporte dedicado, utilize o [formulário de contacto](https://dev.karibusana.org/gestionale-condominio-contatti.html) no site oficial.
 
 ---

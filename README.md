@@ -374,7 +374,7 @@ Il forum è il posto giusto per:
 
 Chi volesse contribuire a far crescere il progetto è sempre il benvenuto!
 
-Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). 
+Per poter contribuire, si consiglia di seguire le indicazioni descritte nella [guida per chi contribuisce](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING.md). Alla tua prima pull request ti verrà chiesto di firmare il [Contributor License Agreement](https://cla-assistant.io/vince844/kondomanager-free): lo propone in automatico CLA assistant, e si firma una volta sola.
 Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte oppure apri un nuovo argomento sul [Forum ufficiale KondoManager](https://kondomanager.short.gy/km-forum)
 
 ---
@@ -391,6 +391,7 @@ Sviluppare un software open source richiede molto impegno e dedizione. Ti sarò 
 
 - **Community:** Unisciti al [forum ufficiale](https://kondomanager.short.gy/km-forum) per confrontarti con altri utenti e ricevere supporto dalla community.
 - **Bug e richieste:** Usa la sezione ["Issues" o "Discussions"](https://github.com/vince844/kondomanager-free/issues) di questa repository.
+- **Vulnerabilità di sicurezza:** Non aprire una issue pubblica; segnalale in privato come spiegato in [SECURITY.md](https://github.com/vince844/kondomanager-free/blob/main/SECURITY.md).
 - **Supporto dedicato:** Per richieste di personalizzazione o supporto professionale, usa il [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) sul sito ufficiale.
 
 ---
