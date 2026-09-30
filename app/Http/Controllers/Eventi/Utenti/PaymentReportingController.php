@@ -18,7 +18,7 @@ class PaymentReportingController extends Controller
 
     public function __invoke(Request $request, Evento $evento)
     {
-        $this->authorize('view', $evento);
+        $this->authorize('reportPayment', $evento);
 
         $currentStatus = $evento->meta['status'] ?? 'pending';
 

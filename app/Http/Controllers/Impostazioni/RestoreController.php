@@ -13,6 +13,7 @@ use App\Services\Restore\Exceptions\InvalidArchivePasswordException;
 use App\Services\Restore\Exceptions\MalformedArchiveException;
 use App\Services\Restore\Exceptions\RestoreInProgressException;
 use App\Services\Restore\RestoreManager;
+use App\Services\Restore\RestoreMode;
 use App\Services\Restore\RestorePreflight;
 use App\Services\Restore\RestoreState;
 use App\Settings\BackupSettings;
@@ -20,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -196,18 +198,39 @@ class RestoreController extends Controller
 
         abort_if($state === null, 404);
 
+        // Il recupero ha senso solo mentre l'applicazione è bloccata: la pagina 503 e i pulsanti
+        // dell'overlay esistono solo con la modalità ripristino attiva (un ripristino fallito la
+        // lascia accesa). Fino alla 1.11.0-beta.38 lo stato restava su file anche dopo un ripristino
+        // completato o annullato, e questa rotta — senza login, senza CSRF — diventava per sempre un
+        // modo per provare la password dell'amministratore aggirando il blocco del login e il
+        // secondo fattore (giro di sicurezza della 1.11.0-beta.39).
+        abort_unless(app(RestoreMode::class)->active(), 404);
+
         // Via 1 — token valido (overlay admin ancora aperto)
         $token = $request->header('X-Restore-Token') ?? $request->input('token');
         if ($token !== null && $stateStore->validateToken($token)) {
             return;
         }
 
-        // Via 2 — password dell'account che ha avviato il ripristino
+        // Via 2 — password dell'account che ha avviato il ripristino. Senza login e senza CSRF: al
+        // massimo cinque password sbagliate al minuto per indirizzo, contate solo qui, dopo la via
+        // del token, così chi prova password non blocca l'amministratore che ha il token
+        // (1.11.0-beta.39). Il tentativo si conta PRIMA della verifica e si restituisce se la
+        // password è giusta: contandolo dopo, dieci richieste in parallelo provavano dieci password
+        // mentre il contatore era ancora a zero.
+        $chiaveLimite = 'ripristino-recupero|'.$request->ip();
+
+        if (RateLimiter::hit($chiaveLimite, 60) > 5) {
+            abort(429);
+        }
+
         $password = (string) $request->input('account_password', '');
         $userId = $state['created_by'] ?? null;
         $user = $userId ? User::find($userId) : null;
 
         if ($password !== '' && $user !== null && Hash::check($password, $user->password)) {
+            RateLimiter::decrement($chiaveLimite, 60);
+
             return;
         }
 

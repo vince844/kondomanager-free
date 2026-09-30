@@ -8,7 +8,6 @@ use App\Exceptions\LimiteCondominiRaggiunto;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Condominio\CreateCondominioRequest;
 use App\Http\Requests\Condominio\UpdateCondominioRequest;
-use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Actions\Condominio\CreaCondominioDimostrativoAction;
@@ -230,11 +229,6 @@ class CondominioController extends Controller
             );
         }
 
-    }
-
-    public function options()
-    {
-        return CondominioOptionsResource::collection(Condominio::all());
     }
 
     /**

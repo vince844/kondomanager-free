@@ -7,6 +7,61 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.39] - Ognuno apre solo le sue porte
+
+**Non tocca il database.** Una beta di sicurezza. Contiene le tre falle segnalate da kta1kri (PR #48), le quattro Code
+trovate nella stessa revisione (183–186) e quello che tre giri di revisione avversariale hanno trovato intorno. Due
+falle si raggiungevano **senza nessun permesso concesso a mano**, e una senza nemmeno il login: conviene aggiornare
+chiunque usi il portale dei condòmini.
+
+**Cambi di comportamento, detti per primi.**
+- Posta, cron e registro delle email si aprono solo con il permesso «Gestisci impostazioni generali», che di serie ha solo
+  l'amministratore. Dalla 1.9.0 alla 1.11.0-beta.38 bastava il login: condòmino, fornitore e collaboratore aprivano le
+  tre pagine digitando l'indirizzo.
+- `/fetch-condomini` risponde solo a chi gestisce (amministratore, collaboratore, chi ha «Accesso pannello
+  amministratore» o «Visualizza condomini»). Condòmini e fornitori ricevono 403.
+- Dal portale un condòmino scarica per id solo i documenti che vede nel suo elenco: pubblicati e approvati, o caricati da
+  lui. Il documento indirizzato a un condòmino resta suo, quello del condominio è di tutto il palazzo. I documenti
+  caricati dalla scheda di un'unità (rogiti, contratti) restano all'amministratore.
+- Riprendi e annulla, nel recupero di un ripristino fallito, rispondono solo mentre il ripristino è in corso, e accettano
+  al massimo cinque password sbagliate al minuto. Chi ha ancora aperta la pagina del ripristino non è toccato dal limite.
+- Per i ruoli su misura **senza** «Accesso pannello amministratore», i permessi di modifica e cancellazione di eventi,
+  comunicazioni, documenti e segnalazioni valgono solo sui record dei propri palazzi. Restano fuori: rate e compiti del
+  gestionale, allegati delle unità, record indirizzati ad altre persone, record che stanno anche in un palazzo altrui.
+  Nell'elenco la matita e il cestino compaiono ancora su quei record e portano a una pagina 403: la correzione è in
+  roadmap. I ruoli di serie non cambiano.
+- Tolta la rotta `/condomini/options`, che nessuna pagina usava.
+
+**Sicurezza.**
+- **Segnalazione di un pagamento** (segnalata da kta1kri). Fino alla beta.38 chiunque avesse «Visualizza eventi» — cioè
+  ogni condòmino e ogni fornitore di serie — poteva segnalare come pagato **qualunque** evento di **qualunque** palazzo,
+  compresi i compiti nascosti dell'amministratore: bastava l'id. Ora la segnalazione la fa solo la persona a cui la rata
+  è intestata, e solo su una rata.
+- **Segnalazioni in un palazzo altrui** (segnalata da kta1kri). Un condòmino poteva aprire una segnalazione in un
+  condominio che non è il suo, indicandone l'id. La stessa lacuna c'era in eventi, documenti e comunicazioni lato
+  condòmino (Coda 184): ora il condominio indicato deve essere uno dei propri.
+- **Elenco dei condomìni** (segnalata da kta1kri). `/fetch-condomini` restituiva a chiunque avesse il login l'elenco di
+  tutti i condomìni dell'installazione.
+- **Posta e cron**. Oltre a leggere destinatari e oggetti di tutte le email e il token del cron, qualunque utente col
+  login poteva farsi mandare la password SMTP salvata su un server suo (test di connessione) e deviare tutta la posta
+  dell'installazione, compreso il link per reimpostare la password dell'amministratore.
+- **Documenti delle unità**. Un condòmino di serie scaricava per id il rogito o il contratto caricato per l'unità di un
+  altro, e i documenti non ancora pubblicati o approvati del suo palazzo.
+- **Ripristino**. Dopo un qualunque ripristino, la rotta di recupero restava aperta per sempre, senza login e senza
+  limite di tentativi: un modo per provare la password dell'amministratore aggirando il blocco del login e il secondo
+  fattore.
+- **Dati personali nella pagina di modifica di un documento** (Coda 183). La pagina mandava al browser l'elenco di tutti
+  i condomìni e di tutte le anagrafiche, con codice fiscale, email e telefono. La pagina non li leggeva.
+- **Permessi concessi da soli** (Coda 185). Con un permesso di modifica o cancellazione concesso senza l'accesso al
+  pannello si toccavano i record di ogni palazzo. Ora vale il limite descritto sopra, fra i cambi di comportamento.
+
+**Per chi sviluppa.** Un test nuovo, `RotteSoloLoginTest`, elenca ogni rotta protetta dal solo login e fallisce quando ne
+compare una nuova senza un motivo scritto, o quando un controllo nel controller sparisce, anche solo commentato. La
+domanda «questo condominio è dell'utente?» ora ha una regola sola, `CondominioDellUtente`, e il limite dei permessi
+concessi fuori dal pannello un trait solo, `PerimetroFuoriPannello`.
+
+**Grazie** a kta1kri, che ha trovato e segnalato le prime tre falle. I suoi due commit entrano con il suo nome.
+
 ## [1.11.0-beta.38] - Chi vende resta, da usufruttuario
 
 **Non tocca il database.** Un tema: la vendita o donazione della nuda proprietà con riserva d'usufrutto, il caso dei

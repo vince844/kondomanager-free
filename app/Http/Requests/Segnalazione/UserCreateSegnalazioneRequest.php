@@ -3,9 +3,11 @@
 namespace App\Http\Requests\Segnalazione;
 
 use App\Enums\Permission;
+use App\Models\Segnalazione;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * @method bool merge(string $key)
@@ -17,6 +19,16 @@ class UserCreateSegnalazioneRequest extends FormRequest
      */
     public function authorize(): bool
     {
+        // Solo in modifica, e prima delle regole (giro di sicurezza della 1.11.0-beta.39): la regola
+        // su `condominio_id` ammette il condominio attuale della segnalazione, e validando per
+        // primi chiunque saprebbe in quale palazzo sta una segnalazione che non può toccare. In
+        // creazione non c'è un record, e il permesso lo controlla il controller.
+        $segnalazione = $this->route('segnalazione');
+
+        if ($segnalazione instanceof Segnalazione) {
+            Gate::authorize('update', $segnalazione);
+        }
+
         return true;
     }
 
@@ -40,16 +52,29 @@ class UserCreateSegnalazioneRequest extends FormRequest
                 'required',
                 'integer',
                 Rule::exists('condomini', 'id'),
-                // The reporter may only open a segnalazione for a condominio they belong to,
-                // not for any existing building id.
+                // The reporter may only open a segnalazione for a condominio they belong to, not
+                // for any existing building id. Updating one already filed in a condominio the
+                // author no longer belongs to (the admin can remove a pivot row at any time) is
+                // still allowed as long as the building doesn't change: this is the same request
+                // class for store() and update(), and the author's own edit form pre-fills this
+                // field with the record's current value — rejecting it would corrupt data (the
+                // only way through the UI would be moving the segnalazione into another building).
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     $user = Auth::user();
                     $belongs = $user?->anagrafica?->condomini()->whereKey($value)->exists() ?? false;
-                    if (! $belongs) {
-                        $fail(__('validation.exists', [
-                            'attribute' => __('validation.attributes.segnalazioni.condominio_id'),
-                        ]));
+
+                    if ($belongs) {
+                        return;
                     }
+
+                    $segnalazione = $this->route('segnalazione');
+                    if ($segnalazione instanceof Segnalazione && (int) $value === (int) $segnalazione->condominio_id) {
+                        return;
+                    }
+
+                    $fail(__('validation.exists', [
+                        'attribute' => __('validation.attributes.segnalazioni.condominio_id'),
+                    ]));
                 },
             ],
         ];

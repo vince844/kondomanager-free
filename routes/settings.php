@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Permission;
 use App\Http\Controllers\Impostazioni\BackupSettingsController;
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
@@ -37,24 +38,37 @@ Route::middleware('auth')->group(function () {
     Route::post('impostazioni/stampe', [ImpostazioniStampeController::class, 'store'])
         ->name('impostazioni.stampe.store');
 
-    Route::get('impostazioni/cron', [CronSettingsController::class, 'edit'])
-        ->name('impostazioni.cron');
+    // Cron, posta e registro delle email: fino alla 1.11.0-beta.38 avevano solo `auth`, e i tre
+    // controller nessun controllo. Qualunque utente con il login (condòmino, fornitore,
+    // collaboratore) leggeva destinatari e oggetti di tutte le email e il token del cron, e con
+    // `mail/test` si faceva consegnare la password SMTP salvata su un server suo; con `mail` deviava
+    // tutta la posta, reset password dell'amministratore compreso. Giro di sicurezza della
+    // 1.11.0-beta.39. Il permesso è lo stesso che apre l'hub delle impostazioni.
+    Route::middleware('permission:'.Permission::MANAGE_GENERAL_SETTINGS->value)->group(function () {
 
-    Route::post('impostazioni/cron', [CronSettingsController::class, 'update'])
-        ->name('impostazioni.cron.update');
+        Route::get('impostazioni/cron', [CronSettingsController::class, 'edit'])
+            ->name('impostazioni.cron');
 
-    Route::post('impostazioni/cron/regenerate', [CronSettingsController::class, 'regenerateToken'])
-        ->name('impostazioni.cron.regenerate');
+        Route::post('impostazioni/cron', [CronSettingsController::class, 'update'])
+            ->name('impostazioni.cron.update');
 
-    // MAIL SETTINGS
-    Route::get('impostazioni/mail', [MailSettingsController::class, 'edit'])
-        ->name('impostazioni.mail');
+        Route::post('impostazioni/cron/regenerate', [CronSettingsController::class, 'regenerateToken'])
+            ->name('impostazioni.cron.regenerate');
 
-    Route::post('impostazioni/mail', [MailSettingsController::class, 'update'])
-        ->name('admin.settings.mail.update');
+        // MAIL SETTINGS
+        Route::get('impostazioni/mail', [MailSettingsController::class, 'edit'])
+            ->name('impostazioni.mail');
 
-    Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
-        ->name('admin.settings.mail.test');
+        Route::post('impostazioni/mail', [MailSettingsController::class, 'update'])
+            ->name('admin.settings.mail.update');
+
+        Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
+            ->name('admin.settings.mail.test');
+
+        // LOGS & AUDIT
+        Route::get('logs', [LogsController::class, 'index'])
+            ->name('logs.index');
+    });
 
     // BACKUPS
     Route::get('impostazioni/backups', [BackupSettingsController::class, 'index'])
@@ -85,10 +99,6 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/backups/{backup:uuid}/ripristina', [RestoreController::class, 'start'])
         ->name('impostazioni.backups.restore.start');
-
-    // LOGS & AUDIT
-    Route::get('logs', [LogsController::class, 'index'])
-        ->name('logs.index');
 
     Route::redirect('settings', 'settings/profile');
 
@@ -156,6 +166,9 @@ Route::get('ripristino/esito', [RestoreController::class, 'result'])
 // dell'overlay admin). NON sotto EnsureRestoreToken: chi arriva dalla 503 non
 // ha il token — l'autorizzazione (token OPPURE password account) è nel
 // controller. CSRF-except in bootstrap/app.php (nessuna sessione qui).
+// Il limite di tentativi sulla password sta nel controller (authorizeRecovery), non qui: un
+// throttle di rotta conterebbe anche le richieste col token, e cinque password sbagliate di chiunque
+// dallo stesso indirizzo bloccherebbero il recupero all'amministratore.
 Route::post('ripristino/riprendi', [RestoreController::class, 'resume'])
     ->name('ripristino.resume');
 Route::post('ripristino/annulla', [RestoreController::class, 'abort'])

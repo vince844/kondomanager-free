@@ -896,13 +896,23 @@ it('C-R3 — un saldo che il piano stava usando e che è sparito durante la gene
 it('C-R5 — la segnalazione dal portale, riletta sotto lock, parte dallo stato di adesso: la prima passa, la seconda dice «già segnalato»', function () {
     $s = apScenario();
     (new \App\Listeners\Gestionale\SyncScadenziarioWithPianoRate())->handle(new \App\Events\Gestionale\PianoRateStatusUpdated($s['c'], $s['e'], $s['piano'], $this->user, \App\Enums\StatoPianoRate::BOZZA, \App\Enums\StatoPianoRate::APPROVATO));
-    $this->user->givePermissionTo(Permission::firstOrCreate(['name' => \App\Enums\Permission::VIEW_EVENTS->value, 'guard_name' => 'web']));
+
+    // Riscritto nel giro di sicurezza della 1.11.0-beta.39: prima si agiva come $this->user, l'
+    // "admin" di questo file — senza anagrafica — e passava perché gli si dava VIEW_EVENTS: la
+    // vecchia view() guardava solo il permesso, ed era proprio la falla della PR #48. La nuova
+    // ability `reportPayment` non ha scorciatoie: serve la persona titolare della rata, cioè il
+    // venditore Ugo ('v'), a cui viene agganciato un utente apposta. La generazione del piano
+    // (riga sopra) non lo tocca: l'unico punto in cui `user_id` conta è la risoluzione di
+    // Auth::user()->anagrafica qui sotto.
+    $titolare = User::factory()->create(['email_verified_at' => now()]);
+    $s['v']->update(['user_id' => $titolare->id]);
+    $titolare->givePermissionTo(Permission::firstOrCreate(['name' => \App\Enums\Permission::VIEW_EVENTS->value, 'guard_name' => 'web']));
     $rata9 = (int) DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('numero_rata', 9)->value('id');
     $evento = Evento::whereJsonContains('meta->context->rata_id', $rata9)->where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)->firstOrFail();
 
-    $this->actingAs($this->user)->post(route('user.eventi.report_payment', $evento))->assertSessionHas('success');
+    $this->actingAs($titolare)->post(route('user.eventi.report_payment', $evento))->assertSessionHas('success');
     expect($evento->fresh()->meta['status'])->toBe('reported');
-    $this->actingAs($this->user)->post(route('user.eventi.report_payment', $evento))->assertSessionHas('info', 'Già segnalato.');
+    $this->actingAs($titolare)->post(route('user.eventi.report_payment', $evento))->assertSessionHas('info', 'Già segnalato.');
 });
 
 /*

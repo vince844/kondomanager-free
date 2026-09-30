@@ -46,9 +46,17 @@ class EventoController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(EventoIndexRequest $request, Evento $evento): Response
+    public function index(EventoIndexRequest $request): Response
     {
-        Gate::authorize('view', $evento);
+        // L'elenco non riguarda un Evento preciso: si autorizza sulla classe (viewAny, cioè il solo
+        // permesso VIEW_EVENTS). Fino alla 1.11.0-beta.38 questo metodo riceveva un Evento vuoto,
+        // iniettato dal container perché la rotta resource non ha {evento}, e autorizzava 'view' su
+        // quello: passava solo perché EventoPolicy::view guarda il solo permesso. La PR #48
+        // proponeva di restringere view() al condominio in comune, e con un Evento vuoto l'agenda
+        // sarebbe andata in 403. view() è rimasta com'era (giro di sicurezza della 1.11.0-beta.39),
+        // ma questo elenco non deve dipendere da lei: è già ristretto all'utente da
+        // getUserCondominioData() e da RecurrenceService qui sotto.
+        Gate::authorize('viewAny', Evento::class);
 
         $validated = $request->validated();
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti

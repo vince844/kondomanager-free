@@ -4,6 +4,7 @@ namespace App\Http\Requests\Evento\Utenti;
 
 use App\Enums\Permission;
 use App\Enums\VisibilityStatus;
+use App\Rules\CondominioDellUtente;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules\Enum;
@@ -37,7 +38,12 @@ class CreateEventoRequest extends FormRequest
             'created_by'              => 'required|exists:users,id',
             'category_id'             => 'required|nullable|exists:categorie_evento,id',
             'condomini_ids'           => 'required|nullable|array',
-            'condomini_ids.*'         => 'exists:condomini,id',
+            // Non basta che il condominio esista (giro di sicurezza della 1.11.0-beta.39, Coda 184):
+            // deve essere uno dei condomìni dell'utente, altrimenti l'evento finisce nell'agenda di
+            // un palazzo a cui non appartiene.
+            // `integer` prima di tutto: un elemento-array arriverebbe a sync() come «chiave = id da
+            // collegare», e la chiave non la controlla nessuno.
+            'condomini_ids.*'         => ['bail', 'integer', 'exists:condomini,id', new CondominioDellUtente()],
             'recurrence_frequency'    => 'nullable|in:daily,weekly,monthly,yearly',
             'recurrence_interval'     => 'nullable|integer|min:1',
             'recurrence_by_day'       => 'nullable|array',

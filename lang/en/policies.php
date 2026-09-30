@@ -49,5 +49,6 @@ return [
     'delete_events'             => "You don't have sufficient permissions to delete events.",
     'edit_events'               => "You don't have sufficient permissions to edit events.",
     'approve_events'            => "ou don't have sufficient permissions to approve events.",
+    'report_payment_events'     => "You can't report the payment for this event.",
 
 ];

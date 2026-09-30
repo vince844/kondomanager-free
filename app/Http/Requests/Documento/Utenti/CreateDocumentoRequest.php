@@ -6,6 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use App\Enums\Permission;
+use App\Rules\CondominioDellUtente;
 use App\Support\LimiteCaricamento;
 
 /**
@@ -45,7 +46,10 @@ class CreateDocumentoRequest extends FormRequest
             'created_by'      => 'required|exists:users,id',
             'file'            => 'required|file|mimes:pdf|max:'.LimiteCaricamento::regolaMax(),
             'condomini_ids'   => ['required', 'array'],
-            'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
+            // Non basta che il condominio esista (giro di sicurezza della 1.11.0-beta.39, Coda 184):
+            // deve essere uno dei condomìni dell'utente, altrimenti il documento finisce nell'archivio
+            // di un palazzo a cui non appartiene.
+            'condomini_ids.*' => ['bail', 'integer', Rule::exists('condomini', 'id'), new CondominioDellUtente()],
         ];
     }
 

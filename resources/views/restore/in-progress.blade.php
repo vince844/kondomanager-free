@@ -31,6 +31,7 @@
             'need_password' => 'Inserisci la password del tuo account.',
             'auth_failed' => 'Password non corretta.',
             'generic_error' => 'Operazione non riuscita. Riprova.',
+            'too_many' => 'Troppi tentativi: attendi un minuto e riprova.',
             'resume_progress' => 'Ripristino in corso…',
         ],
         'en' => [
@@ -52,6 +53,7 @@
             'need_password' => 'Enter your account password.',
             'auth_failed' => 'Wrong password.',
             'generic_error' => 'The operation failed. Please try again.',
+            'too_many' => 'Too many attempts: wait a minute and try again.',
             'resume_progress' => 'Restore in progress…',
         ],
         'es' => [
@@ -73,6 +75,7 @@
             'need_password' => 'Introduce la contraseña de tu cuenta.',
             'auth_failed' => 'Contraseña incorrecta.',
             'generic_error' => 'La operación ha fallado. Inténtalo de nuevo.',
+            'too_many' => 'Demasiados intentos: espera un minuto y vuelve a intentarlo.',
             'resume_progress' => 'Restauración en curso…',
         ],
         'pt' => [
@@ -94,6 +97,7 @@
             'need_password' => 'Introduza a palavra-passe da sua conta.',
             'auth_failed' => 'Palavra-passe incorreta.',
             'generic_error' => 'A operação falhou. Tente novamente.',
+            'too_many' => 'Demasiadas tentativas: aguarde um minuto e tente novamente.',
             'resume_progress' => 'Restauro em curso…',
         ],
     ];
@@ -272,6 +276,7 @@
         if (!pwd.value) { setMsg(T.need_password, 'err'); pwd.focus(); return; }
         busy(true); setMsg(T.working, null);
         post(URL_RESUME, { account_password: pwd.value }).then(function (r) {
+          if (r.status === 429) { busy(false); setMsg(T.too_many, 'err'); return null; }
           if (r.status === 422 || r.status === 403) { busy(false); setMsg(T.auth_failed, 'err'); return null; }
           if (!r.ok) { busy(false); setMsg(T.generic_error, 'err'); return null; }
           return r.json();
@@ -287,6 +292,7 @@
         if (!pwd.value) { setMsg(T.need_password, 'err'); pwd.focus(); return; }
         busy(true); setMsg(T.working, null);
         post(URL_ABORT, { account_password: pwd.value }).then(function (r) {
+          if (r.status === 429) { busy(false); setMsg(T.too_many, 'err'); return; }
           if (r.status === 422 || r.status === 403) { busy(false); setMsg(T.auth_failed, 'err'); return; }
           if (!r.ok) { busy(false); setMsg(T.generic_error, 'err'); return; }
           window.location.assign('/');

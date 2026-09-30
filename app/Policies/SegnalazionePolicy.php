@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Enums\Permission;
 use App\Models\Segnalazione;
 use App\Models\User;
+use App\Rules\CondominioDellUtente;
 use Illuminate\Auth\Access\Response;
 
 class SegnalazionePolicy
@@ -110,9 +111,18 @@ class SegnalazionePolicy
     public function update(User $user, Segnalazione $segnalazione): Response
     {
         if ($user->hasPermissionTo(Permission::EDIT_SEGNALAZIONI->value)) {
-            return Response::allow();
-        } 
-        
+            // Giro di sicurezza della 1.11.0-beta.39, Coda 185: EDIT_SEGNALAZIONI da solo non
+            // guardava il condominio. Chi ha accesso al pannello (amministratore, collaboratore)
+            // gestisce ogni palazzo dell'installazione, com'è sempre stato; chi ha ricevuto il
+            // permesso senza l'accesso al pannello — un ruolo personalizzato — resta limitato ai
+            // soli condomìni della propria anagrafica, e mai sulla segnalazione indirizzata ad altre
+            // persone (la privata di un vicino): vedi nelPerimetroFuoriPannello().
+            if ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)
+                || $this->nelPerimetroFuoriPannello($user, $segnalazione)) {
+                return Response::allow();
+            }
+        }
+
         if ($user->hasPermissionTo(Permission::EDIT_OWN_SEGNALAZIONI->value)) {
 
             if ($segnalazione->created_by === $user->id) {
@@ -138,9 +148,13 @@ class SegnalazionePolicy
     public function delete(User $user, Segnalazione $segnalazione): Response
     {
         if ($user->hasPermissionTo(Permission::DELETE_SEGNALAZIONI->value)) {
-            return Response::allow();
+            // Stessa guardia di update() qui sopra, stessa Coda 185.
+            if ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)
+                || $this->nelPerimetroFuoriPannello($user, $segnalazione)) {
+                return Response::allow();
+            }
         }
-        
+
         if ($user->hasPermissionTo(Permission::DELETE_OWN_SEGNALAZIONI->value)) {
 
             if ($segnalazione->created_by === $user->id) {
@@ -169,5 +183,28 @@ class SegnalazionePolicy
         return $user->hasPermissionTo(Permission::APPROVE_SEGNALAZIONI->value)  
         ? Response::allow() 
         : Response::deny(__('policies.approve_ticket'));
+    }
+
+    /**
+     * Fin dove arriva un permesso largo (`EDIT_SEGNALAZIONI`, `DELETE_SEGNALAZIONI`) concesso fuori
+     * dal pannello. Stessa semantica di `App\Traits\PerimetroFuoriPannello`, che qui non si riusa
+     * perché la segnalazione ha un solo `condominio_id` e non una relazione `condomini()`: il
+     * palazzo deve essere dell'utente, e la segnalazione non deve essere indirizzata ad altre
+     * persone (la privata di un vicino ha agganciata la sua anagrafica: il condòmino non la vede in
+     * elenco, ma la raggiungerebbe per id).
+     */
+    private function nelPerimetroFuoriPannello(User $user, Segnalazione $segnalazione): bool
+    {
+        $anagraficaId = $user->anagrafica?->id;
+
+        if ($anagraficaId === null) {
+            return false;
+        }
+
+        if ($segnalazione->anagrafiche()->where('anagrafiche.id', '!=', $anagraficaId)->exists()) {
+            return false;
+        }
+
+        return CondominioDellUtente::appartiene($user, $segnalazione->condominio_id);
     }
 }

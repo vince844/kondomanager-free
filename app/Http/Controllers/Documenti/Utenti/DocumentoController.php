@@ -7,14 +7,10 @@ use App\Services\Documenti\ArchivioDocumenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
 use App\Http\Requests\Documento\Utenti\UpdateDocumentoRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
-use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Http\Resources\Documenti\DocumentoResource;
-use App\Models\Anagrafica;
 use App\Models\CategoriaDocumento;
-use App\Models\Condominio;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
@@ -159,16 +155,20 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
-        $documento->loadMissing(['categorie', 'condomini', 'anagrafiche']);
+        // Fino alla 1.11.0-beta.39 questa pagina mandava anche 'condomini' (l'elenco intero,
+        // Condominio::all()) e 'anagrafiche' (Anagrafica::all(), con codice fiscale, email, PEC e
+        // telefono di tutti) — nessuno dei due era nella dichiarazione dei props di
+        // DocumentiEdit.vue, e UpdateDocumentoRequest non accetta né condomini_ids né anagrafiche
+        // in ingresso: erano dati morti, mandati al browser di ogni condòmino con questo permesso
+        // senza che nulla li leggesse (Coda 183).
+        $documento->loadMissing('categorie');
 
         return Inertia::render('documenti/user/DocumentiEdit', [
             'documento'   => new DocumentoResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
-            'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             // Il limite lo decide il server, non noi.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
-        ]); 
+        ]);
     }
 
     /**

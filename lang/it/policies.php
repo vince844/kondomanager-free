@@ -49,5 +49,6 @@ return [
     'delete_events'             => 'Non hai permessi sufficienti per eliminare la scadenza in agenda!',
     'edit_events'               => "Non hai permessi sufficienti per modificare la scadenza in agenda!",
     'approve_events'            => "Non hai permessi sufficienti per approvare una scadenza in agenda!",
+    'report_payment_events'     => "Non puoi segnalare il pagamento di questa scadenza!",
 
 ];

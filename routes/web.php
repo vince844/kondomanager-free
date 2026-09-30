@@ -133,9 +133,6 @@ Route::resource('/condomini', CondominioController::class)
         'condomini' => 'condominio',
     ]);
 
-Route::get('/condomini/options', [CondominioController::class, 'options'])
-    ->name('condomini.options');
-
 /*
  * Il condominio dimostrativo.
  *
@@ -152,8 +149,19 @@ Route::delete('/condomini/{condominio}/dimostrativo', [CondominioController::cla
     ->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Visualizza condomini'])
     ->name('condomini.dimostrativo.elimina');
 
+/*
+ * Solo le schermate del pannello lo chiamano (`BuildingsDropdown.vue` sulla dashboard,
+ * `useCondomini.ts` nelle toolbar degli elenchi): stesso predicato di `comuni.cerca` qui sopra, non
+ * il solo `auth`. Prima della 1.11.0-beta.39 restituiva l'elenco completo a chiunque avesse fatto
+ * il login, condòmini e fornitori compresi.
+ */
 Route::get('/fetch-condomini', FetchCondominiController::class)
-    ->middleware(['auth', 'verified']);
+    ->middleware([
+        'auth',
+        'verified',
+        'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore|Visualizza condomini',
+    ])
+    ->name('fetch-condomini');
 
 /*
 |--------------------------------------------------------------------------

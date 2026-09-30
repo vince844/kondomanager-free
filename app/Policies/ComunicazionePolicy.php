@@ -5,10 +5,13 @@ namespace App\Policies;
 use App\Enums\Permission;
 use App\Models\Comunicazione;
 use App\Models\User;
+use App\Traits\PerimetroFuoriPannello;
 use Illuminate\Auth\Access\Response;
 
 class ComunicazionePolicy
 {
+    use PerimetroFuoriPannello;
+
     /**
      * Determine whether the user can view the specified comunicazione.
      *
@@ -101,7 +104,10 @@ class ComunicazionePolicy
     public function update(User $user, Comunicazione $comunicazione): Response
     {
 
-        if ($user->hasPermissionTo(Permission::EDIT_COMUNICAZIONI->value)) {
+        // Fuori dal pannello il permesso largo vale solo nel perimetro dell'utente (giro di sicurezza
+        // della 1.11.0-beta.39, Coda 185 allargata): vedi PerimetroFuoriPannello.
+        if ($user->hasPermissionTo(Permission::EDIT_COMUNICAZIONI->value)
+            && ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value) || $this->nelPerimetroDellUtente($user, $comunicazione))) {
             return Response::allow();
         }
 
@@ -129,7 +135,8 @@ class ComunicazionePolicy
      */
     public function delete(User $user, Comunicazione $comunicazione): Response
     {
-        if ($user->hasPermissionTo(Permission::DELETE_COMUNICAZIONI->value)) {
+        if ($user->hasPermissionTo(Permission::DELETE_COMUNICAZIONI->value)
+            && ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value) || $this->nelPerimetroDellUtente($user, $comunicazione))) {
             return Response::allow();
         }
         

@@ -8,6 +8,8 @@ use App\Services\Restore\RestoreMode;
 use App\Services\Restore\RestoreState;
 use App\Services\System\SystemFinalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission as SpatiePermission;
 use Spatie\Permission\Models\Role;
@@ -189,4 +191,101 @@ test('annulla sblocca l applicazione con un token valido', function () {
     $this->postJson('/ripristino/annulla', [], ['X-Restore-Token' => $token])->assertOk();
 
     expect(app(RestoreMode::class)->active())->toBeFalse(); // sbloccata
+});
+
+// --- giro di sicurezza della 1.11.0-beta.39 -----------------------------------------------------
+// Il recupero (riprendi, annulla) non ha login né CSRF e prova una password. Fino alla beta.38 lo
+// stato restava su file anche a ripristino completato o annullato, e la rotta restava aperta per
+// sempre: un modo per provare la password dell'amministratore senza il blocco del login e senza il
+// secondo fattore. Ora risponde solo con la modalità ripristino attiva, e con un limite di tentativi.
+
+test('riprendi e annulla non rispondono a ripristino completato, nemmeno con la password giusta', function () {
+    $admin = restoreAdmin();
+    app(RestoreState::class)->put([
+        'uuid' => 'r1', 'phase' => 'completed', 'created_by' => $admin->id,
+    ]);
+    expect(app(RestoreMode::class)->active())->toBeFalse();
+
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'])->assertNotFound();
+    $this->postJson('/ripristino/annulla', ['account_password' => 'la-mia-password'])->assertNotFound();
+
+    expect(app(RestoreState::class)->get()['phase'] ?? null)->toBe('completed');
+});
+
+test('riprendi non risponde dopo «annulla e sblocca», con la modalità spenta', function () {
+    $admin = restoreAdmin();
+    app(RestoreState::class)->put([
+        'uuid' => 'r1', 'phase' => 'failed', 'aborted' => true, 'created_by' => $admin->id,
+    ]);
+
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'])->assertNotFound();
+});
+
+test('con la modalità attiva, dopo cinque password sbagliate il recupero si ferma', function () {
+    $admin = restoreAdmin();
+    app(RestoreState::class)->put([
+        'uuid' => 'r1', 'phase' => 'failed', 'failed_phase' => 'finalizing',
+        'created_by' => $admin->id, 'error' => 'x', 'failed_at' => time(),
+    ]);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    $esiti = [];
+    for ($i = 0; $i < 6; $i++) {
+        $esiti[] = $this->postJson('/ripristino/riprendi', ['account_password' => 'errata-'.$i])->status();
+    }
+
+    expect($esiti)->toBe([422, 422, 422, 422, 422, 429]);
+});
+
+test('le password sbagliate di chiunque non bloccano il recupero a chi ha il token', function () {
+    $admin = restoreAdmin();
+    $state = app(RestoreState::class);
+    $state->put(['uuid' => 'r1', 'phase' => 'failed', 'created_by' => $admin->id]);
+    $token = $state->issueToken(3600);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    for ($i = 0; $i < 5; $i++) {
+        $this->postJson('/ripristino/annulla', ['account_password' => 'errata-'.$i])->assertStatus(422);
+    }
+    // La sesta password è bloccata, anche se giusta, e anche su «riprendi»: il limite è unico.
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'])->assertStatus(429);
+
+    // Il token passa lo stesso.
+    $this->postJson('/ripristino/annulla', [], ['X-Restore-Token' => $token])->assertOk();
+    expect(app(RestoreMode::class)->active())->toBeFalse();
+});
+
+test('il tentativo si conta prima di verificare la password, e la password giusta lo restituisce', function () {
+    $admin = restoreAdmin();
+    app(RestoreState::class)->put([
+        'uuid' => 'r1', 'phase' => 'failed', 'failed_phase' => 'finalizing',
+        'created_by' => $admin->id, 'error' => 'x', 'failed_at' => time(),
+    ]);
+    app(RestoreMode::class)->enter('r1', 'it');
+    $this->mock(SystemFinalizer::class, fn ($m) => $m->shouldReceive('finalize')->andReturnNull());
+
+    // Il contatore letto DENTRO la verifica: se si contasse dopo, richieste in parallelo lo
+    // troverebbero tutte a zero e proverebbero ciascuna la sua password.
+    $letti = [];
+    $chiave = 'ripristino-recupero|127.0.0.1';
+    Hash::partialMock()->shouldReceive('check')->andReturnUsing(function ($valore) use (&$letti, $chiave) {
+        $letti[] = RateLimiter::attempts($chiave);
+
+        return $valore === 'la-mia-password';
+    });
+
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'errata'])->assertStatus(422);
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'])->assertOk();
+
+    expect($letti)->toBe([1, 2])
+        ->and(RateLimiter::attempts($chiave))->toBe(1); // la password giusta ha restituito il suo
+});
+
+test('la pagina 503 dice di aspettare quando i tentativi sono troppi', function () {
+    app(RestoreState::class)->put(['uuid' => 'r1', 'phase' => 'failed', 'created_by' => 1]);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    $this->get('/')->assertStatus(503)
+        ->assertSee('Troppi tentativi: attendi un minuto e riprova.', false)
+        ->assertSee('r.status === 429', false);
 });
