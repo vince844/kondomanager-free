@@ -126,8 +126,8 @@ class CreditoService
      * Quale debito quel credito copre davvero — non quanto credito c'è.
      *
      * Serve perché il credito, da solo, non è azionabile. Il motore lo preleva dalle quote di
-     * UNA rata alla volta e verifica la capienza su quella rata
-     * (StoreIncassoRateAction:265-271, tetto a :308-312): un totale per persona non basta a
+     * UNA rata alla volta e verifica la capienza su quella rata (`StoreIncassoRateAction`,
+     * SCRITTURA 2, col tetto per riga di `PianoCreditoIncasso`): un totale per persona non basta a
      * costruire un salvataggio che vada a buon fine. Qui il totale viene quindi spezzato in
      * `origini` — da dove si preleva — e `rate_coperte` — cosa si paga.
      *
@@ -150,7 +150,7 @@ class CreditoService
      *   nasce proprio in bozza. Il vincolo riguarda cosa si propone di pagare, non come si
      *   misura ciò che una rata offre.
      * - **Nessun attraversamento fra gestioni.** Il motore lo consente e lo traccia, ma
-     *   pretende una spunta esplicita dell'amministratore (IncassoRateNew.vue:746-760): un
+     *   pretende la scelta dell'amministratore (`credito_fra_gestioni`, decisione 30.11): un
      *   suggerimento automatico non può darla per acquisita. Il credito sull'altra gestione
      *   resta nel totale e semplicemente non entra nel consiglio.
      *
@@ -364,8 +364,9 @@ class CreditoService
     {
         if ($comp['rate_coperte'] === []) {
             // La rata aperta può esserci eccome, solo su un'altra gestione: il motore la
-            // coprirebbe, chiede però la spunta esplicita che il consiglio non può dare per
-            // acquisita. Dirgli «niente da coprire» lo manderebbe a chiudere la pagina.
+            // coprirebbe, chiede però la scelta dell'amministratore (decisione 30.11) che il
+            // consiglio non può dare per acquisita. Dirgli «niente da coprire» lo manderebbe
+            // a chiudere la pagina.
             if (($comp['debito_altrove_cents'] ?? 0) > 0) {
                 return 'Le rate aperte sono su un\'altra gestione: la compensazione è possibile, '
                     .'ma va confermata da te perché attraversa ordinaria e straordinaria.';

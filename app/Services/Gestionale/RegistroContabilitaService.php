@@ -254,6 +254,9 @@ class RegistroContabilitaService
                 'rs.tipo_riga',
                 'rs.importo',
                 DB::raw($this->controparteSql().' as controparte'),
+                DB::raw($this->versatoDaSql('anv.nome').' as versato_da'),
+                DB::raw($this->versatoDaSql('anv.id').' as versato_da_id'),
+                'rs.anagrafica_id as riga_anagrafica_id',
             ])
             ->get();
 
@@ -280,7 +283,10 @@ class RegistroContabilitaService
                 'data_registrazione' => Carbon::parse($r->data_registrazione)->format('Y-m-d'),
                 'protocollo' => $r->numero_protocollo,
                 'descrizione' => $r->causale,
-                'controparte' => $r->controparte,
+                'controparte' => $this->conChiHaVersato($r->controparte, $r->versato_da, $r->versato_da_id, $r->riga_anagrafica_id),
+                // Coda 167 (R9): le due metà della controparte composta, per la cella a schermo che le mette su due righe.
+                // `controparte` resta intera per il PDF e per la ricerca.
+                ...$this->metaDellaControparte($r),
                 'stato' => $r->stato,
                 'stornata' => (bool) $r->stornata,
                 // Il nome dell'esercizio a cui la scrittura appartiene, solo quando non è quello
@@ -566,6 +572,9 @@ class RegistroContabilitaService
                 'rs.tipo_riga',
                 'rs.importo',
                 DB::raw($this->controparteSql().' as controparte'),
+                DB::raw($this->versatoDaSql('anv.nome').' as versato_da'),
+                DB::raw($this->versatoDaSql('anv.id').' as versato_da_id'),
+                'rs.anagrafica_id as riga_anagrafica_id',
             ])
             ->get();
 
@@ -612,7 +621,10 @@ class RegistroContabilitaService
                 'oltre_trenta_giorni' => $dataCompetenza->diffInDays($dataRegistrazione) > 30,
                 'protocollo' => $r->numero_protocollo,
                 'descrizione' => $r->causale,
-                'controparte' => $r->controparte,
+                'controparte' => $this->conChiHaVersato($r->controparte, $r->versato_da, $r->versato_da_id, $r->riga_anagrafica_id),
+                // Coda 167 (R9): le due metà della controparte composta, per la cella a schermo che le mette su due righe.
+                // `controparte` resta intera per il PDF e per la ricerca.
+                ...$this->metaDellaControparte($r),
                 'stato' => $r->stato,
                 'stornata' => (bool) $r->stornata,
                 // Quale cassa reale ha effettivamente mosso il denaro — non deducibile dal
@@ -833,5 +845,76 @@ class RegistroContabilitaService
                 ORDER BY rs4.id ASC
                 LIMIT 1)
         )";
+    }
+
+    /**
+     * Chi ha versato per conto di altri, dalla scrittura della riga (Coda 167, beta.40): il `riferimento` che
+     * `StoreIncassoRateAction` scrive sulle righe che chiudono il debito. `$colonna` è `anv.nome` o `anv.id`.
+     *
+     * Per una **rettifica** — lo storno di un incasso — lo si legge dalla scrittura annullata (`scrittura_padre_id`):
+     * lo storno è l'annullamento di una registrazione, non una restituzione, e ha la controparte dell'incasso, come già
+     * succede qui sotto per pagamenti, F24 e fatture (reperto R8 della Fase 1-bis). Solo la rettifica: la compensazione
+     * del credito, figlia dell'incasso, e il suo storno restano del debitore, perché il credito era suo — un ramo sul
+     * padre senza la restrizione li faceva diventare «per conto di».
+     *
+     * ⚠️ **`LIKE '%Anagrafica'` e non il nome della classe.** In un letterale SQL la barra rovesciata di
+     * `App\Models\Anagrafica` è un carattere di escape per MySQL e un carattere qualunque per SQLite: lo stesso
+     * confronto darebbe esiti diversi in produzione e nei test (la famiglia di trappole del docblock di
+     * `controparteSql()`). E la condizione sul tipo di movimento sta **fuori** dalle sottoquery, in un `CASE`, per la
+     * stessa ragione per cui `controparteSql()` usa due sottoquery separate invece di un `OR`.
+     */
+    private function versatoDaSql(string $colonna): string
+    {
+        return "COALESCE(
+            (SELECT {$colonna}
+                FROM righe_scritture rs6
+                JOIN anagrafiche anv ON anv.id = rs6.riferimento_id
+                WHERE rs6.scrittura_id = rs.scrittura_id
+                  AND rs6.riferimento_id IS NOT NULL
+                  AND rs6.riferimento_type LIKE '%Anagrafica'
+                ORDER BY rs6.id ASC
+                LIMIT 1),
+            CASE WHEN sc.tipo_movimento = 'rettifica' THEN
+                (SELECT {$colonna}
+                    FROM righe_scritture rs7
+                    JOIN anagrafiche anv ON anv.id = rs7.riferimento_id
+                    WHERE rs7.scrittura_id = sc.scrittura_padre_id
+                      AND rs7.riferimento_id IS NOT NULL
+                      AND rs7.riferimento_type LIKE '%Anagrafica'
+                    ORDER BY rs7.id ASC
+                    LIMIT 1)
+            END
+        )";
+    }
+
+    /**
+     * La controparte di un incasso versato da un'altra persona: «chi ha versato per conto di chi» (decisione di Vincenzo
+     * del 30/09/2026 sulla Coda 167 — il registro è dove si controlla chi ha messo il denaro in cassa). La riga intestata
+     * a chi ha versato — la sua parte in più — resta com'è.
+     *
+     * Il confronto è per **id**, non per nome (reperto R16 della Fase 1-bis): padre e figlio con lo stesso nome sono due
+     * persone, e confrontando i nomi il «per conto di» spariva proprio lì.
+     */
+    private function conChiHaVersato(?string $controparte, ?string $versatoDa, mixed $versatoDaId, mixed $rigaAnagraficaId): ?string
+    {
+        if ($versatoDa === null || $versatoDa === '' || ($rigaAnagraficaId !== null && (int) $rigaAnagraficaId === (int) $versatoDaId)) {
+            return $controparte;
+        }
+
+        return $controparte ? "{$versatoDa} per conto di {$controparte}" : $versatoDa;
+    }
+
+    /**
+     * Chi ha versato e il debitore, separati, quando la controparte è «X per conto di Y»; `null` altrimenti.
+     *
+     * @return array{versato_da: ?string, per_conto_di: ?string}
+     */
+    private function metaDellaControparte(object $r): array
+    {
+        $composta = $this->conChiHaVersato($r->controparte, $r->versato_da, $r->versato_da_id, $r->riga_anagrafica_id);
+
+        return $composta !== $r->controparte && $r->controparte
+            ? ['versato_da' => $r->versato_da, 'per_conto_di' => $r->controparte]
+            : ['versato_da' => null, 'per_conto_di' => null];
     }
 }

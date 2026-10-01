@@ -65,7 +65,12 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
       return h('div', { class: 'flex flex-col gap-0.5 overflow-hidden' }, [
         nameRow,
         h('span', { class: 'text-xs text-slate-400' }, pagante.ruolo || 'Condòmino'),
-      ])
+        // Coda 167: il versamento l'ha fatto un'altra persona per conto di questa posizione. A capo e non troncato (R18):
+        // un nome lungo coi puntini non dice più chi ha versato.
+        pagante.versato_da
+          ? h('span', { class: 'text-xs text-sky-700 leading-tight break-words' }, `Versato da ${pagante.versato_da}`)
+          : null,
+      ].filter(Boolean))
     },
   },
 
@@ -125,6 +130,10 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
                               `Rata n.${rata.numero}` + (rata.immobile ? ` · Int. ${rata.immobile}` : '')
                             ),
                             h('span', { class: 'text-[9px] text-gray-400' }, rata.scadenza),
+                            // Coda 167 (R6): la rata di chi ha versato che riceve la parte in più.
+                            rata.credito_di
+                              ? h('span', { class: 'text-[9px] text-sky-700' }, `parte in più, sulla rata di ${rata.credito_di}`)
+                              : null,
                           ]),
                         ]),
                         h('div', { class: 'flex flex-col items-end gap-0.5' }, [

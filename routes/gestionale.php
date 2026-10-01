@@ -26,6 +26,7 @@ use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
+use App\Http\Controllers\Gestionale\Movimenti\RateDiChiHaVersatoController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoPagamentoController;
@@ -393,6 +394,10 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
+
+    // Coda 167, decisione 30.8: le rate di chi ha versato per un altro, per scegliere dove va la parte in più.
+    Route::get('rate-di-chi-ha-versato', RateDiChiHaVersatoController::class)
+        ->name('rate-di-chi-ha-versato');
     
     // `only()` e non un `resource` intero: `IncassoRateController` implementa **solo** queste
     // quattro azioni. Un incasso non si modifica e non si cancella: si **storna** (la rotta qui

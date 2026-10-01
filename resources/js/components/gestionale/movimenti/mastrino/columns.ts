@@ -30,6 +30,9 @@ export interface MastrinoRow {
   protocollo: string
   descrizione: string
   controparte: string | null
+  /** Coda 167 (R9): con «X per conto di Y», chi ha versato e il debitore separati, per la cella a due righe. */
+  versato_da?: string | null
+  per_conto_di?: string | null
   stato: string
   stornata: boolean
   /** Il nome dell'esercizio della scrittura, solo quando NON è quello del periodo (D21.2). */
@@ -106,9 +109,20 @@ export function createColumns(): ColumnDef<MastrinoRow>[] {
       accessorKey: 'controparte',
       header: 'Controparte',
       size: 176,
-      cell: ({ row }) => row.original.controparte
-        ? h('div', { class: 'truncate text-slate-700', title: row.original.controparte }, row.original.controparte)
-        : h('span', { class: 'text-slate-300 italic' }, '—'),
+      cell: ({ row }) => {
+        const r = row.original
+        // Coda 167 (R9): «X per conto di Y» su una riga sola, troncata coi puntini, perdeva proprio il nome del
+        // debitore. Su due righe si leggono tutti e due; la controparte intera resta nel `title`, nel PDF e nella ricerca.
+        if (r.versato_da && r.per_conto_di) {
+          return h('div', { class: 'min-w-0 leading-tight', title: r.controparte ?? '' }, [
+            h('div', { class: 'truncate text-slate-700' }, r.versato_da),
+            h('div', { class: 'truncate text-[11px] text-slate-500' }, `per conto di ${r.per_conto_di}`),
+          ])
+        }
+        return r.controparte
+          ? h('div', { class: 'truncate text-slate-700', title: r.controparte }, r.controparte)
+          : h('span', { class: 'text-slate-300 italic' }, '—')
+      },
     },
     {
       accessorKey: 'dare',

@@ -61,83 +61,32 @@ class StornoIncassoController extends Controller
         // 2. EAGER LOAD COMPLETO: Il controller prepara tutti i dati necessari per la vista e per l'Action
         $scrittura->load(['figlie.righe', 'figlie.quotePagate', 'righe', 'quotePagate']);
 
-        // 3. RACCOLTA QUOTE GLOBALE: Estraiamo TUTTE le quote (padre + figlie)
-        $tutteLeQuote = collect();
-        $tutteLeQuote = $tutteLeQuote->merge($scrittura->quotePagate);
-        
-        foreach ($scrittura->figlie as $figlia) {
-            $tutteLeQuote = $tutteLeQuote->merge($figlia->quotePagate);
-        }
+        // 3. Le coppie (rata, persona) che l'incasso aveva toccato, lette PRIMA dello storno: dopo, le quote sono di nuovo
+        // quelle di prima, e lo storno deve riallineare i promemoria di quelle persone e di nessun'altra. Prima si
+        // prendevano tutte le rate per tutte le persone, e con «Versato da» (1.11.0-beta.40) si ricalcolava anche il
+        // promemoria di chi l'incasso non aveva toccato, sovrascrivendo uno «reported» (reperto S8 della Fase 1-bis).
+        $eventiRata = app(\App\Services\Gestionale\EventiRataCondomino::class);
+        $coppie = $eventiRata->coppieToccate($scrittura);
+        $rateIds = $coppie->pluck(0)->unique()->values()->all();
 
-        // 4. Estraiamo ID unici per l'aggiornamento degli eventi
-        $rateIds = $tutteLeQuote
-            ->where('importo', '>', 0)
-            ->pluck('rata_id')
-            ->unique()
-            ->toArray();
-
-        $anagraficheIds = $tutteLeQuote
-            ->where('importo', '>', 0)
-            ->pluck('anagrafica_id')
-            ->unique()
-            ->toArray();
-
-        // 5. ESEGUIAMO L'AZIONE DI STORNO (Che inverte sia padre che figlie)
+        // 4. ESEGUIAMO L'AZIONE DI STORNO (Che inverte sia padre che figlie)
         $action->execute($scrittura, $condominio);
 
-        // 6. AGGIORNIAMO LO SCADENZIARIO UTENTI
-        if (!empty($rateIds) && !empty($anagraficheIds)) {
-            
-            $eventiDaRipristinare = Evento::where('meta->type', 'scadenza_rata_condomino')
-                ->where(function ($q) use ($rateIds) {
-                    foreach ($rateIds as $rId) {
-                        $q->orWhere('meta->context->rata_id', (int)$rId)
-                          ->orWhere('meta->context->rata_id', (string)$rId);
-                    }
-                })
-                ->whereHas('anagrafiche', fn($q) => $q->whereIn('anagrafica_id', $anagraficheIds))
-                ->get();
+        // 5. AGGIORNIAMO LO SCADENZIARIO UTENTI
+        $eventiRata->allineaPagato($coppie);
 
-            foreach ($eventiDaRipristinare as $evento) {
-                $rataId    = $evento->meta['context']['rata_id'] ?? null;
-                $paganteId = $evento->anagrafiche->first()->id ?? null;
-
-                $rataFresca = Rata::with('rateQuote')->find($rataId);
-                
-                if ($rataFresca && $paganteId) {
-                    $quoteUtente = $rataFresca->rateQuote
-                        ->where('anagrafica_id', $paganteId)
-                        ->where('importo', '>', 0);
-                    
-                    $totalePagato = $quoteUtente->sum('importo_pagato');
-                    $totaleDovuto = $quoteUtente->sum('importo');
-                    $restante     = max(0, $totaleDovuto - $totalePagato);
-
-                    $meta = $evento->meta;
-                    $meta['importo_pagato']   = $totalePagato;
-                    $meta['importo_restante'] = $restante;
-                    
-                    if ($restante <= 0.01) {
-                        $meta['status'] = 'paid';
-                    } elseif ($totalePagato > 0.01) {
-                        $meta['status'] = 'partial';
-                    } else {
-                        $meta['status'] = 'pending'; // Tornerà "DA PAGARE"
-                    }
-
-                    $evento->update(['meta' => $meta]);
-                }
-            }
-        }
-
-        // 7. SMART TASK REVIVER: Resuscitiamo l'evento di "Controllo incassi" globale se necessario
+        // 6. SMART TASK REVIVER: la «verifica incassi» di una rata si riapre solo se dopo lo storno la rata non è più
+        // saldata, quota per quota — la stessa regola che la chiude (S7, S8).
         if (!empty($rateIds)) {
-            foreach ($rateIds as $rId) {
-                // Troviamo il task globale di verifica per questa rata
+            foreach (Rata::whereIn('id', $rateIds)->get() as $rata) {
+                if ($eventiRata->rataSaldata($rata)) {
+                    continue;
+                }
+
                 Evento::where('meta->type', 'controllo_incassi')
-                    ->where(function($q) use ($rId) {
-                        $q->where('meta->context->rata_id', (int) $rId)
-                          ->orWhere('meta->context->rata_id', (string) $rId);
+                    ->where(function($q) use ($rata) {
+                        $q->where('meta->context->rata_id', (int) $rata->id)
+                          ->orWhere('meta->context->rata_id', (string) $rata->id);
                     })
                     ->where('is_completed', true) // Solo se era già stato completato
                     ->update([

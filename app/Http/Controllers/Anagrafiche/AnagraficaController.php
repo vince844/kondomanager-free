@@ -311,7 +311,16 @@ class AnagraficaController extends Controller
                 $this->flashError('Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione o usufrutto): non si può eliminare, perché lo storico delle unità e il conguaglio in saldi la nominano.')
             );
         }
-    
+
+        // Coda 167 (1.11.0-beta.40, reperto R15 della Fase 1-bis): chi ha versato per il debito di un altro è legato
+        // agli incassi dal campo `riferimento` delle righe, che non ha chiave esterna. Cancellandolo, il riquadro
+        // «Versamenti per conto di altri», l'elenco degli incassi e il registro perderebbero il suo nome in silenzio.
+        if (\App\Models\Gestionale\RigaScrittura::where('riferimento_type', Anagrafica::class)->where('riferimento_id', $anagrafica->id)->exists()) {
+            return back()->with(
+                $this->flashError('Questa anagrafica compare come «Versato da» in un incasso: non si può eliminare, perché l\'incasso e il registro la nominano.')
+            );
+        }
+
         try {
 
             $anagrafica->delete();

@@ -54,6 +54,8 @@ const props = defineProps<{
   };
   /** B2, S7: la solidarietà dell'art. 63 co. 4 verso questa persona come entrante — nota, non quota. */
   solidarieta?: Array<{ subentro_id: number; immobile: string; uscente: string | null; entrante: string | null; decorrenza: string; esercizi: string; residuo_uscente_cents: number; residuo_uscente_formattato: string; testo: string }>;
+  /** Coda 167, beta.40: i versamenti che questa persona ha fatto per il debito di un'altra — fuori dal libro, perché non erano suo debito. */
+  versamenti_per_altri?: Array<{ scrittura_id: number; data: string | null; protocollo: string | null; per_conto_di: string; importo_cents: number; importo_formattato: string; stornato: boolean }>;
 }>();
 
 // --- Rimborso del credito (B2, S6, voce 9) ------------------------------------------------------------
@@ -424,6 +426,21 @@ const getImportoStyle = (riga: any) => {
                 </div>
             </div>
         </div>
+
+            <!-- Coda 167, beta.40: i versamenti fatti per il debito di un altro. Chiudono le quote di chi doveva e non toccano il saldo di questa persona: per questo stanno qui e non nel libro qui sotto. -->
+            <div v-if="versamenti_per_altri && versamenti_per_altri.length" class="rounded-lg border border-sky-200 bg-sky-50/70 dark:border-sky-900/40 dark:bg-sky-950/20 px-4 py-3 flex items-start gap-3">
+                <Banknote class="w-4 h-4 mt-0.5 shrink-0 text-sky-600" />
+                <div class="text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
+                    <span class="font-bold uppercase tracking-wider text-[10px] text-sky-800 dark:text-sky-300 block mb-0.5">Versamenti per conto di altri</span>
+                    <p class="mb-1">Rate di altre persone pagate da {{ anagrafica.nome }}: chiudono il debito di chi le doveva e non cambiano il saldo qui sotto.</p>
+                    <ul class="space-y-0.5 tabular-nums">
+                        <li v-for="v in versamenti_per_altri" :key="v.scrittura_id" :class="{ 'text-sky-900/50 dark:text-sky-100/50': v.stornato }">
+                            Versato il {{ v.data }}: {{ v.importo_formattato }} per conto di {{ v.per_conto_di }}<span v-if="v.protocollo"> (prot. {{ v.protocollo }})</span>
+                            <span v-if="v.stornato" class="ml-1.5 inline-block rounded border border-slate-300 bg-slate-50 px-1.5 text-[10px] font-semibold uppercase leading-4 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">stornato</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
 
             <!-- B2, S7: la nota calcolata dell'art. 63 co. 4 — chi è entrato risponde in solido con chi è uscito. Non è una quota né un sollecito. -->
             <div v-if="solidarieta && solidarieta.length" class="space-y-2">

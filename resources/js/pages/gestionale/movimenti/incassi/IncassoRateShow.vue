@@ -128,6 +128,10 @@ const modalitaVersamento = computed(() => {
                                 <p class="text-sm font-bold text-slate-800 dark:text-slate-200">
                                     {{ props.incassoFormatted.pagante.lista_completa || 'Sconosciuto' }}
                                 </p>
+                                <!-- Coda 167: il versamento l'ha fatto un'altra persona, per conto di questa posizione. -->
+                                <p v-if="props.incassoFormatted.pagante.versato_da" class="text-xs text-sky-700">
+                                    Versato da {{ props.incassoFormatted.pagante.versato_da }}
+                                </p>
                             </div>
                             <div class="space-y-1">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ruolo</p>
@@ -226,6 +230,11 @@ const modalitaVersamento = computed(() => {
                                         <span v-else class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
                                             <Coins class="w-3 h-3" /> Credito Pregresso
                                         </span>
+                                        <!-- Coda 167 (R6): la rata di chi ha versato che riceve la parte in più. Dopo la coppia v-if/v-else, non
+                                             in mezzo: in mezzo il v-else si agganciava a questo div e ogni rata in contanti mostrava anche
+                                             «Credito pregresso» (reperto S3 del rigiro della Fase 1-bis). «Sulla rata di»: la parte in più
+                                             riduce una rata ancora da pagare, o diventa credito se è già pagata (S16). -->
+                                        <div v-if="rata.credito_di" class="mt-1 text-[11px] text-sky-700">Parte in più, sulla rata di {{ rata.credito_di }}</div>
                                     </TableCell>
                                     <TableCell class="text-right font-bold text-slate-800 dark:text-slate-200">{{ rata.importo_formatted }}</TableCell>
                                 </TableRow>

@@ -41,7 +41,7 @@ defineProps<{
             <div class="space-y-1.5 max-h-[240px] overflow-y-auto custom-scrollbar pr-1">
                 <!-- Cliccabile solo se porta da qualche parte. Non basta «ha un bersaglio»:
                      quando il credito sta su un'altra gestione il consiglio non lo propone —
-                     serve la spunta dell'amministratore — ma la frase gli dice che si può
+                     serve la scelta dell'amministratore, «Il credito passa di gestione?» — ma la frase gli dice che si può
                      fare, e togliergli il link lo manderebbe in un vicolo cieco. Chi non ha
                      davvero niente da fare resta in elenco, in grigio: il credito esiste e va
                      saputo, semplicemente non c'è niente da cliccare. -->

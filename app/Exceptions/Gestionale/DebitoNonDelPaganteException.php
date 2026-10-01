@@ -42,11 +42,15 @@ class DebitoNonDelPaganteException extends IncassoNonRegistrabileException
         // una riga che a schermo sembra la propria sposta il vicolo cieco di un passo invece di
         // toglierlo — è la lezione della beta.45 sugli esiti che descrivono un ostacolo e tacciono
         // sulla via d'uscita.
+        // Dalla 1.11.0-beta.40 (Coda 167) c'è anche la via di chi paga il debito di un altro: la posizione resta
+        // l'intestatario, e chi ha versato si indica a parte. Il messaggio la nomina, perché questo rifiuto è proprio
+        // il punto in cui chi registra il bonifico del compratore per il venditore si ferma.
         parent::__construct(sprintf(
             'Non puoi incassare la rata n.%s a nome di chi hai scelto come pagante: quel debito '
             . 'è intestato %s. Cercando per unità immobiliare la riga raccoglie le quote di tutti '
             . 'i comproprietari: scegli come pagante l\'intestatario del debito, oppure registra '
-            . 'l\'incasso separatamente per ciascuno.',
+            . 'l\'incasso separatamente per ciascuno. Se il versamento l\'ha fatto un\'altra persona, '
+            . 'scegli come pagante l\'intestatario e indica chi ha versato in «Versato da».',
             $this->numeroRata,
             $this->intestatari !== '' ? "a {$this->intestatari}" : 'a un altro soggetto',
         ));

@@ -115,6 +115,21 @@
 </table>
 @endforeach
 
+{{-- VERSAMENTI PER CONTO DI ALTRI (Coda 167, beta.40): chiudono il debito di chi doveva, non il saldo di questa persona --}}
+@if(!empty($versamentiPerAltri))
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt;">
+    <tr>
+        <td style="padding: 6px 8px; border: 1px solid #90cdf4; border-radius: 3px; background: #ebf8ff; color: #2a4365;">
+            <span style="font-size: 6.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Versamenti per conto di altri</span><br>
+            Rate di altre persone pagate da {{ $anagrafica->nome }}: chiudono il debito di chi le doveva e non cambiano il saldo dei movimenti qui sotto.
+            @foreach($versamentiPerAltri as $v)
+                <br>Versato il {{ $v['data'] }}: {{ $v['importo_formattato'] }} per conto di {{ $v['per_conto_di'] }}@if($v['protocollo']) (prot. {{ $v['protocollo'] }})@endif @if($v['stornato'])<strong>— stornato</strong>@endif
+            @endforeach
+        </td>
+    </tr>
+</table>
+@endif
+
 {{-- TITOLO SEZIONE MOVIMENTI --}}
 <div style="font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #1e3a5f; border-bottom: 1px solid #cbd5e0; padding-bottom: 3px; margin-bottom: 5px; display: flex; justify-content: space-between;">
     Movimenti contabili

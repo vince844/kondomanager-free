@@ -7,6 +7,75 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.40] - Chi versa per un altro
+
+**Non tocca il database.** Nessuna migrazione: il legame con chi ha versato usa il campo `riferimento` delle righe
+contabili, che c'era già. Un tema: **chi versa per un altro** (Coda 167). Il compratore che salda l'arretrato di chi ha
+venduto, il figlio che paga la rata della madre: il debito resta di chi deve, e chi ha versato resta scritto.
+
+Con questa beta entra anche un principio che guiderà il resto del programma: ciò che la legge impone verso il condominio
+non si sceglie; come si ripartiscono debiti e crediti fra le persone lo decide l'amministratore. Quando le strade
+legittime sono più di una e quella giusta dipende da un accordo che il programma non conosce, il programma non sceglie
+in silenzio: chiede.
+
+**Cambi di comportamento, detti per primi.**
+- **Il credito di una gestione sulle rate di un'altra.** Quando il credito di una gestione coprirebbe una rata di
+  un'altra (il credito dell'ordinaria sulla rata del tetto), il modulo chiede «Il credito passa di gestione?»: «Solo
+  sulla sua gestione» o «Anche sulle altre gestioni». La domanda compare solo quando la risposta cambia gli importi, e
+  senza risposta il server rifiuta l'incasso. Prima la casella di conferma compariva solo in una parte dei casi, e il
+  server registrava comunque il passaggio, con la nota «confermata dall'amministratore». Vale anche senza «Versato da».
+- **Il credito su più gestioni, in automatico.** Il credito di una gestione copre da sé solo le rate della sua gestione,
+  e i soldi versati pagano le rate dalla più vecchia. Prima soldi e credito si spendevano insieme per scadenza, su
+  qualunque gestione. Con una gestione sola non cambia niente. Arrivando da un link che indica già la rata (una
+  segnalazione, «Compensa» dall'estratto conto, il riquadro «Crediti da compensare»), senza «Versato da», il modulo fa
+  come prima.
+- **La gestione dell'incasso.** Un incasso che paga rate di più gestioni, con il filtro «Gestione» vuoto, chiede a quale
+  gestione va. Prima il server prendeva la gestione della quota con l'id più basso: un criterio casuale, non sempre
+  quello che il modulo lasciava intendere. Contano anche le rate coperte solo dal credito, perché la gestione intesta sia
+  l'incasso sia la compensazione.
+
+**«Versato da».**
+- Nel nuovo incasso, sotto la persona, il campo «Versato da»: chi ha fatto davvero il bonifico, fra le persone del
+  condominio. Il pagante resta chi deve, e il denaro chiude le sue rate come sempre. La riga di cassa dice «per conto
+  di», le righe che chiudono il debito dicono «versato da» e lo legano nel `riferimento`. Senza denaro versato il campo
+  non ha effetto: una compensazione a solo credito non ha nessuno che versa.
+- **Il credito di chi deve**: con «Versato da» il modulo chiede «Resta a …» (prima i soldi versati, il credito
+  resta suo) o «Si usa adesso» (prima il credito, poi i soldi). Niente è già scelto; finché manca la scelta «Conferma
+  incasso» è spento con il motivo accanto, e il server rifiuta.
+- **La parte in più**: va a chi ha versato, su una sua rata **emessa** in questo condominio — su una bozza
+  bloccherebbe il ricalcolo del suo piano. Il modulo propone la prima ancora da pagare nella gestione dell'incasso; una
+  rata di un'altra gestione si sceglie a mano, con l'avviso. Se chi ha versato non ha rate emesse qui, la parte in più
+  non si registra: si registra il debito e la differenza si restituisce.
+- **Dove si vede.** Elenco e dettaglio degli incassi (con la ricerca per nome di chi ha versato); l'estratto conto di chi
+  deve (la nota sulla riga) e quello di chi ha versato (il riquadro «Versamenti per conto di altri», a schermo e nel
+  PDF, che non tocca il suo saldo); la Prima nota e i mastrini, dove la controparte è «chi ha versato per conto di chi
+  deve». Lo storno annulla anche la parte in più e il riquadro lo segna «stornato».
+- Un'anagrafica che un incasso nomina come «Versato da» non si elimina.
+
+**Correzioni.**
+- **La verifica incassi di una rata** si chiudeva quando la somma dei pagamenti arrivava al totale: l'anticipo di un
+  condòmino nascondeva il debito di un altro. Ora si chiude solo quando ogni quota è pagata, e lo storno la riapre solo
+  se la rata non è più saldata.
+- **Richieste costruite a mano.** Nel salvataggio di un incasso un id della persona mandato come elenco diventava
+  l'anagrafica n.1, anche di un altro condominio; per cassa, gestione e rate dava una pagina d'errore (Coda 208, chiusa).
+  Ora è un errore di validazione. L'attività chiusa da un incasso arrivato da una segnalazione deve essere di questo
+  condominio.
+
+**Non ancora.** La tabella di distribuzione in cui l'amministratore vede e cambia, rata per rata, quanto paga il credito
+e quanto i soldi, con le strade possibili come proposte, arriva in una beta dedicata (Coda 210): è lì
+che finiscono il «prima il credito» senza «Versato da», la priorità fra gestioni e l'indicazione di chi paga (art. 1193
+c.c.). Stornare un incasso la cui parte in più è già stata usata fa ricomparire un debito senza avvisare, come per il
+pagante da sempre (Coda 209).
+
+**Per chi sviluppa.** Quale credito va su quale rata lo decide una funzione pura, `PianoCreditoIncasso`, con lo specchio
+nel modulo (`pianoCreditoIncasso.ts`) e una tabella di casi condivisa (`tests/Fixtures/piano_credito_incasso.json`):
+se i due smettono di calcolare uguale, un test è rosso. Incasso e storno aggiornano lo scadenziario dalle stesse coppie
+rata-persona (`EventiRataCondomino`). Le nuove guardie sono eccezioni della famiglia `IncassoNonRegistrabileException`:
+il modulo torna compilato con il messaggio sul campo giusto. Test: `IncassoPerContoDiTest` (67), `PianoCreditoIncassoTest`,
+vitest del modulo e del pianificatore.
+
+---
+
 ## [1.11.0-beta.39] - Ognuno apre solo le sue porte
 
 **Non tocca il database.** Una beta di sicurezza. Contiene le tre falle segnalate da kta1kri (PR #48), le quattro Code

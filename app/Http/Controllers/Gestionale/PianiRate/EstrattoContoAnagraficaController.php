@@ -45,6 +45,8 @@ class EstrattoContoAnagraficaController extends Controller
             'rimborso'   => $this->datiRimborso($condominio, $anagrafica),
             // B2, S7: la solidarietà dell'art. 63 co. 4 verso chi è entrato — una nota, non una quota.
             'solidarieta' => app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica),
+            // Coda 167, beta.40: i versamenti fatti per il debito di un altro — un riquadro, non righe del libro.
+            'versamenti_per_altri' => app(\App\Services\Gestionale\VersamentiPerContoDiAltri::class)->per($condominio, $anagrafica),
         ]);
     }
 
@@ -125,6 +127,7 @@ class EstrattoContoAnagraficaController extends Controller
             'stats'              => $stats,
             'saldoInizialeCents' => $saldoInizialeCents,
             'solidarieta'        => app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica),
+            'versamentiPerAltri' => app(\App\Services\Gestionale\VersamentiPerContoDiAltri::class)->per($condominio, $anagrafica),
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.estratto_conto_anagrafica', $data, [

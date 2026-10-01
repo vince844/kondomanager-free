@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, nextTick } from 'vue';
+import axios from 'axios';
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -19,12 +20,15 @@ import { useDebitiLoader } from '@/composables/useDebitiLoader';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Rata } from '@/types/gestionale/rata';
+import { pianificaCoperture } from '@/lib/gestionale/incassi/pianoCreditoIncasso';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 
 const props = defineProps<{
     condominio: any;
     risorse: any[];
     condomini: any[];
+    /** Coda 167: le persone del condominio fra cui scegliere «Versato da», con `ha_rate`. */
+    persone?: Array<{ id: number; nome: string; indirizzo: string | null; codice_fiscale: string | null; ha_rate: boolean }>;
     immobili: any[];
     gestioni: any[];
 }>();
@@ -70,7 +74,7 @@ const pageGuides = [
     },
     {
         title: 'Il credito si applica a mano',
-        description: 'Nessun credito viene usato finché non premi «Usa credito» sulla riga che lo porta. Il resto è nella guida.',
+        description: 'Nessun credito viene usato finché non premi «Usa credito», salvo i due casi spiegati nella guida.',
         icon: Wallet,
         colorVariant: 'emerald' as const
     },
@@ -112,6 +116,8 @@ const selectedImmobileId = ref<number | null>(null);
 
 const form = useForm({
     pagante_id: null as number | null,
+    /** Coda 167, beta.40: chi ha versato davvero, se non è la posizione. Vuoto = la stessa persona. */
+    versato_da_id: null as number | null,
     cassa_id: null as number | null,
     gestione_id: null as number | null,
     data_pagamento: new Date().toISOString().substring(0, 10),
@@ -120,9 +126,48 @@ const form = useForm({
     dettaglio_pagamenti: [] as any[],
     eccedenza: 0,
     related_task_id: null as number | null,
+    /**
+     * Coda 167, decisione 30.7: con «Versato da» e un credito della posizione, il credito si usa adesso (`true`, prima dei
+     * soldi versati) o resta suo (`false`). `null` finché l'amministratore non sceglie: niente è già scelto.
+     */
+    credito_prima: null as boolean | null,
+    /** Coda 167, decisione 30.8: la rata di chi ha versato su cui va la parte in più. */
+    quota_parte_in_piu_id: null as number | null,
+    /**
+     * Decisione 30.11: il credito di una gestione può coprire rate di un'altra? `null` finché l'amministratore non sceglie,
+     * e la domanda compare solo quando la risposta cambia qualcosa (`serveSceltaGestioni`).
+     */
+    credito_fra_gestioni: null as boolean | null,
+    /** Decisione 30.12: la gestione dell'incasso, quando le rate pagate sono di più gestioni e il filtro è vuoto. */
+    gestione_incasso_id: null as number | null,
 });
 
 const rateList = ref<Rata[]>([]);
+
+/**
+ * Coda 167, beta.40 (decisione 30): «Versato da». La persona scelta sopra resta la **posizione**, cioè il debitore: il
+ * denaro chiude le sue rate, come sempre. Qui si dice chi ha versato davvero, se è un'altra persona — il compratore
+ * che salda l'arretrato del venditore, il figlio che paga per la madre —, e le note dell'incasso e il suo estratto
+ * conto lo scrivono. Si sceglie fra le persone del condominio, con la stessa regola del pagante.
+ */
+const personeVersatoDa = computed(() => (props.persone ?? []).filter(p => p.id !== form.pagante_id));
+const versatoDa = computed(() => form.versato_da_id ? (props.persone ?? []).find(p => p.id === form.versato_da_id) ?? null : null);
+const nomePosizione = computed(() =>
+    (props.persone ?? []).find(p => p.id === form.pagante_id)?.nome
+    ?? props.condomini.find((c: any) => c.id === form.pagante_id)?.nome
+    ?? ''
+);
+// Se la posizione diventa la stessa persona scelta come «Versato da», il campo non ha più niente da dire. E cambiando
+// posizione la scelta sul suo credito (30.7) va rifatta: era sul credito di un altro.
+watch(() => form.pagante_id, (v) => {
+    if (v !== null && v === form.versato_da_id) form.versato_da_id = null;
+    form.credito_prima = null;
+    form.credito_fra_gestioni = null;
+    form.gestione_incasso_id = null;
+    form.quota_parte_in_piu_id = null;
+    sceltaParteInPiuAMano.value = false;
+    creditiCliccati.clear();
+});
 
 const parseResiduoQuota = (value: string | number) => {
     if (typeof value === 'number') return value;
@@ -196,6 +241,145 @@ const creditoRiga = (r: any): number => {
 };
 
 const importoNumerico = computed(() => parseResiduoQuota(form.importo_totale));
+
+/**
+ * Coda 167, decisioni 30.7 e 30.8: le due scelte che con «Versato da» toccano all'amministratore, perché dipendono da
+ * un accordo fra le persone che il programma non conosce. Senza denaro versato non c'è chi ha versato (R13): una
+ * compensazione a solo credito non lascia traccia di «Versato da», e il modulo non la promette.
+ */
+const conVersatoDa = computed(() => !!versatoDa.value && importoNumerico.value > 0);
+
+/** Il credito della posizione fra le righe a schermo: con «Versato da», è lì che nasce la domanda della 30.7. */
+const creditoPosizione = computed(() => rateList.value.reduce((s, r) => s + creditoRiga(r), 0));
+/**
+ * Il credito che «Si usa adesso» include da sé: quello delle gestioni con rate da pagare a schermo (S5). Quando è meno di
+ * tutto il credito, la domanda lo dice: annunciare il totale prometteva credito che non entra (reperto T8 del terzo giro).
+ */
+const creditoDelleGestioniConRate = computed(() => {
+    const gestioni = new Set(rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0).map(r => r.gestione_id));
+    return rateList.value.filter(r => gestioni.has(r.gestione_id)).reduce((s, r) => s + creditoRiga(r), 0);
+});
+const mostraSceltaCredito = computed(() => conVersatoDa.value && creditoPosizione.value > 0);
+/** «Si usa adesso»: il credito della posizione prima dei soldi versati. */
+const creditoPrimaScelto = computed(() => conVersatoDa.value && form.credito_prima === true);
+
+/** Le rate emesse di chi ha versato, fra cui va la parte in più (30.8). Arrivano dal server quando si sceglie la persona. */
+const rateDiChiHaVersato = ref<Array<{ id: number; numero_rata: number | string; gestione_id: number; gestione: string | null; scadenza: string | null; residuo: number; pagata: boolean }>>([]);
+let caricamentoRateDiChiHaVersato = 0;
+const caricaRateDiChiHaVersato = async (anagraficaId: number | null) => {
+    const mio = ++caricamentoRateDiChiHaVersato;
+    // Subito vuoto: finché il server non risponde, le rate della persona di prima non devono restare scegliibili per
+    // quella nuova (S11).
+    rateDiChiHaVersato.value = [];
+    if (!anagraficaId) return;
+    try {
+        const res = await axios.get(route(generateRoute('gestionale.rate-di-chi-ha-versato'), {
+            condominio: props.condominio.id,
+            anagrafica_id: anagraficaId,
+        }));
+        // Una risposta per una persona che non è più quella scelta non deve riscrivere l'elenco.
+        if (mio === caricamentoRateDiChiHaVersato) rateDiChiHaVersato.value = res.data.rate ?? [];
+    } catch {
+        if (mio === caricamentoRateDiChiHaVersato) rateDiChiHaVersato.value = [];
+    }
+};
+
+const mostraParteInPiu = computed(() => conVersatoDa.value && form.eccedenza > 0);
+
+/**
+ * Le gestioni delle rate che l'incasso paga, col denaro o coperte dal credito: le righe a importo positivo, come le legge
+ * il server (`StoreIncassoRateAction`, 30.12). Contano anche quelle del credito, perché la gestione dell'incasso intesta
+ * anche la compensazione (reperto T4 del terzo giro).
+ */
+const gestioniPagate = computed(() => {
+    const mappa = new Map<number, string>();
+    form.dettaglio_pagamenti.forEach((p: any) => {
+        if (p.importo <= 0) return;
+        const r = rateList.value.find(rata => rata.id === p.rata_id);
+        if (r && r.gestione_id != null) mappa.set(r.gestione_id, r.gestione ?? `Gestione ${r.gestione_id}`);
+    });
+    return Array.from(mappa, ([id, nome]) => ({ id, nome }));
+});
+
+/** Decisione 30.12: con rate di più gestioni e il filtro vuoto, la gestione dell'incasso la sceglie l'amministratore. */
+const mostraSceltaGestioneIncasso = computed(() => !form.gestione_id && gestioniPagate.value.length > 1);
+/** La gestione che parte al server: il filtro, o la scelta dell'amministratore quando serve. */
+const gestioneDaMandare = computed(() => form.gestione_id ?? (mostraSceltaGestioneIncasso.value ? form.gestione_incasso_id : null));
+watch(gestioniPagate, (g) => {
+    if (form.gestione_incasso_id !== null && !g.some(x => x.id === form.gestione_incasso_id)) form.gestione_incasso_id = null;
+});
+
+/**
+ * La gestione dell'incasso, come la stabilisce il server: il filtro, la scelta dell'amministratore, o la gestione unica
+ * delle rate pagate, col denaro o col credito (`StoreIncassoRateAction`, 30.12). È lì che la parte in più resta senza
+ * chiedere.
+ */
+const gestioneIncasso = computed<number | null>(() => {
+    if (form.gestione_id) return form.gestione_id;
+    if (form.gestione_incasso_id) return form.gestione_incasso_id;
+    return gestioniPagate.value.length === 1 ? gestioniPagate.value[0].id : null;
+});
+
+/**
+ * La proposta della 30.8, la stessa del server: la prima rata ancora da pagare nella gestione dell'incasso, altrimenti
+ * l'ultima di quella gestione. Mai una rata di un'altra gestione: quella si sceglie a mano, ed è la conferma.
+ */
+const propostaParteInPiu = computed<number | null>(() => {
+    const nellaGestione = rateDiChiHaVersato.value.filter(q => q.gestione_id === gestioneIncasso.value);
+    return nellaGestione.find(q => !q.pagata)?.id ?? nellaGestione[nellaGestione.length - 1]?.id ?? null;
+});
+const sceltaParteInPiuAMano = ref(false);
+
+/**
+ * Le righe di credito che l'amministratore ha cliccato con «Usa credito». Con «Versato da» sono le sole che entrano,
+ * insieme a quelle che include «Si usa adesso»: il credito che il link includeva da sé, o che «si usa adesso» aveva
+ * incluso, esce appena la scelta cambia — «Resta a X» deve dire il vero anche se la posizione ha altro debito
+ * (trovato a video il 01/10/2026; decisione 30.13 per il link). Esce anche quando «Versato da» cambia o si toglie
+ * (il watcher di `versato_da_id`): una riga cliccata a mano invece resta, perché l'ha decisa una persona.
+ */
+const creditiCliccati = new Set<number>();
+
+/** Decisione 30.11: la risposta del pianificatore — il credito impegnato coprirebbe rate di un'altra gestione. */
+const serveSceltaGestioni = ref(false);
+/**
+ * La domanda si fa solo in automatico: lì il pianificatore impegna il credito. In manuale (e dopo «Paga tutto», «Paga
+ * scadute», «Resetta», che passano in manuale) nessun credito resta impegnato da solo, e la risposta del ramo automatico
+ * restava appesa: fascia a schermo e conferma spenta, anche su un'altra persona (reperto T6 del terzo giro). Un punto
+ * solo, invece di azzerare `serveSceltaGestioni` in ogni strada che porta in manuale.
+ */
+const domandaFraGestioni = computed(() => mode.value === 'auto' && serveSceltaGestioni.value);
+const gestioniDelCredito = ref<string[]>([]);
+const altreGestioni = ref<string[]>([]);
+watch(domandaFraGestioni, (serve) => { if (!serve) form.credito_fra_gestioni = null; });
+const rataParteInPiu = computed(() => rateDiChiHaVersato.value.find(q => q.id === form.quota_parte_in_piu_id) ?? null);
+const parteInPiuFuoriGestione = computed(() => !!rataParteInPiu.value && rataParteInPiu.value.gestione_id !== gestioneIncasso.value);
+const opzioniParteInPiu = computed(() => rateDiChiHaVersato.value.map(q => ({
+    id: q.id,
+    etichetta: `Rata ${q.numero_rata} · ${q.gestione ?? ''} · ${q.scadenza ?? ''} · ${q.pagata ? 'pagata' : `da pagare ${euro(q.residuo)}`}`,
+})));
+
+/**
+ * Perché «Conferma incasso» è spento, quando lo è per una scelta che manca. `null` se non manca niente. Il server
+ * rifiuterebbe comunque: qui si evita il giro, e si dice cosa fare.
+ */
+const sceltaMancante = computed<string | null>(() => {
+    if (domandaFraGestioni.value && form.credito_fra_gestioni === null) {
+        return 'Scegli se il credito resta sulla sua gestione o passa anche alle altre.';
+    }
+    if (mostraSceltaGestioneIncasso.value && !form.gestione_incasso_id) {
+        return 'Questo incasso paga rate di più gestioni: scegli a quale gestione va.';
+    }
+    if (mostraSceltaCredito.value && form.credito_prima === null) {
+        return `Scegli cosa fare del credito di ${nomePosizione.value}: resta suo, o si usa adesso.`;
+    }
+    if (mostraParteInPiu.value && versatoDa.value && !versatoDa.value.ha_rate) {
+        return `Registra solo il debito: ${versatoDa.value.nome} non ha rate qui su cui mettere la parte in più.`;
+    }
+    if (mostraParteInPiu.value && !form.quota_parte_in_piu_id) {
+        return `Scegli su quale rata di ${versatoDa.value?.nome ?? ''} va la parte in più.`;
+    }
+    return null;
+});
 
 const totalAllocato = computed(() => {
     return form.dettaglio_pagamenti.reduce((sum, p) => sum + p.importo, 0);
@@ -273,11 +457,10 @@ const dimenticaRichiestaCompensazione = () => {
     creditoAutoApplicato.value = false;
 };
 
-// --- Spaccato e avviso cross-gestione ------------------------------------
-// Il credito non è vincolato alla gestione in cui è nato: nulla nel backend
-// lo impedisce (per scelta: potrebbe esserci un accordo condominiale che lo
-// autorizza), ma l'amministratore deve poterlo vedere e confermarlo
-// esplicitamente prima di procedere.
+// --- Spaccato del credito per gestione -----------------------------------
+// Il credito di una gestione copre da sé solo le rate della sua; su un'altra solo con la scelta
+// dell'amministratore (decisione 30.11): può esserci un accordo condominiale che lo autorizza, e
+// il server la pretende quando cambierebbe il risultato. Lo spaccato serve a vederlo.
 
 const spaccatoCreditoDisponibile = computed(() => {
     const mappa = new Map<number, { nome: string; importo: number }>();
@@ -296,37 +479,10 @@ const spaccatoCreditoDisponibile = computed(() => {
     return Array.from(mappa.values());
 });
 
-const spaccatoCreditoUsato = computed(() => {
-    const mappa = new Map<number, { nome: string; importo: number }>();
-    form.dettaglio_pagamenti.forEach(p => {
-        if (p.importo >= 0) return;
-        const r = rateList.value.find(rate => rate.id === p.rata_id);
-        if (!r || r.gestione_id == null) return;
-        const prev = mappa.get(r.gestione_id);
-        mappa.set(r.gestione_id, {
-            nome: r.gestione,
-            importo: (prev?.importo ?? 0) + Math.abs(p.importo),
-        });
-    });
-    return Array.from(mappa.entries()).map(([gestione_id, v]) => ({ gestione_id, ...v }));
-});
-
-const gestioniDebitoPagate = computed(() => {
-    const set = new Set<number>();
-    form.dettaglio_pagamenti.forEach(p => {
-        if (p.importo <= 0) return;
-        const r = rateList.value.find(rate => rate.id === p.rata_id);
-        if (r && r.gestione_id != null) set.add(r.gestione_id);
-    });
-    return set;
-});
-
-const isCrossGestione = computed(() => {
-    return spaccatoCreditoUsato.value.some(g => !gestioniDebitoPagate.value.has(g.gestione_id));
-});
-
-const crossGestioneConfermato = ref(false);
-watch(isCrossGestione, (val) => { if (!val) crossGestioneConfermato.value = false; });
+// La conferma fra gestioni non è più una casella misurata sugli insiemi: è la scelta della decisione 30.11, che il
+// pianificatore chiede quando cambierebbe gli importi (`serveSceltaGestioni`, più sotto). La casella guardava solo se una
+// rata della gestione del credito era fra quelle pagate, e bastava quella perché il credito passasse di gestione senza
+// chiedere niente (reperto S1 del rigiro della Fase 1-bis della 1.11.0-beta.40).
 
 const previewContabile = computed(() => {
     const pagamenti = form.dettaglio_pagamenti;
@@ -456,14 +612,21 @@ const svuotaRicerca = () => {
     form.importo_totale = '';
     form.dettaglio_pagamenti = [];
     form.eccedenza = 0;
+
+    // Coda 167: le scelte fatte per la persona di prima non valgono per quella dopo (S11).
+    form.credito_fra_gestioni = null;
+    form.gestione_incasso_id = null;
+    form.quota_parte_in_piu_id = null;
+    sceltaParteInPiuAMano.value = false;
+    creditiCliccati.clear();
 };
 
 /**
  * «Usa credito» su una riga.
  *
  * La distribuzione del credito vive in **un posto solo**, il ramo automatico di
- * `runDistribution` (`spalmaCredito`): quando si clicca in modalità manuale la pagina passa in
- * automatica e lascia fare a quello.
+ * `runDistribution` (`pianificaCoperture`): quando si clicca in modalità manuale la pagina passa
+ * in automatica e lascia fare a quello.
  *
  * Perché non si applica il credito a mano qui. Ci abbiamo provato, e quel ciclo ha prodotto
  * difetti per tre revisioni di fila — sempre nuovi, sempre nati dall'interazione con l'altra
@@ -484,7 +647,7 @@ const toggleCredito = (rata: Rata) => {
     // Se il contante copre già tutti i debiti, quel credito non ha niente da fare. Commutare
     // in automatica cancellerebbe la ripartizione decisa a mano — per esempio dopo «Paga
     // scadute» — senza applicare un centesimo: si dice, e non si tocca niente.
-    if (attivo && mode.value === 'manual'
+    if (attivo && mode.value === 'manual' && !creditoPrimaScelto.value
         && creditoNecessario(rateList.value, importoNumerico.value, creditoRiga(rata)) <= 0) {
         creditoSenzaScoperto.value = true;
         return;
@@ -504,6 +667,8 @@ const toggleCredito = (rata: Rata) => {
     // dove è giusto che si svuoti: il rifiuto di un condòmino non riguarda un altro.
     if (attivo) creditiRifiutati.value.delete(rata.id);
     else creditiRifiutati.value.add(rata.id);
+    if (attivo) creditiCliccati.add(rata.id);
+    else creditiCliccati.delete(rata.id);
     if (!attivo) rata.da_pagare = 0;
 
     if (mode.value === 'manual') mode.value = 'auto';
@@ -534,77 +699,65 @@ const runDistribution = async () => {
     // 2. Individuiamo le righe di credito attive: qualsiasi riga con residuo
     //    negativo (saldo iniziale a credito, anticipo o strapagamento emerso).
     const isInboxMode = priorityRataId.value !== null && rataTarget !== undefined;
+
+    // Coda 167, decisione 30.7: con «Versato da» il credito della posizione non entra da solo — né dal link, né in
+    // automatico — finché l'amministratore non ha scelto. Con «si usa adesso» entra da sé il credito di ogni gestione che
+    // ha debiti a schermo (S5): poi il pianificatore lo usa solo sulle rate della sua gestione, salvo la scelta (30.11).
+    // Con «Versato da» non vale nemmeno il ramo del link: si paga dalla rata più vecchia, come chiede la 30.7 b (S4).
+    const gestioniConDebiti = new Set(rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0).map(r => r.gestione_id));
+    const ramoDelLink = isInboxMode && !conVersatoDa.value;
     // L'auto-inclusione della modalità «arrivo da un link» si ferma alla gestione della rata
-    // bersaglio. Il credito di un'altra gestione il motore lo sa spendere, ma pretende una
-    // spunta esplicita dell'amministratore — ed è la ragione per cui il consiglio lato server
-    // non lo propone mai. Includerlo qui da soli significherebbe far fare alla schermata
-    // esattamente ciò che il servizio si era vietato di suggerire, lasciando fra il click e
-    // lo spostamento solo una casella che nessuno sa di dover leggere.
+    // bersaglio. Il credito di un'altra gestione lo decide l'amministratore (30.11).
     // Una riga scelta a mano resta sempre inclusa: lì la decisione l'ha presa una persona.
     const righeCredito = rateList.value.filter(r => {
         if (creditoRiga(r) <= 0) return false;
-        if (r.selezionata) return true;
+        if (creditiCliccati.has(r.id)) return true;
 
         // L'auto-inclusione serve a precompilare quando si arriva da un link, non a
         // sovrascrivere una decisione presa. Senza `creditoRifiutato` il click che toglie il
-        // credito veniva annullato da `spalmaCredito` e il pulsante tornava verde da solo:
+        // credito veniva annullato e il pulsante tornava verde da solo:
         // nella pagina non c'era modo di non usarlo.
-        return isInboxMode && !creditiRifiutati.value.has(r.id) && r.gestione_id === rataTarget!.gestione_id;
+        if (creditiRifiutati.value.has(r.id)) return false;
+        if (conVersatoDa.value) return form.credito_prima === true && gestioniConDebiti.has(r.gestione_id);
+        if (r.selezionata) return true;
+        return ramoDelLink && r.gestione_id === rataTarget!.gestione_id;
     });
-    const creditoDisponibile = righeCredito.reduce((s, r) => s + creditoRiga(r), 0);
-
-    // Ripartisce il credito effettivamente usato sulle righe di credito attive
-    const spalmaCredito = (importoEuro: number) => {
-        let restoCents = Math.round(importoEuro * 100);
-        righeCredito.forEach(r => {
-            const capienzaCents = Math.round(creditoRiga(r) * 100);
-            const usatoCents = Math.min(restoCents, capienzaCents);
-            r.da_pagare = usatoCents > 0 ? -(usatoCents / 100) : 0;
-            // Selezionata solo se qualcosa è stato davvero impegnato: il pulsante verde
-            // «Credito applicato» su un'allocazione di zero dichiara un'operazione che non è
-            // avvenuta, e intanto «Conferma incasso» resta spento senza spiegare perché.
-            r.selezionata = usatoCents > 0;
-            restoCents -= usatoCents;
-        });
-    };
 
     if (mode.value === 'auto') {
+        // Le coperture le calcola il pianificatore (`pianoCreditoIncasso.ts`), lo specchio di quello del server: le
+        // rate dalla più vecchia, il credito di una gestione solo sulla sua salvo scelta, centesimi interi. Dal link,
+        // senza «Versato da», si copre la sola rata della segnalazione e il resto è parte in più, come sempre.
+        const centesimi = (euro: number) => Math.round(euro * 100);
+        const soloRataDelLink = ramoDelLink && righeCredito.length > 0;
+        const debiti = (soloRataDelLink ? [rataTarget!] : rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0));
+        const esito = pianificaCoperture(
+            debiti.map(r => ({ chiave: r.id, residuo: centesimi(parseResiduoQuota(r.residuo)), gestione: r.gestione_id ?? null })),
+            righeCredito.map(r => ({ chiave: r.id, disponibile: centesimi(creditoRiga(r)), gestione: r.gestione_id ?? null })),
+            centesimi(importoNumerico.value),
+            soloRataDelLink ? true : creditoPrimaScelto.value,
+            form.credito_fra_gestioni,
+        );
+
         rateList.value.forEach(r => {
-            if (parseResiduoQuota(r.residuo) > 0) r.da_pagare = 0;
+            if (parseResiduoQuota(r.residuo) > 0) {
+                const coperto = esito.copertura[r.id] ?? 0;
+                r.da_pagare = coperto / 100;
+                r.selezionata = coperto > 0;
+            } else if (creditoRiga(r) > 0) {
+                // Selezionata solo se qualcosa è stato davvero impegnato: il pulsante verde «Credito applicato» su
+                // un'allocazione di zero dichiarerebbe un'operazione che non avviene.
+                const usato = esito.creditoUsato[r.id] ?? 0;
+                r.da_pagare = usato > 0 ? -(usato / 100) : 0;
+                r.selezionata = usato > 0;
+            }
         });
 
-        if (rataTarget && righeCredito.length > 0) {
-            const debitoRata = parseResiduoQuota(rataTarget.residuo);
-            const creditoDaUsare = Math.min(creditoDisponibile, debitoRata);
-
-            spalmaCredito(creditoDaUsare);
-
-            rataTarget.da_pagare = creditoDaUsare + importoNumerico.value;
-            rataTarget.selezionata = rataTarget.da_pagare > 0;
-
-            form.eccedenza = Math.max(0, (creditoDaUsare + importoNumerico.value) - debitoRata);
-
-            if (form.eccedenza > 0) {
-                rataTarget.da_pagare = debitoRata;
-            }
-        } else {
-            // Il credito si impegna PRIMA di distribuire, e solo per la parte che il contante
-            // lascia scoperta. Prima il budget era `contante + creditoDisponibile` e
-            // l'eccedenza era l'avanzo del greedy: con 300 di credito, zero contante e 100 di
-            // debito avanzavano 200, che finivano nel campo eccedenza come **anticipo** —
-            // mentre sono credito che resta dov'è, mai entrato in cassa. Il server rifiutava
-            // poi la registrazione, perché l'identità `importo_totale = somma + eccedenza`
-            // non tornava. Vedi `creditoNecessario` e `usePaymentDistribution.test.ts`.
-            const creditoEffettivoUsato = righeCredito.length > 0
-                ? creditoNecessario(rateList.value, importoNumerico.value, creditoDisponibile)
-                : 0;
-
-            form.eccedenza = distributeGreedy(rateList.value, importoNumerico.value + creditoEffettivoUsato);
-
-            if (righeCredito.length > 0) {
-                spalmaCredito(creditoEffettivoUsato);
-            }
-        }
+        form.eccedenza = esito.eccedenza / 100;
+        serveSceltaGestioni.value = esito.serveScelta;
+        const nomeGestione = (id: number | null | undefined) => rateList.value.find(r => r.gestione_id === id)?.gestione ?? 'un\'altra gestione';
+        const idCredito = new Set(righeCredito.map(r => r.gestione_id));
+        gestioniDelCredito.value = [...idCredito].map(nomeGestione);
+        altreGestioni.value = [...gestioniConDebiti].filter(g => !idCredito.has(g)).map(nomeGestione);
     } else {
         // Il **solo** contante: le righe di credito portano un `da_pagare` negativo e sono
         // quindi già scontate dentro l'allocato che `calculateExcess` sottrae. Qui prima si
@@ -767,7 +920,9 @@ const submit = () => {
 
     const payload = form.transform((data) => ({
         ...data,
-        importo_totale: cleanTotal
+        importo_totale: cleanTotal,
+        // Decisione 30.12: la gestione scelta dall'amministratore, quando il filtro è vuoto e le rate sono di più gestioni.
+        gestione_id: gestioneDaMandare.value,
     }));
 
     payload.post(route(generateRoute('gestionale.movimenti-rate.store'), props.condominio.id), {
@@ -851,6 +1006,44 @@ watch(selectedImmobileId, (newVal) => {
     }
 });
 watch(importoNumerico, () => { if (rateList.value.length > 0) runDistribution(); });
+
+// Coda 167: cambiando chi ha versato le due scelte vanno rifatte, e la distribuzione rifatta — il credito incluso dal
+// link per la posizione esce finché non si sceglie (30.7). Esce anche il credito che aveva incluso «si usa adesso»:
+// senza «Versato da» una riga selezionata resta dentro da sola, e il credito si sarebbe usato su una scelta che non
+// c'è più (reperto T5 del terzo giro). Si spegne la selezione di ogni riga di credito: quelle cliccate a mano rientrano
+// da `creditiCliccati`, il link rimette da sé la sua. In manuale non c'è niente da togliere: passando in manuale il
+// credito impegnato esce già.
+watch(() => form.versato_da_id, (id) => {
+    form.credito_prima = null;
+    form.credito_fra_gestioni = null;
+    form.quota_parte_in_piu_id = null;
+    sceltaParteInPiuAMano.value = false;
+    caricaRateDiChiHaVersato(id);
+    rateList.value.forEach(r => { if (creditoRiga(r) > 0) r.selezionata = false; });
+    if (rateList.value.length > 0) runDistribution();
+});
+
+/** Decisione 30.11: il credito resta sulla sua gestione o passa anche alle altre. */
+const scegliFraGestioni = (fra: boolean) => {
+    form.credito_fra_gestioni = fra;
+    form.clearErrors('credito_fra_gestioni');
+    runDistribution();
+};
+
+/** «Resta» o «si usa adesso»: la scelta dell'amministratore, e subito la distribuzione che la esegue. */
+const scegliCredito = (prima: boolean) => {
+    form.credito_prima = prima;
+    form.clearErrors('credito_prima');
+    // Il credito si distribuisce in un posto solo, il ramo automatico: vedi `toggleCredito`.
+    if (prima && mode.value === 'manual') mode.value = 'auto';
+    runDistribution();
+};
+
+// La proposta della 30.8 segue la parte in più e la gestione dell'incasso, finché l'amministratore non sceglie a mano.
+watch([propostaParteInPiu, mostraParteInPiu], () => {
+    if (sceltaParteInPiuAMano.value) return;
+    form.quota_parte_in_piu_id = mostraParteInPiu.value ? propostaParteInPiu.value : null;
+});
 
 watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
     let list = getRateListByGestione(form.gestione_id);
@@ -1077,6 +1270,97 @@ onMounted(async () => {
                             </div>
                         </div>
 
+                        <!-- Coda 167, beta.40: chi ha versato, se non è la posizione scelta sopra. -->
+                        <div v-if="form.pagante_id">
+                            <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Versato da</Label>
+                            <v-select
+                                :options="personeVersatoDa"
+                                v-model="form.versato_da_id"
+                                label="nome"
+                                :reduce="(p: any) => p.id"
+                                class="w-full bg-white text-sm"
+                                placeholder="La stessa persona"
+                            >
+                                <template #option="{ nome, indirizzo, codice_fiscale }">
+                                    <div class="flex flex-col py-0.5">
+                                        <span class="font-medium text-sm text-slate-800">{{ nome }}</span>
+                                        <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || 'Nessun dettaglio aggiuntivo' }}</span>
+                                    </div>
+                                </template>
+                                <template #no-options>
+                                    <span class="text-[12px] text-slate-500">Nessuna persona del condominio corrisponde alla ricerca.</span>
+                                </template>
+                            </v-select>
+                            <p v-if="versatoDa && conVersatoDa" class="mt-1 text-[11px] leading-snug text-sky-800">
+                                Il debito resta di {{ nomePosizione }}: le note dell'incasso e l'estratto conto di {{ versatoDa.nome }} diranno chi ha versato.
+                            </p>
+
+                            <!-- Decisione 30.7: il credito della posizione. Niente è già scelto. -->
+                            <div v-if="mostraSceltaCredito" class="mt-2 rounded-md border border-sky-200 bg-sky-50/60 dark:border-sky-900/50 dark:bg-sky-950/20 p-2">
+                                <p class="text-[11px] leading-snug font-semibold text-sky-900 dark:text-sky-100">
+                                    {{ nomePosizione }} ha {{ euro(creditoPosizione) }} di credito: si usa adesso o resta suo? Dipende da come si sono accordati.
+                                </p>
+                                <p v-if="creditoDelleGestioniConRate < creditoPosizione" class="mt-0.5 text-[11px] leading-snug text-sky-800 dark:text-sky-200">
+                                    «Si usa adesso» include solo il credito delle gestioni che hanno rate in elenco: {{ euro(creditoDelleGestioniConRate) }}. Il resto resta suo.
+                                </p>
+                                <div class="mt-1.5 grid grid-cols-2 gap-1.5" role="radiogroup" :aria-label="`Il credito di ${nomePosizione}`">
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        :aria-checked="form.credito_prima === false"
+                                        @click="scegliCredito(false)"
+                                        class="rounded-md border px-2 py-1.5 text-left transition-colors"
+                                        :class="form.credito_prima === false ? 'border-sky-600 bg-white ring-1 ring-sky-600 dark:bg-slate-900' : 'border-slate-200 bg-white hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900'"
+                                    >
+                                        <span class="block text-xs font-semibold text-slate-800 dark:text-slate-100">Resta a {{ nomePosizione }}</span>
+                                        <span class="block text-[10px] leading-snug text-slate-500">Il debito si paga prima con i soldi versati; il credito resta a {{ nomePosizione }}.</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        :aria-checked="form.credito_prima === true"
+                                        @click="scegliCredito(true)"
+                                        class="rounded-md border px-2 py-1.5 text-left transition-colors"
+                                        :class="form.credito_prima === true ? 'border-sky-600 bg-white ring-1 ring-sky-600 dark:bg-slate-900' : 'border-slate-200 bg-white hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900'"
+                                    >
+                                        <span class="block text-xs font-semibold text-slate-800 dark:text-slate-100">Si usa adesso</span>
+                                        <span class="block text-[10px] leading-snug text-slate-500">Prima il credito, poi i soldi versati: la parte in più va a {{ versatoDa?.nome }}.</span>
+                                    </button>
+                                </div>
+                                <InputError :message="form.errors.credito_prima" class="mt-1" />
+                            </div>
+
+                            <!-- Decisione 30.8: dove va la parte in più di chi ha versato. -->
+                            <div v-if="versatoDa && mostraParteInPiu" class="mt-2">
+                                <template v-if="versatoDa.ha_rate">
+                                    <p class="text-[11px] leading-snug text-sky-800 dark:text-sky-200">
+                                        La parte in più (eccedenza), {{ euro(form.eccedenza) }}, va su una rata di {{ versatoDa.nome }}: la riduce, o diventa un suo credito se è già pagata.
+                                    </p>
+                                    <v-select
+                                        :options="opzioniParteInPiu"
+                                        v-model="form.quota_parte_in_piu_id"
+                                        label="etichetta"
+                                        :reduce="(q: any) => q.id"
+                                        :clearable="false"
+                                        class="mt-1 w-full bg-white text-sm"
+                                        placeholder="Scegli una sua rata"
+                                        @update:modelValue="sceltaParteInPiuAMano = true; form.clearErrors('quota_parte_in_piu_id')"
+                                    >
+                                        <template #no-options>
+                                            <span class="text-[12px] text-slate-500">Nessuna rata emessa di questa persona.</span>
+                                        </template>
+                                    </v-select>
+                                    <p v-if="parteInPiuFuoriGestione && rataParteInPiu" class="mt-1 text-[11px] leading-snug text-amber-700 font-medium">
+                                        È una rata della gestione {{ rataParteInPiu.gestione }}: la parte in più passa a quella gestione.
+                                    </p>
+                                    <InputError :message="form.errors.quota_parte_in_piu_id" class="mt-1" />
+                                </template>
+                                <p v-else class="text-[11px] leading-snug text-amber-700 font-medium">
+                                    {{ versatoDa.nome }} non ha rate emesse in questo condominio: la parte in più (eccedenza), {{ euro(form.eccedenza) }}, non può diventare un suo credito. Registra solo il debito e restituisci la differenza.
+                                </p>
+                            </div>
+                        </div>
+
                         <!--
                             Senza `space-y-3`: l'etichetta ha già il suo `mb-1`, come tutte le
                             altre della colonna. I 12 px in più qui erano un'eccezione non voluta,
@@ -1140,6 +1424,21 @@ onMounted(async () => {
                             </div>
 
                             <div>
+                                <!-- Decisione 30.12: con rate di più gestioni e il filtro vuoto, la gestione dell'incasso la sceglie l'amministratore. -->
+                                <div v-if="mostraSceltaGestioneIncasso" class="mb-2">
+                                    <Label class="text-[11px] uppercase text-amber-700 font-bold tracking-wider mb-1 block">Gestione dell'incasso</Label>
+                                    <v-select
+                                        :options="gestioniPagate"
+                                        v-model="form.gestione_incasso_id"
+                                        label="nome"
+                                        :reduce="(g: any) => g.id"
+                                        class="w-full bg-white text-sm"
+                                        placeholder="Scegli la gestione"
+                                        @update:modelValue="form.clearErrors('gestione_id')"
+                                    />
+                                    <p class="mt-1 text-[11px] leading-snug text-amber-700">L'incasso paga rate di più gestioni: scegli a quale va. Con il filtro qui sotto paghi una gestione sola.</p>
+                                    <InputError :message="form.errors.gestione_id" class="mt-1" />
+                                </div>
                                 <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Gestione (filtro)</Label>
                                 <v-select
                                     :options="gestioni"
@@ -1147,7 +1446,7 @@ onMounted(async () => {
                                     label="nome"
                                     :reduce="(g: any) => g.id"
                                     class="w-full bg-slate-50 text-sm focus-within:bg-white transition-colors"
-                                    placeholder="Tutte (automatica)"
+                                    placeholder="Tutte"
                                 >
                                     <template #option="{ nome, tipo }">
                                         <div class="flex items-center justify-between py-0.5">
@@ -1176,13 +1475,14 @@ onMounted(async () => {
                                 </li>
                             </ul>
                         </div>
+                        <p v-if="sceltaMancante" class="mb-2 px-1 text-[11px] leading-snug text-sky-800 dark:text-sky-200">{{ sceltaMancante }}</p>
                         <div class="flex justify-between items-center text-xs mb-2 px-1">
                             <span class="text-slate-500 uppercase tracking-wider font-semibold">Totale allocato:</span>
                             <span class="font-bold text-slate-800 text-sm">{{ euro(totalAllocato) }}</span>
                         </div>
                         <Button
                             @click="submit"
-                            :disabled="form.processing || !previewContabile.hasData || !form.pagante_id || (isCrossGestione && !crossGestioneConfermato)"
+                            :disabled="form.processing || !previewContabile.hasData || !form.pagante_id || !!sceltaMancante"
                             class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md transition-all text-sm"
                         >
                             <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
@@ -1300,7 +1600,11 @@ onMounted(async () => {
                                 </div>
                                 <div>
                                     <span class="text-xs font-bold block mb-0.5">Nulla da compensare</span>
-                                    <span class="text-[11px] leading-snug block opacity-90">
+                                    <span v-if="conVersatoDa" class="text-[11px] leading-snug block opacity-90">
+                                        I soldi versati coprono già tutte le rate in elenco: il credito resta a
+                                        {{ nomePosizione }}. Per usarlo prima dei soldi versati scegli «Si usa adesso».
+                                    </span>
+                                    <span v-else class="text-[11px] leading-snug block opacity-90">
                                         L'importo che stai incassando copre già tutte le rate in elenco: il credito
                                         resta dov'è. Abbassa l'importo versato se vuoi usarlo al suo posto.
                                     </span>
@@ -1321,7 +1625,7 @@ onMounted(async () => {
                                 <span class="text-[11px] font-medium">Situazione pregressa regolare. Procedi con l'incasso delle rate ordinarie.</span>
                             </div>
 
-                            <div v-if="spaccatoCreditoDisponibile.length > 0" class="bg-blue-50/80 px-3 py-2 flex items-center gap-2 text-blue-700 shrink-0 flex-wrap" :class="isCrossGestione ? 'border-b border-blue-100/0' : 'border-b border-blue-100'">
+                            <div v-if="spaccatoCreditoDisponibile.length > 0" class="bg-blue-50/80 px-3 py-2 flex items-center gap-2 text-blue-700 shrink-0 flex-wrap" :class="domandaFraGestioni ? 'border-b border-blue-100/0' : 'border-b border-blue-100'">
                                 <Wallet class="w-4 h-4 text-blue-500 shrink-0" />
                                 <span class="text-[11px] font-medium">Credito disponibile:</span>
                                 <span v-for="(g, idx) in spaccatoCreditoDisponibile" :key="idx" class="text-[11px] font-bold">
@@ -1329,19 +1633,31 @@ onMounted(async () => {
                                 </span>
                             </div>
 
-                            <div v-if="isCrossGestione" class="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start gap-3 text-amber-800 shrink-0">
+                            <!-- Decisione 30.11: il credito di una gestione su rate di un'altra lo decide l'amministratore. Niente è già scelto. -->
+                            <div v-if="domandaFraGestioni" class="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start gap-3 text-amber-800 shrink-0">
                                 <div class="p-1 bg-amber-100 rounded-full mt-0.5 shrink-0">
                                     <AlertCircle class="w-4 h-4 text-amber-600" />
                                 </div>
                                 <div class="flex-1">
-                                    <span class="text-xs font-bold block mb-1">Attenzione: stai attraversando gestioni diverse</span>
+                                    <span class="text-xs font-bold block mb-1">Il credito passa di gestione?</span>
                                     <span class="text-[11px] leading-snug block opacity-90 mb-2">
-                                        Il credito qui sopra non appartiene alla stessa gestione della rata che stai saldando. Non è impedito, ma verifica che sia la scelta corretta prima di confermare.
+                                        Il credito di {{ gestioniDelCredito.join(', ') }} potrebbe coprire anche rate di {{ altreGestioni.join(', ') || 'un\'altra gestione' }}. Decidi tu: dipende da come sono tenuti i conti e da cosa ha deliberato l'assemblea.
                                     </span>
-                                    <label class="flex items-center gap-2 text-[11px] font-bold cursor-pointer select-none">
-                                        <input type="checkbox" v-model="crossGestioneConfermato" class="w-3.5 h-3.5 text-amber-600 border-amber-300 rounded focus:ring-amber-500 cursor-pointer" />
-                                        Confermo l'utilizzo di credito da una gestione diversa
-                                    </label>
+                                    <div class="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Il credito fra gestioni">
+                                        <button type="button" role="radio" :aria-checked="form.credito_fra_gestioni === false" @click="scegliFraGestioni(false)"
+                                            class="rounded-md border px-2 py-1.5 text-left transition-colors bg-white"
+                                            :class="form.credito_fra_gestioni === false ? 'border-amber-600 ring-1 ring-amber-600' : 'border-amber-200 hover:border-amber-400'">
+                                            <span class="block text-xs font-semibold text-slate-800">Solo sulla sua gestione</span>
+                                            <span class="block text-[10px] leading-snug text-slate-500">Il credito che avanza resta a {{ nomePosizione }}.</span>
+                                        </button>
+                                        <button type="button" role="radio" :aria-checked="form.credito_fra_gestioni === true" @click="scegliFraGestioni(true)"
+                                            class="rounded-md border px-2 py-1.5 text-left transition-colors bg-white"
+                                            :class="form.credito_fra_gestioni === true ? 'border-amber-600 ring-1 ring-amber-600' : 'border-amber-200 hover:border-amber-400'">
+                                            <span class="block text-xs font-semibold text-slate-800">Anche sulle altre gestioni</span>
+                                            <span class="block text-[10px] leading-snug text-slate-500">La nota dell'incasso dirà che l'hai scelto tu.</span>
+                                        </button>
+                                    </div>
+                                    <InputError :message="form.errors.credito_fra_gestioni" class="mt-1" />
                                 </div>
                             </div>
 

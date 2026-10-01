@@ -161,6 +161,30 @@ class IncassoRateController extends Controller
         $immobili = Immobile::where('condominio_id', $condominio->id)
             ->orderBy('interno')->get(['id', 'interno', 'descrizione', 'nome']);
 
+        // Coda 167, beta.40: chi può essere «Versato da» — le persone del condominio, con la stessa regola del pagante
+        // (`StoreIncassoRateRequest::personaDelCondominio()`: titolari di un'unità o associati al condominio). Più ampio
+        // di `$condomini`, che guarda solo le unità: il figlio che paga per la madre è associato senza unità. `ha_rate`
+        // serve al modulo per avvisare prima del rifiuto, quando la parte in più non avrebbe dove stare (decisione 30.3).
+        $conRate = RataQuote::whereHas('rata.pianoRate', fn ($p) => $p->where('condominio_id', $condominio->id))
+            ->whereHas('rata', fn ($r) => $r->where('stato', 'emessa'))
+            ->where('importo', '>', 0)
+            ->distinct()
+            ->pluck('anagrafica_id')
+            ->flip();
+
+        $persone = Anagrafica::where(fn ($q) => $q
+                ->whereHas('immobili', fn ($i) => $i->where('condominio_id', $condominio->id))
+                ->orWhereHas('condomini', fn ($c) => $c->where('condomini.id', $condominio->id)))
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'indirizzo', 'codice_fiscale'])
+            ->map(fn (Anagrafica $a) => [
+                'id'             => $a->id,
+                'nome'           => $a->nome,
+                'indirizzo'      => $a->indirizzo,
+                'codice_fiscale' => $a->codice_fiscale,
+                'ha_rate'        => isset($conRate[$a->id]),
+            ])->values();
+
         $esercizio = $this->getEsercizioCorrente($condominio);
         
         $gestioni = $esercizio 
@@ -172,6 +196,7 @@ class IncassoRateController extends Controller
             'esercizio'  => $esercizio,
             'risorse'    => $risorse,
             'condomini'  => $condomini,
+            'persone'    => $persone,
             'immobili'   => $immobili,
             'gestioni'   => $gestioni,
         ]);
@@ -194,7 +219,7 @@ class IncassoRateController extends Controller
     public function store(StoreIncassoRateRequest $request, Condominio $condominio, StoreIncassoRateAction $action) 
     {
         try {
-            $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
+            $scrittura = $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
         } catch (IncassoNonRegistrabileException $e) {
             // Conflitto di dominio, non guasto: l'incasso **non si poteva registrare**, e niente è
             // stato scritto. Si torna al modulo compilato con il motivo, invece della pagina 500
@@ -210,75 +235,23 @@ class IncassoRateController extends Controller
         }
 
         // --- AGGIORNAMENTO EVENTI SCADENZIARIO ---
-        $paganteId = $request->input('pagante_id');
-        $dettaglioPagamenti = $request->input('dettaglio_pagamenti', []);
-
-        // FIX: Consideriamo SOLO i pagamenti ordinari (importo > 0)
-        $quoteOrdinarie = collect($dettaglioPagamenti)
-            ->filter(fn($item) => $item['importo'] > 0)
-            ->pluck('rata_id')
-            ->filter()
-            ->toArray();
-
-        $rataIdsReali = [];
-        if (!empty($quoteOrdinarie)) {
-            // FIX: Convertiamo ID Quote -> ID Rate (Padri)
-            $rataIdsReali = RataQuote::whereIn('id', $quoteOrdinarie)
-                ->pluck('rata_id')
-                ->unique()
-                ->toArray();
-        }
-
-        if (!empty($quoteOrdinarie) && $paganteId) {
-
-            $eventiDaAggiornare = Evento::where('meta->type', 'scadenza_rata_condomino')
-                ->where(function ($q) use ($rataIdsReali) {
-                    foreach ($rataIdsReali as $rId) {
-                        $q->orWhere('meta->context->rata_id', (int)$rId)
-                          ->orWhere('meta->context->rata_id', (string)$rId);
-                    }
-                })
-                ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $paganteId))
-                ->get();
-
-            foreach ($eventiDaAggiornare as $evento) {
-                
-                $rataId = $evento->meta['context']['rata_id'] ?? null;
-                $rataFresca = Rata::with('rateQuote')->find($rataId);
-                
-                if ($rataFresca) {
-                    // Escludiamo le quote saldo_iniziale negative (crediti) dal calcolo
-                    $quoteUtente = $rataFresca->rateQuote
-                        ->where('anagrafica_id', $paganteId)
-                        ->where('importo', '>', 0);
-                    
-                    $totaleDovuto = $quoteUtente->sum('importo');
-                    $totalePagato = $quoteUtente->sum('importo_pagato');
-                    $restante = $totaleDovuto - $totalePagato;
-
-                    $meta = $evento->meta;
-                    $meta['importo_pagato'] = $totalePagato;
-                    $meta['importo_restante'] = max(0, $restante);
-
-                    if ($restante <= 0.01) {
-                        $meta['status'] = 'paid';
-                    } elseif ($totalePagato > 0.01) {
-                        $meta['status'] = 'partial';
-                    } else {
-                        $meta['status'] = 'pending';
-                    }
-
-                    $evento->update(['meta' => $meta]);
-                }
-            }
-        }
+        // Le coppie (rata, persona) che l'incasso ha davvero toccato, anche quella di chi ha versato per un altro e riceve
+        // la parte in più (Coda 167): vedi `EventiRataCondomino::coppieToccate()`.
+        $eventiRata = app(\App\Services\Gestionale\EventiRataCondomino::class);
+        $coppie = $eventiRata->coppieToccate($scrittura);
+        $rataIdsReali = $coppie->pluck(0)->unique()->values()->all();
+        $eventiRata->allineaPagato($coppie);
 
         // Chiusura del Task Admin
-        $relatedTaskId = $request->input('related_task_id');
+        // Solo un'attività di **questo** condominio (lente sicurezza della Fase 1-bis della beta.40): l'id arriva dal
+        // browser, e con `Evento::find()` si chiudeva un'attività di qualunque palazzo. Se non c'è — cancellata nel
+        // frattempo, o di un altro condominio — l'incasso resta registrato e non si chiude niente.
+        $relatedTaskId = $request->validated('related_task_id');
 
         if ($relatedTaskId) {
             /** @var \App\Models\Evento|null $task */
-            $task = Evento::find($relatedTaskId);
+            $task = Evento::whereHas('condomini', fn ($q) => $q->where('condomini.id', $condominio->id))
+                ->find((int) $relatedTaskId);
 
             if ($task && !$task->is_completed) {
                 $task->update([
@@ -291,23 +264,14 @@ class IncassoRateController extends Controller
         // -------------------------------------------------------------
         // 2. SMART TASK KILLER: Uccisione Globale (Verifica incassi rata)
         // -------------------------------------------------------------
-        if (!empty($quoteOrdinarie)) {
-            // Prendiamo le rate padri coinvolte in questo pagamento
-            $ratePadri = Rata::whereIn('id', $rataIdsReali)->with('rateQuote')->get();
-
-            foreach ($ratePadri as $rataPadre) {
-                // Calcoliamo quanto è stato pagato in totale per QUESTA rata in TUTTO il condominio
-                $totaleDovutoCondominio = $rataPadre->rateQuote->where('importo', '>', 0)->sum('importo');
-                $totalePagatoCondominio = $rataPadre->rateQuote->where('importo', '>', 0)->sum('importo_pagato');
-                
-                $residuoCondominio = $totaleDovutoCondominio - $totalePagatoCondominio;
-
-                // Se l'intera rata del condominio è stata saldata (tolleranza 1 centesimo)
-                if ($residuoCondominio <= 0.01) {
-                    
-                    // Cerchiamo l'evento globale "Verifica incassi" per questa rata
+        if (!empty($rataIdsReali)) {
+            // Si chiude la «verifica incassi» globale di una rata solo quando ogni sua quota è pagata: con la somma, lo
+            // strapagamento di uno (la parte in più di chi ha versato per un altro, un anticipo) nascondeva il debito di
+            // un altro (reperto S7 della Fase 1-bis della 1.11.0-beta.40).
+            foreach (Rata::whereIn('id', $rataIdsReali)->get() as $rataPadre) {
+                if ($eventiRata->rataSaldata($rataPadre)) {
                     $rataPadreId = (int) $rataPadre->id;
-                    
+
                     Evento::where('meta->type', 'controllo_incassi')
                         ->where(function($q) use ($rataPadreId) {
                             $q->where('meta->context->rata_id', $rataPadreId)
@@ -361,6 +325,7 @@ class IncassoRateController extends Controller
         $scrittura->load([
             'righe.anagrafica',
             'righe.cassa',
+            'righe.riferimento',
             'quotePagate.rata.pianoRate.gestione',
             'quotePagate.immobile',
             'figlie.quotePagate.rata',
@@ -392,7 +357,10 @@ class IncassoRateController extends Controller
             'condominio'       => new CondominioResource($condominio),
             'esercizio'        => $esercizio,
             'condomini'        => $listaPalazzi,
-            'incasso'          => $scrittura,
+            // Solo i campi che la pagina legge (S12 del rigiro della Fase 1-bis): con le relazioni caricate partivano
+            // anche le anagrafiche intere delle righe — codice fiscale, email, telefono — che la pagina non mostra.
+            // Il resto lo legge da `incassoFormatted`.
+            'incasso'          => $scrittura->only(['id', 'numero_protocollo', 'stato', 'causale', 'data_competenza', 'updated_at']),
             'incassoFormatted' => $formattato,
             'utenteCreatore'   => $utenteCreatore,
             'utenteStornatore' => $utenteStornatore,

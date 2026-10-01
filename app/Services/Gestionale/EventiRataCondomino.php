@@ -196,4 +196,73 @@ final class EventiRataCondomino
 
         InboxService::clearAdminCache();
     }
+
+    /**
+     * Le coppie (rata, persona) che una scrittura d'incasso ha **davvero** toccato: le quote pagate dalla scrittura e
+     * dalle sue figlie (la compensazione del credito), a importo positivo — le quote di credito negative restano fuori.
+     *
+     * Dalla 1.11.0-beta.40 (Coda 167) un incasso tocca anche la quota di chi ha versato per un altro, che riceve la parte
+     * in più: le coppie non si ricavano più dal pagante e dal payload. Coppie esatte, e non il prodotto rate × persone:
+     * il prodotto ricalcolava promemoria di persone che l'incasso non aveva toccato, e sovrascriveva uno «reported»
+     * segnalato dal portale (reperti R3 e S8 della Fase 1-bis della .40).
+     *
+     * @return Collection<int, array{0:int, 1:int}>
+     */
+    public function coppieToccate(\App\Models\Gestionale\ScritturaContabile $scrittura): Collection
+    {
+        $scrittura->loadMissing(['quotePagate', 'figlie.quotePagate']);
+
+        return $scrittura->quotePagate
+            ->merge($scrittura->figlie->flatMap->quotePagate)
+            ->filter(fn ($q) => $q->importo > 0)
+            ->map(fn ($q) => [(int) $q->rata_id, (int) $q->anagrafica_id])
+            ->unique(fn ($c) => $c[0] . '-' . $c[1])
+            ->values();
+    }
+
+    /**
+     * Riallinea pagato, restante e stato dei promemoria delle coppie date, dalle quote come sono adesso. Lo usano
+     * l'incasso e il suo storno: la stessa regola nei due versi.
+     *
+     * @param  Collection<int, array{0:int, 1:int}>  $coppie
+     */
+    public function allineaPagato(Collection $coppie): void
+    {
+        foreach ($coppie as [$rataId, $anagraficaId]) {
+            $rata = Rata::with('rateQuote')->find($rataId);
+            if (! $rata) {
+                continue;
+            }
+
+            $quote = $rata->rateQuote->where('anagrafica_id', $anagraficaId)->where('importo', '>', 0);
+            $dovuto = (int) $quote->sum('importo');
+            $pagato = (int) $quote->sum('importo_pagato');
+            $restante = $dovuto - $pagato;
+
+            $eventi = Evento::where('meta->type', EventoTipo::SCADENZA_RATA_CONDOMINO->value)
+                ->where(fn ($q) => $q->where('meta->context->rata_id', $rataId)->orWhere('meta->context->rata_id', (string) $rataId))
+                ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $anagraficaId))
+                ->get();
+
+            foreach ($eventi as $evento) {
+                $meta = $evento->meta;
+                $meta['importo_pagato'] = $pagato;
+                $meta['importo_restante'] = max(0, $restante);
+                $meta['status'] = $restante <= 0 ? 'paid' : ($pagato > 0 ? 'partial' : 'pending');
+                $evento->update(['meta' => $meta]);
+            }
+        }
+    }
+
+    /**
+     * Una rata è saldata quando **ogni** sua quota a importo positivo è pagata — non quando la somma del pagato raggiunge
+     * la somma del dovuto: lo strapagamento di uno compensava nella somma il debito di un altro, e la «verifica incassi»
+     * si chiudeva mentre qualcuno doveva ancora (reperto S7 della Fase 1-bis della .40). Le quote di credito, negative,
+     * non contano.
+     */
+    public function rataSaldata(Rata $rata): bool
+    {
+        return $rata->rateQuote()->where('importo', '>', 0)->get()
+            ->every(fn ($q) => $q->importo_pagato >= $q->importo);
+    }
 }
