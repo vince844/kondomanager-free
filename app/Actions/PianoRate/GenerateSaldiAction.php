@@ -8,9 +8,11 @@ use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
 use App\Models\Saldo;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Services\Riparto\UnitaMista;
 
 class GenerateSaldiAction
 {
@@ -93,26 +95,25 @@ class GenerateSaldiAction
                 // B2. Riparto Automatico sui titolari di un diritto reale, scelti per natura
                 // della gestione — vedi `risolviTitolari()` per la regola e il perché.
                 [$ruoloRisolto, $titolari] = $this->risolviTitolari($saldo, $gestione);
+                $persone = self::perPersona($titolari, $ruoloRisolto);
 
                 $quote = MoneyHelper::ripartisciPerQuote(
                     $saldo->saldo_iniziale,
-                    $titolari->pluck('quota', 'anagrafica_id')
-                        ->map(fn ($quota): float => (float) $quota)
-                        ->all()
+                    array_map(fn (array $p): float => $p['quota'], $persone)
                 );
 
-                foreach ($titolari as $titolare) {
-                    $importoProQuota = $quote[$titolare->anagrafica_id] ?? 0;
+                foreach ($persone as $anagraficaId => $persona) {
+                    $importoProQuota = $quote[$anagraficaId] ?? 0;
 
                     // Uno zero può essere legittimo — un centesimo fra tre persone ne lascia
                     // due a mani vuote — e una quota da zero non va scritta.
                     if ($importoProQuota !== 0) {
                         $this->assegnaQuota(
                             $distribuzione,
-                            $titolare->anagrafica_id,
+                            $anagraficaId,
                             $saldo->immobile_id,
                             $importoProQuota,
-                            $this->creaMeta($saldo, 'solidale_automatico', (float) $titolare->quota, $ruoloRisolto)
+                            $this->creaMeta($saldo, 'solidale_automatico', $persona['quota'], $persona['tipologia'])
                         );
                     }
                 }
@@ -158,10 +159,8 @@ class GenerateSaldiAction
             ];
         }
 
-        $importi = MoneyHelper::ripartisciPerQuote(
-            $saldo->saldo_iniziale,
-            $titolari->pluck('quota', 'anagrafica_id')->map(fn ($quota): float => (float) $quota)->all()
-        );
+        $persone = self::perPersona($titolari, $ruolo);
+        $importi = MoneyHelper::ripartisciPerQuote($saldo->saldo_iniziale, array_map(fn (array $p): float => $p['quota'], $persone));
 
         $nomi = DB::table('anagrafiche')
             ->whereIn('id', $titolari->pluck('anagrafica_id'))
@@ -170,15 +169,40 @@ class GenerateSaldiAction
         return [
             'risolvibile' => true,
             'ruolo' => $ruolo,
-            'ruolo_label' => RuoloAnagraficaImmobile::from($ruolo)->label(),
+            // Sull'unità mista i ruoli sono due (Coda 170): «Usufruttuario e proprietario», non solo il primo.
+            'ruolo_label' => $titolari->pluck('tipologia')->unique()->values()
+                ->map(fn ($t, $i) => $i === 0 ? RuoloAnagraficaImmobile::from($t)->label() : mb_strtolower(RuoloAnagraficaImmobile::from($t)->label()))
+                ->implode(' e '),
             'motivo' => null,
-            'quote' => $titolari->map(fn ($titolare): array => [
-                'anagrafica_id' => (int) $titolare->anagrafica_id,
-                'nome' => $nomi[$titolare->anagrafica_id] ?? "#{$titolare->anagrafica_id}",
-                'quota' => (float) $titolare->quota,
-                'importo' => $importi[$titolare->anagrafica_id] ?? 0,
+            'quote' => collect($persone)->map(fn (array $persona, int $anagraficaId): array => [
+                'anagrafica_id' => $anagraficaId,
+                'nome' => $nomi[$anagraficaId] ?? "#{$anagraficaId}",
+                'quota' => $persona['quota'],
+                'importo' => $importi[$anagraficaId] ?? 0,
             ])->values()->all(),
         ];
+    }
+
+    /**
+     * I titolari raccolti per persona, con le quote sommate (rilievo D2 della Fase 1-bis della beta.41). La stessa persona
+     * può stare due volte fra i titolari: sull'unità mista sul ruolo e sul gemello (proprietaria piena di una metà e nuda
+     * proprietaria dell'altra), e già prima della beta su due righe dello stesso ruolo (vende e ricompra, Coda 174). Con
+     * `pluck('quota', 'anagrafica_id')` le due righe si fondevano nell'ultima quota, la persona prendeva il 100 % e il
+     * ciclo lo scriveva una volta per riga: un pregresso da € 1.000,00 ne addebitava € 2.000,00. Una voce di storico per
+     * persona, con il ruolo della prima riga (quello della catena), così `VerificaSaldiSolidaliCommand` non conta doppio.
+     *
+     * @return array<int, array{quota: float, tipologia: string}>
+     */
+    private static function perPersona(Collection $titolari, string $ruoloRisolto): array
+    {
+        $persone = [];
+        foreach ($titolari as $t) {
+            $id = (int) $t->anagrafica_id;
+            $persone[$id] ??= ['quota' => 0.0, 'tipologia' => (string) ($t->tipologia ?? $ruoloRisolto)];
+            $persone[$id]['quota'] += (float) $t->quota;
+        }
+
+        return $persone;
     }
 
     private function assegnaQuota(array &$distribuzione, int $anagraficaId, ?int $immobileId, int $importo, array $meta): void
@@ -239,7 +263,14 @@ class GenerateSaldiAction
             $titolari = $occupanti->where('tipologia', $ruolo->value)->values();
 
             if ($titolari->isNotEmpty()) {
-                return [$ruolo->value, $titolari];
+                // Coda 170 (decisione 31.2, 1.11.0-beta.41): sull'unità mista il pregresso si divide anche con il ruolo
+                // gemello — l'ordinaria fra usufruttuario e proprietario pieno, la straordinaria fra nudo proprietario e
+                // proprietario pieno, per le loro quote. Il calcolo è atemporale (`vincolaQuery` senza periodo): una riga
+                // chiusa da un passaggio conta ancora, quindi un'unità diventata mista con una riserva fa più di 100 e qui
+                // resta com'era — è la Coda 174, fuori da questa beta.
+                $gemelle = app(UnitaMista::class)->righeGemelle($occupanti, $titolari, $ruolo->value, null);
+
+                return [$ruolo->value, $titolari->concat($gemelle)->values()];
             }
         }
 

@@ -18,8 +18,8 @@
  * - la copia autentica non libera chi vende: resta usufruttuario (decisione 28.3);
  * - un piano generato o ricalcolato dopo l'atto addebita secondo i coefficienti: le voci sul «Proprietario» scendono dal
  *   giorno dell'atto al nudo proprietario, e l'anteprima lo dice leggendo il riparto del piano (decisione 28.5, rilievo B1);
- *   con la riserva sulla quota di un comproprietario l'unità resta mista, il motore non la sa dividere (limite S8-8,
- *   preesistente) e l'anteprima lo avvisa (decisione 28.6, rilievo B2).
+ *   con la riserva sulla quota di un comproprietario l'unità resta mista, e dalla beta.41 il motore la divide per le
+ *   quote registrate (Coda 170, decisione 31.1): l'avviso della decisione 28.6 è tolto.
  *
  * Flusso vero: il piano generato a gennaio con il solo venditore, l'emissione a giornale, il passaggio dalla rotta.
  *
@@ -35,24 +35,23 @@
  * denaro, la straordinaria nella rivendita della nuda proprietà, la nota di solidarietà il giorno dell'atto e con le
  * pertinenze, i passaggi della .37 con il consuntivo dell'anno prima generato dopo (anche nella catena, sul motore),
  * l'avviso del ricalcolo con una voce senza coefficienti e su un piano senza righe di riparto; la presa d'atto con un solo
- * titolare sta nel test del rilievo B4. Tre test fissano il comportamento di oggi e lo dicono nel nome, «sentinella della
- * Coda N»: quando la coda si corregge devono cambiare. Restano fuori:
+ * titolare sta nel test del rilievo B4. Un test fissa il comportamento di oggi e lo dice nel nome, «sentinella della Coda
+ * 172»: quando la coda si corregge deve cambiare. Quelli delle Code 170 e 171, chiuse nella beta.41, asseriscono il
+ * comportamento giusto. Restano fuori:
  * - l'emissione, simulata a giornale e non da `EmissioneRateController`, e la corsa fra anteprima e registrazione
  *   (SQLite serializza; provata a mano nella .37);
  * - MySQL: qui la condizione JSON di `Subentro::vincolaRiservaUsufrutto` gira su sqlite, dove le due forme del
  *   risolutore la condividono; la confronta con la lettura in PHP `tests/Unit/Subentro/RiservaUsufruttoMysqlTest`
  *   (gruppo `mysql`, solo con un MySQL locale). MySQL 5.7 non è provato;
- * - l'unità mista (Coda 170): il conto del motore è sbagliato, e la sentinella della Coda 170 lo fissa com'è perché
- *   regge l'avviso (rilievo B2). Della riserva all'altro comproprietario pieno sono provate righe e annullamento, non il
- *   denaro né il testo dell'avviso;
- * - piano emesso e piano ricalcolato non danno la stessa persona (Coda 171). Il lato del ricalcolo — la voce sul
- *   «Proprietario» che dal giorno dell'atto va al nudo proprietario — lo fissa com'è la sentinella della Coda 171; il
- *   lato delle rate emesse — l'ordinaria resta a chi vende, anche nel conguaglio — è la regola della beta (decisione 28),
- *   asserita dai test del conguaglio di questo file, e la decisione 29.1 la riapre. Con la 171 vanno la straordinaria
- *   dentro una gestione ordinaria, l'addebito diretto all'unità, i coefficienti misti e la rivendita della nuda proprietà
- *   con un piano generato dopo la riserva e la voce sul «Proprietario», dove l'ordinaria che il motore ha dato al nudo
- *   proprietario passa a chi compra. L'ordinaria da fatture con la competenza dichiarata (decisione 26) nella riserva
- *   segue il ramo dell'ordinaria, e non ha un test suo;
+ * - l'unità mista oltre la riserva su metà (Coda 170, chiusa nella beta.41): il test «Coda 170 (decisione 31.1)» prova il
+ *   denaro dopo una riserva su metà; le voci, l'addebito diretto, i giorni scoperti e i saldi pregressi sono in
+ *   `tests/Feature/Riparto/UnitaMistaTest.php`;
+ * - la scelta su chi paga l'ordinaria (Coda 171, chiusa nella beta.41): il test «Coda 171 (decisione 31.5)» prova che il
+ *   ricalcolo segue la scelta; la scelta, le voci spostate e bloccate, le catene e il conguaglio voce per voce sono in
+ *   `OrdinariaDopoAttoTest`. I test del conguaglio di questo file mandano la legge. L'addebito diretto all'unità non ha
+ *   una voce da spostare e con la legge resta a due persone (Coda 216, sentinella in `OrdinariaDopoAttoTest`).
+ *   L'ordinaria da fatture con la competenza dichiarata (decisione 26) nella riserva segue il ramo dell'ordinaria, e non
+ *   ha un test suo;
  * - la nota di solidarietà non legge la coppia (Coda 172): con la straordinaria deliberata dopo l'atto la cifra delle
  *   certe, € 400,00, conta quote che la coppia ha già spostato su chi compra, e la fissa com'è la sentinella della Coda
  *   172; la nota non legge nemmeno la competenza dichiarata sulla fattura. Della nota il giorno dell'atto è provato il
@@ -64,7 +63,7 @@
  *   emessa, che la nota conta fra le certe e non nel punto aperto (rilievo R4);
  * - S1E, i due genitori che donano con riserva e poi muore uno dei due: nella griglia B valgono solo gli invarianti di
  *   coerenza; a chi va l'usufrutto del genitore morto dipende dall'eventuale accrescimento, ed è materia della
- *   successione (beta.40);
+ *   successione (beta.42);
  * - la gestione senza esercizio, che nella riserva cambia solo la frase per gestione; la rata zero rimasta in bozza in
  *   una catena, che `ruEmetti` non sa costruire (emette per data, e la rata zero scade con la prima);
  * - «il destinatario cambierebbe» dove paga sempre la stessa persona, nella costituzione con la voce sul «Proprietario»
@@ -514,7 +513,7 @@ it('rilievo B6 — il consuntivo dell\'anno prima, generato dopo la riserva, è 
         ->and(ruCompetenze($consuntivo))->toBe([['2025-01-01', '2025-12-31']]);
 
     $annulla = app(\App\Actions\Subentro\AnnullaPassaggioAction::class);
-    expect($annulla->avvisi($subentro))->toBe([]);
+    expect(ruAvvisiSenzaVoci($annulla->avvisi($subentro)))->toBe([]);
     ruEmetti(['piano' => $consuntivo] + $s, '2026-12-31');
     expect($annulla->motivoBlocco($subentro->fresh()))->toBeNull();
 
@@ -537,7 +536,7 @@ it('rilievo B6 — lo stesso nell\'estinzione dell\'usufrutto, dove chi torna pi
         ->and(ruRiparto($consuntivo))->toBe([[$s['v']->id, 'nuda_proprietario', 30000, null, null]]);
 
     $annulla = app(\App\Actions\Subentro\AnnullaPassaggioAction::class);
-    expect($annulla->avvisi($subentro))->toBe([]);
+    expect(ruAvvisiSenzaVoci($annulla->avvisi($subentro)))->toBe([]);
     ruEmetti(['piano' => $consuntivo] + $s, '2026-12-31');
     expect($annulla->motivoBlocco($subentro->fresh()))->toBeNull();
 });
@@ -551,7 +550,7 @@ it('rilievo B6, controprova — il blocco vero resta: riserva sulla metà di un 
     app(GeneratePianoRateAction::class)->execute($s['piano'], forzaApplicazioneSaldi: true, accettaDestinatari: true, notaDestinatari: 'Letto: riserva nel 2026', esercizio: $s['e']);
 
     $annulla = app(\App\Actions\Subentro\AnnullaPassaggioAction::class);
-    expect($annulla->avvisi($subentro))->toBe(['Il piano «Preventivo 2026» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo, così quote e riparto tornano sulla titolarità di prima.']);
+    expect(ruAvvisiSenzaVoci($annulla->avvisi($subentro)))->toBe(['Il piano «Preventivo 2026» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo, così quote e riparto tornano sulla titolarità di prima.']);
     ruEmetti($s, '2026-05-31');
     expect($annulla->motivoBlocco($subentro->fresh()))->toContain('del piano «Preventivo 2026»')->toContain('Annulla l\'emissione');
 });
@@ -571,7 +570,7 @@ it('rilievo B6, controprova — una quota nata dopo senza dettaglio del riparto 
     $aMano('Conguaglio luglio', $s['a']);
     $aMano('Rimborso Bruno', $bruno);
 
-    expect(app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($subentro))
+    expect(ruAvvisiSenzaVoci(app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($subentro)))
         ->toBe(['Il piano «Conguaglio luglio» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo, così quote e riparto tornano sulla titolarità di prima.']);
 });
 
@@ -661,7 +660,7 @@ it('rilievo B3, controprova — senza riserva la catena non cambia: vendita pien
 it('rilievo B3, controprova — senza riserva la catena non cambia: costituzione dell\'usufrutto e poi estinzione, l\'ordinaria di Ugo è passata a Elsa usufruttuario il giorno della costituzione e torna a Ugo con l\'estinzione', function () {
     $s = ruScenario('prima_rata', 0);
     ruEmetti($s);
-    ruRegistra($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+    ruRegistra($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
         'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta']);
     $rigaUsu = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['a']->id)->where('tipologia', 'usufruttuario')->value('id');
 
@@ -707,40 +706,31 @@ it('rilievo B3 — la catena prima della riserva: Ugo vende a Zeta, Zeta vende a
 
 // --- Rilievo B1 della Fase 1-bis (decisione 28.5): il ricalcolo dopo la riserva segue i coefficienti --------------------
 
-it('rilievo B1 (decisione 28.5) — piano ordinario non emesso con la voce sul «Proprietario»: il cancello dice che il ricalcolo darebbe l\'ordinaria, dal giorno dell\'atto, a chi compra la nuda proprietà e indica la via', function () {
-    $s = ruScenario('prima_rata', 0);
+// Dalla 1.11.0-beta.41 il test di questo avviso sta in `OrdinariaDopoAttoTest` («rilievo B1 (decisione 28.5)» e «rilievo A5»):
+// il consiglio vale solo per le voci bloccate da un piano approvato, e lo scenario ha bisogno dei suoi helper.
 
-    $anteprima = ruAnteprima($this, $s, ruRiserva($s));
-    expect(implode(' | ', $anteprima['cancello']['motivi']))
-        ->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa, nudo proprietario')
-        ->toContain('fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.)')
-        // Decisione 29.3 (cantiere C6): la via è solo «Usufruttuario» — su un'unità affittata «Inquilino» fa pagare
-        // all'inquilino anche le spese del locatore; «Usufruttuario» dove non c'è usufrutto va al proprietario.
-        ->toContain('metti quelle voci su «Usufruttuario», che dove non c\'è usufrutto le dà al proprietario e mai all\'inquilino; non su «Inquilino», che su un\'unità affittata le fa pagare all\'inquilino (guida «Ruoli e usufrutto»)')
-        ->not->toContain('su «Usufruttuario» o «Inquilino»')
-        ->not->toContain('il destinatario cambierebbe');
-    // La frase degli obbligati rinvia alla guida, come quella della costituzione.
-    expect(implode("\n", $anteprima['obbligati']['frasi']))->toContain('Come il programma li addebita è scritto nella guida «Ruoli e usufrutto».');
-});
-
-// Sentinella della Coda 171: fissa il comportamento di oggi del ricalcolo, che la coda può cambiare. È la regola del motore
-// (decisione 28.5: la voce sul «Proprietario» scende dal giorno dell'atto al nudo proprietario), e l'avviso del test qui
-// sopra la annuncia; ma sulla stessa unità il conguaglio delle rate emesse lascia l'ordinaria a chi vende (decisione 28), e
-// lo stesso euro va a due persone diverse secondo che il piano sia emesso o ricalcolato. La Coda 171 dà al conguaglio la
-// regola del piano (decisione 29.1) e il default è aperto (29.2): con «decide la legge» (D) questo test deve cambiare, con
-// «decide la tabella» (B) resta. Non è noto come sbagliato: è il lato del ricalcolo di un'incoerenza ancora da chiudere.
-it('sentinella della Coda 171 — fissa il comportamento di oggi del ricalcolo dopo la riserva, che la coda può cambiare: con la voce sul «Proprietario», Ugo € 394,52 fino al giorno prima dell\'atto ed Elsa € 805,48 da nuda proprietaria', function () {
+// Coda 171, chiusa nella 1.11.0-beta.41 (decisioni 29.1 e 31.5). Fino alla beta.40 era la sentinella dell'incoerenza: il
+// ricalcolo dopo la riserva dava l'ordinaria, dal giorno dell'atto, al nudo proprietario (la voce sul «Proprietario» scende
+// al nudo), mentre il conguaglio delle rate emesse la lasciava a chi vende. Ora la sceglie l'amministratore al passaggio:
+// con la legge proposta (art. 1004 c.c.) la voce passa all'«Usufruttuario» e il ricalcolo dà l'ordinaria tutta a Ugo, come
+// il conguaglio — una regola sola; con «come la voce» il ricalcolo resta quello di prima, e il conguaglio lo segue.
+it('Coda 171 (decisione 31.5) — il ricalcolo dopo la riserva segue la scelta: con la legge proposta l\'ordinaria resta tutta a Ugo, usufruttuario; con «come la voce» Ugo fino al giorno prima dell\'atto ed Elsa da nuda proprietaria', function (?string $scelta, array $attesi, array $riparto) {
     $s = ruScenario('prima_rata', 0);
-    ruRegistra($this, $s, ruRiserva($s));
+    ruPianoInBozza($s);
+    ruRegistra($this, $s, ruRiserva($s, extra: $scelta === null ? [] : ['ordinaria_dopo_atto' => $scelta]));
     ruRicalcola($s);
+    $nomi = ['U' => $s['v']->id, 'E' => $s['a']->id];
 
-    // 120 giorni a Ugo proprietario (01/01–30/04); dal 1/5 nessuno è proprietario e la voce scende al nudo (decisione 22).
-    expect(ruPerPersona($s['piano']))->toBe([$s['v']->id => 39452, $s['a']->id => 80548])
-        ->and(ruRiparto($s['piano']))->toBe([
-            [$s['v']->id, 'proprietario', 39452, '2026-01-01', '2026-04-30'],
-            [$s['a']->id, 'nuda_proprietario', 80548, '2026-05-01', '2026-12-31'],
-        ]);
-});
+    expect(ruPerPersona($s['piano']))->toBe(collect($attesi)->mapWithKeys(fn ($v, $k) => [$nomi[$k] => $v])->sortKeys()->all())
+        ->and(ruRiparto($s['piano']))->toBe(array_map(fn (array $r) => [$nomi[$r[0]], ...array_slice($r, 1)], $riparto));
+})->with([
+    // Con la legge (anche senza dirlo: è la proposta) la voce è sull'«Usufruttuario»: Ugo da proprietario fino al 30/04,
+    // poi da usufruttuario — due righe, stessa persona.
+    'la legge, senza dirlo' => [null, ['U' => 120000], [['U', 'proprietario', 39452, '2026-01-01', '2026-04-30'], ['U', 'usufruttuario', 80548, '2026-05-01', '2026-12-31']]],
+    'la legge, scelta' => ['usufruttuario', ['U' => 120000], [['U', 'proprietario', 39452, '2026-01-01', '2026-04-30'], ['U', 'usufruttuario', 80548, '2026-05-01', '2026-12-31']]],
+    // 120 giorni a Ugo proprietario; dal 1/5 nessuno è proprietario e la voce scende al nudo (decisione 22).
+    'come la voce' => ['voce', ['U' => 39452, 'E' => 80548], [['U', 'proprietario', 39452, '2026-01-01', '2026-04-30'], ['E', 'nuda_proprietario', 80548, '2026-05-01', '2026-12-31']]],
+]);
 
 it('rilievo B1, controprova — con la voce sull\'«Usufruttuario», o sull\'«Inquilino», il ricalcolo non sposta l\'ordinaria: nessun avviso del ricalcolo, e ricalcolato il piano resta a chi lo pagava; senza inquilino resta la frase generica del cancello, e il ricalcolo chiede davvero la presa d\'atto del cancello (2) (Coda 173)', function (string $voce) {
     $s = ruScenario('prima_rata', 0, soggetto: $voce === 'U' ? 'usufruttuario' : 'inquilino', genera: false);
@@ -787,8 +777,11 @@ it('rilievo B1, controprova — con la voce sull\'«Usufruttuario», o sull\'«I
 // questo test cambia. Anteriore alla beta; nella riserva lo stesso lo prova la controprova del rilievo B1, qui sopra.
 it('Coda 173, testo da chiarire — nella costituzione dell\'usufrutto con la voce sul «Proprietario» il cancello dice «il destinatario cambierebbe» e il ricalcolo chiede davvero la presa d\'atto del cancello (2), anche se paga sempre la stessa persona', function () {
     $s = ruScenario('prima_rata', 0);
-    $dati = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
-        'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta'];
+    $dati = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+        'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta',
+        // Dalla 1.11.0-beta.41: con la legge proposta (decisione 31.5) la voce passa all'«Usufruttuario» e il destinatario
+        // cambia davvero; il testo della Coda 173 riguarda la voce che resta sul «Proprietario».
+        'ordinaria_dopo_atto' => 'voce'];
     expect(implode(' | ', ruAnteprima($this, $s, $dati)['cancello']['motivi']))->toContain('un piano rate già generato intesta quote a Venditore Ugo: il destinatario cambierebbe');
     $prima = ruPerPersona($s['piano']);
 
@@ -803,92 +796,58 @@ it('Coda 173, testo da chiarire — nella costituzione dell\'usufrutto con la vo
 
 it('rilievo B1, controprova — l\'avviso guarda solo le voci ordinarie con una competenza che arriva al giorno dell\'atto: non la straordinaria, che dal giorno dell\'atto è del nudo proprietario (art. 1005 c.c.), né il consuntivo dell\'anno prima', function () {
     $st = ruScenario('prima_rata', 0, 'straordinaria', '2026-05-20', '2026-06-05', 6);
-    expect(implode(' | ', ruAnteprima($this, $st, ruRiserva($st))['cancello']['motivi']))
+    expect(implode(' | ', ruAnteprima($this, $st, ruRiserva($st, extra: ['ordinaria_dopo_atto' => 'voce']))['cancello']['motivi']))
         ->toContain('il destinatario cambierebbe')->not->toContain('se lo ricalcoli');
 
     $s = ruScenario('prima_rata', 0);
     ruConsuntivo2025($s);
-    $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s))['cancello']['motivi']);
+    $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']))['cancello']['motivi']);
     expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli')
         ->not->toContain('il piano «Consuntivo 2025», non ancora emesso')
         // Il consuntivo resta nel cancello con la frase di sempre: è un piano generato con quote di chi vende.
         ->toContain('un piano rate già generato intesta quote a Venditore Ugo: il destinatario cambierebbe');
 });
 
-// --- Rilievo B2 della Fase 1-bis (decisione 28.6): la riserva su una quota lascia un'unità mista, e l'anteprima lo dice ---
+// --- Rilievo B2 della Fase 1-bis (decisione 28.6), superato dalla Coda 170 (decisione 31.1, 1.11.0-beta.41) ----------------
+// Fino alla beta.40 la riserva su una quota lasciava un'unità mista che i piani non sapevano dividere, e l'anteprima lo diceva
+// con un avviso (anche sulle pertinenze). Dalla beta.41 il motore la divide per quote: l'avviso non c'è più, e l'avviso del
+// ricalcolo (rilievo B1), che sull'unità mista taceva perché il ricalcolo non arrivava al nudo proprietario, vale anche qui.
 
-it('rilievo B2 (decisione 28.6) — Ugo vende con riserva la nuda proprietà della sua metà e Rita resta proprietaria piena: l\'anteprima avvisa che l\'unità resta mista e che i piani generati o ricalcolati non la sanno dividere; è un avviso, e la registrazione passa', function () {
+it('Coda 170 (decisione 31.1) — Ugo vende con riserva la nuda proprietà della sua metà e Rita resta proprietaria piena: nessun avviso dell\'unità mista, e con «come la voce» il cancello avvisa del ricalcolo come su un\'unità intera; la registrazione passa', function () {
     [$s] = ruDueGenitori();
+    $dati = ruRiserva($s, extra: ['quota' => 50, 'ordinaria_dopo_atto' => 'voce']);
 
-    $anteprima = ruAnteprima($this, $s, ruRiserva($s, extra: ['quota' => 50]));
-    expect($anteprima['anagrafica']['avvisi'])->toHaveCount(1);
-    expect($anteprima['anagrafica']['avvisi'][0])
-        ->toContain('Su Interno 1 resta proprietario pieno anche Madre Rita (50 %): dopo il passaggio l\'unità è in parte in piena proprietà e in parte in nuda proprietà e usufrutto, e i piani generati o ricalcolati non la sanno dividere.')
-        ->toContain('Dal 1 maggio 2026 le voci sul «Proprietario» non vanno a Acquirente Elsa, nudo proprietario, ma ai proprietari pieni, e Madre Rita paga anche la quota venduta, in tutto o in parte')
-        ->toContain('una spesa straordinaria sul «Proprietario» deliberata dal 1 maggio 2026 in poi va per intero a Madre Rita')
-        ->toContain('vanno per intero a Venditore Ugo, che resta usufruttuario');
-    // Avviso, non cancello: il cancello non lo ripete. E l'avviso del ricalcolo (rilievo B1) qui non vale: il piano di
-    // gennaio ricalcolato darebbe la metà venduta a Rita, non al nudo proprietario.
-    expect(implode(' | ', $anteprima['cancello']['motivi']))->not->toContain('piena proprietà')->not->toContain('se lo ricalcoli')
-        ->toContain('il destinatario cambierebbe');
+    $anteprima = ruAnteprima($this, $s, $dati);
+    expect($anteprima['anagrafica'])->not->toHaveKey('avvisi')
+        ->and(implode(' | ', $anteprima['cancello']['motivi']))->not->toContain('piena proprietà')->toContain('se lo ricalcoli');
 
-    ruRegistra($this, $s, ruRiserva($s, extra: ['quota' => 50]));
+    ruRegistra($this, $s, $dati);
     expect(DB::table('anagrafica_immobile')->where('anagrafica_id', $s['a']->id)->value('tipologia'))->toBe('nuda_proprietario');
 });
 
-it('rilievo B2, controprova — niente avviso quando l\'unità torna coerente o non è mista: la seconda riserva dei due genitori, la riserva sull\'unità intera, e l\'altra metà già in nuda proprietà e usufrutto', function () {
-    [$s, , $rigaM] = ruDueGenitori();
-    ruRegistra($this, $s, ruRiserva($s, extra: ['quota' => 50]));
-    expect(ruAnteprima($this, $s, ruRiserva(['rigaV' => $rigaM] + $s, extra: ['quota' => 50]))['anagrafica']['avvisi'])->toBe([]);
-
-    $intera = ruScenario('prima_rata', 0);
-    expect(ruAnteprima($this, $intera, ruRiserva($intera))['anagrafica']['avvisi'])->toBe([]);
-
-    $s3 = ruScenario('prima_rata', 0);
-    DB::table('anagrafica_immobile')->where('id', $s3['rigaV'])->update(['quota' => 50]);
-    $nora = Anagrafica::forceCreate(['nome' => 'Figlia Nora', 'email' => "ru-n{$s3['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUFIGLIANOR' . str_pad((string) $s3['unita']->id, 5, '0', STR_PAD_LEFT)]);
-    DB::table('anagrafica_immobile')->insert([
-        ['anagrafica_id' => $s3['v']->id, 'immobile_id' => $s3['unita']->id, 'tipologia' => 'usufruttuario', 'quota' => 50, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()],
-        ['anagrafica_id' => $nora->id, 'immobile_id' => $s3['unita']->id, 'tipologia' => 'nuda_proprietario', 'quota' => 50, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()],
-    ]);
-    expect(ruAnteprima($this, $s3, ruRiserva($s3, extra: ['quota' => 50]))['anagrafica']['avvisi'])->toBe([]);
-});
-
-it('rilievo B2 — lo stesso controllo sulle pertinenze scelte: l\'unità è tutta di Ugo, il box è a metà con Bice, e l\'avviso nomina il box', function () {
-    $s = ruScenario('prima_rata', 0);
-    $box = Immobile::forceCreate(['condominio_id' => $s['c']->id, 'nome' => 'Box 12', 'descrizione' => 'Box', 'interno' => 'B12', 'pertinenza_di_immobile_id' => $s['unita']->id]);
-    $bice = Anagrafica::forceCreate(['nome' => 'Comproprietaria Bice', 'email' => "ru-bi{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUBICECOMPR' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
-    $bice->condomini()->syncWithoutDetaching([$s['c']->id]);
-    DB::table('anagrafica_immobile')->insert([
-        ['anagrafica_id' => $s['v']->id, 'immobile_id' => $box->id, 'tipologia' => 'proprietario', 'quota' => 50, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()],
-        ['anagrafica_id' => $bice->id, 'immobile_id' => $box->id, 'tipologia' => 'proprietario', 'quota' => 50, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()],
-    ]);
-
-    $avvisi = ruAnteprima($this, $s, ruRiserva($s, extra: ['pertinenze' => [$box->id]]))['anagrafica']['avvisi'];
-    expect($avvisi)->toHaveCount(1)
-        ->and($avvisi[0])->toContain('Su Box 12 resta proprietario pieno anche Comproprietaria Bice (50 %)')->not->toContain('Interno 1');
-});
-
-// Sentinella della Coda 170: fissa il comportamento di oggi, noto come sbagliato. Bice, proprietaria piena della sua metà,
-// dovrebbe pagarne la metà, € 600,00; il motore normalizza ogni ruolo sulle sue quote (limite S8-8, preesistente), e Bice
-// paga € 903,09 con la voce sul «Proprietario», € 1.200,00 sulla straordinaria deliberata dopo l'atto, € 197,26 con la voce
-// sull'«Usufruttuario» — dove Ugo, dal giorno dell'atto, paga anche la metà di Bice. L'avviso del rilievo B2 si regge su
-// questi numeri: quando la coda si corregge questo test deve cambiare, e l'avviso va riscritto.
-it('sentinella della Coda 170 (rilievo B2) — fissa il comportamento di oggi, noto come sbagliato: il motore non sa dividere l\'unità mista (limite S8-8, preesistente) e l\'avviso si regge su questi numeri; quando la coda si corregge questo test deve cambiare, e l\'avviso va riscritto', function (string $natura, string $soggetto, array $attesi) {
-    [$s, $bice] = ruMista($this, $natura, $soggetto);
+// Coda 170, corretta nella 1.11.0-beta.41 (decisione 31.1). Fino alla beta.40 questa era la sentinella del difetto: il
+// motore normalizzava ogni ruolo sulle sue quote, e Bice pagava € 903,09 con la voce sul «Proprietario», € 1.200,00 sulla
+// straordinaria deliberata dopo l'atto, mentre con la voce sull'«Usufruttuario» Ugo pagava dal 1/05 anche la metà di Bice
+// (€ 1.002,74). Ora il ruolo che paga si unisce al gemello nell'unità (proprietario pieno con nudo proprietario, usufruttuario
+// con proprietario pieno) e la voce si divide per quote e giorni: Bice paga la sua metà, € 600,00, in tutti i casi.
+it('Coda 170 (decisione 31.1) — l\'unità mista dopo una riserva su metà: Bice paga la sua metà in ogni caso, e l\'altra metà va a chi la voce indica fra usufruttuario e nudo proprietario, per i giorni', function (string $natura, string $soggetto, array $attesi, ?string $scelta = null) {
+    [$s, $bice] = ruMista($this, $natura, $soggetto, $scelta === null ? [] : ['ordinaria_dopo_atto' => $scelta]);
     $nomi = ['U' => $s['v']->id, 'E' => $s['a']->id, 'B' => $bice->id];
     $atteso = collect($attesi)->mapWithKeys(fn ($importo, $chi) => [$nomi[$chi] => $importo])->all();
     ksort($atteso);
 
     expect(ruPerPersona($s['piano']))->toBe($atteso);
 })->with([
-    // Voce sul «Proprietario»: a Elsa niente, e Bice paga € 903,09 invece della sua metà (€ 600,00).
-    'ordinaria sul «Proprietario»' => ['ordinaria', 'proprietario', ['U' => 29691, 'B' => 90309]],
-    // Voce sull'«Usufruttuario»: dal 1/5 tutto a Ugo usufruttuario (245 giorni, € 805,48); Bice solo la sua metà fino al 30/4.
-    'ordinaria sull\'«Usufruttuario»' => ['ordinaria', 'usufruttuario', ['U' => 100274, 'B' => 19726]],
-    'ordinaria sull\'«Inquilino», senza inquilino' => ['ordinaria', 'inquilino', ['U' => 100274, 'B' => 19726]],
-    // Straordinaria deliberata il 20/5: tutta a Bice, l'unica proprietaria piena quel giorno; a Elsa niente.
-    'straordinaria sul «Proprietario» deliberata dopo l\'atto' => ['straordinaria', 'proprietario', ['B' => 120000]],
+    // Voce sul «Proprietario» (il capitale): Bice 50 tutto l'anno; l'altra metà a Ugo da proprietario fino al 30/04 (120
+    // giorni, € 197,26) e a Elsa da nuda proprietaria dal 1/05 (245 giorni, € 402,74).
+    'ordinaria sul «Proprietario», come la voce' => ['ordinaria', 'proprietario', ['U' => 19726, 'E' => 40274, 'B' => 60000], 'voce'],
+    // Con la legge proposta (decisione 31.5) la voce passa all'«Usufruttuario» al passaggio: il godimento, come qui sotto.
+    'ordinaria sul «Proprietario», con la legge proposta' => ['ordinaria', 'proprietario', ['U' => 60000, 'B' => 60000]],
+    // Voce sull'«Usufruttuario» (il godimento): l'altra metà è di Ugo tutto l'anno, prima da proprietario e poi da usufruttuario.
+    'ordinaria sull\'«Usufruttuario»' => ['ordinaria', 'usufruttuario', ['U' => 60000, 'B' => 60000]],
+    'ordinaria sull\'«Inquilino», senza inquilino' => ['ordinaria', 'inquilino', ['U' => 60000, 'B' => 60000]],
+    // Straordinaria deliberata il 20/5: quel giorno il capitale è di Bice e di Elsa, metà ciascuna.
+    'straordinaria sul «Proprietario» deliberata dopo l\'atto' => ['straordinaria', 'proprietario', ['B' => 60000, 'E' => 60000]],
 ]);
 
 // --- Testi T2 e T5, difetto V1 della verifica a video ---------------------------------------------------------------------
@@ -898,7 +857,7 @@ it('testi T2 (V2 della verifica a video) — il cancello legge dal calcolo perch
         // Costituzione dell'usufrutto su una straordinaria deliberata prima: la straordinaria resta a chi resta nudo proprietario.
         $s = ruScenario('prima_rata', 0, 'straordinaria', '2026-03-15', '2026-04-05', 6);
         ruEmetti($s);
-        $dati = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+        $dati = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
             'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta'];
         [$piano, $n] = ['Rifacimento facciata', 5];
     } elseif ($caso === 'ordinaria_dell_usufruttuario') {
@@ -909,7 +868,7 @@ it('testi T2 (V2 della verifica a video) — il cancello legge dal calcolo perch
         $carlo = Anagrafica::forceCreate(['nome' => 'Compratore Carlo', 'email' => "ru-cc{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUCOMPRATOR' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
         $ursula->condomini()->syncWithoutDetaching([$s['c']->id]);
         $carlo->condomini()->syncWithoutDetaching([$s['c']->id]);
-        ruRegistra($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $ursula->id, 'decorrenza' => '2026-05-01',
+        ruRegistra($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $ursula->id, 'decorrenza' => '2026-05-01',
             'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta']);
         ruEmetti($s, '2026-08-31');
         $rigaNuda = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['v']->id)->where('tipologia', 'nuda_proprietario')->value('id');
@@ -1070,7 +1029,7 @@ it('cancello, nella riserva stessa — l\'ordinaria emessa e le bozze restano pe
 
 it('decisione 29.3 — costituzione dell\'usufrutto: verso il condominio nudo proprietario e usufruttuario rispondono in solido dal giorno dell\'atto (art. 67 ult. co.), la natura della spesa conta fra le parti; l\'anteprima e il vademecum dello storico dicono la stessa frase', function () {
     $s = ruScenario('prima_rata', 0);
-    $dati = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+    $dati = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
         'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta'];
     // Il modello è la frase della riserva (`FrasiObbligati::frasiRiserva`): ciò che è solido verso il condominio, poi fra le parti.
     $attesa = 'Dal 1 maggio 2026 Venditore Ugo, nudo proprietario, e Acquirente Elsa, usufruttuario, rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Come il programma li addebita è scritto nella guida «Ruoli e usufrutto».';
@@ -1083,7 +1042,7 @@ it('decisione 29.3 — costituzione dell\'usufrutto: verso il condominio nudo pr
 it('straordinaria esclusa in una catena (referto C3, ultimo dubbio) — Zeta costituisce l\'usufrutto a Elsa, e le straordinarie sono emesse a Ugo, che le aveva prima: la frase nomina Ugo, l\'intestatario vero, non chi esce', function () {
     [$s, , $rigaZ] = ruStraordinariaDopoUnaVendita($this, '2026-02-15');
 
-    $anteprima = ruAnteprima($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $rigaZ, 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+    $anteprima = ruAnteprima($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $rigaZ, 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
         'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta']);
     $conguaglio = $anteprima['rate']['conguaglio'];
     expect($conguaglio['coppie'])->toBe([])
@@ -1309,7 +1268,7 @@ it('mappa dei casi — le pertinenze nella riserva: la nota di solidarietà ha u
 it('mappa dei casi, rilievo B6 sui passaggi della .37 — il consuntivo dell\'anno prima generato dopo non fa avvisi né blocchi: dopo una costituzione dell\'usufrutto, dopo la vendita della metà all\'altra comproprietaria, e nella catena vendita piena e riserva', function (string $caso, array $consuntivoAtteso) {
     if ($caso === 'costituzione') {
         $s = ruScenario('prima_rata', 0);
-        $subentro = ruRegistra($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+        $subentro = ruRegistra($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
             'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta']);
         $nomi = ['U' => $s['v']->id];
     } elseif ($caso === 'comproprietaria') {
@@ -1331,7 +1290,7 @@ it('mappa dei casi, rilievo B6 sui passaggi della .37 — il consuntivo dell\'an
     expect(ruPerPersona($consuntivo))->toBe($atteso);
 
     $annulla = app(\App\Actions\Subentro\AnnullaPassaggioAction::class);
-    expect($annulla->avvisi($subentro))->toBe([]);
+    expect(ruAvvisiSenzaVoci($annulla->avvisi($subentro)))->toBe([]);
     ruEmetti(['piano' => $consuntivo] + $s, '2026-12-31');
     expect($annulla->motivoBlocco($subentro->fresh()))->toBeNull();
 
@@ -1354,7 +1313,7 @@ it('mappa dei casi, rilievo B1 — l\'avviso del ricalcolo vale anche per una vo
         DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
     }
 
-    $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s))['cancello']['motivi']);
+    $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']))['cancello']['motivi']);
     if ($caso === 'senza coefficienti') {
         expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa, nudo proprietario')
             ->not->toContain('il destinatario cambierebbe');
@@ -1376,7 +1335,7 @@ it('mappa dei casi, rilievo R2 — annullare la riserva dopo un piano generato e
     $righePrima = ruRighe($s['unita']->id);
     // La costituzione (CP, anteriore alla beta): Ugo resta nudo proprietario, e i ruoli toccati sono proprietario e nuda.
     $subentro = ruRegistra($this, $s, $voce === 'CP'
-        ? ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+        ? ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
             'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione dell\'usufrutto, letta']
         : ruRiserva($s));
     app(GeneratePianoRateAction::class)->execute($s['piano'], forzaApplicazioneSaldi: true, accettaDestinatari: true, notaDestinatari: 'Letto: passaggio nel 2026', esercizio: $s['e']);

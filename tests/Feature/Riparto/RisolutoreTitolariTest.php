@@ -472,6 +472,28 @@ it('strada (b), B1-1 — invariante 4 con le date salvate CON L\'ORA (come le sc
     expect($ids)->toContain($a->id)->not->toContain($b->id, $n1->id, $n2->id);
 });
 
+it('rilievo D1 della Fase 1-bis della beta.41 — la costituzione su una quota apre anche la nuda proprietà di chi costituisce: quella riga è entrata con il passaggio, e la forma SQL risponde come la collection', function () {
+    ['immobile' => $immobile] = unitaConQuattroTitolari();
+    $mk = fn (string $nome) => Anagrafica::forceCreate(['nome' => $nome, 'email' => strtolower($nome).'-'.$immobile->id.'@test.it', 'indirizzo' => 'Via Verdi 3', 'codice_fiscale' => strtoupper(substr($nome, 0, 5)).str_pad((string) $immobile->id, 11, '0', STR_PAD_LEFT)]);
+    [$ugo, $bice, $elsa] = [$mk('Costituente'), $mk('Comproprietaria'), $mk('Usufruttuaria')];
+    DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $ugo->id, 'immobile_id' => $immobile->id, 'tipologia' => 'proprietario', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2015-01-01', 'data_fine' => '2026-04-30']);
+    DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $bice->id, 'immobile_id' => $immobile->id, 'tipologia' => 'proprietario', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2015-01-01']);
+    $nuda = DB::table('anagrafica_immobile')->insertGetId(['anagrafica_id' => $ugo->id, 'immobile_id' => $immobile->id, 'tipologia' => 'nuda_proprietario', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2026-05-01']);
+    $usufrutto = DB::table('anagrafica_immobile')->insertGetId(['anagrafica_id' => $elsa->id, 'immobile_id' => $immobile->id, 'tipologia' => 'usufruttuario', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2026-05-01']);
+    // Il record della costituzione: l'entrante è la riga dell'usufruttuaria, non quella della nuda proprietà.
+    DB::table('subentri')->insert(['condominio_id' => $immobile->condominio_id, 'immobile_id' => $immobile->id, 'anagrafica_uscente_id' => $ugo->id, 'anagrafica_entrante_id' => $elsa->id, 'riga_uscente_id' => null, 'riga_entrante_id' => $usufrutto, 'tipologia' => 'usufruttuario', 'tipo_passaggio' => 'usufrutto', 'decorrenza' => '2026-05-01', 'created_at' => now(), 'updated_at' => now()]);
+
+    $r = app(RisolutoreTitolari::class);
+    foreach ([new \App\Support\PeriodoCompetenza('2026-01-01', '2026-04-30'), new \App\Support\PeriodoCompetenza('2026-01-01', '2026-12-31'), new \App\Support\PeriodoCompetenza('2026-05-01', '2026-12-31')] as $periodo) {
+        $collection = $r->attiviAlla($immobile->anagrafiche()->get(), $periodo)->map(fn ($a) => (int) $a->pivot->id)->sort()->values()->all();
+        $sql = $r->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id), $periodo)->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        expect($sql)->toBe($collection, 'periodo '.$periodo->dal->toDateString().'–'.$periodo->al->toDateString());
+    }
+    // Il merito: fino al 30/4 la nuda proprietà di Ugo non c'è ancora (prima del rilievo valeva «da sempre»).
+    $fino = $r->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id), new \App\Support\PeriodoCompetenza('2026-01-01', '2026-04-30'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+    expect($fino)->not->toContain($nuda, $usufrutto);
+});
+
 it('D7: il predecessore conta solo sulla STESSA tipologia — un inquilino chiuso non rende decorrenza la data_inizio del proprietario', function () {
     ['immobile' => $immobile, 'persone' => $p] = unitaConQuattroTitolari();
     // `chiuso_passato` è un inquilino chiuso al 30/04; `apre_in_futuro` è un usufruttuario: coppie diverse.

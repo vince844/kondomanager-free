@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
-import { History, FileSignature, ShieldCheck, Scale, LoaderCircle } from 'lucide-vue-next';
+import { History, FileSignature, ShieldCheck, Scale, LoaderCircle, Landmark } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { StoricoTitolaritaDati, RigaStorico, PassaggioRegistrato } from '@/types/gestionale/passaggi';
 
@@ -197,6 +197,16 @@ function tratto(r: RigaStorico): string {
                       </div>
                       <p v-if="formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio" class="text-[11px] text-red-600 dark:text-red-400">{{ formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio }}</p>
                     </form>
+                  </div>
+                  <!-- Decisioni 31.5–31.7: la scelta sull'ordinaria decide i conguagli dei passaggi dopo; resta visibile sempre. -->
+                  <div v-if="p.ordinaria" class="flex items-start gap-1.5">
+                    <Landmark class="w-3 h-3 mt-0.5 shrink-0" />
+                    <div>
+                      <p>Ordinaria: {{ p.ordinaria.testo }}</p>
+                      <ul v-if="p.ordinaria.voci.length" class="mt-0.5 space-y-0.5">
+                        <li v-for="(v, i) in p.ordinaria.voci" :key="i">{{ v }}.</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
 

@@ -32,7 +32,7 @@ function passaggio(extra: Record<string, unknown> = {}): any {
         uscente: 'Venditore Ugo', entrante: 'Acquirente Elsa', estremi_titolo: null, copia_autentica_il: null, copia_autentica_a_parole: null,
         copia_autentica_attesa: false, documento_url: null, pertinenze: [],
         conguaglio: { stato: 'proposto', importo: 548, importo_formattato: '€ 5,48', applicato: false, nota: null, nota_annullamento: null, annullato_il: null },
-        obbligati: ['Venditore Ugo resta obbligato per le rate già emesse.'], nota: null,
+        obbligati: ['Venditore Ugo resta obbligato per le rate già emesse.'], ordinaria: null, nota: null,
         annullato: false, annullato_il: null, annullato_da: null, nota_annullamento: null,
         annullabile: { si: true, motivo: null, avvisi: [], effetti: ['Le righe di titolarità scritte dal passaggio tornano come prima.'] },
         ...extra,
@@ -167,5 +167,22 @@ describe('TitolaritaSheet — la vendita o donazione con riserva d\'usufrutto (b
         expect(testo).toContain('Vendita o donazione, atto notaio Verdi, rep. 777');
         expect(testo).toContain('Usufrutto · costituzione, rep. 9');
         expect(testo).not.toContain('riserva');
+    });
+});
+
+describe('TitolaritaSheet — chi paga l\'ordinaria dal giorno dell\'atto (beta.41)', () => {
+    // Rilievo A2: la scelta decide i conguagli dei passaggi dopo; si legge nello storico anche quando non si può più annullare.
+    test('la scelta e le voci spostate si leggono, anche con il passaggio non più annullabile', () => {
+        const testo = monta(passaggio({
+            sottotipo: 'riserva_usufrutto',
+            ordinaria: { scelta: 'usufruttuario', testo: 'Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: questa voce è passata dal «Proprietario» all\'«Usufruttuario».', voci: ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %'] },
+            annullabile: { si: false, motivo: 'Un piano ha già assorbito il conguaglio.', avvisi: [], effetti: [] },
+        })).text();
+        expect(testo).toContain('Ordinaria: Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge');
+        expect(testo).toContain('Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %.');
+    });
+
+    test('senza la chiave nel registro (vendita piena, passaggi di prima) la riga non c\'è: la legge non si deduce dall\'assenza', () => {
+        expect(monta(passaggio()).text()).not.toContain('Ordinaria:');
     });
 });

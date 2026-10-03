@@ -55,7 +55,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Quota di competenza',
-    description: "La percentuale interna fra soggetti dello stesso ruolo. Vale per i riparti che verranno generati da ora in poi.",
+    description: "La parte dell'unità che la persona ha in questo ruolo: due comproprietari, 50 % ciascuno. Su un'unità in parte in piena proprietà e in parte in usufrutto le quote dicono anche come si divide l'unità. Vale per i riparti che verranno generati da ora in poi.",
     icon: Coins,
     colorVariant: 'emerald' as const
   },

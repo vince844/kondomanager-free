@@ -94,6 +94,16 @@ function ruScenario(string $metodo, int $saldoVenditore, string $natura = 'ordin
     return compact('c', 'e', 'g', 'unita', 'v', 'a', 'rigaV', 'piano');
 }
 
+/**
+ * Decisione 31.9 (1.11.0-beta.41): il piano dello scenario è un piano «globale» (senza capitoli) approvato, e blocca lo
+ * spostamento delle voci della gestione come un piano con i capitoli (31.8). Le prove dello spostamento lo riportano in
+ * bozza: è il caso in cui le voci si spostano davvero, il passaggio prima che il preventivo sia approvato.
+ */
+function ruPianoInBozza(array $s): void
+{
+    $s['piano']->update(['stato' => 'bozza']);
+}
+
 /** Emette a giornale le rate con scadenza fino al giorno dato (di norma le prime quattro). */
 function ruEmetti(array $s, string $fino = '2026-04-30'): void
 {
@@ -114,6 +124,8 @@ function ruRiserva(array $s, string $decorrenza = '2026-05-01', array $extra = [
         'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => $decorrenza,
         'quota' => 100, 'tipologia' => 'nuda_proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06',
         'estremi_titolo' => 'atto notaio Verdi, rep. 777', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Rogito letto: vendita della nuda proprietà con riserva d\'usufrutto',
+        // La scelta sull'ordinaria è obbligatoria (rilievo A3 della beta.41): la proposta di legge, come nel modulo.
+        'ordinaria_dopo_atto' => 'usufruttuario',
     ], $extra);
 }
 
@@ -195,6 +207,16 @@ function ruDopoUnaVendita($test): array
     ruRegistra($test, $s, ruRiserva(['rigaV' => $rigaZ] + $s));
 
     return [$s, $zeta];
+}
+
+/**
+ * Gli avvisi dell'annullamento senza quello sulle voci spostate all'«Usufruttuario» (decisione 31.7, 1.11.0-beta.41): con la
+ * legge proposta la riserva e la costituzione spostano le voci, e l'annullamento lo dice sempre. I test che guardano altro
+ * lo tolgono; quelli della decisione 31.7 lo leggono.
+ */
+function ruAvvisiSenzaVoci(array $avvisi): array
+{
+    return array_values(array_filter($avvisi, fn (string $a) => ! str_contains($a, 'all\'«Usufruttuario»')));
 }
 
 /** Il piano per persona, in centesimi: la somma delle quote di ciascuno. */
@@ -301,7 +323,7 @@ function ruRicalcola(array $s): void
  *
  * @return array{0: array, 1: Anagrafica} lo scenario e Bice
  */
-function ruMista($test, string $natura, string $soggetto): array
+function ruMista($test, string $natura, string $soggetto, array $extra = []): array
 {
     $s = $natura === 'ordinaria'
         ? ruScenario('prima_rata', 0, soggetto: $soggetto, genera: false)
@@ -310,7 +332,9 @@ function ruMista($test, string $natura, string $soggetto): array
     $bice = Anagrafica::forceCreate(['nome' => 'Comproprietaria Bice', 'email' => "ru-bi{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUBICECOMPR' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
     $bice->condomini()->syncWithoutDetaching([$s['c']->id]);
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $bice->id, 'immobile_id' => $s['unita']->id, 'tipologia' => 'proprietario', 'quota' => 50, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
-    ruRegistra($test, $s, ruRiserva($s, extra: ['quota' => 50]));
+    // La riserva prima dell'approvazione del preventivo: con la legge la voce si sposta (decisione 31.9).
+    ruPianoInBozza($s);
+    ruRegistra($test, $s, ruRiserva($s, extra: ['quota' => 50] + $extra));
     app(GeneratePianoRateAction::class)->execute($s['piano'], forzaApplicazioneSaldi: true, accettaDestinatari: true, notaDestinatari: 'Letto: riserva su metà', esercizio: $s['e']);
 
     return [$s, $bice];
@@ -473,9 +497,9 @@ function ruPassaggio(string $tipo, int $riga, ?Anagrafica $entrante, string $dal
 
     return $base + match ($tipo) {
         'vendita' => ['tipo' => 'vendita', 'tipologia' => 'proprietario'],
-        'riserva' => ['tipo' => 'vendita', 'sottotipo' => Subentro::RISERVA_USUFRUTTO, 'tipologia' => 'nuda_proprietario'],
+        'riserva' => ['tipo' => 'vendita', 'sottotipo' => Subentro::RISERVA_USUFRUTTO, 'tipologia' => 'nuda_proprietario', 'ordinaria_dopo_atto' => 'usufruttuario'],
         'nuda' => ['tipo' => 'vendita', 'tipologia' => 'nuda_proprietario'],
-        'costituzione' => ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'tipologia' => 'usufruttuario'],
+        'costituzione' => ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'tipologia' => 'usufruttuario', 'ordinaria_dopo_atto' => 'usufruttuario'],
         'estinzione' => ['tipo' => 'usufrutto', 'sottotipo' => 'estinzione', 'tipologia' => 'proprietario'],
     };
 }

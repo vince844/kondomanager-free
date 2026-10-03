@@ -268,7 +268,7 @@ it('le pertinenze spuntate seguono il passaggio: una riga subentri ciascuna lega
 it('usufrutto — la costituzione chiude il proprietario, lo riapre come nudo proprietario alla stessa quota e apre l\'usufruttuario; la riga di continuazione non si dissocia (haStoria)', function () {
     $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
     $this->actingAs($this->user)->post($this->rotta, [
-        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $this->bianchi->id,
+        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $this->bianchi->id,
         'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [],
     ])->assertRedirect();
 
@@ -1010,7 +1010,7 @@ it('decisione 24 (S8-11) — il ruolo di una riga agganciata a un passaggio regi
 it('decisione 24, rilievo B7 della beta.38 — le righe che il passaggio ha scritto senza esserne l\'uscente né l\'entrante sono nel suo registro, e il loro ruolo non si cambia: il proprietario che resta nudo nella costituzione', function () {
     $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
     $this->actingAs($this->user)->post($this->rotta, [
-        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $this->bianchi->id,
+        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $this->bianchi->id,
         'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [],
     ])->assertRedirect();
     $rigaNudo = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $this->rossi->id)->where('tipologia', 'nuda_proprietario')->value('id');

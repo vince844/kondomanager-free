@@ -138,6 +138,13 @@ class RisolutoreTitolari
                             ->orWhere(fn ($t) => Subentro::vincolaRiservaUsufrutto($t)
                                 ->whereColumn('subentri.immobile_id', "{$esterna}.immobile_id")
                                 ->where("{$esterna}.tipologia", 'usufruttuario')
+                                ->whereRaw("{$this->dataSql('subentri.decorrenza')} = {$this->dataSql("{$esterna}.data_inizio")}"))
+                            // E per la riga di nuda proprietà di chi costituisce l'usufrutto (rilievo D1 della Fase 1-bis
+                            // della beta.41), come `entrataConPassaggio()`.
+                            ->orWhere(fn ($t) => $t->where('subentri.tipo_passaggio', 'usufrutto')
+                                ->where('subentri.tipologia', 'usufruttuario')
+                                ->whereColumn('subentri.immobile_id', "{$esterna}.immobile_id")
+                                ->where("{$esterna}.tipologia", 'nuda_proprietario')
                                 ->whereRaw("{$this->dataSql('subentri.decorrenza')} = {$this->dataSql("{$esterna}.data_inizio")}"))))));
     }
 
@@ -405,8 +412,13 @@ class RisolutoreTitolari
             // un piano generato dopo le darebbe i giorni di chi era titolare prima (rilievo B4 della Fase 1-bis). Solo
             // la tipologia «usufruttuario»: `subentri.tipologia` è quella di chi compra.
             $riserve = Subentro::vincolaRiservaUsufrutto(DB::table('subentri')->whereNull('annullato_il'))->get(['immobile_id', 'decorrenza']);
+            // La costituzione apre due righe: quella dell'usufruttuario (l'entrante) e la nuda proprietà di chi costituisce,
+            // che senza la tripla per D7 varrebbe da sempre — e su una comproprietà l'unità non risulterebbe mista nell'anno
+            // dell'atto (rilievo D1 della Fase 1-bis della beta.41). L'estinzione ha `tipologia` «proprietario» e non c'entra.
+            $costituzioni = $subentri->where('tipo_passaggio', 'usufrutto')->where('tipologia', 'usufruttuario');
             $this->tripleDiPassaggio = $subentri->where('tipo_passaggio', 'usufrutto')->map(fn ($s) => (int) $s->immobile_id . '|' . $s->tipologia . '|' . substr((string) $s->decorrenza, 0, 10))
                 ->merge($riserve->map(fn ($s) => (int) $s->immobile_id . '|usufruttuario|' . substr((string) $s->decorrenza, 0, 10)))
+                ->merge($costituzioni->map(fn ($s) => (int) $s->immobile_id . '|nuda_proprietario|' . substr((string) $s->decorrenza, 0, 10)))
                 ->flip()->all();
         }
         if (isset($riga->id) && isset($this->righeEntrateConPassaggio[(int) $riga->id])) {

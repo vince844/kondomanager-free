@@ -18,7 +18,7 @@ defineEmits(['update:open']);
             <div class="p-2 bg-emerald-100 text-emerald-700 rounded-lg dark:bg-emerald-900 dark:text-emerald-300">
               <Layers class="w-6 h-6" />
             </div>
-            <SheetTitle class="text-2xl font-extrabold tracking-tight">Guida: Operazioni e Struttura</SheetTitle>
+            <SheetTitle class="text-2xl font-extrabold tracking-tight">Guida: operazioni e struttura</SheetTitle>
           </div>
           <SheetDescription class="text-base text-slate-600 dark:text-slate-400">
             Come strutturare il piano dei conti, leggere i tre numeri di ogni voce — preventivo, coperto e speso — e associare le tabelle millesimali.
@@ -177,7 +177,7 @@ defineEmits(['update:open']);
               <BookOpen class="w-5 h-5 text-blue-500 shrink-0" />
               <div>
                 <strong>Ripartizione ruoli (cascata):</strong> durante l'associazione ti verrà chiesto quali quote assegnare a inquilino, usufruttuario o proprietario.
-                Per la logica di fallback consulta la guida <em>Ruoli e Usufrutto</em> nel menu Guide.
+                Per chi paga quando il ruolo della voce manca (la catena dei ruoli) consulta la guida <em>Ruoli e usufrutto</em> nel menu Guide.
               </div>
             </div>
           </section>

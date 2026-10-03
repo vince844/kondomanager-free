@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\AnteprimaPassaggio;
+use App\Services\Subentro\VociDaSpostare;
 use App\Services\Subentro\GuardieTitolarita;
 use App\Traits\HasEsercizio;
 use Carbon\Carbon;
@@ -119,6 +120,29 @@ final class RegistraSubentroAction
                 $this->registroRighe = [];
                 $esitoRighe = $this->applicaRighe($immobile, $tipo, $sottotipo, $uscente, $entrante, (float) $dati['quota'], (string) $dati['tipologia'], $decorrenza, $giornoPrima, 'quota');
 
+                // 3-bis. Decisioni 31.5 e 31.7: la scelta sull'ordinaria e, con la legge, le voci spostate all'«Usufruttuario».
+                //        Nel registro con i coefficienti di prima e di dopo: l'annullamento le nomina, non le disfa.
+                $ordinaria = $anteprima['ordinaria'] ?? ['applicabile' => false];
+                // Rilievo S1: con la legge si spostano le voci di adesso, non quelle che il pannello ha mostrato. Se l'elenco
+                // è cambiato fra l'anteprima e il clic, ci si ferma e il modulo ricalcola il pannello. Con «come la voce» le
+                // voci non si toccano, e senza l'impronta (chiamate senza pannello) vale l'elenco di adesso.
+                if ($ordinaria['applicabile'] && $ordinaria['scelta'] === Subentro::ORDINARIA_ALL_USUFRUTTUARIO
+                    && ($dati['ordinaria_impronta'] ?? null) !== null && $dati['ordinaria_impronta'] !== $ordinaria['impronta']) {
+                    throw ValidationException::withMessages(['ordinaria_impronta' => 'Le voci da spostare sono cambiate da quando il pannello le ha mostrate: il pannello è stato ricalcolato, ricontrolla l\'elenco e conferma.']);
+                }
+                $registroOrdinaria = [];
+                if ($ordinaria['applicabile']) {
+                    $spostate = array_values(array_filter($ordinaria['voci'], fn ($v) => $v['spostata']));
+                    $registroOrdinaria = [
+                        'ordinaria_dopo_atto' => $ordinaria['scelta'],
+                        'voci_spostate' => $spostate === [] ? [] : app(VociDaSpostare::class)->sposta($spostate),
+                    ];
+                } elseif (($ordinaria['ereditata'] ?? null) !== null) {
+                    // Rilievo D4: l'estinzione di un usufrutto nato «come la voce» chiude quella scelta, e i passaggi dopo
+                    // devono saperlo (`ConguaglioPassaggio::predecessori()`): la si scrive con il passaggio da cui viene.
+                    $registroOrdinaria = ['ordinaria_dopo_atto' => $ordinaria['ereditata']['scelta'], 'ordinaria_ereditata_da' => $ordinaria['ereditata']['subentro_id']];
+                }
+
                 // 4. Il passaggio.
                 $subentro = Subentro::create([
                     'condominio_id'          => $condominio->id,
@@ -138,7 +162,7 @@ final class RegistraSubentroAction
                     'nota_cancello'          => $anteprima['cancello']['richiesto'] ? trim((string) $dati['nota_cancello']) : null,
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
-                    'registro'               => $this->registro($uscente, $entrante, $sottotipo),
+                    'registro'               => $this->registro($uscente, $entrante, $sottotipo) + $registroOrdinaria,
                 ]);
 
                 // 5. Le pertinenze spuntate: la stessa operazione, una riga `subentri` ciascuna.
@@ -419,7 +443,11 @@ final class RegistraSubentroAction
             'nota'                   => $padre->nota,
             'nota_cancello'          => $padre->nota_cancello,
             'utente_id'              => $utente->id,
-            'registro'               => $this->registro($uscenteLi, $entrante, $sottotipo),
+            // Rilievo D7 della Fase 1-bis della beta.41: la scelta sull'ordinaria vale anche per la pertinenza, come il
+            // sottotipo della riserva. I passaggi dopo (`ConguaglioPassaggio`) la leggono unità per unità. Non le voci
+            // spostate: lo spostamento è uno per tutta la tabella, e l'annullamento lo legge dal padre.
+            'registro'               => $this->registro($uscenteLi, $entrante, $sottotipo)
+                + array_intersect_key($padre->registro ?? [], ['ordinaria_dopo_atto' => true, 'ordinaria_ereditata_da' => true]),
         ]);
     }
 

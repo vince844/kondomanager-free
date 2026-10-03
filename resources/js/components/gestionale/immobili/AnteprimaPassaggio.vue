@@ -118,10 +118,6 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           <Users class="w-3.5 h-3.5" /> 1. Anagrafica
         </h4>
         <p v-for="(f, i) in dati.anagrafica.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
-        <!-- Decisione 28.6 (rilievo B2 della beta.38): la riserva su una quota lascia l'unità mista. Un avviso, non un cancello. -->
-        <p v-for="(a, i) in dati.anagrafica.avvisi ?? []" :key="`avviso-${i}`" class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/10 px-3 py-2 text-[13px] text-amber-900 dark:text-amber-200 leading-relaxed">
-          <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5 text-amber-600" /><span>{{ a }}</span>
-        </p>
         <p v-if="dati.anagrafica.pertinenze.length" class="text-xs text-slate-500 dark:text-slate-400">
           Pertinenze incluse: {{ dati.anagrafica.pertinenze.join(', ') }}.
         </p>
@@ -208,7 +204,9 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <span v-if="conguaglio.per_gestione.some(x => x.immobile_id !== g.immobile_id)" class="block text-[10px] text-slate-400 truncate">{{ g.immobile_nome }}</span>
                 </td>
                 <td class="px-3 py-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-                  <template v-if="g.non_risolte > 0 && g.importo === 0">competenza non determinabile</template>
+                  <!-- Fase 1-ter della beta.41: la competenza è nota, è la parte che passa a non separarsi (quote della 1.7.x, catene). -->
+                  <template v-if="(g.non_separabili ?? 0) > 0 && g.importo === 0">parte che passa non separabile</template>
+                  <template v-else-if="g.non_risolte > 0 && g.importo === 0">competenza non determinabile</template>
                   <!-- V1 della verifica a video (beta.38): l'etichetta dipende dalla natura — nella riserva resta fuori l'ordinaria. -->
                   <template v-else-if="g.escluse > 0 && g.importo === 0">{{ etichettaEsclusa(g) }}</template>
                   <!-- Straordinario: il gradino è quello congelato sulle righe (dichiarata sulla fattura, o la delibera), non un'etichetta fissa (S8-4). -->

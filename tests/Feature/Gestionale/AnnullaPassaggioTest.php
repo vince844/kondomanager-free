@@ -473,7 +473,7 @@ it('usufrutto, costituzione: torna il proprietario pieno, e spariscono la riga d
     $s = apScenario();
     $righePrima = apFotoRighe([$s['unita']->id]);
     $subentro = apRegistra($this, $s, [
-        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id,
+        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id,
         'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Atto di costituzione letto'
     ]);
     expect(DB::table('anagrafica_immobile')->where('immobile_id', $s['unita']->id)->count())->toBe(3);
@@ -550,7 +550,7 @@ it('i promemoria delle rate nel portale tornano a chi è uscito', function () {
 it('un usufrutto annullato non fa più «entrare con un passaggio» la riga messa a mano con la stessa data: vale da D7 stretto, cioè tutto l\'anno', function () {
     $s = apScenario();
     $subentro = apRegistra($this, $s, [
-        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id,
+        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id,
         'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [],
         'ho_letto' => true, 'nota_cancello' => 'Atto di costituzione letto',
     ]);

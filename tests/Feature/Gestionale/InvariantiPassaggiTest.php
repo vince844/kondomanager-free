@@ -71,23 +71,27 @@
  * 4. se il tipo fa catene, una voce in `invCatene()` (griglia B) e in `invFormeRisolutore()` (griglia C).
  *
  * **Cosa si dichiara e non si asserisce:**
- * - l'unità mista (Coda 170): chi paga su un'unità in parte in piena proprietà e in parte in nuda proprietà e usufrutto,
- *   che il motore non sa dividere. Nella griglia ci sono S3 e NC, miste già alla generazione di gennaio (nella S3 la
- *   straordinaria va tutta a Ugo); M e MC, che lo diventano con la riserva, sempre con il piano di gennaio (G=dopo c'è solo
- *   nelle forme con più passaggi); S1 e S2 con G=dopo, generate dopo la prima riserva, quando l'altra metà è ancora piena.
- *   Il piano è quello del motore, com'è: gli invarianti sono relativi alle quote che il motore ha dato (I1–I4, e I6 e
- *   I6-bis sulle quote di chi esce), e nessuno dice chi paga in assoluto — lo fa, come sentinella, `RiservaUsufruttoTest`;
- * - piano emesso contro piano ricalcolato (Coda 171): lo stesso euro può andare a due persone diverse. Per questo I6, nella
- *   rivendita della nuda proprietà con un piano generato dopo la riserva e la voce sul «Proprietario» (la ricetta mirata
- *   F=RV · G=dopo), guarda solo le quote con `riservata_da`: l'ordinaria che il motore ha dato al nudo proprietario passa.
- *   E I6 nella riserva — l'ordinaria resta a chi vende, anche nel conguaglio — è la regola della beta.38 (decisione 28),
- *   che la decisione 29.1 riapre: quando il conguaglio seguirà la regola del piano, anche I6 cambierà;
+ * - l'unità mista (Coda 170, chiusa nella beta.41): dalla .41 il motore la divide per le quote registrate. Nella griglia ci
+ *   sono S3 e NC, miste già alla generazione di gennaio; M e MC, che lo diventano con la riserva, sempre con il piano di
+ *   gennaio (G=dopo c'è solo nelle forme con più passaggi); S1 e S2 con G=dopo, generate dopo la prima riserva, quando
+ *   l'altra metà è ancora piena. Gli invarianti sono relativi alle quote che il motore ha dato (I1–I4, e I6 e I6-bis sulle
+ *   quote di chi esce), e nessuno dice chi paga in assoluto: lo dicono `RiservaUsufruttoTest` («Coda 170 (decisione
+ *   31.1)») e `tests/Feature/Riparto/UnitaMistaTest.php`;
+ * - la scelta su chi paga l'ordinaria (Coda 171, chiusa nella beta.41): la griglia manda sempre la legge, la proposta
+ *   (`ruRiserva`, `ruPassaggio`). Con la legge la riserva lascia l'ordinaria a chi vende anche nel conguaglio, ed è I6; le
+ *   voci sul «Proprietario» passano all'«Usufruttuario», quindi un piano generato dopo dà l'ordinaria all'usufruttuario.
+ *   I6, nella rivendita della nuda proprietà con un piano generato dopo la riserva e la voce sul «Proprietario» (la
+ *   ricetta mirata F=RV · G=dopo), guarda solo le quote con `riservata_da`. «Come dice ogni voce» non è nella griglia: lo
+ *   prova `OrdinariaDopoAttoTest`;
  * - la nota di solidarietà che non legge la coppia (Coda 172): la nota non è nella griglia;
  * - S1E, i due genitori che donano con riserva e poi muore uno dei due (griglia B): valgono solo I1–I4. A chi va
- *   l'usufrutto del genitore morto dipende dall'eventuale accrescimento, ed è materia della successione (beta.40);
- * - l'oracolo del risolutore sulla costituzione (forma CPC della griglia C): la riga di nuda proprietà di chi costituisce
- *   non ha un predecessore e vale da sempre (D7 stretto, per scelta), quindi il giorno prima dell'atto è attiva anche se
- *   comincia il giorno dopo. Lì si confrontano solo le due forme;
+ *   l'usufrutto del genitore morto dipende dall'eventuale accrescimento, ed è materia della successione (beta.42);
+ * - la parte di chi entra (I6-bis, I2) quando chi esce tiene un'altra quota sulla stessa unità (la forma S3) e il piano non ha
+ *   righe di riparto: la parte della quota che esce si legge dalla ricostruzione del motore, e l'oracolo non la rifà. Con le
+ *   righe la ricostruisce (`invQuotaCheEsce`); i casi senza righe li prova `QuotaCheEsceTest`;
+ * - l'oracolo del risolutore sulla costituzione (forma CPC della griglia C): dalla beta.41 la riga di nuda proprietà di chi
+ *   costituisce vale dal giorno dell'atto, riconosciuta dalla tripla dell'usufrutto (rilievo D1 della Fase 1-bis); il giorno
+ *   prima vale la riga di proprietà piena. Lì si confrontano solo le due forme;
  * - l'oracolo della parte di chi entra (I6-bis e il valore delle coppie) su una quota di chi esce con più tratti di
  *   titolarità nel riparto (un piano generato dopo un passaggio che gli ha cambiato il ruolo nel periodo): non ricostruisce
  *   la divisione tratto per tratto, e la quota si salta;
@@ -98,8 +102,8 @@
  *   pregresso suo non ce l'ha;
  * - l'oracolo sull'ordinaria nella vendita della sola nuda proprietà (RV, CPVN: chi la paga dipende da quando è nato
  *   l'usufrutto, R4) e sull'ordinaria con un già versato della persona (S=VE senza straordinaria): lì il valore delle
- *   coppie resta alla coerenza. E della divisione fra più nudi proprietari (S3E) l'oracolo controlla la somma, non la parte
- *   di ciascuno;
+ *   coppie resta alla coerenza. Nella forma S3E (la riserva sull'unità mista, poi l'usufrutto che si chiude con due nudi
+ *   proprietari) dalla Fase 1-ter della beta.41 il conguaglio si ferma e lo dice: non si sa a quale nudo torna ogni parte;
  * - un saldo intestato all'unità (S=UN) entra nella griglia con I1–I4: nessun invariante dice a chi va. Lo dice, com'è, la
  *   sentinella della Coda 174 nella sezione «Coerenza», qui sotto;
  * - «il destinatario cambierebbe» quando paga sempre la stessa persona — nella costituzione con la voce sul
@@ -365,7 +369,7 @@ function invCatene(): array
         'CPC→CPVN' => $forme['CPVN'],
         'VR+RV' => ['descrizione' => 'vendita piena, riserva, rivendita della nuda proprietà', 'titolari' => $soloUgo,
             'passaggi' => [['vendita', 'v', 'zeta', '2026-03-01'], ['riserva', 'zeta', 'a', '2026-05-01'], ['nuda', 'a', 'carlo', '2026-09-01']]],
-        // S1E: solo I1–I4. A chi va l'usufrutto del padre è materia della successione (beta.40), e qui non si asserisce.
+        // S1E: solo I1–I4. A chi va l'usufrutto del padre è materia della successione (beta.42), e qui non si asserisce.
         'S1E' => ['descrizione' => 'i due genitori donano con riserva, poi muore il padre', 'titolari' => $dueGenitori,
             'passaggi' => [['riserva', 'v', 'a', '2026-05-01'], ['riserva', 'rita', 'a', '2026-05-01'], ['estinzione', 'v', null, '2026-09-01']]],
     ];
@@ -392,8 +396,9 @@ function invFormeRisolutore(): array
         'RA, la riserva annullata' => [$forme['R'], ['annulla' => true]],
         'RAR, la riserva annullata e rifatta' => [$forme['R'], ['annulla' => true, 'rifai' => true]],
         'la riserva con il box' => [$forme['R'], ['P' => 'box']],
-        // Escluso dall'oracolo, per scelta: la nuda proprietà di chi costituisce vale da sempre (D7 stretto).
-        'CPC' => [$forme['CPC'], ['senza_oracolo' => true]],
+        // Con l'oracolo dalla beta.41: la nuda proprietà di chi costituisce vale dal giorno dell'atto (rilievo D1 della
+        // Fase 1-bis). Fino alla .40 valeva da sempre, e la forma era esclusa dall'oracolo.
+        'CPC' => [$forme['CPC'], []],
     ];
 }
 
@@ -726,6 +731,22 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
         [$pianoId, $immobileId] = array_map('intval', explode('|', (string) $chiave));
         $straordinaria = $g->first()['natura'] === 'straordinaria';
         $sigla = $straordinaria ? 'I6-bis' : 'I2 ordinaria';
+        if ($r['F'] === 'S3E') {
+            // Fase 1-ter della beta.41 (decisione del 03/10/2026): chi esce era proprietario pieno di una metà e usufruttuario
+            // dell'altra, e il suo usufrutto si chiude con due nudi proprietari. Non si sa a quale dei due torna ogni parte
+            // delle sue righe: il conguaglio si ferma e lo dice. L'oracolo lo sa dalla forma, non dal codice.
+            $conta['ordinaria']++;
+            foreach ($g as $q) {
+                if ((int) $q['entrante'] !== 0 || $q['passa']) {
+                    $v[] = sprintf('%s quota %d, catena con più strade: a chi entra %d%s', $sigla, $q['rata_quote_id'], (int) $q['entrante'], $q['passa'] ? ', e la bozza passa' : '');
+                }
+            }
+            if (! collect($cong['non_risolte'] ?? [])->contains(fn ($n) => str_contains((string) $n['motivo'], 'sono passate per più strade'))) {
+                $v[] = 'S3E: il conguaglio non dice che le quote sono passate per più strade';
+            }
+            $valore($g, 0, 0);
+            continue;
+        }
         if ($straordinaria && $r['N'] === 'SN') {
             // Senza la data della delibera, su un piano senza righe, niente si divide e niente passa.
             $conta['i6bis']++;
@@ -769,6 +790,16 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
             $conta['versato']++;
         }
         $base = (int) $g->sum('quota_pura') + $versato;
+        // Fase 1-ter della beta.41, 03/10/2026: se chi esce tiene un'altra quota sulla stessa unità (la forma S3, usufruttuario
+        // dell'altra metà), passa solo la quota che esce: la parte delle sue righe di riparto risolte sui ruoli che restano
+        // non si divide, e una bozza con quelle righe resta a lui.
+        $quotaCheEsce = invQuotaCheEsce($caso, $pianoId, $immobileId, $uscenteId);
+        if ($quotaCheEsce === null) {
+            continue; // dichiarato nel docblock: chi esce tiene un'altra quota e il piano non ha righe di riparto
+        }
+        if ($quotaCheEsce < 1.0) {
+            $base = (int) round($base * $quotaCheEsce);
+        }
         $atteso = match (true) {
             $giorniEntrante === 0 => 0,
             $giorniEntrante === $giorni => $base,
@@ -783,7 +814,7 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
         $tutta = $giorni > 0 && $giorniEntrante === $giorni;
         $passate = 0;
         foreach ($g->where('in_bozza', true) as $q) {
-            $passa = ($straordinaria ? $tutta : $caso['esame']['tipo'] === 'vendita') && (int) $q['quota_pura'] !== 0 && $q['scadenza'] >= $caso['d'];
+            $passa = ($straordinaria ? $tutta : $caso['esame']['tipo'] === 'vendita') && (int) $q['quota_pura'] !== 0 && $q['scadenza'] >= $caso['d'] && $quotaCheEsce === 1.0;
             $passate += $passa ? (int) $q['quota_pura'] : 0;
             if ($q['passa'] !== $passa) {
                 $v[] = sprintf('%s bozza %d (rata %d, scadenza %s): %s, e doveva %s (motivo del calcolo: %s)', $sigla, $q['rata_quote_id'], $q['rata'], $q['scadenza'], $q['passa'] ? 'passa' : 'resta', $passa ? 'passare' : 'restare', $q['motivo_bozza'] ?? '—');
@@ -869,8 +900,17 @@ function invControllaCaso($test, array $r): array
     $voce = collect($foto1['storico'][(int) $s['unita']->id]['subentri'])->firstWhere('id', $padre->id);
     if (! ($voce['annullabile']['si'] ?? false)) {
         $v[] = 'I4 lo storico dice che il passaggio non si annulla: ' . ($voce['annullabile']['motivo'] ?? 'passaggio assente dallo storico');
-    } elseif ($voce['annullabile']['avvisi'] !== []) {
-        $v[] = 'I4 avvisi senza nessun piano nato dopo il passaggio: ' . implode(' | ', $voce['annullabile']['avvisi']);
+    } else {
+        // Decisione 31.7 (1.11.0-beta.41): le voci spostate all'«Usufruttuario» restano, e l'annullamento lo dice — se e solo
+        // se il passaggio le ha spostate. Ogni altro avviso, senza nessun piano nato dopo, resta un difetto.
+        $sulleVoci = fn (string $a) => str_contains($a, 'all\'«Usufruttuario»');
+        $altri = array_values(array_filter($voce['annullabile']['avvisi'], fn (string $a) => ! $sulleVoci($a)));
+        if ($altri !== []) {
+            $v[] = 'I4 avvisi senza nessun piano nato dopo il passaggio: ' . implode(' | ', $altri);
+        }
+        if (! empty($padre->fresh()->registro['voci_spostate']) !== (count($altri) !== count($voce['annullabile']['avvisi']))) {
+            $v[] = 'I4 (decisione 31.7) l\'avviso sulle voci spostate non corrisponde al registro del passaggio';
+        }
     }
     $annullo = ruAnnulla($test, $s, $padre);
     if ($annullo->status() !== 302) {
@@ -1303,3 +1343,39 @@ it('coerenza, decisione 28.8 d — senza l\'esercizio precedente registrato la f
     'vendita del 1 dicembre 2025: nell\'esercizio precedente, dedotto' => ['2025-12-01', ['2025 e 2024']],
     'vendita del 1 dicembre 2024: prima della finestra' => ['2024-12-01', []],
 ]);
+
+/**
+ * La parte delle righe di riparto di chi esce, su (piano, unità), che è della quota che esce: esclusi i ruoli che chi esce tiene
+ * accanto — le sue altre righe in vigore il giorno dell'atto con un'altra tipologia, e la quota che il passaggio gli lascia
+ * (nuda proprietà dopo una costituzione, usufrutto dopo una riserva). 1.0 se non tiene niente accanto; null se tiene qualcosa
+ * accanto e il piano non ha righe di riparto (la parte si legge solo dalla ricostruzione del motore, che l'oracolo non rifà).
+ */
+function invQuotaCheEsce(array $caso, int $pianoId, int $immobileId, int $uscenteId): ?float
+{
+    $rigaId = (int) $caso['esame']['dati']['riga_uscente_id'];
+    $riga = DB::table('anagrafica_immobile')->where('id', $rigaId)->first(['tipologia']);
+    // Le altre quote che chi esce teneva il giorno prima dell'atto (dopo la registrazione la riserva può averle fuse con la
+    // riga che apre, quindi si guarda il giorno prima, non il giorno dell'atto).
+    $vigilia = CarbonImmutable::parse($caso['d'])->subDay()->toDateString();
+    $accanto = DB::table('anagrafica_immobile')->where('anagrafica_id', $uscenteId)->where('immobile_id', $immobileId)
+        ->where('id', '!=', $rigaId)->where('tipologia', '!=', $riga->tipologia)
+        ->where(fn ($q) => $q->whereNull('data_inizio')->orWhereDate('data_inizio', '<=', $vigilia))
+        ->where(fn ($q) => $q->whereNull('data_fine')->orWhereDate('data_fine', '>=', $vigilia))
+        ->pluck('tipologia')->all();
+    $restano = $accanto;
+    $dati = $caso['esame']['dati'];
+    if (($dati['tipo'] ?? null) === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'costituzione') {
+        $restano[] = 'nuda_proprietario';
+    } elseif (($dati['tipo'] ?? null) === 'vendita' && ($dati['sottotipo'] ?? null) === Subentro::RISERVA_USUFRUTTO) {
+        $restano[] = 'usufruttuario';
+    }
+    $righe = DB::table('righe_riparto')->where('piano_rate_id', $pianoId)->where('immobile_id', $immobileId)->where('anagrafica_id', $uscenteId)
+        ->whereIn('tipo', ['riparto', 'ad_personam'])->get(['ruolo_risolto', 'importo']);
+    $totale = (int) $righe->sum('importo');
+    if ($totale === 0) {
+        // Senza righe: con un'altra quota accanto la parte si legge solo dalla ricostruzione; senza, passa tutta.
+        return $accanto === [] ? 1.0 : null;
+    }
+
+    return (int) $righe->reject(fn ($r) => in_array($r->ruolo_risolto, $restano, true))->sum('importo') / $totale;
+}

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\GuardieTitolarita;
+use App\Services\Subentro\VociDaSpostare;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -96,11 +97,25 @@ final class AnnullaPassaggioAction
     {
         $famiglia = $this->famiglia($padre);
 
-        return $this->quoteNateDopo($padre, $famiglia)
+        $avvisi = $this->quoteNateDopo($padre, $famiglia)
             ->filter(fn ($q) => $q->scrittura_contabile_id === null)
             ->pluck('piano_nome')->unique()->values()
             ->map(fn (string $piano) => sprintf('Il piano «%s» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo, così quote e riparto tornano sulla titolarità di prima.', $piano))
             ->all();
+
+        // Decisione 31.7 (1.11.0-beta.41): le voci che il passaggio ha spostato all'«Usufruttuario» restano dove sono. Valgono
+        // per tutta la tabella e l'amministratore può averle toccate dopo: si nominano, non si disfano.
+        $voci = $padre->registro['voci_spostate'] ?? [];
+        if ($voci !== []) {
+            $uno = count($voci) === 1;
+            $avvisi[] = sprintf($uno
+                ? 'La voce che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» resta com\'è: %s. Vale per tutta la tabella, anche per le altre unità in usufrutto; se va riportata com\'era, si cambia dalla pagina della voce.'
+                : 'Le voci che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» restano come sono: %s. Valgono per tutta la tabella, anche per le altre unità in usufrutto; se vanno riportate com\'erano, si cambiano dalla pagina della voce.',
+                // Rilievo A6 della Fase 1-bis: i coefficienti di prima, dal registro. «Al Proprietario» era falso per una voce divisa.
+                $this->elenco(array_map(fn (array $v) => sprintf('%s (%s, %s; prima %s)', $v['conto'] ?? '?', $v['tabella'] ?? '?', $v['gestione'] ?? '?', VociDaSpostare::coefficientiAParole($v['prima'] ?? [])), $voci)));
+        }
+
+        return $avvisi;
     }
 
     /**

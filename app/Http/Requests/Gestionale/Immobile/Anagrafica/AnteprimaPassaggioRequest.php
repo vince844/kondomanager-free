@@ -86,6 +86,21 @@ class AnteprimaPassaggioRequest extends FormRequest
             // S5: la rinuncia alla coppia di conguaglio proposta, con la ragione (Cass. 11199/2021 «salvo diverso accordo»).
             'rinuncia_conguaglio' => ['nullable', 'boolean'],
             'nota_conguaglio' => ['nullable', 'string', 'min:10', 'max:2000', 'required_if:rinuncia_conguaglio,true'],
+            // Decisioni 31.5 e 31.6 (1.11.0-beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal
+            // giorno dell'atto. È obbligatoria (rilievo A3 della Fase 1-bis): una scelta che sposta le voci della tabella
+            // intera non ha un valore predefinito sul server — un modulo rimasto aperto da prima dell'aggiornamento, che
+            // non la mostra, si ferma qui invece di spostarle senza che nessuno le abbia viste. Le voci da tenere sul
+            // «Proprietario» sono quelle a cui l'amministratore ha tolto la spunta: si mandano quelle e non le spuntate, così
+            // un elenco vuoto non sparisce in un modulo multipart.
+            'ordinaria_dopo_atto' => [
+                Rule::requiredIf(fn () => ($tipo === 'usufrutto' && $this->input('sottotipo') !== 'estinzione')
+                    || ($tipo === 'vendita' && $this->input('sottotipo') === Subentro::RISERVA_USUFRUTTO)),
+                'nullable', Rule::in([Subentro::ORDINARIA_ALL_USUFRUTTUARIO, Subentro::ORDINARIA_COME_LA_VOCE]),
+            ],
+            'voci_da_tenere' => ['nullable', 'array'],
+            'voci_da_tenere.*' => ['integer'],
+            // Rilievo S1: l'impronta dell'elenco delle voci che il pannello ha mostrato (`VociDaSpostare::impronta()`).
+            'ordinaria_impronta' => ['nullable', 'string', 'max:64'],
         ];
     }
 
@@ -281,6 +296,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             'allegato_titolo.mimes' => 'L\'allegato deve essere un PDF.',
             'promemoria_giorni.required_if' => 'Scegli con quanto anticipo vuoi il promemoria.',
             'nota_conguaglio.required_if' => 'Hai rinunciato al conguaglio proposto: scrivi perché (almeno dieci caratteri).',
+            'ordinaria_dopo_atto.required' => 'Manca la scelta su chi paga l\'ordinaria dal giorno dell\'atto: ricarica la pagina e scegli.',
         ];
     }
 
@@ -356,6 +372,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             'promemoria_giorni' => isset($d['promemoria_giorni']) ? (int) $d['promemoria_giorni'] : null,
             'rinuncia_conguaglio' => (bool) ($d['rinuncia_conguaglio'] ?? false),
             'nota_conguaglio' => isset($d['nota_conguaglio']) && trim((string) $d['nota_conguaglio']) !== '' ? trim((string) $d['nota_conguaglio']) : null,
+            'ordinaria_dopo_atto' => $d['ordinaria_dopo_atto'] ?? null,
+            'voci_da_tenere' => array_map('intval', $d['voci_da_tenere'] ?? []),
+            'ordinaria_impronta' => $d['ordinaria_impronta'] ?? null,
         ];
     }
 }

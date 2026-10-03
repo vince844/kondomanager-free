@@ -15,6 +15,7 @@ use App\Services\Riparto\EsitoCompetenza;
 use App\Services\Riparto\GradinoCompetenza;
 use App\Services\Riparto\RisolutoreCompetenza;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Services\Riparto\UnitaMista;
 use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
 use Illuminate\Support\Collection;
@@ -119,6 +120,9 @@ class CalcoloQuoteService
 
     /** Chi risolve «chi è titolare di questa unità», in un posto solo. */
     private readonly RisolutoreTitolari $titolari;
+
+    /** L'unità mista (Coda 170, decisione 31): con chi si divide un ruolo che copre solo una parte dell'unità. */
+    private readonly UnitaMista $unitaMista;
     
     /** @var array Accumulatore per le quote non assegnabili per mancanza di anagrafiche attive */
     private array $scopertiAccumulati = [];
@@ -243,6 +247,7 @@ class CalcoloQuoteService
         // trentina di punti di quattro file di test (`new CalcoloQuoteService()`) e non ha
         // dipendenze con stato.
         $this->titolari = $titolari ?? new RisolutoreTitolari();
+        $this->unitaMista = new UnitaMista($this->titolari);
     }
 
     /**
@@ -1046,19 +1051,34 @@ class CalcoloQuoteService
             $righeCoppia = $righeUnita->filter(fn ($r) => ($r->tipologia ?? null) === $ruolo->value && (bool) ($r->attivo ?? false))->values();
             $anello = [];
             $sommaAnello = 0.0;
-            foreach ($righeCoppia as $riga) {
+            $aggiungi = function (object $riga, string $tipologia, Collection $stessaCoppia) use (&$anello, &$sommaAnello, $residuo): void {
                 if ((float) ($riga->quota ?? 0) <= 0.0) {
-                    continue;
+                    return;
                 }
-                $g = $this->titolari->giorniDiTitolarita($riga, $residuo, $righeCoppia);
+                $g = $this->titolari->giorniDiTitolarita($riga, $residuo, $stessaCoppia);
                 if ($g <= 0) {
-                    continue;
+                    return;
                 }
-                $anello[] = ['riga' => $riga, 'anagrafica_id' => (int) $riga->anagrafica_id, 'ruolo' => $ruolo->value, 'giorni' => $g, 'peso' => (float) $riga->quota * $g, 'tratto' => $this->titolari->trattoEffettivo($riga, $residuo, $righeCoppia)];
+                $anello[] = ['riga' => $riga, 'anagrafica_id' => (int) $riga->anagrafica_id, 'ruolo' => $tipologia, 'giorni' => $g, 'peso' => (float) $riga->quota * $g, 'tratto' => $this->titolari->trattoEffettivo($riga, $residuo, $stessaCoppia)];
                 $sommaAnello += (float) $riga->quota * $g;
+            };
+            foreach ($righeCoppia as $riga) {
+                $aggiungi($riga, $ruolo->value, $righeCoppia);
             }
             if ($anello === []) {
                 continue;
+            }
+            // Coda 170 (decisione 31.2): anche l'anello che copre i giorni scoperti, su un'unità mista, si divide con il
+            // ruolo gemello — l'inquilino che esce il 30/06 lascia i suoi giorni a usufruttuario e proprietaria piena per
+            // le loro quote, non al solo usufruttuario.
+            $gemelle = $this->unitaMista->righeGemelle($righeUnita, collect($anello)->pluck('riga'), $ruolo->value, $residuo);
+            if ($gemelle->isNotEmpty()) {
+                $tipologiaGemella = (string) $gemelle->first()->tipologia;
+                $coppiaGemella = $righeUnita->filter(fn ($r) => ($r->tipologia ?? null) === $tipologiaGemella && (bool) ($r->attivo ?? false))->values();
+                foreach ($gemelle as $riga) {
+                    $aggiungi($riga, $tipologiaGemella, $coppiaGemella);
+                }
+                $righeCoppia = $righeCoppia->concat($coppiaGemella)->values();
             }
             $primo ??= $ruolo->value;
             $dopo = $this->titolari->giorniScoperti($righeCoppia, $residuo);
@@ -1335,6 +1355,16 @@ class CalcoloQuoteService
             $destinatari->map(fn ($r) => (object) ['id' => (int) $r->anagrafica_id]),
             $immobileId, $ruoloDestinatari, $contoId,
         );
+        // Coda 170 (decisione 31.2): su un'unità mista la spesa di quella sola unità la pagano il proprietario pieno e il
+        // nudo proprietario dell'altra parte, per le loro quote — non il primo ruolo trovato, che dava tutto a chi aveva la
+        // piena proprietà di metà. Stessa classe e stesse condizioni del riparto delle voci.
+        $gemelle = $this->unitaMista->righeGemelle($occupantiSenzaPeriodo, $destinatari, $ruoloDestinatari, $this->periodo);
+        if ($gemelle->isNotEmpty()) {
+            $idGemelle = $gemelle->map(fn ($r) => (int) $r->id)->flip()->all();
+            $destinatari = $destinatari->concat($occupanti->filter(fn ($r) => isset($idGemelle[(int) $r->id])))->values();
+            $tipologiaGemella = (string) $gemelle->first()->tipologia;
+            $righeCoppia = $occupantiSenzaPeriodo->whereIn('tipologia', [$ruoloDestinatari, $tipologiaGemella])->values();
+        }
         $perGiorni = $this->pesiPerGiorni($righeCoppia, $destinatari, $immobileId, $ruoloDestinatari, $contoId);
         // Tutti a zero giorni sui tratti (l'unico titolare del ruolo sta nel buco fra due tratti): il vuoto è l'intero
         // periodo e passa per il ripiego della decisione 22 come ogni altro vuoto (S8-bis, L2-4); scoperto
@@ -1856,6 +1886,28 @@ class CalcoloQuoteService
                         continue;
                     }
 
+                    /*
+                     * Coda 170, decisione 31.1 (1.11.0-beta.41): l'unità **mista**. Se il ruolo che paga copre solo una
+                     * parte dell'unità — Bice proprietaria piena al 50 %, e l'altra metà in nuda proprietà più usufrutto —
+                     * la voce si divide anche sul ruolo gemello (il nudo proprietario per il capitale, il proprietario pieno
+                     * per il godimento), per le quote di ciascuno. Fino alla beta.40 il 50 % di Bice diventava il 100 %
+                     * dell'unità. Si aggiunge chi `UnitaMista` dice di aggiungere, e il resto del calcolo è quello di
+                     * sempre: un'unità che non è mista non passa da qui.
+                     */
+                    $tipologieCoppia = [$ruoloRisolto];
+                    $righeGemelle = $this->unitaMista->righeGemelle(
+                        $immobile->anagrafiche->map(fn ($a) => $a->pivot)->values(),
+                        $anagrafiche->map(fn ($a) => $a->pivot)->values(),
+                        $ruoloRisolto, $this->periodo,
+                    );
+                    if ($righeGemelle->isNotEmpty()) {
+                        $idGemelle = $righeGemelle->map(fn ($r) => (int) $r->id)->flip()->all();
+                        $anagrafiche = $anagrafiche->concat(
+                            $this->titolari->attiviAlla($immobile->anagrafiche, $this->periodo)->filter(fn ($a) => isset($idGemelle[(int) $a->pivot->id]))
+                        )->values();
+                        $tipologieCoppia[] = (string) $righeGemelle->first()->tipologia;
+                    }
+
                     $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
                     if ($sommaQuote <= 0.0) $sommaQuote = 1.0;
 
@@ -1869,7 +1921,7 @@ class CalcoloQuoteService
                      * i giorni a 1.
                      */
                     $perGiorni = $this->pesiPerGiorni(
-                        $this->titolari->attiviAlla($immobile->anagrafiche)->where('pivot.tipologia', $ruoloRisolto)->map(fn ($a) => $a->pivot)->values(),
+                        $this->titolari->attiviAlla($immobile->anagrafiche)->whereIn('pivot.tipologia', $tipologieCoppia)->map(fn ($a) => $a->pivot)->values(),
                         $anagrafiche->map(fn ($a) => $a->pivot)->values(),
                         (int) $immobile->id, $ruoloRisolto, (int) $conto->id,
                     );
@@ -1945,7 +1997,8 @@ class CalcoloQuoteService
                             'valore_millesimo' => $valore,
                             'somma_valori'     => $sommaValori,
                             'ruolo_richiesto'  => (string) $rip->soggetto,
-                            'ruolo_risolto'    => $ruoloRisolto,
+                            // Il ruolo della riga, non quello cercato: nell'unità mista sono due (Coda 170).
+                            'ruolo_risolto'    => (string) $anag->pivot->tipologia,
                             'quota_possesso'   => $quotaAnag,
                             'peso'             => $weightAnagrafica,
                         ] + $this->congelatoTemporale($giorniRiga, $trattoRiga);

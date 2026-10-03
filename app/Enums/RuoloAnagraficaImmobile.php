@@ -126,6 +126,27 @@ enum RuoloAnagraficaImmobile: string
     }
 
     /**
+     * Il ruolo che, **sulla stessa unità e negli stessi giorni**, completa quello dato quando l'unità è mista — in parte in
+     * piena proprietà, in parte in nuda proprietà più usufrutto (Coda 170, decisione 31.1, 1.11.0-beta.41).
+     *
+     * Il proprietario pieno ha capitale e godimento della sua parte. Sull'asse del **capitale** l'altra parte è del nudo
+     * proprietario, quindi `proprietario` e `nuda_proprietario` si completano a vicenda; sull'asse del **godimento** l'altra
+     * parte è dell'usufruttuario, quindi `usufruttuario` si completa con `proprietario`. L'inquilino non ha gemello: prende
+     * in locazione l'unità, non una quota di un diritto.
+     *
+     * Non è una catena: la catena dice a chi si passa quando un ruolo **manca**, il gemello dice con chi si divide quando
+     * il ruolo **c'è ma copre solo una parte** dell'unità. Chi lo usa è `App\Services\Riparto\UnitaMista`.
+     */
+    public static function gemelloNellUnita(string $ruolo): ?self
+    {
+        return match ($ruolo) {
+            self::PROPRIETARIO->value => self::NUDA_PROPRIETA,
+            self::NUDA_PROPRIETA->value, self::USUFRUTTUARIO->value => self::PROPRIETARIO,
+            default => null,
+        };
+    }
+
+    /**
      * I ripieghi da provare quando il ruolo richiesto non c'è su quell'unità — cioè la catena
      * **senza il ruolo richiesto**, che è già stato cercato e non trovato.
      *

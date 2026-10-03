@@ -316,7 +316,7 @@ it('una bozza già pagata in parte non passa: l\'anticipo è di chi esce, la quo
 it('nell\'usufrutto le bozze non passano: l\'usufruttuario paga solo una parte delle voci, e cambiare il nome sulla quota intera sposterebbe anche il resto (decisione 21 invariata)', function () {
     $s = rbScenario('prima_rata', 0);
     rbEmettiFinoAdAprile($s);
-    $usufrutto = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
+    $usufrutto = ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01',
         'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione di usufrutto, letto'];
 
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), $usufrutto)->assertOk()->json();
@@ -433,7 +433,7 @@ it('R4 — vendita della nuda proprietà dopo l\'usufrutto: le ordinarie del pia
     $ursula->condomini()->syncWithoutDetaching([$s['c']->id]);
     $carlo->condomini()->syncWithoutDetaching([$s['c']->id]);
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
-        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $ursula->id, 'decorrenza' => '2026-05-01',
+        'tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $ursula->id, 'decorrenza' => '2026-05-01',
         'quota' => 100, 'tipologia' => 'usufruttuario', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Costituzione usufrutto, letto',
     ])->assertSessionHasNoErrors();
     rbEmettiFinoAdAprile($s, '2026-08-31');
@@ -447,7 +447,10 @@ it('R4 — vendita della nuda proprietà dopo l\'usufrutto: le ordinarie del pia
         ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('dell\'usufruttuario (art. 1004 c.c.)')
         // Decisione 28.4 (beta.38): verso il condominio chi compra la nuda proprietà ne risponde in solido con
         // l'usufruttuario (art. 67 ult. co.); fra le parti le paga l'usufruttuario. La frase non dice più «non ne risponde».
-        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->not->toContain('non ne risponde')->toContain('non passano a');
+        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->not->toContain('non ne risponde')->toContain('non passano a')
+        // Rilievo T-B5 della revisione della 1-ter: le frasi non danno per regolato alla costituzione ciò che il codice non verifica
+        // (senza niente a giornale la costituzione non scrive coppie, decisione 21).
+        ->not->toContain('già regolat')->not->toContain('regolate alla costituzione');
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), $vendita)->assertSessionHasNoErrors();
 
     $preventivo = fn (int $id) => (int) DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $s['piano']->id)->where('rate_quote.anagrafica_id', $id)->sum('rate_quote.importo');

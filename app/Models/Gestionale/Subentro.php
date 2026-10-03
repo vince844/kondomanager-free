@@ -86,6 +86,50 @@ class Subentro extends Model
     }
 
     /**
+     * L'estinzione dell'usufrutto. Dalla beta.37 il registro dice il sottotipo; prima no, e l'estinzione si riconosce dalla
+     * tipologia del passaggio, «proprietario» (il nudo che torna pieno), come fa lo storico. Non da chi entra: l'estinzione
+     * registra come chi entra il primo nudo proprietario (seconda revisione della Fase 1-ter, M2-3).
+     */
+    public function estinzioneUsufrutto(): bool
+    {
+        return $this->tipo_passaggio === 'usufrutto'
+            && ($this->registro['sottotipo'] ?? ($this->tipologia === 'proprietario' ? 'estinzione' : 'costituzione')) === 'estinzione';
+    }
+
+    /**
+     * Decisione 31.5 (1.11.0-beta.41): chi paga l'ordinaria dal giorno dell'atto, scelto dall'amministratore alla costituzione
+     * o alla riserva d'usufrutto. `usufruttuario` (art. 1004 c.c.) è la proposta di legge, e lo è anche per i passaggi
+     * registrati prima, che non lo scrivevano: era la regola fissa. Con `voce` l'ordinaria ha seguito le voci, una per una —
+     * nella riserva sono passate a chi ha comprato la nuda proprietà le sole voci sul «Proprietario», nella costituzione sono
+     * rimaste al nudo proprietario —, e i passaggi che vengono dopo lo devono sapere (`ConguaglioPassaggio::predecessori()`).
+     */
+    public const ORDINARIA_ALL_USUFRUTTUARIO = 'usufruttuario';
+    public const ORDINARIA_COME_LA_VOCE = 'voce';
+
+    public function ordinariaComeLaVoce(): bool
+    {
+        return ($this->registro['ordinaria_dopo_atto'] ?? null) === self::ORDINARIA_COME_LA_VOCE;
+    }
+
+    /**
+     * Il passaggio da cui è nata una riga d'usufrutto: la costituzione (che la apre come entrante) o la vendita con riserva
+     * (che la riapre per chi vende, e la scrive nel registro). Serve all'estinzione per sapere se quell'usufrutto era nato
+     * «come la voce» (rilievo D4 della Fase 1-bis della beta.41). Null per una riga censita a mano o anteriore al registro.
+     */
+    public static function origineDellUsufrutto(int $rigaId, int $immobileId): ?self
+    {
+        $costituzione = self::where('immobile_id', $immobileId)->where('tipo_passaggio', 'usufrutto')->where('tipologia', 'usufruttuario')
+            ->where('riga_entrante_id', $rigaId)->latest('id')->first();
+        if ($costituzione !== null) {
+            return $costituzione;
+        }
+
+        return self::vincolaRiservaUsufrutto(self::query()->toBase())->where('immobile_id', $immobileId)->orderByDesc('id')->pluck('id')
+            ->map(fn ($id) => self::find($id))->filter()
+            ->first(fn (self $s) => in_array($rigaId, $s->righeDelRegistro(), true));
+    }
+
+    /**
      * La stessa domanda di `riservaUsufrutto()` in SQL, per chi legge `subentri` senza il modello: `RisolutoreTitolari`,
      * nelle sue due forme (D7 via b, rilievo B4 della Fase 1-bis). `$tabella` è il nome con cui `subentri` compare nella
      * query.

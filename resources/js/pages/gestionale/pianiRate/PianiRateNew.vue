@@ -1704,7 +1704,8 @@ const submit = () => {
                         </div>
                         <p class="text-[10px] text-slate-400 leading-snug pt-1">
                           Il criterio è la natura della gestione: l'ordinaria è dell'usufruttuario (art. 1004 c.c.),
-                          la straordinaria del proprietario (art. 1005). L'inquilino non è debitore verso il condominio.
+                          la straordinaria del proprietario (art. 1005); su un'unità in parte in piena proprietà, il
+                          proprietario pieno paga la sua quota. L'inquilino non è debitore verso il condominio.
                           Se fra le parti vale un accordo diverso, passa al riparto manuale.
                         </p>
                       </template>

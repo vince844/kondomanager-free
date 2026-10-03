@@ -131,6 +131,9 @@ class StoricoTitolarita
                         'annullato_il' => $s->conguaglio_annullato_il ? $this->giornoUtente($s->conguaglio_annullato_il) : null,
                     ],
                     'obbligati' => $s->annullato() ? [] : $this->frasiObbligati->daSubentro($s),
+                    // Rilievo A2 della Fase 1-bis della beta.41: la scelta sull'ordinaria, dal registro. Decide i conguagli dei
+                    // passaggi dopo, quindi resta visibile anche quando il passaggio non è più annullabile.
+                    'ordinaria' => $this->ordinaria($s),
                     'nota' => $s->nota,
                     'annullato' => $s->annullato(),
                     'annullato_il' => $s->annullato_il ? $this->giornoUtente($s->annullato_il) : null,
@@ -197,6 +200,43 @@ class StoricoTitolarita
                 'nota_conguaglio' => $subentro->nota_conguaglio,
             ] : null,
         ];
+    }
+
+    /**
+     * Decisioni 31.5–31.7: chi paga l'ordinaria dal giorno dell'atto, come il passaggio l'ha scritto nel registro. `null` se
+     * il registro non ne parla — vendita piena, locazione, passaggi anteriori alla beta.41: allora la scelta non c'era, e non
+     * si deduce «la legge» dall'assenza.
+     *
+     * @return array{scelta: string, testo: string, voci: list<string>}|null
+     */
+    private function ordinaria(Subentro $s): ?array
+    {
+        $registro = $s->registro ?? [];
+        if (! array_key_exists('ordinaria_dopo_atto', $registro)) {
+            return null;
+        }
+        $scelta = (string) $registro['ordinaria_dopo_atto'];
+        $dal = $s->decorrenza ? $this->data($s->decorrenza) : null;
+
+        if (! empty($registro['ordinaria_ereditata_da'])) {
+            // Rilievo D4: l'estinzione chiude la scelta dell'usufrutto che si estingue; la si dice con il passaggio da cui viene.
+            $origine = Subentro::conAnnullati()->find((int) $registro['ordinaria_ereditata_da']);
+
+            return ['scelta' => $scelta, 'voci' => [], 'testo' => sprintf('Come dice ogni voce, la scelta del passaggio%s da cui era nato l\'usufrutto: nel conguaglio le voci sul «Proprietario» erano già del nudo proprietario.',
+                $origine?->decorrenza ? ' del ' . $this->data($origine->decorrenza) : '')];
+        }
+        if ($scelta === Subentro::ORDINARIA_COME_LA_VOCE) {
+            return ['scelta' => $scelta, 'voci' => [], 'testo' => sprintf('Dal %s come dice ogni voce, scelta alla registrazione: le voci sul «Proprietario» %s, le altre %s. Le voci non sono state toccate.',
+                $dal, $s->riservaUsufrutto() ? 'passano a chi ha comprato la nuda proprietà' : 'restano al nudo proprietario', $s->riservaUsufrutto() ? 'restano all\'usufruttuario' : 'vanno all\'usufruttuario')];
+        }
+        $voci = array_map(fn (array $v) => sprintf('%s (%s, %s): prima %s, dopo %s', $v['conto'] ?? '?', $v['tabella'] ?? '?', $v['gestione'] ?? '?', VociDaSpostare::coefficientiAParole($v['prima'] ?? []), VociDaSpostare::coefficientiAParole($v['dopo'] ?? [])),
+            $registro['voci_spostate'] ?? []);
+
+        return ['scelta' => $scelta, 'voci' => $voci, 'testo' => sprintf('Dal %s all\'usufruttuario (art. 1004 c.c.), la proposta di legge: %s', $dal, match (count($voci)) {
+            0 => 'nessuna voce spostata.',
+            1 => 'questa voce è passata dal «Proprietario» all\'«Usufruttuario».',
+            default => 'queste voci sono passate dal «Proprietario» all\'«Usufruttuario».',
+        })];
     }
 
     /**

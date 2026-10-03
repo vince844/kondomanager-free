@@ -47,11 +47,12 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from 'vue-select';
-import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Info, AlertTriangle, FileSignature, Home, KeyRound, KeySquare, Landmark, BellRing, Paperclip } from 'lucide-vue-next';
+import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Info, AlertTriangle, FileSignature, Home, KeyRound, KeySquare, Landmark, BellRing, Paperclip, Lock } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
+import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
 
 const props = defineProps<{
   condominio: Building;
@@ -135,6 +136,10 @@ const form = useForm({
   promemoria_giorni: 60 as number,
   ho_letto: false,
   nota_cancello: '',
+  // Decisioni 31.5 e 31.6 (beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal giorno dell'atto.
+  // La legge (art. 1004 c.c.) è già scelta; le voci da spostare sono tutte spuntate, e qui si tengono quelle senza spunta.
+  ordinaria_dopo_atto: 'usufruttuario' as 'usufruttuario' | 'voce',
+  voci_da_tenere: [] as number[],
 });
 
 const laQuotaCambia = ref(false);
@@ -175,7 +180,8 @@ const ETICHETTE_ERRORI: Record<string, string> = {
   tipologia: 'il ruolo', pertinenze: 'le pertinenze', nota_cancello: 'la nota del cancello', nota_conguaglio: 'la ragione della rinuncia al conguaglio',
   allegato_titolo: "l'allegato", promemoria_giorni: "l'anticipo del promemoria", copia_autentica_il: 'la data della copia autentica',
 };
-const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio')));
+// `ordinaria_impronta` ha il suo riquadro nella scheda dell'ordinaria, che sopravvive al ricalcolo del pannello.
+const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio' && k !== 'ordinaria_impronta')));
 
 const candidatiUscente = computed(() => {
   const ruoli = props.tipo === 'usufrutto'
@@ -307,6 +313,9 @@ function corpoAnteprima() {
     data_fine_locazione: form.data_fine_locazione || null,
     regime_contratto: form.regime_contratto,
     pertinenze: form.pertinenze,
+    // Cambiano il conguaglio: entrano nell'anteprima. Il server li legge solo alla costituzione e alla riserva d'usufrutto.
+    ordinaria_dopo_atto: form.ordinaria_dopo_atto,
+    voci_da_tenere: form.voci_da_tenere,
   };
 }
 
@@ -356,6 +365,20 @@ watch(() => JSON.stringify(corpoAnteprima()), () => {
 }, { immediate: true });
 onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
 
+// --- Chi paga l'ordinaria dal giorno dell'atto (decisioni 31.5 e 31.6) ---------------------------
+
+const ordinaria = computed(() => anteprima.value?.ordinaria?.applicabile ? anteprima.value.ordinaria : null);
+// Decisione 31.8: una voce in un piano approvato ha la ripartizione bloccata e non si sposta; il server lo ripete.
+const vociDivise = computed(() => dividiVoci(ordinaria.value?.voci ?? []));
+const vociLibere = computed(() => vociDivise.value.libere);
+const vociBloccate = computed(() => vociDivise.value.bloccate);
+/**
+ * Rilievo S1 della Fase 1-bis: la registrazione ha trovato un elenco di voci diverso da quello mostrato (un piano riportato
+ * in bozza, una voce nuova). Il pannello si ricalcola, e il messaggio resta finché non si riprova: il ricalcolo, al
+ * successo, pulisce gli errori del modulo.
+ */
+const vociCambiate = ref<string | null>(null);
+
 // --- Il cancello (1) e la conferma --------------------------------------------------------------
 
 const cancelloRichiesto = computed(() => anteprima.value?.cancello.richiesto ?? false);
@@ -371,6 +394,7 @@ const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value || form.nota
 const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && cancelloSoddisfatto.value && rinunciaSoddisfatta.value && !form.processing);
 
 function submit() {
+  vociCambiate.value = null;
   // Il file e il promemoria non entrano nell'anteprima (non cambiano le conseguenze): viaggiano solo con la
   // scrittura, che con un File dentro parte come multipart.
   form.transform(() => ({
@@ -382,9 +406,17 @@ function submit() {
     nota_cancello: form.nota_cancello,
     rinuncia_conguaglio: rinunciaEffettiva.value,
     nota_conguaglio: rinunciaEffettiva.value ? form.nota_conguaglio : null,
+    // Rilievo S1: l'elenco delle voci che il pannello ha mostrato; se sul server è cambiato, la registrazione si ferma.
+    ordinaria_impronta: ordinaria.value?.impronta ?? null,
   }))
     .post(route(generateRoute('gestionale.immobili.passaggi.store'), { condominio: props.condominio.id, immobile: props.immobile.id }), {
       preserveScroll: true,
+      onError: (errori) => {
+        if (errori.ordinaria_impronta) {
+          vociCambiate.value = errori.ordinaria_impronta;
+          calcolaAnteprima();
+        }
+      },
     });
 }
 
@@ -761,7 +793,7 @@ function urlTipo(t: TipoPassaggio) {
                       <span class="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
                         <strong class="font-semibold text-slate-900 dark:text-slate-100">Chi vende o dona resta usufruttuario</strong> (vendita o donazione con riserva d'usufrutto)
                         <span v-if="riserva" class="block text-slate-600 dark:text-slate-400">
-                          {{ uscente?.anagrafica.nome }} resta sulla stessa quota come usufruttuario, chi compra entra nudo proprietario. Nelle rate già emesse e nelle bozze dei piani già emessi l'ordinaria resta a chi vende; un piano generato o ricalcolato dopo addebita secondo i coefficienti della tabella (guida «Ruoli e usufrutto»). Le straordinarie seguono la competenza: la data della delibera, o quella dichiarata sulla fattura.
+                          {{ uscente?.anagrafica.nome }} resta sulla stessa quota come usufruttuario, chi compra entra nudo proprietario. Chi paga l'ordinaria dal giorno dell'atto lo scegli qui sotto, quando il pannello ha letto il modulo. Le straordinarie seguono la competenza: la data della delibera, o quella dichiarata sulla fattura.
                         </span>
                       </span>
                     </label>
@@ -780,6 +812,80 @@ function urlTipo(t: TipoPassaggio) {
                     <InputError :message="form.errors.regime_contratto" />
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <!-- Decisioni 31.5 e 31.6 (beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal giorno
+                 dell'atto. La legge è già scelta; le voci sono tutte spuntate. Le conseguenze le scrive il server. -->
+            <Card v-if="ordinaria" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Chi paga l'ordinaria dal giorno dell'atto</CardTitle>
+                <CardDescription>La legge la mette a carico dell'usufruttuario (art. 1004 c.c.), ma le parti possono essersi accordate diversamente. La scelta vale per il conguaglio delle rate già emesse e resta scritta nel passaggio; con la legge, le voci che passano all'«Usufruttuario» valgono anche per i piani generati o ricalcolati dopo.</CardDescription>
+              </CardHeader>
+              <CardContent class="space-y-4">
+                <div v-if="vociCambiate" class="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/10 px-3.5 py-2.5 flex items-start gap-2.5">
+                  <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p class="text-[13px] text-amber-900 dark:text-amber-200 leading-relaxed">{{ vociCambiate }}</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all"
+                    :class="form.ordinaria_dopo_atto === 'usufruttuario' ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400 dark:bg-purple-900/20' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
+                    <input type="radio" v-model="form.ordinaria_dopo_atto" value="usufruttuario" class="w-4 h-4 mt-0.5 text-purple-600 border-slate-300 focus:ring-purple-600" />
+                    <span class="flex flex-col gap-0.5">
+                      <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">All'usufruttuario<template v-if="ordinaria.usufruttuario">, {{ ordinaria.usufruttuario }}</template></span>
+                      <span class="text-[11px] font-medium text-purple-700 dark:text-purple-300">Proposta di legge, art. 1004 c.c.</span>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400">Le spese ordinarie sono di chi gode del bene. Le voci sul «Proprietario» che si possono spostare passano all'«Usufruttuario», così i piani generati dopo fanno lo stesso. Le voci create dopo partono dal «Proprietario», e nei piani generati o ricalcolati dopo la spesa addebitata direttamente all'unità va al nudo proprietario (nel conguaglio delle rate già emesse resta all'usufruttuario).</span>
+                    </span>
+                  </label>
+                  <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all"
+                    :class="form.ordinaria_dopo_atto === 'voce' ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400 dark:bg-purple-900/20' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
+                    <input type="radio" v-model="form.ordinaria_dopo_atto" value="voce" class="w-4 h-4 mt-0.5 text-purple-600 border-slate-300 focus:ring-purple-600" />
+                    <span class="flex flex-col gap-0.5">
+                      <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">Come dice ogni voce</span>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400">Le voci restano come sono: quelle sul «Proprietario» vanno al nudo proprietario<template v-if="ordinaria.nudo">, {{ ordinaria.nudo }}</template>, anche nel conguaglio. Per un accordo fra le parti: scrivilo nelle note interne della riga del titolare, dalla scheda dell'unità (guida «Ruoli e usufrutto»).</span>
+                    </span>
+                  </label>
+                </div>
+
+                <div v-if="form.ordinaria_dopo_atto === 'usufruttuario' && vociLibere.length" class="space-y-2">
+                  <p class="text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed">
+                    <strong class="font-semibold text-slate-900 dark:text-slate-100">Voci che passano dal «Proprietario» all'«Usufruttuario»</strong>.
+                    Togli la spunta a quelle che devono restare al nudo proprietario: per esempio una piccola spesa straordinaria messa fra le ordinarie.
+                  </p>
+                  <label v-for="v in vociLibere" :key="v.id"
+                    class="flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 cursor-pointer select-none transition-colors"
+                    :class="voceSpuntata(v, form.voci_da_tenere) ? 'bg-white border-purple-300 dark:bg-slate-950 dark:border-purple-800' : 'bg-white border-slate-200 dark:bg-slate-950 dark:border-slate-700'">
+                    <input type="checkbox" :checked="voceSpuntata(v, form.voci_da_tenere)" @change="form.voci_da_tenere = cambiaSpunta(form.voci_da_tenere, v.id)" class="w-4 h-4 mt-0.5 accent-purple-600 rounded border-slate-300" />
+                    <span class="flex flex-col gap-0.5 min-w-0">
+                      <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ v.conto }}</span>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400">
+                        {{ v.tabella }} · {{ v.gestione }}<template v-if="v.percentuale < 100"> · il {{ v.percentuale.toLocaleString('it-IT') }} % sul «Proprietario»</template>
+                      </span>
+                      <span v-if="!voceSpuntata(v, form.voci_da_tenere)" class="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">Resta sul «Proprietario»: nei piani che verranno andrà al nudo proprietario<template v-if="ordinaria.nudo">, {{ ordinaria.nudo }}</template>.</span>
+                      <span v-else-if="v.altre_unita.length" class="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
+                        Vale per tutta la tabella: cambia anche
+                        <template v-for="(u, i) in v.altre_unita" :key="u.immobile_id">
+                          <template v-if="i > 0">{{ i === v.altre_unita.length - 1 ? ' e ' : ', ' }}</template>
+                          <strong class="font-medium">{{ u.immobile }}</strong> ({{ u.nudi ? `da ${u.nudi} a ${u.usufruttuari}` : `a ${u.usufruttuari}` }}<template v-if="u.importo_formattato && u.importo">, {{ u.importo_formattato }} nell'ultimo piano</template>)</template>.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <!-- Rilievo T-B1 della revisione della Fase 1-ter: il rimedio dipende dal piano che blocca la voce (con o senza rate a
+                     giornale, da fatture), e lo sa il server. Il riquadro mostra le sue frasi invece di un testo fisso. -->
+                <div v-if="form.ordinaria_dopo_atto === 'usufruttuario' && vociBloccate.length && ordinaria.frasi_bloccate?.length" class="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950 px-3.5 py-2.5 text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+                  <Lock class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                  <span class="space-y-1.5">
+                    <span v-for="(f, i) in ordinaria.frasi_bloccate" :key="i" class="block">{{ f }}</span>
+                  </span>
+                </div>
+
+                <!-- La prima frase del server è la conclusione, con la data e i nomi; le altre dicono ciò che l'elenco qui sopra già mostra. -->
+                <p v-if="ordinaria.frasi.length" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
+                  <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" /><span>{{ ordinaria.frasi[0] }}</span>
+                </p>
+                <InputError :message="form.errors.ordinaria_dopo_atto" />
               </CardContent>
             </Card>
 

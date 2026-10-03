@@ -77,8 +77,8 @@ const showGuideOperazioni       = ref(false)
 const showGuideGiaVersato      = ref(false)
 
 const textGuidesList = [
-  { id: 'operazioni', title: 'Guida: Operazioni e Struttura' },
-  { id: 'usufrutto', title: 'Guida: Ruoli e Usufrutto' },
+  { id: 'operazioni', title: 'Guida: operazioni e struttura' },
+  { id: 'usufrutto', title: 'Guida: ruoli e usufrutto' },
   { id: 'giaversato', title: 'Guida: Già versato' },
 ]
 

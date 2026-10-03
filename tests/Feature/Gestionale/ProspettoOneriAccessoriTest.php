@@ -338,7 +338,7 @@ it('beta.38 — vendita con riserva d\'usufrutto: le ordinarie le paga ancora ch
     $ivo = ($s['persona'])('Ivo Primo', 'POINQUILR38');
     $rigaP = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['p']->id)->value('id');
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
-        'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'riga_uscente_id' => $rigaP, 'anagrafica_entrante_id' => $aldo->id, 'decorrenza' => '2026-05-01', 'quota' => 100,
+        'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $rigaP, 'anagrafica_entrante_id' => $aldo->id, 'decorrenza' => '2026-05-01', 'quota' => 100,
         'tipologia' => 'nuda_proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-05', 'estremi_titolo' => 'rep. 38', 'pertinenze' => [], 'ho_letto' => true,
         'nota_cancello' => 'Vendita della nuda proprietà con riserva d\'usufrutto, letto',
     ])->assertSessionHasNoErrors();
@@ -356,7 +356,7 @@ it('beta.38 — riserva d\'usufrutto e poi estinzione dell\'usufrutto: le ordina
     $ivo = ($s['persona'])('Ivo Primo', 'POINQUIE38');
     $rigaP = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['p']->id)->value('id');
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
-        'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'riga_uscente_id' => $rigaP, 'anagrafica_entrante_id' => $aldo->id, 'decorrenza' => '2026-05-01', 'quota' => 100,
+        'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'ordinaria_dopo_atto' => 'usufruttuario', 'riga_uscente_id' => $rigaP, 'anagrafica_entrante_id' => $aldo->id, 'decorrenza' => '2026-05-01', 'quota' => 100,
         'tipologia' => 'nuda_proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-05', 'estremi_titolo' => 'rep. 38', 'pertinenze' => [], 'ho_letto' => true,
         'nota_cancello' => 'Vendita della nuda proprietà con riserva d\'usufrutto, letto',
     ])->assertSessionHasNoErrors();

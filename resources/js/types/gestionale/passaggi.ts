@@ -65,6 +65,8 @@ export interface ConguaglioDati {
     quote: number; quota_pura: number; pregressi: number;
     giorni_uscente: number | null; giorni_entrante: number | null; giorni_periodo: number | null;
     importo: number; importo_formattato: string; non_risolte: number; escluse: number; esercizio_id: number | null;
+    /** Fra le non risolte, quelle ferme perché la parte che passa non si separa (quote della 1.7.x, catene di passaggi). */
+    non_separabili?: number;
     /** Decisione 25 (B3a): la parte di chi entra sull'intero piano, e il preventivo delle bozze che passano a lui. `importo` è la differenza. */
     importo_lordo: number; importo_lordo_formattato: string;
     bozze_passate: number; bozze_passate_importo: number; bozze_passate_formattato: string;
@@ -93,8 +95,6 @@ export interface AnteprimaPassaggioDati {
   anagrafica: {
     frasi: string[];
     pertinenze: string[];
-    /** Decisione 28.6 (beta.38): la riserva su una quota lascia un'unità mista che i piani non sanno dividere. Avviso, non cancello. */
-    avvisi: string[];
   };
   rate: {
     /** `nessuno` quando non c'è chi esce o non ha quote emesse; `calcolato` quando il conguaglio è stato calcolato (S5). */
@@ -119,6 +119,57 @@ export interface AnteprimaPassaggioDati {
    * e si mostrano senza spunta.
    */
   cancello: { richiesto: boolean; motivi: string[]; informazioni?: string[] };
+  /** Decisioni 31.5 e 31.6 (beta.41): chi paga l'ordinaria dal giorno dell'atto, alla costituzione e alla riserva d'usufrutto. */
+  ordinaria: OrdinariaDopoAtto;
+}
+
+/**
+ * Alla costituzione e alla riserva d'usufrutto l'amministratore sceglie chi paga l'ordinaria dal giorno dell'atto:
+ * `usufruttuario` (art. 1004 c.c., la proposta di legge) o `voce` (come dice ogni voce). Con la legge le `voci` sul
+ * «Proprietario» delle gestioni ordinarie passano all'«Usufruttuario», salvo quelle a cui si toglie la spunta.
+ */
+export interface OrdinariaDopoAtto {
+  applicabile: boolean;
+  scelta: 'usufruttuario' | 'voce' | null;
+  usufruttuario: string | null;
+  nudo: string | null;
+  voci: VoceDaSpostare[];
+  /** Le conseguenze della scelta, scritte dal server. */
+  frasi: string[];
+  /** Le frasi delle voci bloccate, con il rimedio vero per il piano che le blocca: il riquadro del lucchetto le mostra. */
+  frasi_bloccate: string[];
+  /** L'impronta dell'elenco delle voci mostrato: la registrazione la confronta con quello di adesso (rilievo S1). */
+  impronta: string | null;
+  /** All'estinzione, la scelta dell'usufrutto che si chiude, ereditata dal passaggio da cui era nato (rilievo D4). */
+  ereditata: { scelta: 'voce'; subentro_id: number; decorrenza: string } | null;
+}
+
+export interface VoceDaSpostare {
+  /** L'associazione voce × tabella: è l'id che va in `voci_da_tenere`. */
+  id: number;
+  conto_id: number;
+  conto: string;
+  tabella: string;
+  gestione: string;
+  /** La parte della voce sul «Proprietario», in percentuale. */
+  percentuale: number;
+  /** Decisione 31.8: compresa in un piano approvato, la sua ripartizione è bloccata e non si sposta. */
+  bloccata: boolean;
+  /** Perché: un piano con la voce fra i capitoli (`piano`), o un piano senza capitoli della gestione (`piano_globale`, 31.9). */
+  bloccata_da: 'piano' | 'piano_globale' | null;
+  /** I piani che la bloccano: se hanno rate a giornale e se vengono da fatture decidono il rimedio. */
+  piani_bloccanti?: { id: number; nome: string; a_giornale: boolean; da_fatture: boolean }[];
+  spostata: boolean;
+  /** Le altre unità della tabella con un usufruttuario: per loro cambia chi paga. */
+  altre_unita: {
+    immobile_id: number;
+    immobile: string;
+    usufruttuari: string;
+    nudi: string;
+    /** Quanto l'ultimo piano della gestione ha dato al nudo proprietario su questa voce; `null` se non c'è un piano. */
+    importo: number | null;
+    importo_formattato: string | null;
+  }[];
 }
 
 /** Una riga dello storico «Chi ha avuto questa unità» (`StoricoTitolarita`). */
@@ -182,6 +233,12 @@ export interface PassaggioRegistrato {
   };
   /** Le frasi del vademecum, senza imperativi né futuro. */
   obbligati: string[];
+  /**
+   * Chi paga l'ordinaria dal giorno dell'atto (decisioni 31.5–31.7), dal registro del passaggio; `null` se il passaggio non
+   * ne parla (vendita piena, locazione, passaggi anteriori alla beta.41). Con la legge, `voci` sono le voci spostate con i
+   * coefficienti di prima e di dopo.
+   */
+  ordinaria: { scelta: 'usufruttuario' | 'voce'; testo: string; voci: string[] } | null;
   nota: string | null;
   /** 1.11.0-beta.37: un passaggio annullato resta nello storico, annullato. */
   annullato: boolean;

@@ -7,6 +7,128 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.41] - Ognuno la sua parte
+
+**Non tocca il database.** Nessuna migrazione: la scelta fatta al passaggio e le voci spostate si scrivono nel registro
+del passaggio, che c'era già. Due temi, tutti e due di denaro che poteva finire sulla persona sbagliata (Code 170 e 171):
+**l'unità che è in parte in piena proprietà e in parte in nuda proprietà e usufrutto**, e **chi paga l'ordinaria dal
+giorno in cui nasce un usufrutto**.
+
+**Cambi di comportamento, detti per primi.**
+- **Un'unità «mista» si divide per le quote registrate.** Quando un'unità è in parte di un proprietario pieno e in parte
+  in nuda proprietà più usufrutto, ognuno paga la sua parte. Prima la voce sul «Proprietario» andava tutta al
+  proprietario pieno: con Bice proprietaria al 50 %, Ugo usufruttuario ed Elsa nuda proprietaria dell'altra metà, su una
+  spesa di € 1.200,00 Bice pagava € 1.200,00. Ora paga € 600,00, e l'altra metà va a Elsa (voci sul «Proprietario» e
+  straordinarie) o a Ugo (voci sull'«Usufruttuario»). Vale per le voci, per la spesa addebitata direttamente all'unità,
+  per i giorni senza inquilino e per i saldi pregressi, e solo quando le quote registrate fanno 100 in ogni periodo:
+  altrimenti il calcolo resta quello di prima. Cambiano i piani generati o ricalcolati da adesso; le rate emesse non si
+  toccano. L'avviso dell'unità mista nel pannello del passaggio non c'è più, perché il caso ora si divide.
+- **Alla costituzione e alla riserva d'usufrutto il modulo chiede chi paga l'ordinaria dal giorno dell'atto.**
+  «All'usufruttuario», la proposta di legge (art. 1004 c.c.), è già scelto; l'alternativa è «Come dice ogni voce». Con la legge il conguaglio
+  è quello di prima: nella riserva l'ordinaria resta a chi vende, che resta usufruttuario; nella costituzione passa
+  all'usufruttuario per i giorni. In più le voci ordinarie sul «Proprietario» passano su «Usufruttuario», così anche un
+  piano generato o ricalcolato dopo dà all'usufruttuario l'ordinaria di quelle voci. Prima il conguaglio la dava
+  all'usufruttuario e un piano ricalcolato al nudo proprietario: lo stesso euro a due persone diverse. Con «Come dice ogni voce» le voci non si
+  toccano e il conguaglio le segue una per una.
+- **Una voce vale per tutta la tabella.** Spostarla su «Usufruttuario» cambia chi paga anche nelle altre unità in usufrutto
+  della stessa tabella: il modulo le elenca, con l'importo dell'ultimo piano, e ogni voce si può togliere dall'elenco.
+  Dove non c'è usufrutto paga il proprietario, come prima. Una voce compresa in un piano approvato ha la ripartizione
+  bloccata: si elenca, non si sposta, e il pannello dice perché. Lo stesso vale per tutte le voci della gestione quando un
+  piano approvato le comprende tutte senza elencarle una per una, come i piani creati con le versioni precedenti: qui il
+  passaggio è più prudente della pagina della voce, che quelle voci non le blocca. Se quel piano ha già rate a giornale,
+  la scelta vale comunque per quel piano, anche sulle quote ancora in bozza: nella costituzione con il conguaglio, nella riserva perché l'ordinaria resta a chi vende. Se non ha niente a giornale, la scelta non
+  lo raggiunge: non c'è conguaglio, e il piano generato o ricalcolato dà l'ordinaria di quelle voci al nudo proprietario
+  (nella riserva, a chi compra). Per applicarla si riporta il piano in bozza dalla sua pagina prima di registrare il
+  passaggio. Il pannello dice quale dei casi è, con il nome del piano.
+- **Nel conguaglio passa solo la quota che esce.** Se chi esce tiene un'altra parte dell'unità, per esempio Ugo
+  proprietario pieno di metà e usufruttuario dell'altra metà che vende la metà piena, la spesa di quell'altra parte resta
+  sua, e le frasi del conguaglio lo dicono voce per voce. Le rate in bozza di quel piano comprendono anche la parte che
+  resta: restano intestate a chi vende, perché la quota non passa intera, e la parte che passa si regola nel conguaglio.
+- **Il conguaglio si ferma quando non separa con certezza la parte che passa.** Succede quando una persona ha avuto più
+  quote sulla stessa unità per strade diverse: ne ha ceduta una e ricomprata un'altra, ne tiene una arrivata da chi l'aveva prima mentre ne cede un'altra, ha perso un usufrutto e poi ha
+  comprato da un nudo proprietario, o l'usufrutto che si chiude era stato costituito da chi era tornato proprietario
+  pieno. E sui piani generati prima della 1.11.0-beta.29 (con la 1.10 o con le prime beta della 1.11), che non hanno il dettaglio del riparto, quando la titolarità di
+  un'unità mista cambia una seconda volta dopo la generazione. In questi casi il conguaglio proponeva cifre sbagliate, in
+  più o in meno. Ora non ne propone e il pannello dice perché: le bozze restano a chi le ha, e se serve un conguaglio si
+  scrive con un saldo manuale dal Wallet sulla stessa gestione. Il collegamento fra il riparto e le quote di ogni persona
+  arriva con la beta.42, e con quello queste catene torneranno ad avere il loro conguaglio.
+- **La scelta è obbligatoria.** Una registrazione che arriva senza (un modulo rimasto aperto da prima dell'aggiornamento)
+  viene rifiutata, con l'invito a ricaricare la pagina.
+
+**Dopo il passaggio.**
+- **Annullando il passaggio** le voci spostate restano dove sono. L'annullamento lo dice prima di confermare, con i
+  coefficienti che le voci avevano prima: se vanno riportate com'erano, si cambiano dalla pagina della voce.
+- **Lo storico** del passaggio ha una riga «Ordinaria» con la scelta e, con la legge, le voci spostate con i coefficienti
+  di prima e di dopo. I passaggi registrati prima di questa versione non l'hanno: allora la scelta non c'era.
+- **Le catene.** L'estinzione di un usufrutto nato «come dice ogni voce» ne segue la scelta e lo dice, con la data del
+  passaggio da cui viene; una pertinenza segue la scelta dell'unità. Nella vendita successiva ogni voce passa dalla data
+  in cui era arrivata a chi vende.
+- **Se l'elenco delle voci cambia fra l'anteprima e la conferma** (un piano riportato in bozza, una voce nuova creata da
+  un collega), la registrazione si ferma, il pannello si ricalcola e lo dice.
+- **Le frasi del conguaglio dicono la scelta.** Una voce che resta per «come dice ogni voce» lo dice, invece di «la
+  competenza finisce prima del…»; una voce divisa fra due ruoli nomina le sue due parti.
+
+**Correzioni.** Tutte nel conguaglio dei passaggi, e tutte di denaro su una persona sbagliata.
+- **Il conguaglio spostava anche la parte dell'unità che chi esce tiene.** Ugo, proprietario pieno di metà e usufruttuario
+  dell'altra, vende la metà piena: chi comprava pagava i giorni dell'unità intera, € 904,11 invece di € 452,05 su una spesa
+  di € 1.200,00. Lo stesso nella costituzione dell'usufrutto sulla metà piena e, con la voce sul «Proprietario»,
+  all'estinzione dell'usufrutto che Ugo ha sull'altra metà, dove alla nuda proprietaria si addebitavano € 452,05 senza
+  ragione. E quando chi esce aveva comprato da un proprietario in quella situazione: passavano anche le righe che il
+  venditore di prima teneva.
+- **La vendita della nuda proprietà dopo una costituzione con la legge e il piano ricalcolato** non faceva passare
+  niente a chi comprava, quando una voce era rimasta sul «Proprietario» (bloccata da un piano approvato, o tolta
+  dall'elenco) e il piano ricalcolato ne dava l'ordinaria al nudo proprietario: chi vendeva restava a pagare 245 giorni
+  dopo l'atto, € 805,48.
+- **Una voce divisa fra «Inquilino» e «Proprietario», dopo la fine di una locazione:** nella vendita successiva chi
+  comprava pagava € 426,92 invece di € 400,00 su una spesa di € 1.000,00, perché tutta la quota si divideva sui giorni
+  della sola parte dell'inquilino.
+- **L'estinzione di un usufrutto con più nudi proprietari** risultava passata al primo soltanto: chi poi comprava dal primo
+  pagava il godimento dell'unità intera, € 703,56 invece di € 351,78, e chi comprava dall'altro niente. Ora ognuno riceve
+  la parte della sua quota, anche quando l'estinzione è stata registrata con una versione precedente.
+- **Un usufrutto estinto con il piano già emesso tornava nella vendita successiva.** Chi era proprietario pieno di metà e
+  usufruttuario dell'altra perde l'usufrutto, poi vende la metà piena: chi comprava pagava anche l'usufrutto, che il
+  conguaglio dell'estinzione aveva già regolato.
+- **Le quote generate con la 1.7.x non dicono quanta parte di ogni rata è saldo pregresso.** In una vendita il
+  conguaglio le leggeva come tutta spesa dell'anno, e dava a chi compra anche il pregresso di chi vende. Ora, quando il
+  piano ha assorbito un saldo pregresso di quell'unità, su quelle quote il conguaglio si ferma e lo dice: le bozze restano
+  a chi le ha, e se serve un conguaglio si scrive a mano dal Wallet. Senza un saldo assorbito la quota è tutta spesa, come
+  prima.
+- **Un saldo intestato all'unità poteva essere ripartito per più del suo importo** quando la stessa persona aveva due righe
+  sull'unità, per esempio chi vende e poi ricompra: € 2.000,00 su un saldo di € 1.000,00. Ora le quote della stessa
+  persona si sommano e il totale torna.
+
+**Le guide.** «Ruoli e usufrutto» è riscritta: chi paga l'ordinaria al passaggio, l'unità mista, e gli accordi fra
+usufruttuario e nudo proprietario nelle note interne della riga del titolare, al posto del consiglio di una ripartizione
+70/30. La guida del passaggio di proprietà spiega la scelta, le voci bloccate e come applicare la scelta quando un piano
+approvato le blocca, quando il conguaglio si ferma, e cosa resta dopo un annullamento. Nella
+modifica di un titolare la quota spiega che su un'unità mista dice anche come si divide l'unità.
+
+**Non ancora.** Le voci create dopo il passaggio, e quelle delle gestioni che si apriranno, partono dal «Proprietario»:
+per darle all'usufruttuario si mettono su «Usufruttuario» dalla pagina della voce. Il pannello lo dice; un richiamo
+quando si genera il piano arriverà più avanti (Coda 213). La spesa addebitata direttamente a un'unità non ha una voce da
+spostare: con la legge il conguaglio la lascia all'usufruttuario, mentre un piano ricalcolato la dà al nudo proprietario.
+Come deve andare è da decidere (Coda 216). I saldi pregressi si calcolano ancora senza periodo: su
+un'unità diventata mista con un passaggio il pregresso resta ripartito come prima (Coda 174). La successione arriva con la
+beta.42.
+
+**Per chi sviluppa.** `UnitaMista` (`app/Services/Riparto`) dice chi aggiungere al ruolo che paga; un'unità non mista non
+passa dal codice nuovo, e la suite intera lo prova al centesimo. `VociDaSpostare` trova le voci candidate, le sposta e ne
+calcola l'impronta che il modulo rimanda alla conferma. Nel `registro` del passaggio: `ordinaria_dopo_atto`,
+`voci_spostate` (con i coefficienti di prima e di dopo), `ordinaria_ereditata_da`. Il conguaglio segue l'ordinaria per
+lato (le voci sul «Proprietario» e le altre), ciascuno con la sua data d'arrivo. In `ConguaglioPassaggio` una riga di
+riparto passa solo se è della quota che esce: restano fuori i ruoli che chi esce tiene o ha già ceduto
+(`AnteprimaPassaggio::ruoliCheRestano`), quelli che il predecessore non ha mai ceduto, e la parte non arrivata di un
+usufrutto estinto con più nudi proprietari (`anelliVerso`). Le righe di ripiego sono un gruppo a sé. Le quote senza
+composizione con un saldo pregresso assorbito dal piano (`saldi.piano_rate_id`) non si conguagliano (`senzaComposizione`).
+Il conguaglio si ferma, con la ragione, sulle unità in cui una persona ha avuto più quote per strade diverse
+(`catenaAmbigua`) e su un piano senza righe di riparto, su un'unità mista, quando un passaggio è stato registrato dopo la
+generazione (`registro.quota_max_id`). Per le voci bloccate l'anteprima manda `frasi_bloccate`, una per caso con i piani che bloccano la voce, secondo che
+il piano abbia rate a giornale, non ne abbia, o le blocchi dalle fatture di uno straordinario (`VociDaSpostare::pianiCheBloccano`).
+Test: `UnitaMistaTest` (35), `OrdinariaDopoAttoTest`, `QuotaCheEsceTest`, `ConguaglioQuoteSenzaComposizioneTest`, vitest
+della spunta (`vociDaSpostare.test.ts`).
+
+---
+
 ## [1.11.0-beta.40] - Chi versa per un altro
 
 **Non tocca il database.** Nessuna migrazione: il legame con chi ha versato usa il campo `riferimento` delle righe

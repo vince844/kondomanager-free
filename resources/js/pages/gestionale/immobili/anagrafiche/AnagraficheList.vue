@@ -85,7 +85,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Quote di competenza',
-    description: "La percentuale interna fra soggetti dello stesso ruolo: due coniugi al 50 %. Non sono millesimi.",
+    description: "La parte dell'unità che la persona ha nel suo ruolo: due coniugi al 50 %. Su un'unità in parte in piena proprietà e in parte in usufrutto dicono anche come si divide l'unità. Non sono millesimi.",
     icon: PieChart,
     colorVariant: 'emerald' as const
   },
