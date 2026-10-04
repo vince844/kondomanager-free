@@ -91,9 +91,11 @@ class SaldoInizialeController extends Controller
     {
         $saldi = $immobili->pluck('saldi')->flatten();
 
-        $immutabilita = PianoRate::whereIn('id', $saldi->pluck('piano_rate_id')->filter()->unique())
-            ->get()
-            ->mapWithKeys(fn (PianoRate $piano): array => [$piano->id => $piano->eImmutabile()]);
+        $piani = PianoRate::whereIn('id', $saldi->pluck('piano_rate_id')->filter()->unique())->get()->keyBy('id');
+        $immutabilita = $piani->map(fn (PianoRate $piano): bool => $piano->eImmutabile());
+        // Rilievo V9 del giro di verifica della .42: la ragione vera del fermo e il suo rimedio, per i soli piani fermi. Il riquadro
+        // diceva «già emesso o con incassi» e consigliava di annullare le emissioni anche a un piano fermo solo per un conguaglio.
+        $fermi = $piani->filter(fn (PianoRate $p) => $immutabilita[$p->id])->map(fn (PianoRate $p) => ['perche' => $p->fraseDelFermo(), 'rimedi' => $p->rimediDelFermo(), 'ragioni' => $p->ragioniDelFermo()]);
 
         foreach ($saldi as $saldo) {
             // Un `piano_rate_id` che non risolve è un lucchetto orfano: si resta prudenti e
@@ -105,6 +107,7 @@ class SaldoInizialeController extends Controller
             // `e_bloccato`: non è un lucchetto da riaprire né un piano da annullare, e resta vero anche
             // dopo che un piano l'ha assorbita (verifica S5, R4).
             $saldo->e_conguaglio = $saldo->subentro_id !== null;
+            $saldo->fermo_del_piano = $saldo->piano_rate_id !== null ? ($fermi[$saldo->piano_rate_id] ?? null) : null;
         }
     }
 
@@ -218,7 +221,8 @@ class SaldoInizialeController extends Controller
             $saldo->eBloccato(),
             403,
             $saldo->pianoRate
-                ? "Non puoi eliminare questo saldo: è incluso nel piano rate «{$saldo->pianoRate->nome}», già emesso o incassato."
+                ? "Non puoi eliminare questo saldo: è incluso nel piano rate «{$saldo->pianoRate->nome}», che " . ($saldo->pianoRate->fraseDelFermo() ?? 'non si riscrive più') . '.'
+                    . (($rimedi = $saldo->pianoRate->rimediDelFermo()) !== [] ? ' Per eliminarlo: ' . implode('; ', $rimedi) . '.' : '')
                 : 'Non puoi eliminare un saldo già applicato a un piano rate.'
         );
 

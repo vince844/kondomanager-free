@@ -204,6 +204,16 @@ class StoreIncassoRateAction
             ->get()
             ->keyBy('id');
         $gestioneDi = fn (array $p) => $quoteRighe[$p['rata_id']]?->rata?->pianoRate?->gestione_id;
+
+        // Decisione 41 (1.11.0-beta.42): un piano che deve ancora seguire un passaggio di titolarità non riceve incassi né
+        // compensazioni finché non si ricalcola. L'incasso lo fermerebbe (34.1), il ricalcolo si rifiuterebbe, e i giorni di chi è
+        // entrato resterebbero a chi è uscito (rilievo R1 della Fase 1-bis). Prima della transazione: niente da disfare.
+        foreach ($quoteRighe->map(fn ($q) => $q->rata?->pianoRate)->filter()->unique('id') as $piano) {
+            // Testo T3: con righe a credito nella richiesta è anche un credito usato, non solo un incasso.
+            if (($frase = $piano->fraseRicalcolaPrima($pagamentiCredito !== [] ? ['un incasso o un credito usato', 'l\'incasso'] : ['un incasso', 'l\'incasso'])) !== null) {
+                throw new \App\Exceptions\Gestionale\PianoDaRicalcolareException($frase);
+            }
+        }
         $nomiGestioni = fn ($ids) => collect($ids)->map(fn ($g) => $quoteRighe->first(fn ($q) => $q->rata?->pianoRate?->gestione_id === $g)?->rata?->pianoRate?->gestione?->nome ?? "gestione #{$g}")->unique()->values()->all();
 
         // Decisione 30.12: la gestione dell'incasso. Con il filtro «Gestione» il modulo la manda; senza, se le rate che

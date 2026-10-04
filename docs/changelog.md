@@ -7,6 +7,159 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.42] - Ogni quota, una volta sola
+
+**Non tocca il database.** Nessuna migrazione. Il registro di ogni passaggio di titolarità, che c'era già, porta da questa
+versione due informazioni in più: quali piani rate il suo conguaglio ha preso e, con la rinuncia o con il conguaglio
+annullato, quanto le parti hanno regolato fra loro. Il tema è uno: dopo un passaggio, ogni quota va sistemata da una sola fra
+le due strade — il ricalcolo del piano o il conguaglio del passaggio —, mai da tutte e due; dove nessuna delle due può farlo,
+la quota resta intestata a chi l'aveva e il pannello lo dice. Fino alla .41 in alcuni casi chi comprava pagava due volte i suoi
+giorni, chi vendeva riceveva un credito su quote mai sue, o i giorni di chi comprava restavano a carico di chi vendeva senza
+che nessuna delle due strade li spostasse.
+
+**Cambi di comportamento, detti per primi.**
+- **Un passaggio prende nel conguaglio i piani che il ricalcolo rifiuta, e solo quelli.** Il ricalcolo si rifiutava già per una
+  quota a giornale o per un movimento; il conguaglio invece prendeva le rate «emesse» e i piani con quote a giornale. Una rata
+  «emessa» senza quote a giornale (l'emissione scriveva quello stato anche su una rata fatta solo di quote a credito) finiva
+  così sistemata da tutte e due le strade; un piano con un incasso su una rata ancora in bozza da nessuna. Ora la regola è una
+  sola, per tutti e due: un piano con una quota a giornale, o con un incasso, un credito usato o un rimborso su una sua quota,
+  non si ricalcola, e un passaggio lo prende nel suo conguaglio. Una rata senza quote da pagare non diventa più «emessa», e il
+  messaggio dell'emissione lo dice.
+- **Il piano preso dal conguaglio di un passaggio resta com'è.** Non si ricalcola, non si elimina e non perde una voce, anche
+  dopo lo storno dell'incasso che lo aveva fermato, e il passaggio dopo lo prende a sua volta nel suo conguaglio. Anche i saldi
+  del Wallet che ha assorbito restano con il lucchetto e non si modificano né si eliminano: fino alla .41, stornato l'incasso,
+  tornavano modificabili. Annullare il conguaglio vuol dire che le parti hanno regolato fra loro, e il piano resta fermo. Per
+  ricalcolarlo si tolgono prima le sue quote a giornale e i movimenti, se ne ha, poi si annulla il passaggio dallo storico
+  della sua unità, lo si registra di nuovo e si ricalcola; un movimento tolto si registra di nuovo dopo il ricalcolo. Con un
+  passaggio registrato prima di questa versione l'ordine è un altro, e lo dicono i messaggi. Se le parti avevano già regolato
+  fra loro — con la rinuncia o annullando il conguaglio — il messaggio lo dice, con la cifra quando la rinuncia o
+  l'annullamento sono fatti con questa versione: ricalcolando, il condominio addebita a chi entra i suoi giorni, e
+  quell'accordo va rifatto fra le parti. L'inizio di una locazione e la fine di una locazione senza un nuovo inquilino non hanno
+  conguaglio e non prendono nessun piano, come nella .41, anche quando sono stati registrati con le versioni precedenti.
+- **Un piano che deve ancora seguire una vendita o un usufrutto si ricalcola prima di emettere.** Una vendita o un usufrutto
+  registrati quando il piano si poteva ancora ricalcolare non lo conguagliano: lo lasciano al ricalcolo. Fino alla .41 lo si
+  poteva emettere lo stesso, e al passaggio dopo chi vendeva riceveva un credito su quote mai sue (€ 1.006,03 su una spesa di
+  € 1.200,00). Ora l'emissione, l'incasso, la compensazione e il rimborso su una sua quota si rifiutano finché il piano non è
+  ricalcolato, e il messaggio dice quale passaggio deve seguire; quello dell'incasso, della compensazione e del rimborso dice
+  anche quale piano ricalcolare. Dopo l'inizio di una locazione o un cambio d'inquilino l'emissione e l'incasso non si
+  rifiutano, come fino alla .41: un piano emesso senza ricalcolo lascia le quote dell'inquilino a chi le aveva quando è stato
+  calcolato, il proprietario o l'inquilino di prima. Su quelle quote, e sui piani già emessi senza ricalcolo con le versioni
+  precedenti (le cui rate rimaste si emettono e si incassano come prima), il conguaglio del passaggio dopo si ferma e lo dice,
+  con la spunta nel cancello, anche quando la legge lascerebbe comunque quella spesa a chi esce.
+- **Il passaggio porta tutta la quota di chi esce.** La casella «La quota cambia» non c'è più: nessun numero diverso dalla
+  quota di chi esce aveva un esito giusto (Elsa al 100 % che «vende 50» a Carlo: il riparto addebitava a Carlo anche l'altra
+  metà). La vendita di una parte della propria quota, con chi vende che resta sulla parte che tiene, arriva più avanti; fino
+  ad allora il messaggio spiega come registrarla a mano.
+- **L'annullamento dell'emissione di una rata.** Non si blocca più per un passaggio registrato da questa versione: il piano
+  preso resta fermo comunque, e la rata riemessa ha le stesse quote. Per i passaggi registrati con le versioni precedenti la
+  guardia resta, ma guarda il piano e non più le due righe del conguaglio: si rifiuta quando il passaggio è stato registrato
+  dopo l'emissione della rata, anche se c'è stata la rinuncia o se il conguaglio è stato annullato. Fino alla .41 in quei due
+  casi l'annullamento dell'emissione passava, e annullare il conguaglio era la strada indicata per sbloccarlo; ora non più. Non
+  si rifiuta più per un passaggio che non ha preso quel piano, anche se ha la coppia sulla stessa gestione. Il messaggio dice
+  quale passaggio annullare prima e in che ordine.
+
+**Correzioni.**
+- **Chi comprava pagava due volte i suoi giorni** quando il piano aveva una rata «emessa» fatta solo di quote a credito: il
+  conguaglio scriveva la coppia e il ricalcolo dopo divideva di nuovo per giorni (€ 179,73 su una spesa di € 1.200,00).
+- **Con un incasso su una rata ancora in bozza succedeva il contrario**: il conguaglio non prendeva il piano, il ricalcolo si
+  rifiutava per l'incasso, e i giorni di chi comprava restavano a carico di chi vendeva finché l'incasso non si annullava. Ora
+  il conguaglio prende il piano.
+- **Dopo una costituzione d'usufrutto con la legge**, la strada indicata per ricalcolare spostava in silenzio l'ordinaria
+  dall'usufruttuario al nudo proprietario.
+- **L'estinzione di un usufrutto lo stesso giorno in cui il nudo proprietario ha comprato la nuda proprietà, quando aveva già
+  la piena proprietà di un'altra parte**: le due parti si sommano in una riga sola. Se quel giorno è arrivata anche la piena
+  proprietà, l'estinzione si rifiuta e dice in che ordine annullare e registrare di nuovo i passaggi, anche con due venditori
+  della nuda proprietà o con lo stesso venditore. Nei casi più rari il rifiuto dice il fatto e rimanda alla correzione a mano:
+  una riga piena associata a mano, un passaggio registrato insieme a una pertinenza, una vendita o donazione con riserva
+  d'usufrutto, un passaggio in cui esce il nudo proprietario, una vendita della nuda proprietà o un passaggio a favore del nudo
+  proprietario con una data successiva. Prima l'estinzione si registrava lo stesso e rendeva piena la nuda proprietà nata quel
+  giorno senza guardare la piena già presente, lasciando due righe piene aperte e sovrapposte, sull'unità e sulle pertinenze
+  spuntate.
+- **Un'estinzione con una data che precede la vendita della nuda già registrata** si rifiuta e lo dice: prima chi aveva
+  venduto la nuda restava proprietario pieno in silenzio.
+- **La costituzione e l'estinzione dell'usufrutto** sommano le righe dello stesso ruolo, come la vendita, anche
+  nell'annullamento.
+- **La scelta su chi paga l'ordinaria tocca anche un altro usufrutto della stessa gestione, e ora il pannello del passaggio lo
+  dice prima della conferma.** La scelta agisce sulla voce, e la voce vale per tutto l'anno della gestione: scegliendo la
+  legge, nei piani generati o ricalcolati dopo l'ordinaria della voce spostata va all'usufruttuario anche per i giorni di un
+  usufrutto nato con «come dice ogni voce», anche se già finito. Il pannello nomina quell'usufrutto, con l'unità e le date, e
+  per lasciare la voce al nudo proprietario basta toglierle la spunta. Fino alla .41 l'esito era lo stesso, ma il pannello non
+  lo diceva. Vale per gli usufrutti registrati dalla 1.11.0-beta.41, la prima versione che registra la scelta.
+- **Alla fine di una locazione senza un nuovo inquilino il pannello prometteva un conguaglio che non si calcola**: le quote non
+  ancora emesse intestate all'inquilino, in un piano che non si ricalcola più, risultavano «comprese nel conguaglio». Ora il
+  pannello dice che restano intestate all'inquilino, senza conguaglio, e che chi paga i giorni dopo la fine della locazione lo
+  decide l'amministratore, se serve con un saldo manuale dal Wallet sulla stessa gestione.
+- **Messaggi che si rimandavano l'uno all'altro.** L'annullamento di un passaggio non consiglia più di annullare prima il
+  conguaglio: non serve più, perché l'annullamento di un'emissione fatta dopo il passaggio non si rifiuta più per quel
+  passaggio. Quando la coppia l'ha già assorbita un altro piano emesso, il messaggio dà due strade, prima la breve (il passaggio
+  resta e il piano si emette così com'è), poi quella completa.
+- **Le frasi dicono la ragione vera per cui un piano non si riscrive** — quote a giornale, un incasso, un credito usato o
+  rimborsato, il conguaglio di un passaggio — nel rifiuto, nel pannello del passaggio, nel Wallet e sul pulsante «Ricalcola»,
+  con il rimedio di ognuna; nominano i passaggi con la loro unità, una volta sola anche con le pertinenze, e al plurale
+  quando sono più d'uno. Il riquadro del saldo bloccato propone di annullare le emissioni solo quando servono davvero.
+- **I rifiuti si leggono un pezzo per volta.** Il rifiuto dell'annullamento di un'emissione metteva i passaggi in fila in una
+  frase sola, tutto centrato: ora è allineato a sinistra, con i passaggi in elenco e i passi da seguire numerati, nell'ordine
+  in cui vanno fatti. Il nuovo rifiuto dell'emissione ha la stessa forma: quando anche il ricalcolo è fermo, i passi arrivano
+  fino al ricalcolo e alla nuova registrazione del movimento annullato. Così anche l'avviso del pulsante «Ricalcola», che
+  prima diceva solo «annulla prima le emissioni» e ora dice la ragione per cui il piano è fermo, i passaggi e i passi per
+  riaprirlo.
+- **Un'emissione o una rimozione rifiutate si presentavano come riuscite.** Quando il programma non emetteva — per esempio
+  con la data della delibera di uno straordinario corretta dopo il calcolo delle quote, o senza i conti contabili delle rate —
+  la finestra diceva «Emissione completata» con il numero delle rate scelte, e il motivo spariva. Togliere una voce da un piano
+  che non si riscrive diceva allo stesso modo «Voce rimossa». Ora la finestra dice il rifiuto e il motivo, e il cestino della
+  voce è spento finché il piano è fermo. Quando l'emissione riesce, l'esito conta le rate andate davvero a giornale, e
+  un'emissione che non ne porta nessuna («Nessuna rata emessa») si mostra come avviso, non come successo.
+- **La pagina del piano rate in tema scuro** restava chiara per metà (i riquadri dei totali, la copertura delle spese, la
+  tabella e le celle delle rate, la storia del budget): ora sono scuri anche loro. Il tema chiaro non cambia.
+- **Il Wallet sul telefono**: sotto i 768 px di larghezza la lista delle unità e il dettaglio si alternano, con «Torna
+  all'elenco» sempre in vista, invece del dettaglio schiacciato accanto alla lista. Il ruolo si legge «nudo proprietario»,
+  non con il nome interno del campo.
+- **Sicurezza.** La creazione di un piano rate accetta solo la gestione, le fatture, le voci, i saldi e le persone del
+  condominio dell'indirizzo, e il messaggio di rifiuto non dice niente di un altro condominio — né una cifra, né il numero di
+  un documento, né la natura di una gestione. L'emissione considera solo le rate del piano, e «Pubblica nascoste» solo un
+  piano del condominio dell'indirizzo: fino alla .41, con un indirizzo scritto a mano, rendeva visibili ai condòmini di un
+  altro condominio le rate emesse senza notifica.
+
+**Le guide.** La guida del passaggio di proprietà spiega quando un piano si ricalcola e quando lo prende il conguaglio, la
+quota intera, come registrare a mano la vendita di una parte, cosa vuol dire annullare il conguaglio e come si riapre un piano
+preso. La guida del piano rate dice i tre casi in cui il ricalcolo è bloccato, che un piano in bozza può essere fermo e
+l'annullamento delle emissioni con i passaggi; quella del Wallet come si corregge un saldo secondo la ragione per cui il piano
+è fermo, quando scatta il lucchetto (anche per il conguaglio di un passaggio) e che un piano con rate emesse non si elimina
+finché le emissioni non sono annullate, e lo dice anche il riquadro «Dati Blindati» della pagina. La guida della lista dei
+piani dice che le date di un piano già creato non si cambiano; «Ruoli e usufrutto» quando un piano non si ricalcola più.
+
+**Non ancora.** La successione, che la beta.41 dava per questa versione: arriva con la beta.44. L'estinzione di uno fra due
+usufrutti sulla stessa unità fa tornare proprietario pieno anche il nudo proprietario della parte su cui l'altro usufrutto
+continua, e una parte del conguaglio va anche a quel nudo proprietario; si corregge con la beta.43. Alcune catene di
+passaggi sulla stessa unità — dopo un usufrutto estinto o riservato, con due passaggi della stessa persona nello stesso
+giorno, con una pertinenza che ha un nudo proprietario diverso o è rimasta in parte a un comproprietario — possono dare
+ancora un conguaglio sbagliato, o fermarlo dove la parte che passa è certa: si correggono con la beta.43. Su un piano senza
+dettaglio del riparto (generato prima della 1.11.0-beta.29), la rivendita della nuda proprietà dopo una costituzione «come
+dice ogni voce» non conguaglia: chi rivende perde la parte dei giorni di chi compra (€ 401,10 su una spesa di € 1.200,00);
+si corregge con la beta.43. L'inizio di una locazione su un piano già fermo: la parte dell'inquilino dal giorno del
+contratto resta al proprietario, mentre il pannello annuncia ancora che da quel giorno le voci a carico dell'inquilino
+cambiano intestatario (si corregge con la versione dedicata alla locazione). La vendita di una parte della propria quota. Un
+passaggio dentro una catena può arrotondare di qualche centesimo diversamente dal conto sull'intera gestione.
+
+**Per chi sviluppa.** `PianoRate::eImmutabile()` = scrittura, movimento (`importo_pagato ≠ 0`) o conguaglio di un passaggio
+(`conguagliato()`); `immutabiliFra()` per gli insiemi; `ragioniDelFermo()`, `fraseDelFermo()`, `rimediDelFermo()`.
+`passaggiDaSeguire()` (solo vendita e usufrutto) per la guardia dell'emissione (`EmissioneRateController::fraseDaRicalcolare()`)
+e di incasso, compensazione e rimborso (`fraseRicalcolaPrima()`; incasso e compensazione la sollevano come
+`PianoDaRicalcolareException`, il rimborso come errore di validazione su `rata_quote_id`). `ragioniInParole()`,
+`vociDeiPassaggi()`, `rimediDelFermo(inElenco: true)` e `fermoPerLaPagina()`, che li dà già divisi all'avviso del pulsante
+«Ricalcola» (prop `fermo_del_piano`, calcolata con `conIPassaggiCalcolati()`). I rifiuti dell'emissione e del suo
+annullamento scrivono i passaggi in elenco e i passi numerati in testo semplice (`EmissioneRateController::elencoPuntato()`,
+`passiNumerati()`: riga vuota, «• », «1. »), che la pagina del piano legge con
+`resources/js/lib/gestionale/pianiRate/blocchiMessaggio.ts`. Nel `registro` del passaggio: `versione` 2, `piani_presi`
+(scritto alla registrazione, anche con la rinuncia; vuoto per i passaggi senza conguaglio, `Subentro::haUnConguaglio()`),
+`regolato_fuori` (per gestione, con la rinuncia o con l'annullamento del conguaglio). Per i passaggi senza `piani_presi`
+(registrati prima di questa versione) vale la regola di prima, applicata all'ora del passaggio (`scritturaEntro()`,
+`presoSoloInParteDa()`). `Rata::aGiornale()` per «emessa». Test: `StatoDelPianoDopoPassaggioTest`,
+`UsufruttoRigheSommateTest`, `QuotaDelPassaggioTest`, `CreazionePianoRateIngressoTest`, la griglia degli invarianti dei
+passaggi con il ricalcolo prima dell'emissione; vitest della modale del Wallet e di `blocchiMessaggio`.
+
+---
+
 ## [1.11.0-beta.41] - Ognuno la sua parte
 
 **Non tocca il database.** Nessuna migrazione: la scelta fatta al passaggio e le voci spostate si scrivono nel registro

@@ -65,10 +65,12 @@ class UpdateSaldoRequest extends FormRequest
 
                     $validator->errors()->add(
                         'saldo',
+                        // Rilievo V9 del giro di verifica della .42: la ragione vera del fermo e il suo rimedio. Un piano fermo solo
+                        // per il conguaglio di un passaggio non ha emissioni da annullare.
                         $piano
-                            ? "Non puoi modificare questo saldo: è incluso nel piano rate «{$piano->nome}», "
-                                . 'che risulta già emesso in contabilità o con incassi registrati. '
-                                . 'Per correggerlo annulla prima le emissioni o gli incassi di quel piano.'
+                            ? "Non puoi modificare questo saldo: è incluso nel piano rate «{$piano->nome}», che "
+                                . ($piano->fraseDelFermo() ?? 'non si riscrive più') . '. '
+                                . (($rimedi = $piano->rimediDelFermo()) !== [] ? 'Per correggerlo: ' . implode('; ', $rimedi) . '.' : '')
                             : 'Non puoi modificare un saldo già incluso in un piano rate emesso.'
                     );
                     return;

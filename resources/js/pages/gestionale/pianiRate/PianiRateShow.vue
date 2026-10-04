@@ -37,6 +37,7 @@ import type { Esercizio } from "@/types/gestionale/esercizi";
 import type { Flash } from '@/types/flash';
 import { creditoDisponibileCents, haCreditoDisponibile, versatoRataCents } from '@/lib/gestionale/pianiRate/credito';
 import { saldoNettoMovimenti } from '@/lib/gestionale/pianiRate/budgetMovements';
+import { blocchiMessaggio, messaggioArticolato } from '@/lib/gestionale/pianiRate/blocchiMessaggio';
 
 const props = defineProps<{
   condominio: Building;
@@ -51,6 +52,11 @@ const props = defineProps<{
   sources: Array<any>;      
   destinations: Array<any>; 
   has_unpublished_rates?: boolean;
+  /**
+   * Perché il piano non si riscrive più e come si riapre, una voce per riga (`PianoRate::ragioniInParole()`, `rimediDelFermo()`);
+   * `passaggi` sono quelli del conguaglio, che va sotto l'ultima ragione. Null se il piano si riscrive.
+   */
+  fermo_del_piano?: { ragioni: string[]; passaggi: string[]; rimedi: string[] } | null;
   copertura: {
       scoperto_count: number;
       orfani: Array<{ id: number; nome: string; importo: number; da_sposta_spesa?: boolean }>;
@@ -193,6 +199,14 @@ const executeDetachItem = (presaDAtto?: { nota: string }) => {
             itemToDelete.value = null;
             // Il cancello (2): il controller torna indietro con il pannello, e la voce è ancora nel piano.
             if ((page.props as any).flash?.destinatari_warning) return;
+            // Un rifiuto del server (incassi, emissioni, il conguaglio di un passaggio) arriva come redirect con un errore nel
+            // flash, quindi passa da qui: prima diceva «Voce rimossa» e cancellava il motivo (revisione della verifica a video
+            // della .42), come faceva l'emissione.
+            const rifiuto = (page.props as any).flash?.message;
+            if (rifiuto?.type === 'error') {
+                showFeedback('Impossibile rimuovere', rifiuto.message, true);
+                return;
+            }
             showFeedback('Voce rimossa', 'Il piano è stato ricalcolato senza la voce selezionata.', false);
         },
         onError: (errors) => {
@@ -217,11 +231,18 @@ const feedbackDialog = ref({
     open: false,
     title: '',
     message: '',
-    isError: false
+    isError: false,
+    /** Né successo né errore: l'operazione non ha fatto niente (es. «Nessuna rata emessa»). Icona e pulsante d'avviso. */
+    isAvviso: false
 });
 
-const showFeedback = (title: string, message: string, isError: boolean = false) => {
-    feedbackDialog.value = { open: true, title, message, isError };
+// Verifica a video della .42: i rifiuti dell'emissione e del suo annullamento arrivano in capoversi, con i passaggi in elenco e i
+// passi numerati; la modale li mostra così, a sinistra e più larga. Un messaggio di una riga resta centrato come prima.
+const feedbackCapoversi = computed(() => blocchiMessaggio(feedbackDialog.value.message));
+const feedbackArticolato = computed(() => messaggioArticolato(feedbackCapoversi.value));
+
+const showFeedback = (title: string, message: string, isError: boolean = false, isAvviso: boolean = false) => {
+    feedbackDialog.value = { open: true, title, message, isError, isAvviso: isAvviso && !isError };
     if (page.props.flash) {
         (page.props.flash as any).message = undefined;
     }
@@ -355,10 +376,22 @@ const submitEmissione = () => {
             // Il suggerimento di compensazione arriva in una chiave flash sua e finisce qui
             // dentro, non nel banner: il banner viene dipinto e poi cancellato da questo
             // stesso modale, quindi lì nessuno faceva in tempo a leggerlo.
-            const suggerimento = (page.props.flash as any)?.suggerimento_crediti;
-            const base = `Sono state emesse correttamente ${formEmissione.rate_ids.length} rate.`;
+            // Un rifiuto del server (piano non approvato, quote da ricalcolare) arriva come redirect con un errore nel
+            // flash, quindi passa da qui: prima si dicevano emesse tutte le rate scelte.
+            const flash = page.props.flash as any;
+            if (flash?.message?.type === 'error') {
+                showFeedback('Errore emissione', flash.message.message, true);
+                return;
+            }
+            const suggerimento = flash?.suggerimento_crediti;
+            // L'esito conta le rate andate a giornale, non quelle scelte: una rata senza quote da pagare resta in bozza
+            // (decisione 34, 1.11.0-beta.42).
+            const esito = flash?.esito_emissione;
+            const base = esito?.testo ?? `Sono state emesse ${formEmissione.rate_ids.length} rate.`;
 
-            showFeedback('Emissione completata', suggerimento ? `${base}\n\n${suggerimento}` : base, false);
+            // Nessuna rata andata a giornale (solo rate senza quote da pagare, o già emesse): il server risponde con un avviso, e
+            // la modale non lo veste da successo.
+            showFeedback(esito?.titolo ?? 'Emissione completata', suggerimento ? `${base}\n\n${suggerimento}` : base, false, flash?.message?.type === 'warning');
         },
         onError: (errors) => {
             console.error("Errore emissione:", errors);
@@ -538,13 +571,13 @@ const handleProcediDestinatari = (nota: string) => {
 
 const getRataStyle = (rata: any) => {
   const scaduta = new Date(rata.scadenza) < new Date() && rata.stato === 'da_pagare';
-  if (rata.stato === 'annullata') return { container: 'bg-gray-50 border-gray-200 text-gray-400 opacity-60', text: 'line-through decoration-gray-400', icon: Ban, label: 'Annullata' };
+  if (rata.stato === 'annullata') return { container: 'bg-gray-50 border-gray-200 text-gray-400 opacity-60 dark:bg-neutral-900 dark:border-neutral-800', text: 'line-through decoration-gray-400', icon: Ban, label: 'Annullata' };
   // Coda 69: anche una rata 'pagata' in eccedenza porta credito, non solo il saldo negativo.
-  if (rata.stato === 'credito' || haCreditoDisponibile(rata)) return { container: 'bg-blue-50 border-blue-200 text-blue-700', text: 'font-bold', icon: Coins, label: 'Credito' };
-  if (rata.stato === 'pagata') return { container: 'bg-emerald-50 border-emerald-200 text-emerald-700', text: 'font-bold', icon: CheckCircle2, label: 'Saldata' };
-  if (rata.stato === 'parzialmente_pagata') return { container: 'bg-amber-50 border-amber-300 text-amber-800 ring-1 ring-amber-100/50', text: 'font-bold', icon: PieChart, label: 'Parziale' };
-  if (scaduta) return { container: 'bg-white border-red-300 text-red-700 shadow-sm', text: 'font-bold', icon: AlertCircle, label: 'Scaduta' };
-  return { container: 'bg-white border-gray-200 text-gray-500 hover:border-gray-300', text: '', icon: Clock, label: 'In attesa' };
+  if (rata.stato === 'credito' || haCreditoDisponibile(rata)) return { container: 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300', text: 'font-bold', icon: Coins, label: 'Credito' };
+  if (rata.stato === 'pagata') return { container: 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300', text: 'font-bold', icon: CheckCircle2, label: 'Saldata' };
+  if (rata.stato === 'parzialmente_pagata') return { container: 'bg-amber-50 border-amber-300 text-amber-800 ring-1 ring-amber-100/50 dark:ring-amber-900/40 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300', text: 'font-bold', icon: PieChart, label: 'Parziale' };
+  if (scaduta) return { container: 'bg-white border-red-300 text-red-700 shadow-sm dark:bg-card dark:border-red-800 dark:text-red-300', text: 'font-bold', icon: AlertCircle, label: 'Scaduta' };
+  return { container: 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 dark:bg-card dark:border-neutral-800 dark:hover:border-neutral-700', text: '', icon: Clock, label: 'In attesa' };
 };
 
 const getResiduoTooltip = (rata: any) => {
@@ -649,9 +682,11 @@ const aggregates = computed(() => {
 const isRecalculateBlocked = computed(() => {
     const haIncassi = aggregates.value.totaleVersato > 0;
     const haEmissioni = props.ratePure?.some(r => r.is_emessa);
-    return haIncassi || haEmissioni;
+    return haIncassi || haEmissioni || !!props.fermo_del_piano;
 });
 
+// Verifica a video della .42 (punto 8): la ragione vera e il rimedio arrivano dal server e l'avviso li mette in elenco
+// (`fermo_del_piano`); questa frase resta per i due casi di prima, che la pagina vede da sola.
 const recalculateBlockReason = computed(() => {
     if (aggregates.value.totaleVersato > 0) return "Disabilitato: annulla prima gli incassi registrati.";
     if (props.ratePure?.some(r => r.is_emessa)) return "Disabilitato: annulla prima le emissioni in contabilità.";
@@ -821,19 +856,25 @@ const printRipartoCapitoli = () => {
               <span v-if="!isRecalculateBlocked" class="block mt-1 text-blue-600 dark:text-blue-400">
                   → Censisci le anagrafiche mancanti, poi usa il tasto <strong>Ricalcola</strong> per includere le unità nel piano.
               </span>
-              <span v-else class="block mt-1 text-amber-600 dark:text-amber-500">
+              <span v-else-if="props.ratePure?.some(r => r.is_emessa)" class="block mt-1 text-amber-600 dark:text-amber-500">
                   → Le rate sono già emesse. La quota di questa unità dovrà essere recuperata con un addebito manuale o in sede di conguaglio di fine anno.
+              </span>
+              <!-- Fermo senza emissioni (un incasso, il conguaglio di un passaggio): «le rate sono già emesse» sarebbe falso. -->
+              <span v-else class="block mt-1 text-amber-600 dark:text-amber-500">
+                  → Il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>. Finché resta così, la quota di questa unità dovrà essere recuperata con un addebito manuale o in sede di conguaglio di fine anno.
               </span>
           </div>
 
-          <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 dark:bg-amber-950/40 dark:border-amber-800">
             <div class="flex">
               <div class="flex-shrink-0">
-                <AlertTriangle class="h-5 w-5 text-amber-600" aria-hidden="true" />
+                <AlertTriangle class="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
               </div>
               <div class="ml-3 flex-1 md:flex md:justify-between">
-                <p class="text-sm text-amber-800">
-                  <strong>Stato Bozza:</strong> Il piano è attualmente modificabile e non ha generato movimenti contabili.
+                <p class="text-sm text-amber-800 dark:text-amber-300">
+                  <!-- Revisione della Fase 2 della .42: un piano in bozza può essere fermo (un incasso, il conguaglio di un passaggio). -->
+                  <template v-if="!fermo_del_piano"><strong>Stato Bozza:</strong> Il piano è modificabile e nessuna rata è ancora a giornale.</template>
+                  <template v-else><strong>Stato Bozza:</strong> Nessuna rata è ancora a giornale, ma il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>.</template>
                   <span class="block sm:inline mt-1 sm:mt-0">Controlla i dati, poi passa allo stato <strong>Approvato</strong> per registrare la delibera ed emettere le rate.</span>
                 </p>
               </div>
@@ -845,7 +886,7 @@ const printRipartoCapitoli = () => {
             <!-- ============================================================ -->
             <!-- ACTION BAR UNIFICATA                                         -->
             <!-- ============================================================ -->
-            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 p-2 bg-gray-50/50 border rounded-lg w-full">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 p-2 bg-gray-50/50 border rounded-lg w-full dark:bg-neutral-900/50">
 
                 <!-- TAB: Per anagrafica / Per immobile -->
                 <TabsList class="grid w-full sm:w-[280px] grid-cols-2 bg-muted p-1 rounded-md shrink-0">
@@ -853,7 +894,7 @@ const printRipartoCapitoli = () => {
                     <TabsTrigger value="immobile">Per immobile</TabsTrigger>
                 </TabsList>
 
-                <div class="w-px h-5 bg-gray-300 hidden sm:block shrink-0"></div>
+                <div class="w-px h-5 bg-gray-300 hidden sm:block shrink-0 dark:bg-neutral-700"></div>
 
                 <!-- PULSANTI -->
                 <!-- ⚠️ La riga scorre in orizzontale su schermo stretto — sono più pulsanti di quanti
@@ -873,7 +914,7 @@ const printRipartoCapitoli = () => {
                                     type="button" 
                                     class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
                                     :class="[
-                                        switchState ? 'bg-emerald-600' : 'bg-gray-200',
+                                        switchState ? 'bg-emerald-600' : 'bg-gray-200 dark:bg-neutral-700',
                                         (isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) ? 'opacity-50 cursor-not-allowed' : ''
                                     ]"
                                     :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
@@ -910,28 +951,28 @@ const printRipartoCapitoli = () => {
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div v-if="switchState && props.ratePure.some(r => r.is_emessa)" class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700">
-                                    <Lock class="w-4 h-4 text-amber-600" /> Azione bloccata
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                                    <Lock class="w-4 h-4 text-amber-600 dark:text-amber-400" /> Azione bloccata
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p>Non puoi tornare in stato <strong>Bozza</strong> perché ci sono rate già emesse in contabilità.</p>
                                     <p class="text-[11px] text-slate-500">Per sbloccare l'interruttore, annulla prima le emissioni usando il tasto con la freccia circolare nella tabella qui sotto.</p>
                                 </div>
                             </div>
                             <div v-else-if="switchState" class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-700">
-                                    <CheckCircle2 class="w-4 h-4 text-emerald-600" /> Stato: Approvato
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                                    <CheckCircle2 class="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Stato: Approvato
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p>Il piano rate è protetto da modifiche e la delibera assembleare è stata registrata a sistema.</p>
                                     <p class="text-[11px] text-slate-500">Puoi procedere con l'emissione delle rate, oppure tornare in Bozza se devi modificare i capitoli (la delibera andrà registrata nuovamente).</p>
                                 </div>
                             </div>
                             <div v-else class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-700">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-neutral-300">
                                     <History class="w-4 h-4 text-slate-500" /> Stato: piano in bozza
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p>Il piano rate è in fase di costruzione. Le rate non sono ancora state generate nel libro giornale.</p>
                                     <p class="text-[11px] text-slate-500 font-medium">Clicca l'interruttore per inserire i dati della delibera e passare allo stato approvato.</p>
                                 </div>
@@ -942,42 +983,42 @@ const printRipartoCapitoli = () => {
                     <!-- BADGE DELIBERA -->
                     <HoverCard v-if="switchState && props.pianoRate.data_delibera_assemblea">
                         <HoverCardTrigger as-child>
-                            <div class="inline-flex items-center gap-2 px-2.5 h-8 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-md text-[11px] font-medium shadow-sm shrink-0 transition-all duration-300 cursor-help">
+                            <div class="inline-flex items-center gap-2 px-2.5 h-8 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-md text-[11px] font-medium shadow-sm shrink-0 transition-all duration-300 cursor-help dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300">
                                 <Gavel class="w-3.5 h-3.5" />
                                 <span>Delibera <strong>{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</strong></span>
                             </div>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
-                                    <Gavel class="w-4 h-4 text-emerald-600" /> Dettagli approvazione
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+                                    <Gavel class="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Dettagli approvazione
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
-                                    <div v-if="props.pianoRate.numero_verbale" class="flex border-b border-slate-100 pb-1 gap-1">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
+                                    <div v-if="props.pianoRate.numero_verbale" class="flex border-b border-slate-100 pb-1 gap-1 dark:border-neutral-800">
                                         <span class="text-slate-500">N. verbale:</span>
                                         <span class="font-bold">{{ props.pianoRate.numero_verbale }}</span>
                                     </div>
-                                    <div class="flex border-b border-slate-100 pb-1 gap-1">
+                                    <div class="flex border-b border-slate-100 pb-1 gap-1 dark:border-neutral-800">
                                         <span class="text-slate-500">Data delibera:</span>
                                         <span class="font-bold">{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</span>
                                     </div>
                                     <div v-if="props.pianoRate.nota_approvazione" class="pt-1">
                                         <span class="text-slate-500 block text-xs mb-1">Note o riferimenti:</span>
-                                        <p class="text-xs bg-slate-50 p-2 rounded border border-slate-100 text-slate-700">{{ props.pianoRate.nota_approvazione }}</p>
+                                        <p class="text-xs bg-slate-50 p-2 rounded border border-slate-100 text-slate-700 dark:bg-neutral-900 dark:border-neutral-800 dark:text-neutral-300">{{ props.pianoRate.nota_approvazione }}</p>
                                     </div>
                                 </div>
                             </div>
                         </HoverCardContent>
                     </HoverCard>
 
-                    <div class="w-px h-5 bg-gray-300 shrink-0"></div>
+                    <div class="w-px h-5 bg-gray-300 shrink-0 dark:bg-neutral-700"></div>
 
                     <!-- SELEZIONA TUTTE -->
                     <HoverCard v-if="switchState">
                         <HoverCardTrigger as-child>
                             <Button
                                 variant="outline"
-                                class="h-8 px-3 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 bg-white shrink-0"
+                                class="h-8 px-3 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 bg-white shrink-0 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:bg-card"
                                 @click="toggleSelectAll(!isAllSelected)"
                             >
                                 <CheckCircle2 v-if="!isAllSelected" class="w-4 h-4 2xl:mr-2" />
@@ -987,10 +1028,10 @@ const printRipartoCapitoli = () => {
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
-                                    <CheckCircle2 class="w-4 h-4 text-emerald-600" /> Selezione rate
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+                                    <CheckCircle2 class="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Selezione rate
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p v-if="!isAllSelected">Seleziona tutte le <strong>{{ emettibili.length }}</strong> rate non ancora emesse per procedere all'emissione in blocco.</p>
                                     <p v-else>Deseleziona tutte le rate selezionate.</p>
                                 </div>
@@ -1017,12 +1058,12 @@ const printRipartoCapitoli = () => {
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
-                                    <Wallet class="w-4 h-4 text-emerald-600" /> Emissione rate
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+                                    <Wallet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Emissione rate
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p v-if="selectedRateIds.length === 0">Usa <strong>Seleziona tutte</strong> o le spunte nella tabella per selezionare le rate da emettere.</p>
-                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Verranno generate le scritture contabili in prima nota.</p>
+                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Per quelle con quote da pagare vengono generate le scritture contabili in prima nota; una rata senza quote da pagare (solo crediti o quote a zero) resta in bozza, e l'esito lo dice.</p>
                                 </div>
                             </div>
                         </HoverCardContent>
@@ -1039,10 +1080,10 @@ const printRipartoCapitoli = () => {
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800 dark:text-neutral-100">
                                     <Lock class="w-4 h-4 text-slate-500" /> Emissione bloccata
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p>Il piano rate è attualmente in stato <strong>Bozza</strong>.</p>
                                     <p>Usa l'interruttore a sinistra per passare allo stato <strong>Approvato</strong> inserendo i dati dell'assemblea.</p>
                                 </div>
@@ -1053,15 +1094,15 @@ const printRipartoCapitoli = () => {
                     <!-- PUBBLICA NASCOSTE -->
                     <HoverCard v-if="props.has_unpublished_rates">
                         <HoverCardTrigger as-child>
-                            <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all shrink-0" @click="executePublishSilent">
+                            <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all shrink-0 dark:border-amber-800 dark:text-amber-300 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 dark:hover:text-amber-300" @click="executePublishSilent">
                                 <BellRing class="w-4 h-4 2xl:mr-2" />
                                 <span class="hidden 2xl:inline">Pubblica nascoste</span>
                             </Button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700"><BellRing class="w-4 h-4" /> Rate in Sospeso</h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-300"><BellRing class="w-4 h-4" /> Rate in Sospeso</h4>
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p>Ci sono rate emesse contabilmente ma attualmente <strong>nascoste</strong> ai condòmini.</p>
                                     <p>Clicca questo pulsante per sbloccarne la visibilità nell'App e <strong>inviare le notifiche</strong> (Push/Email).</p>
                                 </div>
@@ -1069,25 +1110,25 @@ const printRipartoCapitoli = () => {
                         </HoverCardContent>
                     </HoverCard>
 
-                    <div class="w-px h-5 bg-gray-300 shrink-0"></div>
+                    <div class="w-px h-5 bg-gray-300 shrink-0 dark:bg-neutral-700"></div>
 
                     <!-- STAMPE PDF -->
                     <DropdownMenu>
                         <DropdownMenuTrigger as-child>
-                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2 dark:border-neutral-800 dark:text-neutral-300 dark:bg-card dark:hover:bg-neutral-900">
                                 <Printer class="w-4 h-4" />
                                 <span class="hidden 2xl:inline">Stampe PDF</span>
                                 <ChevronDown class="w-3 h-3 opacity-60" />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" class="w-56 shadow-xl rounded-xl border-slate-100 p-1.5">
+                        <DropdownMenuContent align="end" class="w-56 shadow-xl rounded-xl border-slate-100 p-1.5 dark:border-neutral-800">
                             <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
                                 Scadenziario Rate
                             </DropdownMenuLabel>
-                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuSeparator class="bg-slate-100 dark:bg-neutral-800" />
                             <DropdownMenuItem 
                                 @click="printScadenziario('anagrafica')"
-                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40 dark:text-neutral-300">
                                 <Printer class="w-3.5 h-3.5 text-indigo-500" />
                                 <div>
                                     <div class="text-xs font-medium">Per condòmino</div>
@@ -1096,7 +1137,7 @@ const printRipartoCapitoli = () => {
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                                 @click="printScadenziario('immobile')"
-                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40 dark:text-neutral-300">
                                 <Printer class="w-3.5 h-3.5 text-indigo-500" />
                                 <div>
                                     <div class="text-xs font-medium">Per unità immobiliare</div>
@@ -1105,7 +1146,7 @@ const printRipartoCapitoli = () => {
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                                 @click="printScadenziario('entrambi')"
-                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40 dark:text-neutral-300">
                                 <Printer class="w-3.5 h-3.5 text-indigo-500" />
                                 <div>
                                     <div class="text-xs font-medium">Entrambi i prospetti</div>
@@ -1116,11 +1157,11 @@ const printRipartoCapitoli = () => {
                             <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold mt-1">
                                 Riparti e Bilancio
                             </DropdownMenuLabel>
-                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuSeparator class="bg-slate-100 dark:bg-neutral-800" />
                             <DropdownMenuItem 
                                 @click="printRipartoTabelle()"
-                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-emerald-50 focus:bg-emerald-50 text-slate-700">
-                                <TableProperties class="w-3.5 h-3.5 text-emerald-600" />
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-emerald-50 focus:bg-emerald-50 text-slate-700 dark:hover:bg-emerald-950/40 dark:focus:bg-emerald-950/40 dark:text-neutral-300">
+                                <TableProperties class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                 <div>
                                     <div class="text-xs font-medium">Riparto per Tabella</div>
                                     <div class="text-[10px] text-slate-400">Spese raggruppate per tabella</div>
@@ -1129,8 +1170,8 @@ const printRipartoCapitoli = () => {
 
                             <DropdownMenuItem 
                                 @click="printRipartoCapitoli()"
-                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-amber-50 focus:bg-amber-50 text-slate-700">
-                                <FileText class="w-3.5 h-3.5 text-amber-600" />
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-amber-50 focus:bg-amber-50 text-slate-700 dark:hover:bg-amber-950/40 dark:focus:bg-amber-950/40 dark:text-neutral-300">
+                                <FileText class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                 <div>
                                     <div class="text-xs font-medium">Riparto per Capitolo</div>
                                     <div class="text-[10px] text-slate-400">Spese calcolate per capitolo esatto</div>
@@ -1146,31 +1187,56 @@ const printRipartoCapitoli = () => {
                                 <Button 
                                     @click="confirmRecalculate"
                                     :disabled="isRecalculateBlocked"
-                                    class="inline-flex items-center justify-center gap-2 rounded-md border bg-white h-8 px-3 text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    class="inline-flex items-center justify-center gap-2 rounded-md border bg-white h-8 px-3 text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:bg-card"
                                     :class="isRecalculateBlocked 
-                                        ? 'border-gray-200 opacity-60 cursor-not-allowed bg-gray-50 text-gray-500' 
-                                        : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-primary'"
+                                        ? 'border-gray-200 opacity-60 cursor-not-allowed bg-gray-50 text-gray-500 dark:border-neutral-800 dark:bg-neutral-900' 
+                                        : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-primary dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900'"
                                 >
-                                    <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}" />
-                                    <span class="hidden 2xl:inline" :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}">
+                                    <RotateCw class="w-4 h-4" :class="{'text-amber-600 dark:text-amber-400': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}" />
+                                    <span class="hidden 2xl:inline" :class="{'text-amber-700 font-bold dark:text-amber-300': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}">
                                         {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
                                     </span>
                                 </Button>
                             </span>
                         </HoverCardTrigger>
-                        <HoverCardContent class="w-80 z-50">
+                        <HoverCardContent class="z-50" :class="fermo_del_piano?.ragioni?.length ? 'w-80 sm:w-96' : 'w-80'">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800 dark:text-neutral-100">
                                     <RotateCw class="w-4 h-4" :class="isRecalculateBlocked ? 'text-slate-500' : 'text-primary'" /> 
                                     {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza e ricalcola' : 'Ricalcolo piano rate' }}
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p v-if="(copertura?.scoperto_count ?? 0) > 0">Include le nuove voci di spesa scoperte e rigenera le quote in base ai preventivi aggiornati.</p>
                                     <p v-else>Rigenera le quote del piano rate in base ai millesimi attuali e ai preventivi di spesa aggiornati.</p>
-                                    <div v-if="(copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked" class="p-2 bg-amber-50 rounded-md border border-amber-200 text-amber-800 text-xs">
+                                    <div v-if="(copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked" class="p-2 bg-amber-50 rounded-md border border-amber-200 text-amber-800 text-xs dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
                                         <strong>Sincronizzazione necessaria:</strong> Ci sono voci di spesa scoperte che possono essere incluse in questo piano.
                                     </div>
-                                    <p v-if="isRecalculateBlocked" class="text-red-500 font-medium text-xs mt-2 p-2 bg-red-50 border border-red-100 rounded-md flex items-start gap-1.5">
+                                    <div v-if="isRecalculateBlocked && fermo_del_piano?.ragioni?.length" class="text-xs mt-2 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900 rounded-md text-red-700 dark:text-red-300 space-y-2">
+                                        <div v-if="fermo_del_piano.ragioni.length === 1">
+                                            <p><span class="font-semibold">Disabilitato:</span> il piano {{ fermo_del_piano.ragioni[0] }}{{ fermo_del_piano.passaggi.length ? ':' : '.' }}</p>
+                                            <ul v-if="fermo_del_piano.passaggi.length" class="list-disc pl-4 mt-1 space-y-0.5">
+                                                <li v-for="(passaggio, k) in fermo_del_piano.passaggi" :key="k">{{ passaggio }}</li>
+                                            </ul>
+                                        </div>
+                                        <div v-else>
+                                            <p class="font-semibold">Disabilitato, perché il piano:</p>
+                                            <ul class="list-disc pl-4 mt-1 space-y-0.5">
+                                                <li v-for="(ragione, i) in fermo_del_piano.ragioni" :key="i">
+                                                    {{ ragione }}{{ i === fermo_del_piano.ragioni.length - 1 && fermo_del_piano.passaggi.length ? ':' : '' }}
+                                                    <ul v-if="i === fermo_del_piano.ragioni.length - 1 && fermo_del_piano.passaggi.length" class="list-[circle] pl-4 mt-0.5 space-y-0.5">
+                                                        <li v-for="(passaggio, k) in fermo_del_piano.passaggi" :key="k">{{ passaggio }}</li>
+                                                    </ul>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                        <div v-if="fermo_del_piano.rimedi.length">
+                                            <p class="font-semibold">Per riaprirlo:</p>
+                                            <ol class="list-decimal pl-4 mt-1 space-y-1">
+                                                <li v-for="(rimedio, i) in fermo_del_piano.rimedi" :key="i">{{ rimedio.charAt(0).toUpperCase() + rimedio.slice(1) }}.</li>
+                                            </ol>
+                                        </div>
+                                    </div>
+                                    <p v-else-if="isRecalculateBlocked" class="text-red-500 font-medium text-xs mt-2 p-2 bg-red-50 border border-red-100 rounded-md flex items-start gap-1.5 dark:bg-red-950/40 dark:border-red-900/60">
                                         <span>{{ recalculateBlockReason }}</span>
                                     </p>
                                 </div>
@@ -1181,17 +1247,17 @@ const printRipartoCapitoli = () => {
                     <!-- SPOSTA SPESA -->
                     <HoverCard>
                         <HoverCardTrigger as-child>
-                            <Button variant="outline" class="h-8 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white shrink-0" @click="isSpostaSpesaOpen = true">
+                            <Button variant="outline" class="h-8 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white shrink-0 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 dark:bg-card" @click="isSpostaSpesaOpen = true">
                                 <ArrowRightLeft class="w-4 h-4 2xl:mr-2" />
                                 <span class="hidden 2xl:inline">Sposta spesa</span>
                             </Button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-indigo-800">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-indigo-800 dark:text-indigo-300">
                                     <ArrowRightLeft class="w-4 h-4 text-indigo-500" /> Sposta spesa
                                 </h4>
-                                <div class="text-sm space-y-2 text-slate-600">
+                                <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p>Trasferisci fondi da un capitolo di spesa all'altro all'interno di questo piano rate, o verso altri capitoli della gestione.</p>
                                     <p class="text-xs italic text-slate-500">Utile per compensare spese impreviste senza dover ricalcolare l'intero piano o emettere nuove rate.</p>
                                 </div>
@@ -1202,31 +1268,31 @@ const printRipartoCapitoli = () => {
 
                 </div>
                     <!-- Sfumatura d'indizio, solo sotto sm: da lì in su la riga sta tutta e non serve. -->
-                    <div class="sm:hidden pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-gray-50 to-transparent"></div>
+                    <div class="sm:hidden pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-gray-50 to-transparent dark:from-neutral-900"></div>
                 </div>
             </div>
             <!-- ============================================================ -->
 
             <div v-if="isReady" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                <Card class="bg-white shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-gray-900">{{ euro(aggregates.totaleTeorico) }}</CardContent></Card>
-                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Da Incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Include rate scadute e <strong>debiti pregressi</strong>.</p><p class="text-xs text-muted-foreground">Non sottrae i crediti.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
-                <Card class="bg-emerald-50/40 shadow-sm border-emerald-100"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600">{{ euro(aggregates.totaleVersato) }}</CardContent></Card>
-                <Card class="bg-blue-50/40 shadow-sm border-blue-100"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-blue-600">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent></Card>
-                <Card class="bg-gray-50 shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600' : 'text-emerald-600')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
+                <Card class="bg-white shadow-sm border dark:bg-card"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-gray-900 dark:text-neutral-100">{{ euro(aggregates.totaleTeorico) }}</CardContent></Card>
+                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group dark:bg-red-950/30 dark:border-red-900/60"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Da Incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Include rate scadute e <strong>debiti pregressi</strong>.</p><p class="text-xs text-muted-foreground">Non sottrae i crediti.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600 dark:text-red-400">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
+                <Card class="bg-emerald-50/40 shadow-sm border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/60"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ euro(aggregates.totaleVersato) }}</CardContent></Card>
+                <Card class="bg-blue-50/40 shadow-sm border-blue-100 dark:bg-blue-950/30 dark:border-blue-900/60"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-blue-600 dark:text-blue-400">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent></Card>
+                <Card class="bg-gray-50 shadow-sm border dark:bg-neutral-900"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600 dark:text-red-400' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
             </div>
 
-            <div v-if="isReady" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200">
+            <div v-if="isReady" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200 dark:bg-card">
                 <button 
                     @click="toggleCapitoli" 
-                    class="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg"
+                    class="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg dark:bg-neutral-900 dark:hover:bg-neutral-800"
                     :class="{'rounded-b-lg': !isCapitoliExpanded}"
                 >
                     <div class="flex items-center gap-2">
-                        <div class="bg-white p-1.5 rounded-md border shadow-sm">
-                            <Wallet class="w-4 h-4 text-emerald-600" />
+                        <div class="bg-white p-1.5 rounded-md border shadow-sm dark:bg-card">
+                            <Wallet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div class="text-left">
-                            <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2 dark:text-neutral-300">
                                 Copertura spese
                                 <Badge v-if="isDisallineato" variant="destructive" class="text-[10px] py-0 px-1.5">
                                     <AlertTriangle class="w-3 h-3 mr-1" /> Disallineato: ricalcola!
@@ -1234,7 +1300,7 @@ const printRipartoCapitoli = () => {
                             </h3>
                             <p class="text-[10px] text-gray-500">
                                 {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • 
-                                <span :class="{'text-red-600 font-bold': isDisallineato}">
+                                <span :class="{'text-red-600 font-bold dark:text-red-400': isDisallineato}">
                                     totale preventivo: {{ euro(props.pianoRate.totale_capitoli) }}
                                 </span>
                             </p>
@@ -1248,22 +1314,22 @@ const printRipartoCapitoli = () => {
                     </div>
                 </button>
                 
-                <div v-if="isCapitoliExpanded" class="border-t divide-y divide-gray-100 max-h-60 overflow-y-auto bg-white">
-                    <div v-if="props.pianoRate.capitoli?.length" class="divide-y divide-gray-100">
-                        <div v-for="capitolo in props.pianoRate.capitoli" :key="capitolo.id" class="flex items-start justify-between px-4 py-3 hover:bg-slate-50 group transition-colors">
+                <div v-if="isCapitoliExpanded" class="border-t divide-y divide-gray-100 max-h-60 overflow-y-auto bg-white dark:divide-neutral-800 dark:bg-card">
+                    <div v-if="props.pianoRate.capitoli?.length" class="divide-y divide-gray-100 dark:divide-neutral-800">
+                        <div v-for="capitolo in props.pianoRate.capitoli" :key="capitolo.id" class="flex items-start justify-between px-4 py-3 hover:bg-slate-50 group transition-colors dark:hover:bg-neutral-900">
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="text-sm font-semibold text-gray-800">{{ capitolo.nome }}</span>
-                                    <span v-if="capitolo.is_parent" class="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
+                                    <span class="text-sm font-semibold text-gray-800 dark:text-neutral-100">{{ capitolo.nome }}</span>
+                                    <span v-if="capitolo.is_parent" class="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/60">
                                         <Layers class="w-3 h-3" /> Gruppo
                                     </span>
-                                    <span v-if="isVoceRicevente(capitolo.id)" class="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1" title="Questa voce ha ricevuto budget da un altro capitolo">
+                                    <span v-if="isVoceRicevente(capitolo.id)" class="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800" title="Questa voce ha ricevuto budget da un altro capitolo">
                                         <ArrowRightLeft class="w-3 h-3" /> Integra
                                     </span>
                                     <TooltipProvider v-if="capitolo.is_frazionato && !isVoceRicevente(capitolo.id)">
                                         <Tooltip :delayDuration="300">
                                             <TooltipTrigger as-child>
-                                                <span class="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 cursor-help">
+                                                <span class="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 cursor-help dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
                                                     <PieChart class="w-3 h-3" /> Parziale
                                                 </span>
                                             </TooltipTrigger>
@@ -1274,12 +1340,12 @@ const printRipartoCapitoli = () => {
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
-                                    <span v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
+                                    <span v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 dark:bg-neutral-800 dark:border-neutral-800">
                                         <CheckCircle2 class="w-3 h-3" /> Standard
                                     </span>
                                 </div>
                                 <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">Include: {{ capitolo.figli_names }}</p>
-                                <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1">
+                                <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1 dark:text-amber-400">
                                     Include fondi spostati da altre voci 
                                     <span class="inline-flex items-center gap-0.5 whitespace-nowrap opacity-80">(vedi storico <History class="w-2.5 h-2.5" />)</span>
                                 </p>
@@ -1293,12 +1359,12 @@ const printRipartoCapitoli = () => {
                                     :piano-rate-id="props.pianoRate.id"
                                     @stornato="showFeedback('Movimento stornato', 'I fondi sono tornati alla voce di origine.', false)"
                                 />
-                                <span class="text-xs font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
+                                <span class="text-xs font-medium text-gray-700 dark:text-neutral-300">{{ euro(capitolo.importo) }}</span>
                                 <button 
                                     @click="confirmDetachItem(capitolo)"
-                                    :disabled="switchState || aggregates.totaleVersato > 0"
-                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 transition-colors"
-                                    :class="{ 'opacity-50 cursor-not-allowed': switchState || aggregates.totaleVersato > 0, 'hover:bg-red-50': !(switchState || aggregates.totaleVersato > 0) }"
+                                    :disabled="switchState || isRecalculateBlocked"
+                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 transition-colors dark:hover:text-red-400"
+                                    :class="{ 'opacity-50 cursor-not-allowed': switchState || isRecalculateBlocked, 'hover:bg-red-50 dark:hover:bg-red-950/40': !(switchState || isRecalculateBlocked) }"
                                     title="Rimuovi voce e ricalcola"
                                 >
                                     <Trash2 class="w-4 h-4" />
@@ -1315,10 +1381,10 @@ const printRipartoCapitoli = () => {
             <TabsContent :value="tab" class="mt-0 space-y-6">
               <template v-if="isReady">
                 <div class="overflow-x-auto border rounded-lg shadow-sm">
-                  <table class="w-full text-sm border-collapse bg-white whitespace-nowrap min-w-[1000px]">
-                    <thead class="sticky top-0 bg-white z-20 shadow-sm">
-                      <tr class="border-b bg-gray-50/80 text-gray-500">
-                        <th class="text-left px-6 py-3 sticky left-0 bg-gray-50 z-50 min-w-[250px] font-semibold uppercase text-xs tracking-wider shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  <table class="w-full text-sm border-collapse bg-white whitespace-nowrap min-w-[1000px] dark:bg-card">
+                    <thead class="sticky top-0 bg-white z-20 shadow-sm dark:bg-card">
+                      <tr class="border-b bg-gray-50/80 text-gray-500 dark:bg-neutral-900/80">
+                        <th class="text-left px-6 py-3 sticky left-0 bg-gray-50 z-50 min-w-[250px] font-semibold uppercase text-xs tracking-wider shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] dark:bg-neutral-900">
                           {{ tab === "anagrafica" ? "Anagrafica" : "Immobile" }}
                         </th>
                         
@@ -1336,7 +1402,7 @@ const printRipartoCapitoli = () => {
                                 />
                               </div>
                               <div class="flex flex-col items-center relative z-20 pointer-events-none">
-                                  <div class="font-semibold text-gray-700 flex items-center gap-1">
+                                  <div class="font-semibold text-gray-700 flex items-center gap-1 dark:text-neutral-300">
                                        {{ col.numero === 0 ? 'Saldi Iniziali' : 'Rata ' + col.numero }}
                                        <TooltipProvider v-if="col.is_emessa" :delayDuration="100">
                                             <Tooltip>
@@ -1348,12 +1414,12 @@ const printRipartoCapitoli = () => {
                                                 </TooltipTrigger>
                                                 <TooltipContent class="pointer-events-none z-[100] text-xs">
                                                     <div v-if="col.is_published" class="flex flex-col">
-                                                        <span class="font-bold text-emerald-500">Emessa e pubblicata</span>
-                                                        <span class="text-slate-400">Visibile ai condòmini.</span>
+                                                        <span class="font-bold text-emerald-500 dark:text-emerald-700">Emessa e pubblicata</span>
+                                                        <span class="text-slate-400 dark:text-slate-500">Visibile ai condòmini.</span>
                                                     </div>
                                                     <div v-else class="flex flex-col">
-                                                        <span class="font-bold text-amber-500">Emessa ma nascosta</span>
-                                                        <span class="text-slate-400">Non visibile ai condòmini. Usa il tasto "Pubblica".</span>
+                                                        <span class="font-bold text-amber-500 dark:text-amber-700">Emessa ma nascosta</span>
+                                                        <span class="text-slate-400 dark:text-slate-500">Non visibile ai condòmini. Usa il tasto "Pubblica".</span>
                                                     </div>
                                                 </TooltipContent>
                                             </Tooltip>
@@ -1379,20 +1445,20 @@ const printRipartoCapitoli = () => {
                           </div>
                         </th>
 
-                        <th class="text-right px-4 py-3 bg-red-50/20 text-red-600 border-l border-red-100 min-w-[100px]">Scadute</th>
-                        <th class="text-right px-4 py-3 bg-emerald-50/20 text-emerald-600 min-w-[100px]">Versato</th>
+                        <th class="text-right px-4 py-3 bg-red-50/20 text-red-600 border-l border-red-100 min-w-[100px] dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/60">Scadute</th>
+                        <th class="text-right px-4 py-3 bg-emerald-50/20 text-emerald-600 min-w-[100px] dark:bg-emerald-950/20 dark:text-emerald-400">Versato</th>
                         <th class="text-right px-4 py-3 min-w-[100px]">Crediti</th>
                         <th class="text-right px-4 py-3 min-w-[100px] text-xs">Tot. Rate</th>
-                        <th class="text-right px-6 py-3 sticky right-0 bg-gray-50 z-40 text-xs shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[140px]">Saldo</th>
+                        <th class="text-right px-6 py-3 sticky right-0 bg-gray-50 z-40 text-xs shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[140px] dark:bg-neutral-900">Saldo</th>
                       </tr>
                     </thead>
 
-                    <tbody class="divide-y divide-gray-100">
+                    <tbody class="divide-y divide-gray-100 dark:divide-neutral-800">
                       <tr v-for="item in currentData" 
                           :key="tab === 'anagrafica' ? item.anagrafica.id : item.immobile.id"
-                          class="hover:bg-gray-50 transition-colors group"
+                          class="hover:bg-gray-50 transition-colors group dark:hover:bg-neutral-900"
                       >
-                        <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-30 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-30 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] dark:bg-card dark:group-hover:bg-neutral-900 dark:border-neutral-800">
                           <div v-if="tab === 'anagrafica'" class="flex items-center justify-between gap-2">
                             <div>
                                 <Link 
@@ -1409,7 +1475,7 @@ const printRipartoCapitoli = () => {
                             </div>
                           </div>
                           <div v-else>
-                            <div class="font-semibold text-gray-900">{{ item.immobile.nome }}</div>
+                            <div class="font-semibold text-gray-900 dark:text-neutral-100">{{ item.immobile.nome }}</div>
                             <div class="text-xs text-muted-foreground mt-0.5">{{ immobileDettagli(item.immobile) }}</div>
                           </div>
                         </td>
@@ -1429,25 +1495,25 @@ const printRipartoCapitoli = () => {
                                                 <span class="text-xs">{{ euro(item.rateMap[col.numero].importo) }}</span>
                                             </div>
                                             <div class="mt-0.5 w-full flex justify-center">
-                                                <div v-if="!col.is_emessa" class="text-[9px] font-bold text-gray-400 uppercase tracking-wide bg-gray-100 px-1.5 rounded-sm inline-block">
+                                                <div v-if="!col.is_emessa" class="text-[9px] font-bold text-gray-400 uppercase tracking-wide bg-gray-100 px-1.5 rounded-sm inline-block dark:bg-neutral-800">
                                                     BOZZA
                                                 </div>
                                                 <div v-else class="text-[10px] opacity-75">
                                                     {{ toItalian(item.rateMap[col.numero].scadenza) }}
                                                 </div>
                                             </div>
-                                            <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-20">
+                                            <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-20 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
                                                 PARZ.
                                             </div>
                                             <div v-if="item.rateMap[col.numero].dettaglio_quote" 
                                                 v-for="stats in [getRateStats(item.rateMap[col.numero].dettaglio_quote)]" 
                                                 :key="'dots-' + col.numero" class="z-20"
                                             >
-                                                <div v-if="stats.hasDebito && !stats.hasCredito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
-                                                <div v-if="stats.hasCredito && !stats.hasDebito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
+                                                <div v-if="stats.hasDebito && !stats.hasCredito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white dark:ring-neutral-950"></div>
+                                                <div v-if="stats.hasCredito && !stats.hasDebito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white dark:ring-neutral-950"></div>
                                                 <div v-if="stats.hasDebito && stats.hasCredito" class="absolute -top-1 -right-1 flex gap-0.5">
-                                                    <div class="rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
-                                                    <div class="rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
+                                                    <div class="rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white dark:ring-neutral-950"></div>
+                                                    <div class="rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white dark:ring-neutral-950"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1489,21 +1555,21 @@ const printRipartoCapitoli = () => {
                                 </Tooltip>
                             </TooltipProvider>
                           </template>
-                          <span v-else class="text-gray-200 text-xs">—</span>
+                          <span v-else class="text-gray-200 text-xs dark:text-neutral-700">—</span>
                         </td>
 
-                        <td class="px-4 py-2 text-right text-amber-600 font-medium text-xs bg-red-50/10 border-l border-red-50">{{ euro(item.scaduteRiga) }}</td>
-                        <td class="px-4 py-2 text-right text-emerald-600 font-medium text-xs bg-emerald-50/10 border-l border-emerald-50">{{ euro(item.versatoRiga) }}</td>
-                        <td class="px-4 py-2 text-right text-blue-600 font-medium text-xs">{{ item.creditiRiga > 0 ? euro(item.creditiRiga) : "—" }}</td>
-                        <td class="px-4 py-2 text-right font-medium text-xs text-gray-700">{{ euro(item.totaleRate) }}</td>
-                        <td class="px-4 py-3 sticky right-0 bg-white group-hover:bg-gray-50 z-30 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <td class="px-4 py-2 text-right text-amber-600 font-medium text-xs bg-red-50/10 border-l border-red-50 dark:text-amber-400 dark:bg-red-950/10 dark:border-red-900/60">{{ euro(item.scaduteRiga) }}</td>
+                        <td class="px-4 py-2 text-right text-emerald-600 font-medium text-xs bg-emerald-50/10 border-l border-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/10 dark:border-emerald-900/60">{{ euro(item.versatoRiga) }}</td>
+                        <td class="px-4 py-2 text-right text-blue-600 font-medium text-xs dark:text-blue-400">{{ item.creditiRiga > 0 ? euro(item.creditiRiga) : "—" }}</td>
+                        <td class="px-4 py-2 text-right font-medium text-xs text-gray-700 dark:text-neutral-300">{{ euro(item.totaleRate) }}</td>
+                        <td class="px-4 py-3 sticky right-0 bg-white group-hover:bg-gray-50 z-30 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)] dark:bg-card dark:group-hover:bg-neutral-900">
                             <div class="flex items-center justify-end gap-3">
                                 
                                 <div class="flex flex-col items-end"
                                     :class="{
-                                        'text-red-600': item.totale > 0.01,
-                                        'text-blue-600': item.totale < -0.01,
-                                        'text-emerald-600': Math.abs(item.totale) <= 0.01
+                                        'text-red-600 dark:text-red-400': item.totale > 0.01,
+                                        'text-blue-600 dark:text-blue-400': item.totale < -0.01,
+                                        'text-emerald-600 dark:text-emerald-400': Math.abs(item.totale) <= 0.01
                                     }"
                                 >
                                   <span class="font-bold">{{ euro(Math.abs(item.totale)) }}</span>
@@ -1514,18 +1580,18 @@ const printRipartoCapitoli = () => {
 
                                 <DropdownMenu v-if="tab === 'anagrafica'">
                                     <DropdownMenuTrigger as-child>
-                                        <Button variant="ghost" class="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 data-[state=open]:bg-indigo-50 data-[state=open]:text-indigo-600">
+                                        <Button variant="ghost" class="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 data-[state=open]:bg-indigo-50 data-[state=open]:text-indigo-600 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/40 dark:data-[state=open]:bg-indigo-950/40 dark:data-[state=open]:text-indigo-400">
                                             <span class="sr-only">Apri menu azioni</span>
                                             <MoreVertical class="h-4 w-4" />
                                         </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" class="w-48 shadow-xl rounded-xl border-slate-100 p-1.5">
+                                    <DropdownMenuContent align="end" class="w-48 shadow-xl rounded-xl border-slate-100 p-1.5 dark:border-neutral-800">
                                         <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
                                             Azioni condòmino
                                         </DropdownMenuLabel>
-                                        <DropdownMenuSeparator class="bg-slate-100" />
+                                        <DropdownMenuSeparator class="bg-slate-100 dark:bg-neutral-800" />
                                         
-                                        <DropdownMenuItem @click="openSpaccato(item)" class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                        <DropdownMenuItem @click="openSpaccato(item)" class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700 dark:hover:bg-indigo-950/40 dark:focus:bg-indigo-950/40 dark:text-neutral-300">
                                             <ReceiptText class="h-4 w-4 text-indigo-500" />
                                             <span class="font-medium text-sm">Spaccato finanziario</span>
                                         </DropdownMenuItem>
@@ -1543,23 +1609,23 @@ const printRipartoCapitoli = () => {
                       </tr>
                     </tbody>
 
-                    <tfoot class="sticky bottom-0 bg-white z-40 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
-                      <tr class="border-t-2 border-muted bg-gray-50 font-bold text-gray-700">
-                        <td class="px-6 py-3 sticky left-0 bg-gray-50 z-40 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">TOTALE</td>
+                    <tfoot class="sticky bottom-0 bg-white z-40 shadow-[0_-2px_5px_rgba(0,0,0,0.05)] dark:bg-card">
+                      <tr class="border-t-2 border-muted bg-gray-50 font-bold text-gray-700 dark:bg-neutral-900 dark:text-neutral-300">
+                        <td class="px-6 py-3 sticky left-0 bg-gray-50 z-40 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] dark:bg-neutral-900">TOTALE</td>
                         <td v-for="col in rateColumns" :key="col.numero" class="text-center px-3 py-3">
                             {{ euro(aggregates.totaliPerRata[col.numero] ?? 0) }}
                         </td>
-                        <td class="px-4 py-3 text-right text-amber-600 bg-red-50/20 border-l border-red-100">{{ euro(aggregates.totaleRateScadute) }}</td>
-                        <td class="px-4 py-3 text-right text-emerald-600 bg-emerald-50/20 border-l border-emerald-100">{{ euro(aggregates.totaleVersato) }}</td>
-                        <td class="px-4 py-3 text-right text-blue-600">{{ euro(aggregates.creditiTotali) }}</td>
-                        <td class="px-4 py-3 text-right text-gray-700">{{ euro(aggregates.totaleTeorico) }}</td>
-                        <td class="px-4 py-3 sticky right-0 bg-gray-50 z-40 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <td class="px-4 py-3 text-right text-amber-600 bg-red-50/20 border-l border-red-100 dark:text-amber-400 dark:bg-red-950/20 dark:border-red-900/60">{{ euro(aggregates.totaleRateScadute) }}</td>
+                        <td class="px-4 py-3 text-right text-emerald-600 bg-emerald-50/20 border-l border-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/20 dark:border-emerald-900/60">{{ euro(aggregates.totaleVersato) }}</td>
+                        <td class="px-4 py-3 text-right text-blue-600 dark:text-blue-400">{{ euro(aggregates.creditiTotali) }}</td>
+                        <td class="px-4 py-3 text-right text-gray-700 dark:text-neutral-300">{{ euro(aggregates.totaleTeorico) }}</td>
+                        <td class="px-4 py-3 sticky right-0 bg-gray-50 z-40 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)] dark:bg-neutral-900">
                             <div class="flex items-center justify-end gap-3">
                                 <div class="flex flex-col items-end"
                                     :class="{
-                                        'text-red-600': aggregates.totaleGenerale > 0.01,
-                                        'text-blue-600': aggregates.totaleGenerale < -0.01,
-                                        'text-emerald-600': Math.abs(aggregates.totaleGenerale) <= 0.01
+                                        'text-red-600 dark:text-red-400': aggregates.totaleGenerale > 0.01,
+                                        'text-blue-600 dark:text-blue-400': aggregates.totaleGenerale < -0.01,
+                                        'text-emerald-600 dark:text-emerald-400': Math.abs(aggregates.totaleGenerale) <= 0.01
                                     }"
                                 >
                                   <span class="font-bold">{{ euro(Math.abs(aggregates.totaleGenerale)) }}</span>
@@ -1576,7 +1642,7 @@ const printRipartoCapitoli = () => {
                 </div>
               </template>
 
-              <div v-else class="text-center py-12 text-muted-foreground bg-gray-50 rounded-lg border border-dashed">
+              <div v-else class="text-center py-12 text-muted-foreground bg-gray-50 rounded-lg border border-dashed dark:bg-neutral-900">
                 <p v-if="!props.pianoRate">Caricamento dati...</p>
                 <p v-else>Nessuna quota trovata.</p>
               </div>
@@ -1593,20 +1659,20 @@ const printRipartoCapitoli = () => {
         <div v-if="showApprovazioneModal" 
              class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800">
-                <div class="bg-emerald-50 p-6 border-b border-emerald-100 flex items-start gap-4">
-                    <div class="bg-emerald-100 p-2.5 rounded-xl shrink-0">
-                        <Gavel class="w-6 h-6 text-emerald-600" />
+                <div class="bg-emerald-50 p-6 border-b border-emerald-100 flex items-start gap-4 dark:bg-emerald-950/40 dark:border-emerald-900/60">
+                    <div class="bg-emerald-100 p-2.5 rounded-xl shrink-0 dark:bg-emerald-900/40">
+                        <Gavel class="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div>
-                        <h3 class="font-black text-emerald-900 text-lg">Approvazione piano rate</h3>
-                        <p class="text-xs text-emerald-700/70 mt-1">
+                        <h3 class="font-black text-emerald-900 text-lg dark:text-emerald-300">Approvazione piano rate</h3>
+                        <p class="text-xs text-emerald-700/70 mt-1 dark:text-emerald-300/70">
                             <template v-if="isUrgenza">Intervento d'urgenza (art. 1135 co. 2 c.c.): verbale e note sono facoltativi, la competenza è dichiarata sulle fatture.</template>
                             <template v-else>Registra i dati della delibera assembleare prima di rendere esecutivo il piano (art. 1135 c.c.).</template>
                         </p>
                     </div>
                 </div>
                 <div class="p-6 space-y-4">
-                    <div v-if="isUrgenza" class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed">
+                    <div v-if="isUrgenza" class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
                         Intervento d'urgenza: nessuna delibera da registrare, la competenza è dichiarata sulla fattura.
                     </div>
                     <div v-else class="space-y-1.5">
@@ -1634,11 +1700,11 @@ const printRipartoCapitoli = () => {
                             v-model="formApprovazione.nota_approvazione"
                             rows="2"
                             placeholder="Es. Approvato con 8 voti favorevoli su 10 millesimi presenti..."
-                            class="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 outline-none resize-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
+                            class="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 outline-none resize-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all dark:border-neutral-800 dark:bg-neutral-900"
                         />
                     </div>
-                    <div v-if="props.pianoRate.data_delibera_assemblea" class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 space-y-1 mt-2">
-                        <p class="font-bold text-slate-700">Ultima delibera registrata:</p>
+                    <div v-if="props.pianoRate.data_delibera_assemblea" class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 space-y-1 mt-2 dark:bg-neutral-900 dark:border-neutral-800">
+                        <p class="font-bold text-slate-700 dark:text-neutral-300">Ultima delibera registrata:</p>
                         <p>Data: <span>{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</span></p>
                         <p v-if="props.pianoRate.numero_verbale">Verbale: {{ props.pianoRate.numero_verbale }}</p>
                     </div>
@@ -1681,7 +1747,7 @@ const printRipartoCapitoli = () => {
                 <Input type="text" v-model="formEmissione.descrizione_personalizzata" placeholder="Es. Emissione rata conguaglio..." />
                 <p class="text-[10px] text-slate-500 leading-tight">Se lasciato vuoto, il sistema userà la dicitura standard (es. "Emissione Rata 1").</p>
             </div>
-            <div class="flex items-start space-x-3 p-3 rounded-lg border bg-slate-50/50">
+            <div class="flex items-start space-x-3 p-3 rounded-lg border bg-slate-50/50 dark:bg-neutral-900/50">
                 <Checkbox id="invia-notifiche" v-model="formEmissione.invia_notifiche" class="mt-1" />
                 <div class="grid gap-1.5 leading-none flex-1">
                     <label for="invia-notifiche" class="text-sm font-semibold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2">
@@ -1694,14 +1760,14 @@ const printRipartoCapitoli = () => {
                             </HoverCardTrigger>
                             <HoverCardContent class="w-80 z-[100]">
                                 <div class="space-y-3">
-                                    <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                    <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800 dark:text-neutral-100">
                                         <Info class="w-4 h-4 text-indigo-500" /> Emissione silenziosa
                                     </h4>
-                                    <div class="text-sm space-y-2 text-slate-600">
+                                    <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                         <p>Disabilita questa opzione se devi prima <strong>caricare manualmente dei pagamenti pregressi</strong> (es. allineamento da Excel).</p>
                                         <p>Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nella loro area privata.</p>
                                         <Separator class="my-2"/>
-                                        <div class="text-xs text-amber-600 italic font-medium">Ricordati di pubblicarle successivamente usando il tasto "Pubblica" in tabella.</div>
+                                        <div class="text-xs text-amber-600 italic font-medium dark:text-amber-400">Ricordati di pubblicarle successivamente usando il tasto "Pubblica" in tabella.</div>
                                     </div>
                                 </div>
                             </HoverCardContent>
@@ -1727,31 +1793,47 @@ const printRipartoCapitoli = () => {
     </ConfirmDialog>
 
     <Dialog :open="feedbackDialog.open" @update:open="feedbackDialog.open = $event">
-        <DialogContent class="sm:max-w-[400px]">
+        <DialogContent :class="feedbackArticolato ? 'sm:max-w-[520px] max-h-[90dvh] overflow-y-auto' : 'sm:max-w-[400px]'">
             <div class="flex flex-col items-center justify-center text-center pt-4">
-                <div v-if="!feedbackDialog.isError" class="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                    <CheckCircle2 class="h-8 w-8 text-emerald-600" />
+                <div v-if="feedbackDialog.isError" class="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mb-4 dark:bg-red-900/40">
+                    <XCircle class="h-8 w-8 text-red-600 dark:text-red-400" />
                 </div>
-                <div v-else class="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                    <XCircle class="h-8 w-8 text-red-600" />
+                <div v-else-if="feedbackDialog.isAvviso" class="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center mb-4 dark:bg-amber-900/40">
+                    <AlertTriangle class="h-8 w-8 text-amber-600 dark:text-amber-400" />
                 </div>
-                <DialogHeader>
-                    <DialogTitle class="text-center w-full block" :class="feedbackDialog.isError ? 'text-red-700' : 'text-emerald-700'">
+                <div v-else class="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4 dark:bg-emerald-900/40">
+                    <CheckCircle2 class="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <DialogHeader :class="feedbackArticolato ? 'w-full self-stretch' : ''">
+                    <DialogTitle class="text-center w-full block" :class="feedbackDialog.isError ? 'text-red-700 dark:text-red-300' : feedbackDialog.isAvviso ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'">
                         {{ feedbackDialog.title }}
                     </DialogTitle>
-                    <!-- `whitespace-pre-line`: il messaggio può portare un secondo capoverso
-                         (il suggerimento di compensazione dopo l'emissione), e senza questo
-                         i due si appiccicherebbero in una riga sola. -->
-                    <DialogDescription class="pt-2 text-center w-full block whitespace-pre-line">
+                    <!-- Un messaggio di una riga resta centrato. Uno con più capoversi, un elenco dei passaggi o dei passi numerati
+                         (i rifiuti dell'emissione e del suo annullamento, il suggerimento di compensazione dopo l'emissione) si
+                         legge a sinistra, un blocco per volta: in fila e centrato era giusto ma non si seguiva. -->
+                    <DialogDescription v-if="!feedbackArticolato" class="pt-2 text-center w-full block whitespace-pre-line">
                         {{ feedbackDialog.message }}
+                    </DialogDescription>
+                    <DialogDescription v-else as="div" class="pt-3 text-left w-full block space-y-3 text-sm leading-relaxed">
+                        <div v-for="(capoverso, i) in feedbackCapoversi" :key="i" class="space-y-1.5">
+                            <template v-for="(blocco, j) in capoverso" :key="j">
+                                <p v-if="blocco.tipo === 'testo'">{{ blocco.testo }}</p>
+                                <ul v-else-if="blocco.tipo === 'punti'" class="list-disc pl-5 space-y-0.5 text-foreground">
+                                    <li v-for="(voce, k) in blocco.voci" :key="k">{{ voce }}</li>
+                                </ul>
+                                <ol v-else class="list-decimal pl-5 space-y-1.5">
+                                    <li v-for="(voce, k) in blocco.voci" :key="k" class="pl-1">{{ voce }}</li>
+                                </ol>
+                            </template>
+                        </div>
                     </DialogDescription>
                 </DialogHeader>
             </div>
             <DialogFooter class="sm:justify-center mt-4">
                 <Button type="button" class="w-full sm:w-auto min-w-[120px]" 
-                    :class="feedbackDialog.isError ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+                    :class="feedbackDialog.isError ? 'bg-red-600 hover:bg-red-700' : feedbackDialog.isAvviso ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'"
                     @click="feedbackDialog.open = false">
-                    {{ feedbackDialog.isError ? 'Chiudi' : 'Ottimo, prosegui' }}
+                    {{ feedbackDialog.isError || feedbackDialog.isAvviso ? 'Chiudi' : 'Ottimo, prosegui' }}
                 </Button>
             </DialogFooter>
         </DialogContent>
@@ -1764,12 +1846,12 @@ const printRipartoCapitoli = () => {
         variant="default"
         @confirm="executeMigration"
     >
-        <div class="flex flex-col gap-3 text-base text-gray-700">
-            <div class="flex items-center gap-2 text-amber-600 font-bold">
+        <div class="flex flex-col gap-3 text-base text-gray-700 dark:text-neutral-300">
+            <div class="flex items-center gap-2 text-amber-600 font-bold dark:text-amber-400">
                 <AlertTriangle class="h-5 w-5" /> Attenzione
             </div>
             <p>Abbiamo rilevato che questo Piano Rate è stato generato con una versione precedente. Per garantire la <strong>tracciabilità contabile</strong> e abilitare l'emissione, è necessario rigenerare i calcoli.</p>
-            <span class="text-xs text-gray-500 bg-gray-100 p-2 rounded block">Nessun importo verrà modificato, verranno solo aggiunti i dettagli per la trasparenza.</span>
+            <span class="text-xs text-gray-500 bg-gray-100 p-2 rounded block dark:bg-neutral-800">Nessun importo verrà modificato, verranno solo aggiunti i dettagli per la trasparenza.</span>
         </div>
     </ConfirmDialog>
     
@@ -1781,7 +1863,7 @@ const printRipartoCapitoli = () => {
         @confirm="executeRecalculate"
     >
         <div v-if="(copertura?.scoperto_count ?? 0) > 0" class="space-y-4">
-            <div class="bg-amber-50 p-3 border border-amber-200 rounded-lg text-amber-800 text-sm">
+            <div class="bg-amber-50 p-3 border border-amber-200 rounded-lg text-amber-800 text-sm dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
                 <p class="font-bold flex items-center gap-2">
                     <AlertTriangle class="w-4 h-4" /> Attenzione: Voci scoperte rilevate
                 </p>
@@ -1790,8 +1872,8 @@ const printRipartoCapitoli = () => {
                     <div v-for="o in copertura?.orfani" :key="o.id" class="flex items-start space-x-2">
                         <Checkbox :id="`orphan-${o.id}`" v-model="orphanCheckboxes[o.id]" />
                         <label :for="`orphan-${o.id}`" class="text-xs font-medium leading-none cursor-pointer pt-0.5 select-none">
-                            {{ o.nome }} <span class="text-amber-700">({{ euro(o.importo) }})</span>
-                            <span v-if="o.da_sposta_spesa" class="ml-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                            {{ o.nome }} <span class="text-amber-700 dark:text-amber-300">({{ euro(o.importo) }})</span>
+                            <span v-if="o.da_sposta_spesa" class="ml-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md dark:text-indigo-400 dark:bg-indigo-950/40 dark:border-indigo-800">
                                 <ArrowRightLeft class="w-2.5 h-2.5" /> Residuo da Sposta Spesa
                             </span>
                         </label>
@@ -1810,7 +1892,7 @@ const printRipartoCapitoli = () => {
         variant="destructive"
         @confirm="executeDetachItem"
     >
-        <div v-if="itemToDelete?.is_parent" class="bg-amber-50 p-3 rounded-md border border-amber-200 text-amber-800 mb-3 mt-2">
+        <div v-if="itemToDelete?.is_parent" class="bg-amber-50 p-3 rounded-md border border-amber-200 text-amber-800 mb-3 mt-2 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
             <p class="font-bold flex items-center gap-2 mb-1 text-xs uppercase">
                 <AlertTriangle class="w-3 h-3" /> Attenzione: voce raggruppata
             </p>
@@ -1819,23 +1901,23 @@ const printRipartoCapitoli = () => {
                 Questa azione <strong>eliminerà anche tutti i sottoconti</strong> collegati.
             </p>
         </div>
-        <div v-else class="text-sm text-gray-700">
+        <div v-else class="text-sm text-gray-700 dark:text-neutral-300">
             Stai per eliminare la voce di spesa:
-            <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center">
+            <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center dark:bg-neutral-900">
                 <span>{{ itemToDelete?.nome }}</span>
-                <span class="font-bold text-slate-900">{{ itemToDelete?.importo ? euro(itemToDelete.importo) : '' }}</span>
+                <span class="font-bold text-slate-900 dark:text-neutral-100">{{ itemToDelete?.importo ? euro(itemToDelete.importo) : '' }}</span>
             </div>
         </div>
         <div class="mt-4 space-y-3">
-            <div class="flex items-start gap-2 text-xs text-slate-600">
-                <CheckCircle2 class="w-4 h-4 text-emerald-600 shrink-0" />
+            <div class="flex items-start gap-2 text-xs text-slate-600 dark:text-neutral-300">
+                <CheckCircle2 class="w-4 h-4 text-emerald-600 shrink-0 dark:text-emerald-400" />
                 <span>La voce tornerà tra gli "Orfani" e potrà essere riaggiunta in futuro.</span>
             </div>
-            <div class="flex items-start gap-2 text-xs text-slate-600">
-                <PieChart class="w-4 h-4 text-blue-600 shrink-0" />
+            <div class="flex items-start gap-2 text-xs text-slate-600 dark:text-neutral-300">
+                <PieChart class="w-4 h-4 text-blue-600 shrink-0 dark:text-blue-400" />
                 <span>Il <strong>totale del piano diminuirà</strong> dell'importo indicato.</span>
             </div>
-            <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100">
+            <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60">
                 <RotateCw class="w-4 h-4 shrink-0 mt-0.5" />
                 <span><strong>Importante:</strong> Tutte le rate dei condomini verranno ricalcolate immediatamente.</span>
             </div>
@@ -1875,6 +1957,16 @@ const printRipartoCapitoli = () => {
 }
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+}
+/* Tema scuro: la barra della tabella restava una striscia chiara sotto la tabella scura. */
+.dark .overflow-x-auto::-webkit-scrollbar-track {
+    background: #171717;
+}
+.dark .overflow-x-auto::-webkit-scrollbar-thumb {
+    background: #404040;
+}
+.dark .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+    background: #525252;
 }
 
 /* Nasconde la scrollbar orizzontale della action bar su mobile */

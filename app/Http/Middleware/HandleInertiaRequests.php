@@ -66,6 +66,9 @@ class HandleInertiaRequests extends Middleware
                 // (verificato a video sulla beta.46). Il suggerimento deve poter arrivare
                 // dove l'amministratore guarda davvero, cioè dentro quel modale.
                 'suggerimento_crediti' => fn () => $request->session()->get('suggerimento_crediti'),
+                // Decisione 34 (1.11.0-beta.42): che cosa ha fatto l'emissione, contato sulle rate andate a giornale. Stessa
+                // ragione del suggerimento: lo legge il modale dell'emissione.
+                'esito_emissione' => fn () => $request->session()->get('esito_emissione'),
             ],
 
             'csrf_token' => fn () => $request->user() 

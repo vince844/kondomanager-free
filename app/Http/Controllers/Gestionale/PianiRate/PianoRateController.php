@@ -674,6 +674,11 @@ class PianoRateController extends Controller
             // che usa il cruscotto: fino all'11/08/2026 le due schermate se lo calcolavano da
             // sole, con metodi e tolleranze diverse, e potevano contraddirsi.
             'disallineato' => $this->pianoRateQuoteService->eDisallineato($pianoRate),
+            // Verifica a video della .42 (punto 8): il pulsante del ricalcolo dice la ragione vera per cui il piano è fermo, con il
+            // rimedio — anche il conguaglio di un passaggio, che il calcolo della pagina (incassi, emissioni) non vede. Le ragioni, i
+            // passaggi del conguaglio (sotto l'ultima ragione) e i rimedi uno per voce: l'avviso li mette in elenco, perché in una
+            // frase sola erano un blocco.
+            'fermo_del_piano' => $pianoRate->fermoPerLaPagina(),
             'needsMigration' => false, 
             'copertura' => $coperturaData,
             'sources' => $sources, // <--- Ora questo conterrà le fatture!
@@ -885,8 +890,14 @@ class PianoRateController extends Controller
         if ($hasEmissioni) {
             return back()->with($this->flashError(
                 'Impossibile eliminare il piano rate: le rate risultano già emesse in contabilità. ' .
-                'Usa l\'opzione "Annulla Emissioni" all\'interno del piano rate prima di eliminarlo.'
+                'Annulla prima le emissioni dalla pagina del piano («Annulla emissione», l\'icona sull\'intestazione di ogni rata emessa), se non hanno incassi.'
             ));
+        }
+
+        // C. Decisione 38 (1.11.0-beta.42): un piano conguagliato da un passaggio non si elimina per crearlo di nuovo. Il piano
+        // nuovo darebbe a chi è entrato i suoi giorni, e la coppia resterebbe in saldi.
+        if (($fraseConguagliato = $pianoRate->fraseConguagliato('Eliminarlo e crearlo di nuovo', 'elimina il piano')) !== null) {
+            return back()->with($this->flashError($fraseConguagliato));
         }
 
         // C. Controllo Approvazione (Ping-Pong Scadenziario)
@@ -1023,6 +1034,11 @@ class PianoRateController extends Controller
         
         if ($pianoRate->rate()->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))->exists()) {
             return back()->with($this->flashError("Annulla le emissioni prima di modificare le voci."));
+        }
+
+        // Decisione 38 (1.11.0-beta.42): togliere una voce rigenera il piano, e un piano conguagliato da un passaggio non si riscrive.
+        if (($fraseConguagliato = $pianoRate->fraseConguagliato('Togliere una voce e ricalcolarlo', 'togli la voce')) !== null) {
+            return back()->with($this->flashError($fraseConguagliato));
         }
 
         // ⚠️ Il saldo NETTO, non la semplice esistenza di righe storiche — beta.73.

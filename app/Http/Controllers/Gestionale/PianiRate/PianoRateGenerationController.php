@@ -55,8 +55,13 @@ class PianoRateGenerationController extends Controller
         // 1. Check Pagamenti (Blocco Totale). `haIncassiRegistrati()` legge `importo_pagato ≠ 0`: anche un
         // credito compensato o rimborsato è un movimento che il ricalcolo cancellerebbe (B2, S6).
         if ($pianoRate->haIncassiRegistrati()) {
+            // Rilievo R1 della Fase 1-bis della .42: se il piano deve ancora seguire un passaggio, il rifiuto lo nomina, così il nesso
+            // con il rifiuto dell'emissione si vede.
+            $daSeguire = $pianoRate->passaggiDaSeguire();
+
             return back()->with($this->flashError(
                 "Impossibile ricalcolare: ci sono rate con incassi registrati, o crediti già usati in compensazione o rimborsati. Annulla prima quei movimenti."
+                . ($daSeguire !== [] ? ' Poi il ricalcolo terrà conto ' . PianoRate::descriviPassaggi($daSeguire) . '.' : '')
             ));
         }
 
@@ -69,6 +74,12 @@ class PianoRateGenerationController extends Controller
             return back()->with($this->flashError(
                 "Impossibile ricalcolare: ci sono rate già emesse in contabilità. Annulla prima le emissioni."
             ));
+        }
+
+        // Decisione 38 (1.11.0-beta.42, rilievo R2): un passaggio ha già conguagliato il piano. Ricalcolarlo darebbe a chi è
+        // entrato i suoi giorni nel riparto e anche la coppia, e pagherebbe due volte.
+        if (($fraseConguagliato = $pianoRate->fraseConguagliato('Ricalcolarlo', 'ricalcola il piano')) !== null) {
+            return back()->with($this->flashError($fraseConguagliato));
         }
 
         try {
@@ -153,4 +164,5 @@ class PianoRateGenerationController extends Controller
             return back()->with($this->flashError("Errore durante il ricalcolo: " . $e->getMessage()));
         }
     }
+
 }

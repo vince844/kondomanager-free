@@ -9,6 +9,7 @@ import { unformat } from 'v-money3';
 import vSelect from "vue-select";
 import type { ImmobileConSaldi } from "@/types/gestionale/saldi";
 import type { Building } from "@/types/buildings";
+import { etichettaRuolo } from "@/lib/gestionale/ruoli-immobile";
 
 const props = defineProps<{
   immobile: ImmobileConSaldi;
@@ -330,7 +331,7 @@ function submitAddModal() {
           </div>
           <div>
             <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 leading-tight">{{ a.nome }}</p>
-            <p class="text-[10px] uppercase tracking-wider text-slate-400 leading-tight">{{ a.pivot?.tipologia }}<template v-if="a.pivot?.data_fine"> · fino al {{ String(a.pivot.data_fine).slice(0, 10).split('-').reverse().join('/') }}</template></p>
+            <p class="text-[10px] uppercase tracking-wider text-slate-400 leading-tight">{{ etichettaRuolo(a.pivot?.tipologia) }}<template v-if="a.pivot?.data_fine"> · fino al {{ String(a.pivot.data_fine).slice(0, 10).split('-').reverse().join('/') }}</template></p>
           </div>
         </div>
         <p v-if="!immobile.anagrafiche?.length" class="text-sm text-slate-400 italic">Nessun soggetto associato</p>
@@ -611,14 +612,14 @@ function submitAddModal() {
                     <template #option="{ nome, cognome, pivot }">
                       <div class="flex flex-col py-1">
                         <span class="font-medium text-sm">{{ nome }} {{ cognome }}</span>
-                        <span class="text-xs text-slate-400 capitalize">{{ pivot?.tipologia }}</span>
+                        <span class="block text-xs text-slate-400 first-letter:uppercase">{{ etichettaRuolo(pivot?.tipologia) }}</span>
                       </div>
                     </template>
 
                     <template #selected-option="{ nome, cognome, pivot }">
                       <div class="flex items-center gap-1.5 text-sm">
                         <span class="font-medium">{{ nome }} {{ cognome }}</span>
-                        <span class="text-xs text-slate-400">({{ pivot?.tipologia }})</span>
+                        <span class="text-xs text-slate-400">({{ etichettaRuolo(pivot?.tipologia) }})</span>
                       </div>
                     </template>
                   </v-select>
@@ -703,7 +704,7 @@ function submitAddModal() {
               </p>
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
                 <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Se le parti hanno regolato il conguaglio in un altro modo, <strong>annullalo dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»): toglie le due righe insieme, con la tua nota, finché nessun piano le ha assorbite.</p>
-                <p class="text-slate-500">Se un piano le ha già assorbite ma non ha ancora emesso nulla, riportalo in bozza ed eliminalo (il lucchetto si riapre), poi annulla il conguaglio dallo storico. Se ha già emesso o incassato, le quote sono in mano ai condòmini: la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite e quel piano si riscrive ancora, riportalo in bozza ed eliminalo (il lucchetto si riapre), poi annulla il conguaglio dallo storico. Se quel piano non si riscrive più — quote a giornale, un incasso, o il conguaglio di un altro passaggio —, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
               </div>
             </template>
 
@@ -712,8 +713,13 @@ function submitAddModal() {
               <p class="text-base">
                 Questo saldo è stato assorbito dal piano rate
                 <strong>«{{ pianoCheTieneIlLucchetto?.nome ?? 'collegato a questa gestione' }}»</strong>,
-                che risulta <strong>già emesso in contabilità o con incassi registrati</strong>.
-                Da quel momento le sue quote sono in mano ai condòmini, e il numero che le ha generate non si riscrive più.
+                che <strong>{{ saldoBloccatoSelezionato?.fermo_del_piano?.perche ?? 'risulta già emesso in contabilità o con incassi registrati' }}</strong>.
+                Da quel momento il saldo che lo alimenta non si riscrive più.
+              </p>
+              <!-- Rilievo V9 del giro di verifica della .42: il rimedio della ragione vera, prima delle due opzioni generali. -->
+              <p v-if="saldoBloccatoSelezionato?.fermo_del_piano?.rimedi?.length" class="text-sm">
+                Per correggere il saldo: {{ saldoBloccatoSelezionato.fermo_del_piano.rimedi.join('; ') }}. Il saldo torna modificabile appena il
+                piano non è più fermo. Altrimenti resta la rettifica qui sotto (opzione B).
               </p>
 
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-4">
@@ -723,7 +729,9 @@ function submitAddModal() {
                 </h4>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div class="space-y-2">
+                  <!-- Rilievi V9, T6 e T-I: l'opzione A solo se il piano ha davvero emissioni a giornale e nient'altro lo tiene fermo
+                       (un passaggio, un incasso o un credito lo terrebbero fermo lo stesso); o se la ragione non è nota, dati di prima. -->
+                  <div v-if="!saldoBloccatoSelezionato?.fermo_del_piano || (saldoBloccatoSelezionato.fermo_del_piano.ragioni?.includes('scrittura') && !saldoBloccatoSelezionato.fermo_del_piano.ragioni?.some((r: string) => ['conguaglio', 'incasso', 'credito'].includes(r)))" class="space-y-2">
                     <p class="font-bold text-xs uppercase tracking-wider text-indigo-400">Opzione A: annullare l'emissione</p>
                     <p class="text-xs leading-normal">
                       <strong>Nessun incasso registrato?</strong> <br>
@@ -735,7 +743,7 @@ function submitAddModal() {
                   <div class="space-y-2">
                     <p class="font-bold text-xs uppercase tracking-wider text-indigo-400">Opzione B: rettifica</p>
                     <p class="text-xs leading-normal">
-                      <strong>Incassi già registrati?</strong> <br>
+                      <strong>Se il piano resta com'è</strong> <br>
                       Per garantire l'integrità del Libro Giornale il passato non si riscrive. Registra un
                       <strong>Movimento di Storno</strong> manuale per compensare l'errore (nuovo debito o credito).
                     </p>

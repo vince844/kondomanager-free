@@ -355,10 +355,12 @@ function ruStraordinariaDopoUnaVendita($test, string $delibera, bool $senzaRighe
     }
     $zeta = Anagrafica::forceCreate(['nome' => 'Venditrice Zeta', 'email' => "ru-z{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUZETAVENDI' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
     $zeta->condomini()->syncWithoutDetaching([$s['c']->id]);
+    // Dalla 1.11.0-beta.42 (decisione 35) il piano si emette prima della vendita: emesso dopo, senza ricalcolo, le quote di Ugo non
+    // passerebbero a Zeta e il conguaglio dopo si fermerebbe (era la forma di U1, che questi scenari fissavano come attesa).
+    ruEmetti($s);
     ruRegistra($test, $s, ['tipo' => 'vendita', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $zeta->id, 'decorrenza' => '2026-03-01',
         'quota' => 100, 'tipologia' => 'proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-03-05', 'estremi_titolo' => 'rep. 1', 'pertinenze' => [], 'ho_letto' => true,
         'nota_cancello' => 'Prima vendita, letto']);
-    ruEmetti($s);
 
     return [$s, $zeta, (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->value('id')];
 }
@@ -675,8 +677,32 @@ function ruCaso($test, array $r, array $forma, ?callable $primaDi = null): array
             DB::table('righe_riparto')->whereIn('piano_rate_id', collect($piani)->pluck('id'))->delete();
         }
     };
-    $emetti = function (string $fino) use ($piani, $s): void {
+    // Dalla 1.11.0-beta.42 (decisione 35) un piano che un passaggio ha lasciato al ricalcolo non si emette prima di ricalcolarlo:
+    // l'emissione lo rifiuta. La griglia fa ciò che il programma chiede — ricalcola, con gli stessi ritocchi della generazione —
+    // invece di emettere le quote rimaste a chi è uscito, che sono la forma dei dati di prima (U1) e fermerebbero il conguaglio
+    // del passaggio dopo. Prima la griglia la costruiva, e la regola della .41 la nascondeva con l'ora del passaggio.
+    $emetti = function (string $fino) use ($test, $piani, $s, $N, $E, $delibere): void {
         foreach ($piani as $p) {
+            $daEmettere = DB::table('rate')->where('piano_rate_id', $p->id)->where('stato', '!=', 'emessa')->where('data_scadenza', '<=', $fino . ' 23:59:59')->exists();
+            if ($daEmettere && $p->fresh()->passaggiDaSeguire() !== []) {
+                // Il ricalcolo dalla sua rotta, come lo fa l'amministratore. SN: la delibera torna per il ricalcolo, che la pretende.
+                if ($N === 'SN' && $delibere[$p->id] !== null) {
+                    DB::table('piani_rate')->where('id', $p->id)->update(['data_delibera_assemblea' => $delibere[$p->id]]);
+                }
+                $test->actingAs($test->user)->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['e'], $p->id]), [
+                    'accetta_destinatari' => true, 'nota_destinatari' => 'Letto: piano ricalcolato dopo il passaggio, prima di emettere',
+                ])->assertSessionHasNoErrors();
+                if (DB::table('rate')->where('piano_rate_id', $p->id)->where('stato', '!=', 'emessa')->where('data_scadenza', '<=', $fino . ' 23:59:59')->doesntExist()
+                    || $p->fresh()->passaggiDaSeguire() !== []) {
+                    throw new \RuntimeException("Il ricalcolo del piano {$p->id} prima dell'emissione non è riuscito: " . json_encode(session('message'), JSON_UNESCAPED_UNICODE));
+                }
+                if ($N === 'SN' && $delibere[$p->id] !== null) {
+                    DB::table('piani_rate')->where('id', $p->id)->update(['data_delibera_assemblea' => null]);
+                }
+                if ($E === 'SR') {
+                    DB::table('righe_riparto')->where('piano_rate_id', $p->id)->delete();
+                }
+            }
             ruEmettiBozze($s, $p, $fino);
         }
     };

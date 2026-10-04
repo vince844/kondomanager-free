@@ -60,9 +60,11 @@ defineEmits(['update:open']);
                                 L'interruttore in alto ha due stati, e la differenza non è estetica:
                             </p>
                             <ul class="ml-5 mt-2 list-disc space-y-1.5">
-                                <li><strong>Bozza</strong> — il piano è ancora modificabile e <strong>non ha
-                                    generato nessun movimento contabile</strong>. Puoi correggere capitoli,
-                                    ricalcolare, aggiungere o togliere voci liberamente.</li>
+                                <li><strong>Bozza</strong> — <strong>nessuna rata è ancora a giornale</strong> e di
+                                    solito il piano si corregge: capitoli, ricalcolo, voci da aggiungere o togliere. Se
+                                    però su una sua quota c'è un movimento (un incasso, un credito usato o rimborsato) o
+                                    se il conguaglio di un passaggio lo ha preso, non si ricalcola, non si elimina e non
+                                    si toglie una voce: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>.</li>
                                 <li><strong>Approvato</strong> — passa da qui solo dopo aver registrato i dati
                                     della delibera assembleare (data, numero di verbale opzionale, note). Il
                                     piano si "congela" e diventa possibile emettere le rate in contabilità.</li>
@@ -96,9 +98,15 @@ defineEmits(['update:open']);
                                 piano può includere: in quel caso ti viene chiesto quali aggiungere.
                             </p>
                             <p class="mt-2">
-                                È <strong>bloccato</strong> in due casi, e per lo stesso motivo — proteggere
-                                movimenti già scritti: se sono già stati registrati incassi, o se qualche rata
-                                è già stata emessa in contabilità. Il messaggio sul pulsante dice quale dei due.
+                                È <strong>bloccato</strong> in tre casi: se qualche rata è già a giornale; se su una
+                                sua quota c'è un incasso, un credito usato o un rimborso, anche su una rata in bozza; o se
+                                un <strong>passaggio di titolarità</strong> ha preso il piano nel suo conguaglio, perché
+                                ricalcolarlo rifarebbe per giorni ciò che il conguaglio ha già regolato. Il messaggio dice
+                                quale, e la strada: per un passaggio, togliere prima le quote a giornale e i movimenti, se ce
+                                ne sono, poi annullarlo dallo storico della sua unità, registrarlo di nuovo e ricalcolare (con un passaggio registrato prima della versione 1.11.0-beta.42 l'ordine è un altro, e lo dice il messaggio). Al
+                                contrario, dopo una vendita o un usufrutto registrati quando il piano si ricalcolava ancora,
+                                emissioni e incassi si rifiutano finché non lo ricalcoli; dopo un cambio d'inquilino no, e un
+                                piano emesso senza ricalcolo lascia le quote all'inquilino di prima.
                             </p>
                         </section>
 
@@ -168,7 +176,9 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 Il cestino accanto a ogni voce la rimuove dal piano — e <strong>ricalcola
                                 immediatamente</strong> le rate di tutti i condòmini. È disabilitato se il
-                                piano è già approvato o se ci sono incassi registrati; e se la voce ha un
+                                piano è approvato o, anche in bozza, se il piano non si ricalcola più — un incasso, un
+                                credito usato o rimborsato, il conguaglio di un passaggio (l'avviso sul pulsante
+                                «Ricalcola» dice quale e come riaprirlo); e se la voce ha un
                                 <strong>saldo netto</strong> diverso da zero verso altre voci di questo piano
                                 (ha ceduto o ricevuto con «Sposta spesa» più di quanto le sia poi tornato
                                 indietro), va prima riportata a zero con lo <strong>«Storna»</strong> —
@@ -196,7 +206,8 @@ defineEmits(['update:open']);
                             <p>
                                 Con il piano <strong>Approvato</strong>, spunta le rate da emettere (le
                                 caselle compaiono nell'intestazione di ogni colonna) oppure usa <strong>«Seleziona
-                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Il pulsante
+                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Una rata senza quote da pagare non va a
+                                giornale: resta in bozza, e l'esito dell'emissione la nomina. Il pulsante
                                 <strong>«Emetti»</strong> apre un modulo dove scegli la data di registrazione,
                                 una causale personalizzata (opzionale — altrimenti il sistema usa una dicitura
                                 standard) e se rendere subito visibili le rate ai condòmini.
@@ -224,9 +235,12 @@ defineEmits(['update:open']);
                                 prima rimosso l'incasso.
                             </p>
                             <p class="mt-2">
-                                Si blocca anche se, dopo l'emissione, è stato registrato un <strong>passaggio di
-                                titolarità</strong> che ha già conguagliato queste quote: rigenerare farebbe pagare due volte a
-                                chi è entrato. In quel caso il messaggio dice quale passaggio e da dove si annulla il conguaglio.
+                                Con un <strong>passaggio di titolarità</strong> registrato prima della versione
+                                1.11.0-beta.42 che ha preso il piano nel conguaglio dopo l'emissione, si blocca anche per quello:
+                                il messaggio dice quale passaggio annullare prima, dallo storico della sua unità; poi si annulla
+                                l'emissione, e solo dopo si registra di nuovo il passaggio. Con i passaggi registrati da quella
+                                versione l'annullamento non si blocca: il piano preso resta fermo comunque, e la rata riemessa
+                                ha le stesse quote.
                             </p>
                         </section>
 

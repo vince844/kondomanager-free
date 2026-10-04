@@ -75,7 +75,7 @@ watch(() => props.show, (val) => {
   <Dialog :open="show" @update:open="$emit('update:show', $event)">
     <DialogContent class="sm:max-w-[600px]">
       <DialogHeader>
-        <DialogTitle class="flex items-center gap-2 text-indigo-700">
+        <DialogTitle class="flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
           <ArrowRightLeft class="w-5 h-5" /> Sposta Budget (Bilancio Liquido)
         </DialogTitle>
         <DialogDescription>
@@ -85,12 +85,12 @@ watch(() => props.show, (val) => {
 
       <div class="grid gap-4 py-4">
 
-        <div class="bg-blue-50/80 border border-blue-200 rounded-lg p-4 space-y-3">
+        <div class="bg-blue-50/80 border border-blue-200 rounded-lg p-4 space-y-3 dark:bg-blue-950/30 dark:border-blue-800">
             <div class="flex items-start gap-3">
-                <div class="bg-blue-100 p-1.5 rounded-full shrink-0">
-                    <Info class="w-4 h-4 text-blue-700" />
+                <div class="bg-blue-100 p-1.5 rounded-full shrink-0 dark:bg-blue-900/40">
+                    <Info class="w-4 h-4 text-blue-700 dark:text-blue-300" />
                 </div>
-                <div class="text-sm text-blue-900">
+                <div class="text-sm text-blue-900 dark:text-blue-300">
                     <strong>Come funziona:</strong>
                     Stai modificando la destinazione d'uso interna dei fondi.
                     <span class="block mt-1 text-blue-800/80">
@@ -103,10 +103,10 @@ watch(() => props.show, (val) => {
             </div>
             
             <div class="flex items-start gap-3 border-t border-blue-200/60 pt-3">
-                <div class="bg-amber-100 p-1.5 rounded-full shrink-0">
-                    <Lightbulb class="w-4 h-4 text-amber-700" />
+                <div class="bg-amber-100 p-1.5 rounded-full shrink-0 dark:bg-amber-900/40">
+                    <Lightbulb class="w-4 h-4 text-amber-700 dark:text-amber-300" />
                 </div>
-                <div class="text-xs text-slate-700">
+                <div class="text-xs text-slate-700 dark:text-neutral-300">
                     <strong>Esempio pratico:</strong>
                     Hai avanzato € 200 dalle "Pulizie" e si rompe il cancello?
                     Sposta € 200 su "Manutenzione Cancello".
@@ -138,7 +138,7 @@ watch(() => props.show, (val) => {
               </SelectItem>
             </SelectContent>
           </Select>
-          <p v-if="selectedSource" class="text-xs text-emerald-600 font-medium flex items-center gap-1">
+          <p v-if="selectedSource" class="text-xs text-emerald-600 font-medium flex items-center gap-1 dark:text-emerald-400">
               <Wallet class="w-3 h-3" /> Disponibili: {{ euro(selectedSource.importo_residuo) }}
           </p>
           <span v-if="form.errors.source_id" class="text-xs text-red-500">{{ form.errors.source_id }}</span>

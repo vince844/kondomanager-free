@@ -104,6 +104,9 @@ function pianoConQuotaSu(Gestione $g, Condominio $c, Immobile $i, Anagrafica $in
         'importo' => $importo, 'importo_pagato' => 0, 'stato' => 'da_pagare', 'tipo' => 'ordinaria',
         'data_scadenza' => '2026-06-30', 'created_at' => now(), 'updated_at' => now(),
     ]);
+    if ($emessa) {
+        aGiornaleNeiTest($pianoId);
+    }
 }
 
 function corpoAnteprimaVendita(int $rigaUscenteId, Anagrafica $entrante, array $extra = []): array

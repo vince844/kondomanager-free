@@ -140,3 +140,58 @@ describe('l\'avviso sul ricalcolo', () => {
         expect(wrapper.text()).not.toContain('Ricalcola');
     });
 });
+
+/**
+ * 1.11.0-beta.42, rilievi V9, T6 e T8: la modale del lucchetto dice la ragione vera per cui il piano è fermo, il suo rimedio, e
+ * propone di annullare le emissioni solo se il piano ne ha e nessun passaggio lo tiene fermo. Il lato server (`fermo_del_piano`
+ * con perché, rimedi e ragioni) è in `StatoDelPianoDopoPassaggioTest` («V9»); qui la metà che l'utente legge.
+ */
+describe('la modale del lucchetto e la ragione del fermo', () => {
+    async function apriModale(fermo: Record<string, unknown> | null) {
+        const wrapper = montaPannello([saldo({ e_bloccato: true, fermo_del_piano: fermo })]);
+        await wrapper.vm.$nextTick();
+        await wrapper.findAll('button').find(b => b.attributes('title') === 'Saldo Bloccato')!.trigger('click');
+        await wrapper.vm.$nextTick();
+
+        return document.body.textContent + wrapper.text();
+    }
+
+    test('un piano fermo solo per il conguaglio di un passaggio: il perché e il rimedio del server, nessuna «Opzione A»', async () => {
+        const testo = await apriModale({
+            perche: 'è stato preso nel conguaglio del passaggio Ugo Venditore → Elsa Acquirente, Interno 1, dal 1 maggio 2026',
+            rimedi: ['annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall\'ultimo) e registralo di nuovo'],
+            ragioni: ['conguaglio'],
+        });
+
+        expect(testo).toContain('è stato preso nel conguaglio del passaggio Ugo Venditore → Elsa Acquirente, Interno 1, dal 1 maggio 2026');
+        expect(testo).toContain('Per correggere il saldo: annulla quel passaggio dallo storico della sua unità');
+        expect(testo).not.toContain('Opzione A');
+        expect(testo).not.toContain('risulta già emesso in contabilità');
+    });
+
+    test('un piano con emissioni e un conguaglio: niente «Opzione A», perché annullate le emissioni il passaggio lo tiene fermo lo stesso', async () => {
+        const testo = await apriModale({ perche: 'ha già quote a giornale ed è stato preso nel conguaglio del passaggio …', rimedi: ['annulla le emissioni dalla pagina del piano, se non hanno incassi'], ragioni: ['scrittura', 'conguaglio'] });
+
+        expect(testo).not.toContain('Opzione A');
+    });
+
+    test('un piano con emissioni e un incasso: niente «Opzione A», perché annullate le emissioni l\'incasso lo tiene fermo (e un\'emissione con incassi non si annulla)', async () => {
+        const testo = await apriModale({ perche: 'ha già quote a giornale e ha un incasso su una sua quota', rimedi: ['annulla quel movimento (lo registri di nuovo dopo)', 'annulla le emissioni dalla pagina del piano, se non hanno incassi'], ragioni: ['scrittura', 'incasso'] });
+
+        expect(testo).not.toContain('Opzione A');
+    });
+
+    test('un piano con le sole emissioni: l\'«Opzione A» c\'è', async () => {
+        const testo = await apriModale({ perche: 'ha già quote a giornale', rimedi: ['annulla le emissioni dalla pagina del piano, se non hanno incassi'], ragioni: ['scrittura'] });
+
+        expect(testo).toContain('Opzione A');
+        expect(testo).toContain('ha già quote a giornale');
+    });
+
+    test('senza `fermo_del_piano` (dati di prima) il testo di prima, con l\'«Opzione A»', async () => {
+        const testo = await apriModale(null);
+
+        expect(testo).toContain('risulta già emesso in contabilità o con incassi registrati');
+        expect(testo).toContain('Opzione A');
+    });
+});

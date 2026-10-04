@@ -83,46 +83,46 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
     <Popover v-model:open="isOpen">
       <PopoverTrigger as-child>
         <button 
-            class="text-slate-400 hover:text-indigo-600 transition-colors p-1 rounded-full"
+            class="text-slate-400 hover:text-indigo-600 transition-colors p-1 rounded-full dark:hover:text-indigo-400"
             title="Vedi storico modifiche budget"
         >
           <History class="w-3.5 h-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent :side-offset="8" side="left" align="center" class="w-80 p-0 shadow-lg border-slate-200" >
+      <PopoverContent :side-offset="8" side="left" align="center" class="w-80 p-0 shadow-lg border-slate-200 dark:border-neutral-800" >
         
-        <div class="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center">
-            <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Storia Budget</span>
-            <Badge variant="outline" class="text-[10px] bg-white text-slate-500">
+        <div class="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center dark:bg-neutral-900 dark:border-neutral-800">
+            <span class="text-xs font-bold text-slate-700 uppercase tracking-wider dark:text-neutral-300">Storia Budget</span>
+            <Badge variant="outline" class="text-[10px] bg-white text-slate-500 dark:bg-card">
                 Orig: {{ euro(originalAmount) }}
             </Badge>
         </div>
 
         <div class="max-h-[250px] overflow-y-auto p-2 space-y-2">
-            <div v-for="move in relevantMovements" :key="move.id" class="text-xs p-2 rounded-md border border-slate-100 bg-white shadow-sm">
+            <div v-for="move in relevantMovements" :key="move.id" class="text-xs p-2 rounded-md border border-slate-100 bg-white shadow-sm dark:border-neutral-800 dark:bg-card">
                 
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5">
                     <span>{{ new Date(move.created_at).toLocaleDateString('it-IT') }}</span>
-                    <span class="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded text-slate-600">
+                    <span class="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded text-slate-600 dark:bg-neutral-900 dark:text-neutral-300">
                         <User class="w-2.5 h-2.5" /> {{ move.user?.name ?? 'Sistema' }}
                     </span>
                 </div>
 
                 <div class="flex items-center justify-between gap-2 font-medium">
                     <template v-if="Number(move.source_conto_id) === targetId">
-                        <div class="flex items-center gap-1.5 text-amber-700">
+                        <div class="flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
                             <ArrowRight class="w-3.5 h-3.5" />
                             <span>A: {{ move.destination_conto?.nome }}</span>
                         </div>
-                        <span class="text-red-600 font-bold">- {{ euro(move.amount) }}</span>
+                        <span class="text-red-600 font-bold dark:text-red-400">- {{ euro(move.amount) }}</span>
                     </template>
 
                     <template v-else>
-                        <div class="flex items-center gap-1.5 text-emerald-700">
+                        <div class="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
                             <ArrowLeft class="w-3.5 h-3.5" />
                             <span>Da: {{ move.source_conto?.nome }}</span>
                         </div>
-                        <span class="text-emerald-600 font-bold">+ {{ euro(move.amount) }}</span>
+                        <span class="text-emerald-600 font-bold dark:text-emerald-400">+ {{ euro(move.amount) }}</span>
                     </template>
                 </div>
 
@@ -132,14 +132,14 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
 
                 <div class="mt-1.5 pt-1.5 border-t border-slate-50 flex items-center justify-end">
                     <span v-if="isStorno(move)" class="text-[10px] text-slate-400 italic">Storno</span>
-                    <span v-else-if="isGiaStornato(move.id)" class="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                    <span v-else-if="isGiaStornato(move.id)" class="text-[10px] text-emerald-600 font-medium flex items-center gap-1 dark:text-emerald-400">
                         <Undo2 class="w-2.5 h-2.5" /> Già stornato
                     </span>
                     <Button
                         v-else
                         variant="ghost"
                         size="sm"
-                        class="h-6 px-2 text-[10px] text-slate-500 hover:text-red-600 hover:bg-red-50"
+                        class="h-6 px-2 text-[10px] text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-950/40"
                         :disabled="stornandoId === move.id"
                         :title="`Restituisce € ${(move.amount / 100).toFixed(2).replace('.', ',')} a ${move.source_conto?.nome ?? 'chi li aveva ceduti'}, con un movimento uguale e contrario. L'originale resta nello storico`"
                         @click="storna(move.id)"
@@ -151,8 +151,8 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
             </div>
         </div>
 
-        <div class="bg-slate-50 p-2 border-t border-slate-100 text-center">
-            <span class="text-[10px] text-slate-500 font-medium">Attuale: <span class="text-slate-800 font-bold text-xs">{{ euro(currentAmount) }}</span></span>
+        <div class="bg-slate-50 p-2 border-t border-slate-100 text-center dark:bg-neutral-900 dark:border-neutral-800">
+            <span class="text-[10px] text-slate-500 font-medium">Attuale: <span class="text-slate-800 font-bold text-xs dark:text-neutral-100">{{ euro(currentAmount) }}</span></span>
         </div>
 
       </PopoverContent>

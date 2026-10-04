@@ -197,8 +197,9 @@ final class VociDaSpostare
             ->whereNotExists(fn ($q) => $q->from('piano_rate_capitoli')->whereColumn('piano_rate_capitoli.piano_rate_id', 'piani_rate.id'))
             ->get(['gestione_id', 'id', 'nome']);
         $ids = collect([$conCapitoli, $daiPadri, $daFatture, $globali])->flatten(1)->pluck('id')->unique()->values()->all();
-        $aGiornale = array_fill_keys(DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->whereIn('rate.piano_rate_id', $ids)
-            ->whereNotNull('rate_quote.scrittura_contabile_id')->distinct()->pluck('rate.piano_rate_id')->map(fn ($id) => (int) $id)->all(), true);
+        // Decisione 34.1 (1.11.0-beta.42): «a giornale» qui vuol dire che il piano non si ricalcola più — una quota a giornale o
+        // un movimento. Un piano con un incasso su una bozza non torna in bozza: il rimedio «riportalo in bozza» sarebbe falso.
+        $aGiornale = array_fill_keys(\App\Models\Gestionale\PianoRate::immutabiliFra($ids), true);
         $piano = fn ($p, bool $fatture) => ['id' => (int) $p->id, 'nome' => (string) $p->nome, 'a_giornale' => isset($aGiornale[(int) $p->id]), 'da_fatture' => $fatture];
         $conti = [];
         foreach ($conCapitoli as $p) {

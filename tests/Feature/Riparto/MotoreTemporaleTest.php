@@ -901,10 +901,11 @@ it('S8-bis L1-5 — il motore congela la natura del netting: con contributi mist
 |--------------------------------------------------------------------------
 */
 
-/** Le rate del piano emesse (stato + data), come le lascia l'emissione — il conguaglio guarda solo quelle. */
+/** Le rate del piano emesse a giornale (stato, data e scrittura), come le lascia l'emissione — il conguaglio guarda solo quelle. */
 function mtEmetti(PianoRate $piano): void
 {
     DB::table('rate')->where('piano_rate_id', $piano->id)->update(['stato' => 'emessa', 'data_emissione' => '2026-01-10']);
+    aGiornaleNeiTest((int) $piano->id);
 }
 
 it('S8-bis migrazione 11 — la generazione congela il TRATTO di ogni riga (titolarita_dal/al), non solo i giorni: venditore 1/1–30/4, acquirente 1/5–31/12, e per il ripiego gli estremi dei giorni scoperti', function () {

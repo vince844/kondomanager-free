@@ -146,12 +146,19 @@ final class ConguaglioPassaggio
         $senzaIstantanea = $this->senzaComposizione($righe, $chiaveDi, $eserciziPerPiano);
         // Le catene di passaggi in cui una persona ha avuto più quote sull'unità (decisione di Vincenzo del 03/10/2026): la
         // regola delle righe di un'altra quota guarda il ruolo della riga, e lì il ruolo non dice di quale quota è. Il
-        // conguaglio di quell'unità si ferma e lo dice; il collegamento esatto fra riga di riparto e quota arriva con la .42.
+        // conguaglio di quell'unità si ferma e lo dice; il collegamento esatto fra riga di riparto e quota arriva con la .43.
         $ambigue = $this->catenaAmbigua($uscente, $immobileIds, $decorrenza, $righe, $esiti, $predecessori, $piuNudi, $ruoliCheRestano);
         foreach ($righe as $r) {
             if (isset($ambigue[(int) $r->immobile_id])) {
                 $senzaIstantanea[$chiaveDi($r)] ??= 'catena';
             }
+        }
+        // Decisione 35 (1.11.0-beta.42, difetto U1): le quote di un predecessore che il suo passaggio non ha fatto passare,
+        // perché il piano allora si ricalcolava e non è stato ricalcolato prima di emetterlo. Non sono mai arrivate a chi esce:
+        // il conguaglio si ferma su quelle quote e lo dice. Prima di ogni altra fermata: non è una parte da separare.
+        $maiPassate = $this->maiPassate($righe, $predecessori, $chiaveDi);
+        foreach (array_keys($maiPassate) as $chiave) {
+            $senzaIstantanea[$chiave] = 'mai_passate';
         }
         // La scomposizione per conto ogni volta che il piano ha righe congelate per l'intestatario (S8-5): è la
         // strada del motore — il netting del già versato si spacca fra parte «della persona» e parte «dell'unità»
@@ -352,6 +359,8 @@ final class ConguaglioPassaggio
             [$pianoId, $immobileId] = array_map('intval', array_slice(explode('|', $k), 0, 2));
             $motivo = match ($perche) {
                 'catena' => sprintf('su %s le quote sono passate per più strade (%s): il conguaglio non separa con certezza la parte che passa — se serve un conguaglio, si scrive con un saldo manuale dal Wallet sulla stessa gestione', $righe->firstWhere('immobile_id', $immobileId)?->immobile_nome ?? 'questa unità', $ambigue[$immobileId]),
+                'mai_passate' => sprintf('le quote intestate a %s su %s non sono passate con il suo passaggio del %s: quel passaggio non le ha prese nel conguaglio e le ha lasciate al ricalcolo, che non c\'è stato — restano di %s, senza conguaglio; se serve un conguaglio, si scrive con un saldo manuale dal Wallet sulla stessa gestione',
+                    $maiPassate[$k]['nome'], $righe->firstWhere('immobile_id', $immobileId)?->immobile_nome ?? 'questa unità', $this->data($maiPassate[$k]['il']), $maiPassate[$k]['nome']),
                 'ricostruzione' => sprintf('il piano non ha il dettaglio del riparto, e la titolarità di %s è cambiata con un passaggio dopo la generazione, o registrato da una versione che non annotava quando: la parte della quota che passa non si separa con certezza — se serve un conguaglio, si scrive con un saldo manuale dal Wallet sulla stessa gestione', $righe->firstWhere('immobile_id', $immobileId)?->immobile_nome ?? 'questa unità'),
                 default => 'le sue quote sono state generate da una versione che non salvava quanta parte di ogni rata è saldo pregresso, e su questa unità il piano ha assorbito un saldo pregresso: la spesa dell\'anno non si separa dal pregresso — se serve un conguaglio, si scrive con un saldo manuale dal Wallet sulla stessa gestione',
             };
@@ -520,6 +529,8 @@ final class ConguaglioPassaggio
                 'senza_istantanea' => ($senzaIstantanea[$chiave] ?? null) === true,
                 // Una catena di passaggi in cui il ruolo della riga non dice di quale quota è.
                 'catena_ambigua' => in_array($senzaIstantanea[$chiave] ?? null, ['catena', 'ricostruzione'], true),
+                // Decisione 35: una quota di un predecessore che il suo passaggio non ha fatto passare.
+                'mai_passata'    => ($senzaIstantanea[$chiave] ?? null) === 'mai_passate',
                 'esclusa'        => $esclusa,
                 // Decisione 31.5: l'ordinaria di questa quota si decide voce per voce.
                 'per_voce'       => $vociPassateDi($chiave) !== null,
@@ -642,6 +653,9 @@ final class ConguaglioPassaggio
                 // Fra le non risolte, quelle che il conguaglio ferma per un'altra ragione che la competenza: le quote della 1.7.x senza
                 // composizione, e le catene in cui la parte che passa non si separa con certezza (l'etichetta a video lo dice).
                 'non_separabili' => $g->filter(fn ($q) => ! empty($q['senza_istantanea']) || ! empty($q['catena_ambigua']))->count(),
+                // Decisione 35, rilievo R8 della Fase 1-bis della .42: quote che il passaggio di prima non ha fatto passare. Non sono
+                // «non separabili»: non sono mai arrivate a chi esce.
+                'mai_passate'    => $g->filter(fn ($q) => ! empty($q['mai_passata']))->count(),
                 'escluse'        => $g->where('esclusa', true)->count(),
                 // Testi T3 (beta.38): a chi sono intestate davvero le quote escluse — chi esce o un suo predecessore — e, per
                 // l'ordinaria rimasta con una riserva d'usufrutto (rilievo B3), chi l'ha tenuta.
@@ -766,6 +780,9 @@ final class ConguaglioPassaggio
             // R12: l'ordine conta — una quota di soli pregressi o esclusa per legge ha la sua ragione prima di tutte le altre.
             $motivo = match (true) {
                 (int) $q['quota_pura'] === 0 => 'solo_pregresso',
+                // Decisione 48: le quote del predecessore mai arrivate a chi esce dicono questo, anche quando la legge lascerebbe
+                // comunque quella natura a chi esce: la ragione di legge non spiega perché le quote sono ancora del predecessore.
+                ! empty($q['mai_passata']) => 'mai_passata',
                 // Riserva d'usufrutto (decisione 28): l'ordinaria resta a chi vende, che la deve come usufruttuario — nella
                 // riserva stessa e quando la nuda proprietà di chi esce viene da una riserva (rilievo B3).
                 $q['esclusa'] => $straordinaria ? 'straordinaria_del_nudo' : ($riserva || $q['riservata_da'] !== null ? 'ordinaria_riservata' : 'ordinaria_dell_usufruttuario'),
@@ -1024,6 +1041,118 @@ final class ConguaglioPassaggio
     }
 
     /**
+     * Decisioni 35, 39 e 40 (difetto U1): i gruppi di quote di un predecessore che il suo passaggio non ha fatto passare. Un
+     * passaggio registrato quando il piano si poteva ancora ricalcolare non lo conguaglia e non sposta le bozze (decisione 21):
+     * le quote che c'erano già restano di chi è uscito finché il piano non si ricalcola. Se il piano è andato a giornale o ha
+     * ricevuto un movimento senza essere ricalcolato — dalla beta.42 l'emissione e l'incasso lo rifiutano, i dati di prima
+     * possono esserlo —, quelle quote non sono mai arrivate a chi esce adesso, e un conguaglio su di esse gli darebbe un credito
+     * su quote mai sue (€ 1.006,03 su € 1.200,00 nel rapporto).
+     *
+     * «Non le ha prese» è `PianoRate::presoNelConguaglioDa()` (decisione 42): dalla .42 il registro del passaggio dice quali piani
+     * ha preso; per i passaggi di prima la regola di allora (39), e un passaggio della .41 che ha preso solo le rate «emesse» senza
+     * scrittura le ha lasciate passare in parte (`presoSoloInParteDa()`): il gruppo si ferma per prudenza. «C'erano già»: `PianoRate::quoteCeranoAl()`. Vendita e usufrutto, e anche il cambio d'inquilino
+     * (decisione 40): lì la guardia dell'emissione resta spenta (decisione 32), e il fermo è ciò che conserva la scelta di
+     * emettere senza ricalcolare. Non un gruppo che il conguaglio lascia fuori per legge (rilievo A7: l'ordinaria che una riserva
+     * ha lasciato a chi vende), dove l'esito non cambierebbe.
+     *
+     * @return array<string, array{nome: string, il: string}> chiave del gruppo => di chi sono le quote e da quando
+     */
+    private function maiPassate(Collection $righe, array $predecessori, \Closure $chiaveDi): array
+    {
+        $esito = [];
+        $passaggi = [];
+        $piani = [];
+        $siRicalcolava = [];
+        foreach ($righe->filter(fn ($r) => ! empty($r->ereditata_da))->groupBy($chiaveDi) as $chiave => $gruppo) {
+            $primo = $gruppo->first();
+            $piano = $piani[(int) $primo->piano_rate_id] ??= PianoRate::find((int) $primo->piano_rate_id);
+            if ($piano === null) {
+                continue;
+            }
+            $primaQuota = (int) $gruppo->min('id');
+            $natura = null;
+            foreach (array_keys($predecessori[(int) $primo->anagrafica_id]['strade'][(int) $primo->immobile_id] ?? []) as $strada) {
+                $id = (int) explode('|', (string) $strada)[0];
+                $p = $passaggi[$id] ??= Subentro::find($id);
+                if ($p === null || ! in_array($p->tipo_passaggio, ['vendita', 'usufrutto', 'fine_locazione'], true) || $p->created_at === null
+                    || ! $piano->quoteCeranoAl($p, $primaQuota)) {
+                    continue;
+                }
+                // Decisioni 48 e 51 (rilievi W7 e X1): l'anello mancato è un passaggio che quella natura la trasferiva. La
+                // costituzione non trasferisce la straordinaria; per l'ordinaria si guarda riga per riga (`anelloTrasferivaOrdinaria`).
+                // Il passaggio di adesso, invece, non conta: anche se per legge lascia quella natura a chi esce, il pannello dice
+                // che le quote del predecessore non sono mai arrivate (prima lo taceva l'estensione di A7).
+                $natura = $natura ?? NaturaGestione::daStringa($piano->gestione?->tipo);
+                // Decisione 51 (rilievo X1 del terzo giro): per l'ordinaria si guarda riga per riga se l'anello avrebbe fatto
+                // passare qualcosa — la vendita della nuda fa passare le voci sul «Proprietario» dopo una costituzione «come dice
+                // ogni voce», e le righe del nudo.
+                $nonTrasferiva = $natura === NaturaGestione::Straordinaria
+                    ? $p->tipo_passaggio === 'usufrutto' && $p->tipologia === 'usufruttuario'
+                    : ! $this->anelloTrasferivaOrdinaria($p, $primo);
+                if ($nonTrasferiva) {
+                    continue;
+                }
+                $siRicalcolava[$piano->id . '|' . $id] ??= ! $piano->presoNelConguaglioDa($p) || $piano->presoSoloInParteDa($p);
+                if ($siRicalcolava[$piano->id . '|' . $id]) {
+                    $esito[$chiave] = ['nome' => (string) $primo->ereditata_da, 'il' => $p->decorrenza->toDateString()];
+                    break;
+                }
+            }
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Decisione 51: l'anello `$p` avrebbe fatto passare l'ordinaria di questo gruppo? Sì se almeno una sua riga di riparto sta da
+     * un lato che l'anello trasferisce (`latiDellAnello`) e, nella vendita della nuda, non è dell'usufruttuario: le righe risolte
+     * «proprietario» restano all'usufruttuario (R4), salvo le voci sul «Proprietario» dopo una costituzione «come dice ogni voce»
+     * sull'unità. Un piano senza righe (anteriore alla beta.29): la vendita della nuda solo con quella costituzione a monte.
+     */
+    private function anelloTrasferivaOrdinaria(Subentro $p, object $primo): bool
+    {
+        $lati = self::latiDellAnello($p);
+        if ($lati === []) {
+            return false;
+        }
+        $nuda = $p->tipo_passaggio === 'vendita' && $p->tipologia === 'nuda_proprietario' && ! $p->riservaUsufrutto();
+        $voceAMonte = $nuda && Subentro::where('immobile_id', (int) $primo->immobile_id)->where('tipo_passaggio', 'usufrutto')->where('tipologia', 'usufruttuario')
+            ->where('decorrenza', '<=', $p->decorrenza->toDateString())->get()->contains(fn (Subentro $c) => $c->ordinariaComeLaVoce());
+        $righe = DB::table('righe_riparto')->where('piano_rate_id', (int) $primo->piano_rate_id)->where('immobile_id', (int) $primo->immobile_id)
+            ->where('anagrafica_id', (int) ($primo->righe_di ?? $primo->anagrafica_id))->whereIn('tipo', [RigaRiparto::TIPO_RIPARTO, RigaRiparto::TIPO_AD_PERSONAM])
+            ->get(['ruolo_richiesto', 'ruolo_risolto', 'tipo']);
+        if ($righe->isEmpty()) {
+            return ! $nuda || $voceAMonte;
+        }
+
+        return $righe->contains(function (object $r) use ($lati, $nuda, $voceAMonte) {
+            $lato = self::latoProprietario($r) ? 'P' : 'A';
+
+            return in_array($lato, $lati, true)
+                && ! ($nuda && ($r->ruolo_risolto ?? null) === 'proprietario' && ! ($lato === 'P' && $voceAMonte));
+        });
+    }
+
+    /**
+     * I lati dell'ordinaria che un passaggio trasferisce (P: le voci sul «Proprietario», A: le altre). La riserva con la legge
+     * nessuno, la riserva «come dice ogni voce» le voci sul «Proprietario», la costituzione «come dice ogni voce» le altre; gli
+     * altri passaggi tutti e due. Una regola sola per `anelloOrdinario` e per il fermo «mai passate» (decisione 51).
+     *
+     * @return list<'P'|'A'>
+     */
+    private static function latiDellAnello(Subentro $s): array
+    {
+        $comeLaVoce = $s->ordinariaComeLaVoce();
+
+        return match (true) {
+            $s->riservaUsufrutto() && ! $comeLaVoce => [],
+            $s->riservaUsufrutto() => ['P'],
+            $comeLaVoce && $s->tipo_passaggio === 'usufrutto' => ['A'],
+            default => ['P', 'A'],
+        };
+    }
+
+    /**
      * Chi, oltre a chi esce, ha quote emesse che il conguaglio riguarda: i suoi **predecessori** sulle stesse
      * unità, risalendo la catena dei passaggi registrati (Fase 1-bis, S8-3). Chi ha comprato a maggio con la
      * coppia di conguaglio e rivende a settembre non ha quote emesse a suo nome: quelle del venditore di maggio
@@ -1172,12 +1301,19 @@ final class ConguaglioPassaggio
                 ->get(['anagrafica_id', 'quota'])->groupBy('anagrafica_id')->map(fn ($g) => (float) $g->sum('quota'))
                 ->mapWithKeys(fn ($q, $id) => [(int) $id => $q])->all();
         }
-        $righe = collect($s->registro['righe'] ?? [])
-            ->filter(fn ($r) => in_array($r['operazione'] ?? null, ['aperta', 'modificata'], true) && ($r['dopo']['tipologia'] ?? null) === 'proprietario')
-            ->keyBy(fn ($r) => (int) $r['id']);
+        // Decisione 36 (1.11.0-beta.42): con la somma la riga riaperta porta anche la quota piena che il nudo aveva già (Nora piena 50
+        // e nuda 50 → piena 100), e leggerla come «parte tornata piena» gonfiava la sua frazione dell'usufrutto. La parte tornata
+        // è la quota della riga di nudo che l'estinzione ha chiuso, o di quella cambiata sul posto (la quota di prima, se il
+        // registro la porta). Per i registri di prima della .42 è la stessa cifra: la riga aperta aveva la quota del nudo.
+        $righe = collect($s->registro['righe'] ?? []);
+        $chiuse = $righe->where('operazione', 'chiusa')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $cambiate = $righe->filter(fn ($r) => ($r['operazione'] ?? null) === 'modificata' && ($r['dopo']['tipologia'] ?? null) === 'proprietario')->keyBy(fn ($r) => (int) $r['id']);
+        $nudiChiusi = DB::table('anagrafica_immobile')->whereIn('id', $chiuse)->where('immobile_id', $s->immobile_id)->where('tipologia', 'nuda_proprietario')
+            ->get(['anagrafica_id', 'quota'])->map(fn ($r) => [(int) $r->anagrafica_id, (float) $r->quota]);
+        $nudiCambiati = DB::table('anagrafica_immobile')->whereIn('id', $cambiate->keys()->all())->where('immobile_id', $s->immobile_id)->get(['id', 'anagrafica_id', 'quota'])
+            ->map(fn ($r) => [(int) $r->anagrafica_id, (float) ($cambiate[(int) $r->id]['prima']['quota'] ?? $r->quota)]);
 
-        return DB::table('anagrafica_immobile')->whereIn('id', $righe->keys()->all())->where('immobile_id', $s->immobile_id)->get(['id', 'anagrafica_id', 'quota'])
-            ->groupBy('anagrafica_id')->map(fn ($g) => (float) $g->sum(fn ($r) => $righe[(int) $r->id]['dopo']['quota'] ?? $r->quota))
+        return $nudiChiusi->concat($nudiCambiati)->groupBy(0)->map(fn ($g) => (float) $g->sum(1))
             ->mapWithKeys(fn ($q, $id) => [(int) $id => $q])->all();
     }
 
@@ -1196,13 +1332,7 @@ final class ConguaglioPassaggio
     private function anelloOrdinario(array &$trovati, int $pid, int $entrante, int $anagraficaId, Subentro $s): bool
     {
         $ordinaria = NaturaGestione::Ordinaria->value;
-        $comeLaVoce = $s->ordinariaComeLaVoce();
-        $lati = match (true) {
-            $s->riservaUsufrutto() && ! $comeLaVoce => [],
-            $s->riservaUsufrutto() => ['P'],
-            $comeLaVoce && $s->tipo_passaggio === 'usufrutto' => ['A'],
-            default => ['P', 'A'],
-        };
+        $lati = self::latiDellAnello($s);
         $aggiunti = false;
         $arrivati = false;
         foreach ($lati as $lato) {
@@ -1247,21 +1377,28 @@ final class ConguaglioPassaggio
     {
         $predecessori ??= $this->predecessori($anagraficaId, $immobileIds);
 
+        $intestatari = [$anagraficaId, ...array_keys($predecessori)];
+        $candidati = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
+            ->whereIn('rate_quote.immobile_id', $immobileIds)->whereIn('rate_quote.anagrafica_id', $intestatari)
+            ->distinct()->pluck('rate.piano_rate_id')->all();
+
         return DB::table('rate_quote')
             ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
             ->join('immobili', 'immobili.id', '=', 'rate_quote.immobile_id')
             ->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
             ->leftJoin('gestioni', 'gestioni.id', '=', 'piani_rate.gestione_id')
             ->whereIn('rate_quote.immobile_id', $immobileIds)
-            ->whereIn('rate_quote.anagrafica_id', [$anagraficaId, ...array_keys($predecessori)])
-            // Decisione 21 (S8-1): le quote **emesse**, più quelle ancora in bozza dei piani che hanno già emesso a
-            // giornale (`PianoRate::haRateEmesse()`, lo stesso criterio che blocca il ricalcolo): quel piano non si
-            // rigenera più, le sue bozze resteranno intestate a chi esce e si conguagliano qui, non con il cancello (2).
-            ->where(fn ($q) => $q->where('rate.stato', 'emessa')
-                ->orWhereIn('rate.piano_rate_id', DB::table('rate as r2')->join('rate_quote as q2', 'q2.rata_id', '=', 'r2.id')->whereNotNull('q2.scrittura_contabile_id')->select('r2.piano_rate_id')))
+            ->whereIn('rate_quote.anagrafica_id', $intestatari)
+            // Decisione 21 (S8-1), con il criterio unico delle decisioni 34, 34.1 e 38 (1.11.0-beta.42): le quote dei piani che il
+            // ricalcolo non può più riscrivere — una quota a giornale, un movimento o un conguaglio di un passaggio
+            // (`PianoRate::eImmutabile()`) —, emesse o ancora in bozza; le altre le sistema il ricalcolo con il cancello (2).
+            // Fino alla beta.41 contava anche lo stato «emessa» di una rata senza scritture: il conguaglio e il ricalcolo
+            // sistemavano la stessa quota due volte (DC5).
+            ->whereIn('rate.piano_rate_id', \App\Models\Gestionale\PianoRate::immutabiliFra($candidati))
             ->where('rate_quote.stato', '!=', 'annullata')
             ->orderBy('rate.piano_rate_id')->orderBy('rate.numero_rata')
-            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato as stato_quota', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata', 'gestioni.tipo as natura_gestione'])
+            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato as stato_quota', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata', 'gestioni.tipo as natura_gestione',
+                DB::raw('EXISTS (SELECT 1 FROM rate_quote q_gio WHERE q_gio.rata_id = rate.id AND q_gio.scrittura_contabile_id IS NOT NULL) as rata_a_giornale')])
             ->map(function ($r) use ($anagraficaId, $predecessori) {
                 $pred = (int) $r->anagrafica_id !== $anagraficaId ? ($predecessori[(int) $r->anagrafica_id] ?? null) : null;
                 $r->ereditata_da = $pred['nome'] ?? null;
@@ -1276,7 +1413,8 @@ final class ConguaglioPassaggio
                 $r->arrivata = $pred['arrivata'][(int) $r->immobile_id] ?? null;
                 // Rilievo B3: l'ordinaria di chi ha venduto con riserva d'usufrutto non è mai passata a chi esce.
                 $r->riservata_da = $pred !== null && $r->decorrenza_acquisto === null ? ($pred['riservata_da'] ?? $pred['nome'] ?? 'chi ha venduto con riserva d\'usufrutto') : null;
-                $r->in_bozza = $r->stato_rata !== 'emessa';
+                // Decisione 34: in bozza è la rata che non è andata a giornale, qualunque sia il suo stato.
+                $r->in_bozza = ! (bool) $r->rata_a_giornale;
                 // B3a: una quota passata a questa persona da un passaggio precedente porta con sé il riparto di chi la
                 // aveva (le `righe_riparto` restano del soggetto per cui il piano è stato generato): la scomposizione
                 // per conto si legge da lì, riportata alla quota con il `$fattore`.
@@ -2008,6 +2146,8 @@ final class ConguaglioPassaggio
             'ordinaria_riservata' => sprintf('%s del piano «%s» non ancora %s %s a %s: sono spese ordinarie, e %s resta usufruttuario (art. 1004 c.c.) — non passano a chi compra la nuda proprietà.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario'], $b['usufruttuario'] ?? $b['intestatario']),
             'senza_istantanea' => sprintf('%s del piano «%s» non ancora %s %s a %s, senza conguaglio: non %s quanta parte è saldo pregresso.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario'], $uno ? 'dice' : 'dicono'),
             'catena_ambigua' => sprintf('%s del piano «%s» non ancora %s %s a %s, senza conguaglio: su questa unità la parte che passa non si separa con certezza.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
+            // Decisione 35: il passaggio di prima ha lasciato il piano al ricalcolo, che non c'è stato.
+            'mai_passata' => sprintf('%s del piano «%s» non ancora %s %s a %s, senza conguaglio: il passaggio di prima non %s ha %s passare, e il piano non è stato ricalcolato.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario'], $uno ? 'la' : 'le', $uno ? 'fatta' : 'fatte'),
             'non_risolta' => sprintf('%s del piano «%s» non ancora %s %s a %s, senza conguaglio: la competenza del piano non si può determinare.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, $b['intestatario']),
             // Decisione 31.5: con «come la voce» la bozza non passa intera.
             // Non «hai scelto»: la scelta può venire da un passaggio prima (la riserva, la costituzione), non da questo.
@@ -2020,7 +2160,8 @@ final class ConguaglioPassaggio
                 ? sprintf('%s: ogni quota comprende anche la spesa della parte dell\'unità che %s tiene, e la quota non passa intera, quindi %s a %s e la parte che passa si conguaglia qui.', $comprese, $b['intestatario'], $resteranno, $b['intestatario'])
                 : sprintf('%s: ogni quota comprende anche la spesa di una parte dell\'unità che non è mai passata a %s, e la quota non passa intera, quindi %s a %s e la parte che passa si conguaglia qui.', $comprese, $uscente, $resteranno, $b['intestatario']),
             'ordinaria_per_voce' => sprintf('%s: l\'ordinaria segue la voce, per la scelta «come dice ogni voce», e con questa scelta le rate in bozza non cambiano intestatario, quindi %s a %s e la parte delle voci che passano si conguaglia qui.', $comprese, $resteranno, $b['intestatario']),
-            default => sprintf('%s: il piano ha già emesso a giornale e non si può più ricalcolare, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
+            // Testo T2 del giro di verifica: la ragione vera la dice l'apertura del blocco rate e il cancello (`fraseDelFermo()`).
+            default => sprintf('%s: il piano non si ricalcola più, quindi %s a %s e %s qui.', $comprese, $resteranno, $b['intestatario'], $siConguagliano),
         };
     }
 

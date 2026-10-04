@@ -79,6 +79,25 @@ class Subentro extends Model
         return $this->annullato_il !== null;
     }
 
+    /**
+     * Decisione 47 (1.11.0-beta.42, rilievo W5): il passaggio ha un conguaglio. L'inizio locazione no, e la fine locazione solo con
+     * un nuovo inquilino (con quello che entra, o il suo nome nel registro se l'anagrafica è stata cancellata): è la stessa regola
+     * di `AnteprimaPassaggio::conguaglio()`. Un passaggio senza conguaglio non prende nessun piano, anche se registrato prima.
+     */
+    public static function tipoHaUnConguaglio(string $tipo, bool $conChiEntra): bool
+    {
+        return match ($tipo) {
+            'inizio_locazione' => false,
+            'fine_locazione' => $conChiEntra,
+            default => true,
+        };
+    }
+
+    public function haUnConguaglio(): bool
+    {
+        return self::tipoHaUnConguaglio((string) $this->tipo_passaggio, $this->anagrafica_entrante_id !== null || ! empty($this->registro['nomi']['entrante'] ?? null));
+    }
+
     /** L'unico punto che dice se questo passaggio è una vendita con riserva d'usufrutto: vedi `RISERVA_USUFRUTTO`. */
     public function riservaUsufrutto(): bool
     {
@@ -179,4 +198,35 @@ class Subentro extends Model
 
     /** L'amministratore ha rinunciato alla coppia di conguaglio **alla registrazione**, con la sua ragione. */
     public function conguaglioRinunciato(): bool { return $this->nota_conguaglio !== null && trim((string) $this->nota_conguaglio) !== ''; }
+
+    /**
+     * Decisione 46 (1.11.0-beta.42, rilievo W2): ciò che le parti hanno regolato fra loro, con la rinuncia o con l'annullamento del
+     * conguaglio — «€ 5,48 sulla gestione Ordinaria 2026» —, dal registro (`regolato_fuori`, per gestione). Null se il passaggio
+     * non ha né rinuncia né conguaglio annullato, se il registro non lo dice (passaggi di prima della .42: allora resta la nota) o
+     * se sulla gestione chiesta non c'era niente da regolare.
+     */
+    public function regolatoFuoriInParole(?int $gestioneId = null): ?string
+    {
+        if (! $this->conguaglioRinunciato() && ! $this->conguaglioAnnullato()) {
+            return null;
+        }
+        $voci = collect($this->registro['regolato_fuori'] ?? [])
+            ->filter(fn (array $v) => (int) ($v['importo'] ?? 0) !== 0 && ($gestioneId === null || (int) ($v['gestione_id'] ?? 0) === $gestioneId));
+
+        return $voci->isEmpty() ? null : $voci->map(fn (array $v) => sprintf('%s sulla gestione %s', \App\Helpers\MoneyHelper::format(abs((int) $v['importo'])), $v['gestione'] ?? '?'))->join('; ');
+    }
+
+    /**
+     * Decisione 46: le coppie del conguaglio, per gestione, nella forma del registro (`regolato_fuori`): l'importo come quello della
+     * coppia (positivo se chi entra doveva a chi esce).
+     *
+     * @param iterable<array{gestione_id:int, gestione:string, importo:int}> $coppie
+     * @return list<array{gestione_id:int, gestione:string, importo:int}>
+     */
+    public static function regolatoFuoriDalleCoppie(iterable $coppie): array
+    {
+        return collect($coppie)->groupBy(fn ($c) => (int) $c['gestione_id'])
+            ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($g->first()['gestione'] ?? '?'), 'importo' => (int) $g->sum('importo')])
+            ->values()->all();
+    }
 }

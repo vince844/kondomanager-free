@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 
+use App\Actions\Subentro\AnnullaPassaggioAction;
 use App\Helpers\DateHelper;
 use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Anagrafica;
@@ -215,6 +216,64 @@ class AnteprimaPassaggioRequest extends FormRequest
                 }
             }
 
+            // Decisione 37 (1.11.0-beta.42): il passaggio porta tutta la quota di chi esce. Con un numero diverso la registrazione
+            // chiudeva tutta la riga di chi esce e apriva chi entra alla quota scritta, e il resto non era di nessuno: Elsa al
+            // 100 % che «vende 50» a Carlo, e il riparto addebitava a Carlo anche l'altra metà. La vendita di una parte della
+            // propria quota — chi vende resta sulla parte che tiene — è la Coda 175. Non all'estinzione, dove la quota del modulo
+            // non conta (tornano pieni i nudi, ciascuno alla sua), né alla fine di una locazione senza un nuovo inquilino; la
+            // riserva ha la sua frase qui sopra.
+            $tipo = (string) $this->input('tipo');
+            $portaLaQuota = ($tipo === 'vendita' && ! $riserva)
+                || ($tipo === 'usufrutto' && (string) $this->input('sottotipo') !== 'estinzione')
+                || ($tipo === 'fine_locazione' && $this->filled('anagrafica_entrante_id'));
+            if ($uscente !== null && $portaLaQuota && $this->filled('quota') && is_numeric($this->input('quota'))
+                && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
+                $v->errors()->add('quota', sprintf(
+                    'Il passaggio porta tutta la quota di %s (%s %%): passarne solo una parte non è ancora previsto. Se l\'atto trasferisce solo una parte della quota, registralo a mano: chiudi la riga di chi esce al giorno prima dell\'atto da «Modifica associazione», poi da «Associa soggetto» riapri chi esce alla quota che tiene e apri chi entra alla sua, dal giorno dell\'atto, senza conguaglio automatico. Una riga con lo stesso ruolo di quella chiusa conta dal giorno dell\'atto. Una riga con un ruolo che sull\'unità non c\'era, come l\'usufruttuario di una costituzione, oppure aperta dopo un buco fra le date, per il riparto vale da sempre: un piano generato o ricalcolato dopo gliela addebita anche per i mesi prima dell\'atto.',
+                    $uscente->anagrafica?->nome ?? 'chi esce',
+                    rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
+                ));
+            }
+
+            // Decisione 36, rilievo R9 della Fase 1-bis della .42: all'estinzione un nudo proprietario nato oggi che è anche proprietario
+            // pieno da una riga nata oggi (la nuda comprata e un'altra parte avuta lo stesso giorno). La riga piena non si chiude a
+            // ieri (sarebbe rovesciata) e non si somma (una delle due dovrebbe sparire, e il registro non lo sa disfare): la nuda si
+            // registra prima dell'estinzione e la piena dopo, che allora somma da sé. Qui, perché anteprima e registrazione dicano lo
+            // stesso.
+            if ($tipo === 'usufrutto' && (string) $this->input('sottotipo') === 'estinzione' && $this->filled('decorrenza')) {
+                $giorno = CarbonImmutable::parse($this->input('decorrenza'))->startOfDay();
+                $il = $giorno->locale('it')->translatedFormat('j F Y');
+                // Decisione 53 (rilievi X2 e X6 del terzo giro): i due controlli valgono per l'unità e per ogni pertinenza spuntata,
+                // con il nome della pertinenza — prima sul box nascevano due righe piene sovrapposte.
+                $unitaDaControllare = collect([$immobile])->concat($immobile->pertinenze()->whereIn('id', array_map('intval', (array) $this->input('pertinenze', [])))->get());
+                foreach ($unitaDaControllare as $unita) {
+                    $prefisso = (int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ';
+                    $titolarita = $unita->titolarita()->with('anagrafica')->get();
+                    $nateOggi = $titolarita->filter(fn (TitolaritaImmobile $t) => $t->data_inizio !== null && $t->data_inizio->equalTo($giorno) && $t->inCorsoIl($giorno));
+                    foreach ($nateOggi->where('tipologia', 'nuda_proprietario') as $nudo) {
+                        $piena = $nateOggi->first(fn (TitolaritaImmobile $t) => $t->tipologia === 'proprietario' && (int) $t->anagrafica_id === (int) $nudo->anagrafica_id);
+                        if ($piena !== null) {
+                            $v->errors()->add('decorrenza', $prefisso . $this->fraseNudaEPienaDelloStessoGiorno($unita, $nudo, $piena, $giorno));
+                            break;
+                        }
+                    }
+                    // Decisione 53 (2): un nudo proprietario in corso il giorno dell'estinzione, la cui riga un passaggio registrato
+                    // dopo ha già chiuso. Dal giorno dell'estinzione quella nuda proprietà è piena: il passaggio dopo andrebbe rifatto
+                    // sulla proprietà piena. Registrata così, chi aveva venduto la nuda restava proprietario pieno in silenzio.
+                    $chiusa = $titolarita->first(fn (TitolaritaImmobile $t) => $t->tipologia === 'nuda_proprietario' && $t->inCorsoIl($giorno) && $t->data_fine !== null);
+                    // Rilievo T2 del quarto giro: una riga chiusa a mano (la via a mano della decisione 37) non ha un passaggio da annullare.
+                    if ($chiusa !== null && ! Subentro::where('immobile_id', $unita->id)->where('riga_uscente_id', $chiusa->id)->exists()) {
+                        $v->errors()->add('decorrenza', $prefisso . sprintf(
+                            '%s era nudo proprietario di questa unità il %s, e la sua riga è stata chiusa a mano dal %s: dal giorno dell\'estinzione quella nuda proprietà diventa piena. Correggi le righe a mano da «Modifica associazione» prima di registrare l\'estinzione.',
+                            $chiusa->anagrafica?->nome ?? 'Un nudo proprietario', $il, CarbonImmutable::parse($chiusa->data_fine)->addDay()->locale('it')->translatedFormat('j F Y')));
+                    } elseif ($chiusa !== null) {
+                        $v->errors()->add('decorrenza', $prefisso . sprintf(
+                            '%s era nudo proprietario di questa unità il %s, e un passaggio registrato dopo ha chiuso quella riga dal %s: dal giorno dell\'estinzione quella nuda proprietà diventa piena, e il passaggio dopo andrebbe registrato sulla proprietà piena. Annulla prima dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, registra l\'estinzione e poi di nuovo quei passaggi dalla riga piena; se l\'atto dice altro, correggi le righe a mano da «Modifica associazione».',
+                            $chiusa->anagrafica?->nome ?? 'Un nudo proprietario', $il, CarbonImmutable::parse($chiusa->data_fine)->addDay()->locale('it')->translatedFormat('j F Y')));
+                    }
+                }
+            }
+
             // Nella locazione e nell'usufrutto chi entra non è già titolare dell'unità: un proprietario non
             // è inquilino di se stesso, e il nudo proprietario non è il proprio usufruttuario. Nella vendita
             // invece un comproprietario può comprare la quota dell'altro: là si esclude solo chi esce.
@@ -376,5 +435,62 @@ class AnteprimaPassaggioRequest extends FormRequest
             'voci_da_tenere' => array_map('intval', $d['voci_da_tenere'] ?? []),
             'ordinaria_impronta' => $d['ordinaria_impronta'] ?? null,
         ];
+    }
+    /**
+     * Rilievi V8, W3, W4 e decisione 52: la strada del rifiuto si sceglie dai dati, ma solo nel caso semplice. La nuda deve tornare
+     * prima dell'estinzione (che la fa piena) e la piena dopo (che allora somma): registrata prima l'estinzione, chi aveva venduto la
+     * nuda diventerebbe proprietario pieno. Si parte dal **primo** passaggio che ha toccato la riga piena nata quel giorno (anche
+     * sommando su di lei) e si annulla tutto ciò che nello storico viene dopo, nell'ordine della guardia dell'annullamento; poi si
+     * rifanno le vendite della nuda, questa estinzione e infine gli altri. Fuori dal caso semplice — una riserva (un secondo
+     * usufrutto), passaggi registrati con o da una pertinenza, un passaggio in cui esce il nudo, uno dopo questa data in cui il nudo
+     * entra — la frase dice il fatto e rimanda alla correzione a mano: ogni ramo in più della ricetta aveva prodotto difetti nuovi,
+     * per un caso raro.
+     */
+    private function fraseNudaEPienaDelloStessoGiorno(Immobile $unita, TitolaritaImmobile $nudo, TitolaritaImmobile $piena, CarbonImmutable $giorno): string
+    {
+        $chi = $nudo->anagrafica?->nome ?? 'Il nudo proprietario';
+        $nudoId = (int) $nudo->anagrafica_id;
+        $il = $giorno->locale('it')->translatedFormat('j F Y');
+        $testa = sprintf('%s è nudo proprietario e proprietario pieno di questa unità da due righe nate lo stesso giorno, il %s, e l\'estinzione non le può riunire.', $chi, $il);
+
+        // Padri e figli: una riga del box può venire dal passaggio figlio di uno registrato dall'unità principale (rilievo X5).
+        $passaggi = Subentro::where('immobile_id', $unita->id)->orderBy('decorrenza')->orderBy('id')->get()->values();
+        $primo = $passaggi->search(fn (Subentro $s) => (int) $s->riga_entrante_id === (int) $piena->id || in_array((int) $piena->id, $s->righeDelRegistro(), true));
+        if ($primo === false) {
+            return $testa . sprintf(' La riga piena di %s dal %s è stata associata a mano: va corretta a mano da «Modifica associazione» prima dell\'estinzione.', $chi, $il);
+        }
+        $daAnnullare = $passaggi->slice($primo)->values();
+        // Rilievo Y1 del quarto giro: la frase non afferma che una strada non esiste — dice che il programma non ne indica una.
+        $aMano = fn (string $perche) => $testa . ' ' . $perche . ': per questo caso il programma non indica una strada. Correggi le righe a mano da «Modifica associazione», o chiedi assistenza.';
+        $data = fn (Subentro $s) => $s->decorrenza->locale('it')->translatedFormat('j F Y');
+        if ($daAnnullare->contains(fn (Subentro $s) => $s->riservaUsufrutto())) {
+            return $aMano('Fra i passaggi da rifare c\'è una vendita o donazione con riserva d\'usufrutto, che apre un secondo usufrutto');
+        }
+        if (($x = $daAnnullare->first(fn (Subentro $s) => $s->subentro_padre_id !== null || $s->pertinenze()->exists())) !== null) {
+            return $aMano(sprintf('Fra i passaggi da rifare ce n\'è uno registrato insieme a una pertinenza: %s, dal %s', AnnullaPassaggioAction::descrivi($x->padre ?? $x), $data($x)));
+        }
+        if (($x = $daAnnullare->first(fn (Subentro $s) => (int) $s->anagrafica_uscente_id === $nudoId)) !== null) {
+            return $aMano(sprintf('Fra i passaggi da rifare c\'è %s, dal %s, in cui esce %s', AnnullaPassaggioAction::descrivi($x), $data($x), $chi));
+        }
+        $eNuda = fn (Subentro $s) => $s->tipo_passaggio === 'vendita' && $s->tipologia === 'nuda_proprietario';
+        // Rilievo Y1: anche una vendita della nuda datata dopo l'estinzione a chiunque, non solo al nudo — dal giorno dell'estinzione
+        // quella nuda è piena, e la ricetta finiva nel rifiuto della decisione 53.
+        if (($x = $daAnnullare->first(fn (Subentro $s) => ! $s->decorrenza->equalTo($giorno) && ((int) $s->anagrafica_entrante_id === $nudoId || $eNuda($s)))) !== null) {
+            return $aMano(sprintf('Fra i passaggi da rifare c\'è %s, dal %s, dopo questa estinzione', AnnullaPassaggioAction::descrivi($x), $data($x)));
+        }
+        $nude = $daAnnullare->filter($eNuda)->values();
+        $altri = $daAnnullare->reject($eNuda)->values();
+        $elenco = fn ($lista) => collect($lista)->map(fn (Subentro $s) => AnnullaPassaggioAction::descrivi($s))->join(', ', ' e ');
+
+        if ($nude->isEmpty() && $altri->count() === 1) {
+            return $testa . sprintf(' Annulla dallo storico dell\'unità %s, registra questa estinzione e poi di nuovo quel passaggio.', $elenco($altri));
+        }
+        $annulla = sprintf(' Annulla dallo storico dell\'unità, l\'ultimo per primo, %s;', $elenco($daAnnullare->reverse()));
+
+        return $testa . $annulla . ($nude->isEmpty()
+            ? sprintf(' poi registra questa estinzione e di nuovo, nell\'ordine, %s.', $elenco($altri))
+            : ($altri->isEmpty()
+                ? sprintf(' poi registra di nuovo %s e infine questa estinzione.', $elenco($nude))
+                : sprintf(' poi registra di nuovo %s, questa estinzione e infine %s.', $elenco($nude), $elenco($altri))));
     }
 }

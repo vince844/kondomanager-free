@@ -59,6 +59,8 @@
  * - **Non copre il caso in cui la versione in `config/app.php` non sia stata alzata.** Se la .6
  *   restasse dichiarata `beta.5`, questa guardia chiederebbe la .5 e sarebbe soddisfatta. Il
  *   presidio di quel passo è la Fase 4 del flusso, non questo file.
+ * - **Non conta una sezione scritta con il solo suffisso.** «Le lezioni della beta.41» non dice di
+ *   quale ciclo: vale solo l'intestazione con la versione intera, come per l'intestazione di stato.
  * - **Non gira su un clone pulito**: `docs/*` è gitignorato, quindi il documento non è nel
  *   repository. Su una macchina che non ce l'ha i test si saltano invece di fallire, come già fa
  *   `VerificaDocumentazioneCommandTest` con `roadmap.md`.
@@ -114,7 +116,14 @@ function intestazioneNomina(string $intestazione, string $versione): bool
 }
 
 /**
- * Le beta che nel documento hanno una sezione di lezioni.
+ * Le beta che nel documento hanno una sezione di lezioni, come etichette: `1.11.0-beta.41` quando l'intestazione scrive la
+ * versione intera, `beta.41` quando scrive il solo suffisso.
+ *
+ * ⚠️ **Corretto il 03/10/2026, aprendo la 1.11.0-beta.42: il controllo era cieco al ciclo.** Restituiva i soli numeri, e
+ * il test della beta precedente cercava `41`: lo trovava nei «controlli imparati nella 1.10.0-beta.41» del ciclo prima, ed
+ * era verde anche senza le lezioni della 1.11.0-beta.41. È lo stesso difetto che il 30/08 aveva reso cieca l'intestazione
+ * (`intestazioneNomina()`), in un'altra funzione: il ciclo 1.10 è arrivato alla beta.77, quindi dalla 1.11.0-beta.35 alla
+ * .78 ogni beta precedente aveva un omonimo. Ora la sezione conta solo con la versione intera.
  *
  * ⚠️ **Le intestazioni non hanno una forma sola**, e non si può pretenderla: trenta beta di
  * lezioni hanno prodotto «I due controlli imparati nella beta.36», «Le cinque lezioni della beta.54», «La
@@ -141,17 +150,23 @@ function betaConSezioneDiLezioni(string $testo): array
             continue;
         }
 
-        if (preg_match_all('#beta\.(\d+)#', $riga, $m)) {
-            foreach ($m[1] as $n) {
-                $trovate[] = (int) $n;
+        if (preg_match_all('#(\d+\.\d+\.\d+-)?beta\.(\d+)#', $riga, $m, PREG_SET_ORDER)) {
+            foreach ($m as $menzione) {
+                $trovate[] = ($menzione[1] ?? '') . 'beta.' . (int) $menzione[2];
             }
         }
     }
 
     $trovate = array_values(array_unique($trovate));
-    sort($trovate);
+    sort($trovate, SORT_NATURAL);
 
     return $trovate;
+}
+
+/** Il ciclo della versione in sviluppo, `1.11.0` per `1.11.0-beta.42`. */
+function cicloInSviluppo(): ?string
+{
+    return preg_match('#^(\d+\.\d+\.\d+)-beta\.#', (string) config('app.version'), $m) ? $m[1] : null;
 }
 
 it('trova davvero delle sezioni di lezioni, invece di guardare il vuoto', function () {
@@ -177,19 +192,19 @@ it('ha la sezione delle lezioni della beta precedente', function () {
         return;
     }
 
-    $precedente = $beta - 1;
+    $precedente = cicloInSviluppo() . '-beta.' . ($beta - 1);
     $sezioni = betaConSezioneDiLezioni(file_get_contents(documentoDiProcesso()));
 
     expect(in_array($precedente, $sezioni, true))->toBeTrue(
         "La versione in sviluppo è la beta.{$beta}, ma in `docs/flusso_di_lavoro_rilascio.md` non\n".
-        "c'è nessuna sezione con le lezioni della beta.{$precedente}.\n\n".
+        "c'è nessuna sezione con le lezioni della {$precedente}, scritta con la versione intera.\n\n".
         "È la **Fase 0.3** del processo, e non è un adempimento: è il passo che tiene vero l'unico\n".
         "documento che tiene in riga tutti gli altri. Si è già perso due volte — aprendo la .58 e\n".
         "poi nella .62 e nella .63 — e tutte e due le volte se ne è accorto qualcuno per caso.\n\n".
         "Da fare adesso, non dopo: rileggere il documento dall'inizio alla fine, scrivere le\n".
-        "lezioni della beta.{$precedente} **con il perché e non solo la regola**, e ricontrollare\n".
+        "lezioni della {$precedente} **con il perché e non solo la regola**, e ricontrollare\n".
         "una per una le cifre che il documento dichiara — non ricordarle.\n\n".
-        "Sezioni presenti oggi: beta.".implode(', beta.', $sezioni)
+        "Sezioni presenti oggi: ".implode(', ', $sezioni)
     );
 })->skip(fn () => ! file_exists(documentoDiProcesso()), 'docs/ è gitignorato: il documento non è su questa macchina');
 
@@ -265,13 +280,28 @@ it('la guardia morde: una beta senza sezione viene vista', function () {
 
     $sezioni = betaConSezioneDiLezioni($finto);
 
-    expect($sezioni)->toContain(90)
-        ->and($sezioni)->toContain(92)
+    expect($sezioni)->toContain('beta.90')
+        ->and($sezioni)->toContain('beta.92')
         // ⚠️ La .91 è nominata, ma da un'intestazione che non è una sezione di lezioni — la forma
         // è quella vera di «### Il sito parla al presente, e la beta non è il presente». Se
         // comparisse, il riconoscitore starebbe accettando qualunque menzione e la guardia sarebbe
         // verde per sempre.
-        ->and($sezioni)->not->toContain(91);
+        ->and($sezioni)->not->toContain('beta.91');
+});
+
+it('la guardia morde anche fra due cicli: la beta.41 del ciclo prima non vale per la .41 di questo', function () {
+    // Il difetto del 03/10/2026, riprodotto tale e quale: aprendo la 1.11.0-beta.42 la sezione cercata era la .41, e c'era —
+    // quella della 1.10.0-beta.41. Passa dalla stessa funzione del test vero.
+    $finto = <<<'MD'
+    ### I due controlli imparati nella 1.10.0-beta.41
+    testo
+    ### Le lezioni della Fase 5 della beta.41
+    testo
+    MD;
+
+    expect(betaConSezioneDiLezioni($finto))->toBe(['1.10.0-beta.41', 'beta.41'])
+        ->and(in_array('1.11.0-beta.41', betaConSezioneDiLezioni($finto), true))->toBeFalse()
+        ->and(betaConSezioneDiLezioni("### Le dieci lezioni della 1.11.0-beta.41 — scritte aprendo la .42\n"))->toBe(['1.11.0-beta.41']);
 });
 
 it('il comando che misura i documenti non sostituisce questa guardia', function () {

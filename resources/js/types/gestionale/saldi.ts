@@ -21,6 +21,8 @@ export interface Saldo {
   e_bloccato: boolean;
   /** Una delle due righe del conguaglio di un passaggio di titolarità (B2): si tolgono insieme, mai una sola. */
   e_conguaglio?: boolean;
+  /** Rilievo V9 (1.11.0-beta.42): perché il piano che ha assorbito il saldo non si riscrive più, e come riaprirlo. */
+  fermo_del_piano?: { perche: string | null; rimedi: string[]; ragioni: Array<'scrittura' | 'incasso' | 'credito' | 'conguaglio'> } | null;
   subentro_id?: number | null;
   subentro?: { id: number; decorrenza: string; tipo_passaggio: string } | null;
   origine: string;

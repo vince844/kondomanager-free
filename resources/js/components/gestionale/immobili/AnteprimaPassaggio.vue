@@ -205,7 +205,9 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                 </td>
                 <td class="px-3 py-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
                   <!-- Fase 1-ter della beta.41: la competenza è nota, è la parte che passa a non separarsi (quote della 1.7.x, catene). -->
-                  <template v-if="(g.non_separabili ?? 0) > 0 && g.importo === 0">parte che passa non separabile</template>
+                  <!-- Decisione 35 (beta.42): quote che il passaggio di prima non ha fatto passare. -->
+                  <template v-if="(g.mai_passate ?? 0) > 0 && g.importo === 0">non passate col passaggio di prima</template>
+                  <template v-else-if="(g.non_separabili ?? 0) > 0 && g.importo === 0">parte che passa non separabile</template>
                   <template v-else-if="g.non_risolte > 0 && g.importo === 0">competenza non determinabile</template>
                   <!-- V1 della verifica a video (beta.38): l'etichetta dipende dalla natura — nella riserva resta fuori l'ordinaria. -->
                   <template v-else-if="g.escluse > 0 && g.importo === 0">{{ etichettaEsclusa(g) }}</template>

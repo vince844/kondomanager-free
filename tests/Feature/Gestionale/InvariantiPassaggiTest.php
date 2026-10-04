@@ -904,11 +904,17 @@ function invControllaCaso($test, array $r): array
         // Decisione 31.7 (1.11.0-beta.41): le voci spostate all'«Usufruttuario» restano, e l'annullamento lo dice — se e solo
         // se il passaggio le ha spostate. Ogni altro avviso, senza nessun piano nato dopo, resta un difetto.
         $sulleVoci = fn (string $a) => str_contains($a, 'all\'«Usufruttuario»');
-        $altri = array_values(array_filter($voce['annullabile']['avvisi'], fn (string $a) => ! $sulleVoci($a)));
+        // Decisione 46 (1.11.0-beta.42): con la rinuncia l'annullamento dice ciò che le parti hanno regolato fra loro — se e solo se
+        // il registro ne conserva una cifra.
+        $regolato = fn (string $a) => str_starts_with($a, 'Le parti hanno già regolato fra loro');
+        if (collect($voce['annullabile']['avvisi'])->contains($regolato) !== ($padre->fresh()->regolatoFuoriInParole() !== null)) {
+            $v[] = 'I4 (decisione 46) l\'avviso su ciò che le parti hanno regolato non corrisponde al registro del passaggio';
+        }
+        $altri = array_values(array_filter($voce['annullabile']['avvisi'], fn (string $a) => ! $sulleVoci($a) && ! $regolato($a)));
         if ($altri !== []) {
             $v[] = 'I4 avvisi senza nessun piano nato dopo il passaggio: ' . implode(' | ', $altri);
         }
-        if (! empty($padre->fresh()->registro['voci_spostate']) !== (count($altri) !== count($voce['annullabile']['avvisi']))) {
+        if (! empty($padre->fresh()->registro['voci_spostate']) !== collect($voce['annullabile']['avvisi'])->contains($sulleVoci)) {
             $v[] = 'I4 (decisione 31.7) l\'avviso sulle voci spostate non corrisponde al registro del passaggio';
         }
     }

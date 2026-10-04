@@ -57,8 +57,17 @@ final class AnnullaConguaglioAction
                 throw ValidationException::withMessages(['conguaglio' => 'Le righe del conguaglio non sommano zero: qualcosa è stato modificato a mano. Controlla i saldi della gestione prima di annullare.']);
             }
 
+            // Decisione 46: ciò che le parti hanno regolato fra loro resta nel registro, per gestione — le righe in saldi si
+            // cancellano, e la strada della 43 deve poter dire la cifra.
+            $uscenteId = (int) $padre->anagrafica_uscente_id;
+            $nomi = DB::table('gestioni')->whereIn('id', $righe->pluck('gestione_id')->unique())->pluck('nome', 'id');
+            $regolato = $righe->filter(fn (Saldo $r) => (int) $r->anagrafica_id !== $uscenteId)->groupBy('gestione_id')
+                ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($nomi[$id] ?? '?'), 'importo' => (int) $g->sum('saldo_iniziale')])
+                ->values()->all();
+
             $tolte = Saldo::whereIn('id', $righe->pluck('id'))->delete();
-            $padre->update(['conguaglio_annullato_il' => now(), 'nota_annullamento_conguaglio' => $nota]);
+            $padre->update(['conguaglio_annullato_il' => now(), 'nota_annullamento_conguaglio' => $nota,
+                'registro' => array_replace($padre->registro ?? [], ['regolato_fuori' => $regolato])]);
 
             return $tolte;
         });
@@ -73,20 +82,33 @@ final class AnnullaConguaglioAction
      *
      * @param \Illuminate\Support\Collection<int, Saldo> $assorbite righe con `is_applicato`, con `pianoRate` caricato
      */
-    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno): string
+    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno, bool $perIlPassaggio = false, array $presiDaSeguire = []): string
     {
         $piani = $assorbite->map(fn (Saldo $s) => $s->pianoRate)->filter()->unique('id');
         $correggibili = $piani->reject(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
-        $immutabili = $piani->filter(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
         $frase = $apertura;
         if ($correggibili !== []) {
             $frase .= sprintf(' %s «%s» non %s ancora emesso nulla: se %s approvat%s riportal%s in bozza, elimina il piano (il lucchetto si riapre) e %s; poi rifai il piano.',
                 count($correggibili) === 1 ? 'Il piano' : 'I piani', implode('», «', $correggibili), count($correggibili) === 1 ? 'ha' : 'hanno',
                 count($correggibili) === 1 ? 'è' : 'sono', count($correggibili) === 1 ? 'o' : 'i', count($correggibili) === 1 ? 'o' : 'i', $ritorno);
         }
-        if ($immutabili !== []) {
-            $frase .= sprintf(' %s «%s» %s già emesso in contabilità o con incassi registrati: le quote sono in mano ai condòmini, e la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.',
-                count($immutabili) === 1 ? 'Il piano' : 'I piani', implode('», «', $immutabili), count($immutabili) === 1 ? 'è' : 'sono');
+        // Rilievo T7 del giro sulle correzioni: il perché vero del fermo (`fraseDelFermo`), non «già emesso o con incassi» per un
+        // piano fermo solo per il conguaglio di un altro passaggio; «in mano ai condòmini» solo se ha quote a giornale.
+        foreach ($piani->filter(fn ($p) => $p->eImmutabile()) as $piano) {
+            $perche = $piano->fraseDelFermo() ?? 'non si riscrive più';
+            $inMano = in_array('scrittura', $piano->ragioniDelFermo(), true) ? ': le quote sono in mano ai condòmini' : '';
+            if (! $perIlPassaggio) {
+                $frase .= sprintf(' Il piano «%s» %s%s, e la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.', $piano->nome, $perche, $inMano);
+                continue;
+            }
+            // Decisione 50 (rilievo W6): per l'annullamento del passaggio il saldo manuale non sblocca niente. Due strade, prima la
+            // breve: il passaggio resta, e il piano che ha preso si emette così com'è (decisione 38); poi la completa.
+            // Rilievo X3: la strada breve solo se i piani presi dal passaggio si emettono davvero così come sono.
+            $breve = $presiDaSeguire === []
+                ? sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e chi entra paga i suoi giorni con la coppia già dentro il piano «%s».', $piano->nome)
+                : sprintf(' Il passaggio non può restare così: %s «%s», preso da questo passaggio, deve ancora seguire un passaggio e non si emette senza ricalcolo.', count($presiDaSeguire) === 1 ? 'il piano' : 'i piani', implode('», «', $presiDaSeguire));
+            $frase .= $breve . sprintf(' Per annullarlo%s, il piano «%s», che %s%s, va prima riaperto — %s —; poi riportalo in bozza, elimina il piano (il lucchetto si riapre) e %s; poi rifai il piano.',
+                $presiDaSeguire === [] ? ' comunque' : '', $piano->nome, $perche, $inMano !== '' ? ', e le quote sono in mano ai condòmini' : '', implode('; ', $piano->rimediDelFermo()), $ritorno);
         }
 
         return $frase;

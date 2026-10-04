@@ -85,6 +85,17 @@ class Rata extends Model
         return $query->where('stato', 'emessa');
     }
 
+    /**
+     * Per `whereExists` / `whereNotExists` nelle query su `rate`: la rata è a giornale, cioè almeno una sua quota ha una
+     * scrittura (decisione 34, 1.11.0-beta.42). Lo stato «emessa» può non dirlo: fino alla beta.41 l'emissione lo scriveva
+     * anche su una rata senza scritture, fatta solo di quote a credito, e i dati di allora restano così.
+     */
+    public static function aGiornale(string $colonnaRata = 'rate.id'): \Closure
+    {
+        return fn ($q) => $q->select(\Illuminate\Support\Facades\DB::raw(1))->from('rate_quote as q_gio')
+            ->whereColumn('q_gio.rata_id', $colonnaRata)->whereNotNull('q_gio.scrittura_contabile_id');
+    }
+
     public function scopeChiusa($query)
     {
         return $query->where('stato', 'chiusa');

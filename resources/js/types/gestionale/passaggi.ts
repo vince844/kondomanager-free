@@ -67,6 +67,8 @@ export interface ConguaglioDati {
     importo: number; importo_formattato: string; non_risolte: number; escluse: number; esercizio_id: number | null;
     /** Fra le non risolte, quelle ferme perché la parte che passa non si separa (quote della 1.7.x, catene di passaggi). */
     non_separabili?: number;
+    /** Decisione 35 (beta.42): fra le non risolte, le quote di un predecessore che il suo passaggio non ha fatto passare. */
+    mai_passate?: number;
     /** Decisione 25 (B3a): la parte di chi entra sull'intero piano, e il preventivo delle bozze che passano a lui. `importo` è la differenza. */
     importo_lordo: number; importo_lordo_formattato: string;
     bozze_passate: number; bozze_passate_importo: number; bozze_passate_formattato: string;
@@ -138,6 +140,8 @@ export interface OrdinariaDopoAtto {
   frasi: string[];
   /** Le frasi delle voci bloccate, con il rimedio vero per il piano che le blocca: il riquadro del lucchetto le mostra. */
   frasi_bloccate: string[];
+  /** Decisione 33: gli usufrutti della gestione nati con la scelta opposta, anche finiti, e cosa la scelta cambia per i loro giorni. */
+  frasi_altri_usufrutti: string[];
   /** L'impronta dell'elenco delle voci mostrato: la registrazione la confronta con quello di adesso (rilievo S1). */
   impronta: string | null;
   /** All'estinzione, la scelta dell'usufrutto che si chiude, ereditata dal passaggio da cui era nato (rilievo D4). */

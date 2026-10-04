@@ -162,7 +162,9 @@ final class RegistraSubentroAction
                     'nota_cancello'          => $anteprima['cancello']['richiesto'] ? trim((string) $dati['nota_cancello']) : null,
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
-                    'registro'               => $this->registro($uscente, $entrante, $sottotipo) + $registroOrdinaria,
+                    'registro'               => $this->registro($tipo, $uscente, $entrante, $sottotipo, (int) $immobile->id) + $registroOrdinaria
+                        // Decisione 46: con la rinuncia, ciò che le parti hanno regolato fra loro, per gestione.
+                        + ($rinuncia ? ['regolato_fuori' => Subentro::regolatoFuoriDalleCoppie($anteprima['rate']['conguaglio']['coppie'])] : []),
                 ]);
 
                 // 5. Le pertinenze spuntate: la stessa operazione, una riga `subentri` ciascuna.
@@ -219,10 +221,20 @@ final class RegistraSubentroAction
     private array $registroRighe = [];
 
     /** @return array<string, mixed> il registro di un'unità, nella forma che legge `AnnullaPassaggioAction` */
-    private function registro(?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?string $sottotipo = null): array
+    private function registro(string $tipo, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?string $sottotipo = null, ?int $immobileId = null): array
     {
         return [
-            'versione' => 1,
+            // Decisione 39 (1.11.0-beta.42): 2 dalla .42, quando il conguaglio prende un piano fermo anche per un movimento o un
+            // conguaglio (34.1, 38); fino alla .41, 1, e il conguaglio prendeva un piano solo se aveva una scrittura. Il fermo dei
+            // dati vecchi (`ConguaglioPassaggio::maiPassate`) e i passaggi da seguire (`PianoRate`) leggono la regola da qui.
+            'versione' => 2,
+            // Decisione 42 (1.11.0-beta.42): i piani dell'unità che in questo momento non si riscrivono più, e che il conguaglio
+            // di questo passaggio prende — anche con la rinuncia. È il fatto che il conguaglio e i passaggi dopo leggono: annullare un
+            // conguaglio o un passaggio di prima non lo cambia (rilievo V1), e non serve più ricostruirlo dalle ore (V6). La riga del
+            // passaggio non esiste ancora, e il calcolo non la conta.
+            // Decisione 47: solo un passaggio con un conguaglio prende piani.
+            'piani_presi' => $immobileId !== null && Subentro::tipoHaUnConguaglio($tipo, $entrante !== null)
+                ? \App\Models\Gestionale\PianoRate::pianiPresiSullUnita($immobileId) : [],
             // La forma del passaggio quando il tipo non basta: costituzione o estinzione dell'usufrutto, e la vendita con
             // riserva d'usufrutto (beta.38), che si legge da qui con `Subentro::riservaUsufrutto()`.
             'sottotipo' => $sottotipo,
@@ -297,13 +309,31 @@ final class RegistraSubentroAction
                         ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values();
                     foreach ($nudi as $nudo) {
                         if ($nudo->data_inizio !== null && $nudo->data_inizio->equalTo($decorrenza)) {
+                            // Decisione 36, rilievo R9 della Fase 1-bis della .42: il nudo nato lo stesso giorno che è anche già
+                            // proprietario pieno di un'altra parte. Quella riga si chiude il giorno prima e la sua quota si somma
+                            // sulla riga cambiata sul posto, con le stesse guardie di `apriSommando()`; il registro dice le due
+                            // cose, e l'annullamento le disfa. Una riga piena nata anch'essa oggi non si chiude (sarebbe
+                            // rovesciata) e si rifiuta già nella richiesta: la nuda prima dell'estinzione, la piena dopo (rilievo V8).
+                            $piena = $unita->titolarita()->where('anagrafica_id', $nudo->anagrafica_id)->where('tipologia', 'proprietario')->get()
+                                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza) && $t->data_inizio !== null && $t->data_inizio->lte($giornoPrima));
+                            $quota = round((float) $nudo->quota + (float) ($piena?->quota ?? 0), 2);
+                            if ($piena !== null) {
+                                $nuova = ['anagrafica_id' => (int) $nudo->anagrafica_id, 'tipologia' => 'proprietario', 'quota' => $quota, 'data_inizio' => $decorrenza->toDateString(), 'data_fine' => null];
+                                $this->chiudi($piena, $giornoPrima);
+                                if ($sforo = GuardieTitolarita::sforoQuotePerGiorno($unita->titolarita()->get(), $nuova, (int) $nudo->id)) {
+                                    throw ValidationException::withMessages(['quota' => $unita->nome . ' — ' . mb_lcfirst(GuardieTitolarita::messaggioSforo('proprietario', $sforo))]);
+                                }
+                            }
                             $this->registroRighe[] = ['operazione' => 'modificata', 'id' => (int) $nudo->id,
-                                'prima' => ['tipologia' => 'nuda_proprietario'], 'dopo' => ['tipologia' => 'proprietario']];
-                            DB::table('anagrafica_immobile')->where('id', $nudo->id)->update(['tipologia' => 'proprietario', 'updated_at' => now()]);
+                                'prima' => ['tipologia' => 'nuda_proprietario'] + ($piena !== null ? ['quota' => round((float) $nudo->quota, 2)] : []),
+                                'dopo' => ['tipologia' => 'proprietario'] + ($piena !== null ? ['quota' => $quota] : [])];
+                            DB::table('anagrafica_immobile')->where('id', $nudo->id)->update(['tipologia' => 'proprietario', 'quota' => $quota, 'updated_at' => now()]);
                             $id = (int) $nudo->id;
                         } else {
                             $this->chiudi($nudo, $giornoPrima);
-                            $id = $this->apri($unita, $nudo->anagrafica, 'proprietario', (float) $nudo->quota, $decorrenza);
+                            // Decisione 36 (1.11.0-beta.42, D4): il nudo che è già proprietario pieno di un'altra parte
+                            // somma, come nella vendita. Prima l'anteprima accettava e la registrazione rifiutava.
+                            $id = $this->apriSommando($unita, $nudo->anagrafica, 'proprietario', (float) $nudo->quota, $decorrenza, $giornoPrima);
                         }
                         if ($rigaEntranteId === null) {
                             $rigaEntranteId = $id;
@@ -312,8 +342,10 @@ final class RegistraSubentroAction
                     }
                 } else {
                     // Costituzione: il proprietario resta come nudo proprietario, alla stessa quota; entra l'usufruttuario.
+                    // Decisione 36 (D4): chi è già nudo proprietario di un'altra parte somma, come nella riserva. Chi entra
+                    // non può essere già titolare dell'unità (`AnteprimaPassaggioRequest`), e lì non c'è niente da sommare.
                     $this->chiudi($uscente, $giornoPrima);
-                    $this->apri($unita, $uscente->anagrafica, 'nuda_proprietario', (float) $uscente->quota, $decorrenza);
+                    $this->apriSommando($unita, $uscente->anagrafica, 'nuda_proprietario', (float) $uscente->quota, $decorrenza, $giornoPrima);
                     $rigaEntranteId = $this->apri($unita, $entrante, 'usufruttuario', $quotaEntrante, $decorrenza);
                 }
                 break;
@@ -446,7 +478,7 @@ final class RegistraSubentroAction
             // Rilievo D7 della Fase 1-bis della beta.41: la scelta sull'ordinaria vale anche per la pertinenza, come il
             // sottotipo della riserva. I passaggi dopo (`ConguaglioPassaggio`) la leggono unità per unità. Non le voci
             // spostate: lo spostamento è uno per tutta la tabella, e l'annullamento lo legge dal padre.
-            'registro'               => $this->registro($uscenteLi, $entrante, $sottotipo)
+            'registro'               => $this->registro($tipo, $uscenteLi, $entrante, $sottotipo, (int) $pertinenza->id)
                 + array_intersect_key($padre->registro ?? [], ['ordinaria_dopo_atto' => true, 'ordinaria_ereditata_da' => true]),
         ]);
     }

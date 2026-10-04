@@ -142,8 +142,6 @@ const form = useForm({
   voci_da_tenere: [] as number[],
 });
 
-const laQuotaCambia = ref(false);
-
 const ANTICIPI = [30, 60, 90, 180] as const;
 const promemoriaAperto = ref(false);
 function etichettaAnticipo(g: number): string {
@@ -209,17 +207,17 @@ const riserva = computed({
     form.tipologia = v ? 'nuda_proprietario' : (uscente.value?.tipologia ?? 'proprietario');
     // La nuda proprietà di tutta la quota di chi vende: con meno resterebbe un pezzo di nessuno.
     if (v && uscente.value) {
-      laQuotaCambia.value = false;
       form.quota = String(uscente.value.quota);
     }
   },
 });
 watch(puoRiservare, (p) => { if (!p && riserva.value) riserva.value = false; });
 
-// Quota e ruolo precompilati da chi esce, non con 100 (§6.3, campi 4 e 5).
+// Quota e ruolo precompilati da chi esce, non con 100 (§6.3, campi 4 e 5). La quota non si cambia (decisione 37, 1.11.0-beta.42):
+// il passaggio porta tutta la quota di chi esce, e la vendita di una parte della propria quota non è ancora prevista (Coda 175).
 watch(uscente, (u) => {
   if (!u) return;
-  if (!laQuotaCambia.value) form.quota = String(u.quota);
+  form.quota = String(u.quota);
   if (props.tipo === 'vendita') form.tipologia = riserva.value ? 'nuda_proprietario' : u.tipologia;
 }, { immediate: true });
 
@@ -771,12 +769,10 @@ function urlTipo(t: TipoPassaggio) {
 
                   <div class="sm:col-span-2">
                     <Label for="quota" class="mb-1.5 block">Quota (%)</Label>
-                    <Input id="quota" v-model="form.quota" :readonly="!laQuotaCambia && uscente !== null" inputmode="decimal"
-                      class="w-full bg-white dark:bg-slate-950 tabular-nums" :class="!laQuotaCambia && uscente !== null ? 'text-slate-500' : ''" />
-                    <label v-if="uscente && !riserva" class="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                      <input type="checkbox" v-model="laQuotaCambia" class="w-3.5 h-3.5 accent-slate-900 dark:accent-slate-300 rounded border-slate-300" />
-                      La quota cambia
-                    </label>
+                    <Input id="quota" v-model="form.quota" :readonly="uscente !== null" inputmode="decimal"
+                      class="w-full bg-white dark:bg-slate-950 tabular-nums" :class="uscente !== null ? 'text-slate-500' : ''" />
+                    <!-- Decisione 37 (1.11.0-beta.42): al posto della casella «La quota cambia», che lasciava una parte dell'unità di nessuno. -->
+                    <p v-if="uscente" class="mt-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">La quota di chi esce: il passaggio la porta tutta. Passarne solo una parte non è ancora previsto.</p>
                     <InputError :message="form.errors.quota" />
                   </div>
 
@@ -884,6 +880,11 @@ function urlTipo(t: TipoPassaggio) {
                 <!-- La prima frase del server è la conclusione, con la data e i nomi; le altre dicono ciò che l'elenco qui sopra già mostra. -->
                 <p v-if="ordinaria.frasi.length" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
                   <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" /><span>{{ ordinaria.frasi[0] }}</span>
+                </p>
+                <!-- Decisione 33 (1.11.0-beta.42): la scelta agisce sulla voce, per tutto l'anno; un usufrutto della gestione nato con
+                     la scelta opposta, anche finito, cambia per i suoi giorni, e lo si dice prima della conferma. -->
+                <p v-for="(f, i) in ordinaria.frasi_altri_usufrutti ?? []" :key="'altri-' + i" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
+                  <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" /><span>{{ f }}</span>
                 </p>
                 <InputError :message="form.errors.ordinaria_dopo_atto" />
               </CardContent>

@@ -319,10 +319,19 @@ it('una rata passata a chi è entrato ed emessa dopo il passaggio ferma l\'annul
 
     $messaggio = apAnnulla($this, $s, $subentro)->assertUnprocessable()->json('errors.passaggio.0');
     expect($messaggio)->toContain('la rata 5 del piano «Preventivo 2026»')->toContain('Acquirente Elsa')->toContain('Annulla l\'emissione di quella rata')
-        ->toContain('annulla prima il conguaglio') // Fase 1-bis A14: la via intera, con la guardia della beta.31
+        // Rilievo W8 del giro sulle correzioni della .42: il consiglio «annulla prima il conguaglio» non c'è più — la rata 5,
+        // emessa dopo il passaggio, non la blocca il passaggio stesso, e annullare il conguaglio non riapre niente (decisione 43).
+        ->not->toContain('annulla prima il conguaglio')
         ->and(apFotoRighe([$s['unita']->id]))->toBe($righe)
         ->and(apFotoQuote($s['piano']))->toBe($quote)
         ->and(Subentro::withoutGlobalScopes()->findOrFail($subentro->id)->annullato_il)->toBeNull();
+
+    // La strada del messaggio, fino in fondo: annullata l'emissione della rata 5 (la guardia non la rifiuta), il passaggio si annulla.
+    $rata5 = (int) DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('numero_rata', 5)->value('id');
+    $r = $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $s['piano']->id, 'rata' => $rata5]));
+    expect($r->getSession()->get('message')['type'])->toBe('success')->and(DB::table('rate')->where('id', $rata5)->value('stato'))->toBe('bozza');
+    apAnnulla($this, $s, $subentro)->assertRedirect();
+    expect(Subentro::withoutGlobalScopes()->findOrFail($subentro->id)->annullato_il)->not->toBeNull();
 });
 
 it('un pagamento su una rata passata a chi è entrato ferma l\'annullamento', function () {
@@ -605,7 +614,17 @@ function apAssocia($test, array $s, Anagrafica $persona, string $tipologia, floa
 it('A1 — vendita di metà, con chi vende riassociato a mano per il resto: l\'annullamento si ferma e nomina la riga, invece di lasciare Ugo proprietario due volte', function () {
     $s = apScenario();
     apEmetti($s);
-    $subentro = apRegistra($this, $s, apVendita($s['rigaV'], $s['a'], '2026-05-01', ['quota' => 50]));
+    // Dalla 1.11.0-beta.42 la richiesta rifiuta una quota diversa da quella di chi vende (decisione 37): la vendita di metà
+    // si registra come la lasciavano le versioni prima, dall'azione, perché i dati di allora restano da annullare.
+    app(\App\Actions\Subentro\RegistraSubentroAction::class)->execute($s['c'], $s['unita'], [
+        'tipo' => 'vendita', 'sottotipo' => null, 'riga_uscente' => \App\Models\TitolaritaImmobile::with('anagrafica')->findOrFail($s['rigaV']),
+        'entrante' => $s['a'], 'decorrenza' => \Carbon\CarbonImmutable::parse('2026-05-01'), 'quota' => 50.0, 'tipologia' => 'proprietario',
+        'copia_autentica' => true, 'copia_autentica_il' => \Carbon\CarbonImmutable::parse('2026-05-01'), 'estremi_titolo' => 'atto notaio Verdi, rep. 12345',
+        'nota' => null, 'data_fine_locazione' => null, 'regime_contratto' => null, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Rogito letto, bozze a chi compra',
+        'allegato_titolo' => null, 'promemoria_scadenza' => false, 'promemoria_giorni' => null, 'rinuncia_conguaglio' => false, 'nota_conguaglio' => null,
+        'ordinaria_dopo_atto' => null, 'voci_da_tenere' => [], 'ordinaria_impronta' => null,
+    ], $this->user);
+    $subentro = Subentro::whereNull('subentro_padre_id')->latest('id')->firstOrFail();
     apAssocia($this, $s, $s['v'], 'proprietario', 50, '2026-05-01');
     $righe = apFotoRighe([$s['unita']->id]);
 

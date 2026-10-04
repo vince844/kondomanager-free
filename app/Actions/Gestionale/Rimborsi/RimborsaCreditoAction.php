@@ -56,6 +56,10 @@ final class RimborsaCreditoAction
             if ($piano === null || (int) $piano->condominio_id !== (int) $condominio->id) {
                 throw ValidationException::withMessages(['rata_quote_id' => 'La quota non appartiene a questo condominio.']);
             }
+            // Decisione 41 (1.11.0-beta.42): un rimborso è un movimento, e fermerebbe un piano che deve ancora seguire un passaggio.
+            if (($frase = $piano->fraseRicalcolaPrima(['un rimborso', 'il rimborso'])) !== null) {
+                throw ValidationException::withMessages(['rata_quote_id' => $frase]);
+            }
             if ((int) $cassa->condominio_id !== (int) $condominio->id || ! in_array($cassa->tipo, ['banca', 'contanti'], true) || ! $cassa->attiva) {
                 throw ValidationException::withMessages(['cassa_id' => 'Scegli una cassa attiva di questo condominio, banca o contanti: un fondo vincolato non rimborsa crediti.']);
             }

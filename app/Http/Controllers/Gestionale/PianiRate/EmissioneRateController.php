@@ -7,10 +7,12 @@ use App\Enums\NaturaGestione;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Models\Gestionale\Subentro;
 use App\Services\Gestionale\DoubleEntryValidator;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RigaScrittura;
@@ -82,9 +84,19 @@ class EmissioneRateController extends Controller
             }
         }
 
+        // Decisioni 35 e 41 (1.11.0-beta.42, difetto U1): i passaggi registrati dopo la generazione che hanno lasciato il piano al
+        // ricalcolo (non lo hanno conguagliato, decisione 21). Emesse così, quelle quote resterebbero a chi esce anche per i
+        // giorni dopo, e un passaggio successivo le tratterebbe come passate. Si guarda lo stato del piano all'ora di ogni
+        // passaggio, non quello di adesso: un incasso arrivato dopo il passaggio non lo ha conguagliato (rilievo R1).
+        if (($passaggi = $pianoRate->passaggiDaSeguire()) !== []) {
+            return back()->with($this->flashError(self::fraseDaRicalcolare($pianoRate, $passaggi)));
+        }
+
         $request->validate([
             'rate_ids' => 'required|array|min:1',
-            'rate_ids.*' => 'exists:rate,id',
+            // Solo le rate di questo piano (D-3, 1.11.0-beta.42): fino alla beta.41 bastava che la rata esistesse, e la riga
+            // che segna «emessa» in fondo la marcava anche se era di un altro piano, o di un altro condominio.
+            'rate_ids.*' => ['integer', \Illuminate\Validation\Rule::exists('rate', 'id')->where('piano_rate_id', $pianoRate->id)],
             'data_emissione' => 'required|date',
             'descrizione_personalizzata' => 'nullable|string|max:255',
             'invia_notifiche' => 'boolean' // Validazione del nuovo interruttore
@@ -113,8 +125,16 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
         }
 
+        // Decisione 34 (1.11.0-beta.42): «emessa» vuol dire a giornale. Le rate che vanno a giornale qui, e quelle che non
+        // hanno quote da pagare e restano in bozza, con il numero per il messaggio.
+        $aGiornale = [];
+        $senzaQuote = [];
+        $giaEmesse = [];
+        $restanoEmesse = [];
+        $presiPrima = [];
+
         try {
-            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche) {
+            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche, &$aGiornale, &$senzaQuote, &$giaEmesse, &$restanoEmesse, &$presiPrima) {
                 
                 // Le quote delle rate si bloccano come PRIMA istruzione: la scrittura va intestata al titolare di adesso, e
                 // i promemoria del portale riscritti più sotto con gli importi di adesso. Un passaggio che riassegna le bozze,
@@ -130,7 +150,11 @@ class EmissioneRateController extends Controller
                     ->get();
 
                 foreach ($rateSelezionate as $rata) {
-                    if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) continue;
+                    if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) {
+                        // Già a giornale: un doppio invio, o la pagina aperta in due schede. Il messaggio la nomina (rilievo S2/D7).
+                        $giaEmesse[(int) $rata->id] = (int) $rata->numero_rata;
+                        continue;
+                    }
 
                     $totaleRataCentesimi = 0;
                     $totalePregressoCentesimi = 0;
@@ -246,8 +270,10 @@ class EmissioneRateController extends Controller
                         // scrittura_contabile_id, quindi il guard anti-doppia-emissione non
                         // scatta e ogni nuova emissione ne accumula un'altra.
                         $scrittura->forceDelete();
+                        $senzaQuote[(int) $rata->id] = (int) $rata->numero_rata;
                         continue;
                     }
+                    $aGiornale[] = (int) $rata->id;
 
                     // Quadratura dell'emissione: la somma delle quote a DARE deve
                     // corrispondere esattamente alla chiusura in AVERE. Un arrotondamento
@@ -290,22 +316,37 @@ class EmissioneRateController extends Controller
 
                 }
 
-                // Aggiorniamo lo stato massivo nel DB
-                Rata::whereIn('id', $request->rate_ids)->update(['stato' => 'emessa']);
+                // «Emessa» solo la rata che è andata a giornale (decisione 34): una rata senza quote da pagare non ha prodotto
+                // scritture e resta in bozza — anche se una versione prima della beta.42 l'aveva già segnata «emessa».
+                // Rilievo W1 del giro sulle correzioni: sui dati della .41 un passaggio registrato allora può aver preso nel conguaglio
+                // proprio una di queste rate «emesse» senza scrittura (`PianoRate::presoSoloInParteDa`). Riportarla in bozza toglierebbe
+                // al piano l'unica traccia di quel conguaglio, e il ricalcolo che ne segue farebbe pagare la coppia due volte: resta
+                // «emessa», e l'esito lo dice.
+                $presiPrima = collect($pianoRate->passaggiCheLoHannoConguagliato())->filter(fn ($s) => $pianoRate->presoSoloInParteDa($s))->values()->all();
+                if ($presiPrima !== []) {
+                    $restanoEmesse = Rata::whereIn('id', array_keys($senzaQuote))->where('stato', 'emessa')->pluck('id')
+                        ->mapWithKeys(fn ($id) => [(int) $id => $senzaQuote[(int) $id]])->all();
+                    $senzaQuote = array_diff_key($senzaQuote, $restanoEmesse);
+                }
+                Rata::whereIn('id', $aGiornale)->update(['stato' => 'emessa']);
+                Rata::whereIn('id', array_keys($senzaQuote))->where('stato', 'emessa')->update(['stato' => 'bozza']);
             });
 
             InboxService::clearAdminCache();
 
-            $msg = $inviaNotifiche
+            $esito = $this->esitoEmissione(count($aGiornale), $senzaQuote, $giaEmesse, $restanoEmesse, $presiPrima);
+
+            $msg = $aGiornale === [] ? $esito['testo'] : ($inviaNotifiche
                 ? 'Rate emesse e notificate correttamente ai condòmini.'
-                : 'Rate emesse in modalità silenziosa. I condòmini non vedranno gli importi finché non li pubblicherai.';
+                : 'Rate emesse in modalità silenziosa. I condòmini non vedranno gli importi finché non li pubblicherai.');
 
             // Proposta compensazione: se qualche intestatario delle rate appena
             // emesse ha un credito disponibile (saldo a credito o strapagamento),
             // lo segnaliamo così l'amministratore può compensare subito.
             $suggerimentoCrediti = $this->buildSuggerimentoCrediti($condominio, $request->rate_ids);
 
-            $risposta = back()->with($this->flashSuccess($msg));
+            // L'esito in una chiave sua, per la stessa ragione del suggerimento qui sotto: lo legge il modale dell'emissione.
+            $risposta = back()->with($aGiornale === [] ? $this->flashWarning($msg) : $this->flashSuccess($msg))->with('esito_emissione', $esito);
 
             // In una chiave propria, non accodato a $msg: il banner di `flash.message` viene
             // dipinto e poi cancellato dal modale di conferma dell'emissione, quindi un
@@ -335,6 +376,125 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Si è verificato un errore tecnico durante l\'emissione.'));
         }
 }
+
+    /**
+     * Decisioni 35, 41 e i rilievi R6 e R7 della Fase 1-bis della .42: il rifiuto dell'emissione dice il fatto e cosa fare, senza
+     * promettere che il ricalcolo cambi le cifre (con le voci sul «Proprietario» di un usufrutto «come dice ogni voce», o una
+     * straordinaria deliberata prima, le cifre restano quelle). Se il ricalcolo è fermo per un movimento, dice di annullarlo
+     * prima; dopo una riserva con la legge, dice come lasciare l'ordinaria a chi resta usufruttuario.
+     *
+     * Verifica a video della .42: in capoversi, con i passaggi in elenco e i passi numerati (`elencoPuntato`, `passiNumerati`);
+     * in una riga sola il testo era giusto ma non si leggeva.
+     *
+     * @param list<Subentro> $passaggi
+     */
+    public static function fraseDaRicalcolare(PianoRate $piano, array $passaggi): string
+    {
+        $voci = PianoRate::vociDeiPassaggi(PianoRate::senzaPertinenze($passaggi));
+        $uno = count($voci) === 1;
+        $nomi = collect($passaggi)->map(fn (Subentro $p) => $p->uscente?->nome)->filter()->unique()->values();
+        $capoversi = [
+            ($uno ? 'Le quote di questo piano sono state calcolate prima di questo passaggio:' : 'Le quote di questo piano sono state calcolate prima di questi passaggi:')
+                . "\n" . self::elencoPuntato($voci),
+            sprintf('Ricalcola il piano prima di emettere, perché tenga conto %s. Se le voci o la data della delibera lasciano quelle quote a %s, il ricalcolo dà le stesse cifre.',
+                $uno ? 'del passaggio' : 'dei passaggi', $nomi->isEmpty() ? 'chi le aveva' : self::nomiInFila($nomi)),
+        ];
+        // Punto 8 della ripresa e rilievo V9: la ragione vera per cui oggi il ricalcolo si rifiuta, e il rimedio di quella ragione.
+        // Le ragioni in una frase, e i passaggi del conguaglio (sempre l'ultima ragione) in elenco subito dopo; i passi arrivano
+        // fino al ricalcolo, e un movimento annullato si registra di nuovo nell'ultimo.
+        $fermo = $piano->conIPassaggiCalcolati(fn (PianoRate $p) => ($frase = $p->fraseDelFermo(passaggiAParte: true)) === null ? null
+            : "Oggi il ricalcolo si rifiuta perché il piano {$frase}"
+                . (in_array('conguaglio', $p->ragioniDelFermo(), true)
+                    ? ":\n" . self::elencoPuntato(PianoRate::vociDeiPassaggi($p->passaggiDaAnnullare())) . "\nPer procedere:"
+                    : '. Per procedere:')
+                . "\n" . self::passiNumerati($p->rimediDelFermo(inElenco: true, finoAlRicalcolo: true)));
+        if ($fermo !== null) {
+            $capoversi[] = $fermo;
+        }
+        $riserve = PianoRate::senzaPertinenze(collect($passaggi)->filter(fn (Subentro $p) => $p->riservaUsufrutto() && ($p->registro['ordinaria_dopo_atto'] ?? null) === Subentro::ORDINARIA_ALL_USUFRUTTUARIO));
+        if ($riserve !== []) {
+            // Non «metti le voci su Usufruttuario dalla loro pagina» (rilievo T-B2 della .41): fuori dal passaggio lo spostamento
+            // non va nel registro, l'annullamento non lo nomina e non si vedono le altre unità che la voce tocca (31.5, 31.7).
+            // Revisione della verifica a video: «a chi si riserva l'usufrutto», senza accordare la frase alla persona; il primo passo
+            // dice dove si annulla, come tutti gli altri.
+            $una = count($riserve) === 1;
+            $chi = collect($riserve)->map(fn (Subentro $p) => $p->uscente?->nome)->filter()->unique()->values();
+            $capoversi[] = sprintf('Se l\'ordinaria deve restare a chi si riserva l\'usufrutto%s, come scelto nel passaggio:', $chi->isEmpty() ? '' : ' (' . self::nomiInFila($chi) . ')')
+                . "\n" . self::passiNumerati([
+                    $una ? 'annulla il passaggio dallo storico della sua unità («Passaggi registrati», dall\'ultimo)'
+                        : 'annulla tutti quei passaggi, ognuno dallo storico della sua unità («Passaggi registrati», dall\'ultimo)',
+                    'riporta il piano in bozza',
+                    $una ? 'registra di nuovo il passaggio, che sposterà le voci sul «Proprietario» su «Usufruttuario»'
+                        : 'registrali di nuovo, quando sono annullati tutti: sposteranno le voci sul «Proprietario» su «Usufruttuario»',
+                    'riapprova il piano e ricalcolalo',
+                ]);
+        }
+
+        return implode("\n\n", $capoversi);
+    }
+
+    /** «Marco Bassi, Ugo Ferri ed Elena Fabbri»: «ed» davanti a un nome che comincia per «e». */
+    private static function nomiInFila(\Illuminate\Support\Collection $nomi): string
+    {
+        return $nomi->join(', ', preg_match('/^[eE]/u', (string) $nomi->last()) ? ' ed ' : ' e ');
+    }
+
+    /**
+     * Le righe «• …» che la modale della pagina del piano mostra come elenco puntato (`blocchiMessaggio.ts`).
+     *
+     * @param list<string> $voci
+     */
+    private static function elencoPuntato(array $voci): string
+    {
+        return implode("\n", array_map(fn (string $v) => '• ' . $v, $voci));
+    }
+
+    /**
+     * Le righe «1. …» che la modale mostra come passi numerati: ogni passo comincia con la maiuscola e chiude con il punto.
+     *
+     * @param list<string> $passi
+     */
+    private static function passiNumerati(array $passi): string
+    {
+        return implode("\n", array_map(fn (string $p, int $i) => sprintf('%d. %s%s', $i + 1, mb_strtoupper(mb_substr($p, 0, 1)) . mb_substr($p, 1),
+            str_ends_with($p, '.') ? '' : '.'), array_values($passi), array_keys(array_values($passi))));
+    }
+
+    /**
+     * Che cosa ha fatto l'emissione, contato sulle rate andate a giornale e non su quelle chieste (decisione 34): una rata
+     * senza quote da pagare resta in bozza, e il messaggio la nomina.
+     *
+     * @param array<int, int> $senzaQuote id della rata => numero della rata
+     * @param array<int, int> $giaEmesse id della rata => numero della rata, per le rate che erano già a giornale
+     * @return array{titolo: string, testo: string}
+     */
+    private function esitoEmissione(int $emesse, array $senzaQuote, array $giaEmesse = [], array $restanoEmesse = [], array $presiPrima = []): array
+    {
+        $frasi = [];
+        if ($emesse > 0) {
+            $frasi[] = $emesse === 1 ? 'È stata emessa 1 rata.' : "Sono state emesse {$emesse} rate.";
+        }
+        if ($giaEmesse !== []) {
+            $numeri = collect($giaEmesse)->sort()->values();
+            $frasi[] = $numeri->count() === 1 ? "La rata {$numeri[0]} era già emessa." : 'Le rate ' . $numeri->join(', ', ' e ') . ' erano già emesse.';
+        }
+        if ($senzaQuote !== []) {
+            $numeri = collect($senzaQuote)->sort()->values();
+            $frasi[] = $numeri->count() === 1
+                ? "La rata {$numeri[0]} non è stata emessa: non ha quote da pagare, e a giornale non c'è niente da portare. Resta in bozza."
+                : 'Le rate ' . $numeri->join(', ', ' e ') . " non sono state emesse: non hanno quote da pagare, e a giornale non c'è niente da portare. Restano in bozza.";
+        }
+
+        if ($restanoEmesse !== []) {
+            $numeri = collect($restanoEmesse)->sort()->values();
+            $frasi[] = sprintf('%s a giornale non c\'è niente da portare; %s segnat%s come emess%s, perché il conguaglio %s, registrato con una versione di prima, %sha pres%s così.',
+                $numeri->count() === 1 ? "La rata {$numeri[0]} non ha quote da pagare e" : 'Le rate ' . $numeri->join(', ', ' e ') . ' non hanno quote da pagare e',
+                $numeri->count() === 1 ? 'resta' : 'restano', $numeri->count() === 1 ? 'a' : 'e', $numeri->count() === 1 ? 'a' : 'e',
+                PianoRate::descriviPassaggi($presiPrima), $numeri->count() === 1 ? 'l\'' : 'le ', $numeri->count() === 1 ? 'a' : 'e');
+        }
+
+        return ['titolo' => match (true) { $emesse > 0 => 'Emissione completata', $senzaQuote === [] && $restanoEmesse === [] && $giaEmesse !== [] => 'Rate già emesse', default => 'Nessuna rata emessa' }, 'testo' => implode(' ', $frasi)];
+    }
 
     /**
      * Verifica se gli intestatari delle rate appena emesse hanno crediti
@@ -421,20 +581,61 @@ class EmissioneRateController extends Controller
         // Al grano della coppia (S8-19): dalla R9 ogni gamba porta l'esercizio del piano che l'ha prodotta, quindi
         // con `esercizio_id` noto si guarda solo quello — una gestione riusata su due esercizi non blocca il piano
         // dell'anno prima. Piani senza `esercizio_id` (prima della migrazione 9): come prima, conservativo.
-        $passaggiConguagliati = \App\Models\Gestionale\Subentro::query()
-            ->whereHas('saldi', fn ($q) => $q->where('gestione_id', $pianoRate->gestione_id)
-                ->when($pianoRate->esercizio_id !== null, fn ($q) => $q->where('esercizio_id', $pianoRate->esercizio_id)))
-            ->where('subentri.created_at', '>=', $rata->data_emissione ?? $rata->created_at)
-            ->with(['uscente', 'entrante'])
-            ->get();
+        // Rilievo V7 del giro di verifica della .42 e decisione 42: al grano del piano, non della gestione. Prima una coppia di un
+        // altro piano della stessa gestione bloccava l'annullamento anche qui, e una coppia annullata lo sbloccava anche se il
+        // passaggio aveva preso questo piano. Contano i passaggi che hanno preso il piano, registrati dopo la generazione della rata.
+        // Rilievo V1 del giro, nella prova della strada: l'ora vera dell'emissione è quella della sua scrittura, non un campo della
+        // rata (`data_emissione` è l'ora della generazione, `GenerateRateQuotesAction`, e non dice se il passaggio è venuto prima o
+        // dopo l'emissione): una rata emessa a chi è entrato dopo il passaggio sembrava emessa prima, e l'annullamento del passaggio, che chiede
+        // di annullare quell'emissione, finiva in un giro chiuso. Senza scrittura (dati di prima), la data come prima.
+        // Decisione 49 (rilievo T3 del giro sulle correzioni): contano solo i passaggi senza `piani_presi`, registrati prima della
+        // .42, per i quali il piano risulta preso proprio grazie a una scrittura entro l'ora del passaggio. Un passaggio della .42
+        // tiene fermo il piano finché c'è (decisioni 42 e 43): annullare l'emissione e rifarla dà le stesse quote.
+        $aGiornaleDal = DB::table('rate_quote')->join('scritture_contabili', 'scritture_contabili.id', '=', 'rate_quote.scrittura_contabile_id')
+            ->where('rate_quote.rata_id', $rata->id)->min('scritture_contabili.created_at');
+        $emessaIl = $aGiornaleDal !== null ? \Illuminate\Support\Carbon::parse($aGiornaleDal) : ($rata->data_emissione ?? $rata->created_at);
+        $passaggiConguagliati = collect($pianoRate->passaggiCheLoHannoConguagliato())
+            ->filter(fn ($s) => ! PianoRate::haIPianiPresi($s) && $s->created_at !== null && $s->created_at->greaterThanOrEqualTo($emessaIl))
+            ->values();
         if ($passaggiConguagliati->isNotEmpty()) {
-            $chi = $passaggiConguagliati->map(fn ($s) => trim(($s->uscente?->nome ?? '?') . ' → ' . ($s->entrante?->nome ?? '?')) . ' (' . $s->decorrenza->format('d/m/Y') . ')')->implode('; ');
+            // Rilievi T4 e W9 del giro sulle correzioni: lo stesso elenco delle altre frasi, con l'unità e senza doppioni delle
+            // pertinenze; e l'ordine giusto — annullati i passaggi, prima si annulla l'emissione, poi si registrano di nuovo
+            // (registrati prima, riprenderebbero il piano grazie alla scrittura ancora lì).
+            $passaggi = PianoRate::senzaPertinenze($passaggiConguagliati);
+            $uno = count($passaggi) === 1;
 
-            // Tre capoversi: il dialogo li rispetta (`whitespace-pre-line`), e letti insieme erano un blocco.
+            // Tre capoversi, con i passaggi in elenco e i passi numerati (verifica a video della .42): la modale della pagina del
+            // piano li mostra così (`blocchiMessaggio.ts`), e letti in fila erano un blocco.
             return back()->with($this->flashError(
-                "Un passaggio di titolarità registrato dopo l'emissione ha già conguagliato le quote emesse su questa gestione per l'esercizio del piano, con due righe in saldi: {$chi}."
-                . "\n\nAnnullare l'emissione e rigenerare il piano farebbe pagare due volte a chi è entrato."
-                . "\n\nLe due righe del conguaglio non si tolgono una alla volta: dallo storico dell'unità («Passaggi registrati») si annulla il conguaglio intero, con una nota, finché nessun piano le ha assorbite. Se un piano le ha assorbite senza aver emesso nulla, riportalo in bozza ed eliminalo prima; se ha già emesso o incassato, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione."
+                ($uno ? 'Un passaggio di titolarità registrato dopo l\'emissione ha preso questo piano nel conguaglio:' : 'Più passaggi di titolarità registrati dopo l\'emissione hanno preso questo piano nel conguaglio:')
+                . "\n" . self::elencoPuntato(PianoRate::vociDeiPassaggi($passaggi))
+                // Rilievo T-A del terzo giro: la ragione vera — una scrittura entro l'ora del passaggio, oppure (dati della .41) la
+                // rata segnata «emessa» senza scritture che quel conguaglio ha preso così.
+                // Rilievo T1: dopo una rinuncia o un conguaglio annullato, quella parte l'hanno regolata le parti, non il conguaglio.
+                . sprintf("\n\n%s prima della versione 1.11.0-beta.42: il piano risulta preso grazie %s. Annullare l'emissione lo riaprirebbe al ricalcolo, che rifarebbe per giorni ciò che %s.",
+                    $uno ? 'È un passaggio registrato' : 'Sono passaggi registrati',
+                    collect($passaggi)->contains(fn ($p) => $pianoRate->presoSoloInParteDa($p))
+                        ? ($uno ? 'a una rata segnata «emessa», senza scritture, che quel conguaglio ha preso così' : 'a una rata segnata «emessa», senza scritture, che quei conguagli hanno preso così')
+                        : 'alle quote già a giornale',
+                    // Revisione della verifica a video: al plurale con più passaggi, e nel caso misto (uno con le parti che hanno
+                    // regolato fra loro, uno no) tutti e due.
+                    match (true) {
+                        ($fuori = collect($passaggi)->filter(fn ($p) => $p->conguaglioRinunciato() || $p->conguaglioAnnullato())->count()) === 0 => $uno ? 'il conguaglio ha già regolato' : 'quei conguagli hanno già regolato',
+                        $fuori === count($passaggi) => 'le parti hanno già regolato fra loro',
+                        default => 'quei conguagli, o le parti fra loro, hanno già regolato',
+                    })
+                // Decisioni 43 e 49: solo l'annullamento del passaggio riapre il piano; «annulla il conguaglio» vuol dire che le parti
+                // hanno regolato fra loro, e il piano resta fermo. Rilievi T4 e W9: la nuova registrazione dopo l'annullamento
+                // dell'emissione, perché registrato prima il passaggio riprenderebbe il piano grazie alla scrittura ancora lì.
+                . "\n\nPer annullare l'emissione:\n" . self::passiNumerati($uno ? [
+                    'annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall\'ultimo). Se dopo il passaggio sono state emesse altre rate, l\'annullamento chiede di annullare prima quelle',
+                    'annulla l\'emissione',
+                    'solo a questo punto registra di nuovo il passaggio',
+                ] : [
+                    'annulla tutti quei passaggi, ognuno dallo storico della sua unità («Passaggi registrati», dall\'ultimo). Se dopo un passaggio sono state emesse altre rate, l\'annullamento chiede di annullare prima quelle',
+                    'annulla l\'emissione',
+                    'solo a questo punto registrali di nuovo',
+                ])
             ));
         }
 
@@ -530,7 +731,12 @@ class EmissioneRateController extends Controller
      * Sblocca la visibilità delle rate emesse in modalità "Silenziosa".
      * Le rende visibili nell'app e invia finalmente le notifiche ai condòmini.
      */
-   public function publishSilent(Request $request, Condominio $condominio, $esercizio, PianoRate $pianoRate)
+   /*
+    * `Esercizio $esercizio` tipizzato (rilievo S1 della Fase 1-bis della 1.11.0-beta.42): senza tipo il genitore del piano
+    * nell'indirizzo restava una stringa, e il piano si risolveva senza vincolo — il piano di un altro condominio, sotto il
+    * proprio, si pubblicava e mandava le notifiche ai suoi condòmini. Il vincolo è la coppia esercizio > piano.
+    */
+   public function publishSilent(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
         try {
             $idPiano = (int) $pianoRate->id;

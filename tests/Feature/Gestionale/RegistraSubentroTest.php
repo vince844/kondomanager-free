@@ -82,6 +82,7 @@ function rsQuotaEmessa(Gestione $g, Condominio $c, Immobile $i, Anagrafica $inte
         'data_scadenza' => $scadenza, 'regole_calcolo' => json_encode(['origine' => 'calcolo_automatico', 'importi' => ['quota_pura_gestione' => $importo, 'saldo_usato' => 0, 'totale_calcolato' => $importo]]),
         'created_at' => now(), 'updated_at' => now(),
     ]);
+    aGiornaleNeiTest($pianoId);
 
     return $pianoId;
 }
@@ -227,14 +228,15 @@ it('decisione A — il comproprietario che compra la quota dell\'altro: la sua r
         ->and(Subentro::sole()->riga_entrante_id)->toBe($righe->last()->id);
 });
 
-it('la quota che sfora in un giorno ferma la registrazione con il giorno nel messaggio (inv. 11 dal passaggio), e niente viene scritto', function () {
+it('la quota diversa da quella di chi vende ferma la registrazione (decisione 37, beta.42; prima la fermava la somma sopra 100, inv. 11), e niente viene scritto', function () {
     $rigaRossi = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03', null, 60);
     rsRiga($this->immobile, rsPersona($this->condominio, 'Verdi Luca'), 'proprietario', '2019-03-03', null, 40);
 
-    // Bianchi compra il 60 % di Rossi ma il modulo dice 100: il 1° maggio la somma farebbe 140.
+    // Bianchi compra il 60 % di Rossi ma il modulo dice 100: il 1° maggio la somma farebbe 140. La guardia della somma (inv. 11)
+    // resta nell'azione; la richiesta si ferma prima, perché il passaggio porta la quota di chi vende.
     $this->actingAs($this->user)->postJson($this->rotta, rsVendita($rigaRossi, $this->bianchi, ['quota' => 100]))
         ->assertUnprocessable()
-        ->assertJsonPath('errors.quota.0', 'Interno 3 — la somma delle quote per proprietario non può superare 100: il 1 maggio 2026 farebbe 140.');
+        ->assertJsonPath('errors.quota.0', fn ($m) => str_starts_with($m, 'Il passaggio porta tutta la quota di Rossi Mario (60 %): passarne solo una parte non è ancora previsto.'));
 
     expect(Subentro::count())->toBe(0)->and(DB::table('anagrafica_immobile')->where('id', $rigaRossi)->value('data_fine'))->toBeNull();
 });
@@ -374,21 +376,39 @@ it('decisione B — il PDF del titolo diventa un documento dell\'unità, non pub
 |--------------------------------------------------------------------------
 */
 
-it('R1 — un passaggio retroattivo (decorrenza prima della generazione del piano) che ha conguagliato le quote emesse blocca l\'annullamento dell\'emissione: la rata resta emessa e la coppia intatta', function () {
+it('R1 — un passaggio retroattivo (decorrenza prima della generazione del piano) che ha conguagliato le quote emesse: con un passaggio registrato prima della .42 l\'annullamento dell\'emissione si rifiuta, la rata resta emessa e la coppia intatta; con uno della .42 riesce, e il piano resta fermo (decisione 49)', function (bool $dellaPrima) {
     $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
     $pianoId = rsQuotaEmessa($this->gestione, $this->condominio, $this->immobile, $this->rossi, 41200);
     // La rata è stata generata il 15/01/2026; il rogito è del 20/12/2025, registrato oggi: tutto all'entrante.
     DB::table('rate')->update(['data_emissione' => '2026-01-15']);
     $this->actingAs($this->user)->post($this->rotta, rsVendita($riga, $this->bianchi, ['decorrenza' => '2025-12-20', 'copia_autentica_il' => '2025-12-28', 'ho_letto' => true, 'nota_cancello' => 'Rogito di dicembre registrato in ritardo']))->assertRedirect();
     expect(Saldo::where('anagrafica_id', $this->bianchi->id)->value('saldo_iniziale'))->toBe(41200);
+    $passaggio = Subentro::sole();
+    expect($passaggio->registro['piani_presi'])->toBe([$pianoId]);
+    if ($dellaPrima) {
+        $registro = $passaggio->registro;
+        unset($registro['piani_presi']);
+        $passaggio->update(['registro' => array_replace($registro, ['versione' => 1])]);
+    }
 
     $rataId = DB::table('rate')->value('id');
     $risposta = $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $this->condominio->id, 'pianoRate' => $pianoId, 'rata' => $rataId]));
-    expect($risposta->getSession()->get('message')['type'])->toBe('error')
-        ->and($risposta->getSession()->get('message')['message'])->toContain('conguagliato')
-        ->and(DB::table('rate')->where('id', $rataId)->value('stato'))->toBe('emessa')
-        ->and(Saldo::count())->toBe(2);
-});
+    if ($dellaPrima) {
+        // Senza `piani_presi` il piano è preso grazie alla scrittura entro l'ora del passaggio: toglierla lo riaprirebbe al ricalcolo.
+        // Verifica a video della .42: il passaggio in elenco e la strada in tre passi numerati, nell'ordine dei rilievi T4 e W9.
+        expect($risposta->getSession()->get('message')['type'])->toBe('error')
+            ->and($risposta->getSession()->get('message')['message'])->toStartWith("Un passaggio di titolarità registrato dopo l'emissione ha preso questo piano nel conguaglio:\n• ")
+            ->toContain("\n\nÈ un passaggio registrato prima della versione 1.11.0-beta.42: il piano risulta preso grazie alle quote già a giornale. Annullare l'emissione")
+            ->toEndWith("\n\nPer annullare l'emissione:\n1. Annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall'ultimo). Se dopo il passaggio sono state emesse altre rate, l'annullamento chiede di annullare prima quelle.\n2. Annulla l'emissione.\n3. Solo a questo punto registra di nuovo il passaggio.")
+            ->and(DB::table('rate')->where('id', $rataId)->value('stato'))->toBe('emessa');
+    } else {
+        // Con `piani_presi` il piano resta preso finché il passaggio c'è: la rata torna in bozza, e il piano non si riscrive lo stesso.
+        expect($risposta->getSession()->get('message')['type'])->toBe('success')
+            ->and(DB::table('rate')->where('id', $rataId)->value('stato'))->toBe('bozza')
+            ->and(\App\Models\Gestionale\PianoRate::findOrFail($pianoId)->ragioniDelFermo())->toBe(['conguaglio']);
+    }
+    expect(Saldo::count())->toBe(2);
+})->with(['passaggio registrato prima della .42' => [true], 'passaggio della .42' => [false]]);
 
 it('R2 — due comproprietari che vendono insieme allo stesso acquirente, due passaggi con la stessa decorrenza: la seconda quota si somma sulla riga nata lo stesso giorno, senza righe rovesciate', function () {
     $verdi = rsPersona($this->condominio, 'Verdi Luca');
@@ -642,7 +662,8 @@ it('S6 — assorbito da un piano, il conguaglio non si annulla più: il messaggi
     $scritturaId = DB::table('scritture_contabili')->insertGetId(['condominio_id' => $this->condominio->id, 'esercizio_id' => $this->esercizio->id, 'gestione_id' => $this->gestione->id, 'data_registrazione' => now(), 'data_competenza' => now(), 'numero_protocollo' => 'TEST-EM-1', 'causale' => 'Emissione', 'tipo_movimento' => 'emissione_rata', 'stato' => 'registrata', 'created_at' => now(), 'updated_at' => now()]);
     DB::table('rate_quote')->insert(['rata_id' => $rataId, 'anagrafica_id' => $this->bianchi->id, 'immobile_id' => $this->immobile->id, 'importo' => 1000, 'importo_pagato' => 0, 'stato' => 'da_pagare', 'tipo' => 'ordinaria', 'data_scadenza' => '2026-07-31', 'scrittura_contabile_id' => $scritturaId, 'created_at' => now(), 'updated_at' => now()]);
     $r = $this->actingAs($this->user)->deleteJson($rotta, ['nota_annullamento_conguaglio' => 'Regolato nel prezzo di vendita, come da atto']);
-    expect($r->json('errors.conguaglio.0'))->toContain('già emesso in contabilità')->toContain('saldo manuale di segno opposto');
+    // Rilievo T7 del giro sulle correzioni della .42: il perché vero del fermo, dalla stessa frase del piano.
+    expect($r->json('errors.conguaglio.0'))->toContain('Il piano «Conguaglio 2026» ha già quote a giornale: le quote sono in mano ai condòmini')->toContain('saldo manuale di segno opposto');
 
     // Lo storico lo dice come «assorbito», e il Wallet rimanda allo storico.
     $p = app(\App\Services\Subentro\StoricoTitolarita::class)->perImmobile($this->immobile->fresh())['subentri'][0];
@@ -824,7 +845,7 @@ it('S8-2 — la quota emessa a chi esce copre solo il tratto che il pro rata le 
         ->and(implode("\n", $anteprima['rate']['frasi']))->toContain('123 a Rossi Mario, 122 a Bianchi Anna');
 });
 
-it('S8-19 — gestione riusata su due esercizi: la coppia nata dal preventivo 2026 blocca l\'annullamento dell\'emissione solo sul piano 2026; la rata del consuntivo 2025 (nessun conguaglio da quel piano) torna in bozza', function () {
+it('S8-19 — gestione riusata su due esercizi: il passaggio prende i due piani emessi, anche il consuntivo 2025 che a chi entra non dà niente; dalla decisione 49 l\'annullamento delle loro emissioni riesce, come nella .41 per il 2025, e i due piani restano fermi', function () {
     $e2025 = Esercizio::factory()->create(['condominio_id' => $this->condominio->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'aperto']);
     legaAEsercizio($e2025, $this->gestione->id);
     $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
@@ -839,17 +860,18 @@ it('S8-19 — gestione riusata su due esercizi: la coppia nata dal preventivo 20
 
     $this->actingAs($this->user)->post($this->rotta, rsVendita($riga, $this->bianchi, ['ho_letto' => true, 'nota_cancello' => 'Rogito del 30 aprile']))->assertRedirect();
     expect(Saldo::count())->toBe(2)->and(Saldo::where('anagrafica_id', $this->bianchi->id)->sole())->toMatchArray(['saldo_iniziale' => 27655, 'esercizio_id' => $this->esercizio->id]);
+    expect(Subentro::sole()->registro['piani_presi'])->toEqualCanonicalizing([$piano2025, $piano2026]);
 
-    // Prima della correzione il filtro guardava la sola gestione e bloccava anche il 2025.
-    $rata2025 = (int) DB::table('rate')->where('piano_rate_id', $piano2025)->value('id');
-    $r = $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $this->condominio->id, 'pianoRate' => $piano2025, 'rata' => $rata2025]));
-    expect($r->getSession()->get('message')['type'])->toBe('success')->and(DB::table('rate')->where('id', $rata2025)->value('stato'))->toBe('bozza');
-
-    $rata2026 = (int) DB::table('rate')->where('piano_rate_id', $piano2026)->value('id');
-    $r2 = $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $this->condominio->id, 'pianoRate' => $piano2026, 'rata' => $rata2026]));
-    expect($r2->getSession()->get('message')['type'])->toBe('error')
-        ->and($r2->getSession()->get('message')['message'])->toContain('per l\'esercizio del piano')
-        ->and(DB::table('rate')->where('id', $rata2026)->value('stato'))->toBe('emessa');
+    // Decisione 42: il passaggio ha preso tutti e due i piani, e restano fermi finché c'è. Decisione 49: per questo la guardia non
+    // rifiuta più l'annullamento delle emissioni — riemesse, danno le stesse quote. Fino alla .41 contava la coppia, al grano
+    // dell'esercizio (la correzione S8-19), e il 2026 si rifiutava.
+    foreach ([$piano2025, $piano2026] as $pianoId) {
+        $r = $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $this->condominio->id, 'pianoRate' => $pianoId, 'rata' => (int) DB::table('rate')->where('piano_rate_id', $pianoId)->value('id')]));
+        expect($r->getSession()->get('message')['type'])->toBe('success')
+            ->and(DB::table('rate')->where('piano_rate_id', $pianoId)->value('stato'))->toBe('bozza')
+            ->and(\App\Models\Gestionale\PianoRate::findOrFail($pianoId)->ragioniDelFermo())->toBe(['conguaglio']);
+    }
+    expect(Saldo::count())->toBe(2);
 });
 
 it('S8-20 — l\'inizio di una locazione non ha chi esce: una riga uscente nel corpo è rifiutata (422) da anteprima e registrazione, e il proprietario non viene chiuso', function () {
@@ -959,16 +981,20 @@ it('decisione 21 (S8-1) — piano da 4 rate emesso in parte a giornale: la coppi
         ->and(DB::table('rate_quote')->where('anagrafica_id', $this->rossi->id)->count())->toBe(4);
 });
 
-it('decisione 21, controllo — un piano con rate in bozza che NON ha ancora emesso a giornale si ricalcola: le bozze non entrano nel conguaglio e il cancello dice «il destinatario cambierebbe»', function () {
+it('decisione 21, controllo (con la decisione 34, beta.42) — un piano che NON ha niente a giornale si ricalcola: né la rata «emessa» senza scrittura né le bozze entrano nel conguaglio, e il cancello dice «il destinatario cambierebbe»', function () {
     $riga = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03');
-    rsQuotaEmessa($this->gestione, $this->condominio, $this->immobile, $this->rossi, 41200); // «emessa» senza scrittura a giornale
+    rsQuotaEmessa($this->gestione, $this->condominio, $this->immobile, $this->rossi, 41200);
+    // «Emessa» senza scrittura, come la lasciava l'emissione fino alla beta.41 su una rata di sole quote a credito.
+    DB::table('rate_quote')->update(['scrittura_contabile_id' => null]);
     $pianoId = (int) DB::table('piani_rate')->value('id');
     $rataId = DB::table('rate')->insertGetId(['piano_rate_id' => $pianoId, 'numero_rata' => 2, 'data_scadenza' => '2026-09-30', 'importo_totale' => 10000, 'stato' => 'bozza', 'created_at' => now(), 'updated_at' => now()]);
     DB::table('rate_quote')->insert(['rata_id' => $rataId, 'anagrafica_id' => $this->rossi->id, 'immobile_id' => $this->immobile->id, 'importo' => 10000, 'importo_pagato' => 0, 'stato' => 'da_pagare', 'tipo' => 'ordinaria', 'data_scadenza' => '2026-09-30', 'created_at' => now(), 'updated_at' => now()]);
 
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $this->immobile]), rsVendita($riga, $this->bianchi))->assertOk()->json();
-    expect($anteprima['rate']['conguaglio']['coppie'][0]['importo'])->toBe(27655)->and($anteprima['rate']['conguaglio']['quote'])->toHaveCount(1)
-        ->and($anteprima['rate']['conguaglio']['quote_in_bozza'])->toBe([])
+    // Prima della beta.42 la rata «emessa» senza scrittura entrava nel conguaglio (€ 276,55) mentre il piano si ricalcolava:
+    // la stessa quota sistemata due volte (DC5). Ora la sistema solo il ricalcolo.
+    expect($anteprima['rate']['conguaglio']['coppie'] ?? [])->toBe([])->and($anteprima['rate']['conguaglio']['quote'] ?? [])->toHaveCount(0)
+        ->and($anteprima['rate']['conguaglio']['quote_in_bozza'] ?? [])->toBe([])
         ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('il destinatario cambierebbe')->not->toContain('non si può più ricalcolare');
 });
 

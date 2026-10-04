@@ -117,7 +117,7 @@ it('31.5 — alla costituzione la stessa domanda, con i ruoli rovesciati; non al
 
     $vendita = ['tipo' => 'vendita', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'proprietario',
         'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06', 'estremi_titolo' => 'rep. 9', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Vendita piena, letta'];
-    expect(ruAnteprima($this, $s, $vendita)['ordinaria'])->toBe(['applicabile' => false, 'scelta' => null, 'usufruttuario' => null, 'nudo' => null, 'voci' => [], 'frasi' => [], 'frasi_bloccate' => [], 'impronta' => null, 'ereditata' => null]);
+    expect(ruAnteprima($this, $s, $vendita)['ordinaria'])->toBe(['applicabile' => false, 'scelta' => null, 'usufruttuario' => null, 'nudo' => null, 'voci' => [], 'frasi' => [], 'frasi_bloccate' => [], 'frasi_altri_usufrutti' => [], 'impronta' => null, 'ereditata' => null]);
 
     ruRegistra($this, $s, ruRiserva($s));
     expect(ruAnteprima($this, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'estinzione', 'riga_uscente_id' => (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['v']->id)->where('tipologia', 'usufruttuario')->whereNull('data_fine')->value('id'),
@@ -400,9 +400,10 @@ it('31.5 — le quote di chi aveva venduto prima: nella riserva «come la voce»
     $s = ruScenario('prima_rata', 0, soggetto: $soggetto);
     $zeta = Anagrafica::forceCreate(['nome' => 'Venditrice Zeta', 'email' => "oda-z{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'ODAZETAVEND' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
     $zeta->condomini()->syncWithoutDetaching([$s['c']->id]);
-    // Ugo vende a Zeta il 1/03, quando il piano non ha ancora emesso: le quote restano a Ugo, e si emettono dopo.
-    ruRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $zeta, '2026-03-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Prima vendita, letta']);
+    // Ugo vende a Zeta il 1/03, con le rate fino al 30/04 già emesse a Ugo.
+    // Dalla .42 (decisione 35) il piano si emette prima della vendita: emesso dopo senza ricalcolo era la forma di U1.
     ruEmetti($s);
+    ruRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $zeta, '2026-03-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Prima vendita, letta']);
     $rigaZeta = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->value('id');
     $riserva = ruRegistra($this, $s, ruRiserva($s, extra: ['riga_uscente_id' => $rigaZeta, 'ordinaria_dopo_atto' => 'voce']));
     expect(odaDebitoDi($s, $s['a']))->toBe($allaRiserva);
@@ -416,22 +417,27 @@ it('31.5 — le quote di chi aveva venduto prima: nella riserva «come la voce»
     'voce sull\'«Usufruttuario»: resta a Zeta, usufruttuaria' => ['usufruttuario', 0, 0],
 ]);
 
-it('31.5 — le quote di chi aveva venduto prima, con la voce che non passa: la parte di Zeta resta sua dal giorno in cui l\'ha comprata, nessuna a chi entra', function (bool $senzaRighe) {
+it('31.5 — le quote di chi aveva venduto prima, con la voce che non passa: la parte di Zeta resta sua dal giorno in cui l\'ha comprata, nessuna a chi entra', function (bool $senzaRighe, int $atteso) {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario');
     if ($senzaRighe) {
         DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
     }
     $zeta = Anagrafica::forceCreate(['nome' => 'Venditrice Zeta', 'email' => "oda-z{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'ODAZETAVEND' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
     $zeta->condomini()->syncWithoutDetaching([$s['c']->id]);
-    ruRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $zeta, '2026-03-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Prima vendita, letta']);
+    // Dalla .42 (decisione 35) il piano si emette prima della vendita: emesso dopo senza ricalcolo era la forma di U1.
     ruEmetti($s);
+    ruRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $zeta, '2026-03-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Prima vendita, letta']);
     $rigaZeta = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->value('id');
 
     $quote = collect(ruAnteprima($this, $s, ruRiserva($s, extra: ['riga_uscente_id' => $rigaZeta, 'ordinaria_dopo_atto' => 'voce']))['rate']['conguaglio']['quote']);
 
-    // Dal 1/03 al 31/12, 306 giorni su 365 di € 1.200,00: € 1.006,03.
-    expect($quote->sum('entrante'))->toBe(0)->and($quote->sum('uscente'))->toBe(100603);
-})->with(['con il dettaglio del riparto' => [false], 'senza, dalla ricostruzione del motore' => [true]]);
+    // Dal 1/03 al 31/12, 306 giorni su 365 di € 1.200,00: € 1.006,0274. Dalla .42 il piano è emesso prima della vendita a Zeta, che
+    // lo prende nel conguaglio: le quote sono due gruppi, le quattro emesse a Ugo e le otto bozze passate a Zeta. Col dettaglio del
+    // riparto il conto si arrotonda sull'intera gestione (€ 1.006,03); senza, la ricostruzione arrotonda ogni gruppo per sé
+    // (€ 400,00 × 306/365 = € 335,34 e € 800,00 × 306/365 = € 670,68): € 1.006,02, un centesimo sotto. L'arrotondamento per gruppo
+    // va con la genealogia dei passaggi (beta.43).
+    expect($quote->sum('entrante'))->toBe(0)->and($quote->sum('uscente'))->toBe($atteso);
+})->with(['con il dettaglio del riparto' => [false, 100603], 'senza, dalla ricostruzione del motore' => [true, 100602]]);
 
 it('31.5 — la catena, con la voce che a chi esce non era mai arrivata: dopo una riserva «come la voce», nella rivendita della nuda proprietà la voce sull\'«Usufruttuario» non è né di chi vende né di chi compra', function (bool $senzaRighe) {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario');
@@ -542,10 +548,10 @@ it('31.8 — una voce compresa in un piano approvato ha la ripartizione bloccata
 })->with([
     // Il piano ha rate a giornale: spostare la voce non serve. Nella riserva l'ordinaria resta a chi vende e non si conguaglia
     // (seconda revisione della Fase 1-ter, T2-3: «il conguaglio dà» era vero solo per la costituzione).
-    'nel piano dalla generazione' => ['capitoli', 'La voce Spese generali è nel piano «Preventivo 2026», che ha già rate a giornale: non si sposta, e per quel piano non serve: l\'ordinaria resta a Venditore Ugo, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia. Resta sul «Proprietario» per i piani che verranno in questa gestione.'],
+    'nel piano dalla generazione' => ['capitoli', 'La voce Spese generali è nel piano «Preventivo 2026», che non si ricalcola più: non si sposta, e per quel piano non serve: l\'ordinaria resta a Venditore Ugo, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia. Resta sul «Proprietario» per i piani che verranno in questa gestione.'],
     // Il preventivo dello scenario è globale (31.9) e a giornale: la voce la bloccano due piani di casi diversi, e la frase li
     // nomina tutti e due senza promettere un rimedio (T2-1, T2-2, M2-5). Il caso (c) da solo è nella prova del rilievo T-B2.
-    'nelle fatture di un piano straordinario' => ['fatture', 'La voce Spese generali è bloccata da più piani — «Preventivo 2026», con rate a giornale: lì l\'ordinaria resta a Venditore Ugo, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia; «Spese da finanziare», straordinario, nelle sue fatture. Non si sposta.'],
+    'nelle fatture di un piano straordinario' => ['fatture', 'La voce Spese generali è bloccata da più piani — «Preventivo 2026», che non si ricalcola più: lì l\'ordinaria resta a Venditore Ugo, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia; «Spese da finanziare», straordinario, nelle sue fatture. Non si sposta.'],
 ]);
 
 it('31.8 — il blocco vale solo per i piani approvati: con il piano in bozza la voce si sposta', function (string $come) {
@@ -703,8 +709,9 @@ it('rilievo D4 — con le quote di chi aveva venduto prima: Ugo vende a Zeta, Ze
     $s = ruScenario('prima_rata', 0, soggetto: $soggetto);
     $zeta = Anagrafica::forceCreate(['nome' => 'Venditrice Zeta', 'email' => "oda-zd{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'ODAZETAD4VE' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
     $zeta->condomini()->syncWithoutDetaching([$s['c']->id]);
-    ruRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $zeta, '2026-03-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Prima vendita, letta']);
+    // Dalla .42 (decisione 35) il piano si emette prima della vendita: emesso dopo senza ricalcolo era la forma di U1.
     ruEmetti($s);
+    ruRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $zeta, '2026-03-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Prima vendita, letta']);
     $rigaZeta = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->value('id');
     ruRegistra($this, $s, ruRiserva($s, extra: ['riga_uscente_id' => $rigaZeta, 'ordinaria_dopo_atto' => 'voce']));
     $usufruttoZeta = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->where('tipologia', 'usufruttuario')->whereNull('data_fine')->value('id');
@@ -1121,4 +1128,68 @@ it('Coda 216 (sentinella) — l\'addebito diretto di una gestione ordinaria, con
 
     // € 365,00 sul 2026: 120 giorni a Ugo fino al 30/04, € 120,00; 245 a Elsa da nuda proprietaria, € 245,00.
     expect($addebito)->toBe([[$s['v']->id, 12000, 'proprietario'], [$s['a']->id, 24500, 'nuda_proprietario']]);
+});
+
+// --- Decisione 33 (1.11.0-beta.42, D-U1): un usufrutto della gestione nato con la scelta opposta ------------------------
+
+/** Ugo costituisce l'usufrutto a Elsa il 1/2 con la scelta data, e l'usufrutto si estingue il 1/5; poi una costituzione a Dora. */
+function odaDueUsufrutti($test, string $primaScelta): array
+{
+    $s = ruScenario('prima_rata', 0);
+    ruPianoInBozza($s);
+    ruRegistra($test, $s, odaCostituzione($s, ['decorrenza' => '2026-02-01', 'ordinaria_dopo_atto' => $primaScelta]));
+    $rigaElsa = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['a']->id)->where('immobile_id', $s['unita']->id)->where('tipologia', 'usufruttuario')->value('id');
+    ruRegistra($test, $s, ['tipo' => 'usufrutto', 'sottotipo' => 'estinzione', 'riga_uscente_id' => $rigaElsa, 'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'proprietario',
+        'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Estinzione per rinuncia, letta']);
+    $dora = Anagrafica::forceCreate(['nome' => 'Dora Seconda', 'email' => 'oda-dora@test.it', 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'ODADORASECONDA01']);
+    $dora->condomini()->syncWithoutDetaching([$s['c']->id]);
+    $rigaUgo = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['v']->id)->where('immobile_id', $s['unita']->id)->where('tipologia', 'proprietario')->whereNull('data_fine')->value('id');
+
+    return [$s, $dora, $rigaUgo];
+}
+
+it('decisione 33 — la costituzione con la legge sposta la voce anche per i giorni di un usufrutto nato «come dice ogni voce», e il pannello lo nomina', function () {
+    [$s, $dora, $rigaUgo] = odaDueUsufrutti($this, Subentro::ORDINARIA_COME_LA_VOCE);
+
+    $ordinaria = ruAnteprima($this, $s, odaCostituzione($s, ['riga_uscente_id' => $rigaUgo, 'anagrafica_entrante_id' => $dora->id, 'decorrenza' => '2026-07-01']))['ordinaria'];
+
+    // Nel rapporto: Elsa paga € 292,60 per gli 89 giorni (1/2–30/4) che la sua scelta dava al nudo proprietario.
+    expect($ordinaria['frasi_altri_usufrutti'])->toBe(['L\'usufrutto di Acquirente Elsa su Interno 1, dal 1 febbraio 2026 al 30 aprile 2026, è nato con la scelta «come dice ogni voce»: spostando Spese generali sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno l\'ordinaria di quella voce a Acquirente Elsa, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.']);
+});
+
+it('decisione 33, l\'altro verso — con «come dice ogni voce» dopo un usufrutto nato con la legge, la voce è già sull\'«Usufruttuario», e il pannello lo dice', function () {
+    [$s, $dora, $rigaUgo] = odaDueUsufrutti($this, Subentro::ORDINARIA_ALL_USUFRUTTUARIO);
+
+    $ordinaria = ruAnteprima($this, $s, odaCostituzione($s, ['riga_uscente_id' => $rigaUgo, 'anagrafica_entrante_id' => $dora->id, 'decorrenza' => '2026-07-01', 'ordinaria_dopo_atto' => Subentro::ORDINARIA_COME_LA_VOCE]))['ordinaria'];
+
+    expect($ordinaria['frasi_altri_usufrutti'])->toBe(['La voce Spese generali è già sull\'«Usufruttuario» dall\'usufrutto di Acquirente Elsa su Interno 1, nato il 1 febbraio 2026 con la legge: con «come dice ogni voce» la paga l\'usufruttuario anche qui, perché è il ruolo che la voce dice oggi.']);
+});
+
+it('rilievo R6 della Fase 1-bis della .42 — riserva con la legge e la voce bloccata dal piano: l\'emissione si rifiuta e dice la strada (annullare, piano in bozza, registrare di nuovo), e la strada funziona', function () {
+    $s = ruScenario('prima_rata', 0);
+    $passaggio = ruRegistra($this, $s, ruRiserva($s));
+    expect($passaggio->registro['voci_spostate'] ?? [])->toBe([]);
+
+    $r = $this->actingAs($this->user)->post(route('admin.gestionale.piani-rate.emetti', [$s['c'], $s['piano']]), [
+        'rate_ids' => DB::table('rate')->where('piano_rate_id', $s['piano']->id)->limit(2)->pluck('id')->all(), 'data_emissione' => '2026-05-10', 'invia_notifiche' => false,
+    ]);
+    // Verifica a video della .42: la strada in passi numerati, nell'ordine che il test segue qui sotto.
+    // Revisione: «a chi si riserva l'usufrutto», senza accordare la frase alla persona, e il primo passo dice dove si annulla.
+    expect($r->getSession()->get('message')['message'])->toContain("Se l'ordinaria deve restare a chi si riserva l'usufrutto (Venditore Ugo), come scelto nel passaggio:\n1. Annulla il passaggio dallo storico della sua unità («Passaggi registrati», dall'ultimo).\n2. Riporta il piano in bozza.\n3. Registra di nuovo il passaggio, che sposterà le voci sul «Proprietario» su «Usufruttuario».\n4. Riapprova il piano e ricalcolalo.");
+
+    // La strada: annullare il passaggio, riportare il piano in bozza, registrarlo di nuovo (la voce si sposta e lo dice il registro),
+    // riapprovare e ricalcolare. Ugo resta usufruttuario e l'ordinaria resta sua: € 1.200,00 tutto l'anno.
+    $this->actingAs($this->user)->deleteJson(route('admin.gestionale.immobili.passaggi.annulla', [$s['c'], $s['unita'], $passaggio]), ['nota_annullamento' => 'Lo registro di nuovo con il piano in bozza'])->assertRedirect();
+    $this->actingAs($this->user)->put(route('admin.gestionale.piani-rate.update-stato', [$s['c'], $s['e'], $s['piano']]), ['approvato' => false])->assertRedirect();
+    $di_nuovo = ruRegistra($this, $s, ruRiserva($s));
+    expect(collect($di_nuovo->registro['voci_spostate'] ?? [])->pluck('conto')->all())->toBe(['Spese generali']);
+    $this->actingAs($this->user)->put(route('admin.gestionale.piani-rate.update-stato', [$s['c'], $s['e'], $s['piano']]), ['approvato' => true])->assertRedirect();
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['e'], $s['piano']]), [
+        'accetta_destinatari' => true, 'nota_destinatari' => 'Riserva registrata di nuovo con la voce spostata',
+    ])->assertSessionHasNoErrors();
+
+    $piano = $s['piano']->fresh();
+    expect($piano->passaggiDaSeguire())->toBe([])
+        ->and((int) DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $piano->id)->where('rate_quote.anagrafica_id', $s['v']->id)->sum('rate_quote.importo'))->toBe(120000)
+        ->and((int) DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $piano->id)->where('rate_quote.anagrafica_id', $s['a']->id)->sum('rate_quote.importo'))->toBe(0);
 });

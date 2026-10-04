@@ -247,7 +247,8 @@ final class NotaSolidarieta
             ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
             ->where('rate_quote.anagrafica_id', $anagraficaId)
             ->where('rate_quote.immobile_id', $immobileId)
-            ->where('rate.stato', 'emessa')
+            // Decisione 34 (1.11.0-beta.42): emessa è la rata a giornale.
+            ->whereExists(\App\Models\Gestionale\Rata::aGiornale())
             ->where('rate_quote.stato', '!=', 'annullata')
             ->whereRaw('rate_quote.importo > rate_quote.importo_pagato')
             ->where('rate_quote.importo', '>', 0);

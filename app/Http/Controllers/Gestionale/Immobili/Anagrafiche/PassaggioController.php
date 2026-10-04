@@ -298,8 +298,19 @@ class PassaggioController extends Controller
         $tolte = $action->execute($subentro, $dati['nota_annullamento_conguaglio']);
 
         return back()->with($this->flashSuccess(sprintf(
-            'Conguaglio annullato: %d righe tolte dai saldi della gestione. La nota resta sul passaggio, e le quote già emesse non cambiano.',
+            // Decisione 43 (1.11.0-beta.42): annullare il conguaglio vuol dire che le parti hanno regolato fra loro; i piani presi dal
+            // passaggio non si riaprono (si riaprono solo annullando il passaggio).
+            // Rilievo T1 del giro sulle correzioni: la strada intera della 43 (annullare, registrare di nuovo, ricalcolare); decisione
+            // 46: con la cifra che le parti hanno appena dichiarato di aver regolato fra loro.
+            // Rilievo T1 del quarto giro: per un passaggio registrato prima della .42 l'ordine è l'altro (decisione 49). Revisione
+            // della Fase 2: i movimenti per primi e registrati di nuovo per ultimi; e l'eccezione del piano preso solo per rate
+            // «emesse» senza scritture, che senza le due righe non è più fermo (`presoSoloInParteDa`).
+            'Conguaglio annullato: %d righe tolte dai saldi della gestione. La nota resta sul passaggio. Le quote non cambiano, e i piani che il passaggio ha preso restano com\'erano. %s Allora il condominio addebita a chi entra i suoi giorni, e l\'accordo fra le parti%s va rifatto.',
             $tolte,
+            \App\Models\Gestionale\PianoRate::haIPianiPresi($subentro->fresh())
+                ? 'Se uno va ricalcolato: si tolgono prima le sue quote a giornale e i movimenti, se ne ha; poi si annulla il passaggio dallo storico dell\'unità (dall\'ultimo), lo si registra di nuovo e si ricalcola il piano; i movimenti tolti si registrano di nuovo dopo.'
+                : 'Se uno va ricalcolato: si annullano prima i movimenti sulle sue quote, se ne ha; poi le emissioni venute dopo il passaggio, se ce ne sono; poi il passaggio, dallo storico dell\'unità (dall\'ultimo); poi le altre emissioni; infine si registra di nuovo il passaggio, si ricalcola il piano e si registrano di nuovo i movimenti. Fa eccezione un piano che questo passaggio aveva preso solo per rate segnate «emesse» senza scritture: senza le due righe non è più fermo, e va ricalcolato (senza annullare il passaggio) prima di emettere o di registrare un incasso.',
+            ($cifra = $subentro->fresh()->regolatoFuoriInParole()) !== null ? ' (' . $cifra . ')' : '',
         )));
     }
 
@@ -360,7 +371,7 @@ class PassaggioController extends Controller
         return \DB::table('rate_quote')
             ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
             ->where('rate_quote.immobile_id', $immobile->id)
-            ->where('rate.stato', 'emessa')
+            ->whereExists(\App\Models\Gestionale\Rata::aGiornale())
             ->count();
     }
 }

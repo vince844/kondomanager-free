@@ -157,7 +157,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Scatta all'emissione o al primo incasso.</strong> Da lì il numero è uscito dallo studio — è a giornale, o qualcuno l'ha pagato — e non si riscrive più: si rettifica.</span>
+                  <span><strong>Scatta all'emissione, al primo incasso, o quando un passaggio di titolarità prende il piano nel suo conguaglio.</strong> Da lì il numero è uscito dallo studio — è a giornale, qualcuno l'ha pagato, o un conguaglio l'ha già diviso fra chi esce e chi entra — e non si riscrive più: si rettifica.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -165,7 +165,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Si riapre da solo.</strong> Eliminando il piano rate che lo teneva, il lucchetto cade e il saldo torna disponibile per il piano successivo.</span>
+                  <span><strong>Si riapre da solo.</strong> Quando il piano rate che lo teneva torna a potersi riscrivere, il lucchetto cade e il saldo torna correggibile, ma resta di quel piano: dopo averlo corretto premi «Ricalcola» sul piano, perché le quote già generate non si aggiornano da sole. Se invece il piano viene eliminato, il saldo torna libero per il piano successivo.</span>
                 </li>
               </ul>
             </div>
@@ -175,13 +175,19 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Ho sbagliato un saldo già bloccato</h3>
             <p class="mb-3">
-              Dipende da una cosa sola: se qualcuno ha già pagato.
+              Dipende da perché il piano che l'ha assorbito non si riscrive più: il riquadro del lucchetto lo dice, con il rimedio.
             </p>
             <div class="space-y-3">
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
-                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Nessun incasso registrato</h4>
+                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Rate emesse, nessun incasso</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Apri il piano rate e <strong>annulla le emissioni</strong>: il saldo torna modificabile senza bisogno di eliminare il piano. Se invece elimini il piano, il lucchetto si riapre lo stesso.
+                  Apri il piano rate e <strong>annulla le emissioni</strong>: il saldo torna modificabile senza bisogno di eliminare il piano. Un piano con rate emesse, del resto, non si elimina finché le emissioni non sono annullate.
+                </p>
+              </div>
+              <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
+                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Il piano è preso da un passaggio di titolarità</h4>
+                <p class="text-[13px] text-slate-600 dark:text-slate-400">
+                  Il riquadro nomina il passaggio e la sua unità. Annullare le emissioni non basta: il piano si riapre annullando il passaggio dallo storico della sua unità (e le emissioni, se ne ha); corretto il saldo, il passaggio si registra di nuovo. Se il piano non va riaperto, resta la rettifica qui sotto.
                 </p>
               </div>
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -194,7 +200,7 @@ defineEmits(['update:open']);
             <div class="mt-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex gap-3 text-[13px]">
               <TriangleAlert class="w-5 h-5 text-amber-600 shrink-0" />
               <div>
-                <strong>Non serve eliminare il piano per correggere un saldo.</strong> È la strada più drastica e quasi mai la più breve: annullare le emissioni basta, e ti lascia il piano con tutte le sue impostazioni.
+                <strong>Non serve eliminare il piano per correggere un saldo.</strong> È la strada più drastica e quasi mai la più breve: quando il piano è fermo solo per le emissioni, annullarle basta, e ti lascia il piano con tutte le sue impostazioni.
               </div>
             </div>
           </section>
@@ -216,7 +222,7 @@ defineEmits(['update:open']);
               <ul class="space-y-2">
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Se un piano lo rivendica davvero</strong>, la strada resta agire su quel piano — annullare le emissioni o eliminarlo — non forzare la riga.</span>
+                  <span><strong>Se un piano lo rivendica davvero</strong>, la strada resta agire su quel piano come dice il riquadro del lucchetto: annullare, nell'ordine che indica, ciò che lo tiene fermo (i movimenti sulle sue quote, le emissioni, il passaggio di titolarità che l'ha preso nel conguaglio), non forzare la riga.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />

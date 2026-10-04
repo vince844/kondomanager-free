@@ -222,10 +222,11 @@ defineEmits(['update:open']);
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <p class="text-xs text-amber-900 dark:text-amber-200">
-                                Cambiare le date dopo aver generato le rate significa <strong>ricalcolare il
-                                piano</strong>, che le rifà da capo. Finché il piano non è emesso in contabilità non
-                                costa nulla; dopo l'emissione le regole cambiano, e conviene decidere il calendario
-                                adesso.
+                                Le date di un piano già creato non si cambiano: il ricalcolo rifà le rate con lo
+                                stesso calendario. Per cambiarle si elimina il piano (in bozza) e lo si crea di nuovo,
+                                e non si può finché il piano ha rate emesse in contabilità, un movimento su una quota
+                                (un incasso, un credito usato o rimborsato) o il conguaglio di un passaggio: conviene
+                                decidere il calendario adesso.
                             </p>
                         </div>
                     </TabsContent>

@@ -672,36 +672,39 @@ it('rilievo B3, controprova — senza riserva la catena non cambia: costituzione
         ->and($conguaglio['per_gestione'][0]['per_periodo'][0])->toMatchArray(['ereditata_da' => 'Venditore Ugo', 'decorrenza_acquisto' => '2026-05-01', 'giorni_periodo' => 245, 'giorni_uscente' => 123, 'giorni_entrante' => 122]);
 });
 
-it('rilievo B3 — la catena prima della riserva: Ugo vende a Zeta, Zeta vende a Elsa con riserva, Elsa rivende la nuda a Carlo. Le ordinarie emesse a Ugo sono passate a Zeta, che le tiene come usufruttuario: né la riserva né la rivendita le toccano, e le frasi nominano Ugo come intestatario e Zeta come usufruttuario', function () {
+it('rilievo B3 — la catena prima della riserva: Ugo vende a Zeta, Zeta vende a Elsa con riserva, Elsa rivende la nuda a Carlo. Le ordinarie emesse a Ugo sono passate a Zeta con la coppia della prima vendita, le bozze con la vendita stessa, e Zeta le tiene come usufruttuario: né la riserva né la rivendita le toccano, e le frasi nominano Ugo e Zeta come intestatari e Zeta come usufruttuario', function () {
     $s = ruScenario('prima_rata', 0);
     $zeta = Anagrafica::forceCreate(['nome' => 'Venditrice Zeta', 'email' => "ru-z{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUZETAVENDI' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
     $zeta->condomini()->syncWithoutDetaching([$s['c']->id]);
-    // Il piano resta intestato a Ugo (non ricalcolato dopo la vendita) e le rate da gennaio ad aprile si emettono dopo.
+    // Le rate da gennaio ad aprile emesse a Ugo prima della vendita (dalla .42, decisione 35: emesse dopo senza ricalcolo era la
+    // forma di U1, e il conguaglio dopo si fermerebbe — decisione 48).
+    ruEmetti($s);
     ruRegistra($this, $s, ['tipo' => 'vendita', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $zeta->id, 'decorrenza' => '2026-03-01',
         'quota' => 100, 'tipologia' => 'proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-03-05', 'estremi_titolo' => 'rep. 1', 'pertinenze' => [], 'ho_letto' => true,
         'nota_cancello' => 'Prima vendita, letto']);
-    ruEmetti($s);
     $rigaZ = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->value('id');
 
     $riserva = ruRiserva(['rigaV' => $rigaZ] + $s);
     $conguaglio = ruAnteprima($this, $s, $riserva)['rate']['conguaglio'];
     expect($conguaglio['coppie'])->toBe([])
-        ->and($conguaglio['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditore Ugo', 'n' => 8, 'motivo' => 'ordinaria_riservata', 'usufruttuario' => 'Venditrice Zeta']])
-        ->and(implode("\n", $conguaglio['frasi']))->toContain('resteranno intestate a Venditore Ugo: sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.)')
-        ->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo — sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.): non passano a Acquirente Elsa.');
+        // Dalla .42 il piano emesso prima della vendita è preso dal suo conguaglio: le 8 bozze da maggio sono passate a Zeta.
+        ->and($conguaglio['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditrice Zeta', 'n' => 8, 'motivo' => 'ordinaria_riservata', 'usufruttuario' => 'Venditrice Zeta']])
+        ->and(implode("\n", $conguaglio['frasi']))->toContain('Le 8 quote del piano «Preventivo 2026» non ancora emesse resteranno intestate a Venditrice Zeta: sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.)')
+        ->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo e Venditrice Zeta — sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.): non passano a Acquirente Elsa.');
     ruRegistra($this, $s, $riserva);
 
     [, $rivendita] = ruRivendita($s);
     $conguaglio = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
     expect($conguaglio['coppie'])->toBe([])
-        ->and($conguaglio['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditore Ugo', 'n' => 8, 'motivo' => 'ordinaria_riservata', 'usufruttuario' => 'Venditrice Zeta']])
-        ->and(implode("\n", $conguaglio['frasi']))->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare a Acquirente Elsa: Venditrice Zeta resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a Compratore Carlo.');
+        ->and($conguaglio['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditrice Zeta', 'n' => 8, 'motivo' => 'ordinaria_riservata', 'usufruttuario' => 'Venditrice Zeta']])
+        ->and(implode("\n", $conguaglio['frasi']))->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo e Venditrice Zeta — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare a Acquirente Elsa: Venditrice Zeta resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a Compratore Carlo.');
     ruRegistra($this, $s, $rivendita);
 
-    // Alla prima vendita non c'era niente di emesso, e il piano non ricalcolato è rimasto a Ugo: nessuna coppia in tutta la
-    // catena — la riserva e la rivendita non toccano l'ordinaria.
-    expect(Saldo::whereNotNull('subentro_id')->where('immobile_id', $s['unita']->id)->count())->toBe(0)
-        ->and(ruPerPersona($s['piano']))->toBe([$s['v']->id => 120000]);
+    // Una coppia sola in tutta la catena, quella della prima vendita: Zeta, 306 giorni, 120000 × 306/365 = 100603, meno le 8 bozze
+    // passate (80000) = 20603. La riserva e la rivendita non toccano l'ordinaria.
+    expect(Saldo::whereNotNull('subentro_id')->where('immobile_id', $s['unita']->id)->count())->toBe(2)
+        ->and((int) Saldo::whereNotNull('subentro_id')->where('anagrafica_id', $zeta->id)->sum('saldo_iniziale'))->toBe(20603)
+        ->and(ruPerPersona($s['piano']))->toBe([$s['v']->id => 40000, $zeta->id => 80000]);
 });
 
 // --- Rilievo B1 della Fase 1-bis (decisione 28.5): il ricalcolo dopo la riserva segue i coefficienti --------------------
@@ -1052,19 +1055,24 @@ it('straordinaria esclusa in una catena (referto C3, ultimo dubbio) — Zeta cos
         ->not->toContain('restano interamente a Venditrice Zeta');
 });
 
-it('straordinaria in una catena, piano senza righe di riparto (anteriore alla beta.29) — Zeta rivende a Elsa: le quote sono emesse a Ugo, e la frase dice a chi sono emesse e di chi era l\'unità alla delibera, non «restano a Zeta, quando l\'unità era sua»', function (string $delibera, string $eraDi) {
+it('straordinaria in una catena, piano senza righe di riparto (anteriore alla beta.29) — Zeta rivende a Elsa: le quote sono emesse a Ugo, e la frase dice a chi sono emesse e di chi era l\'unità alla delibera, non «restano a Zeta, quando l\'unità era sua»', function (string $delibera, string $eraDi, string $aUgo) {
     [$s, , $rigaZ] = ruStraordinariaDopoUnaVendita($this, $delibera, senzaRighe: true);
 
     $conguaglio = ruAnteprima($this, $s, ['tipo' => 'vendita', 'riga_uscente_id' => $rigaZ, 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'proprietario',
         'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06', 'estremi_titolo' => 'rep. 2', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Seconda vendita, letto'])['rate']['conguaglio'];
     $data = $delibera === '2026-02-15' ? '15 febbraio 2026' : '15 marzo 2026';
+    $frasi = implode("\n", $conguaglio['frasi']);
     expect($conguaglio['coppie'])->toBe([])
-        ->and(implode("\n", $conguaglio['frasi']))
-        ->toContain("Sulla gestione Facciata (straordinaria): le quote emesse a Venditore Ugo (€ 1.200,00) non passano a chi entra: l'assemblea ha deliberato il {$data}, quando l'unità era di {$eraDi} (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).")
-        ->not->toContain('restano interamente a Venditrice Zeta');
+        ->and($frasi)
+        ->toContain("Sulla gestione Facciata (straordinaria): le quote emesse a Venditore Ugo ({$aUgo}) non passano a chi entra: l'assemblea ha deliberato il {$data}, quando l'unità era di {$eraDi} (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).");
+    // Dalla .42 il piano è emesso (marzo e aprile, € 400,00) prima della vendita a Zeta, che lo prende nel conguaglio: le quattro
+    // bozze seguono la delibera. Deliberata prima, restano a Ugo; deliberata dopo, passano a Zeta, e sono davvero sue.
+    $delibera === '2026-02-15'
+        ? expect($frasi)->not->toContain('restano interamente a Venditrice Zeta')
+        : expect($frasi)->toContain("Sulla gestione Facciata (straordinaria): € 800,00 restano interamente a Venditrice Zeta, perché l'assemblea ha deliberato il 15 marzo 2026, quando l'unità era sua");
 })->with([
-    'deliberata prima della vendita a Zeta: l\'unità era di Ugo' => ['2026-02-15', 'Venditore Ugo'],
-    'deliberata dopo la vendita a Zeta: l\'unità era sua' => ['2026-03-15', 'Venditrice Zeta'],
+    'deliberata prima della vendita a Zeta: l\'unità era di Ugo' => ['2026-02-15', 'Venditore Ugo', '€ 1.200,00'],
+    'deliberata dopo la vendita a Zeta: l\'unità era sua' => ['2026-03-15', 'Venditrice Zeta', '€ 400,00'],
 ]);
 
 it('testi T5, vendita piena — il blocco 2 dice che la straordinaria segue la competenza (la data della delibera, o quella dichiarata sulla fattura), come la frase della riserva', function () {
@@ -1466,4 +1474,180 @@ it('mappa dei casi, rilievo R3 nell\'estinzione (decisione 28.8 c) — le gemell
         ->and($anteprima['cancello']['informazioni'])->toContain('il piano «Rifacimento facciata» ha 4 quote non ancora emesse intestate a Venditore Ugo: non si può più ricalcolare, restano sue: il conguaglio non le tocca');
 
     expect(ruRegistra($this, $s, $estinzione)->nota_cancello)->toBeNull();
+});
+
+// --- Decisione 48 (rilievo W7 del giro sulle correzioni della .42): i dati di prima, nella riserva e nella costituzione ----------
+
+/** Una persona nuova del condominio dello scenario. */
+function ruPersonaNuova(array $s, string $nome, string $sigla): Anagrafica
+{
+    $p = Anagrafica::forceCreate(['nome' => $nome, 'email' => strtolower($sigla) . "{$s['unita']->id}@ru.test", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => strtoupper($sigla) . str_pad((string) $s['unita']->id, 16 - strlen($sigla), '0', STR_PAD_LEFT)]);
+    $p->condomini()->syncWithoutDetaching([$s['c']->id]);
+
+    return $p;
+}
+
+/** La forma U1 dei dati di prima: una vendita con il piano ancora da ricalcolare, poi tutte le rate a giornale a chi vendeva. */
+function ruU1($test, array $s, Anagrafica $a, string $dal): void
+{
+    ruRegistra($test, $s, ruPassaggio('vendita', $s['rigaV'], $a, $dal, 100) + ['ho_letto' => true, 'nota_cancello' => 'Vendita, letta']);
+    $test->travel(1)->days();
+    ruEmetti($s, '2026-12-31');
+    $test->travel(1)->days();
+}
+
+/** Il fermo della decisione 48: la riga «mai passate», il motivo con la spunta nel cancello, nessuna coppia. */
+function ruFermoMaiPassate($test, array $anteprima, string $dal, string $piano): void
+{
+    $c = $anteprima['rate']['conguaglio'];
+    expect($c['coppie'])->toBe([])
+        ->and(collect($c['non_risolte'])->firstWhere('piano', $piano)['motivo'] ?? '')->toStartWith("le quote intestate a Venditore Ugo su Interno 1 non sono passate con il suo passaggio del {$dal}")
+        ->and($anteprima['cancello']['richiesto'])->toBeTrue()
+        ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('12 quote di rate già emesse a Venditore Ugo: restano sue, senza conguaglio: il passaggio di prima non le ha fatte passare');
+}
+
+it('decisione 48 — dati di prima: Ugo vende a Elsa senza che il passaggio prenda il piano, il piano si emette tutto a Ugo; Elsa fa una riserva a Zeta. La legge lascerebbe l\'ordinaria a Elsa, ma le quote sono ancora di Ugo, che ha pagato i 334 giorni di Elsa (€ 1.098,08): il pannello lo dice, con la spunta', function () {
+    $s = ruScenario('prima_rata', 0);
+    ruU1($this, $s, $s['a'], '2026-02-01');
+    $zeta = ruPersonaNuova($s, 'Zeta Terza', 'RUZETAW7');
+    $rigaElsa = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['a']->id)->whereNull('data_fine')->value('id');
+    // Prima (estensione di A7): nessun fermo, cancello muto, e la frase «restano a Venditore Ugo — sono spese ordinarie, art. 1004».
+    ruFermoMaiPassate($this, ruAnteprima($this, $s, ruRiserva(['rigaV' => $rigaElsa, 'a' => $zeta] + $s, '2026-06-01')), '1 febbraio 2026', 'Preventivo 2026');
+});
+
+it('decisione 48 — dati di prima, la straordinaria: delibera del 15/3, Ugo vende a Elsa il 1/3 senza che il passaggio prenda il piano, tutto emesso a Ugo; Elsa costituisce l\'usufrutto a Carlo. La straordinaria resterebbe comunque al nudo, ma è ancora tutta di Ugo (€ 1.200,00): il pannello lo dice', function () {
+    $s = ruScenario('prima_rata', 0, 'straordinaria', '2026-03-15', '2026-01-05', 12);
+    ruU1($this, $s, $s['a'], '2026-03-01');
+    $carlo = ruPersonaNuova($s, 'Carlo Quarto', 'RUCARLOW7');
+    $rigaElsa = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['a']->id)->whereNull('data_fine')->value('id');
+    ruFermoMaiPassate($this, ruAnteprima($this, $s, ruPassaggio('costituzione', $rigaElsa, $carlo, '2026-06-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Costituzione, letta']), '1 marzo 2026', 'Rifacimento facciata');
+});
+
+it('decisione 48 — l\'anello mancato prima di una riserva: Ugo vende a Zeta il 1/3 senza che il passaggio prenda il piano, tutto emesso a Ugo; Zeta vende a Elsa con riserva; Elsa rivende la nuda a Carlo. Le quote di Ugo non sono mai arrivate a Zeta (€ 1.006,03 dei suoi giorni): il fermo nomina la vendita del 1/3, non la riserva', function () {
+    $s = ruScenario('prima_rata', 0);
+    $zeta = ruPersonaNuova($s, 'Zeta Terza', 'RUZETAWC');
+    ruU1($this, $s, $zeta, '2026-03-01');
+    $rigaZ = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $zeta->id)->whereNull('data_fine')->value('id');
+    ruRegistra($this, $s, ruRiserva(['rigaV' => $rigaZ] + $s));
+    [, $rivendita] = ruRivendita($s);
+    // Prima: tenere fuori i gruppi `riservata_da` faceva tacere il fermo, perché la riserva non trasferisce l'ordinaria; ma
+    // l'anello che non ha preso il piano è la vendita prima.
+    ruFermoMaiPassate($this, ruAnteprima($this, $s, $rivendita), '1 marzo 2026', 'Preventivo 2026');
+});
+
+it('rilievo T4 — una vendita con il box: il passaggio della pertinenza ha preso anche lui il piano, ma le frasi lo nominano una volta sola, con l\'unità principale', function () {
+    $caso = ruCaso($this, ['F' => 'CPV', 'N' => 'O', 'E' => 'E4', 'S' => '0', 'V' => 'P', 'D' => '1', 'P' => 'box', 'K' => 'no', 'G' => 'prima'],
+        ['descrizione' => 'vendita con il box', 'titolari' => [['v', 'proprietario', 100]], 'passaggi' => [['vendita', 'v', 'a', '05']]]);
+    $s = $caso['s'];
+    ruRegistra($this, $s, array_merge($caso['esame']['dati'], ['ho_letto' => true, 'nota_cancello' => 'Rogito letto, box compreso']));
+    $piano = $s['piano']->fresh();
+
+    // Prima: «…del passaggio Venditore Ugo → Acquirente Elsa (dal 1 maggio 2026); Venditore Ugo → Acquirente Elsa (dal 1 maggio 2026)».
+    expect(count($piano->passaggiCheLoHannoConguagliato()))->toBe(2)
+        ->and(count($piano->passaggiDaAnnullare()))->toBe(1)
+        ->and($piano->fraseDelFermo())->toEndWith('è stato preso nel conguaglio del passaggio Venditore Ugo → Acquirente Elsa, ' . $s['unita']->nome . ', dal 1 maggio 2026')
+        ->and($piano->fraseConguagliato('Ricalcolarlo'))->toStartWith('Un passaggio di titolarità ha preso questo piano nel conguaglio: Venditore Ugo → Acquirente Elsa, ' . $s['unita']->nome . ', dal 1 maggio 2026.');
+});
+
+// --- Decisione 51 (rilievo X1 del terzo giro della .42): il fermo «mai passate» riga per riga --------------------------------
+
+/** Ugo costituisce a Uso l'usufrutto dal 1/2 (con la scelta data), poi vende la nuda a Elsa dal 1/5; con `$u1` il piano è emesso tutto dopo i passaggi (U1), altrimenti tutto prima. */
+function ruNudaDopoCostituzione($test, array $s, string $scelta, bool $u1): Anagrafica
+{
+    $uso = ruPersonaNuova($s, 'Uso Usufruttuario', 'RUUSOX1');
+    if (! $u1) {
+        ruEmetti($s, '2026-12-31');
+    }
+    ruRegistra($test, $s, array_merge(ruPassaggio('costituzione', $s['rigaV'], $uso, '2026-02-01', 100), ['ordinaria_dopo_atto' => $scelta, 'ho_letto' => true, 'nota_cancello' => 'Costituzione, letta']));
+    $rigaNuda = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['v']->id)->where('tipologia', 'nuda_proprietario')->whereNull('data_fine')->value('id');
+    $test->travel(1)->minutes();
+    ruRegistra($test, $s, ruPassaggio('nuda', $rigaNuda, $s['a'], '2026-05-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Vendita della nuda, letta']);
+    $test->travel(1)->days();
+    if ($u1) {
+        ruEmetti($s, '2026-12-31');
+        $test->travel(1)->days();
+    }
+
+    return $uso;
+}
+
+it('decisione 51 — dati di prima: costituzione «come dice ogni voce», vendita della nuda a Elsa senza che i passaggi prendano il piano, tutto emesso a Ugo; nella rivendita della nuda a Carlo il fermo c\'è, e nessun credito a Elsa su quote mai sue', function () {
+    $s = ruScenario('prima_rata', 0);
+    ruNudaDopoCostituzione($this, $s, Subentro::ORDINARIA_COME_LA_VOCE, u1: true);
+    [, $rivendita] = ruRivendita($s);
+    // Prima: coppia di € 401,10 a Elsa (120000 × 122/365), che non ha mai pagato niente — la vendita della nuda era saltata.
+    ruFermoMaiPassate($this, ruAnteprima($this, $s, $rivendita), '1 maggio 2026', 'Preventivo 2026');
+});
+
+it('decisione 51, controprova — la stessa catena con il piano emesso tutto prima dei passaggi: i passaggi lo prendono, e nella rivendita la coppia a Carlo è € 401,10 (120000 × 122/365), senza fermo', function () {
+    $s = ruScenario('prima_rata', 0);
+    ruNudaDopoCostituzione($this, $s, Subentro::ORDINARIA_COME_LA_VOCE, u1: false);
+    [, $rivendita] = ruRivendita($s);
+    $c = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
+    expect(array_column($c['coppie'], 'importo'))->toBe([40110])->and($c['non_risolte'])->toBe([]);
+});
+
+it('decisione 51, il rovescio — con la legge la vendita della nuda non trasferisce l\'ordinaria di quel piano (le righe sono dell\'usufruttuario): niente fermo e niente coppia', function () {
+    $s = ruScenario('prima_rata', 0);
+    ruNudaDopoCostituzione($this, $s, Subentro::ORDINARIA_ALL_USUFRUTTUARIO, u1: true);
+    [, $rivendita] = ruRivendita($s);
+    $c = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
+    expect($c['coppie'])->toBe([])->and(collect($c['non_risolte'])->pluck('motivo')->implode(' | '))->not->toContain('non sono passate con il suo passaggio');
+});
+
+it('decisione 51, il rovescio della riserva — riserva «come dice ogni voce» con la voce sull\'«Usufruttuario», senza che il passaggio prenda il piano, tutto emesso a Ugo: nella rivendita della nuda il fermo non scatta, perché quella riserva fa passare solo le voci sul «Proprietario»', function () {
+    $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario');
+    ruRegistra($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => Subentro::ORDINARIA_COME_LA_VOCE]));
+    $this->travel(1)->days();
+    ruEmetti($s, '2026-12-31');
+    $this->travel(1)->days();
+    [, $rivendita] = ruRivendita($s);
+    $an = ruAnteprima($this, $s, $rivendita);
+    // Prima: il fermo con la spunta, e «se serve un conguaglio, si scrive con un saldo manuale» — verso chi non ne ha diritto: un
+    // ricalcolo dà comunque a Ugo l'intero, la voce è dell'usufruttuario che resta lui.
+    expect(collect($an['rate']['conguaglio']['non_risolte'])->pluck('motivo')->implode(' | '))->not->toContain('non sono passate con il suo passaggio')
+        ->and($an['rate']['conguaglio']['coppie'])->toBe([]);
+});
+
+it('sentinella della Coda 218 — fissa il comportamento di oggi, noto e sbagliato (difetto della .41, si corregge con la .43): piano senza dettaglio del riparto, emesso tutto prima: costituzione «come dice ogni voce», vendita della nuda a Elsa (coppia € 805,48), rivendita della nuda a Carlo. Oggi la rivendita non conguaglia e Elsa perde € 401,10; l\'atteso è una coppia di 40110 a carico di Carlo', function () {
+    $s = ruScenario('prima_rata', 0);
+    // Un piano anteriore alla beta.29: senza righe di riparto.
+    DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    ruNudaDopoCostituzione($this, $s, Subentro::ORDINARIA_COME_LA_VOCE, u1: false);
+    expect((int) Saldo::whereNotNull('subentro_id')->where('anagrafica_id', $s['a']->id)->sum('saldo_iniziale'))->toBe(80548);
+    [, $rivendita] = ruRivendita($s);
+
+    // Con le righe di riparto la coppia è 40110 (120000 × 122/365): `$vociPassateDi` ignora `$vociDelNudo` per un gruppo
+    // ereditato, e `$esclusaDi` lo esclude. Quando la correzione arriva, questa attesa diventa [40110].
+    expect(array_column(ruAnteprima($this, $s, $rivendita)['rate']['conguaglio']['coppie'], 'importo'))->toBe([]);
+});
+
+it('rilievo T4 del quarto giro — una vendita con il box e il piano ancora da ricalcolare: il rifiuto dell\'emissione dice «del passaggio», al singolare, anche se i passaggi registrati sono due (l\'unità e il box)', function () {
+    $caso = ruCaso($this, ['F' => 'CPV', 'N' => 'O', 'E' => 'NE', 'S' => '0', 'V' => 'P', 'D' => '1', 'P' => 'box', 'K' => 'no', 'G' => 'prima'],
+        ['descrizione' => 'vendita con il box', 'titolari' => [['v', 'proprietario', 100]], 'passaggi' => [['vendita', 'v', 'a', '05']]]);
+    $s = $caso['s'];
+    ruRegistra($this, $s, array_merge($caso['esame']['dati'], ['ho_letto' => true, 'nota_cancello' => 'Rogito letto, box compreso']));
+    expect(count($s['piano']->fresh()->passaggiDaSeguire()))->toBe(2);
+
+    $r = $this->actingAs($this->user)->post(route('admin.gestionale.piani-rate.emetti', [$s['c'], $s['piano']]), [
+        'rate_ids' => [(int) DB::table('rate')->where('piano_rate_id', $s['piano']->id)->orderBy('numero_rata')->value('id')], 'data_emissione' => '2026-05-10', 'invia_notifiche' => false,
+    ]);
+    // Prima: «…prima del passaggio di Venditore Ugo su Interno 1…: ricalcola il piano prima di emettere, perché tenga conto dei passaggi».
+    expect($r->getSession()->get('message')['message'])->toContain('perché tenga conto del passaggio.')->not->toContain('dei passaggi');
+});
+
+it('rilievo T7 del quarto giro — un piano preso solo dall\'estinzione di un usufrutto: la frase dice «nel conguaglio dell\'estinzione dell\'usufrutto di …», non «del passaggio estinzione…»', function () {
+    $s = ruScenario('prima_rata', 0);
+    $uso = ruPersonaNuova($s, 'Uso Usufruttuario', 'RUUSOT7');
+    ruRegistra($this, $s, array_merge(ruPassaggio('costituzione', $s['rigaV'], $uso, '2026-02-01', 100), ['ho_letto' => true, 'nota_cancello' => 'Costituzione, letta']));
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['e'], $s['piano']]), ['accetta_destinatari' => true, 'nota_destinatari' => 'Il piano segue la costituzione'])->assertSessionHasNoErrors();
+    $this->travel(1)->minutes();
+    ruEmetti($s, '2026-08-31');
+    $this->travel(1)->minutes();
+    $rigaUso = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $uso->id)->where('tipologia', 'usufruttuario')->whereNull('data_fine')->value('id');
+    ruRegistra($this, $s, array_merge(ruPassaggio('estinzione', $rigaUso, null, '2026-09-01', 100), ['ho_letto' => true, 'nota_cancello' => 'Estinzione, letta']));
+
+    $piano = $s['piano']->fresh();
+    expect(count($piano->passaggiDaAnnullare()))->toBe(1)
+        ->and($piano->fraseDelFermo())->toBe('ha già quote a giornale ed è stato preso nel conguaglio dell\'estinzione dell\'usufrutto di Uso Usufruttuario, ' . $s['unita']->nome . ', dal 1 settembre 2026');
 });

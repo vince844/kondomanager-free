@@ -5,6 +5,7 @@ namespace App\Actions\Subentro;
 use App\Enums\EventoTipo;
 use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Evento;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\Saldo;
@@ -77,7 +78,7 @@ final class AnnullaPassaggioAction
         if ($assorbite->isNotEmpty()) {
             return AnnullaConguaglioAction::fraseAssorbite($assorbite,
                 'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.',
-                'torna qui');
+                'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia));
         }
 
         if ($motivo = $this->quoteNonIntatte($padre, $famiglia)) {
@@ -113,6 +114,16 @@ final class AnnullaPassaggioAction
                 : 'Le voci che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» restano come sono: %s. Valgono per tutta la tabella, anche per le altre unità in usufrutto; se vanno riportate com\'erano, si cambiano dalla pagina della voce.',
                 // Rilievo A6 della Fase 1-bis: i coefficienti di prima, dal registro. «Al Proprietario» era falso per una voce divisa.
                 $this->elenco(array_map(fn (array $v) => sprintf('%s (%s, %s; prima %s)', $v['conto'] ?? '?', $v['tabella'] ?? '?', $v['gestione'] ?? '?', VociDaSpostare::coefficientiAParole($v['prima'] ?? [])), $voci)));
+        }
+
+        // Decisione 46 (rilievo W2): con la rinuncia o con il conguaglio annullato le parti hanno regolato fra loro. Annullato e
+        // registrato di nuovo, il passaggio non ha più niente da regolare, e il piano ricalcolato addebita a chi entra i suoi giorni.
+        if ($padre->conguaglioRinunciato() || $padre->conguaglioAnnullato()) {
+            $cifra = $padre->regolatoFuoriInParole();
+            if ($cifra !== null || ! is_array($padre->registro['regolato_fuori'] ?? null)) {
+                $avvisi[] = sprintf('Le parti hanno già regolato fra loro %s: se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.',
+                    $cifra ?? 'il conguaglio di questo passaggio');
+            }
         }
 
         return $avvisi;
@@ -218,7 +229,7 @@ final class AnnullaPassaggioAction
             $assorbite = $saldi->filter(fn (Saldo $x) => (bool) $x->is_applicato);
             if ($assorbite->isNotEmpty()) {
                 throw ValidationException::withMessages(['passaggio' => AnnullaConguaglioAction::fraseAssorbite($assorbite,
-                    'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.', 'torna qui')]);
+                    'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.', 'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia))]);
             }
             if ((int) $saldi->sum('saldo_iniziale') !== 0) {
                 throw ValidationException::withMessages(['passaggio' => 'Le righe del conguaglio di questo passaggio non sommano zero: qualcosa è stato modificato a mano. Controlla i saldi della gestione prima di annullare.']);
@@ -349,21 +360,43 @@ final class AnnullaPassaggioAction
                 default => 'Si annulla prima quello, poi questo.',
             };
 
-            return sprintf('Dopo questo, su %s, c\'è un altro passaggio%s: %s, dal %s. %s', $unita, $inciso, $this->descrivi($ultimo), $this->data($ultimo->decorrenza), $via);
+            return sprintf('Dopo questo, su %s, c\'è un altro passaggio%s: %s, dal %s. %s', $unita, $inciso, self::descrivi($ultimo), $this->data($ultimo->decorrenza), $via);
         }
 
         return null;
     }
 
-    /** «la vendita da Ugo a Elsa», «la fine locazione di Luca», come le parti le legge lo storico. */
-    private function descrivi(Subentro $s): string
+    /**
+     * Rilievo X3 del terzo giro: i piani che un membro della famiglia ha preso nel conguaglio e che devono ancora seguire un
+     * passaggio — il passaggio della .41 preso solo in parte (V3), o un piano preso che segue un altro passaggio. Per loro la strada
+     * breve della decisione 50 («il passaggio può restare, il piano si emette così com'è») è falsa: non si emettono senza ricalcolo.
+     *
+     * @return list<string> i nomi dei piani
+     */
+    private function presiDaSeguire(Collection $famiglia): array
+    {
+        $pianoIds = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
+            ->whereIn('rate_quote.immobile_id', $famiglia->pluck('immobile_id')->unique()->all())->distinct()->pluck('rate.piano_rate_id');
+
+        return PianoRate::whereIn('id', $pianoIds)->get()
+            ->filter(fn (PianoRate $p) => $famiglia->contains(fn (Subentro $s) => $p->presoNelConguaglioDa($s)) && $p->passaggiDaSeguire() !== [])
+            ->pluck('nome')->values()->all();
+    }
+
+    /**
+     * Il passaggio in parole, come lo legge lo storico: «la vendita da Ugo a Elsa», «la fine locazione di Luca». Anche per il
+     * rifiuto dell'estinzione (rilievo V8).
+     */
+    public static function descrivi(Subentro $s): string
     {
         $uscente = $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? null);
         $entrante = $s->entrante?->nome ?? ($s->registro['nomi']['entrante'] ?? null);
 
         return match ($s->tipo_passaggio) {
             // Testi T8 della beta.38: «o donazione», come il tipo di base; la donazione della nuda proprietà è il caso più frequente.
-            'vendita' => ($s->riservaUsufrutto() ? 'la vendita o donazione con riserva d\'usufrutto' : 'la vendita') . ($uscente !== null ? " da {$uscente}" : '') . ($entrante !== null ? " a {$entrante}" : ''),
+            // Rilievo W4 del giro sulle correzioni della .42: la vendita della sola nuda proprietà si dice, perché due vendite dello
+            // stesso giorno fra le stesse persone (la piena e la nuda) non si confondano. La piena resta «la vendita».
+            'vendita' => ($s->riservaUsufrutto() ? 'la vendita o donazione con riserva d\'usufrutto' : ($s->tipologia === 'nuda_proprietario' ? 'la vendita della nuda proprietà' : 'la vendita')) . ($uscente !== null ? " da {$uscente}" : '') . ($entrante !== null ? " a {$entrante}" : ''),
             'inizio_locazione' => 'l\'inizio locazione' . ($entrante !== null ? " a {$entrante}" : ''),
             'fine_locazione' => 'la fine locazione' . ($uscente !== null ? " di {$uscente}" : '') . ($entrante !== null ? ", con {$entrante} al suo posto" : ''),
             'usufrutto' => $s->tipologia === 'proprietario'
@@ -520,11 +553,13 @@ final class AnnullaPassaggioAction
         $entrati = $this->entrati($famiglia);
         $nomi = DB::table('anagrafiche')->whereIn('id', $toccate->pluck('anagrafica_id')->push($uscenteId, $entranteId)->unique())->pluck('nome', 'id');
 
-        // Emesse: tutte, piano per piano, e la via intera. Due guardie di `EmissioneRateController::destroy` possono
-        // rifiutare l'annullamento dell'emissione: un pagamento qualunque sulla rata, di chiunque sia, o un credito usato
-        // o rimborsato (si guarda tutta la rata, come fa lei); e il conguaglio di questo passaggio (la guardia della
-        // beta.31, Coda 168), che l'annullamento del passaggio toglierebbe comunque. Con pagamenti la via è quella intera,
-        // con i suoi costi detti (Vincenzo, 29/09/2026: giro di verifica, G-5).
+        // Emesse: tutte, piano per piano, e la via intera. `EmissioneRateController::destroy` rifiuta l'annullamento
+        // dell'emissione per un pagamento qualunque sulla rata, di chiunque sia, o un credito usato o rimborsato (si guarda
+        // tutta la rata, come fa lei). Con pagamenti la via è quella intera, con i suoi costi detti (Vincenzo, 29/09/2026:
+        // giro di verifica, G-5). Il consiglio «annulla prima il conguaglio», per la guardia della beta.31, non c'è più
+        // (rilievo W8 del giro sulle correzioni della .42): una rata emessa dopo il passaggio non la blocca il passaggio stesso
+        // (si guarda l'ora della scrittura), la guardia vale solo per i passaggi registrati prima della .42 (decisione 49), e
+        // annullare il conguaglio non riapre niente (decisione 43).
         $emesse = $toccate->filter(fn ($q) => $q->scrittura_contabile_id !== null);
         if ($emesse->isNotEmpty()) {
             $chi = $emesse->first(fn ($q) => in_array((int) $q->anagrafica_id, $entrati, true) && ! in_array((int) $q->id, $gemelle, true))
@@ -538,14 +573,11 @@ final class AnnullaPassaggioAction
             $conPagamenti = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
                 ->whereIn('rate_quote.rata_id', $emesse->pluck('rata_id')->unique()->all())->where('rate_quote.importo_pagato', '!=', 0)
                 ->pluck('rate.numero_rata')->map(fn ($n) => (int) $n)->unique()->sort()->values()->all();
-            $conConguaglio = Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->exists();
-            $fraseConguaglio = ' Se il programma rifiuta di annullare l\'emissione per il conguaglio di questo passaggio, annulla prima il conguaglio, qui sopra («annulla il conguaglio…»), scrivendo nella nota che annulli il passaggio: l\'annullamento del passaggio lo toglierebbe comunque.';
             $chiNome = $nomi[$chi->anagrafica_id] ?? 'chi è entrato';
 
             if ($conPagamenti === []) {
                 return sprintf('Dopo il passaggio %s a %s %s. Annulla l\'emissione di %s, poi torna qui: le rate già in mano ai condòmini non si spostano da sole.',
-                    $una ? 'è stata emessa' : 'sono state emesse', $chiNome, $this->elenco($elenco), $una ? 'quella rata' : 'quelle rate')
-                    . ($conConguaglio ? $fraseConguaglio : '');
+                    $una ? 'è stata emessa' : 'sono state emesse', $chiNome, $this->elenco($elenco), $una ? 'quella rata' : 'quelle rate');
             }
 
             $pagate = count($conPagamenti) === 1;
@@ -553,8 +585,7 @@ final class AnnullaPassaggioAction
             return sprintf('Dopo il passaggio %s a %s %s, e %s %s ci sono già dei pagamenti. L\'emissione di una rata non si annulla finché su una qualunque delle sue quote c\'è un pagamento, di chiunque sia, o un credito già usato o rimborsato. Per annullare il passaggio andrebbero stornati prima tutti gli incassi di %s, anche quelli degli altri condòmini, e poi annullata l\'emissione; dopo, %s e gli incassi si registrano di nuovo. Ogni storno resta nel giornale e toglie l\'incasso intero, anche sulle altre rate che pagava.',
                 $una ? 'è stata emessa' : 'sono state emesse', $chiNome, $this->elenco($elenco),
                 $pagate ? 'sulla rata' : 'sulle rate', $this->elenco($conPagamenti),
-                $pagate ? 'quella rata' : 'quelle rate', $pagate ? 'la rata si emette di nuovo' : 'le rate si emettono di nuovo')
-                . ($conConguaglio ? $fraseConguaglio : '');
+                $pagate ? 'quella rata' : 'quelle rate', $pagate ? 'la rata si emette di nuovo' : 'le rate si emettono di nuovo');
         }
         if ($q = $toccate->first(fn ($q) => (int) $q->importo_pagato !== 0)) {
             return sprintf('Sulla rata %d del piano «%s» c\'è già un pagamento di %s. Storna prima l\'incasso, poi torna qui.', $q->numero_rata, $q->piano_nome, $nomi[$q->anagrafica_id] ?? 'chi è entrato');

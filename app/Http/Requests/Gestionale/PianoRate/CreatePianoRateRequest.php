@@ -17,7 +17,8 @@ class CreatePianoRateRequest extends FormRequest
     {
         $id = $this->input('gestione_id');
 
-        return $id !== null && \App\Models\Gestione::whereKey($id)->value('tipo') === 'straordinaria';
+        // Rilievo T-J del terzo giro: solo una gestione del condominio dell'indirizzo; di un'altra non si legge nemmeno la natura.
+        return $id !== null && \App\Models\Gestione::where('condominio_id', $this->idDelCondominio())->whereKey($id)->value('tipo') === 'straordinaria';
     }
 
     public function messages(): array
@@ -124,6 +125,13 @@ class CreatePianoRateRequest extends FormRequest
 
     public function rules(): array
     {
+        // Decisione 44 (1.11.0-beta.42, rilievo V11 di sicurezza, c'era già nella .41): ogni id che arriva dal corpo è del condominio
+        // dell'indirizzo, e la gestione anche del suo esercizio. Prima bastava che esistesse: con la gestione, una fattura, una voce, un
+        // saldo o una persona di un altro condominio il piano nasceva qui con i numeri di là.
+        $condominioId = (int) ($this->route('condominio')?->id ?? $this->route('condominio'));
+        $esercizioId = (int) ($this->route('esercizio')?->id ?? $this->route('esercizio'));
+        $contoDelCondominio = fn () => Rule::exists('conti', 'id')->whereIn('piano_conto_id', fn ($q) => $q->select('id')->from('piani_conti')->where('condominio_id', $condominioId));
+
         return [
 
             // --- [INIZIO FIX BIVIO ORDINARIO/STRAORDINARIO] ---
@@ -139,12 +147,14 @@ class CreatePianoRateRequest extends FormRequest
                     }
                 },
             ],
-            'fatture_config.*.id'      => ['required_with:fatture_config', 'exists:fatture_passive,id',
+            'fatture_config.*.id'      => ['required_with:fatture_config', 'integer', Rule::exists('fatture_passive', 'id')->where('condominio_id', $condominioId),
                 // Il carrello esclude le stornate solo quando si carica: stornata nel frattempo (un'altra scheda) o con una
                 // richiesta costruita a mano, la fattura entrava nel piano e le rate la chiedevano (verifica delle
                 // correzioni della Fase 1-bis, 1.11.0-beta.35).
                 function ($attribute, $value, $fail) {
-                    $f = \App\Models\Gestionale\FatturaPassiva::find($value);
+                    // Rilievo T11: solo una fattura del condominio dell'indirizzo, perché il messaggio ne dice il numero; una di un
+                    // altro condominio la rifiuta già `exists`, senza dire niente di lei.
+                    $f = \App\Models\Gestionale\FatturaPassiva::where('condominio_id', $this->idDelCondominio())->find($value);
                     $stato = $f ? (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) : null;
                     if ($f && (($f->dati_extra['is_stornata'] ?? false) || $stato === 'stornata')) {
                         $fail("La fattura n. {$f->numero_documento} è stata stornata nel frattempo: toglila dal carrello.");
@@ -178,13 +188,16 @@ class CreatePianoRateRequest extends FormRequest
             'data_delibera_assemblea'    => ['nullable', 'date', Rule::requiredIf(fn () => $this->gestioneStraordinaria() && $this->input('tipo_autorizzazione') !== 'urgenza')],
             // --- [FINE FIX BIVIO] ---
 
-            'gestione_id'          => ['required', 'exists:gestioni,id'],
+            'gestione_id'          => ['required', 'integer', Rule::exists('gestioni', 'id')->where('condominio_id', $condominioId)
+                ->whereIn('id', fn ($q) => $q->select('gestione_id')->from('esercizio_gestione')->where('esercizio_id', $esercizioId))],
             'nome' => [
                 'required', 
                 'string', 
                 'max:255',
+                // Rilievo T-J: l'unicità del nome solo fra i piani del condominio dell'indirizzo — con la gestione di un altro,
+                // «già in uso» diceva se là esisteva un piano con quel nome.
                 Rule::unique('piani_rate')->where(function ($query) {
-                    return $query->where('gestione_id', $this->gestione_id);
+                    return $query->where('gestione_id', $this->gestione_id)->where('condominio_id', $this->idDelCondominio());
                 }),
             ],
             'descrizione'          => ['nullable', 'string'],
@@ -206,11 +219,11 @@ class CreatePianoRateRequest extends FormRequest
             
             // Assicurati che siano conti validi
             'capitoli_ids'         => 'nullable|array',
-            'capitoli_ids.*'       => 'exists:conti,id', 
+            'capitoli_ids.*'       => ['integer', $contoDelCondominio()],
             
             // Validazione della configurazione dettagliata
             'capitoli_config'      => 'nullable|array',
-            'capitoli_config.*.id' => 'required|exists:conti,id',
+            'capitoli_config.*.id' => ['required', 'integer', $contoDelCondominio()],
             'capitoli_config.*.importo' => 'nullable|string', 
             'capitoli_config.*.note' => 'nullable|string|max:255',
 
@@ -220,18 +233,30 @@ class CreatePianoRateRequest extends FormRequest
             // giorni in comune — stanno in `withValidator`: `InsiemePeriodi` li rifiuterebbe con un'eccezione
             // dentro la generazione, che è il posto sbagliato.
             'competenze_capitoli'                => 'nullable|array',
-            'competenze_capitoli.*.conto_id'     => 'required|integer|exists:conti,id',
+            'competenze_capitoli.*.conto_id'     => ['required', 'integer', $contoDelCondominio()],
             'competenze_capitoli.*.tratti'       => 'required|array|min:1|max:6',
             'competenze_capitoli.*.tratti.*.dal' => 'required|date',
             'competenze_capitoli.*.tratti.*.al'  => 'required|date',
             
             // Configurazione personalizzata dei saldi (Riparto manuale Art. 63)
             'saldi_config'                             => ['nullable', 'array', $this->ripartoManualeQuadra()],
-            'saldi_config.*.saldo_id'                  => ['required', 'exists:saldi,id'],
+            'saldi_config.*.saldo_id'                  => ['required', 'integer', Rule::exists('saldi', 'id')->where('condominio_id', $condominioId)],
             'saldi_config.*.ripartizioni'              => ['required', 'array'],
-            'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'exists:anagrafiche,id'],
+            // Qualunque persona del condominio, come il modulo offre oggi (decisione 44): resta possibile un accordo fra le parti.
+            'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'integer', Rule::exists('anagrafiche', 'id')->where(fn ($q) => $q
+                // La stessa regola della persona del condominio negli incassi (`StoreIncassoRateRequest::personaDelCondominio()`):
+                // associata al condominio o titolare di una sua unità, anche cessata.
+                ->whereIn('id', fn ($sub) => $sub->select('anagrafica_id')->from('anagrafica_condominio')->where('condominio_id', $condominioId))
+                ->orWhereIn('id', fn ($sub) => $sub->select('anagrafica_immobile.anagrafica_id')->from('anagrafica_immobile')
+                    ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')->where('immobili.condominio_id', $condominioId)))],
             'saldi_config.*.ripartizioni.*.importo'    => ['required', 'string'],
         ];
+    }
+
+    /** L'id del condominio dell'indirizzo (decisione 44), letto una volta per le regole e per le chiusure. */
+    private function idDelCondominio(): int
+    {
+        return (int) ($this->route('condominio')?->id ?? $this->route('condominio'));
     }
 
     /**
@@ -265,9 +290,10 @@ class CreatePianoRateRequest extends FormRequest
                     continue;
                 }
 
-                // Un `saldo_id` inesistente lo segnala già `exists`: qui non si raddoppia
-                // l'errore, si tace.
-                $saldo = \App\Models\Saldo::find($config['saldo_id'] ?? null);
+                // Un `saldo_id` inesistente, o di un altro condominio, lo segnala già `exists`: qui non si raddoppia
+                // l'errore, si tace — e non si legge la cifra di un saldo di un altro condominio (rilievo T11 del giro
+                // sulle correzioni della .42: il messaggio della quadratura la mostrava).
+                $saldo = \App\Models\Saldo::where('condominio_id', $this->idDelCondominio())->find($config['saldo_id'] ?? null);
                 if (! $saldo) {
                     continue;
                 }

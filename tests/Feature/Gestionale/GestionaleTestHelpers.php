@@ -351,3 +351,30 @@ if (!function_exists("setupPagamentiService")) { function setupPagamentiService(
     return [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo];
 }
 }
+
+if (! function_exists('aGiornaleNeiTest')) {
+    /**
+     * Porta a giornale le quote delle rate date — o di tutte le rate «emesse» del piano — con una scrittura di emissione.
+     * Dalla 1.11.0-beta.42 (decisione 34) una rata è emessa solo se è a giornale: lo stato «emessa» da solo non basta, e un
+     * test che costruisce a mano una rata emessa costruisce anche la scrittura, come fa l'emissione vera.
+     *
+     * @param list<int>|null $rataIds
+     */
+    function aGiornaleNeiTest(int $pianoId, ?array $rataIds = null): int
+    {
+        static $n = 0;
+        $n++;
+        $piano = \Illuminate\Support\Facades\DB::table('piani_rate')->find($pianoId);
+        $esercizioId = $piano->esercizio_id
+            ?? \Illuminate\Support\Facades\DB::table('esercizi')->where('condominio_id', $piano->condominio_id)->orderByDesc('data_inizio')->value('id');
+        $rataIds ??= \Illuminate\Support\Facades\DB::table('rate')->where('piano_rate_id', $pianoId)->where('stato', 'emessa')->pluck('id')->all();
+        $scritturaId = \Illuminate\Support\Facades\DB::table('scritture_contabili')->insertGetId([
+            'condominio_id' => $piano->condominio_id, 'esercizio_id' => $esercizioId, 'gestione_id' => $piano->gestione_id,
+            'data_registrazione' => now(), 'data_competenza' => now(), 'numero_protocollo' => "TEST-AG-{$pianoId}-{$n}",
+            'causale' => 'Emissione', 'tipo_movimento' => 'emissione_rata', 'stato' => 'registrata', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('rate_quote')->whereIn('rata_id', $rataIds)->whereNull('scrittura_contabile_id')->update(['scrittura_contabile_id' => $scritturaId]);
+
+        return $scritturaId;
+    }
+}

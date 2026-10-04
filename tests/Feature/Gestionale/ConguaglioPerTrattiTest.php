@@ -78,6 +78,7 @@ function cptScenario(bool $conTratti, int $numeroRate = 1): array
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
+    aGiornaleNeiTest((int) $piano->id);
 
     return compact('c', 'e', 'g', 'piano', 'unita', 'uscente', 'entrante', 'riscaldamento', 'pulizie');
 }
@@ -163,20 +164,22 @@ it('verifica S6, R7 — il netting del già versato è una riga negativa dello s
         ->and(implode("\n", $r['frasi']))->toContain('Riscaldamento: € 0,00')->toContain('Pulizie: € 500,00');
 });
 
-it('verifica S6, R8 — con tre rate di cui una sola emessa le righe «voce per voce» parlano delle quote emesse, e sommano al conguaglio proposto', function () {
+it('verifica S6, R8 — con tre rate di cui una sola a giornale il piano non si ricalcola più: il conguaglio comprende anche le due in bozza (decisione 21), e le righe «voce per voce» sommano al conguaglio proposto', function () {
     $s = cptScenario(true, 3);
-    // Restano emesse solo la rata 1: le altre due tornano in bozza.
-    DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('numero_rata', '>', 1)->update(['stato' => 'bozza', 'data_emissione' => null]);
+    // Solo la rata 1 a giornale: le altre due tornano in bozza, senza scrittura.
+    $bozze = DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('numero_rata', '>', 1)->pluck('id');
+    DB::table('rate')->whereIn('id', $bozze)->update(['stato' => 'bozza', 'data_emissione' => null]);
+    DB::table('rate_quote')->whereIn('rata_id', $bozze)->update(['scrittura_contabile_id' => null]);
 
     $r = (new ConguaglioPassaggio())->calcola($s['uscente'], $s['entrante'], [$s['unita']->id], CarbonImmutable::parse('2026-07-01'));
 
-    // Sull'intero piano: 67.828 su 150.000; sulla sola quota emessa (50.000): round(50.000 × 67.828/150.000) = 22.609.
-    expect($r['totale_entrante'])->toBe(22609)->and($r['quote'])->toHaveCount(1);
+    // Fino alla beta.41 la rata «emessa» era contata dallo stato, e una rata emessa senza scrittura faceva un conguaglio sulla
+    // sola rata 1 (22.609) con il piano ancora ricalcolabile. Con il criterio unico (decisione 34) il piano ha una quota a
+    // giornale: entrano tutte e tre, e la parte di chi entra è quella dell'intero piano, 67.828 su 150.000.
+    expect($r['totale_entrante'])->toBe(67828)->and($r['quote'])->toHaveCount(3)
+        ->and(collect($r['quote'])->where('in_bozza', true))->toHaveCount(2);
     $conti = collect($r['quote'][0]['per_capitolo']);
-    expect((int) $conti->sum('entrante_emesso'))->toBe(22609)->and((int) $conti->sum('importo_emesso'))->toBe(50000);
-    $frasi = implode("\n", $r['frasi']);
-    // Le righe dicono i numeri delle quote emesse, non quelli dell'intero piano.
-    expect($frasi)->toContain('€ 226,09')->not->toContain('€ 426,23 a chi entra')->not->toContain('€ 1.000,00, competenza');
+    expect((int) $conti->sum('entrante_emesso'))->toBe(67828)->and((int) $conti->sum('importo_emesso'))->toBe(150000);
 });
 
 /*
