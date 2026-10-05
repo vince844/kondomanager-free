@@ -432,12 +432,12 @@ it('31.5 — le quote di chi aveva venduto prima, con la voce che non passa: la 
     $quote = collect(ruAnteprima($this, $s, ruRiserva($s, extra: ['riga_uscente_id' => $rigaZeta, 'ordinaria_dopo_atto' => 'voce']))['rate']['conguaglio']['quote']);
 
     // Dal 1/03 al 31/12, 306 giorni su 365 di € 1.200,00: € 1.006,0274. Dalla .42 il piano è emesso prima della vendita a Zeta, che
-    // lo prende nel conguaglio: le quote sono due gruppi, le quattro emesse a Ugo e le otto bozze passate a Zeta. Col dettaglio del
-    // riparto il conto si arrotonda sull'intera gestione (€ 1.006,03); senza, la ricostruzione arrotonda ogni gruppo per sé
-    // (€ 400,00 × 306/365 = € 335,34 e € 800,00 × 306/365 = € 670,68): € 1.006,02, un centesimo sotto. L'arrotondamento per gruppo
-    // va con la genealogia dei passaggi (beta.43).
+    // lo prende nel conguaglio: le quote sono due gruppi, le quattro emesse a Ugo e le otto bozze passate a Zeta. Il conto si
+    // arrotonda una volta sull'intera gestione, con e senza dettaglio del riparto: € 1.006,03 (DV1, decisione 59, 1.11.0-beta.43).
+    // Fino alla .42, senza dettaglio, la ricostruzione arrotondava ogni gruppo per sé (€ 400,00 × 306/365 = € 335,34 e € 800,00
+    // × 306/365 = € 670,68): € 1.006,02, un centesimo sotto.
     expect($quote->sum('entrante'))->toBe(0)->and($quote->sum('uscente'))->toBe($atteso);
-})->with(['con il dettaglio del riparto' => [false, 100603], 'senza, dalla ricostruzione del motore' => [true, 100602]]);
+})->with(['con il dettaglio del riparto' => [false, 100603], 'senza, dalla ricostruzione del motore' => [true, 100603]]);
 
 it('31.5 — la catena, con la voce che a chi esce non era mai arrivata: dopo una riserva «come la voce», nella rivendita della nuda proprietà la voce sull\'«Usufruttuario» non è né di chi vende né di chi compra', function (bool $senzaRighe) {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario');

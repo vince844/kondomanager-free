@@ -62,8 +62,8 @@
  *   giorno l'annullamento passa); il pregresso spalmato sulle rate che scadono dopo l'atto, e la gemella straordinaria
  *   emessa, che la nota conta fra le certe e non nel punto aperto (rilievo R4);
  * - S1E, i due genitori che donano con riserva e poi muore uno dei due: nella griglia B valgono solo gli invarianti di
- *   coerenza; a chi va l'usufrutto del genitore morto dipende dall'eventuale accrescimento, ed è materia della
- *   successione (beta.42);
+ *   coerenza; dalla 1.11.0-beta.43 vale il consolidamento di legge (EstinzioneConPiuUsufruttiTest), e l'eventuale
+ *   accrescimento è materia della successione (beta.44);
  * - la gestione senza esercizio, che nella riserva cambia solo la frase per gestione; la rata zero rimasta in bozza in
  *   una catena, che `ruEmetti` non sa costruire (emette per data, e la rata zero scade con la prima);
  * - «il destinatario cambierebbe» dove paga sempre la stessa persona, nella costituzione con la voce sul «Proprietario»
@@ -1005,7 +1005,10 @@ it('cancello, controprova — con un motivo vero la spunta resta: nella rivendit
     $cancello = ruAnteprima($this, $s, $rivendita)['cancello'];
     expect($cancello['richiesto'])->toBeTrue()
         ->and($cancello['motivi'])->toBe(['un piano rate già generato intesta quote a Acquirente Elsa: il destinatario cambierebbe'])
-        ->and($cancello['informazioni'] ?? null)->toHaveCount(2);
+        // Dalla .43 c'è anche l'avviso della decisione 58: con un piano che si ricalcola ancora, come si registra l'accordo «le rate
+        // le paga chi vende» (senza spunta, e non fra le quote che il passaggio non tocca).
+        ->and($cancello['informazioni'] ?? null)->toHaveCount(2)
+        ->and(collect($cancello['avvisi'] ?? [])->filter(fn ($i) => str_contains($i, '«Versato da»'))->count())->toBe(1);
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), array_merge($rivendita, ['ho_letto' => false, 'nota_cancello' => null]))
         ->assertSessionHasErrors('nota_cancello');
@@ -1609,7 +1612,7 @@ it('decisione 51, il rovescio della riserva — riserva «come dice ogni voce» 
         ->and($an['rate']['conguaglio']['coppie'])->toBe([]);
 });
 
-it('sentinella della Coda 218 — fissa il comportamento di oggi, noto e sbagliato (difetto della .41, si corregge con la .43): piano senza dettaglio del riparto, emesso tutto prima: costituzione «come dice ogni voce», vendita della nuda a Elsa (coppia € 805,48), rivendita della nuda a Carlo. Oggi la rivendita non conguaglia e Elsa perde € 401,10; l\'atteso è una coppia di 40110 a carico di Carlo', function () {
+it('Coda 218 (decisione 59) — piano senza dettaglio del riparto, emesso tutto prima: costituzione «come dice ogni voce», vendita della nuda a Elsa (coppia € 805,48), rivendita della nuda a Carlo: la rivendita conguaglia 40110 a carico di Carlo (120000 × 122/365), come con le righe di riparto', function () {
     $s = ruScenario('prima_rata', 0);
     // Un piano anteriore alla beta.29: senza righe di riparto.
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
@@ -1617,9 +1620,10 @@ it('sentinella della Coda 218 — fissa il comportamento di oggi, noto e sbaglia
     expect((int) Saldo::whereNotNull('subentro_id')->where('anagrafica_id', $s['a']->id)->sum('saldo_iniziale'))->toBe(80548);
     [, $rivendita] = ruRivendita($s);
 
-    // Con le righe di riparto la coppia è 40110 (120000 × 122/365): `$vociPassateDi` ignora `$vociDelNudo` per un gruppo
-    // ereditato, e `$esclusaDi` lo esclude. Quando la correzione arriva, questa attesa diventa [40110].
-    expect(array_column(ruAnteprima($this, $s, $rivendita)['rate']['conguaglio']['coppie'], 'importo'))->toBe([]);
+    // Prima (sentinella fino alla .42): nessuna coppia, ed Elsa perdeva € 401,10. Per un gruppo ereditato `$vociPassateDi`
+    // ignorava le voci del nudo, e `$esclusaDi` lo escludeva come ordinaria dell'usufruttuario.
+    $c = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
+    expect(array_column($c['coppie'], 'importo'))->toBe([40110])->and($c['non_risolte'])->toBe([]);
 });
 
 it('rilievo T4 del quarto giro — una vendita con il box e il piano ancora da ricalcolare: il rifiuto dell\'emissione dice «del passaggio», al singolare, anche se i passaggi registrati sono due (l\'unità e il box)', function () {

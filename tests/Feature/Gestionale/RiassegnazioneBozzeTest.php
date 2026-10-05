@@ -759,3 +759,24 @@ it('verifica delle correzioni [beta.35] — R5: due piani da fatture sulla stess
     expect($gestione['gradino'])->toContain('dichiarata')
         ->and($gestione['voce_per_voce'])->toBeTrue();
 });
+
+it('decisione 58 (Coda 217) — vendita con un piano che si ricalcola ancora: il cancello dice, senza spunta, come si registra l\'accordo «le rate le paga chi vende»', function () {
+    $s = rbScenario('prima_rata', 0);
+    $nomi = [$s['v']->nome, $s['a']->nome];
+
+    $cancello = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json('cancello');
+
+    expect(implode(' | ', $cancello['avvisi']))->toContain("se le parti si sono accordate che le rate del piano «{$s['piano']->nome}» le paga {$nomi[0]}: il piano si ricalcola comunque per giorni, e verso il condominio le rate dal giorno dell'atto sono di {$nomi[1]}; i pagamenti di {$nomi[0]} si registrano con «Versato da», che resta scritto su entrambi gli estratti conto")
+        // Non è un motivo: non chiede la spunta. E non sta fra le quote che il passaggio non tocca (rilievo T4).
+        ->and(implode(' | ', $cancello['motivi']))->not->toContain('Versato da')
+        ->and(implode(' | ', $cancello['informazioni']))->not->toContain('Versato da');
+});
+
+it('decisione 58 — la frase non c\'è se il piano non si ricalcola più (lì vale «Le parti hanno regolato il conguaglio fra loro»)', function () {
+    $s = rbScenario('prima_rata', 0);
+    rbEmettiFinoAdAprile($s);
+
+    $cancello = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json('cancello');
+
+    expect(implode(' | ', [...$cancello['informazioni'], ...$cancello['avvisi']]))->not->toContain('Versato da');
+});

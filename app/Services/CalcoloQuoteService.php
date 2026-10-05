@@ -899,6 +899,8 @@ class CalcoloQuoteService
             'tipo'              => $tipo,
             'anagrafica_id'     => null,
             'immobile_id'       => null,
+            // Decisione 55 (1.11.0-beta.43): la riga di titolarità da cui viene la riga; nulla dove non ce n'è una sola.
+            'anagrafica_immobile_id' => null,
             'conto_id'          => null,
             'conto_nome'        => null,
             'conto_radice_id'   => null,
@@ -1373,7 +1375,7 @@ class CalcoloQuoteService
         // Il conto e la sua radice dipendono dalla riga, non dal destinatario: si risolvono una volta.
         $conto  = $contoId ? Conto::find($contoId) : null;
         $radice = $conto ? $this->radiceDi($conto) : null;
-        $scrivi = function (object $destinatario, int $quotaDaPagare, array $congelato) use (&$totali, $immobileId, $conto, $radice, $rigaFatturaId, $descrizione): void {
+        $scrivi = function (object $destinatario, int $quotaDaPagare, array $congelato, ?int $rigaTitolarita = null) use (&$totali, $immobileId, $conto, $radice, $rigaFatturaId, $descrizione): void {
             if ($quotaDaPagare === 0) {
                 return;
             }
@@ -1402,6 +1404,7 @@ class CalcoloQuoteService
                 'conto_radice_nome' => $radice?->nome,
                 'ruolo_risolto'     => (string) $destinatario->tipologia,
                 'quota_possesso'    => (float) $destinatario->quota,
+                'anagrafica_immobile_id' => $rigaTitolarita,
                 'riga_fattura_id'   => $rigaFatturaId,
                 'riga_descrizione'  => $descrizione,
                 'importo'           => $quotaDaPagare,
@@ -1419,7 +1422,9 @@ class CalcoloQuoteService
             }
             $quote = MoneyHelper::ripartisciPerQuote($importoCents, $pesi);
             foreach ($destinatari->unique('anagrafica_id')->values() as $destinatario) {
-                $scrivi($destinatario, (int) ($quote[(int) $destinatario->anagrafica_id] ?? 0), $this->congelatoTemporale(null));
+                // Decisione 55: la riga del dettaglio è per persona; il legame c'è solo se la persona ha una riga sola qui.
+                $unaSola = $destinatari->where('anagrafica_id', $destinatario->anagrafica_id)->count() === 1;
+                $scrivi($destinatario, (int) ($quote[(int) $destinatario->anagrafica_id] ?? 0), $this->congelatoTemporale(null), $unaSola ? (int) $destinatario->id : null);
             }
 
             return;
@@ -1466,10 +1471,10 @@ class CalcoloQuoteService
         $quote = MoneyHelper::ripartisciPerQuote($importoCoperto, $pesiRiga);
         foreach ($destinatari as $d) {
             $rid = (int) $d->id;
-            $scrivi($d, (int) ($quote[$rid] ?? 0), $this->congelatoTemporale($perGiorni['giorni'][$rid] ?? 0, $perGiorni['tratti'][$rid] ?? null));
+            $scrivi($d, (int) ($quote[$rid] ?? 0), $this->congelatoTemporale($perGiorni['giorni'][$rid] ?? 0, $perGiorni['tratti'][$rid] ?? null), $rid);
         }
         foreach ($righeRipiego as $rid => $r) {
-            $scrivi($r['riga'], (int) ($quoteRipiego[$rid] ?? 0), $this->congelatoTemporale($r['giorni'], $r['tratto']));
+            $scrivi($r['riga'], (int) ($quoteRipiego[$rid] ?? 0), $this->congelatoTemporale($r['giorni'], $r['tratto']), (int) $r['riga']->id);
         }
     }
 
@@ -1953,6 +1958,7 @@ class CalcoloQuoteService
                                 'ruolo_richiesto'  => (string) $rip->soggetto,
                                 'ruolo_risolto'    => $r['ruolo'],
                                 'quota_possesso'   => (float) $r['riga']->quota,
+                                'anagrafica_immobile_id' => (int) $r['riga']->id,
                                 'peso'             => $w,
                             ] + $this->congelatoTemporale($r['giorni'], $r['tratto']);
                         }
@@ -2000,6 +2006,8 @@ class CalcoloQuoteService
                             // Il ruolo della riga, non quello cercato: nell'unità mista sono due (Coda 170).
                             'ruolo_risolto'    => (string) $anag->pivot->tipologia,
                             'quota_possesso'   => $quotaAnag,
+                            // Decisione 55: un componente per riga di titolarità, quindi il legame è esatto.
+                            'anagrafica_immobile_id' => (int) $anag->pivot->id,
                             'peso'             => $weightAnagrafica,
                         ] + $this->congelatoTemporale($giorniRiga, $trattoRiga);
                     }

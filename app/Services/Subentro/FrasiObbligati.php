@@ -44,10 +44,14 @@ final class FrasiObbligati
      *        senza, la frase della vendita nomina l'eccezione comunque
      * @param Collection<int, TitolaritaImmobile> $proprietari  i proprietari che restano (fine locazione)
      * @param string|array|null $nudo  chi torna proprietario pieno all'estinzione dell'usufrutto: il nome, o con più nudi
-     *                                 (S8-30) l'elenco `[{nome, quota}]` — le frasi li nominano tutti con la quota
+     *                                 (S8-30) l'elenco `[{nome, quota, parte?}]` — le frasi li nominano tutti con la quota;
+     *                                 `parte` è la quota che torna piena quando la nuda si riunisce all'usufrutto solo in parte
+     * @param bool $altriTitolari  all'estinzione, sull'unità restano titolari diversi da chi torna proprietario pieno (un altro
+     *                             usufrutto con i suoi nudi, il proprietario pieno dell'altra metà) (1.11.0-beta.43)
+     * @param bool $usufruttoCheResta  all'estinzione, sull'unità resta in corso un altro usufrutto
      * @return list<string>
      */
-    public function frasi(string $tipo, array $dati, Condominio $condominio, ?string $uscente, ?string $entrante, CarbonImmutable $dal, Collection $proprietari, string|array|null $nudo, bool $registrato = false): array
+    public function frasi(string $tipo, array $dati, Condominio $condominio, ?string $uscente, ?string $entrante, CarbonImmutable $dal, Collection $proprietari, string|array|null $nudo, bool $registrato = false, bool $altriTitolari = false, bool $usufruttoCheResta = false): array
     {
         $dalA = $this->data($dal);
 
@@ -112,6 +116,25 @@ final class FrasiObbligati
 
             case 'usufrutto':
                 if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
+                    // 1.11.0-beta.43: quando sull'unità restano altri titolari (un altro usufrutto con i suoi nudi, il proprietario
+                    // pieno dell'altra metà) o la nuda torna piena solo in parte, chi torna proprietario pieno lo è della parte
+                    // dell'usufrutto che finisce, non dell'unità. Del resto rispondono, come prima, i suoi titolari — chi torna pieno
+                    // compreso, se ne resta nudo proprietario —, e dove resta un usufrutto nudo proprietario e usufruttuario in
+                    // solido (art. 67 ult. co.). Si decide dalle righe, non dalla somma delle quote (rilievi V1 e V2).
+                    $lista = is_array($nudo) ? array_values($nudo) : [['nome' => $nudo]];
+                    $inParte = collect($lista)->contains(fn ($n) => isset($n['parte']));
+                    if ($altriTitolari || $inParte) {
+                        $piu = count($lista) > 1;
+                        $nomi = array_map(fn ($n) => ($n['nome'] ?? 'il nudo proprietario') . ($piu || isset($n['parte'])
+                            ? ' (per ' . NudiDellEstinzione::percentuale((float) ($n['parte'] ?? $n['quota'] ?? 0)) . ')' : ''), $lista);
+                        $ultimo = array_pop($nomi);
+
+                        return [sprintf('Dal %s %s %s della parte dell\'usufrutto che finisce e ne %s; per il resto dell\'unità rispondono, come prima, i titolari di quella parte%s. Le rate già emesse a %s restano sue.',
+                            $dalA, $nomi === [] ? $ultimo : implode(', ', $nomi) . ' e ' . $ultimo, $piu ? 'tornano proprietari pieni' : 'torna proprietario pieno',
+                            $piu ? 'rispondono, ciascuno per la sua parte' : 'risponde',
+                            $usufruttoCheResta || $inParte ? ' (il nudo proprietario e l\'usufruttuario in solido, art. 67 ult. co. disp. att. c.c.)' : '',
+                            $uscente ?? 'chi esce')];
+                    }
                     if (is_array($nudo) && count($nudo) > 1) {
                         $elenco = array_map(fn ($n) => sprintf('%s (%s %%)', $n['nome'] ?? '?', rtrim(rtrim(number_format((float) ($n['quota'] ?? 0), 2, ',', '.'), '0'), ',')), $nudo);
                         $ultimo = array_pop($elenco);
@@ -187,15 +210,39 @@ final class FrasiObbligati
             'immobili'           => $this->immobiliDelPassaggio($subentro),
         ];
 
+        $estinzione = $tipo === 'usufrutto' && $subentro->tipologia === 'proprietario';
+        // 1.11.0-beta.43: il registro dice quali nude sono tornate piene e, se solo in parte, per quanto; la quota è quella del giorno
+        // del passaggio (una riga cambiata sul posto la si legge dal «prima» del registro, rilievo V4). Le righe in corso alla decorrenza
+        // dicono se sull'unità restano altri titolari e un altro usufrutto. Senza il registro (passaggi di prima), chi è tornato pieno
+        // sono i proprietari in corso alla decorrenza (S8-30), come prima.
+        $quotaAllora = [];
+        foreach ((array) ($subentro->registro['righe'] ?? []) as $op) {
+            if (($op['operazione'] ?? null) === 'modificata' && isset($op['prima']['quota'])) {
+                $quotaAllora[(int) ($op['id'] ?? 0)] = (float) $op['prima']['quota'];
+            }
+        }
+        $righeNudi = $estinzione && ! empty($subentro->registro['nudi']['righe'])
+            ? TitolaritaImmobile::with('anagrafica')->whereIn('id', (array) $subentro->registro['nudi']['righe'])->orderBy('id')->get() : collect();
+        $dalRegistro = $righeNudi->map(fn (TitolaritaImmobile $t) => ['nome' => $t->anagrafica?->nome, 'quota' => $quotaAllora[(int) $t->id] ?? (float) $t->quota]
+            + (isset($subentro->registro['nudi']['consolida'][(string) $t->id]) ? ['parte' => (float) $subentro->registro['nudi']['consolida'][(string) $t->id]] : []))->all();
+        $restano = $dalRegistro !== [] && $subentro->immobile !== null
+            ? $subentro->immobile->titolarita()->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])->get()
+                ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza) && ! $righeNudi->contains('anagrafica_id', $t->anagrafica_id))
+            : collect();
+
         return $this->frasi(
             $tipo, $dati, $subentro->condominio,
             $subentro->uscente?->nome, $subentro->entrante?->nome,
             $decorrenza, $proprietari,
-            // Estinzione: chi è tornato pieno sono i proprietari in corso alla decorrenza (S8-30: possono essere più d'uno).
-            $tipo === 'usufrutto' && $subentro->tipologia === 'proprietario' && $proprietari->count() > 1
-                ? $proprietari->map(fn (TitolaritaImmobile $t) => ['nome' => $t->anagrafica?->nome, 'quota' => (float) $t->quota])->all()
-                : ($tipo === 'usufrutto' ? $subentro->entrante?->nome : null),
+            match (true) {
+                $dalRegistro !== [] => $dalRegistro,
+                $estinzione && $proprietari->count() > 1 => $proprietari->map(fn (TitolaritaImmobile $t) => ['nome' => $t->anagrafica?->nome, 'quota' => (float) $t->quota])->all(),
+                $tipo === 'usufrutto' => $subentro->entrante?->nome,
+                default => null,
+            },
             registrato: true,
+            altriTitolari: $restano->isNotEmpty(),
+            usufruttoCheResta: $restano->contains('tipologia', 'usufruttuario'),
         );
     }
 

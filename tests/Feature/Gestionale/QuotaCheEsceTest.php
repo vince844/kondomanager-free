@@ -426,24 +426,29 @@ it('estinzione con due nudi proprietari, poi uno dei due vende — Rita usufrutt
     'vende l\'altra' => ['bice', [29589, 45206, 10027, 35178]],
 ])->with(['registro di oggi' => ['nuovo'], 'senza registro (fino alla beta.36)' => ['beta36'], 'registro senza sottotipo' => ['beta37']]);
 
-// --- Le catene in cui il conguaglio si ferma -------------------------------------------------------------------------------
+// --- Le catene in cui la quota è passata per più strade ------------------------------------------------------------------
 //
-// Quando una persona ha avuto più quote sulla stessa unità, per più strade, il conguaglio non sa ancora da quale riga di
-// titolarità viene ogni riga di riparto (il collegamento arriva con la beta successiva). In queste forme si ferma e lo dice,
-// invece di proporre cifre sbagliate: ognuna delle sette, provata con le cifre a mano nella revisione della 1-ter, dava un
-// conguaglio sbagliato. Le catene giuste non si fermano (le prove sopra, e `InvariantiPassaggiTest`).
+// Quando una persona ha avuto più quote sulla stessa unità, per più strade, il ruolo della riga di riparto non dice di quale
+// quota è. Nella .41 e nella .42 il conguaglio si fermava e lo diceva; dalla 1.11.0-beta.43 ogni riga di riparto sa da quale
+// riga di titolarità viene, e il conguaglio la segue nei passaggi (decisione 56): ognuna delle sette forme, che prima si
+// fermava, ha le cifre fatte a mano. Le stesse forme, con i due versi della scelta sull'ordinaria, sono in
+// `CateneDelConguaglioTest`; si ferma ancora il piano senza righe di riparto (qui sotto).
 
-it('catena — il predecessore aveva ceduto un ruolo per un\'altra strada: Ugo vende la metà piena a Elsa, il suo usufrutto si estingue, Bice vende a Carlo: il conguaglio si ferma', function () {
+it('catena — il predecessore aveva ceduto un ruolo per un\'altra strada: Ugo vende la metà piena a Elsa, il suo usufrutto si estingue, Bice vende a Carlo: a Carlo la sola metà dell\'usufrutto (€ 200,55)', function () {
     $s = qceS3('usufruttuario');
     $carlo = qcePersona($s, 'Compratore Carlo');
     qcePassa($this, $s, 'vendita', $s['v'], $s['a'], '2026-04-01');
     qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-06-01');
+    $anteprima = qcePassa($this, $s, 'vendita', $s['bice'], $carlo, '2026-09-01');
 
-    // A mano: Carlo deve 60000 × 122/365 = € 200,55; prima del fermo ne riceveva € 401,10.
-    expect(qceFermo(qcePassa($this, $s, 'vendita', $s['bice'], $carlo, '2026-09-01', registra: false), 'più strade'))->toBeTrue();
+    // A mano: la metà piena va a Elsa il 1/4 (60000 × 275/365 = 45205); l'usufrutto a Bice il 1/6 (214 giorni, 35178) e a Carlo
+    // il 1/9: 60000 × 122/365 = € 200,55. Ugo 120000 − 45205 − 35178 = 39617, Bice 35178 − 20055 = 15123. Nella .41 e nella .42
+    // il conguaglio si fermava; prima ancora Carlo riceveva anche la metà piena, già di Elsa (€ 401,10).
+    expect(qceFermo($anteprima, 'più strade'))->toBeFalse()
+        ->and(qceNetti($s))->toBe([$s['v']->id => 39617, $s['a']->id => 45205, $s['bice']->id => 15123, $carlo->id => 20055]);
 });
 
-it('catena — si estingue l\'usufrutto costituito da un nudo tornato pieno, e lo stesso nudo vende la nuda: il conguaglio si ferma in tutti e due', function (string $dopo) {
+it('catena — si estingue l\'usufrutto costituito da un nudo tornato pieno, e lo stesso nudo vende la nuda: all\'estinzione la voce torna a Ugo, alla vendita della nuda a Fede non passa niente', function (string $dopo) {
     $s = ruScenario('prima_rata', 0, genera: false);
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['tipologia' => 'nuda_proprietario']);
     $rita = qcePersona($s, 'Usufruttuaria Rita');
@@ -454,15 +459,19 @@ it('catena — si estingue l\'usufrutto costituito da un nudo tornato pieno, e l
     qcePassa($this, $s, 'estinzione', $rita, null, '2026-05-01');
     qcePassa($this, $s, 'costituzione', $s['v'], $carlo, '2026-07-01');
 
-    // A mano, all'estinzione: a Ugo tornano 120000 × 92/365 = € 302,47 dei € 604,93 che Carlo ha preso alla costituzione;
-    // prima del fermo nessun conguaglio. Alla vendita della nuda, con la legge, nessun conguaglio; prima Fede € 401,10.
+    // A mano: con la legge la voce è di Carlo dal 1/7, 184 giorni, 60493. All'estinzione del 1/10 torna a Ugo per 92 giorni:
+    // 120000 × 92/365 = € 302,47 (Ugo 89754, Carlo 30246). Alla vendita della nuda del 1/9 a Fede non passa niente (Ugo 59507,
+    // Carlo 60493). Nella .41 e nella .42 il conguaglio si fermava in tutti e due; prima ancora all'estinzione nessun
+    // conguaglio, e alla vendita della nuda Fede € 401,10.
+    $fede = qcePersona($s, 'Compratrice Fede');
     $anteprima = $dopo === 'estinzione'
-        ? qcePassa($this, $s, 'estinzione', $carlo, null, '2026-10-01', registra: false)
-        : qcePassa($this, $s, 'nuda', $s['v'], qcePersona($s, 'Compratrice Fede'), '2026-09-01', registra: false);
-    expect(qceFermo($anteprima, 'più strade'))->toBeTrue();
+        ? qcePassa($this, $s, 'estinzione', $carlo, null, '2026-10-01')
+        : qcePassa($this, $s, 'nuda', $s['v'], $fede, '2026-09-01');
+    expect(qceFermo($anteprima, 'più strade'))->toBeFalse()
+        ->and(qceNetti($s))->toBe($dopo === 'estinzione' ? [$s['v']->id => 89754, $carlo->id => 30246] : [$s['v']->id => 59507, $carlo->id => 60493]);
 })->with(['estinzione', 'vendita della nuda']);
 
-it('catena — due nudi, uno compra la metà dell\'altro e rivende tutto: il conguaglio si ferma', function () {
+it('catena — due nudi, uno compra la metà dell\'altro e rivende tutto: a Carlo le due metà (€ 401,10)', function () {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario', genera: false);
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['tipologia' => 'usufruttuario']);
     $nora = qcePersona($s, 'Nuda Nora');
@@ -473,30 +482,46 @@ it('catena — due nudi, uno compra la metà dell\'altro e rivende tutto: il con
     ruEmetti($s, '2026-03-31');
     qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-04-01');
     qcePassa($this, $s, 'vendita', $bice, $nora, '2026-06-01');
+    $carlo = qcePersona($s, 'Compratore Carlo');
+    $anteprima = qcePassa($this, $s, 'vendita', $nora, $carlo, '2026-09-01');
 
-    // A mano: Carlo deve 120000 × 122/365 = € 401,10; prima del fermo € 200,55.
-    expect(qceFermo(qcePassa($this, $s, 'vendita', $nora, qcePersona($s, 'Compratore Carlo'), '2026-09-01', registra: false), 'più strade'))->toBeTrue();
+    // A mano: l'estinzione dà a ciascuna nuda la sua metà dal 1/4 (45206 a Nora, scritta per prima, e 45205 a Bice); il 1/6 Nora
+    // compra la metà di Bice (214 giorni, 35178); il 1/9 Nora vende tutto: 120000 × 122/365 = € 401,10. Ugo 29589, Nora 45206 +
+    // 35178 − 40110 = 40274, Bice 10027. Nella .41 e nella .42 il conguaglio si fermava; prima ancora Carlo pagava una metà sola.
+    expect(qceFermo($anteprima, 'più strade'))->toBeFalse()
+        ->and(qceNetti($s))->toBe([$s['v']->id => 29589, $nora->id => 40274, $bice->id => 10027, $carlo->id => 40110]);
 });
 
-it('catena — un ruolo ceduto che torna a chi esce: l\'usufrutto di Ugo si estingue, Ugo ricompra da Bice e rivende: il conguaglio si ferma', function () {
+it('catena — un ruolo ceduto che torna a chi esce: l\'usufrutto di Ugo si estingue, Ugo ricompra da Bice e rivende: a Elsa le due metà (€ 401,10)', function () {
     $s = qceS3('usufruttuario');
     qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-04-01');
     qcePassa($this, $s, 'vendita', $s['bice'], $s['v'], '2026-05-01');
+    $anteprima = qcePassa($this, $s, 'vendita', $s['v'], $s['a'], '2026-09-01');
 
-    // A mano: Elsa deve 120000 × 122/365 = € 401,10 se compra tutto; prima del fermo € 200,55.
-    expect(qceFermo(qcePassa($this, $s, 'vendita', $s['v'], $s['a'], '2026-09-01', registra: false), 'più strade'))->toBeTrue();
+    // A mano: l'usufrutto va a Bice il 1/4 (45205) e torna a Ugo il 1/5 (245 giorni, 40274); il 1/9 Ugo vende tutto: 120000 ×
+    // 122/365 = € 401,10, di cui € 400,00 con le quattro bozze dal 5/9. Ugo 120000 − 45205 + 40274 − 40110 = 74959, Bice 4931.
+    // Nella .41 e nella .42 il conguaglio si fermava; prima ancora Elsa pagava la sola metà piena (€ 200,55).
+    expect(qceFermo($anteprima, 'più strade'))->toBeFalse()
+        ->and(qceNetti($s))->toBe([$s['v']->id => 74959, $s['a']->id => 40110, $s['bice']->id => 4931]);
 });
 
-it('catena — riserva d\'usufrutto sull\'unità mista, poi l\'usufrutto si chiude con due nudi: il conguaglio si ferma all\'estinzione e alla vendita dopo', function () {
+it('catena — riserva d\'usufrutto sull\'unità mista, poi l\'usufrutto si chiude con due nudi: all\'estinzione la riga di Ugo torna a Nora, alla vendita dopo Carlo paga la metà di Bice', function () {
     $s = qceS3('proprietario');
     $nora = qcePersona($s, 'Nuda Nora');
     qcePassa($this, $s, 'riserva', $s['v'], $nora, '2026-04-01');
+    $estinzione = qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-09-01');
+    $netti = qceNetti($s);
+    $carlo = qcePersona($s, 'Compratore Carlo');
+    $vendita = qcePassa($this, $s, 'vendita', $s['bice'], $carlo, '2026-10-01');
 
-    // A mano, all'estinzione: Nora deve 60000 × 122/365 = € 200,55 e Bice niente; prima del fermo € 100,27 e € 100,28.
-    expect(qceFermo(qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-09-01', registra: false), 'più strade'))->toBeTrue();
-    qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-09-01');
-    // Alla vendita di Bice: Carlo deve 60000 × 92/365 = € 151,23; prima del fermo € 302,46.
-    expect(qceFermo(qcePassa($this, $s, 'vendita', $s['bice'], qcePersona($s, 'Compratore Carlo'), '2026-10-01', registra: false), 'più strade'))->toBeTrue();
+    // A mano, all'estinzione: la riga di Ugo (la metà piena, € 600,00) è passata con la riserva al suo usufrutto, legata alla nuda
+    // di Nora: torna a Nora per 122 giorni, 60000 × 122/365 = € 200,55; la riga di Bice era già sua. Alla vendita di Bice: 92
+    // giorni della sua metà, 60000 × 92/365 = € 151,23 (€ 150,00 con le tre bozze dal 5/10 e € 1,23 con la coppia). Nella .41 e
+    // nella .42 il conguaglio si fermava; prima ancora divideva per quota (€ 100,27 a Nora e € 100,28 a Bice) e poi € 302,46.
+    expect(qceFermo($estinzione, 'più strade'))->toBeFalse()
+        ->and(qceFermo($vendita, 'più strade'))->toBeFalse()
+        ->and($netti)->toBe([$s['v']->id => 39945, $s['bice']->id => 60000, $nora->id => 20055])
+        ->and(qceNetti($s))->toBe([$s['v']->id => 39945, $s['bice']->id => 44877, $nora->id => 20055, $carlo->id => 15123]);
 });
 
 it('piano senza righe di riparto (generato prima della beta.29) sull\'unità mista: il primo passaggio dopo la generazione divide sulla ricostruzione; il secondo si ferma, perché la ricostruzione non descrive più la quota emessa', function (string $primo) {
@@ -549,11 +574,11 @@ it('una voce interamente coperta dal già versato di chi esce sposta comunque la
 
 // --- Seconda revisione della Fase 1-ter -----------------------------------------------------------------------------------
 
-it('M2-1 — chi esce tiene una quota che gli è arrivata da un predecessore mentre ne cede un\'altra: il conguaglio si ferma', function (string $forma) {
+it('M2-1 — chi esce tiene una quota che gli è arrivata da un predecessore mentre ne cede un\'altra: passa solo la quota che esce', function (string $forma) {
     $s = ruScenario('prima_rata', 0, soggetto: $forma === 'A' ? 'proprietario' : 'usufruttuario', genera: false);
     if ($forma === 'A') {
         // Ugo pieno 50; Rita usufruttuaria e Bice nuda dell'altra metà. Il 1/3 Bice vende la nuda a Ugo; il 1/6 Ugo vende la
-        // sua metà piena a Elsa. A mano Elsa deve 60000 × 214/365 = € 351,78; senza il fermo pagava anche la nuda di Ugo.
+        // sua metà piena a Elsa.
         DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['quota' => 50]);
         qceTitolare($s, qcePersona($s, 'Usufruttuaria Rita'), 'usufruttuario', 50);
         $bice = qcePersona($s, 'Nuda Bice');
@@ -561,22 +586,28 @@ it('M2-1 — chi esce tiene una quota che gli è arrivata da un predecessore men
         qceGenera($s);
         ruEmetti($s, '2026-02-28');
         qcePassa($this, $s, 'nuda', $bice, $s['v'], '2026-03-01');
-        $anteprima = qcePassa($this, $s, 'vendita', $s['v'], $s['a'], '2026-06-01', registra: false);
+        $anteprima = qcePassa($this, $s, 'vendita', $s['v'], $s['a'], '2026-06-01');
+        $chiEntra = $s['a'];
     } else {
         // Ugo usufruttuario di metà (Nora nuda), Bice piena dell'altra. Il 1/3 Bice vende a Ugo; il 1/6 si estingue l'usufrutto
-        // di Ugo. A mano Nora deve il godimento della sua metà, 60000 × 214/365 = € 351,78; senza il fermo € 703,56.
+        // di Ugo.
         DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['tipologia' => 'usufruttuario', 'quota' => 50]);
-        qceTitolare($s, qcePersona($s, 'Nuda Nora'), 'nuda_proprietario', 50);
+        $chiEntra = qcePersona($s, 'Nuda Nora');
+        qceTitolare($s, $chiEntra, 'nuda_proprietario', 50);
         $bice = qcePersona($s, 'Piena Bice');
         qceTitolare($s, $bice, 'proprietario', 50);
         qceGenera($s);
         ruEmetti($s, '2026-02-28');
         qcePassa($this, $s, 'vendita', $bice, $s['v'], '2026-03-01');
-        $anteprima = qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-06-01', registra: false);
+        $anteprima = qcePassa($this, $s, 'estinzione', $s['v'], null, '2026-06-01');
     }
 
-    expect(qceFermo($anteprima, 'più strade'))->toBeTrue()
-        ->and(qceFrasi($anteprima))->toContain('ha comprato una quota nel periodo e la tiene ancora mentre ne cede un\'altra');
+    // A mano, in tutte e due le forme: la metà di Bice passa a Ugo il 1/3 (306 giorni, 60000 × 306/365 = 50301,37 → 50301, di cui
+    // € 500,00 con le dieci bozze di Bice e € 3,01 con la coppia); Bice 60000 − 50000 − 301 = 9699. Il 1/6 Ugo cede la sua metà:
+    // a Elsa (A) o a Nora (B) 214 giorni, 60000 × 214/365 = € 351,78; la metà comprata da Bice resta a Ugo. Ugo 60000 + 50000 +
+    // 301 − 35178 = 75123. Nella .41 e nella .42 il conguaglio si fermava; senza fermata prendeva anche la metà di Bice (€ 703,56).
+    expect(qceFermo($anteprima, 'più strade'))->toBeFalse()
+        ->and(qceNetti($s))->toBe($forma === 'A' ? [$s['v']->id => 75123, $s['a']->id => 35178, $bice->id => 9699] : [$s['v']->id => 75123, $chiEntra->id => 35178, $bice->id => 9699]);
 })->with(['vende la metà piena tenendo la nuda comprata' => ['A'], 'estinzione tenendo la piena comprata' => ['B']]);
 
 it('M2-2 — costituzione, fine dello stesso usufrutto, poi vendita: la piena proprietà tornata è la stessa quota, e il conguaglio non si ferma', function () {

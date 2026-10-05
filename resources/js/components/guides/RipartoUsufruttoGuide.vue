@@ -135,10 +135,13 @@ defineEmits(['update:open']);
             <p class="mb-3">
               Il programma divide la spesa dell'unità secondo le quote registrate. La metà di Bice resta di Bice con ogni voce, salvo quella sull'«Inquilino» quando l'unità è affittata: lì paga l'inquilino, tutta. L'altra metà va a chi dice la voce: a Elsa, nuda proprietaria, con «Proprietario»; a Ugo, usufruttuario, con «Usufruttuario».
             </p>
+            <p class="mb-3">
+              Quando finisce uno dei due usufrutti, «Registra passaggio» fa tornare proprietario pieno solo il nudo proprietario di quell'usufrutto: l'altro resta nudo proprietario, sotto l'usufrutto che continua. Se la nuda proprietà è una sola — due genitori donano con riserva al figlio, poi muore uno dei due — la riga del figlio si divide in due: proprietario pieno per la parte su cui l'usufrutto finisce (il 50 %), nudo proprietario del resto (l'altro 50 %). Sono due righe della stessa persona con ruoli diversi, e il riparto le legge ciascuna come sopra: la metà piena con ogni voce, quella nuda a chi dice la voce. Dove i dati non dicono quale nuda proprietà torna piena, il programma chiede di scegliere, o rifiuta e l'estinzione si registra a mano: lo spiega la guida di «Registra passaggio».
+            </p>
             <div class="p-4 rounded-lg bg-slate-100 dark:bg-slate-800 flex gap-3 text-[13px]">
               <Info class="w-5 h-5 text-slate-500 shrink-0" />
               <div>
-                Le quote devono tornare in ogni periodo: Bice 50 % ed Elsa 50 % fanno l'unità intera, e così Bice 50 % e Ugo 50 %. Se non tornano, il programma non indovina: divide ogni ruolo fra le sue sole persone, come prima. Correggi le quote nella scheda dell'unità. Fanno eccezione, per ora, i saldi pregressi intestati all'unità quando l'unità è diventata così con un passaggio registrato: si ripartiscono come prima. Controllali nell'anteprima del piano e, se serve, usa il riparto manuale.
+                Le quote devono tornare in ogni periodo: Bice 50 % ed Elsa 50 % fanno l'unità intera, e così Bice 50 % e Ugo 50 %. Se non tornano, il programma non indovina: divide ogni ruolo fra le sue sole persone, come prima. Succede, per esempio, dopo un'estinzione registrata prima della 1.11.0-beta.43 con un altro usufrutto ancora in corso: tutti i nudi proprietari tornavano proprietari pieni e la somma superava il 100 %. Correggi le quote nella scheda dell'unità. Fanno eccezione, per ora, i saldi pregressi intestati all'unità quando l'unità è diventata così con un passaggio registrato: si ripartiscono come prima. Controllali nell'anteprima del piano e, se serve, usa il riparto manuale.
               </div>
             </div>
           </section>

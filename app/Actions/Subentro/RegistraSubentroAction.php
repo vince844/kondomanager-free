@@ -13,6 +13,7 @@ use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\TitolaritaImmobile;
+use App\Services\Subentro\NudiDellEstinzione;
 use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
@@ -118,7 +119,8 @@ final class RegistraSubentroAction
                 // 3. Le righe della pivot, unità principale.
                 $entrante = $dati['entrante'] ?? null;
                 $this->registroRighe = [];
-                $esitoRighe = $this->applicaRighe($immobile, $tipo, $sottotipo, $uscente, $entrante, (float) $dati['quota'], (string) $dati['tipologia'], $decorrenza, $giornoPrima, 'quota');
+                $this->nudiDelPassaggio = null;
+                $esitoRighe = $this->applicaRighe($immobile, $tipo, $sottotipo, $uscente, $entrante, (float) $dati['quota'], (string) $dati['tipologia'], $decorrenza, $giornoPrima, 'quota', $dati['nudi_che_tornano'] ?? null, (bool) ($dati['nudi_per_quota'] ?? false));
 
                 // 3-bis. Decisioni 31.5 e 31.7: la scelta sull'ordinaria e, con la legge, le voci spostate all'«Usufruttuario».
                 //        Nel registro con i coefficienti di prima e di dopo: l'annullamento le nomina, non le disfa.
@@ -220,14 +222,26 @@ final class RegistraSubentroAction
      */
     private array $registroRighe = [];
 
+    /**
+     * Rilievo T11 della Fase 1-bis della .43: all'estinzione, quali nudi sono tornati pieni e da dove viene la scelta (decisione 57:
+     * tutti, il registro, l'amministratore, il consolidamento, ciascuno per la sua quota). Resta scritto nel registro dell'unità.
+     *
+     * @var array{da: string, righe: list<int>, consolida: array<int, float>}|null
+     */
+    private ?array $nudiDelPassaggio = null;
+
     /** @return array<string, mixed> il registro di un'unità, nella forma che legge `AnnullaPassaggioAction` */
     private function registro(string $tipo, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?string $sottotipo = null, ?int $immobileId = null): array
     {
         return [
             // Decisione 39 (1.11.0-beta.42): 2 dalla .42, quando il conguaglio prende un piano fermo anche per un movimento o un
-            // conguaglio (34.1, 38); fino alla .41, 1, e il conguaglio prendeva un piano solo se aveva una scrittura. Il fermo dei
-            // dati vecchi (`ConguaglioPassaggio::maiPassate`) e i passaggi da seguire (`PianoRate`) leggono la regola da qui.
-            'versione' => 2,
+            // conguaglio (34.1, 38); fino alla .41, 1, e il conguaglio prendeva un piano solo se aveva una scrittura. Fino alla .42 il
+            // numero non lo leggeva nessuno: il fermo dei dati vecchi (`ConguaglioPassaggio::maiPassate`) e i passaggi da seguire
+            // (`PianoRate::presoNelConguaglioDa`) riconoscono un passaggio di prima dalla chiave `piani_presi` che manca, e allora
+            // applicano la regola della .41 (decisione 49). Decisione 60 (1.11.0-beta.43): 3 dalla .43, che sulle catene non si
+            // ferma più, e la genealogia della quota (`GenealogiaDellaQuota`) legge questo numero: un passaggio con 1 o 2 che ha preso
+            // il piano senza scrivere una coppia sull'unità può essersi fermato, e la quota che lo attraversa non si segue.
+            'versione' => 3,
             // Decisione 42 (1.11.0-beta.42): i piani dell'unità che in questo momento non si riscrivono più, e che il conguaglio
             // di questo passaggio prende — anche con la rinuncia. È il fatto che il conguaglio e i passaggi dopo leggono: annullare un
             // conguaglio o un passaggio di prima non lo cambia (rilievo V1), e non serve più ricostruirlo dalle ore (V6). La riga del
@@ -240,6 +254,7 @@ final class RegistraSubentroAction
             'sottotipo' => $sottotipo,
             'righe'    => $this->registroRighe,
             'quote'    => [],
+        ] + ($this->nudiDelPassaggio !== null ? ['nudi' => $this->nudiDelPassaggio] : []) + [
             // I nomi restano anche se la persona sparisce: la chiave esterna è `nullOnDelete`, e un passaggio annullato
             // non impedisce di cancellare l'anagrafica creata per sbaglio (è spesso la ragione dell'annullamento).
             'nomi'     => ['uscente' => $uscente?->anagrafica?->nome, 'entrante' => $entrante?->nome],
@@ -261,7 +276,7 @@ final class RegistraSubentroAction
      *
      * @return array{riga_entrante_id: ?int, anagrafica_entrante_id: ?int}
      */
-    private function applicaRighe(Immobile $unita, string $tipo, ?string $sottotipo, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, float $quotaEntrante, string $tipologiaEntrante, CarbonImmutable $decorrenza, CarbonImmutable $giornoPrima, string $fonteQuota): array
+    private function applicaRighe(Immobile $unita, string $tipo, ?string $sottotipo, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, float $quotaEntrante, string $tipologiaEntrante, CarbonImmutable $decorrenza, CarbonImmutable $giornoPrima, string $fonteQuota, ?array $nudiCheTornano = null, bool $nudiPerQuota = false): array
     {
         $rigaEntranteId = null;
         $anagraficaEntranteId = $entrante?->id;
@@ -305,9 +320,42 @@ final class RegistraSubentroAction
                     // sua quota. Un nudo chiuso il giorno prima (uscito con un altro passaggio) non torna: era il
                     // difetto R6 della verifica S5. Un nudo nato lo stesso giorno (nuda venduta e usufrutto estinto
                     // nello stesso atto) non si chiude a decorrenza − 1: la sua riga diventa «proprietario».
-                    $nudi = $unita->titolarita()->with('anagrafica')->where('tipologia', 'nuda_proprietario')->get()
-                        ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values();
+                    // Decisione 57 (1.11.0-beta.43, D2): non più tutti i nudi in corso, ma quelli dell'usufrutto che finisce — con un
+                    // altro usufrutto in corso, non chi esce; senza, anche chi esce —, con la stessa regola dell'anteprima e della
+                    // richiesta (`NudiDellEstinzione`).
+                    $scelta = app(NudiDellEstinzione::class)->per($uscente, $decorrenza, $nudiCheTornano, $nudiPerQuota);
+                    if ($scelta['errore'] !== null) {
+                        // La richiesta lo rifiuta già; qui per chi chiama l'action da un'altra strada (una pertinenza, un test).
+                        throw ValidationException::withMessages([($scelta['fermo'] ? 'estinzione' : 'nudi_che_tornano') => $unita->nome . ' — ' . $scelta['errore']]);
+                    }
+                    $nudi = $scelta['nudi'];
+                    $this->nudiDelPassaggio = ['da' => $scelta['da'], 'righe' => $nudi->map(fn (TitolaritaImmobile $t) => (int) $t->id)->values()->all(), 'consolida' => $scelta['consolida']];
                     foreach ($nudi as $nudo) {
+                        // Consolidamento di legge (scelta di Vincenzo del 04/10/2026): una nuda sola sotto più usufrutti torna
+                        // piena solo per la quota dell'usufrutto che finisce, e resta nuda per il resto. Lo stesso per ogni nudo con
+                        // «tutti, ciascuno per la sua quota» (decisione 62) e per la nuda sommata che il registro conosce in parte.
+                        $quotaPiena = $scelta['consolida'][(int) $nudo->id] ?? null;
+                        // Rilievo G4: una parte che vale tutta la riga è un ritorno pieno intero; una parte zero non tocca la nuda.
+                        if ($quotaPiena !== null && round((float) $quotaPiena, 2) >= round((float) $nudo->quota, 2)) {
+                            $quotaPiena = null;
+                        }
+                        if ($quotaPiena !== null && round((float) $quotaPiena, 2) <= 0) {
+                            continue;
+                        }
+                        if ($quotaPiena !== null && $nudo->data_inizio !== null && $nudo->data_inizio->equalTo($decorrenza)) {
+                            // Rilievo A6: la richiesta lo rifiuta già, con la stessa frase; prima consigliava una data diversa dall'atto.
+                            throw ValidationException::withMessages(['decorrenza' => $unita->nome . ' — ' . mb_lcfirst(NudiDellEstinzione::fraseNudaNataLoStessoGiorno($nudo->anagrafica?->nome))]);
+                        }
+                        if ($quotaPiena !== null) {
+                            $this->chiudi($nudo, $giornoPrima);
+                            $id = $this->apriSommando($unita, $nudo->anagrafica, 'proprietario', (float) $quotaPiena, $decorrenza, $giornoPrima);
+                            $this->apri($unita, $nudo->anagrafica, 'nuda_proprietario', round((float) $nudo->quota - (float) $quotaPiena, 2), $decorrenza);
+                            if ($rigaEntranteId === null) {
+                                $rigaEntranteId = $id;
+                                $anagraficaEntranteId = $nudo->anagrafica_id;
+                            }
+                            continue;
+                        }
                         if ($nudo->data_inizio !== null && $nudo->data_inizio->equalTo($decorrenza)) {
                             // Decisione 36, rilievo R9 della Fase 1-bis della .42: il nudo nato lo stesso giorno che è anche già
                             // proprietario pieno di un'altra parte. Quella riga si chiude il giorno prima e la sua quota si somma
@@ -335,7 +383,9 @@ final class RegistraSubentroAction
                             // somma, come nella vendita. Prima l'anteprima accettava e la registrazione rifiutava.
                             $id = $this->apriSommando($unita, $nudo->anagrafica, 'proprietario', (float) $nudo->quota, $decorrenza, $giornoPrima);
                         }
-                        if ($rigaEntranteId === null) {
+                        // Il passaggio nomina chi torna pieno: un altro nudo prima di chi esce, che torna pieno della sua parte.
+                        $chiEsce = fn ($anagraficaId) => (int) $anagraficaId === (int) $uscente->anagrafica_id;
+                        if ($rigaEntranteId === null || ($chiEsce($anagraficaEntranteId) && ! $chiEsce($nudo->anagrafica_id))) {
                             $rigaEntranteId = $id;
                             $anagraficaEntranteId = $nudo->anagrafica_id;
                         }
@@ -457,6 +507,7 @@ final class RegistraSubentroAction
         }
 
         $this->registroRighe = [];
+        $this->nudiDelPassaggio = null;
         $esito = $this->applicaRighe($pertinenza, $tipo, $sottotipo, $uscenteLi, $entrante, 100.0, (string) $padre->tipologia, $decorrenza, $giornoPrima, 'uscente');
 
         Subentro::create([

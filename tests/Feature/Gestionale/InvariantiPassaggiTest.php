@@ -43,8 +43,8 @@
  *   ciascuna con ciò che deve esercitare davvero (la gemella del pregresso, le quote con `riservata_da`, l'oracolo, il
  *   già versato, una coppia, una bozza che passa): il caso che non lo esercita fallisce, invece di passare a vuoto.
  *   Fra le forme anche l'estinzione dell'usufrutto dopo la riserva: con un nudo proprietario (RE), con due che tornano
- *   pieni e il conguaglio diviso per quota (S3E), con il nudo nato lo stesso giorno per la nuda proprietà rivenduta con
- *   lo stesso atto (RVE).
+ *   pieni e ogni parte dell'usufrutto che torna alla sua nuda (S3E, decisione 56), con il nudo nato lo stesso giorno per la
+ *   nuda proprietà rivenduta con lo stesso atto (RVE).
  * - **B** — le catene annullate all'indietro: il primo passaggio non si annulla finché ce n'è uno dopo, e ogni passo
  *   annullato ritrova la sua fotografia; la riserva annullata e rifatta ridà lo stesso stato, a meno degli id. Ogni catena
  *   ha una rata emessa prima del primo passaggio (la straordinaria parte il 5 del mese prima), e con la straordinaria
@@ -84,8 +84,9 @@
  *   ricetta mirata F=RV · G=dopo), guarda solo le quote con `riservata_da`. «Come dice ogni voce» non è nella griglia: lo
  *   prova `OrdinariaDopoAttoTest`;
  * - la nota di solidarietà che non legge la coppia (Coda 172): la nota non è nella griglia;
- * - S1E, i due genitori che donano con riserva e poi muore uno dei due (griglia B): valgono solo I1–I4. A chi va
- *   l'usufrutto del genitore morto dipende dall'eventuale accrescimento, ed è materia della successione (beta.42);
+ * - S1E, i due genitori che donano con riserva e poi muore uno dei due (griglia B): valgono solo I1–I4. Dalla 1.11.0-beta.43
+ *   la nuda del figlio si consolida per legge solo per la metà del genitore morto (`NudiDellEstinzione`, prova a mano in
+ *   `EstinzioneConPiuUsufruttiTest`); l'accrescimento, se l'atto lo prevede, è materia della successione;
  * - la parte di chi entra (I6-bis, I2) quando chi esce tiene un'altra quota sulla stessa unità (la forma S3) e il piano non ha
  *   righe di riparto: la parte della quota che esce si legge dalla ricostruzione del motore, e l'oracolo non la rifà. Con le
  *   righe la ricostruisce (`invQuotaCheEsce`); i casi senza righe li prova `QuotaCheEsceTest`;
@@ -103,7 +104,9 @@
  * - l'oracolo sull'ordinaria nella vendita della sola nuda proprietà (RV, CPVN: chi la paga dipende da quando è nato
  *   l'usufrutto, R4) e sull'ordinaria con un già versato della persona (S=VE senza straordinaria): lì il valore delle
  *   coppie resta alla coerenza. Nella forma S3E (la riserva sull'unità mista, poi l'usufrutto che si chiude con due nudi
- *   proprietari) dalla Fase 1-ter della beta.41 il conguaglio si ferma e lo dice: non si sa a quale nudo torna ogni parte;
+ *   proprietari) nella .41 e nella .42 il conguaglio si fermava; dalla .43 (decisione 56) la parte legata con la riserva alla
+ *   nuda di chi ha comprato torna a lui e quella dell'usufrutto censito al nudo censito, e l'oracolo lo controlla coppia per
+ *   coppia;
  * - un saldo intestato all'unità (S=UN) entra nella griglia con I1–I4: nessun invariante dice a chi va. Lo dice, com'è, la
  *   sentinella della Coda 174 nella sezione «Coerenza», qui sotto;
  * - «il destinatario cambierebbe» quando paga sempre la stessa persona — nella costituzione con la voce sul
@@ -191,7 +194,7 @@ function invForme(): array
         'RV' => ['descrizione' => 'riserva, poi rivendita della nuda proprietà', 'titolari' => $soloUgo, 'passaggi' => [['riserva', 'v', 'a', '2026-05-01'], ['nuda', 'a', 'carlo', '09']]],
         'RE' => ['descrizione' => 'riserva, poi estinzione dell\'usufrutto: chi aveva comprato la nuda proprietà torna pieno', 'titolari' => $soloUgo,
             'passaggi' => [['riserva', 'v', 'a', '2026-05-01'], ['estinzione', 'v', null, '09']]],
-        'S3E' => ['descrizione' => 'l\'usufrutto sommato di S3 si estingue: due nudi proprietari tornano pieni, e il conguaglio si divide per quota', 'titolari' => [['v', 'proprietario', 50], ['v', 'usufruttuario', 50], ['nora', 'nuda_proprietario', 50]],
+        'S3E' => ['descrizione' => 'l\'usufrutto sommato di S3 si estingue: due nudi proprietari tornano pieni, e ogni parte dell\'usufrutto torna alla sua nuda', 'titolari' => [['v', 'proprietario', 50], ['v', 'usufruttuario', 50], ['nora', 'nuda_proprietario', 50]],
             'passaggi' => [['riserva', 'v', 'a', '2026-05-01'], ['estinzione', 'v', null, '09']]],
         'RVE' => ['descrizione' => 'riserva; poi, con lo stesso atto, la nuda proprietà rivenduta e l\'usufrutto estinto: il nudo nato quel giorno diventa pieno sulla sua riga', 'titolari' => $soloUgo,
             'passaggi' => [['riserva', 'v', 'a', '2026-05-01'], ['nuda', 'a', 'carlo', 'esame'], ['estinzione', 'v', null, '09']]],
@@ -369,7 +372,8 @@ function invCatene(): array
         'CPC→CPVN' => $forme['CPVN'],
         'VR+RV' => ['descrizione' => 'vendita piena, riserva, rivendita della nuda proprietà', 'titolari' => $soloUgo,
             'passaggi' => [['vendita', 'v', 'zeta', '2026-03-01'], ['riserva', 'zeta', 'a', '2026-05-01'], ['nuda', 'a', 'carlo', '2026-09-01']]],
-        // S1E: solo I1–I4. A chi va l'usufrutto del padre è materia della successione (beta.42), e qui non si asserisce.
+        // S1E: solo I1–I4. Dalla 1.11.0-beta.43 vale il consolidamento di legge (EstinzioneConPiuUsufruttiTest); l'accrescimento è
+        // materia della successione (beta.44), e qui non si asserisce.
         'S1E' => ['descrizione' => 'i due genitori donano con riserva, poi muore il padre', 'titolari' => $dueGenitori,
             'passaggi' => [['riserva', 'v', 'a', '2026-05-01'], ['riserva', 'rita', 'a', '2026-05-01'], ['estinzione', 'v', null, '2026-09-01']]],
     ];
@@ -731,21 +735,12 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
         [$pianoId, $immobileId] = array_map('intval', explode('|', (string) $chiave));
         $straordinaria = $g->first()['natura'] === 'straordinaria';
         $sigla = $straordinaria ? 'I6-bis' : 'I2 ordinaria';
-        if ($r['F'] === 'S3E') {
-            // Fase 1-ter della beta.41 (decisione del 03/10/2026): chi esce era proprietario pieno di una metà e usufruttuario
-            // dell'altra, e il suo usufrutto si chiude con due nudi proprietari. Non si sa a quale dei due torna ogni parte
-            // delle sue righe: il conguaglio si ferma e lo dice. L'oracolo lo sa dalla forma, non dal codice.
-            $conta['ordinaria']++;
-            foreach ($g as $q) {
-                if ((int) $q['entrante'] !== 0 || $q['passa']) {
-                    $v[] = sprintf('%s quota %d, catena con più strade: a chi entra %d%s', $sigla, $q['rata_quote_id'], (int) $q['entrante'], $q['passa'] ? ', e la bozza passa' : '');
-                }
-            }
-            if (! collect($cong['non_risolte'] ?? [])->contains(fn ($n) => str_contains((string) $n['motivo'], 'sono passate per più strade'))) {
-                $v[] = 'S3E: il conguaglio non dice che le quote sono passate per più strade';
-            }
-            $valore($g, 0, 0);
-            continue;
+        if ($r['F'] === 'S3E' && collect($cong['non_risolte'] ?? [])->contains(fn ($n) => str_contains((string) $n['motivo'], 'sono passate per più strade'))) {
+            // Decisione 56 (1.11.0-beta.43): chi esce era proprietario pieno di una metà e usufruttuario dell'altra, ha venduto con
+            // riserva la metà piena, e il suo usufrutto, ora dell'unità intera, si chiude con due nudi proprietari. Ogni riga di
+            // riparto sa da quale riga di titolarità viene, e la genealogia sa a quale nudo torna ogni parte: il conguaglio non si
+            // ferma più (nella .41 e nella .42 sì).
+            $v[] = 'S3E: il conguaglio si ferma («le quote sono passate per più strade»), e la genealogia sa a quale nudo torna ogni parte';
         }
         if ($straordinaria && $r['N'] === 'SN') {
             // Senza la data della delibera, su un piano senza righe, niente si divide e niente passa.
@@ -821,6 +816,26 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
             }
         }
         $valore($g, $atteso, $passate);
+        if ($r['F'] === 'S3E' && ! $straordinaria) {
+            // Decisione 56: la coppia per nudo. La riga di Ugo che la riserva ha portato nel suo usufrutto, legata alla nuda di chi
+            // ha comprato, torna a lui (Elsa); quella dell'usufrutto che Ugo aveva già, censito, torna a chi era nudo di quella metà
+            // (Nora). L'oracolo divide la parte di chi entra con il peso delle due righe: con la voce sul «Proprietario» Ugo ha solo
+            // la riga della metà piena, e va tutto a Elsa. (Le righe del piano generato dopo la riserva, G=dopo, la griglia non le
+            // porta a questo oracolo: con S3E non c'è niente di emesso.)
+            $conta['per_nudo'] = ($conta['per_nudo'] ?? 0) + 1;
+            $pesoRiga = fn (string $ruolo) => (float) DB::table('righe_riparto')->where('piano_rate_id', $pianoId)->where('immobile_id', $immobileId)->where('anagrafica_id', $uscenteId)
+                ->where('tipo', 'riparto')->where('ruolo_risolto', $ruolo)->sum('importo');
+            $attesi = MoneyHelper::ripartisciPerQuote($atteso, [(int) $caso['persone']['a']->id => $pesoRiga('proprietario'), (int) $caso['persone']['nora']->id => $pesoRiga('usufruttuario')]);
+            $gestione = (int) DB::table('piani_rate')->where('id', $pianoId)->value('gestione_id');
+            $proposte = collect($cong['coppie'] ?? [])->filter(fn (array $c) => (int) $c['immobile_id'] === $immobileId && (int) $c['gestione_id'] === $gestione)
+                ->groupBy('anagrafica_entrante_id')->map(fn ($c) => (int) $c->sum('importo'))->all();
+            foreach ($attesi as $chi => $cents) {
+                if ((int) ($proposte[$chi] ?? 0) !== (int) $cents) {
+                    $v[] = sprintf('S3E piano %d, unità %d: la coppia di %d vale %d, l\'oracolo dice %d (la parte legata alla nuda di chi ha comprato con la riserva torna a lui, quella dell\'usufrutto censito al nudo censito)',
+                        $pianoId, $immobileId, $chi, (int) ($proposte[$chi] ?? 0), (int) $cents);
+                }
+            }
+        }
     }
 
     return $v;

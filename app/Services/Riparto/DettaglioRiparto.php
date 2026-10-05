@@ -83,6 +83,11 @@ final class DettaglioRiparto
         }
         $risoluzione = $motore->getRisoluzioneTemporale();
         $righe = $motore->getRigheDettaglio();
+        if ($haQuote) {
+            // Decisione 55 (1.11.0-beta.43): il ricostruito usa la titolarità di oggi, non quella della generazione, e il suo
+            // legame non dice da dove vengono le quote emesse. Nullo, così chi lo legge (il conguaglio) si ferma come prima.
+            $righe = array_map(fn (array $r) => array_merge($r, ['anagrafica_immobile_id' => null]), $righe);
+        }
 
         return [
             'righe' => $righe,
@@ -145,6 +150,7 @@ final class DettaglioRiparto
             'tipo'              => $r->tipo,
             'anagrafica_id'     => $r->anagrafica_id,
             'immobile_id'       => $r->immobile_id,
+            'anagrafica_immobile_id' => $r->anagrafica_immobile_id,
             'conto_id'          => $r->conto_id,
             'conto_nome'        => $r->conto_nome,
             'conto_radice_id'   => $r->conto_radice_id,

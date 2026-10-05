@@ -415,6 +415,8 @@ class GenerateRateQuotesAction
                 'tipo'              => $riga['tipo'],
                 'anagrafica_id'     => $riga['anagrafica_id'] ?? null,
                 'immobile_id'       => $riga['immobile_id'] ?? null,
+                // Decisione 55 (1.11.0-beta.43): la riga di titolarità da cui viene la riga di riparto.
+                'anagrafica_immobile_id' => $riga['anagrafica_immobile_id'] ?? null,
                 'conto_id'          => $riga['conto_id'] ?? null,
                 'conto_nome'        => $riga['conto_nome'] ?? null,
                 'conto_radice_id'   => $riga['conto_radice_id'] ?? null,

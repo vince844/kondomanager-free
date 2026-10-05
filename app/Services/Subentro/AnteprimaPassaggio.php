@@ -45,8 +45,23 @@ class AnteprimaPassaggio
      *   copia_autentica_il?: ?CarbonImmutable, pertinenze?: list<int>, data_fine_locazione?: ?CarbonImmutable
      * } $dati
      */
-    /** I nudi proprietari in corso alla decorrenza dell'ultimo `calcola()` (S8-30). */
+    /** I nudi proprietari in corso alla decorrenza dell'ultimo `calcola()` (S8-30): all'estinzione, quelli che tornano pieni (decisione 57). */
     private Collection $nudi;
+
+    /** Decisione 57: da dove viene la scelta dei nudi che tornano pieni (`NudiDellEstinzione::DA_*`), solo all'estinzione. */
+    private ?string $nudiDa = null;
+
+    /** Consolidamento di legge: riga del nudo → quota che torna piena, quando la nuda vale più dell'usufrutto che finisce. */
+    private array $consolida = [];
+
+    /** La persona che esce, all'estinzione: se è anche fra i nudi che tornano pieni, non è la controparte di nessuno (T1). */
+    private ?int $chiEsce = null;
+
+    /** La riga di chi esce (per le frasi di «Chi resta obbligato» all'estinzione). */
+    private ?int $rigaChiEsce = null;
+
+    /** All'estinzione, sull'unità c'è un altro usufrutto in corso (rilievo GT6: la nota sull'accrescimento). */
+    private bool $altroUsufrutto = false;
 
     public function __construct(
         private readonly ConguaglioPassaggio $conguaglioPassaggio = new ConguaglioPassaggio(),
@@ -73,6 +88,20 @@ class AnteprimaPassaggio
         // divide fra loro per quota. `$nudoProprietario` resta il primo, per la controparte del calcolo.
         $this->nudi = $immobile->titolarita()->with('anagrafica')->where('tipologia', 'nuda_proprietario')->get()
             ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values();
+        // Decisione 57 (1.11.0-beta.43, D2): all'estinzione tornano pieni solo i nudi dell'usufrutto che finisce — con un altro usufrutto
+        // in corso non chi esce; senza, anche chi esce, e la sua parte resta a suo nome.
+        $this->nudiDa = null;
+        $this->consolida = [];
+        $this->chiEsce = $uscente?->anagrafica_id !== null ? (int) $uscente->anagrafica_id : null;
+        $this->rigaChiEsce = $uscente?->id !== null ? (int) $uscente->id : null;
+        $this->altroUsufrutto = false;
+        if ($tipo === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'estinzione' && $uscente !== null) {
+            $scelta = app(NudiDellEstinzione::class)->per($uscente, $decorrenza, $dati['nudi_che_tornano'] ?? null, (bool) ($dati['nudi_per_quota'] ?? false));
+            $this->nudi = $scelta['nudi'];
+            $this->nudiDa = $scelta['da'];
+            $this->consolida = $scelta['consolida'];
+            $this->altroUsufrutto = (bool) ($scelta['altro_usufrutto'] ?? false);
+        }
         $nudoProprietario = $this->nudi->first() ?? $attuali->first(fn ($t) => $t->tipologia === 'nuda_proprietario');
 
         $nomeUscente = $uscente?->anagrafica?->nome;
@@ -92,11 +121,13 @@ class AnteprimaPassaggio
         $intestatari = $uscente
             ? $this->conguaglioPassaggio->intestatariConguagliabili((int) $uscente->anagrafica_id, $immobileIds)
             : [];
-        $rateEmesse = $uscente
-            ? $tutteLeEmesse->whereIn('anagrafica_id', $intestatari)->values()
+        // DV4 (decisione 59, 1.11.0-beta.43): un predecessore conta solo sulle unità dove ha ceduto qualcosa a chi esce.
+        $conta = $uscente ? $this->conguaglioPassaggio->filtroConguagliabili((int) $uscente->anagrafica_id, $immobileIds) : null;
+        $rateEmesse = $conta
+            ? $tutteLeEmesse->filter(fn ($r) => $conta($r['anagrafica_id'], $r['immobile_id']))->values()
             : collect();
-        $altreEmesse = $uscente
-            ? $tutteLeEmesse->whereNotIn('anagrafica_id', $intestatari)->values()
+        $altreEmesse = $conta
+            ? $tutteLeEmesse->reject(fn ($r) => $conta($r['anagrafica_id'], $r['immobile_id']))->values()
             : $tutteLeEmesse;
         $morosita = $uscente ? $this->morosita($immobile, $uscente->anagrafica_id) : null;
 
@@ -107,6 +138,9 @@ class AnteprimaPassaggio
         $ordinaria = $this->bloccoOrdinaria($tipo, $dati, $condominio, $immobileIds, $uscente, $nomeUscente, $nomeEntrante, $decorrenza);
 
         return [
+            // Decisione 57 (1.11.0-beta.43, D2): all'estinzione, i nudi che tornano pieni e da dove viene la scelta — tutti, dal
+            // registro del passaggio da cui è nato l'usufrutto, o dall'amministratore. Il modulo mostra le caselle solo per la scelta.
+            'nudi' => $this->nudiDa !== null ? ['da' => $this->nudiDa, 'righe' => $this->nudi->map(fn (TitolaritaImmobile $t) => (int) $t->id)->values()->all(), 'consolida' => (object) $this->consolida] : null,
             'riferimento' => [
                 'uscente_fino_al' => $uscente ? $giornoPrima->toDateString() : null,
                 'entrante_dal' => $decorrenza->toDateString(),
@@ -118,7 +152,7 @@ class AnteprimaPassaggio
             ],
             'rate' => [
                 'stato' => $conguaglio['stato'],
-                'emesse' => $rateEmesse->map(fn ($r) => collect($r)->except('anagrafica_id')->all())->values()->all(),
+                'emesse' => $rateEmesse->map(fn ($r) => collect($r)->except(['anagrafica_id', 'immobile_id'])->all())->values()->all(),
                 'piani_distinti' => $rateEmesse->pluck('piano')->unique()->count(),
                 'totale_emesso' => $rateEmesse->sum('importo'),
                 'totale_emesso_formattato' => MoneyHelper::format((int) $rateEmesse->sum('importo')),
@@ -139,8 +173,8 @@ class AnteprimaPassaggio
                 'frasi' => $this->blocco4($tipo, $dati, $condominio, $immobile, $uscente, $entrante),
             ],
             'ordinaria' => $ordinaria,
-            'cancello' => $this->cancello($tipo, $condominio, $immobileIds, $uscente, $tutteLeEmesse, $intestatari, $conguaglio['riassegnazione'] ?? [], $nomeEntrante, $conguaglio['quote'] ?? [], $this->riserva($tipo, $dati) ? $decorrenza : null, array_column(array_filter($ordinaria['voci'], fn ($v) => $v['spostata']), 'conto_id'),
-                $ordinaria['scelta'] === Subentro::ORDINARIA_COME_LA_VOCE ? true : array_column(array_filter($ordinaria['voci'], fn ($v) => ! $v['spostata'] && ! $v['bloccata']), 'conto_id')),
+            'cancello' => $this->cancello($tipo, $condominio, $immobileIds, $uscente, $tutteLeEmesse->filter(fn ($r) => $conta === null || $conta($r['anagrafica_id'], $r['immobile_id']))->values(), $intestatari, $conguaglio['riassegnazione'] ?? [], $nomeEntrante, $conguaglio['quote'] ?? [], $this->riserva($tipo, $dati) ? $decorrenza : null, array_column(array_filter($ordinaria['voci'], fn ($v) => $v['spostata']), 'conto_id'),
+                $ordinaria['scelta'] === Subentro::ORDINARIA_COME_LA_VOCE ? true : array_column(array_filter($ordinaria['voci'], fn ($v) => ! $v['spostata'] && ! $v['bloccata']), 'conto_id'), $conta),
         ];
     }
 
@@ -161,8 +195,11 @@ class AnteprimaPassaggio
             return $nessuno;
         }
         $estinzione = $tipo === 'usufrutto' && ($dati['sottotipo'] ?? 'costituzione') === 'estinzione';
-        $controparte = $estinzione ? $nudo?->anagrafica : $entrante;
-        if ($controparte === null) {
+        // Decisione 57: chi esce che torna pieno della sua parte (nessun altro usufrutto) non è una controparte, la sua parte resta a
+        // lui. All'estinzione la controparte è il primo degli altri nudi, sull'unità o, se lì non ce ne sono, su una pertinenza.
+        $altro = fn (?TitolaritaImmobile $t) => $t !== null && (int) $t->anagrafica_id !== (int) $uscente->anagrafica_id;
+        $controparte = $estinzione ? ($altro($nudo) ? $nudo : $this->nudi->first($altro))?->anagrafica : $entrante;
+        if ($controparte === null && ! $estinzione) {
             return $nessuno;
         }
 
@@ -175,11 +212,69 @@ class AnteprimaPassaggio
         // che l'usufruttuario aveva davvero — non quelle sul «Proprietario», già passate al nudo proprietario con la riserva
         // o rimaste sue con la costituzione. Senza, l'estinzione le faceva passare una seconda volta.
         $origine = $estinzione ? $this->usufruttoNatoComeLaVoce($uscente) : null;
+        // U4 (decisione 59, 1.11.0-beta.43): nell'estinzione chi entra, unità per unità, è il nudo proprietario di quell'unità
+        // alla decorrenza. Il box può avere un nudo suo, diverso da quello dell'appartamento: prima la coppia del box andava al
+        // nudo dell'appartamento, che sul box non ha niente.
+        $nudiPerUnita = [];
+        $entrantiPerUnita = [];
+        // Decisione 56 (1.11.0-beta.43): la genealogia della quota parte dalla riga di chi esce su ogni unità — sull'unità quella del
+        // modulo, su una pertinenza quella che il passaggio chiuderà (la stessa ricerca di `RegistraSubentroAction`) — e, all'estinzione,
+        // arriva ai nudi che tornano pieni, con la quota che torna piena.
+        $consolidaPerUnita = [(int) $immobileIds[0] => $this->consolida];
+        $righeUscenti = [(int) $immobileIds[0] => (int) $uscente->id];
+        foreach (array_slice($immobileIds, 1) as $u) {
+            $riga = TitolaritaImmobile::where('immobile_id', $u)->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
+                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza->subDay()) && ! $t->subentriComeUscente()->exists());
+            if ($riga !== null) {
+                $righeUscenti[(int) $u] = (int) $riga->id;
+            }
+        }
+        if ($estinzione) {
+            foreach ($immobileIds as $u) {
+                // Su una pertinenza la stessa regola dell'unità (decisione 57), sulla riga d'usufrutto di chi esce su quella
+                // pertinenza: prima si prendevano tutti i nudi in corso, e chi esce poteva tornare nudo di sé stesso sul box.
+                $usufruttoQui = (int) $u === (int) $immobileIds[0] ? null
+                    : TitolaritaImmobile::with('anagrafica')->where('immobile_id', $u)->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', 'usufruttuario')->get()
+                        ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza->subDay()));
+                $sceltaQui = $usufruttoQui !== null ? app(NudiDellEstinzione::class)->per($usufruttoQui, $decorrenza) : null;
+                if ($sceltaQui !== null) {
+                    $consolidaPerUnita[(int) $u] = $sceltaQui['consolida'];
+                }
+                $nudiPerUnita[(int) $u] = (int) $u === (int) $immobileIds[0] ? $this->nudi
+                    : ($sceltaQui !== null ? $sceltaQui['nudi']
+                        : TitolaritaImmobile::with('anagrafica')->where('immobile_id', $u)->where('tipologia', 'nuda_proprietario')->get()
+                            ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values());
+                $nomi = $nudiPerUnita[(int) $u]->filter($altro)->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->values()->all();
+                $controparte ??= $nudiPerUnita[(int) $u]->first($altro)?->anagrafica;
+                if ($nomi !== [] && $nomi !== [$controparte?->nome]) {
+                    $entrantiPerUnita[(int) $u] = $this->elenco($nomi);
+                }
+            }
+        }
+        if ($controparte === null) {
+            // Il solo nudo è chi esce: torna pieno, e le quote dalla decorrenza restano a lui. Non passa niente.
+            return $nessuno;
+        }
+        // Decisione 57: un'unità del passaggio dove il solo nudo è chi esce resta fuori dal conguaglio — torna pieno, e le sue
+        // quote dalla decorrenza restano a lui —, e la frase lo dice. Dentro, il calcolo vedrebbe una coppia con sé stesso.
+        $restaAChiEsce = $estinzione ? array_values(array_filter($immobileIds, fn ($u) => ($nudiPerUnita[(int) $u] ?? collect())->isNotEmpty()
+            && $nudiPerUnita[(int) $u]->every(fn (TitolaritaImmobile $t) => ! $altro($t)))) : [];
+        $immobileIds = array_values(array_diff($immobileIds, $restaAChiEsce));
+        $nudiOra = array_map(fn (Collection $nudi) => $nudi->map(fn (TitolaritaImmobile $t) => ['id' => (int) $t->id, 'anagrafica_id' => (int) $t->anagrafica_id,
+            'quota' => (float) ($consolidaPerUnita[(int) $t->immobile_id][(int) $t->id] ?? $t->quota)])->values()->all(), $nudiPerUnita);
+        $passaggio = match (true) {
+            $estinzione => GenealogiaDellaQuota::ESTINZIONE,
+            $tipo === 'usufrutto' => GenealogiaDellaQuota::COSTITUZIONE,
+            $this->riserva($tipo, $dati) => GenealogiaDellaQuota::RISERVA,
+            $tipo === 'vendita' && $uscente->tipologia === 'nuda_proprietario' => GenealogiaDellaQuota::NUDA,
+            $tipo === 'vendita' => GenealogiaDellaQuota::VENDITA,
+            default => GenealogiaDellaQuota::FINE_LOCAZIONE,
+        };
         $comeLaVoce = ($this->sceltaSullOrdinaria($tipo, $dati) && $this->sceltaOrdinaria($dati) === Subentro::ORDINARIA_COME_LA_VOCE)
             || $origine !== null;
         $esito = $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $immobileIds, $decorrenza, soloOrdinario: $tipo === 'usufrutto', riassegnaBozze: $tipo === 'vendita', nudaProprieta: $tipo === 'vendita' && $uscente->tipologia === 'nuda_proprietario', soloStraordinario: $this->riserva($tipo, $dati),
             ordinariaComeLaVoce: $comeLaVoce, ruoliCheRestano: $this->ruoliCheRestano($tipo, $dati, $uscente, $immobileIds, $decorrenza),
-            piuNudi: $estinzione && $this->nudi->count() > 1);
+            piuNudi: $estinzione && $this->nudi->count() > 1, entrantiPerUnita: $entrantiPerUnita, passaggio: $passaggio, righeUscenti: $righeUscenti, nudiOra: $nudiOra);
         if ($esito['stato'] === 'nessuna_rata') {
             return $nessuno;
         }
@@ -189,23 +284,56 @@ class AnteprimaPassaggio
         // S8-30: con più nudi proprietari il debito di ogni coppia si divide fra loro per quota registrata (la
         // stessa chiave che il motore usa per i comproprietari), una coppia per nudo; `anagrafica_entrante_id`
         // sta dentro la coppia anche con un nudo solo, per uniformità (RegistraSubentroAction la legge da lì).
-        $nudi = $estinzione ? $this->nudi : collect();
-        if ($nudi->count() > 1) {
-            $pesi = $nudi->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id => (float) $t->quota])->all();
-            $nomi = $nudi->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id => $t->anagrafica?->nome])->all();
+        if ($estinzione) {
             $coppie = [];
             $righe = [];
             foreach ($esito['coppie'] as $c) {
-                $parti = MoneyHelper::ripartisciPerQuote((int) $c['importo'], $pesi);
+                // U4: i nudi dell'unità della coppia; se l'unità non ne ha, quelli dell'unità principale, come prima.
+                $nudi = $nudiPerUnita[(int) ($c['immobile_id'] ?? 0)] ?? collect();
+                $nudi = $nudi->isNotEmpty() ? $nudi : $this->nudi;
+                if ($nudi->count() <= 1) {
+                    $nudo = $nudi->first();
+                    if ($nudo !== null && ! $altro($nudo)) {
+                        continue; // mai una coppia con sé stesso (un'unità senza nudi ripiega su quelli della principale)
+                    }
+                    $coppie[] = $c + ['anagrafica_entrante_id' => $nudo !== null ? (int) $nudo->anagrafica_id : $esito['anagrafica_entrante_id'], 'entrante_nome' => $nudo?->anagrafica?->nome ?? $controparte->nome];
+                    continue;
+                }
+                $pesi = $nudi->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id => (float) ($consolidaPerUnita[(int) $t->immobile_id][(int) $t->id] ?? $t->quota)])->all();
+                $nomi = $nudi->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id => $t->anagrafica?->nome])->all();
+                $perQuota = MoneyHelper::ripartisciPerQuote((int) $c['importo'], $pesi);
+                // Decisione 56 (1.11.0-beta.43): dove la genealogia sa a quale nudo torna ogni parte dell'usufrutto (la riserva che lega
+                // una parte alla sua nuda), la coppia si divide così; il resto, se c'è, per quota come prima.
+                $genealogia = array_intersect_key(array_map('intval', (array) ($c['per_nudo'] ?? [])), $pesi);
+                $resto = (int) $c['importo'] - (int) array_sum($genealogia);
+                $parti = $genealogia === [] ? $perQuota : $genealogia;
+                if ($genealogia !== [] && $resto !== 0) {
+                    foreach (MoneyHelper::ripartisciPerQuote($resto, $pesi) as $anagraficaId => $cents) {
+                        $parti[$anagraficaId] = ($parti[$anagraficaId] ?? 0) + (int) $cents;
+                    }
+                }
                 foreach ($parti as $anagraficaId => $cents) {
-                    if ((int) $cents === 0) {
+                    // La parte di chi esce, nudo che torna pieno, resta a lui: non è una coppia.
+                    if ((int) $cents === 0 || (int) $anagraficaId === (int) $uscente->anagrafica_id) {
                         continue;
                     }
                     $coppie[] = array_replace($c, ['anagrafica_entrante_id' => (int) $anagraficaId, 'entrante_nome' => $nomi[$anagraficaId] ?? '?', 'importo' => (int) $cents, 'importo_formattato' => MoneyHelper::format((int) $cents)]);
                 }
-                $righe[] = sprintf('Sulla gestione %s il debito di %s si divide per quota: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf('%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))));
+                if ($genealogia !== [] && count(array_filter($parti, fn ($cents) => (int) $cents !== 0)) <= 1) {
+                    continue;
+                }
+                // La parte di chi esce resta a suo nome: la frase dice di quanto scende il suo credito.
+                $resta = (int) ($parti[(int) $uscente->anagrafica_id] ?? 0);
+                $coda = $resta !== 0 ? sprintf('; il credito di %s scende quindi a %s', $uscente->anagrafica?->nome ?? 'chi esce', MoneyHelper::format((int) $c['importo'] - $resta)) : '';
+                $righe[] = $genealogia === [] || array_filter($perQuota, fn ($cents) => (int) $cents !== 0) == array_filter($parti, fn ($cents) => (int) $cents !== 0)
+                    ? sprintf('Sulla gestione %s il debito di %s si divide per quota: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s (%s %%)' : '%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
+                    : sprintf('Sulla gestione %s il debito di %s si divide secondo la parte dell\'usufrutto che torna a ciascun nudo proprietario: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s' : '%s a %s', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?'), array_keys($parti))), $coda);
             }
             $esito['coppie'] = $coppie;
+            foreach ($restaAChiEsce as $u) {
+                $righe[] = sprintf('Per %s il nudo proprietario è %s: torna proprietario pieno, e le sue quote dal %s restano a suo nome, senza conguaglio.',
+                    Immobile::find($u)?->nome ?? 'l\'unità', $uscente->anagrafica?->nome ?? 'chi esce', $this->data($decorrenza));
+            }
             array_push($esito['frasi'], ...$righe);
         } else {
             $esito['coppie'] = array_map(fn ($c) => $c + ['anagrafica_entrante_id' => $esito['anagrafica_entrante_id'], 'entrante_nome' => $controparte->nome], $esito['coppie']);
@@ -217,6 +345,10 @@ class AnteprimaPassaggio
     /** «Rossi Mario (60 %) e Neri Paolo (40 %)» con più nudi; il nome solo con uno; il ripiego senza nessuno. */
     private function elencoNudi(?TitolaritaImmobile $nudo, string $ripiego = 'il nudo proprietario'): string
     {
+        if ($this->nudi->count() > 1 && $this->consolida !== []) {
+            // Decisione 62: con il consolidamento di più nudi la parte di ciascuno la dice `tornaPieno()`.
+            return $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome ?? '?')->all());
+        }
         if ($this->nudi->count() > 1) {
             return $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => sprintf('%s (%s %%)', $t->anagrafica?->nome ?? '?', rtrim(rtrim(number_format((float) $t->quota, 2, ',', '.'), '0'), ',')))->all());
         }
@@ -227,7 +359,36 @@ class AnteprimaPassaggio
     /** Il verbo al numero giusto: «torna proprietario pieno» / «tornano proprietari pieni». */
     private function tornaPieno(string $verbo = 'torna'): string
     {
-        return $this->nudi->count() > 1 ? ($verbo === 'risulterà' ? 'risulteranno proprietari pieni' : 'tornano proprietari pieni') : ($verbo === 'risulterà' ? 'risulterà proprietario pieno' : 'torna proprietario pieno');
+        $risultera = $verbo === 'risulterà';
+        // Consolidamento di legge: pieno solo per la parte dell'usufrutto che finisce, nudo per il resto.
+        if ($this->nudi->count() === 1 && ($quota = $this->consolida[(int) $this->nudi->first()->id] ?? null) !== null) {
+            $resto = $this->numeroQuota(round((float) $this->nudi->first()->quota - (float) $quota, 2));
+            return $risultera
+                ? sprintf('risulterà proprietario pieno per %s e resterà nudo proprietario dell\'altro %s %%', NudiDellEstinzione::percentuale((float) $quota), $resto)
+                : sprintf('torna proprietario pieno per %s, e resta nudo proprietario dell\'altro %s %%', NudiDellEstinzione::percentuale((float) $quota), $resto);
+        }
+        // Decisione 62: più nudi, ciascuno pieno per la sua parte dell'usufrutto che finisce. Rilievo G4: chi riceve tutta la sua
+        // quota torna pieno per intero e non ha un resto; solo gli altri restano nudi del resto.
+        if ($this->nudi->count() > 1 && $this->consolida !== []) {
+            $inParte = $this->nudi->filter(fn (TitolaritaImmobile $t) => isset($this->consolida[(int) $t->id]))->values();
+            $parti = $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => isset($this->consolida[(int) $t->id])
+                ? sprintf('%s per %s', $t->anagrafica?->nome ?? '?', NudiDellEstinzione::percentuale((float) $this->consolida[(int) $t->id]))
+                : sprintf('%s per tutta la sua quota (%s %%)', $t->anagrafica?->nome ?? '?', $this->numeroQuota((float) $t->quota)))->all());
+            $resto = match (true) {
+                $inParte->count() === $this->nudi->count() => $risultera ? 'e resteranno nudi proprietari del resto' : 'e restano nudi proprietari del resto',
+                $inParte->count() === 1 => sprintf($risultera ? 'e %s resterà nudo proprietario del resto' : 'e %s resta nudo proprietario del resto', $inParte->first()->anagrafica?->nome ?? '?'),
+                default => sprintf($risultera ? 'e %s resteranno nudi proprietari del resto' : 'e %s restano nudi proprietari del resto', $this->elenco($inParte->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome ?? '?')->all())),
+            };
+
+            return sprintf($risultera ? 'risulteranno proprietari pieni, ciascuno per la sua parte dell\'usufrutto che finisce (%s), %s' : 'tornano proprietari pieni, ciascuno per la sua parte dell\'usufrutto che finisce (%s), %s', $parti, $resto);
+        }
+
+        return $this->nudi->count() > 1 ? ($risultera ? 'risulteranno proprietari pieni' : 'tornano proprietari pieni') : ($risultera ? 'risulterà proprietario pieno' : 'torna proprietario pieno');
+    }
+
+    private function numeroQuota(float $quota): string
+    {
+        return rtrim(rtrim(number_format($quota, 2, ',', '.'), '0'), ',');
     }
 
     /** La vendita con riserva d'usufrutto (decisione 28), dal modulo: la dichiara l'amministratore. */
@@ -268,8 +429,12 @@ class AnteprimaPassaggio
             ->get(['immobile_id', 'tipologia']) as $r) {
             $ruoli[(int) $r->immobile_id][$r->tipologia] = true;
         }
+        // U3 (decisione 59, 1.11.0-beta.43): contano anche i passaggi dello stesso giorno già registrati. Lo stesso giorno vale
+        // l'ordine di registrazione, e questo passaggio non è ancora registrato: chi vende il 30/9 la nuda proprietà e poi, lo
+        // stesso giorno, la metà piena ha già ceduto la nuda (la sua riga è chiusa il 29/9 e non è più fra quelle in vigore).
+        // Prima la seconda vendita portava a chi comprava anche la quota già venduta con la prima.
         $precedenti = Subentro::whereIn('immobile_id', $immobileIds)->where('anagrafica_uscente_id', $uscente->anagrafica_id)
-            ->whereDate('decorrenza', '<', $giorno)->get();
+            ->whereDate('decorrenza', '<=', $giorno)->get();
         $righeUscenti = DB::table('anagrafica_immobile')->whereIn('id', $precedenti->pluck('riga_uscente_id')->filter())->pluck('tipologia', 'id');
         foreach ($precedenti as $p) {
             // Rilievo S-R3: un passaggio registrato prima della beta.37 non ha il sottotipo nel registro. Seconda revisione (M2-3):
@@ -662,6 +827,11 @@ class AnteprimaPassaggio
                 if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
                     $frasi[] = sprintf('%s risulterà usufruttuario fino al %s.', $uscente, $finoA);
                     $frasi[] = sprintf('%s %s dal %s.', $this->elencoNudi($nudo, 'Il nudo proprietario'), $this->tornaPieno('risulterà'), $dalA);
+                    // Rilievo T12 della Fase 1-bis della .43: con un altro usufrutto in corso è la regola di legge quando l'atto non dice
+                    // altro; l'accrescimento all'altro usufruttuario arriva con la successione.
+                    if ($this->altroUsufrutto) {
+                        $frasi[] = 'È la regola di legge quando l\'atto non dice altro: se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario, non registrare l\'estinzione da qui e correggi le righe da «Modifica associazione».';
+                    }
                 } else {
                     $frasi[] = sprintf('%s risulterà proprietario pieno fino al %s e nudo proprietario dal %s.', $uscente, $finoA, $dalA);
                     $frasi[] = sprintf('%s risulterà usufruttuario dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
@@ -716,10 +886,11 @@ class AnteprimaPassaggio
             ->orderBy('rate.numero_rata')
             ->get([
                 'rate.numero_rata', 'rate.data_scadenza', 'rate_quote.importo', 'rate_quote.importo_pagato',
-                'rate_quote.anagrafica_id', 'anagrafiche.nome as intestatario', 'piani_rate.nome as piano', 'rate_quote.tipo',
+                'rate_quote.anagrafica_id', 'rate_quote.immobile_id', 'anagrafiche.nome as intestatario', 'piani_rate.nome as piano', 'rate_quote.tipo',
             ])
             ->map(fn ($r) => [
                 'anagrafica_id' => (int) $r->anagrafica_id,
+                'immobile_id' => (int) $r->immobile_id,
                 'rata' => (int) $r->numero_rata,
                 'scadenza' => substr((string) $r->data_scadenza, 0, 10),
                 'importo' => (int) $r->importo,
@@ -768,8 +939,23 @@ class AnteprimaPassaggio
         // Nell'usufrutto chi «entra» nel conguaglio non è sempre chi entra nel modulo: nell'estinzione nessuno
         // entra, è il nudo proprietario che torna pieno; nella costituzione chi esce resta come nudo proprietario.
         $estinzione = $tipo === 'usufrutto' && ($dati['sottotipo'] ?? 'costituzione') === 'estinzione';
+        // Rilievo T1 della Fase 1-bis della .43: chi esce che torna pieno della sua parte non è la controparte del conguaglio.
+        $altriNudi = $this->nudi->reject(fn (TitolaritaImmobile $t) => $this->chiEsce !== null && (int) $t->anagrafica_id === $this->chiEsce)->values();
+        $tornaPienoChi = $this->tornaPieno();
+        // Rilievo GT1 del giro sulle correzioni: sull'unità il solo nudo è chi esce, ma su una pertinenza c'è un altro nudo e la sua
+        // coppia si propone: l'apertura nomina chi riceve le coppie.
+        // Rilievo HT3: per persona, non per nome (due omonimi su due pertinenze sono due persone).
+        $nomiDelleCoppie = collect($conguaglio['coppie'] ?? [])->unique('anagrafica_entrante_id')->pluck('entrante_nome')->filter()->values()->all();
         if ($estinzione) {
-            $entrante = $this->elencoNudi($nudo);
+            $entrante = $altriNudi->count() === $this->nudi->count() ? $this->elencoNudi($nudo)
+                : $this->elenco($altriNudi->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome ?? '?')->all());
+            if ($altriNudi->count() !== $this->nudi->count()) {
+                $tornaPienoChi = $altriNudi->count() > 1 ? 'tornano proprietari pieni' : 'torna proprietario pieno';
+            }
+            if ($altriNudi->isEmpty() && $nomiDelleCoppie !== []) {
+                $entrante = $this->elenco($nomiDelleCoppie);
+                $tornaPienoChi = count($nomiDelleCoppie) > 1 ? 'tornano proprietari pieni' : 'torna proprietario pieno';
+            }
         }
 
         $frasi = [];
@@ -794,6 +980,9 @@ class AnteprimaPassaggio
             }
         } elseif ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
             $frasi[] = sprintf('Nessuna rata emessa è intestata a %s: non c\'è niente da conguagliare fra chi esce e chi entra. Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $uscente, $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+        } elseif ($estinzione && $this->nudi->isNotEmpty() && $altriNudi->isEmpty() && $nomiDelleCoppie === []) {
+            // Il solo nudo è chi esce: torna pieno, e non c'è niente da conguagliare.
+            $frasi[] = sprintf('Le rate già emesse non si toccano. %s torna proprietario pieno: le quote dal %s restano a suo nome, senza conguaglio.', $uscente, $this->data($dal));
         } elseif ($tipo === 'usufrutto' && $senzaCoppie && ! empty($conguaglio['non_risolte'])) {
             $frasi[] = 'Le rate già emesse non si toccano.';
             array_push($frasi, ...$frasiConguaglio);
@@ -801,8 +990,8 @@ class AnteprimaPassaggio
             $frasi[] = $estinzione
                 ? (! empty($conguaglio['ordinaria_per_voce_dal'])
                     // Rilievo D4: l'usufrutto è nato «come dice ogni voce»; le voci sul «Proprietario» erano già del nudo proprietario.
-                    ? sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: l\'ordinaria segue la voce, per la scelta «come dice ogni voce» del passaggio del %s — le voci sul «Proprietario» sono già del nudo proprietario, le altre divise in proporzione ai giorni —, e la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; art. 1005 c.c.).', $uscente, $entrante, $this->tornaPieno(), $this->data(CarbonImmutable::parse($conguaglio['ordinaria_per_voce_dal'])))
-                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni, la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; artt. 1004-1005 c.c.).', $uscente, $entrante, $this->tornaPieno()))
+                    ? sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: l\'ordinaria segue la voce, per la scelta «come dice ogni voce» del passaggio del %s — le voci sul «Proprietario» sono già del nudo proprietario, le altre divise in proporzione ai giorni —, e la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; art. 1005 c.c.).', $uscente, $entrante, $tornaPienoChi, $this->data(CarbonImmutable::parse($conguaglio['ordinaria_per_voce_dal'])))
+                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni, la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; artt. 1004-1005 c.c.).', $uscente, $entrante, $tornaPienoChi))
                 : ($this->sceltaOrdinaria($dati) === Subentro::ORDINARIA_COME_LA_VOCE
                     // Decisione 31.5: «come dice ogni voce».
                     ? sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s, che resta come nudo proprietario, e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: l\'ordinaria segue la voce, come hai scelto — le voci che non sono sul «Proprietario» divise in proporzione ai giorni (dal %s all\'usufruttuario), quelle sul «Proprietario» restano al nudo proprietario —, e la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $entrante ?? 'chi entra', $this->data($dal))
@@ -866,7 +1055,20 @@ class AnteprimaPassaggio
      */
     private function blocco3(string $tipo, array $dati, Condominio $condominio, Immobile $immobile, ?string $uscente, ?string $entrante, CarbonImmutable $dal, Collection $proprietari, ?TitolaritaImmobile $nudo): array
     {
-        return $this->frasiObbligati->frasi($tipo, $dati, $condominio, $uscente, $entrante, $dal, $proprietari, $this->nudi->count() > 1 ? $this->nudi->map(fn (TitolaritaImmobile $t) => ['nome' => $t->anagrafica?->nome, 'quota' => (float) $t->quota])->all() : $nudo?->anagrafica?->nome, registrato: false);
+        // 1.11.0-beta.43: ogni nudo porta la sua quota e, con la nuda che torna piena solo in parte, la sua parte. Le righe in corso il
+        // giorno dell'atto, tolte quella di chi esce e quelle di chi torna pieno, dicono se sull'unità restano altri titolari (un altro
+        // usufrutto con i suoi nudi, il proprietario pieno dell'altra metà): allora chi torna pieno lo è della parte che finisce.
+        $nudi = $this->nudi->map(fn (TitolaritaImmobile $t) => ['nome' => $t->anagrafica?->nome, 'quota' => (float) $t->quota]
+            + (isset($this->consolida[(int) $t->id]) ? ['parte' => (float) $this->consolida[(int) $t->id]] : []))->values()->all();
+        $restano = $tipo === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'estinzione'
+            ? $immobile->titolarita()->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])->get()
+                ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($dal) && (int) $t->id !== $this->rigaChiEsce
+                    && ! $this->nudi->contains('anagrafica_id', $t->anagrafica_id))
+            : collect();
+
+        return $this->frasiObbligati->frasi($tipo, $dati, $condominio, $uscente, $entrante, $dal, $proprietari,
+            $nudi !== [] ? $nudi : $nudo?->anagrafica?->nome, registrato: false,
+            altriTitolari: $restano->isNotEmpty(), usufruttoCheResta: $restano->contains('tipologia', 'usufruttuario'));
     }
 
     /** I conti del condominio con almeno un coefficiente a carico dell'inquilino (vive in `FrasiObbligati`). */
@@ -973,12 +1175,13 @@ class AnteprimaPassaggio
      * come prima: quote che il conguaglio divide, bozze che passano o si conguagliano, quote di un piano con la competenza da
      * determinare, piani ricalcolabili, voci a carico dell'inquilino.
      *
-     * @return array{richiesto: bool, motivi: list<string>, informazioni: list<string>}
+     * @return array{richiesto: bool, motivi: list<string>, informazioni: list<string>, avvisi: list<string>}
      */
-    private function cancello(string $tipo, Condominio $condominio, array $immobileIds, ?TitolaritaImmobile $uscente, Collection $rateEmesse, array $intestatari = [], array $riassegnazione = [], ?string $entrante = null, array $quoteConguaglio = [], ?CarbonImmutable $decorrenzaRiserva = null, array $contiSpostati = [], array|bool $contiPerScelta = []): array
+    private function cancello(string $tipo, Condominio $condominio, array $immobileIds, ?TitolaritaImmobile $uscente, Collection $rateEmesse, array $intestatari = [], array $riassegnazione = [], ?string $entrante = null, array $quoteConguaglio = [], ?CarbonImmutable $decorrenzaRiserva = null, array $contiSpostati = [], array|bool $contiPerScelta = [], ?\Closure $conta = null): array
     {
         $motivi = [];
         $informazioni = [];
+        $avvisi = [];
 
         // S8-3: le quote di chi esce e dei suoi predecessori (stesso insieme del conguaglio); la frase
         // distingue le due cose, perché «quota emessa a Rossi» quando esce Bianchi va spiegata.
@@ -1062,6 +1265,16 @@ class AnteprimaPassaggio
             ? DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')->join('anagrafiche', 'anagrafiche.id', '=', 'rate_quote.anagrafica_id')
                 ->whereIn('rate_quote.immobile_id', $immobileIds)
                 ->whereIn('rate_quote.anagrafica_id', $intestatari)
+                // DV4 (decisione 59): le bozze di un predecessore contano solo sulle unità dove ha ceduto qualcosa a chi esce.
+                ->where(function ($q) use ($intestatari, $immobileIds, $conta) {
+                    foreach ($intestatari as $a) {
+                        foreach ($immobileIds as $u) {
+                            if ($conta === null || $conta((int) $a, (int) $u)) {
+                                $q->orWhere(fn ($w) => $w->where('rate_quote.anagrafica_id', $a)->where('rate_quote.immobile_id', $u));
+                            }
+                        }
+                    }
+                })
                 // Decisione 34: in bozza è la rata che non è andata a giornale, anche se una versione prima l'ha segnata «emessa».
                 ->whereNotExists(\App\Models\Gestionale\Rata::aGiornale())
                 ->groupBy('rate.piano_rate_id', 'piani_rate.nome', 'rate_quote.anagrafica_id', 'anagrafiche.nome')
@@ -1110,6 +1323,16 @@ class AnteprimaPassaggio
             }
             if ($ricalcolabiliDiChiEsce->pluck('piano_rate_id')->unique()->count() > count($alNudo)) {
                 $motivi[] = sprintf('un piano rate già generato intesta quote a %s: il destinatario cambierebbe', $uscente->anagrafica?->nome);
+            }
+            // Decisione 58 (1.11.0-beta.43, Coda 217): l'accordo «le rate di questo piano le paga chi vende» non ha un posto nel
+            // passaggio. Il piano si ricalcola comunque per giorni, e verso il condominio la posizione è di chi compra; i pagamenti
+            // si registrano con «Versato da» (decisione 30), che resta scritto su entrambi gli estratti conto. Rilievo T4 della Fase
+            // 1-bis della .43: è un avviso a sé, non una delle «quote che questo passaggio non tocca».
+            if ($tipo === 'vendita' && $decorrenzaRiserva === null) {
+                $nomi = $ricalcolabiliDiChiEsce->pluck('nome')->unique()->values()->all();
+                $avvisi[] = sprintf('se le parti si sono accordate che %s le paga %s: %s si ricalcola comunque per giorni, e verso il condominio le rate dal giorno dell\'atto sono di %s; i pagamenti di %s si registrano con «Versato da», che resta scritto su entrambi gli estratti conto',
+                    count($nomi) === 1 ? 'le rate del piano «' . $nomi[0] . '»' : 'le rate dei piani ' . $this->elenco(array_map(fn ($n) => '«' . $n . '»', $nomi)),
+                    $uscente->anagrafica?->nome, count($nomi) === 1 ? 'il piano' : 'ogni piano', $entrante ?? 'chi compra', $uscente->anagrafica?->nome);
             }
         }
         // Decisione 25 (B3a): nella vendita le bozze di chi esce dalla decorrenza in poi passano a chi entra; le altre
@@ -1187,7 +1410,7 @@ class AnteprimaPassaggio
             }
         }
 
-        return ['richiesto' => $motivi !== [], 'motivi' => $motivi, 'informazioni' => $informazioni];
+        return ['richiesto' => $motivi !== [], 'motivi' => $motivi, 'informazioni' => $informazioni, 'avvisi' => $avvisi];
     }
 
     // --- Forma ----------------------------------------------------------------------------------

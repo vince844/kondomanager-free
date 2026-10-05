@@ -53,6 +53,8 @@ import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
 import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
+import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
+import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
 
 const props = defineProps<{
   condominio: Building;
@@ -61,6 +63,9 @@ const props = defineProps<{
   /** Dal menu di una riga (`?riga=`): quella riga è già scelta in «Chi esce», se è fra i candidati. */
   rigaPreselezionata?: number | null;
   titolari: TitolareAttuale[];
+  /** All'estinzione: le righe di nuda proprietà e d'usufrutto dell'unità, anche chiuse, per guardarle il giorno dell'estinzione (G6). */
+  righeDellEstinzione?: TitolareAttuale[];
+  oggi?: string;
   anagrafiche: PersonaDelCondominio[];
   pertinenze: PertinenzaCollegata[];
   rateEmesseCount: number;
@@ -98,7 +103,9 @@ const RUOLI_USCENTE: Record<TipoPassaggio, string[]> = {
 };
 const proprietari = computed(() => props.titolari.filter(t => ['proprietario', 'nuda_proprietario'].includes(t.tipologia)));
 const nudoProprietario = computed(() => props.titolari.find(t => t.tipologia === 'nuda_proprietario'));
-// Con più nudi proprietari tornano pieni tutti, ciascuno alla sua quota, e il conguaglio si divide fra loro (S8-30).
+// Con più nudi proprietari tornano pieni, ciascuno alla sua quota, e il conguaglio si divide fra loro (S8-30). Decisione 57
+// (1.11.0-beta.43, D2): con un altro usufrutto in corso solo i nudi dell'usufrutto che finisce, non chi esce; senza, tutti,
+// chi esce compreso (la sua parte resta a suo nome).
 const nudiProprietari = computed(() => props.titolari.filter(t => t.tipologia === 'nuda_proprietario'));
 
 // --- Il modulo -----------------------------------------------------------------------------------
@@ -140,6 +147,11 @@ const form = useForm({
   // La legge (art. 1004 c.c.) è già scelta; le voci da spostare sono tutte spuntate, e qui si tengono quelle senza spunta.
   ordinaria_dopo_atto: 'usufruttuario' as 'usufruttuario' | 'voce',
   voci_da_tenere: [] as number[],
+  // Decisione 57 (1.11.0-beta.43, D2): all'estinzione, con un altro usufrutto in corso, i nudi che tornano pieni — senza una
+  // scelta già fatta. Il server la chiede solo quando i dati non lo dicono.
+  nudi_che_tornano: [] as number[],
+  // Decisione 62: «tutti i nudi, ciascuno per la sua quota» (la donazione congiunta), al posto delle caselle.
+  nudi_per_quota: false,
 });
 
 const ANTICIPI = [30, 60, 90, 180] as const;
@@ -176,7 +188,7 @@ const erroreScrittura = computed(() => (form.errors as Record<string, string | u
 const ETICHETTE_ERRORI: Record<string, string> = {
   riga_uscente_id: 'chi esce', anagrafica_entrante_id: 'chi entra', decorrenza: 'la data del passaggio', quota: 'la quota',
   tipologia: 'il ruolo', pertinenze: 'le pertinenze', nota_cancello: 'la nota del cancello', nota_conguaglio: 'la ragione della rinuncia al conguaglio',
-  allegato_titolo: "l'allegato", promemoria_giorni: "l'anticipo del promemoria", copia_autentica_il: 'la data della copia autentica',
+  allegato_titolo: "l'allegato", promemoria_giorni: "l'anticipo del promemoria", copia_autentica_il: 'la data della copia autentica', nudi_che_tornano: 'chi torna proprietario pieno', nudi_per_quota: 'chi torna proprietario pieno', estinzione: 'chi torna proprietario pieno',
 };
 // `ordinaria_impronta` ha il suo riquadro nella scheda dell'ordinaria, che sopravvive al ricalcolo del pannello.
 const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio' && k !== 'ordinaria_impronta')));
@@ -226,6 +238,63 @@ watch(() => form.sottotipo, (s) => {
   form.tipologia = s === 'estinzione' ? 'proprietario' : 'usufruttuario';
   form.anagrafica_entrante_id = null;
 });
+
+// --- Decisione 57 (D2): chi torna proprietario pieno all'estinzione ---------------------------------
+const estinzione = computed(() => props.tipo === 'usufrutto' && form.sottotipo === 'estinzione');
+/**
+ * Rilievo G6 del giro sulle correzioni della .43: la scheda guarda le righe in corso il giorno dell'estinzione, come il server
+ * (`NudiDellEstinzione::per`), non quelle di oggi. Senza la data, oggi.
+ */
+// Rilievo HT8: senza data, il giorno di oggi dell'utente come lo dà il server (toISOString darebbe il giorno UTC).
+const giornoEstinzione = computed(() => form.decorrenza || props.oggi || '');
+const inCorsoIl = (t: TitolareAttuale, g: string) => (!t.data_inizio || t.data_inizio <= g) && (!t.data_fine || t.data_fine >= g);
+const righeEstinzione = computed(() => props.righeDellEstinzione ?? []);
+const nudiAllaDecorrenza = computed(() => righeEstinzione.value.filter(t => t.tipologia === 'nuda_proprietario' && inCorsoIl(t, giornoEstinzione.value)));
+/** Con un altro usufrutto in corso, i nudi che possono tornare pieni: non chi esce, che resta nudo dell'altra parte. */
+const nudiCandidati = computed(() => nudiAllaDecorrenza.value.filter(t => t.anagrafica.id !== uscente.value?.anagrafica.id));
+const altriUsufrutti = computed(() => righeEstinzione.value.some(t => t.tipologia === 'usufruttuario' && t.id !== uscente.value?.id && inCorsoIl(t, giornoEstinzione.value)));
+/** Se qualche insieme di nudi interi vale proprio l'usufrutto che finisce: altrimenti le caselle non servono (decisione 62). */
+const nudiInteriPossibili = computed(() => nudiInteriPossibiliPer(nudiCandidati.value.map(t => t.quota), uscente.value?.quota ?? 0));
+/** Decisione 61: l'estinzione che il programma non sa registrare (l'errore non è di un campo del modulo). */
+const erroreEstinzione = computed(() => (form.errors as Record<string, string | undefined>).estinzione);
+/**
+ * La scelta si mostra quando sull'unità, il giorno dell'estinzione, c'è un altro usufrutto in corso, i nudi possibili sono più
+ * d'uno e valgono più dell'usufrutto che finisce, il server non ha già deciso (registro, tutti, consolidamento) e non si è
+ * fermato (decisione 61). E comunque quando il server la chiede (la rete del rilievo T10). Il server decide: se la scelta manca,
+ * l'anteprima torna con l'errore sul campo.
+ */
+const sceltaDeiNudi = computed(() => {
+  if (!estinzione.value || !uscente.value || erroreEstinzione.value) return false;
+  if (form.errors.nudi_che_tornano && nudiCandidati.value.length > 1) return true;
+  if (anteprima.value?.nudi && !['scelta', 'per_quota'].includes(anteprima.value.nudi.da)) return false;
+  const somma = nudiCandidati.value.reduce((tot, t) => tot + Number(t.quota), 0);
+  // Una nuda sola che vale più dell'usufrutto si consolida per legge: nessuna scelta (rilievo T10).
+  return altriUsufrutti.value && nudiCandidati.value.length > 1 && somma > Number(uscente.value.quota) + 0.001;
+});
+/** I nudi che tornano pieni secondo il server, se l'ha già detto; prima, senza un altro usufrutto tutti, con un altro i candidati (T9). */
+const nudiCheTornano = computed(() => {
+  const righe = anteprima.value?.nudi?.righe;
+  return righe ? righeEstinzione.value.filter(t => righe.includes(t.id)) : (altriUsufrutti.value ? nudiCandidati.value : nudiAllaDecorrenza.value);
+});
+/**
+ * Rilievo GT8: prima dell'anteprima, con un altro usufrutto e una nuda sola che vale più dell'usufrutto, la nuda torna piena solo
+ * per la parte che finisce (il consolidamento di legge): la scheda lo dice già.
+ */
+const consolidaPrevisto = computed(() => {
+  if (anteprima.value?.nudi || !altriUsufrutti.value || nudiCandidati.value.length !== 1 || !uscente.value) return null;
+  return Number(nudiCandidati.value[0].quota) > Number(uscente.value.quota) + 0.001 ? Number(uscente.value.quota) : null;
+});
+/** Una quota in forma italiana: «37,5», «50» (rilievo GT11). */
+const quotaIt = (q: number | string) => Number(q).toLocaleString('it-IT', { maximumFractionDigits: 2 });
+// Cambiano chi esce o il sottotipo: la scelta di prima non vale più.
+// Rilievi G6 e GT9: anche quando cambia la data, e con la scelta se ne vanno gli errori che la riguardavano.
+watch([() => form.riga_uscente_id, () => form.sottotipo, () => form.decorrenza], () => {
+  form.nudi_che_tornano = [];
+  form.nudi_per_quota = false;
+  form.clearErrors(...(['estinzione', 'nudi_che_tornano'] as any[]));
+});
+// «Ciascuno per la sua quota» e le caselle sono due risposte diverse: una toglie l'altra.
+watch(() => form.nudi_per_quota, (perQuota) => { if (perQuota) form.nudi_che_tornano = []; });
 
 const serveEntrante = computed(() =>
   props.tipo === 'vendita' || props.tipo === 'inizio_locazione' || (props.tipo === 'usufrutto' && form.sottotipo !== 'estinzione'),
@@ -314,6 +383,8 @@ function corpoAnteprima() {
     // Cambiano il conguaglio: entrano nell'anteprima. Il server li legge solo alla costituzione e alla riserva d'usufrutto.
     ordinaria_dopo_atto: form.ordinaria_dopo_atto,
     voci_da_tenere: form.voci_da_tenere,
+    nudi_che_tornano: estinzione.value ? form.nudi_che_tornano : [],
+    nudi_per_quota: estinzione.value ? form.nudi_per_quota : false,
   };
 }
 
@@ -382,6 +453,8 @@ const vociCambiate = ref<string | null>(null);
 const cancelloRichiesto = computed(() => anteprima.value?.cancello.richiesto ?? false);
 // Le quote che restano per legge a chi le ha (beta.38, decisione del 29/09/2026): si dicono sempre, e non chiedono la spunta.
 const informazioniCancello = computed(() => anteprima.value?.cancello.informazioni ?? []);
+/** Rilievo T4 della Fase 1-bis della .43: gli avvisi senza spunta che non riguardano quote lasciate dov'erano (decisione 58). */
+const avvisiCancello = computed(() => anteprima.value?.cancello.avvisi ?? []);
 const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_letto && form.nota_cancello.trim().length >= 10));
 // La rinuncia al conguaglio vale solo se c'è una coppia proposta, e vuole la sua ragione.
 // La rinuncia vale solo se il pannello propone una coppia: se sparisce (cambio di controparte o di data) la
@@ -544,7 +617,7 @@ function urlTipo(t: TipoPassaggio) {
                 </CardTitle>
                 <CardDescription>
                   <template v-if="tipo === 'inizio_locazione'">Chi risponde verso il condominio non cambia.</template>
-                  <template v-else-if="tipo === 'usufrutto'">Costituzione: il proprietario pieno diventa nudo proprietario. Estinzione: l'usufruttuario esce e il nudo proprietario torna pieno.</template>
+                  <template v-else-if="tipo === 'usufrutto'">Costituzione: il proprietario pieno diventa nudo proprietario. Estinzione: l'usufruttuario esce e il nudo proprietario torna proprietario pieno; con un altro usufrutto in corso sull'unità, torna proprietario pieno solo il nudo proprietario dell'usufrutto che finisce.</template>
                   <template v-else>I titolari in corso oggi su questa unità. Se è uno solo, è già selezionato. Un periodo già chiuso da «Modifica» non compare qui e non si può più registrare come passaggio.</template>
                 </CardDescription>
               </CardHeader>
@@ -558,7 +631,7 @@ function urlTipo(t: TipoPassaggio) {
                     <input type="radio" v-model="form.sottotipo" :value="s" class="w-4 h-4 mt-0.5 text-purple-600 border-slate-300 focus:ring-purple-600" />
                     <span class="flex flex-col">
                       <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">{{ s === 'costituzione' ? 'Costituzione' : 'Estinzione' }}</span>
-                      <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ s === 'costituzione' ? 'Entra un usufruttuario; il proprietario resta come nudo proprietario.' : 'L\'usufruttuario esce; il nudo proprietario torna proprietario pieno.' }}</span>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ s === 'costituzione' ? 'Entra un usufruttuario; il proprietario resta come nudo proprietario.' : 'L\'usufruttuario esce; torna proprietario pieno il nudo proprietario dell\'usufrutto che finisce.' }}</span>
                     </span>
                   </label>
                 </div>
@@ -585,13 +658,18 @@ function urlTipo(t: TipoPassaggio) {
                       class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all"
                       :class="form.riga_uscente_id === t.id ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400 dark:bg-blue-900/20 dark:border-blue-500' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700 dark:hover:bg-slate-900'">
                       <input type="radio" v-model="form.riga_uscente_id" :value="t.id" class="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-600 shrink-0" />
-                      <BadgeRuolo :ruolo="t.tipologia" taglia="md" />
-                      <span class="flex flex-col min-w-0 flex-1">
-                        <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ t.anagrafica.nome }}</span>
-                        <span class="text-[10px] uppercase tracking-widest text-slate-400 truncate">{{ t.anagrafica.codice_fiscale || 'CF non inserito' }}</span>
+                      <!-- Su uno schermo stretto quota e data scendono sotto il nome invece di schiacciarlo (verifica a video della .43). -->
+                      <span class="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                        <BadgeRuolo :ruolo="t.tipologia" taglia="md" />
+                        <span class="flex flex-col min-w-0 flex-1 basis-24">
+                          <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ t.anagrafica.nome }}</span>
+                          <span class="text-[10px] uppercase tracking-widest text-slate-400 truncate">{{ t.anagrafica.codice_fiscale || 'CF non inserito' }}</span>
+                        </span>
+                        <span class="ml-auto flex items-center gap-3 whitespace-nowrap">
+                          <span class="text-xs text-slate-600 dark:text-slate-400 tabular-nums">{{ quotaIt(t.quota) }}&nbsp;%</span>
+                          <span class="text-xs text-slate-500 dark:text-slate-400" v-if="t.data_inizio">dal {{ toItalian(t.data_inizio) }}</span>
+                        </span>
                       </span>
-                      <span class="text-xs text-slate-600 dark:text-slate-400 tabular-nums whitespace-nowrap">{{ t.quota }} %</span>
-                      <span class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap" v-if="t.data_inizio">dal {{ toItalian(t.data_inizio) }}</span>
                     </label>
                   </div>
                   <div v-else class="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
@@ -896,13 +974,47 @@ function urlTipo(t: TipoPassaggio) {
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Chi torna proprietario pieno</CardTitle>
               </CardHeader>
               <CardContent>
-                <div v-if="nudiProprietari.length" class="space-y-1.5">
-                  <p v-for="n in nudiProprietari" :key="n.id" class="text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <!-- Decisione 57 (D2): con un altro usufrutto in corso, torna piena solo la nuda dell'usufrutto che finisce. Sui
+                     titolari censiti a mano lo dice l'amministratore, senza una scelta già fatta. -->
+                <!-- Decisione 61: il programma non sa quale nuda torna piena, e lo dice; niente caselle. -->
+                <p v-if="erroreEstinzione" class="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                  <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" /> {{ erroreEstinzione }}
+                </p>
+                <div v-else-if="sceltaDeiNudi" class="space-y-2">
+                  <template v-if="nudiInteriPossibili">
+                    <p class="text-sm text-slate-600 dark:text-slate-400">Su questa unità c'è un altro usufrutto in corso. Spunta i nudi proprietari della parte su cui finisce l'usufrutto di {{ uscente?.anagrafica.nome }} ({{ quotaIt(uscente?.quota ?? 0) }}&nbsp;%): tornano proprietari pieni solo loro, e insieme valgono quanto l'usufrutto.</p>
+                    <label v-for="n in nudiCandidati" :key="n.id" class="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-200" :class="form.nudi_per_quota ? 'opacity-50' : 'cursor-pointer'">
+                      <input type="checkbox" :value="n.id" v-model="form.nudi_che_tornano" :disabled="form.nudi_per_quota" class="rounded border-slate-300 dark:border-slate-600" />
+                      <BadgeRuolo :ruolo="n.tipologia" taglia="md" /> <strong>{{ n.anagrafica.nome }}</strong>
+                      <span class="text-slate-500 tabular-nums">{{ quotaIt(n.quota) }} %</span>
+                    </label>
+                  </template>
+                  <p v-else class="text-sm text-slate-600 dark:text-slate-400">Su questa unità c'è un altro usufrutto in corso, e nessuna combinazione di nudi proprietari interi vale l'usufrutto di {{ uscente?.anagrafica.nome }} ({{ quotaIt(uscente?.quota ?? 0) }}&nbsp;%): se la nuda proprietà è in comune fra i nudi proprietari, scegli la casella qui sotto; altrimenti l'estinzione si registra a mano da «Modifica associazione».</p>
+                  <!-- Decisione 62: la donazione congiunta. Nessuna casella già spuntata. -->
+                  <label class="flex items-start gap-2 text-sm text-slate-800 dark:text-slate-200 cursor-pointer pt-1">
+                    <input type="checkbox" v-model="form.nudi_per_quota" class="mt-0.5 rounded border-slate-300 dark:border-slate-600" />
+                    <span>Tutti i nudi proprietari, ciascuno per la sua quota: la nuda proprietà è in comune fra i nudi proprietari (per esempio una donazione ai figli con la riserva d'usufrutto per i due genitori). Ogni nudo proprietario torna proprietario pieno per la sua parte dell'usufrutto che finisce e resta nudo proprietario del resto.</span>
+                  </label>
+                  <template v-if="anteprima?.nudi?.da === 'per_quota'">
+                    <p v-for="n in nudiCheTornano" :key="n.id" class="text-sm text-slate-800 dark:text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <BadgeRuolo :ruolo="n.tipologia" taglia="md" /> <strong>{{ n.anagrafica.nome }}</strong>
+                      <span v-if="anteprima.nudi.consolida[n.id] !== undefined" class="text-slate-500">— dalla data indicata risulterà proprietario pieno per {{ percentualeIt(anteprima.nudi.consolida[n.id]) }} e resterà nudo proprietario del resto.</span>
+                      <span v-else class="text-slate-500">— dalla data indicata risulterà proprietario pieno di tutta la sua quota ({{ quotaIt(n.quota) }}&nbsp;%).</span>
+                    </p>
+                  </template>
+                  <InputError :message="form.errors.nudi_che_tornano" />
+                </div>
+                <div v-else-if="nudiCheTornano.length" class="space-y-1.5">
+                  <p v-for="n in nudiCheTornano" :key="n.id" class="text-sm text-slate-800 dark:text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <BadgeRuolo :ruolo="n.tipologia" taglia="md" /> <strong>{{ n.anagrafica.nome }}</strong>
-                    <span v-if="nudiProprietari.length > 1" class="text-slate-500 tabular-nums">{{ n.quota }} %</span>
-                    <span class="text-slate-500">— dalla data indicata risulterà proprietario{{ nudiProprietari.length > 1 ? ' alla sua quota' : '' }}.</span>
+                    <span v-if="nudiCheTornano.length > 1" class="text-slate-500 tabular-nums">{{ quotaIt(n.quota) }} %</span>
+                    <span v-if="anteprima?.nudi?.consolida?.[n.id] !== undefined" class="text-slate-500">— dalla data indicata risulterà proprietario pieno per {{ percentualeIt(anteprima.nudi.consolida[n.id]) }}, la parte dell'usufrutto che finisce, e resterà nudo proprietario del resto.</span>
+                    <span v-else-if="consolidaPrevisto !== null" class="text-slate-500">— dalla data indicata risulterà proprietario pieno per {{ percentualeIt(consolidaPrevisto) }}, la parte dell'usufrutto che finisce, e resterà nudo proprietario del resto.</span>
+                    <span v-else class="text-slate-500">— dalla data indicata risulterà proprietario{{ nudiCheTornano.length > 1 ? ' alla sua quota' : '' }}.</span>
                   </p>
-                  <p v-if="nudiProprietari.length > 1" class="text-xs text-slate-500 dark:text-slate-400">Il conguaglio delle rate già emesse all'usufruttuario si divide fra loro per quota, una coppia di righe ciascuno.</p>
+                  <p v-if="nudiCheTornano.length > 1" class="text-xs text-slate-500 dark:text-slate-400">Il conguaglio delle rate già emesse all'usufruttuario si divide come dice il pannello «Cosa cambierà».</p>
+                  <p v-if="anteprima?.nudi?.da === 'registro'" class="text-xs text-slate-500 dark:text-slate-400">Su questa unità c'è un altro usufrutto in corso: torna proprietario pieno solo il nudo proprietario dell'usufrutto che finisce, come risulta dal passaggio da cui l'usufrutto è nato.</p>
+                  <InputError :message="form.errors.nudi_che_tornano" />
                 </div>
                 <p v-else class="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
                   <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" /> Nessun nudo proprietario è registrato su questa unità: senza, l'estinzione non sa a chi tornare.
@@ -1000,6 +1112,17 @@ function urlTipo(t: TipoPassaggio) {
                     <li v-for="m in informazioniCancello" :key="m">{{ m }}</li>
                   </ul>
                   <p class="text-[11px] text-slate-500 dark:text-slate-400">Restano a chi le ha e nessuna cambia intestatario: per queste non serve la spunta.</p>
+                </div>
+              </div>
+            </div>
+            <div v-if="avvisiCancello.length && anteprima" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
+              <div class="flex items-start gap-3">
+                <Info class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                <div class="space-y-1">
+                  <p class="text-sm font-bold text-slate-800 dark:text-slate-200">Da sapere</p>
+                  <ul class="text-[13px] text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-0.5">
+                    <li v-for="m in avvisiCancello" :key="m">{{ m }}</li>
+                  </ul>
                 </div>
               </div>
             </div>

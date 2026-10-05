@@ -54,6 +54,9 @@ class RigaRiparto extends Model
 
     protected $fillable = [
         'piano_rate_id', 'tipo', 'anagrafica_id', 'immobile_id',
+        // Decisione 55 (1.11.0-beta.43): la riga di titolarità da cui viene questa riga. Nulla per netting e quota_zero, per
+        // l'addebito diretto di una persona con più righe sull'unità, e sui piani generati prima della .43.
+        'anagrafica_immobile_id',
         'conto_id', 'conto_nome', 'conto_radice_id', 'conto_radice_nome',
         'tabella_id', 'tabella_nome', 'tabella_quota', 'coefficiente',
         'valore_millesimo', 'somma_valori', 'ruolo_richiesto', 'ruolo_risolto', 'quota_possesso',
@@ -73,7 +76,14 @@ class RigaRiparto extends Model
         'titolarita_dal'   => 'date:Y-m-d',
         'titolarita_al'    => 'date:Y-m-d',
         'giorni_titolarita' => 'integer',
+        'anagrafica_immobile_id' => 'integer',
     ];
+
+    /** Decisione 55: la riga di titolarità da cui viene questa riga di riparto (nulla dove non ce n'è una sola). */
+    public function titolarita(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\TitolaritaImmobile::class, 'anagrafica_immobile_id');
+    }
 
     public function pianoRate(): BelongsTo
     {

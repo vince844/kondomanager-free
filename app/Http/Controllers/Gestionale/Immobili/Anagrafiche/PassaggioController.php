@@ -86,6 +86,14 @@ class PassaggioController extends Controller
             'tipo' => $tipo,
             'rigaPreselezionata' => $rigaPreselezionata ?: null,
             'titolari' => $this->titolariPerIlModulo($titolari),
+            // Rilievo HT8: il giorno di oggi dell'utente, per la scheda dell'estinzione prima che la data sia scritta.
+            'oggi' => $oggi->toDateString(),
+            // Rilievo G6 del giro sulle correzioni della .43: all'estinzione la scheda «Chi torna proprietario pieno» guarda le righe in
+            // corso il giorno dell'estinzione, come il server, non quelle di oggi (un'estinzione si registra spesso in ritardo).
+            'righeDellEstinzione' => $tipo === 'usufrutto'
+                ? $this->titolariPerIlModulo($immobile->titolarita()->with('anagrafica')->whereIn('tipologia', ['nuda_proprietario', 'usufruttuario'])
+                    ->orderBy('data_inizio')->get()->filter(fn (TitolaritaImmobile $t) => (bool) $t->attivo)->values())
+                : [],
             'anagrafiche' => $condominio->anagrafiche()->orderBy('nome')->get(['anagrafiche.id', 'anagrafiche.nome', 'anagrafiche.codice_fiscale', 'anagrafiche.indirizzo'])
                 ->map(fn ($a) => ['id' => $a->id, 'nome' => $a->nome, 'codice_fiscale' => $a->codice_fiscale, 'indirizzo' => $a->indirizzo])->values(),
             'pertinenze' => $pertinenze,

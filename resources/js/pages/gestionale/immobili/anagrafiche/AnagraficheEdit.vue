@@ -229,7 +229,7 @@ const submit = () => {
                           </button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50 font-sans tracking-normal lowercase first-letter:uppercase">
-                          <p class="text-sm">L'ultimo giorno in cui questa riga vale. <strong>Interrompe gli addebiti:</strong> dalla 1.11 il riparto ferma la quota a quel giorno e, se qualcuno cambia nel periodo, divide per giorni. Le rate già emesse non cambiano: le regola il conguaglio del passaggio.</p>
+                          <p class="text-sm">L'ultimo giorno in cui questa riga vale. <strong>Interrompe gli addebiti:</strong> dalla 1.11 il riparto ferma la quota a quel giorno e, se qualcuno cambia nel periodo, divide per giorni. Le rate già emesse non cambiano: se la data viene da un passaggio, le regola il suo conguaglio; se la scrivi qui, il conguaglio, se serve, si scrive con un saldo manuale dal Wallet.</p>
                         </HoverCardContent>
                       </HoverCard>
                     </div>

@@ -89,6 +89,13 @@ export interface ConguaglioDati {
 
 /** La risposta di `POST …/passaggi/anteprima`. */
 export interface AnteprimaPassaggioDati {
+  /**
+   * Decisione 57 (1.11.0-beta.43, D2): all'estinzione, i nudi che tornano pieni (righe di `anagrafica_immobile`) e da dove
+   * viene la scelta: tutti i nudi, il registro del passaggio da cui l'usufrutto è nato, l'amministratore, il consolidamento di
+   * legge, o tutti ciascuno per la sua quota (decisione 62). `consolida`: riga → la quota che torna piena, quando non è tutta la
+   * riga. `null` negli altri passaggi. Quando il programma si ferma (decisione 61) l'anteprima torna 422 sulla chiave `estinzione`.
+   */
+  nudi: { da: 'tutti' | 'registro' | 'scelta' | 'consolidamento' | 'per_quota'; righe: number[]; consolida: Record<string, number> } | null;
   riferimento: {
     uscente_fino_al: string | null;
     entrante_dal: string;
@@ -120,7 +127,8 @@ export interface AnteprimaPassaggioDati {
    * le quote che il passaggio non tocca — restano per legge a chi le ha, o la parte di chi entra è zero (decisione 28.8 c) —
    * e si mostrano senza spunta.
    */
-  cancello: { richiesto: boolean; motivi: string[]; informazioni?: string[] };
+  // `avvisi` (rilievo T4 della .43): le informazioni senza spunta che non riguardano quote, come la frase della decisione 58.
+  cancello: { richiesto: boolean; motivi: string[]; informazioni?: string[]; avvisi?: string[] };
   /** Decisioni 31.5 e 31.6 (beta.41): chi paga l'ordinaria dal giorno dell'atto, alla costituzione e alla riserva d'usufrutto. */
   ordinaria: OrdinariaDopoAtto;
 }

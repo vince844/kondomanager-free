@@ -39,6 +39,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // ha sostituito il suo vincolo con quello per persona, non trovava più il proprio indice e rifaceva il dedup
     // per unità — cancellando righe legittime — e ricreava il vincolo vecchio. Le tabelle non lo dicevano.
     $indiciPrima = collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getIndexes($t))->pluck('name')->sort()->values()->all()])->all();
+    // E le chiavi esterne (rilievo T16 della Fase 1-bis della 1.11.0-beta.43): su sqlite una seconda chiave uguale non cambia né
+    // tabelle né indici, e su MySQL la stessa riesecuzione fallirebbe. Si confrontano colonne, tabella, colonne di arrivo e regola.
+    $chiavi = fn () => collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getForeignKeys($t))
+        ->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . '(' . implode(',', $k['foreign_columns']) . ') ' . strtolower((string) ($k['on_delete'] ?? '')))
+        ->sort()->values()->all()])->all();
+    $chiaviPrima = $chiavi();
 
     // RefreshDatabase ha già eseguito l'intera catena: questa seconda chiamata
     // riproduce esattamente la ripresa dopo un'interruzione che ha applicato le
@@ -50,7 +56,8 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     expect(collect(Schema::getTableListing())->sort()->values()->all())
         ->toEqual($tabellePrima)
         ->and(collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getIndexes($t))->pluck('name')->sort()->values()->all()])->all())
-        ->toEqual($indiciPrima);
+        ->toEqual($indiciPrima)
+        ->and($chiavi())->toEqual($chiaviPrima);
 })->with([
     // Aggiunta nella beta.43: era l'unica migrazione del percorso 1.9.1 → 1.10 rimasta fuori
     // dal dataset. È un `MODIFY` su un ENUM, quindi intrinsecamente rieseguibile — passa senza
@@ -212,4 +219,22 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_09_27_090000_add_fattura_rettificata_id_to_fatture_passive_table',
     // Beta.37: quattro colonne su subentri (annullamento e registro del passaggio) e la chiave esterna verso users.
     '2026_09_28_100000_add_annullamento_to_subentri_table',
+    // Beta.43 (decisione 55): la riga di titolarità da cui viene ogni riga di riparto — colonna più chiave esterna, due
+    // statement su MySQL. Nessun travaso: i piani di prima restano senza legame, e il conguaglio lo deduce al volo.
+    '2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table',
 ]);
+
+it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {
+    $migration = require database_path('migrations/2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table.php');
+    Schema::table('righe_riparto', fn ($table) => $table->dropForeign(['anagrafica_immobile_id']));
+    $legame = fn () => collect(Schema::getForeignKeys('righe_riparto'))->filter(fn ($k) => $k['columns'] === ['anagrafica_immobile_id'])->values();
+    expect($legame())->toHaveCount(0)
+        ->and(Schema::hasColumn('righe_riparto', 'anagrafica_immobile_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect($legame())->toHaveCount(1)
+        ->and($legame()->first()['foreign_table'])->toBe('anagrafica_immobile')
+        ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('set null');
+});
