@@ -35,6 +35,9 @@ return [
         'line_1'    => 'O administrador do condomínio convidou-o a registar a sua conta online.',
         'action'    => 'Registar agora',
         'line_2'    => 'Este convite expirará dentro de três dias.',
+        'expired'   => 'O convite expirou. Peça ao administrador que lhe envie um novo.',
+        'already_used' => 'Este convite já foi utilizado. Inicie sessão com a sua conta.',
+        'account_exists' => 'Já existe uma conta com este email: inicie sessão ou recupere a senha se não se lembrar dela.',
     ],
 
     // Novo usuário criado pelo administrador (NewUserEmailNotification)
@@ -45,6 +48,7 @@ return [
         'action'    => 'Definir senha',
         'line_2'    => 'Este link expirará em três dias.',
         'password_already_set' => 'A sua senha já foi definida. Inicie sessão com as suas credenciais.',
+        'password_set' => 'A sua senha foi definida. Já pode iniciar sessão.',
         'link_expired' => 'O link de convite expirou ou já não é válido. Contacte o administrador para receber um novo convite.',
     ],
 

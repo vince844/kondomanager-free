@@ -12,6 +12,7 @@ import { LoaderCircle } from 'lucide-vue-next';
 
 defineProps<{
     status?: string;
+    avviso?: string;
     canResetPassword: boolean;
 }>();
 
@@ -38,6 +39,10 @@ const submit = () => {
       
         <div v-if="status" class="mb-4 text-center text-sm font-medium text-green-600">
             {{ status }}
+        </div>
+
+        <div v-if="avviso" class="mb-4 text-center text-sm font-medium text-amber-700 dark:text-amber-400">
+            {{ avviso }}
         </div>
 
         <form @submit.prevent="submit" class="flex flex-col gap-6">

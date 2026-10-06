@@ -162,6 +162,9 @@ defineEmits(['update:open']);
                 «Reinvita» rimanda l'email di attivazione e <strong>svuota la password attuale</strong>: è utile per chi non è mai riuscito a entrare, ma su un utente attivo lo lascia fuori finché non ne imposta una nuova dal link ricevuto. Non è un semplice sollecito.
               </div>
             </div>
+            <p class="mt-3">
+              Il link dell'email vale tre giorni, e solo per l'utente com'era quando è partito: se dopo l'invio correggi l'email o il nome, sospendi o riattivi l'utente o ne cambi la verifica, quel link non vale più, e chi lo apre torna al login con un avviso. Basta un nuovo «Reinvita», che rende non più valido anche ogni link mandato prima.
+            </p>
           </section>
 
           <!-- 7 — Trovare qualcuno -->

@@ -59,6 +59,11 @@ class UserReinviteController extends Controller
             // Svuota la password fittizia (se presente) per i vecchi utenti inviati prima della modifica
             $user->update(['password' => null]);
 
+            // «Reinvia» rende morti i link mandati prima, anche quando la password era già vuota e
+            // `update()` non ha salvato niente: l'impronta del link (`User::improntaPrimoAccesso()`)
+            // segue `updated_at` (1.11.0-beta.45).
+            $user->touch();
+
             $user->notify(new NewUserEmailNotification($user));
     
             return to_route('utenti.index')->with(

@@ -244,6 +244,8 @@ return [
 
     'attributes' => [
         'email' => 'email address',
+        'emails' => 'email addresses',
+        'buildings' => 'buildings',
         'email_secondaria' => 'secondary email address',
         'pec' => 'certified email address',
         'name' => 'full name',

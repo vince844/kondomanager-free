@@ -43,9 +43,11 @@ Route::middleware('guest')->group(function () {
         ->middleware('throttle:6,1')
         ->name('password.store');
     
+    // Firmata come il `GET` di `routes/web.php`: il modulo si manda all'URL del link dell'invito.
+    // Fino alla 1.11.0-beta.44 bastava l'email di un invito in sospeso (Coda 223, 1.11.0-beta.45).
     Route::post('/invito/register', [InvitoRegisteredUserController::class, 'store'])
         ->name('invito.register.store')
-        ->middleware('throttle:6,1');
+        ->middleware(['signed', 'throttle:6,1']);
 });
 
 Route::middleware('auth')->group(function () {

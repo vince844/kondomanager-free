@@ -31,20 +31,24 @@ return [
     
     // User invitation (InviteUserNotification)
     'invite_user' => [
-        'subject'   => 'Welcome to :appName',
-        'line_1'    => 'The condominium administrator has invited you to register your online account.',
-        'action'    => 'Register now',
-        'line_2'    => 'This invitation will expire in three days.',
+        'subject'   => 'Le damos la bienvenida a :appName',
+        'line_1'    => 'El administrador del condominio le ha invitado a registrar su cuenta en línea.',
+        'action'    => 'Registrarse ahora',
+        'line_2'    => 'Esta invitación caducará dentro de tres días.',
+        'expired'   => 'La invitación ha caducado. Pida al administrador que le envíe una nueva.',
+        'already_used' => 'Esta invitación ya se ha utilizado. Inicie sesión con su cuenta.',
+        'account_exists' => 'Ya existe una cuenta con este correo electrónico: inicie sesión o recupere la contraseña si no la recuerda.',
     ],
     
     // New user created by admin (NewUserEmailNotification)
     'new_user_created' => [
-        'subject'   => 'Welcome to :appName',
-        'greeting'  => 'Hello :name,',
-        'line_1'    => 'The condominium administrator has created your profile. Click the following link to set your password.',
-        'action'    => 'Set password',
-        'line_2'    => 'This link will expire in three days.',
-        'password_already_set' => 'Your password has already been set. Please log in with your credentials.',
+        'subject'   => 'Le damos la bienvenida a :appName',
+        'greeting'  => 'Hola, :name,',
+        'line_1'    => 'El administrador del condominio ha creado su perfil. Haga clic en el siguiente enlace para establecer su contraseña.',
+        'action'    => 'Establecer contraseña',
+        'line_2'    => 'Este enlace caducará dentro de tres días.',
+        'password_already_set' => 'La contraseña ya se ha establecido. Inicie sesión con sus credenciales.',
+        'password_set' => 'La contraseña se ha establecido. Ya puede iniciar sesión.',
         'link_expired' => 'El enlace de invitación ha caducado o ya no es válido. Póngase en contacto con el administrador para recibir una nueva invitación.',
     ],
 

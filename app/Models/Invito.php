@@ -10,6 +10,13 @@ class Invito extends Model
 {
     use HasFactory, Notifiable;
 
+    /**
+     * Quanto vale un invito: tre giorni, quanto il link firmato della mail e quanto dice il suo
+     * testo. Fino alla 1.11.0-beta.44 l'invito scadeva dopo un'ora mentre la mail prometteva tre
+     * giorni, e chi lo apriva il pomeriggio trovava una pagina 403 vuota.
+     */
+    public const GIORNI_DI_VALIDITA = 3;
+
     // Specify the table name since it's not the default 'invites'
     protected $table = 'inviti';
 

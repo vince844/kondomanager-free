@@ -27,6 +27,9 @@ class AuthenticatedSessionController extends Controller
             'canResetPassword' => Route::has('password.request'),
             'can_register'     => $settings->user_frontend_registration,
             'status'           => $request->session()->get('status'),
+            // I rifiuti (link non più buono, invito già usato o scaduto) in un riquadro loro: lo
+            // `status` è verde ed è per le conferme (1.11.0-beta.45).
+            'avviso'           => $request->session()->get('avviso'),
         ]);
     }
 

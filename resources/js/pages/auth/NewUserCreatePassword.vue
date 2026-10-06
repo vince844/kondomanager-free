@@ -11,6 +11,8 @@ import { trans } from 'laravel-vue-i18n';
 
 interface Props {
     email: string;
+    // L'URL firmato da cui è stata aperta la pagina: il salvataggio va lì, firma compresa.
+    azione: string;
 }
 
 const props = defineProps<Props>();
@@ -22,7 +24,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('password.create'), {
+    form.post(props.azione, {
         onFinish: () => {
             form.reset('password', 'password_confirmation');
         },

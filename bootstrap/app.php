@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Route;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
@@ -138,12 +139,32 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (InvalidSignatureException $e, Request $request) {
 
             // DEBUG LOGGING PER IL 403 DEL FIRMATARIO (Temporaneo)
+            // Della query solo i nomi dei parametri, e il valore di `expires` e `id`: con un proxy
+            // configurato male un link https visto come http risponde 403 pur avendo una firma
+            // buona, e chi leggeva il log (o lo incollava sul forum) poteva riaprire quel link. Non
+            // basta togliere `signature=`: un client di posta che scrive «&amp;» la porta sotto la
+            // chiave «amp;signature» (1.11.0-beta.45).
+            $query = collect(explode('&', (string) $request->server->get('QUERY_STRING')))
+                ->map(function ($parte) {
+                    $nome = Str::before($parte, '=');
+
+                    return in_array(urldecode($nome), ['expires', 'id'], true) ? $parte : $nome;
+                })
+                ->implode('&');
+
             Log::error('403 Invalid Signature', [
                 'request_url' => $request->url(),
-                'query_string' => $request->server->get('QUERY_STRING'),
+                'query_string' => $query,
                 'is_secure' => $request->isSecure(),
                 'proxies' => Request::getTrustedProxies(),
             ]);
+
+            // Dentro una pagina Inertia (il salvataggio della password del primo accesso o di un
+            // invito, con il link scaduto nel frattempo) un 403 HTML arrivava come finestra sopra
+            // il modulo: si torna al login con lo stesso messaggio (1.11.0-beta.45).
+            if ($request->header('X-Inertia')) {
+                return redirect()->route('login')->with('avviso', __('errors.403.invalid_signature'));
+            }
 
             return response()->view('errors.403', [
                 'exception' => new Exception(__('errors.403.invalid_signature')),

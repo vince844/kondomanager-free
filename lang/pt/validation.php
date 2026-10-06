@@ -253,6 +253,8 @@ return [
 
     'attributes' => [
         'email' => 'endereço de email',
+        'emails' => 'endereços de email',
+        'buildings' => 'condomínios',
         'email_secondaria' => 'endereço de email',
         'pec' => 'endereço de email',
         'name' => 'nome e sobrenome',

@@ -12,6 +12,8 @@ return [
     'error_delete_user'          => 'An error occurred while deleting the user.',
     'success_send_user_invite'   => 'The invitation has been sent successfully.',
     'error_send_user_invite'     => 'An error occurred while sending the invitation to the user.',
+    'invito_gia_presente'        => 'There is already an invitation for :input. If it has expired, delete it from the invitations list and invite again.',
+    'indirizzo_non_valido'       => ':input is not a valid email address.',
     'success_delete_user_invite' => 'The invitation has been deleted successfully.',
     'error_delete_user_invite'   => 'An error occurred while deleting the invitation.',
     'success_suspend_user'       => 'The user has been suspended successfully.',
@@ -43,6 +45,9 @@ return [
         'permissions_description_line_2'     => 'and will be automatically assigned to the user',
         'additional_permissions_title'       => 'Additional permissions',
         'additional_permissions_description' => 'Permissions assigned directly to the user, in addition to those from the role',
+        'new_invite_head' => 'Create new invitation',
+        'new_invite_title' => 'Invite users to register',
+        'new_invite_description' => 'People you invite register with the link in the email and find the buildings you choose here. The invitation is valid for three days.',
     ],
 
     /* ------------------------------------------------------------------
@@ -84,6 +89,8 @@ return [
         'permissions_assigned'         => 'User permissions',
         'permissions_assigned_to_user' => 'Permissions assigned to :name',
         'permissions_count'            => ':count permissions',
+        'invite_emails' => 'Email addresses',
+        'invite_buildings' => 'Buildings',
     ],
 
     /* ------------------------------------------------------------------
@@ -95,6 +102,8 @@ return [
         'role'        => 'Select user role',
         'resident'    => 'Select resident record',
         'permissions' => 'Select additional permissions',
+        'invite_emails' => 'Type an address and press Enter',
+        'invite_buildings' => 'Select buildings',
     ],
 
     /* ------------------------------------------------------------------
@@ -107,6 +116,8 @@ return [
         'suspend_user'  => 'Suspend',
         'activate_user' => 'Activate',
         'invite_user'   => 'Reinvite',
+        'send_invite' => 'Send invitation',
+        'send_invites' => 'Send :count invitations',
     ],
 
     /* ------------------------------------------------------------------
@@ -118,6 +129,8 @@ return [
         'resident'    => 'Select the resident record to associate with the user. The associated resident record will be able to access the system with the credentials of the created user and view their data and related information.',
         'permissions' => 'Select specific permissions to assign to the user in addition to those inherited from the selected role.',
         'resident_drawer_desc' => 'Details of the resident record associated with this user.',
+        'invite_emails' => 'You can invite several people at once: type an address, press Enter and type the next one. Each address gets its own invitation.',
+        'invite_buildings' => 'The buildings that the new account will be able to view, once its email address is verified.',
     ],
 
     /* ------------------------------------------------------------------

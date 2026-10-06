@@ -35,6 +35,9 @@ return [
         'line_1'    => 'The condominium administrator has invited you to register your online account.',
         'action'    => 'Register now',
         'line_2'    => 'This invitation will expire in three days.',
+        'expired'   => 'This invitation has expired. Ask the administrator to send you a new one.',
+        'already_used' => 'This invitation has already been used. Log in with your account.',
+        'account_exists' => 'An account with this email already exists: log in, or reset your password if you do not remember it.',
     ],
     
     // New user created by admin (NewUserEmailNotification)
@@ -45,6 +48,7 @@ return [
         'action'    => 'Set password',
         'line_2'    => 'This link will expire in three days.',
         'password_already_set' => 'Your password has already been set. Please log in with your credentials.',
+        'password_set' => 'Your password is set. You can now log in.',
         'link_expired' => 'The invitation link has expired or is no longer valid. Please contact the administrator to receive a new invitation.',
     ],
 

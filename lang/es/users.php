@@ -12,6 +12,8 @@ return [
     'error_delete_user'          => 'An error occurred while deleting the user.',
     'success_send_user_invite'   => 'The invitation has been sent successfully.',
     'error_send_user_invite'     => 'An error occurred while sending the invitation to the user.',
+    'invito_gia_presente'        => 'Ya existe una invitación para :input. Si ha caducado, elimínela de la lista de invitaciones e invite de nuevo.',
+    'indirizzo_non_valido'       => ':input no es una dirección de correo electrónico válida.',
     'success_delete_user_invite' => 'The invitation has been deleted successfully.',
     'error_delete_user_invite'   => 'An error occurred while deleting the invitation.',
     'success_suspend_user'       => 'The user has been suspended successfully.',
@@ -43,6 +45,9 @@ return [
         'permissions_description_line_2'     => 'and will be automatically assigned to the user',
         'additional_permissions_title'       => 'Additional permissions',
         'additional_permissions_description' => 'Permissions assigned directly to the user, in addition to those from the role',
+        'new_invite_head' => 'Crear nueva invitación',
+        'new_invite_title' => 'Invitar a registrarse',
+        'new_invite_description' => 'Quien recibe la invitación se registra con el enlace del correo y encuentra los condominios que elija aquí. La invitación es válida durante tres días.',
     ],
 
     /* ------------------------------------------------------------------
@@ -84,6 +89,8 @@ return [
         'permissions_assigned'         => 'User permissions',
         'permissions_assigned_to_user' => 'Permissions assigned to :name',
         'permissions_count'            => ':count permissions',
+        'invite_emails' => 'Direcciones de correo electrónico',
+        'invite_buildings' => 'Condominios',
     ],
 
     /* ------------------------------------------------------------------
@@ -95,6 +102,8 @@ return [
         'role'        => 'Select user role',
         'resident'    => 'Select resident record',
         'permissions' => 'Select additional permissions',
+        'invite_emails' => 'Escriba una dirección y pulse Intro',
+        'invite_buildings' => 'Seleccione condominios',
     ],
 
     /* ------------------------------------------------------------------
@@ -107,6 +116,8 @@ return [
         'suspend_user'  => 'Suspend',
         'activate_user' => 'Activate',
         'invite_user'   => 'Reinvite',
+        'send_invite' => 'Enviar invitación',
+        'send_invites' => 'Enviar :count invitaciones',
     ],
 
     /* ------------------------------------------------------------------
@@ -118,6 +129,8 @@ return [
         'resident'    => 'Select the resident record to associate with the user. The associated resident record will be able to access the system with the credentials of the created user and view their data and related information.',
         'permissions' => 'Select specific permissions to assign to the user in addition to those inherited from the selected role.',
         'resident_drawer_desc' => 'Details of the resident record associated with this user.',
+        'invite_emails' => 'Puede invitar a varias personas a la vez: escriba una dirección, pulse Intro y escriba la siguiente. Cada dirección recibe su propia invitación.',
+        'invite_buildings' => 'Los condominios que podrá consultar quien se registre, una vez verificada su dirección de correo electrónico.',
     ],
 
     /* ------------------------------------------------------------------

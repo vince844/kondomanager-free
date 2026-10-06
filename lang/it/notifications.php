@@ -35,6 +35,9 @@ return [
         'line_1'    => 'L\'amministratore di condominio ti ha invitato a registrare il tuo account online.',
         'action'    => 'Registrati adesso',
         'line_2'    => 'Questo invito scadrà tra tre giorni.',
+        'expired'   => 'L\'invito è scaduto. Chiedi all\'amministratore di mandartene uno nuovo.',
+        'already_used' => 'Questo invito è già stato usato. Accedi con il tuo account.',
+        'account_exists' => 'Esiste già un account con questa email: accedi, oppure recupera la password se non la ricordi.',
     ],
     
     // Nuovo utente creato dall'amministratore (NewUserEmailNotification)
@@ -45,6 +48,7 @@ return [
         'action'    => 'Imposta password',
         'line_2'    => 'Questo link scadrà tra tre giorni.',
         'password_already_set' => 'La password è già stata impostata. Effettua il login con le tue credenziali.',
+        'password_set' => 'La password è impostata: ora puoi accedere.',
         'link_expired' => 'Il link di invito è scaduto o non è più valido. Contatta l\'amministratore per ricevere un nuovo invito.',
     ],
 

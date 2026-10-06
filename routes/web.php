@@ -255,12 +255,18 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Import
 | Passwords Routes
 |--------------------------------------------------------------------------
 */
+// `guest` su tutte e due, come per l'invito: con un altro utente collegato nello stesso browser la
+// password veniva salvata e il messaggio si perdeva nel rimbalzo sulla sua dashboard (1.11.0-beta.45).
 Route::get('/password/new', [NewUserPasswordController::class, 'showResetForm'])
     ->name('password.new')
-    ->middleware('signed');
+    ->middleware(['guest', 'signed']);
 
+// Il `POST` porta la stessa prova del `GET`: il modulo si manda all'URL firmato da cui è stato
+// aperto. Fino alla 1.11.0-beta.44 non chiedeva né firma né limite di tentativi, e il controller
+// sceglieva l'utente dall'email del corpo (Coda 222, 1.11.0-beta.45).
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])
-    ->name('password.create');
+    ->name('password.create')
+    ->middleware(['guest', 'signed', 'throttle:6,1']);
 
 /*
 |--------------------------------------------------------------------------
@@ -276,9 +282,13 @@ Route::resource('/inviti', InvitoController::class)
     ->only(['index', 'create', 'store', 'destroy'])
     ->middleware(['auth', 'verified']);
 
+// `guest` come il `POST` di `routes/auth.php`: con un altro utente collegato nello stesso browser il
+// modulo si apriva, e il salvataggio rimbalzava in silenzio sulla sua dashboard. Il limite di
+// tentativi sta solo sul `POST`: il `GET` è firmato e non scrive, e contando anche lui ogni errore
+// di validazione pesava due volte (1.11.0-beta.45).
 Route::get('/invito/register', [InvitoRegisteredUserController::class, 'show'])
     ->name('invito.register')
-    ->middleware('signed', 'throttle:6,1');
+    ->middleware(['guest', 'signed']);
 
 /*
 |--------------------------------------------------------------------------

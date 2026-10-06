@@ -14,8 +14,8 @@ return [
     */
 
     '403' => [
-        'invalid_signature' => 'The link you are trying to use is expired or invalid.',
-        'account_suspended' => 'Your account is temporarily suspended. Please contact the system administrator to reactivate it.',
+        'invalid_signature' => 'O link que está a utilizar pode ter expirado ou já não ser válido.',
+        'account_suspended' => 'A sua conta está temporariamente suspensa. Contacte o administrador do condomínio para a reativar.',
     ],
     '413_title' => 'O ficheiro é demasiado grande',
 

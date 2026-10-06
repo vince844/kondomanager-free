@@ -39,11 +39,7 @@ class NewUserEmailNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
 
-        $resetUrl = URL::temporarySignedRoute(
-            'password.new',
-            Carbon::now()->addDays(3),
-            ['id' => $this->user->id]
-        );
+        $resetUrl = self::link($this->user);
 
         return (new MailMessage)
 
@@ -52,6 +48,19 @@ class NewUserEmailNotification extends Notification
             ->line(__('notifications.new_user_created.line_1'))
             ->action(__('notifications.new_user_created.action'), $resetUrl)
             ->line(__('notifications.new_user_created.line_2'));
+    }
+
+    /**
+     * Il link del primo accesso: firmato, valido tre giorni, con l'impronta dello stato dell'utente
+     * (`User::improntaPrimoAccesso()`). Lo costruisce solo questo metodo, così il link della mail e
+     * quello dei test sono lo stesso.
+     */
+    public static function link($user, ?Carbon $scadenza = null): string
+    {
+        return URL::temporarySignedRoute('password.new', $scadenza ?? Carbon::now()->addDays(3), [
+            'id'   => $user->id,
+            'hash' => $user->improntaPrimoAccesso(),
+        ]);
     }
 
     /**

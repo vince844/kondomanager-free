@@ -1,0 +1,18 @@
+{
+    "features": [
+        "NÃO ALTERA A BASE DE DADOS — Uma beta de segurança: corrige duas falhas, uma no primeiro acesso dos utilizadores criados pelo administrador e outra no registo por convite, e o que duas rondas de revisão adversarial encontraram à volta. Convém atualizar quem tem a instalação acessível a partir da internet. Os detalhes das duas falhas saem com a 1.11.0 estável, nos avisos de segurança do repositório.",
+        "MUDA: OS LINKS DE PRIMEIRO ACESSO JÁ ENVIADOS DEIXAM DE FUNCIONAR — Quem ainda não escolheu a senha encontra o link já não válido: a partir da lista de utilizadores, «Reenviar convite» envia um novo.",
+        "MUDA: UM LINK DE PRIMEIRO ACESSO VALE PARA A CONTA TAL COMO ESTAVA QUANDO FOI ENVIADO — Se, depois do envio, se corrige o email ou o nome, se usa «Reenviar convite», se suspende ou reativa o utilizador, ou se altera a verificação, o link anterior deixa de valer e é preciso um novo envio. Funções, permissões e ficha associada não o afetam.",
+        "MUDA: UM CONVITE VALE TRÊS DIAS — Como diz o seu email; antes expirava ao fim de uma hora. Um convite expirado, já usado ou para um endereço que já tem conta leva ao início de sessão com uma mensagem que diz o que fazer, em vez de uma página 403 vazia.",
+        "MUDA: O REGISTO PÚBLICO JÁ NÃO ACEITA UM CONVITE — Um convite só é aceite pelo seu próprio link, e só um convite aceite dá os seus condomínios à ficha de quem se regista.",
+        "MUDA: PRIMEIRO ACESSO E CONVITE COM OUTRO UTILIZADOR COM SESSÃO INICIADA — As duas páginas não abrem com outro utilizador com sessão iniciada no mesmo navegador: o link leva à página inicial de quem está com sessão iniciada. Antes o formulário abria e a gravação acabava na página do outro.",
+        "MUDA: AS RECUSAS NA PÁGINA DE INÍCIO DE SESSÃO — Têm um quadro próprio, em âmbar: link já não válido, convite expirado ou já usado, assinatura do link inválida. O verde fica para as confirmações; depois do primeiro acesso aparece «A sua senha foi definida. Já pode iniciar sessão.».",
+        "SEGURANÇA: PRIMEIRO ACESSO E REGISTO POR CONVITE — Corrigidas duas falhas. Os detalhes nos avisos de segurança da 1.11.0.",
+        "SEGURANÇA: O REGISTO DE ERROS — Já não escreve a assinatura de um link recusado: quem o lia, ou o colava num fórum, podia reabrir esse link.",
+        "SEGURANÇA: UMA GUARDA NAS ROTAS SEM SESSÃO — A bateria de testes lista todas as rotas sem sessão que aceitam uma gravação, com a prova que pedem a quem as chama (assinatura do link, token, sessão), e verifica-a: uma rota nova sem prova faz falhar a bateria.",
+        "NOVO CONVITE — Os dois campos lado a lado, como em «Novo utilizador», com a ajuda junto aos rótulos e a validade escrita na página. Enter acrescenta o endereço e já não envia o formulário; o botão conta os convites. Um endereço já convidado ou mal escrito tem o seu erro por baixo do campo: antes a página dizia só «erro durante o envio».",
+        "CONVITES COM MAIÚSCULAS — Os endereços dos convites gravam-se em minúsculas, e um convite escrito com maiúsculas pode ser concluído: antes quem o recebia ficava parado em «deve estar em minúsculas», por baixo de um campo que não podia alterar.",
+        "LISTA DE CONVITES — Um convite aceite continua «Aceite» depois de expirar; antes dizia «Expirado».",
+        "TEXTOS — As mensagens novas em italiano, inglês, espanhol e português; em espanhol, os emails de primeiro acesso e de convite, que tinham ficado em inglês; em espanhol e português, os avisos de link inválido e de conta suspensa; o campo dos condomínios aparece com o seu nome legível em todas as línguas."
+    ]
+}

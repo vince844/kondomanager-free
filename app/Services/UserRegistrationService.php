@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Invito;
 use App\Models\User;
 use App\Notifications\Users\RegisteredUserNotification;
 use App\Settings\GeneralSettings;
@@ -29,12 +28,11 @@ class UserRegistrationService
             $settings = app(GeneralSettings::class);
             $user->assignRole($settings->default_user_role);
 
-            // 2. Gestione dell'invito (se presente)
-            $invito = Invito::where('email', $user->email)->first();
-            if ($invito) {
-                $invito->accepted_at = now();
-                $invito->save();
-            }
+            // 2. L'invito qui non si tocca: lo accetta solo il suo link, in
+            //    `InvitoRegisteredUserController::store()`. Fino alla 1.11.0-beta.44 questo
+            //    servizio accettava l'invito con la stessa email, e lo usa anche `POST /register`:
+            //    con la registrazione pubblica accesa bastava l'email di un invito per consumarlo
+            //    (resto del flusso di prima della 1.8.0, Coda 223).
 
             // 3. Notifica agli amministratori (escludendo l'utente appena registrato)
             $admins = User::role([Role::AMMINISTRATORE->value])

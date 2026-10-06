@@ -7,6 +7,50 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.45] - Solo chi ha il link
+
+**Non tocca il database.** Una beta di sicurezza: corregge due falle, una nel primo accesso degli utenti creati
+dall'amministratore e una nella registrazione da invito, e quello che due giri di revisione avversariale hanno trovato
+intorno. Conviene aggiornare chi ha l'installazione raggiungibile da internet. I dettagli delle due falle escono con la
+1.11.0 stabile, negli avvisi di sicurezza del repository, insieme a quelli della beta.39.
+
+**Cambi di comportamento, detti per primi.**
+- **I link del primo accesso spediti prima di questo aggiornamento non valgono più.** Chi non ha ancora scelto la
+  password trova il link non più valido: dall'elenco utenti, «Reinvita» ne manda uno nuovo.
+- **Un link del primo accesso vale solo per l'account com'era quando è partito.** Se dopo l'invio si corregge l'email o il
+  nome, si fa «Reinvita», si sospende o si riattiva l'utente, o se ne cambia la verifica, il link di prima non vale più e
+  serve un nuovo invio. Ruoli, permessi e anagrafica non lo toccano.
+- **Un invito vale tre giorni**, come dice la sua email; prima scadeva dopo un'ora. Un invito scaduto, già usato o per un
+  indirizzo che ha già un account porta al login con un messaggio che dice cosa fare, invece di una pagina 403 vuota.
+- **La registrazione pubblica, se è accesa, non accetta più un invito con la stessa email.** Un invito lo accetta solo il
+  suo link, e solo un invito accettato dà i suoi condomìni all'anagrafica di chi si registra.
+- **Le pagine del primo accesso e dell'invito non si aprono con un altro utente collegato nello stesso browser**: il link
+  porta alla home di chi è collegato. Prima il modulo si apriva, e il salvataggio finiva sulla pagina dell'altro.
+- **I rifiuti sulla pagina di login hanno un riquadro loro, in ambra**: link non più valido, invito scaduto o già usato,
+  firma del link non valida. Il verde resta per le conferme; dopo il primo accesso compare «La password è impostata: ora
+  puoi accedere.».
+
+**Sicurezza.**
+- **Primo accesso e registrazione da invito**: corrette due falle. I dettagli negli avvisi di sicurezza della 1.11.0.
+- Il registro degli errori non scrive più la firma di un link rifiutato: chi lo leggeva, o lo incollava in un forum, poteva
+  riaprire quel link.
+- Una guardia nuova nella suite elenca ogni rotta senza login che accetta un salvataggio, con la prova che chiede a chi la
+  chiama (firma del link, token, sessione), e la verifica: una rotta nuova senza prova fa fallire la suite.
+
+**Inviti, il resto.**
+- **«Nuovo invito»**: i due campi affiancati, come in «Nuovo utente», con l'aiuto accanto alle etichette e la durata scritta
+  in pagina. Invio aggiunge l'indirizzo e non manda più il modulo; il pulsante conta gli inviti («Invia 2 inviti»). Un
+  indirizzo già invitato o scritto male ha il suo errore sotto il campo («C'è già un invito per … Se è scaduto, eliminalo
+  dall'elenco degli inviti e invita di nuovo.»): prima la pagina diceva solo «errore durante l'invio».
+- Gli indirizzi degli inviti si salvano in minuscolo, e un invito scritto con le maiuscole si completa: prima chi lo
+  riceveva restava fermo su «deve essere in minuscolo», sotto un campo che non poteva modificare.
+- L'elenco degli inviti dice «Accettato» a un invito accettato anche dopo la sua scadenza; prima diceva «Scaduto».
+- Testi: i messaggi nuovi in italiano, inglese, spagnolo e portoghese; in spagnolo le email del primo accesso e
+  dell'invito, rimaste in inglese; in spagnolo e portoghese gli avvisi di link non valido e di account sospeso; «Il campo
+  condomini è richiesto» invece di «Il campo buildings è richiesto».
+
+---
+
 ## [1.11.0-beta.44] - Ogni erede la sua quota
 
 **Non tocca il database.** Nessuna migrazione: la successione è un tipo di passaggio nuovo, e ciò che le serve (gli eredi con le

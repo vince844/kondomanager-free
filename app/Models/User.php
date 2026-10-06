@@ -53,6 +53,20 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * L'impronta che lega il link del primo accesso allo stato dell'utente quando è partito: l'email e
+     * l'ultima modifica. Il link la porta fra i parametri firmati, e il controller la ricalcola: se
+     * l'amministratore ha corretto l'email o il nome, ha fatto «reinvia», ha sospeso o riattivato
+     * l'utente o ne ha cambiato la verifica, il link di prima non vale più e serve un nuovo invio
+     * (ruoli, permessi e anagrafica non toccano la riga dell'utente, e non lo cambiano). Senza,
+     * il link firmava solo l'`id` e restava buono per un account che nel frattempo era cambiato
+     * (Fase 1-bis della 1.11.0-beta.45, rilievo X1).
+     */
+    public function improntaPrimoAccesso(): string
+    {
+        return sha1($this->email.'|'.$this->updated_at?->getTimestamp());
+    }
+
+    /**
      * Get the anagrafica associated with the user.
      */
     public function anagrafica()
