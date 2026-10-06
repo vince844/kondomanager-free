@@ -14,6 +14,10 @@ import type { PertinenzaCollegata } from '@/types/gestionale/passaggi';
 
 defineProps<{
   pertinenze: PertinenzaCollegata[];
+  /** Rilievo L7 della Fase 1-bis della .44: nella successione le pertinenze passano agli eredi con l'unità, senza un «atto» da leggere. */
+  successione?: boolean;
+  /** Nel legato le pertinenze vanno a chi riceve l'unità, non agli eredi (giro sulle correzioni, GC16). */
+  legato?: boolean;
 }>();
 
 const selezionate = defineModel<number[]>({ default: () => [] });
@@ -56,7 +60,11 @@ function toggle(id: number, checked: boolean) {
       </li>
     </ul>
 
-    <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-3">
+    <p v-if="successione" class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-3">
+      <template v-if="legato">Con il legato le pertinenze passano a chi riceve l'unità insieme all'unità. Togli la spunta solo se il testamento le assegna ad altri.</template>
+      <template v-else>Con la successione le pertinenze passano agli eredi insieme all'unità. Togli la spunta solo se il testamento o la divisione le assegnano ad altri.</template>
+    </p>
+    <p v-else class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-3">
       L'art. 818 co. 1 c.c. fa seguire le pertinenze all'unità principale, salvo diversa disposizione dell'atto.
       Spunta solo ciò che il titolo che hai in mano comprende: verso il condominio conta il titolo, non la presunzione.
     </p>

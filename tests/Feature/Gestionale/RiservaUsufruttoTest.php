@@ -218,7 +218,7 @@ it('la riserva si dichiara solo da un proprietario pieno, sulla sua quota intera
         ->assertJsonValidationErrors(['tipologia' => 'Nella vendita o donazione con riserva d\'usufrutto chi compra entra come nudo proprietario: chi vende resta usufruttuario.']);
     // La nuda proprietà di tutta la quota: con la metà resterebbe un usufrutto su 100 e una nuda proprietà su 50.
     $anteprima(ruRiserva($s, extra: ['quota' => 50]))->assertUnprocessable()
-        ->assertJsonValidationErrors(['quota' => 'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (100 %)']);
+        ->assertJsonValidationErrors(['quota' => 'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (100 %)']);
     // Il sottotipo della vendita è uno solo, e quelli dell'usufrutto non valgono per la vendita (né il contrario).
     $anteprima(ruRiserva($s, extra: ['sottotipo' => 'costituzione']))->assertUnprocessable()->assertJsonValidationErrors('sottotipo');
     $anteprima(ruRiserva($s, extra: ['tipo' => 'usufrutto', 'tipologia' => 'usufruttuario']))->assertUnprocessable()->assertJsonValidationErrors('sottotipo');
@@ -373,7 +373,7 @@ it('rilievo B5, S1 — l\'annullamento della seconda riserva riporta il figlio a
         ]);
 });
 
-it('rilievo B5, S2 — la seconda riserva un mese dopo: la riga del figlio al 50 % si chiude il giorno prima e se ne apre una al 100 %, come nella vendita (decisione A)', function () {
+it('rilievo B5, S2 — la seconda riserva un mese dopo: la riga del figlio al 50 % si chiude il giorno prima e se ne apre una al 100 %, come nella vendita (decisione A)', function () {
     [$s, $madre, $rigaM] = ruDueGenitori();
     ruRegistra($this, $s, ruRiserva($s, extra: ['quota' => 50]));
 
@@ -391,7 +391,7 @@ it('rilievo B5, S2 — la seconda riserva un mese dopo: la riga del figlio al 50
     ]);
 });
 
-it('rilievo B5, S3 — chi vende è già usufruttuario dell\'altra metà: la sua riga d\'usufrutto si somma (chiusa il giorno prima, riaperta al 100 %), e l\'annullamento la rimette com\'era', function () {
+it('rilievo B5, S3 — chi vende è già usufruttuario dell\'altra metà: la sua riga d\'usufrutto si somma (chiusa il giorno prima, riaperta al 100 %), e l\'annullamento la rimette com\'era', function () {
     $s = ruScenario('prima_rata', 0);
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['quota' => 50]);
     $figlia = Anagrafica::forceCreate(['nome' => 'Figlia Nora', 'email' => "ru-f{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'RUFIGLIANOR' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
@@ -1160,13 +1160,13 @@ it('mappa dei casi — riserva all\'altro comproprietario pieno: Rita resta prop
     expect(ruRighe($s['unita']->id))->toBe($righePrima);
 });
 
-it('mappa dei casi — la quota dichiarata nella riserva è quella di chi vende anche su una comproprietà: Ugo ha il 50 %, e dichiararne il 30 % si ferma sulla quota, a righe intatte', function () {
+it('mappa dei casi — la quota dichiarata nella riserva è quella di chi vende anche su una comproprietà: Ugo ha il 50 %, e dichiararne il 30 % si ferma sulla quota, a righe intatte', function () {
     [$s] = ruDueGenitori();
     $righe = ruRighe($s['unita']->id);
 
     $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), ruRiserva($s, extra: ['quota' => 30]))
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['quota' => 'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (50 %)']);
+        ->assertJsonValidationErrors(['quota' => 'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (50 %)']);
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), ruRiserva($s, extra: ['quota' => 30]))
         ->assertSessionHasErrors('quota');
     expect(ruRighe($s['unita']->id))->toBe($righe);
@@ -1594,6 +1594,46 @@ it('decisione 51, il rovescio — con la legge la vendita della nuda non trasfer
     $s = ruScenario('prima_rata', 0);
     ruNudaDopoCostituzione($this, $s, Subentro::ORDINARIA_ALL_USUFRUTTUARIO, u1: true);
     [, $rivendita] = ruRivendita($s);
+    $c = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
+    expect($c['coppie'])->toBe([])->and(collect($c['non_risolte'])->pluck('motivo')->implode(' | '))->not->toContain('non sono passate con il suo passaggio');
+});
+
+/** Il corpo della successione di Ugo (`v`) dalla riga data, con un erede solo: la forma più corta, per le catene della decisione 48 e 51. */
+function ruSuccessione(int $riga, Anagrafica $erede, string $dal, string $tipologia = 'proprietario'): array
+{
+    return ['tipo' => 'successione', 'riga_uscente_id' => $riga, 'decorrenza' => $dal, 'quota' => 100, 'tipologia' => $tipologia,
+        'eredi' => [['anagrafica_id' => $erede->id, 'quota' => 100]], 'arretrato' => 'eredi', 'copia_autentica' => false, 'estremi_titolo' => 'dichiarazione di successione',
+        'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Successione letta'];
+}
+
+it('beta.44 — decisione 48 con la successione: Ugo muore il 1/3 quando il piano si ricalcola ancora, poi il piano si emette tutto a Ugo; l\'erede vende a Carlo: le quote di Ugo non sono mai arrivate all\'erede, e il fermo nomina la successione', function () {
+    $s = ruScenario('prima_rata', 0);
+    $nino = ruPersonaNuova($s, 'Nino Erede', 'RUNINO44');
+    ruRegistra($this, $s, ruSuccessione($s['rigaV'], $nino, '2026-03-01'));
+    $this->travel(1)->days();
+    ruEmetti($s, '2026-12-31');
+    $this->travel(1)->days();
+    $carlo = ruPersonaNuova($s, 'Carlo Quarto', 'RUCARLO44');
+    $rigaNino = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $nino->id)->whereNull('data_fine')->value('id');
+
+    // Prima: la successione non era fra i passaggi del fermo, e Nino riceveva un credito su quote mai sue.
+    ruFermoMaiPassate($this, ruAnteprima($this, $s, ruPassaggio('vendita', $rigaNino, $carlo, '2026-06-01', 100) + ['ho_letto' => true, 'nota_cancello' => 'Vendita, letta']), '1 marzo 2026', 'Preventivo 2026');
+});
+
+it('beta.44 — decisione 51, il rovescio con la successione: costituzione con la legge, poi Ugo, nudo proprietario, muore e la nuda va a Elsa senza che il passaggio prenda il piano; nella rivendita il fermo non scatta, perché la nuda che passa per successione non porta l\'ordinaria dell\'usufruttuario', function () {
+    $s = ruScenario('prima_rata', 0);
+    $uso = ruPersonaNuova($s, 'Uso Usufruttuario', 'RUUSO44');
+    ruRegistra($this, $s, array_merge(ruPassaggio('costituzione', $s['rigaV'], $uso, '2026-02-01', 100), ['ordinaria_dopo_atto' => Subentro::ORDINARIA_ALL_USUFRUTTUARIO, 'ho_letto' => true, 'nota_cancello' => 'Costituzione, letta']));
+    $rigaNuda = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['v']->id)->where('tipologia', 'nuda_proprietario')->whereNull('data_fine')->value('id');
+    $this->travel(1)->minutes();
+    ruRegistra($this, $s, ruSuccessione($rigaNuda, $s['a'], '2026-05-01', 'nuda_proprietario'));
+    $this->travel(1)->days();
+    ruEmetti($s, '2026-12-31');
+    $this->travel(1)->days();
+    [, $rivendita] = ruRivendita($s);
+
+    // Prima: la successione non era una «vendita della nuda» e l'anello passava per uno che trasferisce l'ordinaria: il fermo
+    // con la spunta, per quote che a Elsa non sarebbero comunque arrivate.
     $c = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
     expect($c['coppie'])->toBe([])->and(collect($c['non_risolte'])->pluck('motivo')->implode(' | '))->not->toContain('non sono passate con il suo passaggio');
 });

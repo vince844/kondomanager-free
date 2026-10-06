@@ -166,9 +166,10 @@ class PianoRate extends Model
             'credito' => 'ha un credito usato o rimborsato su una sua quota',
             'conguaglio' => $passaggiAParte
                 ? (count($this->passaggiDaAnnullare()) === 1 ? 'è stato preso nel conguaglio di questo passaggio' : 'è stato preso nel conguaglio di questi passaggi')
-                // Rilievo T7 del quarto giro: «nel conguaglio dell'estinzione dell'usufrutto di …», non «del passaggio estinzione».
+                // Rilievo T7 del quarto giro: «nel conguaglio dell'estinzione dell'usufrutto di …», non «del passaggio estinzione»; lo
+                // stesso per la successione (1.11.0-beta.44).
                 : 'è stato preso nel conguaglio ' . (count($c = $this->passaggiDaAnnullare()) === 1
-                    ? ($c[0]->tipo_passaggio === 'usufrutto' && $c[0]->tipologia === 'proprietario' ? 'dell\'' : 'del passaggio ')
+                    ? ($c[0]->tipo_passaggio === 'usufrutto' && $c[0]->tipologia === 'proprietario' ? 'dell\'' : ($c[0]->successione() ? 'della ' : 'del passaggio '))
                     : 'dei passaggi ') . self::elencoPassaggi($c),
         }, $this->ragioniDelFermo());
     }
@@ -492,6 +493,8 @@ class PianoRate extends Model
             // uno solo di loro; si dice per quello che è, come lo storico.
             $chi = match (true) {
                 $s->tipo_passaggio === 'usufrutto' && $s->tipologia === 'proprietario' => 'estinzione dell\'usufrutto di ' . ($esce ?? 'chi non è più titolare'),
+                // La successione nomina come chi entra un erede solo (decisione 65): si dice per quello che è.
+                $s->successione() => 'successione di ' . ($esce ?? 'chi non è più titolare'),
                 $entra !== null => ($esce ?? 'chi non è più titolare') . ' → ' . $entra,
                 default => $esce ?? 'chi non è più titolare',
             };
@@ -559,7 +562,7 @@ class PianoRate extends Model
     /**
      * Decisioni 35, 41 e 42 (1.11.0-beta.42): i passaggi che il piano deve ancora seguire. Registrati quando le quote c'erano già, non
      * lo hanno preso nel conguaglio (`piani_presi`; per quelli di prima la regola di allora) e lo hanno lasciato al ricalcolo
-     * (decisione 21). Vendita o usufrutto, di chi ha ancora quote del piano sull'unità, con la decorrenza entro la
+     * (decisione 21). Vendita, usufrutto o successione, di chi ha ancora quote del piano sull'unità, con la decorrenza entro la
      * fine del suo esercizio; la locazione no (decisione 32: emettere senza ricalcolare vuol dire che paga l'inquilino uscito).
      * Vuoto se il piano ha già quote a giornale: i dati di prima della .42, dove le bozze rimaste si emettono come prima e il
      * conguaglio del passaggio dopo si ferma (decisioni 35 e 41).
@@ -583,7 +586,7 @@ class PianoRate extends Model
         return Subentro::with(['uscente', 'immobile'])
             ->whereIn('immobile_id', $gruppi->pluck('immobile_id')->unique()->all())
             ->whereIn('anagrafica_uscente_id', $gruppi->pluck('anagrafica_id')->unique()->all())
-            ->whereIn('tipo_passaggio', ['vendita', 'usufrutto'])
+            ->whereIn('tipo_passaggio', ['vendita', 'usufrutto', 'successione'])
             ->when($fine !== null, fn ($q) => $q->whereDate('decorrenza', '<=', \Carbon\CarbonImmutable::parse($fine)->toDateString()))
             ->orderBy('decorrenza')->orderBy('id')
             ->get()

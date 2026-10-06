@@ -374,6 +374,31 @@ it('beta.38 — riserva d\'usufrutto e poi estinzione dell\'usufrutto: le ordina
         ->toBe(['Paola Proprietaria' => [24300, 243], 'Aldo Nudo' => [12200, 122]]);
 });
 
+it('beta.44 — successione e poi la vendita di un erede: le voci le ha pagate la defunta fino al giorno prima, poi gli eredi insieme, poi chi resta con chi ha comprato; il prospetto li nomina per tratto', function () {
+    $s = poScenario();
+    $aldo = ($s['persona'])('Aldo Erede', 'POEREDEALD44');
+    $bea = ($s['persona'])('Bea Erede', 'POEREDEBEA44');
+    $carlo = ($s['persona'])('Carlo Compratore', 'POCOMPRAC44');
+    $ivo = ($s['persona'])('Ivo Primo', 'POINQUILS44');
+    $rigaP = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $s['p']->id)->value('id');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'successione', 'riga_uscente_id' => $rigaP, 'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'proprietario',
+        'eredi' => [['anagrafica_id' => $aldo->id, 'quota' => 60], ['anagrafica_id' => $bea->id, 'quota' => 40]], 'arretrato' => 'eredi',
+        'copia_autentica' => false, 'estremi_titolo' => 'dichiarazione di successione', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Successione, letta',
+    ])->assertSessionHasNoErrors();
+    $rigaBea = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $bea->id)->value('id');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'vendita', 'riga_uscente_id' => $rigaBea, 'anagrafica_entrante_id' => $carlo->id, 'decorrenza' => '2026-09-01', 'quota' => 40, 'tipologia' => 'proprietario',
+        'copia_autentica' => true, 'copia_autentica_il' => '2026-09-05', 'estremi_titolo' => 'rep. 44', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Vendita, letto',
+    ])->assertSessionHasNoErrors();
+    poLocazione($this, $s, ['tipo' => 'inizio_locazione', 'anagrafica_entrante_id' => $ivo->id, 'decorrenza' => '2026-01-01']);
+
+    // 36.500 × 120/365 = 12.000 (1/1–30/4), 36.500 × 123/365 = 12.300 (1/5–31/8), 36.500 × 122/365 = 12.200 (1/9–31/12).
+    $pulizia = collect(app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e'])['conduttori'][0]['voci'])->where('conto', 'Pulizia scale');
+    expect($pulizia->mapWithKeys(fn ($v) => [$v['pagato_da'] => [$v['importo'], $v['giorni']]])->all())
+        ->toBe(['Paola Proprietaria' => [12000, 120], 'Aldo Erede e Bea Erede' => [12300, 123], 'Aldo Erede e Carlo Compratore' => [12200, 122]]);
+});
+
 it('R13 — un piano che non ricorda l\'esercizio: nel prospetto dell\'esercizio a cui la data di creazione lo attribuisce lo si dice in testa, in quello della sua gestione si nomina fra gli esclusi', function () {
     $s = poScenario([['nome' => 'Ivo Primo', 'dal' => '2020-01-01', 'al' => null]]);
     $e25 = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'chiuso']);

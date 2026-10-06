@@ -21,6 +21,12 @@ export interface Saldo {
   e_bloccato: boolean;
   /** Una delle due righe del conguaglio di un passaggio di titolarità (B2): si tolgono insieme, mai una sola. */
   e_conguaglio?: boolean;
+  /** 1.11.0-beta.44: una delle righe dell'arretrato di una successione (decisione 65). */
+  e_arretrato?: boolean;
+  /** Una gamba della coppia di una successione con l'arretrato agli eredi: si toglie solo con la successione (giro sulle correzioni, GC8). */
+  e_conguaglio_con_arretrato?: boolean;
+  /** Una riga fra le fonti dell'arretrato di una successione: si corregge annullando prima la successione (ultima revisione, UE7). */
+  e_fonte_arretrato?: boolean;
   /** Rilievo V9 (1.11.0-beta.42): perché il piano che ha assorbito il saldo non si riscrive più, e come riaprirlo. */
   fermo_del_piano?: { perche: string | null; rimedi: string[]; ragioni: Array<'scrittura' | 'incasso' | 'credito' | 'conguaglio'> } | null;
   subentro_id?: number | null;

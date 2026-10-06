@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type { AnteprimaPassaggioDati } from '@/types/gestionale/passaggi';
 import { competenzaDellaGestione, etichettaEsclusa } from '@/lib/gestionale/passaggi/competenzaGestione';
+import { fraseArretrato, rinunciaEffettiva } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
 
 const props = defineProps<{
   dati: AnteprimaPassaggioDati | null;
@@ -35,6 +36,8 @@ const props = defineProps<{
   bloccato?: boolean;
   /** Cosa manca al modulo perché il server possa rispondere; vuoto se è completo. */
   mancante: string[];
+  /** Il tipo di passaggio: la nota della rinuncia nomina venditore e acquirente solo nella vendita (Fase 5 della 1.11.0-beta.44). */
+  tipo?: string;
 }>();
 
 /** La rinuncia alla coppia proposta e la sua ragione: stato del modulo, tenuto da chi ci sta sopra. */
@@ -51,6 +54,16 @@ const notaTroppoCorta = computed(() => rinuncia.value && notaRinuncia.value.trim
 // Decisione 25 (B3a): le bozze che passano a chi entra, e la coppia che con loro può rovesciarsi.
 const riassegnazione = computed(() => conguaglio.value?.riassegnazione ?? []);
 const rovesciato = computed(() => (conguaglio.value?.totale_entrante ?? 0) < 0);
+/**
+ * 1.11.0-beta.44, decisione 65: nella successione l'arretrato del defunto. Agli eredi, coppia e arretrato fanno un conto solo e la
+ * rinuncia al conguaglio non c'è; a nome del defunto la rinuncia resta, fra gli eredi, senza la sentenza della vendita.
+ */
+const arretrato = computed(() => props.dati?.rate.arretrato ?? null);
+const arretratoAgliEredi = computed(() => arretrato.value?.scelta === 'eredi');
+// Rilievo X11 della Fase 1-bis: con l'arretrato agli eredi la spunta rimasta da «a nome del defunto» non vale, e i badge non la seguono.
+const rinunciaVale = computed(() => rinunciaEffettiva(conguaglio.value?.coppie.length ?? 0, rinuncia.value, arretrato.value?.scelta));
+// Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione.
+const fraseDellArretrato = computed(() => fraseArretrato(arretrato.value, rinunciaVale.value));
 const GRADINI: Record<string, string> = { dichiarata: 'competenza dichiarata', delibera: 'data della delibera', capitolo: 'competenza del capitolo', gestione: 'periodo della gestione', esercizio: 'periodo dell\'esercizio' };
 
 /** Oltre otto righe la tabella si piega: si vede l'inizio, il totale e «mostra tutte». */
@@ -127,10 +140,10 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
       <section class="p-5 space-y-3">
         <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <Receipt class="w-3.5 h-3.5" /> 2. Rate già emesse
-          <span v-if="conguaglio && haCoppie && !rinuncia" class="ml-auto inline-flex items-center gap-1 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
+          <span v-if="conguaglio && haCoppie && !rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
             <ArrowLeftRight class="w-3 h-3" /> conguaglio proposto
           </span>
-          <span v-else-if="conguaglio && haCoppie && rinuncia" class="ml-auto inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
+          <span v-else-if="conguaglio && haCoppie && rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
             regolato fra le parti
           </span>
         </h4>
@@ -234,22 +247,31 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             <tfoot class="bg-indigo-50/60 dark:bg-indigo-900/20 border-t border-indigo-200 dark:border-indigo-800/60">
               <tr>
                 <td colspan="2" class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-800 dark:text-indigo-300">
-                  <template v-if="haCoppie && rovesciato">Credito a chi entra, debito a chi esce</template>
+                  <!-- Rilievo L2 della Fase 1-bis: con più eredi le coppie hanno segni diversi, e la somma non è il debito di qualcuno. -->
+                  <template v-if="haCoppie && arretrato && piuEntranti">Somma delle coppie degli eredi</template>
+                  <template v-else-if="haCoppie && rovesciato">Credito a chi entra, debito a chi esce</template>
                   <template v-else-if="haCoppie">Debito a chi entra, credito a chi esce</template>
                   <template v-else>Nessuna riga in saldi da questo passaggio</template>
                 </td>
-                <td class="px-3 py-1.5 text-right tabular-nums font-bold text-indigo-900 dark:text-indigo-200 whitespace-nowrap">{{ haCoppie ? conguaglio.totale_entrante_assoluto_formattato : '—' }}</td>
+                <td class="px-3 py-1.5 text-right tabular-nums font-bold text-indigo-900 dark:text-indigo-200 whitespace-nowrap">{{ haCoppie ? conguaglio.totale_entrante_assoluto_formattato + (arretrato && piuEntranti && rovesciato ? ' a credito' : '') : '—' }}</td>
               </tr>
             </tfoot>
           </table>
 
-          <div v-if="haCoppie" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
+          <p v-if="haCoppie && arretratoAgliEredi" class="px-3 py-2.5 border-t border-indigo-100 dark:border-indigo-900/40 text-[11px] text-slate-500 dark:text-slate-400 leading-snug bg-white dark:bg-slate-900">
+            Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: insieme danno a ogni erede la sua quota di tutto ciò che il defunto ha lasciato aperto, e non si può rinunciare al solo conguaglio.
+          </p>
+          <div v-else-if="haCoppie" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
             <label class="flex items-start gap-2 cursor-pointer">
               <Checkbox :model-value="rinuncia" @update:model-value="(v: boolean | 'indeterminate') => rinuncia = v === true" class="mt-0.5" />
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
-                <span class="font-medium">Le parti hanno regolato il conguaglio fra loro</span>: non scrivere le due righe in saldi.
-                <span class="block text-[11px] text-slate-500">Vale fra venditore e acquirente («salvo diverso accordo», Cass. 11199/2021), non verso il condominio. La ragione resta nel passaggio.</span>
-                <span v-if="riassegnazione.length" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque a chi entra: la rinuncia riguarda solo le due righe in saldi.</span>
+                <span class="font-medium">{{ arretrato ? 'Gli eredi hanno regolato il conguaglio fra loro' : 'Le parti hanno regolato il conguaglio fra loro' }}</span>: non scrivere le due righe in saldi.
+                <span v-if="arretrato" class="block text-[11px] text-slate-500">Vale fra loro, non verso il condominio. La ragione resta nel passaggio.</span>
+                <span v-else-if="!tipo || tipo === 'vendita'" class="block text-[11px] text-slate-500">Vale fra venditore e acquirente («salvo diverso accordo», Cass. 11199/2021), non verso il condominio. La ragione resta nel passaggio.</span>
+                <span v-else class="block text-[11px] text-slate-500">Vale fra le parti, non verso il condominio. La ragione resta nel passaggio.</span>
+                <!-- Decisione 69 (2): con più eredi le bozze restano tutte all'erede di riferimento, e senza le righe gli altri non pagano la loro parte. -->
+                <span v-if="riassegnazione.length && arretrato && piuEntranti" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque all'erede di riferimento: senza le righe in saldi gli altri eredi, nel programma, non pagano la loro parte di quelle rate, e la paga tutta l'erede di riferimento.</span>
+                <span v-else-if="riassegnazione.length" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque a chi entra: la rinuncia riguarda solo le due righe in saldi.</span>
               </span>
             </label>
             <div v-if="rinuncia" class="pl-6 space-y-1">
@@ -258,6 +280,22 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               <p v-else-if="notaTroppoCorta" class="text-[11px] text-slate-500">Scrivi perché (almeno 10 caratteri): è ciò che rileggerai fra un anno.</p>
             </div>
           </div>
+        </div>
+
+        <!-- Decisione 65 (2): l'arretrato del defunto, per erede, o la cifra che resta a suo nome. -->
+        <div v-if="arretrato && (arretrato.eredi.length || fraseDellArretrato)" class="rounded-lg border border-emerald-200 dark:border-emerald-800/60 overflow-hidden">
+          <p class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/20">
+            {{ arretratoAgliEredi ? 'Arretrato del defunto agli eredi' : 'Arretrato del defunto' }}
+          </p>
+          <table v-if="arretratoAgliEredi && arretrato.eredi.length" class="w-full table-fixed text-[12px]">
+            <tbody class="divide-y divide-emerald-100 dark:divide-emerald-900/40">
+              <tr v-for="e in arretrato.eredi" :key="e.anagrafica_id">
+                <td class="px-3 py-1 text-slate-700 dark:text-slate-300 truncate">a {{ e.nome }}</td>
+                <td class="px-3 py-1 text-right tabular-nums text-emerald-800 dark:text-emerald-300 whitespace-nowrap">{{ e.importo_formattato }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="fraseDellArretrato" class="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-400 leading-snug border-t border-emerald-100 dark:border-emerald-900/40">{{ fraseDellArretrato }}</p>
         </div>
       </section>
 

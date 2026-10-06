@@ -544,6 +544,50 @@ it('piano senza righe di riparto (generato prima della beta.29) sull\'unità mis
         ->and($dopo['cancello']['richiesto'] ?? false)->toBeTrue();
 })->with(['estinzione', 'vendita']);
 
+it('beta.44 — piano senza righe di riparto sull\'unità mista: la successione della nuda proprietà registrata dopo la generazione cambia la quota come una vendita, e il passaggio dopo si ferma', function () {
+    $s = qceS3('usufruttuario');
+    DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    $nino = qcePersona($s, 'Nino Erede');
+    // Bice, nuda proprietaria della metà, muore il 1/4: la nuda passa a Nino.
+    ruRegistra($this, $s, ['tipo' => 'successione', 'riga_uscente_id' => qceRiga($s, $s['bice'], 'nuda_proprietario', '2026-04-01'), 'decorrenza' => '2026-04-01', 'quota' => 50,
+        'tipologia' => 'nuda_proprietario', 'eredi' => [['anagrafica_id' => $nino->id, 'quota' => 50]], 'arretrato' => 'eredi', 'copia_autentica' => false, 'pertinenze' => [],
+        'ho_letto' => true, 'nota_cancello' => 'Successione letta']);
+
+    // Prima la successione non contava fra i passaggi dopo la generazione: la vendita di Ugo divideva sulla ricostruzione.
+    $dopo = qcePassa($this, $s, 'vendita', $s['v'], $s['a'], '2026-06-01', registra: false);
+    expect(qceFermo($dopo, 'dopo la generazione'))->toBeTrue();
+});
+
+it('beta.44 — la catena con un erede che non è chi entra scritto sul passaggio: Bice vende la sua metà a Dino, poi eredita un quarto da Ugo insieme a Mara e lo vende a Elio. Con le righe di riparto la genealogia decide; senza, il conguaglio si ferma e lo dice', function (bool $senzaRighe) {
+    $s = ruScenario('prima_rata', 0, genera: false);
+    DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['quota' => 50]);
+    $bice = qcePersona($s, 'Bice Prima');
+    qceTitolare($s, $bice, 'proprietario', 50);
+    qceGenera($s);
+    if ($senzaRighe) {
+        DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    }
+    ruEmetti($s, '2026-12-31');
+    [$dino, $mara, $elio] = [qcePersona($s, 'Dino Compra'), qcePersona($s, 'Mara Erede'), qcePersona($s, 'Elio Compra')];
+    qcePassa($this, $s, 'vendita', $bice, $dino, '2026-02-01');
+    // Bice è la seconda erede: il passaggio nomina Mara come chi entra.
+    ruRegistra($this, $s, ['tipo' => 'successione', 'riga_uscente_id' => qceRiga($s, $s['v'], 'proprietario', '2026-05-01'), 'decorrenza' => '2026-05-01', 'quota' => 50,
+        'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $mara->id, 'quota' => 25], ['anagrafica_id' => $bice->id, 'quota' => 25]], 'arretrato' => 'eredi',
+        'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Successione letta']);
+    $c = qcePassa($this, $s, 'vendita', $bice, $elio, '2026-09-01', registra: false)['rate']['conguaglio'];
+
+    if (! $senzaRighe) {
+        // A mano: il quarto ereditato, € 300,00 × 122/365 = € 100,27.
+        expect(array_column($c['coppie'], 'importo'))->toBe([10027])->and($c['non_risolte'])->toBe([]);
+
+        return;
+    }
+    // Prima l'acquisto per successione contava solo per chi entra scritto sul passaggio: senza righe il conguaglio dava a Elio i giorni di
+    // tre quarti dell'unità (€ 300,82), anche della metà che Bice aveva venduto a Dino.
+    expect(collect($c['coppie'])->every(fn ($x) => (int) $x['importo'] === 0))->toBeTrue()
+        ->and(collect($c['non_risolte'])->pluck('motivo')->implode(' | '))->toContain('Bice Prima ha ceduto una quota dell\'unità con un passaggio e ne ha avuta un\'altra con un passaggio successivo');
+})->with(['con le righe di riparto' => [false], 'senza, dalla ricostruzione del motore' => [true]]);
+
 // --- Le quote che il passaggio tocca o non tocca: il cancello -------------------------------------------------------------
 
 it('una voce interamente coperta dal già versato di chi esce sposta comunque la parte di chi entra: S3, «Acqua anticipata» sull\'«Usufruttuario» già versata da Ugo, l\'usufrutto si estingue il 1/4: coppia € 75,34 e la spunta è richiesta', function () {

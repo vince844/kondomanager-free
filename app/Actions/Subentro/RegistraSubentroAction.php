@@ -97,8 +97,10 @@ final class RegistraSubentroAction
                     if ($uscente === null || (int) $uscente->immobile_id !== (int) $immobile->id) {
                         throw ValidationException::withMessages(['riga_uscente_id' => 'Il periodo di chi esce non esiste più: ricarica la pagina.']);
                     }
-                    if ($uscente->subentriComeUscente()->exists()) {
-                        throw ValidationException::withMessages(['riga_uscente_id' => 'Questo periodo è già stato chiuso da un passaggio registrato: lo trovi nello storico.']);
+                    // Giro sulle correzioni della Fase 1-bis della .44 (G25): anche una riga che un passaggio ha chiuso sommandola nella riga di
+                    // chi riceve, non solo come chi esce.
+                    if ($uscente->passaggioCheLaChiude() !== null) {
+                        throw ValidationException::withMessages(['riga_uscente_id' => 'Questo periodo è già stato chiuso da un passaggio registrato: lo trovi nello storico. Se questo passaggio viene prima, annulla dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, registra questo e poi di nuovo quei passaggi.']);
                     }
                     if ($uscente->data_fine !== null && $uscente->data_fine->lt($giornoPrima)) {
                         throw ValidationException::withMessages(['decorrenza' => sprintf('Questo periodo si è chiuso il %s: la decorrenza non può essere successiva di più di un giorno.', $uscente->data_fine->locale('it')->translatedFormat('j F Y'))]);
@@ -120,6 +122,10 @@ final class RegistraSubentroAction
                 $entrante = $dati['entrante'] ?? null;
                 $this->registroRighe = [];
                 $this->nudiDelPassaggio = null;
+                $this->eredi = $tipo === 'successione' ? array_values($dati['eredi'] ?? []) : [];
+                $this->erediDelPassaggio = null;
+                $this->accrescimento = (bool) ($dati['accrescimento'] ?? false);
+                $this->accrescimentoDelPassaggio = null;
                 $esitoRighe = $this->applicaRighe($immobile, $tipo, $sottotipo, $uscente, $entrante, (float) $dati['quota'], (string) $dati['tipologia'], $decorrenza, $giornoPrima, 'quota', $dati['nudi_che_tornano'] ?? null, (bool) ($dati['nudi_per_quota'] ?? false));
 
                 // 3-bis. Decisioni 31.5 e 31.7: la scelta sull'ordinaria e, con la legge, le voci spostate all'«Usufruttuario».
@@ -188,6 +194,11 @@ final class RegistraSubentroAction
                     $riassegnate = $this->riassegnaBozze($subentro, $conguaglio, $decorrenza, $utente);
                 }
 
+                // 6-ter. Decisione 65 (2): l'arretrato del defunto, agli eredi per quota (righe di saldo a somma zero) o a suo nome.
+                if ($tipo === 'successione' && ($anteprima['rate']['arretrato'] ?? null) !== null) {
+                    $this->scriviArretrato($condominio, $subentro, $anteprima['rate']['arretrato'], $uscente, $decorrenza, $rinuncia, $avvisi);
+                }
+
                 // 7. Il PDF del titolo: documento dell'unità, dell'amministratore. Il file si scrive qui, così
                 //    `$path` è noto al catch anche se `create()` fallisce subito dopo (verifica S5, R5).
                 $documento = null;
@@ -230,6 +241,29 @@ final class RegistraSubentroAction
      */
     private ?array $nudiDelPassaggio = null;
 
+    /**
+     * Decisione 65 (1.11.0-beta.44): gli eredi del modulo (persona e quota ereditata) e, dopo `applicaRighe()`, quelli scritti
+     * sull'unità in corso con la quota arrivata e la riga aperta: il registro li tiene, perché la quota di una riga sommata non è la
+     * parte ereditata (lezione della decisione 36).
+     *
+     * @var list<array{anagrafica: Anagrafica, quota: float}>
+     */
+    private array $eredi = [];
+
+    /** @var list<array{anagrafica_id: int, quota: float, riga_id: int}>|null */
+    private ?array $erediDelPassaggio = null;
+
+    /** All'estinzione, la casella dell'accrescimento (1.11.0-beta.44). */
+    private bool $accrescimento = false;
+
+    /**
+     * Gli usufruttuari che hanno ricevuto l'accrescimento sull'unità in corso, con la quota ricevuta (non la somma della riga) e la riga
+     * aperta: nel registro come gli eredi.
+     *
+     * @var list<array{anagrafica_id: int, quota: float, riga_id: int}>|null
+     */
+    private ?array $accrescimentoDelPassaggio = null;
+
     /** @return array<string, mixed> il registro di un'unità, nella forma che legge `AnnullaPassaggioAction` */
     private function registro(string $tipo, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?string $sottotipo = null, ?int $immobileId = null): array
     {
@@ -254,10 +288,13 @@ final class RegistraSubentroAction
             'sottotipo' => $sottotipo,
             'righe'    => $this->registroRighe,
             'quote'    => [],
-        ] + ($this->nudiDelPassaggio !== null ? ['nudi' => $this->nudiDelPassaggio] : []) + [
+        ] + ($this->nudiDelPassaggio !== null ? ['nudi' => $this->nudiDelPassaggio] : [])
+            + ($this->erediDelPassaggio !== null ? ['eredi' => $this->erediDelPassaggio] : [])
+            + ($this->accrescimentoDelPassaggio !== null ? ['accrescimento' => $this->accrescimentoDelPassaggio] : []) + [
             // I nomi restano anche se la persona sparisce: la chiave esterna è `nullOnDelete`, e un passaggio annullato
             // non impedisce di cancellare l'anagrafica creata per sbaglio (è spesso la ragione dell'annullamento).
-            'nomi'     => ['uscente' => $uscente?->anagrafica?->nome, 'entrante' => $entrante?->nome],
+            'nomi'     => ['uscente' => $uscente?->anagrafica?->nome, 'entrante' => $entrante?->nome]
+                + ($this->erediDelPassaggio !== null ? ['eredi' => collect($this->eredi)->mapWithKeys(fn ($e) => [(int) $e['anagrafica']->id => $e['anagrafica']->nome])->all()] : []),
             // L'ultima quota esistente al passaggio: le quote con un id più alto sono nate dopo (un piano ricalcolato con
             // la titolarità nuova). Per id e non per ora: un piano generato e un passaggio nello stesso secondo non si
             // distinguono dal `created_at`.
@@ -306,6 +343,26 @@ final class RegistraSubentroAction
                 $rigaEntranteId = $this->apri($unita, $entrante, 'inquilino', $quotaEntrante, $decorrenza);
                 break;
 
+            case 'successione':
+                // Decisione 65: il defunto fino al giorno prima del decesso, gli eredi dal giorno del decesso nello stesso ruolo, ciascuno per
+                // la sua quota; l'erede che era già titolare con lo stesso ruolo somma (decisione A). Sulla pertinenza la quota che il
+                // defunto aveva lì si divide in proporzione. Il passaggio nomina chi entra l'erede di riferimento, o l'unico, o il primo.
+                $this->chiudi($uscente, $giornoPrima);
+                $this->erediDelPassaggio = [];
+                foreach ($this->quoteDegliEredi((float) $uscente->quota) as $i => $quotaErede) {
+                    if ($quotaErede <= 0) {
+                        continue;
+                    }
+                    $erede = $this->eredi[$i]['anagrafica'];
+                    $id = $this->apriSommando($unita, $erede, (string) $uscente->tipologia, $quotaErede, $decorrenza, $giornoPrima);
+                    $this->erediDelPassaggio[] = ['anagrafica_id' => (int) $erede->id, 'quota' => $quotaErede, 'riga_id' => $id];
+                    if ($rigaEntranteId === null || (int) $erede->id === (int) $entrante?->id) {
+                        $rigaEntranteId = $id;
+                        $anagraficaEntranteId = (int) $erede->id;
+                    }
+                }
+                break;
+
             case 'fine_locazione':
                 $this->chiudi($uscente, $giornoPrima);
                 if ($entrante !== null) {
@@ -314,7 +371,30 @@ final class RegistraSubentroAction
                 break;
 
             case 'usufrutto':
-                if ($sottotipo === 'estinzione') {
+                if ($sottotipo === 'estinzione' && $this->accrescimento) {
+                    // 1.11.0-beta.44: l'usufrutto di chi muore va agli usufruttuari che restano, in proporzione alla loro quota (in centesimi
+                    // di punto, con i resti maggiori); ognuno somma la sua parte alla riga che ha (decisione 36). La nuda resta nuda.
+                    $usufruttuari = \App\Services\Subentro\AnteprimaPassaggio::usufruttuariCheRestano($uscente, $decorrenza);
+                    if ($usufruttuari->isEmpty()) {
+                        throw ValidationException::withMessages(['accrescimento' => $unita->nome . ' — nessun altro usufruttuario risulta in corso: l\'usufrutto non si accresce.']);
+                    }
+                    // Decisione 67 (2): con la nuda di più nudi proprietari l'accrescimento non si registra da qui (la richiesta lo dice prima).
+                    if (\App\Services\Subentro\AnteprimaPassaggio::nudiDistintiIl($uscente, $decorrenza)->count() > 1) {
+                        throw ValidationException::withMessages(['accrescimento' => $unita->nome . ' — la nuda proprietà è di più nudi proprietari: l\'accrescimento non si registra da qui. Togli la spunta, o correggi le righe a mano da «Modifica associazione».']);
+                    }
+                    $this->chiudi($uscente, $giornoPrima);
+                    $parti = \App\Helpers\MoneyHelper::ripartisciPerQuote((int) round((float) $uscente->quota * 100), $usufruttuari->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->id => (float) $t->quota])->all());
+                    $this->accrescimentoDelPassaggio = [];
+                    foreach ($usufruttuari as $t) {
+                        $parte = round(((int) $parti[(int) $t->id]) / 100, 2);
+                        $id = $this->apriSommando($unita, $t->anagrafica, 'usufruttuario', $parte, $decorrenza, $giornoPrima);
+                        $this->accrescimentoDelPassaggio[] = ['anagrafica_id' => (int) $t->anagrafica_id, 'quota' => $parte, 'riga_id' => $id];
+                        if ($rigaEntranteId === null) {
+                            $rigaEntranteId = $id;
+                            $anagraficaEntranteId = (int) $t->anagrafica_id;
+                        }
+                    }
+                } elseif ($sottotipo === 'estinzione') {
                     $this->chiudi($uscente, $giornoPrima);
                     // Tutti i nudi proprietari **in corso alla decorrenza** tornano proprietari pieni, ciascuno alla
                     // sua quota. Un nudo chiuso il giorno prima (uscito con un altro passaggio) non torna: era il
@@ -366,6 +446,8 @@ final class RegistraSubentroAction
                                 ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza) && $t->data_inizio !== null && $t->data_inizio->lte($giornoPrima));
                             $quota = round((float) $nudo->quota + (float) ($piena?->quota ?? 0), 2);
                             if ($piena !== null) {
+                                // Giro sulle correzioni (G2): la piena con una data di fine non si richiude al giorno prima.
+                                $this->fermaSeHaUnaFine($unita, $nudo->anagrafica, 'proprietario', $piena);
                                 $nuova = ['anagrafica_id' => (int) $nudo->anagrafica_id, 'tipologia' => 'proprietario', 'quota' => $quota, 'data_inizio' => $decorrenza->toDateString(), 'data_fine' => null];
                                 $this->chiudi($piena, $giornoPrima);
                                 if ($sforo = GuardieTitolarita::sforoQuotePerGiorno($unita->titolarita()->get(), $nuova, (int) $nudo->id)) {
@@ -405,6 +487,83 @@ final class RegistraSubentroAction
         }
 
         return ['riga_entrante_id' => $rigaEntranteId, 'anagrafica_entrante_id' => $anagraficaEntranteId];
+    }
+
+    /**
+     * La quota di ciascun erede su un'unità, quando il defunto vi aveva `$quotaDefunto`: in proporzione alle quote ereditate, in
+     * centesimi di punto interi con i resti maggiori (come la scelta dei nudi, decisione 62). Sull'unità principale le quote del
+     * modulo sommano già a quella del defunto, e restano le stesse.
+     *
+     * @return list<float>
+     */
+    private function quoteDegliEredi(float $quotaDefunto): array
+    {
+        $pesi = array_map(fn ($e) => (float) $e['quota'], $this->eredi);
+        if ($pesi === [] || array_sum($pesi) <= 0) {
+            return [];
+        }
+
+        return array_map(fn ($c) => round(((int) $c) / 100, 2), array_values(\App\Helpers\MoneyHelper::ripartisciPerQuote((int) round($quotaDefunto * 100), $pesi)));
+    }
+
+    /**
+     * Decisione 65 (2): l'arretrato del defunto. Agli eredi: per gestione, unità ed esercizio una riga a credito del defunto e una a
+     * debito di ciascun erede, con lo stesso `subentro_id` della coppia (l'annullamento del passaggio le toglie insieme), e i loro id
+     * nel registro (`arretrato.saldi`), perché l'annullamento del solo conguaglio e il «regolato fuori» le riconoscano e le lascino
+     * stare. A nome del defunto: nessuna riga, e il registro dice la scelta e la cifra — con la rinuncia al conguaglio la coppia non
+     * si scrive, e la cifra è tutta la posizione del defunto (rilievo X8 della Fase 1-bis). Le righe che non trovano un esercizio su cui
+     * scriversi restano a nome del defunto: il registro ne tiene la somma (`non_scritto`), perché lo storico non dica «in pari» (X9).
+     *
+     * @param array<string,mixed> $arretrato `AnteprimaPassaggio::calcola()['rate']['arretrato']`
+     */
+    private function scriviArretrato(Condominio $condominio, Subentro $subentro, array $arretrato, ?TitolaritaImmobile $uscente, CarbonImmutable $decorrenza, bool $rinuncia, array &$avvisi): void
+    {
+        $ids = [];
+        $nonScritto = 0;
+        $defuntoId = (int) $uscente?->anagrafica_id;
+        if ($arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0) {
+            $nomi = Anagrafica::whereKey([$defuntoId, ...collect($arretrato['righe'])->flatMap(fn ($r) => array_keys($r['per_erede']))->unique()->all()])->pluck('nome', 'id');
+            $testa = sprintf('Arretrato agli eredi, successione del %s', $decorrenza->locale('it')->translatedFormat('j F Y'));
+            foreach ($arretrato['righe'] as $riga) {
+                $esercizioId = $riga['esercizio_id'] ?? $this->getEsercizioCorrente($condominio)?->id;
+                if ($esercizioId === null) {
+                    $avvisi[] = sprintf('Nessun esercizio su cui scrivere l\'arretrato della gestione «%s»: le righe non sono state scritte.', $riga['gestione'] ?? '?');
+                    $nonScritto += (int) array_sum($riga['per_erede']);
+                    continue;
+                }
+                foreach ($riga['per_erede'] as $eredeId => $importo) {
+                    if ((int) $importo === 0) {
+                        continue;
+                    }
+                    $descrizione = $this->testaConParti($testa, ($nomi[$defuntoId] ?? '?') . ' → ' . ($nomi[(int) $eredeId] ?? '?'));
+                    foreach ([[$defuntoId, -(int) $importo], [(int) $eredeId, (int) $importo]] as [$anagraficaId, $cents]) {
+                        $ids[] = (int) Saldo::create([
+                            'esercizio_id' => $esercizioId, 'condominio_id' => $condominio->id, 'gestione_id' => $riga['gestione_id'], 'immobile_id' => $riga['immobile_id'],
+                            'anagrafica_id' => $anagraficaId, 'saldo_iniziale' => $cents, 'origine' => 'automatico', 'is_applicato' => false,
+                            'subentro_id' => $subentro->id, 'descrizione' => $descrizione,
+                        ])->id;
+                    }
+                }
+            }
+        }
+        $registro = $subentro->registro ?? [];
+        $resta = $rinuncia && $arretrato['scelta'] === Subentro::ARRETRATO_AL_DEFUNTO ? (int) ($arretrato['resta_senza_conguaglio'] ?? 0) : (int) ($arretrato['resta'] ?? 0);
+        $registro['arretrato'] = ['scelta' => $arretrato['scelta'], 'totale' => (int) ($arretrato['totale'] ?? 0), 'resta' => $resta, 'saldi' => $ids]
+            + ($nonScritto !== 0 ? ['non_scritto' => $nonScritto] : [])
+            // Decisione 67 (3): i saldi del defunto da cui l'arretrato è stato calcolato, solo se ne sono nate righe degli eredi.
+            + ($ids !== [] ? ['fonti' => array_values(array_map('intval', $arretrato['fonti'] ?? []))] : []);
+        $subentro->forceFill(['registro' => $registro])->save();
+    }
+
+    /** La rete del rilievo X1: una riga con una data di fine non si richiude al giorno prima per sommare senza fine. */
+    private function fermaSeHaUnaFine(Immobile $unita, ?Anagrafica $persona, string $tipologia, TitolaritaImmobile $riga): void
+    {
+        if ($riga->data_fine === null) {
+            return;
+        }
+        throw ValidationException::withMessages(['decorrenza' => sprintf('%s: %s è già %s di questa unità, e quella riga ha una data di fine, il %s: il passaggio non la riapre senza fine. Annulla prima dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, oppure correggi le righe a mano da «Modifica associazione».',
+            $unita->nome, $persona?->nome ?? 'Questa persona', mb_strtolower(\App\Enums\RuoloAnagraficaImmobile::tryFrom($tipologia)?->label() ?? $tipologia),
+            CarbonImmutable::parse($riga->data_fine)->locale('it')->translatedFormat('j F Y'))]);
     }
 
     private function chiudi(?TitolaritaImmobile $riga, CarbonImmutable $giornoPrima): void
@@ -463,6 +622,13 @@ final class RegistraSubentroAction
         }
         $righeEntrante = $unita->titolarita()->where('anagrafica_id', $entrante->id)->where('tipologia', $tipologia)->get()
             ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza) && $t->data_inizio !== null);
+        // Rilievo X1 della Fase 1-bis della .44: una riga con una data di fine — scritta da un passaggio registrato dopo, o a mano — non si
+        // chiude al giorno prima per riaprire la somma senza fine, sopra ciò che è successo dopo. La richiesta lo dice prima, con la
+        // strada, per ogni ramo che somma (vendita, riserva, costituzione, successione, accrescimento, nudi che tornano pieni: giro sulle
+        // correzioni, G1); questa è la rete, anche per il nudo nato il giorno dell'estinzione (G2).
+        if (($chiusa = $righeEntrante->first(fn (TitolaritaImmobile $t) => $t->data_fine !== null)) !== null) {
+            $this->fermaSeHaUnaFine($unita, $entrante, $tipologia, $chiusa);
+        }
 
         $stessoGiorno = $righeEntrante->first(fn (TitolaritaImmobile $t) => $t->data_inizio->equalTo($decorrenza));
         if ($stessoGiorno !== null) {
@@ -499,7 +665,7 @@ final class RegistraSubentroAction
         if ($uscente !== null) {
             $uscenteLi = $pertinenza->titolarita()->with('anagrafica')->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)
                 ->lockForUpdate()->get()
-                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giornoPrima) && ! $t->subentriComeUscente()->exists());
+                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giornoPrima) && $t->passaggioCheLaChiude() === null);
             if ($uscenteLi === null) {
                 $ruolo = RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? $uscente->tipologia;
                 throw ValidationException::withMessages(['pertinenze' => sprintf('%s: %s non risulta %s alla data del passaggio. Togli la spunta, o registra il passaggio dalla pertinenza.', $pertinenza->nome, $uscente->anagrafica?->nome, mb_strtolower($ruolo))]);
@@ -508,6 +674,8 @@ final class RegistraSubentroAction
 
         $this->registroRighe = [];
         $this->nudiDelPassaggio = null;
+        $this->erediDelPassaggio = null;
+        $this->accrescimentoDelPassaggio = null;
         $esito = $this->applicaRighe($pertinenza, $tipo, $sottotipo, $uscenteLi, $entrante, 100.0, (string) $padre->tipologia, $decorrenza, $giornoPrima, 'uscente');
 
         Subentro::create([

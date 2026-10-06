@@ -492,10 +492,10 @@ function ruRuoloUscente(string $tipo): string
  * d'usufrutto), `nuda` (vendita della sola nuda proprietà), `costituzione` ed `estinzione` dell'usufrutto. `$riga` è la
  * riga di chi esce e `$quota` la sua. La copia autentica non si dichiara; spunta e nota del cancello si aggiungono fuori.
  */
-function ruPassaggio(string $tipo, int $riga, ?Anagrafica $entrante, string $dal, float $quota, array $pertinenze = []): array
+function ruPassaggio(string $tipo, int $riga, ?Anagrafica $entrante, string $dal, float $quota, array $pertinenze = [], ?Anagrafica $secondoErede = null): array
 {
     $base = ['riga_uscente_id' => $riga, 'decorrenza' => $dal, 'quota' => $quota, 'copia_autentica' => false, 'estremi_titolo' => 'atto notaio Verdi, rep. 900', 'pertinenze' => $pertinenze]
-        + ($entrante !== null ? ['anagrafica_entrante_id' => $entrante->id] : []);
+        + ($entrante !== null && ! str_starts_with($tipo, 'successione') ? ['anagrafica_entrante_id' => $entrante->id] : []);
 
     return $base + match ($tipo) {
         'vendita' => ['tipo' => 'vendita', 'tipologia' => 'proprietario'],
@@ -503,6 +503,12 @@ function ruPassaggio(string $tipo, int $riga, ?Anagrafica $entrante, string $dal
         'nuda' => ['tipo' => 'vendita', 'tipologia' => 'nuda_proprietario'],
         'costituzione' => ['tipo' => 'usufrutto', 'sottotipo' => 'costituzione', 'tipologia' => 'usufruttuario', 'ordinaria_dopo_atto' => 'usufruttuario'],
         'estinzione' => ['tipo' => 'usufrutto', 'sottotipo' => 'estinzione', 'tipologia' => 'proprietario'],
+        // 1.11.0-beta.44: chi entra è l'erede unico, con tutta la quota del defunto; l'arretrato agli eredi o a nome del defunto.
+        'successione' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => $quota]], 'arretrato' => 'eredi'],
+        'successione_defunto' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => $quota]], 'arretrato' => 'defunto'],
+        // Rilievo L19 della Fase 1-bis: due eredi al 60/40, chi entra è il riferimento; l'arretrato agli eredi.
+        'successione_due' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => round($quota * 0.6, 2)],
+            ['anagrafica_id' => $secondoErede->id, 'quota' => round($quota - round($quota * 0.6, 2), 2)]], 'arretrato' => 'eredi', 'erede_di_riferimento' => $entrante->id],
     };
 }
 
@@ -729,7 +735,7 @@ function ruCaso($test, array $r, array $forma, ?callable $primaDi = null): array
         $chiEntra = $entra !== null ? $persona($entra) : null;
 
         return ['tipo' => $tipo, 'uscente' => $chiEsce, 'entrante' => $chiEntra, 'decorrenza' => $dal,
-            'dati' => ruPassaggio($tipo, (int) $riga->id, $chiEntra, $dal, (float) $riga->quota, $box !== null ? [$box->id] : [])];
+            'dati' => ruPassaggio($tipo, (int) $riga->id, $chiEntra, $dal, (float) $riga->quota, $box !== null ? [$box->id] : [], $tipo === 'successione_due' ? $persona('carlo') : null)];
     };
 
     $caso = ['s' => $s, 'piani' => $piani, 'box' => $box, 'unita' => $unita, 'd' => $d, 'delibere' => $delibere, 'competenza' => $competenza, 'versato' => $versato];

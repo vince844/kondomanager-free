@@ -63,6 +63,12 @@ const lucchettoSenzaTitolare = computed(() =>
 
 /** Una gamba del conguaglio di un passaggio (B2): la modale spiega, senza «Sblocca» e senza «annulla l'emissione». */
 const lucchettoDiConguaglio = computed(() => !!saldoBloccatoSelezionato.value?.e_conguaglio);
+/** 1.11.0-beta.44: fra le righe di un passaggio, quelle dell'arretrato di una successione, che si tolgono solo annullando il passaggio. */
+const lucchettoDellArretrato = computed(() => !!saldoBloccatoSelezionato.value?.e_arretrato);
+/** Giro sulle correzioni (GC8): una gamba della coppia di una successione con l'arretrato agli eredi, che non si annulla da sola. */
+const lucchettoDelConguaglioConArretrato = computed(() => !!saldoBloccatoSelezionato.value?.e_conguaglio_con_arretrato);
+/** Ultima revisione (UE7): una riga di un passaggio precedente fra le fonti dell'arretrato di una successione. */
+const lucchettoDiUnaFonte = computed(() => !!saldoBloccatoSelezionato.value?.e_fonte_arretrato && !!saldoBloccatoSelezionato.value?.e_conguaglio);
 const dataPassaggio = (iso?: string | null) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—');
 // La rete sotto le azioni: il 422 di «Modifica»/«Elimina» (chiave `saldo`) non aveva nessun lettore qui (verifica S5, R4).
 // `usePage()` è indefinito fuori da un'app Inertia (i test montano il componente da solo): si legge con prudenza.
@@ -427,7 +433,7 @@ function submitAddModal() {
                       <button v-if="item.saldo.e_conguaglio"
                               @click.prevent="apriModaleLucchetto(item.saldo)"
                               class="text-indigo-400 hover:text-indigo-600 transition-colors shrink-0"
-                              :title="`Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le due righe si tolgono insieme`">
+                              :title="item.saldo.e_arretrato ? `Arretrato della successione del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: si toglie annullando il passaggio` : `Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le due righe si tolgono insieme`">
                         <Lock class="w-3 h-3" />
                       </button>
                       <button v-else-if="item.saldo.e_bloccato" 
@@ -502,7 +508,7 @@ function submitAddModal() {
                       <button v-if="item.saldo.e_conguaglio"
                               @click.prevent="apriModaleLucchetto(item.saldo)"
                               class="text-indigo-400 hover:text-indigo-600 transition-colors shrink-0"
-                              :title="`Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le due righe si tolgono insieme`">
+                              :title="item.saldo.e_arretrato ? `Arretrato della successione del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: si toglie annullando il passaggio` : `Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le due righe si tolgono insieme`">
                         <Lock class="w-3 h-3" />
                       </button>
                       <button v-else-if="item.saldo.e_bloccato" 
@@ -684,8 +690,8 @@ function submitAddModal() {
                 <Lock class="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <h3 class="text-lg font-bold text-amber-900 dark:text-amber-300">{{ lucchettoDiConguaglio ? 'Conguaglio di un passaggio' : 'Saldo bloccato dal sistema' }}</h3>
-                <p class="text-xs text-amber-700/70 dark:text-amber-400/60 font-medium">{{ lucchettoDiConguaglio ? 'Due righe a somma zero, si tolgono insieme' : 'Integrazione piano rate attiva' }}</p>
+                <h3 class="text-lg font-bold text-amber-900 dark:text-amber-300">{{ lucchettoDellArretrato ? 'Arretrato di una successione' : lucchettoDelConguaglioConArretrato ? 'Conguaglio di una successione' : lucchettoDiConguaglio ? 'Conguaglio di un passaggio' : 'Saldo bloccato dal sistema' }}</h3>
+                <p class="text-xs text-amber-700/70 dark:text-amber-400/60 font-medium">{{ lucchettoDellArretrato || lucchettoDelConguaglioConArretrato ? 'Due righe a somma zero, si tolgono con il passaggio' : lucchettoDiConguaglio ? 'Due righe a somma zero, si tolgono insieme' : 'Integrazione piano rate attiva' }}</p>
               </div>
             </div>
             <button @click="showLockedInfoModal = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/50 dark:bg-slate-800/50 p-1.5 rounded-full transition-colors">
@@ -695,8 +701,44 @@ function submitAddModal() {
           
           <div class="p-8 space-y-6 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
 
+            <!-- 1.11.0-beta.44, decisione 65: una gamba dell'arretrato del defunto passato a un erede. -->
+            <template v-if="lucchettoDellArretrato">
+              <p class="text-base">
+                Questa riga è una delle due dell'<strong>arretrato della successione del {{ dataPassaggio(saldoBloccatoSelezionato?.subentro?.decorrenza) }}</strong>:
+                la posizione del defunto passata a un erede: due righe di segno opposto, una al defunto e una all'erede, che sommano esattamente zero.
+              </p>
+              <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
+                <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Con il conguaglio fanno un conto solo: non si tolgono da sole, e nemmeno annullando il solo conguaglio. Per cambiare la scelta <strong>annulla il passaggio dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati») e registralo di nuovo.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite e non si riscrive più, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+              </div>
+            </template>
+
+            <!-- Giro sulle correzioni (GC8): la coppia di una successione con l'arretrato agli eredi fa un conto solo con l'arretrato. -->
+            <template v-else-if="lucchettoDelConguaglioConArretrato">
+              <p class="text-base">
+                Questa riga è una di quelle del <strong>conguaglio della successione del {{ dataPassaggio(saldoBloccatoSelezionato?.subentro?.decorrenza) }}</strong>,
+                con l'arretrato agli eredi: conguaglio e arretrato fanno un conto solo, e la riga non si toglie da sola né annullando il solo conguaglio.
+              </p>
+              <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
+                <p>Il prossimo piano rate della gestione assorbe queste righe come qualunque saldo. Per cambiarle <strong>annulla la successione dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati») e registrala di nuovo.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite e non si riscrive più, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+              </div>
+            </template>
+
+            <!-- Ultima revisione (UE7): la gamba di un passaggio precedente fra le fonti dell'arretrato di una successione. -->
+            <template v-else-if="lucchettoDiUnaFonte">
+              <p class="text-base">
+                Questa riga è del <strong>conguaglio del passaggio del {{ dataPassaggio(saldoBloccatoSelezionato?.subentro?.decorrenza) }}</strong>,
+                ed è fra le cifre da cui una successione dopo ha calcolato l'arretrato passato agli eredi.
+              </p>
+              <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
+                <p>Annullare questo conguaglio lascerebbe sbagliate le righe degli eredi. Per farlo <strong>annulla prima la successione dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»), poi questo conguaglio, e registra di nuovo la successione.</p>
+                <p class="text-slate-500">Se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale sulla stessa gestione.</p>
+              </div>
+            </template>
+
             <!-- B2: una gamba del conguaglio di un passaggio di titolarità (inv. 19) -->
-            <template v-if="lucchettoDiConguaglio">
+            <template v-else-if="lucchettoDiConguaglio">
               <p class="text-base">
                 Questa riga è una delle due del <strong>conguaglio del passaggio del {{ dataPassaggio(saldoBloccatoSelezionato?.subentro?.decorrenza) }}</strong>:
                 credito a chi esce, debito a chi entra, somma esattamente zero. Le due righe si tolgono <strong>insieme</strong>,

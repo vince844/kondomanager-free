@@ -58,7 +58,7 @@
  * («F=S3 · N=SD · E=E4 · S=T+ · …»), e le violazioni si raccolgono in un elenco invece di fermarsi alla prima; ognuna
  * comincia con l'invariante e dice dove («I2 passaggio 12, gestione 3, unità 7, esercizio 1: le righe sommano 5»).
  *
- * **Come si aggiunge un tipo di passaggio** (la successione della beta.40, per esempio):
+ * **Come si aggiunge un tipo di passaggio** (la successione della beta.44, per esempio):
  * 1. in `Support/ScenariPassaggi.php`, un ramo di `ruPassaggio()` che scrive il suo modulo, e in `ruRuoloUscente()` il
  *    ruolo di chi esce se non è «proprietario»;
  * 2. qui, una forma in `invForme()`: i titolari censiti e i passaggi, l'ultimo è quello sotto esame — per esempio
@@ -202,6 +202,12 @@ function invForme(): array
         'CPC' => ['descrizione' => 'controprova: costituzione dell\'usufrutto', 'titolari' => $soloUgo, 'passaggi' => [['costituzione', 'v', 'a', '05']]],
         'CPVN' => ['descrizione' => 'controprova: costituzione, poi vendita della sola nuda proprietà', 'titolari' => $soloUgo,
             'passaggi' => [['costituzione', 'v', 'ursula', '2026-05-01'], ['nuda', 'v', 'carlo', '09']]],
+        // 1.11.0-beta.44 (decisione 65): la successione con l'arretrato agli eredi — passano tutte le bozze non pagate del defunto, e
+        // l'arretrato si scrive nei saldi — e con l'arretrato a suo nome, che per le bozze e la coppia è una vendita.
+        'SU' => ['descrizione' => 'successione, arretrato agli eredi', 'titolari' => $soloUgo, 'passaggi' => [['successione', 'v', 'a', '05']]],
+        'SUD' => ['descrizione' => 'successione, arretrato a nome del defunto', 'titolari' => $soloUgo, 'passaggi' => [['successione_defunto', 'v', 'a', '05']]],
+        // Rilievo L19 della Fase 1-bis della .44: due eredi al 60/40, con il riferimento e l'arretrato agli eredi.
+        'SU2' => ['descrizione' => 'successione a due eredi al 60/40, arretrato agli eredi', 'titolari' => $soloUgo, 'passaggi' => [['successione_due', 'v', 'a', '05']]],
     ];
 }
 
@@ -218,7 +224,7 @@ function invRegola(string $tipo): array
     return match ($tipo) {
         'riserva' => ['resta' => 'ordinaria', 'solo_riservate' => false, 'delibera' => true, 'ordinaria_per_giorni' => false],
         'nuda' => ['resta' => 'ordinaria', 'solo_riservate' => true, 'delibera' => true, 'ordinaria_per_giorni' => false],
-        'vendita' => ['resta' => null, 'solo_riservate' => false, 'delibera' => true, 'ordinaria_per_giorni' => true],
+        'vendita', 'successione', 'successione_defunto', 'successione_due' => ['resta' => null, 'solo_riservate' => false, 'delibera' => true, 'ordinaria_per_giorni' => true],
         'costituzione', 'estinzione' => ['resta' => 'straordinaria', 'solo_riservate' => false, 'delibera' => false, 'ordinaria_per_giorni' => true],
     };
 }
@@ -273,6 +279,7 @@ function invVincoli(): array
         ['N', 'SC', 'E', ['E4', 'E12'], 'la competenza dichiarata vive nelle righe di riparto: su un piano senza righe (SR) si perde, e senza emissione (NE) non c\'è conguaglio che la legga'],
         ['E', 'NE', 'N', ['O', 'SD', 'OS'], 'senza rate emesse non c\'è conguaglio: la data della delibera non entra in nessun conto, e SP, SG, SN e SC sarebbero SD con un\'altra etichetta'],
         ['G', 'dopo', 'F', $catene, 'la generazione dopo i passaggi che precedono ha senso solo nelle forme che ne hanno: nelle altre coincide con la generazione a gennaio'],
+        ['K', 'si', 'F', array_values(array_diff(array_keys(invForme()), ['SU', 'SU2'])), 'con l\'arretrato agli eredi la rinuncia al conguaglio si rifiuta (decisione 65): la coppia e l\'arretrato fanno un conto solo'],
     ];
 }
 
@@ -403,10 +410,35 @@ function invFormeRisolutore(): array
         // Con l'oracolo dalla beta.41: la nuda proprietà di chi costituisce vale dal giorno dell'atto (rilievo D1 della
         // Fase 1-bis). Fino alla .40 valeva da sempre, e la forma era esclusa dall'oracolo.
         'CPC' => [$forme['CPC'], []],
+        // 1.11.0-beta.44: la successione, anche con il box e annullata e rifatta.
+        'SU' => [$forme['SU'], []],
+        'la successione con il box' => [$forme['SU'], ['P' => 'box']],
+        'SUAR, la successione annullata e rifatta' => [$forme['SU'], ['annulla' => true, 'rifai' => true]],
     ];
 }
 
 // --- I controlli -----------------------------------------------------------------------------------------------------------
+
+/**
+ * Rilievo L19 della Fase 1-bis della .44: con l'arretrato agli eredi la posizione del defunto sulle unità del passaggio si chiude a
+ * zero — le sue quote dei piani che non si ricalcolano più (quelli del conguaglio), importo meno pagato, e i suoi saldi non applicati,
+ * comprese le righe del passaggio. Questo oracolo avrebbe preso il rilievo X2.
+ */
+function invArretratoChiude(array $caso, Subentro $padre, ?array $cong, array $foto1): array
+{
+    // Rilievo GA5 del giro sulle correzioni: la scelta, non le righe — senza righe (lo stato di X2) la posizione deve comunque chiudere.
+    if (($padre->registro['arretrato']['scelta'] ?? null) !== Subentro::ARRETRATO_AGLI_EREDI || (int) ($padre->registro['arretrato']['non_scritto'] ?? 0) !== 0) {
+        return [];
+    }
+    $defunto = (int) $padre->anagrafica_uscente_id;
+    $fermi = collect($cong['quote'] ?? [])->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->unique()->all();
+    $quote = (int) collect($foto1['quote'])->filter(fn (array $q) => $q['anagrafica_id'] === $defunto && $q['stato'] !== 'annullata' && in_array($q['immobile_id'], $caso['unita'], true)
+        && in_array((int) ($foto1['rate'][$q['rata_id']]['piano_rate_id'] ?? 0), $fermi, true))->sum(fn (array $q) => $q['importo'] - $q['importo_pagato']);
+    $saldi = (int) collect($foto1['saldi'])->filter(fn (array $x) => $x['anagrafica_id'] === $defunto && in_array($x['immobile_id'], $caso['unita'], true) && ! $x['is_applicato'])
+        ->sum('saldo_iniziale');
+
+    return $quote + $saldi === 0 ? [] : [sprintf('I-L19 arretrato agli eredi: la posizione del defunto resta %d (quote %d, saldi %d)', $quote + $saldi, $quote, $saldi)];
+}
 
 /** I giorni da `$dal` ad `$al` compresi. */
 function invGiorni(string $dal, string $al): int
@@ -573,6 +605,18 @@ function invAnteprimaScrittura(array $anteprima, array $foto0, array $foto1, Sub
         [(int) $c['gestione_id'], (int) $c['immobile_id'], (int) $c['esercizio_id'], $uscenteId, -(int) $c['importo']],
         [(int) $c['gestione_id'], (int) $c['immobile_id'], (int) $c['esercizio_id'], (int) ($c['anagrafica_entrante_id'] ?? $entranteId), (int) $c['importo']],
     ])->all());
+    // Decisione 65 (2): con l'arretrato agli eredi, anche le sue righe — per gestione, unità ed esercizio una a credito del defunto e
+    // una a debito dell'erede —, come le propone il pannello.
+    $arretrato = $anteprima['rate']['arretrato'] ?? null;
+    if (($arretrato['scelta'] ?? null) === 'eredi') {
+        foreach ($arretrato['righe'] as $riga) {
+            foreach ($riga['per_erede'] as $erede => $importo) {
+                $attese[] = [(int) $riga['gestione_id'], (int) $riga['immobile_id'], (int) $riga['esercizio_id'], $uscenteId, -(int) $importo];
+                $attese[] = [(int) $riga['gestione_id'], (int) $riga['immobile_id'], (int) $riga['esercizio_id'], (int) $erede, (int) $importo];
+            }
+        }
+        $attese = $ordina($attese);
+    }
     $scritte = $ordina(collect($foto1['saldi'])->filter(fn (array $x) => in_array($x['subentro_id'], $famiglia, true))
         ->map(fn (array $x) => [$x['gestione_id'], $x['immobile_id'], $x['esercizio_id'], $x['anagrafica_id'], $x['saldo_iniziale']])->values()->all());
     if ($attese !== $scritte) {
@@ -805,11 +849,14 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
                 $sigla, $pianoId, $immobileId, $competenza[0], $competenza[1], $caso['d'], $atteso, $giorniEntrante, $giorni, $base, (int) $g->sum('entrante'));
         }
         // Le bozze che passano (decisione 25): la straordinaria se la spesa è tutta di chi entra, l'ordinaria nella vendita
-        // piena; nell'usufrutto nessuna. Sempre con un preventivo, e dal giorno dell'atto in poi.
+        // piena; nell'usufrutto nessuna. Sempre con un preventivo, e dal giorno dell'atto in poi. Nella successione con l'arretrato
+        // agli eredi (decisione 65) tutte quelle con un preventivo: un defunto non riceve emissioni.
         $tutta = $giorni > 0 && $giorniEntrante === $giorni;
         $passate = 0;
         foreach ($g->where('in_bozza', true) as $q) {
-            $passa = ($straordinaria ? $tutta : $caso['esame']['tipo'] === 'vendita') && (int) $q['quota_pura'] !== 0 && $q['scadenza'] >= $caso['d'] && $quotaCheEsce === 1.0;
+            $passa = in_array($caso['esame']['tipo'], ['successione', 'successione_due'], true)
+                ? (int) $q['quota_pura'] !== 0 && $quotaCheEsce === 1.0
+                : ($straordinaria ? $tutta : in_array($caso['esame']['tipo'], ['vendita', 'successione_defunto'], true)) && (int) $q['quota_pura'] !== 0 && $q['scadenza'] >= $caso['d'] && $quotaCheEsce === 1.0;
             $passate += $passa ? (int) $q['quota_pura'] : 0;
             if ($q['passa'] !== $passa) {
                 $v[] = sprintf('%s bozza %d (rata %d, scadenza %s): %s, e doveva %s (motivo del calcolo: %s)', $sigla, $q['rata_quote_id'], $q['rata'], $q['scadenza'], $q['passa'] ? 'passa' : 'resta', $passa ? 'passare' : 'restare', $q['motivo_bozza'] ?? '—');
@@ -884,7 +931,9 @@ function invControllaCaso($test, array $r): array
         $v[] = 'I3 cancello: senza cancello la nota non si salva, e invece c\'è';
     }
     $famiglia = Subentro::where(fn ($q) => $q->whereKey($padre->id)->orWhere('subentro_padre_id', $padre->id))->pluck('id')->map(fn ($id) => (int) $id)->all();
-    $parti = array_values(array_unique(array_filter([(int) ($cong['anagrafica_uscente_id'] ?? 0), ...array_map(fn (array $c) => (int) ($c['anagrafica_entrante_id'] ?? 0), $cong['coppie'] ?? [])])));
+    $parti = array_values(array_unique(array_filter([(int) ($cong['anagrafica_uscente_id'] ?? 0), ...array_map(fn (array $c) => (int) ($c['anagrafica_entrante_id'] ?? 0), $cong['coppie'] ?? []),
+        // L'arretrato della successione (decisione 65): il defunto e gli eredi, anche senza una coppia.
+        ...(($anteprima['rate']['arretrato'] ?? null) !== null ? [(int) $padre->anagrafica_uscente_id, ...array_column($anteprima['rate']['arretrato']['eredi'] ?? [], 'anagrafica_id')] : [])])));
     $foto1 = ruFoto($caso['unita'], $cid);
 
     array_push($v, ...invConservazione($foto0, $foto1));
@@ -893,6 +942,7 @@ function invControllaCaso($test, array $r): array
     array_push($v, ...invAnteprimaScrittura($anteprima, $foto0, $foto1, $padre, $famiglia, $r['K'] === 'si'));
     $conta = array_fill_keys(['riservate', 'i6bis', 'ordinaria', 'valore', 'versato'], 0);
     array_push($v, ...invRegolaDelDenaro($caso, $r, $cong, $foto0, $foto1, $conta));
+    array_push($v, ...invArretratoChiude($caso, $padre, $cong, $foto1));
 
     // Le mirate che la ricetta contiene: ciascuna ha esercitato davvero ciò per cui c'è.
     $coppie = collect($cong['coppie'] ?? [])->filter(fn (array $c) => (int) $c['importo'] !== 0);

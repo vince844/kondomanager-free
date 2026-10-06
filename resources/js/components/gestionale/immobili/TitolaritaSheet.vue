@@ -41,14 +41,18 @@ const TITOLI_PASSAGGIO: Record<string, string> = {
   inizio_locazione: 'Inizio locazione',
   fine_locazione: 'Fine locazione',
   usufrutto: 'Usufrutto',
+  successione: 'Successione',
 };
 
 /**
  * Il nome del passaggio, per la sezione dei passaggi e per le righe che ha toccato (testi T7 della beta.38). La riserva
  * dice anche la donazione, come il tipo di base: la donazione della nuda proprietà è il caso più frequente (testi T8).
  */
-function titoloPassaggio(p: Pick<PassaggioRegistrato, 'tipo_passaggio' | 'sottotipo'>): string {
+function titoloPassaggio(p: Pick<PassaggioRegistrato, 'tipo_passaggio' | 'sottotipo'> & { accrescimento?: boolean }): string {
   if (p.tipo_passaggio === 'vendita' && p.sottotipo === 'riserva_usufrutto') return 'Vendita o donazione con riserva d\'usufrutto';
+  // 1.11.0-beta.44: il legato e l'accrescimento si dicono per esteso.
+  if (p.tipo_passaggio === 'successione') return p.sottotipo === 'legato' ? 'Successione per legato' : 'Successione';
+  if (p.tipo_passaggio === 'usufrutto' && p.sottotipo === 'estinzione' && p.accrescimento) return 'Usufrutto · estinzione con accrescimento';
   const base = TITOLI_PASSAGGIO[p.tipo_passaggio] ?? p.tipo_passaggio;
   return p.sottotipo ? `${base} · ${p.sottotipo}` : base;
 }
@@ -176,13 +180,22 @@ function tratto(r: RigaStorico): string {
                   <p class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
-                      {{ CONGUAGLIO[p.conguaglio.stato] }}<template v-if="p.conguaglio.stato === 'proposto'">: {{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      {{ CONGUAGLIO[p.conguaglio.stato] }}<template v-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: {{ p.conguaglio.per_entrante!.join(', ') }}; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      <template v-else-if="p.conguaglio.stato === 'proposto'">: {{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'rinunciato' && p.conguaglio.nota">: «{{ p.conguaglio.nota }}».</template>
                       <template v-else-if="p.conguaglio.stato === 'annullato'"> il {{ p.conguaglio.annullato_il }}<template v-if="p.conguaglio.nota_annullamento">: «{{ p.conguaglio.nota_annullamento }}»</template>.</template>
                     </span>
                   </p>
+                  <!-- 1.11.0-beta.44, decisione 65: l'arretrato del defunto, agli eredi o a suo nome. -->
+                  <p v-if="p.arretrato?.frase" class="flex items-start gap-1.5">
+                    <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span>{{ p.arretrato.frase }}</span>
+                  </p>
+                  <!-- Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: si correggono annullando il passaggio. -->
+                  <p v-if="p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
+                    Il conguaglio non si annulla da solo: con l'arretrato agli eredi, conguaglio e arretrato fanno un conto unico. Per cambiare la scelta annulla il passaggio e registralo di nuovo.
+                  </p>
                   <!-- Le due righe si tolgono insieme, finché nessun piano le ha assorbite -->
-                  <div v-if="p.conguaglio.stato === 'proposto' && !p.conguaglio.applicato && condominioId && immobileId" class="pl-[18px]">
+                  <div v-else-if="p.conguaglio.stato === 'proposto' && !p.conguaglio.applicato && condominioId && immobileId" class="pl-[18px]">
                     <button v-if="annullaAperto !== p.id" type="button" @click="annullaAperto = p.id; formAnnulla.reset(); formAnnulla.clearErrors()" class="font-semibold text-rose-600 dark:text-rose-400 hover:underline">
                       Le parti hanno regolato diversamente: annulla il conguaglio…
                     </button>

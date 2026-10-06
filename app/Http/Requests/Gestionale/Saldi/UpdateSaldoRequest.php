@@ -51,6 +51,19 @@ class UpdateSaldoRequest extends FormRequest
 
                 // B2 (inv. 19): la coppia di conguaglio di un passaggio somma zero per costruzione, e non si
                 // tocca a metà. Si corregge dal passaggio, o con un saldo manuale a parte.
+                if ($saldo->dellArretrato()) {
+                    $validator->errors()->add('saldo', \App\Models\Saldo::FRASE_ARRETRATO);
+                    return;
+                }
+                // Decisione 67 (3): un saldo da cui una successione ha calcolato l'arretrato agli eredi.
+                if (($frase = $saldo->fraseFonteDellArretrato()) !== null) {
+                    $validator->errors()->add('saldo', $frase);
+                    return;
+                }
+                if ($saldo->subentro_id !== null && $saldo->subentro?->arretratoAgliEredi()) {
+                    $validator->errors()->add('saldo', \App\Models\Saldo::FRASE_CONGUAGLIO_CON_ARRETRATO);
+                    return;
+                }
                 if ($saldo->subentro_id !== null) {
                     $validator->errors()->add('saldo', 'Questa riga è una delle due del conguaglio di un passaggio di titolarità (credito a chi esce, debito a chi entra, somma zero): non si modifica da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie le due righe insieme, con la tua nota; se un piano le ha già emesse, resta il saldo manuale di segno opposto.');
                     return;

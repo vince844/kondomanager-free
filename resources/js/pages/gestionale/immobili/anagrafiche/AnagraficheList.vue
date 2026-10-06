@@ -25,7 +25,7 @@ import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
-import { UsersRound, ArrowRightLeft, PieChart, UserPlus, List, History, CalendarCheck, ChevronDown, Home, KeyRound, KeySquare, Landmark, CheckCircle2, Scale, ContactRound, Printer } from 'lucide-vue-next';
+import { UsersRound, ArrowRightLeft, PieChart, UserPlus, List, History, CalendarCheck, ChevronDown, Home, KeyRound, KeySquare, Landmark, CheckCircle2, Scale, ContactRound, Printer, ScrollText } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
@@ -56,6 +56,11 @@ interface PassaggioRegistrato {
   conguaglio_rovesciato?: boolean; riassegnate?: number; riassegnate_frase?: string | null;
   documento: string | null; promemoria: string | null; avvisi: string[]; entrante: string | null;
   azioni: { estratto_conto: string | null; anagrafe: string | null };
+  /** 1.11.0-beta.44: nella successione tutti gli eredi, ciascuno con il suo estratto conto. */
+  eredi?: { nome: string; estratto_conto: string }[];
+  /** Rilievo L2: con più eredi, o con l'arretrato, il netto per erede di conguaglio e arretrato («€ 80,00 a credito di Anna Erede»), e la testa. */
+  per_erede?: string[];
+  per_erede_testa?: string | null;
 }
 const page = usePage<{ flash: { message?: Flash; passaggio_registrato?: PassaggioRegistrato | null } }>();
 // Dopo «Registra passaggio» l'avviso verde è quello dedicato (§6.4), con le due azioni: il flash generico tace.
@@ -91,7 +96,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Passaggi e storico',
-    description: "Vendita, locazione, usufrutto si registrano con «Registra passaggio»: il periodo di chi esce si chiude, la storia resta.",
+    description: "Vendita, locazione, usufrutto e successione si registrano con «Registra passaggio»: il periodo di chi esce si chiude, la storia resta.",
     icon: ArrowRightLeft,
     colorVariant: 'amber' as const
   }
@@ -124,6 +129,7 @@ const VOCI: { id: TipoPassaggio; titolo: string; sotto: string; icona: any }[] =
   { id: 'inizio_locazione', titolo: 'Inizio locazione', sotto: 'entra un inquilino', icona: KeyRound },
   { id: 'fine_locazione', titolo: 'Fine locazione', sotto: "esce l'inquilino", icona: KeySquare },
   { id: 'usufrutto', titolo: 'Usufrutto', sotto: 'costituzione o estinzione', icona: Landmark },
+  { id: 'successione', titolo: 'Successione', sotto: 'muore un proprietario', icona: ScrollText },
 ];
 function urlPassaggio(tipo: TipoPassaggio) {
   return route(generateRoute('gestionale.immobili.passaggi.create'), { condominio: props.condominio.id, immobile: props.immobile.id, tipo });
@@ -235,7 +241,10 @@ function urlPassaggio(tipo: TipoPassaggio) {
               <div class="min-w-0 space-y-1">
                 <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Passaggio registrato.</p>
                 <p class="text-sm text-emerald-900/90 dark:text-emerald-200/90">{{ passaggioRegistrato.frase }}</p>
-                <p v-if="passaggioRegistrato.coppie > 0" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
+                <p v-if="passaggioRegistrato.per_erede_testa && passaggioRegistrato.per_erede?.length" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
+                  {{ passaggioRegistrato.per_erede_testa }}: {{ passaggioRegistrato.per_erede.join(', ') }}. Il prossimo piano rate della gestione assorbe queste righe.
+                </p>
+                <p v-else-if="passaggioRegistrato.coppie > 0" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
                   Conguaglio scritto in saldi: {{ passaggioRegistrato.coppie }} {{ passaggioRegistrato.coppie === 1 ? 'coppia' : 'coppie' }} a somma zero, {{ passaggioRegistrato.conguaglio }} a {{ passaggioRegistrato.conguaglio_rovesciato ? 'credito' : 'debito' }} di chi entra. Il prossimo piano rate le assorbe.
                 </p>
                 <p v-else-if="passaggioRegistrato.rinuncia" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">Nessuna riga in saldi: hai indicato che il conguaglio è regolato fra le parti. La ragione è nel passaggio.</p>
@@ -246,7 +255,14 @@ function urlPassaggio(tipo: TipoPassaggio) {
                 <p v-for="(a, i) in passaggioRegistrato.avvisi" :key="i" class="text-[13px] text-amber-800 dark:text-amber-300">{{ a }}</p>
               </div>
             </div>
-            <div class="flex flex-wrap gap-2 pl-8">
+            <!-- 1.11.0-beta.44: con più eredi, un estratto conto per ciascuno; l'anagrafe si aggiorna dalla scheda di ognuno. -->
+            <div v-if="passaggioRegistrato.eredi?.length" class="flex flex-wrap items-center gap-2 pl-8">
+              <a v-for="e in passaggioRegistrato.eredi" :key="e.estratto_conto" :href="e.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
+                <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ e.nome }}
+              </a>
+              <span class="text-[12px] text-emerald-900/70 dark:text-emerald-200/70">L'anagrafe condominiale si aggiorna dalla scheda di ogni erede (art. 1130 n. 6 c.c.).</span>
+            </div>
+            <div v-else class="flex flex-wrap gap-2 pl-8">
               <a v-if="passaggioRegistrato.azioni.estratto_conto" :href="passaggioRegistrato.azioni.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
                 <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ passaggioRegistrato.entrante ?? 'chi entra' }}
               </a>

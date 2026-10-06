@@ -63,6 +63,21 @@ class AnteprimaPassaggio
     /** All'estinzione, sull'unità c'è un altro usufrutto in corso (rilievo GT6: la nota sull'accrescimento). */
     private bool $altroUsufrutto = false;
 
+    /**
+     * Gli eredi della successione dell'ultimo `calcola()` (decisione 65), nell'ordine del modulo: persona e quota ereditata.
+     *
+     * @var list<array{anagrafica: Anagrafica, quota: float}>
+     */
+    private array $eredi = [];
+
+    /**
+     * All'estinzione con l'accrescimento (1.11.0-beta.44), gli usufruttuari che restano sull'unità: ricevono l'usufrutto di chi muore in
+     * proporzione alla loro quota. Vuoto senza la casella.
+     *
+     * @var Collection<int, TitolaritaImmobile>
+     */
+    private Collection $usufruttuari;
+
     public function __construct(
         private readonly ConguaglioPassaggio $conguaglioPassaggio = new ConguaglioPassaggio(),
         private readonly FrasiObbligati $frasiObbligati = new FrasiObbligati(),
@@ -95,7 +110,12 @@ class AnteprimaPassaggio
         $this->chiEsce = $uscente?->anagrafica_id !== null ? (int) $uscente->anagrafica_id : null;
         $this->rigaChiEsce = $uscente?->id !== null ? (int) $uscente->id : null;
         $this->altroUsufrutto = false;
-        if ($tipo === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'estinzione' && $uscente !== null) {
+        $this->eredi = $tipo === 'successione' ? array_values($dati['eredi'] ?? []) : [];
+        $this->usufruttuari = collect();
+        if ($tipo === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'estinzione' && $uscente !== null && ! empty($dati['accrescimento'])) {
+            // Con l'accrescimento nessuna nuda torna piena: le regole dei nudi (`NudiDellEstinzione`) non c'entrano.
+            $this->usufruttuari = self::usufruttuariCheRestano($uscente, $decorrenza);
+        } elseif ($tipo === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'estinzione' && $uscente !== null) {
             $scelta = app(NudiDellEstinzione::class)->per($uscente, $decorrenza, $dati['nudi_che_tornano'] ?? null, (bool) ($dati['nudi_per_quota'] ?? false));
             $this->nudi = $scelta['nudi'];
             $this->nudiDa = $scelta['da'];
@@ -134,6 +154,9 @@ class AnteprimaPassaggio
         // S5: il conguaglio vero (D9), un solo calcolo per il pannello e per la registrazione.
         $conguaglio = $this->conguaglio($tipo, $dati, $uscente, $entrante, $nudoProprietario, $immobileIds, $decorrenza);
 
+        // Decisione 65 (2): l'arretrato del defunto, agli eredi per quota o a suo nome. Solo nella successione.
+        $arretrato = $tipo === 'successione' && $uscente !== null ? $this->arretrato($conguaglio, $uscente, $immobileIds, $dati) : null;
+
         // Decisioni 31.5 e 31.6: alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal giorno dell'atto.
         $ordinaria = $this->bloccoOrdinaria($tipo, $dati, $condominio, $immobileIds, $uscente, $nomeUscente, $nomeEntrante, $decorrenza);
 
@@ -162,11 +185,12 @@ class AnteprimaPassaggio
                 ],
                 'morosita' => $morosita,
                 'conguaglio' => $conguaglio['stato'] === 'calcolato' ? $conguaglio : null,
+                'arretrato' => $arretrato,
                 'frasi' => $this->blocco2($tipo, $dati, $tutteLeEmesse, $rateEmesse, $altreEmesse, $morosita, $nomeUscente, $nomeEntrante, $decorrenza, $nudoProprietario, $conguaglio),
             ],
             'obbligati' => [
                 // Decisione 28.8 a: le unità del passaggio, per la frase sui saldi intestati all'unità.
-                'frasi' => $this->blocco3($tipo, ['immobili' => $immobileIds] + $dati, $condominio, $immobile, $nomeUscente, $nomeEntrante, $decorrenza, $proprietari, $nudoProprietario),
+                'frasi' => $this->blocco3($tipo, ['immobili' => $immobileIds, 'arretrato_senza_righe' => $arretrato !== null && ($arretrato['righe'] ?? []) === []] + $dati, $condominio, $immobile, $nomeUscente, $nomeEntrante, $decorrenza, $proprietari, $nudoProprietario),
                 'copia_autentica_mancante' => $tipo === 'vendita' && ! $dati['copia_autentica'],
             ],
             'invarianti' => [
@@ -174,7 +198,7 @@ class AnteprimaPassaggio
             ],
             'ordinaria' => $ordinaria,
             'cancello' => $this->cancello($tipo, $condominio, $immobileIds, $uscente, $tutteLeEmesse->filter(fn ($r) => $conta === null || $conta($r['anagrafica_id'], $r['immobile_id']))->values(), $intestatari, $conguaglio['riassegnazione'] ?? [], $nomeEntrante, $conguaglio['quote'] ?? [], $this->riserva($tipo, $dati) ? $decorrenza : null, array_column(array_filter($ordinaria['voci'], fn ($v) => $v['spostata']), 'conto_id'),
-                $ordinaria['scelta'] === Subentro::ORDINARIA_COME_LA_VOCE ? true : array_column(array_filter($ordinaria['voci'], fn ($v) => ! $v['spostata'] && ! $v['bloccata']), 'conto_id'), $conta),
+                $ordinaria['scelta'] === Subentro::ORDINARIA_COME_LA_VOCE ? true : array_column(array_filter($ordinaria['voci'], fn ($v) => ! $v['spostata'] && ! $v['bloccata']), 'conto_id'), $conta, $arretrato, $decorrenza),
         ];
     }
 
@@ -195,6 +219,9 @@ class AnteprimaPassaggio
             return $nessuno;
         }
         $estinzione = $tipo === 'usufrutto' && ($dati['sottotipo'] ?? 'costituzione') === 'estinzione';
+        // Decisione 65 (1.11.0-beta.44): la successione è una vendita per il conguaglio — chi entra sono gli eredi, e la controparte del
+        // calcolo è l'erede di riferimento (o l'erede unico, o il primo), che riceve le bozze; il debito si divide dopo, per quota.
+        $successione = $tipo === 'successione';
         // Decisione 57: chi esce che torna pieno della sua parte (nessun altro usufrutto) non è una controparte, la sua parte resta a
         // lui. All'estinzione la controparte è il primo degli altri nudi, sull'unità o, se lì non ce ne sono, su una pertinenza.
         $altro = fn (?TitolaritaImmobile $t) => $t !== null && (int) $t->anagrafica_id !== (int) $uscente->anagrafica_id;
@@ -224,10 +251,13 @@ class AnteprimaPassaggio
         $righeUscenti = [(int) $immobileIds[0] => (int) $uscente->id];
         foreach (array_slice($immobileIds, 1) as $u) {
             $riga = TitolaritaImmobile::where('immobile_id', $u)->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
-                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza->subDay()) && ! $t->subentriComeUscente()->exists());
+                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza->subDay()) && $t->passaggioCheLaChiude() === null);
             if ($riga !== null) {
                 $righeUscenti[(int) $u] = (int) $riga->id;
             }
+        }
+        if ($estinzione && ! empty($dati['accrescimento'])) {
+            return $this->conguaglioDellAccrescimento($uscente, $immobileIds, $decorrenza, $righeUscenti, $origine !== null, $tipo, $dati, $nessuno);
         }
         if ($estinzione) {
             foreach ($immobileIds as $u) {
@@ -266,17 +296,32 @@ class AnteprimaPassaggio
             $estinzione => GenealogiaDellaQuota::ESTINZIONE,
             $tipo === 'usufrutto' => GenealogiaDellaQuota::COSTITUZIONE,
             $this->riserva($tipo, $dati) => GenealogiaDellaQuota::RISERVA,
-            $tipo === 'vendita' && $uscente->tipologia === 'nuda_proprietario' => GenealogiaDellaQuota::NUDA,
-            $tipo === 'vendita' => GenealogiaDellaQuota::VENDITA,
+            // Per il passaggio di adesso la successione sposta la quota come la vendita (della piena o della nuda); la divisione fra
+            // gli eredi viene dopo, per quota.
+            ($tipo === 'vendita' || $successione) && $uscente->tipologia === 'nuda_proprietario' => GenealogiaDellaQuota::NUDA,
+            $tipo === 'vendita' || $successione => GenealogiaDellaQuota::VENDITA,
             default => GenealogiaDellaQuota::FINE_LOCAZIONE,
         };
+        if ($successione) {
+            // Le frasi del conguaglio nominano gli eredi, su ogni unità del passaggio.
+            $elencoEredi = $this->elenco(array_map(fn ($e) => $e['anagrafica']->nome, $this->eredi));
+            foreach ($immobileIds as $u) {
+                $entrantiPerUnita[(int) $u] = $elencoEredi;
+            }
+        }
         $comeLaVoce = ($this->sceltaSullOrdinaria($tipo, $dati) && $this->sceltaOrdinaria($dati) === Subentro::ORDINARIA_COME_LA_VOCE)
             || $origine !== null;
-        $esito = $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $immobileIds, $decorrenza, soloOrdinario: $tipo === 'usufrutto', riassegnaBozze: $tipo === 'vendita', nudaProprieta: $tipo === 'vendita' && $uscente->tipologia === 'nuda_proprietario', soloStraordinario: $this->riserva($tipo, $dati),
+        $esito = $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $immobileIds, $decorrenza, soloOrdinario: $tipo === 'usufrutto', riassegnaBozze: $tipo === 'vendita' || $successione, nudaProprieta: ($tipo === 'vendita' || $successione) && $uscente->tipologia === 'nuda_proprietario', soloStraordinario: $this->riserva($tipo, $dati),
             ordinariaComeLaVoce: $comeLaVoce, ruoliCheRestano: $this->ruoliCheRestano($tipo, $dati, $uscente, $immobileIds, $decorrenza),
-            piuNudi: $estinzione && $this->nudi->count() > 1, entrantiPerUnita: $entrantiPerUnita, passaggio: $passaggio, righeUscenti: $righeUscenti, nudiOra: $nudiOra);
+            piuNudi: $estinzione && $this->nudi->count() > 1, entrantiPerUnita: $entrantiPerUnita, passaggio: $passaggio, righeUscenti: $righeUscenti, nudiOra: $nudiOra,
+            // Decisione 65 (3): con l'arretrato agli eredi passano al riferimento tutte le bozze non pagate del defunto; con il legatario e
+            // con l'arretrato a nome del defunto valgono le regole della vendita.
+            tutteLeBozze: $successione && $this->arretratoAgliEredi($dati), eredi: $successione ? count($this->eredi) : 0);
         if ($esito['stato'] === 'nessuna_rata') {
             return $nessuno;
+        }
+        if ($successione) {
+            return $this->conguaglioDegliEredi($esito, $dati, $uscente);
         }
         // La frase di testa dell'estinzione dice la scelta del passaggio da cui l'usufrutto è nato (Fase 1-bis della beta.41).
         $esito['ordinaria_per_voce_dal'] = $origine !== null ? substr((string) $origine->decorrenza, 0, 10) : null;
@@ -326,7 +371,7 @@ class AnteprimaPassaggio
                 $resta = (int) ($parti[(int) $uscente->anagrafica_id] ?? 0);
                 $coda = $resta !== 0 ? sprintf('; il credito di %s scende quindi a %s', $uscente->anagrafica?->nome ?? 'chi esce', MoneyHelper::format((int) $c['importo'] - $resta)) : '';
                 $righe[] = $genealogia === [] || array_filter($perQuota, fn ($cents) => (int) $cents !== 0) == array_filter($parti, fn ($cents) => (int) $cents !== 0)
-                    ? sprintf('Sulla gestione %s il debito di %s si divide per quota: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s (%s %%)' : '%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
+                    ? sprintf('Sulla gestione %s il debito di %s si divide per quota: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s (%s %%)' : '%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
                     : sprintf('Sulla gestione %s il debito di %s si divide secondo la parte dell\'usufrutto che torna a ciascun nudo proprietario: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s' : '%s a %s', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?'), array_keys($parti))), $coda);
             }
             $esito['coppie'] = $coppie;
@@ -342,6 +387,56 @@ class AnteprimaPassaggio
         return $esito;
     }
 
+    /**
+     * L'estinzione con l'accrescimento (1.11.0-beta.44): per il conguaglio l'usufrutto passa dall'usufruttuario che muore a quelli che
+     * restano, come in una vendita dell'usufrutto — l'ordinaria per giorni (art. 1004 c.c.), la straordinaria resta al nudo proprietario
+     * (art. 1005 c.c.) —, e il debito di chi riceve si divide per la quota d'usufrutto di ciascuno, unità per unità.
+     *
+     * @param array<int, int> $righeUscenti
+     */
+    private function conguaglioDellAccrescimento(TitolaritaImmobile $uscente, array $immobileIds, CarbonImmutable $decorrenza, array $righeUscenti, bool $comeLaVoce, string $tipo, array $dati, array $nessuno): array
+    {
+        $perUnita = [];
+        $entrantiPerUnita = [];
+        foreach ($immobileIds as $u) {
+            $usufruttoQui = (int) $u === (int) $immobileIds[0] ? $uscente
+                : TitolaritaImmobile::where('immobile_id', $u)->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', 'usufruttuario')->get()
+                    ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza->subDay()));
+            $perUnita[(int) $u] = $usufruttoQui === null ? collect() : self::usufruttuariCheRestano($usufruttoQui, $decorrenza);
+            $entrantiPerUnita[(int) $u] = $this->elenco($perUnita[(int) $u]->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->all());
+        }
+        $controparte = $this->usufruttuari->first()?->anagrafica;
+        if ($controparte === null) {
+            return $nessuno;
+        }
+        $esito = $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $immobileIds, $decorrenza, soloOrdinario: true, ordinariaComeLaVoce: $comeLaVoce,
+            ruoliCheRestano: $this->ruoliCheRestano($tipo, $dati, $uscente, $immobileIds, $decorrenza), entrantiPerUnita: $entrantiPerUnita,
+            passaggio: GenealogiaDellaQuota::VENDITA, righeUscenti: $righeUscenti);
+        if ($esito['stato'] === 'nessuna_rata') {
+            return $nessuno;
+        }
+        $coppie = [];
+        foreach ($esito['coppie'] as $c) {
+            $usufruttuari = $perUnita[(int) ($c['immobile_id'] ?? 0)] ?? collect();
+            $usufruttuari = $usufruttuari->isNotEmpty() ? $usufruttuari : $this->usufruttuari;
+            $pesi = $usufruttuari->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id => (float) $t->quota])->all();
+            $nomi = $usufruttuari->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id => $t->anagrafica?->nome])->all();
+            $parti = MoneyHelper::ripartisciPerQuote((int) $c['importo'], $pesi);
+            foreach ($parti as $anagraficaId => $cents) {
+                if ((int) $cents !== 0) {
+                    $coppie[] = array_replace($c, ['anagrafica_entrante_id' => (int) $anagraficaId, 'entrante_nome' => $nomi[$anagraficaId] ?? '?', 'importo' => (int) $cents, 'importo_formattato' => MoneyHelper::format((int) $cents)]);
+                }
+            }
+            if (count($pesi) > 1) {
+                $esito['frasi'][] = sprintf('Sulla gestione %s il debito di %s si divide per la quota d\'usufrutto: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']),
+                    implode(', ', array_map(fn ($id) => sprintf('%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', $this->quota($pesi[$id])), array_keys($parti))));
+            }
+        }
+        $esito['coppie'] = $coppie;
+
+        return $esito;
+    }
+
     /** «Rossi Mario (60 %) e Neri Paolo (40 %)» con più nudi; il nome solo con uno; il ripiego senza nessuno. */
     private function elencoNudi(?TitolaritaImmobile $nudo, string $ripiego = 'il nudo proprietario'): string
     {
@@ -350,7 +445,7 @@ class AnteprimaPassaggio
             return $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome ?? '?')->all());
         }
         if ($this->nudi->count() > 1) {
-            return $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => sprintf('%s (%s %%)', $t->anagrafica?->nome ?? '?', rtrim(rtrim(number_format((float) $t->quota, 2, ',', '.'), '0'), ',')))->all());
+            return $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => sprintf('%s (%s %%)', $t->anagrafica?->nome ?? '?', rtrim(rtrim(number_format((float) $t->quota, 2, ',', '.'), '0'), ',')))->all());
         }
 
         return $nudo?->anagrafica?->nome ?? $ripiego;
@@ -364,8 +459,8 @@ class AnteprimaPassaggio
         if ($this->nudi->count() === 1 && ($quota = $this->consolida[(int) $this->nudi->first()->id] ?? null) !== null) {
             $resto = $this->numeroQuota(round((float) $this->nudi->first()->quota - (float) $quota, 2));
             return $risultera
-                ? sprintf('risulterà proprietario pieno per %s e resterà nudo proprietario dell\'altro %s %%', NudiDellEstinzione::percentuale((float) $quota), $resto)
-                : sprintf('torna proprietario pieno per %s, e resta nudo proprietario dell\'altro %s %%', NudiDellEstinzione::percentuale((float) $quota), $resto);
+                ? sprintf('risulterà proprietario pieno per %s e resterà nudo proprietario dell\'altro %s %%', NudiDellEstinzione::percentuale((float) $quota), $resto)
+                : sprintf('torna proprietario pieno per %s, e resta nudo proprietario dell\'altro %s %%', NudiDellEstinzione::percentuale((float) $quota), $resto);
         }
         // Decisione 62: più nudi, ciascuno pieno per la sua parte dell'usufrutto che finisce. Rilievo G4: chi riceve tutta la sua
         // quota torna pieno per intero e non ha un resto; solo gli altri restano nudi del resto.
@@ -373,7 +468,7 @@ class AnteprimaPassaggio
             $inParte = $this->nudi->filter(fn (TitolaritaImmobile $t) => isset($this->consolida[(int) $t->id]))->values();
             $parti = $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => isset($this->consolida[(int) $t->id])
                 ? sprintf('%s per %s', $t->anagrafica?->nome ?? '?', NudiDellEstinzione::percentuale((float) $this->consolida[(int) $t->id]))
-                : sprintf('%s per tutta la sua quota (%s %%)', $t->anagrafica?->nome ?? '?', $this->numeroQuota((float) $t->quota)))->all());
+                : sprintf('%s per tutta la sua quota (%s %%)', $t->anagrafica?->nome ?? '?', $this->numeroQuota((float) $t->quota)))->all());
             $resto = match (true) {
                 $inParte->count() === $this->nudi->count() => $risultera ? 'e resteranno nudi proprietari del resto' : 'e restano nudi proprietari del resto',
                 $inParte->count() === 1 => sprintf($risultera ? 'e %s resterà nudo proprietario del resto' : 'e %s resta nudo proprietario del resto', $inParte->first()->anagrafica?->nome ?? '?'),
@@ -418,6 +513,270 @@ class AnteprimaPassaggio
      * @param list<int> $immobileIds
      * @return array<int, list<string>>
      */
+    /** Decisione 65 (2): l'arretrato del defunto passa agli eredi per quota (mai con il legatario, che la richiesta rifiuta già). */
+    private function arretratoAgliEredi(array $dati): bool
+    {
+        return ($dati['arretrato'] ?? null) === Subentro::ARRETRATO_AGLI_EREDI && empty($dati['legato']);
+    }
+
+    /**
+     * Gli usufruttuari che ricevono l'accrescimento dell'usufrutto `$usufrutto` che finisce: le altre righe d'usufrutto in corso sull'unità
+     * il giorno prima dell'atto e il giorno dell'atto, di persone diverse da chi esce. La stessa ricerca della richiesta e della
+     * registrazione.
+     *
+     * @return Collection<int, TitolaritaImmobile>
+     */
+    public static function usufruttuariCheRestano(TitolaritaImmobile $usufrutto, CarbonImmutable $decorrenza): Collection
+    {
+        return TitolaritaImmobile::with('anagrafica')->where('immobile_id', $usufrutto->immobile_id)->where('tipologia', 'usufruttuario')->orderBy('id')->get()
+            ->filter(fn (TitolaritaImmobile $t) => (int) $t->id !== (int) $usufrutto->id && (int) $t->anagrafica_id !== (int) $usufrutto->anagrafica_id
+                && $t->inCorsoIl($decorrenza) && $t->inCorsoIl($decorrenza->subDay()))->values();
+    }
+
+    /**
+     * Decisione 67 (2), rilievo X4 della Fase 1-bis: i nudi proprietari distinti dell'unità il giorno dell'atto. Con più di uno il
+     * programma non sa quale usufrutto stia sopra quale nuda, e l'accrescimento si rifiuta: andrebbe anche a chi sta sopra un'altra
+     * nuda. Con uno solo (l'usufrutto congiunto) vale la regola della decisione 65.
+     *
+     * @return Collection<int, string> i nomi, uno per persona
+     */
+    public static function nudiDistintiIl(TitolaritaImmobile $usufrutto, CarbonImmutable $decorrenza): Collection
+    {
+        return TitolaritaImmobile::with('anagrafica')->where('immobile_id', $usufrutto->immobile_id)->where('tipologia', 'nuda_proprietario')->orderBy('id')->get()
+            ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->unique('anagrafica_id')
+            ->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome ?? '?')->values();
+    }
+
+    /** Gli usufruttuari dell'accrescimento in parole: il nome se è uno solo, altrimenti ogni nome con la sua quota. */
+    private function elencoUsufruttuari(): string
+    {
+        if ($this->usufruttuari->count() <= 1) {
+            return $this->usufruttuari->first()?->anagrafica?->nome ?? 'l\'altro usufruttuario';
+        }
+
+        return $this->elenco($this->usufruttuari->map(fn (TitolaritaImmobile $t) => sprintf('%s (%s %%)', $t->anagrafica?->nome ?? '?', $this->quota($t->quota)))->all());
+    }
+
+    /** Gli eredi in parole: il nome se è uno solo, altrimenti ogni nome con la sua quota («Anna (60 %) e Bruno (40 %)»). */
+    private function elencoEredi(): string
+    {
+        if (count($this->eredi) <= 1) {
+            return $this->eredi[0]['anagrafica']->nome ?? 'Chi entra';
+        }
+
+        return $this->elenco(array_map(fn ($e) => sprintf('%s (%s %%)', $e['anagrafica']->nome, $this->quota($e['quota'])), $this->eredi));
+    }
+
+    /** I pesi della divisione fra gli eredi: persona → quota ereditata, nell'ordine del modulo (il centesimo di resto al primo). */
+    private function pesiDegliEredi(): array
+    {
+        $pesi = [];
+        foreach ($this->eredi as $e) {
+            $pesi[(int) $e['anagrafica']->id] = (float) $e['quota'];
+        }
+
+        return $pesi;
+    }
+
+    /**
+     * Decisione 65 (4): il conguaglio della successione, per erede. Il calcolo è quello della vendita con l'erede di riferimento come chi
+     * entra (riceve le bozze); qui la parte dei giorni dopo il decesso — il **lordo** di ogni gestione — si divide fra gli eredi per
+     * quota, e le bozze passate si tolgono al solo riferimento, la cui coppia può rovesciarsi come nella vendita (decisione 25).
+     * Dividere il netto (lordo meno bozze) farebbe pagare al riferimento la parte degli altri eredi sulle bozze: con il 60/40 e otto
+     * bozze da € 800,00, il primo erede pagherebbe € 803,29 invece dei suoi € 483,29.
+     *
+     * Con più eredi e bozze da passare su un piano fermo l'erede di riferimento si sceglie: il programma non lo sceglie al posto
+     * dell'amministratore, e la richiesta torna con l'errore sul campo, come la scelta dei nudi (decisione 57).
+     */
+    private function conguaglioDegliEredi(array $esito, array $dati, TitolaritaImmobile $uscente): array
+    {
+        $riferimento = $dati['erede_di_riferimento'] ?? null;
+        if (count($this->eredi) > 1 && $riferimento === null && ! empty($esito['bozze_riassegnate'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['erede_di_riferimento' => sprintf(
+                '%s ha rate in bozza su un piano già emesso: scegli l\'erede di riferimento, a cui passano con lo stesso importo. La parte di ogni erede si regola con il conguaglio%s.',
+                $uscente->anagrafica?->nome ?? 'Il defunto',
+                // Rilievo L21 della Fase 1-bis: con l'arretrato agli eredi passano anche le bozze di prima del decesso.
+                $this->arretratoAgliEredi($dati) ? ' e con le righe dell\'arretrato; con l\'arretrato agli eredi passano all\'erede di riferimento anche le rate in bozza di prima del decesso, salvo quelle con un pagamento' : '')]);
+        }
+        $riferimentoId = (int) ($esito['anagrafica_entrante_id'] ?? 0);
+        $pesi = $this->pesiDegliEredi();
+        $nomi = [];
+        foreach ($this->eredi as $e) {
+            $nomi[(int) $e['anagrafica']->id] = $e['anagrafica']->nome;
+        }
+        $coppie = [];
+        $frasi = [];
+        foreach ($esito['per_gestione'] as $g) {
+            $lordo = (int) $g['importo_lordo'];
+            $passate = (int) $g['bozze_passate_importo'];
+            if ($lordo === 0 && $passate === 0) {
+                continue;
+            }
+            $parti = MoneyHelper::ripartisciPerQuote($lordo, $pesi);
+            foreach ($parti as $anagraficaId => $cents) {
+                $debito = (int) $cents - ((int) $anagraficaId === $riferimentoId ? $passate : 0);
+                if ($debito === 0) {
+                    continue;
+                }
+                $coppie[] = [
+                    'gestione_id' => $g['gestione_id'], 'gestione' => $g['gestione'], 'immobile_id' => $g['immobile_id'], 'esercizio_id' => $g['esercizio_id'],
+                    'importo' => $debito, 'importo_formattato' => MoneyHelper::format($debito), 'per_nudo' => null,
+                    'anagrafica_entrante_id' => (int) $anagraficaId, 'entrante_nome' => $nomi[(int) $anagraficaId] ?? '?',
+                ];
+            }
+            if (count($pesi) > 1 && $lordo !== 0) {
+                // Ultima revisione (UE6): la straordinaria va per delibera, non «per i giorni».
+                $frasi[] = sprintf('Sulla gestione %s la parte degli eredi, %s%s, si divide per quota: %s.%s', $g['gestione'] ?? 'gestione', MoneyHelper::format($lordo),
+                    ($g['natura'] ?? null) === NaturaGestione::Straordinaria->value ? '' : ' per i giorni dal decesso',
+                    implode(', ', array_map(fn ($id) => sprintf('%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', $this->numeroQuota((float) $pesi[$id])), array_keys($parti))),
+                    $passate !== 0 ? sprintf(' Le rate in bozza (%s) vanno a %s, che le paga con quelle: la sua parte nel conguaglio scende di altrettanto.', MoneyHelper::format($passate), $nomi[$riferimentoId] ?? 'l\'erede di riferimento') : '');
+            }
+        }
+        $esito['coppie'] = $coppie;
+        $totale = (int) array_sum(array_column($coppie, 'importo'));
+        $esito['totale_entrante'] = $totale;
+        $esito['totale_entrante_formattato'] = MoneyHelper::format($totale);
+        $esito['totale_entrante_assoluto_formattato'] = MoneyHelper::format(abs($totale));
+        // La frase del calcolo dice delle bozze «che passano a suo nome», con chi entra al singolare: con più eredi le bozze vanno al
+        // solo erede di riferimento, e la frase lo nomina.
+        if (count($pesi) > 1 && isset($nomi[$riferimentoId])) {
+            $esito['frasi'] = array_map(fn (string $f) => str_replace('che passano a suo nome', 'che passano a ' . $nomi[$riferimentoId], $f), $esito['frasi']);
+        }
+        array_push($esito['frasi'], ...$frasi);
+
+        return $esito;
+    }
+
+    /**
+     * Decisione 65 (2): l'arretrato del defunto. È la sua **posizione netta** dopo il conguaglio, per gestione, unità ed esercizio: le
+     * sue quote dei piani fermi che non passano (importo meno pagato, pregresso e crediti compresi), il pregresso delle bozze che
+     * passano (resta suo in una quota gemella, decisione 25), i suoi saldi non ancora assorbiti da un piano, meno il credito della
+     * coppia. Mai «le rate emesse e non pagate» sommate alla coppia: i giorni dopo il decesso dentro le quote non pagate li sposta già
+     * il conguaglio, e si conterebbero due volte. Non dipende dal giorno in cui si registra.
+     *
+     * Con l'arretrato agli eredi, **un solo arrotondamento per erede**: il totale di ciascuno è la sua quota della posizione prima della
+     * coppia più le bozze passate, meno le bozze che paga lui (il riferimento); l'arretrato è quel totale meno la sua coppia. Con due
+     * arrotondamenti separati il centesimo andrebbe sempre allo stesso erede. Con l'arretrato a nome del defunto, la cifra che resta
+     * a lui («eredi di …»), senza righe. I piani che si ricalcolano ancora non ci sono: le loro quote nascono dopo (decisione 66, punto 1).
+     */
+    private function arretrato(array $conguaglio, TitolaritaImmobile $uscente, array $immobileIds, array $dati): array
+    {
+        $defunto = (int) $uscente->anagrafica_id;
+        $gruppi = [];
+        $chiave = fn ($gestione, $immobile, $esercizio) => (int) $gestione . '|' . (int) $immobile . '|' . ($esercizio === null ? '' : (int) $esercizio);
+        $aggiungi = function (string $k, array $base, int $posizione, int $bozze) use (&$gruppi) {
+            $gruppi[$k] ??= $base + ['posizione' => 0, 'bozze' => 0];
+            $gruppi[$k]['posizione'] += $posizione;
+            $gruppi[$k]['bozze'] += $bozze;
+        };
+        foreach ($conguaglio['quote'] ?? [] as $q) {
+            if ((int) $q['intestatario_id'] !== $defunto) {
+                continue;
+            }
+            $base = ['gestione_id' => (int) $q['gestione_id'], 'gestione' => $q['gestione'], 'immobile_id' => (int) $q['immobile_id'], 'esercizio_id' => $q['esercizio_id']];
+            $k = $chiave($q['gestione_id'], $q['immobile_id'], $q['esercizio_id']);
+            if ($q['passa']) {
+                $aggiungi($k, $base, (int) $q['pregresso'], (int) $q['quota_pura']);
+            } else {
+                $aggiungi($k, $base, (int) $q['importo'] - (int) $q['importo_pagato'], 0);
+            }
+        }
+        $saldi = \App\Models\Saldo::with('gestione')->where('anagrafica_id', $defunto)->whereIn('immobile_id', $immobileIds)->where('is_applicato', false)->get();
+        // Decisione 67 (3): i saldi letti, anche le righe di un passaggio precedente, sono le fonti dell'arretrato. Il registro le tiene,
+        // e il Wallet e l'annullamento di un conguaglio non le cambiano sotto le righe degli eredi.
+        $fonti = [];
+        foreach ($saldi as $sa) {
+            if ((int) $sa->saldo_iniziale === 0) {
+                continue;
+            }
+            $fonti[] = (int) $sa->id;
+            $aggiungi($chiave($sa->gestione_id, $sa->immobile_id, $sa->esercizio_id),
+                ['gestione_id' => (int) $sa->gestione_id, 'gestione' => $sa->gestione?->nome, 'immobile_id' => (int) $sa->immobile_id, 'esercizio_id' => $sa->esercizio_id], (int) $sa->saldo_iniziale, 0);
+        }
+        // La coppia di ciascuno per gruppo (gli eredi a debito, il defunto a credito della somma).
+        $coppie = [];
+        foreach (($conguaglio['coppie'] ?? []) as $c) {
+            $k = $chiave($c['gestione_id'], $c['immobile_id'], $c['esercizio_id'] ?? null);
+            $coppie[$k][(int) ($c['anagrafica_entrante_id'] ?? 0)] = ($coppie[$k][(int) ($c['anagrafica_entrante_id'] ?? 0)] ?? 0) + (int) $c['importo'];
+            // Rilievo X2 della Fase 1-bis: una chiave dove il defunto ha solo la coppia (le quote erano di un predecessore, e il suo acquisto
+            // è stato regolato fuori) è un gruppo con posizione zero; senza, il defunto restava a credito della coppia.
+            $aggiungi($k, ['gestione_id' => (int) $c['gestione_id'], 'gestione' => $c['gestione'] ?? null, 'immobile_id' => (int) $c['immobile_id'], 'esercizio_id' => $c['esercizio_id'] ?? null], 0, 0);
+        }
+        $nome = $uscente->anagrafica?->nome ?? 'questa persona';
+        $agliEredi = $this->arretratoAgliEredi($dati);
+        $restaAlDefunto = 0;
+        $posizione = 0;
+        foreach ($gruppi as $k => $g) {
+            $restaAlDefunto += $g['posizione'] - (int) array_sum($coppie[$k] ?? []);
+            $posizione += $g['posizione'];
+        }
+        if (! $agliEredi) {
+            // Rilievo GC2 del giro sulle correzioni: un credito non è un debito dell'eredità, e di un credito non si «risponde».
+            $frase = fn (int $cifra) => $cifra === 0 ? null : sprintf('%s resta a nome di %s («eredi di %s»)%s: %s',
+                MoneyHelper::format(abs($cifra)) . ($cifra < 0 ? ' a credito' : ''), $nome, $nome, empty($dati['legato']) ? '' : ', perché chi riceve l\'unità per legato non eredita il patrimonio',
+                $cifra < 0 ? 'è un credito dell\'eredità, che lo studio regola con gli eredi.' : 'ne rispondono gli eredi, ogni erede per la sua quota (art. 754 c.c.).');
+
+            // Rilievo X8 della Fase 1-bis: con la rinuncia la coppia non si scrive, e a nome del defunto resta tutta la sua posizione.
+            // L'anteprima non sa della rinuncia (la casella è nel pannello): dà le due cifre, e il pannello mostra quella giusta.
+            return ['scelta' => Subentro::ARRETRATO_AL_DEFUNTO, 'legato' => ! empty($dati['legato']), 'resta' => $restaAlDefunto, 'resta_formattato' => MoneyHelper::format($restaAlDefunto),
+                'resta_senza_conguaglio' => $posizione, 'resta_senza_conguaglio_formattato' => MoneyHelper::format($posizione),
+                'eredi' => [], 'righe' => [], 'totale' => 0, 'frase' => $frase($restaAlDefunto), 'frase_senza_conguaglio' => $frase($posizione)];
+        }
+        $pesi = $this->pesiDegliEredi();
+        $riferimentoId = (int) (($dati['entrante'] ?? null)?->id ?? 0);
+        $nomi = [];
+        foreach ($this->eredi as $e) {
+            $nomi[(int) $e['anagrafica']->id] = $e['anagrafica']->nome;
+        }
+        $righe = [];
+        $perErede = array_fill_keys(array_keys($pesi), 0);
+        foreach ($gruppi as $k => $g) {
+            $parti = MoneyHelper::ripartisciPerQuote((int) $g['posizione'] + (int) $g['bozze'], $pesi);
+            $perRiga = [];
+            foreach ($parti as $anagraficaId => $cents) {
+                $totale = (int) $cents - ((int) $anagraficaId === $riferimentoId ? (int) $g['bozze'] : 0);
+                $importo = $totale - (int) ($coppie[$k][(int) $anagraficaId] ?? 0);
+                if ($importo !== 0) {
+                    $perRiga[(int) $anagraficaId] = $importo;
+                    $perErede[(int) $anagraficaId] += $importo;
+                }
+            }
+            if ($perRiga !== []) {
+                $righe[] = ['gestione_id' => $g['gestione_id'], 'gestione' => $g['gestione'], 'immobile_id' => $g['immobile_id'], 'esercizio_id' => $g['esercizio_id'], 'per_erede' => $perRiga];
+            }
+        }
+        $totale = (int) array_sum($perErede);
+        $eredi = [];
+        foreach ($perErede as $id => $c) {
+            // Rilievo L1 della Fase 1-bis: una cifra a credito si dice «a credito», non «€ -483,29».
+            $eredi[] = ['anagrafica_id' => (int) $id, 'nome' => $nomi[$id] ?? '?', 'quota' => (float) $pesi[$id], 'importo' => (int) $c,
+                'importo_formattato' => MoneyHelper::format(abs((int) $c)) . ((int) $c < 0 ? ' a credito' : '')];
+        }
+        $aChi = fn (array $e) => $e['importo'] < 0 ? sprintf('%s di %s', $e['importo_formattato'], $e['nome']) : sprintf('%s a %s', $e['importo_formattato'], $e['nome']);
+        // Rilievo GC1 del giro sulle correzioni: la prima frase dice il segno dell'arretrato (al netto del conguaglio), la seconda il
+        // risultato con il conguaglio, che per ogni erede è la sua quota della posizione del defunto con le bozze passate: i due segni
+        // divergono quando il defunto ha lasciato aperto meno dei giorni degli eredi (le rate mensili pagate fino al decesso).
+        $lasciato = (int) array_sum(array_map(fn ($g) => (int) $g['posizione'] + (int) $g['bozze'], $gruppi));
+        $conIlConguaglio = match (true) {
+            // Ultima revisione (UE1): l'art. 754 c.c. sta sul debito dell'eredità (la cifra netta, qui sotto), non su ciò che resta aperto,
+            // che comprende i giorni degli eredi.
+            $lasciato > 0 => sprintf('Con il conguaglio, ogni erede paga la sua quota di ciò che %s ha lasciato aperto, %s, e la posizione di %s si chiude.', $nome, MoneyHelper::format($lasciato), $nome),
+            $lasciato < 0 => sprintf('Con il conguaglio, ogni erede riceve la sua quota di ciò che %s aveva versato in più, %s, e la posizione di %s si chiude.', $nome, MoneyHelper::format(abs($lasciato)), $nome),
+            // Ultima revisione (UE2): la parte dei giorni dal decesso e la quota del credito si compensano, su tutto il piano.
+            default => sprintf('Con il conguaglio la posizione di %s si chiude: per ogni erede la parte dei giorni dal decesso e la quota del credito si compensano, e su questi piani nessun erede ha niente da pagare o da ricevere.', $nome),
+        };
+
+        return ['scelta' => Subentro::ARRETRATO_AGLI_EREDI, 'legato' => false, 'resta' => 0, 'resta_formattato' => MoneyHelper::format(0), 'eredi' => $eredi, 'righe' => $righe, 'totale' => $totale, 'fonti' => $fonti,
+            'frase' => match (true) {
+                $totale === 0 => null,
+                // Rilievo L1: un credito del defunto non è un debito dell'eredità (l'art. 754 c.c. parla dei debiti).
+                $totale < 0 => sprintf('Il credito di %s al netto del conguaglio, %s, passa agli eredi per quota: %s. %s',
+                    $nome, MoneyHelper::format(abs($totale)), implode(', ', array_map($aChi, $eredi)), $conIlConguaglio),
+                default => sprintf('L\'arretrato di %s al netto del conguaglio, %s, passa agli eredi per quota (art. 754 c.c.): %s. %s',
+                    $nome, MoneyHelper::format($totale), implode(', ', array_map($aChi, $eredi)), $conIlConguaglio),
+            }];
+    }
+
     private function ruoliCheRestano(string $tipo, array $dati, TitolaritaImmobile $uscente, array $immobileIds, CarbonImmutable $decorrenza): array
     {
         $giorno = $decorrenza->toDateString();
@@ -776,9 +1135,13 @@ class AnteprimaPassaggio
             'fine_locazione' => $entrante
                 ? sprintf('%s risulterà inquilino fino al %s compreso. %s dal %s.', $uscente, $finoA, $entrante, $dalA)
                 : sprintf('%s risulterà inquilino fino al %s compreso. L\'unità resta sfitta dal %s.', $uscente, $finoA, $dalA),
-            'usufrutto' => ($dati['sottotipo'] ?? 'costituzione') === 'estinzione'
+            'usufrutto' => ($dati['sottotipo'] ?? 'costituzione') === 'estinzione' && ! empty($dati['accrescimento'])
+                ? sprintf('%s risulterà usufruttuario fino al %s compreso. Dal %s il suo usufrutto si accresce a %s, e la nuda proprietà resta nuda.', $uscente, $finoA, $dalA, $this->elencoUsufruttuari())
+                : (($dati['sottotipo'] ?? 'costituzione') === 'estinzione'
                 ? sprintf('%s risulterà usufruttuario fino al %s compreso. Dal %s %s %s.', $uscente, $finoA, $dalA, $this->elencoNudi($nudo), $this->tornaPieno())
-                : sprintf('%s risulterà proprietario pieno fino al %s compreso; dal %s nudo proprietario. %s usufruttuario dal %s.', $uscente, $finoA, $dalA, $entrante ?? 'Chi entra', $dalA),
+                : sprintf('%s risulterà proprietario pieno fino al %s compreso; dal %s nudo proprietario. %s usufruttuario dal %s.', $uscente, $finoA, $dalA, $entrante ?? 'Chi entra', $dalA)),
+            // Decisione 65 (1): il defunto fino al giorno prima del decesso, gli eredi dal giorno del decesso.
+            'successione' => sprintf('%s risulterà titolare fino al %s compreso, il giorno prima del decesso. %s dal %s.', $uscente, $finoA, $this->elencoEredi(), $dalA),
             default => '',
         };
     }
@@ -805,13 +1168,13 @@ class AnteprimaPassaggio
                 if ($this->riserva($tipo, $dati)) {
                     // Riserva d'usufrutto (decisione 28): lo specchio della costituzione.
                     $frasi[] = sprintf('%s risulterà proprietario pieno fino al %s e usufruttuario dal %s, sulla stessa quota.', $uscente, $finoA, $dalA);
-                    $frasi[] = sprintf('%s risulterà nudo proprietario dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
+                    $frasi[] = sprintf('%s risulterà nudo proprietario dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
                     break;
                 }
-                $frasi[] = sprintf('%s risulterà titolare fino al %s. %s dal %s, come %s al %s %%.', $uscente, $finoA, $entrante ?? 'Chi entra', $dalA, $ruolo, $quota);
+                $frasi[] = sprintf('%s risulterà titolare fino al %s. %s dal %s, come %s al %s %%.', $uscente, $finoA, $entrante ?? 'Chi entra', $dalA, $ruolo, $quota);
                 break;
             case 'inizio_locazione':
-                $frasi[] = sprintf('%s risulterà inquilino dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
+                $frasi[] = sprintf('%s risulterà inquilino dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
                 $frasi[] = $this->fraseProprietariRestano($proprietari) . ' La locazione si aggiunge, non sostituisce.';
                 if (! empty($dati['data_fine_locazione'])) {
                     $frasi[] = sprintf('La data di fine (%s) è una scadenza, non un automatismo: il programma non chiude la locazione da solo.', $this->data($dati['data_fine_locazione']));
@@ -820,21 +1183,52 @@ class AnteprimaPassaggio
             case 'fine_locazione':
                 $frasi[] = sprintf('%s risulterà inquilino fino al %s.', $uscente, $finoA);
                 $frasi[] = $entrante
-                    ? sprintf('%s inquilino dal %s, al %s %%.', $entrante, $dalA, $quota)
+                    ? sprintf('%s inquilino dal %s, al %s %%.', $entrante, $dalA, $quota)
                     : sprintf('L\'unità resta sfitta dal %s: nessun inquilino risulterà registrato.', $dalA);
                 break;
             case 'usufrutto':
-                if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
+                if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione' && ! empty($dati['accrescimento'])) {
+                    // 1.11.0-beta.44: l'usufrutto di chi muore va agli usufruttuari che restano, in proporzione alla loro quota.
+                    $frasi[] = sprintf('%s risulterà usufruttuario fino al %s.', $uscente, $finoA);
+                    // Rilievo L12 della Fase 1-bis: le parti come le scrive la registrazione, in centesimi di punto con i resti maggiori.
+                    $parti = MoneyHelper::ripartisciPerQuote((int) round((float) $dati['quota'] * 100), $this->usufruttuari->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->id => (float) $t->quota])->all());
+                    foreach ($this->usufruttuari as $t) {
+                        $frasi[] = sprintf('%s risulterà usufruttuario dal %s al %s %%, con la sua parte dell\'usufrutto di %s.', $t->anagrafica?->nome ?? '?', $dalA,
+                            $this->quota(round((float) $t->quota + ((int) ($parti[(int) $t->id] ?? 0)) / 100, 2)), $uscente);
+                    }
+                    $frasi[] = 'La nuda proprietà resta nuda: nessun nudo proprietario torna pieno.';
+                } elseif (($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
                     $frasi[] = sprintf('%s risulterà usufruttuario fino al %s.', $uscente, $finoA);
                     $frasi[] = sprintf('%s %s dal %s.', $this->elencoNudi($nudo, 'Il nudo proprietario'), $this->tornaPieno('risulterà'), $dalA);
                     // Rilievo T12 della Fase 1-bis della .43: con un altro usufrutto in corso è la regola di legge quando l'atto non dice
                     // altro; l'accrescimento all'altro usufruttuario arriva con la successione.
                     if ($this->altroUsufrutto) {
-                        $frasi[] = 'È la regola di legge quando l\'atto non dice altro: se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario, non registrare l\'estinzione da qui e correggi le righe da «Modifica associazione».';
+                        // Fase 5 della .44: con la nuda di più nudi proprietari la casella non c'è (decisione 67, punto 2), e la frase non la
+                        // può indicare: dice la strada a mano, come la scheda del modulo.
+                        $riga = $dati['riga_uscente'] ?? null;
+                        $frasi[] = $riga instanceof TitolaritaImmobile && self::nudiDistintiIl($riga, $dal)->count() > 1
+                            ? 'È la regola di legge quando l\'atto non dice altro: se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario, o è un legato di usufrutto congiunto, con la nuda di più nudi proprietari non si registra da qui, e le righe si correggono a mano da «Modifica associazione».'
+                            : 'È la regola di legge quando l\'atto non dice altro: se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario, o è un legato di usufrutto congiunto, spunta «L\'usufrutto si accresce all\'altro usufruttuario».';
                     }
                 } else {
                     $frasi[] = sprintf('%s risulterà proprietario pieno fino al %s e nudo proprietario dal %s.', $uscente, $finoA, $dalA);
-                    $frasi[] = sprintf('%s risulterà usufruttuario dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
+                    $frasi[] = sprintf('%s risulterà usufruttuario dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
+                }
+                break;
+            case 'successione':
+                // Decisione 65: gli eredi nello stesso ruolo del defunto, ogni erede per la sua quota; chi era già titolare con quel
+                // ruolo somma la quota ereditata alla sua (decisione A).
+                $frasi[] = sprintf('%s risulterà titolare fino al %s, il giorno prima del decesso.', $uscente, $finoA);
+                $frasi[] = count($this->eredi) === 1
+                    ? sprintf('%s dal %s, come %s al %s %%.', $this->elencoEredi(), $dalA, $ruolo, $quota)
+                    : sprintf('Dal %s, come %s, %s: ogni erede per la sua quota, in comunione.', $dalA, $ruolo, $this->elencoEredi());
+                foreach ($this->eredi as $e) {
+                    if ($immobile->titolarita()->where('anagrafica_id', (int) $e['anagrafica']->id)->where('tipologia', $dati['tipologia'])->get()->contains(fn (TitolaritaImmobile $t) => $t->inCorsoIl($fino) && $t->data_fine === null)) {
+                        $frasi[] = sprintf('%s è già %s di questa unità: la quota ereditata si somma alla sua.', $e['anagrafica']->nome, $ruolo);
+                    }
+                }
+                if (! empty($dati['legato'])) {
+                    $frasi[] = sprintf('È un legato: chi riceve l\'unità non eredita il patrimonio di %s.', $uscente);
                 }
                 break;
         }
@@ -842,18 +1236,25 @@ class AnteprimaPassaggio
         // Le pertinenze collegate: quelle spuntate seguono, quelle non spuntate restano dove sono, e
         // si dice (D5 di pertinenze: verso il condominio conta il titolo, non la presunzione).
         $tutte = $immobile->pertinenze()->get();
-        if ($tutte->isNotEmpty() && in_array($tipo, ['vendita', 'usufrutto'], true)) {
+        if ($tutte->isNotEmpty() && in_array($tipo, ['vendita', 'usufrutto', 'successione'], true)) {
             $scelte = $tutte->whereIn('id', $dati['pertinenze'] ?? []);
             $escluse = $tutte->whereNotIn('id', $dati['pertinenze'] ?? []);
             if ($scelte->isNotEmpty()) {
                 $frasi[] = sprintf('Il passaggio si applica anche a: %s.', $this->elenco($scelte->pluck('nome')->all()));
             }
             if ($escluse->isNotEmpty()) {
-                $frasi[] = sprintf('%s: il passaggio non %s tocca, %s a %s.',
-                    $this->elenco($escluse->pluck('nome')->all()),
-                    $escluse->count() === 1 ? 'la' : 'le',
-                    $escluse->count() === 1 ? 'resta' : 'restano',
-                    $uscente ?? 'chi ne è titolare oggi');
+                // La successione passa tutto il patrimonio: una pertinenza lasciata fuori ha bisogno della sua. Rilievo L7 della Fase 1-bis:
+                // «la sua successione» si leggeva come quella che si sta registrando; rilievo GC16 del giro e UE5 dell'ultima revisione: un solo
+                // «:», e l'invito solo se la pertinenza è anche del defunto (le pertinenze collegate possono essere di altri).
+                $frasi[] = $tipo === 'successione'
+                    ? sprintf('%s: il passaggio non %s tocca; %s', $this->elenco($escluse->pluck('nome')->all()), $escluse->count() === 1 ? 'la' : 'le',
+                        $escluse->count() === 1 ? sprintf('se è anche di %s, registra la successione anche dalla pertinenza.', $uscente ?? 'chi esce')
+                            : sprintf('per quelle che sono anche di %s, registra la successione anche da lì.', $uscente ?? 'chi esce'))
+                    : sprintf('%s: il passaggio non %s tocca, %s a %s.',
+                        $this->elenco($escluse->pluck('nome')->all()),
+                        $escluse->count() === 1 ? 'la' : 'le',
+                        $escluse->count() === 1 ? 'resta' : 'restano',
+                        $uscente ?? 'chi ne è titolare oggi');
             }
         }
 
@@ -980,6 +1381,15 @@ class AnteprimaPassaggio
             }
         } elseif ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
             $frasi[] = sprintf('Nessuna rata emessa è intestata a %s: non c\'è niente da conguagliare fra chi esce e chi entra. Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $uscente, $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+        } elseif ($estinzione && ! empty($dati['accrescimento'])) {
+            // 1.11.0-beta.44: l'usufrutto si accresce agli usufruttuari che restano; la nuda resta nuda.
+            $frasi[] = $senzaCoppie
+                ? 'Le rate già emesse non si toccano.'
+                : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, a cui l\'usufrutto si accresce, è proposto come righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (art. 1004 c.c.), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $this->elencoUsufruttuari());
+            array_push($frasi, ...$frasiConguaglio);
+            if ($altre->isNotEmpty()) {
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+            }
         } elseif ($estinzione && $this->nudi->isNotEmpty() && $altriNudi->isEmpty() && $nomiDelleCoppie === []) {
             // Il solo nudo è chi esce: torna pieno, e non c'è niente da conguagliare.
             $frasi[] = sprintf('Le rate già emesse non si toccano. %s torna proprietario pieno: le quote dal %s restano a suo nome, senza conguaglio.', $uscente, $this->data($dal));
@@ -1007,6 +1417,20 @@ class AnteprimaPassaggio
                 // Decisione 31.5: «come dice ogni voce».
                 ? 'Le rate già emesse non si toccano. %s resta usufruttuario; l\'ordinaria segue la voce, come hai scelto: le voci sul «Proprietario» passano dal giorno dell\'atto a chi compra la nuda proprietà, le altre restano sue. La quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella; dal %s il titolare è %s, nudo proprietario (art. 1005 c.c.). Dove serve, il conguaglio è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano.'
                 : 'Le rate già emesse non si toccano. %s resta usufruttuario e continua a dovere la quota ordinaria (art. 1004 c.c.): l\'ordinaria non si conguaglia. La quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella; dal %s il titolare è %s, nudo proprietario (art. 1005 c.c.). Dove serve, il conguaglio è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano.', $uscente, $this->data($dal), $entrante ?? 'chi entra');
+            array_push($frasi, ...$frasiConguaglio);
+            if ($altre->isNotEmpty()) {
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+            }
+        } elseif ($tipo === 'successione' && ! $senzaCoppie) {
+            // Decisione 65 (4): il conguaglio per giorni della vendita, con il debito di chi entra diviso fra gli eredi per quota.
+            // Nessuna sentenza citata: la regola della straordinaria è quella della vendita, letta dalla legge.
+            // Rilievo L8 della Fase 1-bis: nella nuda proprietà l'ordinaria resta all'usufruttuario, e il conguaglio è della sola straordinaria.
+            $frasi[] = ($dati['tipologia'] ?? null) === 'nuda_proprietario'
+                // Rilievo GC14 del giro sulle correzioni: il soggetto di ogni frase detto per intero.
+                ? sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s riguarda solo la quota straordinaria, ed è proposto come righe di saldo che sommano a zero sulla gestione di ciascun piano: la straordinaria è di chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella. La quota ordinaria resta all\'usufruttuario (art. 1004 c.c.).',
+                    $uscente, $this->elencoEredi())
+                : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s è proposto come righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria dal %s va agli eredi, divisa per quota; la quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella.',
+                    $uscente, $this->elencoEredi(), $this->data($dal));
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
                 $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
@@ -1041,7 +1465,12 @@ class AnteprimaPassaggio
         }
 
         if ($morosita !== null) {
-            $frasi[] = sprintf('%s ha %s scaduti e non pagati. Restano suoi: il conguaglio si calcola sulla competenza, non sui pagamenti.', $morosita['intestatario'], $morosita['importo_formattato']);
+            // Nella successione lo scaduto del defunto è dentro l'arretrato (decisione 65, 2): agli eredi, o a suo nome.
+            $frasi[] = match (true) {
+                $tipo === 'successione' && $this->arretratoAgliEredi($dati) => sprintf('%s ha %s scaduti e non pagati: passano agli eredi, con il conguaglio e l\'arretrato.', $morosita['intestatario'], $morosita['importo_formattato']),
+                $tipo === 'successione' => sprintf('%s ha %s scaduti e non pagati: restano a suo nome, e ne rispondono gli eredi.', $morosita['intestatario'], $morosita['importo_formattato']),
+                default => sprintf('%s ha %s scaduti e non pagati. Restano suoi: il conguaglio si calcola sulla competenza, non sui pagamenti.', $morosita['intestatario'], $morosita['importo_formattato']),
+            };
         }
 
         return $frasi;
@@ -1065,6 +1494,14 @@ class AnteprimaPassaggio
                 ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($dal) && (int) $t->id !== $this->rigaChiEsce
                     && ! $this->nudi->contains('anagrafica_id', $t->anagrafica_id))
             : collect();
+
+        if ($this->usufruttuari->isNotEmpty()) {
+            $dati['usufruttuari'] = $this->usufruttuari->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->values()->all();
+        }
+        if ($tipo === 'successione') {
+            $dati['eredi'] = array_map(fn ($e) => ['nome' => $e['anagrafica']->nome, 'quota' => (float) $e['quota']], $this->eredi);
+            $dati['arretrato'] = $this->arretratoAgliEredi($dati) ? Subentro::ARRETRATO_AGLI_EREDI : Subentro::ARRETRATO_AL_DEFUNTO;
+        }
 
         return $this->frasiObbligati->frasi($tipo, $dati, $condominio, $uscente, $entrante, $dal, $proprietari,
             $nudi !== [] ? $nudi : $nudo?->anagrafica?->nome, registrato: false,
@@ -1104,6 +1541,17 @@ class AnteprimaPassaggio
 
         if ($this->riserva($tipo, $dati)) {
             return 'Teste in assemblea: si contano per persona; chi vende resta come usufruttuario e continua a contare, e chi compra la nuda proprietà si aggiunge se non era già condòmino.';
+        }
+
+        if ($tipo === 'successione') {
+            // Gli eredi in comunione su un'unità hanno in assemblea un solo rappresentante (art. 67 co. 2 disp. att. c.c.).
+            return count($this->eredi) > 1
+                ? sprintf('Teste in assemblea: si contano per persona; %s esce dal conteggio se non possiede altro in questo condominio, e gli eredi in comunione su questa unità sono rappresentati da una persona sola (art. 67 co. 2 disp. att. c.c.).', $uscente?->anagrafica?->nome ?? 'chi esce')
+                : sprintf('Teste in assemblea: si contano per persona; %s esce dal conteggio se non possiede altro in questo condominio, e %s entra se non era già condòmino.', $uscente?->anagrafica?->nome ?? 'chi esce', $this->elencoEredi());
+        }
+
+        if ($tipo === 'usufrutto' && ! empty($dati['accrescimento'])) {
+            return 'Teste in assemblea: si contano per persona; l\'usufruttuario esce dal conteggio se non possiede altro in questo condominio, e chi riceve l\'accrescimento era già condòmino.';
         }
 
         if ($tipo === 'usufrutto') {
@@ -1177,11 +1625,51 @@ class AnteprimaPassaggio
      *
      * @return array{richiesto: bool, motivi: list<string>, informazioni: list<string>, avvisi: list<string>}
      */
-    private function cancello(string $tipo, Condominio $condominio, array $immobileIds, ?TitolaritaImmobile $uscente, Collection $rateEmesse, array $intestatari = [], array $riassegnazione = [], ?string $entrante = null, array $quoteConguaglio = [], ?CarbonImmutable $decorrenzaRiserva = null, array $contiSpostati = [], array|bool $contiPerScelta = [], ?\Closure $conta = null): array
+    private function cancello(string $tipo, Condominio $condominio, array $immobileIds, ?TitolaritaImmobile $uscente, Collection $rateEmesse, array $intestatari = [], array $riassegnazione = [], ?string $entrante = null, array $quoteConguaglio = [], ?CarbonImmutable $decorrenzaRiserva = null, array $contiSpostati = [], array|bool $contiPerScelta = [], ?\Closure $conta = null, ?array $arretrato = null, ?CarbonImmutable $decorrenza = null): array
     {
         $motivi = [];
         $informazioni = [];
         $avvisi = [];
+        // Decisione 68 (1): all'estinzione di un usufrutto accresciuto vale la scelta sull'ordinaria del suo usufrutto; se la parte arrivata
+        // con l'accrescimento era nata con la scelta opposta, lo si dice.
+        if ($tipo === 'usufrutto' && $uscente?->tipologia === 'usufruttuario') {
+            $propria = Subentro::origineDellUsufrutto((int) $uscente->id, (int) $uscente->immobile_id);
+            $arrivata = Subentro::origineDellaParteAccresciuta((int) $uscente->id, (int) $uscente->immobile_id);
+            if ($propria !== null && $arrivata !== null && $propria->ordinariaComeLaVoce() !== $arrivata['origine']->ordinariaComeLaVoce()) {
+                $avvisi[] = sprintf('per l\'ordinaria vale la scelta dell\'usufrutto di %s, %s, anche per la parte arrivata il %s da %s, che era nata %s',
+                    $uscente->anagrafica?->nome ?? 'chi esce', $propria->ordinariaComeLaVoce() ? '«come dice ogni voce»' : 'la regola di legge',
+                    $this->data(CarbonImmutable::parse($arrivata['passaggio']->decorrenza)), $arrivata['passaggio']->uscente?->nome ?? 'l\'altro usufruttuario',
+                    $arrivata['origine']->ordinariaComeLaVoce() ? '«come dice ogni voce»' : 'con la regola di legge');
+            }
+        }
+        // Decisione 65 (2): con l'arretrato agli eredi niente di ciò che il defunto lascia aperto «resta suo».
+        $agliEredi = ($arretrato['scelta'] ?? null) === Subentro::ARRETRATO_AGLI_EREDI;
+        // Decisione 69 (2), dopo una risposta al forum: due cose che con l'arretrato agli eredi vanno sapute prima.
+        if ($tipo === 'successione' && $agliEredi && $uscente !== null) {
+            $defunto = $uscente->anagrafica?->nome ?? 'questa persona';
+            // Le rate del defunto che restano a suo nome, emesse o in bozza, sono da pagare, ma il loro importo è già nelle righe degli
+            // eredi (la coppia e l'arretrato insieme): chi le paga, anche con «Versato da» (che non scende dal debito di chi versa,
+            // decisione 30), lascia il defunto a credito. La cifra viene dallo stesso insieme dell'arretrato (giro sulla 69, S4).
+            $aperte = (int) collect($quoteConguaglio)
+                ->filter(fn ($q) => (int) $q['intestatario_id'] === (int) $uscente->anagrafica_id && empty($q['passa']))
+                ->sum(fn ($q) => max(0, (int) $q['importo'] - (int) $q['importo_pagato']));
+            if ($aperte > 0) {
+                $avvisi[] = sprintf('le rate di %s non pagate che restano a suo nome (%s) hanno il loro importo già nelle righe di saldo degli eredi, del conguaglio e dell\'arretrato: un pagamento su quelle rate, anche registrato con «Versato da», va a credito di %s e non riduce il debito di chi versa. Gli eredi pagano con le loro righe di saldo, che entrano nel piano dopo; le rate di %s restano aperte accanto al suo credito, e si chiudono compensandole a mano',
+                    $defunto, MoneyHelper::format($aperte), $defunto, $defunto);
+            }
+            // Le righe si dividono con le quote sull'unità; l'art. 754 divide i debiti dell'eredità con le quote dell'eredità. Con un
+            // erede solo sull'unità le due possono non coincidere (un testamento che gliela assegna, una divisione), e il programma
+            // non lo sa: lo dice.
+            $eredi = $arretrato['eredi'] ?? [];
+            $netto = (int) ($arretrato['totale'] ?? 0);
+            if (count($eredi) === 1 && $netto !== 0) {
+                $avvisi[] = $netto > 0
+                    ? sprintf('l\'arretrato va tutto a %s, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), di quel debito risponde ogni erede per la sua quota ereditaria (art. 754 c.c.): in quel caso lascialo a nome di %s',
+                        $eredi[0]['nome'] ?? 'l\'erede', $defunto)
+                    : sprintf('il credito di %s va tutto a %s, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), il credito è dell\'eredità, e si divide con le quote ereditarie: in quel caso lascialo a nome di %s',
+                        $defunto, $eredi[0]['nome'] ?? 'l\'erede', $defunto);
+            }
+        }
 
         // S8-3: le quote di chi esce e dei suoi predecessori (stesso insieme del conguaglio); la frase
         // distingue le due cose, perché «quota emessa a Rossi» quando esce Bianchi va spiegata.
@@ -1205,7 +1693,7 @@ class AnteprimaPassaggio
             ? min($emesseDiChiEsce, collect($quoteConguaglio)->where('in_bozza', false)->where('intestatario_id', (int) $uscente->anagrafica_id)
                 // Fase 1-ter della beta.41: anche le quote fatte solo di righe di un'altra quota (`tutta_fuori`: l'ordinaria dell'usufruttuario
                 // nella vendita della nuda, R4 riga per riga; un ruolo che chi esce tiene) — nessuna parte cambia persona.
-                ->filter(fn ($q) => $q['esclusa'] || ! empty($q['tutta_fuori']) || ($tipo === 'vendita' && $tuttaDiChiEsce($gruppiConguaglio[$q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']])))->count())
+                ->filter(fn ($q) => $q['esclusa'] || ! empty($q['tutta_fuori']) || (($tipo === 'vendita' || ($tipo === 'successione' && ! $agliEredi)) && $tuttaDiChiEsce($gruppiConguaglio[$q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']])))->count())
             : 0;
         $toccate = $emesseDiChiEsce - $escluseDiChiEsce;
         if ($toccate > 0) {
@@ -1324,6 +1812,28 @@ class AnteprimaPassaggio
             if ($ricalcolabiliDiChiEsce->pluck('piano_rate_id')->unique()->count() > count($alNudo)) {
                 $motivi[] = sprintf('un piano rate già generato intesta quote a %s: il destinatario cambierebbe', $uscente->anagrafica?->nome);
             }
+            // Decisione 66 (1): il piano che si ricalcola ancora, dopo il ricalcolo, intesta al defunto i giorni prima del decesso. Quelle
+            // quote nascono dopo, e l'arretrato di questo passaggio non le comprende: si passano agli eredi a mano (Coda 226).
+            if ($tipo === 'successione' && $agliEredi && $decorrenza !== null) {
+                $nomi = $ricalcolabiliDiChiEsce->pluck('nome')->unique()->values()->all();
+                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà agli eredi i giorni dal %s, divisi per quota, e lascerà a %s le quote dei giorni fino al %s, che l\'arretrato di questo passaggio non comprende. Per passarle agli eredi, dopo il ricalcolo registra un saldo manuale dal Wallet sulla stessa gestione: una riga a credito di %s e una a debito di ogni erede, per la sua quota',
+                    count($nomi) === 1 ? 'il piano «' . $nomi[0] . '»' : 'i piani ' . $this->elenco(array_map(fn ($n) => '«' . $n . '»', $nomi)),
+                    $this->data($decorrenza), $uscente->anagrafica?->nome, $this->data($decorrenza->subDay()), $uscente->anagrafica?->nome);
+                if (count($nomi) > 1) {
+                    $avvisi[array_key_last($avvisi)] = str_replace([' si ricalcola ancora: ricalcolato, darà', ', e lascerà a'], [' si ricalcolano ancora: ricalcolati, daranno', ', e lasceranno a'], $avvisi[array_key_last($avvisi)]);
+                }
+            } elseif ($tipo === 'successione' && ($arretrato['scelta'] ?? null) === Subentro::ARRETRATO_AL_DEFUNTO && $decorrenza !== null) {
+                // Decisione 69 (2): con l'arretrato a nome del defunto le quote dei giorni prima del decesso restano sue — è la scelta —,
+                // ma nascono dopo, con il ricalcolo, e le rate si emettono a suo nome: lo si dice prima.
+                $nomi = $ricalcolabiliDiChiEsce->pluck('nome')->unique()->values()->all();
+                $defunto = $uscente->anagrafica?->nome ?? 'questa persona';
+                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà %s i giorni dal %s, divisi per quota, e lascerà a %s le quote dei giorni fino al %s: con l\'arretrato a suo nome restano intestate a %s («eredi di %s»), e il ricalcolo ne mette una parte in ogni rata del piano, anche in quelle che scadono dopo il decesso',
+                    count($nomi) === 1 ? 'il piano «' . $nomi[0] . '»' : 'i piani ' . $this->elenco(array_map(fn ($n) => '«' . $n . '»', $nomi)),
+                    empty($arretrato['legato']) ? 'agli eredi' : 'a chi riceve l\'unità per legato', $this->data($decorrenza), $defunto, $this->data($decorrenza->subDay()), $defunto, $defunto);
+                if (count($nomi) > 1) {
+                    $avvisi[array_key_last($avvisi)] = str_replace([' si ricalcola ancora: ricalcolato, darà', ', e lascerà a', ' in ogni rata del piano,'], [' si ricalcolano ancora: ricalcolati, daranno', ', e lasceranno a', ' in ogni rata dei piani,'], $avvisi[array_key_last($avvisi)]);
+                }
+            }
             // Decisione 58 (1.11.0-beta.43, Coda 217): l'accordo «le rate di questo piano le paga chi vende» non ha un posto nel
             // passaggio. Il piano si ricalcola comunque per giorni, e verso il condominio la posizione è di chi compra; i pagamenti
             // si registrano con «Versato da» (decisione 30), che resta scritto su entrambi gli estratti conto. Rilievo T4 della Fase
@@ -1401,6 +1911,24 @@ class AnteprimaPassaggio
             } else {
                 $motivi[] = $testa . ', ' . implode('; ', $parti);
             }
+        }
+
+        // Decisione 65 (2): l'arretrato scritto nei saldi tocca la posizione di persone diverse, e chiede la spunta come le rate
+        // che passano; quello che resta a nome del defunto si dice soltanto.
+        if ($arretrato !== null && $agliEredi && (int) $arretrato['totale'] !== 0) {
+            // Rilievo GC16 del giro sulle correzioni: «il credito … € 5,48», senza un secondo «a credito».
+            $motivi[] = sprintf('%s di %s al netto del conguaglio, %s, passa agli eredi con righe di saldo sulla stessa gestione: %s', (int) $arretrato['totale'] < 0 ? 'il credito' : 'l\'arretrato', $uscente?->anagrafica?->nome,
+                MoneyHelper::format(abs((int) $arretrato['totale'])),
+                implode(', ', array_map(fn ($e) => sprintf((int) $e['importo'] < 0 ? '%s di %s' : '%s a %s', $e['importo_formattato'], $e['nome']), $arretrato['eredi'])));
+        } elseif ($arretrato !== null && ((int) ($arretrato['resta'] ?? 0) !== 0 || (int) ($arretrato['resta_senza_conguaglio'] ?? 0) !== 0)) {
+            $cifra = fn (int $c) => MoneyHelper::format(abs($c)) . ($c < 0 ? ' a credito' : '');
+            $resta = (int) ($arretrato['resta'] ?? 0);
+            $senza = (int) ($arretrato['resta_senza_conguaglio'] ?? $resta);
+            // Rilievo GC2 del giro sulle correzioni: un credito si chiama credito; con due cifre di segno diverso, «la posizione».
+            $informazioni[] = $senza === $resta
+                ? sprintf('%s di %s, %s, resta a suo nome («eredi di %s»)', $resta < 0 ? 'il credito' : 'l\'arretrato', $uscente?->anagrafica?->nome, MoneyHelper::format(abs($resta)), $uscente?->anagrafica?->nome)
+                : sprintf('%s di %s resta a suo nome («eredi di %s»): %s con il conguaglio, %s se gli eredi vi rinunciano', $resta >= 0 && $senza >= 0 ? 'l\'arretrato' : 'la posizione',
+                    $uscente?->anagrafica?->nome, $uscente?->anagrafica?->nome, $cifra($resta), $cifra($senza));
         }
 
         if ($tipo === 'inizio_locazione') {

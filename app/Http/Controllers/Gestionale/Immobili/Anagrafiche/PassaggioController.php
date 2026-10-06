@@ -140,13 +140,39 @@ class PassaggioController extends Controller
         $anteprima = $esito['anteprima'];
         $entranteId = $subentro->anagrafica_entrante_id;
         // La frase del pannello è al futuro («risulterà»): dopo la scrittura si dice il fatto — con la stessa frase
-        // per tipo del pannello, portata al passato/presente, non con una frase generica che per l'usufrutto e la
-        // fine locazione diceva una cosa falsa (Fase 1-bis, S8-31).
-        $frase = str_replace(
-            ['risulterà titolare', 'risulterà inquilino', 'risulterà usufruttuario', 'risulterà proprietario pieno', 'risulterà'],
-            ['è stato titolare', 'è stato inquilino', 'è stato usufruttuario', 'è stato proprietario pieno', 'è'],
-            (string) $anteprima['riferimento']['frase'],
-        );
+        // per tipo del pannello, portata al presente, non con una frase generica che per l'usufrutto e la
+        // fine locazione diceva una cosa falsa (Fase 1-bis, S8-31). 1.11.0-beta.44: «risulta», non «è stato» (un participio
+        // con il genere), e anche il plurale dei nudi e degli eredi, che restava al futuro.
+        $frase = str_replace(['risulteranno', 'risulterà'], ['risultano', 'risulta'], (string) $anteprima['riferimento']['frase']);
+        // La successione nomina come chi entra un erede solo (decisione 65): il messaggio li porta tutti, ognuno con il suo estratto conto.
+        $eredi = $subentro->successione()
+            ? \App\Models\Anagrafica::whereIn('id', $subentro->entranti())->get(['id', 'nome'])->sortBy(fn ($a) => array_search((int) $a->id, $subentro->entranti(), true))
+                ->map(fn ($a) => ['nome' => $a->nome, 'estratto_conto' => route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => $a->id])])->values()->all()
+            : [];
+        // Rilievo L2 della Fase 1-bis della .44: con più eredi, o con l'arretrato, le righe scritte non sono «coppie a debito di chi entra»: per
+        // ogni erede il netto di conguaglio e arretrato, dalle righe in saldi del passaggio e delle sue pertinenze.
+        // Rilievi GB5 e GB6 del giro sulle correzioni: anche chi è in pari (il defunto in regola: coppia e arretrato si compensano), e la testa
+        // secondo ciò che c'è davvero in saldi; per id, non per posizione.
+        $perErede = [];
+        $perEredeTesta = null;
+        if ($subentro->successione() && (count($subentro->eredi()) > 1 || $subentro->arretratoAgliEredi())) {
+            $ids = $subentro->pertinenze()->pluck('id')->push($subentro->id)->all();
+            $righe = \App\Models\Saldo::whereIn('subentro_id', $ids)->get(['anagrafica_id', 'saldo_iniziale']);
+            if ($righe->isNotEmpty()) {
+                $netti = $righe->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'));
+                $nomi = \App\Models\Anagrafica::whereIn('id', $subentro->entranti())->pluck('nome', 'id');
+                foreach ($subentro->entranti() as $id) {
+                    $c = (int) ($netti[(int) $id] ?? 0);
+                    $nome = $nomi[(int) $id] ?? '?';
+                    $perErede[] = $c === 0 ? sprintf('%s in pari', $nome) : sprintf($c < 0 ? '%s a credito di %s' : '%s a debito di %s', \App\Helpers\MoneyHelper::format(abs($c)), $nome);
+                }
+                $perEredeTesta = match (true) {
+                    $subentro->arretratoAgliEredi() => 'Scritto in saldi, per erede, con il conguaglio e l\'arretrato insieme',
+                    $subentro->legato() => 'Conguaglio scritto in saldi, per chi riceve l\'unità',
+                    default => 'Conguaglio scritto in saldi, per erede',
+                };
+            }
+        }
 
         return to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id])
             ->with($this->flashSuccess('Passaggio registrato. ' . $frase))
@@ -164,6 +190,9 @@ class PassaggioController extends Controller
                 'promemoria'  => $esito['promemoria']?->start_time?->toDateString(),
                 'avvisi'      => $esito['avvisi'],
                 'entrante'    => $subentro->entrante?->nome,
+                'eredi'       => $eredi,
+                'per_erede'   => $perErede,
+                'per_erede_testa' => $perEredeTesta,
                 'azioni'      => [
                     'estratto_conto' => $entranteId ? route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => $entranteId]) : null,
                     'anagrafe'       => $entranteId ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,

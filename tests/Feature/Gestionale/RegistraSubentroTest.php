@@ -213,7 +213,7 @@ it('la stessa riga non si chiude due volte: il secondo invio identico risponde 4
 |--------------------------------------------------------------------------
 */
 
-it('decisione A — il comproprietario che compra la quota dell\'altro: la sua riga al 50 % si chiude e se ne apre una alla quota somma (50 + 30 = 80, il terzo resta al 20), il passaggio aggancia la riga nuova', function () {
+it('decisione A — il comproprietario che compra la quota dell\'altro: la sua riga al 50 % si chiude e se ne apre una alla quota somma (50 + 30 = 80, il terzo resta al 20), il passaggio aggancia la riga nuova', function () {
     $rigaRossi = rsRiga($this->immobile, $this->rossi, 'proprietario', '2019-03-03', null, 30);
     $rigaBianchi = rsRiga($this->immobile, $this->bianchi, 'proprietario', '2019-03-03', null, 50);
     rsRiga($this->immobile, rsPersona($this->condominio, 'Verdi Luca'), 'proprietario', '2019-03-03', null, 20);
@@ -236,7 +236,7 @@ it('la quota diversa da quella di chi vende ferma la registrazione (decisione 37
     // resta nell'azione; la richiesta si ferma prima, perché il passaggio porta la quota di chi vende.
     $this->actingAs($this->user)->postJson($this->rotta, rsVendita($rigaRossi, $this->bianchi, ['quota' => 100]))
         ->assertUnprocessable()
-        ->assertJsonPath('errors.quota.0', fn ($m) => str_starts_with($m, 'Il passaggio porta tutta la quota di Rossi Mario (60 %): passarne solo una parte non è ancora previsto.'));
+        ->assertJsonPath('errors.quota.0', fn ($m) => str_starts_with($m, 'Il passaggio porta tutta la quota di Rossi Mario (60 %): passarne solo una parte non è ancora previsto.'));
 
     expect(Subentro::count())->toBe(0)->and(DB::table('anagrafica_immobile')->where('id', $rigaRossi)->value('data_fine'))->toBeNull();
 });
@@ -934,10 +934,10 @@ it('S8-30 — estinzione dell\'usufrutto con due nudi proprietari (60/40) e una 
     expect($coppie)->toHaveCount(2)
         ->and($coppie->firstWhere('anagrafica_entrante_id', $this->rossi->id)['importo'])->toBe(14700)
         ->and($coppie->firstWhere('anagrafica_entrante_id', $neri->id)['importo'])->toBe(9800)
-        ->and($anteprima['riferimento']['frase'])->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni')
-        ->and(implode("\n", $anteprima['anagrafica']['frasi']))->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) risulteranno proprietari pieni dal 1 maggio 2026')
-        ->and(implode("\n", $anteprima['rate']['frasi']))->toContain('il debito di € 245,00 si divide per quota: € 147,00 a Rossi Mario (60 %), € 98,00 a Neri Paolo (40 %)')
-        ->and(implode("\n", $anteprima['obbligati']['frasi']))->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni e rispondono di tutte le spese');
+        ->and($anteprima['riferimento']['frase'])->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni')
+        ->and(implode("\n", $anteprima['anagrafica']['frasi']))->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) risulteranno proprietari pieni dal 1 maggio 2026')
+        ->and(implode("\n", $anteprima['rate']['frasi']))->toContain('il debito di € 245,00 si divide per quota: € 147,00 a Rossi Mario (60 %), € 98,00 a Neri Paolo (40 %)')
+        ->and(implode("\n", $anteprima['obbligati']['frasi']))->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni e rispondono di tutte le spese');
 
     $this->actingAs($this->user)->post($this->rotta, $corpo)->assertRedirect()->assertSessionHasNoErrors();
     $saldi = Saldo::orderBy('saldo_iniziale')->get();
@@ -950,7 +950,7 @@ it('S8-30 — estinzione dell\'usufrutto con due nudi proprietari (60/40) e una 
 
     // Lo storico ricostruisce il vademecum dai fatti: anche lì entrambi.
     $vademecum = implode("\n", (new \App\Services\Subentro\FrasiObbligati())->daSubentro(Subentro::sole()));
-    expect($vademecum)->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni');
+    expect($vademecum)->toContain('Rossi Mario (60 %) e Neri Paolo (40 %) tornano proprietari pieni');
 });
 
 it('decisione 21 (S8-1) — piano da 4 rate emesso in parte a giornale: la coppia copre TUTTE le quote di chi esce, comprese le tre in bozza (27.655 su 41.200, non 6.914), il cancello lo dice e le bozze restano sue perché scadono prima del rogito (decisione 25, B3a)', function () {

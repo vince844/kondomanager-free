@@ -183,7 +183,7 @@ it('l\'anteprima di una vendita risponde con i blocchi 1, 3 e 4, la frase delle 
         ->and($json['riferimento']['frase'])->toBe('Rossi Mario risulterà titolare fino al 30 aprile 2026 compreso. Bianchi Anna dal 1 maggio 2026.');
 
     // Blocco 1.
-    expect($json['anagrafica']['frasi'][0])->toContain('Bianchi Anna dal 1 maggio 2026, come proprietario al 100 %');
+    expect($json['anagrafica']['frasi'][0])->toContain('Bianchi Anna dal 1 maggio 2026, come proprietario al 100 %');
 
     // Blocco 2: nessuna rata, e il conguaglio **non c'è** — non «€ 0,00».
     expect($json['rate']['stato'])->toBe('nessuno')
@@ -695,7 +695,7 @@ function corpoAssocia(Condominio $c, Immobile $i, Anagrafica $a, string $tipolog
     ];
 }
 
-it('inv. 11 — la somma delle quote è per giorno: venditore chiuso al 30/04 e acquirente al 100 % dal 01/05 passano; dal 30/04 (un giorno in comune a 200) no, e il messaggio nomina il giorno', function () {
+it('inv. 11 — la somma delle quote è per giorno: venditore chiuso al 30/04 e acquirente al 100 % dal 01/05 passano; dal 30/04 (un giorno in comune a 200) no, e il messaggio nomina il giorno', function () {
     $rossi = personaDelCondominio($this->condominio, 'Rossi Mario');
     $bianchi = personaDelCondominio($this->condominio, 'Bianchi Anna');
     rigaTitolarita($this->immobile, $rossi, 'proprietario', '2019-03-03', '2026-04-30');

@@ -60,6 +60,19 @@ class TitolaritaImmobile extends Pivot
         return $this->belongsTo(Immobile::class);
     }
 
+    /**
+     * Il passaggio registrato (non annullato) che ha chiuso questa riga: come riga di chi esce, oppure sommandola o chiudendola nel suo
+     * registro (`operazione = chiusa`: la riga di chi riceve in una somma, la nuda di un'estinzione). Null per una riga chiusa a mano.
+     * Giro sulle correzioni della Fase 1-bis della 1.11.0-beta.44 (G3, G25): prima si guardava solo `riga_uscente_id`.
+     */
+    public function passaggioCheLaChiude(): ?Subentro
+    {
+        // Ultima revisione (UD4): i passaggi della sola unità della riga; le pertinenze hanno il loro passaggio, con il loro registro.
+        return Subentro::where('immobile_id', $this->immobile_id)->orderByDesc('id')->get()
+            ->first(fn (Subentro $s) => (int) $s->riga_uscente_id === (int) $this->id
+                || collect($s->registro['righe'] ?? [])->contains(fn ($op) => ($op['operazione'] ?? null) === 'chiusa' && (int) ($op['id'] ?? 0) === (int) $this->id));
+    }
+
     /** I passaggi in cui questa riga è quella che si chiude. */
     public function subentriComeUscente(): HasMany
     {
@@ -148,13 +161,24 @@ class TitolaritaImmobile extends Pivot
      * il nudo torna pieno (estinzione) e quando il comproprietario compra l'altra metà (decisione A): una
      * riga che prosegue una riga con storia non è una prova da dissociare. Non è il «successore» della
      * decisione 13 (persona diversa): qui la persona è la stessa.
+     *
+     * ➕ 1.11.0-beta.44: la riga di un erede. La successione nomina come chi entra un erede solo (decisione 65); le righe degli altri
+     * stanno nel registro del passaggio, e senza questa condizione si sarebbero potute dissociare.
      */
     public function haStoria(): bool
     {
         return $this->data_fine !== null
             || $this->subentriComeUscente()->exists()
             || $this->subentriComeEntrante()->exists()
-            || $this->eContinuazione();
+            || $this->eContinuazione()
+            || $this->eRigaDiUnErede();
+    }
+
+    /** La riga è stata aperta (o sommata) da una successione per uno degli eredi. */
+    public function eRigaDiUnErede(): bool
+    {
+        return Subentro::where('immobile_id', $this->immobile_id)->where('tipo_passaggio', 'successione')->get(['id', 'tipo_passaggio', 'registro'])
+            ->contains(fn (Subentro $s) => in_array((int) $this->id, array_column($s->eredi(), 'riga_id'), true));
     }
 
     /** Esiste una riga della stessa persona su questa unità chiusa il giorno prima di questa? */

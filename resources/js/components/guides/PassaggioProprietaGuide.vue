@@ -9,7 +9,7 @@
  * chiede il condòmino e non ha valore liberatorio (Cass. 7260/2024).
  */
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { ArrowRightLeft, BookOpen, CalendarDays, Landmark, Scale, ShieldCheck, Undo2 } from 'lucide-vue-next';
+import { ArrowRightLeft, BookOpen, CalendarDays, Landmark, Scale, ScrollText, ShieldCheck, Undo2 } from 'lucide-vue-next';
 
 defineProps<{ open: boolean }>();
 defineEmits(['update:open']);
@@ -27,7 +27,7 @@ defineEmits(['update:open']);
             <SheetTitle class="text-2xl font-extrabold tracking-tight">Guida: registrare un passaggio</SheetTitle>
           </div>
           <SheetDescription class="text-base text-slate-600 dark:text-slate-400">
-            Vendita, donazione, locazione, usufrutto: come il programma conserva la storia dell'unità e cosa mostra prima di scrivere.
+            Vendita, donazione, locazione, usufrutto, successione: come il programma conserva la storia dell'unità e cosa mostra prima di scrivere.
           </SheetDescription>
         </SheetHeader>
 
@@ -114,12 +114,32 @@ defineEmits(['update:open']);
                   <li>quando due estinzioni cadono lo stesso giorno sulle stesse righe (due genitori che muoiono lo stesso giorno): la seconda trova la nuda proprietà e la proprietà piena della stessa persona nate lo stesso giorno, e non le può riunire. Qui il programma non indica una strada: le righe si correggono a mano da «Modifica associazione», o si chiede assistenza;</li>
                   <li>quando una pertinenza spuntata ha anch'essa un altro usufrutto: se lì serve una scelta, si toglie la spunta e l'estinzione si registra dalla pertinenza, dove si sceglie; se lì il programma si ferma, si toglie la spunta e la pertinenza si registra a mano da «Modifica associazione».</li>
                 </ul>
-                <span class="block mt-2">Nei primi tre casi l'estinzione si registra <strong>a mano</strong>: da «Modifica associazione» si chiude la riga dell'usufrutto al giorno prima dell'atto e si correggono le righe dei nudi proprietari secondo l'atto. Non c'è conguaglio automatico: se serve, si scrive con un saldo manuale dal Wallet sulla stessa gestione. Lo stesso vale se l'atto prevede che l'usufrutto si accresca all'altro usufruttuario: il pannello lo ricorda ogni volta che c'è un altro usufrutto in corso, e in quel caso l'estinzione non si registra da qui.</span></li>
+                <span class="block mt-2">Nei primi tre casi l'estinzione si registra <strong>a mano</strong>: da «Modifica associazione» si chiude la riga dell'usufrutto al giorno prima dell'atto e si correggono le righe dei nudi proprietari secondo l'atto. Non c'è conguaglio automatico: se serve, si scrive con un saldo manuale dal Wallet sulla stessa gestione. Se invece l'atto prevede che l'usufrutto si accresca all'altro usufruttuario, vale il punto qui sotto.</span></li>
+              <li><strong>L'accrescimento.</strong> Con un altro usufruttuario in corso, la scheda offre la casella «L'usufrutto si accresce all'altro usufruttuario»: va spuntata quando l'atto lo prevede, o quando l'usufrutto è un legato a più persone insieme (artt. 675 e 678 c.c.). Allora l'usufrutto di chi muore va agli usufruttuari che restano, in proporzione alla loro quota, la nuda proprietà resta nuda e il conguaglio dell'ordinaria va a loro. Senza la spunta, negli atti fra vivi, vale la regola di legge quando l'atto non dice altro: la nuda proprietà si riunisce all'usufrutto che finisce. Nel legato di usufrutto congiunto è la legge stessa a portare all'accrescimento: la casella va spuntata. Se la nuda proprietà dell'unità è di più nudi proprietari, il programma non sa quale usufrutto stia sopra quale nuda: la casella non c'è, e l'accrescimento si registra a mano da «Modifica associazione».</li>
               <li><strong>Chi resta obbligato.</strong> Il blocco «Chi resta obbligato» del pannello dice chi risponde delle spese. Se sull'unità non resta nessun altro titolare, chi torna proprietario pieno risponde di tutte le spese dell'unità (se sono più d'uno, ciascuno per la sua quota). Se ne restano — un altro usufrutto con i suoi nudi proprietari, il proprietario pieno dell'altra metà nell'unità mista — o se la nuda proprietà torna piena solo in parte, chi torna proprietario pieno risponde della parte dell'usufrutto che finisce (se sono più d'uno, ciascuno per la sua parte), e del resto dell'unità rispondono, come prima, i titolari di quella parte, chi torna pieno compreso se ne resta nudo proprietario: dove resta un usufrutto, il nudo proprietario e l'usufruttuario in solido (art. 67 ult. co. disp. att. c.c.). Per i passaggi registrati dalla 1.11.0-beta.43 in poi lo storico del passaggio dice anche chi torna proprietario pieno e per quale parte.</li>
             </ul>
             <p class="text-[13px] text-slate-500 dark:text-slate-400">
               Il modulo guarda le righe in corso il giorno dell'estinzione, non quelle di oggi: un'estinzione registrata in ritardo si sceglie sui nudi proprietari di allora. Se cambi chi esce o la data, la scelta si azzera e va rifatta.
             </p>
+          </section>
+
+          <!-- 1.11.0-beta.44, decisioni 64–66: la successione. -->
+          <section>
+            <h3 class="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white mb-3">
+              <ScrollText class="w-5 h-5 text-indigo-500" /> Quando muore un proprietario
+            </h3>
+            <p class="mb-3">
+              Si registra da «Registra passaggio» scegliendo «Successione», o dal menu della riga del titolare con «Registra la successione». Vale per il proprietario pieno, il comproprietario e il nudo proprietario; la morte dell'usufruttuario è l'estinzione dell'usufrutto, quella dell'inquilino la fine della locazione.
+            </p>
+            <ul class="list-disc pl-5 space-y-2 mb-3">
+              <li><strong>Una data sola, quella del decesso.</strong> Gli eredi sono titolari da quel giorno, nello stesso ruolo del defunto, e il defunto fino al giorno prima. La data in cui lo studio lo sa e quella della dichiarazione di successione non spostano niente: si registra quando gli eredi si fanno avanti, anche mesi dopo.</li>
+              <li><strong>Gli eredi, ognuno con la sua quota</strong> dell'unità: insieme fanno la quota del defunto. «Dividi in parti uguali» la divide al centesimo di punto. Un erede che era già comproprietario somma la quota ereditata alla sua. Un erede minorenne si registra come gli altri: verso il condominio paga, con i beni dell'erede, chi ne ha la rappresentanza.</li>
+              <li><strong>Il conguaglio è quello della vendita</strong>: i giorni dopo il decesso sono degli eredi, divisi per quota. Le rate in bozza di un piano che non si ricalcola più passano a un erede solo, l'erede di riferimento, che il modulo chiede solo quando serve; la sua parte nel conguaglio scende di altrettanto. Un piano che si ricalcola ancora, ricalcolato, dà da sé i giorni dopo il decesso agli eredi per quota.</li>
+              <li><strong>L'arretrato del defunto</strong> (le rate emesse e non pagate, le sue bozze, i suoi saldi) è la sua posizione verso il condominio: se è un debito, ne risponde ogni erede per la sua quota (art. 754 c.c.); può anche essere un credito, se il defunto aveva versato in più. Dove scriverlo è una scelta dello studio. Si può passarlo agli eredi per quota, con righe di saldo sulla stessa gestione: con il conguaglio ogni erede risponde della sua quota di tutto, e la posizione del defunto si chiude. In quel caso le rate in bozza dei piani che non si ricalcolano più, anche quelle di prima del decesso, vanno all'erede di riferimento, salvo quelle con un pagamento, e la parte degli altri eredi si regola con le loro righe di saldo, del conguaglio e dell'arretrato, che entrano nel piano dopo; le rate già emesse al defunto restano a suo nome e non si incassano, perché il loro importo è già nelle righe degli eredi. Si può invece lasciarlo a nome del defunto («eredi di …») e chiederlo agli eredi, registrando chi versa con «Versato da». Le quote che un piano ricalcolato dopo dà al defunto per i giorni prima del decesso l'arretrato non le comprende, e il riquadro «Da sapere» lo dice: con l'arretrato agli eredi si passano agli eredi con un saldo manuale dal Wallet; con l'arretrato a nome del defunto restano a suo nome.</li>
+              <li><strong>Il legato.</strong> Se il testamento lascia l'unità a chi non eredita il patrimonio, si spunta «L'unità è un legato»: chi riceve l'unità paga dal giorno del decesso, e l'arretrato del defunto resta a suo nome, perché ne rispondono gli eredi.</li>
+              <li><strong>Niente copia autentica.</strong> La casella della vendita libera chi vende (art. 63 co. 5 disp. att. c.c.) e qui non c'entra; al suo posto si può allegare la dichiarazione di successione o il testamento.</li>
+              <li><strong>Correggere.</strong> Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: non si annulla il solo conguaglio, si annulla il passaggio e lo si registra di nuovo. Con l'arretrato a nome del defunto il conguaglio si annulla come nella vendita.</li>
+            </ul>
           </section>
 
           <section>
@@ -134,6 +154,9 @@ defineEmits(['update:open']);
             </p>
             <p class="mb-3">
               Nella <strong>vendita o donazione con riserva d'usufrutto</strong>, dal giorno dell'atto nudo proprietario e usufruttuario rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.), e la copia autentica non libera chi vende, che resta usufruttuario. Se chi compra la nuda proprietà risponda anche dell'arretrato di chi vende (art. 63 co. 4) la giurisprudenza non l'ha chiarito: decide l'amministratore.
+            </p>
+            <p class="mb-3">
+              Nella <strong>successione</strong>, dei contributi maturati fino al giorno prima del decesso rispondono gli eredi, ognuno in proporzione della sua quota ereditaria (art. 754 c.c.); dal decesso gli eredi rispondono dei contributi dell'unità come comproprietari, divisi fra loro per quota, e in assemblea li rappresenta una persona sola (art. 67 co. 2 disp. att. c.c.).
             </p>
             <p class="text-[13px] text-slate-500 dark:text-slate-400">
               L'attestazione dello stato dei pagamenti e delle liti in corso (art. 1130 n. 9 c.c.) la chiede il condòmino che vende; il notaio la pretende nella prassi, ma non ha valore liberatorio verso il condominio (Cass. 7260/2024).

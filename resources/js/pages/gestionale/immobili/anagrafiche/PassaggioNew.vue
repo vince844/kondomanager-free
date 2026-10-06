@@ -47,7 +47,7 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from 'vue-select';
-import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Info, AlertTriangle, FileSignature, Home, KeyRound, KeySquare, Landmark, BellRing, Paperclip, Lock } from 'lucide-vue-next';
+import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Info, AlertTriangle, FileSignature, Home, KeyRound, KeySquare, Landmark, BellRing, Paperclip, Lock, ScrollText, Plus, X } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
@@ -55,6 +55,8 @@ import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata,
 import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
 import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
+import { partiUguali, quoteCheNonTornano } from '@/lib/gestionale/passaggi/quoteEredi';
+import { fraseArretrato, rinunciaEffettiva as laRinunciaVale } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
 
 const props = defineProps<{
   condominio: Building;
@@ -82,6 +84,7 @@ const TIPI: { id: TipoPassaggio; titolo: string; sotto: string; icona: any }[] =
   { id: 'inizio_locazione', titolo: 'Inizio locazione', sotto: 'entra un inquilino', icona: KeyRound },
   { id: 'fine_locazione', titolo: 'Fine locazione', sotto: 'esce l\'inquilino', icona: KeySquare },
   { id: 'usufrutto', titolo: 'Usufrutto', sotto: 'costituzione o estinzione', icona: Landmark },
+  { id: 'successione', titolo: 'Successione', sotto: 'muore un proprietario', icona: ScrollText },
 ];
 const tipoCorrente = computed(() => TIPI.find(t => t.id === props.tipo) ?? TIPI[0]);
 
@@ -100,6 +103,8 @@ const RUOLI_USCENTE: Record<TipoPassaggio, string[]> = {
   inizio_locazione: [],
   fine_locazione: ['inquilino'],
   usufrutto: ['proprietario', 'usufruttuario'],
+  // Decisione 64: muore il proprietario pieno, un comproprietario o il nudo proprietario; la morte dell'usufruttuario è l'estinzione.
+  successione: ['proprietario', 'nuda_proprietario'],
 };
 const proprietari = computed(() => props.titolari.filter(t => ['proprietario', 'nuda_proprietario'].includes(t.tipologia)));
 const nudoProprietario = computed(() => props.titolari.find(t => t.tipologia === 'nuda_proprietario'));
@@ -117,7 +122,7 @@ const sottotipoIniziale = props.tipo === 'usufrutto'
 
 const form = useForm({
   tipo: props.tipo as string,
-  sottotipo: sottotipoIniziale as 'costituzione' | 'estinzione' | 'riserva_usufrutto' | null,
+  sottotipo: sottotipoIniziale as 'costituzione' | 'estinzione' | 'riserva_usufrutto' | 'legato' | null,
   riga_uscente_id: (props.rigaPreselezionata ?? null) as number | null,
   anagrafica_entrante_id: null as number | null,
   // Senza valore predefinito, di proposito.
@@ -152,6 +157,13 @@ const form = useForm({
   nudi_che_tornano: [] as number[],
   // Decisione 62: «tutti i nudi, ciascuno per la sua quota» (la donazione congiunta), al posto delle caselle.
   nudi_per_quota: false,
+  // 1.11.0-beta.44: all'estinzione, l'atto prevede l'accrescimento all'altro usufruttuario. Nessuna spunta già messa.
+  accrescimento: false,
+  // Decisione 65: gli eredi con la quota che ereditano, che insieme fanno quella del defunto; l'arretrato del defunto, senza una
+  // scelta già fatta; l'erede che riceve le bozze di un piano fermo, chiesto solo quando serve.
+  eredi: [{ anagrafica_id: null, quota: '' }] as { anagrafica_id: number | null; quota: string }[],
+  arretrato: null as 'eredi' | 'defunto' | null,
+  erede_di_riferimento: null as number | null,
 });
 
 const ANTICIPI = [30, 60, 90, 180] as const;
@@ -189,6 +201,7 @@ const ETICHETTE_ERRORI: Record<string, string> = {
   riga_uscente_id: 'chi esce', anagrafica_entrante_id: 'chi entra', decorrenza: 'la data del passaggio', quota: 'la quota',
   tipologia: 'il ruolo', pertinenze: 'le pertinenze', nota_cancello: 'la nota del cancello', nota_conguaglio: 'la ragione della rinuncia al conguaglio',
   allegato_titolo: "l'allegato", promemoria_giorni: "l'anticipo del promemoria", copia_autentica_il: 'la data della copia autentica', nudi_che_tornano: 'chi torna proprietario pieno', nudi_per_quota: 'chi torna proprietario pieno', estinzione: 'chi torna proprietario pieno',
+  eredi: 'gli eredi', arretrato: "l'arretrato del defunto", erede_di_riferimento: "l'erede di riferimento", accrescimento: "l'accrescimento", rinuncia_conguaglio: 'la rinuncia al conguaglio',
 };
 // `ordinaria_impronta` ha il suo riquadro nella scheda dell'ordinaria, che sopravvive al ricalcolo del pannello.
 const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio' && k !== 'ordinaria_impronta')));
@@ -231,7 +244,50 @@ watch(uscente, (u) => {
   if (!u) return;
   form.quota = String(u.quota);
   if (props.tipo === 'vendita') form.tipologia = riserva.value ? 'nuda_proprietario' : u.tipologia;
+  // Decisione 65: gli eredi entrano nel ruolo del defunto.
+  if (props.tipo === 'successione') form.tipologia = u.tipologia;
 }, { immediate: true });
+
+// --- Decisione 65: la successione ------------------------------------------------------------------
+const eSuccessione = computed(() => props.tipo === 'successione');
+/** Le persone fra cui scegliere gli eredi: quelle del condominio e quelle create qui, meno il defunto. */
+const candidatiEredi = computed(() => {
+  const visti = new Set<number>();
+  return [...personeAggiunte.value, ...props.anagrafiche].filter(a => a.id !== uscente.value?.anagrafica.id && !visti.has(a.id) && visti.add(a.id));
+});
+function aggiungiErede() {
+  form.eredi.push({ anagrafica_id: null, quota: '' });
+}
+function togliErede(i: number) {
+  if (form.erede_di_riferimento !== null && form.eredi[i]?.anagrafica_id === form.erede_di_riferimento) form.erede_di_riferimento = null;
+  form.eredi.splice(i, 1);
+  if (!form.eredi.length) aggiungiErede();
+}
+/** «Dividi in parti uguali»: la quota del defunto, in centesimi di punto, con il centesimo che avanza ai primi. */
+function dividiInPartiUguali() {
+  partiUguali(uscente.value?.quota ?? form.quota, form.eredi.length).forEach((q, i) => { form.eredi[i].quota = q; });
+}
+const quoteNonTornano = computed(() => eSuccessione.value && uscente.value ? quoteCheNonTornano(form.eredi.map(e => e.quota), uscente.value.quota) : null);
+/**
+ * Il legatario riceve l'unità ma non eredita il patrimonio: l'arretrato del defunto resta a suo nome, per forza (decisione 65). Rilievo
+ * L20 della Fase 1-bis: togliendo la spunta, la scelta che il legato aveva imposto torna da fare, se prima non c'era.
+ */
+let arretratoPrimaDelLegato: typeof form.arretrato = null;
+const legato = computed({
+  get: () => form.sottotipo === 'legato',
+  set: (v: boolean) => {
+    if (v && form.sottotipo !== 'legato') arretratoPrimaDelLegato = form.arretrato;
+    if (!v && form.sottotipo === 'legato') form.arretrato = arretratoPrimaDelLegato;
+    form.sottotipo = v ? 'legato' : null;
+    if (v) form.arretrato = 'defunto';
+  },
+});
+/** L'erede di riferimento: lo chiede il server quando ci sono bozze di un piano fermo e gli eredi sono più d'uno. */
+const chiediRiferimento = computed(() => eSuccessione.value && form.eredi.length > 1 && (!!(form.errors as Record<string, string>).erede_di_riferimento || form.erede_di_riferimento !== null));
+const erediScelti = computed(() => form.eredi.map(e => candidatiEredi.value.find(a => a.id === e.anagrafica_id)).filter((a): a is PersonaDelCondominio => !!a));
+watch(() => form.eredi.map(e => e.anagrafica_id).join(','), () => {
+  if (form.erede_di_riferimento !== null && !form.eredi.some(e => e.anagrafica_id === form.erede_di_riferimento)) form.erede_di_riferimento = null;
+});
 
 watch(() => form.sottotipo, (s) => {
   if (props.tipo !== 'usufrutto') return;
@@ -296,6 +352,15 @@ watch([() => form.riga_uscente_id, () => form.sottotipo, () => form.decorrenza],
 // «Ciascuno per la sua quota» e le caselle sono due risposte diverse: una toglie l'altra.
 watch(() => form.nudi_per_quota, (perQuota) => { if (perQuota) form.nudi_che_tornano = []; });
 
+/**
+ * 1.11.0-beta.44: l'accrescimento si offre all'estinzione quando sull'unità, quel giorno, c'è un altro usufruttuario. Non quando la
+ * nuda è di più nudi proprietari (decisione 67, punto 2): il programma non sa quale usufrutto stia sopra quale nuda, e il server lo
+ * rifiuta; la scheda lo dice al posto della casella.
+ */
+const piuNudi = computed(() => new Set(nudiAllaDecorrenza.value.map(t => t.anagrafica.id)).size > 1);
+const offriAccrescimento = computed(() => estinzione.value && altriUsufrutti.value && !piuNudi.value);
+watch(offriAccrescimento, (o) => { if (!o) form.accrescimento = false; });
+
 const serveEntrante = computed(() =>
   props.tipo === 'vendita' || props.tipo === 'inizio_locazione' || (props.tipo === 'usufrutto' && form.sottotipo !== 'estinzione'),
 );
@@ -343,7 +408,12 @@ const mancante = computed<string[]>(() => {
   // nessuno è stato scelto: finché non si sceglie un inquilino o non si spunta la casella, si aspetta.
   if (entranteFacoltativo.value && !nessunEntrante.value && !form.anagrafica_entrante_id) m.push('chi entra, oppure la spunta «Nessuno — l\'unità resta sfitta»');
   if (form.copia_autentica && !form.copia_autentica_il) m.push('la data in cui hai ricevuto la copia autentica');
-  if (props.tipo === 'usufrutto' && form.sottotipo === 'estinzione' && !nudoProprietario.value) m.push('un nudo proprietario registrato, che torni proprietario pieno');
+  if (props.tipo === 'usufrutto' && form.sottotipo === 'estinzione' && !nudoProprietario.value && !form.accrescimento) m.push('un nudo proprietario registrato, che torni proprietario pieno');
+  if (eSuccessione.value) {
+    if (form.eredi.some(e => !e.anagrafica_id)) m.push('chi sono gli eredi');
+    else if (quoteNonTornano.value) m.push(`le quote degli eredi (${quoteNonTornano.value})`);
+    if (!form.arretrato) m.push('la scelta sull\'arretrato del defunto');
+  }
   return m;
 });
 const completo = computed(() => mancante.value.length === 0);
@@ -369,7 +439,7 @@ function corpoAnteprima() {
     tipo: form.tipo,
     sottotipo: form.sottotipo,
     riga_uscente_id: props.tipo === 'inizio_locazione' ? null : form.riga_uscente_id,
-    anagrafica_entrante_id: nessunEntrante.value ? null : form.anagrafica_entrante_id,
+    anagrafica_entrante_id: nessunEntrante.value || eSuccessione.value ? null : form.anagrafica_entrante_id,
     decorrenza: form.decorrenza,
     quota: form.quota,
     tipologia: form.tipologia,
@@ -383,8 +453,15 @@ function corpoAnteprima() {
     // Cambiano il conguaglio: entrano nell'anteprima. Il server li legge solo alla costituzione e alla riserva d'usufrutto.
     ordinaria_dopo_atto: form.ordinaria_dopo_atto,
     voci_da_tenere: form.voci_da_tenere,
-    nudi_che_tornano: estinzione.value ? form.nudi_che_tornano : [],
-    nudi_per_quota: estinzione.value ? form.nudi_per_quota : false,
+    nudi_che_tornano: estinzione.value && !form.accrescimento ? form.nudi_che_tornano : [],
+    nudi_per_quota: estinzione.value && !form.accrescimento ? form.nudi_per_quota : false,
+    accrescimento: estinzione.value ? form.accrescimento : false,
+    // Decisione 65: le quote come le scrive l'amministratore («33,33»), al server con il punto.
+    ...(eSuccessione.value ? {
+      eredi: form.eredi.map(e => ({ anagrafica_id: e.anagrafica_id, quota: String(e.quota).trim().replace(',', '.') })),
+      arretrato: form.arretrato,
+      erede_di_riferimento: form.eredi.length > 1 ? form.erede_di_riferimento : null,
+    } : {}),
   };
 }
 
@@ -458,9 +535,13 @@ const avvisiCancello = computed(() => anteprima.value?.cancello.avvisi ?? []);
 const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_letto && form.nota_cancello.trim().length >= 10));
 // La rinuncia al conguaglio vale solo se c'è una coppia proposta, e vuole la sua ragione.
 // La rinuncia vale solo se il pannello propone una coppia: se sparisce (cambio di controparte o di data) la
-// spunta non blocca il pulsante e non parte col modulo; se ricompare, la spunta è ancora lì (verifica S5, R13).
+// spunta non blocca il pulsante e non parte col modulo; se ricompare, la spunta è ancora lì (verifica S5, R13). Lo stesso con
+// l'arretrato agli eredi, dove il server la rifiuta (rilievo X11 della Fase 1-bis della .44): `form.arretrato`, il campo che il
+// server controlla.
 const coppieProposte = computed(() => (anteprima.value?.rate.conguaglio?.coppie.length ?? 0) > 0);
-const rinunciaEffettiva = computed(() => coppieProposte.value && form.rinuncia_conguaglio);
+const rinunciaEffettiva = computed(() => laRinunciaVale(anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.rinuncia_conguaglio, eSuccessione.value ? form.arretrato : null));
+// Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione.
+const fraseDellArretrato = computed(() => fraseArretrato(anteprima.value?.rate.arretrato, rinunciaEffettiva.value));
 const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value || form.nota_conguaglio.trim().length >= 10);
 const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && cancelloSoddisfatto.value && rinunciaSoddisfatta.value && !form.processing);
 
@@ -494,6 +575,13 @@ function submit() {
 // --- «Crea nuova anagrafica» senza lasciare la pagina --------------------------------------------
 
 const nuovaAperta = ref(false);
+/** Nella successione la persona nuova va nella riga dell'erede da cui si è aperto il dialogo. */
+const nuovaPerErede = ref<number | null>(null);
+function apriNuovaPerErede(i: number) {
+  nuovaPerErede.value = i;
+  nuovaAperta.value = true;
+}
+watch(nuovaAperta, (aperta) => { if (!aperta) setTimeout(() => { nuovaPerErede.value = null; }, 300); });
 const nuova = useForm({ nome: '', codice_fiscale: '', indirizzo: '', email: '' });
 const personeAggiunte = ref<PersonaDelCondominio[]>([]);
 const tuttiICandidati = computed(() => [...personeAggiunte.value, ...candidatiEntrante.value]);
@@ -507,7 +595,8 @@ async function creaAnagrafica() {
       { nome: nuova.nome, codice_fiscale: nuova.codice_fiscale || null, indirizzo: nuova.indirizzo, email: nuova.email || null },
     );
     personeAggiunte.value.unshift(data);
-    form.anagrafica_entrante_id = data.id;
+    if (nuovaPerErede.value !== null && form.eredi[nuovaPerErede.value]) form.eredi[nuovaPerErede.value].anagrafica_id = data.id;
+    else form.anagrafica_entrante_id = data.id;
     nuovaAperta.value = false;
     nuova.reset();
   } catch (e: any) {
@@ -582,7 +671,7 @@ function urlTipo(t: TipoPassaggio) {
           <form @submit.prevent="submit" class="lg:col-span-2 space-y-6">
 
             <!-- Il tipo: la prima domanda decide tutto il resto -->
-            <nav class="grid grid-cols-2 md:grid-cols-4 gap-2" aria-label="Tipo di passaggio">
+            <nav class="grid grid-cols-2 md:grid-cols-5 gap-2" aria-label="Tipo di passaggio">
               <Link
                 v-for="t in TIPI" :key="t.id"
                 :href="urlTipo(t.id)"
@@ -617,6 +706,7 @@ function urlTipo(t: TipoPassaggio) {
                 </CardTitle>
                 <CardDescription>
                   <template v-if="tipo === 'inizio_locazione'">Chi risponde verso il condominio non cambia.</template>
+                  <template v-else-if="tipo === 'successione'">Chi esce è il defunto: proprietario pieno, comproprietario o nudo proprietario. Se era usufruttuario, la sua morte è l'estinzione dell'usufrutto.</template>
                   <template v-else-if="tipo === 'usufrutto'">Costituzione: il proprietario pieno diventa nudo proprietario. Estinzione: l'usufruttuario esce e il nudo proprietario torna proprietario pieno; con un altro usufrutto in corso sull'unità, torna proprietario pieno solo il nudo proprietario dell'usufrutto che finisce.</template>
                   <template v-else>I titolari in corso oggi su questa unità. Se è uno solo, è già selezionato. Un periodo già chiuso da «Modifica» non compare qui e non si può più registrare come passaggio.</template>
                 </CardDescription>
@@ -689,17 +779,18 @@ function urlTipo(t: TipoPassaggio) {
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">
-                  {{ eLocazione ? (tipo === 'inizio_locazione' ? 'Inizio della locazione' : 'Fine della locazione') : 'Data dell\'atto' }}
+                  {{ eLocazione ? (tipo === 'inizio_locazione' ? 'Inizio della locazione' : 'Fine della locazione') : eSuccessione ? 'Data del decesso' : 'Data dell\'atto' }}
                 </CardTitle>
                 <CardDescription>
                   <template v-if="tipo === 'inizio_locazione'">Il primo giorno della locazione. La scadenza, se la conosci, è solo un promemoria.</template>
+                  <template v-else-if="eSuccessione">Gli eredi sono titolari dal giorno del decesso, il defunto fino al giorno prima. La data in cui lo hai saputo e quella della dichiarazione di successione non spostano niente.</template>
                   <template v-else>Una data sola. Il giorno prima lo calcola il programma.</template>
                 </CardDescription>
               </CardHeader>
               <CardContent class="space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
-                    <Label for="decorrenza" class="mb-1.5 block">{{ tipo === 'fine_locazione' ? 'Primo giorno senza l\'inquilino' : 'Da quando' }}</Label>
+                    <Label for="decorrenza" class="mb-1.5 block">{{ tipo === 'fine_locazione' ? 'Primo giorno senza l\'inquilino' : eSuccessione ? 'Il giorno del decesso' : 'Da quando' }}</Label>
                     <VueDatePicker
                       ref="dpDecorrenza"
                       v-model="form.decorrenza"
@@ -789,6 +880,117 @@ function urlTipo(t: TipoPassaggio) {
                 <p v-else-if="form.decorrenza && !completo" class="text-[12px] text-slate-500 dark:text-slate-400 italic">
                   Appena il modulo è completo, qui compare chi risulterà titolare fino a quando e chi da quando.
                 </p>
+              </CardContent>
+            </Card>
+
+            <!-- ---------------------------- Decisione 65: gli eredi ---------------------------- -->
+            <Card v-if="eSuccessione" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ legato ? 'Chi riceve l\'unità' : 'Gli eredi' }}</CardTitle>
+                <CardDescription>Chi ha accettato l'eredità, ogni erede con la quota dell'unità che riceve: insieme fanno la quota del defunto. Entrano nello stesso ruolo, in comunione. Un erede minorenne si registra come gli altri: verso il condominio paga, con i beni dell'erede, chi ne ha la rappresentanza.</CardDescription>
+              </CardHeader>
+              <CardContent class="space-y-4">
+                <div v-for="(e, i) in form.eredi" :key="i" class="grid grid-cols-12 gap-3 items-start">
+                  <div class="col-span-12 sm:col-span-7">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <Label :for="`erede_${i}`">{{ legato ? 'Legatario' : 'Erede' }} {{ form.eredi.length > 1 ? i + 1 : '' }}</Label>
+                      <button type="button" tabindex="-1" @click="apriNuovaPerErede(i)" class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">
+                        <UserPlus class="w-3.5 h-3.5" /> Crea nuova anagrafica
+                      </button>
+                    </div>
+                    <v-select :id="`erede_${i}`" class="w-full bg-white dark:bg-slate-950 text-sm" :options="candidatiEredi" v-model="e.anagrafica_id"
+                      :reduce="(a: PersonaDelCondominio) => a.id" label="nome" placeholder="Cerca o seleziona…"
+                      :selectable="(a: PersonaDelCondominio) => !form.eredi.some((x, j) => j !== i && x.anagrafica_id === a.id)">
+                      <template #option="{ nome, codice_fiscale, indirizzo }">
+                        <div class="flex flex-col py-0.5">
+                          <span class="font-medium text-sm">{{ nome }}</span>
+                          <span class="text-[11px] text-slate-400 truncate">{{ codice_fiscale || indirizzo || '' }}</span>
+                        </div>
+                      </template>
+                      <template #no-options="{ search }">
+                        <div class="py-2 px-3 text-sm text-slate-500 text-left">
+                          <template v-if="search">Nessuna persona del condominio corrisponde a «{{ search }}».</template>
+                          <template v-else>Nessun'altra persona del condominio da scegliere.</template>
+                          Usa «Crea nuova anagrafica» qui sopra.
+                        </div>
+                      </template>
+                    </v-select>
+                    <InputError :message="(form.errors as Record<string, string>)[`eredi.${i}.anagrafica_id`]" />
+                  </div>
+                  <div class="col-span-9 sm:col-span-4">
+                    <Label :for="`quota_erede_${i}`" class="mb-1.5 block">Quota (%)</Label>
+                    <Input :id="`quota_erede_${i}`" v-model="e.quota" inputmode="decimal" class="w-full bg-white dark:bg-slate-950 tabular-nums" placeholder="es. 50" />
+                    <InputError :message="(form.errors as Record<string, string>)[`eredi.${i}.quota`]" />
+                  </div>
+                  <div class="col-span-3 sm:col-span-1 pt-7 flex justify-end">
+                    <button v-if="form.eredi.length > 1" type="button" @click="togliErede(i)" class="h-9 w-9 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30" :aria-label="`Togli l'erede ${i + 1}`">
+                      <X class="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <button type="button" @click="aggiungiErede" class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">
+                    <Plus class="w-4 h-4" /> Aggiungi un erede
+                  </button>
+                  <button v-if="form.eredi.length > 1 && uscente" type="button" @click="dividiInPartiUguali" class="text-[13px] font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200">
+                    Dividi in parti uguali
+                  </button>
+                  <span v-if="uscente" class="text-[12px] text-slate-500 dark:text-slate-400">La quota di {{ uscente.anagrafica.nome }}: {{ quotaIt(uscente.quota) }}&nbsp;%</span>
+                </div>
+                <p v-if="quoteNonTornano && form.eredi.every(e => e.anagrafica_id && String(e.quota).trim() !== '')" class="text-[12px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+                  <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5" /> {{ quoteNonTornano.charAt(0).toUpperCase() + quoteNonTornano.slice(1) }}.
+                </p>
+                <InputError :message="form.errors.eredi" />
+
+                <!-- L'erede di riferimento: solo quando il server lo chiede (bozze di un piano fermo, più eredi). -->
+                <div v-if="chiediRiferimento" class="rounded-lg border border-indigo-200 bg-indigo-50/60 dark:border-indigo-800/60 dark:bg-indigo-950/20 p-4 space-y-2">
+                  <Label for="erede_di_riferimento" class="block text-indigo-900 dark:text-indigo-200">Erede di riferimento</Label>
+                  <p class="text-[12px] text-indigo-900/80 dark:text-indigo-200/80 leading-snug">Il piano rate non si ricalcola più, e le sue rate non ancora emesse si intestano a una persona sola: a chi? Gli altri eredi, su questo piano, non hanno rate: pagano la loro parte con le righe di saldo, che entrano nel piano dopo. Il conguaglio toglie l'importo di quelle rate solo all'erede di riferimento.</p>
+                  <v-select id="erede_di_riferimento" class="w-full bg-white dark:bg-slate-950 text-sm" :options="erediScelti" v-model="form.erede_di_riferimento" :reduce="(a: PersonaDelCondominio) => a.id" label="nome" placeholder="Scegli l'erede…" />
+                  <InputError :message="(form.errors as Record<string, string>).erede_di_riferimento" />
+                </div>
+
+                <!-- Il legato: chi riceve l'unità non eredita il patrimonio. -->
+                <label class="flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 cursor-pointer select-none transition-colors"
+                  :class="legato ? 'bg-purple-50 border-purple-300 dark:bg-purple-900/20 dark:border-purple-800' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
+                  <input type="checkbox" v-model="legato" class="w-4 h-4 mt-0.5 accent-purple-600 rounded border-slate-300" />
+                  <span class="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+                    <strong class="font-semibold text-slate-900 dark:text-slate-100">L'unità è un legato</strong> (il testamento la lascia a una o più persone che non ereditano il patrimonio)
+                    <span v-if="legato" class="block text-slate-600 dark:text-slate-400">Chi riceve l'unità paga i contributi dal giorno del decesso; l'arretrato del defunto resta a suo nome, e ne rispondono gli eredi.</span>
+                  </span>
+                </label>
+                <InputError :message="form.errors.sottotipo" />
+              </CardContent>
+            </Card>
+
+            <!-- ---------------------------- Decisione 65 (2): l'arretrato del defunto ---------------------------- -->
+            <Card v-if="eSuccessione" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">L'arretrato del defunto</CardTitle>
+                <CardDescription>Le rate emesse al defunto e non pagate, le sue bozze e i suoi saldi: la sua posizione verso il condominio. Se è un debito, ne risponde ogni erede per la sua quota (art. 754 c.c.).</CardDescription>
+              </CardHeader>
+              <CardContent class="space-y-3">
+                <label class="flex items-start gap-3 rounded-lg border p-3 transition-all"
+                  :class="[legato ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer', form.arretrato === 'eredi' ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400 dark:bg-emerald-900/20' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700']">
+                  <input type="radio" v-model="form.arretrato" value="eredi" :disabled="legato" class="w-4 h-4 mt-0.5 text-emerald-600 border-slate-300 focus:ring-emerald-600" />
+                  <span class="flex flex-col">
+                    <!-- Decisione 69 (2): niente «la proposta della legge»: l'art. 754 c.c. vale con tutte e due le strade, e dove scrivere il debito è una scelta. -->
+                    <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">Agli eredi, per quota</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Righe di saldo sulla stessa gestione, di segno opposto: la posizione del defunto passa a ogni erede per la sua quota. Con il conguaglio ogni erede risponde della sua quota di tutto, e la posizione del defunto si chiude. Le rate in bozza dei piani che non si ricalcolano più, anche quelle di prima del decesso, vanno all'erede di riferimento, salvo quelle con un pagamento; la parte degli altri eredi si regola con le loro righe di saldo, che entrano nel piano dopo.</span>
+                  </span>
+                </label>
+                <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all"
+                  :class="form.arretrato === 'defunto' ? 'bg-slate-100 border-slate-400 ring-1 ring-slate-400 dark:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
+                  <input type="radio" v-model="form.arretrato" value="defunto" class="w-4 h-4 mt-0.5 text-slate-700 border-slate-300 focus:ring-slate-600" />
+                  <span class="flex flex-col">
+                    <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">A nome del defunto («eredi di …»)</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Resta dov'è, e lo studio lo chiede agli eredi; chi versa al posto del defunto si registra con «Versato da».<template v-if="legato"> Con il legato è l'unica scelta.</template></span>
+                  </span>
+                </label>
+                <p v-if="fraseDellArretrato" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
+                  <Scale class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /><span>{{ fraseDellArretrato }}</span>
+                </p>
+                <InputError :message="(form.errors as Record<string, string>).arretrato" />
               </CardContent>
             </Card>
 
@@ -971,9 +1173,26 @@ function urlTipo(t: TipoPassaggio) {
             <!-- Usufrutto in estinzione: chi torna pieno -->
             <Card v-if="tipo === 'usufrutto' && form.sottotipo === 'estinzione'" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Chi torna proprietario pieno</CardTitle>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ form.accrescimento ? 'A chi va l\'usufrutto' : 'Chi torna proprietario pieno' }}</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent class="space-y-4">
+                <!-- 1.11.0-beta.44: con un altro usufruttuario in corso, l'atto può prevedere l'accrescimento. Nessuna spunta già messa:
+                     senza patto, negli atti fra vivi, la legge porta al consolidamento con la nuda proprietà. -->
+                <label v-if="offriAccrescimento" class="flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 cursor-pointer select-none transition-colors"
+                  :class="form.accrescimento ? 'bg-purple-50 border-purple-300 dark:bg-purple-900/20 dark:border-purple-800' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
+                  <input type="checkbox" v-model="form.accrescimento" class="w-4 h-4 mt-0.5 accent-purple-600 rounded border-slate-300" />
+                  <span class="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+                    <strong class="font-semibold text-slate-900 dark:text-slate-100">L'usufrutto si accresce all'altro usufruttuario</strong> (l'atto lo prevede, o è un legato di usufrutto congiunto, artt. 675 e 678 c.c.)
+                    <span class="block text-slate-600 dark:text-slate-400">{{ form.accrescimento
+                      ? 'L\'usufrutto di chi muore va agli usufruttuari che restano, in proporzione alla loro quota; la nuda proprietà resta nuda, e il conguaglio dell\'ordinaria va a loro.'
+                      : 'Senza la spunta, negli atti fra vivi, vale la regola di legge quando l\'atto non dice altro: la nuda proprietà si riunisce all\'usufrutto che finisce. Nel legato di usufrutto congiunto è la legge stessa a portare all\'accrescimento: spunta la casella.' }}</span>
+                  </span>
+                </label>
+                <p v-if="estinzione && altriUsufrutti && piuNudi" class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2.5 text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  La nuda proprietà di questa unità è di più nudi proprietari: il programma non sa quale usufrutto stia sopra quale nuda, e l'accrescimento all'altro usufruttuario non si registra da qui. Se l'atto lo prevede, o se l'usufrutto è un legato a più persone insieme (dove l'accrescimento lo vuole la legge, artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione»; altrimenti, negli atti fra vivi, vale la regola di legge qui sotto.
+                </p>
+                <InputError :message="(form.errors as Record<string, string>).accrescimento" />
+                <template v-if="!form.accrescimento">
                 <!-- Decisione 57 (D2): con un altro usufrutto in corso, torna piena solo la nuda dell'usufrutto che finisce. Sui
                      titolari censiti a mano lo dice l'amministratore, senza una scelta già fatta. -->
                 <!-- Decisione 61: il programma non sa quale nuda torna piena, e lo dice; niente caselle. -->
@@ -1019,11 +1238,12 @@ function urlTipo(t: TipoPassaggio) {
                 <p v-else class="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
                   <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5" /> Nessun nudo proprietario è registrato su questa unità: senza, l'estinzione non sa a chi tornare.
                 </p>
+                </template>
               </CardContent>
             </Card>
 
             <!-- ---------------------------- 6. Pertinenze ---------------------------- -->
-            <PassaggioPertinenzeCard v-if="pertinenze.length && (tipo === 'vendita' || tipo === 'usufrutto')" :pertinenze="pertinenze" v-model="form.pertinenze" />
+            <PassaggioPertinenzeCard v-if="pertinenze.length && (tipo === 'vendita' || tipo === 'usufrutto' || tipo === 'successione')" :pertinenze="pertinenze" :successione="tipo === 'successione'" :legato="legato" v-model="form.pertinenze" />
             <InputError v-if="pertinenze.length" :message="form.errors.pertinenze" />
 
             <!-- ---------------------------- 7–8. Documento e nota ---------------------------- -->
@@ -1032,13 +1252,14 @@ function urlTipo(t: TipoPassaggio) {
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ eLocazione ? 'Contratto e note' : 'Titolo di provenienza e note' }}</CardTitle>
                 <CardDescription>
                   <template v-if="eLocazione">Gli estremi del contratto, se li hai. Le note restano interne.</template>
+                  <template v-else-if="eSuccessione">La dichiarazione di successione, il testamento o l'atto di accettazione: qualunque documento dica chi sono gli eredi. La copia autentica del titolo qui non serve: libera chi vende, non c'entra con chi muore.</template>
                   <template v-else>Rogito, verbale di separazione omologato, decreto di trasferimento all'asta: qualunque titolo valga per la trascrizione.</template>
                 </CardDescription>
               </CardHeader>
               <CardContent class="space-y-5">
                 <div>
-                  <Label for="estremi_titolo" class="mb-1.5 block">{{ eLocazione ? 'Estremi del contratto' : 'Estremi dell\'atto' }} <span class="text-slate-400 font-normal">(facoltativi)</span></Label>
-                  <Input id="estremi_titolo" v-model="form.estremi_titolo" class="w-full bg-white dark:bg-slate-950" :placeholder="eLocazione ? 'es. contratto registrato il 12/06/2026, n. 4521' : 'es. atto notaio Verdi, rep. 12345 del 30/04/2026'" />
+                  <Label for="estremi_titolo" class="mb-1.5 block">{{ eLocazione ? 'Estremi del contratto' : eSuccessione ? 'Estremi del documento' : 'Estremi dell\'atto' }} <span class="text-slate-400 font-normal">(facoltativi)</span></Label>
+                  <Input id="estremi_titolo" v-model="form.estremi_titolo" class="w-full bg-white dark:bg-slate-950" :placeholder="eLocazione ? 'es. contratto registrato il 12/06/2026, n. 4521' : eSuccessione ? 'es. dichiarazione di successione presentata il 12/09/2026' : 'es. atto notaio Verdi, rep. 12345 del 30/04/2026'" />
                   <InputError :message="form.errors.estremi_titolo" />
                 </div>
 
@@ -1065,7 +1286,7 @@ function urlTipo(t: TipoPassaggio) {
                 </div>
 
                 <div>
-                  <Label for="allegato_titolo" class="mb-1.5 block">{{ eLocazione ? 'Allega il contratto' : 'Allega copia del titolo' }} <span class="text-slate-400 font-normal">(PDF, facoltativo)</span></Label>
+                  <Label for="allegato_titolo" class="mb-1.5 block">{{ eLocazione ? 'Allega il contratto' : eSuccessione ? 'Allega il documento' : 'Allega copia del titolo' }} <span class="text-slate-400 font-normal">(PDF, facoltativo)</span></Label>
                   <!-- L'input nativo è nascosto: il suo testo («Choose file», «No file chosen») lo scrive il browser nella
                        sua lingua, non noi (Checkpoint 2). Il pulsante e il nome del file sono nostri. -->
                   <div class="flex flex-wrap items-center gap-3">
@@ -1086,7 +1307,7 @@ function urlTipo(t: TipoPassaggio) {
                     <button v-if="form.allegato_titolo" type="button" @click="togliAllegato" class="text-[11px] text-slate-500 hover:text-rose-600">Togli</button>
                   </div>
                   <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                    Alla registrazione il file finisce fra i <strong>Documenti dell'unità</strong>, agganciato a questo passaggio: lo ritrovi dallo storico. Non sostituisce la casella «Ho ricevuto copia autentica», che è la dichiarazione con effetto giuridico.
+                    Alla registrazione il file finisce fra i <strong>Documenti dell'unità</strong>, agganciato a questo passaggio: lo ritrovi dallo storico.<template v-if="tipo === 'vendita'"> Non sostituisce la casella «Ho ricevuto copia autentica», che è la dichiarazione con effetto giuridico.</template>
                   </p>
                   <InputError :message="form.errors.allegato_titolo" />
                 </div>
@@ -1142,7 +1363,7 @@ function urlTipo(t: TipoPassaggio) {
               </label>
               <div>
                 <Label for="nota_cancello" class="mb-1.5 block text-amber-900 dark:text-amber-200">Perché lo registri così <span class="font-normal text-amber-700 dark:text-amber-400">(almeno dieci caratteri, resta con l'operazione)</span></Label>
-                <Textarea id="nota_cancello" v-model="form.nota_cancello" rows="2" class="w-full bg-white dark:bg-slate-950 resize-none border-amber-300" placeholder="es. rogito del 30/04, date controllate con il notaio" />
+                <Textarea id="nota_cancello" v-model="form.nota_cancello" rows="2" class="w-full bg-white dark:bg-slate-950 resize-none border-amber-300" :placeholder="eSuccessione ? 'es. dichiarazione di successione letta, eredi e quote controllati' : 'es. rogito del 30/04, date controllate con il notaio'" />
                 <p class="text-[11px] mt-1" :class="form.nota_cancello.trim().length >= 10 ? 'text-emerald-700' : 'text-amber-700 dark:text-amber-400'">{{ form.nota_cancello.trim().length }}/10</p>
                 <InputError :message="form.errors.nota_cancello" />
               </div>
@@ -1170,7 +1391,7 @@ function urlTipo(t: TipoPassaggio) {
           </form>
 
           <!-- ============================ Il pannello (colonna sticky) ============================ -->
-          <AnteprimaPassaggio :dati="anteprima" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante"
+          <AnteprimaPassaggio :dati="anteprima" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante" :tipo="props.tipo"
             v-model:rinuncia="form.rinuncia_conguaglio" v-model:nota-rinuncia="form.nota_conguaglio" />
           <InputError :message="form.errors.nota_conguaglio" class="mt-2" />
         </div>

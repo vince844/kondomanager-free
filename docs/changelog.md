@@ -7,6 +7,127 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.44] - Ogni erede la sua quota
+
+**Non tocca il database.** Nessuna migrazione: la successione è un tipo di passaggio nuovo, e ciò che le serve (gli eredi con le
+quote, l'arretrato del defunto, l'accrescimento dell'usufrutto) sta nel registro del passaggio e nelle righe di saldo che esistono
+già. Muore il proprietario pieno, un comproprietario o il nudo proprietario: gli eredi entrano nello stesso ruolo, ciascuno con la
+sua quota, dal giorno del decesso, e il defunto resta titolare fino al giorno prima.
+
+**Cambi di comportamento, detti per primi.**
+- **L'estinzione di un usufrutto senza nessun nudo proprietario in corso si rifiuta anche nel server.** Fino alla .43 la fermava solo
+  il modulo, con i titolari di oggi invece che con quelli del giorno dell'atto; il server la registrava, e l'unità restava senza
+  proprietario. Il messaggio dice di associare prima il nudo proprietario, o, se la nuda proprietà è censita come proprietà piena
+  accanto all'usufrutto, di correggere il ruolo di quella riga.
+- **Un passaggio registrato fuori ordine non riapre più una riga che un passaggio successivo ha già chiuso.** Esempio: Elsa e
+  Franco al 50 %; si registra prima la vendita del 1° settembre di Franco a Elsa, poi la vendita con riserva d'usufrutto del 1°
+  maggio di Elsa a Dino, dalla riga di Elsa di prima. Fino alla .43 la registrazione richiudeva quella riga al 30 aprile e dal 1°
+  settembre l'unità risultava di Elsa piena al 100 %, Elsa usufruttuaria al 50 % e Dino nudo al 50 %, e nessuno dei due passaggi
+  si poteva più annullare. Ora l'anteprima si ferma e dice la strada: annullare i passaggi successivi, l'ultimo per primo,
+  registrare questo e poi di nuovo quelli; se il passaggio dopo ha ceduto proprio quella riga, la correzione a mano. Vale per chi
+  esce, per chi compra o eredita una quota che si somma alla sua, per chi si riserva l'usufrutto, per chi costituisce, per il nudo
+  proprietario che torna pieno e per l'accrescimento.
+- **Chi entra in un passaggio dev'essere una persona del condominio**, e così ogni erede. Prima il server controllava solo che
+  l'anagrafica esistesse: un passaggio poteva aprire una riga a una persona di un altro condominio, che il modulo non propone.
+- **Nell'estratto conto il credito di un passaggio ancora nei saldi si conta al netto, per gestione e unità.** Con più coppie di
+  conguaglio sulla stessa unità una persona può averne una a credito e una a debito: dalla .41 si contava solo quella a credito, e
+  il credito annunciato era gonfiato (€ 322,19 invece di € 5,48 nel caso provato).
+- **Senza le righe di riparto (i piani generati prima della 1.11.0-beta.29), la parte arrivata a chi vende si segue lungo la
+  catena.** Fino alla .43 si contava solo sul passaggio diretto: dopo una vendita piena seguita da un passaggio a metà, le quote del
+  primo titolare entravano per intero nel conguaglio di chi vendeva. Ora un passaggio pieno porta la parte del passaggio dopo, e una
+  successione dopo un passaggio a metà moltiplica le parti (nonno, figli, nipoti: la metà della metà). Due estinzioni parziali in
+  fila restano contate sul passaggio diretto.
+- **«Elimina anagrafica» si ferma anche per chi ha righe di saldo di un passaggio o righe scritte da un passaggio**, per esempio il
+  secondo nudo proprietario tornato pieno, che il passaggio non nomina come chi entra: la cancellazione in cascata toglieva una gamba
+  della coppia di conguaglio, o una riga che il passaggio non sapeva più disfare.
+- **Il messaggio dopo la registrazione dice «risulta», al presente, per tutti i tipi**: prima diceva «è stato titolare», una forma
+  con il genere, e il plurale restava al futuro.
+- **Lo storico dei passaggi mostra il conguaglio di ciascuno di quelli che entrano**: all'estinzione con più nudi proprietari
+  mostrava solo quello del primo. Con più persone che entrano dice la riga di ognuna e, a parte, quella di chi esce.
+
+**La successione.**
+- **Il modulo.** «Registra passaggio» ha la quinta voce, «Successione», anche nel menu della riga («Registra la successione»). Si
+  sceglie il defunto fra i titolari in corso; gli eredi, ciascuno con la quota che eredita, fanno insieme la quota del defunto
+  («Dividi in parti uguali» la divide al centesimo di punto; una quota ha al massimo due decimali e almeno 0,01 %). Un erede già
+  comproprietario somma la quota ereditata alla sua; un erede minorenne si registra come gli altri. Le pertinenze collegate seguono
+  l'unità, e la quota del defunto sul box si divide fra gli eredi in proporzione. La morte dell'usufruttuario resta l'estinzione
+  dell'usufrutto.
+- **Il conguaglio** è quello della vendita, per giorni: la parte dal giorno del decesso si divide fra gli eredi per quota. Le rate
+  in bozza di un piano che non si ricalcola più passano a un solo erede, l'erede di riferimento, che il programma chiede solo quando
+  servono; la sua parte nel conguaglio scende di altrettanto, e può diventare un credito. Gli altri eredi, su quel piano, non hanno
+  rate: la loro parte sta in righe di saldo ed entra nel piano dopo.
+- **L'arretrato del defunto**: le rate emesse e non pagate, le sue bozze e i suoi saldi, cioè la sua posizione verso il
+  condominio. La scelta è dell'amministratore, senza una risposta già data. **Agli eredi, per quota**: righe di saldo sulla stessa gestione, una a credito del defunto e una a debito di ogni erede; con il conguaglio
+  ogni erede risponde della sua quota di tutto e la posizione del defunto si chiude; passano all'erede di riferimento anche le bozze
+  di prima del decesso, salvo quelle con un pagamento. Oppure **a nome del defunto** («eredi di …»): resta dov'è, e chi versa al suo
+  posto si registra con «Versato da». Esempio, su € 1.200,00 l'anno in dodici rate: Ugo muore il 1° maggio con quattro rate emesse e
+  non pagate e otto in bozza; eredi Anna al 60 %, erede di riferimento, e Bruno al 40 %. Le otto bozze passano ad Anna; il
+  conguaglio è un credito di € 316,71 per Anna e un debito di € 322,19 per Bruno; l'arretrato è € 236,71 per Anna e € 157,81 per
+  Bruno. Alla fine Anna risponde di € 720,00 e Bruno di € 480,00, il 60 % e il 40 % dell'anno, e la posizione di Ugo è a zero. Se il
+  defunto aveva versato in più, l'arretrato è un credito e passa agli eredi allo stesso modo. Con l'arretrato agli eredi il
+  solo conguaglio non si annulla, né vi si rinuncia: conguaglio e arretrato fanno un conto solo. Dei contributi del defunto fino al
+  giorno prima del decesso rispondono gli eredi, ogni erede per la sua quota (art. 754 c.c.), con tutte e due le scelte: cambia solo
+  dove si scrive il debito. Il pannello avvisa che, con l'arretrato agli eredi, le rate del defunto non pagate restano a suo nome e
+  non vanno incassate (un pagamento, anche con «Versato da», lascerebbe il defunto a credito), e che con un erede solo sull'unità
+  l'arretrato va tutto a quell'erede, anche quando l'eredità ha altri eredi.
+- **Il legato.** Chi riceve l'unità per legato non eredita il patrimonio: l'arretrato del defunto resta a suo nome, per forza. I
+  legatari possono essere più d'uno.
+- **L'accrescimento.** All'estinzione di un usufrutto, con un altro usufruttuario in corso, la casella «L'usufrutto si accresce
+  all'altro usufruttuario», da spuntare quando l'atto lo prevede o per il legato di usufrutto congiunto (artt. 675 e 678 c.c.):
+  l'usufrutto di chi muore va agli usufruttuari che restano, in proporzione alla loro quota; la nuda proprietà resta nuda, e il
+  conguaglio dell'ordinaria va a loro. Senza la casella resta la regola di legge: la nuda proprietà si riunisce all'usufrutto che
+  finisce. Con la nuda proprietà di più nudi proprietari l'accrescimento non si registra da qui, perché il programma non sa quale
+  usufrutto stia sopra quale nuda: la casella non c'è, e il modulo dice di correggere le righe a mano. All'estinzione dopo vale la
+  scelta sull'ordinaria dell'usufrutto di chi resta, e il pannello dice se la parte arrivata era nata con la scelta opposta.
+- **La morte del nudo proprietario.** La nuda proprietà passa agli eredi per quota, e all'estinzione dell'usufrutto tornano
+  proprietari pieni loro, senza che l'amministratore debba scegliere. Se un erede ha già l'usufrutto dell'unità, il passaggio si
+  ferma e indica la via a mano.
+- **I piani che si ricalcolano ancora** la successione non li prende: li segue il ricalcolo, che darà agli eredi i giorni dal decesso
+  divisi per quota e lascerà al defunto quelli di prima. Il pannello lo dice: con l'arretrato agli eredi indica il saldo manuale per
+  passare agli eredi anche quei giorni; con l'arretrato a nome del defunto avvisa che quelle quote restano a suo nome, con una parte in ogni rata del piano.
+- **Quando vende un erede**, nel conguaglio entrano anche le rate passate all'erede di riferimento, con la quota di chi vende; le rate
+  restano all'erede di riferimento. Chi compra paga i suoi giorni su tutto il piano.
+- **Dove si vede.** Il pannello «Cosa cambierà»: gli eredi, il conguaglio per erede, la tabella dell'arretrato, «Chi resta
+  obbligato» con l'art. 754 c.c. per i contributi fino al decesso e gli eredi come comproprietari dopo. Il messaggio dopo la
+  registrazione, con il netto per erede e un estratto conto per ciascuno. Lo storico dell'unità: gli eredi con le quote, l'arretrato
+  per erede, il conguaglio. Il Wallet: le righe dell'arretrato e i saldi da cui l'arretrato è calcolato non si modificano né si
+  cancellano da soli, e spiegano perché; si correggono annullando la successione e registrandola di nuovo. L'estratto conto del
+  defunto non propone di rimborsare ciò che è passato agli eredi. L'annullamento della successione rimette tutto com'era.
+
+**Corretto.**
+- Nelle frasi del pannello e dei messaggi, lo spazio prima di «%» non va più a capo.
+- Il server accettava un sottotipo nella fine della locazione («costituzione») e lo scriveva nel registro del passaggio.
+- Nell'usufrutto e nella locazione la nota sotto la rinuncia al conguaglio diceva «vale fra venditore e acquirente», con una
+  sentenza sulla vendita: ora dice «vale fra le parti».
+
+**Le guide.** La guida del passaggio di proprietà ha la sezione «Quando muore un proprietario» (gli eredi e le quote, il
+conguaglio, l'erede di riferimento, l'arretrato agli eredi o a nome del defunto, il legato, la morte del nudo proprietario) e il
+punto sull'accrescimento in «Quando finisce un usufrutto».
+
+**Non ancora.** La vendita di una parte della propria quota non c'è: quando un passaggio successivo ha ceduto una riga che poi si
+somma, la strada è a mano. Le rate in bozza già create non si dividono per quota fra gli eredi, una per ciascuno: vanno all'erede di
+riferimento, e gli altri eredi pagano la loro parte con le righe di saldo, nel piano dopo. Il credito del defunto nei saldi, assorbito da un piano dopo, sta
+accanto alle sue rate non pagate e va compensato a mano. Con tre o più usufruttuari dopo un accrescimento, all'estinzione il
+programma chiede quali nudi proprietari tornano pieni (la risposta giusta è «tutti, ciascuno per la sua quota»). Senza le righe di
+riparto due estinzioni parziali in fila si contano sul passaggio diretto. Un arretrato che non trova un esercizio aperto su cui
+scriversi resta a nome del defunto: il messaggio, lo storico e «Chi resta obbligato» lo dicono. Il calcolo quota per quota di una
+nuda proprietà di due pezzi tornata piena solo in parte, che si ferma, arriva più avanti.
+
+**Per chi sviluppa.** Nessuna migrazione: `subentri.tipo_passaggio` vale anche `successione` (stringa), con il sottotipo `legato`.
+Nel `registro` del passaggio: `eredi` [{anagrafica_id, quota, riga_id}], `arretrato` {scelta, totale, resta, saldi, fonti,
+non_scritto}, `accrescimento` [{anagrafica_id, quota, riga_id}]. `Subentro`: `eredi()`, `accrescimento()`, `destinatari()`,
+`entranti()`, `rigaEntranteDi()`, `saldiDellArretrato()`, `fontiDellArretrato()`, `arretratoAgliEredi()`,
+`successioneCheLeggeISaldi()`, `origineDellaParteAccresciuta()`; `origineDellUsufrutto()` risale l'accrescimento.
+`TitolaritaImmobile::passaggioCheLaChiude()` (il passaggio che ha chiuso una riga, come chi esce o nel registro).
+`AnteprimaPassaggio` ritorna `rate.arretrato` (con `resta_senza_conguaglio` e `frase_senza_conguaglio` a nome del defunto);
+`AnteprimaPassaggio::nudiDistintiIl()`. `NudiDellEstinzione::dalRegistro` segue la nuda agli eredi; `GenealogiaDellaQuota` ha
+l'arco `SUCCESSIONE`, usato anche per l'accrescimento. `ConguaglioPassaggio`: le quote dei coeredi in `quoteConguagliabili()`, la
+parte arrivata lungo la catena in `predecessori()`. `RegistraSubentroAction::fermaSeHaUnaFine()`. `Saldo::fraseFonteDellArretrato()`,
+`FRASE_ARRETRATO`, `FRASE_CONGUAGLIO_CON_ARRETRATO`. JS: `quoteEredi.ts`, `rinunciaConguaglio.ts`. Test nuovi: `SuccessioneTest`; le
+forme SU, SUD e SU2 nella griglia degli invarianti, con il controllo «la posizione del defunto chiude a zero».
+
+---
+
 ## [1.11.0-beta.43] - Ogni quota sa da dove viene
 
 **Tocca il database.** Una migrazione, rieseguibile senza danni, aggiunge alle righe di riparto la colonna
@@ -175,7 +296,8 @@ successione. Restano, per scelta, le fermate dette sopra, fra cui un passaggio r
 toccato la quota: dove il dato manca il programma non indovina. Le estinzioni già registrate con le versioni precedenti nelle
 forme corrette qui sopra non si correggono da sole (per esempio due nude proprietà tornate piene con un usufrutto ancora in
 corso su una parte): si correggono a mano nella scheda dell'unità. L'estinzione di un usufrutto senza nessun nudo
-proprietario in corso si registra, ma il conguaglio dell'ordinaria non ha a chi andare (il modulo lo avvisa). «Paga tutto chi
+proprietario in corso la ferma solo il modulo, guardando i titolari di oggi: il server la registrerebbe, e l'unità resterebbe
+senza proprietario (dalla beta.44 la rifiuta anche il server). «Paga tutto chi
 esce» su un piano che si ricalcola ancora ha solo la frase nel pannello e nella guida (l'accordo si registra con «Versato da»
 e non lascia traccia nel passaggio), e la vendita di una parte della propria quota non c'è (il messaggio spiega come
 registrarla a mano): se ne riparla con un caso vero, dopo la successione e prima della stabile. L'inizio di una locazione su

@@ -41,10 +41,24 @@ final class AnnullaConguaglioAction
                 throw ValidationException::withMessages(['conguaglio' => 'Il conguaglio di questo passaggio è già stato annullato.']);
             }
 
+            // Decisione 65 (1.11.0-beta.44): con l'arretrato agli eredi la coppia e l'arretrato sono un conto solo — l'arretrato è la
+            // posizione del defunto meno la coppia —, e togliere la coppia lascerebbe a ciascun erede una cifra senza senso.
+            if ($padre->arretratoAgliEredi()) {
+                throw ValidationException::withMessages(['conguaglio' => 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: insieme danno a ciascun erede la sua parte dell\'anno intero, e il conguaglio da solo non si annulla. Se gli eredi hanno regolato fra loro in un altro modo, annulla il passaggio e registralo di nuovo con l\'arretrato a nome del defunto; poi annulla il conguaglio.']);
+            }
+
             $ids = $padre->pertinenze()->pluck('id')->push($padre->id)->all();
             $righe = Saldo::whereIn('subentro_id', $ids)->with('pianoRate')->lockForUpdate()->get();
             if ($righe->isEmpty()) {
                 throw ValidationException::withMessages(['conguaglio' => 'Questo passaggio non ha righe di conguaglio da annullare.']);
+            }
+
+            // Decisione 67 (3), rilievo X6 della Fase 1-bis: le righe di questo conguaglio sono fra le fonti dell'arretrato agli eredi di una
+            // successione dopo. Toglierle lascerebbe al defunto un credito finto e agli eredi un debito calcolato su righe che non ci sono più.
+            if (($successione = Subentro::successioneCheLeggeISaldi($righe->pluck('id')->all(), (int) $padre->condominio_id)) !== null) {
+                // Rilievo GC12 del giro: le righe degli eredi possono essere un credito, e conta la riga del defunto, non tutte e due.
+                throw ValidationException::withMessages(['conguaglio' => sprintf('Una riga di questo conguaglio è fra le cifre da cui è calcolato l\'arretrato di %s, passato agli eredi con la successione del %s: annullarlo lascerebbe sbagliate le righe degli eredi. Annulla prima la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione; se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale.',
+                    $successione->uscente?->nome ?? 'questa persona', \Carbon\CarbonImmutable::parse($successione->decorrenza)->locale('it')->translatedFormat('j F Y'))]);
             }
 
             $assorbite = $righe->filter(fn (Saldo $s) => (bool) $s->is_applicato);
@@ -65,9 +79,16 @@ final class AnnullaConguaglioAction
                 ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($nomi[$id] ?? '?'), 'importo' => (int) $g->sum('saldo_iniziale')])
                 ->values()->all();
 
+            // Rilievo X8 della Fase 1-bis: con l'arretrato a nome del defunto la cifra che resta a lui era la sua posizione meno la coppia;
+            // tolta la coppia, torna a contare anche quella parte. Dalle righe tolte, non ricostruita.
+            $registro = array_replace($padre->registro ?? [], ['regolato_fuori' => $regolato]);
+            if (($registro['arretrato']['scelta'] ?? null) === Subentro::ARRETRATO_AL_DEFUNTO) {
+                $registro['arretrato']['resta'] = (int) ($registro['arretrato']['resta'] ?? 0)
+                    - (int) $righe->filter(fn (Saldo $r) => (int) $r->anagrafica_id === $uscenteId)->sum('saldo_iniziale');
+            }
+
             $tolte = Saldo::whereIn('id', $righe->pluck('id'))->delete();
-            $padre->update(['conguaglio_annullato_il' => now(), 'nota_annullamento_conguaglio' => $nota,
-                'registro' => array_replace($padre->registro ?? [], ['regolato_fuori' => $regolato])]);
+            $padre->update(['conguaglio_annullato_il' => now(), 'nota_annullamento_conguaglio' => $nota, 'registro' => $registro]);
 
             return $tolte;
         });
@@ -82,7 +103,7 @@ final class AnnullaConguaglioAction
      *
      * @param \Illuminate\Support\Collection<int, Saldo> $assorbite righe con `is_applicato`, con `pianoRate` caricato
      */
-    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno, bool $perIlPassaggio = false, array $presiDaSeguire = []): string
+    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno, bool $perIlPassaggio = false, array $presiDaSeguire = [], bool $conArretrato = false): string
     {
         $piani = $assorbite->map(fn (Saldo $s) => $s->pianoRate)->filter()->unique('id');
         $correggibili = $piani->reject(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
@@ -105,7 +126,10 @@ final class AnnullaConguaglioAction
             // breve: il passaggio resta, e il piano che ha preso si emette così com'è (decisione 38); poi la completa.
             // Rilievo X3: la strada breve solo se i piani presi dal passaggio si emettono davvero così come sono.
             $breve = $presiDaSeguire === []
-                ? sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e chi entra paga i suoi giorni con la coppia già dentro il piano «%s».', $piano->nome)
+                ? ($conArretrato
+                    // Rilievo L10 della Fase 1-bis della .44: nella successione con l'arretrato agli eredi le righe nel piano sono di più eredi.
+                    ? sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e ogni erede regola la sua parte con le righe del conguaglio e dell\'arretrato già dentro il piano «%s».', $piano->nome)
+                    : sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e chi entra paga i suoi giorni con la coppia già dentro il piano «%s».', $piano->nome))
                 : sprintf(' Il passaggio non può restare così: %s «%s», preso da questo passaggio, deve ancora seguire un passaggio e non si emette senza ricalcolo.', count($presiDaSeguire) === 1 ? 'il piano' : 'i piani', implode('», «', $presiDaSeguire));
             $frase .= $breve . sprintf(' Per annullarlo%s, il piano «%s», che %s%s, va prima riaperto — %s —; poi riportalo in bozza, elimina il piano (il lucchetto si riapre) e %s; poi rifai il piano.',
                 $presiDaSeguire === [] ? ' comunque' : '', $piano->nome, $perche, $inMano !== '' ? ', e le quote sono in mano ai condòmini' : '', implode('; ', $piano->rimediDelFermo()), $ritorno);

@@ -62,6 +62,39 @@ class Saldo extends Model
         return $this->belongsTo(\App\Models\Gestionale\Subentro::class, 'subentro_id');
     }
 
+    /** Perché una riga dell'arretrato non si modifica né si cancella da sola: il Wallet lo dice con queste parole. */
+    public const FRASE_ARRETRATO = 'Questa riga è una delle due dell\'arretrato di una successione (la posizione del defunto passata a un erede: due righe di segno opposto, somma zero): non si modifica e non si cancella da sola. Si toglie annullando il passaggio dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
+
+    /**
+     * Decisione 67 (3): perché un saldo da cui una successione ha calcolato l'arretrato agli eredi non si modifica né si cancella;
+     * null se nessuna lo ha letto.
+     */
+    public function fraseFonteDellArretrato(): ?string
+    {
+        $successione = \App\Models\Gestionale\Subentro::successioneCheLeggeISaldi([(int) $this->id], (int) $this->condominio_id);
+        if ($successione === null) {
+            return null;
+        }
+        $defunto = $successione->uscente?->nome ?? ($successione->registro['nomi']['uscente'] ?? 'questa persona');
+
+        // Rilievo GC12 del giro sulle correzioni: le righe degli eredi possono essere un credito; la correzione che resta è la differenza;
+        // e una fonte che è la riga di un conguaglio si toglie annullando quel conguaglio.
+        return sprintf('Questo saldo è fra le cifre da cui è calcolato l\'arretrato di %s, passato agli eredi con la successione del %s: cambiarlo qui lascerebbe sbagliate le righe degli eredi. Per correggerlo annulla la successione dallo storico dell\'unità («Passaggi registrati»), correggi il saldo (se è una riga di conguaglio, annulla quel conguaglio) e registra di nuovo la successione; se la successione non si può più annullare, scrivi agli eredi un saldo manuale per la differenza, ogni erede per la sua quota.',
+            $defunto, \Carbon\CarbonImmutable::parse($successione->decorrenza)->locale('it')->translatedFormat('j F Y'));
+    }
+
+    /**
+     * Rilievo L1 della Fase 1-bis: una gamba del conguaglio di una successione con l'arretrato agli eredi. Conguaglio e arretrato fanno un
+     * conto solo, e l'annullamento del solo conguaglio si rifiuta: la strada è annullare il passaggio.
+     */
+    public const FRASE_CONGUAGLIO_CON_ARRETRATO = 'Questa riga è una delle due del conguaglio di una successione con l\'arretrato agli eredi: conguaglio e arretrato fanno un conto solo, e la riga non si modifica né si cancella da sola. Si toglie annullando la successione dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
+
+    /** Una delle righe dell'arretrato di una successione (1.11.0-beta.44, decisione 65), non del conguaglio. */
+    public function dellArretrato(): bool
+    {
+        return $this->subentro_id !== null && in_array((int) $this->id, $this->subentro?->saldiDellArretrato() ?? [], true);
+    }
+
     /**
      * Ottiene la gestione associata a questo specifico saldo.
      * Fondamentale per dividere i debiti (es. Ordinaria vs Lavori Tetto).

@@ -59,6 +59,11 @@ final class GenealogiaDellaQuota
     public const COSTITUZIONE = 'costituzione';
     public const ESTINZIONE = 'estinzione';
     public const FINE_LOCAZIONE = 'fine_locazione';
+    /**
+     * Decisione 65 (1.11.0-beta.44): la successione, che divide la quota del defunto sulle righe degli eredi. Lo stesso arco porta
+     * l'estinzione con l'accrescimento, che divide l'usufrutto di chi muore sulle righe degli usufruttuari che restano.
+     */
+    public const SUCCESSIONE = 'successione';
 
     private const TOLLERANZA = 0.005;
 
@@ -135,11 +140,15 @@ final class GenealogiaDellaQuota
     {
         $ops = $s->registro['righe'] ?? null;
         $tipo = match (true) {
+            // L'estinzione con l'accrescimento sposta l'usufrutto sulle righe degli altri usufruttuari, per quota, come la successione
+            // sposta la quota sulle righe degli eredi: la nuda resta nuda (1.11.0-beta.44).
+            $s->conAccrescimento() => self::SUCCESSIONE,
             $s->estinzioneUsufrutto() => self::ESTINZIONE,
             $s->tipo_passaggio === 'usufrutto' => self::COSTITUZIONE,
             $s->riservaUsufrutto() => self::RISERVA,
             $s->tipo_passaggio === 'vendita' => self::VENDITA,
             $s->tipo_passaggio === 'fine_locazione' => self::FINE_LOCAZIONE,
+            $s->successione() => self::SUCCESSIONE,
             default => 'altro',
         };
         $chiuse = [];
@@ -172,6 +181,10 @@ final class GenealogiaDellaQuota
             'chiuse' => $chiuse,
             'nuove' => $nuove,
             'prima' => $prima,
+            // Decisione 65: gli eredi con la quota ereditata e la riga aperta, dal registro (non dalla riga, che può essere sommata); con
+            // l'accrescimento gli usufruttuari che ricevono.
+            'eredi' => $s->destinatari(),
+            'accrescimento' => $s->conAccrescimento(),
         ];
     }
 
@@ -471,7 +484,7 @@ final class GenealogiaDellaQuota
                 // La quota di un predecessore arrivata a chi esce e già ceduta da chi esce a un altro: non è «mai arrivata» (T6).
                 (int) $r->anagrafica_id !== $uscenteId && ! empty($p['da_chi_esce']) => ($adesso === self::NUDA && ! $straordinaria && $x->tipologia === 'usufruttuario' ? 'usufruttuario' : 'ceduta:' . $r->ruolo_risolto),
                 // La parte dell'usufrutto di un predecessore che un'estinzione ha dato a un altro nudo (la frase di sempre).
-                (int) $r->anagrafica_id !== $uscenteId && ! empty($p['divisa']) => 'mai_arrivata:altri_nudi',
+                (int) $r->anagrafica_id !== $uscenteId && ! empty($p['divisa']) => 'mai_arrivata:' . ($p['divisa_come'] ?? 'altri_nudi'),
                 (int) $r->anagrafica_id !== $uscenteId => 'mai_arrivata:' . $r->ruolo_risolto,
                 // L'ordinaria di chi vende la nuda, finita all'usufruttuario: la frase dell'art. 1004 c.c.
                 $adesso === self::NUDA && ! $straordinaria && $x->tipologia === 'usufruttuario' => 'usufruttuario',
@@ -542,6 +555,16 @@ final class GenealogiaDellaQuota
         return $this->senzaCoppia[$chiave];
     }
 
+    /**
+     * Giro sulle correzioni della Fase 1-bis della .44 (GC6): perché una parte del pacco non è arrivata a chi esce. Il motivo giusto è
+     * quello della divisione in cui la parte si è staccata dalla linea di chi esce, e camminando in avanti non si sa quale sia: con
+     * divisioni di tipo diverso nella storia del pacco, la frase che le comprende.
+     */
+    private static function divisaCome(?string $prima, string $adesso): string
+    {
+        return $prima === null || $prima === $adesso ? $adesso : 'altri_titolari';
+    }
+
     /** Il pacco su un'altra riga: se cambia la persona, da quel giorno è arrivato a lei. */
     private function sposta(array $p, int $riga, string $giorno, Collection $titolarita, float $f = 1.0, ?int $coppia = -1): array
     {
@@ -549,7 +572,7 @@ final class GenealogiaDellaQuota
         $dopo = (int) ($titolarita[$riga]->anagrafica_id ?? 0);
 
         return ['riga' => $riga, 'f' => $p['f'] * $f, 'coppia' => $coppia === -1 ? $p['coppia'] : $coppia, 'arrivo' => $prima === $dopo ? $p['arrivo'] : $giorno, 'divisa' => $p['divisa'] ?? false,
-            'da_chi_esce' => $p['da_chi_esce'] ?? false];
+            'da_chi_esce' => $p['da_chi_esce'] ?? false, 'divisa_come' => $p['divisa_come'] ?? null];
     }
 
     /**
@@ -637,6 +660,7 @@ final class GenealogiaDellaQuota
                         // Divisa fra più nudi: ogni parte è quella che l'estinzione ha riunito alla nuda di ciascuno.
                         $mosso = $this->sposta($p, (int) $nudi[$nuda]['piena'], $a['giorno'], $titolarita, $f, null);
                         $mosso['divisa'] = $mosso['divisa'] || count($verso) > 1;
+                        $mosso['divisa_come'] = count($verso) > 1 ? self::divisaCome($mosso['divisa_come'] ?? null, 'altri_nudi') : ($mosso['divisa_come'] ?? null);
                         $mossi[] = $mosso;
                     }
 
@@ -673,6 +697,36 @@ final class GenealogiaDellaQuota
                     foreach ($nudi as $n) {
                         if ($n['anagrafica_id'] === $chi($x) && $n['piena'] !== $x) {
                             return [$this->sposta($p, $n['piena'], $a['giorno'], $titolarita)];
+                        }
+                    }
+                }
+
+                return [$p];
+
+            case self::SUCCESSIONE:
+                // Decisione 65 (1.11.0-beta.44): la quota sulla riga del defunto si divide sulle righe degli eredi, ciascuno con la quota che ha
+                // ereditato; un erede già titolare con lo stesso ruolo ha sommato la sua riga in quella nuova, e il pacco ci va per intero.
+                $eredi = array_values(array_filter($a['eredi'] ?? [], fn ($e) => $e['riga_id'] !== null));
+                if ($x === $a['u']) {
+                    $totale = array_sum(array_column($eredi, 'quota'));
+                    if ($eredi === [] || $totale <= 0) {
+                        return 'il passaggio del ' . $this->data($a['giorno']) . ' non dice a chi è andata la quota';
+                    }
+                    $mossi = [];
+                    foreach ($eredi as $e) {
+                        $mosso = $this->sposta($p, (int) $e['riga_id'], $a['giorno'], $titolarita, (float) $e['quota'] / $totale);
+                        $mosso['divisa'] = $mosso['divisa'] || count($eredi) > 1;
+                        // Rilievo X3 della Fase 1-bis: la parte rimasta agli altri si dice per quello che è, non come l'estinzione.
+                        $mosso['divisa_come'] = count($eredi) > 1 ? self::divisaCome($mosso['divisa_come'] ?? null, ! empty($a['accrescimento']) ? 'altri_usufruttuari' : 'altri_eredi') : ($mosso['divisa_come'] ?? null);
+                        $mossi[] = $mosso;
+                    }
+
+                    return $mossi;
+                }
+                if ($chiusa) {
+                    foreach ($eredi as $e) {
+                        if ($chi($x) === (int) $e['anagrafica_id'] && $ruolo($x) === $ruolo((int) $e['riga_id'])) {
+                            return [$this->sposta($p, (int) $e['riga_id'], $a['giorno'], $titolarita)];
                         }
                     }
                 }

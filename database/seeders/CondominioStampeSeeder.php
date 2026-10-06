@@ -44,8 +44,9 @@ use Illuminate\Support\Facades\DB;
  * carattere) e con cui si tengono ferme le loro garanzie numeriche su una forma vera. Per la
  * verifica a video si semina nel database di sviluppo con `php artisan db:seed --class=CondominioStampeSeeder`;
  * porta `is_demo = true`, quindi si rimuove con `CreaCondominioDimostrativoAction::rimuovi()` —
- * e, finché c'è, occupa il posto della demo: «Crea condominio dimostrativo» risponde che esiste
- * già. È l'effetto voluto del riuso di quella rimozione, non un difetto.
+ * e, finché c'è, occupa il posto della demo: nell'elenco dei condomini il pulsante diventa «Rimuovi
+ * il condominio di esempio», e chi prova a crearne un altro si sente dire che ne esiste già uno.
+ * È l'effetto voluto del riuso di quella rimozione, non un difetto.
  *
  * Costruito sul modello di `CondominioDemoSeeder`: stesse porte del prodotto (il service per il
  * condominio, l'azione per la cassa, il motore vero per il piano rate), stesse ragioni.

@@ -115,7 +115,7 @@ class NudiDellEstinzione
             // Decisione 61: una parte della nuda dell'usufrutto che finisce non sta fra i nudi possibili (è di chi esce, o manca).
             return $fermo($candidati->isEmpty()
                 ? sprintf('Su questa unità c\'è un altro usufrutto in corso, e nessun altro nudo proprietario può tornare proprietario pieno: la nuda proprietà della parte su cui l\'usufrutto di %s finisce può essere una nuda di %s, o mancare fra le righe in corso.', $nome, $nome)
-                : sprintf('Su questa unità c\'è un altro usufrutto in corso, e i nudi proprietari che possono tornare proprietari pieni valgono in tutto %s, meno dell\'usufrutto di %s (%s %%): una parte della nuda proprietà non sta fra loro (può essere una nuda di %s, o mancare fra le righe in corso).',
+                : sprintf('Su questa unità c\'è un altro usufrutto in corso, e i nudi proprietari che possono tornare proprietari pieni valgono in tutto %s, meno dell\'usufrutto di %s (%s %%): una parte della nuda proprietà non sta fra loro (può essere una nuda di %s, o mancare fra le righe in corso).',
                     self::percentuale($somma), $nome, $this->numero($quotaUsufrutto), $nome));
         }
         $unaSolaRiga = $candidati->first(fn (TitolaritaImmobile $t) => round((float) $t->quota, 2) > $quotaUsufrutto);
@@ -147,8 +147,8 @@ class NudiDellEstinzione
         }
         if ($scelti === null || $scelti === []) {
             return $esito(collect(), self::DA_SCELTA, true, $interi
-                ? sprintf('Su questa unità c\'è un altro usufrutto in corso, e i nudi proprietari valgono più dell\'usufrutto di %s (%s %%): scegli quali tornano proprietari pieni, quelli della parte su cui l\'usufrutto finisce, oppure tutti, ciascuno per la sua quota, se la nuda proprietà è in comune fra i nudi proprietari.', $nome, $this->numero($quotaUsufrutto))
-                : sprintf('Su questa unità c\'è un altro usufrutto in corso, e nessuna combinazione di nudi proprietari interi vale l\'usufrutto di %s (%s %%): se la nuda proprietà è in comune fra i nudi proprietari, scegli «tutti, ciascuno per la sua quota»; altrimenti %s', $nome, $this->numero($quotaUsufrutto), mb_lcfirst(self::A_MANO)));
+                ? sprintf('Su questa unità c\'è un altro usufrutto in corso, e i nudi proprietari valgono più dell\'usufrutto di %s (%s %%): scegli quali tornano proprietari pieni, quelli della parte su cui l\'usufrutto finisce, oppure tutti, ciascuno per la sua quota, se la nuda proprietà è in comune fra i nudi proprietari.', $nome, $this->numero($quotaUsufrutto))
+                : sprintf('Su questa unità c\'è un altro usufrutto in corso, e nessuna combinazione di nudi proprietari interi vale l\'usufrutto di %s (%s %%): se la nuda proprietà è in comune fra i nudi proprietari, scegli «tutti, ciascuno per la sua quota»; altrimenti %s', $nome, $this->numero($quotaUsufrutto), mb_lcfirst(self::A_MANO)));
         }
         $ids = array_map('intval', $scelti);
         $nudi = $candidati->filter(fn (TitolaritaImmobile $t) => in_array((int) $t->id, $ids, true))->values();
@@ -191,7 +191,7 @@ class NudiDellEstinzione
             default => 'il ',
         };
 
-        return $articolo . $numero . ' %';
+        return $articolo . $numero . ' %';
     }
 
     /**
@@ -282,11 +282,30 @@ class NudiDellEstinzione
             return null;
         }
         $dopo = $this->nudaDopo((int) $usufrutto->immobile_id);
+        $agliEredi = $this->nudaAgliEredi((int) $usufrutto->immobile_id);
         $noti = [];
-        foreach ($origini as $id => $quota) {
+        // Decisione 66 (3), 1.11.0-beta.44: la nuda di un nudo proprietario che muore si divide fra gli eredi per quota, e da lì si
+        // segue ogni pezzo. Un pezzo già diviso non si divide di nuovo: un registro corrotto non fa girare il ciclo per sempre.
+        $divise = [];
+        $segui = function (int $id, float $quota) use (&$segui, &$noti, &$divise, $dopo, $agliEredi): void {
             $corrente = self::seguiLaNuda($id, fn (int $x): ?int => $dopo[$x] ?? null);
+            if (isset($agliEredi[$corrente]) && ! isset($divise[$corrente])) {
+                $divise[$corrente] = true;
+                // Rilievo X13 della Fase 1-bis: il pezzo si divide in centesimi di punto, con i resti maggiori, perché le parti
+                // sommino proprio al pezzo; arrotondate una per una, tre eredi per un terzo di 50 facevano 50,01.
+                $parti = MoneyHelper::ripartisciPerQuote((int) round($quota * 100), array_column($agliEredi[$corrente], 1, 0));
+                foreach ($parti as $riga => $centesimi) {
+                    $segui((int) $riga, $centesimi / 100);
+                }
+
+                return;
+            }
             $noti[$corrente] = ($noti[$corrente] ?? 0.0) + $quota;
+        };
+        foreach ($origini as $id => $quota) {
+            $segui($id, $quota);
         }
+        $noti = array_map(fn (float $q) => round($q, 2), $noti);
         $righe = $inCorso->filter(fn (TitolaritaImmobile $t) => isset($noti[(int) $t->id]))->values();
         if ($righe->count() !== count($noti)) {
             return null;
@@ -325,6 +344,26 @@ class NudiDellEstinzione
         }
 
         return $dopo;
+    }
+
+    /**
+     * Decisione 66 (3): le nude dei nudi proprietari morti, divise fra gli eredi. La riga del defunto → le righe degli eredi, ognuna
+     * con la frazione della nuda che le è arrivata (la quota ereditata sulla somma delle quote ereditate).
+     *
+     * @return array<int, list<array{0: int, 1: float}>>
+     */
+    private function nudaAgliEredi(int $immobileId): array
+    {
+        $agliEredi = [];
+        foreach (Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'successione')->where('tipologia', 'nuda_proprietario')->whereNotNull('riga_uscente_id')->get() as $s) {
+            $eredi = array_filter($s->eredi(), fn ($e) => $e['riga_id'] !== null && $e['quota'] > 0);
+            $totale = array_sum(array_column($eredi, 'quota'));
+            if ($totale > 0) {
+                $agliEredi[(int) $s->riga_uscente_id] = array_values(array_map(fn ($e) => [(int) $e['riga_id'], $e['quota'] / $totale], $eredi));
+            }
+        }
+
+        return $agliEredi;
     }
 
     /**

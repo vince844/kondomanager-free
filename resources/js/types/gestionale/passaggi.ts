@@ -6,7 +6,25 @@
  * `App\Services\Subentro\AnteprimaPassaggio` (`POST …/passaggi/anteprima`). Qui c'è solo la forma.
  */
 
-export type TipoPassaggio = 'vendita' | 'inizio_locazione' | 'fine_locazione' | 'usufrutto';
+export type TipoPassaggio = 'vendita' | 'inizio_locazione' | 'fine_locazione' | 'usufrutto' | 'successione';
+
+/**
+ * L'arretrato del defunto nella successione (1.11.0-beta.44, decisione 65): agli eredi per quota, con righe di saldo, o a suo nome
+ * («eredi di …»). `eredi` e `righe` solo agli eredi; `resta` solo a nome del defunto.
+ */
+export interface ArretratoDelDefunto {
+  scelta: 'eredi' | 'defunto';
+  legato: boolean;
+  resta: number;
+  resta_formattato: string;
+  /** A nome del defunto: la sua posizione senza la coppia, e la sua frase — con la rinuncia la coppia non si scrive (rilievo X8). */
+  resta_senza_conguaglio?: number;
+  resta_senza_conguaglio_formattato?: string;
+  frase_senza_conguaglio?: string | null;
+  eredi: { anagrafica_id: number; nome: string; quota: number; importo: number; importo_formattato: string }[];
+  totale: number;
+  frase: string | null;
+}
 export type SottotipoUsufrutto = 'costituzione' | 'estinzione';
 
 /** Una riga di titolarità in corso, come «Registra passaggio» la propone in «Chi esce». */
@@ -118,6 +136,8 @@ export interface AnteprimaPassaggioDati {
     morosita: { importo: number; importo_formattato: string; intestatario: string | null } | null;
     /** `null` quando non c'è niente da conguagliare: il pannello non mostra mai zero al suo posto. */
     conguaglio: ConguaglioDati | null;
+    /** Solo nella successione (1.11.0-beta.44). */
+    arretrato?: ArretratoDelDefunto | null;
     frasi: string[];
   };
   obbligati: { frasi: string[]; copia_autentica_mancante: boolean };
@@ -204,7 +224,7 @@ export interface RigaStorico {
   subentro: {
     tipo_passaggio: string;
     /** Lo stesso di `PassaggioRegistrato.sottotipo`: la riga si chiama come il suo passaggio (testi T7 della beta.38). */
-    sottotipo: 'costituzione' | 'estinzione' | 'riserva_usufrutto' | null;
+    sottotipo: 'costituzione' | 'estinzione' | 'riserva_usufrutto' | 'legato' | null;
     decorrenza: string | null;
     estremi_titolo: string | null;
     copia_autentica_il: string | null;
@@ -220,8 +240,12 @@ export interface RigaStorico {
 export interface PassaggioRegistrato {
   id: number;
   tipo_passaggio: 'vendita' | 'inizio_locazione' | 'fine_locazione' | 'usufrutto' | string;
-  /** Costituzione o estinzione dell'usufrutto; nella vendita, la riserva d'usufrutto (beta.38). */
-  sottotipo: 'costituzione' | 'estinzione' | 'riserva_usufrutto' | null;
+  /** Costituzione o estinzione dell'usufrutto; nella vendita, la riserva d'usufrutto (beta.38); nella successione, il legato (beta.44). */
+  sottotipo: 'costituzione' | 'estinzione' | 'riserva_usufrutto' | 'legato' | null;
+  /** All'estinzione, l'usufrutto si è accresciuto agli altri usufruttuari (1.11.0-beta.44). */
+  accrescimento?: boolean;
+  /** Nella successione, l'arretrato del defunto come il passaggio l'ha scritto (1.11.0-beta.44). */
+  arretrato?: { scelta: 'eredi' | 'defunto' | null; frase: string | null } | null;
   decorrenza: string | null;
   decorrenza_a_parole: string | null;
   registrato_il: string | null;
@@ -242,6 +266,10 @@ export interface PassaggioRegistrato {
     nota: string | null;
     nota_annullamento: string | null;
     annullato_il: string | null;
+    /** Con l'arretrato agli eredi il conguaglio da solo non si annulla: coppia e arretrato fanno un conto solo (1.11.0-beta.44). */
+    annullabile?: boolean;
+    /** Con più persone che entrano, la riga di ciascuna («€ 316,71 a credito di Anna»); vuoto con una sola (1.11.0-beta.44). */
+    per_entrante?: string[];
   };
   /** Le frasi del vademecum, senza imperativi né futuro. */
   obbligati: string[];

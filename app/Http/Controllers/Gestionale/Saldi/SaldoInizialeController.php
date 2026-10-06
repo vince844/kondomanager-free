@@ -96,6 +96,18 @@ class SaldoInizialeController extends Controller
         // Rilievo V9 del giro di verifica della .42: la ragione vera del fermo e il suo rimedio, per i soli piani fermi. Il riquadro
         // diceva «già emesso o con incassi» e consigliava di annullare le emissioni anche a un piano fermo solo per un conguaglio.
         $fermi = $piani->filter(fn (PianoRate $p) => $immutabilita[$p->id])->map(fn (PianoRate $p) => ['perche' => $p->fraseDelFermo(), 'rimedi' => $p->rimediDelFermo(), 'ragioni' => $p->ragioniDelFermo()]);
+        // Le righe dell'arretrato delle successioni, in una query: il passaggio caricato con il saldo non porta il registro, che alla
+        // pagina non serve.
+        $successioni = \App\Models\Gestionale\Subentro::whereIn('id', $saldi->pluck('subentro_id')->filter()->unique())->where('tipo_passaggio', 'successione')
+            ->get(['id', 'tipo_passaggio', 'registro']);
+        $dellArretrato = $successioni->flatMap(fn ($s) => $s->saldiDellArretrato())->flip();
+        // Rilievo GC8 del giro sulle correzioni: le gambe della coppia di una successione con l'arretrato agli eredi non si tolgono con il
+        // solo conguaglio, e la modale lo dice.
+        $conArretrato = $successioni->filter(fn ($s) => $s->arretratoAgliEredi())->pluck('id')->flip();
+        // Ultima revisione (UE7): le righe di passaggi precedenti fra le fonti dell'arretrato di una successione non si tolgono con il
+        // loro conguaglio (`AnnullaConguaglioAction` lo rifiuta), e la modale lo dice.
+        $fonti = \App\Models\Gestionale\Subentro::where('condominio_id', $immobili->first()?->condominio_id)->where('tipo_passaggio', 'successione')
+            ->get(['id', 'tipo_passaggio', 'registro'])->filter(fn ($s) => $s->arretratoAgliEredi())->flatMap(fn ($s) => $s->fontiDellArretrato())->flip();
 
         foreach ($saldi as $saldo) {
             // Un `piano_rate_id` che non risolve è un lucchetto orfano: si resta prudenti e
@@ -107,6 +119,10 @@ class SaldoInizialeController extends Controller
             // `e_bloccato`: non è un lucchetto da riaprire né un piano da annullare, e resta vero anche
             // dopo che un piano l'ha assorbita (verifica S5, R4).
             $saldo->e_conguaglio = $saldo->subentro_id !== null;
+            // 1.11.0-beta.44: fra le righe di un passaggio, quelle dell'arretrato di una successione, che si tolgono solo con il passaggio.
+            $saldo->e_arretrato = $dellArretrato->has((int) $saldo->id);
+            $saldo->e_conguaglio_con_arretrato = ! $saldo->e_arretrato && $saldo->subentro_id !== null && $conArretrato->has((int) $saldo->subentro_id);
+            $saldo->e_fonte_arretrato = $fonti->has((int) $saldo->id);
             $saldo->fermo_del_piano = $saldo->piano_rate_id !== null ? ($fermi[$saldo->piano_rate_id] ?? null) : null;
         }
     }
@@ -178,7 +194,9 @@ class SaldoInizialeController extends Controller
             "Questo saldo è intestato al piano rate «{$saldo->pianoRate?->nome}»: per liberarlo agisci su quel piano, non a mano."
         );
 
-        abort_if($saldo->subentro_id !== null, 403, 'Questa riga è una delle due del conguaglio di un passaggio: il lucchetto lo mette e lo toglie il piano che la assorbe.');
+        abort_if($saldo->subentro_id !== null, 403, $saldo->dellArretrato()
+            ? 'Questa riga è una delle due dell\'arretrato di una successione: il lucchetto lo mette e lo toglie il piano che la assorbe.'
+            : 'Questa riga è una delle due del conguaglio di un passaggio: il lucchetto lo mette e lo toglie il piano che la assorbe.');
 
         abort_unless($saldo->is_applicato, 400, 'Questo saldo è già libero.');
 
@@ -206,6 +224,16 @@ class SaldoInizialeController extends Controller
 
         // B2 (inv. 19): una gamba sola della coppia di conguaglio non si cancella — la somma non farebbe
         // più zero. 422 e non 403: è un errore di campo che il pannello sa mostrare, come per «Modifica».
+        if ($saldo->dellArretrato()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => Saldo::FRASE_ARRETRATO]);
+        }
+        // Decisione 67 (3): un saldo da cui una successione ha calcolato l'arretrato agli eredi.
+        if (($frase = $saldo->fraseFonteDellArretrato()) !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => $frase]);
+        }
+        if ($saldo->subentro_id !== null && $saldo->subentro?->arretratoAgliEredi()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => Saldo::FRASE_CONGUAGLIO_CON_ARRETRATO]);
+        }
         if ($saldo->subentro_id !== null) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'saldo' => 'Questa riga è una delle due del conguaglio di un passaggio di titolarità (somma zero): non si cancella da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie le due righe insieme, con la tua nota.',

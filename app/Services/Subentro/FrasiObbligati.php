@@ -38,8 +38,10 @@ final class FrasiObbligati
     public const SALVO_SALDI_DELL_UNITA = ', salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano';
 
     /**
-     * @param 'vendita'|'inizio_locazione'|'fine_locazione'|'usufrutto' $tipo
-     * @param array{sottotipo?: ?string, copia_autentica?: bool, copia_autentica_il?: ?CarbonImmutable, regime_contratto?: ?string, immobili?: list<int>} $dati
+     * @param 'vendita'|'inizio_locazione'|'fine_locazione'|'usufrutto'|'successione' $tipo
+     * @param array{sottotipo?: ?string, copia_autentica?: bool, copia_autentica_il?: ?CarbonImmutable, regime_contratto?: ?string, immobili?: list<int>, eredi?: list<array{nome: ?string, quota: float}>, arretrato?: ?string, legato?: bool, tipologia?: string, quota?: float} $dati
+     *        Nella successione (1.11.0-beta.44): `eredi` (chi entra, con la quota sull'unità), `arretrato` (la scelta), `legato`,
+     *        `tipologia` e `quota` del defunto
      *        `immobili`: l'unità e le pertinenze del passaggio, per sapere se hanno saldi intestati all'unità (decisione 28.8 a);
      *        senza, la frase della vendita nomina l'eccezione comunque
      * @param Collection<int, TitolaritaImmobile> $proprietari  i proprietari che restano (fine locazione)
@@ -83,6 +85,9 @@ final class FrasiObbligati
 
                 return $frasi;
 
+            case 'successione':
+                return $this->frasiSuccessione($dati, $uscente, $dal, $registrato);
+
             case 'inizio_locazione':
                 $frasi = [$registrato
                     ? 'Verso il condominio continua a rispondere il proprietario. All\'inquilino sono addebitate solo le voci di spesa il cui coefficiente indica “inquilino”.'
@@ -115,6 +120,14 @@ final class FrasiObbligati
                 return $frasi;
 
             case 'usufrutto':
+                if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione' && ! empty($dati['usufruttuari'])) {
+                    // 1.11.0-beta.44: con l'accrescimento la nuda resta nuda, e verso il condominio rispondono in solido, come prima, il
+                    // nudo proprietario e gli usufruttuari che restano (art. 67 ult. co.); fra loro vale la natura della spesa.
+                    $chi = $this->elenco($dati['usufruttuari']);
+
+                    return [sprintf('Dal %s %s, %s anche della parte di %s, e il nudo proprietario rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Le rate già emesse a %s restano sue.',
+                        $dalA, $chi, count($dati['usufruttuari']) > 1 ? 'usufruttuari' : 'usufruttuario', $uscente ?? 'chi esce', $uscente ?? 'chi esce')];
+                }
                 if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
                     // 1.11.0-beta.43: quando sull'unità restano altri titolari (un altro usufrutto con i suoi nudi, il proprietario
                     // pieno dell'altra metà) o la nuda torna piena solo in parte, chi torna proprietario pieno lo è della parte
@@ -136,7 +149,7 @@ final class FrasiObbligati
                             $uscente ?? 'chi esce')];
                     }
                     if (is_array($nudo) && count($nudo) > 1) {
-                        $elenco = array_map(fn ($n) => sprintf('%s (%s %%)', $n['nome'] ?? '?', rtrim(rtrim(number_format((float) ($n['quota'] ?? 0), 2, ',', '.'), '0'), ',')), $nudo);
+                        $elenco = array_map(fn ($n) => sprintf('%s (%s %%)', $n['nome'] ?? '?', rtrim(rtrim(number_format((float) ($n['quota'] ?? 0), 2, ',', '.'), '0'), ',')), $nudo);
                         $ultimo = array_pop($elenco);
 
                         return [sprintf('Dal %s %s tornano proprietari pieni e rispondono di tutte le spese dell\'unità, ciascuno per la sua quota. Le rate già emesse a %s restano sue.', $dalA, implode(', ', $elenco) . ' e ' . $ultimo, $uscente ?? 'chi esce')];
@@ -183,6 +196,51 @@ final class FrasiObbligati
     }
 
     /**
+     * La successione (1.11.0-beta.44, decisione 65). Solo ciò che dicono gli articoli verificati: dei contributi maturati fino al
+     * giorno prima del decesso rispondono gli eredi, ogni erede in proporzione della sua quota ereditaria (art. 754 c.c.); dal
+     * decesso chi entra risponde dei contributi come comproprietario, divisi per quota. Nessuna frase sull'art. 63 co. 4, che per gli
+     * eredi è controverso, e nessuna sentenza. Niente copia autentica: l'art. 63 co. 5 è scritto per chi cede. Nella nuda
+     * proprietà, la regola dell'art. 67 ult. co. come nella costituzione.
+     *
+     * @return list<string>
+     */
+    private function frasiSuccessione(array $dati, ?string $defunto, CarbonImmutable $dal, bool $registrato): array
+    {
+        // Il ripiego regge la preposizione («gli eredi di questa persona»), che «il defunto» non reggeva (rilievo GC16 del giro).
+        $defunto ??= 'questa persona';
+        $dalA = $this->data($dal);
+        $eredi = array_values($dati['eredi'] ?? []);
+        $legato = (bool) ($dati['legato'] ?? false);
+        $piu = count($eredi) > 1;
+        $percento = fn (float $q) => rtrim(rtrim(number_format($q, 2, ',', '.'), '0'), ',') . ' %';
+        $chi = $piu
+            ? $this->elenco(array_map(fn ($e) => sprintf('%s (%s)', $e['nome'] ?? '?', $percento((float) ($e['quota'] ?? 0))), $eredi))
+            : ($eredi[0]['nome'] ?? 'chi entra');
+        $quotaDefunto = (float) ($dati['quota'] ?? 100);
+        $parte = $quotaDefunto < 100 ? sprintf(' per la parte che era di %s (%s)', $defunto, $percento($quotaDefunto)) : '';
+
+        $frasi = [sprintf('Dei contributi maturati fino al %s rispondono gli eredi di %s, ogni erede in proporzione della sua quota ereditaria (art. 754 c.c.)%s.',
+            $this->data($dal->subDay()), $defunto, $legato ? ', non chi riceve l\'unità per legato' : '')];
+        $frasi[] = match (true) {
+            ($dati['arretrato'] ?? null) !== Subentro::ARRETRATO_AGLI_EREDI => null,
+            // Rilievi L9 e X9 della Fase 1-bis della .44: senza righe non si promettono righe.
+            ! empty($dati['arretrato_senza_righe']) && (int) ($dati['arretrato_non_scritto'] ?? 0) !== 0 => sprintf('Il programma non ha potuto intestare a ogni erede la sua parte della posizione di %s: mancava un esercizio su cui scriverla, e resta a nome di %s.', $defunto, $defunto),
+            ! empty($dati['arretrato_senza_righe']) => $registrato ? 'Il giorno della registrazione non c\'era niente di non pagato da intestare agli eredi.' : 'Non c\'è niente di non pagato da intestare agli eredi.',
+            // Rilievi GC1 e GC16 del giro sulle correzioni: le righe possono essere un credito, e la scrittura può essere solo in parte.
+            default => sprintf('Il programma %s a ogni erede, con righe nei saldi della gestione, la sua parte della posizione di %s al netto del conguaglio%s.', $registrato ? 'ha intestato' : 'intesta', $defunto,
+                (int) ($dati['arretrato_non_scritto'] ?? 0) !== 0 ? sprintf('; %s%s non sono stati scritti, perché mancava un esercizio su cui scriverli, e restano a nome di %s', \App\Helpers\MoneyHelper::format(abs((int) $dati['arretrato_non_scritto'])), (int) $dati['arretrato_non_scritto'] < 0 ? ' a credito' : '', $defunto) : ''),
+        } ?? sprintf('Il programma %s quelli non pagati a nome di %s («eredi di %s»): chi versa al suo posto si registra con «Versato da».', $registrato ? 'ha lasciato' : 'lascia', $defunto, $defunto);
+        $frasi[] = ($dati['tipologia'] ?? null) === 'nuda_proprietario'
+            ? sprintf('Dal %s %s %s al posto di %s: verso il condominio nudo proprietario e usufruttuario rispondono in solido (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.).',
+                $dalA, $chi, $piu ? 'sono nudi proprietari, ogni erede per la sua quota,' : 'è nudo proprietario', $defunto)
+            : ($piu
+                ? sprintf('Dal %s %s rispondono dei contributi dell\'unità%s come comproprietari, divisi fra loro per quota.', $dalA, $chi, $parte)
+                : sprintf('Dal %s %s risponde dei contributi dell\'unità%s.', $dalA, $chi, $parte));
+
+        return $frasi;
+    }
+
+    /**
      * Il vademecum di un passaggio **registrato**, dai fatti in `subentri`. Il sottotipo dell'usufrutto si
      * legge dalla `tipologia` di chi entra (`proprietario` = estinzione, `usufruttuario` = costituzione);
      * la copia autentica è un fatto se `copia_autentica_il` è compilata; i proprietari «che restano» sono
@@ -209,6 +267,24 @@ final class FrasiObbligati
             // Decisione 28.8 a: l'unità e le pertinenze passate con lo stesso atto.
             'immobili'           => $this->immobiliDelPassaggio($subentro),
         ];
+        if ($subentro->conAccrescimento()) {
+            // 1.11.0-beta.44: gli usufruttuari che hanno ricevuto l'accrescimento, dal registro.
+            $nomi = \App\Models\Anagrafica::whereIn('id', $subentro->entranti())->pluck('nome', 'id');
+            $dati['usufruttuari'] = array_values(array_filter(array_map(fn ($id) => $nomi[$id] ?? null, $subentro->entranti())));
+        }
+        if ($subentro->successione()) {
+            // 1.11.0-beta.44: gli eredi dal registro, con il nome di oggi o quello scritto al passaggio; la quota del defunto dalla sua riga.
+            $nomi = \App\Models\Anagrafica::whereIn('id', $subentro->entranti())->pluck('nome', 'id');
+            $dati += [
+                'eredi' => array_map(fn ($e) => ['nome' => $nomi[$e['anagrafica_id']] ?? ($subentro->registro['nomi']['eredi'][(string) $e['anagrafica_id']] ?? null), 'quota' => $e['quota']], $subentro->eredi()),
+                'arretrato' => $subentro->registro['arretrato']['scelta'] ?? null,
+                'arretrato_senza_righe' => $subentro->saldiDellArretrato() === [],
+                'arretrato_non_scritto' => (int) ($subentro->registro['arretrato']['non_scritto'] ?? 0),
+                'legato' => $subentro->legato(),
+                'tipologia' => (string) $subentro->tipologia,
+                'quota' => (float) (DB::table('anagrafica_immobile')->where('id', $subentro->riga_uscente_id)->value('quota') ?? 100),
+            ];
+        }
 
         $estinzione = $tipo === 'usufrutto' && $subentro->tipologia === 'proprietario';
         // 1.11.0-beta.43: il registro dice quali nude sono tornate piene e, se solo in parte, per quanto; la quota è quella del giorno

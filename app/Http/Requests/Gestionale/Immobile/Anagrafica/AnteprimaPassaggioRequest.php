@@ -47,26 +47,42 @@ class AnteprimaPassaggioRequest extends FormRequest
         return [
             'tipo' => ['required', Rule::in(Subentro::TIPI_PASSAGGIO)],
             // L'usufrutto ha due forme; la vendita una sola, la riserva d'usufrutto (beta.38, decisione 28), che si
-            // dichiara e non si deduce. I sottotipi di un tipo non valgono per l'altro.
-            'sottotipo' => ['nullable', 'required_if:tipo,usufrutto', Rule::in($tipo === 'vendita' ? [Subentro::RISERVA_USUFRUTTO] : ['costituzione', 'estinzione'])],
+            // dichiara e non si deduce; la successione il legato (1.11.0-beta.44, decisione 66). I sottotipi di un tipo non valgono
+            // per l'altro, e la locazione non ne ha (prima la fine locazione accettava «costituzione» e lo scriveva nel registro).
+            'sottotipo' => ['nullable', 'required_if:tipo,usufrutto', Rule::prohibitedIf(fn () => in_array($tipo, ['inizio_locazione', 'fine_locazione'], true)),
+                Rule::in(match ($tipo) { 'vendita' => [Subentro::RISERVA_USUFRUTTO], 'successione' => [Subentro::LEGATO], default => ['costituzione', 'estinzione'] })],
             'riga_uscente_id' => [
                 // L'inizio di una locazione non ha chi esce (S8-20): una riga qui chiuderebbe il proprietario.
                 Rule::prohibitedIf(fn () => $tipo === 'inizio_locazione'),
-                Rule::requiredIf(fn () => in_array($tipo, ['vendita', 'fine_locazione', 'usufrutto'], true)),
+                Rule::requiredIf(fn () => in_array($tipo, ['vendita', 'fine_locazione', 'usufrutto', 'successione'], true)),
                 'nullable', 'integer',
             ],
             'anagrafica_entrante_id' => [
                 Rule::requiredIf(fn () => $tipo === 'vendita' || $tipo === 'inizio_locazione' || ($tipo === 'usufrutto' && $this->input('sottotipo') !== 'estinzione')),
+                // Nella successione entrano gli eredi, in `eredi`: un solo campo per una persona sola nasconderebbe gli altri.
+                Rule::prohibitedIf(fn () => $tipo === 'successione'),
                 'nullable', 'integer', Rule::exists('anagrafiche', 'id'),
             ],
+            // Decisione 65 (1.11.0-beta.44): gli eredi, ciascuno con la quota che eredita; le quote sommano a quella del defunto.
+            'eredi' => [Rule::requiredIf(fn () => $tipo === 'successione'), Rule::prohibitedIf(fn () => $tipo !== 'successione'), 'nullable', 'array', 'min:1'],
+            'eredi.*.anagrafica_id' => ['required', 'integer', 'distinct', Rule::exists('anagrafiche', 'id')],
+            'eredi.*.quota' => ['required', 'numeric', 'gt:0', 'max:100'],
+            // Decisione 65 (2): l'arretrato del defunto agli eredi per quota, o a suo nome. Nessun valore predefinito sul server, come la
+            // scelta sull'ordinaria: un modulo che non la mostra si ferma qui invece di spostare denaro senza che nessuno l'abbia vista.
+            'arretrato' => [Rule::requiredIf(fn () => $tipo === 'successione'), Rule::prohibitedIf(fn () => $tipo !== 'successione'), 'nullable',
+                Rule::in([Subentro::ARRETRATO_AGLI_EREDI, Subentro::ARRETRATO_AL_DEFUNTO])],
+            // Decisione 65 (3): l'erede che riceve le bozze di un piano già fermo; lo chiede il pannello solo quando serve.
+            'erede_di_riferimento' => ['nullable', 'integer', Rule::prohibitedIf(fn () => $tipo !== 'successione')],
             // Nessun valore predefinito: la data del passaggio la dichiara l'amministratore (decisione 12,
             // «non si tira a indovinare»).
-            'decorrenza' => ['required', 'date'],
+            // La data del decesso non è nel futuro (decisione 65): un atto si registra anche prima del giorno in cui vale, un decesso no.
+            'decorrenza' => ['required', 'date', ...($tipo === 'successione' ? ['before_or_equal:' . DateHelper::oggiUtente()] : [])],
             'quota' => ['required', 'numeric', 'min:0', 'max:100'],
             // Il ruolo di chi entra è legato al tipo: una vendita non fa entrare un inquilino, una
             // locazione non fa entrare un proprietario. L'elenco per tipo sta in `ruoliEntrante()`.
             'tipologia' => ['required', Rule::in(self::ruoliEntrante($tipo, (string) $this->input('sottotipo')))],
-            'copia_autentica' => ['required', 'boolean'],
+            // Decisione 65: niente copia autentica nella successione (art. 63 co. 5 disp. att. c.c. riguarda chi cede, non chi muore).
+            'copia_autentica' => ['required', 'boolean', 'declined_if:tipo,successione'],
             // S8-23: non si può aver ricevuto la copia autentica in un giorno futuro (stessa regola del PATCH dallo storico).
             'copia_autentica_il' => ['nullable', 'date', 'required_if:copia_autentica,true', 'before_or_equal:' . DateHelper::oggiUtente()],
             'estremi_titolo' => ['nullable', 'string', 'max:500'],
@@ -105,6 +121,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             'nudi_che_tornano.*' => ['integer'],
             // Decisione 62: «tutti i nudi, ciascuno per la sua quota» (la donazione congiunta), al posto della scelta per nudi interi.
             'nudi_per_quota' => ['nullable', 'boolean'],
+            // 1.11.0-beta.44: all'estinzione, l'atto prevede l'accrescimento all'altro usufruttuario (o è un legato di usufrutto
+            // congiunto, artt. 675 e 678 c.c.): l'usufrutto di chi muore va agli usufruttuari che restano, e la nuda resta nuda.
+            'accrescimento' => ['nullable', 'boolean'],
             'voci_da_tenere' => ['nullable', 'array'],
             'voci_da_tenere.*' => ['integer'],
             // Rilievo S1: l'impronta dell'elenco delle voci che il pannello ha mostrato (`VociDaSpostare::impronta()`).
@@ -119,7 +138,7 @@ class AnteprimaPassaggioRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $norm = [];
-        foreach (['copia_autentica', 'ho_letto', 'promemoria_scadenza', 'rinuncia_conguaglio'] as $campo) {
+        foreach (['copia_autentica', 'ho_letto', 'promemoria_scadenza', 'rinuncia_conguaglio', 'accrescimento'] as $campo) {
             if ($this->has($campo)) {
                 $norm[$campo] = filter_var($this->input($campo), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
             }
@@ -164,6 +183,12 @@ class AnteprimaPassaggioRequest extends FormRequest
                         'Questo periodo si è chiuso il %s: il passaggio si registra da un titolare in corso alla data dell\'atto.',
                         $uscente->data_fine->locale('it')->translatedFormat('j F Y'),
                     ));
+                } elseif ($uscente->data_fine !== null && $uscente->passaggioCheLaChiude() !== null) {
+                    // Giro sulle correzioni della Fase 1-bis della .44 (G25): la riga di chi esce che un passaggio registrato dopo ha già
+                    // chiuso — come chi esce, o sommandola nella riga nuova di chi riceve. La registrazione la richiudeva al giorno prima,
+                    // sotto ciò che è successo dopo. Una data di fine scritta a mano (la scadenza della locazione, l'usufrutto a termine)
+                    // resta accettata.
+                    $v->errors()->add('riga_uscente_id', ucfirst(self::fraseUscenteChiusa($uscente)));
                 }
             }
 
@@ -217,7 +242,7 @@ class AnteprimaPassaggioRequest extends FormRequest
                 }
                 if ($this->filled('quota') && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
                     $v->errors()->add('quota', sprintf(
-                        'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (%s %%): chi vende resta usufruttuario sulla stessa quota.',
+                        'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (%s %%): chi vende resta usufruttuario sulla stessa quota.',
                         rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
                     ));
                 }
@@ -232,11 +257,13 @@ class AnteprimaPassaggioRequest extends FormRequest
             $tipo = (string) $this->input('tipo');
             $portaLaQuota = ($tipo === 'vendita' && ! $riserva)
                 || ($tipo === 'usufrutto' && (string) $this->input('sottotipo') !== 'estinzione')
-                || ($tipo === 'fine_locazione' && $this->filled('anagrafica_entrante_id'));
+                || ($tipo === 'fine_locazione' && $this->filled('anagrafica_entrante_id'))
+                // La successione porta tutta la quota del defunto, divisa fra gli eredi (decisione 65).
+                || $tipo === 'successione';
             if ($uscente !== null && $portaLaQuota && $this->filled('quota') && is_numeric($this->input('quota'))
                 && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
                 $v->errors()->add('quota', sprintf(
-                    'Il passaggio porta tutta la quota di %s (%s %%): passarne solo una parte non è ancora previsto. Se l\'atto trasferisce solo una parte della quota, registralo a mano: chiudi la riga di chi esce al giorno prima dell\'atto da «Modifica associazione», poi da «Associa soggetto» riapri chi esce alla quota che tiene e apri chi entra alla sua, dal giorno dell\'atto, senza conguaglio automatico. Una riga con lo stesso ruolo di quella chiusa conta dal giorno dell\'atto. Una riga con un ruolo che sull\'unità non c\'era, come l\'usufruttuario di una costituzione, oppure aperta dopo un buco fra le date, per il riparto vale da sempre: un piano generato o ricalcolato dopo gliela addebita anche per i mesi prima dell\'atto.',
+                    'Il passaggio porta tutta la quota di %s (%s %%): passarne solo una parte non è ancora previsto. Se l\'atto trasferisce solo una parte della quota, registralo a mano: chiudi la riga di chi esce al giorno prima dell\'atto da «Modifica associazione», poi da «Associa soggetto» riapri chi esce alla quota che tiene e apri chi entra alla sua, dal giorno dell\'atto, senza conguaglio automatico. Una riga con lo stesso ruolo di quella chiusa conta dal giorno dell\'atto. Una riga con un ruolo che sull\'unità non c\'era, come l\'usufruttuario di una costituzione, oppure aperta dopo un buco fra le date, per il riparto vale da sempre: un piano generato o ricalcolato dopo gliela addebita anche per i mesi prima dell\'atto.',
                     $uscente->anagrafica?->nome ?? 'chi esce',
                     rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
                 ));
@@ -246,7 +273,11 @@ class AnteprimaPassaggioRequest extends FormRequest
             // la stessa regola della registrazione), e le guardie che guardano proprio quei nudi. Qui, perché anteprima e registrazione
             // dicano lo stesso. Rilievo A5 della Fase 1-bis della .43: le guardie guardavano tutte le nude in corso, anche quella di
             // un'altra parte che resta sotto un altro usufrutto e non diventa piena, e rifiutavano l'estinzione con una frase falsa.
-            if ($tipo === 'usufrutto' && (string) $this->input('sottotipo') === 'estinzione' && $this->filled('decorrenza')) {
+            $estinzione = $tipo === 'usufrutto' && (string) $this->input('sottotipo') === 'estinzione';
+            if ($this->boolean('accrescimento') && ! $estinzione) {
+                $v->errors()->add('accrescimento', 'L\'accrescimento vale solo per l\'estinzione dell\'usufrutto.');
+            }
+            if ($estinzione && $this->filled('decorrenza')) {
                 $giorno = CarbonImmutable::parse($this->input('decorrenza'))->startOfDay();
                 $il = $giorno->locale('it')->translatedFormat('j F Y');
                 $usufrutto = $this->rigaUscente();
@@ -261,11 +292,91 @@ class AnteprimaPassaggioRequest extends FormRequest
                     // L'usufrutto di chi esce su questa unità e i suoi nudi; sulle pertinenze la scelta non c'è.
                     $suo = $usufrutto === null ? null : ($principale ? $usufrutto
                         : $titolarita->first(fn (TitolaritaImmobile $t) => (int) $t->anagrafica_id === (int) $usufrutto->anagrafica_id && $t->tipologia === 'usufruttuario' && $t->inCorsoIl($giorno)));
+                    // 1.11.0-beta.44: con l'accrescimento la nuda resta nuda, e le guardie dei nudi che tornano pieni non c'entrano. Servono
+                    // gli altri usufruttuari, in corso il giorno prima e il giorno dell'atto (una riga nata quel giorno non si somma).
+                    if ($this->boolean('accrescimento')) {
+                        $altri = $suo === null ? collect() : $titolarita->filter(fn (TitolaritaImmobile $t) => $t->tipologia === 'usufruttuario' && (int) $t->id !== (int) $suo->id
+                            && (int) $t->anagrafica_id !== (int) $suo->anagrafica_id && $t->inCorsoIl($giorno) && $t->inCorsoIl($giorno->subDay()));
+                        if ($suo !== null && $altri->isEmpty()) {
+                            // Rilievo L15 della Fase 1-bis della .44: un altro usufrutto nato il giorno dell'atto c'è, ma non riceve (non si somma
+                            // una riga nata quel giorno); la frase non dice «nessuno». Rilievo L5: sulla pertinenza la spunta da togliere è la sua.
+                            $natoOggi = $titolarita->first(fn (TitolaritaImmobile $t) => $t->tipologia === 'usufruttuario' && (int) $t->anagrafica_id !== (int) $suo->anagrafica_id
+                                && $t->inCorsoIl($giorno) && $t->data_inizio !== null && $t->data_inizio->equalTo($giorno));
+                            $chi = $suo->anagrafica?->nome ?? 'chi esce';
+                            $frase = match (true) {
+                                // Giro sulle correzioni (GC10): il programma sa solo la data, e sulla pertinenza la spunta da togliere è la sua.
+                                $natoOggi !== null => sprintf('il %s comincia anche l\'usufrutto di %s, e l\'accrescimento non si somma a una riga che comincia lo stesso giorno: %s',
+                                    $il, $natoOggi->anagrafica?->nome ?? 'un altro usufruttuario', $principale
+                                        ? 'correggi le righe a mano da «Modifica associazione», oppure togli la spunta dell\'accrescimento.'
+                                        : 'togli la spunta della pertinenza e registra la sua estinzione dalla pertinenza, oppure correggi le righe a mano da «Modifica associazione».'),
+                                $principale => sprintf('il %s nessun altro usufruttuario risulta in corso: senza un altro usufruttuario l\'usufrutto di %s non si accresce, e torna al nudo proprietario. Togli la spunta dell\'accrescimento.', $il, $chi),
+                                default => sprintf('il %s lì nessun altro usufruttuario risulta in corso, e l\'usufrutto di %s su questa pertinenza non si accresce: togli la sua spunta fra le pertinenze e registra la sua estinzione dalla pertinenza.', $il, $chi),
+                            };
+                            $v->errors()->add($principale ? 'accrescimento' : 'pertinenze', $principale ? ucfirst($frase) : $prefisso . $frase);
+                        }
+                        // Decisione 67 (2), rilievo X4: con la nuda di più nudi proprietari il programma non sa quale usufrutto stia sopra
+                        // quale nuda, e la parte di chi esce andrebbe anche a chi sta sopra un'altra nuda.
+                        $nudi = $suo === null ? collect() : \App\Services\Subentro\AnteprimaPassaggio::nudiDistintiIl($suo, $giorno);
+                        if ($nudi->count() > 1) {
+                            // Giro sulle correzioni (GB4, GB7): sulla pertinenza la strada è la sua; e il legato congiunto porta per legge all'accrescimento.
+                            $elencoNudi = $nudi->count() === 2 ? $nudi->implode(' e ') : $nudi->slice(0, -1)->implode(', ') . ' e ' . $nudi->last();
+                            $frase = $principale
+                                ? sprintf('il %s la nuda proprietà di questa unità è di più nudi proprietari (%s), e il programma non sa quale usufrutto stia sopra quale nuda: l\'accrescimento si registra da qui solo quando la nuda è di un solo nudo proprietario. Se l\'atto prevede l\'accrescimento, o l\'usufrutto è un legato a più persone insieme (artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione», senza conguaglio automatico; altrimenti togli la spunta dell\'accrescimento, e la parte di %s torna alla nuda come vuole la legge negli atti fra vivi.',
+                                    $il, $elencoNudi, $suo->anagrafica?->nome ?? 'chi esce')
+                                : sprintf('il %s la nuda proprietà di questa pertinenza è di più nudi proprietari (%s), e il programma non sa quale usufrutto stia sopra quale nuda: togli la spunta della pertinenza e registra la sua estinzione dalla pertinenza.',
+                                    $il, $elencoNudi);
+                            $v->errors()->add($principale ? 'accrescimento' : 'pertinenze', $principale ? ucfirst($frase) : $prefisso . $frase);
+                        }
+                        // Rilievo X1 della Fase 1-bis della .44: un altro usufruttuario la cui riga ha già una data di fine. La registrazione
+                        // la chiudeva al giorno prima e apriva l'usufrutto accresciuto senza fine, sopra ciò che è successo dopo. Le frasi
+                        // della decisione 53 (2) e del rilievo T2: rifare i passaggi in ordine, o correggere a mano.
+                        foreach ($altri->filter(fn (TitolaritaImmobile $t) => $t->data_fine !== null) as $chiusa) {
+                            $chi = $chiusa->anagrafica?->nome ?? 'Un usufruttuario';
+                            $v->errors()->add('decorrenza', $prefisso . ($chiusa->passaggioCheLaChiude() !== null
+                                ? sprintf('%s era usufruttuario di questa unità il %s, e un passaggio registrato dopo ha chiuso quella riga dal %s: con l\'accrescimento la sua parte cresce dal giorno dell\'estinzione, e il passaggio dopo andrebbe registrato sull\'usufrutto accresciuto. Annulla prima dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, registra l\'estinzione con l\'accrescimento e poi di nuovo quei passaggi; se l\'atto dice altro, correggi le righe a mano da «Modifica associazione».',
+                                    $chi, $il, CarbonImmutable::parse($chiusa->data_fine)->addDay()->locale('it')->translatedFormat('j F Y'))
+                                : sprintf('%s era usufruttuario di questa unità il %s, e la sua riga ha una data di fine scritta a mano, il %s: con l\'accrescimento la sua parte cresce dal giorno dell\'estinzione, e il programma non sa fino a quando. Correggi le righe a mano da «Modifica associazione» prima di registrare l\'estinzione.',
+                                    $chi, $il, CarbonImmutable::parse($chiusa->data_fine)->locale('it')->translatedFormat('j F Y'))));
+                        }
+                        continue;
+                    }
                     $regola = $suo !== null ? app(NudiDellEstinzione::class)->per($suo, $giorno, $principale ? $scelti : null, $principale && $this->boolean('nudi_per_quota')) : null;
+                    // Un usufrutto senza nessun nudo proprietario in corso non ha una nuda a cui tornare: la registrazione chiudeva l'usufrutto
+                    // senza far tornare pieno nessuno, e l'unità restava senza proprietario. Prima la fermava solo il modulo (1.11.0-beta.44).
+                    if ($regola !== null && $regola['errore'] === null && $regola['nudi']->isEmpty()) {
+                        // Rilievo L14 della Fase 1-bis della .44: la nuda censita come proprietà piena accanto all'usufrutto. Associarla di nuovo
+                        // come nuda portava allo sforo; la strada è correggere il ruolo della riga che c'è.
+                        // Giro sulle correzioni (GB8): solo quando la piena si sovrappone all'usufrutto; nell'unità mista la piena dell'altra metà è
+                        // legittima, e la strada resta associare la nuda.
+                        $pieno = $titolarita->first(fn (TitolaritaImmobile $t) => $t->tipologia === 'proprietario' && $t->inCorsoIl($giorno)
+                            && (float) $t->quota + (float) $suo->quota > 100.001);
+                        $frase = $pieno !== null
+                            ? sprintf('il %s nessun nudo proprietario risulta in corso, e %s risulta proprietario pieno accanto all\'usufrutto di %s: se ha la nuda proprietà, correggi il ruolo della sua riga in «nudo proprietario» da «Modifica associazione», poi registra l\'estinzione.',
+                                $il, $pieno->anagrafica?->nome ?? 'un proprietario', $suo->anagrafica?->nome ?? 'chi esce')
+                            : sprintf('il %s nessun nudo proprietario risulta in corso: l\'usufrutto di %s non ha una nuda proprietà a cui tornare. Associa prima il nudo proprietario da «Associa soggetto», poi registra l\'estinzione.',
+                            $il, $suo->anagrafica?->nome ?? 'chi esce');
+                        $v->errors()->add($principale ? 'estinzione' : 'pertinenze', $principale ? ucfirst($frase) : $prefisso . $frase);
+                        continue;
+                    }
                     // Le nude a cui guardano le guardie: quelle che tornano piene. Senza la regola (manca la riga d'usufrutto, e un altro
                     // controllo lo rifiuta già) tutte le nude in corso, come prima.
                     $tornano = $regola === null ? null : $regola['nudi']->map(fn (TitolaritaImmobile $t) => (int) $t->id)->all();
                     $torna = fn (TitolaritaImmobile $t) => $tornano === null || in_array((int) $t->id, $tornano, true);
+
+                    // Giro sulle correzioni della Fase 1-bis della .44 (G1, G2): il nudo che torna pieno è già proprietario pieno di un'altra
+                    // parte, e quella riga ha una data di fine. La registrazione la chiudeva al giorno prima e sommava senza fine (anche il
+                    // nudo nato oggi della decisione 36), sopra ciò che è successo dopo. Il nudo che non consolida niente si lascia stare.
+                    foreach ($regola['nudi'] ?? [] as $nudo) {
+                        if (isset($regola['consolida'][(int) $nudo->id]) && (float) $regola['consolida'][(int) $nudo->id] <= 0) {
+                            continue;
+                        }
+                        // Con il nudo nato il giorno dell'atto, la piena nata anch'essa quel giorno ha la sua frase (decisione 36, qui sotto):
+                        // qui solo quelle nate prima. Con il nudo nato prima, tutte (ultima revisione, UD2).
+                        $natoOggi = $nudo->data_inizio !== null && $nudo->data_inizio->equalTo($giorno);
+                        if (($frase = $this->fraseRigaGiaChiusa($unita, (int) $nudo->anagrafica_id, 'proprietario', $giorno, 'la nuda proprietà che torna piena', natePrima: $natoOggi)) !== null) {
+                            $v->errors()->add('decorrenza', $prefisso . $frase);
+                        }
+                    }
 
                     // Decisione 36, rilievo R9 della Fase 1-bis della .42: un nudo proprietario nato oggi che è anche proprietario pieno da
                     // una riga nata oggi (la nuda comprata e un'altra parte avuta lo stesso giorno). La riga piena non si chiude a ieri
@@ -284,7 +395,8 @@ class AnteprimaPassaggioRequest extends FormRequest
                     // proprietà piena. Registrata così, chi aveva venduto la nuda restava proprietario pieno in silenzio.
                     $chiusa = $titolarita->first(fn (TitolaritaImmobile $t) => $t->tipologia === 'nuda_proprietario' && $torna($t) && $t->inCorsoIl($giorno) && $t->data_fine !== null);
                     // Rilievo T2 del quarto giro: una riga chiusa a mano (la via a mano della decisione 37) non ha un passaggio da annullare.
-                    if ($chiusa !== null && ! Subentro::where('immobile_id', $unita->id)->where('riga_uscente_id', $chiusa->id)->exists()) {
+                    // Giro sulle correzioni (G3): un passaggio la chiude anche nel suo registro (la nuda di un'estinzione, una somma).
+                    if ($chiusa !== null && $chiusa->passaggioCheLaChiude() === null) {
                         $v->errors()->add('decorrenza', $prefisso . sprintf(
                             '%s era nudo proprietario di questa unità il %s, e la sua riga è stata chiusa a mano dal %s: dal giorno dell\'estinzione quella nuda proprietà diventa piena. Correggi le righe a mano da «Modifica associazione» prima di registrare l\'estinzione.',
                             $chiusa->anagrafica?->nome ?? 'Un nudo proprietario', $il, CarbonImmutable::parse($chiusa->data_fine)->addDay()->locale('it')->translatedFormat('j F Y')));
@@ -312,6 +424,42 @@ class AnteprimaPassaggioRequest extends FormRequest
                             $v->errors()->add('pertinenze', $regola['fermo'] ? $unita->nome . ': ' . mb_lcfirst($regola['errore']) . ' Togli la spunta per registrare da qui l\'estinzione dell\'unità principale.'
                                 : sprintf('%s: anche lì c\'è un altro usufrutto in corso, e il programma non sa quali nudi proprietari tornano proprietari pieni. Togli la spunta e registra l\'estinzione dalla pertinenza, dove si sceglie.', $unita->nome));
                         }
+                    }
+                }
+            }
+
+            // Lente di sicurezza (1.11.0-beta.44): chi entra è una persona di questo condominio. Prima il server controllava solo che
+            // l'anagrafica esistesse: un passaggio poteva aprire una riga a una persona di un altro condominio, che il modulo non propone.
+            /** @var Immobile $immobile */
+            $delCondominio = fn (int $id) => \Illuminate\Support\Facades\DB::table('anagrafica_condominio')->where('anagrafica_id', $id)->where('condominio_id', $immobile->condominio_id)->exists();
+            if ($this->filled('anagrafica_entrante_id') && ! $delCondominio((int) $this->input('anagrafica_entrante_id'))) {
+                $v->errors()->add('anagrafica_entrante_id', 'Chi entra non è una persona di questo condominio: sceglila dall\'elenco, o creala dal modulo.');
+            }
+
+            if ($tipo === 'successione') {
+                $this->controllaSuccessione($v, $immobile, $uscente, $delCondominio);
+            }
+            // Rilievo X1 della Fase 1-bis della .44 (il caso c'era già prima): chi compra è già titolare con lo stesso ruolo, e la sua riga
+            // ha una data di fine.
+            if ($tipo === 'vendita' && $this->filled('anagrafica_entrante_id') && $this->filled('decorrenza') && $this->filled('tipologia')) {
+                foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+                    $frase = $this->fraseRigaGiaChiusa($unita, (int) $this->input('anagrafica_entrante_id'), (string) $this->input('tipologia'),
+                        CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay(), 'la quota comprata');
+                    if ($frase !== null) {
+                        $v->errors()->add('anagrafica_entrante_id', ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
+                    }
+                }
+            }
+            // Giro sulle correzioni (G1): nella riserva l'usufrutto che chi vende tiene, nella costituzione la nuda che chi costituisce tiene,
+            // si sommano a una riga che ha già; con una data di fine la registrazione si fermava solo alla fine, dopo un'anteprima pulita.
+            $riserva = $tipo === 'vendita' && (string) $this->input('sottotipo') === Subentro::RISERVA_USUFRUTTO;
+            $costituzione = $tipo === 'usufrutto' && (string) $this->input('sottotipo') === 'costituzione';
+            if ($uscente !== null && $this->filled('decorrenza') && ($riserva || $costituzione)) {
+                [$ruolo, $cheCosa] = $riserva ? ['usufruttuario', 'l\'usufrutto riservato'] : ['nuda_proprietario', 'la nuda proprietà che resta'];
+                foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+                    $frase = $this->fraseRigaGiaChiusa($unita, (int) $uscente->anagrafica_id, $ruolo, CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay(), $cheCosa);
+                    if ($frase !== null) {
+                        $v->errors()->add('decorrenza', ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
                     }
                 }
             }
@@ -345,8 +493,13 @@ class AnteprimaPassaggioRequest extends FormRequest
                 if ($uscente !== null && $this->filled('decorrenza')) {
                     $giornoPrima = CarbonImmutable::parse((string) $this->input('decorrenza'))->subDay();
                     foreach ($valide as $pertinenza) {
-                        $li = $pertinenza->titolarita()->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
+                        $li = $pertinenza->titolarita()->with('anagrafica')->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
                             ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giornoPrima));
+                        // Ultima revisione (UD1): la regola di G25 anche sulla pertinenza, come la registrazione.
+                        if ($li !== null && $li->data_fine !== null && $li->passaggioCheLaChiude() !== null) {
+                            $v->errors()->add('pertinenze', $pertinenza->nome . ': ' . self::fraseUscenteChiusa($li));
+                            break;
+                        }
                         if ($li === null) {
                             $ruolo = mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? $uscente->tipologia);
                             $v->errors()->add('pertinenze', sprintf('%s: %s non risulta %s alla data del passaggio. Togli la spunta, o registra il passaggio dalla pertinenza.', $pertinenza->nome, $uscente->anagrafica?->nome ?? 'chi esce', $ruolo));
@@ -363,7 +516,12 @@ class AnteprimaPassaggioRequest extends FormRequest
     {
         return [
             'tipo' => 'il tipo di passaggio',
-            'sottotipo' => 'costituzione o estinzione',
+            'sottotipo' => 'la forma del passaggio',
+            'eredi' => 'gli eredi',
+            'eredi.*.anagrafica_id' => 'l\'erede',
+            'eredi.*.quota' => 'la quota dell\'erede',
+            'arretrato' => 'l\'arretrato del defunto',
+            'erede_di_riferimento' => 'l\'erede di riferimento',
             'riga_uscente_id' => 'chi esce',
             'anagrafica_entrante_id' => 'chi entra',
             'decorrenza' => 'la data dell\'atto',
@@ -398,6 +556,15 @@ class AnteprimaPassaggioRequest extends FormRequest
             'promemoria_giorni.required_if' => 'Scegli con quanto anticipo vuoi il promemoria.',
             'nota_conguaglio.required_if' => 'Hai rinunciato al conguaglio proposto: scrivi perché (almeno dieci caratteri).',
             'ordinaria_dopo_atto.required' => 'Manca la scelta su chi paga l\'ordinaria dal giorno dell\'atto: ricarica la pagina e scegli.',
+            'eredi.required' => 'Indica almeno un erede, con la sua quota.',
+            'eredi.min' => 'Indica almeno un erede, con la sua quota.',
+            'eredi.*.anagrafica_id.distinct' => 'La stessa persona compare due volte fra gli eredi.',
+            'eredi.*.anagrafica_id.required' => 'Scegli la persona di ogni erede, o creala dal modulo.',
+            'eredi.*.quota.gt' => 'La quota di ogni erede dev\'essere più di zero.',
+            'arretrato.required' => 'Manca la scelta sull\'arretrato del defunto: agli eredi per quota, o a suo nome.',
+            'decorrenza.before_or_equal' => 'La data del decesso non può essere nel futuro.',
+            'copia_autentica.declined_if' => 'Nella successione non c\'è una copia autentica del titolo: allega, se vuoi, la dichiarazione di successione.',
+            'anagrafica_entrante_id.prohibited' => 'Nella successione entrano gli eredi: indicali nell\'elenco degli eredi.',
         ];
     }
 
@@ -408,6 +575,8 @@ class AnteprimaPassaggioRequest extends FormRequest
             'vendita' => ['proprietario', 'nuda_proprietario'],
             'inizio_locazione', 'fine_locazione' => ['inquilino'],
             'usufrutto' => $sottotipo === 'estinzione' ? ['proprietario'] : ['usufruttuario'],
+            // Gli eredi entrano nel ruolo del defunto (decisione 64): proprietari, o nudi con l'usufrutto che continua.
+            'successione' => ['proprietario', 'nuda_proprietario'],
             default => RuoloAnagraficaImmobile::values(),
         };
     }
@@ -419,6 +588,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             'vendita' => ['proprietario', 'nuda_proprietario'],
             'fine_locazione' => ['inquilino'],
             'usufrutto' => $sottotipo === 'estinzione' ? ['usufruttuario'] : ['proprietario'],
+            // Decisione 64: muore un proprietario, pieno o comproprietario, o un nudo proprietario. La morte dell'usufruttuario è
+            // l'estinzione dell'usufrutto, quella dell'inquilino la fine della locazione.
+            'successione' => ['proprietario', 'nuda_proprietario'],
             default => [],
         };
     }
@@ -431,6 +603,143 @@ class AnteprimaPassaggioRequest extends FormRequest
             'usufruttuario' => 'Usufrutto → estinzione',
             default => 'Vendita o donazione',
         };
+    }
+
+    /**
+     * Le regole della successione che guardano la banca dati (decisioni 64, 65 e 66): gli eredi entrano nel ruolo del defunto con
+     * quote che sommano alla sua, sono persone distinte del condominio e non il defunto; il legatario lascia l'arretrato a nome del
+     * defunto; l'erede di riferimento è uno degli eredi; un erede che ha già l'usufrutto o la locazione dell'unità ferma il passaggio
+     * con la via a mano (decisione 66, punto 2). L'erede di riferimento **obbligatorio** lo chiede il calcolo (`AnteprimaPassaggio`),
+     * perché solo lui sa se ci sono bozze da passare.
+     */
+    private function controllaSuccessione(Validator $v, Immobile $immobile, ?TitolaritaImmobile $uscente, \Closure $delCondominio): void
+    {
+        $eredi = collect((array) $this->input('eredi', []))->filter(fn ($e) => is_array($e) && is_numeric($e['anagrafica_id'] ?? null))->values();
+        foreach ($eredi as $i => $e) {
+            if (! $delCondominio((int) $e['anagrafica_id'])) {
+                $v->errors()->add("eredi.{$i}.anagrafica_id", 'Questo erede non è una persona di questo condominio: scegli la persona dall\'elenco, o creala dal modulo.');
+            }
+        }
+        if ($uscente === null || $eredi->isEmpty()) {
+            return;
+        }
+        $nome = $uscente->anagrafica?->nome ?? 'questa persona';
+        if ($eredi->contains(fn ($e) => (int) $e['anagrafica_id'] === (int) $uscente->anagrafica_id)) {
+            $v->errors()->add('eredi', sprintf('%s non può essere fra i suoi eredi.', $nome));
+        }
+        if ($this->filled('tipologia') && (string) $this->input('tipologia') !== (string) $uscente->tipologia) {
+            $v->errors()->add('tipologia', sprintf('Gli eredi entrano nel ruolo di %s: %s.', $nome,
+                mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? (string) $uscente->tipologia)));
+        }
+        // Le quote in centesimi di punto interi, come la scelta dei nudi (decisione 62): niente somme in virgola mobile. Rilievo X12 della
+        // Fase 1-bis: una quota sotto lo 0,01 % diventava zero alla scrittura, e l'erede restava con le bozze senza una riga; con tre
+        // decimali il programma registrava in silenzio una quota diversa da quella scritta.
+        foreach ((array) $this->input('eredi', []) as $i => $e) {
+            $centesimi = is_array($e) && is_numeric($e['quota'] ?? null) ? (float) $e['quota'] * 100 : null;
+            if ($centesimi !== null && $centesimi > 0 && (round($centesimi) < 1 || abs($centesimi - round($centesimi)) > 1e-6)) {
+                $v->errors()->add("eredi.{$i}.quota", 'La quota di ogni erede può avere al massimo due decimali e dev\'essere almeno 0,01 %.');
+            }
+        }
+        $somma = (int) $eredi->sum(fn ($e) => (int) round((float) ($e['quota'] ?? 0) * 100));
+        $delDefunto = (int) round((float) $uscente->quota * 100);
+        if ($eredi->every(fn ($e) => is_numeric($e['quota'] ?? null)) && $somma !== $delDefunto) {
+            $v->errors()->add('eredi', sprintf('Le quote degli eredi sommano %s %%, quella di %s è %s %%: devono coincidere.', self::numero($somma / 100), $nome, self::numero($delDefunto / 100)));
+        }
+        $legato = (string) $this->input('sottotipo') === Subentro::LEGATO;
+        if ($legato && (string) $this->input('arretrato') === Subentro::ARRETRATO_AGLI_EREDI) {
+            $v->errors()->add('arretrato', 'Chi riceve l\'unità per legato non eredita il patrimonio: l\'arretrato del defunto resta a suo nome («eredi di …») e ne rispondono gli eredi.');
+        }
+        // Con l'arretrato agli eredi la coppia e l'arretrato sono un conto solo (l'arretrato è la posizione del defunto meno la coppia):
+        // senza la coppia ciascun erede riceverebbe una cifra senza senso.
+        if ($this->boolean('rinuncia_conguaglio') && (string) $this->input('arretrato') === Subentro::ARRETRATO_AGLI_EREDI) {
+            // Decisione 69 (2): il messaggio non manda più alla rinuncia «se gli eredi hanno regolato fra loro». Con l'arretrato a nome
+            // del defunto la rinuncia lascia tutte le bozze all'erede di riferimento, e gli altri eredi non pagano niente nel programma.
+            $v->errors()->add('rinuncia_conguaglio', 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: insieme danno a ciascun erede la sua quota di tutto ciò che il defunto ha lasciato aperto, e non si può rinunciare al solo conguaglio.');
+        }
+        if ($this->filled('erede_di_riferimento') && ! $eredi->contains(fn ($e) => (int) $e['anagrafica_id'] === (int) $this->input('erede_di_riferimento'))) {
+            $v->errors()->add('erede_di_riferimento', 'L\'erede di riferimento deve essere uno degli eredi.');
+        }
+        // Decisione 66 (2): l'erede che ha già l'usufrutto dell'unità, quando muore il nudo proprietario, riunisce nella stessa persona
+        // usufrutto e nuda proprietà di quella parte; e un erede inquilino diventerebbe proprietario di ciò che ha in locazione.
+        if (! $this->filled('decorrenza')) {
+            return;
+        }
+        $giorno = CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay();
+        // Rilievo L16 della Fase 1-bis della .44: il controllo vale anche per le pertinenze spuntate, con il loro nome; e non dice che
+        // usufrutto e nuda «si riuniscono» per quella parte, perché l'usufrutto dell'erede può stare sopra la nuda di un altro.
+        foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+            $prefisso = (int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ';
+            $inCorso = $unita->titolarita()->with('anagrafica')->whereIn('anagrafica_id', $eredi->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all())->get()
+                ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giorno));
+            if ((string) $uscente->tipologia === 'nuda_proprietario' && ($u = $inCorso->firstWhere('tipologia', 'usufruttuario')) !== null) {
+                $v->errors()->add('eredi', $prefisso . sprintf('%s ha già l\'usufrutto di questa unità: ereditando la nuda proprietà di %s, usufrutto e nuda proprietà possono riunirsi nella stessa persona, e il programma non lo registra ancora. Registra la successione a mano: chiudi da «Modifica associazione» la riga di %s al giorno prima del decesso e correggi le righe degli eredi secondo la dichiarazione di successione, senza conguaglio automatico.',
+                    $u->anagrafica?->nome ?? 'Un erede', $nome, $nome));
+            }
+            if (($u = $inCorso->firstWhere('tipologia', 'inquilino')) !== null) {
+                $v->errors()->add('eredi', $prefisso . sprintf('%s è inquilino di questa unità: prima registra la fine della locazione («Fine locazione»), poi la successione.', $u->anagrafica?->nome ?? 'Un erede'));
+            }
+        }
+        // Rilievo X1 della Fase 1-bis: l'erede già titolare con lo stesso ruolo, la cui riga ha una data di fine.
+        foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+            foreach ($eredi as $e) {
+                $frase = $this->fraseRigaGiaChiusa($unita, (int) $e['anagrafica_id'], (string) $uscente->tipologia, $giorno, 'la quota ereditata');
+                if ($frase !== null) {
+                    $v->errors()->add('eredi', ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
+                }
+            }
+        }
+    }
+
+    /**
+     * Giro sulle correzioni (G25) e ultima revisione (UD1, UE4): la riga di chi esce che un passaggio registrato dopo ha già chiuso. In
+     * minuscolo, per la pertinenza con il suo nome davanti.
+     */
+    private static function fraseUscenteChiusa(TitolaritaImmobile $riga): string
+    {
+        return sprintf('la riga di %s è stata chiusa dal %s da un passaggio registrato dopo: annulla prima dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, registra questo e poi di nuovo quei passaggi.',
+            $riga->anagrafica?->nome ?? 'chi esce', CarbonImmutable::parse($riga->data_fine)->addDay()->locale('it')->translatedFormat('j F Y'));
+    }
+
+    /** L'unità del passaggio e le pertinenze spuntate che le appartengono. */
+    private function unitaDelPassaggio(Immobile $immobile): \Illuminate\Support\Collection
+    {
+        return collect([$immobile])->concat($immobile->pertinenze()->whereIn('id', array_map('intval', (array) $this->input('pertinenze', [])))->get());
+    }
+
+    /**
+     * Rilievo X1 della Fase 1-bis della .44: chi riceve è già titolare dell'unità con lo stesso ruolo, e la sua riga in corso il giorno del
+     * passaggio ha già una data di fine — scritta da un passaggio registrato dopo, o a mano. La registrazione la chiudeva al giorno prima
+     * e apriva la somma senza fine, sopra ciò che è successo dopo. Le frasi della decisione 53 (2) e del rilievo T2.
+     */
+    private function fraseRigaGiaChiusa(Immobile $unita, int $anagraficaId, string $tipologia, CarbonImmutable $giorno, string $cheCosa, bool $natePrima = false): ?string
+    {
+        $riga = $unita->titolarita()->with('anagrafica')->where('anagrafica_id', $anagraficaId)->where('tipologia', $tipologia)->get()
+            ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giorno) && $t->data_fine !== null && (! $natePrima || ($t->data_inizio !== null && $t->data_inizio->lt($giorno))));
+        if ($riga === null) {
+            return null;
+        }
+        $chi = $riga->anagrafica?->nome ?? 'Questa persona';
+        $ruolo = mb_strtolower(RuoloAnagraficaImmobile::tryFrom($tipologia)?->label() ?? $tipologia);
+        // Giro sulle correzioni (G3): anche la riga chiusa da un passaggio nel suo registro (una somma, l'estinzione di una nuda). Ultima
+        // revisione (UE3): se quel passaggio è un atto fra vivi in cui la persona ha ceduto proprio questa riga, rifarlo dopo porterebbe
+        // tutta la riga sommata e non la parte dell'atto (decisione 37, Coda 175): la strada è a mano.
+        $p = $riga->passaggioCheLaChiude();
+        if ($p !== null && (int) $p->riga_uscente_id === (int) $riga->id && ! $p->successione() && ! $p->estinzioneUsufrutto()) {
+            return sprintf('%s è già %s di questa unità, e con un passaggio registrato dopo ha ceduto quella riga dal %s: %s si sommerebbe a una riga che non è più in corso, e quel passaggio, rifatto dopo, porterebbe tutta la riga sommata e non la parte dell\'atto. Correggi le righe a mano da «Modifica associazione».',
+                $chi, $ruolo, CarbonImmutable::parse($riga->data_fine)->addDay()->locale('it')->translatedFormat('j F Y'), $cheCosa);
+        }
+        if ($p !== null) {
+            return sprintf('%s è già %s di questa unità, e un passaggio registrato dopo ha chiuso quella riga dal %s: %s si sommerebbe a una riga che non è più in corso. Annulla prima dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, registra questo passaggio e poi di nuovo quei passaggi; se l\'atto dice altro, correggi le righe a mano da «Modifica associazione».',
+                $chi, $ruolo, CarbonImmutable::parse($riga->data_fine)->addDay()->locale('it')->translatedFormat('j F Y'), $cheCosa);
+        }
+
+        return sprintf('%s è già %s di questa unità, e la sua riga ha una data di fine scritta a mano, il %s: %s si sommerebbe a una riga che finisce. Correggi le righe a mano da «Modifica associazione» prima di registrare questo passaggio.',
+            $chi, $ruolo, CarbonImmutable::parse($riga->data_fine)->locale('it')->translatedFormat('j F Y'), $cheCosa);
+    }
+
+    private static function numero(float $n): string
+    {
+        return rtrim(rtrim(number_format($n, 2, ',', '.'), '0'), ',');
     }
 
     /** La riga di chi esce, solo se è di questa unità: l'`id` arriva dal browser e non si fida di nessuno. */
@@ -455,7 +764,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             'tipo' => $d['tipo'],
             'sottotipo' => $d['sottotipo'] ?? null,
             'riga_uscente' => $this->rigaUscente(),
-            'entrante' => ! empty($d['anagrafica_entrante_id']) ? Anagrafica::find($d['anagrafica_entrante_id']) : null,
+            'entrante' => $this->entrante($d),
             'decorrenza' => CarbonImmutable::parse($d['decorrenza'])->startOfDay(),
             'quota' => (float) $d['quota'],
             'tipologia' => $d['tipologia'],
@@ -468,6 +777,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             'pertinenze' => array_map('intval', $d['pertinenze'] ?? []),
             'nudi_che_tornano' => ! empty($d['nudi_che_tornano']) ? array_map('intval', $d['nudi_che_tornano']) : null,
             'nudi_per_quota' => (bool) ($d['nudi_per_quota'] ?? false),
+            'accrescimento' => $d['tipo'] === 'usufrutto' && ($d['sottotipo'] ?? null) === 'estinzione' && (bool) ($d['accrescimento'] ?? false),
             'ho_letto' => (bool) ($d['ho_letto'] ?? false),
             'nota_cancello' => $d['nota_cancello'] ?? null,
             'allegato_titolo' => $this->file('allegato_titolo'),
@@ -478,7 +788,39 @@ class AnteprimaPassaggioRequest extends FormRequest
             'ordinaria_dopo_atto' => $d['ordinaria_dopo_atto'] ?? null,
             'voci_da_tenere' => array_map('intval', $d['voci_da_tenere'] ?? []),
             'ordinaria_impronta' => $d['ordinaria_impronta'] ?? null,
+            // Decisione 65: gli eredi con la quota che ereditano, il legato, l'arretrato, l'erede di riferimento.
+            'eredi' => $d['tipo'] === 'successione' ? $this->eredi($d) : [],
+            'legato' => $d['tipo'] === 'successione' && ($d['sottotipo'] ?? null) === Subentro::LEGATO,
+            'arretrato' => $d['arretrato'] ?? null,
+            'erede_di_riferimento' => ! empty($d['erede_di_riferimento']) ? Anagrafica::find((int) $d['erede_di_riferimento']) : null,
         ];
+    }
+
+    /**
+     * Gli eredi, nell'ordine del modulo: l'ordine conta solo per il centesimo di resto, che va al primo (`MoneyHelper::ripartisciPerQuote`).
+     *
+     * @return list<array{anagrafica: Anagrafica, quota: float}>
+     */
+    private function eredi(array $d): array
+    {
+        $persone = Anagrafica::whereIn('id', array_map(fn ($e) => (int) $e['anagrafica_id'], $d['eredi'] ?? []))->get()->keyBy('id');
+
+        return array_values(array_map(fn ($e) => ['anagrafica' => $persone[(int) $e['anagrafica_id']], 'quota' => round((float) $e['quota'], 2)], $d['eredi'] ?? []));
+    }
+
+    /**
+     * Chi entra, per chi legge una persona sola (il passaggio, le bozze, il flash): nella successione l'erede di riferimento, o l'erede
+     * unico, o il primo; negli altri tipi la persona del modulo.
+     */
+    private function entrante(array $d): ?Anagrafica
+    {
+        if ($d['tipo'] === 'successione') {
+            $id = ! empty($d['erede_di_riferimento']) ? (int) $d['erede_di_riferimento'] : (int) (($d['eredi'] ?? [])[0]['anagrafica_id'] ?? 0);
+
+            return $id > 0 ? Anagrafica::find($id) : null;
+        }
+
+        return ! empty($d['anagrafica_entrante_id']) ? Anagrafica::find($d['anagrafica_entrante_id']) : null;
     }
     /**
      * Rilievi V8, W3, W4 e decisione 52: la strada del rifiuto si sceglie dai dati, ma solo nel caso semplice. La nuda deve tornare

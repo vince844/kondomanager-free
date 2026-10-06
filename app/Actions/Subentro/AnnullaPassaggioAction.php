@@ -57,6 +57,19 @@ final class AnnullaPassaggioAction
     /**
      * Perché questo passaggio non si può annullare, o `null`. Senza scrivere niente: la legge anche lo storico.
      */
+    /**
+     * Rilievo L10 della Fase 1-bis della .44: che cosa un piano ha già assorbito — il conguaglio, o anche l'arretrato del defunto di una
+     * successione —, con le sue parole.
+     */
+    private static function aperturaAssorbite(Subentro $padre, \Illuminate\Support\Collection $assorbite): string
+    {
+        $dellArretrato = $assorbite->contains(fn (Saldo $x) => in_array((int) $x->id, $padre->saldiDellArretrato(), true));
+
+        return $dellArretrato
+            ? 'Le righe dell\'arretrato del defunto di questo passaggio sono già state assorbite da un piano rate, e il passaggio non si annulla così com\'è.'
+            : 'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.';
+    }
+
     public function motivoBlocco(Subentro $passaggio): ?string
     {
         $padre = $passaggio->subentro_padre_id ? Subentro::conAnnullati()->find($passaggio->subentro_padre_id) : $passaggio;
@@ -76,9 +89,8 @@ final class AnnullaPassaggioAction
 
         $assorbite = Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->where('is_applicato', true)->with('pianoRate')->get();
         if ($assorbite->isNotEmpty()) {
-            return AnnullaConguaglioAction::fraseAssorbite($assorbite,
-                'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.',
-                'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia));
+            return AnnullaConguaglioAction::fraseAssorbite($assorbite, self::aperturaAssorbite($padre, $assorbite),
+                'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia), conArretrato: $padre->arretratoAgliEredi());
         }
 
         if ($motivo = $this->quoteNonIntatte($padre, $famiglia)) {
@@ -141,7 +153,7 @@ final class AnnullaPassaggioAction
         $rate = $this->quoteDelRegistro($padre)['voci']->pluck('rata_id')->unique()->count();
 
         return self::frasiEffetti(
-            ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count()],
+            ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(), 'arretrato' => count($padre->saldiDellArretrato())],
             $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false,
         );
     }
@@ -163,8 +175,16 @@ final class AnnullaPassaggioAction
                 $fatto ? ($n === 1 ? 'è tornata' : 'sono tornate') : ($n === 1 ? 'torna' : 'tornano'),
                 $uscente ?? 'chi è uscito');
         }
-        if ((int) $conti['saldi'] > 0) {
-            $frasi[] = $fatto ? 'Il conguaglio è stato tolto dai saldi della gestione.' : 'Il conguaglio si toglie dai saldi della gestione.';
+        // 1.11.0-beta.44: le righe dell'arretrato di una successione se ne vanno con il conguaglio, e si dice.
+        $arretrato = (int) ($conti['arretrato'] ?? 0) > 0;
+        $conguaglio = (int) $conti['saldi'] - (int) ($conti['arretrato'] ?? 0) > 0;
+        if ($conguaglio || $arretrato) {
+            $cosa = match (true) {
+                $conguaglio && $arretrato => 'Il conguaglio e l\'arretrato del defunto',
+                $arretrato => 'L\'arretrato del defunto',
+                default => 'Il conguaglio',
+            };
+            $frasi[] = $cosa . ($fatto ? ($conguaglio && $arretrato ? ' sono stati tolti' : ' è stato tolto') : ($conguaglio && $arretrato ? ' si tolgono' : ' si toglie')) . ' dai saldi della gestione.';
         }
 
         return $frasi;
@@ -228,8 +248,8 @@ final class AnnullaPassaggioAction
             //    Riletto sulle righe bloccate, come `AnnullaConguaglioAction`.
             $assorbite = $saldi->filter(fn (Saldo $x) => (bool) $x->is_applicato);
             if ($assorbite->isNotEmpty()) {
-                throw ValidationException::withMessages(['passaggio' => AnnullaConguaglioAction::fraseAssorbite($assorbite,
-                    'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.', 'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia))]);
+                throw ValidationException::withMessages(['passaggio' => AnnullaConguaglioAction::fraseAssorbite($assorbite, self::aperturaAssorbite($padre, $assorbite),
+                    'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia), conArretrato: $padre->arretratoAgliEredi())]);
             }
             if ((int) $saldi->sum('saldo_iniziale') !== 0) {
                 throw ValidationException::withMessages(['passaggio' => 'Le righe del conguaglio di questo passaggio non sommano zero: qualcosa è stato modificato a mano. Controlla i saldi della gestione prima di annullare.']);
@@ -295,7 +315,7 @@ final class AnnullaPassaggioAction
                 $s->forceFill(['annullato_il' => now(), 'annullato_da' => $utente->id, 'nota_annullamento' => $nota, 'registro' => $registro])->save();
             }
 
-            return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante];
+            return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante];
         }, 3);
 
         // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.
@@ -400,8 +420,10 @@ final class AnnullaPassaggioAction
             'inizio_locazione' => 'l\'inizio locazione' . ($entrante !== null ? " a {$entrante}" : ''),
             'fine_locazione' => 'la fine locazione' . ($uscente !== null ? " di {$uscente}" : '') . ($entrante !== null ? ", con {$entrante} al suo posto" : ''),
             'usufrutto' => $s->tipologia === 'proprietario'
-                ? 'l\'estinzione dell\'usufrutto' . ($uscente !== null ? " di {$uscente}" : '')
+                ? 'l\'estinzione dell\'usufrutto' . ($uscente !== null ? " di {$uscente}" : '') . ($s->conAccrescimento() ? ', con l\'accrescimento' : '')
                 : 'la costituzione dell\'usufrutto' . ($entrante !== null ? " a favore di {$entrante}" : ''),
+            // 1.11.0-beta.44: chi entra è uno solo degli eredi (decisione 65), e non si nomina.
+            'successione' => 'la successione' . ($s->tipologia === 'nuda_proprietario' ? ' nella nuda proprietà' : '') . ($uscente !== null ? " di {$uscente}" : '') . ($s->legato() ? ', per legato' : ''),
             default => 'un passaggio',
         };
     }

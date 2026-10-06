@@ -306,9 +306,20 @@ class AnagraficaController extends Controller
         // B2 (S5, inv. 19): chi compare in un passaggio di titolarità registrato non si cancella. La FK di
         // `saldi.anagrafica_id` è in cascata: sparirebbe una sola gamba della coppia di conguaglio, e lo
         // storico dell'unità perderebbe il nome (verifica S5, R3).
-        if (\App\Models\Gestionale\Subentro::where('anagrafica_uscente_id', $anagrafica->id)->orWhere('anagrafica_entrante_id', $anagrafica->id)->exists()) {
+        // 1.11.0-beta.44: la successione e l'accrescimento nominano come chi entra una persona sola; le altre stanno nel registro. Rilievo
+        // L17 della Fase 1-bis: prima di tutto le righe in saldi di un passaggio (la cascata ne toglierebbe una gamba), che coprono anche i
+        // nudi tornati pieni oltre il primo; il registro solo sulle unità dove la persona ha avuto una riga, non su tutti i condomìni.
+        // Rilievo GA6 del giro: anche una riga che un passaggio ha scritto (il nudo tornato pieno oltre il primo, senza righe in saldi): la
+        // cascata la toglierebbe, e il registro del passaggio non saprebbe più disfarla.
+        $righeDellaPersona = \Illuminate\Support\Facades\DB::table('anagrafica_immobile')->where('anagrafica_id', $anagrafica->id)->get(['id', 'immobile_id']);
+        $unitaDellaPersona = $righeDellaPersona->pluck('immobile_id')->unique()->all();
+        $idRighe = $righeDellaPersona->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if (\App\Models\Gestionale\Subentro::where('anagrafica_uscente_id', $anagrafica->id)->orWhere('anagrafica_entrante_id', $anagrafica->id)->exists()
+            || \App\Models\Saldo::where('anagrafica_id', $anagrafica->id)->whereNotNull('subentro_id')->exists()
+            || ($unitaDellaPersona !== [] && \App\Models\Gestionale\Subentro::whereIn('immobile_id', $unitaDellaPersona)->get()
+                ->contains(fn ($s) => in_array((int) $anagrafica->id, $s->entranti(), true) || array_intersect($s->righeDelRegistro(), $idRighe) !== []))) {
             return back()->with(
-                $this->flashError('Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione o usufrutto): non si può eliminare, perché lo storico delle unità e il conguaglio in saldi la nominano.')
+                $this->flashError('Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione, usufrutto o successione): non si può eliminare, perché lo storico delle unità e il conguaglio in saldi la nominano.')
             );
         }
 

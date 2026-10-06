@@ -127,11 +127,11 @@ it('D2 — due usufrutti censiti a mano: l\'amministratore sceglie Mara; Mara to
         ->and([edupSaldo($p['mara']), edupSaldo($p['carlo']), edupSaldo($p['ugo'])])->toBe([45205, 0, -45205]);
 });
 
-it('D2 — la scelta deve valere quanto l\'usufrutto: Mara e Carlo insieme (100 %) per un usufrutto del 50 % si rifiutano', function () {
+it('D2 — la scelta deve valere quanto l\'usufrutto: Mara e Carlo insieme (100 %) per un usufrutto del 50 % si rifiutano', function () {
     [$s, , $righe] = edupDueUsufrutti();
 
     $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), edupEstinzione($s, $righe['ugo'], [$righe['mara'], $righe['carlo']]))
-        ->assertStatus(422)->assertJsonPath('errors.nudi_che_tornano.0', fn ($m) => str_contains($m, 'valgono il 100 %') && str_contains($m, 'il 50 %'));
+        ->assertStatus(422)->assertJsonPath('errors.nudi_che_tornano.0', fn ($m) => str_contains($m, 'valgono il 100 %') && str_contains($m, 'il 50 %'));
 });
 
 it('D2, seconda forma — il nudo dell\'altra metà è Ugo stesso: Ugo non torna pieno di una metà ancora in usufrutto a Elsa, e non c\'è una coppia con sé stesso; Mara torna piena da sé', function () {
@@ -194,7 +194,7 @@ it('D2 — una nuda proprietà sola sotto due usufrutti (due genitori donano con
 
     // Prima della .43 Mara diventava piena del 100 % mentre Rita restava usufruttuaria del 50 %: l'unità sommava 150 %.
     expect(edupNudi($an))->toBe(['da' => 'consolidamento', 'righe' => [$rigaMara]])
-        ->and(implode(' ', $an['anagrafica']['frasi']))->toContain('Mara Figlia risulterà proprietario pieno per il 50 % e resterà nudo proprietario dell\'altro 50 % dal 1 aprile 2026')
+        ->and(implode(' ', $an['anagrafica']['frasi']))->toContain('Mara Figlia risulterà proprietario pieno per il 50 % e resterà nudo proprietario dell\'altro 50 % dal 1 aprile 2026')
         ->and(edupRighe($s, $mara))->toBe([['nuda_proprietario', 100.0, '2019-01-01', '2026-03-31'], ['proprietario', 50.0, '2026-04-01', null], ['nuda_proprietario', 50.0, '2026-04-01', null]])
         ->and(edupRighe($s, $rita))->toBe([['usufruttuario', 50.0, '2019-01-01', null]])
         // A mano: l'usufrutto di Ugo vale metà della voce, 60000; dal 1/4, 275 giorni: 45205,48 → 45205, tutto a Mara.
@@ -234,7 +234,7 @@ it('D2, seconda forma con il box — sul box Ugo non torna nudo di sé stesso e 
         ->map(fn ($r) => [(int) $r->anagrafica_id, (int) $r->saldo_iniziale])->all();
     expect($saldi($s['unita']->id))->toBe([[$ugo->id, -40685], [$mara->id, 40685]])
         ->and($saldi($box->id))->toBe([[$ugo->id, -4521], [$mara->id, 4521]])
-        ->and(implode(' ', $an['rate']['conguaglio']['frasi']))->not->toContain('a Venditore Ugo (50 %)')
+        ->and(implode(' ', $an['rate']['conguaglio']['frasi']))->not->toContain('a Venditore Ugo (50 %)')
         ->and(DB::table('anagrafica_immobile')->where('anagrafica_id', $ugo->id)->where('tipologia', 'proprietario')->count())->toBe(0);
 });
 
@@ -307,7 +307,7 @@ it('D2 — chi esce è nudo di metà e un altro nudo dell\'altra metà, nessun a
     // più al primo nudo (Ugo, a parità di resto vince chi viene prima). La parte di Ugo, 45206, resta a lui; a Mara 45205.
     expect(edupNudi($an))->toBe(['da' => 'tutti', 'righe' => [$rigaUgo, $rigaMara]])
         ->and(implode(' ', $an['rate']['frasi']))->toContain('Il conguaglio fra Venditore Ugo e Mara Nuda, che torna proprietario pieno,')
-        ->and(implode(' ', $an['rate']['conguaglio']['frasi']))->toContain('€ 452,06 restano a Venditore Ugo (50 %), € 452,05 a Mara Nuda (50 %); il credito di Venditore Ugo scende quindi a € 452,05.')
+        ->and(implode(' ', $an['rate']['conguaglio']['frasi']))->toContain('€ 452,06 restano a Venditore Ugo (50 %), € 452,05 a Mara Nuda (50 %); il credito di Venditore Ugo scende quindi a € 452,05.')
         ->and(edupRighe($s, $s['v']))->toBe([['usufruttuario', 100.0, '2019-01-01', '2026-03-31'], ['nuda_proprietario', 50.0, '2019-01-01', '2026-03-31'], ['proprietario', 50.0, '2026-04-01', null]])
         ->and(edupRighe($s, $mara))->toBe([['nuda_proprietario', 50.0, '2019-01-01', '2026-03-31'], ['proprietario', 50.0, '2026-04-01', null]])
         // Una coppia sola, con Mara: nessuna riga di Ugo con sé stesso (nella somma si compenserebbe, e non si vedrebbe).
@@ -439,7 +439,7 @@ it('decisione 61 — con un altro usufrutto, i nudi possibili valgono meno dell\
     ruEmetti($s, '2026-03-31');
 
     $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), edupEstinzione($s, $s['rigaV']) + ['quota' => 60])
-        ->assertStatus(422)->assertJsonPath('errors.estinzione.0', fn ($m) => str_contains($m, 'valgono in tutto il 40 %, meno dell\'usufrutto di Venditore Ugo (60 %)')
+        ->assertStatus(422)->assertJsonPath('errors.estinzione.0', fn ($m) => str_contains($m, 'valgono in tutto il 40 %, meno dell\'usufrutto di Venditore Ugo (60 %)')
             && str_contains($m, 'può essere una nuda di Venditore Ugo') && ! str_contains($m, 'non si trova fra le righe in corso'));
 });
 
@@ -456,7 +456,7 @@ function edupFigli(float $carlo, float $dora): array
     return [$s, $p, $righe];
 }
 
-it('decisione 62 — la donazione congiunta: muore Ugo, e l\'amministratore sceglie «tutti i nudi, ciascuno per la sua quota»: Carlo e Dora pieni del 25 % e nudi dell\'altro 25 %, il conguaglio diviso per quota', function () {
+it('decisione 62 — la donazione congiunta: muore Ugo, e l\'amministratore sceglie «tutti i nudi, ciascuno per la sua quota»: Carlo e Dora pieni del 25 % e nudi dell\'altro 25 %, il conguaglio diviso per quota', function () {
     [$s, $p, $righe] = edupFigli(50, 50);
 
     $senza = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), edupEstinzione($s, $righe['ugo']));
@@ -467,7 +467,7 @@ it('decisione 62 — la donazione congiunta: muore Ugo, e l\'amministratore sceg
     // 22602,5 ciascuno, il centesimo in più al primo (Carlo).
     $senza->assertStatus(422)->assertJsonPath('errors.nudi_che_tornano.0', fn ($m) => str_contains($m, 'tutti, ciascuno per la sua quota'));
     expect($an['nudi'])->toBe(['da' => 'per_quota', 'righe' => [$righe['carlo'], $righe['dora']], 'consolida' => [(string) $righe['carlo'] => 25, (string) $righe['dora'] => 25]])
-        ->and(implode(' ', $an['anagrafica']['frasi']))->toContain('Carlo Figlio e Dora Figlia risulteranno proprietari pieni, ciascuno per la sua parte dell\'usufrutto che finisce (Carlo Figlio per il 25 % e Dora Figlia per il 25 %), e resteranno nudi proprietari del resto dal 1 aprile 2026.')
+        ->and(implode(' ', $an['anagrafica']['frasi']))->toContain('Carlo Figlio e Dora Figlia risulteranno proprietari pieni, ciascuno per la sua parte dell\'usufrutto che finisce (Carlo Figlio per il 25 % e Dora Figlia per il 25 %), e resteranno nudi proprietari del resto dal 1 aprile 2026.')
         ->toContain('se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario')
         ->and(edupRighe($s, $p['carlo']))->toBe([['nuda_proprietario', 50.0, '2019-01-01', '2026-03-31'], ['proprietario', 25.0, '2026-04-01', null], ['nuda_proprietario', 25.0, '2026-04-01', null]])
         ->and(edupRighe($s, $p['dora']))->toBe([['nuda_proprietario', 50.0, '2019-01-01', '2026-03-31'], ['proprietario', 25.0, '2026-04-01', null], ['nuda_proprietario', 25.0, '2026-04-01', null]])
@@ -485,7 +485,7 @@ it('decisione 62 — nudi al 75 e al 25 sotto due usufrutti del 50: nessuna comb
     expect($an['nudi']['consolida'])->toBe([(string) $righe['carlo'] => 37.5, (string) $righe['dora'] => 12.5]);
 });
 
-it('decisione 62 — il registro seguito nella somma: Ugo vende con riserva a Fede, poi Carlo vende a Fede la sua nuda, che si somma: all\'estinzione torna pieno Fede per il 50 % dell\'usufrutto, senza scelta, e resta nudo dell\'altro 25 %', function () {
+it('decisione 62 — il registro seguito nella somma: Ugo vende con riserva a Fede, poi Carlo vende a Fede la sua nuda, che si somma: all\'estinzione torna pieno Fede per il 50 % dell\'usufrutto, senza scelta, e resta nudo dell\'altro 25 %', function () {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario', genera: false);
     $elsa = $s['a'];
     $carlo = edupPersona($s, 'Carlo Nudo');
@@ -664,7 +664,7 @@ it('rilievo G3 — il registro della riserva dice qual è la nuda dell\'usufrutt
             ->mapWithKeys(fn ($r) => [(int) $r->anagrafica_id => (int) $r->saldo_iniziale])->sortKeys()->all())->toBe(collect([$ugo->id => -45205, $fede->id => 45205])->sortKeys()->all());
 });
 
-it('rilievo G4 — terzi arrotondati: con «ciascuno per la sua quota» chi riceve tutta la sua quota torna pieno per intero, senza una nuda allo 0 %, e la frase non gli promette un resto', function () {
+it('rilievo G4 — terzi arrotondati: con «ciascuno per la sua quota» chi riceve tutta la sua quota torna pieno per intero, senza una nuda allo 0 %, e la frase non gli promette un resto', function () {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario', genera: false);
     $carlo = edupPersona($s, 'Carlo Figlio');
     $dora = edupPersona($s, 'Dora Figlia');
@@ -683,7 +683,7 @@ it('rilievo G4 — terzi arrotondati: con «ciascuno per la sua quota» chi rice
     // A mano, in centesimi di punto: 3333 diviso per 1667 e 1667 → 1666,5 ciascuno, l'avanzo al primo: Carlo 16,67 (tutta la sua
     // riga), Dora 16,66. Prima Carlo riceveva anche una nuda allo 0 %.
     expect($an['nudi']['consolida'])->toEqual([(string) $rigaDora => 16.66])
-        ->and(implode(' ', $an['anagrafica']['frasi']))->toContain('Carlo Figlio per tutta la sua quota (16,67 %) e Dora Figlia per il 16,66 %), e Dora Figlia resterà nudo proprietario del resto')
+        ->and(implode(' ', $an['anagrafica']['frasi']))->toContain('Carlo Figlio per tutta la sua quota (16,67 %) e Dora Figlia per il 16,66 %), e Dora Figlia resterà nudo proprietario del resto')
         ->and(edupRighe($s, $carlo))->toBe([['nuda_proprietario', 16.67, '2019-01-01', '2026-03-31'], ['proprietario', 16.67, '2026-04-01', null]])
         ->and(edupRighe($s, $dora))->toBe([['nuda_proprietario', 16.67, '2019-01-01', '2026-03-31'], ['proprietario', 16.66, '2026-04-01', null], ['nuda_proprietario', 0.01, '2026-04-01', null]])
         ->and(DB::table('anagrafica_immobile')->where('immobile_id', $s['unita']->id)->where('quota', '<=', 0)->count())->toBe(0);
@@ -748,10 +748,10 @@ it('rilievo HT3 — due nudi omonimi sul box e sulla cantina: l\'apertura del bl
         ->and(implode(' ', $an['rate']['frasi']))->toContain('Mario Rossi e Mario Rossi, che tornano proprietari pieni,');
 });
 
-it('rilievo HT4 — la percentuale con l\'articolo arrotonda prima di sceglierlo: una somma in virgola mobile non dà «lo 1 %» né «il 80 %»', function () {
-    expect(\App\Services\Subentro\NudiDellEstinzione::percentuale(0.3 + 0.6 + 0.1))->toBe('l\'1 %')
-        ->and(\App\Services\Subentro\NudiDellEstinzione::percentuale(1.67 + 14.34 + 48.66 + 15.33))->toBe('l\'80 %')
-        ->and(\App\Services\Subentro\NudiDellEstinzione::percentuale(16.66))->toBe('il 16,66 %');
+it('rilievo HT4 — la percentuale con l\'articolo arrotonda prima di sceglierlo: una somma in virgola mobile non dà «lo 1 %» né «il 80 %»', function () {
+    expect(\App\Services\Subentro\NudiDellEstinzione::percentuale(0.3 + 0.6 + 0.1))->toBe('l\'1 %')
+        ->and(\App\Services\Subentro\NudiDellEstinzione::percentuale(1.67 + 14.34 + 48.66 + 15.33))->toBe('l\'80 %')
+        ->and(\App\Services\Subentro\NudiDellEstinzione::percentuale(16.66))->toBe('il 16,66 %');
 });
 
 it('rilievo GT7 — le due righe di Mara nate il 1/9 vengono da due vendite: la frase non parla di un\'altra estinzione dello stesso giorno', function () {
@@ -826,7 +826,7 @@ it('«Chi resta obbligato» con la nuda che torna piena solo in parte: nell\'ant
 
     // Prima la frase diceva «Carlo Figlio (50 %) e Dora Figlia (50 %) tornano proprietari pieni e rispondono di tutte le spese
     // dell'unità», con Rita ancora usufruttuaria della sua metà.
-    $attesa = 'Dal 1 aprile 2026 Carlo Figlio (per il 25 %) e Dora Figlia (per il 25 %) tornano proprietari pieni della parte dell\'usufrutto che finisce e ne rispondono, ciascuno per la sua parte; per il resto dell\'unità rispondono, come prima, i titolari di quella parte (il nudo proprietario e l\'usufruttuario in solido, art. 67 ult. co. disp. att. c.c.).';
+    $attesa = 'Dal 1 aprile 2026 Carlo Figlio (per il 25 %) e Dora Figlia (per il 25 %) tornano proprietari pieni della parte dell\'usufrutto che finisce e ne rispondono, ciascuno per la sua parte; per il resto dell\'unità rispondono, come prima, i titolari di quella parte (il nudo proprietario e l\'usufruttuario in solido, art. 67 ult. co. disp. att. c.c.).';
     expect(implode("\n", $an['obbligati']['frasi']))->toContain($attesa)->not->toContain('tutte le spese')
         ->and(implode("\n", $storico))->toContain($attesa)->not->toContain('tutte le spese');
 });
@@ -863,7 +863,7 @@ it('«Chi resta obbligato» sull\'unità mista: Ugo pieno di metà e usufruttuar
         ->and(implode("\n", $storico))->toContain($attesa);
 });
 
-it('«Chi resta obbligato», rilievi V1 e V7 — dove sull\'unità non resta nessun altro titolare la frase è quella di sempre: il nudo solo al 100 %, il pieno di metà che torna pieno al 100 %, le quote arrotondate', function (string $forma) {
+it('«Chi resta obbligato», rilievi V1 e V7 — dove sull\'unità non resta nessun altro titolare la frase è quella di sempre: il nudo solo al 100 %, il pieno di metà che torna pieno al 100 %, le quote arrotondate', function (string $forma) {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario', genera: false);
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['tipologia' => 'usufruttuario', 'quota' => $forma === 'pieno di metà' ? 50 : 100]);
     $attesa = match ($forma) {
@@ -885,7 +885,7 @@ it('«Chi resta obbligato», rilievi V1 e V7 — dove sull\'unità non resta nes
                 edupRiga($s, edupPersona($s, $n . ' Figlio'), 'nuda_proprietario', 16.66);
             }
 
-            return 'Dal 1 aprile 2026 Rita Coniuge (33,33 %), Anna Figlio (16,66 %), Bruno Figlio (16,66 %), Ciro Figlio (16,66 %) e Dario Figlio (16,66 %) tornano proprietari pieni e rispondono di tutte le spese dell\'unità, ciascuno per la sua quota.';
+            return 'Dal 1 aprile 2026 Rita Coniuge (33,33 %), Anna Figlio (16,66 %), Bruno Figlio (16,66 %), Ciro Figlio (16,66 %) e Dario Figlio (16,66 %) tornano proprietari pieni e rispondono di tutte le spese dell\'unità, ciascuno per la sua quota.';
         })(),
     };
     app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($s['piano'], forzaApplicazioneSaldi: true, esercizio: $s['e']);

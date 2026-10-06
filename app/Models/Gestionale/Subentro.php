@@ -27,7 +27,18 @@ class Subentro extends Model
 {
     protected $table = 'subentri';
 
-    public const TIPI_PASSAGGIO = ['vendita', 'inizio_locazione', 'fine_locazione', 'usufrutto'];
+    public const TIPI_PASSAGGIO = ['vendita', 'inizio_locazione', 'fine_locazione', 'usufrutto', 'successione'];
+
+    /**
+     * La successione per legato (1.11.0-beta.44, decisioni 65 e 66): chi entra riceve l'unità per testamento e non eredita il
+     * patrimonio, quindi l'arretrato del defunto resta a suo nome («eredi di …») e per le bozze valgono le regole della vendita.
+     * Come la riserva, un marcatore nel `registro` e non una colonna.
+     */
+    public const LEGATO = 'legato';
+
+    /** Decisione 65 (2): l'arretrato del defunto passa agli eredi per quota, o resta a suo nome («eredi di …»). */
+    public const ARRETRATO_AGLI_EREDI = 'eredi';
+    public const ARRETRATO_AL_DEFUNTO = 'defunto';
 
     /**
      * La vendita con riserva d'usufrutto (1.11.0-beta.38, decisione 28): una **vendita** — per la solidarietà, la copia
@@ -89,6 +100,8 @@ class Subentro extends Model
         return match ($tipo) {
             'inizio_locazione' => false,
             'fine_locazione' => $conChiEntra,
+            // Decisione 65 (4): il conguaglio per giorni della vendita, diviso fra gli eredi per quota.
+            'successione' => true,
             default => true,
         };
     }
@@ -102,6 +115,126 @@ class Subentro extends Model
     public function riservaUsufrutto(): bool
     {
         return $this->tipo_passaggio === 'vendita' && ($this->registro['sottotipo'] ?? null) === self::RISERVA_USUFRUTTO;
+    }
+
+    /** La successione (1.11.0-beta.44): muore un proprietario o un nudo proprietario, e gli eredi entrano nello stesso ruolo. */
+    public function successione(): bool
+    {
+        return $this->tipo_passaggio === 'successione';
+    }
+
+    /** La successione per legato: vedi `LEGATO`. */
+    public function legato(): bool
+    {
+        return $this->successione() && ($this->registro['sottotipo'] ?? null) === self::LEGATO;
+    }
+
+    /**
+     * Gli eredi della successione, dal registro (decisione 65): persona, quota **ereditata** (non la somma della riga, se l'erede era già
+     * titolare: lezione della decisione 36) e riga aperta. Vuoto per gli altri tipi.
+     *
+     * @return list<array{anagrafica_id: int, quota: float, riga_id: ?int}>
+     */
+    public function eredi(): array
+    {
+        return self::elencoDiChiRiceve((array) ($this->registro['eredi'] ?? []));
+    }
+
+    /**
+     * L'estinzione con l'accrescimento (1.11.0-beta.44): l'usufrutto di chi muore va agli usufruttuari che restano, in proporzione, e la
+     * nuda resta nuda. Dal registro, come gli eredi: persona, quota ricevuta (non la somma della riga) e riga aperta. Vuoto altrimenti.
+     *
+     * @return list<array{anagrafica_id: int, quota: float, riga_id: ?int}>
+     */
+    public function accrescimento(): array
+    {
+        return $this->estinzioneUsufrutto() ? self::elencoDiChiRiceve((array) ($this->registro['accrescimento'] ?? [])) : [];
+    }
+
+    public function conAccrescimento(): bool
+    {
+        return $this->accrescimento() !== [];
+    }
+
+    /**
+     * Chi riceve la quota quando le persone che entrano sono più di una e il passaggio ne nomina una sola: gli eredi della successione,
+     * gli usufruttuari dell'accrescimento. Vuoto per gli altri passaggi.
+     *
+     * @return list<array{anagrafica_id: int, quota: float, riga_id: ?int}>
+     */
+    public function destinatari(): array
+    {
+        return $this->successione() ? $this->eredi() : $this->accrescimento();
+    }
+
+    /** @return list<array{anagrafica_id: int, quota: float, riga_id: ?int}> */
+    private static function elencoDiChiRiceve(array $elenco): array
+    {
+        return array_values(array_map(fn ($e) => ['anagrafica_id' => (int) $e['anagrafica_id'], 'quota' => (float) $e['quota'], 'riga_id' => isset($e['riga_id']) ? (int) $e['riga_id'] : null], $elenco));
+    }
+
+    /**
+     * Le righe di `saldi` dell'arretrato del defunto (decisione 65, 2): due per erede, gestione, unità ed esercizio, con il
+     * `subentro_id` del passaggio come le righe del conguaglio. Vuoto se l'arretrato è rimasto a nome del defunto.
+     *
+     * @return list<int>
+     */
+    public function saldiDellArretrato(): array
+    {
+        return array_values(array_map('intval', (array) ($this->registro['arretrato']['saldi'] ?? [])));
+    }
+
+    /** Decisione 67 (3): i saldi del defunto da cui l'arretrato agli eredi è stato calcolato. */
+    public function fontiDellArretrato(): array
+    {
+        return array_values(array_map('intval', (array) ($this->registro['arretrato']['fonti'] ?? [])));
+    }
+
+    /**
+     * Decisione 67 (3), rilievo X6 della Fase 1-bis: la successione non annullata che ha calcolato il suo arretrato agli eredi anche su
+     * uno di questi saldi. Cambiarli sotto le righe degli eredi lascerebbe a loro un debito sbagliato e al defunto un credito finto.
+     *
+     * @param list<int> $saldoIds
+     */
+    public static function successioneCheLeggeISaldi(array $saldoIds, int $condominioId): ?self
+    {
+        $saldoIds = array_map('intval', $saldoIds);
+
+        return self::where('condominio_id', $condominioId)->where('tipo_passaggio', 'successione')->orderByDesc('id')->get()
+            ->first(fn (self $s) => array_intersect($s->fontiDellArretrato(), $saldoIds) !== []);
+    }
+
+    /**
+     * L'arretrato è passato agli eredi con le righe di `saldi`: allora coppia e arretrato sono un conto solo (ciascun erede paga la
+     * sua parte dell'anno intero), e il conguaglio da solo non si annulla né si rinuncia.
+     */
+    public function arretratoAgliEredi(): bool
+    {
+        return $this->successione() && ($this->registro['arretrato']['scelta'] ?? null) === self::ARRETRATO_AGLI_EREDI && $this->saldiDellArretrato() !== [];
+    }
+
+    /**
+     * Chi il passaggio fa entrare: gli eredi della successione e gli usufruttuari dell'accrescimento (`destinatari()`), altrimenti chi
+     * entra. Quei passaggi registrano come chi entra una persona sola (decisione 65), e chi cerca le persone di un passaggio con
+     * `anagrafica_entrante_id` perderebbe le altre.
+     *
+     * @return list<int>
+     */
+    public function entranti(): array
+    {
+        return $this->destinatari() !== []
+            ? array_column($this->destinatari(), 'anagrafica_id')
+            : array_values(array_filter([(int) $this->anagrafica_entrante_id]));
+    }
+
+    /** La riga che il passaggio ha aperto a `$anagraficaId`, se è fra chi entra (vedi `entranti()`). */
+    public function rigaEntranteDi(int $anagraficaId): ?int
+    {
+        if ($this->destinatari() !== []) {
+            return collect($this->destinatari())->firstWhere('anagrafica_id', $anagraficaId)['riga_id'] ?? null;
+        }
+
+        return (int) $this->anagrafica_entrante_id === $anagraficaId && $this->riga_entrante_id !== null ? (int) $this->riga_entrante_id : null;
     }
 
     /**
@@ -134,8 +267,12 @@ class Subentro extends Model
      * Il passaggio da cui è nata una riga d'usufrutto: la costituzione (che la apre come entrante) o la vendita con riserva
      * (che la riapre per chi vende, e la scrive nel registro). Serve all'estinzione per sapere se quell'usufrutto era nato
      * «come la voce» (rilievo D4 della Fase 1-bis della beta.41). Null per una riga censita a mano o anteriore al registro.
+     *
+     * Rilievo X5 della Fase 1-bis della 1.11.0-beta.44: una riga aperta da un'estinzione con l'accrescimento (l'usufrutto di chi muore
+     * sommato a quello di chi resta) viene dalla riga d'usufrutto della stessa persona che quel passaggio ha chiuso, e si risale alla
+     * sua origine. La parte arrivata da chi muore ha la sua origine, che può avere un'altra scelta: qui conta quella della riga propria.
      */
-    public static function origineDellUsufrutto(int $rigaId, int $immobileId): ?self
+    public static function origineDellUsufrutto(int $rigaId, int $immobileId, int $profondita = 0): ?self
     {
         $costituzione = self::where('immobile_id', $immobileId)->where('tipo_passaggio', 'usufrutto')->where('tipologia', 'usufruttuario')
             ->where('riga_entrante_id', $rigaId)->latest('id')->first();
@@ -143,9 +280,41 @@ class Subentro extends Model
             return $costituzione;
         }
 
-        return self::vincolaRiservaUsufrutto(self::query()->toBase())->where('immobile_id', $immobileId)->orderByDesc('id')->pluck('id')
+        $riserva = self::vincolaRiservaUsufrutto(self::query()->toBase())->where('immobile_id', $immobileId)->orderByDesc('id')->pluck('id')
             ->map(fn ($id) => self::find($id))->filter()
             ->first(fn (self $s) => in_array($rigaId, $s->righeDelRegistro(), true));
+        if ($riserva !== null || $profondita > 20) {
+            return $riserva;
+        }
+
+        $accrescimento = self::where('immobile_id', $immobileId)->where('tipo_passaggio', 'usufrutto')->orderByDesc('id')->get()
+            ->first(fn (self $s) => collect($s->accrescimento())->contains(fn (array $a) => (int) ($a['riga_id'] ?? 0) === $rigaId));
+        if ($accrescimento === null) {
+            return null;
+        }
+        $persona = (int) collect($accrescimento->accrescimento())->first(fn (array $a) => (int) ($a['riga_id'] ?? 0) === $rigaId)['anagrafica_id'];
+        $propria = \App\Models\TitolaritaImmobile::whereIn('id', $accrescimento->righeDelRegistro())->where('anagrafica_id', $persona)->where('tipologia', 'usufruttuario')
+            ->whereKeyNot($rigaId)->orderByDesc('id')->first();
+
+        return $propria === null ? null : self::origineDellUsufrutto((int) $propria->id, $immobileId, $profondita + 1);
+    }
+
+    /**
+     * Decisione 68 (1): da dove viene la parte arrivata con l'accrescimento a questa riga d'usufrutto — il passaggio dell'accrescimento e
+     * l'origine dell'usufrutto di chi è morto —, o null se la riga non è nata da un accrescimento o quell'origine non si conosce.
+     *
+     * @return array{passaggio: self, origine: self}|null
+     */
+    public static function origineDellaParteAccresciuta(int $rigaId, int $immobileId): ?array
+    {
+        $accrescimento = self::where('immobile_id', $immobileId)->where('tipo_passaggio', 'usufrutto')->orderByDesc('id')->get()
+            ->first(fn (self $s) => collect($s->accrescimento())->contains(fn (array $a) => (int) ($a['riga_id'] ?? 0) === $rigaId));
+        if ($accrescimento === null || $accrescimento->riga_uscente_id === null) {
+            return null;
+        }
+        $origine = self::origineDellUsufrutto((int) $accrescimento->riga_uscente_id, $immobileId);
+
+        return $origine === null ? null : ['passaggio' => $accrescimento, 'origine' => $origine];
     }
 
     /**

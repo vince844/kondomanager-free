@@ -182,7 +182,7 @@ it('31.6 — con la spunta tolta la voce resta com\'era, e il registro non la no
         ->and($subentro->registro['voci_spostate'])->toBe([]);
 });
 
-it('31.6 — una voce senza coefficienti (il motore la legge «Proprietario 100 %») passa anche lei, e il registro dice com\'era', function () {
+it('31.6 — una voce senza coefficienti (il motore la legge «Proprietario 100 %») passa anche lei, e il registro dice com\'era', function () {
     $s = ruScenario('prima_rata', 0);
     ruPianoInBozza($s);
     DB::table('conto_tabella_ripartizioni')->where('conto_tabella_millesimale_id', odaAssociazione($s))->delete();
@@ -306,7 +306,7 @@ it('31.7 — annullando il passaggio la voce spostata resta sull\'«Usufruttuari
     $subentro = ruRegistra($this, $s, ruRiserva($s));
 
     expect(app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($subentro))
-        ->toContain('La voce che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» resta com\'è: Spese generali (Proprietà, Ordinaria 2026; prima Proprietario 100 %). Vale per tutta la tabella, anche per le altre unità in usufrutto; se va riportata com\'era, si cambia dalla pagina della voce.');
+        ->toContain('La voce che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» resta com\'è: Spese generali (Proprietà, Ordinaria 2026; prima Proprietario 100 %). Vale per tutta la tabella, anche per le altre unità in usufrutto; se va riportata com\'era, si cambia dalla pagina della voce.');
 
     expect(ruAnnulla($this, $s, $subentro)->status())->toBe(302);
     expect(odaCoefficienti($s))->toBe(['usufruttuario' => 100.0]);
@@ -793,7 +793,7 @@ function odaVoceDivisa(): array
     return $s;
 }
 
-it('rilievo D6 — una voce divisa fra «Proprietario» (10 %) e «Inquilino» (90 %), senza inquilino: con «come dice ogni voce» ciascuna parte passa o resta per conto suo', function (string $passaggio, int $atteso) {
+it('rilievo D6 — una voce divisa fra «Proprietario» (10 %) e «Inquilino» (90 %), senza inquilino: con «come dice ogni voce» ciascuna parte passa o resta per conto suo', function (string $passaggio, int $atteso) {
     $s = odaVoceDivisa();
     ruRegistra($this, $s, $passaggio === 'riserva' ? ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']) : odaCostituzione($s, ['ordinaria_dopo_atto' => 'voce']));
 
@@ -954,7 +954,7 @@ it('rilievo A2 — lo storico dice la scelta: con la legge le voci spostate con 
 
     expect(odaStorico($s, $subentro)['ordinaria'])->toBe(['scelta' => $scelta ?? 'usufruttuario', 'voci' => $voci, 'testo' => $testo]);
 })->with([
-    'riserva, la legge' => ['riserva', null, 'Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: questa voce è passata dal «Proprietario» all\'«Usufruttuario».', ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %']],
+    'riserva, la legge' => ['riserva', null, 'Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: questa voce è passata dal «Proprietario» all\'«Usufruttuario».', ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %']],
     'riserva, come la voce' => ['riserva', 'voce', 'Dal 1 maggio 2026 come dice ogni voce, scelta alla registrazione: le voci sul «Proprietario» passano a chi ha comprato la nuda proprietà, le altre restano all\'usufruttuario. Le voci non sono state toccate.', []],
     'costituzione, come la voce' => ['costituzione', 'voce', 'Dal 1 maggio 2026 come dice ogni voce, scelta alla registrazione: le voci sul «Proprietario» restano al nudo proprietario, le altre vanno all\'usufruttuario. Le voci non sono state toccate.', []],
 ]);
@@ -1006,7 +1006,7 @@ it('rilievo A6 — l\'annullamento dice i coefficienti che la voce divisa aveva 
     $subentro = ruRegistra($this, $s, ruRiserva($s));
 
     expect(odaCoefficienti($s))->toBe(['usufruttuario' => 100.0])
-        ->and(implode("\n", odaStorico($s, $subentro)['annullabile']['avvisi']))->toContain('Spese generali (Proprietà, Ordinaria 2026; prima Proprietario 70 %, Usufruttuario 30 %)');
+        ->and(implode("\n", odaStorico($s, $subentro)['annullabile']['avvisi']))->toContain('Spese generali (Proprietà, Ordinaria 2026; prima Proprietario 70 %, Usufruttuario 30 %)');
 });
 
 // --- Il cancello della riserva (decisione 28.5, spostato qui da `RiservaUsufruttoTest` nella Fase 1-bis della beta.41) -----

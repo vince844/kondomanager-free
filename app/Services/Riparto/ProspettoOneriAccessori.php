@@ -218,33 +218,39 @@ final class ProspettoOneriAccessori
      * lo riporta ai suoi giorni — decisioni 21 e 25). La vendita con riserva d'usufrutto (beta.38) non fa avanzare la
      * catena: le ordinarie le paga ancora chi vende, che resta usufruttuario (art. 1004 c.c.).
      *
+     * Dalla 1.11.0-beta.44 anche la successione: dal giorno del decesso pagano gli eredi, insieme (decisione 65), e un pezzo
+     * può avere più nomi. Si segue ciascuno: l'erede che poi vende lascia il posto a chi compra. Un passaggio si segue una
+     * volta sola, e le decorrenze crescono, quindi la catena finisce.
+     *
      * @return list<array{nome: ?string, periodo: InsiemePeriodi}>
      */
     private function catenaDeiPagatori(int $anagraficaId, int $immobileId, InsiemePeriodi $periodo): array
     {
         $pezzi = [];
-        $chi = $anagraficaId;
+        $chi = [$anagraficaId];
         $dal = $periodo->dal();
         $visti = [];
-        while (! isset($visti[$chi])) {
-            $visti[$chi] = true;
-            $passaggio = Subentro::where('immobile_id', $immobileId)->whereIn('tipo_passaggio', ['vendita', 'usufrutto'])
-                ->where('anagrafica_uscente_id', $chi)->whereNotNull('anagrafica_entrante_id')
-                ->whereDate('decorrenza', '>', $dal->toDateString())->whereDate('decorrenza', '<=', $periodo->al()->toDateString())
-                ->orderBy('decorrenza')->get()->first(fn (Subentro $p) => ! $p->riservaUsufrutto());
+        $nomi = fn (array $ids) => collect($ids)->map(fn (int $id) => Anagrafica::whereKey($id)->value('nome'))->filter()->join(', ', ' e ') ?: null;
+        while (true) {
+            $passaggio = Subentro::where('immobile_id', $immobileId)->whereIn('tipo_passaggio', ['vendita', 'usufrutto', 'successione'])
+                ->whereIn('anagrafica_uscente_id', $chi)->whereNotNull('anagrafica_entrante_id')->whereNotIn('id', array_keys($visti))
+                // Dopo il primo passaggio anche lo stesso giorno: due eredi possono vendere la loro parte insieme.
+                ->whereDate('decorrenza', $visti === [] ? '>' : '>=', $dal->toDateString())->whereDate('decorrenza', '<=', $periodo->al()->toDateString())
+                ->orderBy('decorrenza')->orderBy('id')->get()->first(fn (Subentro $p) => ! $p->riservaUsufrutto());
             if ($passaggio === null) {
                 break;
             }
+            $visti[(int) $passaggio->id] = true;
             $pezzo = $periodo->intersezione(new PeriodoCompetenza($dal, $passaggio->decorrenza->toImmutable()->subDay()));
             if ($pezzo !== null) {
-                $pezzi[] = ['nome' => Anagrafica::whereKey($chi)->value('nome'), 'periodo' => $pezzo];
+                $pezzi[] = ['nome' => $nomi($chi), 'periodo' => $pezzo];
             }
-            $chi = (int) $passaggio->anagrafica_entrante_id;
+            $chi = array_values(array_unique([...array_diff($chi, [(int) $passaggio->anagrafica_uscente_id]), ...$passaggio->entranti()]));
             $dal = $passaggio->decorrenza->toImmutable();
         }
         $ultimo = $periodo->intersezione(new PeriodoCompetenza($dal, $periodo->al()));
         if ($ultimo !== null) {
-            $pezzi[] = ['nome' => Anagrafica::whereKey($chi)->value('nome'), 'periodo' => $ultimo];
+            $pezzi[] = ['nome' => $nomi($chi), 'periodo' => $ultimo];
         }
 
         return $pezzi;

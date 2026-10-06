@@ -57,7 +57,7 @@ function qpRegistra($test, array $dati)
 it('decisione 37 — la vendita di 50 su 100 si rifiuta, nell\'anteprima e nella registrazione, e le righe non cambiano', function () {
     [$anteprima, $registrazione] = qpRegistra($this, ['tipo' => 'vendita', 'riga_uscente_id' => $this->rigaElsa, 'anagrafica_entrante_id' => $this->p[1]->id, 'quota' => 50, 'tipologia' => 'proprietario']);
 
-    $frase = 'Il passaggio porta tutta la quota di Elsa Prima (100 %): passarne solo una parte non è ancora previsto.';
+    $frase = 'Il passaggio porta tutta la quota di Elsa Prima (100 %): passarne solo una parte non è ancora previsto.';
     expect($anteprima->status())->toBe(422)->and($anteprima->json('errors.quota.0'))->toStartWith($frase)
         // Rilievo A9 della Fase 1-bis: il rifiuto dice anche la via a mano, con l'avvertenza sul riparto.
         ->and($anteprima->json('errors.quota.0'))->toContain('registralo a mano')->toContain('dal giorno dell\'atto')->toContain('vale da sempre');
@@ -73,8 +73,8 @@ it('decisione 37 — lo stesso per la costituzione dell\'usufrutto su una parte 
         'anagrafica_entrante_id' => $this->p[1]->id, 'quota' => 50, 'tipologia' => 'usufruttuario']);
     [$a2] = qpRegistra($this, ['tipo' => 'fine_locazione', 'riga_uscente_id' => $this->rigaInes, 'anagrafica_entrante_id' => $this->p[3]->id, 'quota' => 60, 'tipologia' => 'inquilino']);
 
-    expect($a1->json('errors.quota.0'))->toStartWith('Il passaggio porta tutta la quota di Elsa Prima (100 %): passarne solo una parte non è ancora previsto.')
-        ->and($a2->json('errors.quota.0'))->toStartWith('Il passaggio porta tutta la quota di Ines Terza (100 %): passarne solo una parte non è ancora previsto.');
+    expect($a1->json('errors.quota.0'))->toStartWith('Il passaggio porta tutta la quota di Elsa Prima (100 %): passarne solo una parte non è ancora previsto.')
+        ->and($a2->json('errors.quota.0'))->toStartWith('Il passaggio porta tutta la quota di Ines Terza (100 %): passarne solo una parte non è ancora previsto.');
 });
 
 it('decisione 37, controllo — con la quota di chi esce la vendita passa', function () {

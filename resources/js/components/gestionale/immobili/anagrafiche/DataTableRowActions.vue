@@ -5,7 +5,7 @@ import { router, Link, usePage } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { Unplug, FilePenLine, MoreHorizontal, ArrowRightLeft } from 'lucide-vue-next'
+import { Unplug, FilePenLine, MoreHorizontal, ArrowRightLeft, ScrollText } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
@@ -126,6 +126,20 @@ function deleteAnagrafica() {
           <span class="flex flex-col">
             <span>Registra passaggio</span>
             <span class="text-[11px] text-slate-500">Il titolare cambia: il periodo si chiude, la storia resta</span>
+          </span>
+        </Link>
+      </DropdownMenuItem>
+
+      <!-- 1.11.0-beta.44: muore il proprietario o il nudo proprietario (decisione 64). La morte dell'usufruttuario è l'estinzione, qui sopra. -->
+      <DropdownMenuItem v-if="['proprietario', 'nuda_proprietario'].includes(anagrafica.pivot.tipologia)" as-child>
+        <Link
+          :href="route(generateRoute('gestionale.immobili.passaggi.create'), { condominio: condominio.id, immobile: immobile.id, tipo: 'successione', riga: anagrafica.pivot.id })"
+          class="flex items-start gap-2 cursor-pointer"
+        >
+          <ScrollText class="w-4 h-4 mt-0.5 shrink-0" />
+          <span class="flex flex-col">
+            <span>Registra la successione</span>
+            <span class="text-[11px] text-slate-500">Muore il titolare: entrano gli eredi</span>
           </span>
         </Link>
       </DropdownMenuItem>

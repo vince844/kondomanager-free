@@ -295,7 +295,7 @@ final class VociDaSpostare
      */
     public static function coefficientiAParole(array $righe): string
     {
-        return implode(', ', array_map(fn (array $r) => sprintf('%s %s %%',
+        return implode(', ', array_map(fn (array $r) => sprintf('%s %s %%',
             RuoloAnagraficaImmobile::tryFrom((string) ($r['soggetto'] ?? ''))?->label() ?? ucfirst((string) ($r['soggetto'] ?? '?')),
             rtrim(rtrim(number_format((float) ($r['percentuale'] ?? 0), 2, ',', '.'), '0'), ',')), array_values($righe)));
     }

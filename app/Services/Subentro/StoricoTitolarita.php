@@ -94,6 +94,9 @@ class StoricoTitolarita
             ->get()
             ->map(function (Subentro $s) use ($annullamento) {
                 $saldi = $s->saldi->merge($s->pertinenze->flatMap->saldi);
+                // 1.11.0-beta.44: le righe dell'arretrato di una successione stanno con quelle del conguaglio, ma sono un'altra cosa.
+                $righeArretrato = $saldi->whereIn('id', $s->saldiDellArretrato());
+                $saldi = $saldi->whereNotIn('id', $s->saldiDellArretrato());
                 $motivo = $s->annullato() ? null : $annullamento->motivoBlocco($s);
                 $conguaglio = match (true) {
                     $s->conguaglioAnnullato() => 'annullato',
@@ -111,7 +114,10 @@ class StoricoTitolarita
                     'registrato_il' => $s->created_at ? $this->giornoUtente($s->created_at) : null,
                     // Dal registro se la persona non c'è più: un passaggio annullato non impedisce di cancellarla.
                     'uscente' => $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? null),
-                    'entrante' => $s->entrante?->nome ?? ($s->registro['nomi']['entrante'] ?? null),
+                    // Nella successione chi entra sono tutti gli eredi, nell'accrescimento tutti gli usufruttuari che ricevono, con la quota se
+                    // sono più d'uno.
+                    'entrante' => $s->destinatari() !== [] ? $this->destinatari($s) : ($s->entrante?->nome ?? ($s->registro['nomi']['entrante'] ?? null)),
+                    'accrescimento' => $s->conAccrescimento(),
                     'estremi_titolo' => $s->estremi_titolo,
                     'copia_autentica_il' => $s->copia_autentica_il?->toDateString(),
                     'copia_autentica_a_parole' => $s->copia_autentica_il ? $this->data($s->copia_autentica_il) : null,
@@ -122,14 +128,21 @@ class StoricoTitolarita
                         'stato' => $conguaglio,
                         // La riga di chi entra, col suo segno (verifica S6, R14): di norma un debito (positivo), ma con
                         // una quota pura a credito chi entra riceve un credito e la coppia è rovesciata. `scriviCoppie` usa
-                        // lo stesso entrante sul padre e sulle pertinenze figlie, quindi la somma è la sua.
-                        'importo' => $aEntrante = (int) $saldi->where('anagrafica_id', (int) $s->anagrafica_entrante_id)->sum('saldo_iniziale'),
+                        // lo stesso entrante sul padre e sulle pertinenze figlie. Dalla 1.11.0-beta.44 la somma di tutti quelli
+                        // che entrano (gli eredi, i nudi che tornano pieni): prima contava solo chi entra scritto sul passaggio.
+                        'importo' => $aEntrante = (int) $saldi->where('anagrafica_id', '!=', (int) $s->anagrafica_uscente_id)->sum('saldo_iniziale'),
                         'importo_formattato' => \App\Helpers\MoneyHelper::format(abs($aEntrante)),
+                        // Fase 5 della 1.11.0-beta.44: con più persone che entrano (gli eredi, i nudi che tornano pieni) la somma non è il
+                        // debito di nessuno — un erede di riferimento può essere a credito e un altro a debito —: la riga di ciascuno.
+                        'per_entrante' => $this->conguaglioPerEntrante($saldi, (int) $s->anagrafica_uscente_id),
                         'applicato' => $saldi->contains(fn ($x) => (bool) $x->is_applicato),
                         'nota' => $s->nota_conguaglio,
                         'nota_annullamento' => $s->nota_annullamento_conguaglio,
                         'annullato_il' => $s->conguaglio_annullato_il ? $this->giornoUtente($s->conguaglio_annullato_il) : null,
+                        // Con l'arretrato agli eredi la coppia e l'arretrato fanno un conto solo (`AnnullaConguaglioAction`).
+                        'annullabile' => ! $s->arretratoAgliEredi(),
                     ],
+                    'arretrato' => $s->successione() ? $this->arretrato($s, $righeArretrato) : null,
                     'obbligati' => $s->annullato() ? [] : $this->frasiObbligati->daSubentro($s),
                     // Rilievo A2 della Fase 1-bis della beta.41: la scelta sull'ordinaria, dal registro. Decide i conguagli dei
                     // passaggi dopo, quindi resta visibile anche quando il passaggio non è più annullabile.
@@ -160,7 +173,8 @@ class StoricoTitolarita
         $futuro = $dal !== null && $dal->gt($oggi);
 
         $comeUscente = $subentri->first(fn ($s) => (int) $s->riga_uscente_id === (int) $t->id);
-        $comeEntrante = $subentri->first(fn ($s) => (int) $s->riga_entrante_id === (int) $t->id);
+        // Anche la riga di un erede che il passaggio non nomina come chi entra (1.11.0-beta.44).
+        $comeEntrante = $subentri->first(fn ($s) => (int) $s->riga_entrante_id === (int) $t->id || in_array((int) $t->id, array_column($s->destinatari(), 'riga_id'), true));
         // La riga di continuazione (S5: il proprietario rimasto nudo, il comproprietario passato al 100 %) non è
         // agganciata a `subentri`: il suo passaggio è quello con la stessa persona come uscente, alla sua decorrenza.
         $comeContinuazione = $comeUscente === null && $comeEntrante === null && $dal !== null
@@ -245,7 +259,80 @@ class StoricoTitolarita
      */
     private function sottotipo(Subentro $s): ?string
     {
-        return $s->tipo_passaggio === 'usufrutto' ? ($s->tipologia === 'proprietario' ? 'estinzione' : 'costituzione') : ($s->riservaUsufrutto() ? Subentro::RISERVA_USUFRUTTO : null);
+        return match (true) {
+            $s->tipo_passaggio === 'usufrutto' => $s->tipologia === 'proprietario' ? 'estinzione' : 'costituzione',
+            $s->riservaUsufrutto() => Subentro::RISERVA_USUFRUTTO,
+            $s->legato() => Subentro::LEGATO,
+            default => null,
+        };
+    }
+
+    /** Chi ha ricevuto la quota (gli eredi, gli usufruttuari dell'accrescimento) in parole: il nome se è uno solo, altrimenti ognuno con la sua quota. */
+    private function destinatari(Subentro $s): ?string
+    {
+        $nomi = \App\Models\Anagrafica::whereIn('id', $s->entranti())->pluck('nome', 'id');
+        $eredi = array_map(fn ($e) => ['nome' => $nomi[$e['anagrafica_id']] ?? ($s->registro['nomi']['eredi'][(string) $e['anagrafica_id']] ?? '?'), 'quota' => $e['quota']], $s->destinatari());
+        if (count($eredi) <= 1) {
+            return $eredi[0]['nome'] ?? null;
+        }
+        $parti = array_map(fn ($e) => sprintf('%s (%s %%)', $e['nome'], rtrim(rtrim(number_format((float) $e['quota'], 2, ',', '.'), '0'), ',')), $eredi);
+        $ultimo = array_pop($parti);
+
+        return implode(', ', $parti) . ' e ' . $ultimo;
+    }
+
+    /**
+     * L'arretrato del defunto come il passaggio l'ha scritto (decisione 65, 2): agli eredi, con la parte di ciascuno dalle righe di
+     * `saldi`; o a suo nome, con la cifra del registro.
+     *
+     * @param \Illuminate\Support\Collection<int, \App\Models\Saldo> $righe
+     * @return array{scelta: ?string, frase: ?string}
+     */
+    /**
+     * Le righe del conguaglio di ciascuno di quelli che entrano, quando sono più d'uno: «€ 316,71 a credito di Anna», «€ 322,19 a
+     * debito di Bruno». Con uno solo, vuoto: basta la cifra di sempre.
+     *
+     * @return list<string>
+     */
+    private function conguaglioPerEntrante(\Illuminate\Support\Collection $saldi, int $uscenteId): array
+    {
+        $per = $saldi->where('anagrafica_id', '!=', $uscenteId)->groupBy('anagrafica_id')
+            ->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->filter(fn (int $v) => $v !== 0);
+        if ($per->count() < 2) {
+            return [];
+        }
+        $nomi = \App\Models\Anagrafica::whereIn('id', $per->keys()->all())->pluck('nome', 'id');
+
+        return $per->map(fn (int $v, $id) => sprintf('%s %s %s', \App\Helpers\MoneyHelper::format(abs($v)), $v < 0 ? 'a credito di' : 'a debito di', $nomi[$id] ?? 'questa persona'))->values()->all();
+    }
+
+    private function arretrato(Subentro $s, \Illuminate\Support\Collection $righe): array
+    {
+        $scelta = $s->registro['arretrato']['scelta'] ?? null;
+        $defunto = $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'questa persona');
+        if ($scelta === Subentro::ARRETRATO_AGLI_EREDI) {
+            $perErede = $righe->where('anagrafica_id', '!=', (int) $s->anagrafica_uscente_id)->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->filter();
+            // Rilievo X9 della Fase 1-bis: le righe che non hanno trovato un esercizio su cui scriversi sono rimaste a nome del defunto.
+            $nonScritto = (int) ($s->registro['arretrato']['non_scritto'] ?? 0);
+            $coda = $nonScritto === 0 ? '' : sprintf('%s%s non sono stati scritti nei saldi, perché mancava un esercizio su cui scriverli: restano a nome di %s.',
+                \App\Helpers\MoneyHelper::format(abs($nonScritto)), $nonScritto < 0 ? ' a credito' : '', $defunto);
+            if ($perErede->isEmpty()) {
+                return ['scelta' => $scelta, 'frase' => $nonScritto === 0
+                    ? sprintf('Arretrato di %s agli eredi: niente da passare, il giorno della registrazione la sua posizione era in pari.', $defunto)
+                    : sprintf('Arretrato di %s agli eredi: %s', $defunto, $coda)];
+            }
+            $nomi = \App\Models\Anagrafica::whereIn('id', $perErede->keys())->pluck('nome', 'id');
+            $parti = $perErede->map(fn (int $c, $id) => sprintf($c < 0 ? '%s a credito di %s' : '%s a %s', \App\Helpers\MoneyHelper::format(abs($c)), $nomi[$id] ?? '?'))->values()->all();
+
+            // Rilievo L1 della Fase 1-bis: un credito del defunto non è un debito dell'eredità, e non cita l'art. 754 c.c.
+            return ['scelta' => $scelta, 'frase' => ($perErede->sum() < 0
+                    ? sprintf('Credito di %s passato agli eredi per quota, con righe nei saldi della gestione: %s.', $defunto, implode(', ', $parti))
+                    : sprintf('Arretrato di %s passato agli eredi per quota (art. 754 c.c.), con righe nei saldi della gestione: %s.', $defunto, implode(', ', $parti)))
+                . ($coda === '' ? '' : ' Altri ' . $coda)];
+        }
+        $resta = (int) ($s->registro['arretrato']['resta'] ?? 0);
+
+        return ['scelta' => $scelta, 'frase' => $resta === 0 ? null : sprintf('Arretrato di %s lasciato a suo nome («eredi di %s»): %s%s.', $defunto, $defunto, \App\Helpers\MoneyHelper::format(abs($resta)), $resta < 0 ? ' a credito' : '')];
     }
 
     private function periodoAParole(?CarbonImmutable $dal, ?CarbonImmutable $al, bool $futuro): string

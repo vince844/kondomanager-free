@@ -94,13 +94,25 @@ class EstrattoContoAnagraficaController extends Controller
                 'saldo_formattato' => MoneyHelper::format($saldoCassa->saldoDisponibile($c)),
             ])->values()->all();
 
-        // La coppia del passaggio non ancora assorbita: credito vero, ma ancora in `saldi`.
+        // La coppia del passaggio non ancora assorbita: credito vero, ma ancora in `saldi`. Dalla 1.11.0-beta.44 al netto per gestione e
+        // unità, come la assorbirà il piano: con più coppie sulla stessa unità (gli eredi, i nudi) una persona può averne una a credito e
+        // una a debito, e contare solo la prima gonfiava il credito. E senza le righe del defunto nelle successioni con l'arretrato agli
+        // eredi (rilievo X10 della Fase 1-bis), né le righe dei passaggi precedenti che quell'arretrato ha letto (le sue fonti, G4 del giro
+        // sulle correzioni): lì la posizione del defunto si chiude a zero per costruzione, e quel «credito» è già passato agli eredi. Con
+        // l'arretrato a suo nome la coppia resta un credito vero; una successione annullata torna a contare tutto.
+        $successioniChiuse = \App\Models\Gestionale\Subentro::where('condominio_id', $condominio->id)->where('tipo_passaggio', 'successione')
+            ->where('anagrafica_uscente_id', $anagrafica->id)->get()->filter(fn ($s) => $s->arretratoAgliEredi());
         $creditoInSaldi = (int) $anagrafica->saldi()
             ->where('condominio_id', $condominio->id)
             ->where('is_applicato', false)
             ->whereNotNull('subentro_id')
-            ->where('saldo_iniziale', '<', 0)
-            ->sum('saldo_iniziale');
+            ->whereNotIn('subentro_id', $successioniChiuse->pluck('id')->all())
+            ->whereNotIn('id', $successioniChiuse->flatMap(fn ($s) => $s->fontiDellArretrato())->all())
+            ->get(['gestione_id', 'immobile_id', 'saldo_iniziale'])
+            ->groupBy(fn ($r) => $r->gestione_id . '|' . $r->immobile_id)
+            ->map(fn ($g) => (int) $g->sum('saldo_iniziale'))
+            ->filter(fn (int $netto) => $netto < 0)
+            ->sum();
 
         return ['quote' => $quote, 'casse' => $casse, 'credito_in_saldi' => abs($creditoInSaldi)];
     }
