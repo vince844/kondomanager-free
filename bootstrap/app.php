@@ -50,6 +50,17 @@ return Application::configure(basePath: dirname(__DIR__))
         // config('trustedproxy.proxies'), valorizzato dal .env dopo il boot.
         // Vedi il commento esteso in config/trustedproxy.php.
 
+        // `/up` passa anche in manutenzione e dice lo stato vero; le altre pagine restano chiuse.
+        // Fino alla 1.11.0-beta.31 `/up` era la rotta `health:` di Laravel, che Laravel toglie da
+        // solo dalla manutenzione; spostata in `then:` (beta.32), l'eccezione si è persa. Da allora,
+        // in manutenzione, rispondeva come le altre pagine: il rimando (302), che un controllo di
+        // salute con `curl -f` (Coolify) dà per sano anche con migrazioni da applicare; e con la
+        // manutenzione nel database (`APP_MAINTENANCE_STORE=database`, come su KondoCloud) e il
+        // database giù, 500. Laravel esegue questa closure anche all'avvio della console: è da lì
+        // che `artisan down` prende l'elenco e lo scrive nel file `framework/down` (driver `file`),
+        // che `public/index.php` legge prima di avviare l'applicazione (1.11.0-beta.46, Coda 224).
+        $middleware->preventRequestsDuringMaintenance(except: ['up']);
+
         // CheckRestoreMode va per PRIMO: se un ripristino è in corso deve
         // bloccare tutto (update check incluso) senza toccare DB/sessione.
         $middleware->web(prepend: [

@@ -1,0 +1,10 @@
+{
+    "features": [
+        "NO DATABASE CHANGES — A small beta: during maintenance the /up health route answers again, and reports the real state of the installation. It matters to anyone running the program in a container with a health check, and to anyone orchestrating containers who closes an instance by putting it in maintenance.",
+        "CHANGED: DURING MAINTENANCE /UP REPORTS THE REAL STATE — With «php artisan down» it answers as it does outside maintenance: 200 if the installation is healthy, 503 if it is not (database not responding, migrations to run). All other pages stay closed. Since beta.32 it answered like every other page: the redirect (302), which a health check takes as «healthy» even on a broken installation, or 503, which during planned maintenance marked the container as unhealthy. Nothing changes for anyone upgrading from 1.10: there /up was Laravel's health route, which maintenance leaves open.",
+        "CHANGED: IF YOU USED /UP TO KNOW WHETHER THE SITE IS OPEN — A monitor that should alert while the site is closed, or a load balancer that removes a node during maintenance, should query a real page, for example /login, and treat only 200 as good: with the redirect, /login answers 302 too.",
+        "CHANGED: MAINTENANCE WITH A PRE-RENDERED PAGE — If you are in maintenance with «--render» and upgrade from a beta between .32 and .45, run «php artisan down» again after the upgrade: the maintenance file written by those versions does not contain the exception, and /up stays closed until it is rewritten.",
+        "DARK THEME: THE «WHAT'S NEW» PAGE — The page that opens after an update is now readable in the dark theme too: its heading was near-black grey on a black background, the items mid grey, and a light frame stayed around the card. Nothing changes in the light theme.",
+        "UNDER THE HOOD — New tests on /up during maintenance, with maintenance stored in the database and with the real command: 200 when the installation is healthy, 503 with a migration to run or the database down, all other pages closed, and the list of exceptions being /up and nothing else."
+    ]
+}

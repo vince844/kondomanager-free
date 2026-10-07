@@ -7,6 +7,41 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.46] - Anche a porte chiuse
+
+**Non tocca il database.** Una beta piccola: in manutenzione la rotta di salute `/up` torna a rispondere, e dice lo stato
+vero dell'installazione. Serve a chi tiene il programma in un container con un controllo di salute, e a chi orchestra i
+container e chiude un'istanza mettendola in manutenzione.
+
+**Cambi di comportamento, detti per primi.**
+- **In manutenzione `/up` dice lo stato vero.** Con `php artisan down` risponde come fuori dalla manutenzione: 200 se
+  l'installazione è sana, 503 se non lo è (database che non risponde, migrazioni da applicare). Le altre pagine restano
+  chiuse. Dalla beta.32 rispondeva come le altre pagine: con `--redirect` il rimando (302), che un controllo di salute
+  come `curl -f` prende per «sano» anche su un'installazione malata; senza, 503, che durante una manutenzione voluta
+  faceva risultare malato il container (l'HEALTHCHECK dell'immagine Docker) e lo faceva togliere da un proxy come
+  Traefik; e 500 con la manutenzione salvata nel database e il database giù. **Per chi passa dalla 1.10 non cambia
+  niente**: lì `/up` era la rotta di salute di Laravel, che la manutenzione lascia aperta. La beta.32, spostandola perché
+  dicesse la verità, aveva perso quell'eccezione.
+- **Chi usava `/up` per sapere se il sito è aperto agli utenti** (un monitor che deve suonare a sito chiuso, un
+  bilanciatore che toglie un nodo durante la manutenzione) interroghi una pagina vera, per esempio `/login`, e consideri
+  buono solo il 200: con `--redirect` anche `/login` risponde 302.
+- **Chi è in manutenzione con la pagina prerenderizzata (`--render`) e aggiorna da una beta dalla .32 alla .45** rilanci
+  `php artisan down` dopo l'aggiornamento: il file della manutenzione scritto da quelle versioni non contiene l'eccezione,
+  e finché non lo si riscrive `/up` resta chiuso.
+
+**Tema scuro.**
+- **La pagina «Novità», che si apre dopo un aggiornamento, ora si legge anche in tema scuro.** Il titoletto «Novità di
+  questa versione» era grigio quasi nero su fondo nero, le voci grigio medio, e attorno al riquadro restava una cornice
+  chiara. In tema chiaro non cambia niente.
+
+**Sotto il cofano.**
+- Test nuovi su `/up` in manutenzione, con la manutenzione salvata nel database e con il comando vero
+  (`artisan down --redirect`): 200 a installazione sana, 503 con una migrazione da applicare o con il database giù, le
+  altre pagine chiuse, e l'elenco delle eccezioni che è `/up` e basta. Uno esegue il file che `public/index.php` legge
+  prima di avviare l'applicazione con la pagina prerenderizzata, perché lì il controllo non passa dal middleware.
+
+---
+
 ## [1.11.0-beta.45] - Solo chi ha il link
 
 **Non tocca il database.** Una beta di sicurezza: corregge due falle, una nel primo accesso degli utenti creati

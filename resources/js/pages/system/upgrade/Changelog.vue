@@ -13,34 +13,34 @@ const props = defineProps({
 </script>
 
 <template>
-    <div class="min-h-screen flex items-center justify-center bg-gray-50/50 p-4">
+    <div class="min-h-screen flex items-center justify-center bg-gray-50/50 dark:bg-transparent p-4">
         <Card class="w-full max-w-2xl shadow-xl border-t-4 border-t-green-500">
             <CardHeader class="text-center border-b pb-6">
-                <div class="mx-auto bg-green-100 p-3 rounded-full w-fit mb-4">
-                    <CheckCircle2 class="w-10 h-10 text-green-600" />
+                <div class="mx-auto bg-green-100 dark:bg-green-900/30 p-3 rounded-full w-fit mb-4">
+                    <CheckCircle2 class="w-10 h-10 text-green-600 dark:text-green-400" />
                 </div>
-                <CardTitle class="text-3xl font-bold text-green-700">Aggiornamento riuscito!</CardTitle>
+                <CardTitle class="text-3xl font-bold text-green-700 dark:text-green-400">Aggiornamento riuscito!</CardTitle>
                 <CardDescription class="text-base mt-2">
-                    Il sistema è ora aggiornato alla versione <Badge variant="outline" class="font-bold border-green-500 text-green-700">{{ log.version }}</Badge>
+                    Il sistema è ora aggiornato alla versione <Badge variant="outline" class="font-bold border-green-500 text-green-700 dark:text-green-400">{{ log.version }}</Badge>
                 </CardDescription>
                 <p class="text-xs text-muted-foreground mt-1">Data: {{ log.date }}</p>
             </CardHeader>
 
             <CardContent class="pt-6">
-                <h3 class="font-semibold text-gray-900 mb-4 flex items-center">
+                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
                     <span class="w-1.5 h-1.5 bg-blue-500 rounded-full mr-2"></span>
                     Novità di questa versione
                 </h3>
                 
                 <ul class="space-y-3 max-h-96 overflow-y-auto pr-1">
-                    <li v-for="(feature, index) in log.features" :key="index" class="flex items-start text-sm text-gray-600">
+                    <li v-for="(feature, index) in log.features" :key="index" class="flex items-start text-sm text-gray-600 dark:text-gray-300">
                         <CheckCircle2 class="w-4 h-4 text-green-500 mr-2 mt-0.5 shrink-0" />
                         {{ feature }}
                     </li>
                 </ul>
             </CardContent>
 
-            <CardFooter class="bg-gray-50/50 border-t pt-6">
+            <CardFooter class="bg-gray-50/50 dark:bg-muted/30 border-t pt-6">
                 <Button as-child class="w-full" size="lg">
                      <Link :href="route('admin.dashboard')">
                         Torna alla dashboard
