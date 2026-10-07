@@ -34,6 +34,12 @@ use Illuminate\Support\Collection;
  * riserva la nuda al figlio, poi ne muore uno) si **consolida per legge** solo per la parte dell'usufrutto che finisce: il
  * figlio diventa pieno per quella parte e resta nudo del resto (scelta di Vincenzo del 04/10/2026, in attesa della scelta
  * fra consolidamento e accrescimento che arriva con la successione). `consolida` dice la quota che torna piena.
+ *
+ * Lo stesso quando quella nuda sola è passata a più persone con una successione registrata da qui, e magari poi venduta (DS1,
+ * 1.11.0-beta.47, decisioni 57 e 66.3): gli eredi l'hanno ricevuta in comune, e la parte dell'usufrutto che finisce torna piena a
+ * ciascuno per la sua quota — anche sui titolari censiti a mano, senza chiedere: è la legge, non la scelta della decisione 62, e
+ * `ereditata` lo dice al pannello. La nuda che un testamento o una divisione hanno già diviso fra gli eredi non sta nei dati: il
+ * pannello indica la via a mano.
  */
 class NudiDellEstinzione
 {
@@ -46,7 +52,8 @@ class NudiDellEstinzione
     /** Decisione 61: il programma non sa quale nuda torna piena, e si ferma. */
     public const DA_FERMO = 'fermo';
 
-    private const A_MANO = 'Registra l\'estinzione a mano: chiudi da «Modifica associazione» la riga dell\'usufrutto al giorno prima e correggi le righe dei nudi proprietari secondo l\'atto, senza conguaglio automatico.';
+    /** La strada a mano dell'estinzione: la Request la toglie dal motivo quando dice la sua (giro sulle correzioni della .47). */
+    public const A_MANO = 'Registra l\'estinzione a mano: chiudi da «Modifica associazione» la riga dell\'usufrutto al giorno prima e correggi le righe dei nudi proprietari secondo l\'atto, senza conguaglio automatico.';
 
     /**
      * @param list<int>|null $scelti le righe dei nudi che l'amministratore ha spuntato, se il modulo le ha chieste
@@ -106,6 +113,14 @@ class NudiDellEstinzione
             && ($inizio === null || $t->data_inizio->gt($inizio)));
         if ($nataDopo !== null) {
             return $fermo(sprintf('Su questa unità c\'è un altro usufrutto in corso, e %s ha anche una nuda proprietà che può essere quella della parte su cui l\'usufrutto finisce: il programma non sa quale nuda proprietà torna piena.', $nome));
+        }
+        // DS1 (1.11.0-beta.47, decisioni 57 e 66.3): sui titolari censiti a mano la nuda dei candidati può venire da una nuda sola,
+        // passata agli eredi con una successione (e magari venduta o passata di nuovo). Prima era una riga sola che valeva più
+        // dell'usufrutto, e si sarebbe consolidata per legge per la parte dell'usufrutto che finisce: gli eredi l'hanno ricevuta per
+        // quota, e per quota si consolida. Non è la scelta «tutti, ciascuno per la sua quota» già fatta: è la legge, come per la nuda
+        // sola, e una scelta mandata a mano non conta.
+        if (($ereditata = $this->dallaNudaEreditata($candidati, $unita, $quotaUsufrutto)) !== null) {
+            return ['ereditata' => $ereditata['diretta'] ? 'successione' : 'successione_e_vendite'] + $esito($ereditata['nudi'], self::DA_CONSOLIDAMENTO, consolida: $ereditata['consolida']);
         }
         $somma = round((float) $candidati->sum('quota'), 2);
         if ($somma === $quotaUsufrutto) {
@@ -312,6 +327,87 @@ class NudiDellEstinzione
         }
 
         return ['righe' => $righe, 'noti' => $noti, 'chi_esce' => $righe->contains(fn (TitolaritaImmobile $t) => (int) $t->anagrafica_id === (int) $usufrutto->anagrafica_id)];
+    }
+
+    /**
+     * DS1 (1.11.0-beta.47): il consolidamento di legge quando tutti i candidati vengono, per successioni e vendite della nuda, da una
+     * sola riga di nuda che valeva più dell'usufrutto che finisce, e ne sono tutta la discendenza in corso (le quote sommano a quella
+     * riga). Ogni erede torna pieno per la sua quota della parte dell'usufrutto, in centesimi di punto con i resti maggiori, come la
+     * decisione 62; chi riceve tutta la sua quota torna pieno per intero, chi riceve zero resta nudo (rilievo G4). Null altrimenti: con
+     * due nude di origini diverse il programma non sa quale stia sotto l'usufrutto, e sceglie l'amministratore.
+     *
+     * @param Collection<int, TitolaritaImmobile> $candidati
+     * @return array{nudi: Collection<int, TitolaritaImmobile>, consolida: array<int, float>}|null
+     */
+    private function dallaNudaEreditata(Collection $candidati, int $unita, float $quotaUsufrutto): ?array
+    {
+        if ($candidati->count() < 2) {
+            // Una riga sola che vale più dell'usufrutto è già il consolidamento qui sotto.
+            return null;
+        }
+        $origine = $this->radiceComune($candidati, $unita);
+        if ($origine === null || round((float) $origine->quota, 2) <= $quotaUsufrutto) {
+            return null;
+        }
+        $parti = MoneyHelper::ripartisciPerQuote((int) round($quotaUsufrutto * 100), $candidati->mapWithKeys(fn (TitolaritaImmobile $t) => [(int) $t->id => (float) $t->quota])->all());
+        $nudi = collect();
+        $consolida = [];
+        foreach ($candidati as $t) {
+            $parte = (int) $parti[(int) $t->id];
+            if ($parte <= 0) {
+                continue;
+            }
+            $nudi->push($t);
+            if ($parte < (int) round((float) $t->quota * 100)) {
+                $consolida[(int) $t->id] = $parte / 100;
+            }
+        }
+
+        return ['nudi' => $nudi, 'consolida' => $consolida, 'diretta' => $origine->diretta];
+    }
+
+    /**
+     * La riga di nuda da cui vengono tutte le righe date, seguendo l'erede fino al defunto (decisione 66.3) e chi ha comprato fino a chi
+     * ha venduto: se è una sola, non è fra loro, è una nuda, la somma delle loro quote è la sua (nessuna parte è venuta da altrove), e
+     * fra le righe e lei c'è una successione. `diretta` dice se le righe sono tutte degli eredi, senza vendite dopo.
+     *
+     * @return object{id: int, quota: float, diretta: bool}|null
+     */
+    private function radiceComune(Collection $righe, int $unita): ?object
+    {
+        $padre = [];
+        $eredi = [];
+        foreach ($this->nudaAgliEredi($unita) as $defunto => $perErede) {
+            foreach ($perErede as [$riga]) {
+                $padre[(int) $riga] = (int) $defunto;
+                $eredi[(int) $riga] = true;
+            }
+        }
+        foreach ($this->nudaDopo($unita) as $da => $a) {
+            $padre[(int) $a] ??= (int) $da;
+        }
+        $successione = false;
+        $radice = function (int $id) use ($padre, $eredi, &$successione): int {
+            $visti = [];
+            while (isset($padre[$id]) && ! isset($visti[$id])) {
+                $successione = $successione || isset($eredi[$id]);
+                $visti[$id] = true;
+                $id = $padre[$id];
+            }
+
+            return $id;
+        };
+        $radici = $righe->map(fn (TitolaritaImmobile $t) => $radice((int) $t->id))->unique()->values();
+        if ($radici->count() !== 1 || ! $successione) {
+            return null;
+        }
+        $origine = TitolaritaImmobile::find((int) $radici->first());
+        if ($origine === null || $origine->tipologia !== 'nuda_proprietario' || $righe->contains('id', $origine->id)
+            || round((float) $righe->sum('quota'), 2) !== round((float) $origine->quota, 2)) {
+            return null;
+        }
+
+        return (object) ['id' => (int) $origine->id, 'quota' => (float) $origine->quota, 'diretta' => $righe->every(fn (TitolaritaImmobile $t) => isset($eredi[(int) $t->id]))];
     }
 
     /**

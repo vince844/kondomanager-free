@@ -4,7 +4,9 @@ namespace App\Services\Subentro;
 
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Gestionale\Subentro;
+use App\Models\Immobile;
 use App\Models\TitolaritaImmobile;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -112,7 +114,19 @@ final class FrasiObbligati
                 return $frasi;
 
             case 'fine_locazione':
-                $frasi = [sprintf('Dal %s le voci a carico dell\'inquilino tornano a %s. Le rate già emesse a %s restano sue.', $dalA, $this->nomiOClausola($proprietari, 'al proprietario'), $uscente ?? 'chi esce')];
+                // DL2 (1.11.0-beta.47): con un nuovo inquilino le voci non «tornano» a nessuno (la frase dopo dice chi ne risponde);
+                // senza, vanno a chi paga al posto dell'inquilino nel riparto (`$proprietari` qui è `alPostoDellInquilino`, nel
+                // pannello e nello storico). La preposizione va con il nome: «tornano ad Anna», «tornano al proprietario».
+                // Fase 1-bis della .47: con la portata del blocco «Rate» — nei piani generati o ricalcolati dopo. Sul piano che non si
+                // ricalcola più le quote di chi esce restano sue, e chi paga i giorni dopo l'uscita lo decide l'amministratore
+                // (decisione 32): il pannello lo dice piano per piano; lo storico no, perché il conteggio di oggi non è quello del giorno.
+                $frasi = [$entrante
+                    ? sprintf('Le rate già emesse %s restano sue.', $this->a($uscente ?? 'chi esce'))
+                    : sprintf('Dal %s le voci a carico dell\'inquilino tornano %s, nei piani generati o ricalcolati dopo il passaggio. Le rate già emesse %s restano sue.', $dalA, $this->aChi($proprietari), $this->a($uscente ?? 'chi esce'))];
+                foreach ($entrante ? [] : ($dati['bozze_ferme_di_chi_esce'] ?? []) as $b) {
+                    $frasi[] = sprintf('Nel piano «%s», che non si ricalcola più, %s %s anche %s: chi paga i giorni dopo l\'uscita lo decide l\'amministratore.', $b['nome'],
+                        $b['quote'] === 1 ? 'resta' : 'restano', $this->a($uscente ?? 'chi esce'), $b['quote'] === 1 ? 'la quota non ancora emessa' : sprintf('le %d quote non ancora emesse', $b['quote']));
+                }
                 if ($entrante) {
                     $frasi[] = sprintf('%s risponde delle voci a carico dell\'inquilino dal %s.', $entrante, $dalA);
                 }
@@ -255,8 +269,11 @@ final class FrasiObbligati
         $tipo = (string) $subentro->tipo_passaggio;
 
         $proprietari = $subentro->immobile
-            ? $subentro->immobile->titolarita()->with('anagrafica')->where('tipologia', 'proprietario')->get()
-                ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values()
+            ? ($tipo === 'fine_locazione'
+                // DL2 (1.11.0-beta.47): alla fine della locazione la frase nomina chi paga al posto dell'inquilino, come il pannello.
+                ? $this->alPostoDellInquilino($subentro->immobile, $decorrenza)
+                : $subentro->immobile->titolarita()->with('anagrafica')->where('tipologia', 'proprietario')->get()
+                    ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values())
             : collect();
 
         $dati = [
@@ -417,10 +434,49 @@ final class FrasiObbligati
         return implode(', ', $voci) . ' e ' . $ultimo;
     }
 
-    private function nomiOClausola(Collection $titolari, string $clausola): string
+    /**
+     * DL2 (1.11.0-beta.47): chi paga le voci a carico dell'inquilino quando l'inquilino non c'è, con la regola del riparto
+     * (decisione 22): il primo anello di `catenaRipiego('inquilino')` con righe in corso alla decorrenza — l'usufruttuario, poi
+     * il proprietario, poi il nudo proprietario —, e sull'unità mista con l'usufruttuario anche il proprietario pieno, il gemello
+     * del godimento (decisione 31.1). Lo usano il pannello del passaggio e lo storico, così dicono la stessa persona.
+     *
+     * @return Collection<int, TitolaritaImmobile>
+     */
+    public function alPostoDellInquilino(Immobile $immobile, CarbonImmutable $decorrenza): Collection
     {
-        $nomi = $titolari->map(fn ($t) => $t->anagrafica?->nome)->filter()->values()->all();
+        $inCorso = $immobile->titolarita()->with('anagrafica')->get()
+            ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza) && (float) $t->quota > 0);
+        foreach (RuoloAnagraficaImmobile::catenaRipiego(RuoloAnagraficaImmobile::INQUILINO->value) as $ruolo) {
+            $anello = $inCorso->where('tipologia', $ruolo->value);
+            if ($anello->isEmpty()) {
+                continue;
+            }
+            $gemello = $ruolo === RuoloAnagraficaImmobile::USUFRUTTUARIO ? $inCorso->where('tipologia', RuoloAnagraficaImmobile::PROPRIETARIO->value) : collect();
 
-        return $nomi === [] ? $clausola : $this->elenco($nomi);
+            return $anello->merge($gemello)->unique('anagrafica_id')->values();
+        }
+
+        return collect();
     }
+
+    /**
+     * «a Ugo», «ad Anna», «a Carlo e Ugo»; «al proprietario» quando nessuno è registrato. La preposizione va con il nome:
+     * prima la frase diceva «tornano a al proprietario» (1.11.0-beta.47).
+     */
+    public function aChi(Collection $titolari): string
+    {
+        $nomi = $titolari->map(fn ($t) => $t->anagrafica?->nome)->filter()->unique()->values()->all();
+        if ($nomi === []) {
+            return 'al proprietario';
+        }
+
+        return $this->a($this->elenco($nomi));
+    }
+
+    /** «a Ugo», «ad Anna», «a chi esce»: la preposizione con il nome, per le frasi che nominano una persona (1.11.0-beta.47). */
+    public function a(string $nome): string
+    {
+        return (preg_match('/^[aàAÀ]/u', $nome) === 1 ? 'ad ' : 'a ') . $nome;
+    }
+
 }

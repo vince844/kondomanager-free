@@ -17,8 +17,9 @@ use Illuminate\Support\Facades\DB;
  * - **il tratto di una riga di ripiego** (decisione 22): `titolarita_dal/al` è un intervallo solo, e quando i giorni
  *   senza titolare sono due buchi (gennaio–febbraio e novembre–dicembre attorno a un inquilino) il motore congela
  *   l'estensione, tutto l'anno, mentre `giorni_titolarita` dice i giorni veri. {@see senzaGliAltri()} toglie i tratti
- *   delle righe della stessa voce e dello stesso ruolo richiesto risolte su un altro ruolo, e controlla che i giorni
- *   tornino; se non tornano la riga non si divide — non si tira a indovinare.
+ *   delle righe della stessa voce e dello stesso ruolo richiesto risolte su quel ruolo (l'inquilino), non quelli delle
+ *   altre righe di ripiego (1.11.0-beta.47: sull'unità mista le gemelle pagano gli stessi giorni), e controlla che i
+ *   giorni tornino; se non tornano la riga non si divide — non si tira a indovinare.
  */
 final class PeriodoDellaRiga
 {
@@ -44,9 +45,10 @@ final class PeriodoDellaRiga
     }
 
     /**
-     * Il periodo della riga senza i giorni coperti da righe della stessa voce, tabella e ruolo richiesto risolte su un
-     * altro ruolo. Si applica solo quando `giorni_titolarita` c'è e non torna con `$periodo`: altrimenti il periodo è già
-     * giusto e si restituisce com'è. `null` se anche dopo la sottrazione i giorni non tornano.
+     * Il periodo della riga senza i giorni coperti da righe della stessa voce, tabella e ruolo richiesto risolte proprio
+     * sul ruolo richiesto: per una riga di ripiego, i giorni dell'inquilino (dalla 1.11.0-beta.47 non più quelli di
+     * un'altra riga di ripiego, DL5 e DL6). Si applica solo quando `giorni_titolarita` c'è e non torna con `$periodo`:
+     * altrimenti il periodo è già giusto e si restituisce com'è. `null` se anche dopo la sottrazione i giorni non tornano.
      *
      * @param array<string,mixed>|object $riga
      * @param iterable<array<string,mixed>|object> $righeStessaUnita le righe `riparto` dello stesso piano e della stessa unità
@@ -66,6 +68,13 @@ final class PeriodoDellaRiga
                 || (int) $v($altra, 'tabella_id') !== (int) $v($riga, 'tabella_id')
                 || $v($altra, 'ruolo_richiesto') !== $v($riga, 'ruolo_richiesto')
                 || $v($altra, 'ruolo_risolto') === $v($riga, 'ruolo_risolto')
+                // DL5, DL6 (1.11.0-beta.47): si tolgono solo i giorni di chi il ruolo richiesto ce l'ha davvero (l'inquilino), non
+                // quelli di un'altra riga di ripiego. Sull'unità mista il ripiego va al ruolo e al suo gemello (usufruttuario e
+                // proprietario pieno, decisione 31.1), che pagano gli stessi giorni anche quando i loro tratti non coincidono (un
+                // usufrutto che finisce a metà anno): toglierli l'uno dall'altro lasciava la riga «non risolta», e nessun
+                // conguaglio. Sull'unità piena le righe di ripiego di ruoli diversi si susseguono senza sovrapporsi, e toglierle
+                // non cambiava niente.
+                || $v($altra, 'ruolo_risolto') !== $v($altra, 'ruolo_richiesto')
                 || empty($v($altra, 'titolarita_dal')) || empty($v($altra, 'titolarita_al'))) {
                 continue;
             }

@@ -1601,10 +1601,12 @@ final class ConguaglioPassaggio
     /**
      * I nudi proprietari che l'estinzione ha fatto tornare pieni, con la loro quota, dal registro del passaggio: le righe
      * aperte o cambiate in «proprietario». Solo le righe dell'unità del passaggio, e la quota scritta nel registro quando
-     * c'è, non quella di oggi, che un passaggio dopo può aver cambiato (rilievo S-R2 della revisione della 1-ter).
+     * c'è, non quella di oggi, che un passaggio dopo può aver cambiato (rilievo S-R2 della revisione della 1-ter). Pubblica dalla
+     * 1.11.0-beta.47: la usa anche la catena dei pagatori del prospetto degli oneri accessori, perché chi paga dopo l'estinzione sia
+     * chi il conguaglio fa pagare.
      * @return array<int, float> anagrafica → quota
      */
-    private function nudiDellEstinzione(Subentro $s): array
+    public function nudiDellEstinzione(Subentro $s): array
     {
         // Seconda revisione della Fase 1-ter (M2-3): un'estinzione registrata prima della beta.37 non ha le righe nel registro.
         // Si ricostruisce ciò che la registrazione ha scritto: il nudo chiuso il giorno prima e riaperto «proprietario» il
@@ -1909,8 +1911,8 @@ final class ConguaglioPassaggio
         // giorno in cui sono arrivate a chi esce — sono gruppi distinti.
         $parte = fn ($r, bool $conArrivo = true) => isset($r->legame) ? '|leg:' . ($arrivoPerParte && $conArrivo ? ($r->legame['arrivo'] ?? '') : '') . '|' . ($r->legame['esito'] ?? '') : '';
         // Fase 1-ter della beta.41 (la riga di ripiego): una riga di ripiego (ruolo risolto diverso da quello chiesto: la parte «Inquilino» di una voce
-        // che, finita la locazione, ricade sul proprietario) ha i suoi giorni, ricostruiti togliendo quelli degli altri ruoli
-        // (`PeriodoDellaRiga::senzaGliAltri`). Nello stesso gruppo della parte chiesta al «Proprietario» la ricostruzione valeva
+        // che, finita la locazione, ricade sul proprietario) ha i suoi giorni, ricostruiti togliendo quelli delle righe risolte sul ruolo
+        // richiesto, non quelli delle altre righe di ripiego (1.11.0-beta.47; `PeriodoDellaRiga::senzaGliAltri`). Nello stesso gruppo della parte chiesta al «Proprietario» la ricostruzione valeva
         // per tutte e due, e la quota intera si divideva sui giorni del ripiego. È un gruppo suo.
         $ripiego = fn ($r) => ($r->ruolo_risolto ?? null) !== null && ($r->ruolo_richiesto ?? null) !== null && $r->ruolo_risolto !== $r->ruolo_richiesto ? '|ripiego:' . $r->ruolo_richiesto : '';
         $chiave = fn ($r, bool $conArrivo = true) => (int) ($r->conto_id ?? 0) . '|' . ($straordinaria || $dichiarata($r) ? $giorno($r->competenza_dal) . '|' . $giorno($r->competenza_al) : '') . '|' . $giorno($r->titolarita_dal) . '|' . $giorno($r->titolarita_al) . $perRiga($r) . $lato($r) . $ruolo($r) . $ripiego($r) . (! empty($r->non_arrivata) ? '|non_arrivata' : '') . $parte($r, $conArrivo);
@@ -1984,9 +1986,9 @@ final class ConguaglioPassaggio
             $competenzaRiga = $competenza !== null && $trattoRiga !== null ? $competenza->intersezione($trattoRiga) : $competenza;
             $trattoFuoriCompetenza = $competenza !== null && $trattoRiga !== null && $competenzaRiga === null;
             // Riga di ripiego (decisione 22) con i giorni senza titolare in due buchi: il tratto congelato è l'estensione
-            // (tutto l'anno) e i giorni veri sono meno. Si tolgono i tratti delle righe risolte sugli altri ruoli; se i
-            // giorni ancora non tornano la voce non si divide (Fase 1-bis della beta.34, R5: era un difetto della beta.31,
-            // che dava a chi entra 245/365 di una riga che copriva 120 giorni).
+            // (tutto l'anno) e i giorni veri sono meno. Si tolgono i tratti delle righe risolte sul ruolo richiesto, non quelli
+            // delle altre righe di ripiego (1.11.0-beta.47); se i giorni ancora non tornano la voce non si divide (Fase 1-bis
+            // della beta.34, R5: era un difetto della beta.31, che dava a chi entra 245/365 di una riga che copriva 120 giorni).
             $trattoNonRicostruibile = false;
             if ($competenzaRiga !== null && $trattoRiga !== null && ($primo->ruolo_risolto ?? null) !== null && $primo->ruolo_risolto !== $primo->ruolo_richiesto) {
                 $ricostruito = PeriodoDellaRiga::senzaGliAltri($competenzaRiga, $primo, $righeUnita);

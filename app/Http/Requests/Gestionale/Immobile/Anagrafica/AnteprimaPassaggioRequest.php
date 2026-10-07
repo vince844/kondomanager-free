@@ -320,11 +320,30 @@ class AnteprimaPassaggioRequest extends FormRequest
                         if ($nudi->count() > 1) {
                             // Giro sulle correzioni (GB4, GB7): sulla pertinenza la strada è la sua; e il legato congiunto porta per legge all'accrescimento.
                             $elencoNudi = $nudi->count() === 2 ? $nudi->implode(' e ') : $nudi->slice(0, -1)->implode(', ') . ' e ' . $nudi->last();
-                            $frase = $principale
-                                ? sprintf('il %s la nuda proprietà di questa unità è di più nudi proprietari (%s), e il programma non sa quale usufrutto stia sopra quale nuda: l\'accrescimento si registra da qui solo quando la nuda è di un solo nudo proprietario. Se l\'atto prevede l\'accrescimento, o l\'usufrutto è un legato a più persone insieme (artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione», senza conguaglio automatico; altrimenti togli la spunta dell\'accrescimento, e la parte di %s torna alla nuda come vuole la legge negli atti fra vivi.',
-                                    $il, $elencoNudi, $suo->anagrafica?->nome ?? 'chi esce')
-                                : sprintf('il %s la nuda proprietà di questa pertinenza è di più nudi proprietari (%s), e il programma non sa quale usufrutto stia sopra quale nuda: togli la spunta della pertinenza e registra la sua estinzione dalla pertinenza.',
-                                    $il, $elencoNudi);
+                            // DS1 (Fase 1-bis e giro sulle correzioni della .47): il rifiuto resta (decisione 67.2), e la sua ragione la dice l'esito
+                            // vero dell'estinzione senza la spunta: la nuda ereditata da una nuda sola è in comune e torna piena per quota; se il
+                            // programma si ferma (una nuda di chi esce, il registro, i nudi che valgono meno), la strada è a mano e non «togli la spunta».
+                            $senzaSpunta = app(NudiDellEstinzione::class)->per($suo, $giorno);
+                            $ragione = trim(str_replace(NudiDellEstinzione::A_MANO, '', (string) ($senzaSpunta['errore'] ?? '')));
+                            $comeArrivata = match ($senzaSpunta['ereditata'] ?? null) {
+                                'successione' => ' con la successione',
+                                'successione_e_vendite' => ' con la successione e con le vendite registrate dopo',
+                                default => null,
+                            };
+                            $frase = match (true) {
+                                $principale && $senzaSpunta['fermo'] => sprintf('il %s la nuda proprietà di questa unità è di più nudi proprietari (%s), e l\'accrescimento all\'altro usufruttuario non si registra da qui; senza la spunta il programma si ferma comunque. %s Registra l\'estinzione a mano da «Modifica associazione», come prevede l\'atto, senza conguaglio automatico.',
+                                    $il, $elencoNudi, $ragione),
+                                // Giro sulle correzioni: l'usufrutto nato da un passaggio registrato da qui, e il suo registro dice quale nuda torna piena.
+                                $principale && $senzaSpunta['da'] === NudiDellEstinzione::DA_REGISTRO => sprintf('il %s la nuda proprietà di questa unità è di più nudi proprietari (%s), e l\'accrescimento all\'altro usufruttuario non si registra da qui. Se l\'atto prevede l\'accrescimento, o l\'usufrutto è un legato a più persone insieme (artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione», senza conguaglio automatico; altrimenti togli la spunta dell\'accrescimento: la parte di %s torna piena %s, come dice il passaggio da cui è nato il suo usufrutto.',
+                                    $il, $elencoNudi, $suo->anagrafica?->nome ?? 'chi esce', app(\App\Services\Subentro\FrasiObbligati::class)->a(self::elencoNomi($senzaSpunta['nudi']->map(fn (TitolaritaImmobile $t) => (string) $t->anagrafica?->nome)->filter()->unique()->values()->all()))),
+                                $principale && $comeArrivata !== null => sprintf('il %s la nuda proprietà di questa unità è passata a più nudi proprietari%s (%s): l\'accrescimento all\'altro usufruttuario non si registra da qui. Se l\'atto prevede l\'accrescimento, o l\'usufrutto è un legato a più persone insieme (artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione», senza conguaglio automatico; altrimenti togli la spunta dell\'accrescimento, e la parte di %s torna piena ai nudi proprietari, a ciascuno per la sua quota.',
+                                    $il, $comeArrivata, $elencoNudi, $suo->anagrafica?->nome ?? 'chi esce'),
+                                $principale => sprintf('il %s la nuda proprietà di questa unità è di più nudi proprietari (%s), e il programma non sa quale usufrutto stia sopra quale nuda: l\'accrescimento si registra da qui solo quando la nuda è di un solo nudo proprietario. Se l\'atto prevede l\'accrescimento, o l\'usufrutto è un legato a più persone insieme (artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione», senza conguaglio automatico; altrimenti togli la spunta dell\'accrescimento, e la parte di %s torna alla nuda come vuole la legge negli atti fra vivi.',
+                                    $il, $elencoNudi, $suo->anagrafica?->nome ?? 'chi esce'),
+                                // Giro sulle correzioni: dalla pertinenza l'accrescimento si rifiuta per la stessa ragione, e la strada è a mano.
+                                default => sprintf('il %s la nuda proprietà di questa pertinenza è %s (%s), e dalla pertinenza l\'accrescimento non si registra, per la stessa ragione: togli la spunta della pertinenza e, se l\'atto prevede l\'accrescimento anche lì, correggi le sue righe a mano da «Modifica associazione».',
+                                    $il, $comeArrivata !== null ? 'passata a più nudi proprietari' . $comeArrivata : 'di più nudi proprietari', $elencoNudi),
+                            };
                             $v->errors()->add($principale ? 'accrescimento' : 'pertinenze', $principale ? ucfirst($frase) : $prefisso . $frase);
                         }
                         // Rilievo X1 della Fase 1-bis della .44: un altro usufruttuario la cui riga ha già una data di fine. La registrazione
@@ -678,6 +697,16 @@ class AnteprimaPassaggioRequest extends FormRequest
             if (($u = $inCorso->firstWhere('tipologia', 'inquilino')) !== null) {
                 $v->errors()->add('eredi', $prefisso . sprintf('%s è inquilino di questa unità: prima registra la fine della locazione («Fine locazione»), poi la successione.', $u->anagrafica?->nome ?? 'Un erede'));
             }
+            // Giro sulle correzioni della .47: l'usufrutto si estingue con la morte (art. 979 c.c.). Se il defunto risulta ancora
+            // usufruttuario il giorno del decesso, la successione registrata prima dell'estinzione dava agli eredi, con l'arretrato, anche
+            // i giorni dell'usufrutto dopo il decesso, che poi l'estinzione fa pagare al nudo proprietario: qualunque sia la scelta
+            // dell'arretrato, si registra prima l'estinzione con la stessa data (come le decisioni 61 e 66.2: ci si ferma e si dice la via).
+            $usufruttoDelDefunto = $unita->titolarita()->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', 'usufruttuario')->get()
+                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giorno));
+            if ($usufruttoDelDefunto !== null) {
+                $v->errors()->add('riga_uscente_id', $prefisso . sprintf('%s risulta ancora usufruttuario di questa unità il %s: l\'usufrutto si estingue con la morte (art. 979 c.c.). Registra prima «%s» con la stessa data, poi la successione.',
+                    $nome, $giorno->locale('it')->translatedFormat('j F Y'), self::tipoPerRuolo('usufruttuario')));
+            }
         }
         // Rilievo X1 della Fase 1-bis: l'erede già titolare con lo stesso ruolo, la cui riga ha una data di fine.
         foreach ($this->unitaDelPassaggio($immobile) as $unita) {
@@ -698,6 +727,14 @@ class AnteprimaPassaggioRequest extends FormRequest
     {
         return sprintf('la riga di %s è stata chiusa dal %s da un passaggio registrato dopo: annulla prima dallo storico dell\'unità i passaggi successivi, l\'ultimo per primo, registra questo e poi di nuovo quei passaggi.',
             $riga->anagrafica?->nome ?? 'chi esce', CarbonImmutable::parse($riga->data_fine)->addDay()->locale('it')->translatedFormat('j F Y'));
+    }
+
+    /** «Anna», «Anna e Bruno», «Anna, Bruno e Carla». */
+    private static function elencoNomi(array $nomi): string
+    {
+        $ultimo = array_pop($nomi);
+
+        return $nomi === [] ? (string) $ultimo : implode(', ', $nomi) . ' e ' . $ultimo;
     }
 
     /** L'unità del passaggio e le pertinenze spuntate che le appartengono. */

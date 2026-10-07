@@ -100,3 +100,21 @@ it('PeriodoCompetenza::intersezione() dà il tratto comune, o nulla se non si to
         // Estremi inclusi: due periodi che si toccano in un giorno lo condividono.
         ->and($a->intersezione(new PeriodoCompetenza('2026-06-30', '2026-07-31'))?->giorni())->toBe(1);
 });
+
+// 1.11.0-beta.47, giro sulle correzioni: i giorni di una voce del prospetto che somma pezzi della stessa persona. Non copre: il prospetto
+// (lo provano i test del prospetto), insiemi con più di due tratti per parte.
+it('unione() fonde i tratti che si sovrappongono o si toccano, e lascia distinti quelli disgiunti', function () {
+    $luglioDicembre = InsiemePeriodi::uno(new PeriodoCompetenza('2026-07-01', '2026-12-31'));
+    $febbraio = new InsiemePeriodi(new PeriodoCompetenza('2026-02-01', '2026-02-28'), new PeriodoCompetenza('2026-06-01', '2026-12-31'));
+
+    // Gli stessi 184 giorni due volte restano 184 (1/7–31/12: 31 + 31 + 30 + 31 + 30 + 31), non 368.
+    expect($luglioDicembre->unione($luglioDicembre)->giorni())->toBe(184)
+        // Febbraio (28) e giugno–dicembre (30 + 184 = 214) con luglio–dicembre dentro: 28 + 214 = 242.
+        ->and($febbraio->unione($luglioDicembre)->giorni())->toBe(242)
+        ->and($febbraio->unione($luglioDicembre)->toArray())->toBe([['dal' => '2026-02-01', 'al' => '2026-02-28'], ['dal' => '2026-06-01', 'al' => '2026-12-31']])
+        // Due tratti che si toccano (31/3 e 1/4) diventano uno: 90 + 30 = 120 giorni, 1/1–30/4.
+        ->and(InsiemePeriodi::uno(new PeriodoCompetenza('2026-01-01', '2026-03-31'))->unione(InsiemePeriodi::uno(new PeriodoCompetenza('2026-04-01', '2026-04-30')))->toArray())
+            ->toBe([['dal' => '2026-01-01', 'al' => '2026-04-30']])
+        // Disgiunti: 1/1–31/3 (90) e 1/10–31/12 (92) restano due, 182 giorni.
+        ->and(InsiemePeriodi::uno(new PeriodoCompetenza('2026-10-01', '2026-12-31'))->unione(InsiemePeriodi::uno(new PeriodoCompetenza('2026-01-01', '2026-03-31')))->giorni())->toBe(182);
+});

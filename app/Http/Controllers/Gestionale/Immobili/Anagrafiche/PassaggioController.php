@@ -117,7 +117,8 @@ class PassaggioController extends Controller
      * sotto il campo, come quelli della Request. Il resto passa dal catch e torna con un errore leggibile.
      *
      * Dopo: l'elenco dei titolari con l'avviso verde e due azioni — «Estratto conto di chi entra» (la pagina
-     * esiste e legge `saldi`: mostra il conguaglio appena scritto) e «Aggiorna l'anagrafe» — **non** «Scarica
+     * esiste e legge `saldi`: mostra il conguaglio appena scritto) e «Scheda di chi entra» (fino alla 1.11.0-beta.46
+     * «Aggiorna l'anagrafe»: il registro dell'art. 1130 n. 6 c.c. chiede i dati della persona) — **non** «Scarica
      * l'attestazione» (stampa della v1.16) e **non** la «situazione debitoria dell'unità» del §6.4, che oggi è
      * un endpoint JSON per l'incasso e non una pagina (verifica S5, R14).
      */

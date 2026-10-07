@@ -39,7 +39,9 @@ class ProspettoOneriController extends Controller
             'prospetto'  => $prospetto->calcola($immobile, $esercizio),
         ], [
             'orientation' => 'P',
-            'margin_top'  => 30,
+            // 32 come la stampa del piano rate: con 30 l'intestazione del condominio scende sotto il margine, e dalla
+            // seconda pagina in poi la prima riga le finisce sopra (beta.47, prova a video con tre conduttori).
+            'margin_top'  => 32,
         ]);
 
         // La forma della casa: libro, condominio, anno, e l'unità in coda (vedi `PdfService::nomeFile`).

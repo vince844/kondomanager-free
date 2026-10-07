@@ -42,6 +42,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePermission } from '@/composables/permissions';
 import { useDateConverter } from '@/composables/useDateConverter';
 import VueDatePicker from '@vuepic/vue-datepicker';
@@ -354,8 +355,9 @@ watch(() => form.nudi_per_quota, (perQuota) => { if (perQuota) form.nudi_che_tor
 
 /**
  * 1.11.0-beta.44: l'accrescimento si offre all'estinzione quando sull'unità, quel giorno, c'è un altro usufruttuario. Non quando la
- * nuda è di più nudi proprietari (decisione 67, punto 2): il programma non sa quale usufrutto stia sopra quale nuda, e il server lo
- * rifiuta; la scheda lo dice al posto della casella.
+ * nuda è di più nudi proprietari (decisione 67, punto 2), e il server lo rifiuta; la scheda lo dice al posto della casella. La ragione
+ * la dice il server: con nude di origini diverse il programma non sa quale usufrutto stia sopra quale nuda; con gli eredi di una nuda
+ * sola la nuda è in comune (Fase 1-bis della .47), e il riquadro non dice né l'una né l'altra.
  */
 const piuNudi = computed(() => new Set(nudiAllaDecorrenza.value.map(t => t.anagrafica.id)).size > 1);
 const offriAccrescimento = computed(() => estinzione.value && altriUsufrutti.value && !piuNudi.value);
@@ -1048,11 +1050,21 @@ function urlTipo(t: TipoPassaggio) {
                   </div>
 
                   <div class="sm:col-span-2">
-                    <Label for="quota" class="mb-1.5 block">Quota (%)</Label>
+                    <!-- Decisione 37 (1.11.0-beta.42): al posto della casella «La quota cambia», che lasciava una parte dell'unità di nessuno.
+                         Dalla 1.11.0-beta.47 la spiegazione sta nel tooltip: sotto il campo allungava la colonna e scompaginava la riga. -->
+                    <Label for="quota" class="mb-1.5 flex items-center gap-1.5">
+                      Quota (%)
+                      <TooltipProvider v-if="uscente" :delay-duration="200">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <Info class="w-3 h-3 text-slate-300 hover:text-slate-500 cursor-help" @click.prevent />
+                          </TooltipTrigger>
+                          <TooltipContent class="max-w-64"><p>La quota di chi esce: il passaggio la porta tutta. Passarne solo una parte non è ancora previsto.</p></TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Label>
                     <Input id="quota" v-model="form.quota" :readonly="uscente !== null" inputmode="decimal"
                       class="w-full bg-white dark:bg-slate-950 tabular-nums" :class="uscente !== null ? 'text-slate-500' : ''" />
-                    <!-- Decisione 37 (1.11.0-beta.42): al posto della casella «La quota cambia», che lasciava una parte dell'unità di nessuno. -->
-                    <p v-if="uscente" class="mt-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">La quota di chi esce: il passaggio la porta tutta. Passarne solo una parte non è ancora previsto.</p>
                     <InputError :message="form.errors.quota" />
                   </div>
 
@@ -1189,7 +1201,7 @@ function urlTipo(t: TipoPassaggio) {
                   </span>
                 </label>
                 <p v-if="estinzione && altriUsufrutti && piuNudi" class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2.5 text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
-                  La nuda proprietà di questa unità è di più nudi proprietari: il programma non sa quale usufrutto stia sopra quale nuda, e l'accrescimento all'altro usufruttuario non si registra da qui. Se l'atto lo prevede, o se l'usufrutto è un legato a più persone insieme (dove l'accrescimento lo vuole la legge, artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione»; altrimenti, negli atti fra vivi, vale la regola di legge qui sotto.
+                  La nuda proprietà di questa unità è di più nudi proprietari, e l'accrescimento all'altro usufruttuario non si registra da qui. Se l'atto lo prevede, o se l'usufrutto è un legato a più persone insieme (dove l'accrescimento lo vuole la legge, artt. 675 e 678 c.c.), correggi le righe a mano da «Modifica associazione»; altrimenti, negli atti fra vivi, vale la regola di legge qui sotto.
                 </p>
                 <InputError :message="(form.errors as Record<string, string>).accrescimento" />
                 <template v-if="!form.accrescimento">

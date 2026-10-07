@@ -255,20 +255,27 @@ function urlPassaggio(tipo: TipoPassaggio) {
                 <p v-for="(a, i) in passaggioRegistrato.avvisi" :key="i" class="text-[13px] text-amber-800 dark:text-amber-300">{{ a }}</p>
               </div>
             </div>
-            <!-- 1.11.0-beta.44: con più eredi, un estratto conto per ciascuno; l'anagrafe si aggiorna dalla scheda di ognuno. -->
+            <!-- 1.11.0-beta.44: con più eredi, un estratto conto per ciascuno; i dati per l'anagrafe stanno nella scheda di ognuno. -->
             <div v-if="passaggioRegistrato.eredi?.length" class="flex flex-wrap items-center gap-2 pl-8">
               <a v-for="e in passaggioRegistrato.eredi" :key="e.estratto_conto" :href="e.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
                 <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ e.nome }}
               </a>
-              <span class="text-[12px] text-emerald-900/70 dark:text-emerald-200/70">L'anagrafe condominiale si aggiorna dalla scheda di ogni erede (art. 1130 n. 6 c.c.).</span>
+              <span class="text-[12px] text-emerald-900/70 dark:text-emerald-200/70">Il registro dell'anagrafe condominiale chiede anche il codice fiscale e la residenza o il domicilio di ogni erede (art. 1130 n. 6 c.c.): si controllano dalla scheda di ciascuno.</span>
             </div>
-            <div v-else class="flex flex-wrap gap-2 pl-8">
-              <a v-if="passaggioRegistrato.azioni.estratto_conto" :href="passaggioRegistrato.azioni.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
-                <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ passaggioRegistrato.entrante ?? 'chi entra' }}
-              </a>
-              <a v-if="passaggioRegistrato.azioni.anagrafe" :href="passaggioRegistrato.azioni.anagrafe" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
-                <ContactRound class="w-3.5 h-3.5" /> Aggiorna l'anagrafe condominiale <span class="text-[11px] font-normal text-emerald-700 dark:text-emerald-400">(art. 1130 n. 6 c.c.)</span>
-              </a>
+            <!-- 1.11.0-beta.47: il pulsante diceva «Aggiorna l'anagrafe condominiale», come se il passaggio non l'avesse già fatto.
+                 Il passaggio aggiorna chi ha l'unità e da quando; il registro chiede anche i dati della persona, che stanno nella sua scheda. -->
+            <div v-else class="space-y-2 pl-8">
+              <div class="flex flex-wrap gap-2">
+                <a v-if="passaggioRegistrato.azioni.estratto_conto" :href="passaggioRegistrato.azioni.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
+                  <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ passaggioRegistrato.entrante ?? 'chi entra' }}
+                </a>
+                <a v-if="passaggioRegistrato.azioni.anagrafe" :href="passaggioRegistrato.azioni.anagrafe" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
+                  <ContactRound class="w-3.5 h-3.5" /> Scheda di {{ passaggioRegistrato.entrante ?? 'chi entra' }}
+                </a>
+              </div>
+              <p v-if="passaggioRegistrato.azioni.anagrafe" class="text-[12px] text-emerald-900/70 dark:text-emerald-200/70">
+                Il passaggio ha già aggiornato chi ha l'unità e da quando. Il registro dell'anagrafe condominiale chiede anche il codice fiscale e la residenza o il domicilio di ogni titolare, inquilini compresi (art. 1130 n. 6 c.c.): quelli di chi entra si controllano dalla sua scheda.
+              </p>
             </div>
           </div>
         </div>

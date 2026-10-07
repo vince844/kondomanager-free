@@ -7,6 +7,97 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.47] - Chi ha pagato cosa
+
+**Non tocca il database.** Una beta di correzioni sulla locazione e sulla successione. Il prospetto degli oneri accessori ora
+dice chi ha pagato cosa anche dopo un cambio d'inquilino e sull'unità divisa fra piena proprietà e usufrutto. Le frasi del
+pannello «Cosa cambierà» sulla fine e sull'inizio di una locazione dicono a chi vanno le voci dell'inquilino, e dove decide
+l'amministratore. La vendita della metà piena sull'unità divisa conguaglia anche i giorni senza inquilino. Dopo la morte del
+nudo proprietario gli eredi tornano proprietari pieni per quota, come prometteva la beta.44. Ogni difetto ha prima avuto un test
+rosso, e le correzioni sono passate da tre giri di revisione avversariale.
+
+**Cambi di comportamento, detti per primi.**
+- **La successione si ferma se il defunto risulta ancora usufruttuario dell'unità il giorno del decesso**, o di una pertinenza
+  spuntata. L'usufrutto si estingue con la morte (art. 979 c.c.) e non passa agli eredi: il messaggio dice di registrare prima
+  «Usufrutto → estinzione» con la stessa data, poi la successione. Dalla beta.44, sull'unità divisa (proprietario pieno di una
+  metà e usufruttuario dell'altra), la successione della metà piena registrata per prima, con l'arretrato agli eredi, contava due
+  volte i giorni dell'usufrutto dopo il decesso: nel caso provato l'erede pagava € 302,47 in più e al defunto restava un credito
+  uguale. Nell'ordine giusto le cifre erano già giuste.
+- **Dopo la morte del nudo proprietario, l'estinzione di uno dei due usufrutti non chiede più quali nudi proprietari tornano
+  pieni**, se prima della successione la nuda proprietà era una sola: la parte dell'usufrutto che finisce torna piena agli eredi,
+  ciascuno per la sua quota, e il pannello lo dice. È la regola di legge che il programma applicava già alla nuda proprietà di una
+  persona sola, e che la beta.44 prometteva. Con gli usufrutti censiti a mano invece il modulo chiedeva di scegliere: con gli eredi
+  al 60 % e al 40 % rifiutava ogni scelta, con gli eredi al 50 % la proponeva, e la scelta di un erede solo gli dava tutto il
+  conguaglio. Con due nude proprietà di origini diverse la scelta resta all'amministratore, come prima.
+- **Il prospetto degli oneri accessori ha un terzo modo: «con il conguaglio del cambio d'inquilino del …».** Un cambio
+  d'inquilino registrato dopo la generazione del piano, con il conguaglio, dà a chi entra i suoi giorni: il prospetto li lasciava
+  tutti a chi esce, e chi entra non compariva. Ora chi entra ha la sua voce, con accanto la data del cambio, e nel totale di ogni
+  conduttore, quando le parti sono più d'una, la riga «di cui con il conguaglio del cambio d'inquilino». Se le parti hanno
+  rinunciato al conguaglio, o il conguaglio è stato annullato, il prospetto resta com'era.
+- **Il prospetto sull'unità divisa fra piena proprietà e usufrutto.** Nei giorni senza inquilino la voce dell'inquilino va a chi
+  gode l'unità, il proprietario pieno e l'usufruttuario, in due righe: il prospetto contava quei giorni due volte, e un inquilino
+  registrato dopo la generazione non aveva niente da rimborsare. Dopo la vendita della metà piena faceva rimborsare a chi compra
+  anche la parte dell'usufrutto che resta a chi vende (€ 302,46 alla persona sbagliata nel caso provato). All'estinzione di un
+  usufrutto con più nudi proprietari, la parte dell'usufruttuario segue tutti quelli tornati pieni.
+- **La vendita della metà piena sull'unità divisa conguaglia anche i giorni senza inquilino.** Quando la voce dell'inquilino
+  ricadeva su chi gode l'unità in più tratti dell'anno, chi compra non pagava niente dei suoi giorni e chi vende li pagava tutti,
+  in silenzio, con un pannello che dava una ragione falsa («la competenza delle quote emesse finisce prima»). In una delle forme
+  provate chi compra doveva € 151,23 e il conguaglio gli dava € 0,00.
+- **Alla fine di una locazione senza un nuovo inquilino, il pannello, il blocco «Rate» e lo storico nominano chi riceve le voci
+  dell'inquilino**: chi le riceve nel riparto (l'usufruttuario, se c'è, poi il proprietario; sull'unità divisa il proprietario
+  pieno insieme all'usufruttuario), non i proprietari di oggi. Prima il pannello sbagliava persona su tre forme d'unità su cinque
+  (nominava la nuda proprietaria, non nominava l'usufruttuario), il blocco «Rate» diceva «tornano al proprietario» anche
+  sull'unità in usufrutto, lo storico scriveva «tornano a al proprietario», e con un nuovo inquilino pannello e storico dicevano
+  che le voci «tornano» al proprietario. La frase ora dice che vale per i piani generati o ricalcolati dopo il passaggio; sul piano che non si
+  ricalcola più il pannello aggiunge, piano per piano, che le quote non ancora emesse restano a chi esce e che chi paga i giorni
+  dopo l'uscita lo decide l'amministratore.
+- **L'inizio di una locazione su un piano che non si ricalcola più non promette più quote al nuovo inquilino.** È il limite
+  dichiarato nella beta.42. Il pannello diceva che dal giorno del contratto le voci dell'inquilino «verranno intestate» a chi entra,
+  e la conferma chiedeva la spunta perché «il destinatario cambierebbe»: le quote invece restano a chi le ha. Ora dice, piano per
+  piano e unità per unità, che il piano non si ricalcola più e come si regola la parte dell'inquilino: la rimborsa il nuovo
+  inquilino a chi la paga, con il prospetto degli oneri accessori; nel cambio d'inquilino in due passi resta invece nelle rate
+  dell'inquilino di prima, e chi paga i giorni dopo la sua uscita lo decide l'amministratore. Contano solo i piani con voci a carico dell'inquilino e con la
+  competenza dopo l'inizio; un piano generato da una versione precedente senza riparto registrato ha una frase sua.
+- **Il rifiuto dell'accrescimento con più nudi proprietari dice la ragione vera.** Diceva sempre che il programma non sa quale
+  usufrutto stia sopra quale nuda proprietà, anche dove lo sa (la nuda passata agli eredi, o un usufrutto nato da una riserva
+  registrata qui) e la parte torna piena da sé.
+- **Dopo la registrazione di un passaggio, il secondo pulsante si chiama «Scheda di …»** e porta alla scheda di chi entra, al posto
+  di «Aggiorna l'anagrafe condominiale». Sotto, una frase spiega perché: il passaggio ha già aggiornato chi ha l'unità e da
+  quando, e il registro dell'anagrafe condominiale chiede anche il codice fiscale e la residenza o il domicilio di ogni titolare,
+  inquilini compresi (art. 1130 n. 6 c.c.).
+
+**Ritocchi.**
+- Nel modulo del passaggio la spiegazione della quota («il passaggio la porta tutta») sta nel riquadro che si apre sull'icona
+  accanto all'etichetta: sotto il campo allungava la colonna, e la riga di chi entra non era più allineata.
+- Nella stampa del prospetto, dalla seconda pagina la prima riga finiva sopra la linea dell'intestazione del condominio.
+- Le frasi nuove mettono la «d» davanti a un nome che comincia per «a»: «ad Anna».
+
+**Le guide.** La guida del passaggio dice i tre modi del prospetto, cosa succede alla locazione su un piano che non si ricalcola
+più e la fermata della successione; la guida «Ruoli e usufrutto» dice chi paga la voce dell'inquilino sull'unità divisa nei giorni
+senza inquilino.
+
+**Non ancora.** Chi paga i giorni dopo l'uscita dell'inquilino quando le sue quote sono in un piano che non si ricalcola più: il
+pannello lo dice, la scelta dell'amministratore non è ancora costruita. Alcune correzioni ai crediti nei passaggi, trovate insieme
+a queste, arrivano con la prossima beta. Restano come prima: nella successione dopo un'estinzione la frase che dice «già ceduto con
+un passaggio precedente (l'usufrutto)», mentre l'usufrutto si è estinto; con le pertinenze, la frase finale «un piano generato dopo
+dividerà quelle voci fra …» nomina le stesse persone per tutte le unità, anche per quella dove ce n'è una sola; nell'inizio di una locazione con un coinquilino già sulla
+pertinenza spuntata, il pannello descrive come registrabile un passaggio che la registrazione rifiuta; per i piani della 1.10 che non
+ricordano il loro esercizio, il conguaglio e il prospetto lo deducono dalla data di creazione, e l'amministratore non lo può
+correggere.
+
+**Per chi sviluppa.** Nessuna migrazione. `ProspettoOneriAccessori`: il modo `conguaglio` con `conguaglio_del` sulla voce,
+`con_il_conguaglio` nel totale del conduttore; la catena dei pagatori segue il ruolo, per persona, ed è tenuta in memoria per il
+calcolo; le righe gemelle si uniscono prima di dividerle; il già versato «dell'unità» si divide come il conguaglio, con la voce al
+lordo e la sua riga. `InsiemePeriodi::unione()`. `PeriodoDellaRiga`: per ricostruire i giorni di una riga di ripiego si tolgono
+solo quelli delle righe risolte sul ruolo richiesto. `FrasiObbligati::alPostoDellInquilino()`, `aChi()`, `a()`; tolta
+`nomiOClausola()`. `NudiDellEstinzione`: la nuda ereditata (`per()` restituisce `ereditata`), `A_MANO` pubblica.
+`ConguaglioPassaggio::nudiDellEstinzione()` pubblica. `AnteprimaPassaggio`: i piani fermi per gruppo e per unità.
+`AnteprimaPassaggioRequest`: la fermata della successione e la ragione del rifiuto dell'accrescimento. Test nuovi:
+`ProspettoCambioInquilinoTest`, `FineLocazioneFrasiTest`, `InizioLocazionePianoFermoTest`, `UnitaMistaRipiegoVenditaTest`,
+`EstinzioneDopoMorteDelNudoTest`, `SuccessioneConUsufruttoInCorsoTest`.
+
+---
+
 ## [1.11.0-beta.46] - Anche a porte chiuse
 
 **Non tocca il database.** Una beta piccola: in manutenzione la rotta di salute `/up` torna a rispondere, e dice lo stato

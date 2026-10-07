@@ -69,7 +69,7 @@
                         <td style="padding: 3px 5px;">{{ $tratti($v['competenza']) }}</td>
                         <td style="padding: 3px 5px; text-align: right;">{{ $v['giorni'] ?? '—' }}</td>
                         <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $euro($v['importo']) }}</td>
-                        <td style="padding: 3px 5px; font-size: 7pt;">{{ $v['modo'] === 'rate' ? 'nelle sue rate' : 'pagata da ' . $v['pagato_da'] }}</td>
+                        <td style="padding: 3px 5px; font-size: 7pt;">{{ match ($v['modo']) { 'rate' => 'nelle sue rate', 'conguaglio' => 'con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null), default => 'pagata da ' . $v['pagato_da'] } }}</td>
                     </tr>
                 @endforeach
             </tbody>
@@ -79,10 +79,20 @@
                     <td style="padding: 4px 5px; text-align: right; white-space: nowrap;">{{ $euro($c['totale']) }}</td>
                     <td></td>
                 </tr>
-                @if($c['nelle_sue_rate'] !== 0 && $c['da_rimborsare'] !== 0)
+                {{-- Fase 1-bis della .47: la parte pagata con il conguaglio non è una rata, e ha la sua riga. Le righe «di cui» compaiono
+                     quando le parti sono almeno due; quella da rimborsare, come prima, anche da sola. --}}
+                @php($parti = count(array_filter([$c['nelle_sue_rate'], $c['con_il_conguaglio'] ?? 0, $c['da_rimborsare']], fn ($x) => $x !== 0)))
+                @if($parti > 1 && $c['nelle_sue_rate'] !== 0)
                     <tr>
                         <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">di cui già nelle sue rate</td>
-                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt;">{{ $euro($c['nelle_sue_rate']) }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['nelle_sue_rate']) }}</td>
+                        <td></td>
+                    </tr>
+                @endif
+                @if($parti > 1 && ($c['con_il_conguaglio'] ?? 0) !== 0)
+                    <tr>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">di cui con il conguaglio del cambio d'inquilino</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['con_il_conguaglio']) }}</td>
                         <td></td>
                     </tr>
                 @endif

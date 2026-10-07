@@ -78,6 +78,36 @@ class AnteprimaPassaggio
      */
     private Collection $usufruttuari;
 
+    /** DL2: alla fine della locazione, chi paga le voci dell'inquilino quando l'inquilino non c'è (`FrasiObbligati::alPostoDellInquilino`). */
+    private Collection $alPosto;
+
+    /** DL3: i piani con quote sull'unità che si ricalcolano ancora (decisione 34.1: niente a giornale, nessun movimento). */
+    private array $pianiRicalcolabiliQui = [];
+
+    /**
+     * DL3: i piani con la parte dell'inquilino che non si ricalcolano più, e di chi è quella parte dal giorno dell'inizio
+     * (`comeRestanoIPianiFermi`), per dirli piano per piano.
+     *
+     * @var array<int, array{senza_riparto: bool, unita: array<int, array<string, mixed>>}>
+     */
+    private array $pianiFermi = [];
+
+    /** @var array<int, string> */
+    private array $nomiDeiPianiQui = [];
+
+    /** DL3: l'unità del passaggio, per sapere quando una frase sui piani fermi va detta con il nome dell'unità. */
+    private int $unitaPrincipale = 0;
+
+    /** DS1, Fase 1-bis della .47: la nuda dei nudi che tornano pieni viene da una nuda sola, con la successione (e le vendite dopo). */
+    private ?string $nudaEreditata = null;
+
+    /**
+     * DL2, Fase 1-bis della .47: i piani che non si ricalcolano più con quote di chi esce non ancora emesse.
+     *
+     * @var list<array{nome: string, quote: int}>
+     */
+    private array $bozzeFermeDiChiEsce = [];
+
     public function __construct(
         private readonly ConguaglioPassaggio $conguaglioPassaggio = new ConguaglioPassaggio(),
         private readonly FrasiObbligati $frasiObbligati = new FrasiObbligati(),
@@ -110,6 +140,7 @@ class AnteprimaPassaggio
         $this->chiEsce = $uscente?->anagrafica_id !== null ? (int) $uscente->anagrafica_id : null;
         $this->rigaChiEsce = $uscente?->id !== null ? (int) $uscente->id : null;
         $this->altroUsufrutto = false;
+        $this->nudaEreditata = null;
         $this->eredi = $tipo === 'successione' ? array_values($dati['eredi'] ?? []) : [];
         $this->usufruttuari = collect();
         if ($tipo === 'usufrutto' && ($dati['sottotipo'] ?? null) === 'estinzione' && $uscente !== null && ! empty($dati['accrescimento'])) {
@@ -121,6 +152,7 @@ class AnteprimaPassaggio
             $this->nudiDa = $scelta['da'];
             $this->consolida = $scelta['consolida'];
             $this->altroUsufrutto = (bool) ($scelta['altro_usufrutto'] ?? false);
+            $this->nudaEreditata = $scelta['ereditata'] ?? null;
         }
         $nudoProprietario = $this->nudi->first() ?? $attuali->first(fn ($t) => $t->tipologia === 'nuda_proprietario');
 
@@ -150,6 +182,23 @@ class AnteprimaPassaggio
             ? $tutteLeEmesse->reject(fn ($r) => $conta($r['anagrafica_id'], $r['immobile_id']))->values()
             : $tutteLeEmesse;
         $morosita = $uscente ? $this->morosita($immobile, $uscente->anagrafica_id) : null;
+
+        // DL2: chi riceve le voci dell'inquilino alla fine della locazione è chi le riceve nel riparto, non «i proprietari».
+        $this->alPosto = $tipo === 'fine_locazione' ? $this->frasiObbligati->alPostoDellInquilino($immobile, $decorrenza) : collect();
+        // DL3: un piano che non si ricalcola più non intesterà niente al nuovo inquilino.
+        $pianiQui = $tipo === 'inizio_locazione' ? $this->pianiConLInquilino($condominio, $immobileIds, $decorrenza) : [];
+        $fermi = \App\Models\Gestionale\PianoRate::immutabiliFra($pianiQui);
+        $this->pianiRicalcolabiliQui = array_values(array_diff($pianiQui, $fermi));
+        // Fase 1-bis e giro sulle correzioni della .47: sul piano fermo i giorni dal giorno dell'inizio possono stare nelle rate di un
+        // inquilino di prima (il cambio in due passi), di un coinquilino che resta, di chi entra (il rinnovo), o in righe di ripiego. Il
+        // prospetto c'entra solo per queste.
+        $this->unitaPrincipale = (int) $immobile->id;
+        $this->pianiFermi = $tipo === 'inizio_locazione' ? $this->comeRestanoIPianiFermi(array_values(array_intersect($pianiQui, $fermi)), $immobileIds, $decorrenza, $entrante) : [];
+        $this->nomiDeiPianiQui = $pianiQui === [] ? [] : \App\Models\Gestionale\PianoRate::whereIn('id', $pianiQui)->pluck('nome', 'id')->map(fn ($n) => (string) $n)->all();
+        // DL2 (Fase 1-bis della .47): alla fine della locazione senza un nuovo inquilino, le quote di chi esce non ancora emesse sui
+        // piani che non si ricalcolano più restano sue; chi paga i giorni dopo l'uscita lo decide l'amministratore (decisione 32).
+        $this->bozzeFermeDiChiEsce = $tipo === 'fine_locazione' && $entrante === null && $uscente !== null
+            ? $this->bozzeFermeDi((int) $uscente->anagrafica_id, $immobileIds) : [];
 
         // S5: il conguaglio vero (D9), un solo calcolo per il pannello e per la registrazione.
         $conguaglio = $this->conguaglio($tipo, $dati, $uscente, $entrante, $nudoProprietario, $immobileIds, $decorrenza);
@@ -190,7 +239,7 @@ class AnteprimaPassaggio
             ],
             'obbligati' => [
                 // Decisione 28.8 a: le unità del passaggio, per la frase sui saldi intestati all'unità.
-                'frasi' => $this->blocco3($tipo, ['immobili' => $immobileIds, 'arretrato_senza_righe' => $arretrato !== null && ($arretrato['righe'] ?? []) === []] + $dati, $condominio, $immobile, $nomeUscente, $nomeEntrante, $decorrenza, $proprietari, $nudoProprietario),
+                'frasi' => $this->blocco3($tipo, ['immobili' => $immobileIds, 'arretrato_senza_righe' => $arretrato !== null && ($arretrato['righe'] ?? []) === []] + $dati, $condominio, $immobile, $nomeUscente, $nomeEntrante, $decorrenza, $tipo === 'fine_locazione' ? $this->alPosto : $proprietari, $nudoProprietario),
                 'copia_autentica_mancante' => $tipo === 'vendita' && ! $dati['copia_autentica'],
             ],
             'invarianti' => [
@@ -435,6 +484,331 @@ class AnteprimaPassaggio
         $esito['coppie'] = $coppie;
 
         return $esito;
+    }
+
+    /**
+     * DL3 (Fase 1-bis e giro sulle correzioni della .47): i piani con quote sull'unità che hanno una parte a carico dell'inquilino con
+     * giorni dal giorno dell'inizio in poi. Lo dicono le righe del riparto registrato: ruolo richiesto «inquilino», anche di ripiego, e
+     * la competenza che arriva a quel giorno (`competenza_al`, l'estremo finale dei tratti: l'esercizio dell'ordinaria anche sulla gestione
+     * riusata da un anno all'altro, il giorno della delibera della straordinaria). Una riga senza competenza (il calcolo senza esercizio)
+     * e un piano della 1.10 senza riparto registrato guardano la data del piano: l'esercizio come lo prende il motore
+     * (`CompetenzaDelPiano::esercizioDelPiano`: salvato, poi dedotto dalla data di creazione), poi la gestione; il piano della 1.10 conta
+     * se il condominio ha voci a carico dell'inquilino, com'era prima. Il limite è quello del motore: un piano della 1.10 creato a
+     * cavallo d'anno si attribuisce all'esercizio della sua data di creazione.
+     *
+     * @return list<int>
+     */
+    private function pianiConLInquilino(Condominio $condominio, array $immobileIds, CarbonImmutable $decorrenza): array
+    {
+        $giorno = $decorrenza->toDateString();
+        $conQuote = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->whereIn('rate_quote.immobile_id', $immobileIds)
+            ->distinct()->pluck('rate.piano_rate_id')->map(fn ($id) => (int) $id)->all();
+        if ($conQuote === []) {
+            return [];
+        }
+        // L'esercizio come lo prende il motore (salvato, poi dedotto dalla data di creazione: un piano della 1.10 sulla gestione riusata da
+        // un anno all'altro non ha `esercizio_id`), poi la gestione (secondo giro sulle correzioni della .47).
+        // Terzo giro: i piani con l'esercizio salvato con una join sola; `esercizioDelPiano` solo per gli altri (la deduzione del motore).
+        $arriva = fn ($fine) => $fine === null || substr((string) $fine, 0, 10) >= $giorno;
+        $conEsercizio = DB::table('piani_rate')->join('esercizi', 'esercizi.id', '=', 'piani_rate.esercizio_id')->leftJoin('gestioni', 'gestioni.id', '=', 'piani_rate.gestione_id')
+            ->whereIn('piani_rate.id', $conQuote)->get(['piani_rate.id', 'esercizi.data_fine as fine_esercizio', 'gestioni.data_fine as fine_gestione']);
+        $cheArrivano = $conEsercizio->filter(fn ($r) => $arriva($r->fine_esercizio ?? $r->fine_gestione))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $senzaEsercizio = array_values(array_diff($conQuote, $conEsercizio->pluck('id')->map(fn ($id) => (int) $id)->all()));
+        if ($senzaEsercizio !== []) {
+            $competenzaDelPiano = new \App\Services\Riparto\CompetenzaDelPiano();
+            $cheArrivano = [...$cheArrivano, ...\App\Models\Gestionale\PianoRate::with('gestione')->whereIn('id', $senzaEsercizio)->get()
+                ->filter(fn ($p) => $arriva($competenzaDelPiano->esercizioDelPiano($p)?->data_fine ?? $p->gestione?->data_fine))
+                ->pluck('id')->map(fn ($id) => (int) $id)->all()];
+        }
+        $conRiparto = DB::table('righe_riparto')->whereIn('piano_rate_id', $conQuote)->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
+        $conLInquilino = DB::table('righe_riparto')->whereIn('piano_rate_id', $conRiparto)->whereIn('immobile_id', $immobileIds)->where('tipo', 'riparto')
+            ->where('ruolo_richiesto', 'inquilino')->where('importo', '!=', 0)
+            ->where(fn ($q) => $q->whereDate('competenza_al', '>=', $giorno)->orWhere(fn ($n) => $n->whereNull('competenza_al')->whereIn('piano_rate_id', $cheArrivano === [] ? [0] : $cheArrivano)))
+            ->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
+        $senzaRiparto = array_values(array_intersect(array_diff($conQuote, $conRiparto), $cheArrivano));
+        if ($senzaRiparto !== [] && $this->vociACaricoDellInquilino($condominio)->isNotEmpty()) {
+            $conLInquilino = [...$conLInquilino, ...$senzaRiparto];
+        }
+        sort($conLInquilino);
+
+        return array_values(array_unique($conLInquilino));
+    }
+
+    /**
+     * DL3, giri sulle correzioni della .47: di chi è, su un piano che non si ricalcola più, la parte a carico dell'inquilino dal giorno
+     * dell'inizio, unità per unità (l'unità e le pertinenze spuntate). Dalle righe del riparto registrato, per i giorni che hanno davvero dal
+     * giorno dell'inizio in poi (la loro competenza, a tratti per il capitolo, ∩ il loro tratto di titolarità):
+     * - righe di ripiego, pagate da chi c'era quando non c'era un inquilino: le rimborsa chi entra, con il prospetto degli oneri accessori;
+     * - righe di chi entra (il rinnovo): sono già nelle sue rate, fino alla fine delle sue righe;
+     * - righe di un inquilino che quel giorno non c'è più su quell'unità (il cambio in due passi): restano nelle sue rate, fino alla fine
+     *   delle sue righe, e chi paga i giorni dopo la sua uscita lo decide l'amministratore (decisione 32);
+     * - righe di un inquilino che su quell'unità c'è ancora (il coinquilino): restano nelle sue rate.
+     * Un piano senza riparto registrato (versione precedente) il prospetto non lo legge, e si dice.
+     *
+     * @return array<int, array{senza_riparto: bool, unita: array<int, array{ripiego: bool, propri: bool, propri_fino: ?string, usciti: list<string>, usciti_fino: ?string, presenti: list<string>}>}>
+     */
+    private function comeRestanoIPianiFermi(array $ids, array $immobileIds, CarbonImmutable $decorrenza, ?Anagrafica $entrante): array
+    {
+        $giorno = $decorrenza->toDateString();
+        $esito = [];
+        $nomeDi = [];
+        $ancoraDi = [];
+        foreach ($ids as $pianoId) {
+            if (! DB::table('righe_riparto')->where('piano_rate_id', $pianoId)->exists()) {
+                // Terzo giro: un piano della 1.10 non ha il riparto, ma le quote dicono di chi è la parte dell'inquilino. Generato con un
+                // inquilino, le quote sono sue (il rinnovo, il cambio in due passi, il coinquilino); senza, sono di chi possiede.
+                $perUnita = [];
+                foreach ($immobileIds as $u) {
+                    $conQuote = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $pianoId)->where('rate_quote.immobile_id', $u)
+                        ->where(fn ($q) => $q->whereNull('rate_quote.tipo')->orWhere('rate_quote.tipo', '!=', 'saldo_iniziale'))->distinct()->pluck('rate_quote.anagrafica_id')->map(fn ($id) => (int) $id)->all();
+                    if ($conQuote === []) {
+                        continue;
+                    }
+                    $inquilini = DB::table('anagrafica_immobile')->where('immobile_id', $u)->where('tipologia', 'inquilino')->whereIn('anagrafica_id', $conQuote)
+                        ->distinct()->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all();
+                    $p = ['ripiego' => $inquilini === [], 'propri' => false, 'propri_dal' => null, 'propri_fino' => null, 'usciti' => [], 'usciti_dal' => null, 'usciti_fino' => null, 'presenti' => [], 'ripiego_dal' => null];
+                    foreach ($inquilini as $id) {
+                        if ($id === (int) ($entrante?->id ?? 0)) {
+                            $p['propri'] = true;
+                            continue;
+                        }
+                        $nome = $nomeDi[$id] ??= (string) Anagrafica::whereKey($id)->value('nome');
+                        $ancora = $ancoraDi[$u . '|' . $id] ??= $this->inquilinoIl($u, $id, $giorno);
+                        if ($ancora) {
+                            $p['presenti'][] = $nome;
+                        } else {
+                            $p['usciti'][] = $nome;
+                        }
+                    }
+                    sort($p['usciti']);
+                    sort($p['presenti']);
+                    $perUnita[$u] = $p;
+                }
+                ksort($perUnita);
+                $esito[$pianoId] = ['senza_riparto' => true, 'unita' => $perUnita];
+                continue;
+            }
+            $trattiConto = \App\Services\Riparto\PeriodoDellaRiga::trattiPerConto((int) $pianoId);
+            $righe = DB::table('righe_riparto')->where('piano_rate_id', $pianoId)->whereIn('immobile_id', $immobileIds)->where('tipo', 'riparto')
+                ->where('ruolo_richiesto', 'inquilino')->where('importo', '!=', 0)
+                ->where(fn ($q) => $q->whereNull('titolarita_al')->orWhereDate('titolarita_al', '>=', $giorno))
+                ->where(fn ($q) => $q->whereNull('competenza_al')->orWhereDate('competenza_al', '>=', $giorno))
+                ->get(['immobile_id', 'anagrafica_id', 'ruolo_risolto', 'conto_id', 'conto_radice_id', 'gradino_competenza', 'competenza_dal', 'competenza_al', 'titolarita_al']);
+            $perUnita = [];
+            foreach ($righe as $r) {
+                // I giorni veri della riga dal giorno dell'inizio: senza, la riga non c'entra (un tratto di capitolo finito prima).
+                $competenza = ($r->gradino_competenza ?? null) === 'capitolo'
+                    ? ($trattiConto[(int) $r->conto_id] ?? $trattiConto[(int) $r->conto_radice_id] ?? null)
+                    : ($r->competenza_dal !== null && $r->competenza_al !== null
+                        ? \App\Support\InsiemePeriodi::uno(new \App\Support\PeriodoCompetenza(substr((string) $r->competenza_dal, 0, 10), substr((string) $r->competenza_al, 0, 10)))
+                        : \App\Support\InsiemePeriodi::uno(new \App\Support\PeriodoCompetenza($giorno, $r->titolarita_al !== null ? substr((string) $r->titolarita_al, 0, 10) : $decorrenza->endOfYear()->toDateString())));
+                $fine = $r->titolarita_al !== null ? substr((string) $r->titolarita_al, 0, 10) : $competenza?->al()->toDateString();
+                $giorni = $competenza !== null && $fine !== null && $fine >= $giorno ? $competenza->intersezione(new \App\Support\PeriodoCompetenza($giorno, $fine)) : null;
+                if ($giorni === null) {
+                    continue;
+                }
+                // Fin dove arriva: l'ultimo giorno, quando viene prima della fine della competenza. E da dove: il primo giorno vero, che
+                // con i tratti per capitolo può venire dopo il giorno dell'inizio (terzo giro: «dal 15 al 31 ottobre»).
+                $fino = $giorni->al()->toDateString() < $competenza->al()->toDateString() ? $giorni->al()->toDateString() : null;
+                $primo = $giorni->dal()->toDateString();
+                $u = (int) $r->immobile_id;
+                $perUnita[$u] ??= ['ripiego' => false, 'ripiego_dal' => [], 'propri' => false, 'propri_dal' => [], 'propri_fino' => [], 'usciti' => [], 'usciti_dal' => [], 'usciti_fino' => [], 'presenti' => []];
+                if ($r->ruolo_risolto !== 'inquilino') {
+                    $perUnita[$u]['ripiego'] = true;
+                    $perUnita[$u]['ripiego_dal'][] = $primo;
+                    continue;
+                }
+                if ((int) $r->anagrafica_id === (int) ($entrante?->id ?? 0)) {
+                    $perUnita[$u]['propri'] = true;
+                    $perUnita[$u]['propri_dal'][] = $primo;
+                    $perUnita[$u]['propri_fino'][] = $fino;
+                    continue;
+                }
+                $nome = $nomeDi[(int) $r->anagrafica_id] ??= (string) Anagrafica::whereKey($r->anagrafica_id)->value('nome');
+                // «C'è ancora» su questa unità, non sulle altre del passaggio (secondo giro: il box e l'appartamento hanno storie loro).
+                $ancora = $ancoraDi[$u . '|' . (int) $r->anagrafica_id] ??= $this->inquilinoIl($u, (int) $r->anagrafica_id, $giorno);
+                if ($ancora) {
+                    $perUnita[$u]['presenti'][] = $nome;
+                    continue;
+                }
+                $perUnita[$u]['usciti'][] = $nome;
+                $perUnita[$u]['usciti_dal'][] = $primo;
+                $perUnita[$u]['usciti_fino'][] = $fino;
+            }
+            $finoDi = fn (array $fini) => $fini !== [] && ! in_array(null, $fini, true) ? max($fini) : null;
+            $dalDi = fn (array $primi) => $primi !== [] && min($primi) > $giorno ? min($primi) : null;
+            foreach ($perUnita as $u => $p) {
+                $perUnita[$u] = ['ripiego' => $p['ripiego'], 'ripiego_dal' => $dalDi($p['ripiego_dal']), 'propri' => $p['propri'], 'propri_dal' => $dalDi($p['propri_dal']), 'propri_fino' => $finoDi($p['propri_fino']),
+                    'usciti' => collect($p['usciti'])->unique()->sort()->values()->all(), 'usciti_dal' => $dalDi($p['usciti_dal']), 'usciti_fino' => $finoDi($p['usciti_fino']),
+                    'presenti' => collect($p['presenti'])->unique()->sort()->values()->all()];
+            }
+            if ($perUnita !== []) {
+                ksort($perUnita);
+                $esito[$pianoId] = ['senza_riparto' => false, 'unita' => $perUnita];
+            }
+        }
+
+        return $esito;
+    }
+
+    /** DL3: la persona è inquilino dell'unità quel giorno (una riga attiva, con quota, in corso). */
+    private function inquilinoIl(int $immobileId, int $anagraficaId, string $giorno): bool
+    {
+        return DB::table('anagrafica_immobile')->where('immobile_id', $immobileId)->where('anagrafica_id', $anagraficaId)
+            ->where('tipologia', 'inquilino')->where('attivo', true)->where('quota', '>', 0)
+            ->where(fn ($q) => $q->whereNull('data_inizio')->orWhereDate('data_inizio', '<=', $giorno))
+            ->where(fn ($q) => $q->whereNull('data_fine')->orWhereDate('data_fine', '>=', $giorno))->exists();
+    }
+
+    /**
+     * DL3: i piani fermi raggruppati per come resta la parte dell'inquilino, per dirli insieme quando la storia è la stessa.
+     *
+     * @return list<array{ids: list<int>, parti: array<string, mixed>}>
+     */
+    private function gruppiDeiPianiFermi(): array
+    {
+        $gruppi = [];
+        foreach ($this->pianiFermi as $id => $parti) {
+            $k = json_encode($parti);
+            $gruppi[$k] ??= ['ids' => [], 'parti' => $parti];
+            $gruppi[$k]['ids'][] = (int) $id;
+        }
+
+        return array_values($gruppi);
+    }
+
+    /** DL3: «dal 1 luglio 2026», o «dal 1 luglio al 30 settembre 2026» quando le righe dell'inquilino di prima finiscono prima. */
+    private function dalAl(CarbonImmutable $dal, ?string $al, ?string $primo = null): string
+    {
+        // Il primo giorno vero, se viene dopo il giorno dell'inizio (i tratti per capitolo: il riscaldamento riprende il 15/10).
+        $dal = $primo !== null && $primo > $dal->toDateString() ? CarbonImmutable::parse($primo) : $dal;
+        if ($al === null) {
+            return 'dal ' . $this->data($dal);
+        }
+        $fine = CarbonImmutable::parse($al);
+
+        return match (true) {
+            $fine->year === $dal->year && $fine->month === $dal->month => sprintf('dal %d al %s', $dal->day, $this->data($fine)),
+            $fine->year === $dal->year => sprintf('dal %s al %s', $dal->locale('it')->translatedFormat('j F'), $this->data($fine)),
+            default => sprintf('dal %s al %s', $this->data($dal), $this->data($fine)),
+        };
+    }
+
+    /**
+     * DL3: le parti di un piano fermo, unità per unità. Se le unità hanno la stessa storia (o è una sola) si dice una volta; altrimenti
+     * una frase per unità, con il suo nome, perché il prospetto degli oneri accessori si stampa per unità (secondo giro sulle correzioni).
+     *
+     * @return list<array{unita: ?string, parti: array<string, mixed>}>
+     */
+    private function partiPerUnita(array $unita): array
+    {
+        if ($unita === []) {
+            return [];
+        }
+        $storie = collect($unita)->map(fn ($p) => json_encode($p))->unique();
+        // Senza il nome solo quando l'unità del passaggio è fra quelle con le righe e le storie sono una: un piano che ha le voci solo sul
+        // box si dice con il nome del box, perché il prospetto è quello del box (terzo giro sulle correzioni).
+        if ($storie->count() <= 1 && array_key_exists($this->unitaPrincipale, $unita)) {
+            return [['unita' => null, 'parti' => reset($unita)]];
+        }
+        $nomi = Immobile::whereIn('id', array_keys($unita))->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => $i->etichetta_estesa])->all();
+
+        return array_map(fn ($u) => ['unita' => $nomi[$u] ?? ('Unità #' . $u), 'parti' => $unita[$u]], array_keys($unita));
+    }
+
+    /**
+     * DL3, terzo giro sulle correzioni: un piano della 1.10 (senza riparto) dice che il prospetto lo lascia fuori dopo il passaggio, salvo
+     * nel rinnovo (le quote sono di chi entra, e il prospetto lo legge); se le quote sono di chi possiede, il rimborso si regola fra le parti.
+     *
+     * @return array{solo_ripiego: bool, solo_propri: bool}
+     */
+    private function comeIlPianoSenzaRiparto(array $piano): array
+    {
+        $parti = collect($piano['unita']);
+
+        return [
+            'solo_ripiego' => $parti->every(fn ($p) => $p['ripiego'] && ! $p['propri'] && $p['usciti'] === [] && $p['presenti'] === []),
+            'solo_propri' => $parti->isNotEmpty() && $parti->every(fn ($p) => $p['propri'] && ! $p['ripiego'] && $p['usciti'] === [] && $p['presenti'] === []),
+        ];
+    }
+
+    /** DL3: le frasi del blocco «Rate» sui piani che non si ricalcolano più, a gruppi con la stessa storia. */
+    private function frasiDeiPianiFermi(CarbonImmutable $dal, string $chi): array
+    {
+        $frasi = [];
+        foreach ($this->gruppiDeiPianiFermi() as ['ids' => $ids, 'parti' => $piano]) {
+            $f = [$this->ilPianoNonSiRicalcola($ids) . ': anche le rate ancora da emettere restano a chi le ha.'];
+            $presenti = [];
+            $vecchio = $piano['senza_riparto'] ? $this->comeIlPianoSenzaRiparto($piano) : null;
+            if ($vecchio !== null && $vecchio['solo_ripiego']) {
+                $f[] = sprintf('È stato generato da una versione precedente, senza riparto registrato: dopo il passaggio il prospetto degli oneri accessori lo lascia fuori, e la parte a carico dell\'inquilino dal %s non si divide; il rimborso di %s a chi le paga si regola fra le parti.',
+                    $this->data($dal), $chi);
+            } else {
+                if ($vecchio !== null && ! $vecchio['solo_propri']) {
+                    $f[] = 'È stato generato da una versione precedente, senza riparto registrato: dopo il passaggio il prospetto degli oneri accessori lo lascia fuori.';
+                }
+                foreach ($this->partiPerUnita($piano['unita']) as ['unita' => $unita, 'parti' => $p]) {
+                    $suoi = [];
+                    $altre = $p['propri'] || $p['usciti'] !== [] || $p['presenti'] !== [];
+                    if ($p['propri']) {
+                        $suoi[] = sprintf('La parte a carico dell\'inquilino %s è già nelle rate di %s.', $this->dalAl($dal, $p['propri_fino'], $p['propri_dal'] ?? null), $chi);
+                    }
+                    if ($p['usciti'] !== []) {
+                        $suoi[] = sprintf('La parte a carico dell\'inquilino %s resta nelle rate di %s: chi paga i giorni dopo la %s uscita lo decide l\'amministratore.',
+                            $this->dalAl($dal, $p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), count($p['usciti']) === 1 ? 'sua' : 'loro');
+                    }
+                    if ($p['presenti'] !== []) {
+                        $suoi[] = sprintf('La parte a carico dell\'inquilino resta nelle rate di %s, che %s.', $this->elenco($p['presenti']), count($p['presenti']) === 1 ? 'resta inquilino' : 'restano inquilini');
+                        $presenti = [...$presenti, ...$p['presenti']];
+                    }
+                    if ($p['ripiego']) {
+                        $suoi[] = match (true) {
+                            $vecchio !== null => sprintf('%s il rimborso di %s a chi le paga si regola fra le parti.', $altre ? 'Per gli altri giorni' : 'Per la parte a carico dell\'inquilino', $chi),
+                            $altre => sprintf('Per gli altri giorni la rimborsa %s a chi le paga, con il prospetto degli oneri accessori%s.', $chi, $unita !== null ? ' di quell\'unità' : ''),
+                            default => sprintf('La parte a carico dell\'inquilino %s la rimborsa %s a chi le paga, con il prospetto degli oneri accessori%s.',
+                                $this->dalAl($dal, null, $p['ripiego_dal'] ?? null), $chi, $unita !== null ? ' di quell\'unità' : ''),
+                        };
+                    }
+                    if ($unita !== null && $suoi !== []) {
+                        $suoi[0] = sprintf('Nell\'unità «%s» %s', $unita, lcfirst($suoi[0]));
+                    }
+                    $f = [...$f, ...$suoi];
+                }
+            }
+            $presenti = array_values(array_unique($presenti));
+            $f[] = $presenti !== []
+                ? sprintf('Un piano generato dopo dividerà quelle voci fra %s, per quote e giorni.', $this->elenco([...$presenti, $chi]))
+                : sprintf('Un piano generato dopo intesterà quelle voci %s.', $this->frasiObbligati->a($chi));
+            $frasi[] = implode(' ', $f);
+        }
+
+        return $frasi;
+    }
+
+    /** DL2 (Fase 1-bis della .47): le quote non ancora emesse di chi esce sui piani che non si ricalcolano più, piano per piano. */
+    private function bozzeFermeDi(int $anagraficaId, array $immobileIds): array
+    {
+        $bozze = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->where('rate_quote.anagrafica_id', $anagraficaId)->whereIn('rate_quote.immobile_id', $immobileIds)
+            ->whereNotExists(\App\Models\Gestionale\Rata::aGiornale())
+            ->groupBy('rate.piano_rate_id', 'piani_rate.nome')->orderBy('rate.piano_rate_id')
+            ->get(['rate.piano_rate_id', 'piani_rate.nome', DB::raw('COUNT(*) as n')]);
+        $fermi = \App\Models\Gestionale\PianoRate::immutabiliFra($bozze->pluck('piano_rate_id')->all());
+
+        return $bozze->filter(fn ($b) => in_array((int) $b->piano_rate_id, $fermi, true))
+            ->map(fn ($b) => ['nome' => (string) $b->nome, 'quote' => (int) $b->n])->values()->all();
+    }
+
+    /** DL3: «Il piano «Preventivo 2026» non si ricalcola più», oppure «I piani … non si ricalcolano più». */
+    private function ilPianoNonSiRicalcola(array $ids): string
+    {
+        return count($ids) === 1 ? sprintf('Il piano %s non si ricalcola più', $this->nomiDeiPiani($ids)) : sprintf('I piani %s non si ricalcolano più', $this->nomiDeiPiani($ids));
+    }
+
+    /** DL3: «Preventivo 2026», oppure «Preventivo 2026» e «Rate del riscaldamento 2026». */
+    private function nomiDeiPiani(array $ids): string
+    {
+        return $this->elenco(array_map(fn (int $id) => '«' . ($this->nomiDeiPianiQui[$id] ?? 'piano ' . $id) . '»', $ids));
     }
 
     /** «Rossi Mario (60 %) e Neri Paolo (40 %)» con più nudi; il nome solo con uno; il ripiego senza nessuno. */
@@ -1209,6 +1583,13 @@ class AnteprimaPassaggio
                         $frasi[] = $riga instanceof TitolaritaImmobile && self::nudiDistintiIl($riga, $dal)->count() > 1
                             ? 'È la regola di legge quando l\'atto non dice altro: se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario, o è un legato di usufrutto congiunto, con la nuda di più nudi proprietari non si registra da qui, e le righe si correggono a mano da «Modifica associazione».'
                             : 'È la regola di legge quando l\'atto non dice altro: se l\'atto prevede che l\'usufrutto si accresca all\'altro usufruttuario, o è un legato di usufrutto congiunto, spunta «L\'usufrutto si accresce all\'altro usufruttuario».';
+                        // DS1 (Fase 1-bis della .47): il programma non chiede chi torna pieno perché la nuda è una sola, in comune, e lo dice;
+                        // la nuda già divisa fra loro da un testamento o da una divisione non sta nei dati, e la strada è a mano.
+                        if ($this->nudaEreditata !== null) {
+                            $frasi[] = sprintf('La nuda proprietà di %s viene da una nuda sola, passata loro con la successione%s: è in comune, e la parte dell\'usufrutto che finisce torna piena a ciascuno per la sua quota. Se un testamento o una divisione hanno dato a ciascuno la nuda di una parte precisa, registra l\'estinzione a mano da «Modifica associazione».',
+                                $this->elenco($this->nudi->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->unique()->values()->all()),
+                                $this->nudaEreditata === 'successione' ? '' : ' e con le vendite registrate dopo');
+                        }
                     }
                 } else {
                     $frasi[] = sprintf('%s risulterà proprietario pieno fino al %s e nudo proprietario dal %s.', $uscente, $finoA, $dalA);
@@ -1365,7 +1746,17 @@ class AnteprimaPassaggio
         // spiega anche la regola dell'ordinaria e la scelta, e si toglie solo quando il conguaglio è fermo.
         $senzaCoppie = $conguaglio['stato'] === 'calcolato' && collect($conguaglio['coppie'] ?? [])->every(fn ($c) => (int) ($c['importo'] ?? 0) === 0);
         if ($tipo === 'inizio_locazione') {
-            $frasi[] = sprintf('Le %d quote già emesse su questa unità non si toccano: restano intestate a %s. Dal %s le voci a carico dell\'inquilino verranno intestate a %s.', $tutte->count(), $this->elenco($tutte->pluck('intestatario')->unique()->values()->all()), $this->data($dal), $entrante ?? 'chi entra');
+            // DL3 (1.11.0-beta.47): su un piano che non si ricalcola più le rate restano a chi le ha, e la parte dell'inquilino dal
+            // giorno dell'inizio la regolano il proprietario e l'inquilino con il prospetto degli oneri accessori (decisione 25, D11).
+            // Con più piani si dice piano per piano: il nuovo inquilino riceve le voci solo in quelli che si ricalcolano ancora.
+            $frase = sprintf('Le %d quote già emesse su questa unità non si toccano: restano intestate %s.', $tutte->count(), $this->frasiObbligati->a($this->elenco($tutte->pluck('intestatario')->unique()->values()->all())));
+            if ($this->pianiRicalcolabiliQui !== [] || $this->pianiFermi === []) {
+                $frase .= sprintf(' Dal %s le voci a carico dell\'inquilino verranno intestate %s%s.', $this->data($dal), $this->frasiObbligati->a($entrante ?? 'chi entra'),
+                    $this->pianiFermi === [] ? '' : ' nei piani che si ricalcolano ancora (' . $this->nomiDeiPiani($this->pianiRicalcolabiliQui) . ')');
+            }
+            // Giro sulle correzioni della .47: piano per piano, di chi è la parte dell'inquilino dal giorno dell'inizio — il prospetto solo
+            // per le righe di ripiego; l'inquilino di prima (il cambio in due passi, decisione 32), il coinquilino e il rinnovo a parte.
+            $frasi[] = trim($frase . ' ' . implode(' ', $this->frasiDeiPianiFermi($dal, $entrante ?? 'chi entra')));
         } elseif ($tipo === 'fine_locazione') {
             if ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
                 $frasi[] = sprintf('Nessuna rata emessa è intestata a %s: non c\'è niente da conguagliare. Le altre quote dell\'unità restano a chi le ha ricevute.', $uscente);
@@ -1377,7 +1768,8 @@ class AnteprimaPassaggio
                     : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che entra come inquilino, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota è divisa in proporzione ai giorni.', $uscente, $entrante ?? 'chi entra');
                 array_push($frasi, ...$frasiConguaglio);
             } else {
-                $frasi[] = sprintf('Le rate già emesse non si toccano: le %d quote intestate a %s (%s) restano sue. Dalla prossima generazione le voci a carico dell\'inquilino tornano al proprietario.', $diChiEsce->count(), $uscente, MoneyHelper::format((int) $diChiEsce->sum('importo')));
+                $frasi[] = sprintf('Le rate già emesse non si toccano: le %d quote intestate %s (%s) restano sue. Dalla prossima generazione le voci a carico dell\'inquilino tornano %s.', $diChiEsce->count(), $this->frasiObbligati->a((string) $uscente), MoneyHelper::format((int) $diChiEsce->sum('importo')),
+                    $this->frasiObbligati->aChi($this->alPosto));
             }
         } elseif ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
             $frasi[] = sprintf('Nessuna rata emessa è intestata a %s: non c\'è niente da conguagliare fra chi esce e chi entra. Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $uscente, $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
@@ -1497,6 +1889,9 @@ class AnteprimaPassaggio
 
         if ($this->usufruttuari->isNotEmpty()) {
             $dati['usufruttuari'] = $this->usufruttuari->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->values()->all();
+        }
+        if ($tipo === 'fine_locazione') {
+            $dati['bozze_ferme_di_chi_esce'] = $this->bozzeFermeDiChiEsce;
         }
         if ($tipo === 'successione') {
             $dati['eredi'] = array_map(fn ($e) => ['nome' => $e['anagrafica']->nome, 'quota' => (float) $e['quota']], $this->eredi);
@@ -1932,9 +2327,42 @@ class AnteprimaPassaggio
         }
 
         if ($tipo === 'inizio_locazione') {
-            $haPiano = DB::table('rate_quote')->whereIn('immobile_id', $immobileIds)->exists();
-            if ($haPiano && $this->vociACaricoDellInquilino($condominio)->isNotEmpty()) {
-                $motivi[] = 'un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe';
+            // DL3 (1.11.0-beta.47): il destinatario cambia solo nei piani che si ricalcolano ancora; quelli fermi si dicono a parte, come
+            // informazione, piano per piano. Contano solo i piani con una parte dell'inquilino e con giorni dall'inizio in poi
+            // (Fase 1-bis: non il piano dei lavori tutto sul proprietario, non il preventivo dell'anno prima).
+            if ($this->pianiRicalcolabiliQui !== []) {
+                $motivi[] = sprintf('un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe ricalcolandolo (%s)', $this->nomiDeiPiani($this->pianiRicalcolabiliQui));
+            }
+            foreach ($this->gruppiDeiPianiFermi() as ['ids' => $ids, 'parti' => $piano]) {
+                $giornoInizio = $decorrenza !== null ? $this->data($decorrenza) : 'giorno dell\'inizio';
+                $dalAl = fn (?string $fino, ?string $primo) => $decorrenza !== null ? $this->dalAl($decorrenza, $fino, $primo) : 'dal ' . $giornoInizio;
+                $vecchio = $piano['senza_riparto'] ? $this->comeIlPianoSenzaRiparto($piano) : null;
+                $fuori = 'dopo il passaggio il prospetto degli oneri accessori lo lascia fuori (è stato generato da una versione precedente, senza riparto registrato)';
+                $parti = [];
+                if ($vecchio !== null && $vecchio['solo_ripiego']) {
+                    $parti[] = $fuori . ': il rimborso della parte a carico dell\'inquilino si regola fra le parti';
+                } else {
+                    if ($vecchio !== null && ! $vecchio['solo_propri']) {
+                        $parti[] = $fuori;
+                    }
+                    foreach ($this->partiPerUnita($piano['unita']) as ['unita' => $unita, 'parti' => $p]) {
+                        $altre = $p['propri'] || $p['usciti'] !== [] || $p['presenti'] !== [];
+                        $suoi = array_values(array_filter([
+                            $p['propri'] ? sprintf('la parte a carico dell\'inquilino %s è già nelle rate di %s', $dalAl($p['propri_fino'], $p['propri_dal'] ?? null), $entrante ?? 'chi entra') : null,
+                            $p['usciti'] !== [] ? sprintf('la parte a carico dell\'inquilino %s resta nelle rate di %s: chi paga i giorni dopo la %s uscita lo decide l\'amministratore — se serve, con un saldo manuale dal Wallet sulla stessa gestione',
+                                $dalAl($p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), count($p['usciti']) === 1 ? 'sua' : 'loro') : null,
+                            $p['presenti'] !== [] ? sprintf('la parte a carico dell\'inquilino resta nelle rate di %s, che %s', $this->elenco($p['presenti']), count($p['presenti']) === 1 ? 'resta inquilino' : 'restano inquilini') : null,
+                            $p['ripiego'] ? ($vecchio !== null
+                                ? ($altre ? 'per gli altri giorni il rimborso si regola fra le parti' : 'il rimborso della parte a carico dell\'inquilino si regola fra le parti')
+                                : ($altre ? 'per gli altri giorni si regola con il prospetto degli oneri accessori' : 'la parte a carico dell\'inquilino si regola con il prospetto degli oneri accessori') . ($unita !== null ? ' di quell\'unità' : '')) : null,
+                        ]));
+                        if ($unita !== null && $suoi !== []) {
+                            $suoi[0] = sprintf('nell\'unità «%s» %s', $unita, $suoi[0]);
+                        }
+                        $parti = [...$parti, ...$suoi];
+                    }
+                }
+                $informazioni[] = sprintf('%s: %s a chi le ha, e %s', lcfirst($this->ilPianoNonSiRicalcola($ids)), count($ids) === 1 ? 'le sue quote restano' : 'le loro quote restano', implode('; ', $parti));
             }
         }
 

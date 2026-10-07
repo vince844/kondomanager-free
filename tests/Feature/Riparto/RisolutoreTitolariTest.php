@@ -469,7 +469,8 @@ it('strada (b), B1-1 — invariante 4 con le date salvate CON L\'ORA (come le sc
     }
     // E il merito: fino al 30/4 B è fuori (predecessore A chiuso il giorno prima) e i nudi sono fuori (entrati con la tripla il 1/6).
     $ids = $r->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id), new \App\Support\PeriodoCompetenza('2026-01-01', '2026-04-30'))->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all();
-    expect($ids)->toContain($a->id)->not->toContain($b->id, $n1->id, $n2->id);
+    // Un `not->toContain` per id: con più argomenti passava se ne mancava anche uno solo (Fase 1-bis della .47).
+    expect($ids)->toContain($a->id)->not->toContain($b->id)->not->toContain($n1->id)->not->toContain($n2->id);
 });
 
 it('rilievo D1 della Fase 1-bis della beta.41 — la costituzione su una quota apre anche la nuda proprietà di chi costituisce: quella riga è entrata con il passaggio, e la forma SQL risponde come la collection', function () {
@@ -491,7 +492,7 @@ it('rilievo D1 della Fase 1-bis della beta.41 — la costituzione su una quota a
     }
     // Il merito: fino al 30/4 la nuda proprietà di Ugo non c'è ancora (prima del rilievo valeva «da sempre»).
     $fino = $r->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id), new \App\Support\PeriodoCompetenza('2026-01-01', '2026-04-30'))->pluck('id')->map(fn ($id) => (int) $id)->all();
-    expect($fino)->not->toContain($nuda, $usufrutto);
+    expect($fino)->not->toContain($nuda)->not->toContain($usufrutto);
 });
 
 it('D7: il predecessore conta solo sulla STESSA tipologia — un inquilino chiuso non rende decorrenza la data_inizio del proprietario', function () {

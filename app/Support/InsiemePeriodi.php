@@ -127,7 +127,6 @@ final class InsiemePeriodi implements Countable, IteratorAggregate
         return $parti === [] ? null : new self(...$parti);
     }
 
-    /** @return list<array{dal: string, al: string}> */
     /**
      * L'insieme senza i giorni del tratto dato; `null` se non ne resta nessuno (1.11.0-beta.34, Fase 1-bis R5). Serve a
      * ricostruire i giorni di una riga di ripiego, il cui tratto congelato è l'estensione di un insieme di buchi.
@@ -151,6 +150,29 @@ final class InsiemePeriodi implements Countable, IteratorAggregate
         return $parti === [] ? null : new self(...$parti);
     }
 
+    /**
+     * L'unione con un altro insieme: i tratti che si sovrappongono o si toccano diventano uno (1.11.0-beta.47). Serve al prospetto
+     * degli oneri accessori per contare i giorni di una voce che somma pezzi della stessa persona: gli stessi giorni non si contano
+     * due volte, e due tratti disgiunti sì.
+     */
+    public function unione(self $altro): self
+    {
+        $tutti = [...$this->periodi, ...$altro->periodi];
+        usort($tutti, fn (PeriodoCompetenza $a, PeriodoCompetenza $b) => $a->dal <=> $b->dal);
+        $fusi = [];
+        foreach ($tutti as $p) {
+            $n = count($fusi);
+            if ($n > 0 && $p->dal->lte($fusi[$n - 1]->al->addDay())) {
+                $fusi[$n - 1] = new PeriodoCompetenza($fusi[$n - 1]->dal, $p->al->gt($fusi[$n - 1]->al) ? $p->al : $fusi[$n - 1]->al);
+                continue;
+            }
+            $fusi[] = $p;
+        }
+
+        return new self(...$fusi);
+    }
+
+    /** @return list<array{dal: string, al: string}> */
     public function toArray(): array
     {
         return array_map(fn (PeriodoCompetenza $p) => $p->toArray(), $this->periodi);
