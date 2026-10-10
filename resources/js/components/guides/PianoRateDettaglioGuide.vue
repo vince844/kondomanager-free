@@ -100,8 +100,9 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 È <strong>bloccato</strong> in tre casi: se qualche rata è già a giornale; se su una
                                 sua quota c'è un incasso, un credito usato o un rimborso, anche su una rata in bozza; o se
-                                un <strong>passaggio di titolarità</strong> ha preso il piano nel suo conguaglio, perché
-                                ricalcolarlo rifarebbe per giorni ciò che il conguaglio ha già regolato. Il messaggio dice
+                                un <strong>passaggio di titolarità</strong> ha preso il piano nel suo conguaglio o lo tiene fermo
+                                (una successione con il conguaglio non scritto), perché ricalcolarlo rifarebbe per giorni ciò che
+                                il conguaglio ha già regolato, o la posizione che il passaggio ha lasciato com'era. Il messaggio dice
                                 quale, e la strada: per un passaggio, togliere prima le quote a giornale e i movimenti, se ce
                                 ne sono, poi annullarlo dallo storico della sua unità, registrarlo di nuovo e ricalcolare (con un passaggio registrato prima della versione 1.11.0-beta.42 l'ordine è un altro, e lo dice il messaggio). Al
                                 contrario, dopo una vendita o un usufrutto registrati quando il piano si ricalcolava ancora,
@@ -248,10 +249,11 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il conguaglio di un passaggio</h3>
                             <p>
                                 Le rate già emesse non si toccano quando un'unità cambia titolare: a sistemare i conti è una
-                                <strong>coppia di saldi a somma zero</strong> — credito a chi esce, debito a chi entra, per la
-                                parte di quota che spetta a chi entra in proporzione ai giorni. La coppia sta nei saldi della
-                                gestione con un lucchetto viola, e il prossimo piano la assorbe nella Rata 0 come qualunque
-                                saldo. Si annulla solo tutta insieme, dallo storico dell'unità, finché nessun piano l'ha assorbita.
+                                <strong>coppia di saldi a somma zero per ogni persona che entra</strong> — di solito credito a chi
+                                esce e debito a chi entra, per la parte di quota che spetta a chi entra in proporzione ai giorni, o il
+                                contrario. Le coppie stanno nei saldi della gestione con un lucchetto viola, e il prossimo piano le
+                                assorbe nella Rata 0 come qualunque saldo. Si annullano solo tutte insieme, dallo storico dell'unità,
+                                finché nessun piano le ha assorbite.
                             </p>
                         </section>
 

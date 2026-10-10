@@ -983,9 +983,10 @@ class CondominioDemoSeeder extends Seeder
                 'log_legale_sopravvenienza' => [
                     'nome_voce'           => 'Sostituzione vetrata androne',
                     // ⚠️ `conti.origine_decisionale` è un enum a **due** valori:
-                    // `gestione_corrente` e `delibera_assembleare`. Un terzo valore viene troncato
-                    // in silenzio da MySQL — scoperto al primo giro, perché il seeder passa dalla
-                    // porta vera e la porta ha detto di no.
+                    // `gestione_corrente` e `delibera_assembleare`. Un terzo valore MySQL lo rifiuta
+                    // («Data truncated for column», la connessione è in modalità `strict`) —
+                    // scoperto al primo giro, perché il seeder passa dalla porta vera e la porta
+                    // ha detto di no.
                     'origine_decisionale' => 'gestione_corrente',
                     'tipo_ripartizione'   => 'millesimale',
                     // ⚠️ **Obbligatoria quando la ripartizione è millesimale**:

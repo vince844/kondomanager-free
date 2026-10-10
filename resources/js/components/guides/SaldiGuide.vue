@@ -236,7 +236,7 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">La coppia di un passaggio di titolarità</h3>
             <p class="mb-3">
-              Quando registri un passaggio (vendita, locazione, usufrutto) e su quell'unità ci sono rate già emesse a chi esce, il programma scrive qui <strong>due righe a somma zero</strong>: un credito a chi esce e un debito uguale a chi entra, per la parte di quota che spetta a chi entra in proporzione ai giorni. Portano un lucchetto viola e la dicitura «conguaglio di un passaggio». Se il piano ha emesso a giornale solo alcune rate, la coppia copre anche quelle ancora in bozza: quel piano non si ricalcola più, e le sue bozze restano a chi esce.
+              Quando registri un passaggio (vendita, successione, locazione, usufrutto) e su quell'unità ci sono rate già emesse a chi esce, il programma scrive qui <strong>righe di segno opposto che sommano zero, una coppia per ogni persona che entra</strong>: di solito un credito a chi esce e un debito uguale a chi entra, per la parte di quota che spetta a chi entra in proporzione ai giorni, o il contrario se le rate in bozza che riceve valgono più dei suoi giorni. Portano un lucchetto viola e la dicitura «conguaglio di un passaggio». Se il piano ha emesso a giornale solo alcune rate, quel piano non si ricalcola più: nella vendita e nella successione le sue bozze che scadono dal giorno del passaggio passano a chi entra con lo stesso importo (restano a chi esce le altre, per esempio quelle già pagate), e la coppia regola la differenza.
             </p>
             <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
               <ul class="space-y-2">
@@ -246,7 +246,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Se le parti hanno regolato il conguaglio in un altro modo</strong> (nel prezzo, con un accordo scritto), si annulla dallo storico dell'unità — Titolari → Storico → «Passaggi registrati» — con una nota: le due righe spariscono insieme. Solo finché nessun piano le ha assorbite; dopo, se il piano non ha emesso nulla, si riporta in bozza e si elimina, altrimenti resta il saldo manuale di segno opposto.</span>
+                  <span><strong>Se le parti hanno regolato il conguaglio in un altro modo</strong> (nel prezzo, con un accordo scritto), si annulla dallo storico dell'unità — Titolari → Storico → «Passaggi registrati» — con una nota: le sue righe spariscono insieme. Solo finché nessun piano le ha assorbite; dopo, se il piano non ha emesso nulla, si riporta in bozza e si elimina, altrimenti resta il saldo manuale di segno opposto. Nella successione con l'arretrato a nome del defunto, quando il conguaglio ha righe da proporre, si sceglie alla registrazione se scriverlo: con «Non scriverlo» le righe non nascono affatto.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />

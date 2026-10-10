@@ -160,18 +160,32 @@ class PianoRate extends Model
      */
     public function ragioniInParole(bool $passaggiAParte = false): array
     {
+        // Rilievo R11 della Fase 1-bis della .48: una successione con il conguaglio non scritto non ha preso il piano in nessun conguaglio,
+        // lo tiene fermo (le bozze passate all'erede di riferimento). Con un passaggio così fra quelli da annullare, la frase vale per tutti.
+        $nonScritti = $this->passaggiNonScritti();
+
         return array_map(fn (string $r) => match ($r) {
             'scrittura' => 'ha già quote a giornale',
             'incasso' => 'ha un incasso su una sua quota',
             'credito' => 'ha un credito usato o rimborsato su una sua quota',
-            'conguaglio' => $passaggiAParte
+            'conguaglio' => match (true) {
+                $nonScritti && $passaggiAParte => count($this->passaggiDaAnnullare()) === 1 ? 'è tenuto fermo da questo passaggio' : 'è tenuto fermo da questi passaggi',
+                $nonScritti => 'è tenuto fermo ' . (count($c = $this->passaggiDaAnnullare()) === 1 ? ($c[0]->successione() ? 'dalla ' : 'dal passaggio ') : 'dai passaggi ') . self::elencoPassaggi($c),
+                default => $passaggiAParte
                 ? (count($this->passaggiDaAnnullare()) === 1 ? 'è stato preso nel conguaglio di questo passaggio' : 'è stato preso nel conguaglio di questi passaggi')
                 // Rilievo T7 del quarto giro: «nel conguaglio dell'estinzione dell'usufrutto di …», non «del passaggio estinzione»; lo
                 // stesso per la successione (1.11.0-beta.44).
                 : 'è stato preso nel conguaglio ' . (count($c = $this->passaggiDaAnnullare()) === 1
                     ? ($c[0]->tipo_passaggio === 'usufrutto' && $c[0]->tipologia === 'proprietario' ? 'dell\'' : ($c[0]->successione() ? 'della ' : 'del passaggio '))
                     : 'dei passaggi ') . self::elencoPassaggi($c),
+            },
         }, $this->ragioniDelFermo());
+    }
+
+    /** Decisione 72: fra i passaggi che tengono fermo il piano c'è una successione con il conguaglio non scritto (rilievo R11). */
+    private function passaggiNonScritti(): bool
+    {
+        return collect($this->passaggiDaAnnullare())->contains(fn (Subentro $p) => $p->conguaglioNonScritto());
     }
 
     /** «ha già quote a giornale» / «ha un incasso su una sua quota» / … : le ragioni di `ragioniDelFermo()` in una frase. Null se non è fermo. */
@@ -343,13 +357,21 @@ class PianoRate extends Model
         // uno resta il piano è preso e la nuova registrazione lo riprende. T2: niente «chi è entrato pagherebbe due volte», che non
         // è vero quando il conguaglio a chi entra non ha dato niente.
         $fuori = ($f = $this->fraseRegolatoFuori()) !== null ? ' ' . $f : '';
+        // Decisione 72 (1.11.0-beta.48): una successione con il conguaglio non scritto non ha regolato niente: ha lasciato la
+        // posizione com'era, e il ricalcolo la rifarebbe per giorni.
+        $nonScritti = count(array_filter($passaggi, fn (Subentro $p) => $p->conguaglioNonScritto()));
+        // Rilievo R11 della Fase 1-bis della .48: il passaggio «non scritto» non ha preso il piano in un conguaglio, lo tiene fermo.
         if (count($passaggi) === 1) {
-            return sprintf('Un passaggio di titolarità ha preso questo piano nel conguaglio: %s. %s rifarebbe per giorni ciò che quel conguaglio ha già regolato. Per farlo, annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall\'ultimo), registralo di nuovo e poi %s.%s',
-                self::elencoPassaggi($passaggi), $azione, $passo, $fuori);
+            return sprintf(($nonScritti === 1 ? 'Un passaggio di titolarità tiene fermo questo piano' : 'Un passaggio di titolarità ha preso questo piano nel conguaglio') . ': %s. %s rifarebbe per giorni %s. Per farlo, annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall\'ultimo), registralo di nuovo e poi %s.%s',
+                self::elencoPassaggi($passaggi), $azione, $nonScritti === 1 ? 'la posizione che quel passaggio ha lasciato com\'era' : 'ciò che quel conguaglio ha già regolato', $passo, $fuori);
         }
 
-        return sprintf('Più passaggi di titolarità hanno preso questo piano nel conguaglio: %s. %s rifarebbe per giorni ciò che quei conguagli hanno già regolato. Per farlo, annulla tutti quei passaggi, ognuno dallo storico della sua unità («Passaggi registrati», dall\'ultimo); quando sono annullati tutti, registrali di nuovo e poi %s.%s',
-            self::elencoPassaggi($passaggi), $azione, $passo, $fuori);
+        return sprintf(($nonScritti === 0 ? 'Più passaggi di titolarità hanno preso questo piano nel conguaglio' : 'Più passaggi di titolarità tengono fermo questo piano') . ': %s. %s rifarebbe per giorni %s. Per farlo, annulla tutti quei passaggi, ognuno dallo storico della sua unità («Passaggi registrati», dall\'ultimo); quando sono annullati tutti, registrali di nuovo e poi %s.%s',
+            self::elencoPassaggi($passaggi), $azione, match (true) {
+                $nonScritti === 0 => 'ciò che quei conguagli hanno già regolato',
+                $nonScritti === count($passaggi) => 'le posizioni che quei passaggi hanno lasciato com\'erano',
+                default => 'ciò che quei conguagli hanno già regolato e le posizioni lasciate com\'erano',
+            }, $passo, $fuori);
     }
 
     /**
@@ -360,20 +382,36 @@ class PianoRate extends Model
     public function fraseRegolatoFuori(): ?string
     {
         $parti = [];
+        $nonScritti = [];
         foreach ($this->passaggiDaAnnullare() as $p) {
             if (! $p->conguaglioRinunciato() && ! $p->conguaglioAnnullato()) {
                 continue;
             }
             if (is_array($p->registro['regolato_fuori'] ?? null)) {
-                if (($cifra = $p->regolatoFuoriInParole((int) $this->gestione_id)) !== null) {
-                    $parti[] = $cifra;
-                }
+                $cifra = $p->regolatoFuoriInParole((int) $this->gestione_id);
             } else {
-                $parti[] = 'il conguaglio del passaggio ' . self::elencoPassaggi([$p]);
+                $cifra = 'il conguaglio del passaggio ' . self::elencoPassaggi([$p]);
+            }
+            if ($cifra === null) {
+                continue;
+            }
+            // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti.
+            if ($p->conguaglioNonScritto() && ! $p->conguaglioAnnullato()) {
+                $nonScritti[] = $cifra;
+            } else {
+                $parti[] = $cifra;
             }
         }
 
-        return $parti === [] ? null : sprintf('Le parti hanno già regolato fra loro %s: ricalcolando, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.', implode('; ', $parti));
+        $frasi = [];
+        if ($parti !== []) {
+            $frasi[] = sprintf('Le parti hanno già regolato fra loro %s: ricalcolando, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.', implode('; ', $parti));
+        }
+        if ($nonScritti !== []) {
+            $frasi[] = sprintf('Il conguaglio della successione non è stato scritto (%s): ricalcolando, il condominio addebita a ciascuno i suoi giorni, e la posizione lasciata com\'era cambia.', implode('; ', $nonScritti));
+        }
+
+        return $frasi === [] ? null : implode(' ', $frasi);
     }
 
     /**

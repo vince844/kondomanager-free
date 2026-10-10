@@ -21,6 +21,8 @@ export interface ArretratoDelDefunto {
   resta_senza_conguaglio?: number;
   resta_senza_conguaglio_formattato?: string;
   frase_senza_conguaglio?: string | null;
+  /** 1.11.0-beta.48 (rilievo R1): con la scelta sul conguaglio da fare, le due cifre — senza conguaglio e se lo scrivi. */
+  frase_da_scegliere?: string | null;
   eredi: { anagrafica_id: number; nome: string; quota: number; importo: number; importo_formattato: string }[];
   totale: number;
   frase: string | null;
@@ -139,6 +141,8 @@ export interface AnteprimaPassaggioDati {
     /** Solo nella successione (1.11.0-beta.44). */
     arretrato?: ArretratoDelDefunto | null;
     frasi: string[];
+    /** 1.11.0-beta.48 (rilievo R2): quando il conguaglio della successione si sceglie, le frasi del calcolo, che valgono solo se si scrive. */
+    frasi_del_conguaglio?: string[];
   };
   obbligati: { frasi: string[]; copia_autentica_mancante: boolean };
   invarianti: { frasi: string[] };
@@ -233,6 +237,8 @@ export interface RigaStorico {
     documento_url: string | null;
     /** Compilata se l'amministratore ha rinunciato al conguaglio proposto. */
     nota_conguaglio: string | null;
+    /** Decisione 72 (1.11.0-beta.48): nella successione il conguaglio non è stato scritto, con o senza nota. */
+    conguaglio_non_scritto?: boolean;
   } | null;
 }
 
@@ -259,7 +265,7 @@ export interface PassaggioRegistrato {
   documento_url: string | null;
   pertinenze: string[];
   conguaglio: {
-    stato: 'proposto' | 'rinunciato' | 'annullato' | 'nessuno';
+    stato: 'proposto' | 'rinunciato' | 'non_scritto' | 'annullato' | 'nessuno';
     importo: number;
     importo_formattato: string;
     applicato: boolean;

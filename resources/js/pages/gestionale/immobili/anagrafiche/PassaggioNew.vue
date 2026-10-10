@@ -57,7 +57,7 @@ import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passagg
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
 import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
 import { partiUguali, quoteCheNonTornano } from '@/lib/gestionale/passaggi/quoteEredi';
-import { fraseArretrato, rinunciaEffettiva as laRinunciaVale } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
+import { conguaglioDaScegliere, conguaglioNonScritto, fraseArretrato, rinunciaEffettiva as laRinunciaVale, sceltaConguaglioRichiesta, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
 
 const props = defineProps<{
   condominio: Building;
@@ -145,6 +145,8 @@ const form = useForm({
   // S5: rinuncia alla coppia di conguaglio proposta, con la ragione (nessuna riga in saldi).
   rinuncia_conguaglio: false,
   nota_conguaglio: '',
+  // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato il conguaglio si sceglie, senza valore di partenza.
+  conguaglio: null as SceltaConguaglio | null,
   promemoria_scadenza: false,
   promemoria_giorni: 60 as number,
   ho_letto: false,
@@ -200,7 +202,7 @@ const erroreScrittura = computed(() => (form.errors as Record<string, string | u
 // finiscono qui, con il nome leggibile; `passaggio` ha già il suo riquadro.
 const ETICHETTE_ERRORI: Record<string, string> = {
   riga_uscente_id: 'chi esce', anagrafica_entrante_id: 'chi entra', decorrenza: 'la data del passaggio', quota: 'la quota',
-  tipologia: 'il ruolo', pertinenze: 'le pertinenze', nota_cancello: 'la nota del cancello', nota_conguaglio: 'la ragione della rinuncia al conguaglio',
+  tipologia: 'il ruolo', pertinenze: 'le pertinenze', nota_cancello: 'la nota del cancello', nota_conguaglio: 'la nota sul conguaglio', conguaglio: 'la scelta sul conguaglio',
   allegato_titolo: "l'allegato", promemoria_giorni: "l'anticipo del promemoria", copia_autentica_il: 'la data della copia autentica', nudi_che_tornano: 'chi torna proprietario pieno', nudi_per_quota: 'chi torna proprietario pieno', estinzione: 'chi torna proprietario pieno',
   eredi: 'gli eredi', arretrato: "l'arretrato del defunto", erede_di_riferimento: "l'erede di riferimento", accrescimento: "l'accrescimento", rinuncia_conguaglio: 'la rinuncia al conguaglio',
 };
@@ -404,7 +406,8 @@ const mancante = computed<string[]>(() => {
   const m: string[] = [];
   if (candidatiUscente.value.length > 0 && !form.riga_uscente_id && props.tipo !== 'inizio_locazione') m.push('chi esce');
   if (candidatiUscente.value.length === 0 && props.tipo !== 'inizio_locazione') m.push(props.tipo === 'fine_locazione' ? 'un inquilino in corso da cui uscire' : 'un titolare in corso da cui uscire');
-  if (!form.decorrenza) m.push('la data dell\'atto');
+  // P6 della 1.11.0-beta.48: nella successione la data è il giorno del decesso.
+  if (!form.decorrenza) m.push(eSuccessione.value ? 'il giorno del decesso' : 'la data dell\'atto');
   if (serveEntrante.value && !form.anagrafica_entrante_id) m.push('chi entra');
   // «Nessuno — l'unità resta sfitta» è una scelta esplicita (§6.6), non ciò che il modulo presume quando
   // nessuno è stato scelto: finché non si sceglie un inquilino o non si spunta la casella, si aspetta.
@@ -541,11 +544,23 @@ const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_
 // l'arretrato agli eredi, dove il server la rifiuta (rilievo X11 della Fase 1-bis della .44): `form.arretrato`, il campo che il
 // server controlla.
 const coppieProposte = computed(() => (anteprima.value?.rate.conguaglio?.coppie.length ?? 0) > 0);
-const rinunciaEffettiva = computed(() => laRinunciaVale(anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.rinuncia_conguaglio, eSuccessione.value ? form.arretrato : null));
-// Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione.
-const fraseDellArretrato = computed(() => fraseArretrato(anteprima.value?.rate.arretrato, rinunciaEffettiva.value));
-const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value || form.nota_conguaglio.trim().length >= 10);
-const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && cancelloSoddisfatto.value && rinunciaSoddisfatta.value && !form.processing);
+// Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si sceglie
+// al posto della casella, e «Non scriverlo» non chiede una nota (se c'è, almeno dieci caratteri, come sul server).
+const numeroCoppie = computed(() => anteprima.value?.rate.conguaglio?.coppie.length ?? 0);
+const sceltaRichiesta = computed(() => eSuccessione.value && sceltaConguaglioRichiesta(numeroCoppie.value, form.arretrato));
+const rinunciaEffettiva = computed(() => eSuccessione.value
+  ? conguaglioNonScritto(numeroCoppie.value, form.arretrato, form.conguaglio)
+  : laRinunciaVale(numeroCoppie.value, form.rinuncia_conguaglio, null));
+// Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione. Rilievo R1 della Fase 1-bis della .48: finché la
+// scelta sul conguaglio manca, le due cifre (senza conguaglio e se lo scrivi), non quella di «Scrivi».
+const fraseDellArretrato = computed(() => fraseArretrato(anteprima.value?.rate.arretrato, rinunciaEffettiva.value,
+  eSuccessione.value && conguaglioDaScegliere(numeroCoppie.value, form.arretrato, form.conguaglio)));
+const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value
+  || (eSuccessione.value ? (form.nota_conguaglio.trim() === '' || form.nota_conguaglio.trim().length >= 10) : form.nota_conguaglio.trim().length >= 10));
+const sceltaSoddisfatta = computed(() => !sceltaRichiesta.value || form.conguaglio !== null);
+// Il pannello si ferma solo perché il server chiede l'erede di riferimento: è una scelta, non un dato sbagliato (P6).
+const attesaScelta = computed(() => anteprimaBloccata.value && Object.keys(form.errors).length > 0 && Object.keys(form.errors).every(k => k === 'erede_di_riferimento'));
+const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && cancelloSoddisfatto.value && sceltaSoddisfatta.value && rinunciaSoddisfatta.value && !form.processing);
 
 function submit() {
   vociCambiate.value = null;
@@ -558,8 +573,9 @@ function submit() {
     promemoria_giorni: form.promemoria_scadenza ? form.promemoria_giorni : null,
     ho_letto: form.ho_letto,
     nota_cancello: form.nota_cancello,
-    rinuncia_conguaglio: rinunciaEffettiva.value,
-    nota_conguaglio: rinunciaEffettiva.value ? form.nota_conguaglio : null,
+    rinuncia_conguaglio: eSuccessione.value ? false : rinunciaEffettiva.value,
+    nota_conguaglio: rinunciaEffettiva.value && form.nota_conguaglio.trim() !== '' ? form.nota_conguaglio : null,
+    conguaglio: sceltaRichiesta.value ? form.conguaglio : null,
     // Rilievo S1: l'elenco delle voci che il pannello ha mostrato; se sul server è cambiato, la registrazione si ferma.
     ordinaria_impronta: ordinaria.value?.impronta ?? null,
   }))
@@ -630,7 +646,10 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Da quando',
-    description: 'Una data sola, quella dell\'atto. Il giorno prima lo calcola il programma. Nessun valore predefinito: la data decide chi paga.',
+    // Rilievo R7 della Fase 1-bis della .48: nella successione la data è il giorno del decesso, non quella di un atto.
+    description: eSuccessione.value
+      ? 'Una data sola, il giorno del decesso. Il giorno prima lo calcola il programma. Nessun valore predefinito: la data decide chi paga.'
+      : 'Una data sola, quella dell\'atto. Il giorno prima lo calcola il programma. Nessun valore predefinito: la data decide chi paga.',
     icon: CalendarDays,
     colorVariant: 'amber' as const,
   },
@@ -889,7 +908,9 @@ function urlTipo(t: TipoPassaggio) {
             <Card v-if="eSuccessione" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ legato ? 'Chi riceve l\'unità' : 'Gli eredi' }}</CardTitle>
-                <CardDescription>Chi ha accettato l'eredità, ogni erede con la quota dell'unità che riceve: insieme fanno la quota del defunto. Entrano nello stesso ruolo, in comunione. Un erede minorenne si registra come gli altri: verso il condominio paga, con i beni dell'erede, chi ne ha la rappresentanza.</CardDescription>
+                <!-- Verifica a video della .48: chi riceve l'unità per legato non è un erede. -->
+                <CardDescription v-if="legato">Chi riceve l'unità per legato, ognuno con la quota dell'unità che riceve: insieme fanno la quota del defunto. Entrano nello stesso ruolo, in comunione. Un minorenne si registra come gli altri: verso il condominio paga, con i suoi beni, chi ne ha la rappresentanza.</CardDescription>
+                <CardDescription v-else>Chi ha accettato l'eredità, ogni erede con la quota dell'unità che riceve: insieme fanno la quota del defunto. Entrano nello stesso ruolo, in comunione. Un erede minorenne si registra come gli altri: verso il condominio paga, con i beni dell'erede, chi ne ha la rappresentanza.</CardDescription>
               </CardHeader>
               <CardContent class="space-y-4">
                 <div v-for="(e, i) in form.eredi" :key="i" class="grid grid-cols-12 gap-3 items-start">
@@ -932,7 +953,7 @@ function urlTipo(t: TipoPassaggio) {
                 </div>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <button type="button" @click="aggiungiErede" class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">
-                    <Plus class="w-4 h-4" /> Aggiungi un erede
+                    <Plus class="w-4 h-4" /> {{ legato ? 'Aggiungi un legatario' : 'Aggiungi un erede' }}
                   </button>
                   <button v-if="form.eredi.length > 1 && uscente" type="button" @click="dividiInPartiUguali" class="text-[13px] font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200">
                     Dividi in parti uguali
@@ -946,9 +967,15 @@ function urlTipo(t: TipoPassaggio) {
 
                 <!-- L'erede di riferimento: solo quando il server lo chiede (bozze di un piano fermo, più eredi). -->
                 <div v-if="chiediRiferimento" class="rounded-lg border border-indigo-200 bg-indigo-50/60 dark:border-indigo-800/60 dark:bg-indigo-950/20 p-4 space-y-2">
-                  <Label for="erede_di_riferimento" class="block text-indigo-900 dark:text-indigo-200">Erede di riferimento</Label>
-                  <p class="text-[12px] text-indigo-900/80 dark:text-indigo-200/80 leading-snug">Il piano rate non si ricalcola più, e le sue rate non ancora emesse si intestano a una persona sola: a chi? Gli altri eredi, su questo piano, non hanno rate: pagano la loro parte con le righe di saldo, che entrano nel piano dopo. Il conguaglio toglie l'importo di quelle rate solo all'erede di riferimento.</p>
-                  <v-select id="erede_di_riferimento" class="w-full bg-white dark:bg-slate-950 text-sm" :options="erediScelti" v-model="form.erede_di_riferimento" :reduce="(a: PersonaDelCondominio) => a.id" label="nome" placeholder="Scegli l'erede…" />
+                  <!-- Rilievo R10 della Fase 1-bis della .48: chi riceve l'unità per legato non è un erede; con l'arretrato agli eredi il
+                       conguaglio si scrive sempre, e «se non lo scrivi» non c'è. -->
+                  <Label for="erede_di_riferimento" class="block text-indigo-900 dark:text-indigo-200">{{ legato ? 'Chi riceve le rate in bozza' : 'Erede di riferimento' }}</Label>
+                  <p class="text-[12px] text-indigo-900/80 dark:text-indigo-200/80 leading-snug">
+                    Il piano rate non si ricalcola più, e le sue rate non ancora emesse si intestano a una persona sola: a chi? {{ legato ? 'Gli altri' : 'Gli altri eredi' }}, su questo piano, non hanno rate:
+                    <template v-if="form.arretrato === 'eredi'">la loro parte va in righe di saldo con il conguaglio e l'arretrato, che entrano nel prossimo piano della stessa gestione, e il conguaglio toglie l'importo di quelle rate {{ legato ? 'a chi le riceve' : 'all\'erede di riferimento' }}.</template>
+                    <template v-else>se scrivi il conguaglio la loro parte va in righe di saldo, che entrano nel prossimo piano della stessa gestione, e il conguaglio toglie l'importo di quelle rate {{ legato ? 'a chi le riceve' : 'all\'erede di riferimento' }}; se non lo scrivi, le paga tutte {{ legato ? 'chi le riceve' : 'l\'erede di riferimento' }}.</template>
+                  </p>
+                  <v-select id="erede_di_riferimento" class="w-full bg-white dark:bg-slate-950 text-sm" :options="erediScelti" v-model="form.erede_di_riferimento" :reduce="(a: PersonaDelCondominio) => a.id" label="nome" :placeholder="legato ? 'Scegli chi le riceve…' : 'Scegli l\'erede…'" />
                   <InputError :message="(form.errors as Record<string, string>).erede_di_riferimento" />
                 </div>
 
@@ -978,7 +1005,7 @@ function urlTipo(t: TipoPassaggio) {
                   <span class="flex flex-col">
                     <!-- Decisione 69 (2): niente «la proposta della legge»: l'art. 754 c.c. vale con tutte e due le strade, e dove scrivere il debito è una scelta. -->
                     <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">Agli eredi, per quota</span>
-                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Righe di saldo sulla stessa gestione, di segno opposto: la posizione del defunto passa a ogni erede per la sua quota. Con il conguaglio ogni erede risponde della sua quota di tutto, e la posizione del defunto si chiude. Le rate in bozza dei piani che non si ricalcolano più, anche quelle di prima del decesso, vanno all'erede di riferimento, salvo quelle con un pagamento; la parte degli altri eredi si regola con le loro righe di saldo, che entrano nel piano dopo.</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Righe di saldo sulla stessa gestione, di segno opposto: la posizione del defunto passa a ogni erede per la sua quota. Con il conguaglio ogni erede risponde della sua quota di tutto, e la posizione del defunto si chiude. Le rate in bozza dei piani che non si ricalcolano più, anche quelle di prima del decesso, vanno all'erede di riferimento, salvo quelle con un pagamento; la parte degli altri eredi si regola con le loro righe di saldo, che entrano nel prossimo piano della stessa gestione.</span>
                   </span>
                 </label>
                 <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all"
@@ -1384,10 +1411,13 @@ function urlTipo(t: TipoPassaggio) {
             <div class="flex items-center justify-between gap-3 pt-2">
               <p class="text-[11px] text-slate-500 dark:text-slate-400 max-w-md leading-snug">
                 <template v-if="anteprimaErrore">Il pannello non ha risposto: finché non riesce a calcolare le conseguenze, il passaggio non si registra.</template>
+                <template v-else-if="attesaScelta">{{ legato ? 'Scegli chi riceve le rate in bozza' : 'Scegli l\'erede di riferimento' }}: il pannello riparte da lì.</template>
                 <template v-else-if="anteprimaBloccata">Un dato del modulo non è accettabile: correggi il campo segnato e il pannello riparte da lì.</template>
                 <template v-else-if="!completo">Compila il modulo: il pulsante si attiva quando il pannello «Cosa cambierà» ha calcolato le conseguenze.</template>
                 <template v-else-if="anteprimaInCorso || anteprimaSuperata">Il pannello sta rileggendo il modulo.</template>
                 <template v-else-if="cancelloRichiesto && !cancelloSoddisfatto">Spunta «Ho letto cosa cambierà» e scrivi la nota per attivare la registrazione.</template>
+                <template v-else-if="!sceltaSoddisfatta">Scegli se scrivere il conguaglio: nel pannello, «Scrivi il conguaglio» o «Non scriverlo».</template>
+                <template v-else-if="!rinunciaSoddisfatta && eSuccessione">La nota sul conguaglio è facoltativa, ma se la scrivi deve avere almeno dieci caratteri.</template>
                 <template v-else-if="!rinunciaSoddisfatta">Hai rinunciato al conguaglio proposto: scrivi perché nel pannello (almeno dieci caratteri).</template>
                 <template v-else>Niente viene scritto finché non confermi.</template>
               </p>
@@ -1404,8 +1434,10 @@ function urlTipo(t: TipoPassaggio) {
 
           <!-- ============================ Il pannello (colonna sticky) ============================ -->
           <AnteprimaPassaggio :dati="anteprima" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante" :tipo="props.tipo"
-            v-model:rinuncia="form.rinuncia_conguaglio" v-model:nota-rinuncia="form.nota_conguaglio" />
+            :attesa-scelta="attesaScelta"
+            v-model:rinuncia="form.rinuncia_conguaglio" v-model:nota-rinuncia="form.nota_conguaglio" v-model:scelta-conguaglio="form.conguaglio" />
           <InputError :message="form.errors.nota_conguaglio" class="mt-2" />
+          <InputError :message="(form.errors as Record<string, string>).conguaglio" class="mt-2" />
         </div>
       </ImmobileLayout>
     </div>

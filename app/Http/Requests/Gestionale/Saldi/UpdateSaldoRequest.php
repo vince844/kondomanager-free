@@ -65,7 +65,7 @@ class UpdateSaldoRequest extends FormRequest
                     return;
                 }
                 if ($saldo->subentro_id !== null) {
-                    $validator->errors()->add('saldo', 'Questa riga è una delle due del conguaglio di un passaggio di titolarità (credito a chi esce, debito a chi entra, somma zero): non si modifica da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie le due righe insieme, con la tua nota; se un piano le ha già emesse, resta il saldo manuale di segno opposto.');
+                    $validator->errors()->add('saldo', 'Questa riga fa parte del conguaglio di un passaggio di titolarità (righe di segno opposto che sommano zero, una coppia per ogni persona che entra): non si modifica da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota; se un piano le ha già emesse, resta il saldo manuale di segno opposto.');
                     return;
                 }
 

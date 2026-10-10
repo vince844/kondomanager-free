@@ -37,6 +37,38 @@
  *   caso — la data della delibera, la competenza dichiarata, il giorno dell'atto, il già versato di chi esce, che resta suo
  *   (decisione 17) —, mai da cifre scritte a mano. Senza la data della delibera, su un piano senza righe, niente si divide.
  *
+ * **1.11.0-beta.48, Fase 1-bis (rilievo denaro.R1 della revisione): la successione «non scritta» nella griglia.**
+ *
+ * Da dove nasce: nella successione con l'arretrato a nome del defunto il conguaglio non è più una casella con la nota ma la scelta
+ * «Scrivi» / «Non scriverlo» (decisioni 72 e 73), e «Non scriverlo» non ha la nota obbligatoria. La griglia della .48 non la provava
+ * mai: l'unico caso SUD con K=si era senza emissione, quindi senza coppie, e l'aiuto mandava `scrivi` anche con la rinuncia. Con le
+ * coppie e `non_scrivere` I3 e I4 diventavano rossi per una ragione che non era un difetto del denaro (il denaro si conserva, e
+ * l'annullamento rimette tutto): I3 leggeva la nota, che non c'è, e I4 riconosceva solo la frase «Le parti hanno già regolato fra loro».
+ *
+ * Cosa presidia: K=si nella forma SUD manda `conguaglio=non_scrivere`, senza casella e senza nota (vedi `ruCaso`), e la mirata
+ * SUD · O · E4 · K=si ha le coppie da non scrivere. I3 confronta la rinuncia con `Subentro::conguaglioRinunciato()`, che per un «non
+ * scritto» senza nota è vero, e con le coppie e l'arretrato a nome del defunto controlla la scelta nel registro (`conguaglio.scelta`:
+ * `non_scritto` con la rinuncia, `scritto` senza). I4 riconosce l'avviso «Il conguaglio della successione non è stato scritto …», presente
+ * se e solo se il passaggio è «non scritto» e il registro conserva una cifra (`regolatoFuoriInParole()`), lo esclude dagli «altri», e
+ * vuole «Le parti hanno già regolato fra loro» con la stessa condizione ma per i passaggi che non sono «non scritti».
+ *
+ * Le cifre della mirata, rifatte a mano (€ 1.200,00 in dodici rate da € 100,00, rate 1–4 a giornale, atto il 5 maggio, box): la quota
+ * pura di Ugo è di 109.091 centesimi sull'unità (9.091 × 11 + 9.090: 1.000 millesimi su 1.100) e di 10.909 sul box (910 + 909 × 11).
+ * Dal 5 maggio al 31 dicembre sono 241 giorni su 365 (27 + 30 + 31 + 31 + 30 + 31 + 30 + 31). Chi entra: 109.091 × 241 / 365 = 72.029,95
+ * → 72.030 sull'unità, 10.909 × 241 / 365 = 7.202,93 → 7.203 sul box (il centesimo che manca alla ripartizione va al resto maggiore, che è
+ * di chi entra). Le bozze che passano sono le rate 5–12, che scadono dal giorno dell'atto in poi: 9.091 × 7 + 9.090 = 72.727 sull'unità e
+ * 909 × 8 = 7.272 sul box. Le coppie: 72.030 − 72.727 = −697 e 7.203 − 7.272 = −69, cioè € 6,97 e € 0,69 a credito di Elsa, in tutto
+ * € 7,66: il «€ 7,66 sulla gestione Ordinaria 2026» dell'avviso. S=UN aggiunge un saldo intestato all'unità, che non entra nella
+ * quota pura.
+ *
+ * Verdi oggi, che devono restarlo: tutti gli altri casi SUD (con K=no la scelta è `scrivi` e il registro dice `scritto`), la vendita e
+ * le altre forme con la casella e la nota, la successione con l'arretrato agli eredi (K=si vietato, decisione 65).
+ *
+ * Cosa NON copre: «Non scriverlo» con la nota facoltativa (provata a mano mandando anche la nota: I3 e I4 restano verdi, la condizione è la
+ * stessa), il legato, il conguaglio scritto e poi annullato dallo storico, le frasi (le leggono `SuccessioneSceltaConguaglioTest` e
+ * `SuccessioneTestiTest`); il laboratorio, che non fa parte del repository, legge ancora la nota (`tests/Lab/Support/Invarianti.php` e
+ * `Usufrutto/InvariantiUsufrutto.php`) e va portato al passo che porta la .48 in `main`.
+ *
  * Le tre griglie:
  * - **A** — un passaggio sotto esame, l'ultimo della forma, con quelli che lo precedono già registrati: I1–I4, I6 e
  *   I6-bis. Le ricette le fa `ruGriglia()` a coppie sulle dimensioni di `invDimensioni()`, più le mirate di `invMirate()`,
@@ -244,7 +276,8 @@ function invRegola(string $tipo): array
  * - V, il ruolo della voce: P «Proprietario», U «Usufruttuario»;
  * - D, il giorno dell'atto: 1 (il primo del mese) o 5 (il giorno di una scadenza: le bozze dicono `<`, la nota `>=`);
  * - P, la pertinenza: nessuna, o un box con la sua quota nel piano, che segue ogni passaggio;
- * - K, la rinuncia al conguaglio;
+ * - K, la rinuncia al conguaglio: la casella con la nota, e nella successione con l'arretrato a nome del defunto (forma SUD) la scelta
+ *   «Non scriverlo», senza casella e senza nota (1.11.0-beta.48, decisione 73);
  * - G, la generazione del piano: a gennaio, prima di ogni passaggio, o dopo i passaggi che precedono quello sotto esame.
  *
  * @return array<string, list<string>>
@@ -311,6 +344,10 @@ function invMirate(): array
         ['ricetta' => ['F' => 'R', 'N' => 'OS', 'E' => 'E4', 'S' => 'T+'], 'esercita' => ['i6bis']],
         ['ricetta' => ['F' => 'R', 'N' => 'SD', 'E' => 'E4', 'K' => 'si'], 'esercita' => ['coppia']],
         ['ricetta' => ['F' => 'CPV', 'N' => 'O', 'E' => 'E4', 'K' => 'si'], 'esercita' => ['coppia']],
+        // 1.11.0-beta.48 (rilievo denaro.R1): la successione «non scritta» con le coppie — l'unico caso SUD con K=si della griglia a
+        // coppie era senza emissione, quindi senza coppie, e «Non scriverlo» non veniva mai provato. Con E4 le quattro rate emesse
+        // fanno la coppia, e K=si nella successione manda la scelta, non la casella (vedi `ruCaso`). Le cifre, a mano, nel docblock in testa.
+        ['ricetta' => ['F' => 'SUD', 'N' => 'O', 'E' => 'E4', 'K' => 'si'], 'esercita' => ['coppia']],
         // Il nudo proprietario che rivende, con il piano di gennaio (il caso tipico) e con il piano generato dopo la riserva e
         // la voce sul «Proprietario» (Coda 171): I6 guarda davvero le quote con `riservata_da`.
         ['ricetta' => ['F' => 'RV', 'N' => 'O', 'E' => 'E4', 'V' => 'P', 'G' => 'prima'], 'esercita' => ['riservate']],
@@ -622,8 +659,19 @@ function invAnteprimaScrittura(array $anteprima, array $foto0, array $foto1, Sub
     if ($attese !== $scritte) {
         $v[] = sprintf('I3 coppie [gestione, unità, esercizio, persona, importo]: proposte %s, scritte %s', json_encode($attese), json_encode($scritte));
     }
-    if (($padre->nota_conguaglio !== null) !== $rinuncia) {
-        $v[] = sprintf('I3 rinuncia: %s, e la nota del conguaglio %s', $rinuncia ? 'c\'era una coppia da rinunciare' : 'non c\'era niente da rinunciare', $padre->nota_conguaglio === null ? 'non è stata salvata' : 'è stata salvata');
+    // 1.11.0-beta.48 (decisioni 72 e 73, rilievo denaro.R1): la rinuncia si legge dal metodo, non dalla nota. Nella successione «Non
+    // scriverlo» non ha nota obbligatoria, e un passaggio «non scritto» senza nota è comunque rinunciato.
+    if ($padre->conguaglioRinunciato() !== $rinuncia) {
+        $v[] = sprintf('I3 rinuncia: %s, e il passaggio %s', $rinuncia ? 'c\'era una coppia da rinunciare' : 'non c\'era niente da rinunciare', $padre->conguaglioRinunciato() ? 'risulta rinunciato' : 'non risulta rinunciato');
+    }
+    // Nella successione con le coppie e l'arretrato a nome del defunto la scelta è nel registro, e dice quello che si è chiesto: «non
+    // scritto» con la rinuncia, «scritto» senza. Altrove (vendita, usufrutto, locazione) la chiave non c'è.
+    $scelta = $padre->registro['conguaglio']['scelta'] ?? null;
+    $sceltaAttesa = ($arretrato['scelta'] ?? null) === Subentro::ARRETRATO_AL_DEFUNTO && $proposte->isNotEmpty()
+        ? ($rinuncia ? Subentro::CONGUAGLIO_NON_SCRITTO : Subentro::CONGUAGLIO_SCRITTO)
+        : null;
+    if ($scelta !== $sceltaAttesa) {
+        $v[] = sprintf('I3 scelta del conguaglio nel registro: attesa %s, trovata %s', json_encode($sceltaAttesa), json_encode($scelta));
     }
 
     // Le bozze che passano: quelle del pannello sono quelle del registro, a chi entra per la quota pura, con la gemella del
@@ -970,12 +1018,20 @@ function invControllaCaso($test, array $r): array
         // se il passaggio le ha spostate. Ogni altro avviso, senza nessun piano nato dopo, resta un difetto.
         $sulleVoci = fn (string $a) => str_contains($a, 'all\'«Usufruttuario»');
         // Decisione 46 (1.11.0-beta.42): con la rinuncia l'annullamento dice ciò che le parti hanno regolato fra loro — se e solo se
-        // il registro ne conserva una cifra.
+        // il registro ne conserva una cifra. Decisione 72 (1.11.0-beta.48): se il conguaglio della successione non è stato scritto
+        // non c'è nessun accordo fra le parti, e l'avviso è un altro («Il conguaglio della successione non è stato scritto …»):
+        // l'uno o l'altro, secondo che il passaggio sia «non scritto» o no, e sempre con la cifra del registro (rilievo denaro.R1).
         $regolato = fn (string $a) => str_starts_with($a, 'Le parti hanno già regolato fra loro');
-        if (collect($voce['annullabile']['avvisi'])->contains($regolato) !== ($padre->fresh()->regolatoFuoriInParole() !== null)) {
+        $nonScritto = fn (string $a) => str_starts_with($a, 'Il conguaglio della successione non è stato scritto');
+        $fresco = $padre->fresh();
+        $conCifra = $fresco->regolatoFuoriInParole() !== null;
+        if (collect($voce['annullabile']['avvisi'])->contains($regolato) !== ($conCifra && ! $fresco->conguaglioNonScritto())) {
             $v[] = 'I4 (decisione 46) l\'avviso su ciò che le parti hanno regolato non corrisponde al registro del passaggio';
         }
-        $altri = array_values(array_filter($voce['annullabile']['avvisi'], fn (string $a) => ! $sulleVoci($a) && ! $regolato($a)));
+        if (collect($voce['annullabile']['avvisi'])->contains($nonScritto) !== ($conCifra && $fresco->conguaglioNonScritto())) {
+            $v[] = 'I4 (decisione 72) l\'avviso sul conguaglio della successione non scritto non corrisponde al registro del passaggio';
+        }
+        $altri = array_values(array_filter($voce['annullabile']['avvisi'], fn (string $a) => ! $sulleVoci($a) && ! $regolato($a) && ! $nonScritto($a)));
         if ($altri !== []) {
             $v[] = 'I4 avvisi senza nessun piano nato dopo il passaggio: ' . implode(' | ', $altri);
         }

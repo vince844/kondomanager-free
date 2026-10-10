@@ -69,7 +69,10 @@ function sucCorpo(array $s, array $eredi, string $decesso = '2026-05-01', string
         'arretrato' => $arretrato, 'erede_di_riferimento' => $riferimento?->id,
         'copia_autentica' => false, 'estremi_titolo' => 'dichiarazione di successione n. 123', 'pertinenze' => [],
         'ho_letto' => true, 'nota_cancello' => 'Dichiarazione di successione letta: gli eredi entrano dal decesso',
-    ], $extra);
+    ], $extra)
+        // 1.11.0-beta.48, decisione 72: con l'arretrato a nome del defunto il conguaglio si sceglie; questi test lo scrivono, come
+        // prima, salvo quelli che mandano la scelta o la casella di prima.
+        + ($arretrato === 'defunto' && ! array_key_exists('conguaglio', $extra) && empty($extra['rinuncia_conguaglio']) ? ['conguaglio' => 'scrivi'] : []);
 }
 
 /** Il saldo di ciascuno dalle righe dei passaggi (conguaglio e arretrato), in centesimi: nome → importo, senza gli zeri. */
@@ -650,7 +653,9 @@ it('rilievo X8: con l\'arretrato a nome del defunto e la rinuncia al conguaglio,
     expect($a['rate']['arretrato']['resta'])->toBe(59507)
         ->and($a['rate']['arretrato']['resta_senza_conguaglio'])->toBe(120000)
         ->and($a['rate']['arretrato']['frase_senza_conguaglio'])->toStartWith('€ 1.200,00 resta a nome di Venditore Ugo')
-        ->and(implode(' | ', $a['cancello']['informazioni']))->toContain('€ 595,07 con il conguaglio, € 1.200,00 se gli eredi vi rinunciano');
+        // 1.11.0-beta.48 (P6 e Fase 1-bis, R1): prima la cifra «senza conguaglio», e niente «rinunciano» né «come emesso».
+        ->and(implode(' | ', $a['cancello']['informazioni']))->toContain('€ 1.200,00 senza conguaglio, € 595,07 se scrivi il conguaglio');
+    expect(implode(' | ', $a['cancello']['informazioni']))->not->toContain('come emesso');
     $sub = ruRegistra($this, $s, $corpo);
     expect(sucSaldi($s))->toBe([])
         ->and($sub->fresh()->registro['arretrato']['resta'])->toBe(120000)
@@ -781,10 +786,10 @@ it('i testi della successione: il pannello, il messaggio e lo storico dicono gli
             'Dal 1 maggio 2026 Anna Erede (60 %) e Bruno Erede (40 %) rispondono dei contributi dell\'unità come comproprietari, divisi fra loro per quota.',
         ])
         ->and($a['obbligati']['copia_autentica_mancante'])->toBeFalse()
-        ->and(implode(' | ', $a['cancello']['motivi']))->toContain('l\'arretrato di Venditore Ugo al netto del conguaglio, € 394,52, passa agli eredi con righe di saldo sulla stessa gestione: € 236,71 a Anna Erede, € 157,81 a Bruno Erede');
+        ->and(implode(' | ', $a['cancello']['motivi']))->toContain('l\'arretrato di Venditore Ugo al netto del conguaglio, € 394,52, passa agli eredi con righe di saldo sulla stessa gestione: € 236,71 ad Anna Erede, € 157,81 a Bruno Erede');
     // Rilievo L2: la frase del calcolo non tratta gli eredi come una persona sola.
-    expect(implode(' ', $a['rate']['frasi']))->toContain('la parte degli eredi sull\'intero piano è € 805,48; € 800,00 sono già nelle rate in bozza che passano a Anna Erede')
-        ->not->toContain('debito € 5,48 a Anna Erede e Bruno Erede');
+    expect(implode(' ', $a['rate']['frasi']))->toContain('la parte degli eredi sull\'intero piano è € 805,48; € 800,00 sono già nelle rate in bozza che passano ad Anna Erede')
+        ->not->toContain('debito € 5,48 ad Anna Erede e Bruno Erede');
     $tutto = json_encode([$a['riferimento'], $a['anagrafica'], $a['rate']['frasi'], $a['obbligati'], $a['invarianti'], $a['cancello']], JSON_UNESCAPED_UNICODE);
     expect($tutto)->not->toContain('63 co. 4')->not->toContain('Cass.')->not->toContain('copia autentica');
 
@@ -802,7 +807,7 @@ it('i testi della successione: il pannello, il messaggio e lo storico dicono gli
         // La somma delle due coppie (− € 316,71 + € 322,19), senza l'arretrato.
         ->and($p['conguaglio']['importo'])->toBe(548)
         ->and($p['conguaglio']['annullabile'])->toBeFalse()
-        ->and($p['arretrato']['frase'])->toBe('Arretrato di Venditore Ugo passato agli eredi per quota (art. 754 c.c.), con righe nei saldi della gestione: € 236,71 a Anna Erede, € 157,81 a Bruno Erede.')
+        ->and($p['arretrato']['frase'])->toBe('Arretrato di Venditore Ugo passato agli eredi per quota (art. 754 c.c.), con righe nei saldi della gestione: € 236,71 ad Anna Erede, € 157,81 a Bruno Erede.')
         ->and($p['obbligati'][1])->toBe('Il programma ha intestato a ogni erede, con righe nei saldi della gestione, la sua parte della posizione di Venditore Ugo al netto del conguaglio.');
     $rigaBruno = collect($storico['righe'])->firstWhere('anagrafica.nome', 'Bruno Erede');
     expect($rigaBruno['subentro']['ruolo_nel_passaggio'])->toBe('entrante');
@@ -1430,7 +1435,10 @@ it('decisione 69 (2): con l\'arretrato agli eredi la rinuncia si rifiuta senza m
     $bruno = sucErede($s, 'Bruno Erede');
     $rinuncia = ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Gli eredi hanno regolato fra loro'];
     $frase = sucRifiuto($this, $s, sucCorpo($s, [[$anna, 60], [$bruno, 40]], riferimento: $anna, extra: $rinuncia), 'rinuncia_conguaglio');
-    expect($frase)->toContain('non si può rinunciare al solo conguaglio')->not->toContain('rinuncia al conguaglio')->not->toContain('regolato');
+    // 1.11.0-beta.48 (decisione 72): la strada per non scrivere il conguaglio è l'arretrato a nome del defunto.
+    expect($frase)->toContain('per non scrivere il conguaglio lascia l\'arretrato a nome del defunto');
+    expect($frase)->not->toContain('rinuncia al conguaglio');
+    expect($frase)->not->toContain('regolato');
 
     // Le quattro rate emesse a Ugo restano a suo nome, da pagare: il pannello lo dice prima, con la cifra.
     $a = ruAnteprima($this, $s, sucCorpo($s, [[$anna, 60], [$bruno, 40]], riferimento: $anna));
@@ -1453,7 +1461,7 @@ it('decisione 69 (2): con un solo erede e l\'arretrato agli eredi, il pannello a
     $anna = sucErede($s, 'Anna Erede');
     $bruno = sucErede($s, 'Bruno Erede');
     $a = ruAnteprima($this, $s, sucCorpo($s, [[$anna, 100]]));
-    expect(implode(' | ', $a['cancello']['avvisi']))->toContain('l\'arretrato va tutto a Anna Erede, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), di quel debito risponde ogni erede per la sua quota ereditaria (art. 754 c.c.): in quel caso lascialo a nome di Venditore Ugo');
+    expect(implode(' | ', $a['cancello']['avvisi']))->toContain('l\'arretrato va tutto ad Anna Erede, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), di quel debito risponde ogni erede per la sua quota ereditaria (art. 754 c.c.): in quel caso lascialo a nome di Venditore Ugo');
     // Con due eredi le quote sull'unità sono di solito quelle dell'eredità: nessun avviso.
     $b = ruAnteprima($this, $s, sucCorpo($s, [[$anna, 60], [$bruno, 40]], riferimento: $anna));
     expect(implode(' | ', $b['cancello']['avvisi']))->not->toContain('l\'unico erede registrato');

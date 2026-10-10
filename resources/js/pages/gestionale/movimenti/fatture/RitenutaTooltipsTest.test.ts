@@ -19,14 +19,15 @@
  * e da quando ce n'è una seconda prima nel markup avrebbe silenziosamente smesso di testare
  * quella giusta.
  *
- * ⚠️ **I test sotto NON sono la prova — sono solo la controricevuta.** Provato con una
- * controprova (rimosso `@click.prevent` da entrambe le icone, rieseguito il file): zero
- * test diventano rossi. jsdom non riproduce l'attivazione implicita label→control per un
- * elemento generico al suo interno — è un comportamento del motore di rendering nativo, non
- * del DOM che jsdom emula. La prova vera è stata fatta nel browser reale: checkbox spuntato,
- * click sull'icona alle sue coordinate esatte (ricalcolate da `getBoundingClientRect()`),
- * checkbox riletto — rimasto spuntato, per entrambe le icone. Se questo markup cambia,
- * quella verifica va rifatta a video: questo file da solo non se ne accorgerebbe.
+ * **Il componente si monta attaccato al documento (`attachTo`), ed è ciò che rende il test una
+ * guardia.** Fino alla 1.11.0-beta.47 si montava senza: l'elemento non era connesso, e jsdom,
+ * che pure gira la casella anche così, emette `input` e `change` solo per un elemento connesso.
+ * Il `@change` del componente non scattava, e la controprova (togliere `@click.prevent` da
+ * tutte e due le icone) lasciava verdi tutti i test: la colpa era stata data a jsdom, a torto.
+ * Attaccato al documento, la stessa controprova fa diventare rossi i test delle due icone
+ * (corretto nella 1.11.0-beta.48, rilettura del flusso). La prova nel browser vero del
+ * 05/09/2026 resta: checkbox spuntato, click sull'icona alle sue coordinate, checkbox rimasto
+ * spuntato.
  *
  * **2) La percentuale mostrata deve essere quella del regime del fornitore.** Aggiunta lo
  * stesso giorno su segnalazione diretta di Vincenzo: il badge «Ritenuta» diceva che il
@@ -35,8 +36,8 @@
  * non un valore riscritto a mano qui, che potrebbe disallinearsi da quella.
  */
 
-import { describe, expect, test, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { mount, type VueWrapper } from '@vue/test-utils';
 
 const axios = vi.hoisted(() => ({ get: vi.fn(async () => ({ data: [] })), post: vi.fn() }));
 vi.mock('axios', () => ({ default: axios }));
@@ -84,8 +85,15 @@ const FORNITORE_AUTONOMO_20 = {
 const CONTO = { id: 55, nome: 'Pulizia scale', residuo_budget: 500_000, gia_versato_cents: 0, ultimi_movimenti: [] };
 const BANCA = { id: 7, nome: 'Conto Corrente', saldo_attuale: 100_000 };
 
+// Montati attaccati al documento (vedi il commento in testa), quindi smontati dopo ogni test.
+const montati: VueWrapper[] = [];
+afterEach(() => {
+    montati.splice(0).forEach((w) => w.unmount());
+});
+
 function renderNew(fornitori = [FORNITORE_APPALTO_4]) {
-    return mount(FatturaRegisterNew, {
+    const w = mount(FatturaRegisterNew, {
+        attachTo: document.body,
         props: {
             condominio: { id: 28, nome: 'Condominio Demo KM' },
             condomini: [{ id: 28, nome: 'Condominio Demo KM' }],
@@ -104,10 +112,13 @@ function renderNew(fornitori = [FORNITORE_APPALTO_4]) {
         },
         global: { stubs: stubsComuni, mocks: { route: (n: string) => `/${n}` } },
     });
+    montati.push(w);
+    return w;
 }
 
 function renderEdit(fornitore = FORNITORE_APPALTO_4) {
-    return mount(FatturaRegisterEdit, {
+    const w = mount(FatturaRegisterEdit, {
+        attachTo: document.body,
         props: {
             condominio: { id: 28, nome: 'Condominio Demo KM' },
             condomini: [{ id: 28, nome: 'Condominio Demo KM' }],
@@ -143,6 +154,8 @@ function renderEdit(fornitore = FORNITORE_APPALTO_4) {
         },
         global: { stubs: stubsComuni, mocks: { route: (n: string) => `/${n}` } },
     });
+    montati.push(w);
+    return w;
 }
 
 describe('FatturaRegisterNew — i tooltip di ritenuta non toccano i checkbox', () => {

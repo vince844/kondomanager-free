@@ -1004,7 +1004,8 @@ it('cancello, controprova — con un motivo vero la spunta resta: nella rivendit
     [, $rivendita] = ruRivendita($s);
     $cancello = ruAnteprima($this, $s, $rivendita)['cancello'];
     expect($cancello['richiesto'])->toBeTrue()
-        ->and($cancello['motivi'])->toBe(['un piano rate già generato intesta quote a Acquirente Elsa: il destinatario cambierebbe'])
+        // «ad» dalla 1.11.0-beta.48 (decisione 73, 4).
+        ->and($cancello['motivi'])->toBe(['un piano rate già generato intesta quote ad Acquirente Elsa: il destinatario cambierebbe'])
         // Dalla .43 c'è anche l'avviso della decisione 58: con un piano che si ricalcola ancora, come si registra l'accordo «le rate
         // le paga chi vende» (senza spunta, e non fra le quote che il passaggio non tocca).
         ->and($cancello['informazioni'] ?? null)->toHaveCount(2)

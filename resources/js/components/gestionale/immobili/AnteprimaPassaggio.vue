@@ -24,7 +24,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type { AnteprimaPassaggioDati } from '@/types/gestionale/passaggi';
 import { competenzaDellaGestione, etichettaEsclusa } from '@/lib/gestionale/passaggi/competenzaGestione';
-import { fraseArretrato, rinunciaEffettiva } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
+import { conguaglioDaScegliere, conguaglioNonScritto, fraseArretrato, rinunciaEffettiva, sceltaConguaglioRichiesta, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
+import { aNome } from '@/lib/gestionale/passaggi/preposizione';
 
 const props = defineProps<{
   dati: AnteprimaPassaggioDati | null;
@@ -38,11 +39,15 @@ const props = defineProps<{
   mancante: string[];
   /** Il tipo di passaggio: la nota della rinuncia nomina venditore e acquirente solo nella vendita (Fase 5 della 1.11.0-beta.44). */
   tipo?: string;
+  /** Il server si è fermato solo per chiedere l'erede di riferimento: è una scelta, non un dato sbagliato (P6 della 1.11.0-beta.48). */
+  attesaScelta?: boolean;
 }>();
 
 /** La rinuncia alla coppia proposta e la sua ragione: stato del modulo, tenuto da chi ci sta sopra. */
 const rinuncia = defineModel<boolean>('rinuncia', { default: false });
 const notaRinuncia = defineModel<string>('notaRinuncia', { default: '' });
+/** Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato il conguaglio si sceglie, senza valore di partenza. */
+const sceltaConguaglio = defineModel<SceltaConguaglio | null>('sceltaConguaglio', { default: null });
 
 const pronto = computed(() => props.dati !== null && !props.errore);
 const conguaglio = computed(() => props.dati?.rate.conguaglio ?? null);
@@ -61,9 +66,27 @@ const rovesciato = computed(() => (conguaglio.value?.totale_entrante ?? 0) < 0);
 const arretrato = computed(() => props.dati?.rate.arretrato ?? null);
 const arretratoAgliEredi = computed(() => arretrato.value?.scelta === 'eredi');
 // Rilievo X11 della Fase 1-bis: con l'arretrato agli eredi la spunta rimasta da «a nome del defunto» non vale, e i badge non la seguono.
-const rinunciaVale = computed(() => rinunciaEffettiva(conguaglio.value?.coppie.length ?? 0, rinuncia.value, arretrato.value?.scelta));
+// Decisione 72: con l'arretrato a nome del defunto la casella non c'è più, c'è la scelta.
+const sceltaRichiesta = computed(() => sceltaConguaglioRichiesta(conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta));
+const nonScritto = computed(() => conguaglioNonScritto(conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
+const rinunciaVale = computed(() => arretrato.value ? nonScritto.value : rinunciaEffettiva(conguaglio.value?.coppie.length ?? 0, rinuncia.value, null));
+const notaSceltaTroppoCorta = computed(() => nonScritto.value && notaRinuncia.value.trim().length > 0 && notaRinuncia.value.trim().length < 10);
 // Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione.
-const fraseDellArretrato = computed(() => fraseArretrato(arretrato.value, rinunciaVale.value));
+// Rilievo R1 della Fase 1-bis della .48: finché la scelta manca il pannello non descrive l'esito di «Scrivi» (la preselezione che la
+// decisione 72 toglie): il riquadro dice «da scegliere» e la frase dell'arretrato ha le due cifre.
+const daScegliere = computed(() => conguaglioDaScegliere(conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
+const fraseDellArretrato = computed(() => fraseArretrato(arretrato.value, rinunciaVale.value, daScegliere.value));
+// Rilievo R2: le frasi del calcolo per quota valgono solo se il conguaglio si scrive — prima della scelta servono a scegliere, con
+// «Non scriverlo» sarebbero false (Bruno e Carla non hanno niente da pagare).
+const frasiDelConguaglio = computed(() => (nonScritto.value ? [] : props.dati?.rate.frasi_del_conguaglio ?? []));
+// Rilievo AMM-1 del giro sulle correzioni: «ad» davanti ai nomi con la A nella successione (decisione 73.4); fuori, come alla .47.
+const aChi = (nome: string) => (props.tipo === 'successione' ? aNome(nome) : `a ${nome}`);
+// Rilievo AMM-3: chi riceve l'unità per legato non è un erede.
+const legato = computed(() => arretrato.value?.legato === true);
+// Verifica a video della .48: «€ 531,45 a credito» non sta nella colonna stretta del pannello; «a credito» va a capo, sotto la cifra.
+const A_CREDITO = ' a credito';
+const aCredito = (f?: string) => f?.endsWith(A_CREDITO) === true;
+const cifra = (f?: string) => (f !== undefined && aCredito(f) ? f.slice(0, -A_CREDITO.length) : f ?? '');
 const GRADINI: Record<string, string> = { dichiarata: 'competenza dichiarata', delibera: 'data della delibera', capitolo: 'competenza del capitolo', gestione: 'periodo della gestione', esercizio: 'periodo dell\'esercizio' };
 
 /** Oltre otto righe la tabella si piega: si vede l'inizio, il totale e «mostra tutte». */
@@ -105,8 +128,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
     <div v-else-if="bloccato" class="p-5 flex items-start gap-3 text-sm text-amber-900 dark:text-amber-200 bg-amber-50/70 dark:bg-amber-900/10">
       <AlertTriangle class="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
       <div>
-        <p class="font-semibold">Un dato del modulo non è accettabile.</p>
-        <p class="text-xs mt-1 opacity-80">L'errore è segnato sotto il campo: correggilo e il pannello riparte da lì. Finché non riparte, il passaggio non si registra.</p>
+        <p class="font-semibold">{{ attesaScelta ? 'Manca una scelta nel modulo.' : 'Un dato del modulo non è accettabile.' }}</p>
+        <p class="text-xs mt-1 opacity-80">{{ attesaScelta ? 'Scegli nel modulo a chi passano le rate in bozza: il pannello riparte da lì. Finché non riparte, il passaggio non si registra.' : 'L\'errore è segnato sotto il campo: correggilo e il pannello riparte da lì. Finché non riparte, il passaggio non si registra.' }}</p>
       </div>
     </div>
 
@@ -140,11 +163,14 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
       <section class="p-5 space-y-3">
         <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <Receipt class="w-3.5 h-3.5" /> 2. Rate già emesse
-          <span v-if="conguaglio && haCoppie && !rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
+          <span v-if="conguaglio && haCoppie && daScegliere" class="ml-auto inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
+            <ArrowLeftRight class="w-3 h-3" /> conguaglio da scegliere
+          </span>
+          <span v-else-if="conguaglio && haCoppie && !rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
             <ArrowLeftRight class="w-3 h-3" /> conguaglio proposto
           </span>
           <span v-else-if="conguaglio && haCoppie && rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
-            regolato fra le parti
+            {{ nonScritto ? 'conguaglio non scritto' : 'regolato fra le parti' }}
           </span>
         </h4>
 
@@ -173,7 +199,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             <tfoot class="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
               <tr>
                 <td colspan="2" class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Emesso a {{ dati.rate.emesse[0].intestatario }}
+                  Emesso {{ aChi(dati.rate.emesse[0].intestatario) }}
                   <span class="font-normal normal-case tracking-normal text-slate-400"> · {{ dati.rate.emesse.length }} {{ dati.rate.emesse.length === 1 ? 'quota' : 'quote' }}</span>
                 </td>
                 <td class="px-3 py-1.5 text-right tabular-nums font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">{{ dati.rate.totale_emesso_formattato }}</td>
@@ -183,6 +209,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
         </div>
 
         <p v-for="(f, i) in dati.rate.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
+        <p v-for="(f, i) in frasiDelConguaglio" :key="`calcolo-${i}`" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
 
         <!-- Decisione 25 (B3a): le bozze che passano a chi entra — cambia l'intestatario, non l'importo. -->
         <div v-if="riassegnazione.length" class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -206,7 +233,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           </table>
         </div>
 
-        <!-- Il conguaglio proposto, per gestione: le due righe in saldi e la rinuncia motivata (S5). -->
+        <!-- Il conguaglio proposto, per gestione: le righe in saldi e la rinuncia motivata (S5), o la scelta della successione (.48). -->
         <div v-if="conguaglio" class="rounded-lg border border-indigo-200 dark:border-indigo-800/60 overflow-hidden">
           <table class="w-full table-fixed text-[12px]">
             <colgroup><col class="w-[44%]" /><col class="w-[30%]" /><col class="w-[26%]" /></colgroup>
@@ -232,7 +259,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <span v-if="g.bozze_passate > 0" class="block">intero piano {{ g.importo_lordo_formattato }} − bozze {{ g.bozze_passate_formattato }}</span>
                 </td>
                 <td class="px-3 py-1.5 text-right tabular-nums font-semibold whitespace-nowrap" :class="g.importo === 0 ? 'text-slate-400' : 'text-indigo-800 dark:text-indigo-300'">
-                  {{ g.importo === 0 ? '—' : g.importo_formattato }}
+                  {{ g.importo === 0 ? '—' : cifra(g.importo_formattato) }} <span v-if="g.importo !== 0 && aCredito(g.importo_formattato)" class="block text-[10px] font-normal">a credito</span>
                 </td>
               </tr>
             </tbody>
@@ -240,38 +267,65 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             <tbody v-if="piuEntranti" class="border-t border-indigo-200 dark:border-indigo-800/60 divide-y divide-indigo-100 dark:divide-indigo-900/40">
               <tr v-for="(c, i) in conguaglio.coppie" :key="`coppia-${i}`" class="align-top text-[11px]">
                 <td class="px-3 py-1 text-slate-500 dark:text-slate-400 truncate">{{ c.gestione ?? 'gestione' }}</td>
-                <td class="px-3 py-1 text-slate-700 dark:text-slate-300 truncate">a {{ c.entrante_nome }}</td>
-                <td class="px-3 py-1 text-right tabular-nums text-indigo-800 dark:text-indigo-300 whitespace-nowrap">{{ c.importo_formattato }}</td>
+                <td class="px-3 py-1 text-slate-700 dark:text-slate-300 truncate">{{ aChi(c.entrante_nome ?? 'chi entra') }}</td>
+                <td class="px-3 py-1 text-right tabular-nums text-indigo-800 dark:text-indigo-300 whitespace-nowrap">{{ cifra(c.importo_formattato) }} <span v-if="aCredito(c.importo_formattato)" class="block text-[10px]">a credito</span></td>
               </tr>
             </tbody>
             <tfoot class="bg-indigo-50/60 dark:bg-indigo-900/20 border-t border-indigo-200 dark:border-indigo-800/60">
               <tr>
                 <td colspan="2" class="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-800 dark:text-indigo-300">
                   <!-- Rilievo L2 della Fase 1-bis: con più eredi le coppie hanno segni diversi, e la somma non è il debito di qualcuno. -->
-                  <template v-if="haCoppie && arretrato && piuEntranti">Somma delle coppie degli eredi</template>
+                  <template v-if="haCoppie && nonScritto">Non scritte: nessuna riga in saldi</template>
+                  <template v-else-if="haCoppie && arretrato && piuEntranti">{{ legato ? 'Somma delle coppie' : 'Somma delle coppie degli eredi' }}</template>
                   <template v-else-if="haCoppie && rovesciato">Credito a chi entra, debito a chi esce</template>
                   <template v-else-if="haCoppie">Debito a chi entra, credito a chi esce</template>
                   <template v-else>Nessuna riga in saldi da questo passaggio</template>
                 </td>
-                <td class="px-3 py-1.5 text-right tabular-nums font-bold text-indigo-900 dark:text-indigo-200 whitespace-nowrap">{{ haCoppie ? conguaglio.totale_entrante_assoluto_formattato + (arretrato && piuEntranti && rovesciato ? ' a credito' : '') : '—' }}</td>
+                <td class="px-3 py-1.5 text-right tabular-nums font-bold text-indigo-900 dark:text-indigo-200 whitespace-nowrap">{{ haCoppie && !nonScritto ? conguaglio.totale_entrante_assoluto_formattato + (arretrato && piuEntranti && rovesciato ? ' a credito' : '') : '—' }}</td>
               </tr>
             </tfoot>
           </table>
 
           <p v-if="haCoppie && arretratoAgliEredi" class="px-3 py-2.5 border-t border-indigo-100 dark:border-indigo-900/40 text-[11px] text-slate-500 dark:text-slate-400 leading-snug bg-white dark:bg-slate-900">
-            Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: insieme danno a ogni erede la sua quota di tutto ciò che il defunto ha lasciato aperto, e non si può rinunciare al solo conguaglio.
+            Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: insieme danno a ogni erede la sua quota di tutto ciò che il defunto ha lasciato aperto. Per non scrivere il conguaglio, lascia l'arretrato a nome del defunto.
           </p>
+          <!-- Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, due voci e nessuna
+               già scelta, al posto della casella; «Non scriverlo» non dichiara un accordo e la nota è facoltativa. -->
+          <div v-else-if="haCoppie && sceltaRichiesta" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
+            <p class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">Il conguaglio si sceglie: il programma non lo sceglie al posto tuo.</p>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input type="radio" value="scrivi" v-model="sceltaConguaglio" class="mt-0.5 accent-indigo-600" />
+              <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
+                <span class="font-medium">Scrivi il conguaglio</span>
+                <span class="block text-[11px] text-slate-500">Le righe in saldi rimettono ognuno ai suoi giorni{{ piuEntranti ? (legato ? ', una coppia per ognuno' : ', una coppia per ogni erede') : '' }}.</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input type="radio" value="non_scrivere" v-model="sceltaConguaglio" class="mt-0.5 accent-indigo-600" />
+              <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
+                <span class="font-medium">Non scriverlo: la posizione resta com'è</span>
+                <span class="block text-[11px] text-slate-500">
+                  <!-- Rilievo AMM-5: passano le bozze dell'elenco, non tutte (quelle che scadono prima del decesso restano al defunto). -->
+                  <template v-if="riassegnazione.length">Nessuna riga in saldi: le rate emesse restano al defunto, e le rate in bozza dell'elenco qui sopra passano {{ piuEntranti ? (legato ? 'a quello di riferimento' : 'all\'erede di riferimento') : 'a chi entra' }}.</template>
+                  <template v-else>Nessuna riga in saldi: le rate restano a chi le ha.</template>
+                </span>
+              </span>
+            </label>
+            <p v-if="nonScritto && riassegnazione.length && piuEntranti" class="pl-6 text-[11px] text-slate-500 leading-snug">Le rate in bozza passano {{ legato ? 'a quello di riferimento' : 'all\'erede di riferimento' }}, che le paga tutte: senza righe in saldi, su questo piano {{ legato ? 'gli altri' : 'gli altri eredi' }} non hanno niente da pagare.</p>
+            <div v-if="nonScritto" class="pl-6 space-y-1">
+              <Input :model-value="notaRinuncia" @update:model-value="(v: string | number) => notaRinuncia = String(v)" placeholder="Nota (facoltativa): per esempio, gli eredi non chiedono il conguaglio" class="h-8 text-[12px]" />
+              <p v-if="notaSceltaTroppoCorta" class="text-[11px] text-amber-700 dark:text-amber-400">La nota è facoltativa, ma se la scrivi deve avere almeno 10 caratteri ({{ notaRinuncia.trim().length }}/10).</p>
+            </div>
+            <p v-if="sceltaConguaglio === null" class="text-[11px] text-amber-700 dark:text-amber-400">Scegli se scrivere il conguaglio.</p>
+          </div>
           <div v-else-if="haCoppie" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
             <label class="flex items-start gap-2 cursor-pointer">
               <Checkbox :model-value="rinuncia" @update:model-value="(v: boolean | 'indeterminate') => rinuncia = v === true" class="mt-0.5" />
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
-                <span class="font-medium">{{ arretrato ? 'Gli eredi hanno regolato il conguaglio fra loro' : 'Le parti hanno regolato il conguaglio fra loro' }}</span>: non scrivere le due righe in saldi.
-                <span v-if="arretrato" class="block text-[11px] text-slate-500">Vale fra loro, non verso il condominio. La ragione resta nel passaggio.</span>
-                <span v-else-if="!tipo || tipo === 'vendita'" class="block text-[11px] text-slate-500">Vale fra venditore e acquirente («salvo diverso accordo», Cass. 11199/2021), non verso il condominio. La ragione resta nel passaggio.</span>
+                <span class="font-medium">Le parti hanno regolato il conguaglio fra loro</span>: non scrivere le righe in saldi.
+                <span v-if="!tipo || tipo === 'vendita'" class="block text-[11px] text-slate-500">Vale fra venditore e acquirente («salvo diverso accordo», Cass. 11199/2021), non verso il condominio. La ragione resta nel passaggio.</span>
                 <span v-else class="block text-[11px] text-slate-500">Vale fra le parti, non verso il condominio. La ragione resta nel passaggio.</span>
-                <!-- Decisione 69 (2): con più eredi le bozze restano tutte all'erede di riferimento, e senza le righe gli altri non pagano la loro parte. -->
-                <span v-if="riassegnazione.length && arretrato && piuEntranti" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque all'erede di riferimento: senza le righe in saldi gli altri eredi, nel programma, non pagano la loro parte di quelle rate, e la paga tutta l'erede di riferimento.</span>
-                <span v-else-if="riassegnazione.length" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque a chi entra: la rinuncia riguarda solo le due righe in saldi.</span>
+                <span v-if="riassegnazione.length" class="block text-[11px] text-slate-500">Le rate in bozza passano comunque a chi entra: la rinuncia riguarda solo le righe in saldi.</span>
               </span>
             </label>
             <div v-if="rinuncia" class="pl-6 space-y-1">
@@ -290,8 +344,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           <table v-if="arretratoAgliEredi && arretrato.eredi.length" class="w-full table-fixed text-[12px]">
             <tbody class="divide-y divide-emerald-100 dark:divide-emerald-900/40">
               <tr v-for="e in arretrato.eredi" :key="e.anagrafica_id">
-                <td class="px-3 py-1 text-slate-700 dark:text-slate-300 truncate">a {{ e.nome }}</td>
-                <td class="px-3 py-1 text-right tabular-nums text-emerald-800 dark:text-emerald-300 whitespace-nowrap">{{ e.importo_formattato }}</td>
+                <td class="px-3 py-1 text-slate-700 dark:text-slate-300 truncate">{{ aChi(e.nome) }}</td>
+                <td class="px-3 py-1 text-right tabular-nums text-emerald-800 dark:text-emerald-300 whitespace-nowrap">{{ cifra(e.importo_formattato) }} <span v-if="aCredito(e.importo_formattato)" class="block text-[10px]">a credito</span></td>
               </tr>
             </tbody>
           </table>

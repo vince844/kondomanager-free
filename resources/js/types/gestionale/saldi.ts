@@ -19,7 +19,7 @@ export interface Saldo {
    * piano — vedi `SaldoInizialeController::esponiLucchettoCalcolato()`.
    */
   e_bloccato: boolean;
-  /** Una delle due righe del conguaglio di un passaggio di titolarità (B2): si tolgono insieme, mai una sola. */
+  /** Una riga del conguaglio di un passaggio di titolarità (B2), una coppia per ogni persona che entra: si tolgono insieme, mai una sola. */
   e_conguaglio?: boolean;
   /** 1.11.0-beta.44: una delle righe dell'arretrato di una successione (decisione 65). */
   e_arretrato?: boolean;

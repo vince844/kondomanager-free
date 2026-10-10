@@ -7,6 +7,100 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.48] - Il conguaglio si sceglie
+
+**Non tocca il database.** La successione come la fanno gli studi, prima parte. Nella successione e nel legato il conguaglio non
+è più proposto come scontato: si sceglie se scriverlo, senza niente di già scelto, e il pannello «Cosa cambierà» dice le due
+strade prima della scelta. Gli studi che ci hanno risposto lasciano la posizione del defunto com'è e conguagliano solo se gli eredi
+lo chiedono: ora il programma lo permette senza chiedere di dichiarare un accordo che non c'è. Le frasi della successione, dello
+storico e dei saldi sono state riscritte dove dicevano cose false o mettevano «a» davanti a un nome che comincia per «a». Ogni
+difetto di calcolo e ogni frase del server hanno prima avuto un test rosso; i testi del modulo, che non ha test di componente, sono
+stati guardati a video. Le correzioni sono passate da una revisione avversariale e da un giro sulle correzioni.
+
+**Cambi di comportamento, detti per primi.**
+- **Nella successione e nel legato il conguaglio si sceglie.** Con l'arretrato a nome del defunto e un conguaglio da proporre, il
+  pannello chiede «Scrivi il conguaglio» o «Non scriverlo: la posizione resta com'è», con nessuna delle due già scelta, e senza la
+  scelta il passaggio non si registra: anche una richiesta che arriva senza la scelta viene rifiutata. «Non scriverlo» non scrive
+  nessuna riga in saldi, e non chiede di dichiarare un accordo fra le parti: la nota è facoltativa (se la scrivi, almeno dieci
+  caratteri). Le rate emesse restano al defunto, e le rate in bozza che il pannello elenca passano all'erede di riferimento, che le
+  paga tutte. Con
+  l'arretrato agli eredi la scelta non c'è: conguaglio e arretrato fanno un conto solo. Dalla beta.44 la successione aveva una
+  casella come quella della vendita, «Gli eredi hanno regolato il conguaglio fra loro», con la nota obbligatoria: nella vendita,
+  nell'usufrutto e nella locazione la casella «Le parti hanno regolato il conguaglio fra loro» resta com'è. Un modulo rimasto aperto da prima dell'aggiornamento, che manda la casella con la nota,
+  vale «Non scriverlo».
+- **Prima della scelta il pannello dice tutte e due le strade.** Il riquadro dice «conguaglio da scegliere»; la cifra che resta a
+  nome del defunto è detta con tutte e due le cifre («€ 400,00 senza conguaglio, € 394,52 se scrivi il conguaglio»), anche nel
+  cancello, dove prima la seconda cifra era quella «se gli eredi vi rinunciano»; la frase d'apertura è al condizionale («Se scrivi il conguaglio, le sue righe fra … da una
+  parte e … dall'altra entrano nei saldi…»). Le frasi del calcolo per quota si vedono prima della scelta e con «Scrivi», e
+  spariscono con «Non scriverlo», dove sarebbero false. Prima il pannello mostrava sempre l'esito di «Scrivi», perché la casella
+  della rinuncia partiva spenta.
+- **Lo storico dice «Conguaglio non scritto»**, su ogni riga del passaggio, anche su quelle delle pertinenze, e il messaggio dopo
+  la registrazione dice «Nessuna riga in saldi: il conguaglio non è stato scritto». Con il conguaglio scritto, finché si può ancora
+  annullare, la scheda aggiunge,
+  sotto «annulla il conguaglio» (che dichiara un accordo fra le parti), la strada per quando il conguaglio non andava scritto:
+  annullare il passaggio e registrarlo di nuovo con «Non scriverlo».
+- **Le cifre di ciascun erede, non la loro somma.** Dove il conguaglio non è scritto, o è stato annullato, la frase del piano che
+  non si ricalcola più e l'avviso dell'annullamento del passaggio dicono la cifra di ciascuno: «€ 531,45 a credito di Anna,
+  € 268,47 a debito di Bruno e € 268,46 a debito di Carla». Prima dicevano «€ 5,48», la somma di cifre di segno diverso, che non è
+  la cifra di nessuno. Per le successioni con più eredi registrate prima di questa beta le cifre di ciascuno non sono state
+  conservate, e il messaggio lo dice. Un piano tenuto fermo da una successione con il conguaglio non scritto «è tenuto fermo» da
+  quel passaggio, non «preso nel conguaglio».
+- **Il legato non chiama «eredi» chi riceve l'unità**: nelle frasi del pannello (la parte di chi riceve l'unità, ognuno per la sua
+  quota, il rappresentante in assemblea), nelle voci della scelta, nel riquadro e nel rifiuto che chiedono chi riceve le rate in
+  bozza, nel modulo e nei messaggi.
+- **Nella successione del nudo proprietario l'ordinaria segue la voce.** Il pannello diceva sempre «la quota ordinaria resta
+  all'usufruttuario»; con una voce ordinaria sul «Proprietario» il piano la dava invece al nudo proprietario, e il conguaglio la
+  divide fra gli eredi. Ora, in quel caso, la frase dice che le voci sul «Proprietario» erano a carico del defunto e passano agli
+  eredi, e che la legge (art. 1004 c.c.) darebbe l'ordinaria all'usufruttuario: per i piani che verranno la si segue spostando la
+  voce su «Usufruttuario». Nessuna scelta nuova: chi paga l'ordinaria si decide sulla voce, come prima.
+
+**Correzioni.**
+- In un passaggio con chi esce (vendita, successione, usufrutto, fine locazione) una data che non è una data dava una pagina
+  d'errore; ora dà il messaggio del campo, e nella successione dice «Il giorno del decesso non è una data valida.». I messaggi della successione parlano del giorno del decesso, non della data dell'atto, anche quello del periodo chiuso,
+  e la scheda in testa al modulo lo dice.
+- Richieste costruite a mano, fuori dal modulo: la scelta mandata in un passaggio che non è una successione, o insieme alla
+  casella, si rifiuta sul campo; un elenco al posto del tipo, della forma, del ruolo o dell'arretrato dà il messaggio del campo
+  invece di una pagina d'errore (lo stesso per la scelta, che è nuova); un erede indicato con «vero» al posto del numero faceva erede l'anagrafica
+  numero 1, anche di un altro condominio, e gli eredi mandati come mappa invece che come elenco registravano la successione senza
+  conguaglio, con le bozze lasciate al defunto: ora si rifiutano.
+- «ad» davanti ai nomi che cominciano per «a» in tutte le frasi della successione — il pannello e le sue tabelle, il cancello, i
+  messaggi dopo la registrazione e dopo l'annullamento, lo storico — e, in ogni passaggio, nelle frasi del cancello sulle quote di
+  chi esce e nella fine di una locazione senza rate emesse a chi esce.
+- Le righe di saldo degli altri eredi entrano «nel prossimo piano della stessa gestione», non «nel piano dopo»: così dicono il
+  cancello, il riquadro dell'erede di riferimento, la scelta dell'arretrato e la guida.
+- Quando il pannello aspetta solo l'erede di riferimento non dice più «Un dato del modulo non è accettabile»: dice «Manca una scelta
+  nel modulo» e chiede di scegliere a chi passano le rate in bozza.
+- Le cifre a credito del conguaglio degli eredi si scrivono «€ 531,45 a credito», non «€ -531,45», nella tabella delle coppie e
+  nella riga per gestione; nella colonna stretta del pannello «a credito» va a capo sotto la cifra.
+- I messaggi dei saldi sulle righe del conguaglio e dell'arretrato dicevano «una delle due righe», dove le righe sono una coppia per
+  ogni erede; il sottotitolo del lucchetto dice «righe a somma zero», e il suo suggerimento «le sue righe si tolgono insieme».
+- Il riquadro dell'erede di riferimento dice cosa succede con il conguaglio e senza: diceva che gli altri eredi pagano la loro parte
+  con le righe di saldo, che con «Non scriverlo» non ci sono.
+
+**Le guide.** La guida del passaggio dice che il conguaglio si sceglie, cosa fanno le due voci, come si corregge, e cosa succede
+all'ordinaria quando muore il nudo proprietario. La guida dei saldi e quella del piano rate dicono che le coppie del conguaglio sono
+una per ogni persona che entra. La guida dei saldi dice anche che nella successione il conguaglio si sceglie alla registrazione, e che
+nella vendita e nella successione le bozze di un piano che non si ricalcola più passano a chi entra (diceva che restavano a chi
+esce). La guida del piano rate dice il piano tenuto fermo da una successione con il conguaglio non scritto.
+
+**Non ancora.** Le bozze divise fra gli eredi per quota, al posto dell'erede di riferimento, come scelta; l'erede di riferimento che
+resta tale negli anni dopo; il conguaglio fatto più tardi, quando gli eredi lo chiedono, che oggi si scrive a mano con un saldo
+manuale dal Wallet sulla stessa gestione.
+
+**Per chi sviluppa.** Nessuna migrazione: la scelta sta nel registro del passaggio (`registro.conguaglio.scelta`: `scritto` o
+`non_scritto`). Il campo `conguaglio` della richiesta (`scrivi` / `non_scrivere`), vietato fuori dalla successione e insieme a
+`rinuncia_conguaglio`; `RegistraSubentroAction` lo chiede con l'arretrato a nome del defunto e le coppie proposte.
+`Subentro::conguaglioNonScritto()`, e `conguaglioRinunciato()` che lo comprende; `regolato_fuori.persone` alla registrazione e
+all'annullamento del conguaglio. Nell'anteprima `rate.arretrato.frase_da_scegliere` e `rate.frasi_del_conguaglio`.
+`FrasiObbligati::conLaD()`; `PianoRate::passaggiNonScritti()`; `StoricoTitolarita` legge la scelta e la nota dal passaggio padre.
+`AnteprimaPassaggioRequest`: `list` per `eredi`, `numeric` per l'id dell'erede, i campi di testo letti come testo. Lato pagina
+`preposizione.ts` (`aNome`), `fraseArretrato(…, daScegliere)` e `conguaglioDaScegliere()`. Test nuovi:
+`SuccessioneSceltaConguaglioTest`, `SuccessioneTestiTest`, `SuccessionePannelloTest`, `SuccessioneRichiestaTest`,
+`SuccessioneGiroStrettoTest`, `AnteprimaPassaggio.test.ts`, `preposizione.test.ts`; la griglia degli invarianti prova «Non
+scriverlo» con le coppie. `RitenutaTooltipsTest` monta i moduli attaccati al documento e li smonta dopo ogni prova.
+
+---
+
 ## [1.11.0-beta.47] - Chi ha pagato cosa
 
 **Non tocca il database.** Una beta di correzioni sulla locazione e sulla successione. Il prospetto degli oneri accessori ora

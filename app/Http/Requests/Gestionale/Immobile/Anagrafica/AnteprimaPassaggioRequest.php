@@ -35,6 +35,9 @@ use Illuminate\Validation\Validator;
  */
 class AnteprimaPassaggioRequest extends FormRequest
 {
+    /** Decisione 72 (1.11.0-beta.48): con l'arretrato agli eredi il conguaglio non si sceglie. */
+    public const NON_SCRIVERE_CON_GLI_EREDI = 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: per non scrivere il conguaglio lascia l\'arretrato a nome del defunto.';
+
     public function authorize(): bool
     {
         return true;
@@ -42,7 +45,10 @@ class AnteprimaPassaggioRequest extends FormRequest
 
     public function rules(): array
     {
-        $tipo = (string) $this->input('tipo');
+        // Rilievo SIC-G1 del giro sulle correzioni della .48: un elenco al posto del tipo o del sottotipo ha il suo errore sul campo
+        // (la regola `in`); il cast su un array faceva una pagina 500 prima di arrivarci.
+        $tipo = is_string($t = $this->input('tipo')) ? $t : '';
+        $sottotipo = is_string($st = $this->input('sottotipo')) ? $st : '';
 
         return [
             'tipo' => ['required', Rule::in(Subentro::TIPI_PASSAGGIO)],
@@ -64,8 +70,11 @@ class AnteprimaPassaggioRequest extends FormRequest
                 'nullable', 'integer', Rule::exists('anagrafiche', 'id'),
             ],
             // Decisione 65 (1.11.0-beta.44): gli eredi, ciascuno con la quota che eredita; le quote sommano a quella del defunto.
-            'eredi' => [Rule::requiredIf(fn () => $tipo === 'successione'), Rule::prohibitedIf(fn () => $tipo !== 'successione'), 'nullable', 'array', 'min:1'],
-            'eredi.*.anagrafica_id' => ['required', 'integer', 'distinct', Rule::exists('anagrafiche', 'id')],
+            // Rilievi SIC-G3 e SIC-G2 del giro sulle correzioni della .48: gli eredi sono un elenco (una mappa lasciava il calcolo senza chi
+            // entra: niente conguaglio, le bozze al defunto), e l'id un numero (`integer` accetta `true` come 1, e i controlli della
+            // successione lo scartavano: l'anagrafica 1, anche di un altro condominio, diventava erede).
+            'eredi' => [Rule::requiredIf(fn () => $tipo === 'successione'), Rule::prohibitedIf(fn () => $tipo !== 'successione'), 'nullable', 'array', 'list', 'min:1'],
+            'eredi.*.anagrafica_id' => ['required', 'numeric', 'integer', 'distinct', Rule::exists('anagrafiche', 'id')],
             'eredi.*.quota' => ['required', 'numeric', 'gt:0', 'max:100'],
             // Decisione 65 (2): l'arretrato del defunto agli eredi per quota, o a suo nome. Nessun valore predefinito sul server, come la
             // scelta sull'ordinaria: un modulo che non la mostra si ferma qui invece di spostare denaro senza che nessuno l'abbia vista.
@@ -80,7 +89,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             'quota' => ['required', 'numeric', 'min:0', 'max:100'],
             // Il ruolo di chi entra è legato al tipo: una vendita non fa entrare un inquilino, una
             // locazione non fa entrare un proprietario. L'elenco per tipo sta in `ruoliEntrante()`.
-            'tipologia' => ['required', Rule::in(self::ruoliEntrante($tipo, (string) $this->input('sottotipo')))],
+            'tipologia' => ['required', Rule::in(self::ruoliEntrante($tipo, $sottotipo))],
             // Decisione 65: niente copia autentica nella successione (art. 63 co. 5 disp. att. c.c. riguarda chi cede, non chi muore).
             'copia_autentica' => ['required', 'boolean', 'declined_if:tipo,successione'],
             // S8-23: non si può aver ricevuto la copia autentica in un giorno futuro (stessa regola del PATCH dallo storico).
@@ -104,6 +113,11 @@ class AnteprimaPassaggioRequest extends FormRequest
             // S5: la rinuncia alla coppia di conguaglio proposta, con la ragione (Cass. 11199/2021 «salvo diverso accordo»).
             'rinuncia_conguaglio' => ['nullable', 'boolean'],
             'nota_conguaglio' => ['nullable', 'string', 'min:10', 'max:2000', 'required_if:rinuncia_conguaglio,true'],
+            // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato il conguaglio si sceglie, senza valore di partenza.
+            // Se la scelta serve lo sa solo l'azione, dopo l'anteprima (ci vogliono delle coppie): qui si controlla solo il valore.
+            // Rilievo SIC-2 della Fase 1-bis: fuori dalla successione la scelta non c'è, e un valore mandato a mano si rifiuta sul campo
+            // invece di essere ignorato in silenzio (la coppia si scriveva anche con «non_scrivere»).
+            'conguaglio' => ['nullable', Rule::prohibitedIf(fn () => $tipo !== 'successione'), Rule::in([Subentro::SCRIVI_IL_CONGUAGLIO, Subentro::NON_SCRIVERE_IL_CONGUAGLIO])],
             // Decisioni 31.5 e 31.6 (1.11.0-beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal
             // giorno dell'atto. È obbligatoria (rilievo A3 della Fase 1-bis): una scelta che sposta le voci della tabella
             // intera non ha un valore predefinito sul server — un modulo rimasto aperto da prima dell'aggiornamento, che
@@ -151,6 +165,11 @@ class AnteprimaPassaggioRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
+            // Fase 1 della 1.11.0-beta.48: una data già rifiutata dalla regola `date` non si legge — `CarbonImmutable::parse` su
+            // «pippo» faceva una pagina 500 al posto del messaggio. I controlli qui sotto aspettano una data vera.
+            if ($v->errors()->has('decorrenza')) {
+                return;
+            }
             /** @var Immobile $immobile */
             $immobile = $this->route('immobile');
             $uscente = $this->rigaUscente();
@@ -169,7 +188,9 @@ class AnteprimaPassaggioRequest extends FormRequest
                 $decorrenza = CarbonImmutable::parse($this->input('decorrenza'));
                 if ($uscente->data_inizio !== null && $decorrenza->lte($uscente->data_inizio)) {
                     $v->errors()->add('decorrenza', sprintf(
-                        'La data del passaggio deve essere successiva al %s, giorno in cui %s è diventato titolare.',
+                        // Rilievo R7 della Fase 1-bis della .48: nella successione la data è il giorno del decesso.
+                        $this->successione() ? 'Il giorno del decesso deve essere successivo al %s, giorno in cui %s è diventato titolare.'
+                            : 'La data del passaggio deve essere successiva al %s, giorno in cui %s è diventato titolare.',
                         $uscente->data_inizio->locale('it')->translatedFormat('j F Y'),
                         $uscente->anagrafica?->nome ?? 'chi esce',
                     ));
@@ -179,8 +200,9 @@ class AnteprimaPassaggioRequest extends FormRequest
                 // corso alla data dell'atto e si accetta (S5 lo chiuderà al giorno prima). Si rifiuta solo
                 // il periodo finito **prima** del giorno che precede la decorrenza.
                 if ($uscente->data_fine !== null && $uscente->data_fine->lt($decorrenza->subDay())) {
-                    $v->errors()->add('riga_uscente_id', sprintf(
-                        'Questo periodo si è chiuso il %s: il passaggio si registra da un titolare in corso alla data dell\'atto.',
+                    $v->errors()->add('riga_uscente_id', sprintf($this->successione()
+                        ? 'Questo periodo si è chiuso il %s: la successione si registra da un titolare in corso il giorno del decesso.'
+                        : 'Questo periodo si è chiuso il %s: il passaggio si registra da un titolare in corso alla data dell\'atto.',
                         $uscente->data_fine->locale('it')->translatedFormat('j F Y'),
                     ));
                 } elseif ($uscente->data_fine !== null && $uscente->passaggioCheLaChiude() !== null) {
@@ -195,7 +217,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             // Il ruolo di chi esce deve combaciare con il tipo: un inquilino non «vende», un proprietario
             // non «finisce una locazione». Il client filtra già l'elenco; il server non si fida del client.
             if ($uscente !== null) {
-                $ammessi = self::ruoliUscente((string) $this->input('tipo'), (string) $this->input('sottotipo'));
+                $ammessi = self::ruoliUscente($this->testo('tipo'), $this->testo('sottotipo'));
                 if ($ammessi !== [] && ! in_array($uscente->tipologia, $ammessi, true)) {
                     $v->errors()->add('riga_uscente_id', sprintf(
                         '%s è %s: per registrare la sua uscita usa «%s».',
@@ -215,9 +237,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             // pieno chi ha comprato solo la nuda (la quota ordinaria andrebbe a lui, art. 1004 c.c.). Piena → nuda è la
             // vendita con riserva d'usufrutto (beta.38, decisione 28): ha una sua via, ma si dichiara — il programma non
             // deduce che chi vende resta usufruttuario, e non sceglie al posto dell'amministratore.
-            $riserva = (string) $this->input('tipo') === 'vendita' && (string) $this->input('sottotipo') === Subentro::RISERVA_USUFRUTTO;
-            if ($uscente !== null && ! $riserva && (string) $this->input('tipo') === 'vendita' && $this->filled('tipologia')
-                && (string) $this->input('tipologia') !== (string) $uscente->tipologia
+            $riserva = $this->testo('tipo') === 'vendita' && $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
+            if ($uscente !== null && ! $riserva && $this->testo('tipo') === 'vendita' && $this->filled('tipologia')
+                && $this->testo('tipologia') !== (string) $uscente->tipologia
                 && in_array((string) $uscente->tipologia, ['proprietario', 'nuda_proprietario'], true)) {
                 $v->errors()->add('tipologia', (string) $uscente->tipologia === 'nuda_proprietario'
                     ? 'Chi vende la nuda proprietà la passa come nuda proprietà: chi compra entra come nudo proprietario. Se nello stesso atto si estingue anche l\'usufrutto, registra poi «Usufrutto → estinzione» con la stessa data.'
@@ -237,7 +259,7 @@ class AnteprimaPassaggioRequest extends FormRequest
                         mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? (string) $uscente->tipologia),
                     ));
                 }
-                if ($this->filled('tipologia') && (string) $this->input('tipologia') !== 'nuda_proprietario') {
+                if ($this->filled('tipologia') && $this->testo('tipologia') !== 'nuda_proprietario') {
                     $v->errors()->add('tipologia', 'Nella vendita o donazione con riserva d\'usufrutto chi compra entra come nudo proprietario: chi vende resta usufruttuario.');
                 }
                 if ($this->filled('quota') && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
@@ -254,9 +276,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             // propria quota — chi vende resta sulla parte che tiene — è la Coda 175. Non all'estinzione, dove la quota del modulo
             // non conta (tornano pieni i nudi, ciascuno alla sua), né alla fine di una locazione senza un nuovo inquilino; la
             // riserva ha la sua frase qui sopra.
-            $tipo = (string) $this->input('tipo');
+            $tipo = $this->testo('tipo');
             $portaLaQuota = ($tipo === 'vendita' && ! $riserva)
-                || ($tipo === 'usufrutto' && (string) $this->input('sottotipo') !== 'estinzione')
+                || ($tipo === 'usufrutto' && $this->testo('sottotipo') !== 'estinzione')
                 || ($tipo === 'fine_locazione' && $this->filled('anagrafica_entrante_id'))
                 // La successione porta tutta la quota del defunto, divisa fra gli eredi (decisione 65).
                 || $tipo === 'successione';
@@ -273,7 +295,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             // la stessa regola della registrazione), e le guardie che guardano proprio quei nudi. Qui, perché anteprima e registrazione
             // dicano lo stesso. Rilievo A5 della Fase 1-bis della .43: le guardie guardavano tutte le nude in corso, anche quella di
             // un'altra parte che resta sotto un altro usufrutto e non diventa piena, e rifiutavano l'estinzione con una frase falsa.
-            $estinzione = $tipo === 'usufrutto' && (string) $this->input('sottotipo') === 'estinzione';
+            $estinzione = $tipo === 'usufrutto' && $this->testo('sottotipo') === 'estinzione';
             if ($this->boolean('accrescimento') && ! $estinzione) {
                 $v->errors()->add('accrescimento', 'L\'accrescimento vale solo per l\'estinzione dell\'usufrutto.');
             }
@@ -462,7 +484,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             // ha una data di fine.
             if ($tipo === 'vendita' && $this->filled('anagrafica_entrante_id') && $this->filled('decorrenza') && $this->filled('tipologia')) {
                 foreach ($this->unitaDelPassaggio($immobile) as $unita) {
-                    $frase = $this->fraseRigaGiaChiusa($unita, (int) $this->input('anagrafica_entrante_id'), (string) $this->input('tipologia'),
+                    $frase = $this->fraseRigaGiaChiusa($unita, (int) $this->input('anagrafica_entrante_id'), $this->testo('tipologia'),
                         CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay(), 'la quota comprata');
                     if ($frase !== null) {
                         $v->errors()->add('anagrafica_entrante_id', ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
@@ -471,8 +493,8 @@ class AnteprimaPassaggioRequest extends FormRequest
             }
             // Giro sulle correzioni (G1): nella riserva l'usufrutto che chi vende tiene, nella costituzione la nuda che chi costituisce tiene,
             // si sommano a una riga che ha già; con una data di fine la registrazione si fermava solo alla fine, dopo un'anteprima pulita.
-            $riserva = $tipo === 'vendita' && (string) $this->input('sottotipo') === Subentro::RISERVA_USUFRUTTO;
-            $costituzione = $tipo === 'usufrutto' && (string) $this->input('sottotipo') === 'costituzione';
+            $riserva = $tipo === 'vendita' && $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
+            $costituzione = $tipo === 'usufrutto' && $this->testo('sottotipo') === 'costituzione';
             if ($uscente !== null && $this->filled('decorrenza') && ($riserva || $costituzione)) {
                 [$ruolo, $cheCosa] = $riserva ? ['usufruttuario', 'l\'usufrutto riservato'] : ['nuda_proprietario', 'la nuda proprietà che resta'];
                 foreach ($this->unitaDelPassaggio($immobile) as $unita) {
@@ -495,7 +517,7 @@ class AnteprimaPassaggioRequest extends FormRequest
                         '%s è già %s di questa unità: non può entrare anche come %s.',
                         $giaTitolare->anagrafica?->nome ?? 'Questa persona',
                         mb_strtolower(RuoloAnagraficaImmobile::tryFrom($giaTitolare->tipologia)?->label() ?? $giaTitolare->tipologia),
-                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $this->input('tipologia'))?->label() ?? (string) $this->input('tipologia')),
+                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom($this->testo('tipologia'))?->label() ?? $this->testo('tipologia')),
                     ));
                 }
             }
@@ -543,7 +565,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             'erede_di_riferimento' => 'l\'erede di riferimento',
             'riga_uscente_id' => 'chi esce',
             'anagrafica_entrante_id' => 'chi entra',
-            'decorrenza' => 'la data dell\'atto',
+            'decorrenza' => $this->successione() ? 'il giorno del decesso' : 'la data dell\'atto',
             'quota' => 'la quota',
             'tipologia' => 'il ruolo',
             'copia_autentica' => 'la copia autentica',
@@ -557,6 +579,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             'allegato_titolo' => 'l\'allegato',
             'promemoria_giorni' => 'l\'anticipo del promemoria',
             'nota_conguaglio' => 'la ragione della rinuncia al conguaglio',
+            'conguaglio' => 'la scelta sul conguaglio',
         ];
     }
 
@@ -570,7 +593,15 @@ class AnteprimaPassaggioRequest extends FormRequest
             'anagrafica_entrante_id.required' => 'Scegli chi entra, o crea una nuova anagrafica.',
             'riga_uscente_id.required' => 'Scegli chi esce fra i titolari in corso.',
             'riga_uscente_id.prohibited' => 'L\'inizio di una locazione non ha chi esce: togli la riga, o usa «Fine locazione» per cambiare inquilino.',
-            'decorrenza.required' => 'Scrivi la data dell\'atto: il programma non ne sceglie una al posto tuo.',
+            // P6 della 1.11.0-beta.48: nella successione la data è il giorno del decesso, non quella di un atto.
+            'decorrenza.required' => $this->successione()
+                ? 'Scrivi il giorno del decesso: il programma non ne sceglie uno al posto tuo.'
+                : 'Scrivi la data dell\'atto: il programma non ne sceglie una al posto tuo.',
+            // Rilievo R7 della Fase 1-bis: il messaggio della regola comincerebbe con l'attributo in minuscolo.
+            ...($this->successione() ? ['decorrenza.date' => 'Il giorno del decesso non è una data valida.'] : []),
+            // Rilievo AMM-6 del giro sulle correzioni: il messaggio della regola comincerebbe con l'attributo in minuscolo.
+            'conguaglio.in' => 'Scegli «Scrivi il conguaglio» o «Non scriverlo».',
+            'conguaglio.prohibited' => 'La scelta sul conguaglio c\'è solo nella successione e nel legato: negli altri passaggi si rinuncia alla coppia con la casella.',
             'allegato_titolo.mimes' => 'L\'allegato deve essere un PDF.',
             'promemoria_giorni.required_if' => 'Scegli con quanto anticipo vuoi il promemoria.',
             'nota_conguaglio.required_if' => 'Hai rinunciato al conguaglio proposto: scrivi perché (almeno dieci caratteri).',
@@ -646,7 +677,7 @@ class AnteprimaPassaggioRequest extends FormRequest
         if ($eredi->contains(fn ($e) => (int) $e['anagrafica_id'] === (int) $uscente->anagrafica_id)) {
             $v->errors()->add('eredi', sprintf('%s non può essere fra i suoi eredi.', $nome));
         }
-        if ($this->filled('tipologia') && (string) $this->input('tipologia') !== (string) $uscente->tipologia) {
+        if ($this->filled('tipologia') && $this->testo('tipologia') !== (string) $uscente->tipologia) {
             $v->errors()->add('tipologia', sprintf('Gli eredi entrano nel ruolo di %s: %s.', $nome,
                 mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? (string) $uscente->tipologia)));
         }
@@ -664,16 +695,24 @@ class AnteprimaPassaggioRequest extends FormRequest
         if ($eredi->every(fn ($e) => is_numeric($e['quota'] ?? null)) && $somma !== $delDefunto) {
             $v->errors()->add('eredi', sprintf('Le quote degli eredi sommano %s %%, quella di %s è %s %%: devono coincidere.', self::numero($somma / 100), $nome, self::numero($delDefunto / 100)));
         }
-        $legato = (string) $this->input('sottotipo') === Subentro::LEGATO;
-        if ($legato && (string) $this->input('arretrato') === Subentro::ARRETRATO_AGLI_EREDI) {
+        // Rilievo SIC-1 della Fase 1-bis della .48: confronti stretti, senza `(string)`. Un elenco al posto della scelta o dell'arretrato
+        // ha già l'errore della regola `in` sul suo campo; il cast su un array faceva una pagina 500.
+        $legato = $this->input('sottotipo') === Subentro::LEGATO;
+        $agliEredi = $this->input('arretrato') === Subentro::ARRETRATO_AGLI_EREDI;
+        if ($legato && $agliEredi) {
             $v->errors()->add('arretrato', 'Chi riceve l\'unità per legato non eredita il patrimonio: l\'arretrato del defunto resta a suo nome («eredi di …») e ne rispondono gli eredi.');
         }
         // Con l'arretrato agli eredi la coppia e l'arretrato sono un conto solo (l'arretrato è la posizione del defunto meno la coppia):
         // senza la coppia ciascun erede riceverebbe una cifra senza senso.
-        if ($this->boolean('rinuncia_conguaglio') && (string) $this->input('arretrato') === Subentro::ARRETRATO_AGLI_EREDI) {
-            // Decisione 69 (2): il messaggio non manda più alla rinuncia «se gli eredi hanno regolato fra loro». Con l'arretrato a nome
-            // del defunto la rinuncia lascia tutte le bozze all'erede di riferimento, e gli altri eredi non pagano niente nel programma.
-            $v->errors()->add('rinuncia_conguaglio', 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: insieme danno a ciascun erede la sua quota di tutto ciò che il defunto ha lasciato aperto, e non si può rinunciare al solo conguaglio.');
+        // Decisione 72 (1.11.0-beta.48): la strada per non scrivere il conguaglio è l'arretrato a nome del defunto. La casella di prima
+        // (`rinuncia_conguaglio`), che un modulo rimasto aperto può ancora mandare, ha lo stesso rifiuto sul suo campo.
+        $nonScrivere = $this->input('conguaglio') === Subentro::NON_SCRIVERE_IL_CONGUAGLIO;
+        // Rilievo SIC-2 della Fase 1-bis: la scelta e la casella di prima insieme si contraddicono, e la scelta vinceva in silenzio
+        // («scrivi» con la casella perdeva la nota). Il modulo nuovo manda la casella spenta.
+        if ($this->filled('conguaglio') && $this->boolean('rinuncia_conguaglio')) {
+            $v->errors()->add('conguaglio', 'La scelta sul conguaglio e la casella della rinuncia si contraddicono: ricarica la pagina e scegli «Scrivi il conguaglio» o «Non scriverlo».');
+        } elseif (($nonScrivere || $this->boolean('rinuncia_conguaglio')) && $agliEredi) {
+            $v->errors()->add($nonScrivere ? 'conguaglio' : 'rinuncia_conguaglio', self::NON_SCRIVERE_CON_GLI_EREDI);
         }
         if ($this->filled('erede_di_riferimento') && ! $eredi->contains(fn ($e) => (int) $e['anagrafica_id'] === (int) $this->input('erede_di_riferimento'))) {
             $v->errors()->add('erede_di_riferimento', 'L\'erede di riferimento deve essere uno degli eredi.');
@@ -779,6 +818,21 @@ class AnteprimaPassaggioRequest extends FormRequest
         return rtrim(rtrim(number_format($n, 2, ',', '.'), '0'), ',');
     }
 
+    /**
+     * Rilievo SIC-G1 del giro sulle correzioni della .48: un campo che il modulo manda come testo, letto come testo. Un elenco costruito
+     * a mano ha già l'errore della sua regola (`in`); il cast su un array faceva una pagina 500.
+     */
+    private function testo(string $campo): string
+    {
+        return is_string($valore = $this->input($campo)) ? $valore : '';
+    }
+
+    /** Il passaggio è una successione (o un legato): la data è il giorno del decesso (rilievo R7 della Fase 1-bis della .48). */
+    private function successione(): bool
+    {
+        return $this->input('tipo') === 'successione';
+    }
+
     /** La riga di chi esce, solo se è di questa unità: l'`id` arriva dal browser e non si fida di nessuno. */
     public function rigaUscente(): ?TitolaritaImmobile
     {
@@ -822,6 +876,10 @@ class AnteprimaPassaggioRequest extends FormRequest
             'promemoria_giorni' => isset($d['promemoria_giorni']) ? (int) $d['promemoria_giorni'] : null,
             'rinuncia_conguaglio' => (bool) ($d['rinuncia_conguaglio'] ?? false),
             'nota_conguaglio' => isset($d['nota_conguaglio']) && trim((string) $d['nota_conguaglio']) !== '' ? trim((string) $d['nota_conguaglio']) : null,
+            // Decisione 72: la scelta della successione e del legato; un modulo di prima che manda la casella vale «non scriverlo».
+            'conguaglio' => $d['tipo'] === 'successione'
+                ? ($d['conguaglio'] ?? (! empty($d['rinuncia_conguaglio']) ? Subentro::NON_SCRIVERE_IL_CONGUAGLIO : null))
+                : null,
             'ordinaria_dopo_atto' => $d['ordinaria_dopo_atto'] ?? null,
             'voci_da_tenere' => array_map('intval', $d['voci_da_tenere'] ?? []),
             'ordinaria_impronta' => $d['ordinaria_impronta'] ?? null,

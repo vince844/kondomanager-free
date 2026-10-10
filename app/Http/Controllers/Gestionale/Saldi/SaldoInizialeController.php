@@ -195,8 +195,8 @@ class SaldoInizialeController extends Controller
         );
 
         abort_if($saldo->subentro_id !== null, 403, $saldo->dellArretrato()
-            ? 'Questa riga è una delle due dell\'arretrato di una successione: il lucchetto lo mette e lo toglie il piano che la assorbe.'
-            : 'Questa riga è una delle due del conguaglio di un passaggio: il lucchetto lo mette e lo toglie il piano che la assorbe.');
+            ? 'Questa riga fa parte dell\'arretrato di una successione: il lucchetto lo mette e lo toglie il piano che la assorbe.'
+            : 'Questa riga fa parte del conguaglio di un passaggio: il lucchetto lo mette e lo toglie il piano che la assorbe.');
 
         abort_unless($saldo->is_applicato, 400, 'Questo saldo è già libero.');
 
@@ -236,7 +236,7 @@ class SaldoInizialeController extends Controller
         }
         if ($saldo->subentro_id !== null) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'saldo' => 'Questa riga è una delle due del conguaglio di un passaggio di titolarità (somma zero): non si cancella da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie le due righe insieme, con la tua nota.',
+                'saldo' => 'Questa riga fa parte del conguaglio di un passaggio di titolarità (righe di segno opposto che sommano zero): non si cancella da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota.',
             ]);
         }
 

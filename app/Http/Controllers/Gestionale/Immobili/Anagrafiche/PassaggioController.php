@@ -185,8 +185,10 @@ class PassaggioController extends Controller
                 // Decisione 25: con le bozze che passano la coppia può rovesciarsi, e allora il credito è di chi entra.
                 'conguaglio_rovesciato' => $esito['coppie'] > 0 && (int) ($anteprima['rate']['conguaglio']['totale_entrante'] ?? 0) < 0,
                 'riassegnate' => $esito['riassegnate'] ?? 0,
-                'riassegnate_frase' => $this->fraseRiassegnate($anteprima['rate']['conguaglio']['riassegnazione'] ?? [], $subentro->entrante?->nome),
+                'riassegnate_frase' => $this->fraseRiassegnate($anteprima['rate']['conguaglio']['riassegnazione'] ?? [], $subentro->entrante?->nome, $subentro->successione()),
                 'rinuncia'    => $subentro->conguaglioRinunciato(),
+                // Decisione 72 (1.11.0-beta.48): il conguaglio della successione non scritto, senza un accordo dichiarato.
+                'non_scritto' => $subentro->conguaglioNonScritto(),
                 'documento'   => $esito['documento']?->name,
                 'promemoria'  => $esito['promemoria']?->start_time?->toDateString(),
                 'avvisi'      => $esito['avvisi'],
@@ -207,7 +209,7 @@ class PassaggioController extends Controller
      *
      * @param list<array{piano: string, n: int}> $riassegnazione
      */
-    private function fraseRiassegnate(array $riassegnazione, ?string $entrante): ?string
+    private function fraseRiassegnate(array $riassegnazione, ?string $entrante, bool $successione = false): ?string
     {
         if ($riassegnazione === []) {
             return null;
@@ -216,7 +218,10 @@ class PassaggioController extends Controller
             ? sprintf('la rata in bozza del piano «%s» è passata', $r['piano'])
             : sprintf('le %d rate in bozza del piano «%s» sono passate', $r['n'], $r['piano']), $riassegnazione);
 
-        return ucfirst(implode('; ', $parti)) . sprintf(' a %s: è cambiato l\'intestatario, non l\'importo.', $entrante ?? 'chi entra');
+        // Rilievo R5 della Fase 1-bis della .48, decisione 73 (4): nella successione «ad» davanti ai nomi che cominciano per A.
+        $chi = $entrante ?? 'chi entra';
+
+        return ucfirst(implode('; ', $parti)) . sprintf(' %s: è cambiato l\'intestatario, non l\'importo.', $successione ? app(\App\Services\Subentro\FrasiObbligati::class)->a($chi) : 'a ' . $chi);
     }
 
     /**
@@ -304,7 +309,7 @@ class PassaggioController extends Controller
         }
 
         // Solo ciò che il passaggio aveva davvero toccato: una locazione non sposta rate, una rinuncia non scrive conguaglio.
-        $effetti = implode(' ', AnnullaPassaggioAction::frasiEffetti($esito, $esito['uscente'], $esito['entrante'], true));
+        $effetti = implode(' ', AnnullaPassaggioAction::frasiEffetti($esito, $esito['uscente'], $esito['entrante'], true, (bool) ($esito['successione'] ?? false)));
         if ($esito['avvisi'] === []) {
             return back()->with($this->flashSuccess('Passaggio annullato. ' . $effetti . ' Resta nello storico, con la tua nota.'));
         }
@@ -342,12 +347,12 @@ class PassaggioController extends Controller
             // 46: con la cifra che le parti hanno appena dichiarato di aver regolato fra loro.
             // Rilievo T1 del quarto giro: per un passaggio registrato prima della .42 l'ordine è l'altro (decisione 49). Revisione
             // della Fase 2: i movimenti per primi e registrati di nuovo per ultimi; e l'eccezione del piano preso solo per rate
-            // «emesse» senza scritture, che senza le due righe non è più fermo (`presoSoloInParteDa`).
+            // «emesse» senza scritture, che senza le righe del conguaglio non è più fermo (`presoSoloInParteDa`).
             'Conguaglio annullato: %d righe tolte dai saldi della gestione. La nota resta sul passaggio. Le quote non cambiano, e i piani che il passaggio ha preso restano com\'erano. %s Allora il condominio addebita a chi entra i suoi giorni, e l\'accordo fra le parti%s va rifatto.',
             $tolte,
             \App\Models\Gestionale\PianoRate::haIPianiPresi($subentro->fresh())
                 ? 'Se uno va ricalcolato: si tolgono prima le sue quote a giornale e i movimenti, se ne ha; poi si annulla il passaggio dallo storico dell\'unità (dall\'ultimo), lo si registra di nuovo e si ricalcola il piano; i movimenti tolti si registrano di nuovo dopo.'
-                : 'Se uno va ricalcolato: si annullano prima i movimenti sulle sue quote, se ne ha; poi le emissioni venute dopo il passaggio, se ce ne sono; poi il passaggio, dallo storico dell\'unità (dall\'ultimo); poi le altre emissioni; infine si registra di nuovo il passaggio, si ricalcola il piano e si registrano di nuovo i movimenti. Fa eccezione un piano che questo passaggio aveva preso solo per rate segnate «emesse» senza scritture: senza le due righe non è più fermo, e va ricalcolato (senza annullare il passaggio) prima di emettere o di registrare un incasso.',
+                : 'Se uno va ricalcolato: si annullano prima i movimenti sulle sue quote, se ne ha; poi le emissioni venute dopo il passaggio, se ce ne sono; poi il passaggio, dallo storico dell\'unità (dall\'ultimo); poi le altre emissioni; infine si registra di nuovo il passaggio, si ricalcola il piano e si registrano di nuovo i movimenti. Fa eccezione un piano che questo passaggio aveva preso solo per rate segnate «emesse» senza scritture: senza le righe del conguaglio non è più fermo, e va ricalcolato (senza annullare il passaggio) prima di emettere o di registrare un incasso.',
             ($cifra = $subentro->fresh()->regolatoFuoriInParole()) !== null ? ' (' . $cifra . ')' : '',
         )));
     }

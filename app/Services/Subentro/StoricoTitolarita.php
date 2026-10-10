@@ -41,7 +41,7 @@ class StoricoTitolarita
     {
         $oggi = DateHelper::oggiUtenteImmutable();
         $titolarita = $immobile->titolarita()->with('anagrafica')->get();
-        $subentri = Subentro::where('immobile_id', $immobile->id)->get();
+        $subentri = Subentro::with('padre')->where('immobile_id', $immobile->id)->get();
 
         $righe = $titolarita
             ->map(fn (TitolaritaImmobile $t) => $this->riga($t, $oggi, $subentri))
@@ -100,6 +100,8 @@ class StoricoTitolarita
                 $motivo = $s->annullato() ? null : $annullamento->motivoBlocco($s);
                 $conguaglio = match (true) {
                     $s->conguaglioAnnullato() => 'annullato',
+                    // Decisione 72 (1.11.0-beta.48): prima di «rinunciato», che è vero anche per lui.
+                    $s->conguaglioNonScritto() => 'non_scritto',
                     $s->conguaglioRinunciato() => 'rinunciato',
                     $saldi->isNotEmpty() => 'proposto',
                     default => 'nessuno',
@@ -211,7 +213,11 @@ class StoricoTitolarita
                 'ruolo_nel_passaggio' => $comeUscente ? 'uscente' : ($comeEntrante ? 'entrante' : 'continuazione'),
                 // S5: il PDF del titolo (solo per l'amministratore) e la rinuncia al conguaglio, se c'è stata.
                 'documento_url' => $subentro->documento_id ? route('admin.documenti.download', ['documento' => $subentro->documento_id]) : null,
-                'nota_conguaglio' => $subentro->nota_conguaglio,
+                // Rilievo R4 della Fase 1-bis della .48: la scelta e la nota stanno sul passaggio padre, e la riga di una pertinenza
+                // (il box) le legge da lì, come quella dell'unità.
+                'nota_conguaglio' => ($subentro->padre ?? $subentro)->nota_conguaglio,
+                // Decisione 72: «Non scriverlo» può non avere nota, e la scheda non può leggerlo dalla nota.
+                'conguaglio_non_scritto' => ($subentro->padre ?? $subentro)->conguaglioNonScritto(),
             ] : null,
         ];
     }
@@ -322,7 +328,10 @@ class StoricoTitolarita
                     : sprintf('Arretrato di %s agli eredi: %s', $defunto, $coda)];
             }
             $nomi = \App\Models\Anagrafica::whereIn('id', $perErede->keys())->pluck('nome', 'id');
-            $parti = $perErede->map(fn (int $c, $id) => sprintf($c < 0 ? '%s a credito di %s' : '%s a %s', \App\Helpers\MoneyHelper::format(abs($c)), $nomi[$id] ?? '?'))->values()->all();
+            // Rilievo R5 della Fase 1-bis della .48: «ad» davanti ai nomi che cominciano per A.
+            $parti = $perErede->map(fn (int $c, $id) => $c < 0
+                ? sprintf('%s a credito di %s', \App\Helpers\MoneyHelper::format(abs($c)), $nomi[$id] ?? '?')
+                : sprintf('%s %s', \App\Helpers\MoneyHelper::format($c), $this->frasiObbligati->a((string) ($nomi[$id] ?? '?'))))->values()->all();
 
             // Rilievo L1 della Fase 1-bis: un credito del defunto non è un debito dell'eredità, e non cita l'art. 754 c.c.
             return ['scelta' => $scelta, 'frase' => ($perErede->sum() < 0

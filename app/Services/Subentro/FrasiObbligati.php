@@ -479,4 +479,21 @@ final class FrasiObbligati
         return (preg_match('/^[aàAÀ]/u', $nome) === 1 ? 'ad ' : 'a ') . $nome;
     }
 
+    /**
+     * Rilievo R5 della Fase 1-bis della .48: in una frase già scritta con «a %s», «ad» davanti ai nomi dati — quelli per cui `a()` dà
+     * «ad». La «a» si corregge solo se è una parola a sé e il nome è intero («a Anna», non «Maria Anna» né «a Annalisa» se Annalisa non è
+     * fra i nomi).
+     *
+     * @param list<string> $nomi
+     */
+    public function conLaD(string $frase, array $nomi): string
+    {
+        if ($nomi === []) {
+            return $frase;
+        }
+        $alternative = implode('|', array_map(fn (string $n) => preg_quote($n, '/'), $nomi));
+
+        return (string) preg_replace('/(?<![\p{L}\p{N}\'’])a (?=(?:' . $alternative . ')(?![\p{L}\p{N}]))/u', 'ad ', $frase);
+    }
+
 }

@@ -505,7 +505,10 @@ function ruPassaggio(string $tipo, int $riga, ?Anagrafica $entrante, string $dal
         'estinzione' => ['tipo' => 'usufrutto', 'sottotipo' => 'estinzione', 'tipologia' => 'proprietario'],
         // 1.11.0-beta.44: chi entra è l'erede unico, con tutta la quota del defunto; l'arretrato agli eredi o a nome del defunto.
         'successione' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => $quota]], 'arretrato' => 'eredi'],
-        'successione_defunto' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => $quota]], 'arretrato' => 'defunto'],
+        'successione_defunto' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => $quota]], 'arretrato' => 'defunto',
+            // 1.11.0-beta.48, decisione 72: con l'arretrato a nome del defunto il conguaglio si sceglie; la griglia lo scrive, come prima
+            // (con K=si `ruCaso` lo sovrascrive con `non_scrivere`).
+            'conguaglio' => 'scrivi'],
         // Rilievo L19 della Fase 1-bis: due eredi al 60/40, chi entra è il riferimento; l'arretrato agli eredi.
         'successione_due' => ['tipo' => 'successione', 'tipologia' => 'proprietario', 'eredi' => [['anagrafica_id' => $entrante->id, 'quota' => round($quota * 0.6, 2)],
             ['anagrafica_id' => $secondoErede->id, 'quota' => round($quota - round($quota * 0.6, 2), 2)]], 'arretrato' => 'eredi', 'erede_di_riferimento' => $entrante->id],
@@ -555,7 +558,8 @@ function ruAggiungiStraordinaria(array $s, string $delibera, string $soggetto = 
  * modulo del passaggio sotto esame, che non registra.
  *
  * La ricetta ha le dimensioni di `invDimensioni()`: F forma, N natura e date, E emissione, S saldi, V ruolo della voce,
- * D giorno dell'atto, P pertinenza, K rinuncia al conguaglio, G generazione del piano (più `E = NP`, nessun piano generato,
+ * D giorno dell'atto, P pertinenza, K rinuncia al conguaglio (la casella con la nota; nella successione con l'arretrato a nome del
+ * defunto la scelta «Non scriverlo», senza casella e senza nota), G generazione del piano (più `E = NP`, nessun piano generato,
  * per la griglia del risolutore, e `prima_scadenza`, la prima rata della straordinaria, per le catene della griglia B:
  * di norma il 5 aprile). La forma ha i titolari censiti dal 2019 (`titolari`, il primo è sempre Ugo
  * proprietario: la sua riga è quella di `ruScenario`) e i passaggi (`passaggi`, l'ultimo è quello sotto esame), ciascuno
@@ -764,7 +768,15 @@ function ruCaso($test, array $r, array $forma, ?callable $primaDi = null): array
     $esame = $modulo($ultimo, $d);
     $esame['dati'] += ['ho_letto' => false, 'nota_cancello' => null];
     if (($r['K'] ?? 'no') === 'si') {
-        $esame['dati'] += ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro il conguaglio nel rogito'];
+        if ($ultimo[0] === 'successione_defunto') {
+            // 1.11.0-beta.48, decisione 73: nella successione la rinuncia non è la casella ma la scelta «Non scriverlo», senza
+            // casella e senza nota (la nota è facoltativa): il modulo nuovo non manda altro. `ruPassaggio` aveva già messo
+            // `scrivi`: qui si sovrascrive, perché con un'unione `+=` (come quella della casella, nell'altro ramo) vincerebbe il `scrivi`
+            // già messo.
+            $esame['dati']['conguaglio'] = 'non_scrivere';
+        } else {
+            $esame['dati'] += ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro il conguaglio nel rogito'];
+        }
     }
 
     return $caso + ['persone' => $persone, 'esame' => $esame, 'passaggi' => $passaggi];

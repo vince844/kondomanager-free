@@ -41,6 +41,15 @@ class Subentro extends Model
     public const ARRETRATO_AL_DEFUNTO = 'defunto';
 
     /**
+     * Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si
+     * sceglie, senza preselezione. Nella richiesta i valori sono `scrivi` e `non_scrivere`; nel registro, `scritto` e `non_scritto`.
+     */
+    public const SCRIVI_IL_CONGUAGLIO = 'scrivi';
+    public const NON_SCRIVERE_IL_CONGUAGLIO = 'non_scrivere';
+    public const CONGUAGLIO_SCRITTO = 'scritto';
+    public const CONGUAGLIO_NON_SCRITTO = 'non_scritto';
+
+    /**
      * La vendita con riserva d'usufrutto (1.11.0-beta.38, decisione 28): una **vendita** — per la solidarietà, la copia
      * autentica e la regola delle straordinarie — in cui chi vende resta sulla stessa quota come usufruttuario. Il
      * marcatore sta nel `registro` e non in una colonna: nessun passaggio registrato prima può esserlo, perché fino alla
@@ -365,8 +374,24 @@ class Subentro extends Model
     /** La coppia di conguaglio è stata tolta dopo la registrazione (S6), con data e ragione. */
     public function conguaglioAnnullato(): bool { return $this->conguaglio_annullato_il !== null; }
 
-    /** L'amministratore ha rinunciato alla coppia di conguaglio **alla registrazione**, con la sua ragione. */
-    public function conguaglioRinunciato(): bool { return $this->nota_conguaglio !== null && trim((string) $this->nota_conguaglio) !== ''; }
+    /**
+     * L'amministratore ha rinunciato alla coppia di conguaglio **alla registrazione**: con la sua ragione negli altri tipi, o con
+     * la scelta «Non scriverlo» nella successione e nel legato, dove la nota è facoltativa (decisioni 72 e 73, 1.11.0-beta.48).
+     */
+    public function conguaglioRinunciato(): bool
+    {
+        return ($this->nota_conguaglio !== null && trim((string) $this->nota_conguaglio) !== '') || $this->conguaglioNonScritto();
+    }
+
+    /**
+     * Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio è una
+     * scelta senza preselezione, e il registro la conserva (`conguaglio.scelta`). «Non scritto» non dichiara un accordo fra le
+     * parti: la posizione resta com'è. I passaggi di prima non hanno la chiave, e restano letti dalla nota.
+     */
+    public function conguaglioNonScritto(): bool
+    {
+        return ($this->registro['conguaglio']['scelta'] ?? null) === self::CONGUAGLIO_NON_SCRITTO;
+    }
 
     /**
      * Decisione 46 (1.11.0-beta.42, rilievo W2): ciò che le parti hanno regolato fra loro, con la rinuncia o con l'annullamento del
@@ -380,9 +405,36 @@ class Subentro extends Model
             return null;
         }
         $voci = collect($this->registro['regolato_fuori'] ?? [])
-            ->filter(fn (array $v) => (int) ($v['importo'] ?? 0) !== 0 && ($gestioneId === null || (int) ($v['gestione_id'] ?? 0) === $gestioneId));
+            ->filter(fn (array $v) => ($gestioneId === null || (int) ($v['gestione_id'] ?? 0) === $gestioneId)
+                && ((int) ($v['importo'] ?? 0) !== 0 || collect($v['persone'] ?? [])->contains(fn ($p) => (int) ($p['importo'] ?? 0) !== 0)));
 
-        return $voci->isEmpty() ? null : $voci->map(fn (array $v) => sprintf('%s sulla gestione %s', \App\Helpers\MoneyHelper::format(abs((int) $v['importo'])), $v['gestione'] ?? '?'))->join('; ');
+        // Rilievo R5 (denaro) della Fase 1-bis della .48: la successione con più eredi registrata prima della .48 non ha le cifre di
+        // ciascuno nel registro, e la loro somma non è la cifra di nessuno. Le coppie non sono state scritte: non si ricostruiscono, si dice.
+        $piuEredi = $this->successione() && count($this->eredi()) > 1;
+
+        return $voci->isEmpty() ? null : $voci->map(fn (array $v) => $piuEredi && ! array_key_exists('persone', $v)
+            // Rilievo denaro-g1 del giro sulle correzioni: chi riceve l'unità per legato non è un erede.
+            ? sprintf($this->legato() ? 'il conguaglio sulla gestione %s, ma le cifre di ciascuno non sono nel registro' : 'il conguaglio sulla gestione %s, ma le cifre per erede non sono nel registro', $v['gestione'] ?? '?')
+            : self::cifreInParole($v))->join('; ');
+    }
+
+    /**
+     * 1.11.0-beta.48 (P3): con più persone dalla parte di chi entra (gli eredi, i nudi che tornano pieni) la somma delle coppie ha
+     * segni diversi e non è la cifra di nessuno — «€ 5,48» era € 531,45 a credito di Anna e € 268,47 e € 268,46 a debito di Bruno
+     * e Carla —: si dice la cifra di ciascuno. Con una persona sola, la somma come prima.
+     *
+     * @param array{gestione?:string, importo?:int, persone?:list<array{nome?:string, importo?:int}>} $voce
+     */
+    private static function cifreInParole(array $voce): string
+    {
+        $persone = collect($voce['persone'] ?? [])->filter(fn ($p) => (int) ($p['importo'] ?? 0) !== 0)->values();
+        if ($persone->count() < 2) {
+            return sprintf('%s sulla gestione %s', \App\Helpers\MoneyHelper::format(abs((int) ($voce['importo'] ?? 0))), $voce['gestione'] ?? '?');
+        }
+        $pezzi = $persone->map(fn ($p) => sprintf('%s a %s di %s', \App\Helpers\MoneyHelper::format(abs((int) $p['importo'])), (int) $p['importo'] < 0 ? 'credito' : 'debito', $p['nome'] ?? '?'))->all();
+        $ultimo = array_pop($pezzi);
+
+        return sprintf('%s e %s sulla gestione %s', implode(', ', $pezzi), $ultimo, $voce['gestione'] ?? '?');
     }
 
     /**
@@ -395,7 +447,11 @@ class Subentro extends Model
     public static function regolatoFuoriDalleCoppie(iterable $coppie): array
     {
         return collect($coppie)->groupBy(fn ($c) => (int) $c['gestione_id'])
-            ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($g->first()['gestione'] ?? '?'), 'importo' => (int) $g->sum('importo')])
+            ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($g->first()['gestione'] ?? '?'), 'importo' => (int) $g->sum('importo'),
+                // P3 della 1.11.0-beta.48: la cifra di ciascuna persona che entra, per i messaggi con più eredi o più nudi.
+                'persone' => $g->groupBy(fn ($c) => (int) ($c['anagrafica_entrante_id'] ?? 0))
+                    ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($p->first()['entrante_nome'] ?? '?'), 'importo' => (int) $p->sum('importo')])
+                    ->values()->all()])
             ->values()->all();
     }
 }

@@ -1207,7 +1207,9 @@ it('W2, decisione 46 — con la rinuncia le parti hanno regolato fra loro € 5,
         'rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro il conguaglio al rogito',
     ])->assertSessionHasNoErrors()->assertRedirect();
     $p1 = \App\Models\Gestionale\Subentro::latest('id')->firstOrFail();
-    expect($p1->registro['regolato_fuori'])->toBe([['gestione_id' => (int) $s['g']->id, 'gestione' => 'Ordinaria 2026', 'importo' => 548]]);
+    // 1.11.0-beta.48 (P3): anche le persone, con la cifra di ciascuna; qui una sola, chi compra.
+    expect($p1->registro['regolato_fuori'])->toBe([['gestione_id' => (int) $s['g']->id, 'gestione' => 'Ordinaria 2026', 'importo' => 548,
+        'persone' => [['anagrafica_id' => (int) $s['a']->id, 'nome' => $s['a']->nome, 'importo' => 548]]]]);
     $this->travel(1)->days();
     spStornaIncassi($s);
 

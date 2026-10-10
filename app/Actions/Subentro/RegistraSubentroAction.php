@@ -116,7 +116,17 @@ final class RegistraSubentroAction
 
                 // La rinuncia al conguaglio vale solo se il pannello ha proposto una coppia (verifica S5, R13).
                 $coppieProposte = ! empty($anteprima['rate']['conguaglio']['coppie']);
-                $rinuncia = $coppieProposte && ! empty($dati['rinuncia_conguaglio']);
+                // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio
+                // si sceglie, senza preselezione, e «Non scriverlo» non chiede una nota. Se servono le coppie lo dice solo l'anteprima:
+                // la scelta si pretende qui. Con l'arretrato agli eredi coppia e arretrato fanno un conto solo, e la scelta non c'è.
+                $sceltaDelConguaglio = $tipo === 'successione' && $coppieProposte
+                    && ($anteprima['rate']['arretrato']['scelta'] ?? null) === Subentro::ARRETRATO_AL_DEFUNTO;
+                if ($sceltaDelConguaglio && ($dati['conguaglio'] ?? null) === null) {
+                    throw ValidationException::withMessages(['conguaglio' => 'Scegli se scrivere il conguaglio: il programma non lo sceglie al posto tuo.']);
+                }
+                $rinuncia = $coppieProposte && ($sceltaDelConguaglio
+                    ? $dati['conguaglio'] === Subentro::NON_SCRIVERE_IL_CONGUAGLIO
+                    : $tipo !== 'successione' && ! empty($dati['rinuncia_conguaglio']));
 
                 // 3. Le righe della pivot, unità principale.
                 $entrante = $dati['entrante'] ?? null;
@@ -171,7 +181,9 @@ final class RegistraSubentroAction
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
                     'registro'               => $this->registro($tipo, $uscente, $entrante, $sottotipo, (int) $immobile->id) + $registroOrdinaria
-                        // Decisione 46: con la rinuncia, ciò che le parti hanno regolato fra loro, per gestione.
+                        // Decisione 72: la scelta della successione e del legato.
+                        + ($sceltaDelConguaglio ? ['conguaglio' => ['scelta' => $rinuncia ? Subentro::CONGUAGLIO_NON_SCRITTO : Subentro::CONGUAGLIO_SCRITTO]] : [])
+                        // Decisione 46: con la rinuncia, ciò che le parti hanno regolato fra loro, per gestione (e, dalla .48, per persona).
                         + ($rinuncia ? ['regolato_fuori' => Subentro::regolatoFuoriDalleCoppie($anteprima['rate']['conguaglio']['coppie'])] : []),
                 ]);
 

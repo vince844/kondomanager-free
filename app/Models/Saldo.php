@@ -63,7 +63,7 @@ class Saldo extends Model
     }
 
     /** Perché una riga dell'arretrato non si modifica né si cancella da sola: il Wallet lo dice con queste parole. */
-    public const FRASE_ARRETRATO = 'Questa riga è una delle due dell\'arretrato di una successione (la posizione del defunto passata a un erede: due righe di segno opposto, somma zero): non si modifica e non si cancella da sola. Si toglie annullando il passaggio dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
+    public const FRASE_ARRETRATO = 'Questa riga fa parte dell\'arretrato di una successione (la posizione del defunto passata agli eredi: per ogni erede due righe di segno opposto, una al defunto e una all\'erede, che sommano zero): non si modifica e non si cancella da sola. Si toglie annullando il passaggio dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
 
     /**
      * Decisione 67 (3): perché un saldo da cui una successione ha calcolato l'arretrato agli eredi non si modifica né si cancella;
@@ -87,7 +87,7 @@ class Saldo extends Model
      * Rilievo L1 della Fase 1-bis: una gamba del conguaglio di una successione con l'arretrato agli eredi. Conguaglio e arretrato fanno un
      * conto solo, e l'annullamento del solo conguaglio si rifiuta: la strada è annullare il passaggio.
      */
-    public const FRASE_CONGUAGLIO_CON_ARRETRATO = 'Questa riga è una delle due del conguaglio di una successione con l\'arretrato agli eredi: conguaglio e arretrato fanno un conto solo, e la riga non si modifica né si cancella da sola. Si toglie annullando la successione dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
+    public const FRASE_CONGUAGLIO_CON_ARRETRATO = 'Questa riga fa parte del conguaglio di una successione con l\'arretrato agli eredi: conguaglio e arretrato fanno un conto solo, e la riga non si modifica né si cancella da sola. Si toglie annullando la successione dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
 
     /** Una delle righe dell'arretrato di una successione (1.11.0-beta.44, decisione 65), non del conguaglio. */
     public function dellArretrato(): bool

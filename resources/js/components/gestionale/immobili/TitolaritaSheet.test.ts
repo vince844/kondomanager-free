@@ -186,3 +186,246 @@ describe('TitolaritaSheet — chi paga l\'ordinaria dal giorno dell\'atto (beta.
         expect(monta(passaggio()).text()).not.toContain('Ordinaria:');
     });
 });
+
+/**
+ * 1.11.0-beta.48 — «Conguaglio non scritto» nello storico di una successione (P2 del progetto, Fase 1 di
+ * `docs/piano_esecutivo_beta48.md`).
+ *
+ * Nasce dalla decisione 72/73: nella successione e nel legato il conguaglio diventa una scelta, «Scrivi il conguaglio» o «Non
+ * scriverlo: la posizione resta com'è», e con la seconda non si scrive nessuna riga in saldi e non si dichiara nessun accordo fra
+ * gli eredi. Oggi lo storico conosce una sola uscita senza righe, la rinuncia: la scheda la legge dalla sola nota del conguaglio
+ * (`nota_conguaglio` non vuota) e dice «l'amministratore ha rinunciato» o «regolato fra le parti». Un «non scritto» senza nota
+ * sparirebbe, e con la nota direbbe una cosa falsa (che le parti abbiano regolato). Il server (`StoricoTitolarita`) manda quindi lo
+ * stato `non_scritto` nel conguaglio del passaggio e, nella riga di ciascun titolare, `conguaglio_non_scritto`; la scheda li dice con
+ * le parole del progetto: «Conguaglio non scritto», con la nota se c'è; nella riga, «conguaglio non scritto».
+ *
+ * Presidia: lo stato `non_scritto` nella scheda dei passaggi (senza «l'amministratore ha rinunciato» né «regolato fra le
+ * parti», con la nota solo se c'è, senza il comando «annulla il conguaglio», perché non c'è niente di scritto da annullare) e
+ * il campo `conguaglio_non_scritto` nella riga di un titolare (anche con la nota; la maiuscola della frase nella riga non è
+ * fissata dal progetto, quindi si confronta senza badare alle maiuscole). Le cifre dei casi sono quelle del caso di riferimento
+ * (€ 1.200,00 in dodici rate da € 100,00, Ugo muore il 1° maggio 2026, eredi Anna 33,34 %, Bruno e Carla 33,33 %).
+ *
+ * I controlli, verdi oggi, che devono restarlo: la rinuncia della vendita («l'amministratore ha rinunciato», con la nota) e la
+ * riga con la sola nota («conguaglio regolato fra le parti»); il conguaglio scritto della successione, con le cifre per erede e
+ * il comando per annullarlo («le parti hanno regolato diversamente»: lì un accordo si dichiara davvero, P4); una riga senza
+ * conguaglio non dice niente.
+ *
+ * Cosa NON copre: le frasi del server (lo stato `non_scritto` e il campo della riga si costruiscono qui a mano; che
+ * `StoricoTitolarita` li mandi lo prova il test PHP della .48); le frasi dell'arretrato; il pannello «Cosa cambierà» e il
+ * modulo del passaggio; l'annullamento del passaggio con il conguaglio non scritto (lo prova `AnnullaPassaggioTest`).
+ */
+describe('TitolaritaSheet — il conguaglio non scritto della successione (beta.48)', () => {
+    // Il conguaglio non scritto: nessuna riga in saldi, quindi niente importo; la nota è facoltativa (P1).
+    function successioneNonScritta(conguaglio: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): any {
+        return passaggio({
+            tipo_passaggio: 'successione', uscente: 'Ugo', entrante: 'Anna 33,34 %, Bruno 33,33 %, Carla 33,33 %',
+            arretrato: { scelta: 'defunto', frase: '€ 400,00 resta a nome di Ugo («eredi di Ugo»): ne rispondono gli eredi, ogni erede per la sua quota (art. 754 c.c.).' },
+            conguaglio: { stato: 'non_scritto', importo: 0, importo_formattato: '€ 0,00', per_entrante: [], applicato: false, nota: null, nota_annullamento: null, annullato_il: null, annullabile: true, ...conguaglio },
+            ...extra,
+        });
+    }
+
+    // Prova P2: «nello storico lo stato si chiama "non scritto" e la scheda dice "Conguaglio non scritto"».
+    test('lo stato «non scritto» si dice «Conguaglio non scritto», non «l\'amministratore ha rinunciato» né «regolato fra le parti»', () => {
+        const testo = monta(successioneNonScritta()).text();
+        expect(testo).toContain('Successione');
+        expect(testo).toContain('Conguaglio non scritto');
+        expect(testo).not.toContain('ha rinunciato');
+        expect(testo).not.toContain('regolato fra le parti');
+    });
+
+    // Prova P2: «con la nota se c'è».
+    test('con la nota facoltativa la scheda la riporta accanto a «Conguaglio non scritto»', () => {
+        const testo = monta(successioneNonScritta({ nota: 'Gli eredi dividono fra loro, come da accordi con il notaio' })).text();
+        expect(testo).toContain('Conguaglio non scritto');
+        expect(testo).toContain('Gli eredi dividono fra loro, come da accordi con il notaio');
+        expect(testo).not.toContain('ha rinunciato');
+        expect(testo).not.toContain('regolato fra le parti');
+    });
+
+    // Prova P2: la nota solo se c'è. Senza, niente virgolette vuote né segnaposto: la rinuncia di oggi stampa la nota solo con `&& nota`.
+    test('senza nota la scheda non apre virgolette vuote né stampa «null»', () => {
+        const testo = monta(successioneNonScritta({ nota: null })).text();
+        expect(testo).toContain('Conguaglio non scritto');
+        expect(testo).not.toContain('«»');
+        // Con i confini di parola: «annullato» e «annulla» contengono «null».
+        expect(testo).not.toMatch(/\bnull\b/);
+        expect(testo).not.toMatch(/\bundefined\b/);
+    });
+
+    // Prova P2 (e P1: nessuna riga in saldi): non c'è niente di scritto da annullare, quindi il comando delle parti che «hanno regolato diversamente» non c'è.
+    test('non c\'è niente di scritto da annullare: nessun comando «annulla il conguaglio»', () => {
+        const w = monta(successioneNonScritta());
+        expect(w.text()).toContain('Conguaglio non scritto');
+        expect(w.findAll('button').some((b) => /annulla il conguaglio/i.test(b.text()))).toBe(false);
+    });
+
+    // CONTROLLO (verde oggi): la vendita con la rinuncia e la sua nota obbligatoria (P1: la casella degli altri tipi resta com'è).
+    test('controllo: la rinuncia della vendita si dice come prima, «l\'amministratore ha rinunciato», con la nota', () => {
+        const testo = monta(passaggio({ conguaglio: { stato: 'rinunciato', importo: 0, importo_formattato: '€ 0,00', applicato: false, nota: 'regolato fra le parti davanti al notaio', nota_annullamento: null, annullato_il: null } })).text();
+        expect(testo).toContain('Conguaglio: l\'amministratore ha rinunciato');
+        expect(testo).toContain('«regolato fra le parti davanti al notaio»');
+        expect(testo).not.toContain('Conguaglio non scritto');
+    });
+
+    // CONTROLLO (verde oggi): il conguaglio scritto della successione. Le coppie del caso di riferimento, rifatte a mano:
+    // Ugo emesso 4 × 100,00 = 400,00; sua quota di giorni 1.200,00 × 120 / 365 = 394,52 → coppia 400,00 − 394,52 = 5,48 a credito.
+    // Eredi: 1.200,00 × 245 / 365 = 805,48 → Anna 33,34 % = 268,55, Bruno 33,33 % = 268,47, Carla = 805,48 − 268,55 − 268,47 = 268,46.
+    // Anna ha otto bozze da 100,00 = 800,00: 800,00 − 268,55 = 531,45 a credito. Bruno 268,47 e Carla 268,46 a debito.
+    // Somma delle coppie degli eredi: −531,45 + 268,47 + 268,46 = +5,48 (debito), uguale al credito di Ugo.
+    test('controllo: con «Scrivi il conguaglio» la scheda dice le righe per erede e offre ancora il comando per annullarlo', () => {
+        const w = monta(successioneNonScritta({
+            stato: 'proposto', importo: 548, importo_formattato: '€ 5,48', applicato: false,
+            per_entrante: ['€ 531,45 a credito di Anna', '€ 268,47 a debito di Bruno', '€ 268,46 a debito di Carla'],
+        }));
+        const testo = w.text();
+        expect(testo).toContain('Conguaglio scritto nei saldi');
+        expect(testo).toContain('€ 531,45 a credito di Anna');
+        expect(testo).toContain('€ 268,47 a debito di Bruno');
+        expect(testo).toContain('€ 268,46 a debito di Carla');
+        expect(testo).toContain('a chi esce un credito di € 5,48');
+        expect(testo).not.toContain('Conguaglio non scritto');
+        expect(w.findAll('button').some((b) => /annulla il conguaglio/i.test(b.text()))).toBe(true);
+    });
+
+    // Riga di un erede: come quelle di `riga()` della .38, con il passaggio della successione.
+    function rigaErede(subentro: Record<string, unknown>): any {
+        return {
+            id: 41, anagrafica: { id: 6, nome: 'Anna', codice_fiscale: null }, tipologia: 'proprietario', diritto: 'Proprietà', quota: 33.34, attivo: true,
+            data_inizio: '2026-05-01', data_fine: null, in_corso: true, futuro: false, periodo: 'dal 1 maggio 2026 · in corso', durata: '5 mesi', note: null,
+            subentro: { tipo_passaggio: 'successione', sottotipo: null, decorrenza: '2026-05-01', estremi_titolo: null, copia_autentica_il: null,
+                ruolo_nel_passaggio: 'entrante', documento_url: null, nota_conguaglio: null, ...subentro },
+        };
+    }
+    const montaRiga = (subentro: Record<string, unknown>) => monta(passaggio(), { subentri: [], gruppi: [{ diritto: 'Proprietà', righe: [rigaErede(subentro)] }] }).text();
+
+    // Prova P2: «la riga di un titolare con conguaglio_non_scritto true e nota_conguaglio null dice "conguaglio non scritto"».
+    test('la riga di un erede con il conguaglio non scritto e senza nota dice «conguaglio non scritto»', () => {
+        const testo = montaRiga({ conguaglio_non_scritto: true, nota_conguaglio: null });
+        expect(testo).toContain('Successione');
+        expect(testo).toMatch(/conguaglio non scritto/i);
+        expect(testo).not.toContain('regolato fra le parti');
+        // La nota solo se c'è: niente virgolette vuote né segnaposto (come per la scheda del passaggio).
+        expect(testo).not.toContain('«»');
+        expect(testo).not.toMatch(/\bnull\b/);
+        expect(testo).not.toMatch(/\bundefined\b/);
+    });
+
+    // Prova P2: «con la nota se c'è», anche nella riga; e un non scritto non dichiara un accordo (decisione 72), nemmeno con la nota.
+    test('la riga con il conguaglio non scritto e la nota riporta la nota, e non dice che le parti hanno regolato', () => {
+        const testo = montaRiga({ conguaglio_non_scritto: true, nota_conguaglio: 'Gli eredi dividono fra loro' });
+        expect(testo).toMatch(/conguaglio non scritto/i);
+        expect(testo).toContain('Gli eredi dividono fra loro');
+        expect(testo).not.toContain('regolato fra le parti');
+    });
+
+    // CONTROLLO (verde oggi): la riga con la sola nota, cioè la rinuncia della vendita e dei passaggi di prima, si legge come oggi.
+    test('controllo: la riga con la sola nota (la rinuncia di prima) dice ancora «conguaglio regolato fra le parti»', () => {
+        const testo = montaRiga({ tipo_passaggio: 'vendita', conguaglio_non_scritto: false, nota_conguaglio: 'davanti al notaio, il giorno del rogito' });
+        expect(testo).toContain('conguaglio regolato fra le parti: «davanti al notaio, il giorno del rogito»');
+        expect(testo).not.toMatch(/conguaglio non scritto/i);
+    });
+
+    // CONTROLLO (verde oggi): senza il campo (dati di prima) e senza nota, la riga non dice niente del conguaglio.
+    test('controllo: una riga senza conguaglio non scritto e senza nota non dice niente del conguaglio', () => {
+        const testo = montaRiga({});
+        expect(testo).not.toMatch(/conguaglio non scritto/i);
+        expect(testo).not.toContain('regolato fra le parti');
+    });
+});
+
+/**
+ * 1.11.0-beta.48 — la strada «Non scriverlo» nella scheda dello storico, per il conguaglio già scritto (rilievo R3 della lente testi,
+ * Fase 1-bis di `docs/piano_esecutivo_beta48.md`).
+ *
+ * Nasce dal caso di Fresco registrato con «Scrivi il conguaglio», quando poi gli eredi dicono che il conguaglio non lo vogliono. Nella
+ * scheda dello storico c'è il pulsante «Le parti hanno regolato diversamente: annulla il conguaglio…», che dichiara un accordo che non
+ * c'è (la decisione 73, punto 1, lo vuole, lì un accordo si dichiara davvero); la strada giusta — annullare il passaggio e
+ * registrarlo di nuovo con «Non scriverlo» — la dice solo la guida. Il rilievo è stato declassato a basso (le due strade portano alle
+ * stesse cifre; cambiano l'etichetta registrata e le frasi che seguono), ma la scheda deve dirla. La correzione è una riga sotto il pulsante,
+ * nella sola successione (il legato compreso: stessa scelta, decisione 73.2), con il conguaglio «proposto», annullabile e non ancora
+ * assorbito da un piano: «Se invece il conguaglio non andava scritto, annulla il passaggio e registralo di nuovo con «Non scriverlo».»
+ * Il pulsante, il segnaposto e il messaggio dopo l'annullamento restano come sono.
+ *
+ * Presidia: la riga nella scheda di una successione e di un legato con il conguaglio scritto e annullabile. Le cifre del caso sono
+ * quelle di Fresco (€ 1.200,00 in dodici rate da € 100,00, Ugo muore il 1° maggio 2026, eredi Anna 33,34 %, Bruno e Carla 33,33 %):
+ * Anna € 531,45 a credito (le otto bozze da € 800,00 meno i suoi € 268,55), Bruno € 268,47 e Carla € 268,46 a debito, Ugo € 5,48 a
+ * credito (−531,45 + 268,47 + 268,46 = +5,48); nel legato Leo € 5,48 a debito, Ugo € 5,48 a credito.
+ *
+ * Rossi oggi, perché la scheda non ha quella riga: i due test che la cercano (successione e legato). Verdi oggi, da restare tali: il
+ * pulsante «annulla il conguaglio» accanto alla riga; la vendita, che non ha la strada «Non scriverlo» (lì c'è la casella, non la
+ * scelta); la successione dove la riga non deve esserci — conguaglio già assorbito da un piano, passaggio annullato, conguaglio
+ * non annullabile da solo (arretrato agli eredi: «Non scriverlo» lì il server lo rifiuta), conguaglio non scritto, conguaglio
+ * annullato.
+ *
+ * Cosa NON copre: il pannello dei saldi (`SaldiDetailPanel.vue`, dove la stessa strada si dice con un'altra frase); la riga quando
+ * il passaggio non è più annullabile (il verbale la vuole lo stesso, il progetto non fissa il testo accanto: lo decide chi corregge);
+ * l'annullamento vero (lo prova `AnnullaPassaggioTest`); le parole prima della frase, che il progetto non fissa.
+ */
+describe('TitolaritaSheet — la strada «Non scriverlo» per il conguaglio già scritto (beta.48, R3 della Fase 1-bis)', () => {
+    const STRADA = 'Se invece il conguaglio non andava scritto, annulla il passaggio e registralo di nuovo con «Non scriverlo».';
+
+    // Il caso di Fresco registrato con «Scrivi il conguaglio»: tre eredi, righe per erede, annullabile, non ancora assorbito da un piano.
+    function successioneScritta(conguaglio: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): any {
+        return passaggio({
+            tipo_passaggio: 'successione', uscente: 'Ugo', entrante: 'Anna 33,34 %, Bruno 33,33 %, Carla 33,33 %',
+            arretrato: { scelta: 'defunto', frase: '€ 394,52 resta a nome di Ugo («eredi di Ugo»): ne rispondono gli eredi, ogni erede per la sua quota (art. 754 c.c.).' },
+            conguaglio: {
+                stato: 'proposto', importo: 548, importo_formattato: '€ 5,48', applicato: false, nota: null, nota_annullamento: null, annullato_il: null, annullabile: true,
+                per_entrante: ['€ 531,45 a credito di Anna', '€ 268,47 a debito di Bruno', '€ 268,46 a debito di Carla'], ...conguaglio,
+            },
+            ...extra,
+        });
+    }
+
+    test('la successione con il conguaglio scritto e annullabile dice la strada: annulla il passaggio e registralo di nuovo con «Non scriverlo»', () => {
+        expect(monta(successioneScritta()).text()).toContain(STRADA);
+    });
+
+    // Il legato è una successione (tipo_passaggio) con il sottotipo `legato`: stessa scelta, decisione 73.2. Un legatario solo: Leo € 5,48 a debito, Ugo a credito.
+    test('il legato con il conguaglio scritto e annullabile la dice allo stesso modo', () => {
+        const legato = successioneScritta({ per_entrante: [] }, { sottotipo: 'legato', entrante: 'Leo' });
+        expect(monta(legato).text()).toContain(STRADA);
+    });
+
+    // CONTROLLO (verde oggi): la riga si aggiunge, non sostituisce. Il pulsante che dichiara l'accordo resta (decisione 73.1).
+    test('controllo: accanto alla riga resta il pulsante «annulla il conguaglio», che dichiara un accordo fra le parti', () => {
+        const w = monta(successioneScritta());
+        expect(w.findAll('button').some((b) => b.text() === 'Le parti hanno regolato diversamente: annulla il conguaglio…')).toBe(true);
+    });
+
+    // CONTROLLO (verde oggi): nella vendita non c'è la scelta «Non scriverlo», c'è la casella con la nota obbligatoria (decisione 73.3).
+    test('controllo: la vendita con il conguaglio scritto non dice la strada «Non scriverlo»', () => {
+        const testo = monta(passaggio()).text();
+        expect(testo).not.toContain(STRADA);
+        expect(testo).not.toContain('Non scriverlo');
+    });
+
+    // CONTROLLO (verde oggi): se un piano ha già assorbito il conguaglio, il comando non c'è e annullare dallo storico non toglie niente.
+    test('controllo: con il conguaglio già assorbito da un piano la riga non c\'è', () => {
+        expect(monta(successioneScritta({ applicato: true })).text()).not.toContain(STRADA);
+    });
+
+    // CONTROLLO (verde oggi): un passaggio annullato resta in elenco senza comandi né strade.
+    test('controllo: un passaggio annullato non dice la strada', () => {
+        const annullata = successioneScritta({}, { annullato: true, annullato_il: '28 settembre 2026', annullato_da: 'Amministratrice Ada', nota_annullamento: 'Data del decesso sbagliata', annullabile: { si: false, motivo: null, avvisi: [], effetti: [] } });
+        expect(monta(annullata).text()).not.toContain(STRADA);
+    });
+
+    // CONTROLLO (verde oggi): con l'arretrato agli eredi il conguaglio non si annulla da solo, e «Non scriverlo» lì il server lo rifiuta
+    // («per non scrivere il conguaglio lascia l'arretrato a nome del defunto»): la scheda dice già un'altra strada.
+    test('controllo: con l\'arretrato agli eredi (conguaglio non annullabile da solo) la riga non c\'è, e resta la frase di oggi', () => {
+        const agliEredi = successioneScritta({ annullabile: false }, { arretrato: { scelta: 'eredi', frase: 'L\'arretrato passa agli eredi per quota.' } });
+        const w = monta(agliEredi);
+        expect(w.text()).not.toContain(STRADA);
+        expect(w.text()).toContain('Per cambiare la scelta annulla il passaggio e registralo di nuovo.');
+    });
+
+    // CONTROLLO (verde oggi): il conguaglio non scritto non ha niente da annullare, e il conguaglio già annullato non ha più righe.
+    test.each([
+        ['non scritto', { stato: 'non_scritto', importo: 0, importo_formattato: '€ 0,00', per_entrante: [] }],
+        ['annullato', { stato: 'annullato', annullato_il: '28 settembre 2026', nota_annullamento: 'Gli eredi non lo vogliono', per_entrante: [] }],
+    ])('controllo: con il conguaglio %s la riga non c\'è', (_nome, conguaglio) => {
+        expect(monta(successioneScritta(conguaglio)).text()).not.toContain(STRADA);
+    });
+});

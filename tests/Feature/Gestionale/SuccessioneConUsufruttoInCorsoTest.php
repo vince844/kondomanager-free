@@ -128,6 +128,8 @@ function scufSuccessione(array $s, Anagrafica $erede, string $arretrato, array $
     return [
         'tipo' => 'successione', 'riga_uscente_id' => $s['rigaV'], 'decorrenza' => '2026-07-01', 'quota' => $quota, 'tipologia' => 'proprietario',
         'eredi' => [['anagrafica_id' => $erede->id, 'quota' => $quota]], 'arretrato' => $arretrato, 'erede_di_riferimento' => $erede->id,
+        // 1.11.0-beta.48, decisione 72: con l'arretrato a nome del defunto il conguaglio si sceglie; qui si scrive, come prima.
+        'conguaglio' => $arretrato === 'defunto' ? 'scrivi' : null,
         'copia_autentica' => false, 'estremi_titolo' => 'dichiarazione di successione n. 47', 'pertinenze' => $pertinenze,
         'ho_letto' => true, 'nota_cancello' => 'Dichiarazione di successione letta: Carla erede della metà piena di Ugo',
     ];

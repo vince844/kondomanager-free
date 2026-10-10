@@ -42,9 +42,10 @@ final class AnnullaConguaglioAction
             }
 
             // Decisione 65 (1.11.0-beta.44): con l'arretrato agli eredi la coppia e l'arretrato sono un conto solo — l'arretrato è la
-            // posizione del defunto meno la coppia —, e togliere la coppia lascerebbe a ciascun erede una cifra senza senso.
+            // posizione del defunto meno la coppia —, e togliere la coppia lascerebbe a ciascun erede una cifra senza senso. Dalla
+            // 1.11.0-beta.48 (decisione 72) la strada indicata è la scelta «Non scriverlo», non un accordo fra gli eredi.
             if ($padre->arretratoAgliEredi()) {
-                throw ValidationException::withMessages(['conguaglio' => 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: insieme danno a ciascun erede la sua parte dell\'anno intero, e il conguaglio da solo non si annulla. Se gli eredi hanno regolato fra loro in un altro modo, annulla il passaggio e registralo di nuovo con l\'arretrato a nome del defunto; poi annulla il conguaglio.']);
+                throw ValidationException::withMessages(['conguaglio' => 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: insieme danno a ciascun erede la sua parte dell\'anno intero, e il conguaglio da solo non si annulla. Se il conguaglio non va scritto, annulla il passaggio e registralo di nuovo con l\'arretrato a nome del defunto e «Non scriverlo».']);
             }
 
             $ids = $padre->pertinenze()->pluck('id')->push($padre->id)->all();
@@ -75,8 +76,14 @@ final class AnnullaConguaglioAction
             // cancellano, e la strada della 43 deve poter dire la cifra.
             $uscenteId = (int) $padre->anagrafica_uscente_id;
             $nomi = DB::table('gestioni')->whereIn('id', $righe->pluck('gestione_id')->unique())->pluck('nome', 'id');
-            $regolato = $righe->filter(fn (Saldo $r) => (int) $r->anagrafica_id !== $uscenteId)->groupBy('gestione_id')
-                ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($nomi[$id] ?? '?'), 'importo' => (int) $g->sum('saldo_iniziale')])
+            $entranti = $righe->filter(fn (Saldo $r) => (int) $r->anagrafica_id !== $uscenteId);
+            $nomiPersone = DB::table('anagrafiche')->whereIn('id', $entranti->pluck('anagrafica_id')->unique())->pluck('nome', 'id');
+            $regolato = $entranti->groupBy('gestione_id')
+                ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($nomi[$id] ?? '?'), 'importo' => (int) $g->sum('saldo_iniziale'),
+                    // P3 della 1.11.0-beta.48: la cifra di ciascuna persona, come alla registrazione (`Subentro::regolatoFuoriDalleCoppie`).
+                    'persone' => $g->groupBy('anagrafica_id')
+                        ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($nomiPersone[$aid] ?? '?'), 'importo' => (int) $p->sum('saldo_iniziale')])
+                        ->values()->all()])
                 ->values()->all();
 
             // Rilievo X8 della Fase 1-bis: con l'arretrato a nome del defunto la cifra che resta a lui era la sua posizione meno la coppia;

@@ -51,7 +51,7 @@ const apriProspetto = (esercizioId: number) => {
 const { generatePath, generateRoute } = usePermission();
 
 interface PassaggioRegistrato {
-  subentro_id: number; frase: string; coppie: number; conguaglio: string | null; rinuncia: boolean;
+  subentro_id: number; frase: string; coppie: number; conguaglio: string | null; rinuncia: boolean; non_scritto?: boolean;
   /** Decisione 25 (B3a): la coppia rovesciata (le bozze passate coprono più dei giorni di chi entra) e le bozze passate. */
   conguaglio_rovesciato?: boolean; riassegnate?: number; riassegnate_frase?: string | null;
   documento: string | null; promemoria: string | null; avvisi: string[]; entrante: string | null;
@@ -247,6 +247,8 @@ function urlPassaggio(tipo: TipoPassaggio) {
                 <p v-else-if="passaggioRegistrato.coppie > 0" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
                   Conguaglio scritto in saldi: {{ passaggioRegistrato.coppie }} {{ passaggioRegistrato.coppie === 1 ? 'coppia' : 'coppie' }} a somma zero, {{ passaggioRegistrato.conguaglio }} a {{ passaggioRegistrato.conguaglio_rovesciato ? 'credito' : 'debito' }} di chi entra. Il prossimo piano rate le assorbe.
                 </p>
+                <!-- Decisione 72 (1.11.0-beta.48): il conguaglio della successione non scritto non è un accordo fra le parti. -->
+                <p v-else-if="passaggioRegistrato.non_scritto" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">Nessuna riga in saldi: il conguaglio non è stato scritto, e la posizione resta com'è.</p>
                 <p v-else-if="passaggioRegistrato.rinuncia" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">Nessuna riga in saldi: hai indicato che il conguaglio è regolato fra le parti. La ragione è nel passaggio.</p>
                 <!-- Dopo la catena coppie/rinuncia, non in mezzo: un v-if fra i due legava il v-else-if a sé (Fase 1-bis, R7). -->
                 <p v-if="passaggioRegistrato.riassegnate_frase" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">{{ passaggioRegistrato.riassegnate_frase }}</p>

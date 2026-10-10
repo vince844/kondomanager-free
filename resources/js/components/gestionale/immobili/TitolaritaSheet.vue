@@ -65,11 +65,13 @@ function partiPassaggio(p: PassaggioRegistrato): string {
 const CONGUAGLIO: Record<PassaggioRegistrato['conguaglio']['stato'], string> = {
   proposto: 'Conguaglio scritto nei saldi',
   rinunciato: 'Conguaglio: l\'amministratore ha rinunciato',
+  // Decisione 72 (1.11.0-beta.48): nella successione il conguaglio si sceglie, e «non scritto» non dichiara un accordo.
+  non_scritto: 'Conguaglio non scritto',
   annullato: 'Conguaglio annullato',
   nessuno: 'Nessun conguaglio',
 };
 
-// Annullare il conguaglio (S6, voce 8): le due righe insieme, con una nota che resta sul passaggio.
+// Annullare il conguaglio (S6, voce 8): le sue righe insieme, con una nota che resta sul passaggio.
 const annullaAperto = ref<number | null>(null);
 const formAnnulla = useForm({ nota_annullamento_conguaglio: '' });
 
@@ -183,6 +185,7 @@ function tratto(r: RigaStorico): string {
                       {{ CONGUAGLIO[p.conguaglio.stato] }}<template v-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: {{ p.conguaglio.per_entrante!.join(', ') }}; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'proposto'">: {{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'rinunciato' && p.conguaglio.nota">: «{{ p.conguaglio.nota }}».</template>
+                      <template v-else-if="p.conguaglio.stato === 'non_scritto'">: nessuna riga in saldi, la posizione resta com'era<template v-if="p.conguaglio.nota"> («{{ p.conguaglio.nota }}»)</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'annullato'"> il {{ p.conguaglio.annullato_il }}<template v-if="p.conguaglio.nota_annullamento">: «{{ p.conguaglio.nota_annullamento }}»</template>.</template>
                     </span>
                   </p>
@@ -194,13 +197,13 @@ function tratto(r: RigaStorico): string {
                   <p v-if="p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
                     Il conguaglio non si annulla da solo: con l'arretrato agli eredi, conguaglio e arretrato fanno un conto unico. Per cambiare la scelta annulla il passaggio e registralo di nuovo.
                   </p>
-                  <!-- Le due righe si tolgono insieme, finché nessun piano le ha assorbite -->
+                  <!-- Le righe si tolgono insieme, finché nessun piano le ha assorbite -->
                   <div v-else-if="p.conguaglio.stato === 'proposto' && !p.conguaglio.applicato && condominioId && immobileId" class="pl-[18px]">
                     <button v-if="annullaAperto !== p.id" type="button" @click="annullaAperto = p.id; formAnnulla.reset(); formAnnulla.clearErrors()" class="font-semibold text-rose-600 dark:text-rose-400 hover:underline">
                       Le parti hanno regolato diversamente: annulla il conguaglio…
                     </button>
                     <form v-else class="space-y-2" @submit.prevent="annullaConguaglio(p)">
-                      <p class="text-slate-600 dark:text-slate-400">Toglie insieme le due righe dai saldi della gestione; le quote già emesse non cambiano. La nota resta sul passaggio.</p>
+                      <p class="text-slate-600 dark:text-slate-400">Toglie insieme le righe del conguaglio dai saldi della gestione; le quote già emesse non cambiano. La nota resta sul passaggio.</p>
                       <Input v-model="formAnnulla.nota_annullamento_conguaglio" placeholder="Come hanno regolato il conguaglio (almeno dieci caratteri)…" class="h-8 text-xs" required minlength="10" />
                       <div class="flex items-center gap-2">
                         <button type="submit" :disabled="formAnnulla.processing || formAnnulla.nota_annullamento_conguaglio.trim().length < 10" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
@@ -210,6 +213,11 @@ function tratto(r: RigaStorico): string {
                       </div>
                       <p v-if="formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio" class="text-[11px] text-red-600 dark:text-red-400">{{ formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio }}</p>
                     </form>
+                    <!-- Rilievo R3 della Fase 1-bis della .48: nella successione (e nel legato) «annulla il conguaglio» dichiara un accordo fra
+                         le parti; se il conguaglio non andava scritto, la strada è l'altra (decisione 72). -->
+                    <p v-if="p.tipo_passaggio === 'successione' && !p.annullato" class="mt-1 text-slate-500 dark:text-slate-400">
+                      Se invece il conguaglio non andava scritto, annulla il passaggio e registralo di nuovo con «Non scriverlo».
+                    </p>
                   </div>
                   <!-- Decisioni 31.5–31.7: la scelta sull'ordinaria decide i conguagli dei passaggi dopo; resta visibile sempre. -->
                   <div v-if="p.ordinaria" class="flex items-start gap-1.5">
@@ -306,7 +314,9 @@ function tratto(r: RigaStorico): string {
                     <span>
                       {{ titoloPassaggio(r.subentro) }}<template v-if="r.subentro.estremi_titolo">, {{ r.subentro.estremi_titolo }}</template><template v-if="r.subentro.copia_autentica_il"> · copia autentica ricevuta il {{ r.subentro.copia_autentica_il }}</template>
                       <template v-if="r.subentro.documento_url"> · <a :href="r.subentro.documento_url" class="text-indigo-600 dark:text-indigo-400 hover:underline">titolo (PDF)</a></template>
-                      <template v-if="r.subentro.nota_conguaglio"> · conguaglio regolato fra le parti: «{{ r.subentro.nota_conguaglio }}»</template>
+                      <!-- Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione, anche senza nota. -->
+                      <template v-if="r.subentro.conguaglio_non_scritto"> · conguaglio non scritto<template v-if="r.subentro.nota_conguaglio">: «{{ r.subentro.nota_conguaglio }}»</template></template>
+                      <template v-else-if="r.subentro.nota_conguaglio"> · conguaglio regolato fra le parti: «{{ r.subentro.nota_conguaglio }}»</template>
                     </span>
                   </p>
                 </div>

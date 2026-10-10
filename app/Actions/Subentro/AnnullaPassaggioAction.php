@@ -133,8 +133,12 @@ final class AnnullaPassaggioAction
         if ($padre->conguaglioRinunciato() || $padre->conguaglioAnnullato()) {
             $cifra = $padre->regolatoFuoriInParole();
             if ($cifra !== null || ! is_array($padre->registro['regolato_fuori'] ?? null)) {
-                $avvisi[] = sprintf('Le parti hanno già regolato fra loro %s: se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.',
-                    $cifra ?? 'il conguaglio di questo passaggio');
+                // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti.
+                $avvisi[] = $padre->conguaglioNonScritto() && ! $padre->conguaglioAnnullato()
+                    ? sprintf('Il conguaglio della successione non è stato scritto (%s): se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a ciascuno i suoi giorni.',
+                        $cifra ?? 'le cifre non sono nel registro')
+                    : sprintf('Le parti hanno già regolato fra loro %s: se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.',
+                        $cifra ?? 'il conguaglio di questo passaggio');
             }
         }
 
@@ -154,7 +158,7 @@ final class AnnullaPassaggioAction
 
         return self::frasiEffetti(
             ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(), 'arretrato' => count($padre->saldiDellArretrato())],
-            $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false,
+            $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false, $padre->successione(),
         );
     }
 
@@ -164,16 +168,18 @@ final class AnnullaPassaggioAction
      * @param array{rate: int, saldi: int} $conti
      * @return list<string>
      */
-    public static function frasiEffetti(array $conti, ?string $uscente, ?string $entrante, bool $fatto): array
+    public static function frasiEffetti(array $conti, ?string $uscente, ?string $entrante, bool $fatto, bool $successione = false): array
     {
+        // Rilievo R5 della Fase 1-bis della .48, decisione 73 (4): nella successione «ad» davanti ai nomi che cominciano per A.
+        $a = fn (string $nome) => $successione ? app(\App\Services\Subentro\FrasiObbligati::class)->a($nome) : 'a ' . $nome;
         // «Scritte dal passaggio»: una riga associata a mano dopo, che non si scontra con niente, resta (giro di verifica, G-4).
         $frasi = [$fatto ? 'Le righe di titolarità scritte dal passaggio sono tornate come prima.' : 'Le righe di titolarità scritte dal passaggio tornano come prima.'];
         $n = (int) $conti['rate'];
         if ($n > 0) {
-            $frasi[] = sprintf('%s %s a %s, con le regole di prima.',
-                $n === 1 ? 'La quota di una rata passata a ' . ($entrante ?? 'chi è entrato') : "Le quote di {$n} rate passate a " . ($entrante ?? 'chi è entrato'),
+            $frasi[] = sprintf('%s %s %s, con le regole di prima.',
+                ($n === 1 ? 'La quota di una rata passata ' : "Le quote di {$n} rate passate ") . $a($entrante ?? 'chi è entrato'),
                 $fatto ? ($n === 1 ? 'è tornata' : 'sono tornate') : ($n === 1 ? 'torna' : 'tornano'),
-                $uscente ?? 'chi è uscito');
+                $a($uscente ?? 'chi è uscito'));
         }
         // 1.11.0-beta.44: le righe dell'arretrato di una successione se ne vanno con il conguaglio, e si dice.
         $arretrato = (int) ($conti['arretrato'] ?? 0) > 0;
@@ -191,7 +197,7 @@ final class AnnullaPassaggioAction
     }
 
     /**
-     * @return array{righe: int, rate: int, saldi: int, avvisi: list<string>, uscente: ?string, entrante: ?string}
+     * @return array{righe: int, rate: int, saldi: int, arretrato: int, avvisi: list<string>, uscente: ?string, entrante: ?string, successione: bool}
      */
     public function execute(Subentro $passaggio, string $nota, User $utente): array
     {
@@ -315,7 +321,8 @@ final class AnnullaPassaggioAction
                 $s->forceFill(['annullato_il' => now(), 'annullato_da' => $utente->id, 'nota_annullamento' => $nota, 'registro' => $registro])->save();
             }
 
-            return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante];
+            return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante,
+                'successione' => $padre->successione()];
         }, 3);
 
         // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.
@@ -596,16 +603,18 @@ final class AnnullaPassaggioAction
                 ->whereIn('rate_quote.rata_id', $emesse->pluck('rata_id')->unique()->all())->where('rate_quote.importo_pagato', '!=', 0)
                 ->pluck('rate.numero_rata')->map(fn ($n) => (int) $n)->unique()->sort()->values()->all();
             $chiNome = $nomi[$chi->anagrafica_id] ?? 'chi è entrato';
+            // Rilievo AMM-2 del giro sulle correzioni della .48: nella successione «ad» davanti ai nomi che cominciano per A.
+            $aChi = $padre->successione() ? app(\App\Services\Subentro\FrasiObbligati::class)->a($chiNome) : 'a ' . $chiNome;
 
             if ($conPagamenti === []) {
-                return sprintf('Dopo il passaggio %s a %s %s. Annulla l\'emissione di %s, poi torna qui: le rate già in mano ai condòmini non si spostano da sole.',
-                    $una ? 'è stata emessa' : 'sono state emesse', $chiNome, $this->elenco($elenco), $una ? 'quella rata' : 'quelle rate');
+                return sprintf('Dopo il passaggio %s %s %s. Annulla l\'emissione di %s, poi torna qui: le rate già in mano ai condòmini non si spostano da sole.',
+                    $una ? 'è stata emessa' : 'sono state emesse', $aChi, $this->elenco($elenco), $una ? 'quella rata' : 'quelle rate');
             }
 
             $pagate = count($conPagamenti) === 1;
 
-            return sprintf('Dopo il passaggio %s a %s %s, e %s %s ci sono già dei pagamenti. L\'emissione di una rata non si annulla finché su una qualunque delle sue quote c\'è un pagamento, di chiunque sia, o un credito già usato o rimborsato. Per annullare il passaggio andrebbero stornati prima tutti gli incassi di %s, anche quelli degli altri condòmini, e poi annullata l\'emissione; dopo, %s e gli incassi si registrano di nuovo. Ogni storno resta nel giornale e toglie l\'incasso intero, anche sulle altre rate che pagava.',
-                $una ? 'è stata emessa' : 'sono state emesse', $chiNome, $this->elenco($elenco),
+            return sprintf('Dopo il passaggio %s %s %s, e %s %s ci sono già dei pagamenti. L\'emissione di una rata non si annulla finché su una qualunque delle sue quote c\'è un pagamento, di chiunque sia, o un credito già usato o rimborsato. Per annullare il passaggio andrebbero stornati prima tutti gli incassi di %s, anche quelli degli altri condòmini, e poi annullata l\'emissione; dopo, %s e gli incassi si registrano di nuovo. Ogni storno resta nel giornale e toglie l\'incasso intero, anche sulle altre rate che pagava.',
+                $una ? 'è stata emessa' : 'sono state emesse', $aChi, $this->elenco($elenco),
                 $pagate ? 'sulla rata' : 'sulle rate', $this->elenco($conPagamenti),
                 $pagate ? 'quella rata' : 'quelle rate', $pagate ? 'la rata si emette di nuovo' : 'le rate si emettono di nuovo');
         }
