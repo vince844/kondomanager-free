@@ -1090,17 +1090,17 @@ class PianoRateController extends Controller
                 );
             }
 
-            $pianoRate->rate()->delete();
             // Gli scoperti erano già stati accettati alla generazione: la rimozione di una voce non li
             // riapre. Il cancello (2) invece sì, se scatta: la generazione precedente può non averlo mai
-            // attraversato (verifica indipendente S4, 19/09).
-            app(GeneratePianoRateAction::class)->execute(
+            // attraversato (verifica indipendente S4, 19/09). Le rate si rigenerano tenendo i legami degli
+            // incassi stornati con le quote, come nel ricalcolo (DC4, 1.11.0-beta.49).
+            app(\App\Actions\PianoRate\RigeneraRateTenendoILegami::class)->esegui($pianoRate, fn () => app(GeneratePianoRateAction::class)->execute(
                 pianoRate: $pianoRate,
                 accettaScoperti: true,
                 accettaDestinatari: $accettaDestinatari,
                 notaDestinatari: $notaDestinatari,
                 esercizio: $esercizio,
-            ); 
+            ));
             
             if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
                 PianoRateStatusUpdated::dispatch(

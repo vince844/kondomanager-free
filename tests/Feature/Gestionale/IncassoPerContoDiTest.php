@@ -61,6 +61,12 @@ function scenarioPerContoDi(): object
         'condominio_id' => $condominio->id, 'codice' => '10.20', 'nome' => 'Crediti vs Condomini',
         'tipo' => 'attivo', 'ruolo' => 'crediti_condomini', 'categoria' => 'crediti',
     ]);
+    // Dalla 1.11.0-beta.49 (DC1) il credito da saldi di una quota senza scrittura esce da «Passate gestioni», e senza quel
+    // conto la compensazione si rifiuta, come il rimborso. Il condominio vero ce l'ha (`CondominioService`, firstOrCreate).
+    ContoContabile::create([
+        'condominio_id' => $condominio->id, 'codice' => '30.10', 'nome' => 'Passate gestioni',
+        'tipo' => 'passivo', 'ruolo' => 'passate_gestioni', 'categoria' => 'debiti',
+    ]);
     $cassa = Cassa::create([
         'condominio_id' => $condominio->id, 'conto_contabile_id' => $contoBanca->id,
         'nome' => 'Banca', 'tipo' => 'banca', 'attiva' => true,
@@ -983,12 +989,23 @@ test('lo storno della compensazione resta del debitore: il credito era suo (R8)'
     ]);
     app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio);
 
+    $registro = app(\App\Services\Gestionale\RegistroContabilitaService::class);
     $crediti = ContoContabile::where('ruolo', 'crediti_condomini')->firstOrFail();
-    $righe = collect(app(\App\Services\Gestionale\RegistroContabilitaService::class)->mastrino($s->esercizio, $crediti)['righe']);
+    $passate = ContoContabile::where('ruolo', 'passate_gestioni')->firstOrFail();
+    $righe = collect($registro->mastrino($s->esercizio, $crediti)['righe']);
     $compensazioneERettifica = $righe->filter(fn ($r) => ! str_contains((string) $r['controparte'], 'per conto di'));
+    $righePassate = collect($registro->mastrino($s->esercizio, $passate)['righe']);
 
+    // DC1 (1.11.0-beta.49, P2): il credito di Marco (−10000, una quota senza scrittura: un credito da saldi) esce da «Passate
+    // gestioni». Su «Crediti verso condomini» restano la chiusura del suo debito con il credito (AVERE 10000 sulla rata 3) e il
+    // suo storno; su «Passate gestioni» il prelievo (DARE 10000) e il suo storno. Le righe di Lidia per conto di Marco sono
+    // l'incasso in denaro (AVERE 20000) e il suo storno. Tutte del debitore. Oggi il prelievo è su «Crediti»: 4 righe lì, 0 su
+    // «Passate».
     expect($compensazioneERettifica->pluck('controparte')->unique()->values()->all())->toBe(['Marco Neri'])
-        ->and($compensazioneERettifica)->toHaveCount(4)
+        ->and($compensazioneERettifica)->toHaveCount(2)
+        ->and($compensazioneERettifica->map(fn ($r) => [$r['dare'], $r['avere']])->values()->all())->toBe([[null, 10000], [10000, null]])
+        ->and($righePassate->pluck('controparte')->unique()->values()->all())->toBe(['Marco Neri'])
+        ->and($righePassate->map(fn ($r) => [$r['dare'], $r['avere']])->values()->all())->toBe([[10000, null], [null, 10000]])
         ->and($righe->filter(fn ($r) => str_contains((string) $r['controparte'], 'per conto di')))->toHaveCount(2);
 });
 

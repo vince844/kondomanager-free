@@ -3,11 +3,14 @@
 /**
  * B2 (1.11.0-beta.31), S6 voce 9 — il rimborso del credito di un condòmino dall'estratto conto.
  *
- * Denaro che esce dalla cassa a fronte di una quota a credito, con la contropartita **secondo l'origine
- * del credito**: da un versamento in eccesso (l'incasso ha già scritto AVERE su Crediti verso condomini →
- * il rimborso lo rovescia in DARE) o da saldi (la quota a credito della rata zero, mai scritta a giornale
- * → DARE Passate gestioni). La quota si consuma come con lo `storno_credito` (pivot −importo), lo storno
- * è una `rettifica` con l'originale `annullata`, e un piano con un credito rimborsato non si ricalcola.
+ * Denaro che esce dalla cassa a fronte di una quota a credito, con la contropartita **secondo dove sta il
+ * credito**: da un versamento in eccesso (l'incasso ha già scritto AVERE su Crediti verso condomini → il
+ * rimborso lo rovescia in DARE) o da saldi finché il credito non è andato a giornale (una quota a credito
+ * senza scrittura, come quella della rata zero qui sotto → DARE Passate gestioni). Dalla 1.11.0-beta.49
+ * (decisione 71) l'emissione porta a giornale anche la quota a credito, e da lì il credito sta fra i crediti
+ * verso condomini: il rimborso lo rovescia su quel conto (CreditiStornoTest, DC1). La quota si consuma come
+ * con lo `storno_credito` (pivot −importo), lo storno è una `rettifica` con l'originale `annullata`, e un
+ * piano con un credito rimborsato non si ricalcola.
  */
 
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;

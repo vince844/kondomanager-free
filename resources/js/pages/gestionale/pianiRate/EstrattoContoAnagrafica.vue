@@ -23,6 +23,7 @@ import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
+import { statoRigaEstratto, type TonoStato } from '@/lib/gestionale/pianiRate/statoRigaEstratto';
 
 const props = defineProps<{
   condominio: Building;
@@ -47,7 +48,7 @@ const props = defineProps<{
   };
   /** B2, S6: ciò che serve al modulo «Rimborsa il credito». */
   rimborso: {
-    quote: Array<{ id: number; rata: number | null; piano: string | null; gestione: string | null; immobile: string | null; origine: 'saldi' | 'eccedenza'; credito_cents: number; credito_formattato: string; credito_euro: string }>;
+    quote: Array<{ id: number; rata: number | null; piano: string | null; gestione: string | null; immobile: string | null; origine: 'saldi' | 'entrate' | 'misto' | 'eccedenza'; conto: 'passate_gestioni' | 'crediti_condomini'; a_giornale: boolean; credito_cents: number; credito_formattato: string; credito_euro: string }>;
     casse: Array<{ id: number; nome: string; tipo: string; saldo_cents: number; saldo_formattato: string }>;
     /** Il credito di chi esce ancora in `saldi` (coppia del passaggio non assorbita): non è ancora una quota. */
     credito_in_saldi: number;
@@ -80,6 +81,10 @@ const quoteRimborsabili = computed(() => (props.rimborso?.quote ?? []).map(q => 
 const moneyOptionsRimborso = { prefix: '', suffix: '', thousands: '.', decimal: ',', precision: 2, allowBlank: true, masked: true, disableNegative: true };
 
 const quotaScelta = computed(() => props.rimborso?.quote.find(q => q.id === formRimborso.rata_quote_id) ?? null);
+
+// Da dove viene il credito (rilievo K2 della Fase 1-bis): il riporto da un esercizio precedente, le entrate dell'anno di una voce di
+// tipo «entrata», tutte e due, o un versamento in eccesso.
+const ETICHETTA_ORIGINE: Record<string, string> = { saldi: 'da saldi', entrate: 'entrate', misto: 'saldi ed entrate', eccedenza: 'eccedenza' };
 const cassaScelta = computed(() => props.rimborso?.casse.find(c => c.id === formRimborso.cassa_id) ?? null);
 
 // Cambiando quota, l'importo proposto è il suo credito intero: si può ridurre, non superare.
@@ -216,27 +221,22 @@ const saldoInizialeColorClass = computed(() => {
     return 'text-gray-600';
 });
 
-const getStatoConfig = (stato: string | null) => {
-    if (!stato) return { label: '', class: '', icon: null };
+// Il bollino di una riga: l'etichetta (la stessa della stampa) e il tono da `statoRigaEstratto` (1.11.0-beta.49), colore e icona
+// qui. Uno stato che la pagina non conosce non disegna niente: prima «stornata» usciva come un riquadro vuoto.
+const STILE_DEL_TONO: Record<TonoStato, { class: string; icon: any }> = {
+    verde: { class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
+    indaco: { class: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Coins },
+    ambra: { class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart },
+    rosso: { class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle },
+    blu: { class: 'bg-blue-50 text-blue-700 border-blue-200', icon: ArrowDownCircle },
+    grigio: { class: 'bg-slate-100 text-slate-600 border-slate-300', icon: XCircle },
+};
 
-    switch(stato) {
-        case 'pagata': 
-            return { label: 'PAGATA', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
-        case 'credito': 
-            return { label: 'COMPENSATA', class: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Coins };
-        case 'parzialmente_pagata': 
-        case 'partial': // Aggiunto alias di sicurezza (se usato nel DB)
-            return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
-        case 'da_pagare': 
-        case 'pending': // Aggiunto alias
-            return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
-        case 'credito_puro': 
-            return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: ArrowDownCircle };
-        case 'stornato': // GESTIONE DELLO STORNO
-            return { label: 'STORNATA', class: 'bg-slate-100 text-slate-600 border-slate-300', icon: XCircle };
-        default: 
-            return { label: '', class: '', icon: null };
-    }
+const getStatoConfig = (stato: string | null) => {
+    const bollino = statoRigaEstratto(stato);
+    if (!bollino) return null;
+
+    return { label: bollino.etichetta, ...STILE_DEL_TONO[bollino.tono] };
 };
 
 const getImportoStyle = (riga: any) => {
@@ -541,9 +541,9 @@ const getImportoStyle = (riga: any) => {
                                                 <span class="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span> {{ item.text }}
                                             </span>
                                             
-                                            <span v-if="item.status" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status).class">
-                                                <component :is="getStatoConfig(item.status).icon" class="w-3 h-3" />
-                                                <span>{{ getStatoConfig(item.status).label }}</span>
+                                            <span v-if="getStatoConfig(item.status)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status)!.class">
+                                                <component :is="getStatoConfig(item.status)!.icon" class="w-3 h-3" />
+                                                <span>{{ getStatoConfig(item.status)!.label }}</span>
                                             </span>
                                         </div>
                                     </div>
@@ -669,7 +669,7 @@ const getImportoStyle = (riga: any) => {
                                 <div class="flex flex-col py-0.5">
                                     <div class="flex items-center justify-between gap-2">
                                         <span class="font-bold text-sm text-slate-800">{{ credito_formattato }}</span>
-                                        <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ origine === 'saldi' ? 'da saldi' : 'eccedenza' }}</span>
+                                        <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ ETICHETTA_ORIGINE[origine] ?? origine }}</span>
                                     </div>
                                     <span class="text-[10px] text-slate-500 mt-0.5">{{ gestione ?? 'gestione' }}<template v-if="piano">, {{ piano }}</template><template v-if="rata !== null"> · rata {{ rata }}</template><template v-if="immobile"> · {{ immobile }}</template></span>
                                 </div>
@@ -681,7 +681,11 @@ const getImportoStyle = (riga: any) => {
                             <template #no-options><span class="text-[12px] text-slate-500">Nessun credito da rimborsare.</span></template>
                         </v-select>
                         <p v-if="quotaScelta" class="text-[10.5px] text-slate-500 leading-snug">
-                            <template v-if="quotaScelta.origine === 'saldi'">Credito riportato da un esercizio precedente (rata zero): in contabilità esce da «Passate gestioni».</template>
+                            <template v-if="quotaScelta.origine === 'saldi' && quotaScelta.conto === 'passate_gestioni'">Credito riportato da un esercizio precedente, con la sua quota non ancora a giornale: in contabilità esce da «Passate gestioni».</template>
+                            <template v-else-if="quotaScelta.origine === 'saldi'">Credito riportato da un esercizio precedente, portato a giornale con la sua rata: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
+                            <template v-else-if="quotaScelta.origine === 'misto' && quotaScelta.conto === 'passate_gestioni'">Credito in parte riportato da un esercizio precedente e in parte delle entrate dell'anno, con la sua quota non ancora a giornale: in contabilità la parte riportata esce da «Passate gestioni», quella delle entrate da «Crediti verso condomini».</template>
+                            <template v-else-if="(quotaScelta.origine === 'misto' || quotaScelta.origine === 'entrate') && quotaScelta.a_giornale">Credito delle entrate dell'anno{{ quotaScelta.origine === 'misto' ? ' e riportato da un esercizio precedente' : '' }}, portato a giornale con la sua rata: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
+                            <template v-else-if="quotaScelta.origine === 'misto' || quotaScelta.origine === 'entrate'">Credito delle entrate dell'anno (le entrate del piano superano la spesa di questa quota), con la sua quota non ancora a giornale: in contabilità esce da «Crediti verso condomini», e la scrittura della quota, quando va a giornale, lo chiude.</template>
                             <template v-else>Credito da un versamento in eccesso: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
                         </p>
                         <p v-if="formRimborso.errors.rata_quote_id" class="text-[11px] text-red-600">{{ formRimborso.errors.rata_quote_id }}</p>

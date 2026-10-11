@@ -70,6 +70,13 @@ class IncassoRateTest extends TestCase
             'categoria' => 'crediti' // <--- VALORE CORRETTO
         ]);
     
+        // Dalla 1.11.0-beta.49 (DC1) il credito da saldi di una quota senza scrittura esce da «Passate gestioni», e senza quel
+        // conto la compensazione si rifiuta (come il rimborso): il conto del piano dei conti predefinito (`CondominioService`).
+        ContoContabile::create([
+            'condominio_id' => $condominio->id, 'codice' => '23.01', 'nome' => 'Fondo Passate Gestioni',
+            'tipo' => 'passivo', 'ruolo' => 'passate_gestioni', 'categoria' => 'fondi',
+        ]);
+
         $contoAnticipi = ContoContabile::create([
             'condominio_id' => $condominio->id,
             'codice' => '20.10', 

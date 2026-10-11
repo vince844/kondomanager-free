@@ -10,6 +10,7 @@ export interface Incasso {
     
     // 🔥 CAMPI IMPORTI AGGIORNATI
     importo_totale_raw: number;       // Float per calcoli/colori
+    importo_totale_cents: number;     // Centesimi interi: per fare i conti (1.11.0-beta.49)
     importo_totale_formatted: string; // Stringa "€ 100,00"
     
     pagante: {

@@ -20,6 +20,7 @@ use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
 use App\Http\Controllers\Gestionale\Movimenti\MastrinoController;
 use App\Http\Controllers\Gestionale\Movimenti\RegistroContabilitaController;
+use App\Http\Controllers\Gestionale\Movimenti\RiallineaCreditiController;
 use App\Http\Controllers\Gestionale\Movimenti\StatoPatrimonialeController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
@@ -410,6 +411,14 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
         ->name('movimenti-rate.storno');
+
+    // Coda 209 (1.11.0-beta.49, decisione 75.5): l'avviso della conferma dello storno, in sola lettura.
+    Route::get('movimenti-rate/{scrittura}/storno/anteprima', [StornoIncassoController::class, 'anteprima'])
+        ->name('movimenti-rate.storno.anteprima');
+
+    // La conferma della card «Crediti da riallineare» della pagina «Incassi rate» (decisioni 75.1 e 76.1).
+    Route::post('/riallinea-crediti', RiallineaCreditiController::class)
+        ->name('riallinea-crediti');
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');

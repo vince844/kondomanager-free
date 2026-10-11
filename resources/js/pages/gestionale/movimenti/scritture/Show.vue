@@ -17,6 +17,7 @@ import {
     Hash, Clock, Layers, ShieldCheck, Repeat2
 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
+import { eStornoDelPadre, figlieCheStornano } from '@/lib/gestionale/scritture/storniScrittura';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -48,8 +49,8 @@ const props = defineProps<{
         totale_dare: number;
         totale_avere: number;
         is_quadrata: boolean;
-        padre: { id: number; causale: string | null; tipo_movimento_label: string | null } | null;
-        figlie: Array<{ id: number; causale: string | null; tipo_movimento_label: string | null; created_at: string | null }>;
+        padre: { id: number; causale: string | null; tipo_movimento: string | null; tipo_movimento_label: string | null; stato: string | null } | null;
+        figlie: Array<{ id: number; causale: string | null; tipo_movimento: string | null; tipo_movimento_label: string | null; stato: string | null; created_at: string | null }>;
         pagamento_fornitore: {
             id: number;
             importo_lordo: number;
@@ -189,12 +190,20 @@ const sforoRatificatoAudit = computed(() => {
     return null;
 });
 
+// ── Scritture collegate ──────────────────────────────────────────────────────
+// Non ogni figlia annulla la scrittura, né ogni scrittura con un padre ne è lo storno (1.11.0-beta.49): la compensazione è
+// figlia di un incasso valido, la rettifica di un riallineamento è figlia di una scrittura che resta valida. La regola è in
+// `storniScrittura.ts`, con il criterio del registro di contabilità; le altre collegate si mostrano come tali.
+const figlieDiStorno = computed(() => figlieCheStornano(props.scrittura));
+const altreFiglie = computed(() => (props.scrittura.figlie ?? []).filter((f) => !figlieDiStorno.value.includes(f)));
+const eStorno = computed(() => eStornoDelPadre(props.scrittura));
+
 // ── Storno regolazione immediata ─────────────────────────────────────────────
-// Stornabile solo una regolazione immediata non ancora stornata. Le figlie sono
-// già caricate dal controller: se ne esiste una, lo storno è stato fatto.
+// Stornabile solo una regolazione immediata non ancora stornata: se una sua figlia la storna, lo storno è stato fatto.
 const puoStornare = computed(() =>
     props.scrittura.tipo_movimento === 'regolazione_immediata'
-    && (props.scrittura.figlie?.length ?? 0) === 0
+    && props.scrittura.stato !== 'annullata'
+    && figlieDiStorno.value.length === 0
 );
 
 const mostraModaleStorno = ref(false);
@@ -274,9 +283,9 @@ const confermaStorno = () => {
                         </div>
                     </div>
 
-                    <!-- ─── STORNO BANNER (se è figlia di un'altra) ──────── -->
+                    <!-- ─── STORNO BANNER (se è lo storno della scrittura padre) ──────── -->
                     <div
-                        v-if="scrittura.padre"
+                        v-if="scrittura.padre && eStorno"
                         class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 flex items-center gap-4 shadow-sm"
                     >
                         <div class="w-12 h-12 shrink-0 bg-amber-100 rounded-full flex items-center justify-center border-4 border-amber-50/50">
@@ -294,9 +303,41 @@ const confermaStorno = () => {
                         </div>
                     </div>
 
-                    <!-- ─── STORNATA BANNER (se ha figlie di storno) ─────── -->
+                    <!-- ─── COLLEGATA (padre o figlie che non sono storni) ─── -->
                     <div
-                        v-if="scrittura.figlie?.length > 0"
+                        v-if="(scrittura.padre && !eStorno) || altreFiglie.length > 0"
+                        class="bg-slate-50/60 border border-slate-200 rounded-2xl px-5 py-4 flex items-start gap-3"
+                    >
+                        <Layers class="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
+                        <div class="flex-1 space-y-1 text-sm text-slate-600">
+                            <p v-if="scrittura.padre && !eStorno">
+                                Collegata alla scrittura
+                                <button @click="navigaAllaScrittura(scrittura.padre!.id)" class="font-bold text-slate-700 hover:text-slate-900 underline underline-offset-2">
+                                    #{{ scrittura.padre!.id }}
+                                </button>
+                                ({{ scrittura.padre!.tipo_movimento_label }}).
+                            </p>
+                            <template v-if="altreFiglie.length > 0">
+                                <p>Scritture collegate:</p>
+                                <button
+                                    v-for="figlia in altreFiglie"
+                                    :key="figlia.id"
+                                    @click="navigaAllaScrittura(figlia.id)"
+                                    class="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-colors group"
+                                >
+                                    <ChevronRight class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                                    <span class="font-bold">#{{ figlia.id }}</span>
+                                    <span class="text-slate-400">—</span>
+                                    <span>{{ figlia.tipo_movimento_label }}</span>
+                                    <span v-if="figlia.created_at" class="text-xs text-slate-400">({{ figlia.created_at }})</span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ─── STORNATA BANNER (se una figlia la storna) ─────── -->
+                    <div
+                        v-if="figlieDiStorno.length > 0"
                         class="bg-gradient-to-r from-slate-50 to-gray-50 border border-slate-200 rounded-2xl p-5 flex items-center gap-4 shadow-sm"
                     >
                         <div class="w-12 h-12 shrink-0 bg-slate-100 rounded-full flex items-center justify-center border-4 border-slate-50/50">
@@ -307,7 +348,7 @@ const confermaStorno = () => {
                             <p class="text-sm text-slate-500 mt-0.5">I valori di questa scrittura sono stati stornati dalle seguenti registrazioni:</p>
                             <div class="mt-2 space-y-1">
                                 <button
-                                    v-for="figlia in scrittura.figlie"
+                                    v-for="figlia in figlieDiStorno"
                                     :key="figlia.id"
                                     @click="navigaAllaScrittura(figlia.id)"
                                     class="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-colors group"

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
 use App\Exceptions\Gestionale\CreditoDiAltroSoggettoException;
 use App\Exceptions\Gestionale\CreditoInsufficienteException;
 use App\Exceptions\Gestionale\CreditoFraGestioniDaScegliereException;
@@ -276,6 +277,17 @@ class StoreIncassoRateAction
             $contoAnticipi = ContoContabile::where('condominio_id', $condominio->id)
                                 ->where('ruolo', 'anticipi_condomini')
                                 ->first() ?? $contoCrediti;
+            // DC1 (1.11.0-beta.49, decisione 76.3): il credito di una quota esce dal conto in cui sta, e il non usato torna da dove
+            // è uscito. Il riporto a credito di una quota ancora senza scrittura sta fra le «Passate gestioni», come nel rimborso
+            // (`RimborsaCreditoAction`); la 1.9 e la 1.10 lo prelevavano da «Crediti verso condomini», dove l'emissione non l'aveva
+            // mai scritto. Il resto del credito — la spesa negativa delle entrate dell'anno, una quota già a giornale, una quota
+            // strapagata — sta fra i crediti verso condomini (`RataQuote::creditoSuPassate()`, rilievo K2 della Fase 1-bis: il conto
+            // si decide dal riporto, non dal segno). Senza il conto la compensazione di un credito riportato si rifiuta: ricadere su
+            // «Crediti» sarebbe lo stesso difetto.
+            $contoPassate = ContoContabile::where('condominio_id', $condominio->id)
+                                ->where('ruolo', 'passate_gestioni')
+                                ->whereNull('deleted_at')
+                                ->first();
 
             // La gestione è stata stabilita prima della transazione (30.12); senza nessuna riga a importo positivo (solo
             // parte in più, o rate senza gestione), la prima dell'esercizio, come sempre.
@@ -500,7 +512,7 @@ class StoreIncassoRateAction
                     'scrittura_padre_id' => $scritturaIncasso->id, // 🟢 IL LINK DI SANGUE!
                     'data_registrazione' => now(),
                     'data_competenza'    => $validated['data_pagamento'],
-                    'causale'            => 'Compensazione credito pregresso - ' . ($validated['descrizione'] ?: 'Incasso rate'),
+                    'causale'            => 'Compensazione con il credito - ' . ($validated['descrizione'] ?: 'Incasso rate'),
                     'tipo_movimento'     => 'storno_credito',
                     'stato'              => 'registrata',
                 ]);
@@ -567,26 +579,42 @@ class StoreIncassoRateAction
 
                     // --- LATO DARE (Svuotiamo il Salvadanaio / lo strapagamento) ---
                     $daPrelevareCents = $creditoDaConsumareCents;
+                    // Quanto del prelievo di ogni quota è uscito da ciascun conto: il riaccredito qui sotto torna sugli stessi
+                    // conti (rilievo K2), non sul conto che la quota avrebbe dopo il prelievo.
+                    $prelieviPerConto = [];
 
                     foreach ($quoteCredito as $quotaCredito) {
                         if ($daPrelevareCents <= 0) break;
 
                         $prelievoCents = min($daPrelevareCents, $quotaCredito->credito_disponibile);
 
-                        $scritturaStorno->righe()->create([
-                            'conto_contabile_id' => $contoCrediti->id,
-                            'anagrafica_id'      => $quotaCredito->anagrafica_id,
-                            'rata_id'            => $quotaCredito->rata_id,
-                            'immobile_id'        => $quotaCredito->immobile_id,
-                            'tipo_riga'          => 'dare',
-                            'importo'            => $prelievoCents,
-                            // Se il credito viene da un altro soggetto la riga lo dichiara:
-                            // in estratto conto deve restare leggibile di chi era quel denaro.
-                            'note'               => $creditoDaAltroSoggetto
-                                ? 'Utilizzo credito pregresso di ' . ($quotaCredito->anagrafica?->nome ?? "anagrafica #{$quotaCredito->anagrafica_id}")
-                                    . ' (comproprietario della stessa unità)'
-                                : 'Utilizzo credito pregresso',
-                        ]);
+                        // Prima il riporto ancora fra le «Passate gestioni», poi il resto fra i crediti verso condomini.
+                        $suPassateCents = min($prelievoCents, $quotaCredito->creditoSuPassate($contoPassate?->id));
+                        if ($suPassateCents > 0 && $contoPassate === null) {
+                            throw new ContoPassateGestioniMancanteException();
+                        }
+                        $prelieviPerConto[$quotaCredito->id] = ['passate' => $suPassateCents, 'crediti' => $prelievoCents - $suPassateCents];
+
+                        // Se il credito viene da un altro soggetto la riga lo dichiara:
+                        // in estratto conto deve restare leggibile di chi era quel denaro.
+                        $notaPrelievo = $creditoDaAltroSoggetto
+                            ? 'Utilizzo del credito di ' . ($quotaCredito->anagrafica?->nome ?? "anagrafica #{$quotaCredito->anagrafica_id}")
+                                . ' (comproprietario della stessa unità)'
+                            : 'Utilizzo del credito';
+
+                        foreach ([[$contoPassate, $suPassateCents], [$contoCrediti, $prelievoCents - $suPassateCents]] as [$contoRiga, $importoRiga]) {
+                            if ($importoRiga <= 0) continue;
+
+                            $scritturaStorno->righe()->create([
+                                'conto_contabile_id' => $contoRiga->id,
+                                'anagrafica_id'      => $quotaCredito->anagrafica_id,
+                                'rata_id'            => $quotaCredito->rata_id,
+                                'immobile_id'        => $quotaCredito->immobile_id,
+                                'tipo_riga'          => 'dare',
+                                'importo'            => $importoRiga,
+                                'note'               => $notaPrelievo,
+                            ]);
+                        }
 
                         // 1. Attach alla pivot (con importo negativo per ridurre il credito)
                         $quotaCredito->pagamenti()->attach($scritturaStorno->id, [
@@ -671,6 +699,10 @@ class StoreIncassoRateAction
                     // la scrittura resta sbilanciata e il condòmino perde credito che
                     // non ha speso. La restituzione va sulle stesse quote da cui il
                     // credito è stato prelevato: effetto netto = solo quanto servito.
+                    // E sugli stessi conti (rilievo K2 della Fase 1-bis della 1.11.0-beta.49): prima su
+                    // «Crediti verso condomini», l'ultimo da cui il prelievo ha preso, poi su «Passate
+                    // gestioni». Riletto dal conto della quota dopo il prelievo, il riaccredito tornava su
+                    // un conto da cui quella scrittura non aveva preso niente.
                     if ($budgetCreditoCents > 0) {
                         foreach ($quoteCredito as $quotaCredito) {
                             if ($budgetCreditoCents <= 0) break;
@@ -683,15 +715,23 @@ class StoreIncassoRateAction
                             $daRestituire = min($budgetCreditoCents, $giaPrelevato);
                             if ($daRestituire <= 0) continue;
 
-                            $scritturaStorno->righe()->create([
-                                'conto_contabile_id' => $contoCrediti->id,
-                                'anagrafica_id' => $quotaCredito->anagrafica_id,
-                                'rata_id' => $quotaCredito->rata_id,
-                                'immobile_id' => $quotaCredito->immobile_id,
-                                'tipo_riga' => 'avere',
-                                'importo' => $daRestituire,
-                                'note' => 'Credito non utilizzato, riaccreditato',
-                            ]);
+                            $dalPrelievo = $prelieviPerConto[$quotaCredito->id]
+                                ?? ($quotaCredito->ruoloDelCredito() === 'passate_gestioni' ? ['passate' => $daRestituire, 'crediti' => 0] : ['passate' => 0, 'crediti' => $daRestituire]);
+                            $aCrediti = min($daRestituire, $dalPrelievo['crediti']);
+
+                            foreach ([[$contoCrediti, $aCrediti], [$contoPassate, $daRestituire - $aCrediti]] as [$contoRiga, $importoRiga]) {
+                                if ($importoRiga <= 0) continue;
+
+                                $scritturaStorno->righe()->create([
+                                    'conto_contabile_id' => ($contoRiga ?? throw new ContoPassateGestioniMancanteException())->id,
+                                    'anagrafica_id' => $quotaCredito->anagrafica_id,
+                                    'rata_id' => $quotaCredito->rata_id,
+                                    'immobile_id' => $quotaCredito->immobile_id,
+                                    'tipo_riga' => 'avere',
+                                    'importo' => $importoRiga,
+                                    'note' => 'Credito non utilizzato, riaccreditato',
+                                ]);
+                            }
 
                             $quotaCredito->pagamenti()->attach($scritturaStorno->id, [
                                 'importo_pagato' => $daRestituire,

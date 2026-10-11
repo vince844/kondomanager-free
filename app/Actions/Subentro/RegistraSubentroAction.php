@@ -771,8 +771,10 @@ final class RegistraSubentroAction
      * - Il **saldo pregresso** dentro la quota (metodo «spalmati», o «prima rata» quando la prima è ancora in bozza)
      *   non passa: la quota di chi entra porta il solo preventivo, e a chi esce resta una quota sua sulla stessa rata
      *   con il pregresso, nella forma che il generatore dà alle quote di soli saldi (`tipo = saldo_iniziale`,
-     *   `quota_pura_gestione = 0`) — a debito l'emissione la chiude sul Fondo passate gestioni come la rata 0; a credito
-     *   la quota non si emette (come la rata 0 a credito) e il credito esce da lì con il rimborso o la compensazione.
+     *   `quota_pura_gestione = 0`) — l'emissione la chiude sul Fondo passate gestioni come la rata 0: a debito in AVERE, a
+     *   credito in DARE, con il credito riportato in AVERE su «Crediti verso condomini» a nome di chi esce (decisione 71,
+     *   1.11.0-beta.49). Finché la sua rata è in bozza il credito esce da «Passate gestioni» con il rimborso o la
+     *   compensazione; dopo l'emissione, da «Crediti verso condomini» (`RataQuote::ruoloDelCredito`).
      * - `regole_calcolo.riassegnazione` ricorda da chi viene la quota, con quale passaggio e di chi è il riparto
      *   (`righe_di`): le `righe_riparto` restano del soggetto per cui il piano è stato generato, e un passaggio
      *   successivo le rilegge da lì.

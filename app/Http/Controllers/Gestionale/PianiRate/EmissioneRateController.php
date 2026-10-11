@@ -125,16 +125,22 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
         }
 
-        // Decisione 34 (1.11.0-beta.42): «emessa» vuol dire a giornale. Le rate che vanno a giornale qui, e quelle che non
-        // hanno quote da pagare e restano in bozza, con il numero per il messaggio.
+        // Decisione 34 (1.11.0-beta.42): «emessa» vuol dire a giornale. Le rate che vanno a giornale qui, e quelle che restano
+        // fuori, ognuna con il numero per il messaggio: senza niente da portare a giornale (vuote, o con il credito già usato o
+        // rimborsato per intero: rilievo LDA-3 della Fase 1-bis), già emesse, segnate «emesse» senza scritture e prese così da un
+        // passaggio (75.2). E le quote ferme perché a credito, o a zero, senza il dettaglio del calcolo (76.3, ritoccata
+        // l'11/10/2026 sul rilievo LDA-2: si ferma la sola quota, non la rata), con la persona e la rata.
         $aGiornale = [];
         $senzaQuote = [];
+        $creditoUsato = [];
         $giaEmesse = [];
+        $quoteFerme = [];
+        $rateFerme = [];
         $restanoEmesse = [];
         $presiPrima = [];
 
         try {
-            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche, &$aGiornale, &$senzaQuote, &$giaEmesse, &$restanoEmesse, &$presiPrima) {
+            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche, &$aGiornale, &$senzaQuote, &$creditoUsato, &$giaEmesse, &$quoteFerme, &$rateFerme, &$restanoEmesse, &$presiPrima) {
                 
                 // Le quote delle rate si bloccano come PRIMA istruzione: la scrittura va intestata al titolare di adesso, e
                 // i promemoria del portale riscritti più sotto con gli importi di adesso. Un passaggio che riassegna le bozze,
@@ -144,10 +150,16 @@ class EmissioneRateController extends Controller
                 // registrazione blocca quota e rata insieme, e l'ordine inverso incrocerebbe le due operazioni.
                 DB::table('rate_quote')->whereIn('rata_id', (array) $request->rate_ids)->lockForUpdate()->pluck('id');
 
-                $rateSelezionate = Rata::with('rateQuote')
+                $rateSelezionate = Rata::with('rateQuote.anagrafica:id,nome')
                     ->where('piano_rate_id', $pianoRate->id)
                     ->whereIn('id', $request->rate_ids)
                     ->get();
+
+                // Decisione 75.2 (W1): sui dati della .41 un passaggio registrato allora può aver preso nel conguaglio una rata segnata
+                // «emessa» senza scritture (`PianoRate::presoSoloInParteDa`). Con la decisione 71 quella rata andrebbe a giornale: il
+                // piano non risulterebbe più preso da quel passaggio, l'annullamento dell'emissione tornerebbe possibile e il
+                // ricalcolo farebbe pagare due volte a chi è entrato i suoi giorni. La sua emissione si rifiuta, e l'esito dice perché.
+                $presiPrima = collect($pianoRate->passaggiCheLoHannoConguagliato())->filter(fn ($s) => $pianoRate->presoSoloInParteDa($s))->values()->all();
 
                 foreach ($rateSelezionate as $rata) {
                     if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) {
@@ -155,6 +167,21 @@ class EmissioneRateController extends Controller
                         $giaEmesse[(int) $rata->id] = (int) $rata->numero_rata;
                         continue;
                     }
+                    if ($presiPrima !== [] && $rata->stato === 'emessa') {
+                        $restanoEmesse[(int) $rata->id] = (int) $rata->numero_rata;
+                        continue;
+                    }
+                    // Decisione 76.3, ritoccata l'11/10/2026 (rilievo LDA-2): una quota a credito senza il dettaglio del calcolo (piani
+                    // generati con la 1.7.x) non dice quanta parte è spesa dell'anno e quanta credito riportato, e il programma non lo
+                    // indovina. Si ferma la sola quota, come il conguaglio di un passaggio salta per chiave le stesse quote: le altre
+                    // quote della rata vanno a giornale, e la quota ferma resta fuori con il suo credito, dove `ruoloDelCredito` lo
+                    // cerca. Fermare la rata intera lasciava fuori dal giornale anche i debiti degli altri condòmini. Anche una quota
+                    // a zero (rilievo K6): la 1.7.0 non ne creava di vuote, quindi è un credito pari alla spesa, che non si separa.
+                    $ferme = $rata->rateQuote->filter(fn (RataQuote $q) => $q->fermaSenzaDettaglio());
+                    foreach ($ferme as $q) {
+                        $quoteFerme[] = ['nome' => $q->anagrafica?->nome ?? 'un condòmino', 'rata' => (int) $rata->numero_rata, 'zero' => (int) $q->importo === 0];
+                    }
+                    $daEmettere = $rata->rateQuote->reject(fn (RataQuote $q) => $ferme->contains('id', $q->id))->values();
 
                     $totaleRataCentesimi = 0;
                     $totalePregressoCentesimi = 0;
@@ -173,75 +200,62 @@ class EmissioneRateController extends Controller
 
                     // 2. Scrittura Righe (Dettaglio quote)
                     //
-                    // Il condòmino deve l'INTERA quota, quindi il DARE su Crediti v/Condòmini è
-                    // sempre `importo` pieno. A cambiare è la contropartita, perché una quota può
-                    // portare dentro due cose di competenza diversa, e lo snapshot lo dice già:
+                    // Decisione 71 (1.11.0-beta.49): ogni quota va a giornale con le sue due componenti, a nome del condòmino, su
+                    // «Crediti verso condomini». Una quota a debito porta l'importo intero in DARE; una quota che il credito riportato
+                    // porta a zero o sotto porta la spesa in DARE e il credito riportato in AVERE, meno la parte già uscita da
+                    // «Passate gestioni» mentre la quota era senza scrittura. Il contributo della rata è dovuto comunque, e il credito
+                    // lo paga: senza le due righe lo stato patrimoniale mostrava un credito che non c'era più, e la gestione rate
+                    // contava meno contributi del riparto. Le righe le dice `RataQuote::scritturaDiEmissione()`, che usa anche il
+                    // comando di riallineamento.
                     //
-                    //     importo = quota_pura_gestione + saldo_usato
+                    // La contropartita: la spesa deliberata per QUESTO esercizio (`quota_pura_gestione`) chiude su «Gestione rate»;
+                    // il resto è il riporto da esercizi precedenti — la Rata 0 è fatta solo di quello — e non è un provento
+                    // dell'anno: chiude su «Passate gestioni», la stessa contropartita con cui l'apertura di cassa porta dentro una
+                    // posizione anteriore (RegistraAperturaCassaAction:70-73).
                     //
-                    // `quota_pura_gestione` è la spesa deliberata per QUESTO esercizio e chiude su
-                    // Gestione Rate. `saldo_usato` è il riporto da esercizi precedenti — la Rata 0
-                    // è fatta solo di quello — e non è un provento dell'anno: chiude sul Fondo
-                    // Passate Gestioni, la stessa contropartita con cui l'apertura di cassa porta
-                    // dentro una posizione anteriore (RegistraAperturaCassaAction:70-73).
-                    //
-                    // ⚠️ **Perché la componente di riporto si DERIVA per differenza** invece di
-                    // leggere `saldo_usato` dallo snapshot: così `DARE = AVERE` vale per
-                    // costruzione, anche su una quota il cui snapshot non quadri. Fidarsi di due
-                    // numeri scritti da qualcun altro significa poter emettere una scrittura
-                    // sbilanciata, e il DoubleEntryValidator la rifiuterebbe a fine rata, dopo aver
-                    // già bruciato il protocollo.
-                    foreach ($rata->rateQuote as $quota) {
-
-                        $importoQuota = (int) $quota->importo;
-
-                        if ($importoQuota <= 0) continue;
-
-                        // ⚠️ `regole_calcolo` ha il cast `'json'` sul Model, quindi qui arriva un
-                        // ARRAY. Fino alla beta.62 questa lettura faceva `(object) $array` e poi
-                        // `isset($json->importi->quota_pura_gestione)`: il cast a oggetto è
-                        // SUPERFICIALE, `$json->importi` restava un array e l'isset era sempre
-                        // falso. Il ramo non si è mai eseguito, e il riporto finiva su Gestione
-                        // Rate insieme al deliberato. Invisibile sulle rate ordinarie, dove i due
-                        // numeri coincidono; visibile solo dove divergono, cioè sulla Rata 0.
-                        $componenteGestione = $importoQuota;
-                        $regole = $quota->regole_calcolo;
-
-                        if (is_string($regole)) {
-                            $regole = json_decode($regole, true);
+                    // ⚠️ **Perché la componente di riporto si DERIVA per differenza** invece di leggere `saldo_usato` dal dettaglio:
+                    // così `DARE = AVERE` vale per costruzione, anche su una quota il cui dettaglio non quadri. Fidarsi di due numeri
+                    // scritti da qualcun altro significa poter emettere una scrittura sbilanciata, e il DoubleEntryValidator la
+                    // rifiuterebbe a fine rata, dopo aver già bruciato il protocollo.
+                    $righeScritte = 0;
+                    $perQuota = RataQuote::scritturaDiEmissione($daEmettere, $contoPassateGestioni?->id);
+                    foreach ($daEmettere as $quota) {
+                        $daScrivere = $perQuota[(int) $quota->id];
+                        if ($daScrivere['righe'] === []) {
+                            // Niente da portare: una quota a zero senza spesa né riporto, o un credito già usato per intero prima
+                            // dell'emissione. La quota resta senza scrittura; se poi uno storno restituisce quel credito, la scrive lo
+                            // storno con una figlia di questa emissione e la lega (`StornoIncassoRateAction`, rilievi K4 e LDA-1).
+                            continue;
                         }
 
-                        if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
-                            $componenteGestione = (int) $regole['importi']['quota_pura_gestione'];
+                        foreach ($daScrivere['righe'] as $i => [$verso, $importoRiga]) {
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $contoCrediti->id,
+                                'anagrafica_id'      => $quota->anagrafica_id,
+                                'immobile_id'        => $quota->immobile_id,
+                                'rata_id'            => $rata->id,
+                                'tipo_riga'          => $verso,
+                                'importo'            => $importoRiga,
+                                'note'               => $quota->notaDiEmissione($i, $verso, (string) $rata->descrizione),
+                            ]);
+                            $righeScritte++;
                         }
-
-                        $componentePregresso = $importoQuota - $componenteGestione;
-
-                        $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoCrediti->id,
-                            'anagrafica_id'      => $quota->anagrafica_id,
-                            'immobile_id'        => $quota->immobile_id,
-                            'rata_id'            => $rata->id,
-                            'tipo_riga'          => 'dare',
-                            'importo'            => $importoQuota,
-                            'note'               => "Quota " . $rata->descrizione
-                        ]);
 
                         $quota->update(['scrittura_contabile_id' => $scrittura->id]);
 
-                        $totaleRataCentesimi     += $componenteGestione;
-                        $totalePregressoCentesimi += $componentePregresso;
+                        $totaleRataCentesimi      += $daScrivere['gestione'];
+                        $totalePregressoCentesimi += $daScrivere['pregresso'];
                     }
 
-                    // 3. Chiusura in Avere, su due conti quando la rata porta un riporto.
+                    // 3. Chiusura su due conti quando la rata porta un riporto.
                     //
-                    // I due totali possono essere NEGATIVI: un condòmino che arriva a credito ha
-                    // `saldo_usato < 0`, quindi la sua componente di riporto riduce il debito. Un
-                    // totale negativo si scrive nel verso opposto, e la quadratura regge comunque
-                    // perché il DARE delle quote è già la somma algebrica delle due componenti.
-                    $totaleDareQuote = $totaleRataCentesimi + $totalePregressoCentesimi;
-
-                    if ($totaleDareQuote > 0) {
+                    // I due totali possono essere NEGATIVI: un condòmino che arriva a credito ha un riporto negativo, che riduce il
+                    // debito. Un totale negativo si scrive nel verso opposto, e la quadratura regge comunque perché le righe delle
+                    // quote sono già la somma algebrica delle due componenti. Possono anche essere tutti e due zero su una rata che
+                    // ha righe: una rata zero fatta di un debito e di un credito riportati uguali (la coppia di un conguaglio) va a
+                    // giornale per tutti e due, senza contropartite. La scrittura si tiene se ha righe, non se il totale è positivo:
+                    // con quella condizione restava in bozza anche il debito di chi compra.
+                    if ($righeScritte > 0) {
 
                         if ($totalePregressoCentesimi !== 0 && ! $contoPassateGestioni) {
                             throw new \RuntimeException(self::ERRORE_PASSATE_GESTIONI);
@@ -263,14 +277,19 @@ class EmissioneRateController extends Controller
                         }
 
                     } else {
-                        // Nessuna quota da emettere (es. rata di soli conguagli a credito):
-                        // la testata resterebbe una scrittura SENZA RIGHE, che il
-                        // DoubleEntryValidator approva (0 = 0) ma che sporca il giornale e
-                        // brucia un numero di protocollo. Peggio: nessuna quota riceve
-                        // scrittura_contabile_id, quindi il guard anti-doppia-emissione non
-                        // scatta e ogni nuova emissione ne accumula un'altra.
+                        // Niente da portare a giornale (una rata vuota, le cui quote a credito sono già state usate per intero, o fatta
+                        // solo di quote ferme): la testata resterebbe una scrittura SENZA RIGHE, che il DoubleEntryValidator approva
+                        // (0 = 0) ma che sporca il giornale e brucia un numero di protocollo. Peggio: nessuna quota riceve
+                        // scrittura_contabile_id, quindi il guard anti-doppia-emissione non scatta e ogni nuova emissione ne accumula
+                        // un'altra. Ogni caso con la sua frase: «non ha quote da pagare» solo per le rate davvero vuote (decisione 71).
                         $scrittura->forceDelete();
-                        $senzaQuote[(int) $rata->id] = (int) $rata->numero_rata;
+                        if ($ferme->isNotEmpty()) {
+                            $rateFerme[(int) $rata->id] = (int) $rata->numero_rata;
+                        } elseif ($daEmettere->contains(fn (RataQuote $q) => (int) $q->importo < 0)) {
+                            $creditoUsato[(int) $rata->id] = (int) $rata->numero_rata;
+                        } else {
+                            $senzaQuote[(int) $rata->id] = (int) $rata->numero_rata;
+                        }
                         continue;
                     }
                     $aGiornale[] = (int) $rata->id;
@@ -316,25 +335,18 @@ class EmissioneRateController extends Controller
 
                 }
 
-                // «Emessa» solo la rata che è andata a giornale (decisione 34): una rata senza quote da pagare non ha prodotto
-                // scritture e resta in bozza — anche se una versione prima della beta.42 l'aveva già segnata «emessa».
-                // Rilievo W1 del giro sulle correzioni: sui dati della .41 un passaggio registrato allora può aver preso nel conguaglio
-                // proprio una di queste rate «emesse» senza scrittura (`PianoRate::presoSoloInParteDa`). Riportarla in bozza toglierebbe
-                // al piano l'unica traccia di quel conguaglio, e il ricalcolo che ne segue farebbe pagare la coppia due volte: resta
-                // «emessa», e l'esito lo dice.
-                $presiPrima = collect($pianoRate->passaggiCheLoHannoConguagliato())->filter(fn ($s) => $pianoRate->presoSoloInParteDa($s))->values()->all();
-                if ($presiPrima !== []) {
-                    $restanoEmesse = Rata::whereIn('id', array_keys($senzaQuote))->where('stato', 'emessa')->pluck('id')
-                        ->mapWithKeys(fn ($id) => [(int) $id => $senzaQuote[(int) $id]])->all();
-                    $senzaQuote = array_diff_key($senzaQuote, $restanoEmesse);
-                }
+                // «Emessa» solo la rata che è andata a giornale (decisione 34): una rata che non ha prodotto scritture resta in
+                // bozza — anche se una versione prima della beta.42 l'aveva già segnata «emessa» (la pagina del piano la mostrava già
+                // in bozza: guarda le scritture). Non quella che un passaggio della .41 ha preso così (75.2, sopra): riportarla in
+                // bozza toglierebbe al piano l'unica traccia di quel conguaglio. Una rata con una quota ferma e le altre a giornale è
+                // «emessa» (76.3 ritoccata): la quota ferma resta fuori, e la card del riallineamento la elenca.
                 Rata::whereIn('id', $aGiornale)->update(['stato' => 'emessa']);
-                Rata::whereIn('id', array_keys($senzaQuote))->where('stato', 'emessa')->update(['stato' => 'bozza']);
+                Rata::whereIn('id', array_keys($senzaQuote + $creditoUsato + $rateFerme))->where('stato', 'emessa')->update(['stato' => 'bozza']);
             });
 
             InboxService::clearAdminCache();
 
-            $esito = $this->esitoEmissione(count($aGiornale), $senzaQuote, $giaEmesse, $restanoEmesse, $presiPrima);
+            $esito = $this->esitoEmissione(count($aGiornale), $senzaQuote, $giaEmesse, $restanoEmesse, $presiPrima, $quoteFerme, $rateFerme, $creditoUsato);
 
             $msg = $aGiornale === [] ? $esito['testo'] : ($inviaNotifiche
                 ? 'Rate emesse e notificate correttamente ai condòmini.'
@@ -360,10 +372,15 @@ class EmissioneRateController extends Controller
             Log::error("Errore emissione rate: " . $e->getMessage());
 
             if (str_contains($e->getMessage(), self::ERRORE_PASSATE_GESTIONI)) {
+                // Dalla 1.11.0-beta.49 anche una quota a credito porta un riporto (il credito riportato, decisione 71): senza il
+                // conto non va a giornale, e l'errore ferma tutta la richiesta, nella stessa transazione.
+                // Giro stretto sulle correzioni della Fase 1-bis (LT-2): non «ricrealo dal piano dei conti», che nel programma è il
+                // preventivo; il conto di sistema dalle pagine non si ricrea (`ContoPassateGestioniMancanteException`).
                 return back()->with($this->flashError(
-                    'Questa rata porta un riporto da esercizi precedenti, ma nel piano dei conti di '
-                    .'questo condominio manca il «Fondo Passate Gestioni» (2301). Ricrealo dal piano '
-                    .'dei conti e riprova: senza, il riporto finirebbe fra le entrate dell\'anno.'
+                    'Questa rata porta un riporto da esercizi precedenti (un debito o un credito riportato), ma a questo '
+                    .'condominio manca il conto di sistema «Fondo Passate Gestioni» (2301): senza, il riporto finirebbe fra le '
+                    .'entrate dell\'anno, o un credito riportato resterebbe fuori dal giornale. Dalle pagine del programma non si '
+                    .'ricrea: va ripristinato da chi gestisce l\'installazione. Nessuna rata di questa richiesta è stata emessa.'
                 ));
             }
 
@@ -461,14 +478,25 @@ class EmissioneRateController extends Controller
     }
 
     /**
-     * Che cosa ha fatto l'emissione, contato sulle rate andate a giornale e non su quelle chieste (decisione 34): una rata
-     * senza quote da pagare resta in bozza, e il messaggio la nomina.
+     * Che cosa ha fatto l'emissione, contato sulle rate andate a giornale e non su quelle chieste (decisione 34). Ogni rata rimasta
+     * fuori ha la sua frase: vuota (la frase «non ha quote da pagare» è solo per queste rate, dalla decisione 71), con il credito già
+     * usato o rimborsato per intero (rilievo LDA-3 della Fase 1-bis), già emessa, presa da un passaggio della .41 così com'era
+     * (75.2). Le quote ferme perché senza il dettaglio del calcolo (76.3, ritoccata l'11/10/2026 sul rilievo LDA-2) hanno una frase
+     * loro, che nomina la persona e la rata e dice la strada; la rata fatta solo di quelle resta in bozza, e lo si dice.
+     *
+     * Le rate rimaste fuori «restano in bozza», non «tornano»: la pagina del piano le mostrava già in bozza anche quando una
+     * versione di prima le aveva segnate «emesse» (guarda le scritture), e la frase dice quello che l'amministratore vede.
      *
      * @param array<int, int> $senzaQuote id della rata => numero della rata
      * @param array<int, int> $giaEmesse id della rata => numero della rata, per le rate che erano già a giornale
+     * @param array<int, int> $restanoEmesse le rate «emesse» senza scritture prese da un passaggio della .41
+     * @param list<Subentro> $presiPrima quei passaggi
+     * @param list<array{nome: string, rata: int, zero: bool}> $quoteFerme le quote a credito, o a zero, senza il dettaglio del calcolo
+     * @param array<int, int> $rateFerme le rate fatte solo di quote ferme, rimaste in bozza
+     * @param array<int, int> $creditoUsato le rate senza niente da portare perché il loro credito è già uscito tutto
      * @return array{titolo: string, testo: string}
      */
-    private function esitoEmissione(int $emesse, array $senzaQuote, array $giaEmesse = [], array $restanoEmesse = [], array $presiPrima = []): array
+    private function esitoEmissione(int $emesse, array $senzaQuote, array $giaEmesse = [], array $restanoEmesse = [], array $presiPrima = [], array $quoteFerme = [], array $rateFerme = [], array $creditoUsato = []): array
     {
         $frasi = [];
         if ($emesse > 0) {
@@ -484,16 +512,95 @@ class EmissioneRateController extends Controller
                 ? "La rata {$numeri[0]} non è stata emessa: non ha quote da pagare, e a giornale non c'è niente da portare. Resta in bozza."
                 : 'Le rate ' . $numeri->join(', ', ' e ') . " non sono state emesse: non hanno quote da pagare, e a giornale non c'è niente da portare. Restano in bozza.";
         }
+        if ($creditoUsato !== []) {
+            $numeri = collect($creditoUsato)->sort()->values();
+            $frasi[] = $numeri->count() === 1
+                ? "La rata {$numeri[0]} non è stata emessa: il suo credito è già stato usato o rimborsato per intero, e a giornale non c'è niente da portare. Resta in bozza."
+                : 'Le rate ' . $numeri->join(', ', ' e ') . " non sono state emesse: il loro credito è già stato usato o rimborsato per intero, e a giornale non c'è niente da portare. Restano in bozza.";
+        }
+        if ($quoteFerme !== []) {
+            $frasi[] = self::fraseQuoteFerme($quoteFerme);
+            if ($rateFerme !== []) {
+                $numeri = collect($rateFerme)->sort()->values();
+                // «quella quota» o «quelle quote» si conta sulle quote ferme di quelle rate, non sulle rate (giro stretto sulle
+                // correzioni della Fase 1-bis, LT-8): due quote ferme sulla stessa rata sono «quelle quote».
+                $quante = collect($quoteFerme)->whereIn('rata', $numeri->all())->count();
+                $frasi[] = $numeri->count() === 1
+                    ? "La rata {$numeri[0]} resta in bozza: " . ($quante === 1 ? 'senza quella quota' : 'senza quelle quote') . ' non ha niente da portare a giornale.'
+                    : 'Le rate ' . $numeri->join(', ', ' e ') . ' restano in bozza: senza quelle quote non hanno niente da portare a giornale.';
+            }
+        }
 
         if ($restanoEmesse !== []) {
             $numeri = collect($restanoEmesse)->sort()->values();
-            $frasi[] = sprintf('%s a giornale non c\'è niente da portare; %s segnat%s come emess%s, perché il conguaglio %s, registrato con una versione di prima, %sha pres%s così.',
-                $numeri->count() === 1 ? "La rata {$numeri[0]} non ha quote da pagare e" : 'Le rate ' . $numeri->join(', ', ' e ') . ' non hanno quote da pagare e',
-                $numeri->count() === 1 ? 'resta' : 'restano', $numeri->count() === 1 ? 'a' : 'e', $numeri->count() === 1 ? 'a' : 'e',
-                PianoRate::descriviPassaggi($presiPrima), $numeri->count() === 1 ? 'l\'' : 'le ', $numeri->count() === 1 ? 'a' : 'e');
+            $una = $numeri->count() === 1;
+            // Rilievo LDA-5: la strada con le parole della pagina del piano, dove il pulsante «Ricalcola» dice il motivo del blocco e,
+            // sotto «Per riaprirlo», i passi; non con i nomi del codice.
+            $frasi[] = sprintf('%s: %s senza scritture, e il conguaglio %s, registrato con una versione di prima, %s così. %s a giornale adesso, il piano non risulterebbe più preso da quel conguaglio, e un ricalcolo farebbe pagare due volte a chi è entrato i suoi giorni. Per %s, segui i passi sul pulsante «Ricalcola» della pagina del piano, sotto «Per riaprirlo».',
+                $una ? "La rata {$numeri[0]} non è stata emessa" : 'Le rate ' . $numeri->join(', ', ' e ') . ' non sono state emesse',
+                $una ? 'è segnata come emessa' : 'sono segnate come emesse',
+                PianoRate::descriviPassaggi($presiPrima),
+                $una ? 'l\'ha presa' : 'le ha prese',
+                $una ? 'Portata' : 'Portate',
+                $una ? 'emetterla' : 'emetterle');
         }
 
-        return ['titolo' => match (true) { $emesse > 0 => 'Emissione completata', $senzaQuote === [] && $restanoEmesse === [] && $giaEmesse !== [] => 'Rate già emesse', default => 'Nessuna rata emessa' }, 'testo' => implode(' ', $frasi)];
+        $fuori = $senzaQuote === [] && $creditoUsato === [] && $rateFerme === [] && $restanoEmesse === [];
+
+        return ['titolo' => match (true) { $emesse > 0 => 'Emissione completata', $fuori && $giaEmesse !== [] => 'Rate già emesse', default => 'Nessuna rata emessa' }, 'testo' => implode(' ', $frasi)];
+    }
+
+    /**
+     * La frase delle quote ferme (76.3 ritoccata, rilievi LDA-2 e K6): chi e su quale rata, perché, che cosa succede al credito e
+     * la strada. La strada non è il solo ricalcolo: il ricalcolo chiede di stornare prima gli incassi, le compensazioni e i
+     * rimborsi e di annullare le emissioni del piano, e rilegge il saldo pregresso con il segno di oggi, mentre le versioni di prima
+     * della 1.8.0 lo sottraevano (misurato dallo scettico di LDA-2: un credito di −7500 a rata diventava un debito di +17500). Va
+     * controllato prima.
+     *
+     * Che cosa succede al credito lo si dice per tipo di quota (giro stretto sulle correzioni della Fase 1-bis, LT-3 e G3): una quota
+     * a credito lascia un credito da usare o rimborsare; una quota a zero no, perché il credito riportato paga per intero la spesa
+     * della rata, e restano fuori tutti e due. «Il credito resta a …» nomina solo chi ha una quota a credito.
+     *
+     * @param list<array{nome: string, rata: int, zero: bool}> $quoteFerme
+     */
+    private static function fraseQuoteFerme(array $quoteFerme): string
+    {
+        $pezzi = fn (\Illuminate\Support\Collection $quote) => $quote->groupBy('nome')->map(function ($sue, $nome) {
+            $numeri = $sue->pluck('rata')->unique()->sort()->values();
+
+            return 'di ' . $nome . ($numeri->count() === 1 ? " sulla rata {$numeri[0]}" : ' sulle rate ' . $numeri->join(', ', ' e '));
+        })->values()->join(' e ');
+        $tutte = collect($quoteFerme);
+        $crediti = $tutte->reject(fn ($q) => $q['zero'])->values();
+        $zeri = $tutte->filter(fn ($q) => $q['zero'])->values();
+        $una = $tutte->count() === 1;
+        $chi = self::nomiInFila($tutte->pluck('nome')->unique()->values());
+        $tipo = $crediti->isEmpty()
+            ? ($una ? 'è a zero' : 'sono a zero')
+            : ($zeri->isNotEmpty() ? 'sono a credito o a zero' : ($una ? 'è a credito' : 'sono a credito'));
+
+        $frasi = [sprintf('%s %s non %s andat%s a giornale: %s senza il dettaglio del calcolo (piano generato con una versione di prima della 1.8.0), che non dice quanta parte è spesa dell\'anno e quanta credito riportato, e il programma non lo indovina.',
+            $una ? 'La quota' : 'Le quote',
+            $pezzi($tutte),
+            $una ? 'è' : 'sono',
+            $una ? 'a' : 'e',
+            $tipo)];
+        if ($crediti->isNotEmpty()) {
+            $frasi[] = sprintf('Il credito resta a %s, da usare o rimborsare.', self::nomiInFila($crediti->pluck('nome')->unique()->values()));
+        }
+        if ($zeri->isNotEmpty()) {
+            $unoZero = $zeri->count() === 1;
+            $frasi[] = sprintf('%s la spesa %s e il credito riportato che la paga si pareggiano, e restano fuori dal giornale tutti e due: non c\'è un credito da usare né da rimborsare, anche se l\'estratto conto può mostrare a credito il saldo pregresso.',
+                $crediti->isEmpty()
+                    ? 'Per ' . self::nomiInFila($zeri->pluck('nome')->unique()->values())
+                    : ($unoZero ? 'Per la quota a zero ' : 'Per le quote a zero ') . $pezzi($zeri),
+                $unoZero ? 'della rata' : 'di ogni rata');
+        }
+        $frasi[] = sprintf('Per portare %s a giornale si ricalcola il piano, dopo aver stornato gli incassi, le compensazioni e i rimborsi e annullato le emissioni; prima controlla il saldo pregresso di %s: le versioni di prima della 1.8.0 lo sottraevano invece di sommarlo.',
+            $una ? 'la quota' : 'quelle quote',
+            $chi);
+
+        return implode(' ', $frasi);
     }
 
     /**
@@ -648,13 +755,21 @@ class EmissioneRateController extends Controller
         try {
             DB::transaction(function () use ($rata, $condominio, $pianoRate, $request, $esercizio) { 
                 
-                // 1. Sgancio e rimozione Scritture (Perfetto, non toccato)
+                // 1. Sgancio e rimozione Scritture
                 $scrittureIds = $rata->rateQuote()->pluck('scrittura_contabile_id')->filter()->unique();
                 $rata->rateQuote()->update(['scrittura_contabile_id' => null]);
 
                 if ($scrittureIds->isNotEmpty()) {
+                    // Con l'emissione se ne vanno le sue figlie di tipo emissione (1.11.0-beta.49, decisione 76.3): lo storno di un
+                    // credito usato prima che la rata andasse a giornale riporta fra i crediti verso condomini la parte restituita
+                    // con una scrittura figlia dell'emissione (`StornoIncassoRateAction`), che senza l'emissione non ha ragione
+                    // d'essere. Lasciata lì (la chiave `scrittura_padre_id` si azzera da sola), il credito resterebbe a giornale
+                    // con la rata di nuovo in bozza.
+                    $scrittureIds = $scrittureIds->merge(ScritturaContabile::whereIn('scrittura_padre_id', $scrittureIds)
+                        ->where('tipo_movimento', 'emissione_rata')->pluck('id'))->unique()->values();
+                    ScritturaContabile::whereIn('id', $scrittureIds)->whereNotNull('scrittura_padre_id')->update(['scrittura_padre_id' => null]);
                     RigaScrittura::whereIn('scrittura_id', $scrittureIds)->delete();
-                    ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
+                    ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete();
                 }
 
                 // Riportiamo la rata in stato di bozza

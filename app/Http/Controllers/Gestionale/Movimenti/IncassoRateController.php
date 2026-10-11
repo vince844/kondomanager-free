@@ -136,7 +136,23 @@ class IncassoRateController extends Controller
             'stats'      => $stats,
             'stati'      => self::STATI,
             'filters'    => $request->all(['search', 'stato', 'data_da', 'data_a']),
+            // La card «Crediti da riallineare» (decisioni 75.1 e 76.1, 1.11.0-beta.49): compare solo se il rilevamento trova
+            // qualcosa da scrivere, una rata da emettere o una voce che resta com'è (questa in sola lettura: rilievo LDA-8 della
+            // Fase 1-bis). Fatte le rettifiche ed emesse le rate, sparisce da sola; le voci che restano come sono la tengono accesa.
+            'riallineamento_crediti' => $this->riallineamentoCrediti($condominio),
         ]);
+    }
+
+    /**
+     * Che cosa la card «Crediti da riallineare» mostra: il rilevamento di `RiallineaCreditiService`, in sola lettura, o null se non
+     * c'è niente da fare né da dire.
+     */
+    private function riallineamentoCrediti(Condominio $condominio): ?array
+    {
+        $servizio = app(\App\Services\Gestionale\RiallineaCreditiService::class);
+        $rilevato = $servizio->rileva($condominio);
+
+        return $servizio->vuoto($rilevato) ? null : $rilevato;
     }
 
     /**

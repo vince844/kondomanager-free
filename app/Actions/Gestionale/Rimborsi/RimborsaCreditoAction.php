@@ -2,6 +2,7 @@
 
 namespace App\Actions\Gestionale\Rimborsi;
 
+use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -20,14 +21,25 @@ use Illuminate\Validation\ValidationException;
  * a fronte di una quota a credito. Nato per chi vende e lascia il condominio con un credito che nessun
  * piano successivo potrà compensare; vale per qualunque quota con `credito_disponibile > 0`.
  *
- * **La contropartita dipende da dove il credito è nato**, perché il giornale lo racconta in due modi:
+ * **La contropartita dipende da dove il credito sta adesso** (`RataQuote::creditoSuPassate()`, 1.11.0-beta.49), perché il
+ * giornale lo racconta in quattro modi:
  * - **quota strapagata** (`importo > 0`, `importo_pagato > importo`): l'incasso ha già scritto l'eccedenza
  *   in AVERE su «Crediti verso condomini» (1101); il rimborso la rovescia — DARE 1101 / AVERE cassa.
- * - **credito da saldi** (`importo < 0`: il saldo a credito assorbito in Rata 0): l'emissione **non scrive**
- *   le quote a credito (`EmissioneRateController` le salta), quindi su 1101 non c'è nulla da rovesciare; un
- *   DARE 1101 lascerebbe un credito del condominio verso chi è uscito, letto dallo Stato patrimoniale come
- *   vero. Il credito viene da un esercizio passato: DARE «Passate gestioni» / AVERE cassa, lo stesso conto
- *   con cui l'emissione chiude i riporti a debito.
+ * - **quota a credito già a giornale** (`importo < 0`, la quota ha la sua scrittura): dalla decisione 71 l'emissione
+ *   della rata scrive il credito in AVERE su 1101 a nome del condòmino, e il rimborso lo rovescia lì — DARE
+ *   1101 / AVERE cassa.
+ * - **credito riportato non ancora a giornale** (il riporto negativo di una quota non ancora a giornale: la rata in bozza, o una
+ *   quota rimasta fuori dall'emissione, come la quota ferma di un piano della 1.7.x): su 1101 non c'è
+ *   niente da rovesciare, e un DARE 1101 lascerebbe un credito del condominio verso chi lo riceve, letto dallo Stato
+ *   patrimoniale come vero. Il credito viene da un esercizio passato: DARE «Passate gestioni» / AVERE cassa, lo
+ *   stesso conto con cui l'emissione chiude i riporti. Quando la quota andrà a giornale, la sua scrittura porterà fra i
+ *   crediti solo quello che resta (`RataQuote::creditoUscitoDaPassate()`). La nota dice «la sua quota non ancora a
+ *   giornale», non «la sua rata» (giro stretto sulle correzioni della Fase 1-bis, LT-5 e G2): con la 76.3 ritoccata la rata
+ *   di una quota ferma va a giornale per gli altri, ed è «emessa».
+ * - **credito delle entrate dell'anno non ancora a giornale** (la spesa negativa di una voce di tipo «entrata», rilievo K2
+ *   della Fase 1-bis): non è un riporto e in «Passate gestioni» non è mai entrato. DARE 1101 / AVERE cassa, come un
+ *   incasso su una quota in bozza: l'emissione della rata scrive quel credito in AVERE su 1101 per intero, e lo chiude.
+ * Una quota con tutte e due le parti si rimborsa prima dal riporto, poi dalle entrate: due righe in DARE, una per conto.
  *
  * La quota si consuma come fa lo `storno_credito`: pivot `quota_scrittura` con `importo_pagato = −importo`,
  * poi `ricalcolaStato()` — `credito_disponibile` è l'unica verità, lo `stato` della quota non la dice.
@@ -81,16 +93,19 @@ final class RimborsaCreditoAction
                 throw ValidationException::withMessages(['cassa_id' => sprintf('La cassa «%s» ha %s: non basta per rimborsare %s.', $cassa->nome, MoneyHelper::format($capienza), MoneyHelper::format($importoCents))]);
             }
 
-            $daSaldi = (int) $quota->importo < 0;
-            $contropartita = ContoContabile::where('condominio_id', $condominio->id)
-                ->where('ruolo', $daSaldi ? 'passate_gestioni' : 'crediti_condomini')
-                ->whereNull('deleted_at')
-                ->first();
-            if ($contropartita === null) {
-                throw ValidationException::withMessages(['rata_quote_id' => $daSaldi
-                    ? 'Manca il conto «Passate gestioni» del condominio: senza, il credito riportato da un esercizio precedente non ha una contropartita da cui uscire.'
-                    : 'Manca il conto «Crediti verso condomini» del condominio.']);
+            $contoPassate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->whereNull('deleted_at')->first();
+            $contoCrediti = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'crediti_condomini')->whereNull('deleted_at')->first();
+            // Prima il riporto ancora fra le «Passate gestioni», poi il resto fra i crediti verso condomini (rilievo K2).
+            $suPassate = min($importoCents, $quota->creditoSuPassate($contoPassate?->id));
+            $suCrediti = $importoCents - $suPassate;
+            if ($suPassate > 0 && $contoPassate === null) {
+                throw ValidationException::withMessages(['rata_quote_id' => ContoPassateGestioniMancanteException::MESSAGGIO]);
             }
+            if ($suCrediti > 0 && $contoCrediti === null) {
+                throw ValidationException::withMessages(['rata_quote_id' => 'Manca il conto «Crediti verso condomini» del condominio.']);
+            }
+            ['riporto' => $riporto, 'spesa' => $spesa] = $quota->componenti();
+            $aGiornale = $quota->scrittura_contabile_id !== null;
 
             $nome = $quota->anagrafica?->nome ?? "anagrafica #{$quota->anagrafica_id}";
             $scrittura = ScritturaContabile::create([
@@ -104,20 +119,31 @@ final class RimborsaCreditoAction
                 'tipo_movimento'     => 'rimborso_condomino',
                 'stato'              => 'registrata',
                 'created_by'         => $utenteId,
-                'note'               => $daSaldi
-                    ? 'Credito riportato da un esercizio precedente (quota a credito della rata zero): contropartita Passate gestioni.'
-                    : 'Credito da eccedenza di versamento: rovescia l\'accredito su Crediti verso condomini.',
+                'note'               => match (true) {
+                    $suPassate > 0 && $suCrediti > 0 => 'Credito in parte riportato da un esercizio precedente e in parte delle entrate dell\'anno, con la sua quota non ancora a giornale: la parte riportata esce da Passate gestioni, quella delle entrate da Crediti verso condomini, dove la chiude la scrittura della quota quando va a giornale.',
+                    $suPassate > 0                   => 'Credito riportato da un esercizio precedente, con la sua quota non ancora a giornale: contropartita Passate gestioni.',
+                    (int) $quota->importo >= 0       => 'Credito da eccedenza di versamento: rovescia l\'accredito su Crediti verso condomini.',
+                    $aGiornale && $riporto < 0 && $spesa < 0 => 'Credito riportato da un esercizio precedente e delle entrate dell\'anno, portato a giornale con la sua rata: rovescia l\'accredito su Crediti verso condomini.',
+                    $aGiornale && $riporto < 0       => 'Credito riportato da un esercizio precedente, portato a giornale con la sua rata: rovescia l\'accredito su Crediti verso condomini.',
+                    $aGiornale                       => 'Credito delle entrate dell\'anno (le entrate del piano superano la spesa di questa quota), portato a giornale con la sua rata: rovescia l\'accredito su Crediti verso condomini.',
+                    default                          => 'Credito delle entrate dell\'anno (le entrate del piano superano la spesa di questa quota), con la sua quota non ancora a giornale: contropartita Crediti verso condomini, dove la chiude la scrittura della quota quando va a giornale.',
+                },
             ]);
 
-            $scrittura->righe()->create([
-                'conto_contabile_id' => $contropartita->id,
-                'anagrafica_id'      => $quota->anagrafica_id,
-                'rata_id'            => $quota->rata_id,
-                'immobile_id'        => $quota->immobile_id,
-                'tipo_riga'          => 'dare',
-                'importo'            => $importoCents,
-                'note'               => 'Rimborso del credito' . ($nota ? ' — ' . $nota : ''),
-            ]);
+            foreach ([[$contoPassate, $suPassate], [$contoCrediti, $suCrediti]] as [$contropartita, $importoRiga]) {
+                if ($importoRiga <= 0) {
+                    continue;
+                }
+                $scrittura->righe()->create([
+                    'conto_contabile_id' => $contropartita->id,
+                    'anagrafica_id'      => $quota->anagrafica_id,
+                    'rata_id'            => $quota->rata_id,
+                    'immobile_id'        => $quota->immobile_id,
+                    'tipo_riga'          => 'dare',
+                    'importo'            => $importoRiga,
+                    'note'               => 'Rimborso del credito' . ($nota ? ' — ' . $nota : ''),
+                ]);
+            }
             $scrittura->righe()->create([
                 'conto_contabile_id' => $cassa->contoContabile->id,
                 'cassa_id'           => $cassa->id,

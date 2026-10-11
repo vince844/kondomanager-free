@@ -502,16 +502,23 @@ class ScritturaContabileController extends Controller
                 'totale_avere' => $totaleAvere,
                 'is_quadrata'  => $totaleDare === $totaleAvere,
 
-                // Scritture collegate (storni)
+                // Scritture collegate. Non tutte sono storni: la compensazione è figlia di un incasso valido, la rettifica del
+                // riallineamento è figlia di una scrittura che resta valida, lo storno di un credito usato prima dell'emissione ha
+                // una figlia dell'emissione. Tipo e stato di padre e figlie servono alla pagina per dire «annullato» e «storno»
+                // solo quando lo sono (`resources/js/lib/gestionale/scritture/storniScrittura.ts`, 1.11.0-beta.49).
                 'padre' => $scrittura->padre ? [
                     'id'      => $scrittura->padre->id,
                     'causale' => $scrittura->padre->causale,
+                    'tipo_movimento' => $scrittura->padre->tipo_movimento?->value,
                     'tipo_movimento_label' => $scrittura->padre->tipo_movimento?->label(),
+                    'stato'   => $scrittura->padre->stato,
                 ] : null,
                 'figlie' => $scrittura->figlie->map(fn ($f) => [
                     'id'      => $f->id,
                     'causale' => $f->causale,
+                    'tipo_movimento' => $f->tipo_movimento?->value,
                     'tipo_movimento_label' => $f->tipo_movimento?->label(),
+                    'stato'   => $f->stato,
                     'created_at' => $f->created_at?->format('d/m/Y H:i'),
                 ]),
 

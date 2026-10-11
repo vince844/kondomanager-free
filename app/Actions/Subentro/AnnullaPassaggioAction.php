@@ -274,6 +274,10 @@ final class AnnullaPassaggioAction
                     continue;
                 }
                 if (! empty($voce['gemella_id']) && $gemelle->has((int) $voce['gemella_id'])) {
+                    // DC4, la terza sede (decisione 75.3, 1.11.0-beta.49): i legami della gemella del pregresso con le scritture
+                    // (una compensazione o un rimborso stornati, la pivot a somma zero) passano alla quota con cui si riunisce,
+                    // invece di andarsene a cascata con lei. La quota equivalente qui è certa: è quella da cui la gemella è nata.
+                    DB::table('quota_scrittura')->where('rate_quota_id', $voce['gemella_id'])->update(['rate_quota_id' => (int) $voce['id']]);
                     DB::table('rate_quote')->where('id', $voce['gemella_id'])->delete();
                 }
                 $rimessa = DB::table('rate_quote')->where('id', $voce['id'])

@@ -1055,9 +1055,8 @@ final class ConguaglioPassaggio
         foreach ($senza as $r) {
             $piano = (int) $r->piano_rate_id;
             $persone = array_unique([(int) $r->anagrafica_id, (int) ($r->righe_di ?? $r->anagrafica_id)]);
-            $conSaldo = $saldi->contains(fn ($x) => ($x->piano_rate_id !== null
-                    ? (int) $x->piano_rate_id === $piano
-                    : (int) $x->esercizio_id === (int) ($eserciziPerPiano[$piano] ?? 0) && ($nate[$piano] ?? null) !== null && (string) $x->created_at <= (string) $nate[$piano])
+            $esercizioDelPiano = isset($eserciziPerPiano[$piano]) ? (int) $eserciziPerPiano[$piano] : null;
+            $conSaldo = $saldi->contains(fn ($x) => PianoRate::saldoAssorbito($x, $piano, $esercizioDelPiano, isset($nate[$piano]) ? (string) $nate[$piano] : null)
                 && ($x->immobile_id !== null || $x->anagrafica_id !== null)
                 && ($x->immobile_id === null || (int) $x->immobile_id === (int) $r->immobile_id)
                 && ($x->anagrafica_id === null || in_array((int) $x->anagrafica_id, $persone, true)));

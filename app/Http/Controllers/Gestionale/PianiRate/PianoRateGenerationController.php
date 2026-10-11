@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Actions\PianoRate\RigeneraRateTenendoILegami;
 use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Actions\PianoRate\SyncOrphanChaptersAction;
 use App\Enums\StatoPianoRate;
@@ -109,15 +110,15 @@ class PianoRateGenerationController extends Controller
                 );
             }
 
-            $pianoRate->rate()->delete();
-            $stats = $generateAction->execute(
+            // Le rate si cancellano e si rigenerano tenendo i legami degli incassi stornati con le quote (DC4, 1.11.0-beta.49).
+            $stats = app(RigeneraRateTenendoILegami::class)->esegui($pianoRate, fn () => $generateAction->execute(
                 pianoRate: $pianoRate,
                 accettaScoperti: $accettaScoperti,
                 notaScoperti: $notaScoperti,
                 accettaDestinatari: $accettaDestinatari,
                 notaDestinatari: $notaDestinatari,
                 esercizio: $esercizio,
-            );
+            ));
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
             if ($vecchioStato === StatoPianoRate::APPROVATO) {

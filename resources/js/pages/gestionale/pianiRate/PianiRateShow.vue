@@ -384,13 +384,14 @@ const submitEmissione = () => {
                 return;
             }
             const suggerimento = flash?.suggerimento_crediti;
-            // L'esito conta le rate andate a giornale, non quelle scelte: una rata senza quote da pagare resta in bozza
-            // (decisione 34, 1.11.0-beta.42).
+            // L'esito conta le rate andate a giornale, non quelle scelte (decisione 34, 1.11.0-beta.42): dalla 1.11.0-beta.49 anche
+            // una rata di soli crediti va a giornale (decisione 71), e resta in bozza solo quella che non ha niente da portare (anche
+            // perché fatta solo di quote ferme: a credito, o a zero, senza il dettaglio del calcolo, 76.3 ritoccata l'11/10/2026).
             const esito = flash?.esito_emissione;
             const base = esito?.testo ?? `Sono state emesse ${formEmissione.rate_ids.length} rate.`;
 
-            // Nessuna rata andata a giornale (solo rate senza quote da pagare, o già emesse): il server risponde con un avviso, e
-            // la modale non lo veste da successo.
+            // Nessuna rata andata a giornale (rate senza niente da portare, ferme o già emesse): il server risponde con un
+            // avviso, e la modale non lo veste da successo.
             showFeedback(esito?.titolo ?? 'Emissione completata', suggerimento ? `${base}\n\n${suggerimento}` : base, false, flash?.message?.type === 'warning');
         },
         onError: (errors) => {
@@ -1063,7 +1064,7 @@ const printRipartoCapitoli = () => {
                                 </h4>
                                 <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                     <p v-if="selectedRateIds.length === 0">Usa <strong>Seleziona tutte</strong> o le spunte nella tabella per selezionare le rate da emettere.</p>
-                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Per quelle con quote da pagare vengono generate le scritture contabili in prima nota; una rata senza quote da pagare (solo crediti o quote a zero) resta in bozza, e l'esito lo dice.</p>
+                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> {{ selectedRateIds.length === 1 ? 'rata' : 'rate' }}. Per le rate che vanno a giornale vengono generate le scritture contabili in prima nota, anche per le quote a credito (la spesa della rata e il credito riportato che la paga); una rata che a giornale non ha niente da portare resta in bozza, e l'esito lo dice, come dice le quote che restano fuori. Una rata emessa ferma il ricalcolo del piano: per ricalcolarlo si annulla l'emissione, dopo aver stornato gli incassi, le compensazioni o i rimborsi che la toccano.</p>
                                 </div>
                             </div>
                         </HoverCardContent>
@@ -1736,7 +1737,7 @@ const printRipartoCapitoli = () => {
     >
         <div class="grid gap-4 py-4">
             <DialogDescription>
-                Stai per emettere <strong>{{ selectedRateIds.length }} rate</strong>.
+                Stai per emettere <strong>{{ selectedRateIds.length }} {{ selectedRateIds.length === 1 ? 'rata' : 'rate' }}</strong>.
             </DialogDescription>
             <div class="grid gap-2 mb-2">
                 <Label>Data registrazione</Label>
@@ -1789,7 +1790,7 @@ const printRipartoCapitoli = () => {
     >
         Stai per annullare l'emissione contabile di questa rata. Questa azione cancellerà la scrittura contabile associata.
         <br><br>
-        <strong>Nota:</strong> Se sono già presenti incassi, l'operazione verrà bloccata.
+        <strong>Nota:</strong> se su questa rata ci sono incassi, o crediti già usati o rimborsati, l'operazione verrà bloccata: vanno prima stornati.
     </ConfirmDialog>
 
     <Dialog :open="feedbackDialog.open" @update:open="feedbackDialog.open = $event">

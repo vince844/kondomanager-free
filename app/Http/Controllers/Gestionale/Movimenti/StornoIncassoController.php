@@ -9,8 +9,10 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\Rata;
 use App\Models\Evento;
 use App\Actions\Gestionale\Movimenti\StornoIncassoRateAction;
+use App\Services\Gestionale\AvvisoStornoIncasso;
 use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
@@ -99,5 +101,22 @@ class StornoIncassoController extends Controller
         }
 
         return back()->with($this->flashSuccess('Storno completato e scadenziario utenti aggiornato.'));
+    }
+
+    /**
+     * L'anteprima della conferma dello storno (Coda 209, decisione 75.5): se la parte in più dell'incasso è già stata usata o
+     * rimborsata, la frase che lo dice, con le voci che la compongono (`AvvisoStornoIncasso`). Sola lettura, in JSON: la conferma
+     * la chiede quando si apre. Solo per un incasso rate di questo condominio; un'altra scrittura, o una di un altro condominio,
+     * non esiste per questa rotta.
+     */
+    public function anteprima(Condominio $condominio, string|int $scrittura, AvvisoStornoIncasso $avviso): JsonResponse
+    {
+        $scrittura = ScritturaContabile::findOrFail($scrittura);
+        if ((int) $scrittura->condominio_id !== (int) $condominio->id || $scrittura->tipo_movimento !== TipoMovimentoContabile::INCASSO_RATA) {
+            abort(404);
+        }
+        $scrittura->load(['quotePagate', 'figlie.quotePagate']);
+
+        return response()->json($avviso->perIncasso($scrittura));
     }
 }

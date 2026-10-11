@@ -118,6 +118,9 @@ class IncassoRateService
             'dettagli_rate'            => $this->getDettagliRate($movimento, $versatoDaId ? (int) $versatoDaId : null, $versatoDa),
             
             'importo_totale_raw'       => $rigaCassa ? $rigaCassa->importo / 100 : 0,
+            // I centesimi interi della riga di cassa, per chi deve fare i conti o formattare (la conferma dello storno): dagli euro
+            // qui sopra la pagina li rimoltiplicava per 100, una seconda conversione in virgola mobile (€ 19,99 → 1998,99…).
+            'importo_totale_cents'     => (int) ($rigaCassa?->importo ?? 0),
             'importo_totale_formatted' => MoneyHelper::format($rigaCassa?->importo ?? 0),
             'stato'                    => $movimento->stato,
             'pagante' => [

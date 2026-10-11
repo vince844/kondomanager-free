@@ -207,11 +207,35 @@ defineEmits(['update:open']);
                             <p>
                                 Con il piano <strong>Approvato</strong>, spunta le rate da emettere (le
                                 caselle compaiono nell'intestazione di ogni colonna) oppure usa <strong>«Seleziona
-                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Una rata senza quote da pagare non va a
-                                giornale: resta in bozza, e l'esito dell'emissione la nomina. Il pulsante
-                                <strong>«Emetti»</strong> apre un modulo dove scegli la data di registrazione,
+                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Anche una rata di soli crediti va a
+                                giornale: per ogni quota a credito la spesa della rata in dare e il credito riportato che la paga in
+                                avere, a nome del condòmino; una quota a zero, con spesa e credito uguali, porta tutte e due le righe.
+                                Non va a giornale, e l'esito dell'emissione dice perché, solo una rata che non ha niente da portare
+                                (una rata vuota, o il cui credito è già stato usato o rimborsato per intero), una rata fatta solo di
+                                quote a credito, o a zero, senza il dettaglio del calcolo (vedi sotto), o una rata segnata «emessa»
+                                senza scritture che un passaggio registrato con una versione di prima ha preso così.
+                                Il pulsante <strong>«Emetti»</strong> apre un modulo dove scegli la data di registrazione,
                                 una causale personalizzata (opzionale — altrimenti il sistema usa una dicitura
                                 standard) e se rendere subito visibili le rate ai condòmini.
+                            </p>
+                            <p class="mt-2">
+                                Una quota a credito, o a zero, senza il dettaglio del calcolo (piani generati prima della versione
+                                1.8.0) resta fuori da sola, perché il programma non separa la spesa dal credito riportato, e l'esito
+                                nomina la persona e la rata. Una quota a credito lascia al condòmino il suo credito, da usare o
+                                rimborsare. In una quota a zero la spesa della rata e il credito riportato che la paga si pareggiano
+                                e restano fuori tutti e due: non c'è un credito da usare né da rimborsare, anche se l'estratto conto
+                                può mostrare a credito il saldo pregresso. Se le altre quote della rata vanno a giornale, la card
+                                «Crediti da riallineare» degli incassi elenca la quota ferma fra le voci che restano come sono, e la
+                                tiene anche dopo lo storno di un incasso o di un rimborso che ne ha usato il credito. Una rata fatta
+                                solo di quote ferme resta in bozza, e così la mostra la pagina del piano; il perché lo dice l'esito
+                                dell'emissione. Per portare la quota a giornale si ricalcola il piano, dopo aver stornato gli
+                                incassi, le compensazioni e i rimborsi e annullato le emissioni; prima va controllato il saldo
+                                pregresso di quella persona, che le versioni di prima della 1.8.0 sottraevano invece di sommare.
+                            </p>
+                            <p class="mt-2">
+                                Una rata emessa, anche di soli crediti, ferma il ricalcolo del piano (vedi «Ricalcola»): per
+                                ricalcolarlo si annulla l'emissione, dopo aver stornato gli incassi, le compensazioni o i rimborsi
+                                che la toccano.
                             </p>
                         </section>
 
@@ -232,8 +256,8 @@ defineEmits(['update:open']);
                             <p>
                                 Passa il mouse sull'intestazione di una rata già emessa: compare una freccia
                                 circolare. Annulla la scrittura contabile e riporta la rata in Bozza — ma
-                                <strong>si blocca se ci sono già incassi registrati</strong> su quella rata: va
-                                prima rimosso l'incasso.
+                                <strong>si blocca se su quella rata ci sono incassi</strong>, o un credito già usato in
+                                compensazione (anche per pagare un'altra rata) o rimborsato: va prima stornato quel movimento.
                             </p>
                             <p class="mt-2">
                                 Con un <strong>passaggio di titolarità</strong> registrato prima della versione

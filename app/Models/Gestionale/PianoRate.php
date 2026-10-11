@@ -450,6 +450,32 @@ class PianoRate extends Model
             && $s->saldi()->where('gestione_id', $this->gestione_id)->when($this->esercizio_id !== null, fn ($q) => $q->where('esercizio_id', $this->esercizio_id))->exists();
     }
 
+    /**
+     * Il saldo è nelle quote di questo piano, assorbito alla generazione. Con `saldi.piano_rate_id` uguale al piano, quando c'è. I
+     * saldi della 1.7.x e della 1.8.x non lo hanno: la colonna nasce vuota con la beta.32 della 1.10, e la migrazione del
+     * 01/03/2026 ha lasciato `is_applicato` falso su tutti i saldi di allora. Per loro vale il saldo senza piano dello stesso
+     * esercizio del piano, scritto prima delle sue quote: la 1.7.0 prendeva i saldi «manuali» per condominio ed esercizio. Mai le
+     * coppie dei passaggi né i debiti verso i fornitori.
+     *
+     * Un criterio solo per il conguaglio di un passaggio (`ConguaglioPassaggio`, le quote senza composizione) e per il saldo
+     * iniziale dell'estratto conto (DC3, 1.11.0-beta.49).
+     *
+     * @param object $saldo una riga di `saldi` (modello o riga grezza): piano_rate_id, esercizio_id, created_at, subentro_id, fornitore_id
+     * @param string|null $quoteNateIl quando sono nate le quote del piano (`MIN(rate_quote.created_at)`), null se non ne ha
+     */
+    public static function saldoAssorbito(object $saldo, int $pianoId, ?int $esercizioDelPiano, ?string $quoteNateIl): bool
+    {
+        if (($saldo->subentro_id ?? null) !== null || ($saldo->fornitore_id ?? null) !== null) {
+            return false;
+        }
+        if ($saldo->piano_rate_id !== null) {
+            return (int) $saldo->piano_rate_id === $pianoId;
+        }
+
+        return $esercizioDelPiano !== null && (int) $saldo->esercizio_id === $esercizioDelPiano
+            && $quoteNateIl !== null && (string) $saldo->created_at <= $quoteNateIl;
+    }
+
     /** Decisione 42: dalla 1.11.0-beta.42 il registro del passaggio dice quali piani il suo conguaglio ha preso. */
     public static function haIPianiPresi(Subentro $s): bool
     {

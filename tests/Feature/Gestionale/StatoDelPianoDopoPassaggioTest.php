@@ -9,14 +9,15 @@
  * tiene insieme le due strade è la decisione 21: ogni quota la sistema uno solo dei due, il ricalcolo o il conguaglio.
  * Con due criteri diversi capitava che la sistemassero entrambi — chi compra pagava due volte i suoi giorni — o nessuno.
  *
- * Coperti: la rata di sole quote a credito che non diventa «emessa» e il messaggio che lo dice; la vendita dopo, con il
- * piano che si ricalcola per giorni (una rata e tutte le rate a credito); le rate già «emesse» senza scrittura dalle
- * versioni prima; il piano con un incasso su una rata in bozza, che il ricalcolo rifiuta e il conguaglio ora prende;
- * l'emissione che considera solo le rate del piano.
+ * Coperti: la rata di sole quote a credito, che dalla 1.11.0-beta.49 va a giornale e diventa «emessa» (decisione 71), e la
+ * vendita dopo, che il conguaglio prende perché il piano è fermo (una rata e tutte le rate a credito); le rate già «emesse»
+ * senza scrittura dalle versioni prima; la rata «emessa» senza scrittura che un passaggio della .41 ha preso nel conguaglio,
+ * che l'emissione rifiuta (decisione 75.2, W1); il piano con un incasso su una rata in bozza, che il ricalcolo rifiuta e il
+ * conguaglio prende; l'emissione che considera solo le rate del piano.
  *
- * Cosa NON copre: come va a giornale una quota a credito (beta della contabilità dei crediti); i promemoria del portale di
- * una rata che resta in bozza; il piano emesso senza ricalcolo dopo un passaggio (decisione 35, più sotto in questo file
- * quando c'è).
+ * Cosa NON copre: come si scrivono le righe di una quota a credito e che cosa ne legge l'estratto conto
+ * (`CreditiEmissioneEstrattoContoTest`); i promemoria del portale; il piano emesso senza ricalcolo dopo un passaggio
+ * (decisione 35, più sotto in questo file quando c'è).
  */
 
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
@@ -156,34 +157,31 @@ function spConti(array $s): array
     return $esito;
 }
 
-it('DC5 — la rata 1 fatta solo di quote a credito non diventa «emessa» e il messaggio lo dice; dopo la vendita il piano si ricalcola, e chi compra paga i suoi giorni una volta sola', function () {
+it('DC5 — la rata 1 fatta solo di quote a credito va a giornale e diventa «emessa» (decisione 71): dopo la vendita il conguaglio prende il piano fermo, e chi compra paga i suoi giorni una volta sola', function () {
     $s = spScenario(6, 'prima_rata', -67100);
     $rata1 = spRata($s, 1);
-    // € 200,00 di preventivo meno € 671,00 di pregresso a credito: −€ 471,00, nessuna quota da pagare.
+    // Preventivo 120000 in 6 rate: 20000 a rata; pregresso di Ugo −67100 tutto sulla rata 1: 20000 − 67100 = −47100.
     expect((int) DB::table('rate_quote')->where('rata_id', $rata1)->sum('importo'))->toBe(-47100);
 
     $r = spEmetti($this, $s, [$rata1], '2026-01-13');
     $r->assertSessionHasNoErrors();
-    expect(DB::table('rate')->where('id', $rata1)->value('stato'))->toBe('bozza')
-        ->and(DB::table('rate_quote')->where('rata_id', $rata1)->whereNotNull('scrittura_contabile_id')->exists())->toBeFalse()
-        ->and(DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'emissione_rata')->exists())->toBeFalse()
-        ->and($r->getSession()->get('esito_emissione'))->toBe([
-            'titolo' => 'Nessuna rata emessa',
-            'testo' => 'La rata 1 non è stata emessa: non ha quote da pagare, e a giornale non c\'è niente da portare. Resta in bozza.',
-        ]);
-
-    // L'anteprima della vendita non elenca più la rata come emessa: dice soltanto di ricalcolare il piano.
-    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), spVendita($s, '2026-02-07'))->assertOk()->json();
-    expect(json_encode($anteprima, JSON_UNESCAPED_UNICODE))->not->toContain('già emessa');
+    // Decisione 71: la spesa 20000 in DARE e il credito riportato 67100 in AVERE, tutte e due su «Crediti verso condomini» a nome
+    // di Ugo; la rata è a giornale e il piano è fermo (`haRateEmesse`, criterio della 34).
+    $righeUgo = DB::table('righe_scritture')->where('rata_id', $rata1)->where('anagrafica_id', $s['v']->id)->orderBy('id')->get(['tipo_riga', 'importo'])
+        ->map(fn ($r) => [$r->tipo_riga, (int) $r->importo])->all();
+    expect(DB::table('rate')->where('id', $rata1)->value('stato'))->toBe('emessa')
+        ->and($righeUgo)->toBe([['dare', 20000], ['avere', 67100]])
+        ->and($s['piano']->fresh()->haRateEmesse())->toBeTrue()
+        ->and($r->getSession()->get('esito_emissione'))->toBe(['titolo' => 'Emissione completata', 'testo' => 'È stata emessa 1 rata.']);
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), spVendita($s, '2026-02-07'))->assertSessionHasNoErrors()->assertRedirect();
-    // Niente a giornale e nessun movimento: il conguaglio non tocca il piano, lo sistema il ricalcolo.
-    expect(Saldo::whereNotNull('subentro_id')->count())->toBe(0);
-
-    spRicalcola($this, $s)->assertSessionHasNoErrors()->assertRedirect();
-    // Ugo dal 1/1 al 6/2, 37 giorni: 120000 × 37/365 = 12164,38 → 12164; Elsa 328 giorni: 107836. Il pregresso resta a Ugo.
-    // Prima: la coppia sui giorni di Elsa della rata 1 (20000 × 328/365 = 17973) restava e si sommava al riparto per giorni.
-    expect(spConti($s))->toBe(['ugo' => [12164, -67100, 0], 'elsa' => [107836, 0, 0]]);
+    // Il piano è a giornale: lo prende il conguaglio. La rata 2 (scaduta il 5/2) resta a Ugo; le rate 3–6 (4 × 20000 = 80000)
+    // passano a Elsa. Elsa dal 7/2 al 31/12 ha 328 giorni: 120000 × 328/365 = 107835,6 → 107836; meno le bozze che già paga
+    // (80000): coppia 27836. Il ricalcolo si rifiuta (decisione 21: una quota la sistema uno solo dei due).
+    expect(spRicalcola($this, $s)->getSession()->get('message')['message'])->toBe('Impossibile ricalcolare: ci sono rate già emesse in contabilità. Annulla prima le emissioni.')
+        // Ugo: rate 1 e 2 = 40000, meno la coppia: 40000 − 27836 = 12164 (= 120000 × 37/365 = 12164,38 → 12164); Elsa: 80000 + 27836
+        // = 107836. Le cifre finali di prima (12164 e 107836), per la strada del conguaglio invece del ricalcolo.
+        ->and(spConti($s))->toBe(['ugo' => [40000, -67100, -27836], 'elsa' => [80000, 0, 27836]]);
 });
 
 it('DC5, dati delle versioni prima — una rata «emessa» senza scrittura non conta come emessa: nessun conguaglio, e il ricalcolo divide per giorni', function () {
@@ -198,24 +196,30 @@ it('DC5, dati delle versioni prima — una rata «emessa» senza scrittura non c
     expect(spConti($s))->toBe(['ugo' => [12164, -67100, 0], 'elsa' => [107836, 0, 0]]);
 });
 
-it('DV2 — tutte le quote a credito: l\'emissione fino al 30/4 non marca nessuna rata, la vendita del 1/5 non scrive coppie, e il ricalcolo dà a Elsa i suoi 245 giorni', function () {
-    // Dodici rate da € 100,00 di preventivo e −€ 125,00 di pregresso ciascuna: −€ 25,00, tutte a credito.
+it('DV2 — tutte le quote a credito: l\'emissione fino al 30/4 porta a giornale le quattro rate, la vendita del 1/5 fa il conguaglio, e Elsa paga i suoi 245 giorni', function () {
+    // Dodici rate: 120000 / 12 = 10000 di spesa e −150000 / 12 = −12500 di pregresso ciascuna: 10000 − 12500 = −2500, tutte a credito.
     $s = spScenario(12, 'tutte_rate', -150000);
     $finoAdAprile = DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('data_scadenza', '<=', '2026-04-30 23:59:59')->pluck('id')->all();
     expect($finoAdAprile)->toHaveCount(4);
 
     $r = spEmetti($this, $s, $finoAdAprile);
     $r->assertSessionHasNoErrors();
-    expect(DB::table('rate')->whereIn('id', $finoAdAprile)->where('stato', 'emessa')->count())->toBe(0)
-        ->and($r->getSession()->get('esito_emissione')['testo'])->toBe('Le rate 1, 2, 3 e 4 non sono state emesse: non hanno quote da pagare, e a giornale non c\'è niente da portare. Restano in bozza.');
+    // Decisione 71: ogni rata va a giornale con 10000 di spesa in DARE e 12500 di credito in AVERE a nome di Ugo:
+    // 4 × 10000 = 40000 in dare, 4 × 12500 = 50000 in avere.
+    $crediti = DB::table('righe_scritture')->whereIn('rata_id', $finoAdAprile)->where('anagrafica_id', $s['v']->id)
+        ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as d, SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as a")->first();
+    expect(DB::table('rate')->whereIn('id', $finoAdAprile)->where('stato', 'emessa')->count())->toBe(4)
+        ->and([(int) $crediti->d, (int) $crediti->a])->toBe([40000, 50000])
+        ->and($r->getSession()->get('esito_emissione')['testo'])->toBe('Sono state emesse 4 rate.');
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), spVendita($s, '2026-05-01'))->assertSessionHasNoErrors()->assertRedirect();
-    // Prima: una coppia di 26849 (40000 × 245/365) sulle quattro rate «emesse», poi sommata al riparto per giorni.
-    expect(Saldo::whereNotNull('subentro_id')->count())->toBe(0);
-
-    spRicalcola($this, $s)->assertSessionHasNoErrors()->assertRedirect();
-    // Ugo 1/1–30/4, 120 giorni: 120000 × 120/365 = 39452,05 → 39452; Elsa 245 giorni: 80548. Il pregresso resta a Ugo.
-    expect(spConti($s))->toBe(['ugo' => [39452, -150000, 0], 'elsa' => [80548, 0, 0]]);
+    // Le bozze dal 5/5 passano a Elsa per la spesa (8 × 10000 = 80000); le gemelle del pregresso (8 × −12500 = −100000) restano a
+    // Ugo (decisione 25). Elsa dal 1/5 al 31/12 ha 245 giorni: 120000 × 245/365 = 80547,9 → 80548; meno 80000: coppia 548.
+    // Il piano è fermo: il ricalcolo si rifiuta.
+    expect(spRicalcola($this, $s)->getSession()->get('message')['type'])->toBe('error')
+        // Ugo: 40000 − 548 = 39452 (= 120000 × 120/365 = 39452,05 → 39452); Elsa: 80000 + 548 = 80548. Il pregresso (−150000:
+        // 4 × −12500 sulle rate emesse e 8 × −12500 sulle gemelle) resta tutto a Ugo.
+        ->and(spConti($s))->toBe(['ugo' => [40000, -150000, -548], 'elsa' => [80000, 0, 548]]);
 });
 
 it('decisione 34.1 — un incasso su una rata in bozza blocca il ricalcolo, e il conguaglio prende il piano: le bozze da maggio passano a Elsa e la coppia è € 5,48', function () {
@@ -238,15 +242,13 @@ it('decisione 34.1 — un incasso su una rata in bozza blocca il ricalcolo, e il
     expect(spConti($s))->toBe(['ugo' => [40000, 0, -548], 'elsa' => [80000, 0, 548]]);
 });
 
-it('emissione mista — la rata con quote da pagare va a giornale e diventa «emessa», quella di sole quote a credito resta in bozza, e il messaggio le dice tutte e due', function () {
+it('emissione mista — la rata di sole quote a credito e quella con quote da pagare vanno a giornale tutte e due (decisione 71), e il messaggio le conta', function () {
+    // Rata 1: 20000 − 67100 = −47100 (solo crediti); rata 2: 20000 (da pagare).
     $s = spScenario(6, 'prima_rata', -67100);
     $r = spEmetti($this, $s, [spRata($s, 1), spRata($s, 2)]);
     $r->assertSessionHasNoErrors();
-    expect(DB::table('rate')->where('piano_rate_id', $s['piano']->id)->whereIn('numero_rata', [1, 2])->orderBy('numero_rata')->pluck('stato')->all())->toBe(['bozza', 'emessa'])
-        ->and($r->getSession()->get('esito_emissione'))->toBe([
-            'titolo' => 'Emissione completata',
-            'testo' => 'È stata emessa 1 rata. La rata 1 non è stata emessa: non ha quote da pagare, e a giornale non c\'è niente da portare. Resta in bozza.',
-        ]);
+    expect(DB::table('rate')->where('piano_rate_id', $s['piano']->id)->whereIn('numero_rata', [1, 2])->orderBy('numero_rata')->pluck('stato')->all())->toBe(['emessa', 'emessa'])
+        ->and($r->getSession()->get('esito_emissione'))->toBe(['titolo' => 'Emissione completata', 'testo' => 'Sono state emesse 2 rate.']);
 });
 
 it('emissione — tutte le rate con quote da pagare: il messaggio conta le rate emesse davvero', function () {
@@ -1110,10 +1112,14 @@ it('W5, decisione 47 — la fine di una locazione senza un nuovo inquilino non p
     expect([spQuoteDi($s['piano'], $ines), spQuoteDi($s['piano'], $s['v'])])->toBe([5819, 114181]);
 });
 
-it('W1 — dati della .41: la rata «emessa» senza scrittura che un passaggio di allora ha preso nel conguaglio non torna in bozza all\'emissione, e l\'esito lo dice; il piano resta preso, e la strada del messaggio porta alle cifre per giorni senza la coppia', function () {
+it('W1, decisione 75.2 — dati della .41: la rata «emessa» senza scrittura che un passaggio di allora ha preso nel conguaglio non va a giornale con la 71, l\'esito dice perché e che cosa fare; il piano resta preso, e la strada del messaggio porta alle cifre per giorni senza la coppia', function () {
+    // 6 rate da 20000, «prima rata», pregresso di Ugo −67100: rata 1 = 20000 − 67100 = −47100 (solo crediti).
     $s = spScenario(6, 'prima_rata', -67100);
+    // Come la lasciava l'emissione della .41: rata 1 «emessa» senza nessuna quota a giornale.
     DB::table('rate')->where('id', spRata($s, 1))->update(['stato' => 'emessa', 'data_emissione' => '2026-01-13']);
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), spVendita($s, '2026-02-07'))->assertSessionHasNoErrors()->assertRedirect();
+    // Il passaggio registrato con la .41: registro senza `piani_presi`, e la coppia di allora sui giorni di Elsa della rata 1
+    // (20000 × 328/365 = 17972,6 → 17973).
     $p1 = \App\Models\Gestionale\Subentro::latest('id')->firstOrFail();
     $registro = $p1->registro;
     unset($registro['piani_presi']);
@@ -1129,18 +1135,28 @@ it('W1 — dati della .41: la rata «emessa» senza scrittura che un passaggio d
     $this->travel(1)->days();
     expect($s['piano']->fresh()->ragioniDelFermo())->toBe(['scrittura', 'conguaglio']);
 
-    // Prima: la rata 1 tornava in bozza, il piano non risultava più preso, e il ricalcolo assorbiva la coppia (Elsa 125809).
+    // Con la sola decisione 71 la rata 1 andrebbe a giornale (20000 in dare e 67100 in avere a nome di Ugo): il piano non
+    // risulterebbe più preso solo per rate «emesse» senza scritture (`presoSoloInParteDa`), l'annullamento dell'emissione
+    // tornerebbe possibile e il ricalcolo farebbe pagare a Elsa i suoi giorni due volte (misurato nella Fase 0.2: Elsa 107836 e
+    // 17973 su due righe). Decisione 75.2: quell'emissione si rifiuta con un messaggio, e la rata resta com'è.
     $esito = spEmetti($this, $s, [spRata($s, 1)], '2026-02-10')->getSession()->get('esito_emissione');
     expect(DB::table('rate')->where('id', spRata($s, 1))->value('stato'))->toBe('emessa')
-        ->and($esito['testo'])->toBe('La rata 1 non ha quote da pagare e a giornale non c\'è niente da portare; resta segnata come emessa, perché il conguaglio del passaggio di Ugo Venditore su Interno 1, dal 7 febbraio 2026, registrato con una versione di prima, l\'ha presa così.')
-        ->and($s['piano']->fresh()->conguagliato())->toBeTrue();
+        ->and(DB::table('rate_quote')->where('rata_id', spRata($s, 1))->whereNotNull('scrittura_contabile_id')->exists())->toBeFalse()
+        ->and($s['piano']->fresh()->conguagliato())->toBeTrue()
+        ->and($esito['testo'])->toBe('La rata 1 non è stata emessa: è segnata come emessa senza scritture, e il conguaglio del passaggio di Ugo Venditore su Interno 1, dal 7 febbraio 2026, registrato con una versione di prima, l\'ha presa così. Portata a giornale adesso, il piano non risulterebbe più preso da quel conguaglio, e un ricalcolo farebbe pagare due volte a chi è entrato i suoi giorni. Per emetterla, segui i passi sul pulsante «Ricalcola» della pagina del piano, sotto «Per riaprirlo».');
 
     // Annullata l'emissione della rata 2 (venuta dopo il passaggio), il piano resta preso, e il ricalcolo si rifiuta.
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $s['piano']->id, 'rata' => spRata($s, 2)]));
     expect($s['piano']->fresh()->ragioniDelFermo())->toBe(['conguaglio'])
         ->and(spRicalcola($this, $s)->getSession()->get('message')['message'])->toContain('ha preso questo piano nel conguaglio');
+    // La rata 1 non è andata a giornale, quindi nemmeno la sua emissione si annulla, e i conti non si muovono: le sei rate a Ugo
+    // (6 × 20000 = 120000, pregresso −67100), la coppia della .41 ±17973.
+    $annulla1 = $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $s['piano']->id, 'rata' => spRata($s, 1)]));
+    expect($annulla1->getSession()->get('message')['type'])->toBe('error')
+        ->and(spConti($s))->toBe(['ugo' => [120000, -67100, -17973], 'elsa' => [0, 0, 17973]]);
 
-    // La strada: annullare il passaggio (la coppia se ne va con lui), registrarlo di nuovo, ricalcolare.
+    // La strada: annullare il passaggio (la coppia se ne va con lui), registrarlo di nuovo, ricalcolare. Ugo dal 1/1 al 6/2,
+    // 37 giorni: 120000 × 37/365 = 12164,38 → 12164; Elsa 328 giorni: 120000 − 12164 = 107836. Nessuna coppia.
     spAnnullaPassaggio($this, $s, $p1)->assertRedirect();
     $this->travel(1)->days();
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), spVendita($s, '2026-02-07'))->assertSessionHasNoErrors()->assertRedirect();

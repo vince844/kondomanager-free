@@ -242,17 +242,20 @@ final class TreasuryGuardianService
     }
 
     /**
-     * Rate emesse con totale incassato calcolato via subquery (withSum).
+     * Rate emesse con il totale incassato calcolato via subquery (withSum), senza GROUP BY.
      *
-     * Usa Eloquent + withSum('incassi', 'importo') per sommare solo le righe
-     * di tipo 'avere' collegate alla rata, senza GROUP BY.
+     * Il totale è il **netto** delle righe con la rata fuori dall'emissione (`Rata::incassi`): AVERE − DARE, su ogni conto. Dalla
+     * 1.11.0-beta.49 (decisione 76.3) non conta il credito riportato che l'emissione scrive in AVERE con la rata (decisione 71),
+     * e sottrae lo storno di un incasso: fino alla beta.48 si sommavano le sole righe in AVERE, e un incasso stornato contava
+     * ancora come incassato. Una rettifica del riallineamento dei crediti, che sposta il credito fra due conti con la stessa rata,
+     * pesa zero.
      *
      * @return \Illuminate\Database\Eloquent\Collection<Rata>
      */
     private function queryRateEmesse(int $condominioId, ?int $gestioneId, Carbon $limite): \Illuminate\Database\Eloquent\Collection
     {
         $query = Rata::query()
-            ->withSum('incassi', 'importo')
+            ->withSum('incassi as incassi_sum_importo', \Illuminate\Support\Facades\DB::raw("CASE WHEN tipo_riga = 'avere' THEN importo ELSE -importo END"))
             ->where('stato', 'emessa')
             ->where(function($q) use ($limite) {
                 $q->whereNull('data_scadenza')

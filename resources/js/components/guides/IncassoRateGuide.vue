@@ -12,8 +12,10 @@
  * La regola del testo, la stessa di PianoRateGuide: non ripetere le etichette dei campi — chi
  * legge le ha davanti — ma dire cosa succede davvero quando li si tocca, e in quale ordine.
  *
- * ⚠️ Ogni affermazione di questo file è stata verificata sul codice il 12/08/2026. Alcune
- * descrivono comportamenti che sono difetti aperti, non scelte: sono segnati «per ora» e hanno
+ * ⚠️ Ogni affermazione di questo file è stata verificata sul codice il 12/08/2026; il conto da cui esce
+ * il credito riportato e lo storno (scheda «Credito» e «Conferma») il 10/10/2026, con la 1.11.0-beta.49, e
+ * il credito delle entrate dell'anno e la quota rimasta fuori dall'emissione l'11/10/2026, nella stessa beta.
+ * Alcune descrivono comportamenti che sono difetti aperti, non scelte: sono segnati «per ora» e hanno
  * una voce in roadmap. Se li correggi, questo file va corretto con loro.
  */
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -261,6 +263,31 @@ defineEmits(['update:open']);
                         </section>
 
                         <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Da quale conto esce il credito</h3>
+                            <p>
+                                Un credito riportato da un esercizio precedente — la quota a credito di una rata che porta il
+                                riporto: la rata zero, la prima, o ogni rata con «tutte le rate» — entra nel libro giornale con
+                                l'emissione della sua rata. Finché la sua quota non è a giornale (la rata in bozza, o una quota
+                                rimasta fuori dall'emissione), «Usa credito» lo preleva da <strong>«Passate gestioni»</strong>, e
+                                il credito che avanza ci torna; quando la quota è a giornale lo preleva da <strong>«Crediti verso
+                                condomini»</strong>, dove l'emissione l'ha portato. Il credito di un versamento in eccesso sta
+                                sempre fra i crediti verso condomini.
+                            </p>
+                            <p class="mt-2">
+                                Anche le entrate dell'anno possono fare una quota a credito: una voce di tipo «entrata» (i
+                                proventi dell'antenna, per esempio) ripartita su un'unità con poche o nessuna spesa. Quel credito
+                                non viene da un esercizio precedente, e sta fra i crediti verso condomini anche con la rata in
+                                bozza: l'emissione della rata lo chiude. Una quota con tutte e due le parti si usa prima dal
+                                credito riportato, poi dalle entrate.
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Senza il conto «Fondo Passate Gestioni» (2301) la compensazione di un credito riportato con la
+                                quota non ancora a giornale si rifiuta, come il suo rimborso. È un conto di sistema: dalle pagine
+                                del programma non si ricrea, e va ripristinato da chi gestisce l'installazione.
+                            </p>
+                        </section>
+
+                        <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Compensare fra gestioni diverse</h3>
                             <p>
                                 Il credito di una gestione copre da sé solo le rate della sua gestione. Quando
@@ -348,6 +375,22 @@ defineEmits(['update:open']);
                                 Le scadenze del condòmino vengono aggiornate a saldata, parziale o da pagare, e le
                                 attività di verifica collegate si chiudono da sole nella posta interna — compresa
                                 quella generale della rata, quando risulta saldata da tutto il condominio.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Se poi l'incasso si storna</h3>
+                            <p>
+                                Lo storno, dall'elenco degli incassi, scrive lo specchio dell'incasso e della sua
+                                compensazione, sugli stessi conti, e le rate tornano da pagare. Se il credito usato era
+                                riportato da una rata ancora in bozza e nel frattempo quella rata è stata emessa, una seconda
+                                scrittura, legata all'emissione, porta il credito restituito fra i crediti verso condomini,
+                                come l'avrebbe portato l'emissione.
+                            </p>
+                            <p class="mt-2">
+                                Se la parte in più dell'incasso è già stata usata in una compensazione o rimborsata, lo storno
+                                non annulla quell'uso: la rata torna da pagare anche per quella parte. La conferma dello storno
+                                lo dice prima, con la rata, l'importo e dove è stato usato.
                             </p>
                         </section>
                     </TabsContent>
