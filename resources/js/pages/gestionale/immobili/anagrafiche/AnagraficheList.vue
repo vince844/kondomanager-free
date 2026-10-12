@@ -58,6 +58,8 @@ interface PassaggioRegistrato {
   azioni: { estratto_conto: string | null; anagrafe: string | null };
   /** 1.11.0-beta.44: nella successione tutti gli eredi, ciascuno con il suo estratto conto. */
   eredi?: { nome: string; estratto_conto: string }[];
+  /** Fase 1-bis della .50 (R11): alla fine senza un nuovo inquilino, chi ha la riga della coppia, con la cifra e il suo estratto conto. */
+  al_posto?: { nome: string; frase: string; estratto_conto: string }[];
   /** Rilievo L2: con più eredi, o con l'arretrato, il netto per erede di conguaglio e arretrato («€ 80,00 a credito di Anna Erede»), e la testa. */
   per_erede?: string[];
   per_erede_testa?: string | null;
@@ -244,6 +246,10 @@ function urlPassaggio(tipo: TipoPassaggio) {
                 <p v-if="passaggioRegistrato.per_erede_testa && passaggioRegistrato.per_erede?.length" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
                   {{ passaggioRegistrato.per_erede_testa }}: {{ passaggioRegistrato.per_erede.join(', ') }}. Il prossimo piano rate della gestione assorbe queste righe.
                 </p>
+                <!-- Fase 1-bis della .50 (R11): alla fine senza un nuovo inquilino nessuno entra; la coppia è di chi paga al posto dell'inquilino. -->
+                <p v-else-if="passaggioRegistrato.coppie > 0 && passaggioRegistrato.al_posto?.length" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
+                  Conguaglio scritto in saldi: {{ passaggioRegistrato.coppie }} {{ passaggioRegistrato.coppie === 1 ? 'coppia' : 'coppie' }} a somma zero, {{ passaggioRegistrato.al_posto.map((a) => a.frase).join(', ') }}, {{ passaggioRegistrato.al_posto.length === 1 ? 'che paga' : 'che pagano' }} al posto dell'inquilino nei giorni dopo l'uscita. Il prossimo piano rate le assorbe.
+                </p>
                 <p v-else-if="passaggioRegistrato.coppie > 0" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
                   Conguaglio scritto in saldi: {{ passaggioRegistrato.coppie }} {{ passaggioRegistrato.coppie === 1 ? 'coppia' : 'coppie' }} a somma zero, {{ passaggioRegistrato.conguaglio }} a {{ passaggioRegistrato.conguaglio_rovesciato ? 'credito' : 'debito' }} di chi entra. Il prossimo piano rate le assorbe.
                 </p>
@@ -258,7 +264,12 @@ function urlPassaggio(tipo: TipoPassaggio) {
               </div>
             </div>
             <!-- 1.11.0-beta.44: con più eredi, un estratto conto per ciascuno; i dati per l'anagrafe stanno nella scheda di ognuno. -->
-            <div v-if="passaggioRegistrato.eredi?.length" class="flex flex-wrap items-center gap-2 pl-8">
+            <div v-if="passaggioRegistrato.al_posto?.length" class="flex flex-wrap items-center gap-2 pl-8">
+              <a v-for="a in passaggioRegistrato.al_posto" :key="a.estratto_conto" :href="a.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
+                <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ a.nome }}
+              </a>
+            </div>
+            <div v-else-if="passaggioRegistrato.eredi?.length" class="flex flex-wrap items-center gap-2 pl-8">
               <a v-for="e in passaggioRegistrato.eredi" :key="e.estratto_conto" :href="e.estratto_conto" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-200 shadow-sm hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30">
                 <Scale class="w-3.5 h-3.5" /> Estratto conto di {{ e.nome }}
               </a>

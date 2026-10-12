@@ -43,6 +43,7 @@ class Subentro extends Model
     /**
      * Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si
      * sceglie, senza preselezione. Nella richiesta i valori sono `scrivi` e `non_scrivere`; nel registro, `scritto` e `non_scritto`.
+     * Decisione 77 (1.11.0-beta.50): le stesse due voci alla fine di una locazione, con un nuovo inquilino o senza.
      */
     public const SCRIVI_IL_CONGUAGLIO = 'scrivi';
     public const NON_SCRIVERE_IL_CONGUAGLIO = 'non_scrivere';
@@ -102,7 +103,9 @@ class Subentro extends Model
     /**
      * Decisione 47 (1.11.0-beta.42, rilievo W5): il passaggio ha un conguaglio. L'inizio locazione no, e la fine locazione solo con
      * un nuovo inquilino (con quello che entra, o il suo nome nel registro se l'anagrafica è stata cancellata): è la stessa regola
-     * di `AnteprimaPassaggio::conguaglio()`. Un passaggio senza conguaglio non prende nessun piano, anche se registrato prima.
+     * di `AnteprimaPassaggio::conguaglio()`. Un passaggio senza conguaglio non prende nessun piano, anche se registrato prima. Dalla
+     * 1.11.0-beta.50 la fine senza un nuovo inquilino ha un conguaglio quando c'è la scelta (decisione 77): lo dice il registro
+     * (`haUnConguaglio`), non il tipo.
      */
     public static function tipoHaUnConguaglio(string $tipo, bool $conChiEntra): bool
     {
@@ -115,9 +118,39 @@ class Subentro extends Model
         };
     }
 
+    /**
+     * Decisione 77 (1.11.0-beta.50): la fine di una locazione senza un nuovo inquilino ha un conguaglio quando il suo registro porta la
+     * scelta (`conguaglio.scelta`, «Scrivi» o «Non scriverlo»), che si chiede solo se l'anteprima propone coppie. La regola di lettura è
+     * sicura per i passaggi di prima della .50, che la chiave non l'hanno. La scelta è una sola per l'unità e le pertinenze spuntate, e
+     * sta nel registro del padre: il figlio della pertinenza la legge da lì.
+     */
     public function haUnConguaglio(): bool
     {
-        return self::tipoHaUnConguaglio((string) $this->tipo_passaggio, $this->anagrafica_entrante_id !== null || ! empty($this->registro['nomi']['entrante'] ?? null));
+        return self::tipoHaUnConguaglio((string) $this->tipo_passaggio, $this->anagrafica_entrante_id !== null || ! empty($this->registro['nomi']['entrante'] ?? null))
+            || ($this->tipo_passaggio === 'fine_locazione' && isset($this->capo()->registro['conguaglio']['scelta']));
+    }
+
+    /** Il passaggio dell'unità principale: il padre per la riga di una pertinenza, sé stesso altrimenti. */
+    public function capo(): self
+    {
+        return $this->subentro_padre_id !== null ? ($this->padre ?? $this) : $this;
+    }
+
+    /**
+     * Le parole del conguaglio di questo passaggio, per le frasi che lo ricordano dopo la registrazione: «della successione», «della fine
+     * locazione di Ines», «del cambio d'inquilino fra Ines e Luca» (1.11.0-beta.50: prima tutte dicevano «della successione»).
+     */
+    public function conguaglioInParole(): string
+    {
+        $uscente = $this->uscente?->nome ?? ($this->registro['nomi']['uscente'] ?? null);
+        $entrante = $this->entrante?->nome ?? ($this->registro['nomi']['entrante'] ?? null);
+
+        return match (true) {
+            $this->successione() => 'della successione',
+            $this->tipo_passaggio === 'fine_locazione' && $entrante !== null => $uscente !== null ? sprintf('del cambio d\'inquilino fra %s e %s', $uscente, $entrante) : 'del cambio d\'inquilino',
+            $this->tipo_passaggio === 'fine_locazione' => $uscente !== null ? sprintf('della fine locazione di %s', $uscente) : 'della fine locazione',
+            default => 'del passaggio',
+        };
     }
 
     /** L'unico punto che dice se questo passaggio è una vendita con riserva d'usufrutto: vedi `RISERVA_USUFRUTTO`. */
@@ -376,7 +409,8 @@ class Subentro extends Model
 
     /**
      * L'amministratore ha rinunciato alla coppia di conguaglio **alla registrazione**: con la sua ragione negli altri tipi, o con
-     * la scelta «Non scriverlo» nella successione e nel legato, dove la nota è facoltativa (decisioni 72 e 73, 1.11.0-beta.48).
+     * la scelta «Non scriverlo» nella successione e nel legato, dove la nota è facoltativa (decisioni 72 e 73, 1.11.0-beta.48), e
+     * dalla 1.11.0-beta.50 alla fine di una locazione (decisione 77).
      */
     public function conguaglioRinunciato(): bool
     {
@@ -384,9 +418,21 @@ class Subentro extends Model
     }
 
     /**
+     * Fase 1-bis della 1.11.0-beta.50 (R11): a chi il condominio addebita, ricalcolando, i giorni che le parti avevano regolato fra loro.
+     * Alla fine di una locazione senza un nuovo inquilino nessuno entra: i giorni dopo l'uscita vanno a chi paga al posto dell'inquilino.
+     */
+    public function aChiVannoIGiorni(): string
+    {
+        return $this->tipo_passaggio === 'fine_locazione' && $this->anagrafica_entrante_id === null && empty($this->registro['nomi']['entrante'] ?? null)
+            ? 'i giorni dopo l\'uscita a chi paga al posto dell\'inquilino'
+            : 'a chi entra i suoi giorni';
+    }
+
+    /**
      * Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio è una
      * scelta senza preselezione, e il registro la conserva (`conguaglio.scelta`). «Non scritto» non dichiara un accordo fra le
-     * parti: la posizione resta com'è. I passaggi di prima non hanno la chiave, e restano letti dalla nota.
+     * parti: la posizione resta com'è. I passaggi di prima non hanno la chiave, e restano letti dalla nota. Decisione 77
+     * (1.11.0-beta.50): lo stesso alla fine di una locazione, dove «Non scriverlo» lascia i giorni dopo l'uscita nelle rate di chi esce.
      */
     public function conguaglioNonScritto(): bool
     {
@@ -415,19 +461,20 @@ class Subentro extends Model
         return $voci->isEmpty() ? null : $voci->map(fn (array $v) => $piuEredi && ! array_key_exists('persone', $v)
             // Rilievo denaro-g1 del giro sulle correzioni: chi riceve l'unità per legato non è un erede.
             ? sprintf($this->legato() ? 'il conguaglio sulla gestione %s, ma le cifre di ciascuno non sono nel registro' : 'il conguaglio sulla gestione %s, ma le cifre per erede non sono nel registro', $v['gestione'] ?? '?')
-            : self::cifreInParole($v))->join('; ');
+            : self::cifreInParole($v, $this->anagrafica_uscente_id !== null ? (int) $this->anagrafica_uscente_id : null))->join('; ');
     }
 
     /**
      * 1.11.0-beta.48 (P3): con più persone dalla parte di chi entra (gli eredi, i nudi che tornano pieni) la somma delle coppie ha
      * segni diversi e non è la cifra di nessuno — «€ 5,48» era € 531,45 a credito di Anna e € 268,47 e € 268,46 a debito di Bruno
-     * e Carla —: si dice la cifra di ciascuno. Con una persona sola, la somma come prima.
+     * e Carla —: si dice la cifra di ciascuno. Con una persona sola, la somma come prima. Dalla 1.11.0-beta.50 la locazione porta anche
+     * chi esce, che è lo specchio di chi riceve: le parole dicono chi riceve.
      *
-     * @param array{gestione?:string, importo?:int, persone?:list<array{nome?:string, importo?:int}>} $voce
+     * @param array{gestione?:string, importo?:int, persone?:list<array{anagrafica_id?:int, nome?:string, importo?:int}>} $voce
      */
-    private static function cifreInParole(array $voce): string
+    private static function cifreInParole(array $voce, ?int $chiEsce = null): string
     {
-        $persone = collect($voce['persone'] ?? [])->filter(fn ($p) => (int) ($p['importo'] ?? 0) !== 0)->values();
+        $persone = collect($voce['persone'] ?? [])->filter(fn ($p) => (int) ($p['importo'] ?? 0) !== 0 && ($chiEsce === null || (int) ($p['anagrafica_id'] ?? 0) !== $chiEsce))->values();
         if ($persone->count() < 2) {
             return sprintf('%s sulla gestione %s', \App\Helpers\MoneyHelper::format(abs((int) ($voce['importo'] ?? 0))), $voce['gestione'] ?? '?');
         }
@@ -442,16 +489,21 @@ class Subentro extends Model
      * coppia (positivo se chi entra doveva a chi esce).
      *
      * @param iterable<array{gestione_id:int, gestione:string, importo:int}> $coppie
+     * @param array{anagrafica_id:int, nome:string}|null $chiEsce decisione 77 (1.11.0-beta.50): nella locazione anche chi esce, con il segno
+     *                                                           dei saldi (la sua riga sarebbe stata a credito: negativa)
      * @return list<array{gestione_id:int, gestione:string, importo:int}>
      */
-    public static function regolatoFuoriDalleCoppie(iterable $coppie): array
+    public static function regolatoFuoriDalleCoppie(iterable $coppie, ?array $chiEsce = null): array
     {
         return collect($coppie)->groupBy(fn ($c) => (int) $c['gestione_id'])
             ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($g->first()['gestione'] ?? '?'), 'importo' => (int) $g->sum('importo'),
                 // P3 della 1.11.0-beta.48: la cifra di ciascuna persona che entra, per i messaggi con più eredi o più nudi.
-                'persone' => $g->groupBy(fn ($c) => (int) ($c['anagrafica_entrante_id'] ?? 0))
-                    ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($p->first()['entrante_nome'] ?? '?'), 'importo' => (int) $p->sum('importo')])
-                    ->values()->all()])
+                'persone' => [
+                    ...($chiEsce !== null ? [['anagrafica_id' => (int) $chiEsce['anagrafica_id'], 'nome' => (string) $chiEsce['nome'], 'importo' => -(int) $g->sum('importo')]] : []),
+                    ...$g->groupBy(fn ($c) => (int) ($c['anagrafica_entrante_id'] ?? 0))
+                        ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($p->first()['entrante_nome'] ?? '?'), 'importo' => (int) $p->sum('importo')])
+                        ->values()->all(),
+                ]])
             ->values()->all();
     }
 }

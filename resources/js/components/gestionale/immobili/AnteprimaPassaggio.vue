@@ -17,6 +17,8 @@
  * registrazione scrive in `saldi`. Qui vive anche la **rinuncia**: l'amministratore può non scrivere la
  * coppia, con una nota obbligatoria («regolato fra le parti nel rogito del …», Cass. 11199/2021 «salvo
  * diverso accordo»). Niente modifica libera dei numeri: per cifre diverse c'è il saldo manuale del Wallet.
+ * Nella successione (1.11.0-beta.48) e alla fine di una locazione (1.11.0-beta.50, decisione 77) la casella lascia il posto alla
+ * scelta «Scrivi il conguaglio» / «Non scriverlo», senza nessuna voce già scelta.
  */
 import { computed, ref } from 'vue';
 import { AlertTriangle, CalendarClock, Info, LoaderCircle, Receipt, Scale, ShieldCheck, Users, ArrowLeftRight } from 'lucide-vue-next';
@@ -24,7 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type { AnteprimaPassaggioDati } from '@/types/gestionale/passaggi';
 import { competenzaDellaGestione, etichettaEsclusa } from '@/lib/gestionale/passaggi/competenzaGestione';
-import { conguaglioDaScegliere, conguaglioNonScritto, fraseArretrato, rinunciaEffettiva, sceltaConguaglioRichiesta, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
+import { conguaglioDaScegliereNelPassaggio, conguaglioNonScrittoNelPassaggio, coppieNonScritte, fraseArretrato, sceltaConguaglioDelPassaggio, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
 import { aNome } from '@/lib/gestionale/passaggi/preposizione';
 
 const props = defineProps<{
@@ -41,6 +43,11 @@ const props = defineProps<{
   tipo?: string;
   /** Il server si è fermato solo per chiedere l'erede di riferimento: è una scelta, non un dato sbagliato (P6 della 1.11.0-beta.48). */
   attesaScelta?: boolean;
+  /**
+   * Decisione 77 (1.11.0-beta.50): la fine di una locazione senza un nuovo inquilino. Le coppie vanno a chi paga al posto dell'inquilino,
+   * non a chi entra, e le due voci lo dicono.
+   */
+  senzaSuccessore?: boolean;
 }>();
 
 /** La rinuncia alla coppia proposta e la sua ragione: stato del modulo, tenuto da chi ci sta sopra. */
@@ -66,15 +73,21 @@ const rovesciato = computed(() => (conguaglio.value?.totale_entrante ?? 0) < 0);
 const arretrato = computed(() => props.dati?.rate.arretrato ?? null);
 const arretratoAgliEredi = computed(() => arretrato.value?.scelta === 'eredi');
 // Rilievo X11 della Fase 1-bis: con l'arretrato agli eredi la spunta rimasta da «a nome del defunto» non vale, e i badge non la seguono.
-// Decisione 72: con l'arretrato a nome del defunto la casella non c'è più, c'è la scelta.
-const sceltaRichiesta = computed(() => sceltaConguaglioRichiesta(conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta));
-const nonScritto = computed(() => conguaglioNonScritto(conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
-const rinunciaVale = computed(() => arretrato.value ? nonScritto.value : rinunciaEffettiva(conguaglio.value?.coppie.length ?? 0, rinuncia.value, null));
+// Decisione 72: con l'arretrato a nome del defunto la casella non c'è più, c'è la scelta. Decisione 77 (1.11.0-beta.50): la scelta c'è
+// anche alla fine di una locazione, con un nuovo inquilino o senza, quando il pannello propone coppie; con un coinquilino che resta le
+// coppie non ci sono (decisione 79), e né la scelta né la casella. L'arretrato c'è solo nella successione: senza il tipo, dice lui.
+const tipoPassaggio = computed(() => props.tipo ?? (arretrato.value ? 'successione' : undefined));
+const locazione = computed(() => props.tipo === 'fine_locazione');
+// Giro stretto della .50 (G5): i piani su cui il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto non va oltre.
+const prospettoRegolato = computed(() => props.dati?.rate.prospetto_regolato ?? []);
+const sceltaRichiesta = computed(() => sceltaConguaglioDelPassaggio(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta));
+const nonScritto = computed(() => conguaglioNonScrittoNelPassaggio(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
+const rinunciaVale = computed(() => coppieNonScritte(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, rinuncia.value, sceltaConguaglio.value));
 const notaSceltaTroppoCorta = computed(() => nonScritto.value && notaRinuncia.value.trim().length > 0 && notaRinuncia.value.trim().length < 10);
 // Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione.
 // Rilievo R1 della Fase 1-bis della .48: finché la scelta manca il pannello non descrive l'esito di «Scrivi» (la preselezione che la
 // decisione 72 toglie): il riquadro dice «da scegliere» e la frase dell'arretrato ha le due cifre.
-const daScegliere = computed(() => conguaglioDaScegliere(conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
+const daScegliere = computed(() => conguaglioDaScegliereNelPassaggio(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
 const fraseDellArretrato = computed(() => fraseArretrato(arretrato.value, rinunciaVale.value, daScegliere.value));
 // Rilievo R2: le frasi del calcolo per quota valgono solo se il conguaglio si scrive — prima della scelta servono a scegliere, con
 // «Non scriverlo» sarebbero false (Bruno e Carla non hanno niente da pagare).
@@ -101,8 +114,11 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
 </script>
 
 <template>
-  <aside class="lg:sticky lg:top-6 space-y-0 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-    <div class="px-5 py-4 border-b border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 flex items-start gap-3">
+  <!-- Verifica a video della .50, su richiesta di Vincenzo: da desktop il pannello non supera l'altezza dello schermo e scorre al suo
+       interno, con il titolo sempre in vista; le due voci della scelta, in fondo, si raggiungono senza scorrere tutta la pagina. Da
+       telefono resta nella colonna, senza scorrimento interno. -->
+  <aside class="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] space-y-0 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden lg:overflow-y-auto">
+    <div class="lg:sticky lg:top-0 lg:z-10 px-5 py-4 border-b border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 lg:bg-slate-50 dark:lg:bg-slate-800 flex items-start gap-3">
       <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 shrink-0">
         <Scale class="w-4 h-4" />
       </div>
@@ -277,6 +293,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <!-- Rilievo L2 della Fase 1-bis: con più eredi le coppie hanno segni diversi, e la somma non è il debito di qualcuno. -->
                   <template v-if="haCoppie && nonScritto">Non scritte: nessuna riga in saldi</template>
                   <template v-else-if="haCoppie && arretrato && piuEntranti">{{ legato ? 'Somma delle coppie' : 'Somma delle coppie degli eredi' }}</template>
+                  <!-- Decisione 77 (1.11.0-beta.50): alla fine di una locazione senza un nuovo inquilino nessuno entra. -->
+                  <template v-else-if="haCoppie && senzaSuccessore">{{ rovesciato ? 'Credito a chi paga dopo l\'uscita, debito a chi esce' : 'Debito a chi paga dopo l\'uscita, credito a chi esce' }}</template>
                   <template v-else-if="haCoppie && rovesciato">Credito a chi entra, debito a chi esce</template>
                   <template v-else-if="haCoppie">Debito a chi entra, credito a chi esce</template>
                   <template v-else>Nessuna riga in saldi da questo passaggio</template>
@@ -290,14 +308,18 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: insieme danno a ogni erede la sua quota di tutto ciò che il defunto ha lasciato aperto. Per non scrivere il conguaglio, lascia l'arretrato a nome del defunto.
           </p>
           <!-- Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, due voci e nessuna
-               già scelta, al posto della casella; «Non scriverlo» non dichiara un accordo e la nota è facoltativa. -->
+               già scelta, al posto della casella; «Non scriverlo» non dichiara un accordo e la nota è facoltativa. Decisione 77
+               (1.11.0-beta.50): le stesse due voci alla fine di una locazione, con i testi della locazione; una scelta sola per
+               l'appartamento e le pertinenze spuntate. -->
           <div v-else-if="haCoppie && sceltaRichiesta" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
             <p class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">Il conguaglio si sceglie: il programma non lo sceglie al posto tuo.</p>
             <label class="flex items-start gap-2 cursor-pointer">
               <input type="radio" value="scrivi" v-model="sceltaConguaglio" class="mt-0.5 accent-indigo-600" />
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
                 <span class="font-medium">Scrivi il conguaglio</span>
-                <span class="block text-[11px] text-slate-500">Le righe in saldi rimettono ognuno ai suoi giorni{{ piuEntranti ? (legato ? ', una coppia per ognuno' : ', una coppia per ogni erede') : '' }}.</span>
+                <span v-if="locazione && senzaSuccessore" class="block text-[11px] text-slate-500">I giorni dopo l'uscita passano a chi paga al posto dell'inquilino{{ piuEntranti ? ', a ognuno per la sua parte' : '' }}: le righe in saldi rimettono ognuno ai suoi giorni.</span>
+                <span v-else-if="locazione" class="block text-[11px] text-slate-500">I giorni dopo l'uscita passano a chi entra: le righe in saldi rimettono ognuno ai suoi giorni.</span>
+                <span v-else class="block text-[11px] text-slate-500">Le righe in saldi rimettono ognuno ai suoi giorni{{ piuEntranti ? (legato ? ', una coppia per ognuno' : ', una coppia per ogni erede') : '' }}.</span>
               </span>
             </label>
             <label class="flex items-start gap-2 cursor-pointer">
@@ -305,15 +327,24 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
                 <span class="font-medium">Non scriverlo: la posizione resta com'è</span>
                 <span class="block text-[11px] text-slate-500">
+                  <!-- Decisione 77, strada A′: senza righe in saldi i giorni dopo l'uscita restano nelle rate di chi esce, e il prospetto degli
+                       oneri accessori dice chi li rimborsa. -->
+                  <template v-if="locazione && senzaSuccessore">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce, e le parti li regolano fra loro con il prospetto degli oneri accessori.</template>
+                  <!-- R10 della Fase 1-bis della .50: un piano della 1.10 il prospetto lo lascia fuori dopo il cambio, e lì il rimborso si regola fra le parti. -->
+                  <template v-else-if="locazione && (dati?.rate.prospetto_esclude?.length ?? 0) > 0">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce. Il prospetto degli oneri accessori lascia fuori {{ dati!.rate.prospetto_esclude!.length === 1 ? 'il piano' : 'i piani' }} «{{ dati!.rate.prospetto_esclude!.join('», «') }}», generat{{ dati!.rate.prospetto_esclude!.length === 1 ? 'o' : 'i' }} da una versione precedente: lì chi entra glieli rimborsa fra le parti.<template v-if="prospettoRegolato.length"> {{ prospettoRegolato.length === 1 ? 'Sul piano' : 'Sui piani' }} «{{ prospettoRegolato.join('», «') }}» il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto non va oltre quell'accordo: anche lì il rimborso di chi entra si regola fra le parti.</template></template>
+                  <!-- Giro stretto della .50 (G5): dopo un cambio d'inquilino regolato fra le parti, senza una fine «Scrivi» dopo, il prospetto non
+                       segue la catena (decisione 83.3): il rimborso di chi entra a chi esce si regola fra le parti. -->
+                  <template v-else-if="locazione && prospettoRegolato.length > 0">Nessuna riga in saldi. {{ prospettoRegolato.length === 1 ? 'Sul piano' : 'Sui piani' }} «{{ prospettoRegolato.join('», «') }}» il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto degli oneri accessori non va oltre quell'accordo: il rimborso di chi entra a chi esce si regola fra le parti.</template>
+                  <template v-else-if="locazione">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce, e chi entra glieli rimborsa con il prospetto degli oneri accessori.</template>
                   <!-- Rilievo AMM-5: passano le bozze dell'elenco, non tutte (quelle che scadono prima del decesso restano al defunto). -->
-                  <template v-if="riassegnazione.length">Nessuna riga in saldi: le rate emesse restano al defunto, e le rate in bozza dell'elenco qui sopra passano {{ piuEntranti ? (legato ? 'a quello di riferimento' : 'all\'erede di riferimento') : 'a chi entra' }}.</template>
+                  <template v-else-if="riassegnazione.length">Nessuna riga in saldi: le rate emesse restano al defunto, e le rate in bozza dell'elenco qui sopra passano {{ piuEntranti ? (legato ? 'a quello di riferimento' : 'all\'erede di riferimento') : 'a chi entra' }}.</template>
                   <template v-else>Nessuna riga in saldi: le rate restano a chi le ha.</template>
                 </span>
               </span>
             </label>
-            <p v-if="nonScritto && riassegnazione.length && piuEntranti" class="pl-6 text-[11px] text-slate-500 leading-snug">Le rate in bozza passano {{ legato ? 'a quello di riferimento' : 'all\'erede di riferimento' }}, che le paga tutte: senza righe in saldi, su questo piano {{ legato ? 'gli altri' : 'gli altri eredi' }} non hanno niente da pagare.</p>
+            <p v-if="nonScritto && riassegnazione.length && piuEntranti && !locazione" class="pl-6 text-[11px] text-slate-500 leading-snug">Le rate in bozza passano {{ legato ? 'a quello di riferimento' : 'all\'erede di riferimento' }}, che le paga tutte: senza righe in saldi, su questo piano {{ legato ? 'gli altri' : 'gli altri eredi' }} non hanno niente da pagare.</p>
             <div v-if="nonScritto" class="pl-6 space-y-1">
-              <Input :model-value="notaRinuncia" @update:model-value="(v: string | number) => notaRinuncia = String(v)" placeholder="Nota (facoltativa): per esempio, gli eredi non chiedono il conguaglio" class="h-8 text-[12px]" />
+              <Input :model-value="notaRinuncia" @update:model-value="(v: string | number) => notaRinuncia = String(v)" :placeholder="locazione ? 'Nota (facoltativa): per esempio, nessuno chiede i giorni dopo l\'uscita' : 'Nota (facoltativa): per esempio, gli eredi non chiedono il conguaglio'" class="h-8 text-[12px]" />
               <p v-if="notaSceltaTroppoCorta" class="text-[11px] text-amber-700 dark:text-amber-400">La nota è facoltativa, ma se la scrivi deve avere almeno 10 caratteri ({{ notaRinuncia.trim().length }}/10).</p>
             </div>
             <p v-if="sceltaConguaglio === null" class="text-[11px] text-amber-700 dark:text-amber-400">Scegli se scrivere il conguaglio.</p>

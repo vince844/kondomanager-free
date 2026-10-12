@@ -18,6 +18,9 @@
  * Cosa NON copre: come si scrivono le righe di una quota a credito e che cosa ne legge l'estratto conto
  * (`CreditiEmissioneEstrattoContoTest`); i promemoria del portale; il piano emesso senza ricalcolo dopo un passaggio
  * (decisione 35, più sotto in questo file quando c'è).
+ *
+ * ➕ 1.11.0-beta.50 (decisione 77, nota sulla 47): la fine locazione senza nuovo inquilino su un piano fermo ha un conguaglio, con la
+ * scelta, e prende il piano; D1 e W5 sono riscritti così, e il W5 di prima resta come controllo sul piano che si ricalcola ancora.
  */
 
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
@@ -347,7 +350,10 @@ it('U1, dati delle versioni prima, forma dell\'usufrutto — costituzione con il
         ->and((int) DB::table('rate_quote')->where('anagrafica_id', $s['v']->id)->sum('importo'))->toBe(120000);
 });
 
-it('D1 — fine locazione senza un nuovo inquilino, piano già a giornale: il cancello non promette un conguaglio che non c\'è, e dice che le bozze di Ines restano sue senza conguaglio', function () {
+it('D1, dalla .50 — fine locazione senza un nuovo inquilino, piano già a giornale: l\'anteprima propone il conguaglio da scegliere, e il cancello dice che le bozze di Ines sono comprese nel conguaglio se lo scrivi, non che il programma non lo calcola', function () {
+    // 1.11.0-beta.50, decisione 77 (1): con un piano che non si riscrive più la fine senza nuovo inquilino ha un conguaglio, da
+    // scegliere. Prima della .50 questo test diceva il contrario («restano sue, senza conguaglio»: la decisione 32 non era costruita).
+    // La frase del cancello segue la regola della successione della .48 (rilievo R2): «comprese nel conguaglio, se lo scrivi».
     $s = spScenario(12, 'prima_rata', 0, ['inquilino' => 30, 'proprietario' => 70]);
     $finoAGiugno = DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('data_scadenza', '<=', '2026-06-30 23:59:59')->pluck('id')->all();
     spEmetti($this, $s, $finoAGiugno)->assertSessionHasNoErrors();
@@ -359,15 +365,18 @@ it('D1 — fine locazione senza un nuovo inquilino, piano già a giornale: il ca
     ])->assertOk()->json();
 
     $motivi = implode(' | ', $anteprima['cancello']['motivi']);
-    // Prima: «… non si può più ricalcolare, restano sue e sono comprese nel conguaglio», con un conguaglio che non si calcola.
-    expect($anteprima['rate']['conguaglio']['stato'] ?? 'nessuno')->toBe('nessuno')
-        ->and($motivi)->toContain('il piano «Preventivo 2026» ha 6 quote non ancora emesse intestate a Ines Inquilina: non si può più ricalcolare, restano sue, senza conguaglio')
-        ->not->toContain('nel conguaglio');
+    // La coppia: 30 % di € 1.200,00 = 36000; 36000 × [181, 184] = 17852,05 / 18147,95 → 17852 + 18147 = 35999, il centesimo al resto
+    // ,95 → 18148 a Ugo, chi paga al posto dell'inquilino.
+    expect($anteprima['rate']['conguaglio']['stato'] ?? 'nessuno')->toBe('calcolato')
+        ->and(collect($anteprima['rate']['conguaglio']['coppie'] ?? [])->map(fn ($c) => [(int) $c['anagrafica_entrante_id'], (int) $c['importo']])->all())->toBe([[(int) $s['v']->id, 18148]])
+        ->and($motivi)->toContain('il piano «Preventivo 2026» ha 6 quote non ancora emesse intestate a Ines Inquilina')
+        ->and($motivi)->toContain('comprese nel conguaglio, se lo scrivi')
+        ->and($motivi)->not->toContain('non lo calcola');
 });
 
 /*
 |--------------------------------------------------------------------------
-| Fase 1-bis della .42: i rilievi confermati dagli scettici (decisioni 38–41)
+| Fase 1-bis della .42: i rilievi confermati dalla revisione (decisioni 38–41)
 |--------------------------------------------------------------------------
 */
 
@@ -506,6 +515,8 @@ it('decisione 40 (R4) — cambio d\'inquilino con il piano da ricalcolare, emiss
         $p->condomini()->syncWithoutDetaching([$s['c']->id]);
     }
     [$ivo, $iris] = $nuovi;
+    // 1.11.0-beta.50: nessuno dei due cambi ha coppie proposte (il primo su un piano che si ricalcola, il secondo con le quote non
+    // risolte), quindi la scelta sul conguaglio non si chiede e il modulo non la manda.
     $cambio = fn (int $riga, Anagrafica $entra, string $dal) => ['tipo' => 'fine_locazione', 'tipologia' => 'inquilino', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $entra->id,
         'decorrenza' => $dal, 'quota' => 100, 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Contratto letto, cambio d\'inquilino'];
     $rigaInes = (int) DB::table('anagrafica_immobile')->where('anagrafica_id', $ines->id)->value('id');
@@ -1089,26 +1100,49 @@ it('W5, decisione 47 — un inizio locazione non ha conguaglio e non prende il p
         ->and(DB::table('rate')->where('id', spRata($s, 1))->value('stato'))->toBe('bozza');
 })->with(['registrato con la .42' => [false], 'registrato prima, senza `piani_presi`' => [true]]);
 
-it('W5, decisione 47 — la fine di una locazione senza un nuovo inquilino non prende il piano: dopo lo storno dell\'incasso che lo fermava, il piano si ricalcola', function () {
+it('W5, decisione 47 precisata dalla .50 — la fine di una locazione senza un nuovo inquilino su un piano fermo per un incasso ha un conguaglio, con la scelta, e prende il piano: dopo lo storno dell\'incasso il piano resta fermo per il conguaglio', function (string $scelta, int $coppia) {
+    // 1.11.0-beta.50: la fine senza nuovo inquilino con la scelta ha un conguaglio (decisione 77; nota datata sulla 47), e un piano
+    // preso dal conguaglio si riapre solo annullando il passaggio (decisioni 38 e 43), con «Scrivi» e con «Non scriverlo», come la
+    // successione della .48. Prima della .50 questo test diceva il contrario: la fine non prendeva il piano e dopo lo storno si
+    // ricalcolava (il controllo che resta vero, senza la scelta, è il test qui sotto).
     $s = spScenario(12, 'prima_rata', 0, ['proprietario' => 70, 'inquilino' => 30]);
     spIncassa($s, 1, 50.00);
     $ines = Anagrafica::where('nome', 'Ines Inquilina')->firstOrFail();
     $rigaInes = spRigaDi($s, $ines);
     $this->travel(1)->days();
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
-        'tipo' => 'fine_locazione', 'tipologia' => 'inquilino', 'riga_uscente_id' => $rigaInes, 'decorrenza' => '2026-03-01', 'quota' => 100, 'copia_autentica' => false, 'pertinenze' => [],
+        'tipo' => 'fine_locazione', 'conguaglio' => $scelta, 'tipologia' => 'inquilino', 'riga_uscente_id' => $rigaInes, 'decorrenza' => '2026-03-01', 'quota' => 100, 'copia_autentica' => false, 'pertinenze' => [],
         'ho_letto' => true, 'nota_cancello' => 'Disdetta letta, piano controllato',
     ])->assertSessionHasNoErrors()->assertRedirect();
     $p = \App\Models\Gestionale\Subentro::latest('id')->firstOrFail();
-    expect($p->registro['piani_presi'])->toBe([]);
+    // La coppia con «Scrivi»: Ines 1/1–28/2 = 31 + 28 = 59 giorni, dopo 306; 36000 × [59, 306] = 5819,18 / 30180,82 → 5819 + 30180 =
+    // 35999, il centesimo al resto ,82 → 30181 a Ugo (Ines 36000 − 30181 = 5819, quanto le dà il piano generato dopo). Con «Non
+    // scriverlo» nessuna riga.
+    expect($p->registro['piani_presi'])->toBe([(int) $s['piano']->id])
+        ->and((int) DB::table('saldi')->where('subentro_id', $p->id)->where('anagrafica_id', $s['v']->id)->sum('saldo_iniziale'))->toBe($coppia)
+        ->and((int) DB::table('saldi')->where('subentro_id', $p->id)->where('anagrafica_id', $ines->id)->sum('saldo_iniziale'))->toBe(-$coppia);
     $this->travel(1)->days();
     spStornaIncassi($s);
 
-    // Prima: il piano restava fermo «per il conguaglio del passaggio Ines Inquilina → ?», che non c'è.
+    $piano = $s['piano']->fresh();
+    expect($piano->ragioniDelFermo())->toBe(['conguaglio'])->and($piano->eImmutabile())->toBeTrue();
+})->with(['Scrivi' => ['scrivi', 30181], 'Non scriverlo' => ['non_scrivere', 0]]);
+
+it('W5, controllo — la fine di una locazione senza un nuovo inquilino su un piano che si ricalcola ancora non ha la scelta e non prende il piano: il ricalcolo dà a Ines i suoi giorni', function () {
+    // Decisione 47: senza coppie proposte non c'è conguaglio e il passaggio non prende piani. Verde prima e dopo la .50.
+    $s = spScenario(12, 'prima_rata', 0, ['proprietario' => 70, 'inquilino' => 30]);
+    $ines = Anagrafica::where('nome', 'Ines Inquilina')->firstOrFail();
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), [
+        'tipo' => 'fine_locazione', 'tipologia' => 'inquilino', 'riga_uscente_id' => spRigaDi($s, $ines), 'decorrenza' => '2026-03-01', 'quota' => 100, 'copia_autentica' => false, 'pertinenze' => [],
+        'ho_letto' => true, 'nota_cancello' => 'Disdetta letta, piano controllato',
+    ])->assertSessionHasNoErrors()->assertRedirect();
+    $p = \App\Models\Gestionale\Subentro::latest('id')->firstOrFail();
+    expect($p->registro['piani_presi'])->toBe([])->and($p->registro)->not->toHaveKey('conguaglio');
+
     $piano = $s['piano']->fresh();
     expect($piano->ragioniDelFermo())->toBe([])->and($piano->eImmutabile())->toBeFalse();
     spRicalcola($this, $s)->assertSessionHasNoErrors()->assertRedirect();
-    // Ines paga il 30 % per i 59 giorni di gennaio e febbraio: 36000 × 59/365 = 5819,2 → 5819; il resto è di Ugo.
+    // Ines paga il 30 % per i 59 giorni di gennaio e febbraio: 36000 × 59/365 = 5819,18 → 5819; il resto è di Ugo.
     expect([spQuoteDi($s['piano'], $ines), spQuoteDi($s['piano'], $s['v'])])->toBe([5819, 114181]);
 });
 

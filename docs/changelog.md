@@ -7,6 +7,177 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.50] - I giorni dopo l'uscita
+
+**Non cambia lo schema del database, ma i passaggi salvano nel loro registro alcune informazioni nuove.** Sono la scelta sul
+conguaglio della locazione, i periodi su cui si divide la coppia di righe di saldo, chi restava inquilino il giorno della fine, e le
+fermate e le informazioni sul rinnovo di cui si dice più sotto. Nessuna migrazione e nessun dato esistente riscritto: i passaggi
+registrati prima non hanno queste informazioni e si leggono come prima, salvo il prospetto degli oneri accessori per le fini di
+locazione di prima (terzo punto qui sotto).
+
+La locazione, come la successione della beta.48. Quando un inquilino se ne va e il piano rate non si ricalcola più, restano da
+decidere i giorni dopo la sua uscita: li prende chi sta al posto dell'inquilino, oppure restano nelle rate di chi esce e le parti li
+regolano fra loro? La beta.47 aveva dichiarato questa scelta non ancora costruita. Ora il programma la chiede, la porta fino al
+prospetto degli oneri accessori e, quando un passaggio successivo la sposta, lo dice. Ogni difetto di calcolo e ogni frase del
+server hanno prima avuto un test rosso; le correzioni sono passate da una revisione avversariale, da più giri sulle correzioni e da
+una verifica a video. I difetti trovati nelle funzioni nuove sono corretti prima del rilascio e non figurano fra le correzioni, che
+riguardano solo ciò che c'era già.
+
+**Cambi di comportamento, detti per primi.**
+- **Alla fine di una locazione il conguaglio si sceglie.** Vale per la fine senza un nuovo inquilino e per il cambio d'inquilino,
+  quando il passaggio tocca un piano che non si ricalcola più (rate a giornale, un incasso o un conguaglio già scritto) e il
+  pannello «Cosa cambierà» propone delle righe di saldo. Il pannello chiede «Scrivi il conguaglio» o «Non scriverlo», con nessuna
+  delle due già scelta; senza la scelta il passaggio non si registra, e una richiesta che arriva senza viene rifiutata. La scelta è
+  una sola per l'appartamento e per le pertinenze spuntate, si rifà se cambiano le persone della coppia, e la nota è facoltativa (se
+  la scrivi, almeno dieci caratteri). Prende il posto della casella «Le parti hanno regolato il conguaglio fra loro», che nella
+  locazione sparisce e resta nella vendita e nell'usufrutto: un modulo rimasto aperto da prima dell'aggiornamento che la manda vale
+  «Non scriverlo». I passaggi già registrati con la casella restano come erano. Dove la scelta c'è, le frasi che dicevano «chi paga
+  i giorni dopo l'uscita lo decide l'amministratore» rimandano alla scelta.
+- **«Scrivi il conguaglio» e «Non scriverlo».** Con «Scrivi», senza un nuovo inquilino i giorni dopo l'uscita passano a chi paga al
+  posto dell'inquilino (l'usufruttuario, se c'è, poi il proprietario, poi il nudo proprietario), ognuno per la sua parte; con un
+  nuovo inquilino passano a lui. Le righe in saldi entrano nel prossimo piano della stessa gestione. Con «Non scriverlo» non si
+  scrive nessuna riga in saldi, i giorni restano nelle rate di chi esce e le parti li regolano fra loro con il prospetto degli oneri
+  accessori, senza dichiarare un accordo. In tutti e due i casi il piano che il passaggio prende resta com'è. Un esempio: oneri
+  accessori di € 360,00 per l'anno a carico dell'inquilino, che esce il 1/7. I suoi 181 giorni valgono € 178,52, i 184 dopo l'uscita
+  € 181,48. Con «Scrivi» gli € 181,48 vanno a debito di chi paga al posto dell'inquilino e a credito dell'inquilino; con «Non
+  scriverlo» restano nelle sue rate, e il prospetto dice che gli vanno restituiti.
+- **Il prospetto degli oneri accessori segue la scelta.** Con «Scrivi» i giorni dopo l'uscita compaiono come senza conduttore,
+  pagati da chi ha preso la coppia. Con «Non scriverlo» l'inquilino uscito ha nelle sue rate tutto l'anno, i suoi 181 giorni valgono
+  € 178,52 e gli € 181,48 dei giorni dopo l'uscita gli sono «da restituire», fra le parti: nel riassunto, nel dettaglio e nella
+  stampa, che dice anche «conguaglio non scritto». Nel cambio d'inquilino con «Non scriverlo» il prospetto dice quanto chi entra
+  rimborsa a chi esce; dopo «Annulla il conguaglio» il prospetto torna a 365 giorni, come prima. Le fini di locazione registrate
+  prima di questa beta, senza la scelta nel registro, il prospetto le legge ora come «Non scriverlo»: se sull'unità non resta un
+  altro inquilino, l'inquilino uscito, che prima compariva con 365 giorni, ora ha i suoi 181 e gli si restituiscono i giorni dopo
+  l'uscita. Se sull'unità c'è un saldo manuale scritto dal Wallet sulla stessa gestione, quello che le versioni di prima indicavano
+  per quei giorni, il prospetto avverte che possono essere già regolati. Un piano generato da una versione precedente, senza il
+  riparto registrato, il prospetto lo lascia fuori dopo un cambio d'inquilino, e il pannello lo dice.
+- **I passaggi si annullano nell'ordine in cui sono stati registrati.** L'ultimo registrato per primo, non l'ultimo per data. Un
+  passaggio registrato dopo, anche con una data precedente, può leggere ciò che l'altro ha scritto (la coppia di una fine divisa
+  sulla titolarità di dopo una vendita, le fonti di una successione, una fermata): annullare prima l'altro lascerebbe soldi
+  sbagliati. Una vendita del 1/10 registrata prima di una fine di locazione del 1/7 con «Scrivi», annullata per prima, lascerebbe a
+  chi compra una riga di saldo di € 90,74 senza che sia più titolare. Il rifiuto dice quale passaggio, registrato dopo, si annulla
+  prima. Due comproprietari che vendono, registrati al contrario delle date, prima richiedevano di cominciare da quello con la data
+  più recente.
+- **La scheda delle pertinenze compare anche nella locazione.** Nella fine e nell'inizio di una locazione, come nella vendita, si
+  spuntano le pertinenze che il contratto comprende (il box, per esempio): la data e la scelta sul conguaglio valgono insieme per
+  l'appartamento e per le pertinenze spuntate. Il passaggio sul box riceve il regime del contratto e la data di fine, e il prospetto
+  del box legge la scelta dal passaggio dell'appartamento. Chi entra come inquilino non può essere già proprietario di una
+  pertinenza spuntata. All'inizio di una locazione chi entra risulta inquilino del box al 100 %, qualunque sia la sua quota
+  sull'appartamento, e il pannello lo dice.
+- **Il pannello «Cosa cambierà» scorre da desktop.** Da schermo largo il pannello non supera l'altezza dello schermo e scorre al suo
+  interno, con il titolo sempre in vista: le due voci della scelta, in fondo, si raggiungono senza scorrere tutta la pagina. Da
+  telefono resta nella colonna.
+- **La coppia, per persona, per giorno e per capitolo.** Senza un nuovo inquilino la coppia si divide su tutto il periodo dopo
+  l'uscita per persona (con tutte le sue righe), per giorno (chi compra a metà periodo prende i giorni dalla sua vendita) e per
+  capitolo, ogni voce con la sua competenza; una voce di entrata, come i proventi dell'antenna, toglie con il suo segno. La
+  divisione è a resti maggiori: il centesimo va a chi ha il resto più grande, a pari resto a chi esce; fra la coppia e un piano
+  generato dopo la fine può restare al più un centesimo per unità. I giorni dopo l'uscita che nessuno copre restano nelle rate di
+  chi esce, e il pannello lo dice: se la riga di chi paga al posto dell'inquilino finisce il 30/9 e dopo non c'è un proprietario, a
+  lui vanno i suoi 92 giorni (€ 90,74) e gli altri € 90,74 restano nelle rate dell'inquilino.
+- **Il coinquilino che resta.** Alla fine di una locazione in cui resta un altro inquilino sull'unità, il programma non propone il
+  conguaglio dei giorni dopo l'uscita e la scelta non c'è: non indovina a chi vanno. Il pannello dice la cifra, che resta nelle rate
+  di chi esce, e che chi la paga lo decidono le parti. Il saldo manuale dal Wallet lo indica solo se si può fare davvero, cioè se
+  nessuna delle due persone ha già un saldo su quella gestione, unità ed esercizio (il Wallet accetta una sola riga per persona,
+  gestione, unità ed esercizio); altrimenti dice che la parte si regola fra le parti. Il passaggio chiede la spunta «Ho letto cosa
+  cambierà» nel riquadro «Questo passaggio tocca conti già in corso», e lo storico conserva la fermata. Il pannello e il modulo non
+  dicono più «l'unità resta sfitta» dove resta un inquilino: dicono «resta inquilino Dora», e il modulo guarda chi è inquilino il
+  giorno scritto, anche per una fine registrata in ritardo.
+- **La fermata dopo «Scrivi».** Dopo una fine con «Scrivi», chi paga al posto dell'inquilino ha preso con la coppia i giorni dopo
+  l'uscita. Se un passaggio successivo abbassa il suo peso fra chi sta al posto dell'inquilino (una vendita, anche datata prima
+  della fine e registrata dopo; la costituzione o l'estinzione di un usufrutto, anche con l'accrescimento; una successione con
+  l'arretrato a nome del defunto e «Scrivi»), la parte di quei giorni dal passaggio in poi non passa da sola a chi entra: senza la
+  fermata restava a chi vende, in silenzio (nell'esempio, una vendita da Ugo a Elsa il 1/10: € 90,74 in più a chi vende e in meno a
+  chi compra). Ora il programma registra il passaggio, non sposta quella parte e lo dice con la persona, la cifra e la strada a
+  mano, e chiede la spunta «Ho letto cosa cambierà» e la nota; lo storico dell'unità e il registro del passaggio conservano la
+  fermata. La cifra conta solo i giorni senza un conduttore registrato. La strada a mano è un saldo manuale dal Wallet solo se
+  nessuna delle due persone della riga ha già un saldo su quella gestione, unità ed esercizio, altrimenti la parte si regola fra le
+  parti: verso il condominio non si sposta niente in silenzio, e chi ha preso la coppia resta debitore. Non sono fermate la riserva,
+  la successione con l'arretrato agli eredi, «Non scriverlo» e una fine il cui conguaglio è stato annullato. Una seconda vendita dopo
+  una fermata dice la sua parte, da regolare fra le parti perché il programma non sa come è stata regolata la prima (fine di Ines
+  il 1/7, vendita da Ugo a Elsa il 1/9 con una fermata di € 120,33 verso Elsa, poi da Elsa a Carlo il 1/11: € 60,16 di quei giorni
+  sono di Carlo), e lo storico della prima dice quanto è passato. Se la parte di chi
+  entra è un credito, perché un'entrata supera la spesa dei suoi giorni, la fermata dice la cifra a credito (nel caso provato
+  € 29,26 a credito di Elsa): un credito si dice con le parole, mai con «€ -».
+- **L'inizio di una locazione dopo una fine con «Scrivi».** Un rinnovo con la stessa persona, un rientro o un nuovo inquilino in due
+  passi non sono fermate ma informazioni: chi entra rimborsa con il prospetto i giorni che la coppia ha dato a chi pagava al posto
+  suo, e il pannello lo dice con i nomi. Nel rinnovo dice anche che la fine, se è l'ultimo passaggio, si può annullare e registrare
+  di nuovo con «Non scriverlo». Dopo una fermata, l'inizio toglie dalla fermata i giorni del nuovo conduttore e dice quanto resta da
+  regolare.
+- **Più passaggi di fila.** Dopo un cambio d'inquilino con «Non scriverlo» i giorni di chi è entrato sono nelle rate di chi era
+  uscito: se anche lui se ne va, la fine non scrive una coppia a suo credito per giorni che non ha pagato. Dopo un cambio regolato
+  fra le parti (la casella di prima, o il conguaglio annullato) seguito dalla fine «Scrivi» di chi era entrato, il prospetto segue
+  la catena, con la riga «regolata fra le parti al cambio d'inquilino del …». Il coinquilino si riconosce con una regola sola,
+  quella del prospetto, e dal registro: la fine registrata ricorda chi restava inquilino quel giorno, unità per unità.
+- **«Annulla il conguaglio» avvisa se una vendita si è fermata su quella coppia.** Prima di confermare, lo storico dice la fermata
+  della vendita e il saldo manuale dal Wallet da rivedere; annullato il conguaglio, dice che quella fermata non vale più. Avvisa e
+  non rifiuta: un rifiuto lascerebbe il conguaglio bloccato quando la vendita non si annulla più. Il messaggio che segue, quando
+  porta un avviso, non si chiude da solo.
+- **Dopo la registrazione il riquadro nomina chi paga al posto dell'inquilino.** Alla fine di una locazione senza un nuovo inquilino
+  il riquadro verde dice la cifra e la persona («… a debito di …, che paga al posto dell'inquilino nei giorni dopo l'uscita») e
+  porta al suo estratto conto; prima parlava di chi entra, che non c'è.
+
+**Correzioni.**
+- Il pannello non resta più fermo dopo «Nessuno». Nella fine di una locazione, scritta la data e passato il breve ritardo del
+  calcolo, spuntare «Nessuno — l'unità resta sfitta» non cambiava l'anteprima: il pannello restava su «Il pannello sta leggendo il
+  modulo.» e «Registra passaggio» restava spento. Succedeva anche nella beta.49. Ora il calcolo riparte quando il modulo diventa
+  completo.
+- In ogni passaggio, una risposta vecchia dell'anteprima, arrivata dopo una modifica del modulo, non riaccende più il pulsante
+  «Registra passaggio»: finché il pannello non ha letto il modulo di adesso, il pulsante resta spento.
+- La pagina dei passaggi d'usufrutto non riceve più il codice fiscale delle persone che non sono più titolari: non lo
+  mostrava, ma lo riceveva.
+- La nota che il riallineamento dei crediti scrive nel libro giornale non porta più la versione («come la scrive oggi l'emissione»):
+  la scrittura resta nel giornale per sempre, e un numero di beta lì dentro invecchia. Le note già scritte restano com'erano, e la
+  causale «Riallineamento crediti (1.11)» non cambia.
+- La conferma del riallineamento dice che le scritture prendono la data di competenza e l'esercizio della scrittura che correggono,
+  e che la registrazione è di oggi, cioè la data che il libro giornale mostra: chi cercava la rettifica alla data della
+  compensazione non la trovava.
+- La card «Addebiti» dell'estratto conto dice «le rate emesse a carico del condòmino e i rimborsi del suo credito», e che un incasso
+  stornato e il suo storno restano nell'elenco, non nel totale: diceva «e gli eventuali ripristini di debito», che dalla beta.49 non
+  entrano in «Totale addebiti».
+
+**Errata della beta.49.** Il changelog della beta.49 diceva che la compensazione e il rimborso prelevavano il credito riportato da
+«Crediti verso condomini», dove nessuno l'aveva scritto. Per la compensazione era vero; per il rimborso no, se la quota era tutta a
+credito: usciva già dal «Fondo Passate Gestioni», dalla beta.31. La beta.49 ha cambiato il rimborso solo per la quota con importo
+maggiore o uguale a zero e un credito riportato, che usciva da «Crediti verso condomini». Il suo «Non ancora» chiamava «prima nota»
+l'elenco del Libro Giornale: la prima nota è un'altra pagina. E fra i cambi di comportamento diceva che il riallineamento scrive
+«nella data e nell'esercizio» della scrittura che corregge: la data è quella di competenza, e la registrazione è di oggi.
+
+**Le guide.** La guida del passaggio dice che alla fine di una locazione il conguaglio si sceglie e cosa fanno le due voci, dove la
+scelta non c'è, che dopo «Scrivi» una vendita non sposta la parte che la coppia ha già dato, e che si annulla per primo l'ultimo
+passaggio registrato. Le guide dei saldi e del piano rate dicono che alla fine di una locazione senza un nuovo inquilino la coppia va
+a chi paga al posto dell'inquilino, e che anche una fine locazione con il conguaglio non scritto tiene fermo il piano.
+
+**Non ancora.** Le entrate (i proventi dell'antenna, per esempio) hanno ancora dei casi limite nei giorni dopo l'uscita
+dell'inquilino, quando la loro competenza è dopo l'uscita e superano la spesa: dopo un cambio d'inquilino in un passo con «Scrivi»,
+seguito dalla fine di chi era entrato, il prospetto lascia l'entrata nelle rate di chi è uscito per primo; e la stampa, quando chi è
+uscito deve ricevere una restituzione, dice il verso rovesciato e una cifra con il segno meno. Sono casi rari e si sistemano nella
+beta successiva. Con le voci di entrata, finché la beta successiva non le corregge, conviene evitare tre operazioni che oggi danno
+cifre sbagliate senza dirlo, e che c'erano già nella 1.10: «Sposta spesa» fra una spesa e un'entrata (il totale del piano cambia del
+doppio dello spostamento), una fattura o una regolazione immediata registrata su una voce di entrata, e un importo negativo scritto
+su una voce di spesa al posto di scegliere il tipo «Entrata». L'incasso vero di un'entrata da terzi, come l'affitto dell'antenna
+versato al condominio, non si registra ancora: il piano chiede ai condòmini le spese al netto dell'entrata, ma quel denaro non ha un
+movimento, e a fine anno banca e stato patrimoniale restano sotto dell'importo; arriva con il rendiconto. Con un coinquilino che
+resta il programma non divide i giorni dopo l'uscita fra i conduttori con la regola del piano. Una riga del Wallet legata al
+passaggio, che si tolga con l'annullamento, non c'è: il saldo manuale scritto per una fermata resta, e l'avviso lo dice. Altri
+limiti noti: l'anteprima di un inizio di locazione su un'unità con un inquilino già al 100 % dice che si può, e la registrazione lo
+rifiuta; con il box spuntato nella locazione tre frasi del pannello sono imprecise; a 375 px il percorso in alto della pagina sfora
+di 16 px con un nome di condominio molto lungo.
+
+**Per chi sviluppa.** Nessuna migrazione: la scelta sta nel registro del passaggio (`conguaglio.scelta`, `scritto` o `non_scritto`,
+con i periodi della coppia in `conguaglio.periodi`) e nel campo `conguaglio` della richiesta (`scrivi` o `non_scrivere`), ora ammesso
+anche nella fine di una locazione. Classi nuove: `ChiPagaAlPostoDellInquilino` (chi paga al posto dell'inquilino per persona e per
+giorno; una copia della regola di `CalcoloQuoteService`, non codice condiviso) e `FermataDopoScrivi`. Campi nuovi del registro:
+`fermata_dopo_scrivi`, `fermata_ridotta`, `fermata_coinquilino`, `coinquilini_letti`, `rinnovo_dopo_scrivi`.
+`Subentro::haUnConguaglio()` legge il registro. `AnnullaPassaggioAction` annulla in ordine di registrazione. Lato pagina
+`rinunciaConguaglio.ts`. Test nuovi: `FineLocazioneSceltaTest`, `CambioInquilinoSceltaTest`, `CoinquilinoCheRestaTest`,
+`ProspettoFineLocazioneTest`, `ProspettoFineLocazioneStampaTest`, `FermataDopoScriviTest`, `InizioDopoScriviTest`,
+`CorrezioniDellaBeta50Test`, `RevisioneBeta50MotoreTest`, `StrettoBeta50MotoreTest`, `UltimoGiroBeta50Test`, `ChiusuraBeta50Test`,
+`MutazioniCorrezioniBeta50Test` e i vitest `sceltaConguaglioLocazione`, `AnteprimaPassaggioLocazione`, `PassaggioNewLocazione`;
+riscritti sulla scelta `FineLocazioneFrasiTest`, `InizioLocazionePianoFermoTest`, `ProspettoCambioInquilinoTest`,
+`StatoDelPianoDopoPassaggioTest`, `SuccessioneRichiestaTest`.
+
+---
+
 ## [1.11.0-beta.49] - Ogni credito al suo conto
 
 **Non cambia lo schema del database, ma in due casi scrive sui dati che ci sono già.** Il riallineamento dei crediti aggiunge

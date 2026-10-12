@@ -92,7 +92,13 @@ class PassaggioController extends Controller
             // corso il giorno dell'estinzione, come il server, non quelle di oggi (un'estinzione si registra spesso in ritardo).
             'righeDellEstinzione' => $tipo === 'usufrutto'
                 ? $this->titolariPerIlModulo($immobile->titolarita()->with('anagrafica')->whereIn('tipologia', ['nuda_proprietario', 'usufruttuario'])
-                    ->orderBy('data_inizio')->get()->filter(fn (TitolaritaImmobile $t) => (bool) $t->attivo)->values())
+                    ->orderBy('data_inizio')->get()->filter(fn (TitolaritaImmobile $t) => (bool) $t->attivo)->values(), conCodiceFiscale: false)
+                : [],
+            // R16 della Fase 1-bis della .50: alla fine di una locazione, anche le righe d'inquilino chiuse, perché la casella «Nessuno» le
+            // guardi il giorno scritto, come il pannello (una fine retrodatata con la coinquilina uscita prima di oggi).
+            'righeDellaLocazione' => $tipo === 'fine_locazione'
+                ? $this->titolariPerIlModulo($immobile->titolarita()->with('anagrafica')->where('tipologia', 'inquilino')
+                    ->orderBy('data_inizio')->get()->filter(fn (TitolaritaImmobile $t) => (bool) $t->attivo)->values(), conCodiceFiscale: false)
                 : [],
             'anagrafiche' => $condominio->anagrafiche()->orderBy('nome')->get(['anagrafiche.id', 'anagrafiche.nome', 'anagrafiche.codice_fiscale', 'anagrafiche.indirizzo'])
                 ->map(fn ($a) => ['id' => $a->id, 'nome' => $a->nome, 'codice_fiscale' => $a->codice_fiscale, 'indirizzo' => $a->indirizzo])->values(),
@@ -175,6 +181,20 @@ class PassaggioController extends Controller
             }
         }
 
+        // R11 della Fase 1-bis della .50: alla fine di una locazione senza un nuovo inquilino nessuno entra. La coppia è di chi paga al posto
+        // dell'inquilino: il riquadro lo nomina, con la sua cifra e il suo estratto conto.
+        $alPosto = [];
+        if ($subentro->tipo_passaggio === 'fine_locazione' && $entranteId === null && $esito['coppie'] > 0) {
+            $righe = \App\Models\Saldo::whereIn('subentro_id', $subentro->pertinenze()->pluck('id')->push($subentro->id)->all())
+                ->where('anagrafica_id', '!=', (int) $subentro->anagrafica_uscente_id)->get(['anagrafica_id', 'saldo_iniziale'])
+                ->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->filter();
+            $nomi = \App\Models\Anagrafica::whereIn('id', $righe->keys()->all())->pluck('nome', 'id');
+            foreach ($righe as $id => $c) {
+                $alPosto[] = ['nome' => (string) ($nomi[$id] ?? '?'), 'frase' => sprintf('%s %s %s', \App\Helpers\MoneyHelper::format(abs($c)), $c < 0 ? 'a credito di' : 'a debito di', $nomi[$id] ?? '?'),
+                    'estratto_conto' => route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => (int) $id])];
+            }
+        }
+
         return to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id])
             ->with($this->flashSuccess('Passaggio registrato. ' . $frase))
             ->with('passaggio_registrato', [
@@ -196,6 +216,7 @@ class PassaggioController extends Controller
                 'eredi'       => $eredi,
                 'per_erede'   => $perErede,
                 'per_erede_testa' => $perEredeTesta,
+                'al_posto'    => $alPosto,
                 'azioni'      => [
                     'estratto_conto' => $entranteId ? route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => $entranteId]) : null,
                     'anagrafe'       => $entranteId ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,
@@ -338,9 +359,15 @@ class PassaggioController extends Controller
             'nota_annullamento_conguaglio.min' => 'La nota deve avere almeno dieci caratteri.',
         ]);
 
+        // Decisione 83.2 (1.11.0-beta.50): le fermate dei passaggi registrati dopo su questa coppia non valgono più, e il saldo manuale dal
+        // Wallet scritto per loro va rivisto. Lette prima, dette dopo: un avviso, non un rifiuto.
+        $fermate = \App\Services\Subentro\FermataDopoScrivi::avvisiDelConguaglio($subentro);
         $tolte = $action->execute($subentro, $dati['nota_annullamento_conguaglio']);
+        // Giro stretto della .50 (G8): con le fermate in coda il messaggio dice una cosa ancora da fare (il saldo manuale da rivedere), e
+        // va in un avviso che non si chiude da solo, come l'annullamento del passaggio (L-R1).
+        $messaggio = $fermate === [] ? 'flashSuccess' : 'flashWarning';
 
-        return back()->with($this->flashSuccess(sprintf(
+        return back()->with($this->{$messaggio}(sprintf(
             // Decisione 43 (1.11.0-beta.42): annullare il conguaglio vuol dire che le parti hanno regolato fra loro; i piani presi dal
             // passaggio non si riaprono (si riaprono solo annullando il passaggio).
             // Rilievo T1 del giro sulle correzioni: la strada intera della 43 (annullare, registrare di nuovo, ricalcolare); decisione
@@ -348,12 +375,14 @@ class PassaggioController extends Controller
             // Rilievo T1 del quarto giro: per un passaggio registrato prima della .42 l'ordine è l'altro (decisione 49). Revisione
             // della Fase 2: i movimenti per primi e registrati di nuovo per ultimi; e l'eccezione del piano preso solo per rate
             // «emesse» senza scritture, che senza le righe del conguaglio non è più fermo (`presoSoloInParteDa`).
-            'Conguaglio annullato: %d righe tolte dai saldi della gestione. La nota resta sul passaggio. Le quote non cambiano, e i piani che il passaggio ha preso restano com\'erano. %s Allora il condominio addebita a chi entra i suoi giorni, e l\'accordo fra le parti%s va rifatto.',
+            'Conguaglio annullato: %d righe tolte dai saldi della gestione. La nota resta sul passaggio. Le quote non cambiano, e i piani che il passaggio ha preso restano com\'erano. %s Allora il condominio addebita %s, e l\'accordo fra le parti%s va rifatto.%s',
             $tolte,
             \App\Models\Gestionale\PianoRate::haIPianiPresi($subentro->fresh())
                 ? 'Se uno va ricalcolato: si tolgono prima le sue quote a giornale e i movimenti, se ne ha; poi si annulla il passaggio dallo storico dell\'unità (dall\'ultimo), lo si registra di nuovo e si ricalcola il piano; i movimenti tolti si registrano di nuovo dopo.'
                 : 'Se uno va ricalcolato: si annullano prima i movimenti sulle sue quote, se ne ha; poi le emissioni venute dopo il passaggio, se ce ne sono; poi il passaggio, dallo storico dell\'unità (dall\'ultimo); poi le altre emissioni; infine si registra di nuovo il passaggio, si ricalcola il piano e si registrano di nuovo i movimenti. Fa eccezione un piano che questo passaggio aveva preso solo per rate segnate «emesse» senza scritture: senza le righe del conguaglio non è più fermo, e va ricalcolato (senza annullare il passaggio) prima di emettere o di registrare un incasso.',
+            $subentro->aChiVannoIGiorni(),
             ($cifra = $subentro->fresh()->regolatoFuoriInParole()) !== null ? ' (' . $cifra . ')' : '',
+            $fermate === [] ? '' : ' ' . implode(' ', $fermate),
         )));
     }
 
@@ -392,16 +421,19 @@ class PassaggioController extends Controller
         abort_unless((int) $immobile->condominio_id === (int) $condominio->id, 404);
     }
 
-    /** @return list<array<string, mixed>> */
-    private function titolariPerIlModulo(Collection $titolari): array
+    /**
+     * Le righe per il modulo. Giro stretto della .50 (G9): le righe della locazione e dell'estinzione comprendono anche chi è uscito anni
+     * prima, e la pagina ne legge solo la persona, il ruolo, la quota e le date: il codice fiscale va solo con i titolari di oggi, che la
+     * pagina mostra sotto il nome di chi esce.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function titolariPerIlModulo(Collection $titolari, bool $conCodiceFiscale = true): array
     {
         return $titolari->map(fn (TitolaritaImmobile $t) => [
             'id' => $t->id,
-            'anagrafica' => [
-                'id' => $t->anagrafica?->id,
-                'nome' => $t->anagrafica?->nome,
-                'codice_fiscale' => $t->anagrafica?->codice_fiscale,
-            ],
+            'anagrafica' => ['id' => $t->anagrafica?->id, 'nome' => $t->anagrafica?->nome]
+                + ($conCodiceFiscale ? ['codice_fiscale' => $t->anagrafica?->codice_fiscale] : []),
             'tipologia' => $t->tipologia,
             'quota' => $t->quota,
             'data_inizio' => $t->data_inizio?->toDateString(),

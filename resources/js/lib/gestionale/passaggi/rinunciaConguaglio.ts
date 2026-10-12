@@ -1,6 +1,7 @@
 /**
  * La rinuncia al conguaglio nella successione (1.11.0-beta.44, decisione 65), come la controlla il server
- * (`AnteprimaPassaggioRequest`): una regola sola per il modulo e per il pannello «Cosa cambierà».
+ * (`AnteprimaPassaggioRequest`): una regola sola per il modulo e per il pannello «Cosa cambierà». Dalla 1.11.0-beta.48 la scelta
+ * della successione e del legato, dalla 1.11.0-beta.50 anche quella della fine di una locazione (decisione 77, in fondo).
  */
 import type { ArretratoDelDefunto } from '@/types/gestionale/passaggi';
 
@@ -32,7 +33,10 @@ export function fraseArretrato(
     return arretrato.frase;
 }
 
-/** I valori della scelta della successione e del legato (decisione 72, 1.11.0-beta.48), come li manda il modulo. */
+/**
+ * I valori della scelta della successione e del legato (decisione 72, 1.11.0-beta.48) e della fine di una locazione (decisione 77,
+ * 1.11.0-beta.50), come li manda il modulo.
+ */
 export type SceltaConguaglio = 'scrivi' | 'non_scrivere';
 
 /**
@@ -56,4 +60,51 @@ export function conguaglioNonScritto(coppie: number, arretrato: string | null | 
 /** La scelta serve e non è ancora fatta (rilievo R1 della Fase 1-bis della .48): il pannello dice «conguaglio da scegliere» e le due cifre. */
 export function conguaglioDaScegliere(coppie: number, arretrato: string | null | undefined, scelta: SceltaConguaglio | null | undefined): boolean {
     return sceltaConguaglioRichiesta(coppie, arretrato) && (scelta === null || scelta === undefined);
+}
+
+/**
+ * Decisione 77 (1.11.0-beta.50): i passaggi in cui il conguaglio si sceglie con le due voci al posto della casella. Alla successione
+ * e al legato della .48 si aggiunge la fine di una locazione, con un nuovo inquilino (il cambio d'inquilino) o senza: un vocabolario
+ * solo per tutta la locazione. La vendita e l'usufrutto tengono la casella con la nota obbligatoria.
+ */
+export function passaggioConLaScelta(tipo: string | null | undefined): boolean {
+    return tipo === 'successione' || tipo === 'fine_locazione';
+}
+
+/**
+ * Decisione 77 (1.11.0-beta.50): quando il modulo chiede la scelta. Alla fine di una locazione basta una coppia proposta (un piano che
+ * non si riscrive più), e la scelta è una sola per l'appartamento e le pertinenze spuntate; con un coinquilino che resta il pannello non
+ * propone coppie (decisione 79), e la scelta non c'è. Negli altri passaggi la regola della .48, `sceltaConguaglioRichiesta`: la
+ * successione e il legato con l'arretrato a nome del defunto (l'arretrato c'è solo lì). La stessa regola del server
+ * (`AnteprimaPassaggio::sceltaDelConguaglio`, `RegistraSubentroAction`).
+ */
+export function sceltaConguaglioDelPassaggio(tipo: string | null | undefined, coppie: number, arretrato: string | null | undefined): boolean {
+    return tipo === 'fine_locazione' ? coppie > 0 : sceltaConguaglioRichiesta(coppie, arretrato);
+}
+
+/** «Non scriverlo» vale solo dove la scelta si chiede: un valore rimasto nel modulo, dove la scelta non c'è più, non parte. */
+export function conguaglioNonScrittoNelPassaggio(tipo: string | null | undefined, coppie: number, arretrato: string | null | undefined, scelta: SceltaConguaglio | null | undefined): boolean {
+    return sceltaConguaglioDelPassaggio(tipo, coppie, arretrato) && scelta === 'non_scrivere';
+}
+
+/** La scelta si chiede e non è ancora fatta: il pannello dice «conguaglio da scegliere», e la registrazione resta spenta. */
+export function conguaglioDaScegliereNelPassaggio(tipo: string | null | undefined, coppie: number, arretrato: string | null | undefined, scelta: SceltaConguaglio | null | undefined): boolean {
+    return sceltaConguaglioDelPassaggio(tipo, coppie, arretrato) && (scelta === null || scelta === undefined);
+}
+
+/**
+ * Le coppie proposte non si scrivono: con la scelta, per «Non scriverlo»; con la casella, per la rinuncia motivata. Dove il passaggio
+ * ha la scelta la casella non conta, anche se è rimasta spuntata nel modulo: il server rifiuta la scelta e la casella insieme, e il
+ * modulo non la manda.
+ */
+export function coppieNonScritte(
+    tipo: string | null | undefined,
+    coppie: number,
+    arretrato: string | null | undefined,
+    spunta: boolean,
+    scelta: SceltaConguaglio | null | undefined,
+): boolean {
+    return passaggioConLaScelta(tipo)
+        ? conguaglioNonScrittoNelPassaggio(tipo, coppie, arretrato, scelta)
+        : rinunciaEffettiva(coppie, spunta, null);
 }

@@ -23,19 +23,31 @@
  * maggiori, come `ProRataTemporis` e il motore. Ogni test controlla prima che il conguaglio o il riparto diano le cifre a mano
  * (lo scenario è quello giusto), poi il prospetto.
  *
- * Cosa NON copre: la fine locazione **senza** nuovo inquilino su un piano a giornale (la decisione 32, non ancora costruita);
+ * Cosa NON copre: la fine locazione **senza** nuovo inquilino su un piano a giornale (la decisione 32: dalla .50 la coprono
+ * `ProspettoFineLocazioneTest` e `ProspettoFineLocazioneStampaTest`);
  * i co-inquilini; le frasi del pannello (DL2, DL3). Il campo con la data del conguaglio sulla riga non si guarda: la stampa sì.
  *
- * In fondo, i test dei rilievi della Fase 1-bis della .47 (rossi sul codice della .47, ciascuno con il suo «NON copre»): la
- * vendita della metà piena sull'unità mista nel prospetto (P9), il box locato insieme con il conguaglio, la rinuncia e il
- * conguaglio annullato dalla sua rotta, il già versato «dell'unità», la voce su due tabelle, il piede della stampa con due
- * piani nello stesso esercizio; e il controllo del perimetro (lo stesso inquilino su due unità).
+ * In fondo, i test dei rilievi della Fase 1-bis della .47 (nati come test rossi sul codice della .47, ciascuno con il suo «NON
+ * copre»): la vendita della metà piena sull'unità mista nel prospetto (P9), il box locato insieme con il conguaglio, la
+ * rinuncia e il conguaglio annullato dalla sua rotta, il già versato «dell'unità», la voce su due tabelle, il piede della
+ * stampa con due piani nello stesso esercizio; e il controllo del perimetro (lo stesso inquilino su due unità).
  *
- * Più in fondo ancora, i due giri sulle correzioni. Del secondo (giro 47b): le gemelle con catene diverse, dove lo scarto del
- * centesimo va a chi ha pagato in origine e non si perde (oggi il totale vale € 1.200,01); il già versato della persona e dell'unità sulle
- * gemelle; il ripiego su due tabelle; la riga «già versato» del ripiego in stampa; il controllo del perimetro della catena dei
- * pagatori fra due unità. Dove l'usufruttuario muore si registra prima l'estinzione, poi la successione (la fermata del giro).
+ * Più in fondo ancora, i due giri sulle correzioni. Del secondo (giro 47b): le gemelle con catene diverse, dove lo scarto del centesimo va
+ * a chi ha pagato in origine e non si perde (prima della correzione il totale valeva € 1.200,01); il già versato della persona e
+ * dell'unità sulle gemelle; il ripiego su due tabelle; la riga «già versato» del ripiego in stampa; il controllo del perimetro della
+ * catena dei pagatori fra due unità. Dove l'usufruttuario muore si registra prima l'estinzione, poi la successione (la fermata del giro).
  * Del terzo (giro 47c): le gemelle su due tabelle, dove il prospetto arrotondava ancora tabella per tabella.
+ *
+ * ➕ 1.11.0-beta.50 (decisione 77.2): il cambio d'inquilino non ha più la casella della rinuncia ma le due voci «Scrivi il conguaglio»
+ * e «Non scriverlo». `pciFine` e `pciBoxLocatoInsieme` mandano la scelta solo quando il pannello propone coppie (l'anteprima), e allora
+ * quella che lascia il denaro com'era prima della .50: «Scrivi» nel cambio d'inquilino (la coppia di partenza di prima), «Non scriverlo»
+ * nella fine senza un nuovo inquilino. «Non scriverlo» è la strada A′ (Luca rimborsa a Ines i giorni che lei ha pagato), non «com'era»:
+ * i tre test della rinuncia (il controllo sotto il DL1 e due del box locato insieme) sono riscritti così. La casella mandata da un modulo
+ * rimasto aperto vale «Non scriverlo» (regola della .48, estesa dalla 77 punto 2): è il secondo caso del test A′. «Com'era» resta vero
+ * per «Annulla il conguaglio» e per i cambi registrati prima della .50 con la casella (decisioni 43 e 46): i due controlli «della casella
+ * di prima» riportano le asserzioni dei tre test di prima su un registro riportato com'era (`pciComePrimaDellaCinquanta`). Fusione delle
+ * due riscritture della Fase 1 (area della fine e del cambio, area del prospetto), 11/10/2026: un aiuto solo per il riassunto
+ * (`pciRiassunto`) e uno per il registro di prima. La stampa si prova sulla vista resa (`pciStampa`), non con `pdftotext`.
  */
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
@@ -129,14 +141,22 @@ function pciInizio($test, array $s, Anagrafica $entra, string $il): Subentro
         'copia_autentica' => false, 'regime_contratto' => 'abitativo', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Contratto di locazione letto']);
 }
 
-/** «Fine locazione» dalla rotta vera, con il nuovo inquilino (il cambio d'inquilino) o senza. */
+/**
+ * «Fine locazione» dalla rotta vera, con il nuovo inquilino (il cambio d'inquilino) o senza. Dalla 1.11.0-beta.50 (decisione 77),
+ * quando il pannello propone delle coppie la scelta sul conguaglio è obbligatoria: se `$extra` non la dà, si manda quella che lascia il
+ * denaro com'era prima della .50 — «Scrivi» nel cambio d'inquilino, «Non scriverlo» nella fine senza un nuovo inquilino.
+ */
 function pciFine($test, array $s, Anagrafica $esce, ?Anagrafica $entra, string $il, array $extra = []): Subentro
 {
     $riga = (int) DB::table('anagrafica_immobile')->where('immobile_id', $s['unita']->id)->where('anagrafica_id', $esce->id)->where('tipologia', 'inquilino')
         ->whereNull('data_fine')->orderByDesc('id')->value('id');
+    $dati = array_replace(['tipo' => 'fine_locazione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $entra?->id, 'decorrenza' => $il, 'quota' => 100,
+        'tipologia' => 'inquilino', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Disdetta del contratto letta'], $extra);
+    if (! array_key_exists('conguaglio', $dati) && empty($dati['rinuncia_conguaglio']) && (ruAnteprima($test, $s, $dati)['rate']['conguaglio']['coppie'] ?? []) !== []) {
+        $dati['conguaglio'] = $entra !== null ? 'scrivi' : 'non_scrivere';
+    }
 
-    return ruRegistra($test, $s, ['tipo' => 'fine_locazione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $entra?->id, 'decorrenza' => $il, 'quota' => 100,
-        'tipologia' => 'inquilino', 'copia_autentica' => false, 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Disdetta del contratto letta'] + $extra);
+    return ruRegistra($test, $s, $dati);
 }
 
 /** Il prospetto dell'unità dello scenario nell'esercizio 2026. */
@@ -189,6 +209,47 @@ function pciNetti(array $s): array
     ksort($out);
 
     return $out;
+}
+
+/**
+ * Il prospetto in breve, per i test della 1.11.0-beta.50: per conduttore, in ordine di nome, [totale, nelle sue rate, da rimborsare,
+ * giorni delle voci]; «(senza)» [totale, giorni]. Il segno di «da rimborsare»: positivo = il conduttore deve, negativo = gli si deve.
+ * È il riassunto dei test della strada A′, dove la forma delle righe della sezione di chi esce non è fissata (va nel mockup per
+ * Vincenzo). Una voce senza giorni conta zero.
+ *
+ * @return array<string, array<int, int>>
+ */
+function pciRiassunto(array $p): array
+{
+    $out = [];
+    foreach ($p['conduttori'] as $c) {
+        $out[$c['nome']] = [(int) $c['totale'], (int) $c['nelle_sue_rate'], (int) $c['da_rimborsare'], (int) collect($c['voci'])->sum(fn ($v) => (int) ($v['giorni'] ?? 0))];
+    }
+    ksort($out);
+    $out['(senza)'] = [(int) $p['senza_conduttore']['totale'], (int) collect($p['senza_conduttore']['voci'])->sum(fn ($v) => (int) ($v['giorni'] ?? 0))];
+
+    return $out;
+}
+
+/**
+ * Il cambio d'inquilino come lo scriveva la .49 con la casella «Le parti hanno regolato il conguaglio fra loro»: nessuna chiave
+ * `conguaglio` nel registro, né sul padre né sui figli delle pertinenze (la scelta nasce nella locazione con la .50), la nota sul padre
+ * (il figlio del box non la porta), `regolato_fuori` com'è. È la rinuncia delle decisioni 43 e 46, «per la casella di prima» (verbale
+ * della .50). Sul codice di prima della .50 non cambia niente: il registro non ha la chiave, e la nota è quella del modulo.
+ */
+function pciComePrimaDellaCinquanta(Subentro $cambio): Subentro
+{
+    foreach (Subentro::where('id', $cambio->id)->orWhere('subentro_padre_id', $cambio->id)->get() as $passaggio) {
+        $registro = $passaggio->registro;
+        if (is_array($registro) && array_key_exists('conguaglio', $registro)) {
+            unset($registro['conguaglio']);
+            DB::table('subentri')->where('id', $passaggio->id)->update(['registro' => json_encode($registro)]);
+        }
+        DB::table('subentri')->where('id', $passaggio->id)->update(['nota_conguaglio' => $passaggio->id === $cambio->id
+            ? ($passaggio->nota_conguaglio ?: 'Le parti hanno regolato fra loro le spese dell\'inquilino') : null]);
+    }
+
+    return $cambio->fresh();
 }
 
 /**
@@ -269,8 +330,37 @@ it('controllo — il cambio d\'inquilino annullato: il conguaglio non c\'è più
         ->and($p['senza_conduttore']['totale'])->toBe(0);
 });
 
-it('controllo — il cambio d\'inquilino con la rinuncia al conguaglio: le parti hanno regolato fra loro, e il prospetto resta com\'era, € 360,00 a Ines per 365 giorni nelle sue rate', function () {
-    [$s] = pciCambioDelPrimoLuglio($this, ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro le spese dell\'inquilino']);
+// 1.11.0-beta.50, decisione 77.2: il cambio d'inquilino ha le due voci al posto della casella «Le parti hanno regolato il conguaglio fra
+// loro». «Non scriverlo» non dichiara un accordo (73.1): è la strada A′ (scelte tecniche del verbale), e il prospetto dice ciò che Luca
+// deve a Ines. La casella mandata da un modulo rimasto aperto vale «Non scriverlo» (regola della .48 per la successione, estesa dal
+// vocabolario unico della 77 punto 2): la stessa strada. Prima della .50 questo test era il controllo della rinuncia, «il prospetto resta
+// com'era» (decisione 43): vale ancora per «Annulla il conguaglio» (il test sopra, con l'annullamento del passaggio, e quelli del box
+// qui sotto) e per i cambi registrati prima della .50 con la casella (il controllo subito sotto). NON copre la stampa (test del box).
+it('cambio d\'inquilino con «Non scriverlo» (decisione 77.2): nessuna coppia, le rate restano a Ines, e il prospetto è la strada A′ — Ines i suoi 181 giorni con € 181,48 da restituirle, Luca i suoi 184 da rimborsarle', function (array $scelta) {
+    [$s, , , $cambio] = pciCambioDelPrimoLuglio($this, $scelta);
+    expect($cambio->fresh()->conguaglioNonScritto())->toBeTrue();
+
+    // Nessuna coppia: verso il condominio Ines resta con le sue 36000 nelle rate, Luca niente sul piano fermo.
+    expect(pciNetti($s))->toBe(['Ines Inquilina' => 36000, 'Venditore Ugo' => 84000]);
+    $p = pciProspetto($s);
+    // Ines 1/1–30/6, 181 giorni: € 360,00 × 181/365 = € 178,5205 → 17852; nelle sue rate 36000; 17852 − 36000 = −18148, da
+    // restituirle (€ 181,48). Luca 1/7–31/12, 184 giorni: 36000 − 17852 = 18148, niente nelle sue rate, da rimborsare a chi li ha pagati.
+    expect(pciRiassunto($p))->toBe(['Ines Inquilina' => [17852, 36000, -18148, 181], 'Luca Nuovo' => [18148, 0, 18148, 184], '(senza)' => [0, 0]])
+        // Li ha pagati Ines, nelle sue rate: Luca li rimborsa a lei, non a Ugo.
+        ->and(collect(pciSezione($p, 'Luca Nuovo')['voci'] ?? [])->pluck('pagato_da')->filter()->unique()->values()->all())->toBe(['Ines Inquilina'])
+        ->and($p['totale_inquilino'])->toBe(36000);
+})->with([
+    '«Non scriverlo»' => [['conguaglio' => 'non_scrivere']],
+    'la casella di prima da un modulo rimasto aperto, registrata dopo la .50' => [['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro le spese dell\'inquilino']],
+]);
+
+it('controllo della casella di prima — un cambio d\'inquilino registrato prima della .50 con la casella e la nota («le parti hanno regolato fra loro»): il prospetto resta com\'era, € 360,00 a Ines per 365 giorni nelle sue rate (decisioni 43 e 46)', function () {
+    // Il modulo di prima manda la casella; il registro si riporta come lo scriveva la .49, senza `conguaglio` (con il codice nuovo la
+    // casella vale «Non scriverlo», test sopra). Verde prima e dopo la .50.
+    [$s, , , $cambio] = pciCambioDelPrimoLuglio($this, ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro le spese dell\'inquilino']);
+    $cambio = pciComePrimaDellaCinquanta($cambio);
+    expect($cambio->conguaglioRinunciato())->toBeTrue()->and($cambio->conguaglioNonScritto())->toBeFalse()
+        ->and($cambio->registro ?? [])->not->toHaveKey('conguaglio');
 
     // Con la rinuncia nessuna coppia: Ines resta con le sue 36000 nelle rate, Luca non ha niente verso il condominio.
     expect(pciNetti($s))->toBe(['Ines Inquilina' => 36000, 'Venditore Ugo' => 84000]);
@@ -350,8 +440,8 @@ it('DL5 — unità mista con il ripiego in due tratti (febbraio e da giugno), pi
 | Fase 1-bis della beta.47 — i rilievi confermati sul prospetto (lenti denaro e decide)
 |--------------------------------------------------------------------------
 |
-| Ogni test nasce da un rilievo della revisione: è rosso sul codice della .47 per la ragione del difetto, e diventa verde con
-| la correzione. I controlli (verdi già oggi) lo dicono nel nome. Le cifre sono fatte a mano, con la somma accanto.
+| Ogni test nasce da un rilievo della revisione: era rosso sul codice della .47 per la ragione del difetto, ed è verde con
+| la correzione. I controlli (già giusti prima della correzione) lo dicono nel nome. Le cifre sono fatte a mano, con la somma accanto.
 */
 
 /** La sezione di un conduttore nel prospetto, o null se il prospetto non lo nomina. */
@@ -384,9 +474,10 @@ function pciStampa(array $s): string
     return preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 }
 
-// Rilievo «unità mista, ripiego in due tratti, vendita della metà piena» (alto, lente denaro): oggi rosso, Ivo rimborsa
-// tutto a Elsa. NON copre: la vendita della nuda o con riserva (la riserva la provano i test del giro sulle correzioni, in
-// coda), due persone diverse sui due ruoli del godimento, la stampa. La forma in un tratto solo la provano T12 e T13, in coda.
+// Rilievo «unità mista, ripiego in due tratti, vendita della metà piena» (alto, lente denaro): prima della correzione Ivo
+// rimborsava tutto a Elsa. NON copre: la vendita della nuda o con riserva (la riserva la provano i test del giro sulle
+// correzioni, in coda), due persone diverse sui due ruoli del godimento, la stampa. La forma in un tratto solo la provano T12 e
+// T13, in coda.
 it('rilievo P9 — unità mista con il ripiego in due tratti, Ugo vende la metà piena a Elsa il 1/7 e Ivo entra il 1/7: Ivo rimborsa a Elsa la parte del pieno (€ 302,47) e a Ugo quella dell\'usufrutto, che resta sua (€ 302,46); i 58 giorni senza conduttore restano a Ugo', function () {
     $s = pciScenario(['inquilino' => 100]);
     pciMista($s);
@@ -450,8 +541,14 @@ function pciBoxLocatoInsieme($test, array $extra = []): array
     ruEmettiBozze($s, $s['piano'], '2026-06-30');
     $luca = pciPersona($s, 'Luca Nuovo');
     $riga = (int) DB::table('anagrafica_immobile')->where('immobile_id', $s['unita']->id)->where('anagrafica_id', $ines->id)->where('tipologia', 'inquilino')->whereNull('data_fine')->value('id');
-    $cambio = ruRegistra($test, $s, array_merge(['tipo' => 'fine_locazione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $luca->id, 'decorrenza' => '2026-07-01', 'quota' => 100,
-        'tipologia' => 'inquilino', 'copia_autentica' => false, 'pertinenze' => [$box->id], 'ho_letto' => true, 'nota_cancello' => 'Disdetta del contratto letta, con il box'], $extra));
+    // Dalla 1.11.0-beta.50 (decisione 77), quando il pannello propone delle coppie la scelta sul conguaglio è obbligatoria: di partenza
+    // «Scrivi», la coppia di partenza di prima; con la casella di prima (un modulo rimasto aperto) nessuna scelta, che la contraddirebbe.
+    $dati = array_merge(['tipo' => 'fine_locazione', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => $luca->id, 'decorrenza' => '2026-07-01', 'quota' => 100,
+        'tipologia' => 'inquilino', 'copia_autentica' => false, 'pertinenze' => [$box->id], 'ho_letto' => true, 'nota_cancello' => 'Disdetta del contratto letta, con il box'], $extra);
+    if (! array_key_exists('conguaglio', $dati) && empty($dati['rinuncia_conguaglio']) && (ruAnteprima($test, $s, $dati)['rate']['conguaglio']['coppie'] ?? []) !== []) {
+        $dati['conguaglio'] = 'scrivi';
+    }
+    $cambio = ruRegistra($test, $s, $dati);
 
     return [$s, $sb, $cambio];
 }
@@ -465,8 +562,8 @@ function pciSaldiDelPassaggio(array $s): array
         ->mapWithKeys(fn ($r) => [$nomi[(int) $r->anagrafica_id] => (int) $r->saldo_iniziale])->sortKeys()->all();
 }
 
-// Rilievo «box locato insieme» (medio, lente denaro): il controllo con il conguaglio, verde già oggi. NON copre la rinuncia
-// e il conguaglio annullato (i due test sotto), la stampa, un box con titolari diversi dall'unità.
+// Rilievo «box locato insieme» (medio, lente denaro): il controllo con il conguaglio, già giusto prima della correzione. NON
+// copre la rinuncia e il conguaglio annullato (i due test sotto), la stampa, un box con titolari diversi dall'unità.
 it('controllo del rilievo sul box locato insieme — cambio d\'inquilino il 1/7 con il box e con il conguaglio: sul box Ines i suoi 181 giorni nelle rate (€ 59,51) e Luca i suoi 184 con il conguaglio (€ 60,49), come sull\'unità', function () {
     [$s, $sb] = pciBoxLocatoInsieme($this);
 
@@ -479,21 +576,54 @@ it('controllo del rilievo sul box locato insieme — cambio d\'inquilino il 1/7 
         ->and(pciConduttori(pciProspetto($sb)))->toBe(['Ines Inquilina' => [5951, 181, 'rate'], 'Luca Nuovo' => [6049, 184, 'conguaglio']]);
 });
 
-// Rilievo «box locato insieme» (medio, lente denaro): con la rinuncia il prospetto del box divide ancora fra Ines e Luca.
-// NON copre la stampa (test sotto), il conguaglio annullato dalla sua rotta, la rinuncia senza pertinenze (già sopra).
-it('rilievo box locato insieme — cambio d\'inquilino il 1/7 con il box e con la rinuncia al conguaglio: il prospetto del box resta a Ines, € 120,00 per 365 giorni nelle sue rate, come quello dell\'unità; Luca non c\'è', function () {
+// Rilievo «box locato insieme» (medio, lente denaro), riscritto nella 1.11.0-beta.50: con «Non scriverlo» (decisione 77.2, al posto della
+// rinuncia) una scelta sola vale per l'unità e per il box, e il prospetto del box legge la scelta nel registro del padre (scelte tecniche
+// del verbale): la strada A′ su tutti e due. Prima della .50 con la rinuncia il prospetto restava com'era (365 giorni a Ines): vale ancora
+// per i cambi registrati prima della .50 con la casella (il controllo qui sotto) e dopo «Annulla il conguaglio» (il test dopo).
+// NON copre la stampa (test sotto), la rinuncia senza pertinenze (sopra).
+it('rilievo box locato insieme — cambio d\'inquilino il 1/7 con il box e con «Non scriverlo»: niente coppie, il box legge la scelta del padre, e il prospetto dell\'unità e quello del box sono la strada A′ — Luca rimborsa a Ines i suoi 184 giorni, € 544,44 sull\'unità e € 60,49 sul box', function () {
+    [$s, $sb, $cambio] = pciBoxLocatoInsieme($this, ['conguaglio' => 'non_scrivere']);
+
+    // La scelta sta sul padre; il figlio del box c'è, ed è il passaggio che il prospetto trova sul box.
+    expect($cambio->fresh()->conguaglioNonScritto())->toBeTrue()
+        ->and(Subentro::where('subentro_padre_id', $cambio->id)->where('immobile_id', $sb['unita']->id)->exists())->toBeTrue();
+    // Nessuna coppia, né sull'unità né sul box: Ines resta con 12000 (€ 1.200,00 × 100/1000) nelle rate del box.
+    expect(pciSaldiDelPassaggio($s))->toBe([])->and(pciSaldiDelPassaggio($sb))->toBe([])
+        ->and(pciNetti($sb))->toBe(['Ines Inquilina' => 12000]);
+    // L'unità, 108000 (€ 1.200,00 × 900/1000, tutto all'inquilino): 108000 × 181/365 = 53556,16 e 108000 × 184/365 = 54443,84 → 53556 +
+    // 54443 = 107999, il centesimo al resto ,84: Ines 53556, Luca 54444. Ines: 53556 − 108000 = −54444 da restituirle, e li rimborsa Luca.
+    expect(pciRiassunto(pciProspetto($s)))->toBe(['Ines Inquilina' => [53556, 108000, -54444, 181], 'Luca Nuovo' => [54444, 0, 54444, 184], '(senza)' => [0, 0]]);
+    // Il box, 12000: 12000 × 181/365 = 5950,68 e 12000 × 184/365 = 6049,32 → 5950 + 6049 = 11999, il centesimo al resto ,68: Ines 5951,
+    // Luca 6049. Ines: 5951 − 12000 = −6049, pagati da lei.
+    $pb = pciProspetto($sb);
+    expect(pciRiassunto($pb))->toBe(['Ines Inquilina' => [5951, 12000, -6049, 181], 'Luca Nuovo' => [6049, 0, 6049, 184], '(senza)' => [0, 0]])
+        ->and(collect(pciSezione($pb, 'Luca Nuovo')['voci'] ?? [])->pluck('pagato_da')->filter()->unique()->values()->all())->toBe(['Ines Inquilina']);
+});
+
+// Il controllo della casella di prima sul box (revisione dei test della Fase 1): un cambio d'inquilino registrato prima della .50 con la
+// casella resta nei dati, e per lui valgono ancora le decisioni 43 e 46 (verbale della .50, «Le scelte tecniche del progetto»). Prende le
+// mutazioni «la rinuncia di prima non ferma la catena» e «la rinuncia letta sul figlio del box». Verde prima e dopo la .50.
+it('controllo della casella di prima, box locato insieme — cambio d\'inquilino il 1/7 con il box registrato prima della .50 con la casella: il prospetto del box resta a Ines, € 120,00 per 365 giorni nelle sue rate, come quello dell\'unità; Luca non c\'è, e la stampa del box non lo nomina', function () {
     [$s, $sb, $cambio] = pciBoxLocatoInsieme($this, ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro le spese dell\'inquilino']);
+    $cambio = pciComePrimaDellaCinquanta($cambio);
+    $figlio = Subentro::where('subentro_padre_id', $cambio->id)->where('immobile_id', $sb['unita']->id)->first();
 
     // La rinuncia sta sul padre; il figlio del box non la porta, ma è il passaggio che il prospetto trova sul box.
-    expect($cambio->fresh()->conguaglioRinunciato())->toBeTrue()
-        ->and(Subentro::where('subentro_padre_id', $cambio->id)->where('immobile_id', $sb['unita']->id)->exists())->toBeTrue();
+    expect($cambio->conguaglioRinunciato())->toBeTrue()
+        ->and($figlio)->not->toBeNull()
+        ->and($figlio?->conguaglioRinunciato())->toBeFalse();
     // Con la rinuncia nessuna coppia, né sull'unità né sul box: Ines resta con 12000 (€ 1.200,00 × 100/1000) nelle rate del box.
     expect(pciSaldiDelPassaggio($s))->toBe([])->and(pciSaldiDelPassaggio($sb))->toBe([])
         ->and(pciNetti($sb))->toBe(['Ines Inquilina' => 12000]);
-    // L'unità, giusta già oggi: 108000 per 365 giorni nelle rate di Ines.
-    expect(pciConduttori(pciProspetto($s)))->toBe(['Ines Inquilina' => [108000, 365, 'rate']]);
-    // Il box deve dire lo stesso: 12000 per 365 giorni (181 + 184), nelle rate di Ines; niente Luca «con il conguaglio».
-    expect(pciConduttori(pciProspetto($sb)))->toBe(['Ines Inquilina' => [12000, 365, 'rate']]);
+    // L'unità: 108000 (€ 1.200,00 × 900/1000) per 365 giorni nelle rate di Ines; il box deve dire lo stesso, 12000 per 365 giorni
+    // (181 + 184), nelle rate di Ines; niente Luca «con il conguaglio».
+    expect(pciConduttori(pciProspetto($s)))->toBe(['Ines Inquilina' => [108000, 365, 'rate']])
+        ->and(pciConduttori(pciProspetto($sb)))->toBe(['Ines Inquilina' => [12000, 365, 'rate']]);
+    // La stampa del box: nessun conguaglio che non esiste, nessuna sezione di Luca; Ines 12000 (€ 120,00), una sezione sola.
+    $testo = pciStampa($sb);
+    expect(str_contains($testo, 'con il conguaglio del cambio d\'inquilino del 01/07/2026'))->toBeFalse('la stampa del box dice che Luca ha pagato con il conguaglio')
+        ->and(str_contains($testo, 'Totale a carico di Luca Nuovo'))->toBeFalse('la stampa del box ha la sezione di Luca')
+        ->and($testo)->toContain('Totale a carico di Ines Inquilina € 120,00');
 });
 
 // Rilievo «box locato insieme» (medio, lente denaro): dopo l'annullamento del conguaglio dalla sua rotta il prospetto del
@@ -509,30 +639,53 @@ it('rilievo box locato insieme — cambio d\'inquilino il 1/7 con il box, poi il
     expect($cambio->fresh()->conguaglioAnnullato())->toBeTrue()
         ->and(pciSaldiDelPassaggio($s))->toBe([])->and(pciSaldiDelPassaggio($sb))->toBe([])
         ->and(pciNetti($sb))->toBe(['Ines Inquilina' => 12000]);
-    // L'unità, giusta già oggi: 108000 per 365 giorni nelle rate di Ines.
+    // L'unità, giusta anche prima della correzione: 108000 per 365 giorni nelle rate di Ines.
     expect(pciConduttori(pciProspetto($s)))->toBe(['Ines Inquilina' => [108000, 365, 'rate']]);
     // Il box: 12000 per 365 giorni nelle rate di Ines, non più 5951 + 6049 «con il conguaglio».
     expect(pciConduttori(pciProspetto($sb)))->toBe(['Ines Inquilina' => [12000, 365, 'rate']]);
 });
 
-// Rilievo «box locato insieme» (medio, lente denaro), la stampa: nei due casi il box non scrive un conguaglio che non
-// esiste. NON copre le cifre (i due test sopra) né la frase in testa, che nomina il conguaglio in generale («del …»).
-it('rilievo box locato insieme — la stampa del box, dopo la rinuncia e dopo il conguaglio annullato, non dice «con il conguaglio del cambio d\'inquilino del 01/07/2026» e non ha la sezione di Luca', function () {
-    [, $sbRinuncia] = pciBoxLocatoInsieme($this, ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro le spese dell\'inquilino']);
+// Rilievo «box locato insieme» (medio, lente denaro), la stampa, riscritto nella 1.11.0-beta.50: nei due casi il box non scrive un
+// conguaglio che non esiste. Dopo il conguaglio annullato la stampa resta com'era (decisione 43); con «Non scriverlo» (al posto della
+// rinuncia) Luca ha la sua sezione e rimborsa a Ines, che le ha pagate nelle sue rate (strada A′). La rinuncia della casella di prima,
+// registrata prima della .50, è nel controllo sopra. Le parole della stampa con «Non scriverlo» non sono decise (il mockup per
+// Vincenzo): si guardano i nomi, l'assenza del conguaglio e le cifre. La stampa si prova sulla vista resa (`pciStampa`), non sul PDF.
+// NON copre le cifre del prospetto (i test sopra) né la frase in testa, che nomina il conguaglio in generale («del …»).
+it('rilievo box locato insieme — la stampa del box non dice «con il conguaglio del cambio d\'inquilino del 01/07/2026» né con «Non scriverlo» né dopo il conguaglio annullato; con «Non scriverlo» Luca ha la sua sezione e rimborsa a Ines, senza «pagata da» senza un nome; dopo l\'annullamento Luca non c\'è', function () {
+    [, $sbNonScritto] = pciBoxLocatoInsieme($this, ['conguaglio' => 'non_scrivere']);
     [$s, $sbAnnullato, $cambio] = pciBoxLocatoInsieme($this);
     $this->actingAs($this->user)->delete(route('admin.gestionale.immobili.passaggi.annulla-conguaglio', [$s['c'], $s['unita'], $cambio]),
         ['nota_annullamento_conguaglio' => 'Le parti hanno regolato fra loro le spese dell\'inquilino'])->assertSessionHasNoErrors();
 
-    foreach (['rinuncia' => $sbRinuncia, 'conguaglio annullato' => $sbAnnullato] as $caso => $sb) {
+    foreach (['non scritto' => $sbNonScritto, 'conguaglio annullato' => $sbAnnullato] as $caso => $sb) {
         $testo = pciStampa($sb);
         // La testa spiega i modi con «con il conguaglio del cambio d'inquilino del …»: si cerca la frase con la data, che
         // sta solo accanto a una voce.
         // (`toContain` prende più frasi, non un messaggio: il caso si dice con `toBeFalse`.)
-        expect(str_contains($testo, 'con il conguaglio del cambio d\'inquilino del 01/07/2026'))->toBeFalse("{$caso}: la stampa del box dice che Luca ha pagato con il conguaglio del 01/07/2026")
-            ->and(str_contains($testo, 'Totale a carico di Luca Nuovo'))->toBeFalse("{$caso}: la stampa del box ha la sezione di Luca");
-        // Ines 12000 (€ 120,00 = € 1.200,00 × 100/1000) per 365 giorni, una sezione sola.
-        expect($testo)->toContain('Totale a carico di Ines Inquilina € 120,00');
+        expect(str_contains($testo, 'con il conguaglio del cambio d\'inquilino del 01/07/2026'))->toBeFalse("{$caso}: la stampa del box dice che Luca ha pagato con il conguaglio del 01/07/2026");
     }
+    // Conguaglio annullato: Ines 12000 (€ 120,00 = € 1.200,00 × 100/1000) per 365 giorni, una sezione sola.
+    $annullato = pciStampa($sbAnnullato);
+    expect(str_contains($annullato, 'Totale a carico di Luca Nuovo'))->toBeFalse('conguaglio annullato: la stampa del box ha la sezione di Luca')
+        ->and($annullato)->toContain('Totale a carico di Ines Inquilina € 120,00');
+    // Non scritto: Luca 6049 (€ 60,49) per i suoi 184 giorni, pagati da Ines; Ines 5951 (€ 59,51) per i suoi 181 (vedi il test sopra).
+    $html = view('pdf.gestionale.prospetto_oneri_accessori', [
+        'condominio' => $sbNonScritto['c'], 'esercizio' => $sbNonScritto['e'], 'immobile' => $sbNonScritto['unita'], 'prospetto' => pciProspetto($sbNonScritto),
+        'nota_legale_stampe' => '', 'firma_stampe_absolute_path' => null,
+    ])->render();
+    $nonScritto = pciStampa($sbNonScritto);
+    // Una voce che la stampa non sa dire diventerebbe «pagata da » seguito da niente (la cella si chiude subito).
+    preg_match_all('/pagata da\s*<\/?[a-z]+/u', $html, $senzaNome);
+    // La sezione di Luca, dal suo nome al suo totale (senza il totale di un'altra sezione in mezzo).
+    preg_match('/Luca Nuovo (?:(?!Totale a carico di ).)*Totale a carico di Luca Nuovo/u', $nonScritto, $m);
+    $diLuca = $m[0] ?? '';
+    expect($nonScritto)->toContain('Totale a carico di Luca Nuovo € 60,49')
+        ->and($nonScritto)->toContain('pagata da Ines Inquilina')
+        ->and($nonScritto)->toContain('Totale a carico di Ines Inquilina € 59,51')
+        ->and($diLuca)->not->toBe('')
+        ->and($diLuca)->toContain('Ines Inquilina')
+        ->and($diLuca)->toContain('€ 60,49')
+        ->and($senzaNome[0])->toBe([]);
 });
 
 /**
@@ -574,8 +727,8 @@ it('rilievo già versato dell\'unità, voce tutta sull\'inquilino — € 120,00
         ->and($p['totale_inquilino'])->toBe(108000);
 });
 
-// Rilievo «già versato dell'unità sulla voce dell'inquilino» (medio, lente denaro), la forma 30/70 dello scettico. NON
-// copre: il già versato «della persona», la parte di Ugo (il «Proprietario» non è nel prospetto), la stampa.
+// Rilievo «già versato dell'unità sulla voce dell'inquilino» (medio, lente denaro), la forma 30/70 della revisione. NON copre:
+// il già versato «della persona», la parte di Ugo (il «Proprietario» non è nel prospetto), la stampa.
 it('rilievo già versato dell\'unità, voce 30/70 — € 120,00 versati dall\'unità e cambio d\'inquilino il 1/7: il prospetto divide come il conguaglio, Luca € 163,33 con il conguaglio e Ines € 160,67', function () {
     $s = pciGiaVersatoDellUnita($this, ['inquilino' => 30, 'proprietario' => 70]);
 
@@ -624,10 +777,10 @@ it('rilievo voce su due tabelle — € 100,00 tutta sull\'inquilino su due tabe
 });
 
 /**
- * Lo scenario «Combustibile» della sonda sul piede: Ugo proprietario, «Preventivo 2026» (30/70) generato con l'unità senza
- * inquilino e le rate di gennaio e febbraio emesse; Ines entra il 1/3 (rotta vera); dopo si genera il piano «Combustibile
- * 2026» (gestione a sé, € 730,00 tutto sull'«Inquilino», 4 rate dal 5/4); le rate dei due piani si emettono fino al 30/6;
- * il 1/7 Ines lascia l'unità a Luca, con il conguaglio.
+ * Lo scenario «Combustibile» della misura sul piede: Ugo proprietario, «Preventivo 2026» (30/70) generato con l'unità senza
+ * inquilino e le rate di gennaio e febbraio emesse; Ines entra il 1/3 (rotta vera); dopo si genera il piano «Combustibile 2026»
+ * (gestione a sé, € 730,00 tutto sull'«Inquilino», 4 rate dal 5/4); le rate dei due piani si emettono fino al 30/6; il 1/7 Ines
+ * lascia l'unità a Luca, con il conguaglio.
  */
 function pciCombustibile($test): array
 {
@@ -705,8 +858,8 @@ it('rilievo piede della stampa — il piede di Luca dice «di cui con il conguag
         ->toContain('di cui da rimborsare a chi le ha pagate € 181,48');
 });
 
-// Rilievo «perimetro della catena dei conduttori» (basso, lente sicurezza): un controllo, verde già oggi. NON copre due
-// condomini, il cambio d'inquilino su A e non su B (simmetrico), la catena dei pagatori (vendite) fra due unità.
+// Rilievo «perimetro della catena dei conduttori» (basso, lente sicurezza): un controllo, già giusto prima della correzione.
+// NON copre due condomini, il cambio d'inquilino su A e non su B (simmetrico), la catena dei pagatori (vendite) fra due unità.
 it('controllo del perimetro — lo stesso inquilino su due unità, cambio d\'inquilino il 1/7 solo su B: il prospetto di A resta a Ines (€ 180,00, 365 giorni, nelle sue rate) e la sua stampa non nomina Luca; quello di B divide fra Ines e Luca', function () {
     $s = pciScenario(['inquilino' => 30, 'proprietario' => 70]);
     $b = \App\Models\Immobile::create(['condominio_id' => $s['c']->id, 'tipo' => 'appartamento', 'codice_immobile' => 'PCI-B-' . $s['unita']->id, 'nome' => 'Interno 2', 'interno' => '2']);
@@ -735,8 +888,8 @@ it('controllo del perimetro — lo stesso inquilino su due unità, cambio d\'inq
 | Giro sulle correzioni della Fase 1-bis della beta.47 — i rilievi confermati sul prospetto
 |--------------------------------------------------------------------------
 |
-| Ogni test nasce da un rilievo del giro (lenti denaro e sicurezza, con il loro scettico): è rosso sul codice di oggi per la
-| ragione del difetto, e diventa verde con la correzione. I controlli, verdi già oggi e da tenere verdi, lo dicono nel nome.
+| Ogni test nasce da un rilievo del giro (lenti denaro e sicurezza, con la loro revisione): era rosso sul codice della .47 per la
+| ragione del difetto, ed è verde con la correzione. I controlli, già giusti prima e da tenere tali, lo dicono nel nome.
 | Le cifre sono fatte a mano, con la somma accanto; le divisioni per giorni sono quelle del motore, con i resti maggiori
 | (`MoneyHelper::ripartisciPerQuote`).
 */
@@ -856,11 +1009,11 @@ it('rilievo riserva che gira il ruolo, forma 2 — Ugo muore il 1/3 (Anna 60 %, 
     expect(pciNetti($s)['Acquirente Elsa'] ?? null)->toBe(24197);
 
     $p = pciProspetto($s);
-    // La catena: Ugo 1/1–28/2 (31 + 28 = 59 giorni), Anna e Bruno 1/3–30/6 (31 + 30 + 31 + 30 = 122), Anna ed Elsa 1/7–31/12
-    // (184); 59 + 122 + 184 = 365. 120000 × 59/365 = 19397,26; × 122/365 = 40109,59; × 184/365 = 60493,15; resti maggiori:
-    // 19397 + 40110 + 60493 = 120000. Ivo, dal 1/9, ha 122 dei 184 giorni dell'ultimo pezzo, che si divide per conto suo:
-    // 60493 × 122/184 = 40109,49 e × 62/184 = 20383,51; resti maggiori: 40109 a Ivo e 20384 senza conduttore (40109 + 20384 =
-    // 60493). Non 40110: il rilievo faceva 60493 × 122/184 = 40109,6, ma è 40109,49. Il pezzo unisce le persone come oggi, con « e ».
+    // La catena: Ugo 1/1–28/2 (31 + 28 = 59 giorni), Anna e Bruno 1/3–30/6 (31 + 30 + 31 + 30 = 122), Anna ed Elsa 1/7–31/12 (184);
+    // 59 + 122 + 184 = 365. 120000 × 59/365 = 19397,26; × 122/365 = 40109,59; × 184/365 = 60493,15; resti maggiori: 19397 + 40110 +
+    // 60493 = 120000. Ivo, dal 1/9, ha 122 dei 184 giorni dell'ultimo pezzo, che si divide per conto suo: 60493 × 122/184 = 40109,49
+    // e × 62/184 = 20383,51; resti maggiori: 40109 a Ivo e 20384 senza conduttore (40109 + 20384 = 60493). Non 40110: il rilievo
+    // faceva 60493 × 122/184 = 40109,6, ma è 40109,49. Il pezzo unisce le persone con « e », come prima.
     expect(pciVociDi(pciSezione($p, 'Ivo Ultimo')))->toBe([['Spese generali', 'proprietario', 'Anna Erede e Acquirente Elsa', 40109, 122]]);
     // Senza conduttore: 19397 + 40110 + 20384 = 79891; con i 40109 di Ivo, 120000.
     expect(pciSenza($p))->toBe([
@@ -897,8 +1050,8 @@ it('rilievo riserva che gira il ruolo, T8 — Ugo muore il 1/5 (Mara 60 %, Bice 
 });
 
 // Rilievo «la riserva gira il ruolo» (alto, lente sicurezza): il controllo che giustifica la riserva nella catena, la riserva
-// registrata dopo la generazione con la decorrenza prima del periodo, poi l'estinzione. Verde oggi, deve restare verde con la
-// correzione. NON copre la riserva con la decorrenza dentro il periodo (ProspettoOneriAccessoriTest, «beta.38 — riserva
+// registrata dopo la generazione con la decorrenza prima del periodo, poi l'estinzione. Già giusto prima della correzione, deve
+// restarlo. NON copre la riserva con la decorrenza dentro il periodo (ProspettoOneriAccessoriTest, «beta.38 — riserva
 // d'usufrutto e poi estinzione»), né la stampa.
 it('controllo della riserva che gira il ruolo — riserva di Ugo a Bice registrata dopo la generazione con decorrenza 1/12/2025, estinzione il 1/9, Ivo dal 1/9: Ivo rimborsa a Bice € 401,10', function () {
     $s = pciScenario(['inquilino' => 100]);
@@ -958,8 +1111,8 @@ it('rilievo estinzione con due nudi, T10 — Ugo usufruttuario, Bice e Carla nud
         ->and(pciSenza($p))->toBe([['Venditore Ugo', 19069, 58]]);
 });
 
-// Rilievo «estinzione dell'usufrutto con due nudi» (alto, lente denaro): il controllo con un nudo solo, verde oggi. NON copre
-// i due nudi (il test sopra), la stampa.
+// Rilievo «estinzione dell'usufrutto con due nudi» (alto, lente denaro): il controllo con un nudo solo, già giusto prima della
+// correzione. NON copre i due nudi (il test sopra), la stampa.
 it('controllo dell\'estinzione con due nudi — un nudo solo, Bice al 100 %: Ivo rimborsa a Bice € 604,93, e i 58 giorni senza conduttore restano a Ugo', function () {
     $s = pciEstinzioneConNudi($this, ['Bice Nuda' => 100]);
 
@@ -1224,7 +1377,8 @@ it('rilievo giorni sommati — Ugo e Rita comproprietari al 50 % vendono entramb
 });
 
 // Rilievo «catene di persone diverse sullo stesso pagatore» (basso, lente denaro): il controllo dei tratti disgiunti dello stesso
-// pagatore, dove la somma dei giorni è giusta (e il massimo sbaglierebbe). Verde oggi, deve restare verde. NON copre la stampa.
+// pagatore, dove la somma dei giorni è giusta (e il massimo sbaglierebbe). Già giusto prima della correzione, deve restarlo. NON
+// copre la stampa.
 it('controllo dei giorni sommati — Ugo vende a Elsa il 1/4, Elsa rivende a Ugo il 1/10, Ivo dal 1/3: la voce di Ivo «pagata da Ugo» ha 123 giorni (31 + 92), e quella di Elsa 183', function () {
     $s = pciScenario(['inquilino' => 100]);
     pciGenera($s);
@@ -1325,8 +1479,8 @@ it('rilievo versato della persona e dell\'unità, T4 — € 120,00 versati dall
 | Secondo giro sulle correzioni della beta.47 (giro 47b) — i rilievi confermati sul prospetto
 |--------------------------------------------------------------------------
 |
-| Ogni test nasce da un rilievo del giro 47b (lenti denaro e sicurezza, con il loro scettico): è rosso sul codice di oggi per la
-| ragione del difetto, e diventa verde con la correzione; il controllo del perimetro è verde già oggi e lo dice nel nome. Dove
+| Ogni test nasce da un rilievo del giro 47b (lenti denaro e sicurezza, con la loro revisione): era rosso sul codice della .47 per la
+| ragione del difetto, ed è verde con la correzione; il controllo del perimetro era già giusto e lo dice nel nome. Dove
 | l'usufruttuario muore, l'ordine è quello della fermata della successione (rilievo alto del giro): prima l'estinzione
 | dell'usufrutto, con la stessa data, poi la successione. Le cifre sono fatte a mano, con la somma accanto; le divisioni per
 | giorni sono quelle del motore, con i resti maggiori (`MoneyHelper::ripartisciPerQuote`).
@@ -1339,7 +1493,7 @@ function pciPerPagatore(array $voci): array
 }
 
 /**
- * Le sonde 3, 3c e 3t del giro 47b: l'unità mista (`pciMista`), «Spese generali» tutta sull'«Inquilino». Con `$tratto` Ines
+ * Le misure 3, 3c e 3t del giro 47b: l'unità mista (`pciMista`), «Spese generali» tutta sull'«Inquilino». Con `$tratto` Ines
  * inquilina censita dal 2019 con la fine locazione il 1/2, prima della generazione (il ripiego di Ugo ha un tratto, dal 1/2);
  * senza, nessun inquilino alla generazione (le gemelle senza tratto). Piano generato, rate emesse fino al 30/6. Poi, dalle rotte
  * vere: Teo inquilino dal 1/1 (dal 1/2 con il tratto) e la sua fine locazione il 1/7, senza nuovo inquilino; il 1/7 Ugo muore:
@@ -1372,9 +1526,9 @@ function pciGemelleCateneDiverse($test, bool $tratto, bool $ivo): array
 
 // --- 8. Gemelle con catene diverse: lo scarto a chi ha pagato in origine, mai perso ----------------------------------------
 
-// Rilievo «gemelle con catene diverse: il resto si perde e il totale vale € 1.200,01» (medio, lente denaro), sonda 3: un conduttore
-// per ogni giorno, e nei giorni di Ivo chi ha pagato in origine non c'è più. NON copre: il tratto (sonda 3t), i giorni senza
-// conduttore (sonda 3c), l'arretrato agli eredi, le gemelle su due tabelle.
+// Rilievo «gemelle con catene diverse: il resto si perde e il totale vale € 1.200,01» (medio, lente denaro), misura 3: un
+// conduttore per ogni giorno, e nei giorni di Ivo chi ha pagato in origine non c'è più. NON copre: il tratto (misura 3t), i
+// giorni senza conduttore (misura 3c), l'arretrato agli eredi, le gemelle su due tabelle.
 it('rilievo gemelle con catene diverse, sonda 3 — unità mista vuota alla generazione, Teo dal 1/1 al 30/6, il 1/7 l\'usufrutto di Ugo si estingue (Bice) e la metà piena va a Carla, Ivo dal 1/7: Teo rimborsa a Ugo € 595,06, Ivo € 302,47 a Bice e € 302,47 a Carla, e il totale è € 1.200,00, non € 1.200,01', function () {
     $s = pciGemelleCateneDiverse($this, false, true);
 
@@ -1404,12 +1558,12 @@ it('rilievo gemelle con catene diverse, sonda 3 — unità mista vuota alla gene
     expect($testo)->not->toContain('1.200,01');
 });
 
-// Rilievo «gemelle con catene diverse» (medio, lente denaro), sonda 3c: senza conduttori dopo il 1/7 lo scarto finiva su una persona
-// nuova. NON copre: il conduttore dopo il 1/7 (sonda 3), il tratto (sonda 3t), la stampa.
+// Rilievo «gemelle con catene diverse» (medio, lente denaro), misura 3c: senza conduttori dopo il 1/7 lo scarto finiva su una
+// persona nuova. NON copre: il conduttore dopo il 1/7 (misura 3), il tratto (misura 3t), la stampa.
 it('rilievo gemelle con catene diverse, sonda 3c — la stessa unità senza Ivo: Teo rimborsa a Ugo € 595,06, e i 184 giorni senza conduttore restano a Bice (€ 302,47) e a Carla (€ 302,47), quanto i loro conguagli', function () {
     $s = pciGemelleCateneDiverse($this, false, false);
 
-    // I netti della sonda 3: Bice 30247 (il saldo dell'estinzione), Carla 30247, Ugo 59506; somma 120000.
+    // I netti della misura 3: Bice 30247 (il saldo dell'estinzione), Carla 30247, Ugo 59506; somma 120000.
     expect(pciNetti($s))->toBe(['Bice Nuda' => 30247, 'Carla Erede' => 30247, 'Venditore Ugo' => 59506]);
 
     $p = pciProspetto($s);
@@ -1421,8 +1575,8 @@ it('rilievo gemelle con catene diverse, sonda 3c — la stessa unità senza Ivo:
         ->and($p['totale_inquilino'])->toBe(120000);
 });
 
-// Rilievo «gemelle con catene diverse» (medio, lente denaro), sonda 3t: il difetto non dipende dalle gemelle senza tratto. NON copre:
-// i giorni senza conduttore (sonda 3c), la stampa, la sezione di Ines (giusta già oggi).
+// Rilievo «gemelle con catene diverse» (medio, lente denaro), misura 3t: il difetto non dipende dalle gemelle senza tratto. NON
+// copre: i giorni senza conduttore (misura 3c), la stampa, la sezione di Ines (giusta già prima della correzione).
 it('rilievo gemelle con catene diverse, sonda 3t — la stessa unità con Ines fino al 31/1 prima della generazione, Teo dal 1/2 al 30/6, Ivo dal 1/7: Teo rimborsa a Ugo € 493,14, quanto il netto di Ugo, e il totale è € 1.200,00', function () {
     $s = pciGemelleCateneDiverse($this, true, true);
 
@@ -1479,11 +1633,11 @@ it('rilievo gemelle con versato della persona e dell\'unità — il P9 con € 1
     // Il totale dell'inquilino: Ines 10192 − 1027 = 9165, Luca 30246 − 3050 = 27196, il ripiego 71639; 9165 + 27196 + 71639 = 108000.
     expect(pciSenza($p))->toBe([['Venditore Ugo', 17170, 58]])
         ->and($p['totale_inquilino'])->toBe(108000);
-    // Ivo, i 184 giorni: 54469. A Elsa quanto il suo saldo, 27234 (non 27235: oggi il prospetto divide i 7923 fra le gemelle in un
+    // Ivo, i 184 giorni: 54469. A Elsa quanto il suo saldo, 27234 (non 27235: il prospetto divide i 7923 fra le gemelle in un
     // passo solo, R(7923) = [3962, 3961], e al pieno toccano 3961: (39781 − 3961) × 184/242 = 35820 × 184/242 = 27235,04 → 27235);
-    // a Ugo, l'usufrutto che resta suo, 54469 − 27234 = 27235. Somma: 27234 + 27235 = 54469.
-    // Dal secondo giro sulle correzioni il conduttore vede la voce al lordo e accanto la riga del già versato «dell'unità» che la
-    // sconta (stampa, art. 9): qui conta il netto per chi ha pagato, cioè la somma delle due righe.
+    // a Ugo, l'usufrutto che resta suo, 54469 − 27234 = 27235. Somma: 27234 + 27235 = 54469. Dal secondo giro sulle correzioni il
+    // conduttore vede la voce al lordo e accanto la riga del già versato «dell'unità» che la sconta (stampa, art. 9): qui conta il
+    // netto per chi ha pagato, cioè la somma delle due righe.
     expect(pciPerPagatore(pciSezione($p, 'Ivo Ultimo')['voci'] ?? []))->toBe(['Acquirente Elsa' => 27234, 'Venditore Ugo' => 27235]);
 });
 
@@ -1562,9 +1716,9 @@ it('rilievo già versato del ripiego in stampa, T5 — Ivo ha la voce «Spese ge
 // --- 12. Il perimetro della catena dei pagatori ----------------------------------------------------------------------------
 
 // Rilievo «le query con il perimetro dell'unità non hanno un test negativo» (basso, lente sicurezza), la catena dei pagatori: un
-// controllo, verde oggi, che deve restare verde. Tolto `where('immobile_id', …)` dalla catena, il nudo dell'Interno 2 entrerebbe
-// nel prospetto dell'Interno 1 (la mutazione dello scettico). NON copre: «c'è ancora» dell'inizio locazione
-// (InizioLocazionePianoFermoTest), due condomini, la vendita fra due unità, l'anteprima del passaggio.
+// controllo, già giusto prima della correzione e che deve restarlo. Tolto `where('immobile_id', …)` dalla catena, il nudo
+// dell'Interno 2 entrerebbe nel prospetto dell'Interno 1 (la mutazione della revisione). NON copre: «c'è ancora» dell'inizio
+// locazione (InizioLocazionePianoFermoTest), due condomini, la vendita fra due unità, l'anteprima del passaggio.
 it('controllo del perimetro della catena dei pagatori — Ugo usufruttuario dell\'Interno 1 (Bice e Carla nude al 50 %) e dell\'Interno 2 (Zeno nudo), estinzione sull\'Interno 2 il 1/6 e sull\'Interno 1 il 1/7, Ivo nell\'Interno 1 dal 1/7 e Kai nell\'Interno 2 dal 1/6: il prospetto dell\'Interno 1 non nomina Zeno, quello dell\'Interno 2 non nomina Bice, Carla né Ivo', function () {
     $s = pciScenario(['inquilino' => 100]);
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['tipologia' => 'usufruttuario']);
@@ -1639,8 +1793,8 @@ it('controllo — lo stesso calcolatore prima e dopo una vendita: la catena dei 
 | Il rilievo basso della lente denaro «Gemelle su due tabelle: il prospetto arrotonda ancora tabella per tabella». Il conguaglio somma
 | le tabelle di ciascun ruolo e arrotonda una volta (la chiave del gruppo ha il ruolo, non la tabella); il prospetto lavora ancora riga
 | per riga, cioè per ruolo e per tabella, in due punti: dove divide le gemelle con catene diverse (A, C) e dove spalma il già versato
-| «dell'unità» sulle righe (D). Il totale torna sempre; un centesimo, a volte due, va alla persona sbagliata. I tre scenari della sonda,
-| dalle rotte vere: rossi sul codice di oggi, verdi con la correzione. Nessun inquilino alla generazione, rate emesse fino al 30/6, Ivo
+| «dell'unità» sulle righe (D). Il totale torna sempre; un centesimo, a volte due, va alla persona sbagliata. I tre scenari della misura,
+| dalle rotte vere: rossi sul codice della .47, verdi con la correzione. Nessun inquilino alla generazione, rate emesse fino al 30/6, Ivo
 | inquilino dal 1/7; la seconda tabella «Scale» montata come nel test «ripiego su due tabelle». Le cifre sono fatte a mano, con la
 | somma accanto; le divisioni per giorni con i resti maggiori (`MoneyHelper::ripartisciPerQuote`).
 */
@@ -1713,7 +1867,8 @@ it('rilievo gemelle su due tabelle, A — unità mista con la voce a metà su du
     // conguaglio, con le tabelle sommate: 30247 (non 30000 × 184/365 = 15123,29 → 15123 per tabella, due volte 30246); a Ugo
     // l'usufrutto, che resta suo, 60493 − 30247 = 30246 (non 30247). Somma: 30247 + 30246 = 60493.
     expect(pciPerPagatore(pciSezione($p, 'Ivo Ultimo')['voci'] ?? []))->toBe(['Acquirente Elsa' => 30247, 'Venditore Ugo' => 30246])
-        // Senza conduttore, 1/1–30/6, prima della vendita, a Ugo: 120000 − 60493 = 59507 (120000 × 181/365 = 59506,85), giusto già oggi.
+        // Senza conduttore, 1/1–30/6, prima della vendita, a Ugo: 120000 − 60493 = 59507 (120000 × 181/365 = 59506,85), giusto già prima
+        // della correzione.
         ->and(pciPerPagatore($p['senza_conduttore']['voci']))->toBe(['Venditore Ugo' => 59507])
         ->and($p['totale_inquilino'])->toBe(120000);
 });
@@ -1781,7 +1936,7 @@ it('rilievo gemelle su due tabelle, D — unità piena, la voce 70/30 su due tab
         // 18148 − 16332 = 1816 (3602 × 184/365 = 1815,78 → 1816), non 1815.
         ->and((int) $voci->where('conto', 'Spese generali')->sum('importo'))->toBe(18148)
         ->and((int) $voci->where('conto', 'Spese generali — già versato')->sum('importo'))->toBe(-1816)
-        // Senza conduttore, 1/1–30/6, a Ugo: 32398 − 16332 = 16066 (32398 × 181/365 = 16065,86), quanto oggi (32399 − 16333).
+        // Senza conduttore, 1/1–30/6, a Ugo: 32398 − 16332 = 16066 (32398 × 181/365 = 16065,86), quanto prima (32399 − 16333).
         ->and(pciPerPagatore($p['senza_conduttore']['voci']))->toBe(['Venditore Ugo' => 16066])
         // Il totale dell'inquilino è il ripiego netto del conguaglio, 36000 − 3602 = 32398 (16332 + 16066), non 32399.
         ->and($p['totale_inquilino'])->toBe(32398);

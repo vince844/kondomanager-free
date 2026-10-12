@@ -18,6 +18,8 @@ use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\AnteprimaPassaggio;
+use App\Services\Subentro\ChiPagaAlPostoDellInquilino;
+use App\Services\Subentro\FermataDopoScrivi;
 use App\Services\Subentro\VociDaSpostare;
 use App\Services\Subentro\GuardieTitolarita;
 use App\Traits\HasEsercizio;
@@ -119,17 +121,37 @@ final class RegistraSubentroAction
                 // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio
                 // si sceglie, senza preselezione, e «Non scriverlo» non chiede una nota. Se servono le coppie lo dice solo l'anteprima:
                 // la scelta si pretende qui. Con l'arretrato agli eredi coppia e arretrato fanno un conto solo, e la scelta non c'è.
-                $sceltaDelConguaglio = $tipo === 'successione' && $coppieProposte
-                    && ($anteprima['rate']['arretrato']['scelta'] ?? null) === Subentro::ARRETRATO_AL_DEFUNTO;
+                // Decisione 77 (1.11.0-beta.50): le stesse due voci alla fine di una locazione, con un nuovo inquilino o senza, quando
+                // l'anteprima propone coppie (un piano che non si riscrive più).
+                $sceltaDelConguaglio = $coppieProposte && (($tipo === 'successione' && ($anteprima['rate']['arretrato']['scelta'] ?? null) === Subentro::ARRETRATO_AL_DEFUNTO)
+                    || $tipo === 'fine_locazione');
                 if ($sceltaDelConguaglio && ($dati['conguaglio'] ?? null) === null) {
                     throw ValidationException::withMessages(['conguaglio' => 'Scegli se scrivere il conguaglio: il programma non lo sceglie al posto tuo.']);
+                }
+                // Decisione 79 (2): con un coinquilino che resta la coppia non c'è, e nemmeno la scelta. Un valore mandato a mano si rifiuta
+                // sul campo (rilievo SIC-2 della .48), non si ignora. La casella di prima, che un modulo rimasto aperto può mandare, no:
+                // senza coppie non ha mai contato (verifica S5, R13).
+                if ($tipo === 'fine_locazione' && ! $sceltaDelConguaglio && ($dati['conguaglio'] ?? null) !== null && empty($dati['rinuncia_conguaglio'])
+                    && ($anteprima['rate']['fermata_coinquilino'] ?? []) !== []) {
+                    throw ValidationException::withMessages(['conguaglio' => 'La locazione continua con un coinquilino: il programma non propone il conguaglio dei giorni dopo l\'uscita, e la scelta non c\'è. Ricarica la pagina.']);
                 }
                 $rinuncia = $coppieProposte && ($sceltaDelConguaglio
                     ? $dati['conguaglio'] === Subentro::NON_SCRIVERE_IL_CONGUAGLIO
                     : $tipo !== 'successione' && ! empty($dati['rinuncia_conguaglio']));
 
+                // Giro stretto della .50 (G4): la fine con la scelta si legge com'era quando è stata registrata (R6). La traccia è scritta nel
+                // registro, unità per unità, anche vuota: chi restava inquilino, letto prima di toccare le righe. Né l'ordine degli id (un id
+                // ripreso dopo un annullamento) né la data di creazione (una riga corretta dopo con «Modifica associazione») la reggono.
+                $coinquiliniLetti = $tipo === 'fine_locazione' && $sceltaDelConguaglio && $uscente !== null
+                    ? array_map(fn (int $id) => ['immobile_id' => $id, 'restano' => ChiPagaAlPostoDellInquilino::coinquiliniCheRestano($id, (int) $uscente->anagrafica_id, $decorrenza)
+                        ->map(fn (TitolaritaImmobile $t) => (string) ($t->anagrafica?->nome ?? 'un coinquilino'))->unique()->values()->all()],
+                        array_values(array_unique([(int) $immobile->id, ...array_map('intval', $dati['pertinenze'] ?? [])])))
+                    : [];
+
                 // 3. Le righe della pivot, unità principale.
                 $entrante = $dati['entrante'] ?? null;
+                // Decisione 77: la fine senza un nuovo inquilino con la scelta ha un conguaglio, e prende i piani come la successione.
+                $this->conLaScelta = $tipo === 'fine_locazione' && $sceltaDelConguaglio;
                 $this->registroRighe = [];
                 $this->nudiDelPassaggio = null;
                 $this->eredi = $tipo === 'successione' ? array_values($dati['eredi'] ?? []) : [];
@@ -162,6 +184,7 @@ final class RegistraSubentroAction
                 }
 
                 // 4. Il passaggio.
+                $periodiDellaCoppia = $sceltaDelConguaglio ? self::periodiDellaCoppia($anteprima['rate']['conguaglio']['coppie']) : [];
                 $subentro = Subentro::create([
                     'condominio_id'          => $condominio->id,
                     'immobile_id'            => $immobile->id,
@@ -181,10 +204,21 @@ final class RegistraSubentroAction
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
                     'registro'               => $this->registro($tipo, $uscente, $entrante, $sottotipo, (int) $immobile->id) + $registroOrdinaria
-                        // Decisione 72: la scelta della successione e del legato.
-                        + ($sceltaDelConguaglio ? ['conguaglio' => ['scelta' => $rinuncia ? Subentro::CONGUAGLIO_NON_SCRITTO : Subentro::CONGUAGLIO_SCRITTO]] : [])
-                        // Decisione 46: con la rinuncia, ciò che le parti hanno regolato fra loro, per gestione (e, dalla .48, per persona).
-                        + ($rinuncia ? ['regolato_fuori' => Subentro::regolatoFuoriDalleCoppie($anteprima['rate']['conguaglio']['coppie'])] : []),
+                        // Decisione 72: la scelta della successione e del legato; dalla .50 anche della locazione (decisione 77), con i
+                        // periodi della coppia della fine senza un nuovo inquilino.
+                        + ($sceltaDelConguaglio ? ['conguaglio' => ['scelta' => $rinuncia ? Subentro::CONGUAGLIO_NON_SCRITTO : Subentro::CONGUAGLIO_SCRITTO]
+                            + ($periodiDellaCoppia !== [] ? ['periodi' => $periodiDellaCoppia] : [])] : [])
+                        // Decisione 46: con la rinuncia, ciò che le parti hanno regolato fra loro, per gestione (e, dalla .48, per persona;
+                        // dalla .50, nella locazione, anche chi esce, con il segno dei saldi).
+                        + ($rinuncia ? ['regolato_fuori' => Subentro::regolatoFuoriDalleCoppie($anteprima['rate']['conguaglio']['coppie'],
+                            $tipo === 'fine_locazione' && $uscente !== null ? ['anagrafica_id' => (int) $uscente->anagrafica_id, 'nome' => (string) $uscente->anagrafica?->nome] : null)] : [])
+                        // Decisioni 77 (3) e 79 (2): le fermate, perché lo storico le dica e il supporto completo, dopo la 1.11, le ritrovi; e
+                        // all'inizio di una locazione quanto resta da regolare di una fermata di prima (`fermata_ridotta`).
+                        + (($anteprima['rate']['fermate_dopo_scrivi'] ?? []) !== [] ? ['fermata_dopo_scrivi' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_dopo_scrivi'])] : [])
+                        + (($anteprima['rate']['fermate_ridotte'] ?? []) !== [] ? ['fermata_ridotta' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_ridotte'])] : [])
+                        + (($anteprima['rate']['fermata_coinquilino'] ?? []) !== [] ? ['fermata_coinquilino' => $anteprima['rate']['fermata_coinquilino']] : [])
+                        + ($coinquiliniLetti !== [] ? ['coinquilini_letti' => $coinquiliniLetti] : [])
+                        + (($anteprima['rate']['rinnovo_dopo_scrivi'] ?? []) !== [] ? ['rinnovo_dopo_scrivi' => $anteprima['rate']['rinnovo_dopo_scrivi']] : []),
                 ]);
 
                 // 5. Le pertinenze spuntate: la stessa operazione, una riga `subentri` ciascuna.
@@ -246,6 +280,34 @@ final class RegistraSubentroAction
     private array $registroRighe = [];
 
     /**
+     * Decisione 77 (1.11.0-beta.50): la fine di una locazione con la scelta sul conguaglio. Senza un nuovo inquilino è il registro, non il
+     * tipo, a dire che il passaggio ha un conguaglio (`Subentro::haUnConguaglio`), e il passaggio prende i piani (decisione 47, come la
+     * successione della .48 con le due voci): sull'unità e sulle pertinenze spuntate.
+     */
+    private bool $conLaScelta = false;
+
+    /**
+     * Decisione 77: i periodi della coppia della fine senza un nuovo inquilino, per gestione, unità ed esercizio — i giorni dopo l'uscita
+     * su cui la coppia è stata divisa fra chi paga al posto dell'inquilino, pezzo per pezzo, con l'importo di ciascuno. Servono perché la
+     * fermata dopo «Scrivi» possa ridividere la coppia con la titolarità di un passaggio dopo. Vuoto per gli altri passaggi.
+     *
+     * @param list<array<string, mixed>> $coppie
+     * @return list<array{gestione_id: int, immobile_id: int, esercizio_id: ?int, importo: int, periodi: list<array{tratti: list<array{dal: string, al: string}>, importo: int}>, scoperti?: list<array{dal: string, al: string}>}>
+     */
+    private static function periodiDellaCoppia(array $coppie): array
+    {
+        return collect($coppie)->filter(fn (array $c) => ! empty($c['giorni_dopo']))
+            ->groupBy(fn (array $c) => $c['gestione_id'] . '|' . $c['immobile_id'] . '|' . ($c['esercizio_id'] ?? ''))
+            ->map(fn ($g) => ['gestione_id' => (int) $g->first()['gestione_id'], 'immobile_id' => (int) $g->first()['immobile_id'],
+                'esercizio_id' => $g->first()['esercizio_id'] !== null ? (int) $g->first()['esercizio_id'] : null,
+                'importo' => (int) $g->sum('importo'), 'periodi' => $g->first()['giorni_dopo']]
+                // Fase 1-bis della .50 (R2): i giorni dopo l'uscita che nessuno copriva, la cui parte è rimasta nelle rate di chi esce. Il
+                // prospetto degli oneri accessori li legge da qui.
+                + (! empty($g->first()['scoperti']) ? ['scoperti' => $g->first()['scoperti']] : []))
+            ->values()->all();
+    }
+
+    /**
      * Rilievo T11 della Fase 1-bis della .43: all'estinzione, quali nudi sono tornati pieni e da dove viene la scelta (decisione 57:
      * tutti, il registro, l'amministratore, il consolidamento, ciascuno per la sua quota). Resta scritto nel registro dell'unità.
      *
@@ -292,8 +354,9 @@ final class RegistraSubentroAction
             // di questo passaggio prende — anche con la rinuncia. È il fatto che il conguaglio e i passaggi dopo leggono: annullare un
             // conguaglio o un passaggio di prima non lo cambia (rilievo V1), e non serve più ricostruirlo dalle ore (V6). La riga del
             // passaggio non esiste ancora, e il calcolo non la conta.
-            // Decisione 47: solo un passaggio con un conguaglio prende piani.
-            'piani_presi' => $immobileId !== null && Subentro::tipoHaUnConguaglio($tipo, $entrante !== null)
+            // Decisione 47: solo un passaggio con un conguaglio prende piani. Dalla .50 anche la fine senza un nuovo inquilino con la
+            // scelta (decisione 77), con «Scrivi» e con «Non scriverlo».
+            'piani_presi' => $immobileId !== null && (Subentro::tipoHaUnConguaglio($tipo, $entrante !== null) || $this->conLaScelta)
                 ? \App\Models\Gestionale\PianoRate::pianiPresiSullUnita($immobileId) : [],
             // La forma del passaggio quando il tipo non basta: costituzione o estinzione dell'usufrutto, e la vendita con
             // riserva d'usufrutto (beta.38), che si legge da qui con `Subentro::riservaUsufrutto()`.
@@ -701,6 +764,10 @@ final class RegistraSubentroAction
             'tipologia'              => $padre->tipologia,
             'tipo_passaggio'         => $tipo,
             'decorrenza'             => $decorrenza->toDateString(),
+            // Giro stretto della .50 (G7): il box spuntato nella locazione sta nello stesso contratto dell'unità, con il suo regime e la sua
+            // scadenza (il prospetto del box legge il regime dal passaggio sulla sua riga, il figlio).
+            'data_fine_locazione'    => $padre->data_fine_locazione?->toDateString(),
+            'regime_contratto'       => $padre->regime_contratto,
             'estremi_titolo'         => $padre->estremi_titolo,
             'copia_autentica_il'     => $padre->copia_autentica_il?->toDateString(),
             'nota'                   => $padre->nota,

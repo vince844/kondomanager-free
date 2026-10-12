@@ -741,11 +741,11 @@ function submitAddModal() {
             <template v-else-if="lucchettoDiConguaglio">
               <p class="text-base">
                 Questa riga fa parte del <strong>conguaglio del passaggio del {{ dataPassaggio(saldoBloccatoSelezionato?.subentro?.decorrenza) }}</strong>:
-                righe di segno opposto, una coppia per ogni persona che entra, che sommano esattamente zero. Le righe si tolgono <strong>insieme</strong>,
+                righe di segno opposto, una coppia per ogni persona che entra (alla fine di una locazione senza un nuovo inquilino, per ogni persona che paga al posto dell'inquilino), che sommano esattamente zero. Le righe si tolgono <strong>insieme</strong>,
                 mai una sola — altrimenti il conguaglio non farebbe più zero.
               </p>
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
-                <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Se le parti hanno regolato il conguaglio in un altro modo, <strong>annullalo dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota, finché nessun piano le ha assorbite. Nella successione, se gli eredi non vogliono il conguaglio, non annullare il conguaglio: annulla la successione dallo storico dell'unità e registrala di nuovo con l'arretrato a nome del defunto e «Non scriverlo».</p>
+                <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Se le parti hanno regolato il conguaglio in un altro modo, <strong>annullalo dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota, finché nessun piano le ha assorbite. Nella successione, se gli eredi non vogliono il conguaglio, non annullare il conguaglio: annulla la successione dallo storico dell'unità e registrala di nuovo con l'arretrato a nome del defunto e «Non scriverlo». Lo stesso alla fine di una locazione: se il conguaglio non andava scritto, annulla il passaggio dallo storico dell'unità e registralo di nuovo con «Non scriverlo».</p>
                 <p class="text-slate-500">Se un piano le ha già assorbite e quel piano si riscrive ancora, riportalo in bozza ed eliminalo (il lucchetto si riapre), poi annulla il conguaglio dallo storico (nella successione, la successione stessa, come detto sopra). Se quel piano non si riscrive più — quote a giornale, un incasso, o il conguaglio di un altro passaggio —, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
               </div>
             </template>

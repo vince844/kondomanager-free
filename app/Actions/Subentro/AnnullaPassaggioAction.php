@@ -13,6 +13,7 @@ use App\Models\TitolaritaImmobile;
 use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
+use App\Services\Subentro\FermataDopoScrivi;
 use App\Services\Subentro\GuardieTitolarita;
 use App\Services\Subentro\VociDaSpostare;
 use Carbon\CarbonImmutable;
@@ -24,7 +25,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * Annulla un passaggio registrato (1.11.0-beta.37, decisione 27 in `docs/subentro_e_competenza_temporale.md`).
  *
- * Fino alla beta.36 un passaggio non si annullava (decisione 24). Da qui si annulla **l'ultimo passaggio dell'unità**
+ * Fino alla beta.36 un passaggio non si annullava (decisione 24). Da qui si annulla **l'ultimo passaggio dell'unità** — l'ultimo
+ * registrato, non l'ultimo per data, dalla 1.11.0-beta.50 (decisione 83.1) —
  * (e di ciascuna pertinenza passata con lei), **a rate intatte**, rileggendo al contrario il **registro** che il passaggio
  * ha scritto (`RegistraSubentroAction`, punto 8): le righe di titolarità che ha scritto tornano come prima, le bozze passate a chi è
  * entrato tornano a chi è uscito con le stesse regole congelate (e la quota del pregresso, divisa, torna una), il
@@ -35,7 +37,8 @@ use Illuminate\Validation\ValidationException;
  * transazione, **dopo** aver bloccato le righe che legge (vedi `execute()`). Si ferma, dicendo la via, quando:
  *
  * - il passaggio è di prima della beta.37 (nessun registro): ricostruire le righe dalle date sarebbe tirare a indovinare;
- * - dopo di lui, sull'unità o su una sua pertinenza, c'è un altro passaggio: si annulla prima quello;
+ * - dopo di lui, sull'unità o su una sua pertinenza, è registrato un altro passaggio, anche con una data precedente: si annulla
+ *   prima quello;
  * - il conguaglio è già assorbito da un piano (la stessa frase di `AnnullaConguaglioAction`);
  * - una quota toccata dopo il passaggio — una bozza passata a chi è entrato, o una quota nata dopo che l'annullamento
  *   cambierebbe (un piano generato o ricalcolato dopo, con la titolarità di dopo: di chi è entrato, di chi è uscito, o di
@@ -116,6 +119,30 @@ final class AnnullaPassaggioAction
             ->map(fn (string $piano) => sprintf('Il piano «%s» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo, così quote e riparto tornano sulla titolarità di prima.', $piano))
             ->all();
 
+        // Decisione 77 (3), 1.11.0-beta.50: la fermata dopo «Scrivi» lasciava una parte della coppia da regolare a mano; un saldo manuale
+        // scritto per lei dal Wallet non è legato al passaggio (Coda 244), e annullarlo non lo toglie.
+        foreach ($padre->registro['fermata_dopo_scrivi'] ?? [] as $f) {
+            // Giro stretto della .50 (G11): annullato dopo il conguaglio della fine, la fermata non vale più, come dice lo storico della
+            // stessa vendita (decisione 83.2). Resta solo il saldo manuale che l'amministratore può aver registrato per lei.
+            if (FermataDopoScrivi::fineSenzaConguaglio($f)) {
+                $avvisi[] = 'La fermata di questo passaggio non vale più, perché il conguaglio della fine è stato annullato: se per lei hai registrato un saldo manuale dal Wallet, annullare il passaggio non lo toglie. Toglilo dal Wallet, prima o dopo.';
+
+                continue;
+            }
+            $avvisi[] = sprintf('Con questo passaggio %s, da regolare a mano: se per questo hai registrato un saldo manuale dal Wallet (%s), annullare il passaggio non lo toglie. Toglilo dal Wallet, prima o dopo.',
+                FermataDopoScrivi::rimastiDellaFermata($f),
+                // Decisione 81.2: dopo una fermata la riga a credito può essere di chi è uscito, se la fermata di prima era già stata regolata.
+                FermataDopoScrivi::rigaDelWallet($f, ($f['persona'] ?? 'chi esce') . (isset($f['uscente']) ? ' o di ' . $f['uscente'] : '')));
+        }
+
+        // Decisioni 79 (2) e 80: lo stesso per la fermata del coinquilino, quando il pannello indicava il Wallet.
+        foreach ($padre->registro['fermata_coinquilino'] ?? [] as $f) {
+            if (! empty($f['wallet'])) {
+                $avvisi[] = sprintf('Con questo passaggio %s dei giorni dopo l\'uscita di %s sono rimasti nelle sue rate sulla gestione %s, perché la locazione continuava con %s: se per questo hai registrato un saldo manuale dal Wallet, annullare il passaggio non lo toglie. Toglilo dal Wallet, prima o dopo.',
+                    \App\Helpers\MoneyHelper::format((int) ($f['cifra'] ?? 0)), $f['persona'] ?? 'chi esce', $f['gestione'] ?? '?', $this->elenco($f['restano'] ?? []) ?: 'un coinquilino');
+            }
+        }
+
         // Decisione 31.7 (1.11.0-beta.41): le voci che il passaggio ha spostato all'«Usufruttuario» restano dove sono. Valgono
         // per tutta la tabella e l'amministratore può averle toccate dopo: si nominano, non si disfano.
         $voci = $padre->registro['voci_spostate'] ?? [];
@@ -133,12 +160,13 @@ final class AnnullaPassaggioAction
         if ($padre->conguaglioRinunciato() || $padre->conguaglioAnnullato()) {
             $cifra = $padre->regolatoFuoriInParole();
             if ($cifra !== null || ! is_array($padre->registro['regolato_fuori'] ?? null)) {
-                // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti.
+                // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti. Dalla .50 anche
+                // quello della locazione (decisione 77), e la frase dice di quale passaggio è.
                 $avvisi[] = $padre->conguaglioNonScritto() && ! $padre->conguaglioAnnullato()
-                    ? sprintf('Il conguaglio della successione non è stato scritto (%s): se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a ciascuno i suoi giorni.',
-                        $cifra ?? 'le cifre non sono nel registro')
-                    : sprintf('Le parti hanno già regolato fra loro %s: se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.',
-                        $cifra ?? 'il conguaglio di questo passaggio');
+                    ? sprintf('Il conguaglio %s non è stato scritto (%s): se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a ciascuno i suoi giorni.',
+                        $padre->conguaglioInParole(), $cifra ?? 'le cifre non sono nel registro')
+                    : sprintf('Le parti hanno già regolato fra loro %s: se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita %s, e quell\'accordo va rifatto fra le parti.',
+                        $cifra ?? 'il conguaglio di questo passaggio', $padre->aChiVannoIGiorni());
             }
         }
 
@@ -360,28 +388,36 @@ final class AnnullaPassaggioAction
     }
 
     /**
-     * Un altro passaggio dopo questo, su una delle sue unità? Lo nomina come lo storico (tipo e parti) e dice da quale
+     * Un altro passaggio registrato dopo questo, su una delle sue unità? Lo nomina come lo storico (tipo e parti) e dice da quale
      * storico si annulla: il passaggio di una pertinenza registrato con un'altra unità sta nello storico di quell'unità
      * (nella scheda della pertinenza compaiono solo i suoi passaggi padre); il passaggio suo di una pertinenza della
      * famiglia sta nello storico della pertinenza, non in quello dell'unità da cui si sta annullando. Gli incisi stanno
      * accanto a «un altro passaggio», che è maschile: «la vendita…, registrato» non concorda (giro di verifica, G-6).
+     *
+     * Decisione 83.1 (1.11.0-beta.50): «l'ultimo passaggio» della decisione 27 è l'ultimo registrato, non l'ultimo per data. Un passaggio
+     * registrato dopo, con una data precedente, può aver letto ciò che questo ha scritto (la coppia di una fine «Scrivi» divisa sulla
+     * titolarità di dopo la vendita, le fonti di una successione, una fermata): annullare prima questo lascerebbe soldi sbagliati. Un
+     * passaggio legge solo ciò che è registrato prima di lui, e quello con l'id più alto si può sempre annullare: nessuno stallo.
      */
     private function passaggioDopo(Collection $famiglia): ?string
     {
         $qui = (int) $famiglia->first()->immobile_id;
         foreach ($famiglia as $s) {
             $ultimo = Subentro::with(['uscente:id,nome', 'entrante:id,nome', 'padre.immobile:id,nome'])->where('immobile_id', $s->immobile_id)
-                ->orderByDesc('decorrenza')->orderByDesc('id')->first();
+                ->orderByDesc('id')->first();
             if ($ultimo === null || (int) $ultimo->id === (int) $s->id) {
                 continue;
             }
             $unita = $s->immobile?->nome ?? 'l\'unità';
             $stessoGiorno = $ultimo->decorrenza?->toDateString() === $s->decorrenza?->toDateString();
+            $prima = ! $stessoGiorno && $ultimo->decorrenza !== null && $s->decorrenza !== null && $ultimo->decorrenza->lt($s->decorrenza);
             $insieme = $ultimo->subentro_padre_id !== null && $ultimo->padre !== null && (int) $ultimo->padre->immobile_id !== (int) $s->immobile_id
                 ? ($ultimo->padre->immobile?->nome ?? 'un\'altra unità') : null;
             $inciso = match (true) {
                 $stessoGiorno && $insieme !== null => " con la stessa data, registrato dopo, insieme a {$insieme}",
                 $stessoGiorno => ' con la stessa data, registrato dopo',
+                $prima && $insieme !== null => ", registrato dopo, con una data precedente, insieme a {$insieme}",
+                $prima => ', registrato dopo, con una data precedente',
                 $insieme !== null => ", registrato insieme a {$insieme}",
                 default => '',
             };

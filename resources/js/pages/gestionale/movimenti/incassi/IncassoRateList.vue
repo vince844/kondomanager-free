@@ -60,7 +60,9 @@ function partiDellaQuota(p: { spesa: number; credito: number }): string {
   return parti.join(' e ');
 }
 
-// Rilievo LDA-6: il numero con il singolare e il plurale giusti, e solo i tipi di scrittura che ci sono davvero.
+// Rilievo LDA-6: il numero con il singolare e il plurale giusti, e solo i tipi di scrittura che ci sono davvero. Le date
+// (1.11.0-beta.50): la competenza è quella della scrittura corretta, la registrazione è il giorno in cui si scrive, ed è quella
+// che il libro giornale mostra: chi cerca la rettifica alla data della compensazione non la trova.
 const testoConferma = computed(() => {
   const compensazioni = riallineamento.value?.compensazioni.length ?? 0;
   const rate = rateDaScrivere.value.length;
@@ -70,7 +72,8 @@ const testoConferma = computed(() => {
   const una = scrittureDaFare.value === 1;
   return (una ? 'Verrà scritta nel libro giornale 1 scrittura: ' : `Verranno scritte nel libro giornale ${scrittureDaFare.value} scritture: `)
     + tipi.join(' e ')
-    + `, nella data e nell'esercizio della scrittura che ${una ? 'corregge' : 'correggono'}. Le scritture esistenti non si modificano.`
+    + `. ${una ? 'Prende' : 'Prendono'} la data di competenza e l'esercizio della scrittura che ${una ? 'corregge' : 'correggono'}; `
+    + 'la registrazione è di oggi, ed è la data che il libro giornale mostra. Le scritture esistenti non si modificano.'
     + (compensazioni > 0 ? ' La rettifica di una compensazione segue la compensazione: se l\'incasso si storna, si storna con lei.' : '');
 });
 // In sola lettura le voci sono tutto ciò che la card ha da dire: l'elenco parte aperto.

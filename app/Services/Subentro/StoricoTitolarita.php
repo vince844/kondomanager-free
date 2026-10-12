@@ -100,7 +100,8 @@ class StoricoTitolarita
                 $motivo = $s->annullato() ? null : $annullamento->motivoBlocco($s);
                 $conguaglio = match (true) {
                     $s->conguaglioAnnullato() => 'annullato',
-                    // Decisione 72 (1.11.0-beta.48): prima di «rinunciato», che è vero anche per lui.
+                    // Decisione 72 (1.11.0-beta.48): prima di «rinunciato», che è vero anche per lui. Dalla .50 anche la locazione
+                    // (decisione 77): la frase dell'annullamento dice di quale passaggio è (`Subentro::conguaglioInParole`).
                     $s->conguaglioNonScritto() => 'non_scritto',
                     $s->conguaglioRinunciato() => 'rinunciato',
                     $saldi->isNotEmpty() => 'proposto',
@@ -136,15 +137,30 @@ class StoricoTitolarita
                         'importo_formattato' => \App\Helpers\MoneyHelper::format(abs($aEntrante)),
                         // Fase 5 della 1.11.0-beta.44: con più persone che entrano (gli eredi, i nudi che tornano pieni) la somma non è il
                         // debito di nessuno — un erede di riferimento può essere a credito e un altro a debito —: la riga di ciascuno.
-                        'per_entrante' => $this->conguaglioPerEntrante($saldi, (int) $s->anagrafica_uscente_id),
+                        // R11 della Fase 1-bis della .50: alla fine senza un nuovo inquilino nessuno entra, e la riga si dice con il nome anche se è una.
+                        'per_entrante' => $this->conguaglioPerEntrante($saldi, (int) $s->anagrafica_uscente_id, $s->aChiVannoIGiorni() !== 'a chi entra i suoi giorni'),
                         'applicato' => $saldi->contains(fn ($x) => (bool) $x->is_applicato),
                         'nota' => $s->nota_conguaglio,
                         'nota_annullamento' => $s->nota_annullamento_conguaglio,
                         'annullato_il' => $s->conguaglio_annullato_il ? $this->giornoUtente($s->conguaglio_annullato_il) : null,
                         // Con l'arretrato agli eredi la coppia e l'arretrato fanno un conto solo (`AnnullaConguaglioAction`).
                         'annullabile' => ! $s->arretratoAgliEredi(),
+                        // Decisione 83.2 (1.11.0-beta.50): prima di confermare, le fermate dei passaggi dopo su questa coppia e il Wallet da rivedere.
+                        'avvisi' => $conguaglio === 'proposto' && ! $s->annullato() ? FermataDopoScrivi::avvisiDelConguaglio($s) : [],
                     ],
                     'arretrato' => $s->successione() ? $this->arretrato($s, $righeArretrato) : null,
+                    // Decisione 77 (3), 1.11.0-beta.50: la fermata dopo «Scrivi» e quanto ne resta dopo l'inizio di una locazione, dal registro.
+                    // Hanno chiesto la spunta: la scelta lascia traccia (condizione 2 di `decide_l_amministratore.md`).
+                    'fermate' => $s->annullato() ? [] : [
+                        // Decisione 82.2: con la parte passata dopo, con il passaggio di chi l'aveva ricevuta. Decisione 83.2: con il conguaglio
+                        // della fine annullato la fermata non vale più, e si dice.
+                        ...array_map(fn (array $f) => FermataDopoScrivi::fineSenzaConguaglio($f) ? FermataDopoScrivi::fraseStoricoAnnullata($f)
+                            : FermataDopoScrivi::fraseStorico($f, FermataDopoScrivi::passateDopo($s, $f)), $s->registro['fermata_dopo_scrivi'] ?? []),
+                        ...array_map(fn (array $f) => FermataDopoScrivi::fineSenzaConguaglio($f) ? FermataDopoScrivi::fraseStoricoRidottaAnnullata($f)
+                            : FermataDopoScrivi::fraseStoricoRidotta($f), $s->registro['fermata_ridotta'] ?? []),
+                        // R12 della Fase 1-bis: anche la fermata del coinquilino (decisione 79, punto 2), che ha chiesto la spunta.
+                        ...array_map([FermataDopoScrivi::class, 'fraseStoricoCoinquilino'], $s->registro['fermata_coinquilino'] ?? []),
+                    ],
                     'obbligati' => $s->annullato() ? [] : $this->frasiObbligati->daSubentro($s),
                     // Rilievo A2 della Fase 1-bis della beta.41: la scelta sull'ordinaria, dal registro. Decide i conguagli dei
                     // passaggi dopo, quindi resta visibile anche quando il passaggio non è più annullabile.
@@ -300,11 +316,11 @@ class StoricoTitolarita
      *
      * @return list<string>
      */
-    private function conguaglioPerEntrante(\Illuminate\Support\Collection $saldi, int $uscenteId): array
+    private function conguaglioPerEntrante(\Illuminate\Support\Collection $saldi, int $uscenteId, bool $ancheUna = false): array
     {
         $per = $saldi->where('anagrafica_id', '!=', $uscenteId)->groupBy('anagrafica_id')
             ->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->filter(fn (int $v) => $v !== 0);
-        if ($per->count() < 2) {
+        if ($per->count() < ($ancheUna ? 1 : 2)) {
             return [];
         }
         $nomi = \App\Models\Anagrafica::whereIn('id', $per->keys()->all())->pluck('nome', 'id');

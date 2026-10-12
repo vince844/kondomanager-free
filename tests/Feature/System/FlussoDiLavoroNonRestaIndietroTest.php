@@ -64,6 +64,25 @@
  * - **Non gira su un clone pulito**: `docs/*` è gitignorato, quindi il documento non è nel
  *   repository. Su una macchina che non ce l'ha i test si saltano invece di fallire, come già fa
  *   `VerificaDocumentazioneCommandTest` con `roadmap.md`.
+ *
+ * ## La terza guardia, dalla 1.11.0-beta.50: le sezioni omonime
+ *
+ * Il ciclo 1.10 è arrivato alla beta.77, quindi fino alla 1.11.0-beta.77 ogni numero ha un omonimo: un'intestazione che scrive
+ * «beta.50» senza il ciclo può parlare dell'una o dell'altra, e chi cerca le lezioni della .50 trova quelle sbagliate. La regola
+ * è una casella della Fase 0.1 (lezione 15 della 1.11.0-beta.49: la 0.3 l'aveva trovata come rilievo in quattro aperture di
+ * fila); qui diventa codice. Nessuna intestazione del documento nomina `beta.N` senza il ciclo davanti, per la N della beta in
+ * corso.
+ *
+ * **Quale N.** Non quella di `config/app.php`: la versione si alza solo in Fase 2, e nella Fase 0, quando la casella va
+ * eseguita, `config` dice ancora la beta chiusa. Nemmeno «`config` + 1» e basta: dalla Fase 2 alla chiusura direbbe la beta
+ * dopo, e la beta in corso resterebbe senza guardia proprio mentre si scrivono le sue lezioni. La beta in corso è quella che ha
+ * un verbale aperto: N + 1 se in `docs/` c'è `piano_esecutivo_beta{N+1}*.md` (la beta dopo quella di `config` è stata aperta),
+ * altrimenti N. Così vale in tutte le fasi: in Fase 0–1 della .50 `config` dice .49 e il verbale della .50 c'è; dalla Fase 2
+ * `config` dice .50 e il verbale della .51 non c'è ancora.
+ * Limiti: non vede una menzione nel corpo del testo (la casella della 0.1 le guarda a mano) né la forma «la .50» senza
+ * «beta»; le righe dentro un blocco di codice non contano. Il giorno che un ciclo nuovo (1.12) arrivasse alla beta.30 con i
+ * verbali della 1.11 ancora in `docs/`, la guardia leggerebbe N + 1 per sbaglio: sbaglierebbe verso il rosso, non verso il
+ * cieco, e la correzione sarebbe archiviare i verbali.
  */
 
 use Illuminate\Support\Facades\Artisan;
@@ -167,6 +186,61 @@ function betaConSezioneDiLezioni(string $testo): array
 function cicloInSviluppo(): ?string
 {
     return preg_match('#^(\d+\.\d+\.\d+)-beta\.#', (string) config('app.version'), $m) ? $m[1] : null;
+}
+
+/**
+ * La beta in corso (1.11.0-beta.50, guardia delle sezioni omonime): quella di `config/app.php`, o la successiva se il suo verbale
+ * è già aperto in `docs/` (vedi «Quale N» in testa). `null` se la versione non è una beta.
+ *
+ * @param list<string> $verbali i file `piano_esecutivo_beta*.md` presenti, per nome o percorso
+ */
+function betaInCorso(string $versioneConfig, array $verbali): ?int
+{
+    if (! preg_match('#-beta\.(\d+)$#', $versioneConfig, $m)) {
+        return null;
+    }
+    $n = (int) $m[1];
+    foreach ($verbali as $verbale) {
+        // `piano_esecutivo_beta50.md`, e anche le forme con un suffisso come `piano_esecutivo_beta34_b3a.md`.
+        if (preg_match('#^piano_esecutivo_beta(\d+)(?:_[^/]*)?\.md$#', basename($verbale), $v) && (int) $v[1] === $n + 1) {
+            return $n + 1;
+        }
+    }
+
+    return $n;
+}
+
+/**
+ * Le intestazioni (righe che cominciano con da uno a sei `#`, fuori dai blocchi di codice) che nominano `beta.N` senza il ciclo
+ * davanti, con il numero di riga. `1.10.0-beta.50` e `1.11.0-beta.50` vanno bene; `beta.50` da solo no; `beta.500` non è la .50.
+ *
+ * @return list<string>
+ */
+function intestazioniSenzaCiclo(string $testo, int $n): array
+{
+    $trovate = [];
+    $dentroIlCodice = false;
+    foreach (explode("\n", $testo) as $i => $riga) {
+        if (str_starts_with(ltrim($riga), '```')) {
+            $dentroIlCodice = ! $dentroIlCodice;
+
+            continue;
+        }
+        if ($dentroIlCodice || ! preg_match('/^#{1,6}\s/', $riga)) {
+            continue;
+        }
+        if (preg_match_all('#(\d+\.\d+\.\d+-)?beta\.(\d+)(?!\d)#', $riga, $m, PREG_SET_ORDER)) {
+            foreach ($m as $menzione) {
+                if (($menzione[1] ?? '') === '' && (int) $menzione[2] === $n) {
+                    $trovate[] = ($i + 1).': '.$riga;
+
+                    break;
+                }
+            }
+        }
+    }
+
+    return $trovate;
 }
 
 it('trova davvero delle sezioni di lezioni, invece di guardare il vuoto', function () {
@@ -322,4 +396,67 @@ it('il comando che misura i documenti non sostituisce questa guardia', function 
         "Il comando ora nomina da sé il documento di processo nell'elenco predefinito.\n".
         'Se lo fa perché ha imparato a presidiarlo, questa guardia va rivista.'
     );
+});
+
+it('nessuna intestazione nomina la beta in corso senza il ciclo: «beta.N» da solo è anche la beta.N della 1.10', function () {
+    $n = betaInCorso((string) config('app.version'), glob(dirname(documentoDiProcesso()).'/piano_esecutivo_beta*.md') ?: []);
+
+    if ($n === null) {
+        expect(true)->toBeTrue();
+
+        return;
+    }
+
+    $senzaCiclo = intestazioniSenzaCiclo(file_get_contents(documentoDiProcesso()), $n);
+
+    expect($senzaCiclo)->toBe([],
+        "In `docs/flusso_di_lavoro_rilascio.md` ci sono intestazioni che scrivono «beta.{$n}» senza il ciclo, e la beta in corso\n".
+        "è la {$n}: fino alla .77 ogni numero della 1.11 ha un omonimo nella 1.10, e chi cerca le lezioni della .{$n} trova\n".
+        "quelle dell'altro ciclo.\n\n".
+        "È la casella «Le sezioni omonime della 1.10 prendono il prefisso adesso» della **Fase 0.1**: ogni riga prende il\n".
+        "prefisso del ciclo di cui parla (`1.10.0-` o `1.11.0-`), poi si aggiornano i contatori del riquadro delle omonimie.\n\n".
+        "Righe: ".implode(' | ', $senzaCiclo)
+    );
+})->skip(fn () => ! file_exists(documentoDiProcesso()), 'docs/ è gitignorato: il documento non è su questa macchina');
+
+it('la guardia delle omonime morde: un\'intestazione con «beta.50» da sola si vede, con il ciclo no, e nemmeno la .500 o una riga di codice', function () {
+    // Passa dalla **stessa funzione** della guardia vera (lezione 3 della beta.60): il documento finto ha un buco noto.
+    $finto = <<<'MD'
+    ### Le due lezioni dell'apertura della 1.10.0-beta.50
+    testo che nomina la beta.50 nel corpo: il corpo non conta
+    ### Le lezioni della beta.50
+    ## Fase 0 della 1.11.0-beta.50
+    #### Un rimando alla beta.500
+    ```bash
+    # grep della beta.50 in un blocco di codice
+    ```
+    ### Le lezioni della beta.49 e della beta.50 — una riga che ne nomina due
+    ###### Una casella della beta.50, al sesto livello
+    MD;
+
+    // Revisione dei test della Fase 1: la riga al sesto livello prende la mutazione `#{1,6}` → `#{1,3}`, che prima sopravviveva
+    // (il documento ha già un'intestazione `####`, alla riga 7814).
+    expect(intestazioniSenzaCiclo($finto, 50))->toBe([
+        '3: ### Le lezioni della beta.50',
+        '9: ### Le lezioni della beta.49 e della beta.50 — una riga che ne nomina due',
+        '10: ###### Una casella della beta.50, al sesto livello',
+    ])
+        // La stessa riga con il ciclo davanti non è un'omonima.
+        ->and(intestazioniSenzaCiclo("### Le lezioni della 1.11.0-beta.50\n### I controlli della 1.10.0-beta.50\n", 50))->toBe([]);
+});
+
+it('la beta in corso si legge dal verbale aperto: con config ancora alla .49 e il verbale della .50 è la .50; dalla Fase 2, config alla .50, resta la .50', function () {
+    $verbali = ['docs/piano_esecutivo_beta34_b3a.md', 'docs/piano_esecutivo_beta49.md', 'docs/piano_esecutivo_beta50.md'];
+
+    // Fase 0–1: `config/app.php` dice ancora la beta chiusa; il verbale della .50 è aperto.
+    expect(betaInCorso('1.11.0-beta.49', $verbali))->toBe(50)
+        // Dalla Fase 2 alla chiusura: `config` alzato alla .50, il verbale della .51 non c'è ancora.
+        ->and(betaInCorso('1.11.0-beta.50', $verbali))->toBe(50)
+        // Aperta la .51 (verbale scritto), con `config` ancora alla .50.
+        ->and(betaInCorso('1.11.0-beta.50', [...$verbali, 'docs/piano_esecutivo_beta51.md']))->toBe(51)
+        // Il verbale con il suffisso conta come gli altri; uno con un numero diverso no.
+        ->and(betaInCorso('1.11.0-beta.33', $verbali))->toBe(34)
+        ->and(betaInCorso('1.11.0-beta.40', $verbali))->toBe(40)
+        // Su una stabile non c'è una beta in corso.
+        ->and(betaInCorso('1.11.0', $verbali))->toBeNull();
 });

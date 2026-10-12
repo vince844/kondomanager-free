@@ -104,16 +104,21 @@ final class ConguaglioPassaggio
 
     /**
      * @param list<int> $immobileIds l'unità principale e le pertinenze spuntate
+     * @param ?\Closure $chiRiceve decisione 77 (1.11.0-beta.50): `fn (int $immobileId, list<array> $perPeriodo, int $importo): ?array` dà, per
+     *                             ogni gruppo, le parti per persona di chi riceve (`parti`, `nomi`, `periodi`) quando chi entra non è una
+     *                             persona sola: la fine di una locazione senza un nuovo inquilino. Le parti vuote dicono che nessuno sta
+     *                             al posto dell'inquilino in quei giorni: il gruppo esce dal calcolo e va in `senza_nessuno`
      * @return array{
      *   stato: 'calcolato'|'nessuna_rata',
      *   quote: list<array<string,mixed>>,
      *   per_gestione: list<array<string,mixed>>,
+     *   senza_nessuno?: list<array{gestione_id:int, gestione:?string, immobile_id:int, immobile_nome:?string, esercizio_id:?int, importo:int, importo_formattato:string}>,
      *   coppie: list<array{gestione_id:int, gestione:string, immobile_id:int, esercizio_id:?int, importo:int}>,
      *   totale_entrante: int, totale_entrante_formattato: string,
      *   pregressi: int, non_risolte: list<array{piano:string, motivo:string}>, frasi: list<string>
      * }
      */
-    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false, bool $soloStraordinario = false, bool $ordinariaComeLaVoce = false, array $ruoliCheRestano = [], bool $piuNudi = false, array $entrantiPerUnita = [], ?string $passaggio = null, array $righeUscenti = [], array $nudiOra = [], bool $tutteLeBozze = false, int $eredi = 0): array
+    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false, bool $soloStraordinario = false, bool $ordinariaComeLaVoce = false, array $ruoliCheRestano = [], bool $piuNudi = false, array $entrantiPerUnita = [], ?string $passaggio = null, array $righeUscenti = [], array $nudiOra = [], bool $tutteLeBozze = false, int $eredi = 0, ?\Closure $chiRiceve = null): array
     {
         $this->eredi = $eredi;
         $predecessori = $this->predecessori((int) $uscente->id, $immobileIds);
@@ -733,7 +738,7 @@ final class ConguaglioPassaggio
         // stessa gestione su esercizi diversi non si fondono su un esercizio solo). Dentro il gruppo i periodi
         // possono differire (piani con competenze diverse): i giorni e le frasi sono **per periodo** (R10).
         $nomiNudi = Anagrafica::whereIn('id', collect($pesiNudoGruppo)->flatMap(fn ($p) => array_keys($p))->unique()->values()->all())->pluck('nome', 'id');
-        $perGestione = collect($quote)->groupBy(fn ($q) => $q['gestione_id'] . '|' . $q['immobile_id'] . '|' . ($q['esercizio_id'] ?? ''))->map(function (Collection $g) use ($uscente, $nomiNudi, $pesiNudoGruppo) {
+        $perGestione = collect($quote)->groupBy(fn ($q) => $q['gestione_id'] . '|' . $q['immobile_id'] . '|' . ($q['esercizio_id'] ?? ''))->map(function (Collection $g) use ($uscente, $nomiNudi, $pesiNudoGruppo, $chiRiceve) {
             $prima = $g->first();
             // Decisione 56: all'estinzione, la coppia per nudo proprietario dai pesi della genealogia, se coprono ogni gruppo che passa
             // qualcosa a chi entra; altrimenti null, e la coppia si divide per quota come prima. E chi la riceve, per le frasi.
@@ -788,6 +793,17 @@ final class ConguaglioPassaggio
             // delle bozze che da oggi sono sue. Calcolata sulle sole quote emesse gli farebbe pagare più dei suoi giorni.
             $lordo = (int) $g->sum('entrante');
             $passate = (int) $g->where('passa', true)->sum('quota_pura');
+            // Decisione 77 (1.11.0-beta.50): alla fine di una locazione senza un nuovo inquilino la parte dei giorni dopo l'uscita va a chi
+            // paga al posto dell'inquilino, per persona e per giorno. Le persone e le parti le dice chi chiama, dai periodi del gruppo; le
+            // frasi nominano loro, unità per unità.
+            $perPersona = $perNudo === null && $chiRiceve !== null && $lordo - $passate !== 0
+                ? $chiRiceve((int) $prima['immobile_id'], $perPeriodo->all(), $lordo - $passate) : null;
+            if ($perPersona !== null) {
+                $riceve = array_values(array_filter(array_map(fn ($chi) => $perPersona['nomi'][$chi] ?? null, array_keys($perPersona['parti']))));
+            }
+            // Fase 1-bis della .50 (R2): la parte dei giorni dopo l'uscita che nessuno copre resta nelle rate di chi esce, e la coppia è
+            // la somma delle parti di chi paga al posto dell'inquilino.
+            $scoperta = (int) ($perPersona['scoperta'] ?? 0);
 
             return [
                 'gestione_id'    => $prima['gestione_id'],
@@ -817,10 +833,14 @@ final class ConguaglioPassaggio
                 'giorni_entrante' => $unico['giorni_entrante'] ?? null,
                 'giorni_periodo' => $unico['giorni_periodo'] ?? null,
                 'per_periodo'    => $perPeriodo->all(),
-                'importo'        => $lordo - $passate,
-                'importo_formattato' => MoneyHelper::format($lordo - $passate),
-                'importo_lordo'  => $lordo,
-                'importo_lordo_formattato' => MoneyHelper::format($lordo),
+                'importo'        => $lordo - $passate - $scoperta,
+                'importo_formattato' => MoneyHelper::format($lordo - $passate - $scoperta),
+                'importo_lordo'  => $lordo - $scoperta,
+                'importo_lordo_formattato' => MoneyHelper::format($lordo - $scoperta),
+                // R2: la parte dei giorni che nessuno copre, i suoi tratti e i giorni coperti, per le frasi.
+                'scoperta'       => $scoperta,
+                'scoperti'       => $scoperta !== 0 ? ($perPersona['scoperti'] ?? null) : null,
+                'giorni_coperti' => $scoperta !== 0 ? ($perPersona['giorni_coperti'] ?? null) : null,
                 'bozze_passate'  => $g->where('passa', true)->count(),
                 'bozze_passate_importo' => $passate,
                 'bozze_passate_formattato' => MoneyHelper::format($passate),
@@ -838,10 +858,30 @@ final class ConguaglioPassaggio
                 'riservata_da'   => $g->where('esclusa', true)->pluck('riservata_da')->filter()->unique()->values()->all(),
                 'esercizio_id'   => $prima['esercizio_id'],
                 'per_nudo'       => $perNudo,
-                // Chi riceve la parte di chi entra, quando la genealogia la divide per nudo: le frasi nominano lui, non tutti i nudi.
+                // Decisione 77: la parte di ciascuno fra chi paga al posto dell'inquilino, e i giorni dopo l'uscita su cui è divisa.
+                'per_persona'    => $perPersona['parti'] ?? null,
+                'giorni_dopo'    => $perPersona['periodi'] ?? null,
+                // Chi riceve la parte di chi entra, quando la genealogia la divide per nudo (o la decisione 77 per persona): le frasi
+                // nominano lui, non tutti i nudi.
                 'entrante_nome'  => $riceve === [] ? null : (count($riceve) === 1 ? $riceve[0] : implode(', ', array_slice($riceve, 0, -1)) . ' e ' . end($riceve)),
             ];
         })->values();
+
+        // Decisione 77, punto 4 della lista della .50: un gruppo della fine senza un nuovo inquilino in cui nessuno sta al posto
+        // dell'inquilino nei giorni dopo l'uscita (`chiRiceve` dà le parti vuote) non ha una coppia: la generazione lascerebbe quei giorni
+        // scoperti. Esce dal calcolo, dalle frasi e dalle bozze «comprese nel conguaglio», e lo dice chi chiama (`senza_nessuno`): la sua
+        // parte resta nelle rate di chi esce.
+        $chiaveDelGruppo = fn (array $x) => $x['gestione_id'] . '|' . $x['immobile_id'] . '|' . ($x['esercizio_id'] ?? '');
+        $senzaNessuno = $perGestione->filter(fn ($g) => is_array($g['per_persona']) && $g['per_persona'] === [])->values();
+        if ($senzaNessuno->isNotEmpty()) {
+            $fuori = array_flip($senzaNessuno->map($chiaveDelGruppo)->all());
+            $perGestione = $perGestione->reject(fn ($g) => isset($fuori[$chiaveDelGruppo($g)]))->values();
+            $quote = array_map(fn (array $q) => isset($fuori[$chiaveDelGruppo($q)]) ? ['senza_nessuno' => true] + $q : $q, $quote);
+            $senzaNessuno = $senzaNessuno->map(fn ($g) => [
+                'gestione_id' => (int) $g['gestione_id'], 'gestione' => $g['gestione'], 'immobile_id' => (int) $g['immobile_id'], 'immobile_nome' => $g['immobile_nome'],
+                'esercizio_id' => $g['esercizio_id'], 'importo' => (int) $g['importo'], 'importo_formattato' => MoneyHelper::format((int) $g['importo']),
+            ]);
+        }
 
         $coppie = $perGestione->filter(fn ($g) => $g['importo'] !== 0)->map(fn ($g) => [
             'gestione_id'  => $g['gestione_id'],
@@ -850,14 +890,14 @@ final class ConguaglioPassaggio
             'esercizio_id' => $g['esercizio_id'],
             'importo'      => $g['importo'],
             'per_nudo'     => $g['per_nudo'],
-        ])->values()->all();
+        ] + ($g['per_persona'] !== null ? ['per_persona' => $g['per_persona'], 'giorni_dopo' => $g['giorni_dopo']] + (! empty($g['scoperti']) ? ['scoperti' => $g['scoperti']] : []) : []))->values()->all();
 
         $totale = (int) array_sum(array_column($coppie, 'importo'));
 
         // Decisione 21: le quote in bozza che restano a chi le ha, comprese nel conguaglio, per piano, intestatario e
         // ragione (con la catena dei passaggi le bozze possono essere del predecessore, non di chi esce: la frase deve
         // dire a chi resteranno intestate; con la B3a dice anche perché non passano).
-        $inBozza = collect($quote)->where('in_bozza', true)->where('passa', false)
+        $inBozza = collect($quote)->where('in_bozza', true)->where('passa', false)->reject(fn ($q) => ! empty($q['senza_nessuno']))
             ->groupBy(fn ($q) => $q['piano'] . '|' . ($q['intestato_a'] ?? $q['ereditata_da'] ?? $uscente->nome) . '|' . $q['motivo_bozza'])
             ->map(fn (Collection $g) => ['piano' => $g->first()['piano'], 'intestatario' => $g->first()['intestato_a'] ?? $g->first()['ereditata_da'] ?? $uscente->nome, 'n' => $g->count(), 'motivo' => $g->first()['motivo_bozza']]
                 // Decisione 56: la parte che non passa è una che chi esce ha già ceduto, non una che tiene (le frasi lo dicono).
@@ -904,6 +944,7 @@ final class ConguaglioPassaggio
             'bozze_riassegnate' => $bozzeRiassegnate,
             'riassegnazione' => $riassegnazione,
             'per_gestione'   => $perGestione->all(),
+            'senza_nessuno'  => $senzaNessuno->all(),
             'coppie'         => $coppie,
             'totale_entrante' => $totale,
             'totale_entrante_formattato' => MoneyHelper::format($totale),
@@ -1574,6 +1615,14 @@ final class ConguaglioPassaggio
             ->orderBy('decorrenza')->orderBy('id')->get();
         $anelli = [];
         foreach ($passaggi as $s) {
+            // Fase 1-bis della 1.11.0-beta.50 (R1): un cambio d'inquilino con «Non scriverlo» non passa a chi entra le quote di chi
+            // esce. I giorni dopo l'uscita restano nelle rate di chi esce, e chi entra li rimborsa con il prospetto: se il cambio
+            // fosse un anello, all'uscita di chi è entrato la coppia gli darebbe a credito giorni che non ha mai pagato. Restano
+            // anelli il cambio con «Scrivi», quello di prima della .50 (la casella, decisioni 43 e 46) e la successione «non
+            // scritta» della .48 (decisione 65), che non è una fine locazione.
+            if ($s->tipo_passaggio === 'fine_locazione' && $s->anagrafica_entrante_id !== null && $s->capo()->conguaglioNonScritto()) {
+                continue;
+            }
             // Decisione 65 (1.11.0-beta.44): la successione è un anello verso **ogni** erede, con la quota che ha ereditato (dal registro,
             // non dalla riga, che può essere sommata). Come per l'estinzione, il passaggio registra come chi entra uno solo: senza,
             // quando un altro erede vende, le quote emesse al defunto non passavano a chi compra.
@@ -2346,12 +2395,17 @@ final class ConguaglioPassaggio
                         $uscente, $this->data($p0['passata_il']), (int) $p0['giorni_periodo'], (int) $g['giorni_uscente'], $uscente, (int) $g['giorni_entrante'], $entrante) . $soloLeVoci;
                     continue;
                 }
-                $frasi[] = sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è divisa in proporzione ai giorni di competenza: %d a %s, %d a %s.',
+                $frasi[] = sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è divisa in proporzione ai giorni di competenza: %d a %s, %s.',
                     $nome, $cd,
                     MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote',
-                    (int) $g['giorni_uscente'], $uscente, (int) $g['giorni_entrante'], $entrante) . $soloLeVoci;
+                    (int) $g['giorni_uscente'], $uscente, ! empty($g['scoperta']) && $g['giorni_coperti'] !== null
+                        ? sprintf('%d dopo l\'uscita, di cui %d a %s', (int) $g['giorni_entrante'], (int) $g['giorni_coperti'], $entrante)
+                        : sprintf('%d a %s', (int) $g['giorni_entrante'], $entrante)) . $soloLeVoci;
                 continue;
             }
+            // Giro stretto della .50 (R2 nelle righe voce per voce e per periodo): i giorni che nessuno copre restano a chi esce, e ogni riga dice
+            // i giorni coperti e la sua parte di quelli, come la testa (la coppia).
+            $coperti = $this->copertiDelGruppo($g);
             if (count($g['per_periodo']) === 1) {
                 // Voci con una competenza propria: la divisione è per conto, e si leggono i conti. Con una quota del
                 // predecessore (S8-3) la testa dice a chi è emessa e da quando la competenza è di chi esce (B2-1).
@@ -2361,7 +2415,7 @@ final class ConguaglioPassaggio
                         $nome, $cd, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote', self::emessaA($p0), $uscente, $this->dalAcquisto($p0) . (! empty($p0['acquisto_per_lato']) ? ', con passaggi precedenti' : ' con un passaggio precedente'))
                     : sprintf('Sulla gestione %s: %s — la quota ordinaria (%s su %d %s) è divisa voce per voce, ognuna sui giorni della sua competenza:',
                         $nome, $cd, MoneyHelper::format($g['quota_pura']), $g['quote'], $g['quote'] === 1 ? 'quota' : 'quote');
-                array_push($frasi, ...$this->frasiPerCapitolo($p0['per_capitolo'], $uscente, $entrante, $decorrenza, false, $p0['ereditata_da'] ?? null, $p0['intestato_a'] ?? null));
+                array_push($frasi, ...$this->frasiPerCapitolo($p0['per_capitolo'], $uscente, $entrante, $decorrenza, false, $p0['ereditata_da'] ?? null, $p0['intestato_a'] ?? null, $coperti[0] ?? []));
                 continue;
             }
             // Più piani con competenze diverse sulla stessa gestione: una riga per periodo, così i giorni
@@ -2369,14 +2423,19 @@ final class ConguaglioPassaggio
             // predecessori diversi o acquistate in date diverse (L1-6): non sono «piani con competenze diverse».
             $periodiDistinti = count(array_unique(array_map(fn ($p) => json_encode($p['periodo']), $g['per_periodo'])));
             $frasi[] = sprintf('Sulla gestione %s: %s, %s:', $nome, $cd, $periodiDistinti > 1 ? 'da piani con competenze diverse' : 'da quote emesse a intestatari diversi o acquistate in date diverse');
-            foreach ($g['per_periodo'] as $p) {
+            foreach ($g['per_periodo'] as $i => $p) {
                 if (($p['per_capitolo'] ?? null) !== null) {
                     $emesseA = ! empty($p['ereditata_da']) ? sprintf(', emesse a %s; a %s %s', self::emessaA($p), $uscente, $this->dalAcquisto($p)) : '';
+                    // R2: la parte dei giorni coperti, la somma delle sue voci, quando una voce ha giorni che nessuno copre.
+                    $copertiQui = $coperti[$i] ?? [];
+                    // Ultimo giro della .50 (punto 4): la testa dice un'entrata e un credito di chi entra con le parole, non con il segno meno.
+                    $aChiEntra = self::aChiEntra((int) ($p['entrante'] ?? 0) - ($copertiQui === [] ? 0 : (int) array_sum(array_map(fn (array $x) => $x[2], $copertiQui))));
+                    $importo = (int) $p['quota_pura'] < 0 ? MoneyHelper::format(-(int) $p['quota_pura']) . ' di entrata' : MoneyHelper::format($p['quota_pura']);
                     // Seconda revisione della Fase 1-ter (T2-10): un gruppo che non passa per niente non annuncia una divisione.
                     $frasi[] = (int) ($p['entrante'] ?? 0) === 0
-                        ? sprintf('— %s (%d %s%s) restano a %s: nessuna parte passa a chi entra, voce per voce:', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', ! empty($p['ereditata_da']) ? ', emesse a ' . self::emessaA($p) : '', $p['intestato_a'] ?? $p['ereditata_da'] ?? $uscente)
-                        : sprintf('— %s (%d %s%s) divisi voce per voce, ognuna sui giorni della sua competenza → %s a chi entra:', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $emesseA, $p['entrante_formattato']);
-                    array_push($frasi, ...$this->frasiPerCapitolo($p['per_capitolo'], $uscente, $entrante, $decorrenza, false, $p['ereditata_da'] ?? null, $p['intestato_a'] ?? null));
+                        ? sprintf('— %s (%d %s%s) restano a %s: nessuna parte passa a chi entra, voce per voce:', $importo, $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', ! empty($p['ereditata_da']) ? ', emesse a ' . self::emessaA($p) : '', $p['intestato_a'] ?? $p['ereditata_da'] ?? $uscente)
+                        : sprintf('— %s (%d %s%s) divisi voce per voce, ognuna sui giorni della sua competenza → %s:', $importo, $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $emesseA, $aChiEntra);
+                    array_push($frasi, ...$this->frasiPerCapitolo($p['per_capitolo'], $uscente, $entrante, $decorrenza, false, $p['ereditata_da'] ?? null, $p['intestato_a'] ?? null, $copertiQui));
                     continue;
                 }
                 $tratti = implode(' + ', array_map(fn ($t) => $this->data($t['dal']) . '–' . $this->data($t['al']), $p['periodo'] ?? []));
@@ -2393,16 +2452,30 @@ final class ConguaglioPassaggio
                         : sprintf('— %s (%d %s, competenza %s) restano a %s: la competenza finisce prima del %s.', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $tratti, $uscente, $this->data($decorrenza->toDateString()))))
                     : (! empty($p['acquisto_per_lato'])
                         ? sprintf('— %s (%d %s, competenza %s): a %s la parte dal giorno del passaggio (%d giorni) → %s a chi entra.', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $tratti, $entrante, (int) $p['giorni_entrante'], $p['entrante_formattato'])
-                        : sprintf('— %s (%d %s, competenza %s) divisi per giorni%s: %d a %s, %d a %s → %s a chi entra.', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $tratti,
+                        : sprintf('— %s (%d %s, competenza %s) divisi per giorni%s: %d a %s, %s → %s.', MoneyHelper::format($p['quota_pura']), $p['quote'], $p['quote'] === 1 ? 'quota' : 'quote', $tratti,
                         match (true) {
                             ! empty($p['per_voce']) => sprintf(' solo per la parte delle voci che passano (%s), per la scelta «come dice ogni voce»', MoneyHelper::format($p['quota_che_passa'])),
                             ! empty($p['fuori_quota']) => sprintf(' solo per la parte della quota che passa (%s; il resto è %s)', MoneyHelper::format($p['quota_che_passa']), $this->altraParte($p['motivi_quota'], $uscente)),
                             default => '',
                         },
-                        (int) $p['giorni_uscente'], $uscente, (int) $p['giorni_entrante'], $entrante, $p['entrante_formattato']));
+                        (int) $p['giorni_uscente'], $uscente,
+                        isset($coperti[$i]) ? sprintf('%d dopo l\'uscita, di cui %d a %s', (int) $p['giorni_entrante'], $coperti[$i][0], $entrante) : sprintf('%d a %s', (int) $p['giorni_entrante'], $entrante),
+                        isset($coperti[$i]) ? self::aChiEntra($coperti[$i][1]) : $p['entrante_formattato'] . ' a chi entra'));
             }
         }
 
+        // Fase 1-bis della .50 (R2): la parte dei giorni dopo l'uscita che nessuno copre resta nelle rate di chi esce, e si dice. Giro stretto
+        // della .50 (G16): con più unità nel passaggio la frase dice di quale parla (il gruppo è per gestione e unità), e una parte negativa
+        // (un'entrata che in quei giorni supera la spesa) si dice a credito, con le parole.
+        $piuUnita = $perGestione->pluck('immobile_id')->unique()->count() > 1;
+        foreach ($perGestione as $g) {
+            if (! empty($g['scoperta']) && ! empty($g['scoperti'])) {
+                $tratti = implode(' e ', array_map(fn (array $t) => sprintf('dal %s al %s', $this->data($t['dal']), $this->data($t['al'])), $g['scoperti']));
+                $frasi[] = sprintf('Sulla gestione %s, %s%s nessuno sta al posto dell\'inquilino: la parte di quei giorni, %s, resta nelle rate di %s, e il programma non la propone a nessuno.',
+                    $g['gestione'] ?? 'gestione', $piuUnita && ! empty($g['immobile_nome']) ? sprintf('nell\'unità «%s», ', $g['immobile_nome']) : '', $tratti,
+                    (int) $g['scoperta'] < 0 ? MoneyHelper::format(-(int) $g['scoperta']) . ' a credito' : MoneyHelper::format((int) $g['scoperta']), $uscente);
+            }
+        }
         foreach ($nonRisolte as $n) {
             $frasi[] = sprintf('Piano «%s»: %s. Nessun conguaglio proposto su quelle quote.', $n['piano'], $n['motivo']);
         }
@@ -2415,6 +2488,65 @@ final class ConguaglioPassaggio
         }
 
         return $frasi;
+    }
+
+    /**
+     * Giro stretto della .50 (R2 nelle righe voce per voce e per periodo): dove una parte dei giorni dopo l'uscita nessuno la copre
+     * (`scoperti` del gruppo), quella parte resta a chi esce, e le righe del calcolo dicono i giorni coperti e la loro parte, come la testa.
+     * Per ogni riga per periodo (chiave `i`) o voce di una riga (`i` e poi `j`): [giorni coperti, parte dei giorni coperti, parte scoperta].
+     * La parte scoperta di ciascuna è quella dei suoi giorni, con il segno; il centesimo che l'arrotondamento lascia va alla voce più grande,
+     * perché le righe sommino alla coppia.
+     *
+     * @return array<int, array{0: int, 1: int, 2: int}|array<int, array{0: int, 1: int, 2: int}>>
+     */
+    private function copertiDelGruppo(array $g): array
+    {
+        if (empty($g['scoperta']) || empty($g['scoperti'])) {
+            return [];
+        }
+        $scoperti = new InsiemePeriodi(...array_map(fn (array $t) => new PeriodoCompetenza($t['dal'], $t['al']), $g['scoperti']));
+        $voci = [];
+        foreach ($g['per_periodo'] as $i => $p) {
+            $perVoce = ($p['per_capitolo'] ?? null) !== null;
+            $righe = $perVoce
+                ? array_map(fn ($c) => [(int) ($c['giorni_entrante'] ?? 0), (int) ($c['entrante_emesso'] ?? $c['entrante'] ?? 0), $c['periodo'] ?? [], ! empty($c['non_risolta']) || ! empty($c['resta_per_quota'])], $p['per_capitolo'])
+                : [[(int) ($p['giorni_entrante'] ?? 0), (int) ($p['entrante'] ?? 0), $p['periodo'] ?? [], false]];
+            foreach ($righe as $j => [$giorni, $parte, $periodo, $fuori]) {
+                if ($fuori || $giorni <= 0 || $parte === 0 || $periodo === []) {
+                    continue;
+                }
+                $sc = $scoperti->giorniDiSovrapposizione(new InsiemePeriodi(...array_map(fn (array $t) => new PeriodoCompetenza($t['dal'], $t['al']), $periodo)));
+                if ($sc > 0) {
+                    $voci[] = ['i' => $i, 'j' => $perVoce ? $j : null, 'giorni' => $giorni - $sc, 'parte' => $parte, 'esatta' => $parte * $sc / $giorni];
+                }
+            }
+        }
+        if ($voci === []) {
+            return [];
+        }
+        $scoperte = array_map(fn (array $v) => (int) round($v['esatta']), $voci);
+        $resto = (int) $g['scoperta'] - array_sum($scoperte);
+        if ($resto !== 0 && abs($resto) <= count($voci)) {
+            $piuGrande = array_key_first(array_filter($voci, fn (array $v) => abs($v['esatta']) === max(array_map(fn (array $x) => abs($x['esatta']), $voci))));
+            $scoperte[$piuGrande] += $resto;
+        }
+        $out = [];
+        foreach ($voci as $k => $v) {
+            $riga = [$v['giorni'], $v['parte'] - $scoperte[$k], $scoperte[$k]];
+            if ($v['j'] === null) {
+                $out[$v['i']] = $riga;
+            } else {
+                $out[$v['i']][$v['j']] = $riga;
+            }
+        }
+
+        return $out;
+    }
+
+    /** «€ 90,74 a chi entra», o per una parte negativa (un'entrata) «€ 40,44 a credito di chi entra». */
+    private static function aChiEntra(int $cent): string
+    {
+        return $cent < 0 ? MoneyHelper::format(-$cent) . ' a credito di chi entra' : MoneyHelper::format($cent) . ' a chi entra';
     }
 
     /** A chi è emessa la quota di un predecessore: a lui, o all'erede di riferimento che la tiene (decisione 67, punto 1). */
@@ -2473,18 +2605,20 @@ final class ConguaglioPassaggio
 
     /**
      * Le righe «voce per voce». `$predecessore` è l'intestatario delle quote quando non è chi esce (S8-3): le righe
-     * dicono i giorni che restano a chi le ha emesse, quelli di chi esce e quelli di chi entra (B2-1).
+     * dicono i giorni che restano a chi le ha emesse, quelli di chi esce e quelli di chi entra (B2-1). `$coperti` (R2, giro stretto della
+     * .50): per le voci con giorni dopo l'uscita che nessuno copre, i giorni coperti e la parte di quei giorni (`copertiDelGruppo`).
      *
      * @param list<array<string,mixed>> $conti
+     * @param array<int|string, array{0: int, 1: int, 2: int}> $coperti
      */
-    private function frasiPerCapitolo(array $conti, string $uscente, ?string $entrante, CarbonImmutable $decorrenza, bool $straordinaria = false, ?string $predecessore = null, ?string $intestatoA = null): array
+    private function frasiPerCapitolo(array $conti, string $uscente, ?string $entrante, CarbonImmutable $decorrenza, bool $straordinaria = false, ?string $predecessore = null, ?string $intestatoA = null, array $coperti = []): array
     {
         $frasi = [];
         $versato = 0;
         // Decisione 67 (1): la quota del predecessore intestata all'erede di riferimento: i giorni sono del predecessore, la quota è sua.
         $emessaA = $intestatoA !== null && $predecessore !== null ? sprintf('%s, erede di riferimento di %s', $intestatoA, $predecessore) : $predecessore;
         $intestatario = $emessaA ?? $uscente;
-        foreach ($conti as $c) {
+        foreach ($conti as $j => $c) {
             $versato += (int) ($c['versato_uscente'] ?? 0);
             // Gli importi sono quelli riportati alle quote emesse (R8): le righe sommano alla testa.
             $importo = $c['importo_emesso_formattato'] ?? $c['importo_formattato'];
@@ -2548,8 +2682,17 @@ final class ConguaglioPassaggio
                     : (! empty($c['resta_per_voce'])
                         ? sprintf('  · %s: %s, %s — resta a %s per la scelta «come dice ogni voce».', $this->nomeVoce($c), $importo, $etichetta, $uscente)
                         : sprintf('  · %s: %s, %s — resta a %s, la competenza finisce prima del %s.', $this->nomeVoce($c), $importo, $etichetta, $uscente, $this->data($decorrenza->toDateString())));
+            } elseif (isset($coperti[$j]) && $coperti[$j][0] === 0) {
+                // R2: nei giorni della voce dopo l'uscita nessuno sta al posto dell'inquilino; la frase dei giorni scoperti dice la parte.
+                $frasi[] = sprintf('  · %s: %s, %s — nei suoi giorni dopo l\'uscita nessuno sta al posto dell\'inquilino: resta nelle rate di %s.', $this->nomeVoce($c), $importo, $etichetta, $uscente);
+            } elseif (isset($coperti[$j]) && ($c['giorni_uscente'] ?? 0) === 0) {
+                $frasi[] = sprintf('  · %s: %s, %s — %s dal giorno del passaggio in poi: %d giorni, di cui %d a %s → %s.', $this->nomeVoce($c), $importo, $etichetta, ($c['gradino'] ?? null) === 'delibera' ? 'deliberata' : 'maturata',
+                    (int) $c['giorni_entrante'], $coperti[$j][0], $entrante, self::aChiEntra($coperti[$j][1]));
             } elseif (($c['giorni_uscente'] ?? 0) === 0) {
                 $frasi[] = sprintf('  · %s: %s, %s — %s dal giorno del passaggio in poi: la spesa è di chi entra per intero → %s a chi entra.', $this->nomeVoce($c), $importo, $etichetta, ($c['gradino'] ?? null) === 'delibera' ? 'deliberata' : 'maturata', $c['entrante_emesso_formattato'] ?? $c['entrante_formattato']);
+            } elseif (isset($coperti[$j])) {
+                $frasi[] = sprintf('  · %s: %s, %s — %d giorni a %s, %d dopo l\'uscita, di cui %d a %s → %s.', $this->nomeVoce($c), $importo, $etichetta, (int) $c['giorni_uscente'], $uscente, (int) $c['giorni_entrante'],
+                    $coperti[$j][0], $entrante, self::aChiEntra($coperti[$j][1]));
             } else {
                 $frasi[] = sprintf('  · %s: %s, %s — %d giorni a %s, %d a %s → %s a chi entra.', $this->nomeVoce($c), $importo, $etichetta, (int) $c['giorni_uscente'], $uscente, (int) $c['giorni_entrante'], $entrante, $c['entrante_emesso_formattato'] ?? $c['entrante_formattato']);
             }

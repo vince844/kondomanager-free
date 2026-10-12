@@ -57,7 +57,7 @@ import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passagg
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
 import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
 import { partiUguali, quoteCheNonTornano } from '@/lib/gestionale/passaggi/quoteEredi';
-import { conguaglioDaScegliere, conguaglioNonScritto, fraseArretrato, rinunciaEffettiva as laRinunciaVale, sceltaConguaglioRichiesta, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
+import { conguaglioDaScegliereNelPassaggio, coppieNonScritte, fraseArretrato, passaggioConLaScelta, sceltaConguaglioDelPassaggio, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
 
 const props = defineProps<{
   condominio: Building;
@@ -68,6 +68,8 @@ const props = defineProps<{
   titolari: TitolareAttuale[];
   /** All'estinzione: le righe di nuda proprietà e d'usufrutto dell'unità, anche chiuse, per guardarle il giorno dell'estinzione (G6). */
   righeDellEstinzione?: TitolareAttuale[];
+  /** Alla fine di una locazione: le righe d'inquilino dell'unità, anche chiuse, per guardarle il giorno scritto (R16 della Fase 1-bis della .50). */
+  righeDellaLocazione?: TitolareAttuale[];
   oggi?: string;
   anagrafiche: PersonaDelCondominio[];
   pertinenze: PertinenzaCollegata[];
@@ -370,6 +372,53 @@ const serveEntrante = computed(() =>
 );
 const entranteFacoltativo = computed(() => props.tipo === 'fine_locazione');
 const nessunEntrante = ref(false);
+/**
+ * Punto 5 della lista della .50 (rilievo 4): alla fine di una locazione, chi altro è inquilino dell'unità il giorno del passaggio, con una
+ * quota (le righe in corso oggi, guardate alla data scritta; senza data, quelle di oggi). Con loro l'unità non resta sfitta, e la casella
+ * «Nessuno», la card e ciò che manca lo dicono come il pannello del server («Dal … resta inquilino Dora»).
+ */
+/** Il giorno prima di una data «AAAA-MM-GG». */
+const giornoPrimaDi = (g: string) => {
+  const d = new Date(`${g}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+};
+/**
+ * R16 della Fase 1-bis della .50: le righe da guardare sono anche quelle chiuse prima di oggi (`righeDellaLocazione`): una fine retrodatata
+ * con la coinquilina uscita dopo quella data ma prima di oggi. Rilievo della ripresa: chi entra il giorno stesso (nessuna sua riga in
+ * corso il giorno prima) non «resta» inquilino: «è inquilino Luca», come il pannello.
+ */
+const altriInquilini = computed<{ nome: string; entra: boolean }[]>(() => {
+  if (props.tipo !== 'fine_locazione' || !uscente.value) return [];
+  const giorno = form.decorrenza || props.oggi || '';
+  const prima = giorno ? giornoPrimaDi(giorno) : '';
+  const esce = uscente.value;
+  const righe = [...new Map([...props.titolari, ...(props.righeDellaLocazione ?? [])].map(t => [t.id, t])).values()]
+    .filter(t => t.tipologia === 'inquilino' && t.id !== esce.id && t.anagrafica.id !== esce.anagrafica.id && Number(t.quota) > 0);
+  const persone = new Map<number, { nome: string; entra: boolean }>();
+  righe.filter(t => !giorno || inCorsoIl(t, giorno)).forEach((t) => {
+    const entra = !!prima && !righe.some(r => r.anagrafica.id === t.anagrafica.id && inCorsoIl(r, prima));
+    persone.set(t.anagrafica.id, { nome: t.anagrafica.nome, entra });
+  });
+  return [...persone.values()];
+});
+/** «l'unità resta sfitta», o «resta inquilino Dora», «restano inquilini Dora e Pia», «è inquilino Luca»: ciò che succede se non entra nessuno. */
+const seNonEntraNessuno = computed(() => {
+  if (altriInquilini.value.length === 0) return 'l\'unità resta sfitta';
+  const elenco = (nomi: string[]) => nomi.length === 1 ? nomi[0] : `${nomi.slice(0, -1).join(', ')} e ${nomi[nomi.length - 1]}`;
+  const restano = altriInquilini.value.filter(i => !i.entra).map(i => i.nome);
+  const entrano = altriInquilini.value.filter(i => i.entra).map(i => i.nome);
+  const parti: string[] = [];
+  if (restano.length) parti.push(`${restano.length === 1 ? 'resta inquilino' : 'restano inquilini'} ${elenco(restano)}`);
+  if (entrano.length) parti.push(`${parti.length ? 'ed ' : ''}${entrano.length === 1 ? 'è inquilino' : 'sono inquilini'} ${elenco(entrano)}`);
+  return parti.join(', ');
+});
+// Decisione 77 (1.11.0-beta.50): alla fine di una locazione la scelta sul conguaglio dice chi prende i giorni dopo l'uscita, chi entra o
+// chi paga al posto dell'inquilino. Se cambia chi esce o chi entra, la scelta fatta riguardava un altro passaggio e si rifà: nessuna
+// delle due voci resta già scelta. La nota facoltativa resta.
+watch([() => form.riga_uscente_id, () => form.anagrafica_entrante_id, nessunEntrante], () => {
+  if (props.tipo === 'fine_locazione') form.conguaglio = null;
+});
 
 /**
  * Le persone fra cui scegliere chi entra. Nella vendita tutte quelle del condominio meno chi esce (un
@@ -410,8 +459,9 @@ const mancante = computed<string[]>(() => {
   if (!form.decorrenza) m.push(eSuccessione.value ? 'il giorno del decesso' : 'la data dell\'atto');
   if (serveEntrante.value && !form.anagrafica_entrante_id) m.push('chi entra');
   // «Nessuno — l'unità resta sfitta» è una scelta esplicita (§6.6), non ciò che il modulo presume quando
-  // nessuno è stato scelto: finché non si sceglie un inquilino o non si spunta la casella, si aspetta.
-  if (entranteFacoltativo.value && !nessunEntrante.value && !form.anagrafica_entrante_id) m.push('chi entra, oppure la spunta «Nessuno — l\'unità resta sfitta»');
+  // nessuno è stato scelto: finché non si sceglie un inquilino o non si spunta la casella, si aspetta. Con un altro inquilino la casella
+  // dice chi resta (punto 5 della lista della .50).
+  if (entranteFacoltativo.value && !nessunEntrante.value && !form.anagrafica_entrante_id) m.push(`chi entra, oppure la spunta «Nessuno — ${seNonEntraNessuno.value}»`);
   if (form.copia_autentica && !form.copia_autentica_il) m.push('la data in cui hai ricevuto la copia autentica');
   if (props.tipo === 'usufrutto' && form.sottotipo === 'estinzione' && !nudoProprietario.value && !form.accrescimento) m.push('un nudo proprietario registrato, che torni proprietario pieno');
   if (eSuccessione.value) {
@@ -426,6 +476,13 @@ const completo = computed(() => mancante.value.length === 0);
 // --- L'anteprima: il server calcola, la pagina mostra -------------------------------------------
 
 const anteprima = ref<AnteprimaPassaggioDati | null>(null);
+// R17 della Fase 1-bis della .50: lo stesso quando cambiano le persone che ricevono la coppia (la data, una pertinenza spuntata di un
+// altro proprietario, un pannello senza coppie): la scelta era per altre persone, e si rifà. Una nota o un'altra modifica che lascia le
+// stesse persone non la tocca.
+const personeDellaCoppia = computed(() => JSON.stringify([...new Set((anteprima.value?.rate.conguaglio?.coppie ?? []).map(c => c.anagrafica_entrante_id ?? c.entrante_nome))].sort()));
+watch(personeDellaCoppia, (ora, prima) => {
+  if (props.tipo === 'fine_locazione' && ora !== prima) form.conguaglio = null;
+});
 const anteprimaInCorso = ref(false);
 const anteprimaErrore = ref(false);
 /** Il server ha rifiutato un dato del modulo (422): l'errore è sul campo, il pannello lo dice e aspetta. */
@@ -461,6 +518,10 @@ function corpoAnteprima() {
     nudi_che_tornano: estinzione.value && !form.accrescimento ? form.nudi_che_tornano : [],
     nudi_per_quota: estinzione.value && !form.accrescimento ? form.nudi_per_quota : false,
     accrescimento: estinzione.value ? form.accrescimento : false,
+    // Decisione 77 (1.11.0-beta.50): la scelta sul conguaglio, dove si chiede, entra anche nell'anteprima: nella successione la fermata
+    // dopo «Scrivi» di una fine locazione di prima vale solo se il conguaglio si scrive, e finché la scelta manca il server la dice
+    // «se scrivi il conguaglio». Dove la scelta non si chiede non parte: il server la rifiuterebbe.
+    conguaglio: sceltaConguaglioDelPassaggio(props.tipo, anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.arretrato) ? form.conguaglio : null,
     // Decisione 65: le quote come le scrive l'amministratore («33,33»), al server con il punto.
     ...(eSuccessione.value ? {
       eredi: form.eredi.map(e => ({ anagrafica_id: e.anagrafica_id, quota: String(e.quota).trim().replace(',', '.') })),
@@ -509,8 +570,13 @@ async function calcolaAnteprima() {
   }
 }
 
-watch(() => JSON.stringify(corpoAnteprima()), () => {
+// Verifica a video della .50: anche quando il modulo diventa completo senza che il corpo cambi. Nella fine locazione la spunta «Nessuno»
+// lascia chi entra vuoto com'era: scritta prima la data, il pannello non ripartiva più e restava «sta leggendo il modulo».
+watch([() => JSON.stringify(corpoAnteprima()), completo], () => {
   anteprimaSuperata.value = true;
+  // R21 della Fase 1-bis della .50: una risposta ancora in volo è del modulo di prima. Arrivata durante il debounce, riaccenderebbe il
+  // pulsante con il pannello vecchio: si scarta, e il pannello resta «sta rileggendo» finché non risponde la richiesta nuova.
+  ++ultimaRichiesta;
   if (timer) clearTimeout(timer);
   timer = setTimeout(calcolaAnteprima, 350);
 }, { immediate: true });
@@ -545,18 +611,18 @@ const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_
 // server controlla.
 const coppieProposte = computed(() => (anteprima.value?.rate.conguaglio?.coppie.length ?? 0) > 0);
 // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si sceglie
-// al posto della casella, e «Non scriverlo» non chiede una nota (se c'è, almeno dieci caratteri, come sul server).
+// al posto della casella, e «Non scriverlo» non chiede una nota (se c'è, almeno dieci caratteri, come sul server). Decisione 77
+// (1.11.0-beta.50): lo stesso alla fine di una locazione, con un nuovo inquilino o senza, quando il pannello propone coppie.
 const numeroCoppie = computed(() => anteprima.value?.rate.conguaglio?.coppie.length ?? 0);
-const sceltaRichiesta = computed(() => eSuccessione.value && sceltaConguaglioRichiesta(numeroCoppie.value, form.arretrato));
-const rinunciaEffettiva = computed(() => eSuccessione.value
-  ? conguaglioNonScritto(numeroCoppie.value, form.arretrato, form.conguaglio)
-  : laRinunciaVale(numeroCoppie.value, form.rinuncia_conguaglio, null));
+const conLaScelta = computed(() => passaggioConLaScelta(props.tipo));
+const sceltaRichiesta = computed(() => sceltaConguaglioDelPassaggio(props.tipo, numeroCoppie.value, form.arretrato));
+const rinunciaEffettiva = computed(() => coppieNonScritte(props.tipo, numeroCoppie.value, form.arretrato, form.rinuncia_conguaglio, form.conguaglio));
 // Rilievo X8: con la rinuncia, a nome del defunto resta tutta la sua posizione. Rilievo R1 della Fase 1-bis della .48: finché la
 // scelta sul conguaglio manca, le due cifre (senza conguaglio e se lo scrivi), non quella di «Scrivi».
 const fraseDellArretrato = computed(() => fraseArretrato(anteprima.value?.rate.arretrato, rinunciaEffettiva.value,
-  eSuccessione.value && conguaglioDaScegliere(numeroCoppie.value, form.arretrato, form.conguaglio)));
+  conguaglioDaScegliereNelPassaggio(props.tipo, numeroCoppie.value, form.arretrato, form.conguaglio)));
 const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value
-  || (eSuccessione.value ? (form.nota_conguaglio.trim() === '' || form.nota_conguaglio.trim().length >= 10) : form.nota_conguaglio.trim().length >= 10));
+  || (conLaScelta.value ? (form.nota_conguaglio.trim() === '' || form.nota_conguaglio.trim().length >= 10) : form.nota_conguaglio.trim().length >= 10));
 const sceltaSoddisfatta = computed(() => !sceltaRichiesta.value || form.conguaglio !== null);
 // Il pannello si ferma solo perché il server chiede l'erede di riferimento: è una scelta, non un dato sbagliato (P6).
 const attesaScelta = computed(() => anteprimaBloccata.value && Object.keys(form.errors).length > 0 && Object.keys(form.errors).every(k => k === 'erede_di_riferimento'));
@@ -573,7 +639,8 @@ function submit() {
     promemoria_giorni: form.promemoria_scadenza ? form.promemoria_giorni : null,
     ho_letto: form.ho_letto,
     nota_cancello: form.nota_cancello,
-    rinuncia_conguaglio: eSuccessione.value ? false : rinunciaEffettiva.value,
+    // Dove il passaggio ha la scelta la casella non parte: il server rifiuta la scelta e la casella insieme (decisione 77).
+    rinuncia_conguaglio: conLaScelta.value ? false : rinunciaEffettiva.value,
     nota_conguaglio: rinunciaEffettiva.value && form.nota_conguaglio.trim() !== '' ? form.nota_conguaglio : null,
     conguaglio: sceltaRichiesta.value ? form.conguaglio : null,
     // Rilievo S1: l'elenco delle voci che il pannello ha mostrato; se sul server è cambiato, la registrazione si ferma.
@@ -1028,7 +1095,7 @@ function urlTipo(t: TipoPassaggio) {
               <CardHeader class="pb-3 border-b border-dashed mb-4">
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Chi entra</CardTitle>
                 <CardDescription>
-                  <template v-if="entranteFacoltativo">Un nuovo inquilino, oppure nessuno: l'unità resta sfitta.</template>
+                  <template v-if="entranteFacoltativo">Un nuovo inquilino, oppure nessuno: {{ seNonEntraNessuno }}.</template>
                   <template v-else>Una persona del condominio, o una nuova, senza lasciare la pagina.</template>
                 </CardDescription>
               </CardHeader>
@@ -1037,7 +1104,7 @@ function urlTipo(t: TipoPassaggio) {
                 <label v-if="entranteFacoltativo" class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all"
                   :class="nessunEntrante ? 'bg-slate-100 border-slate-400 ring-1 ring-slate-400 dark:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
                   <input type="checkbox" v-model="nessunEntrante" @change="nessunEntrante && (form.anagrafica_entrante_id = null)" class="w-4 h-4 accent-slate-900 dark:accent-slate-300 rounded border-slate-300" />
-                  <span class="text-sm font-medium text-slate-800 dark:text-slate-200">Nessuno — l'unità resta sfitta</span>
+                  <span class="text-sm font-medium text-slate-800 dark:text-slate-200">Nessuno — {{ seNonEntraNessuno }}</span>
                 </label>
 
                 <div v-if="!nessunEntrante" class="grid grid-cols-1 sm:grid-cols-12 gap-x-6 gap-y-5">
@@ -1282,7 +1349,8 @@ function urlTipo(t: TipoPassaggio) {
             </Card>
 
             <!-- ---------------------------- 6. Pertinenze ---------------------------- -->
-            <PassaggioPertinenzeCard v-if="pertinenze.length && (tipo === 'vendita' || tipo === 'usufrutto' || tipo === 'successione')" :pertinenze="pertinenze" :successione="tipo === 'successione'" :legato="legato" v-model="form.pertinenze" />
+            <!-- Decisione 83.4 (1.11.0-beta.50): anche nella fine e nell'inizio della locazione, con una scelta sola sul conguaglio. -->
+            <PassaggioPertinenzeCard v-if="pertinenze.length && (tipo === 'vendita' || tipo === 'usufrutto' || tipo === 'successione' || eLocazione)" :pertinenze="pertinenze" :successione="tipo === 'successione'" :legato="legato" :locazione="eLocazione" :inizio="tipo === 'inizio_locazione'" v-model="form.pertinenze" />
             <InputError v-if="pertinenze.length" :message="form.errors.pertinenze" />
 
             <!-- ---------------------------- 7–8. Documento e nota ---------------------------- -->
@@ -1417,7 +1485,7 @@ function urlTipo(t: TipoPassaggio) {
                 <template v-else-if="anteprimaInCorso || anteprimaSuperata">Il pannello sta rileggendo il modulo.</template>
                 <template v-else-if="cancelloRichiesto && !cancelloSoddisfatto">Spunta «Ho letto cosa cambierà» e scrivi la nota per attivare la registrazione.</template>
                 <template v-else-if="!sceltaSoddisfatta">Scegli se scrivere il conguaglio: nel pannello, «Scrivi il conguaglio» o «Non scriverlo».</template>
-                <template v-else-if="!rinunciaSoddisfatta && eSuccessione">La nota sul conguaglio è facoltativa, ma se la scrivi deve avere almeno dieci caratteri.</template>
+                <template v-else-if="!rinunciaSoddisfatta && conLaScelta">La nota sul conguaglio è facoltativa, ma se la scrivi deve avere almeno dieci caratteri.</template>
                 <template v-else-if="!rinunciaSoddisfatta">Hai rinunciato al conguaglio proposto: scrivi perché nel pannello (almeno dieci caratteri).</template>
                 <template v-else>Niente viene scritto finché non confermi.</template>
               </p>
@@ -1434,7 +1502,7 @@ function urlTipo(t: TipoPassaggio) {
 
           <!-- ============================ Il pannello (colonna sticky) ============================ -->
           <AnteprimaPassaggio :dati="anteprima" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante" :tipo="props.tipo"
-            :attesa-scelta="attesaScelta"
+            :attesa-scelta="attesaScelta" :senza-successore="props.tipo === 'fine_locazione' && nessunEntrante"
             v-model:rinuncia="form.rinuncia_conguaglio" v-model:nota-rinuncia="form.nota_conguaglio" v-model:scelta-conguaglio="form.conguaglio" />
           <InputError :message="form.errors.nota_conguaglio" class="mt-2" />
           <InputError :message="(form.errors as Record<string, string>).conguaglio" class="mt-2" />

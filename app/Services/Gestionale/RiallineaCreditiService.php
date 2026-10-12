@@ -189,7 +189,8 @@ class RiallineaCreditiService
                     'tipo_movimento'     => 'emissione_rata',
                     'stato'              => 'registrata',
                     'created_by'         => $utenteId,
-                    'note'               => 'La quota a credito era rimasta fuori dall\'emissione della sua rata: va a giornale con la spesa e il credito riportato, come la scrive l\'emissione dalla 1.11.0-beta.49.',
+                    // La nota resta nel libro giornale per sempre: niente versione, che invecchia il giorno dopo la stabile.
+                    'note'               => 'La quota a credito era rimasta fuori dall\'emissione della sua rata: va a giornale con la spesa e il credito riportato, come la scrive oggi l\'emissione.',
                 ]);
                 $gestione = 0;
                 $pregresso = 0;

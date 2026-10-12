@@ -78,12 +78,18 @@ final class AnnullaConguaglioAction
             $nomi = DB::table('gestioni')->whereIn('id', $righe->pluck('gestione_id')->unique())->pluck('nome', 'id');
             $entranti = $righe->filter(fn (Saldo $r) => (int) $r->anagrafica_id !== $uscenteId);
             $nomiPersone = DB::table('anagrafiche')->whereIn('id', $entranti->pluck('anagrafica_id')->unique())->pluck('nome', 'id');
+            // Decisione 77 (1.11.0-beta.50): nella locazione anche chi esce, con il segno dei saldi, come alla registrazione.
+            $conChiEsce = $padre->tipo_passaggio === 'fine_locazione';
+            $nomeUscente = $conChiEsce ? (string) (DB::table('anagrafiche')->where('id', $uscenteId)->value('nome') ?? ($padre->registro['nomi']['uscente'] ?? '?')) : '';
             $regolato = $entranti->groupBy('gestione_id')
                 ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($nomi[$id] ?? '?'), 'importo' => (int) $g->sum('saldo_iniziale'),
                     // P3 della 1.11.0-beta.48: la cifra di ciascuna persona, come alla registrazione (`Subentro::regolatoFuoriDalleCoppie`).
-                    'persone' => $g->groupBy('anagrafica_id')
-                        ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($nomiPersone[$aid] ?? '?'), 'importo' => (int) $p->sum('saldo_iniziale')])
-                        ->values()->all()])
+                    'persone' => [
+                        ...($conChiEsce ? [['anagrafica_id' => $uscenteId, 'nome' => $nomeUscente, 'importo' => -(int) $g->sum('saldo_iniziale')]] : []),
+                        ...$g->groupBy('anagrafica_id')
+                            ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($nomiPersone[$aid] ?? '?'), 'importo' => (int) $p->sum('saldo_iniziale')])
+                            ->values()->all(),
+                    ]])
                 ->values()->all();
 
             // Rilievo X8 della Fase 1-bis: con l'arretrato a nome del defunto la cifra che resta a lui era la sua posizione meno la coppia;

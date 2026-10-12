@@ -32,6 +32,22 @@
  * Cosa NON copre: il piano fermo per un incasso su una bozza senza niente a giornale; l'unità mista; più di una pertinenza; il cambio
  * in due passi con la fine e l'inizio in giorni diversi; più piani fermi di inquilini di prima diversi; la pagina del modulo nel
  * browser.
+ *
+ * ➕ 1.11.0-beta.50 (decisione 77): la fine di Ines prima dell'inizio chiede la scelta; `ilpfFineDiInes` e `ilpfFineDiInesSu` la
+ * mandano solo quando il pannello propone coppie, e di partenza «Non scriverlo» (le rate restano a Ines, come prima; prima della .50 la
+ * fine senza nuovo inquilino non aveva conguaglio, e la strada A′ è quella che ne conserva il senso). Il prospetto legge la fine: nei
+ * due passi con Luca i giorni dopo l'uscita che stanno nelle rate di Ines li rimborsa Luca a lei (`ilpfRiassunto`, `ilpfPagatori`, e le
+ * voci con `ilpfVoci`): sei controlli del denaro sono riscritti così (prima erano verdi perché il prospetto ignorava la fine). Nei
+ * rinnovi (Ines rientra lo stesso giorno) le righe della stessa persona si fondono: nessuna voce della sua sezione è pagata da lei
+ * stessa, e le voci e le cifre restano quelle di prima. Le frasi «chi paga i giorni dopo la sua uscita lo decide l'amministratore» non
+ * si fissano più nei test riscritti: la frase nuova non è ancora decisa.
+ * ➕ 11/10/2026 notte, revisione dei test della Fase 1: il cambio in due passi semplice fissava ancora che la frase non dicesse «la
+ *   rimborsa Luca», che dicesse «lo decide l'amministratore» e che l'informazione non rimandasse al prospetto — tutte cose che la .50
+ *   ha reso false; ora fissa il prospetto della strada A′, e un test a parte vuole la clausola tolta e il prospetto nominato . La
+ *   clausola è tolta anche dal perimetro di «c'è ancora», da Pertinenze (d) e da Q2b.
+ * ➕ Fusione delle due riscritture della Fase 1 (area della fine e del cambio, area del prospetto), 11/10/2026: la scelta solo se il
+ * pannello propone coppie; di ogni asserzione vera delle due versioni si tiene la più stretta (il riassunto con i giorni e le voci con
+ * il pagatore); nei rinnovi torna la forma delle voci di prima, che la fusione delle righe ridà.
  */
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
@@ -130,7 +146,7 @@ function ilpfEmettiFino($test, array $s, PianoRate $piano, string $fino): void
     ])->assertSessionHasNoErrors();
 }
 
-/** Il modulo dell'inizio locazione di Luca il 1/7/2026, con la presa d'atto del cancello (oggi la chiede, dopo la correzione no). */
+/** Il modulo dell'inizio locazione di Luca il 1/7/2026, con la presa d'atto del cancello (prima della correzione la chiedeva, ora no). */
 function ilpfInizioLocazione(array $s): array
 {
     return [
@@ -347,8 +363,12 @@ function ilpfConInes($test, array $s): Anagrafica
     return $ines;
 }
 
-/** La fine locazione di Ines il 1/7/2026 senza nuovo inquilino, dalla rotta vera; la presa d'atto solo se il pannello la chiede. */
-function ilpfFineDiInes($test, array $s, Anagrafica $ines): void
+/**
+ * La fine locazione di Ines il 1/7/2026 senza nuovo inquilino, dalla rotta vera; la presa d'atto solo se il pannello la chiede. Dalla
+ * 1.11.0-beta.50 (decisione 77), quando il pannello propone delle coppie la scelta sul conguaglio è obbligatoria: di partenza «Non
+ * scriverlo», che lascia le rate a Ines come prima della .50 (la strada A′).
+ */
+function ilpfFineDiInes($test, array $s, Anagrafica $ines, string $conguaglio = 'non_scrivere'): void
 {
     $riga = (int) DB::table('anagrafica_immobile')->where('immobile_id', $s['unita']->id)->where('anagrafica_id', $ines->id)->where('tipologia', 'inquilino')->value('id');
     $dati = ['tipo' => 'fine_locazione', 'tipologia' => 'inquilino', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => null,
@@ -356,6 +376,9 @@ function ilpfFineDiInes($test, array $s, Anagrafica $ines): void
     $anteprima = $test->actingAs($test->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), $dati)->assertOk()->json();
     if ($anteprima['cancello']['richiesto'] ?? false) {
         $dati += ['ho_letto' => true, 'nota_cancello' => 'Disdetta letta, rate emesse controllate'];
+    }
+    if (($anteprima['rate']['conguaglio']['coppie'] ?? []) !== []) {
+        $dati += ['conguaglio' => $conguaglio];
     }
     $test->actingAs($test->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), $dati)->assertSessionHasNoErrors()->assertRedirect();
 }
@@ -474,7 +497,12 @@ it('DL3, piani degli anni passati, solo il 2025 — «Preventivo 2025» emesso p
 
 // Rilievo «nel cambio d'inquilino in due passi la frase nuova promette un prospetto che non nomina il nuovo inquilino» (DL3,
 // medio). Non copre: il due passi con la fine e l'inizio in giorni diversi, la decisione 32 (chi paga i giorni), le pertinenze.
-it('DL3, cambio d\'inquilino in due passi — fine di Ines il 1/7 senza nuovo inquilino, poi inizio di Luca il 1/7 sul piano fermo: la frase non dice «la rimborsa Luca», dice che i giorni restano nelle rate di Ines e che chi li paga lo decide l\'amministratore; l\'informazione non rimanda al prospetto', function () {
+it('DL3, cambio d\'inquilino in due passi dalla .50 — fine di Ines il 1/7 con «Non scriverlo», poi inizio di Luca il 1/7 sul piano fermo: la frase dice che i giorni restano nelle rate di Ines; registrato l\'inizio, il prospetto dice la strada A′ (Luca rimborsa a Ines € 181,48)', function () {
+    // 1.11.0-beta.50 (revisione dei test della Fase 1): prima della .50 questo test fissava che la frase non dicesse «la rimborsa Luca»,
+    // che dicesse «chi li paga lo decide l'amministratore» e che l'informazione non rimandasse al prospetto. Con la scelta della fine
+    // (decisione 77, 1: «Non scriverlo», le parti regolano con il prospetto) e il prospetto che legge la scelta e l'inizio successivo (77,
+    // «chiude il cambio in due passi»; misura del prospetto: «con Non scriverlo rimborsa Ines») quelle tre cose diventano false, e il test
+    // le avrebbe fissate. Restano il presupposto e «nelle rate di Ines»; la clausola si controlla nel test qui sotto.
     $s = ilpfScenario();
     $ines = ilpfConInes($this, $s);
     ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
@@ -493,12 +521,39 @@ it('DL3, cambio d\'inquilino in due passi — fine di Ines il 1/7 senza nuovo in
     $cancello = $anteprima['cancello'];
     $frase = implode(' ', $anteprima['rate']['frasi']);
 
-    // I giorni dal 1/7 (36000 × 184/365 = 18148) sono nelle rate di Ines, non in righe di ripiego di Ugo: il prospetto li dà a Ines
-    // per tutto l'anno e Luca non c'è. Chi li paga è la decisione 32, non ancora costruita: lo decide l'amministratore.
-    expect($frase)->not->toContain('la rimborsa Luca')
-        ->and($frase)->toContain('nelle rate di Ines Galli')
-        ->and($frase)->toContain('lo decide l\'amministratore')
-        ->and(implode(' | ', $cancello['informazioni']))->not->toContain('si regola con il prospetto');
+    // I giorni dal 1/7 (36000 × 184/365 = 18147,95 → 18148) sono nelle rate di Ines, non in righe di ripiego di Ugo.
+    expect($frase)->toContain('nelle rate di Ines Galli');
+
+    // Il denaro, strada A′: registrato l'inizio, Ines ha i suoi 181 giorni, 36000 × [181, 184] = 17852,05 / 18147,95 → 17852 + 18147 =
+    // 35999, il centesimo al resto ,95 → 17852 suoi e 18148 da restituirle; Luca i suoi 184 giorni, 18148, pagati da Ines e da
+    // rimborsarle. Le quote non si muovono: Ines 36000, Ugo 84000, Luca niente.
+    ilpfRegistra($this, $s);
+    $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
+    expect(ilpfRiassunto($p, 'Ines Galli'))->toBe([17852, 36000, -18148, 181])
+        ->and(ilpfRiassunto($p, 'Luca Ferri'))->toBe([18148, 0, 18148, 184])
+        ->and(ilpfPagatori(ilpfConduttore($p, 'Luca Ferri')))->toBe(['Ines Galli' => 18148])
+        ->and($p['senza_conduttore']['totale'])->toBe(0)
+        ->and(ilpfQuote($s['piano'], $ines))->toBe([12, 36000])
+        ->and(ilpfQuote($s['piano'], $s['ugo']))->toBe([12, 84000])
+        ->and(ilpfQuote($s['piano'], $s['luca']))->toBe([0, 0]);
+});
+
+it('DL3, cambio d\'inquilino in due passi dalla .50 — dopo la fine di Ines con «Non scriverlo» l\'inizio di Luca non dice più che chi paga i giorni dopo l\'uscita «lo decide l\'amministratore», e rimanda al prospetto degli oneri accessori', function () {
+    // Revisione dei test della Fase 1. La clausola veniva dalla decisione 32 non costruita (nota del 07/10 sulla 32 e sulla 45: «chi paga i
+    // giorni dopo la sua uscita lo decide l'amministratore»). Con la .50 l'amministratore ha già scelto alla fine: con «Non scriverlo» «le
+    // parti regolano con il prospetto» (decisione 77, 1), e il prospetto fa rimborsare a Luca i giorni pagati da Ines (test qui sopra). Le
+    // parole nuove non sono decise: si controlla solo che la clausola falsa non ci sia e che il prospetto sia nominato.
+    $s = ilpfScenario();
+    $ines = ilpfConInes($this, $s);
+    ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
+    ilpfFineDiInes($this, $s, $ines);
+
+    $anteprima = ilpfAnteprima($this, $s);
+    $frase = implode(' ', $anteprima['rate']['frasi']);
+    $tutto = $frase . ' | ' . implode(' | ', $anteprima['cancello']['informazioni'] ?? []) . ' | ' . implode(' | ', $anteprima['cancello']['motivi'] ?? []);
+
+    expect($tutto)->not->toContain('lo decide l\'amministratore')
+        ->and($frase)->toContain('prospetto degli oneri accessori');
 });
 
 // Controllo del rilievo sul cambio d'inquilino in due passi (DL3, medio): nel passaggio in un passo la frase con il prospetto
@@ -518,8 +573,8 @@ it('DL3, controllo — inizio di Luca su un piano fermo senza inquilino preceden
         ->and(implode(' | ', $anteprima['cancello']['informazioni']))->toContain('si regola con il prospetto degli oneri accessori');
 });
 
-// Rilievo «manca il test negativo sul perimetro dei piani dell'inizio locazione» (DL3, basso): controllo, verde oggi. Non copre:
-// una pertinenza presa da un altro condominio (la rifiuta la richiesta), la frase con le pertinenze dello stesso condominio.
+// Rilievo «manca il test negativo sul perimetro dei piani dell'inizio locazione» (DL3, basso): controllo. Non copre: una
+// pertinenza presa da un altro condominio (la rifiuta la richiesta), la frase con le pertinenze dello stesso condominio.
 it('DL3, perimetro — un secondo condominio con il «Piano riservato del condominio B» generato e non emesso: l\'anteprima dell\'inizio su A non lo nomina, non ha motivi e non chiede la spunta', function () {
     $s = ilpfScenario();
     ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
@@ -682,6 +737,24 @@ function ilpfConduttore(array $prospetto, string $nome): ?array
 function ilpfVoci(array $conduttore): array
 {
     return collect($conduttore['voci'])->map(fn ($v) => sprintf('%s|%d|%s|%s', $v['giorni'] ?? '', (int) $v['importo'], $v['modo'], $v['pagato_da'] ?? ''))->values()->all();
+}
+
+/**
+ * 1.11.0-beta.50: un conduttore del prospetto in breve, [totale, nelle sue rate, da rimborsare, giorni delle voci] (il formato degli
+ * oracoli della decisione 32: da rimborsare positivo = il conduttore deve, negativo = gli si deve), o null se il prospetto non lo ha.
+ */
+function ilpfRiassunto(array $prospetto, string $nome): ?array
+{
+    $c = ilpfConduttore($prospetto, $nome);
+
+    return $c === null ? null : [(int) $c['totale'], (int) $c['nelle_sue_rate'], (int) $c['da_rimborsare'], (int) collect($c['voci'])->sum(fn ($v) => (int) ($v['giorni'] ?? 0))];
+}
+
+/** 1.11.0-beta.50: le voci di un conduttore pagate da altri, sommate per chi le ha pagate (pagato da → centesimi), in ordine di nome. */
+function ilpfPagatori(?array $conduttore): array
+{
+    return collect($conduttore['voci'] ?? [])->filter(fn ($v) => ($v['pagato_da'] ?? null) !== null)
+        ->groupBy('pagato_da')->map(fn ($g) => (int) $g->sum('importo'))->sortKeys()->all();
 }
 
 /** La prima informazione del cancello che contiene il testo dato, '' se non c'è. */
@@ -863,7 +936,10 @@ it('DL3, straordinaria a cavallo dei due anni, controllo — la stessa gestione 
 // Rilievo «cambio in due passi: la condizione riconosce anche casi che non lo sono» (DL3, medio), caso (d): le righe di Ines finiscono
 // il 30/9, prima della fine del piano, e dopo c'è il ripiego. Non copre: più inquilini di prima sullo stesso piano, le pertinenze, la
 // data da cui il prospetto entra in gioco detta nella frase.
-it('DL3, due passi (d) — Ines censita fino al 30/9 alla generazione, fine il 1/7 e inizio di Luca il 1/7 sul piano fermo: la frase dice che dal 1/7 al 30/9 la parte resta nelle rate di Ines e che per gli altri giorni Luca la rimborsa con il prospetto; il prospetto gli dà da rimborsare a Ugo € 90,74', function () {
+it('DL3, due passi (d) — Ines censita fino al 30/9 alla generazione, fine il 1/7 con «Non scriverlo» e inizio di Luca il 1/7 sul piano fermo: la frase dice che dal 1/7 al 30/9 la parte resta nelle rate di Ines e che per gli altri giorni Luca la rimborsa con il prospetto; il prospetto gli dà da rimborsare € 90,74 a Ines e € 90,74 a Ugo', function () {
+    // 1.11.0-beta.50: la fine ha la scelta (decisione 77), e con «Non scriverlo» il prospetto dice la strada A′: i giorni dopo l'uscita
+    // pagati da Ines nelle sue rate glieli rimborsa chi entra. Prima della .50 il prospetto lasciava a Ines i 273 giorni delle sue righe
+    // e la frase diceva «lo decide l'amministratore»: le parole nuove del pannello non sono decise, qui non si fissano.
     $s = ilpfScenario();
     $ines = ilpfConInesCosi($this, $s, 100, '2026-09-30');
     ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
@@ -883,26 +959,28 @@ it('DL3, due passi (d) — Ines censita fino al 30/9 alla generazione, fine il 1
     $frase = implode(' ', $anteprima['rate']['frasi']);
     $informazione = ilpfInformazione($anteprima['cancello'], 'non si ricalcola più');
 
-    // Dei 184 giorni di Luca, 92 (1/7–30/9) sono nelle rate di Ines: chi li paga lo decide l'amministratore (decisione 32). Gli altri
-    // 92 (1/10–31/12) sono nelle rate di Ugo: Luca glieli rimborsa con il prospetto. Il pannello deve dire tutti e due i pezzi.
+    // Dei 184 giorni di Luca, 92 (1/7–30/9) sono nelle rate di Ines (con «Non scriverlo» glieli rimborsa Luca, sotto). Gli altri 92
+    // (1/10–31/12) sono nelle rate di Ugo: Luca glieli rimborsa con il prospetto. Il pannello deve dire tutti e due i pezzi.
     expect($frase)->toContain('Per gli altri giorni la rimborsa Luca Ferri a chi le paga, con il prospetto degli oneri accessori.')
-        ->and($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio al 30 settembre 2026 resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore.')
+        ->and($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio al 30 settembre 2026 resta nelle rate di Ines Galli')
         ->and($frase)->toContain('Il piano «Preventivo 2026» non si ricalcola più: anche le rate ancora da emettere restano a chi le ha.')
-        ->and($informazione)->toContain('resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore — se serve, con un saldo manuale dal Wallet sulla stessa gestione; per gli altri giorni si regola con il prospetto degli oneri accessori');
+        ->and($informazione)->toContain('resta nelle rate di Ines Galli')
+        ->and($informazione)->toContain('per gli altri giorni si regola con il prospetto degli oneri accessori');
 
-    // Il denaro (controllo): registrato l'inizio, il prospetto dà a Ines i suoi 273 giorni nelle sue rate (26926) e a Luca i 92 giorni
-    // dal 1/10 pagati da Ugo, 9074 da rimborsare (€ 90,74). Le quote non si muovono: Ugo 84000 della parte proprietario + 9074 del
-    // ripiego = 93074, Ines 26926 (93074 + 26926 = 120000), Luca niente.
+    // Il denaro: registrato l'inizio, con la strada A′ (la fine di Ines è con «Non scriverlo», decisione 77, e il prospetto la legge).
+    // Le sue righe, 26926 per 273 giorni (1/1–30/9), si dividono alla sua uscita: 26926 × 181/273 = 17852,04 e 26926 × 92/273 = 9073,96
+    // → 17852 + 9073 = 26925, il centesimo al resto ,96: 17852 suoi e 9074 dal 1/7 al 30/9, nelle sue rate e da restituirle. Luca: quei
+    // 92 giorni, 9074, li rimborsa a Ines; i 92 dal 1/10, 9074, a Ugo (ripiego): 18148 per 184 giorni. Prima della .50 il prospetto non
+    // leggeva la fine senza nuovo inquilino e lasciava a Ines i 273 giorni: Luca rimborsava solo Ugo. Le quote non si muovono: Ugo 84000
+    // della parte proprietario + 9074 del ripiego = 93074, Ines 26926 (93074 + 26926 = 120000), Luca niente.
     ilpfRegistra($this, $s);
     $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
-    $diInes = ilpfConduttore($p, 'Ines Galli');
     $diLuca = ilpfConduttore($p, 'Luca Ferri');
-    expect($diInes['totale'])->toBe(26926)
-        ->and($diInes['nelle_sue_rate'])->toBe(26926)
-        ->and(ilpfVoci($diInes))->toBe(['273|26926|rate|'])
-        ->and($diLuca['totale'])->toBe(9074)
-        ->and($diLuca['da_rimborsare'])->toBe(9074)
-        ->and(ilpfVoci($diLuca))->toBe(['92|9074|proprietario|Ugo Rinaldi'])
+    expect(ilpfRiassunto($p, 'Ines Galli'))->toBe([17852, 26926, -9074, 181])
+        ->and(ilpfRiassunto($p, 'Luca Ferri'))->toBe([18148, 0, 18148, 184])
+        ->and(ilpfPagatori($diLuca))->toBe(['Ines Galli' => 9074, 'Ugo Rinaldi' => 9074])
+        ->and(collect(ilpfVoci($diLuca))->sort()->values()->all())->toBe(['92|9074|proprietario|Ines Galli', '92|9074|proprietario|Ugo Rinaldi'])
+        ->and($p['senza_conduttore']['totale'])->toBe(0)
         ->and(ilpfQuote($s['piano'], $s['ugo']))->toBe([12, 93074])
         ->and(ilpfQuote($s['piano'], $ines))->toBe([12, 26926])
         ->and(ilpfQuote($s['piano'], $s['luca']))->toBe([0, 0]);
@@ -975,13 +1053,16 @@ it('DL3, due passi (a) — rinnovo: fine di Ines il 1/7 e inizio di Ines il 1/7 
         ->and($informazione)->not->toContain('si regola con il prospetto');
 
     // Il denaro (controllo): registrato il rinnovo, il prospetto ha solo Ines, 365 giorni nelle sue rate, 36000, da rimborsare 0.
+    // 1.11.0-beta.50: la fine ha la scelta, e con «Non scriverlo» (la voce da scegliere per un rinnovo) i giorni dopo l'uscita da
+    // restituirle e quelli che rimborsa come chi entra sono della stessa persona: si fondono (verbale della .50: la fusione delle righe
+    // della stessa persona vale per il rinnovo e per il rientro), nessuna voce della sua sezione è «pagata da» lei stessa, e la voce
+    // torna una sola, «365|36000|rate|», come prima della .50.
     ilpfRegistraDi($this, $s, $ines);
     $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
     $diInes = ilpfConduttore($p, 'Ines Galli');
     expect(collect($p['conduttori'])->pluck('nome')->all())->toBe(['Ines Galli'])
-        ->and($diInes['totale'])->toBe(36000)
-        ->and($diInes['nelle_sue_rate'])->toBe(36000)
-        ->and($diInes['da_rimborsare'])->toBe(0)
+        ->and(ilpfRiassunto($p, 'Ines Galli'))->toBe([36000, 36000, 0, 365])
+        ->and(ilpfPagatori($diInes))->not->toHaveKey('Ines Galli')
         ->and(ilpfVoci($diInes))->toBe(['365|36000|rate|']);
 });
 
@@ -1027,8 +1108,7 @@ it('Forma, «ad» davanti al nome, due passi — Anna Galli esce il 1/7 e Andrea
 });
 
 // Rilievo «le query nuove che mettono nomi nelle frasi non hanno un test negativo sul perimetro dell'unità» (sicurezza, basso):
-// controllo, verde oggi. Non copre: bozzeFermeDi (FineLocazioneFrasiTest), le pertinenze, l'inquilino di B iscritto a un altro
-// condominio.
+// controllo. Non copre: bozzeFermeDi (FineLocazioneFrasiTest), le pertinenze, l'inquilino di B iscritto a un altro condominio.
 it('DL3, perimetro dell\'unità — due unità sullo stesso piano fermo, l\'inquilino Zeno solo sull\'Interno 2, l\'inizio di Luca sull\'Interno 1: la frase rimanda al prospetto e Zeno non compare da nessuna parte', function () {
     $s = ilpfDueUnita($this);
     ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
@@ -1092,8 +1172,8 @@ function ilpfConBox($test, bool $inesSullUnita, bool $inesSulBox): array
     return $s + ['box' => $box, 'ines' => $ines];
 }
 
-/** Come `ilpfFineDiInes`, sull'unità data (anche il box) e con le pertinenze spuntate date. */
-function ilpfFineDiInesSu($test, array $s, Anagrafica $ines, Immobile $unita, array $pertinenze = []): void
+/** Come `ilpfFineDiInes`, sull'unità data (anche il box) e con le pertinenze spuntate date (la scelta, se serve, «Non scriverlo»). */
+function ilpfFineDiInesSu($test, array $s, Anagrafica $ines, Immobile $unita, array $pertinenze = [], string $conguaglio = 'non_scrivere'): void
 {
     $riga = (int) DB::table('anagrafica_immobile')->where('immobile_id', $unita->id)->where('anagrafica_id', $ines->id)->where('tipologia', 'inquilino')->value('id');
     $dati = ['tipo' => 'fine_locazione', 'tipologia' => 'inquilino', 'riga_uscente_id' => $riga, 'anagrafica_entrante_id' => null,
@@ -1101,6 +1181,9 @@ function ilpfFineDiInesSu($test, array $s, Anagrafica $ines, Immobile $unita, ar
     $anteprima = $test->actingAs($test->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $unita]), $dati)->assertOk()->json();
     if ($anteprima['cancello']['richiesto'] ?? false) {
         $dati += ['ho_letto' => true, 'nota_cancello' => 'Disdetta letta, rate emesse controllate'];
+    }
+    if (($anteprima['rate']['conguaglio']['coppie'] ?? []) !== []) {
+        $dati += ['conguaglio' => $conguaglio];
     }
     $test->actingAs($test->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $unita]), $dati)->assertSessionHasNoErrors()->assertRedirect();
 }
@@ -1196,27 +1279,35 @@ it('Pertinenze (a) — Ines inquilina del solo Interno 1, il Box 12 col ripiego 
 
     // I 184 giorni dal 1/7 dell'Interno 1 sono nelle rate di Ines; quelli del box sono nelle rate di Ugo, negli stessi giorni, e
     // stanno nel prospetto del box: non sono «altri giorni».
-    expect($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore.', $unita))
+    // 1.11.0-beta.50: dopo la fine con «Non scriverlo» la clausola «chi paga i giorni dopo la sua uscita lo decide l'amministratore» non
+    // vale più (li rimborsa Luca a Ines con il prospetto); le parole nuove non sono decise, qui non si fissano.
+    expect($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli', $unita))
         ->and($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 la rimborsa Luca Ferri a chi le paga, con il prospetto degli oneri accessori di quell\'unità.', $box))
         ->and($frase)->not->toContain('Per gli altri giorni')
-        ->and($informazione)->toContain(sprintf('le sue quote restano a chi le ha, e nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: ', $unita))
+        ->and($informazione)->toContain(sprintf('le sue quote restano a chi le ha, e nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli', $unita))
         ->and($informazione)->toContain(sprintf('; nell\'unità «%s» la parte a carico dell\'inquilino si regola con il prospetto degli oneri accessori di quell\'unità', $box))
         ->and($informazione)->not->toContain('per gli altri giorni');
 
-    // Il denaro (controllo). Box: Luca dal 1/7 al 31/12, 31 + 31 + 30 + 31 + 30 + 31 = 184 giorni, 3600 × 184/365 = 1814,79 → 1815,
-    // pagati da Ugo e da rimborsargli; dal 1/1 al 30/6, 181 giorni, 3600 × 181/365 = 1785,21 → 1785 senza conduttore (1815 + 1785 =
-    // 3600). Interno 1: solo Ines, 365 giorni nelle sue rate, 32400.
+    // Il denaro. Box: Luca dal 1/7 al 31/12, 31 + 31 + 30 + 31 + 30 + 31 = 184 giorni, 3600 × 184/365 = 1814,79 → 1815, pagati da Ugo e
+    // da rimborsargli; dal 1/1 al 30/6, 181 giorni, 3600 × 181/365 = 1785,21 → 1785 senza conduttore (1815 + 1785 = 3600). Interno 1,
+    // dalla .50 con la strada A′ (la fine di Ines è con «Non scriverlo» e il prospetto la legge): 32400 × 181/365 = 16066,85 e 32400 ×
+    // 184/365 = 16333,15 → 16066 + 16333 = 32399, il centesimo al resto ,85: Ines 16067 per i suoi 181 giorni, 32400 nelle sue rate, e
+    // le si devono i 16333 dal 1/7, che Luca le rimborsa (prima della .50: Ines 365 giorni, Luca assente).
     ilpfRegistraConBox($this, $s);
     $pBox = app(ProspettoOneriAccessori::class)->calcola($s['box'], $s['e']);
     $pUnita = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
     $lucaBox = ilpfConduttore($pBox, 'Luca Ferri');
+    $lucaUnita = ilpfConduttore($pUnita, 'Luca Ferri');
     expect($lucaBox['totale'])->toBe(1815)
         ->and($lucaBox['nelle_sue_rate'])->toBe(0)
         ->and($lucaBox['da_rimborsare'])->toBe(1815)
         ->and(ilpfVoci($lucaBox))->toBe(['184|1815|proprietario|Ugo Rinaldi'])
         ->and($pBox['senza_conduttore']['totale'])->toBe(1785)
-        ->and(collect($pUnita['conduttori'])->pluck('nome')->all())->toBe(['Ines Galli'])
-        ->and(ilpfVoci(ilpfConduttore($pUnita, 'Ines Galli')))->toBe(['365|32400|rate|'])
+        ->and(collect($pUnita['conduttori'])->pluck('nome')->sort()->values()->all())->toBe(['Ines Galli', 'Luca Ferri'])
+        ->and(ilpfRiassunto($pUnita, 'Ines Galli'))->toBe([16067, 32400, -16333, 181])
+        ->and(ilpfRiassunto($pUnita, 'Luca Ferri'))->toBe([16333, 0, 16333, 184])
+        ->and(ilpfPagatori($lucaUnita))->toBe(['Ines Galli' => 16333])
+        ->and(ilpfVoci($lucaUnita))->toBe(['184|16333|proprietario|Ines Galli'])
         ->and(ilpfQuote($s['piano'], $s['luca']))->toBe([0, 0]);
 });
 
@@ -1242,30 +1333,42 @@ it('Pertinenze (b) — Ines inquilina del solo Box 12, l\'Interno 1 col ripiego 
     $unita = $s['unita']->etichetta_estesa;
     $box = $s['box']->etichetta_estesa;
 
-    // Oggi «resta nelle rate di Ines» parla dei 3600 del box, e sotto «per gli altri giorni» c'è il rimborso dell'appartamento.
+    // La frase «resta nelle rate di Ines» parla dei 3600 del box, e sotto «per gli altri giorni» c'è il rimborso
+    // dell'appartamento.
     expect($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 la rimborsa Luca Ferri a chi le paga, con il prospetto degli oneri accessori di quell\'unità.', $unita))
-        ->and($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore.', $box))
+        // 1.11.0-beta.50: senza la clausola «lo decide l'amministratore», che dopo «Non scriverlo» non vale più (parole nuove non decise).
+        ->and($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli', $box))
         ->and($frase)->not->toContain('Per gli altri giorni')
         ->and($informazione)->toContain(sprintf('nell\'unità «%s» la parte a carico dell\'inquilino si regola con il prospetto degli oneri accessori di quell\'unità', $unita))
-        ->and($informazione)->toContain(sprintf('nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: ', $box))
+        ->and($informazione)->toContain(sprintf('nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli', $box))
         ->and($informazione)->not->toContain('per gli altri giorni');
 
-    // Il denaro (controllo). Interno 1: Luca 184 giorni, 32400 × 184/365 = 16332,93 → 16333 da rimborsare a Ugo; senza conduttore i
-    // 181 giorni, 32400 × 181/365 = 16067,07 → 16067 (16333 + 16067 = 32400). Box: Ines, 365 giorni nelle sue rate, 3600.
+    // Il denaro. Interno 1: Luca 184 giorni, 32400 × 184/365 = 16333,15 → 16333 da rimborsare a Ugo; senza conduttore i 181 giorni,
+    // 32400 × 181/365 = 16066,85 → 16067 (16333 + 16067 = 32400). Box, dalla .50 con la strada A′ (la fine di Ines è con «Non
+    // scriverlo» e il prospetto la legge): 3600 × 181/365 = 1785,21 e 3600 × 184/365 = 1814,79 → 1785 + 1814 = 3599, il centesimo al
+    // resto ,79: Ines 1785 per i suoi 181 giorni, 3600 nelle sue rate, e le si devono i 1815 dal 1/7, che Luca le rimborsa (prima della
+    // .50: Ines 365 giorni sul box, Luca assente dal box).
     ilpfRegistraConBox($this, $s);
     $pUnita = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
     $pBox = app(ProspettoOneriAccessori::class)->calcola($s['box'], $s['e']);
     $lucaUnita = ilpfConduttore($pUnita, 'Luca Ferri');
+    $lucaBox = ilpfConduttore($pBox, 'Luca Ferri');
     expect($lucaUnita['totale'])->toBe(16333)
         ->and($lucaUnita['da_rimborsare'])->toBe(16333)
         ->and(ilpfVoci($lucaUnita))->toBe(['184|16333|proprietario|Ugo Rinaldi'])
         ->and($pUnita['senza_conduttore']['totale'])->toBe(16067)
-        ->and(ilpfVoci(ilpfConduttore($pBox, 'Ines Galli')))->toBe(['365|3600|rate|']);
+        ->and(ilpfRiassunto($pBox, 'Ines Galli'))->toBe([1785, 3600, -1815, 181])
+        ->and(ilpfRiassunto($pBox, 'Luca Ferri'))->toBe([1815, 0, 1815, 184])
+        ->and(ilpfPagatori($lucaBox))->toBe(['Ines Galli' => 1815])
+        ->and(ilpfVoci($lucaBox))->toBe(['184|1815|proprietario|Ines Galli']);
 });
 
-// Secondo giro, rilievo «Pertinenze: per gli altri giorni la rimborsa Luca» (testi, medio), caso (c): controllo, verde oggi. Le due
-// unità hanno la stessa storia e la frase resta senza etichette. Non copre: Ines su tutti e due con fini diverse.
-it('Pertinenze (c), controllo — Ines inquilina dell\'Interno 1 e del Box 12, fine il 1/7 con il box spuntato, inizio di Luca il 1/7 con il box: la frase di oggi, senza etichette e senza il prospetto; i prospetti danno a Ines 32400 e 3600 nelle sue rate', function () {
+// Secondo giro, rilievo «Pertinenze: per gli altri giorni la rimborsa Luca» (testi, medio), caso (c): controllo. Le due unità hanno
+// la stessa storia e la frase resta senza etichette. Non copre: Ines su tutti e due con fini diverse.
+it('Pertinenze (c) — Ines inquilina dell\'Interno 1 e del Box 12, fine il 1/7 con il box spuntato e «Non scriverlo», inizio di Luca il 1/7 con il box: la frase senza etichette; i prospetti danno a Ines i suoi 181 giorni e a Luca i suoi 184, che rimborsa a Ines (€ 163,33 e € 18,15)', function () {
+    // 1.11.0-beta.50: era un controllo (verde sul codice della .47); con la scelta della fine il prospetto delle due unità dice la strada
+    // A′ (Luca rimborsa a Ines i giorni dopo l'uscita che lei ha pagato), e la frase non dice più che «lo decide l'amministratore» né
+    // che il prospetto non c'entra. Le parole nuove della frase non sono decise: qui non si fissano.
     $s = ilpfConBox($this, inesSullUnita: true, inesSulBox: true);
     $ines = $s['ines'];
     ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
@@ -1281,19 +1384,27 @@ it('Pertinenze (c), controllo — Ines inquilina dell\'Interno 1 e del Box 12, f
     $frase = implode(' ', $anteprima['rate']['frasi']);
     $informazione = ilpfInformazione($anteprima['cancello'], 'non si ricalcola più');
 
-    expect($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore.')
+    expect($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli')
         ->and($frase)->not->toContain('Nell\'unità')
         ->and($frase)->not->toContain($s['box']->etichetta_estesa)
-        ->and($frase)->not->toContain('prospetto degli oneri accessori')
         ->and($frase)->not->toContain('Per gli altri giorni')
         ->and($informazione)->not->toContain('nell\'unità');
 
-    // Il denaro (controllo): Ines 365 giorni nelle sue rate su tutte e due le unità.
+    // Il denaro, con la strada A′ su tutte e due le unità: una scelta sola per l'appartamento e il box, e il prospetto la legge su tutti e
+    // due (il box nel registro del padre). Interno 1: 32400 × [181, 184] / 365 = 16066,85 / 16333,15 → 16067 e 16333 (il centesimo al
+    // resto ,85). Box: 3600 × [181, 184] / 365 = 1785,21 / 1814,79 → 1785 e 1815 (il centesimo al resto ,79). Ines ha nelle sue rate
+    // 32400 e 3600 e le si devono 16333 e 1815; Luca li rimborsa a lei. Prima della .50: Ines 365 giorni su tutte e due, Luca assente.
     ilpfRegistraConBox($this, $s);
     $pUnita = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
     $pBox = app(ProspettoOneriAccessori::class)->calcola($s['box'], $s['e']);
-    expect(ilpfVoci(ilpfConduttore($pUnita, 'Ines Galli')))->toBe(['365|32400|rate|'])
-        ->and(ilpfVoci(ilpfConduttore($pBox, 'Ines Galli')))->toBe(['365|3600|rate|']);
+    expect(ilpfRiassunto($pUnita, 'Ines Galli'))->toBe([16067, 32400, -16333, 181])
+        ->and(ilpfRiassunto($pUnita, 'Luca Ferri'))->toBe([16333, 0, 16333, 184])
+        ->and(ilpfPagatori(ilpfConduttore($pUnita, 'Luca Ferri')))->toBe(['Ines Galli' => 16333])
+        ->and(ilpfVoci(ilpfConduttore($pUnita, 'Luca Ferri')))->toBe(['184|16333|proprietario|Ines Galli'])
+        ->and(ilpfRiassunto($pBox, 'Ines Galli'))->toBe([1785, 3600, -1815, 181])
+        ->and(ilpfRiassunto($pBox, 'Luca Ferri'))->toBe([1815, 0, 1815, 184])
+        ->and(ilpfPagatori(ilpfConduttore($pBox, 'Luca Ferri')))->toBe(['Ines Galli' => 1815])
+        ->and(ilpfVoci(ilpfConduttore($pBox, 'Luca Ferri')))->toBe(['184|1815|proprietario|Ines Galli']);
 });
 
 // Secondo giro, rilievo «Piano della 1.10 senza riparto, fermo: la frase manda al prospetto, che lo esclude» (testi, medio); terzo giro,
@@ -1321,8 +1432,8 @@ it('Piano della 1.10 fermo — «Preventivo 2026» senza righe del riparto, sei 
     $frase = implode(' ', $anteprima['rate']['frasi']);
     $informazione = ilpfInformazione($cancello, 'non si ricalcola più');
 
-    // La parte che oggi la frase promette al prospetto è 36000 × 184/365 = 18147,95 → 18148: dopo la registrazione il prospetto non
-    // la ha (il riparto ricostruito mette Luca, le rate sono di Ugo).
+    // La parte che la frase prometteva al prospetto è 36000 × 184/365 = 18147,95 → 18148: dopo la registrazione il prospetto non la
+    // ha (il riparto ricostruito mette Luca, le rate sono di Ugo).
     expect($frase)->toContain('Il piano «Preventivo 2026» non si ricalcola più: anche le rate ancora da emettere restano a chi le ha. È stato generato da una versione precedente, senza riparto registrato: dopo il passaggio il prospetto degli oneri accessori lo lascia fuori, e la parte a carico dell\'inquilino dal 1 luglio 2026 non si divide; il rimborso di Luca Ferri a chi le paga si regola fra le parti.')
         ->and($frase)->toContain('versione precedente')
         ->and($frase)->not->toContain('non lo legge')
@@ -1452,13 +1563,14 @@ it('DL3, rinnovo più ripiego — Ines censita fino al 30/9, fine il 1/7 e rinno
         ->and($frase)->toContain('Per gli altri giorni la rimborsa Ines Galli');
 
     // Il denaro (controllo): registrato il rinnovo, Ines ha 36000 in tutto, 26926 nelle sue rate e 9074 da rimborsare a Ugo
-    // (26926 + 9074 = 36000).
+    // (26926 + 9074 = 36000). 1.11.0-beta.50: con «Non scriverlo» alla fine, i 92 giorni dal 1/7 al 30/9 da restituirle e da
+    // rimborsare come chi entra sono suoi tutte e due le volte: si fondono, l'unica voce pagata da altri è quella di Ugo, e le voci
+    // tornano quelle di prima della .50, «273|26926|rate|» e «92|9074|proprietario|Ugo Rinaldi».
     ilpfRegistraDi($this, $s, $ines);
-    $diInes = ilpfConduttore(app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']), 'Ines Galli');
-    expect($diInes['totale'])->toBe(36000)
-        ->and($diInes['nelle_sue_rate'])->toBe(26926)
-        ->and($diInes['da_rimborsare'])->toBe(9074)
-        ->and(collect(ilpfVoci($diInes))->sort()->values()->all())->toBe(['273|26926|rate|', '92|9074|proprietario|Ugo Rinaldi']);
+    $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
+    expect(ilpfRiassunto($p, 'Ines Galli'))->toBe([36000, 26926, 9074, 365])
+        ->and(ilpfPagatori(ilpfConduttore($p, 'Ines Galli')))->toBe(['Ugo Rinaldi' => 9074])
+        ->and(collect(ilpfVoci(ilpfConduttore($p, 'Ines Galli')))->sort()->values()->all())->toBe(['273|26926|rate|', '92|9074|proprietario|Ugo Rinaldi']);
 });
 
 // Secondo giro, rilievo «Tratti per capitolo: l'inquilino di prima c'è dal 1/7 al 30/9 anche quando la voce non ha competenza» (testi,
@@ -1500,7 +1612,7 @@ it('DL3, tratti per capitolo — «Spese generali» con la competenza 1/1–15/4
         ->and(ilpfVoci(ilpfConduttore($p, 'Ines Galli')))->toBe(['105|20656|rate|']);
 });
 
-// Secondo giro, rilievo «il perimetro di c'è ancora non ha un test negativo» (sicurezza, basso): controllo, verde oggi; rosso se si
+// Secondo giro, rilievo «il perimetro di c'è ancora non ha un test negativo» (sicurezza, basso): controllo; diventa rosso se si
 // toglie `whereIn('immobile_id', $immobileIds)` da «c'è ancora». Non copre: la catena dei pagatori del prospetto fra due unità
 // (ProspettoCambioInquilinoTest), Ines inquilina di una pertinenza non spuntata.
 it('DL3, perimetro di «c\'è ancora» — Ines inquilina dell\'Interno 1 e dell\'Interno 2, esce dall\'Interno 1 il 1/7 e Luca vi entra il 1/7 sul piano fermo: la frase dice «dopo la sua uscita», non «che resta inquilino»', function () {
@@ -1524,8 +1636,10 @@ it('DL3, perimetro di «c\'è ancora» — Ines inquilina dell\'Interno 1 e dell
     $frase = implode(' ', $anteprima['rate']['frasi']);
     $informazione = ilpfInformazione($anteprima['cancello'], 'non si ricalcola più');
 
-    // Sull'Interno 1 Ines non c'è più: che resti inquilina dell'Interno 2 non conta.
-    expect($frase)->toContain('resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore')
+    // Sull'Interno 1 Ines non c'è più: che resti inquilina dell'Interno 2 non conta. 1.11.0-beta.50 (revisione dei test della Fase
+    // 1): senza la clausola «chi paga i giorni dopo la sua uscita lo decide l'amministratore», falsa dopo la fine con «Non
+    // scriverlo» (vedi il cambio in due passi sopra); il punto del test è «dopo la sua uscita».
+    expect($frase)->toContain('resta nelle rate di Ines Galli')
         ->and($frase)->not->toContain('che resta inquilino')
         ->and($informazione)->toContain('dopo la sua uscita')
         ->and($informazione)->not->toContain('che resta inquilino');
@@ -1551,7 +1665,9 @@ it('Pertinenze (d) — Ines inquilina al 50 % dell\'Interno 1 e del Box 12 esce 
         ->assertOk()->json();
     $frase = implode(' ', $anteprima['rate']['frasi']);
 
-    expect($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore.', $s['unita']->etichetta_estesa))
+    // 1.11.0-beta.50 (revisione dei test della Fase 1): senza la clausola «lo decide l'amministratore», falsa dopo la fine con «Non
+    // scriverlo».
+    expect($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli', $s['unita']->etichetta_estesa))
         ->and($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino resta nelle rate di Ines Galli, che resta inquilino.', $s['box']->etichetta_estesa));
 });
 
@@ -1645,7 +1761,8 @@ it('Piano della 1.10 con l\'inquilino, rinnovo (Q2a) — «Preventivo 2026» gen
     $informazione = ilpfInformazione($anteprima['cancello'], 'non si ricalcola più');
 
     // Chi entra ha le quote: i giorni dal 1/7 (36000 × 184/365 = 18147,95 → 18148) sono già nelle rate di Ines, e dopo il rinnovo il
-    // prospetto il piano lo legge (sotto). Oggi la frase dice che non lo legge e che il rimborso di Ines si regola fra le parti.
+    // prospetto il piano lo legge (sotto). Prima della correzione la frase diceva che non lo legge e che il rimborso di Ines si
+    // regola fra le parti.
     expect($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio 2026 è già nelle rate di Ines Galli.')
         ->and($frase)->not->toContain('versione precedente')
         ->and($frase)->not->toContain('lascia fuori')
@@ -1660,11 +1777,12 @@ it('Piano della 1.10 con l\'inquilino, rinnovo (Q2a) — «Preventivo 2026» gen
     ilpfRegistraDi($this, $s, $ines);
     $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
     $diInes = ilpfConduttore($p, 'Ines Galli');
+    // 1.11.0-beta.50: con «Non scriverlo» alla fine le voci della stessa persona si fondono: nessuna voce della sezione di Ines è pagata
+    // da lei stessa, e la voce torna una sola, «365|36000|rate|», come prima della .50.
     expect($p['piani_esclusi'])->toBe([])
         ->and(collect($p['conduttori'])->pluck('nome')->all())->toBe(['Ines Galli'])
-        ->and($diInes['totale'])->toBe(36000)
-        ->and($diInes['nelle_sue_rate'])->toBe(36000)
-        ->and($diInes['da_rimborsare'])->toBe(0)
+        ->and(ilpfRiassunto($p, 'Ines Galli'))->toBe([36000, 36000, 0, 365])
+        ->and(ilpfPagatori($diInes))->not->toHaveKey('Ines Galli')
         ->and(ilpfVoci($diInes))->toBe(['365|36000|rate|']);
 });
 
@@ -1687,9 +1805,12 @@ it('Piano della 1.10 con l\'inquilino, due passi (Q2b) — «Preventivo 2026» g
     $frase = implode(' ', ilpfAnteprima($this, $s)['rate']['frasi']);
 
     // Dal 1/7 nelle rate di Ines restano 6 bozze, 6 × 3000 = 18000: i giorni dopo la sua uscita (decisione 32), non un rimborso fra due
-    // conduttori. Oggi la frase dice «il rimborso di Luca Ferri a chi le paga».
+    // conduttori. Prima della correzione la frase diceva «il rimborso di Luca Ferri a chi le paga».
     expect($frase)->toContain('È stato generato da una versione precedente, senza riparto registrato: dopo il passaggio il prospetto degli oneri accessori lo lascia fuori.')
-        ->and($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli: chi paga i giorni dopo la sua uscita lo decide l\'amministratore.')
+        // 1.11.0-beta.50 (revisione dei test della Fase 1): la fine qui ha avuto la scelta (il pannello propone 18148 a Ugo) e «Non
+        // scriverlo»: la clausola «lo decide l'amministratore» non si fissa più. Che cosa dire quando il prospetto lascia fuori il piano
+        // della 1.10 non è deciso (la strada A′ non ha un prospetto su cui regolarsi).
+        ->and($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli')
         ->and($frase)->not->toContain('rimborso di Luca');
 
     // Il denaro (controllo): registrato l'inizio, il riparto ricostruito ha Luca e le rate sono di Ines: il prospetto esclude il piano e
@@ -1718,8 +1839,8 @@ it('Piano della 1.10 con l\'inquilino, coinquilino (Q2e) — «Preventivo 2026»
 
     $frase = implode(' ', ilpfAnteprimaDi($this, $s, $s['luca'], 50)['rate']['frasi']);
 
-    // Ines non esce: dal 1/7 le sue 6 bozze (18000) restano sue, e un piano generato dopo le dividerebbe fra lei e Luca. Oggi la frase
-    // dice «intesterà quelle voci a Luca Ferri».
+    // Ines non esce: dal 1/7 le sue 6 bozze (18000) restano sue, e un piano generato dopo le dividerebbe fra lei e Luca. Prima della
+    // correzione la frase diceva «intesterà quelle voci a Luca Ferri».
     expect($frase)->toContain('resta nelle rate di Ines Galli, che resta inquilino')
         ->and($frase)->toContain('Un piano generato dopo dividerà quelle voci fra Ines Galli e Luca Ferri, per quote e giorni.');
 
@@ -1753,8 +1874,8 @@ it('Pertinenze, piano solo sul box (Q1d) — Ines inquilina del solo Interno 1, 
     $informazione = ilpfInformazione($anteprima['cancello'], 'Rate autorimessa 2026');
     $box = $s['box']->etichetta_estesa;
 
-    // Il rimborso dell'autorimessa sta solo nel prospetto del box: in quello dell'Interno 1 il piano non ha voci (sotto). Oggi la frase
-    // dice «con il prospetto degli oneri accessori» senza dire quale.
+    // Il rimborso dell'autorimessa sta solo nel prospetto del box: in quello dell'Interno 1 il piano non ha voci (sotto). Prima della
+    // correzione la frase diceva «con il prospetto degli oneri accessori» senza dire quale.
     expect($frase)->toContain('Il piano «Rate autorimessa 2026» non si ricalcola più: anche le rate ancora da emettere restano a chi le ha.')
         ->and($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 la rimborsa Luca Ferri a chi le paga, con il prospetto degli oneri accessori di quell\'unità.', $box))
         ->and($informazione)->toContain(sprintf('nell\'unità «%s»', $box))
@@ -1772,13 +1893,19 @@ it('Pertinenze, piano solo sul box (Q1d) — Ines inquilina del solo Interno 1, 
         ->and($lucaBox['da_rimborsare'])->toBe(20215)
         // Nel prospetto dell'Interno 1 l'autorimessa non ha voci, né di conduttori né senza conduttore.
         ->and(collect($pUnita['conduttori'])->flatMap(fn ($c) => $c['voci'])->merge($pUnita['senza_conduttore']['voci'])->where('piano', 'Rate autorimessa 2026')->values()->all())->toBe([])
-        ->and(collect($pUnita['conduttori'])->pluck('nome')->all())->toBe(['Ines Galli'])
-        ->and(ilpfVoci(ilpfConduttore($pUnita, 'Ines Galli')))->toBe(['365|32400|rate|']);
+        // 1.11.0-beta.50: la fine di Ines con «Non scriverlo», strada A′ sull'Interno 1 (come Pertinenze (a)): Ines 16067 per i suoi 181
+        // giorni (32400 × 181/365 = 16066,85; × 184/365 = 16333,15; il centesimo al resto ,85), 32400 nelle sue rate, le si devono i 16333
+        // dal 1/7 e li rimborsa Luca. Prima della .50: Ines 365 giorni, Luca assente dall'Interno 1.
+        ->and(collect($pUnita['conduttori'])->pluck('nome')->sort()->values()->all())->toBe(['Ines Galli', 'Luca Ferri'])
+        ->and(ilpfRiassunto($pUnita, 'Ines Galli'))->toBe([16067, 32400, -16333, 181])
+        ->and(ilpfRiassunto($pUnita, 'Luca Ferri'))->toBe([16333, 0, 16333, 184])
+        ->and(ilpfPagatori(ilpfConduttore($pUnita, 'Luca Ferri')))->toBe(['Ines Galli' => 16333])
+        ->and(ilpfVoci(ilpfConduttore($pUnita, 'Luca Ferri')))->toBe(['184|16333|proprietario|Ines Galli']);
 });
 
 // Terzo giro, rilievo «Tratti per capitolo: dal 1 luglio al 31 ottobre quando i giorni veri dal 1/7 sono 17» (testi, basso), scenario
 // Q3a. NON copre: il ripiego senza altre parti con i giorni che partono dopo l'inizio, la parte «propri» (Q3b, sotto).
-it('DL3, tratti per capitolo fino al 31/10 (Q3a) — «Spese generali» con la competenza 1/1–15/4 e 15/10–31/12, Ines censita fino al 31/10, fine il 1/7 e inizio di Luca il 1/7 sul piano fermo: la parte resta nelle rate di Ines dal 15 al 31 ottobre, non dal 1 luglio al 31 ottobre; il prospetto dà a Luca € 120,00 da rimborsare a Ugo', function () {
+it('DL3, tratti per capitolo fino al 31/10 (Q3a) — «Spese generali» con la competenza 1/1–15/4 e 15/10–31/12, Ines censita fino al 31/10, fine il 1/7 con «Non scriverlo» e inizio di Luca il 1/7 sul piano fermo: la parte resta nelle rate di Ines dal 15 al 31 ottobre, non dal 1 luglio al 31 ottobre; il prospetto dà a Luca € 120,00 da rimborsare a Ugo e € 33,44 a Ines', function () {
     $s = ilpfTrattiFinoAOttobre($this);
     $ines = $s['ines'];
 
@@ -1801,14 +1928,18 @@ it('DL3, tratti per capitolo fino al 31/10 (Q3a) — «Spese generali» con la c
         ->and($frase)->toContain('Per gli altri giorni la rimborsa Luca Ferri a chi le paga, con il prospetto degli oneri accessori.')
         ->and($informazione)->not->toContain('dal 1 luglio al 31 ottobre');
 
-    // Il denaro (controllo): registrato l'inizio, Ines ha i suoi 122 giorni nelle sue rate, 24000; Luca i 61 dal 1/11, 12000, pagati da
-    // Ugo e da rimborsargli.
+    // Il denaro: registrato l'inizio, dalla .50 con la strada A′ (la fine di Ines è con «Non scriverlo» e il prospetto la legge). Le
+    // righe di Ines, 24000 per 122 giorni di competenza, si dividono alla sua uscita: prima del 1/7 i 105 giorni dal 1/1 al 15/4, dopo i
+    // 17 dal 15/10 al 31/10: 24000 × 105/122 = 20655,74 e 24000 × 17/122 = 3344,26 → 20655 + 3344 = 23999, il centesimo al resto ,74:
+    // Ines 20656, e 3344 dopo l'uscita nelle sue rate, da restituirle. Luca: quei 17 giorni, 3344, li rimborsa a Ines; i 61 dal 1/11,
+    // 12000, a Ugo: 15344 per 78 giorni. Prima della .50: Ines 122 giorni per 24000, Luca 12000 a Ugo soltanto.
     ilpfRegistra($this, $s);
     $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
     $diLuca = ilpfConduttore($p, 'Luca Ferri');
-    expect(ilpfVoci(ilpfConduttore($p, 'Ines Galli')))->toBe(['122|24000|rate|'])
-        ->and(ilpfVoci($diLuca))->toBe(['61|12000|proprietario|Ugo Rinaldi'])
-        ->and($diLuca['da_rimborsare'])->toBe(12000);
+    expect(ilpfRiassunto($p, 'Ines Galli'))->toBe([20656, 24000, -3344, 105])
+        ->and(ilpfRiassunto($p, 'Luca Ferri'))->toBe([15344, 0, 15344, 78])
+        ->and(ilpfPagatori($diLuca))->toBe(['Ines Galli' => 3344, 'Ugo Rinaldi' => 12000])
+        ->and(collect(ilpfVoci($diLuca))->sort()->values()->all())->toBe(['17|3344|proprietario|Ines Galli', '61|12000|proprietario|Ugo Rinaldi']);
 });
 
 // Terzo giro, rilievo «Tratti per capitolo: dal 1 luglio al 31 ottobre» (testi, basso), scenario Q3b: il rinnovo. NON copre: il
@@ -1836,10 +1967,12 @@ it('DL3, tratti per capitolo fino al 31/10, rinnovo (Q3b) — lo stesso piano, f
 
     // Il denaro (controllo): registrato il rinnovo, Ines ha 36000 in tutto, 24000 nelle sue rate e 12000 da rimborsare a Ugo
     // (24000 + 12000 = 36000).
+    // 1.11.0-beta.50: con «Non scriverlo» alla fine i 17 giorni dal 15/10 da restituirle e da rimborsare come chi entra sono suoi tutte e
+    // due le volte: si fondono, l'unica voce pagata da altri è quella di Ugo, e le voci tornano quelle di prima della .50,
+    // «122|24000|rate|» e «61|12000|proprietario|Ugo Rinaldi». I giorni: 122 + 61 = 183, la competenza intera.
     ilpfRegistraDi($this, $s, $ines);
-    $diInes = ilpfConduttore(app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']), 'Ines Galli');
-    expect($diInes['totale'])->toBe(36000)
-        ->and($diInes['nelle_sue_rate'])->toBe(24000)
-        ->and($diInes['da_rimborsare'])->toBe(12000)
-        ->and(collect(ilpfVoci($diInes))->sort()->values()->all())->toBe(['122|24000|rate|', '61|12000|proprietario|Ugo Rinaldi']);
+    $p = app(ProspettoOneriAccessori::class)->calcola($s['unita'], $s['e']);
+    expect(ilpfRiassunto($p, 'Ines Galli'))->toBe([36000, 24000, 12000, 183])
+        ->and(ilpfPagatori(ilpfConduttore($p, 'Ines Galli')))->toBe(['Ugo Rinaldi' => 12000])
+        ->and(collect(ilpfVoci(ilpfConduttore($p, 'Ines Galli')))->sort()->values()->all())->toBe(['122|24000|rate|', '61|12000|proprietario|Ugo Rinaldi']);
 });

@@ -197,7 +197,7 @@ const pageGuides: GuideItem[] = [
   },
   {
     title: 'Addebiti',
-    description: 'Tutte le rate emesse a carico del condòmino e gli eventuali ripristini di debito.',
+    description: 'Le rate emesse a carico del condòmino e i rimborsi del suo credito. Un incasso stornato e il suo storno restano nell\'elenco, non nel totale.',
     icon: Banknote,
     colorVariant: 'amber'
   },

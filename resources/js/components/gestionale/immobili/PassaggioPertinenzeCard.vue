@@ -18,6 +18,10 @@ defineProps<{
   successione?: boolean;
   /** Nel legato le pertinenze vanno a chi riceve l'unità, non agli eredi (giro sulle correzioni, GC16). */
   legato?: boolean;
+  /** Decisione 83.4 (1.11.0-beta.50): nella locazione conta il contratto, non il titolo di proprietà. */
+  locazione?: boolean;
+  /** Nell'inizio della locazione la scelta sul conguaglio non c'è (decisione 77): la nota dice solo la data. */
+  inizio?: boolean;
 }>();
 
 const selezionate = defineModel<number[]>({ default: () => [] });
@@ -63,6 +67,10 @@ function toggle(id: number, checked: boolean) {
     <p v-if="successione" class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-3">
       <template v-if="legato">Con il legato le pertinenze passano a chi riceve l'unità insieme all'unità. Togli la spunta solo se il testamento le assegna ad altri.</template>
       <template v-else>Con la successione le pertinenze passano agli eredi insieme all'unità. Togli la spunta solo se il testamento o la divisione le assegnano ad altri.</template>
+    </p>
+    <p v-else-if="locazione" class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-3">
+      <template v-if="inizio">Spunta le pertinenze che il contratto di locazione comprende: la data del passaggio vale insieme per l'unità e per le pertinenze spuntate.</template>
+      <template v-else>Spunta le pertinenze che il contratto di locazione comprende: la data del passaggio e la scelta sul conguaglio valgono insieme per l'unità e per le pertinenze spuntate.</template>
     </p>
     <p v-else class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-3">
       L'art. 818 co. 1 c.c. fa seguire le pertinenze all'unità principale, salvo diversa disposizione dell'atto.

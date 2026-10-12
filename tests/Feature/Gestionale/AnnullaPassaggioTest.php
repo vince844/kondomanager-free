@@ -743,21 +743,30 @@ it('A3 — una bozza del registro che esiste ancora ma ha un importo cambiato co
     expect(apAnnulla($this, $s, $subentro)->assertUnprocessable()->json('errors.passaggio.0'))->toContain('è stata modificata dopo')->toContain('del piano «Preventivo 2026»')->not->toContain('rata ?');
 });
 
-it('A4 — due comproprietari che vendono registrati al contrario delle date: le gemelle del secondo non sono «un piano ricalcolato», e una sua rata emessa non ferma il primo', function () {
+it('A4 — due comproprietari che vendono registrati al contrario delle date: si annulla per primo l\'ultimo registrato, anche se ha la data prima (decisione 83.1), senza avvisi; poi il primo, anche con la rata 6 emessa nel frattempo', function () {
+    // Decisione 83.1 (Fase 1-bis della .50): l'«ultimo passaggio» della decisione 27 è l'ultimo registrato, non l'ultimo per data. Un
+    // passaggio registrato dopo, con una data precedente, può aver letto il primo; annullato prima il primo, resterebbe calcolato su un
+    // dato che non c'è più. Fino alla .50 questo test voleva il contrario: il primo registrato (la vendita di Ugo del 1/9) annullabile
+    // mentre c'era il secondo (quella di Rino del 1/6). Le quote che il primo ha scritto prima del secondo non sono, per il secondo, «un
+    // piano ricalcolato»: nessun avviso.
     $s = apScenario('tutte_rate', 18000, comproprietario: true);
     apEmetti($s);
     $primo = apRegistra($this, $s, apVendita($s['rigaV'], $s['a'], '2026-09-01', ['quota' => 50]));
-    apRegistra($this, $s, apVendita($s['rigaR'], $s['b'], '2026-06-01', ['quota' => 50]));
+    $secondo = apRegistra($this, $s, apVendita($s['rigaR'], $s['b'], '2026-06-01', ['quota' => 50]));
 
-    $storico = fn () => collect(app(StoricoTitolarita::class)->perImmobile($s['unita']->fresh())['subentri'])->firstWhere('id', $primo->id);
-    expect($storico()['annullabile']['si'])->toBeTrue()->and($storico()['annullabile']['avvisi'])->toBe([]);
+    $storico = fn (Subentro $p) => collect(app(StoricoTitolarita::class)->perImmobile($s['unita']->fresh())['subentri'])->firstWhere('id', $p->id);
+    expect($storico($primo)['annullabile']['si'])->toBeFalse('La vendita di Ugo, registrata per prima, risulta annullabile mentre c\'è quella di Rino, registrata dopo con una data precedente')
+        ->and(apAnnulla($this, $s, $primo)->assertUnprocessable()->json('errors.passaggio.0'))->toContain('Compratrice Bice')->toContain('1 giugno 2026')->toContain('registrato dopo');
+    expect($storico($secondo)['annullabile']['si'])->toBeTrue()->and($storico($secondo)['annullabile']['avvisi'])->toBe([]);
 
+    apAnnulla($this, $s, $secondo)->assertRedirect()->assertSessionHasNoErrors();
     apEmetti($s, soloRata: 6);
-    expect($storico()['annullabile']['motivo'])->toBeNull();
+    expect($storico($primo)['annullabile']['motivo'])->toBeNull();
     apAnnulla($this, $s, $primo)->assertRedirect()->assertSessionHasNoErrors();
     expect(DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->value('data_fine'))->toBeNull()
+        ->and(DB::table('anagrafica_immobile')->where('id', $s['rigaR'])->value('data_fine'))->toBeNull()
         ->and(apQuoteDi($s['piano'], $s['a']))->toBeEmpty()
-        ->and(DB::table('anagrafica_immobile')->where('anagrafica_id', $s['b']->id)->exists())->toBeTrue();
+        ->and(apQuoteDi($s['piano'], $s['b']))->toBeEmpty();
 });
 
 it('A4 — un piano nuovo emesso dopo il passaggio solo a chi vendeva (il consuntivo dell\'anno prima) non ferma l\'annullamento', function () {

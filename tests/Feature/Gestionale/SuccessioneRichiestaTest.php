@@ -5,13 +5,13 @@
  *
  * Da dove nasce: la revisione della Fase 1-bis ha trovato, oltre ai testi del pannello, alcuni difetti piccoli nella richiesta
  * (`AnteprimaPassaggioRequest`), nel registro del passaggio e nei messaggi che lo leggono (nel rapporto: denaro R2, R4 e R5, testi R6
- * e R7, sicurezza SIC-1 e SIC-2). Dopo la Fase 1 il campo `conguaglio` (`scrivi` / `non_scrivere`) è accettato per ogni tipo di
- * passaggio: nella successione vince in silenzio sulla casella `rinuncia_conguaglio`, negli altri tipi è ignorato in silenzio (la
- * coppia si scrive comunque, anche con `non_scrivere`); un elenco al posto della scelta o dell'arretrato fa una pagina 500
- * (`(string)` su un array, la stessa classe di errore del «pippo» già corretto); nella successione la data si chiama ancora «la data
- * dell'atto»; sul box le righe degli eredi non dicono «non scritto»; la successione registrata fra la .44 e la .47 con la casella dice
- * ancora «€ 5,48», la somma di coppie di segno diverso; i messaggi dei saldi dicono «una delle due» righe dove le righe sono sei. Il
- * verbale (`docs/piano_esecutivo_beta48.md`, «Fase 1-bis») ha deciso che si correggono tutti, con i test prima: questi.
+ * e R7, sicurezza SIC-1 e SIC-2). Dopo la Fase 1 il campo `conguaglio` (`scrivi` / `non_scrivere`) era accettato per ogni tipo di
+ * passaggio: nella successione vinceva in silenzio sulla casella `rinuncia_conguaglio`, negli altri tipi era ignorato in silenzio (la
+ * coppia si scriveva comunque, anche con `non_scrivere`); un elenco al posto della scelta o dell'arretrato faceva una pagina 500
+ * (`(string)` su un array, la stessa classe di errore del «pippo» già corretto); nella successione la data si chiamava ancora «la data
+ * dell'atto»; sul box le righe degli eredi non dicevano «non scritto»; la successione registrata fra la .44 e la .47 con la casella
+ * diceva ancora «€ 5,48», la somma di coppie di segno diverso; i messaggi dei saldi dicevano «una delle due» righe dove le righe sono
+ * sei. Il verbale (`docs/piano_esecutivo_beta48.md`, «Fase 1-bis») ha deciso che si correggono tutti, con i test prima: questi.
  *
  * Il caso di riferimento è quello di Fresco e della .44. € 1.200,00 l'anno in dodici rate da € 100,00, rate 1–4 a giornale e non
  * pagate, otto bozze; Ugo muore il 1° maggio; eredi Anna 33,34 %, Bruno 33,33 % e Carla 33,33 %, Anna erede di riferimento, arretrato a
@@ -25,21 +25,22 @@
  * - con un erede solo (Anna al 100 %) la coppia è 80548 − 80000 = +548: la somma è davvero la cifra di una persona, e « € 5,48 »
  *   è giusto. Lo stesso nella vendita a Elsa: 120000 × 245 / 365 = 80548, meno le otto bozze (80000) = 548.
  *
- * Cosa presidia, rosso sul codice di oggi: `conguaglio` vietato fuori dalla successione, con la casella o senza (denaro R2 e SIC-2, 422
- * sul campo); la contraddizione `conguaglio` + `rinuncia_conguaglio=true` nella successione, rifiutata sul campo `conguaglio` con
- * qualunque valore (SIC-2); l'elenco al posto della scelta o dell'arretrato (SIC-1: 422, mai 500); «il giorno del decesso» nei messaggi
- * della data della successione, con la maiuscola a inizio frase, e il periodo chiuso che non dice «data dell'atto» (testi R7); lo
- * storico del box, dove le righe degli eredi leggono il passaggio padre (`conguaglio_non_scritto` vero e la nota, denaro R4); la
- * successione con più eredi registrata prima della .48 con la casella, che non dice la somma ma «le cifre per erede non sono nel
- * registro» (denaro R5); i messaggi dei saldi sulle righe del conguaglio e sul lucchetto dell'arretrato senza «una delle due» (testi R6).
+ * Cosa presidia (nato come test rosso della Fase 1-bis della .48): `conguaglio` vietato fuori dalla successione (dalla .50 fuori dalla
+ * successione e dalla fine locazione, decisione 77), con la casella o senza (denaro R2 e SIC-2, 422 sul campo); la contraddizione
+ * `conguaglio` + `rinuncia_conguaglio=true` nella successione, rifiutata sul campo `conguaglio` con qualunque valore (SIC-2); l'elenco al
+ * posto della scelta o dell'arretrato (SIC-1: 422, mai 500); «il giorno del decesso» nei messaggi della data della successione, con la
+ * maiuscola a inizio frase, e il periodo chiuso che non dice «data dell'atto» (testi R7); lo storico del box, dove le righe degli eredi
+ * leggono il passaggio padre (`conguaglio_non_scritto` vero e la nota, denaro R4); la successione con più eredi registrata prima della .48
+ * con la casella, che non dice la somma ma «le cifre per erede non sono nel registro» (denaro R5); i messaggi dei saldi sulle righe del
+ * conguaglio e sul lucchetto dell'arretrato senza «una delle due» (testi R6).
  *
- * I controlli, verdi oggi, che devono restarlo: la vendita senza `conguaglio` (o con `null`, come la manda il modulo) che scrive la
- * coppia; la successione con `conguaglio` e `rinuncia_conguaglio=false`, come la manda il modulo nuovo; la casella da sola con la nota,
- * che vale «non scriverlo»; i messaggi della data fuori dalla successione («la data dell'atto»); le righe del box con «scrivi» (falso);
- * la successione con un erede solo o la vendita registrate prima della .48, che dicono « € 5,48 »; la registrazione della .48 con le
- * persone, che dice le tre cifre; il messaggio dei saldi che resta sul campo, dice che conguaglio e arretrato sono un conto solo e
- * la strada («annullando la successione»), con la riga che non cambia; il lucchetto dell'arretrato che resta un 403 e parla del piano
- * che assorbe la riga.
+ * I controlli, già giusti prima delle correzioni e che devono restarlo: la vendita senza `conguaglio` (o con `null`, come la manda il
+ * modulo) che scrive la coppia; la successione con `conguaglio` e `rinuncia_conguaglio=false`, come la manda il modulo nuovo; la
+ * casella da sola con la nota, che vale «non scriverlo»; i messaggi della data fuori dalla successione («la data dell'atto»); le righe
+ * del box con «scrivi» (falso); la successione con un erede solo o la vendita registrate prima della .48, che dicono « € 5,48 »; la
+ * registrazione della .48 con le persone, che dice le tre cifre; il messaggio dei saldi che resta sul campo, dice che conguaglio e
+ * arretrato sono un conto solo e la strada («annullando la successione»), con la riga che non cambia; il lucchetto dell'arretrato che
+ * resta un 403 e parla del piano che assorbe la riga.
  *
  * Cosa NON copre: il pannello e il modulo (resources/js), le frasi dell'anteprima (`SuccessioneTestiTest`), le cifre per erede dei
  * messaggi della .48 (`SuccessioneSceltaConguaglioTest`); la frase nuova dei messaggi dei saldi (il verbale non la fissa: qui si prova
@@ -123,7 +124,7 @@ function srqCorpoVendita(array $s, array $extra = []): array
     return array_merge(ruPassaggio('vendita', $s['rigaV'], $s['a'], '2026-05-01', 100), ['ho_letto' => true, 'nota_cancello' => 'Rogito letto fra le parti'], $extra);
 }
 
-/** La fine della locazione di un'inquilina dal 2025, al 1° luglio: un tipo di passaggio che non ha la scelta sul conguaglio. */
+/** La fine della locazione di un'inquilina dal 2025, al 1° luglio (dalla .50 ha la scelta sul conguaglio quando l'anteprima propone coppie). */
 function srqCorpoFineLocazione(array $s): array
 {
     $inquilina = srqPersona($s, 'Ines Inquilina');
@@ -220,8 +221,9 @@ function srqComePrimaDellaQuarantotto(Subentro $sub): Subentro
 // ---------------------------------------------------------------------------------------------------------------------
 
 it('SIC-2: fuori dalla successione il campo «conguaglio» si rifiuta sul campo, con qualunque valore e con la casella o senza', function (array $extra) {
-    // La vendita ha la casella e la nota obbligatoria (decisione 73, punto 3): una scelta mandata a mano non può saltarla. Oggi la
-    // coppia (Elsa +548, Ugo −548: 120000 × 245 / 365 = 80548, meno le otto bozze da 80000) si scrive comunque, in silenzio.
+    // La vendita ha la casella e la nota obbligatoria (decisione 73, punto 3): una scelta mandata a mano non può saltarla. Prima
+    // della correzione la coppia (Elsa +548, Ugo −548: 120000 × 245 / 365 = 80548, meno le otto bozze da 80000) si scriveva
+    // comunque, in silenzio.
     $s = ruScenario('prima_rata', 0);
     ruEmetti($s);
 
@@ -232,12 +234,20 @@ it('SIC-2: fuori dalla successione il campo «conguaglio» si rifiuta sul campo,
     'non_scrivere, con la casella e la nota' => [['conguaglio' => 'non_scrivere', 'rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Regolato nel rogito fra le parti']],
 ]);
 
-it('SIC-2: anche la fine della locazione rifiuta il campo «conguaglio» sul campo, e non scrive niente', function () {
-    // Il divieto vale per ogni tipo che non è la successione: le righe dell'inquilina restano com'erano.
+it('SIC-2, dalla .50: la fine della locazione accetta il campo «conguaglio» (decisione 77), e l\'inizio della locazione lo rifiuta ancora sul campo, senza scrivere niente', function () {
+    // 1.11.0-beta.50, decisione 77: «il campo è `conguaglio`, come nella successione», anche nella fine locazione (con o senza un nuovo
+    // inquilino). Il divieto di SIC-2 resta per gli altri tipi: la vendita e l'usufrutto (il test sopra, con la casella) e l'inizio
+    // della locazione, che non ha conguaglio (decisione 47). Prima della .50 questo test diceva il contrario: la fine locazione
+    // rifiutava il campo.
     $s = ruScenario('prima_rata', 0);
     ruEmetti($s);
+    srqAnteprima($this, $s, srqCorpoFineLocazione($s) + ['conguaglio' => 'non_scrivere'])->assertOk();
 
-    srqRifiuto($this, $s, srqCorpoFineLocazione($s) + ['conguaglio' => 'non_scrivere'], 'conguaglio');
+    $s = ruScenario('prima_rata', 0);
+    ruEmetti($s);
+    $luca = srqPersona($s, 'Luca Nuovo');
+    srqRifiuto($this, $s, ['tipo' => 'inizio_locazione', 'tipologia' => 'inquilino', 'anagrafica_entrante_id' => $luca->id, 'decorrenza' => '2026-07-01', 'quota' => 100,
+        'copia_autentica' => false, 'regime_contratto' => 'abitativo', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Contratto letto', 'conguaglio' => 'non_scrivere'], 'conguaglio');
 });
 
 it('SIC-2, controllo: la vendita con «conguaglio» nullo, come la manda il modulo fuori dalla successione, si registra e scrive la coppia', function () {
@@ -252,8 +262,9 @@ it('SIC-2, controllo: la vendita con «conguaglio» nullo, come la manda il modu
 });
 
 it('SIC-2: nella successione «conguaglio» insieme a «rinuncia_conguaglio» vero si rifiuta sul campo «conguaglio», con qualunque scelta', function (string $scelta) {
-    // Oggi `scrivi` più la casella scrive le sei righe e butta la nota senza dirlo (registro «scritto», nota nulla); `non_scrivere` più
-    // la casella la accetta come se fosse una cosa sola. Due modi di dire la stessa scelta nello stesso corpo: si rifiuta.
+    // Prima della correzione `scrivi` più la casella scriveva le sei righe e buttava la nota senza dirlo (registro «scritto», nota
+    // nulla); `non_scrivere` più la casella la accettava come se fosse una cosa sola. Due modi di dire la stessa scelta nello stesso
+    // corpo: si rifiuta.
     [$s, $anna, $bruno, $carla] = srqCaso();
     $corpo = srqCorpo($s, $anna, $bruno, $carla, ['conguaglio' => $scelta, 'rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Gli eredi hanno regolato fra loro il conguaglio']);
 
@@ -312,7 +323,8 @@ it('SIC-1, controllo: la vendita con «conguaglio» come elenco dà già un 422 
 // ---------------------------------------------------------------------------------------------------------------------
 
 it('testi R7: nella successione una data che non è una data dice «Il giorno del decesso non è una data valida.», con la maiuscola', function () {
-    // Oggi: «la data dell'atto non è una data valida.», in minuscolo (è un'intera frase, non un pezzo di frase).
+    // Prima della correzione: «la data dell'atto non è una data valida.», in minuscolo (è un'intera frase, non un pezzo di
+    // frase).
     [$s, $anna, $bruno, $carla] = srqCaso();
 
     $frasi = srqRifiuto($this, $s, srqCorpo($s, $anna, $bruno, $carla, ['decorrenza' => 'pippo']), 'decorrenza');
@@ -334,7 +346,7 @@ it('testi R7, controllo: nella vendita una data che non è una data dice ancora 
 
 it('testi R7: nella successione il messaggio del periodo chiuso non dice «data dell\'atto»', function () {
     // Il periodo di Ugo si è chiuso il 28 febbraio 2026 (la data di fine scritta a mano), il decesso è il 1° maggio: il giorno prima del
-    // decesso, il 30 aprile, il periodo non è più in corso. Oggi: «… da un titolare in corso alla data dell'atto.».
+    // decesso, il 30 aprile, il periodo non è più in corso. Prima della correzione: «… da un titolare in corso alla data dell'atto.».
     [$s, $anna, $bruno, $carla] = srqCaso();
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['data_fine' => '2026-02-28']);
 
@@ -346,7 +358,7 @@ it('testi R7: nella successione il messaggio del periodo chiuso non dice «data 
 });
 
 it('testi R7, controllo: nella vendita il messaggio del periodo chiuso dice ancora «alla data dell\'atto»', function () {
-    // Stessa riga chiusa il 28 febbraio 2026, vendita del 1° maggio: il messaggio di oggi non cambia.
+    // Stessa riga chiusa il 28 febbraio 2026, vendita del 1° maggio: il messaggio non cambia.
     $s = ruScenario('prima_rata', 0);
     ruEmetti($s);
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['data_fine' => '2026-02-28']);

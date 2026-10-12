@@ -220,7 +220,7 @@ class PianoRate extends Model
         // si annulla), poi le emissioni, poi i passaggi, e la nuova registrazione dei passaggi quando non resta nessun'altra
         // ragione; con più passaggi si annullano tutti prima di registrarne di nuovo uno. Rilievo T-B del terzo giro: con un
         // passaggio registrato prima della .42 la guardia dell'annullamento dell'emissione vuole prima il passaggio (decisione
-        // 49), e «dall'ultimo» è l'ordine dello storico (per data, poi per registrazione).
+        // 49), e «dall'ultimo» è l'ordine di registrazione (decisione 83.1, 1.11.0-beta.50: prima era quello dello storico, per data).
         $passaggi = in_array('conguaglio', $ragioni, true) ? $this->passaggiDaAnnullare() : [];
         $uno = count($passaggi) === 1;
         $diPrima = $passaggi !== [] && in_array('scrittura', $ragioni, true) && collect($passaggi)->contains(fn (Subentro $s) => ! self::haIPianiPresi($s));
@@ -395,20 +395,22 @@ class PianoRate extends Model
             if ($cifra === null) {
                 continue;
             }
-            // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti.
+            // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti. Dalla .50 anche
+            // quello della locazione (decisione 77): la frase dice di quale passaggio è.
             if ($p->conguaglioNonScritto() && ! $p->conguaglioAnnullato()) {
-                $nonScritti[] = $cifra;
+                $nonScritti[$p->conguaglioInParole()][] = $cifra;
             } else {
-                $parti[] = $cifra;
+                // R11 della Fase 1-bis della .50: alla fine senza un nuovo inquilino nessuno entra.
+                $parti[$p->aChiVannoIGiorni()][] = $cifra;
             }
         }
 
         $frasi = [];
-        if ($parti !== []) {
-            $frasi[] = sprintf('Le parti hanno già regolato fra loro %s: ricalcolando, il condominio addebita a chi entra i suoi giorni, e quell\'accordo va rifatto fra le parti.', implode('; ', $parti));
+        foreach ($parti as $aChi => $cifre) {
+            $frasi[] = sprintf('Le parti hanno già regolato fra loro %s: ricalcolando, il condominio addebita %s, e quell\'accordo va rifatto fra le parti.', implode('; ', $cifre), $aChi);
         }
-        if ($nonScritti !== []) {
-            $frasi[] = sprintf('Il conguaglio della successione non è stato scritto (%s): ricalcolando, il condominio addebita a ciascuno i suoi giorni, e la posizione lasciata com\'era cambia.', implode('; ', $nonScritti));
+        foreach ($nonScritti as $diChe => $cifre) {
+            $frasi[] = sprintf('Il conguaglio %s non è stato scritto (%s): ricalcolando, il condominio addebita a ciascuno i suoi giorni, e la posizione lasciata com\'era cambia.', $diChe, implode('; ', $cifre));
         }
 
         return $frasi === [] ? null : implode(' ', $frasi);
@@ -422,8 +424,8 @@ class PianoRate extends Model
      */
     public function presoNelConguaglioDa(Subentro $s): bool
     {
-        // Decisione 47: un passaggio senza conguaglio (inizio locazione, fine locazione senza un nuovo inquilino) non prende piani,
-        // anche quando è stato registrato prima della .42 e la sua ora cade dopo una scrittura.
+        // Decisione 47: un passaggio senza conguaglio (inizio locazione, fine locazione senza nuovo inquilino né la scelta della .50) non
+        // prende piani, anche quando è stato registrato prima della .42 e la sua ora cade dopo una scrittura.
         if (! $s->haUnConguaglio()) {
             return false;
         }

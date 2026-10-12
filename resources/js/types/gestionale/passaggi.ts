@@ -33,7 +33,8 @@ export type SottotipoUsufrutto = 'costituzione' | 'estinzione';
 export interface TitolareAttuale {
   /** L'id della riga di `anagrafica_immobile`, non della persona. */
   id: number;
-  anagrafica: { id: number; nome: string; codice_fiscale: string | null };
+  /** Il codice fiscale c'è solo nei titolari di oggi: le righe della locazione e dell'estinzione non lo portano. */
+  anagrafica: { id: number; nome: string; codice_fiscale?: string | null };
   tipologia: string;
   quota: number | string;
   data_inizio: string | null;
@@ -143,6 +144,23 @@ export interface AnteprimaPassaggioDati {
     frasi: string[];
     /** 1.11.0-beta.48 (rilievo R2): quando il conguaglio della successione si sceglie, le frasi del calcolo, che valgono solo se si scrive. */
     frasi_del_conguaglio?: string[];
+    /**
+     * Decisione 77 (1.11.0-beta.50): il conguaglio si sceglie (successione e legato, fine di una locazione), la stessa regola che la
+     * registrazione pretende. Il modulo la ricalcola con `sceltaConguaglioDelPassaggio`, che dice lo stesso.
+     */
+    scelta_del_conguaglio?: boolean;
+    /**
+     * Decisioni 79 (2) e 80: dove la locazione continua con un coinquilino, la cifra dei giorni dopo l'uscita che resta a chi esce. La
+     * frase e il motivo del cancello arrivano già scritti in `frasi` e in `cancello.motivi`.
+     */
+    fermata_coinquilino?: { immobile_id: number; unita: string; gestione_id: number; gestione: string; esercizio_id: number | null; cifra: number; persona_id: number; persona: string; restano: string[]; wallet: boolean }[];
+    /** R10 della Fase 1-bis della .50: nel cambio d'inquilino, i piani che il prospetto degli oneri accessori lascerà fuori (la 1.10). */
+    prospetto_esclude?: string[];
+    /**
+     * Giro stretto della .50 (G5): nel cambio d'inquilino, i piani su cui il passaggio che ha dato i giorni a chi esce è stato regolato fra
+     * le parti (decisione 83.3): con «Non scriverlo» il prospetto non va oltre quell'accordo, e il rimborso si regola fra le parti.
+     */
+    prospetto_regolato?: string[];
   };
   obbligati: { frasi: string[]; copia_autentica_mancante: boolean };
   invarianti: { frasi: string[] };
@@ -252,6 +270,11 @@ export interface PassaggioRegistrato {
   accrescimento?: boolean;
   /** Nella successione, l'arretrato del defunto come il passaggio l'ha scritto (1.11.0-beta.44). */
   arretrato?: { scelta: 'eredi' | 'defunto' | null; frase: string | null } | null;
+  /**
+   * Decisione 77 (3), 1.11.0-beta.50: la fermata dopo «Scrivi il conguaglio» (la parte dei giorni dopo l'uscita che il passaggio non ha
+   * spostato) e, all'inizio di una locazione, quanto ne resta da regolare; dal registro del passaggio.
+   */
+  fermate?: string[];
   decorrenza: string | null;
   decorrenza_a_parole: string | null;
   registrato_il: string | null;
@@ -274,8 +297,13 @@ export interface PassaggioRegistrato {
     annullato_il: string | null;
     /** Con l'arretrato agli eredi il conguaglio da solo non si annulla: coppia e arretrato fanno un conto solo (1.11.0-beta.44). */
     annullabile?: boolean;
-    /** Con più persone che entrano, la riga di ciascuna («€ 316,71 a credito di Anna»); vuoto con una sola (1.11.0-beta.44). */
+    /**
+     * Con più persone che entrano, la riga di ciascuna («€ 316,71 a credito di Anna»); vuoto con una sola (1.11.0-beta.44). Alla fine di
+     * una locazione senza un nuovo inquilino anche con una sola: chi paga al posto dell'inquilino (Fase 1-bis della .50, R11).
+     */
     per_entrante?: string[];
+    /** Decisione 83.2 (1.11.0-beta.50): prima di confermare «Annulla il conguaglio», le fermate dei passaggi dopo su questa coppia. */
+    avvisi?: string[];
   };
   /** Le frasi del vademecum, senza imperativi né futuro. */
   obbligati: string[];

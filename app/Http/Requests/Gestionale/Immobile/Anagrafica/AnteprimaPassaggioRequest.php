@@ -116,8 +116,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato il conguaglio si sceglie, senza valore di partenza.
             // Se la scelta serve lo sa solo l'azione, dopo l'anteprima (ci vogliono delle coppie): qui si controlla solo il valore.
             // Rilievo SIC-2 della Fase 1-bis: fuori dalla successione la scelta non c'è, e un valore mandato a mano si rifiuta sul campo
-            // invece di essere ignorato in silenzio (la coppia si scriveva anche con «non_scrivere»).
-            'conguaglio' => ['nullable', Rule::prohibitedIf(fn () => $tipo !== 'successione'), Rule::in([Subentro::SCRIVI_IL_CONGUAGLIO, Subentro::NON_SCRIVERE_IL_CONGUAGLIO])],
+            // invece di essere ignorato in silenzio (la coppia si scriveva anche con «non_scrivere»). Decisione 77 (1.11.0-beta.50): la
+            // scelta c'è anche alla fine di una locazione, con un nuovo inquilino o senza; la vendita e l'usufrutto tengono la casella.
+            'conguaglio' => ['nullable', Rule::prohibitedIf(fn () => ! in_array($tipo, ['successione', 'fine_locazione'], true)), Rule::in([Subentro::SCRIVI_IL_CONGUAGLIO, Subentro::NON_SCRIVERE_IL_CONGUAGLIO])],
             // Decisioni 31.5 e 31.6 (1.11.0-beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal
             // giorno dell'atto. È obbligatoria (rilievo A3 della Fase 1-bis): una scelta che sposta le voci della tabella
             // intera non ha un valore predefinito sul server — un modulo rimasto aperto da prima dell'aggiornamento, che
@@ -480,6 +481,12 @@ class AnteprimaPassaggioRequest extends FormRequest
             if ($tipo === 'successione') {
                 $this->controllaSuccessione($v, $immobile, $uscente, $delCondominio);
             }
+            // Decisione 77 (1.11.0-beta.50) e rilievo SIC-2 della .48: alla fine di una locazione la scelta e la casella di prima insieme si
+            // contraddicono, come nella successione («Scrivi» con la casella perdeva la nota che dichiara l'accordo). Il modulo nuovo manda
+            // la casella spenta; uno rimasto aperto la manda da sola, e vale «Non scriverlo» (`datiPassaggio`).
+            if ($tipo === 'fine_locazione' && $this->filled('conguaglio') && $this->boolean('rinuncia_conguaglio')) {
+                $v->errors()->add('conguaglio', 'La scelta sul conguaglio e la casella della rinuncia si contraddicono: ricarica la pagina e scegli «Scrivi il conguaglio» o «Non scriverlo».');
+            }
             // Rilievo X1 della Fase 1-bis della .44 (il caso c'era già prima): chi compra è già titolare con lo stesso ruolo, e la sua riga
             // ha una data di fine.
             if ($tipo === 'vendita' && $this->filled('anagrafica_entrante_id') && $this->filled('decorrenza') && $this->filled('tipologia')) {
@@ -508,17 +515,23 @@ class AnteprimaPassaggioRequest extends FormRequest
             // Nella locazione e nell'usufrutto chi entra non è già titolare dell'unità: un proprietario non
             // è inquilino di se stesso, e il nudo proprietario non è il proprio usufruttuario. Nella vendita
             // invece un comproprietario può comprare la quota dell'altro: là si esclude solo chi esce.
+            // Giro stretto della .50 (G6): lo stesso su ogni pertinenza spuntata, che dalla 83.4 la scheda propone anche nella locazione, con il
+            // nome della pertinenza davanti: chi entra inquilino del box non ne è già proprietario.
             if ($this->filled('anagrafica_entrante_id') && in_array($this->input('tipo'), ['inizio_locazione', 'fine_locazione', 'usufrutto'], true)) {
                 $oggi = DateHelper::oggiUtenteImmutable();
-                $giaTitolare = $immobile->titolarita()->with('anagrafica')->where('anagrafica_id', (int) $this->input('anagrafica_entrante_id'))->get()
-                    ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($oggi));
-                if ($giaTitolare !== null) {
-                    $v->errors()->add('anagrafica_entrante_id', sprintf(
-                        '%s è già %s di questa unità: non può entrare anche come %s.',
-                        $giaTitolare->anagrafica?->nome ?? 'Questa persona',
-                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom($giaTitolare->tipologia)?->label() ?? $giaTitolare->tipologia),
-                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom($this->testo('tipologia'))?->label() ?? $this->testo('tipologia')),
-                    ));
+                foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+                    $principale = (int) $unita->id === (int) $immobile->id;
+                    $giaTitolare = $unita->titolarita()->with('anagrafica')->where('anagrafica_id', (int) $this->input('anagrafica_entrante_id'))->get()
+                        ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($oggi));
+                    if ($giaTitolare !== null) {
+                        $v->errors()->add('anagrafica_entrante_id', ($principale ? '' : $unita->nome . ': ') . sprintf(
+                            '%s è già %s di questa %s: non può entrare anche come %s.',
+                            $giaTitolare->anagrafica?->nome ?? 'Questa persona',
+                            mb_strtolower(RuoloAnagraficaImmobile::tryFrom($giaTitolare->tipologia)?->label() ?? $giaTitolare->tipologia),
+                            $principale ? 'unità' : 'pertinenza',
+                            mb_strtolower(RuoloAnagraficaImmobile::tryFrom($this->testo('tipologia'))?->label() ?? $this->testo('tipologia')),
+                        ));
+                    }
                 }
             }
 
@@ -601,7 +614,11 @@ class AnteprimaPassaggioRequest extends FormRequest
             ...($this->successione() ? ['decorrenza.date' => 'Il giorno del decesso non è una data valida.'] : []),
             // Rilievo AMM-6 del giro sulle correzioni: il messaggio della regola comincerebbe con l'attributo in minuscolo.
             'conguaglio.in' => 'Scegli «Scrivi il conguaglio» o «Non scriverlo».',
-            'conguaglio.prohibited' => 'La scelta sul conguaglio c\'è solo nella successione e nel legato: negli altri passaggi si rinuncia alla coppia con la casella.',
+            // Decisione 77 (1.11.0-beta.50): la scelta c'è nella successione, nel legato e alla fine di una locazione; il messaggio dice
+            // perché non c'è nel passaggio in corso.
+            'conguaglio.prohibited' => $this->testo('tipo') === 'inizio_locazione'
+                ? 'L\'inizio di una locazione non ha un conguaglio: la scelta non c\'è.'
+                : 'In questo passaggio la scelta sul conguaglio non c\'è: per non scrivere la coppia proposta spunta «Le parti hanno regolato il conguaglio fra loro» e scrivi perché.',
             'allegato_titolo.mimes' => 'L\'allegato deve essere un PDF.',
             'promemoria_giorni.required_if' => 'Scegli con quanto anticipo vuoi il promemoria.',
             'nota_conguaglio.required_if' => 'Hai rinunciato al conguaglio proposto: scrivi perché (almeno dieci caratteri).',
@@ -877,7 +894,8 @@ class AnteprimaPassaggioRequest extends FormRequest
             'rinuncia_conguaglio' => (bool) ($d['rinuncia_conguaglio'] ?? false),
             'nota_conguaglio' => isset($d['nota_conguaglio']) && trim((string) $d['nota_conguaglio']) !== '' ? trim((string) $d['nota_conguaglio']) : null,
             // Decisione 72: la scelta della successione e del legato; un modulo di prima che manda la casella vale «non scriverlo».
-            'conguaglio' => $d['tipo'] === 'successione'
+            // Decisione 77 (1.11.0-beta.50): lo stesso alla fine di una locazione, con un vocabolario solo per tutta la locazione.
+            'conguaglio' => in_array($d['tipo'], ['successione', 'fine_locazione'], true)
                 ? ($d['conguaglio'] ?? (! empty($d['rinuncia_conguaglio']) ? Subentro::NON_SCRIVERE_IL_CONGUAGLIO : null))
                 : null,
             'ordinaria_dopo_atto' => $d['ordinaria_dopo_atto'] ?? null,
@@ -920,9 +938,10 @@ class AnteprimaPassaggioRequest extends FormRequest
     /**
      * Rilievi V8, W3, W4 e decisione 52: la strada del rifiuto si sceglie dai dati, ma solo nel caso semplice. La nuda deve tornare
      * prima dell'estinzione (che la fa piena) e la piena dopo (che allora somma): registrata prima l'estinzione, chi aveva venduto la
-     * nuda diventerebbe proprietario pieno. Si parte dal **primo** passaggio che ha toccato la riga piena nata quel giorno (anche
-     * sommando su di lei) e si annulla tutto ciò che nello storico viene dopo, nell'ordine della guardia dell'annullamento; poi si
-     * rifanno le vendite della nuda, questa estinzione e infine gli altri. Fuori dal caso semplice — una riserva (un secondo
+     * nuda diventerebbe proprietario pieno. Si parte dal **primo** passaggio registrato che ha toccato la riga piena nata quel giorno
+     * (anche sommando su di lei) e si annulla tutto ciò che è stato registrato dopo, anche con una data precedente, l'ultimo registrato
+     * per primo, come la guardia dell'annullamento (decisione 83.1, giro stretto della .50, G21); poi si rifanno, ciascun gruppo in ordine
+     * di data, le vendite della nuda, questa estinzione e infine gli altri. Fuori dal caso semplice — una riserva (un secondo
      * usufrutto), passaggi registrati con o da una pertinenza, un passaggio in cui esce il nudo, uno dopo questa data in cui il nudo
      * entra — la frase dice il fatto e rimanda alla correzione a mano: ogni ramo in più della ricetta aveva prodotto difetti nuovi,
      * per un caso raro.
@@ -934,8 +953,9 @@ class AnteprimaPassaggioRequest extends FormRequest
         $il = $giorno->locale('it')->translatedFormat('j F Y');
         $testa = sprintf('%s è nudo proprietario e proprietario pieno di questa unità da due righe nate lo stesso giorno, il %s, e l\'estinzione non le può riunire.', $chi, $il);
 
-        // Padri e figli: una riga del box può venire dal passaggio figlio di uno registrato dall'unità principale (rilievo X5).
-        $passaggi = Subentro::where('immobile_id', $unita->id)->orderBy('decorrenza')->orderBy('id')->get()->values();
+        // Padri e figli: una riga del box può venire dal passaggio figlio di uno registrato dall'unità principale (rilievo X5). In ordine di
+        // registrazione (G21): un passaggio registrato dopo con una data precedente si annulla prima, e va nella ricetta.
+        $passaggi = Subentro::where('immobile_id', $unita->id)->orderBy('id')->get()->values();
         $primo = $passaggi->search(fn (Subentro $s) => (int) $s->riga_entrante_id === (int) $piena->id || in_array((int) $piena->id, $s->righeDelRegistro(), true));
         if ($primo === false) {
             return $testa . sprintf(' La riga piena di %s dal %s è stata associata a mano: va corretta a mano da «Modifica associazione» prima dell\'estinzione.', $chi, $il);
@@ -971,8 +991,10 @@ class AnteprimaPassaggioRequest extends FormRequest
         if (($x = $daAnnullare->first(fn (Subentro $s) => ! $s->decorrenza->equalTo($giorno) && ((int) $s->anagrafica_entrante_id === $nudoId || $eNuda($s)))) !== null) {
             return $aMano(sprintf('Fra i passaggi da rifare c\'è %s, dal %s, dopo questa estinzione', AnnullaPassaggioAction::descrivi($x), $data($x)));
         }
-        $nude = $daAnnullare->filter($eNuda)->values();
-        $altri = $daAnnullare->reject($eNuda)->values();
+        // Si registrano di nuovo in ordine di data (a pari data, come erano stati registrati).
+        $perData = fn (\Illuminate\Support\Collection $lista) => $lista->sortBy(fn (Subentro $s) => sprintf('%s|%010d', $s->decorrenza->toDateString(), (int) $s->id))->values();
+        $nude = $perData($daAnnullare->filter($eNuda));
+        $altri = $perData($daAnnullare->reject($eNuda));
         $elenco = fn ($lista) => collect($lista)->map(fn (Subentro $s) => AnnullaPassaggioAction::descrivi($s))->join(', ', ' e ');
 
         if ($nude->isEmpty() && $altri->count() === 1) {

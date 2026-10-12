@@ -108,6 +108,53 @@ class AnteprimaPassaggio
      */
     private array $bozzeFermeDiChiEsce = [];
 
+    /**
+     * Decisione 79 (2), 1.11.0-beta.50: alla fine di una locazione, le unità dove la locazione continua con un coinquilino, con la cifra
+     * dei giorni dopo l'uscita per gestione (`conguaglioDellaFine`).
+     *
+     * @var list<array<string, mixed>>
+     */
+    private array $fermataCoinquilino = [];
+
+    /**
+     * Decisione 77, punto 4 della lista della .50: alla fine di una locazione, i gruppi (gestione, unità, esercizio) in cui nessuno sta al
+     * posto dell'inquilino nei giorni dopo l'uscita: niente coppia, e la parte resta nelle rate di chi esce (`conguaglioDellaFine`).
+     *
+     * @var list<array<string, mixed>>
+     */
+    private array $senzaNessuno = [];
+
+    /** @var array<int, string> R14 della Fase 1-bis della .50: le unità della fine dove la locazione continua con un coinquilino, per nome. */
+    private array $unitaConCoinquilino = [];
+
+    /**
+     * Punto 5 della lista della .50 (rilievo 4): alla fine di una locazione senza un nuovo inquilino, chi altro è inquilino dell'unità il
+     * giorno del passaggio, con la quota. Con loro l'unità non resta sfitta, anche quando non sono coinquilini che restano (chi entra quel
+     * giorno con un inizio già registrato: il cambio d'inquilino in due passi).
+     *
+     * @var list<array{nome: string, quota: float}>
+     */
+    private array $altriInquilini = [];
+
+    /** Decisione 77 (1.11.0-beta.50): il conguaglio di questo passaggio si sceglie (`sceltaDelConguaglio`), per le frasi del cancello. */
+    private bool $sceltaQui = false;
+
+    /**
+     * Decisione 77 (1.11.0-beta.50), con la 45: all'inizio di una locazione di chi è uscito con una fine «Scrivi» sulla stessa unità, i
+     * giorni della coppia dal giorno dell'inizio che chi entra rimborsa con il prospetto (`FermataDopoScrivi::rientro`).
+     *
+     * @var list<array<string, mixed>>
+     */
+    private array $rientroDopoScrivi = [];
+
+    /**
+     * Ultimo giro della .50 (punto 2): all'inizio di una locazione dopo una fine «Scrivi» di un altro inquilino, la parte del nuovo conduttore
+     * nella coppia, con il segno (`FermataDopoScrivi::partiDiChiEntra`): il blocco «Rate» ne dice il verso.
+     *
+     * @var list<array{fine_id: int, immobile_id: int, gestione_id: int, cifra: int}>
+     */
+    private array $partiDopoScrivi = [];
+
     public function __construct(
         private readonly ConguaglioPassaggio $conguaglioPassaggio = new ConguaglioPassaggio(),
         private readonly FrasiObbligati $frasiObbligati = new FrasiObbligati(),
@@ -185,6 +232,15 @@ class AnteprimaPassaggio
 
         // DL2: chi riceve le voci dell'inquilino alla fine della locazione è chi le riceve nel riparto, non «i proprietari».
         $this->alPosto = $tipo === 'fine_locazione' ? $this->frasiObbligati->alPostoDellInquilino($immobile, $decorrenza) : collect();
+        // Punto 5 della lista della .50 (rilievo 4): «l'unità resta sfitta» solo se nessun altro è inquilino il giorno del passaggio.
+        $this->altriInquilini = $tipo === 'fine_locazione' && $entrante === null && $uscente !== null
+            ? $immobile->titolarita()->with('anagrafica')->where('tipologia', 'inquilino')->orderBy('id')->get()
+                ->filter(fn (TitolaritaImmobile $t) => (int) $t->id !== (int) $uscente->id && (int) $t->anagrafica_id !== (int) $uscente->anagrafica_id
+                    && (float) $t->quota > 0 && $t->inCorsoIl($decorrenza))
+                ->groupBy('anagrafica_id')->map(fn (Collection $g) => ['nome' => (string) ($g->first()->anagrafica?->nome ?? '?'), 'quota' => (float) $g->sum('quota'),
+                    // Rilievo della ripresa: chi entra il giorno stesso (l'inizio registrato prima) non «resta» inquilino.
+                    'entra' => ! $g->contains(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giornoPrima))])->values()->all()
+            : [];
         // DL3: un piano che non si ricalcola più non intesterà niente al nuovo inquilino.
         $pianiQui = $tipo === 'inizio_locazione' ? $this->pianiConLInquilino($condominio, $immobileIds, $decorrenza) : [];
         $fermi = \App\Models\Gestionale\PianoRate::immutabiliFra($pianiQui);
@@ -193,6 +249,8 @@ class AnteprimaPassaggio
         // inquilino di prima (il cambio in due passi), di un coinquilino che resta, di chi entra (il rinnovo), o in righe di ripiego. Il
         // prospetto c'entra solo per queste.
         $this->unitaPrincipale = (int) $immobile->id;
+        $this->rientroDopoScrivi = $tipo === 'inizio_locazione' ? app(FermataDopoScrivi::class)->rientro($entrante, (float) ($dati['quota'] ?? 0), $immobileIds, $decorrenza) : [];
+        $this->partiDopoScrivi = $tipo === 'inizio_locazione' ? app(FermataDopoScrivi::class)->partiDiChiEntra($entrante, (float) ($dati['quota'] ?? 0), $immobileIds, $decorrenza) : [];
         $this->pianiFermi = $tipo === 'inizio_locazione' ? $this->comeRestanoIPianiFermi(array_values(array_intersect($pianiQui, $fermi)), $immobileIds, $decorrenza, $entrante) : [];
         $this->nomiDeiPianiQui = $pianiQui === [] ? [] : \App\Models\Gestionale\PianoRate::whereIn('id', $pianiQui)->pluck('nome', 'id')->map(fn ($n) => (string) $n)->all();
         // DL2 (Fase 1-bis della .47): alla fine della locazione senza un nuovo inquilino, le quote di chi esce non ancora emesse sui
@@ -209,6 +267,7 @@ class AnteprimaPassaggio
         // Decisioni 31.5 e 31.6: alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal giorno dell'atto.
         $ordinaria = $this->bloccoOrdinaria($tipo, $dati, $condominio, $immobileIds, $uscente, $nomeUscente, $nomeEntrante, $decorrenza);
         $sceltaDelConguaglio = $this->sceltaDelConguaglio($tipo, $dati, $conguaglio);
+        $this->sceltaQui = $sceltaDelConguaglio;
 
         $anteprima = [
             // Decisione 57 (1.11.0-beta.43, D2): all'estinzione, i nudi che tornano pieni e da dove viene la scelta — tutti, dal
@@ -240,6 +299,19 @@ class AnteprimaPassaggio
                 // Rilievo R2 della Fase 1-bis della .48: quando il conguaglio della successione si sceglie, le frasi del calcolo stanno qui e
                 // non fra i fatti: il pannello le mostra prima della scelta e con «Scrivi», e le nasconde con «Non scriverlo».
                 'frasi_del_conguaglio' => $sceltaDelConguaglio ? self::dividiLeFrasiDelConguaglio(array_slice($conguaglio['frasi'], 1))[1] : [],
+                // Decisione 77 (1.11.0-beta.50): la scelta sul conguaglio si chiede (successione e legato, fine della locazione), la stessa
+                // regola che la registrazione pretende; il modulo la legge da qui.
+                'scelta_del_conguaglio' => $sceltaDelConguaglio,
+                // Decisione 79 (2): dove la locazione continua con un coinquilino, la cifra dei giorni dopo l'uscita che resta a chi esce.
+                'fermata_coinquilino' => $this->fermataCoinquilino,
+                // R10 della Fase 1-bis della .50: nel cambio d'inquilino, i piani che il prospetto degli oneri accessori lascerà fuori (generati
+                // da una versione precedente, senza riparto registrato): con «Non scriverlo» lì il rimborso si regola fra le parti.
+                'prospetto_esclude' => $tipo === 'fine_locazione' && $entrante !== null && $conguaglio['stato'] === 'calcolato' ? self::pianiSenzaRiparto($conguaglio) : [],
+                // Giro stretto della .50 (G5): nel cambio d'inquilino, i piani su cui il cambio che ha fatto entrare chi esce le parti lo hanno
+                // regolato fra loro: senza una fine «Scrivi» dopo il prospetto non segue la catena (decisione 83.3), e con «Non scriverlo» il
+                // rimborso di chi entra a chi esce si regola fra le parti.
+                'prospetto_regolato' => $tipo === 'fine_locazione' && $entrante !== null && $conguaglio['stato'] === 'calcolato' && $this->cambioRegolatoDiChiEsce($dati) !== null
+                    ? self::pianiDopoUnRegolato($conguaglio) : [],
             ],
             'obbligati' => [
                 // Decisione 28.8 a: le unità del passaggio, per la frase sui saldi intestati all'unità.
@@ -259,7 +331,123 @@ class AnteprimaPassaggio
             $anteprima['cancello']['motivi'] = array_map(fn (string $m) => preg_replace('/(compres[ae] nel conguaglio)(?!, se lo scrivi)/u', '$1, se lo scrivi', $m), $anteprima['cancello']['motivi']);
         }
 
+        // Decisioni 79 (2) e 80: dove la locazione continua con un coinquilino il programma non propone il conguaglio dei giorni dopo
+        // l'uscita e non sceglie chi li paga. La fermata si dice con la cifra e la persona, ed è un motivo del cancello, con la spunta:
+        // cambia l'esito del passaggio.
+        foreach ($this->fermataCoinquilino as $f) {
+            $anteprima['rate']['frasi'][] = self::fraseDelCoinquilino($f, count($immobileIds) > 1);
+            $anteprima['cancello']['motivi'][] = sprintf('%s dei giorni dopo l\'uscita di %s restano nelle sue rate sulla gestione %s%s: la locazione continua con %s, e il programma non propone il conguaglio',
+                MoneyHelper::format((int) $f['cifra']), $f['persona'], $f['gestione'], count($immobileIds) > 1 ? sprintf(' («%s»)', $f['unita']) : '', $this->elenco($f['restano']));
+        }
+        // Punto 4 della lista della .50: dove nessuno sta al posto dell'inquilino nei giorni dopo l'uscita la coppia non c'è, e si dice.
+        foreach ($this->senzaNessuno as $g) {
+            $anteprima['rate']['frasi'][] = $this->fraseSenzaNessuno($g, count($immobileIds) > 1);
+        }
+
+        // Decisione 77 (3), allargata dalla 79 (1.11.0-beta.50): la fermata dopo «Scrivi il conguaglio». Il passaggio abbassa il peso di chi
+        // esce fra chi sta al posto dell'inquilino, e la coppia di una fine «Scrivi» non lo segue: il programma lo dice, con la persona e la
+        // cifra, ed è un motivo del cancello, con la spunta. Nella successione con l'arretrato al defunto e «Non scriverlo» la posizione del
+        // defunto resta com'è, e niente si ferma; finché la scelta non c'è, la fermata si dice per «Scrivi».
+        $anteprima['rate']['fermate_dopo_scrivi'] = [];
+        $anteprima['rate']['rinnovo_dopo_scrivi'] = [];
+        $anteprima['rate']['fermate_ridotte'] = [];
+        // Fase 1-bis della .50 (R15): «Non scriverlo» conta solo dove la scelta c'è (`scelta_del_conguaglio`). Senza coppie la scelta non si
+        // chiede, e un valore mandato a mano (o la casella di un modulo di prima) non toglie la fermata.
+        if ($uscente !== null && ! in_array($tipo, ['inizio_locazione', 'fine_locazione'], true)
+            && ! ($tipo === 'successione' && ! $this->arretratoAgliEredi($dati) && $sceltaDelConguaglio && ($dati['conguaglio'] ?? null) === Subentro::NON_SCRIVERE_IL_CONGUAGLIO)) {
+            $seScrivi = $tipo === 'successione' && $sceltaDelConguaglio && ($dati['conguaglio'] ?? null) === null;
+            $fermate = app(FermataDopoScrivi::class)->per($tipo, $dati['sottotipo'] ?? null, $uscente, $entrante, $this->eredi, $immobileIds, $decorrenza,
+                $arretrato['fonti'] ?? [], $this->nudi, ! empty($dati['accrescimento']));
+            $anteprima['rate']['fermate_dopo_scrivi'] = $fermate;
+            foreach ($fermate as $f) {
+                $anteprima['rate']['frasi'][] = FermataDopoScrivi::frasePannello($f, $seScrivi);
+                $anteprima['cancello']['motivi'][] = FermataDopoScrivi::motivoCancello($f, $seScrivi);
+            }
+        }
+        if ($tipo === 'inizio_locazione') {
+            // Decisione 45: il rientro dopo una fine «Scrivi» è un'informazione, non una fermata; la frase sui piani fermi dice chi ha preso
+            // quei giorni (`comeRestanoIPianiFermi`), questa la cifra e, nel rinnovo, l'alternativa.
+            $anteprima['rate']['rinnovo_dopo_scrivi'] = $this->rientroDopoScrivi;
+            foreach ($this->rientroDopoScrivi as $f) {
+                $anteprima['rate']['frasi'][] = FermataDopoScrivi::fraseRientro($f);
+            }
+            // Dopo una fermata, l'inizio dice quanto ne resta da regolare: un motivo del cancello, come la fermata.
+            $ridotte = app(FermataDopoScrivi::class)->fermateRidotte($entrante, (float) ($dati['quota'] ?? 0), $immobileIds, $decorrenza);
+            $anteprima['rate']['fermate_ridotte'] = $ridotte;
+            foreach ($ridotte as $f) {
+                $anteprima['rate']['frasi'][] = FermataDopoScrivi::fraseRidotta($f);
+                $anteprima['cancello']['motivi'][] = FermataDopoScrivi::motivoRidotta($f);
+            }
+        }
+        $anteprima['cancello']['richiesto'] = $anteprima['cancello']['motivi'] !== [];
+
         return $tipo === 'successione' && $uscente !== null ? $this->conLaD($anteprima, $uscente) : $anteprima;
+    }
+
+    /**
+     * Decisioni 79 (2) e 80: la frase della fermata del coinquilino, con la cifra e la persona. Chi paga non lo sa il programma, e non lo
+     * indovina: la frase dice la strada a mano per ciascuno dei candidati, per nome (Fase 1-bis della .50, R9). Il saldo manuale dal Wallet
+     * solo a chi non ha già un saldo su quella gestione (il Wallet ne accetta uno per persona, gestione, unità ed esercizio); per chi ce l'ha,
+     * la parte si regola fra le parti; se il saldo ce l'ha chi esce, fra le parti per tutti. Con più soggetti il verbo è al plurale (R20).
+     */
+    private static function fraseDelCoinquilino(array $f, bool $conLUnita): string
+    {
+        $elenco = fn (array $v): string => count($v) <= 1 ? (string) ($v[0] ?? '') : implode(', ', array_slice($v, 0, -1)) . ' e ' . end($v);
+        $restano = $elenco($f['restano']) ?: 'un coinquilino';
+        $frase = sprintf('%sa locazione continua con %s: il programma non propone il conguaglio dei giorni dopo l\'uscita di %s (%s sulla gestione %s), che restano nelle rate di %s, e non sceglie chi li paga: lo decidono le parti.',
+            $conLUnita ? sprintf('Nell\'unità «%s» l', $f['unita']) : 'L', $restano, $f['persona'],
+            (int) $f['cifra'] < 0 ? MoneyHelper::format(-(int) $f['cifra']) . ' di credito' : MoneyHelper::format((int) $f['cifra']), $f['gestione'], $f['persona']);
+        $conUnSaldo = (array) ($f['con_un_saldo'] ?? []);
+        $alPosto = (array) ($f['al_posto'] ?? []);
+        // «Se li paga Dora, o Ugo», «Se li pagano Dora e Pia, o Ugo»: i coinquilini, poi chi sta al posto dell'inquilino. Senza i nomi (un
+        // registro di prima), il proprietario.
+        $seLiPaga = function (array $coinquilini, array $altri) use ($elenco): string {
+            $chi = array_values(array_filter([$elenco($coinquilini), $elenco($altri)], fn (string $x) => $x !== ''));
+
+            return sprintf('se %s %s', count($coinquilini) > 1 || ($coinquilini === [] && count($altri) > 1) ? 'li pagano' : 'li paga', implode(', o ', $chi));
+        };
+        $haSaldo = fn (array $nomi): string => $elenco($nomi) . (count($nomi) > 1 ? ' hanno' : ' ha');
+        if (! isset($f['al_posto'])) {
+            $alPosto = ['il proprietario'];
+        }
+        if (in_array($f['persona'], $conUnSaldo, true) || ($f['wallet'] === false && ! isset($f['al_posto']))) {
+            return $frase . ' ' . ucfirst($seLiPaga($f['restano'], $alPosto)) . sprintf(', la parte si regola fra le parti: %s già un saldo su quella gestione, e il programma non ne registra un secondo.',
+                $haSaldo([$f['persona']]));
+        }
+        $conWallet = [array_values(array_diff($f['restano'], $conUnSaldo)), array_values(array_diff($alPosto, $conUnSaldo))];
+        // Giro stretto della .50 (G15): i coinquilini e chi sta al posto dell'inquilino restano due alternative anche fra chi ha già un saldo
+        // («Dora, o Ugo»), e quando a pagare insieme sono in più le righe a debito sono una ciascuno.
+        $senza = [array_values(array_intersect($f['restano'], $conUnSaldo)), array_values(array_intersect($alPosto, $conUnSaldo))];
+        $parti = [];
+        if ($conWallet[0] !== [] || $conWallet[1] !== []) {
+            $parti[] = $seLiPaga($conWallet[0], $conWallet[1]) . sprintf(', registra un saldo manuale dal Wallet sulla stessa gestione: una riga a credito di %s e una a debito di %s',
+                $f['persona'], count($conWallet[0]) > 1 || count($conWallet[1]) > 1 ? 'ciascuno che li paga' : 'chi li paga');
+        }
+        if ($senza[0] !== [] || $senza[1] !== []) {
+            $parti[] = $seLiPaga($senza[0], $senza[1]) . sprintf(', la parte si regola fra le parti: %s già un saldo su quella gestione e quell\'unità, e il programma non ne registra un secondo', $haSaldo([...$senza[0], ...$senza[1]]));
+        }
+
+        return $frase . ' ' . ucfirst(implode('; ', $parti)) . '.';
+    }
+
+    /**
+     * Punto 4 della lista della .50: la frase del gruppo in cui nessuno sta al posto dell'inquilino nei giorni dopo l'uscita. La coppia non
+     * si scrive (la generazione lascerebbe quei giorni scoperti), e la parte resta nelle rate di chi esce, anche con «Scrivi il conguaglio».
+     */
+    private function fraseSenzaNessuno(array $g, bool $conLUnita): string
+    {
+        return sprintf('%s nessuno sta al posto dell\'inquilino nei giorni dopo l\'uscita di %s: la parte di quei giorni, %s sulla gestione %s, resta nelle rate di %s%s, e il programma non la propone a nessuno.',
+            $conLUnita ? sprintf('Nell\'unità «%s»', $g['unita']) : 'Sull\'unità', $g['persona'], MoneyHelper::format((int) $g['importo']), $g['gestione'] ?? '?', $g['persona'],
+            $this->sceltaQui ? ' anche se scrivi il conguaglio' : '');
+    }
+
+    /** Punto 4 della lista della .50, nel cancello: «nell'unità «Box 12» nessuno sta al posto dell'inquilino nei giorni dopo l'uscita». */
+    private function nessunoAlPosto(bool $conLUnita): string
+    {
+        $unita = array_values(array_unique(array_column($this->senzaNessuno, 'unita')));
+
+        return ($conLUnita && $unita !== [] ? sprintf('%s %s ', count($unita) === 1 ? 'nell\'unità' : 'nelle unità', $this->elenco(array_map(fn ($u) => '«' . $u . '»', $unita))) : '')
+            . 'nessuno sta al posto dell\'inquilino nei giorni dopo l\'uscita';
     }
 
     /**
@@ -297,12 +485,16 @@ class AnteprimaPassaggio
      * Chi esce e chi entra **nel conguaglio**, che non sono sempre chi esce e chi entra nel modulo:
      * nell'estinzione dell'usufrutto nessuno entra, è il nudo proprietario che torna pieno; nella
      * costituzione chi esce resta come nudo proprietario e le straordinarie restano sue (art. 1005 c.c.).
-     * Inizio locazione: nessun uscente, niente da conguagliare. Fine locazione senza nuovo inquilino:
-     * le quote emesse all'inquilino restano sue (da confermare con gli amministratori in beta).
+     * Inizio locazione: nessun uscente, niente da conguagliare. Fine locazione senza nuovo inquilino: dalla 1.11.0-beta.50
+     * (decisione 77) chi paga al posto dell'inquilino prende i giorni dopo l'uscita, se l'amministratore scrive il conguaglio
+     * (`conguaglioDellaFine`).
      */
     public function conguaglio(string $tipo, array $dati, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, ?TitolaritaImmobile $nudo, array $immobileIds, CarbonImmutable $decorrenza): array
     {
         $nessuno = ['stato' => 'nessuno', 'anagrafica_uscente_id' => null, 'anagrafica_entrante_id' => null, 'quote' => [], 'per_gestione' => [], 'coppie' => [], 'totale_entrante' => 0, 'totale_entrante_formattato' => MoneyHelper::format(0), 'pregressi' => 0, 'non_risolte' => [], 'frasi' => [], 'bozze_riassegnate' => [], 'riassegnazione' => []];
+        $this->fermataCoinquilino = [];
+        $this->senzaNessuno = [];
+        $this->unitaConCoinquilino = [];
         if ($tipo === 'inizio_locazione') {
             return $nessuno; // la Request rifiuta già una riga uscente qui (S8-20); la promessa del docblock vale per ogni chiamante
         }
@@ -313,10 +505,17 @@ class AnteprimaPassaggio
         // Decisione 65 (1.11.0-beta.44): la successione è una vendita per il conguaglio — chi entra sono gli eredi, e la controparte del
         // calcolo è l'erede di riferimento (o l'erede unico, o il primo), che riceve le bozze; il debito si divide dopo, per quota.
         $successione = $tipo === 'successione';
+        // Decisione 77 (1.11.0-beta.50): alla fine di una locazione senza un nuovo inquilino la controparte del calcolo è chi paga al
+        // posto dell'inquilino il giorno del passaggio; le parti per persona e per giorno vengono dopo (`conguaglioDellaFine`).
+        $fineSenza = $tipo === 'fine_locazione' && $entrante === null;
         // Decisione 57: chi esce che torna pieno della sua parte (nessun altro usufrutto) non è una controparte, la sua parte resta a
         // lui. All'estinzione la controparte è il primo degli altri nudi, sull'unità o, se lì non ce ne sono, su una pertinenza.
         $altro = fn (?TitolaritaImmobile $t) => $t !== null && (int) $t->anagrafica_id !== (int) $uscente->anagrafica_id;
-        $controparte = $estinzione ? ($altro($nudo) ? $nudo : $this->nudi->first($altro))?->anagrafica : $entrante;
+        $controparte = match (true) {
+            $estinzione => ($altro($nudo) ? $nudo : $this->nudi->first($altro))?->anagrafica,
+            $fineSenza => $this->alPosto->first()?->anagrafica,
+            default => $entrante,
+        };
         if ($controparte === null && ! $estinzione) {
             return $nessuno;
         }
@@ -346,6 +545,9 @@ class AnteprimaPassaggio
             if ($riga !== null) {
                 $righeUscenti[(int) $u] = (int) $riga->id;
             }
+        }
+        if ($fineSenza) {
+            return $this->conguaglioDellaFine($uscente, $controparte, $immobileIds, $decorrenza, $righeUscenti, $tipo, $dati, $nessuno);
         }
         if ($estinzione && ! empty($dati['accrescimento'])) {
             return $this->conguaglioDellAccrescimento($uscente, $immobileIds, $decorrenza, $righeUscenti, $origine !== null, $tipo, $dati, $nessuno);
@@ -529,6 +731,175 @@ class AnteprimaPassaggio
     }
 
     /**
+     * Decisione 77 (1.11.0-beta.50), con le decisioni 21 e 32: la fine di una locazione senza un nuovo inquilino. Il calcolo è quello del
+     * cambio d'inquilino — la parte di chi esce dei giorni dopo l'uscita, sui piani che non si riscrivono più —, e quella parte va a chi
+     * paga al posto dell'inquilino, per persona e per giorno su tutto il periodo dopo l'uscita, unità per unità
+     * (`ChiPagaAlPostoDellInquilino`): una coppia per persona, gestione e unità. Si scrive solo con «Scrivi il conguaglio».
+     *
+     * Decisione 79 (2): sull'unità dove la locazione continua con un coinquilino la coppia non c'è, e nemmeno la scelta. La cifra dei
+     * giorni dopo l'uscita si calcola lo stesso, a parte, perché il pannello la dica con la persona (`fermata_coinquilino`, decisione
+     * 80); le frasi del calcolo di quell'unità non entrano nel pannello, che altrimenti proporrebbe la coppia che non si scrive.
+     *
+     * @param array<int, int> $righeUscenti
+     */
+    private function conguaglioDellaFine(TitolaritaImmobile $uscente, Anagrafica $controparte, array $immobileIds, CarbonImmutable $decorrenza, array $righeUscenti, string $tipo, array $dati, array $nessuno): array
+    {
+        $chiPaga = new ChiPagaAlPostoDellInquilino();
+        $coinquilini = [];
+        foreach ($immobileIds as $u) {
+            $restano = ChiPagaAlPostoDellInquilino::coinquiliniCheRestano((int) $u, (int) $uscente->anagrafica_id, $decorrenza);
+            if ($restano->isNotEmpty()) {
+                $coinquilini[(int) $u] = $restano;
+            }
+        }
+        $calcola = fn (array $ids, ?\Closure $chiRiceve) => $this->conguaglioPassaggio->calcola($uscente->anagrafica, $controparte, $ids, $decorrenza,
+            ruoliCheRestano: $this->ruoliCheRestano($tipo, $dati, $uscente, $ids, $decorrenza), passaggio: GenealogiaDellaQuota::FINE_LOCAZIONE,
+            righeUscenti: array_intersect_key($righeUscenti, array_flip($ids)), chiRiceve: $chiRiceve);
+
+        $alPosto = [];
+        $this->unitaConCoinquilino = $coinquilini === [] ? [] : Immobile::whereIn('id', array_keys($coinquilini))->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => self::nomeDellUnita($i)])->all();
+        if ($coinquilini !== []) {
+            $fermi = $calcola(array_keys($coinquilini), null);
+            $nomiUnita = Immobile::whereIn('id', array_keys($coinquilini))->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => self::nomeDellUnita($i)])->all();
+            foreach ($fermi['stato'] === 'calcolato' ? $fermi['coppie'] : [] as $c) {
+                $u = (int) $c['immobile_id'];
+                // Fase 1-bis della .50 (R9): chi potrebbe pagare quei giorni, per nome: i coinquilini che restano e chi sta al posto
+                // dell'inquilino dopo l'uscita (il proprietario, o l'usufruttuario). Decisione 80: il Wallet si indica solo a chi non ha già
+                // un saldo sulla gestione, sull'unità e sull'esercizio (il Wallet ne accetta uno), e solo se non ce l'ha chi esce.
+                $candidati = $coinquilini[$u]->map(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id, (string) ($t->anagrafica?->nome ?? '')])
+                    ->concat($alPosto[$u] ??= $this->alPostoDopoLUscita($chiPaga, $u, $decorrenza))->filter(fn ($x) => $x[1] !== '' && $x[0] !== (int) $uscente->anagrafica_id)
+                    ->unique(0)->values();
+                $conUnSaldo = FermataDopoScrivi::conUnSaldo([(int) $uscente->anagrafica_id, ...$candidati->pluck(0)->all()], (int) $c['gestione_id'], $u, $c['esercizio_id'] ?? null);
+                $esceConUnSaldo = in_array((int) $uscente->anagrafica_id, $conUnSaldo, true);
+                $this->fermataCoinquilino[] = [
+                    'immobile_id' => $u, 'unita' => $nomiUnita[$u] ?? 'l\'unità',
+                    'gestione_id' => (int) $c['gestione_id'], 'gestione' => (string) ($c['gestione'] ?? '?'), 'esercizio_id' => $c['esercizio_id'] ?? null,
+                    'cifra' => (int) $c['importo'], 'persona_id' => (int) $uscente->anagrafica_id, 'persona' => (string) $uscente->anagrafica->nome,
+                    'restano' => $coinquilini[$u]->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->unique()->values()->all(),
+                    'al_posto' => $candidati->reject(fn ($x) => $coinquilini[$u]->contains(fn (TitolaritaImmobile $t) => (int) $t->anagrafica_id === $x[0]))->pluck(1)->values()->all(),
+                    'con_un_saldo' => Anagrafica::whereIn('id', $conUnSaldo)->pluck('nome')->map(fn ($n) => (string) $n)->values()->all(),
+                    // Il Wallet è indicato almeno per uno dei candidati: allora una riga del Wallet può esistere, e l'annullamento lo ricorda.
+                    'wallet' => ! $esceConUnSaldo && $candidati->contains(fn ($x) => ! in_array($x[0], $conUnSaldo, true)),
+                ];
+            }
+        }
+        $conLaCoppia = array_values(array_diff($immobileIds, array_keys($coinquilini)));
+        if ($conLaCoppia === []) {
+            return $nessuno;
+        }
+
+        $righe = [];
+        $chiRiceve = function (int $immobileId, array $perPeriodo, int $importo) use ($chiPaga, $decorrenza, &$righe): array {
+            $pezzi = [];
+            foreach ($perPeriodo as $p) {
+                // Punto 1 della lista della .50: con i capitoli il periodo del gruppo è quello del piano, e ogni voce ha la sua competenza
+                // (`per_capitolo`): un pezzo per voce, con la sua parte dei giorni dopo l'uscita, come il piano generato dopo. Le «Pulizie»
+                // che finiscono il 30/9 non si dividono sui giorni di ottobre.
+                $voci = array_values(array_filter((array) ($p['per_capitolo'] ?? []), fn ($v) => (int) ($v['entrante'] ?? 0) !== 0 && ! empty($v['periodo'])));
+                foreach ($voci !== [] ? $voci : [$p] as $v) {
+                    $giorni = (int) ($v['entrante'] ?? 0) !== 0 ? ChiPagaAlPostoDellInquilino::giorniDopo((array) ($v['periodo'] ?? []), $decorrenza) : null;
+                    if ($giorni !== null) {
+                        $pezzi[] = ['tratti' => $giorni, 'importo' => (int) $v['entrante']];
+                    }
+                }
+            }
+            $divisa = $pezzi === [] ? null : $chiPaga->dividiLaCoppia($importo, $righe[$immobileId] ??= $chiPaga->righe($immobileId), $pezzi);
+            $parti = $divisa['parti'] ?? [];
+
+            // Parti vuote: nessuno sta al posto dell'inquilino nei giorni dopo l'uscita, e il gruppo esce dal calcolo (`senza_nessuno`).
+            // Fase 1-bis della .50 (R2): se nessuno copre solo una parte di quei giorni, la loro parte (`scoperta`) resta nelle rate di chi
+            // esce, e il registro conserva solo i tratti coperti.
+            return [
+                'parti' => $parti,
+                'nomi' => $parti === [] ? [] : Anagrafica::whereIn('id', array_keys($parti))->pluck('nome', 'id')->all(),
+                'periodi' => $parti === [] ? array_map(fn (array $p) => ['tratti' => $p['tratti']->toArray(), 'importo' => $p['importo']], $pezzi)
+                    : array_map(fn (array $p) => ['tratti' => $p['tratti']->toArray(), 'importo' => $p['importo']], $divisa['pezzi']),
+                'scoperta' => $parti === [] ? 0 : (int) $divisa['scoperta'],
+                'scoperti' => $parti === [] ? null : $divisa['scoperti']?->toArray(),
+                'giorni_coperti' => $parti === [] ? null : $divisa['coperti']?->giorni(),
+            ];
+        };
+        $esito = $calcola($conLaCoppia, $chiRiceve);
+        if ($esito['stato'] === 'nessuna_rata') {
+            return $nessuno;
+        }
+        // Punto 4 della lista della .50: dove nessuno sta al posto dell'inquilino nei giorni dopo l'uscita la coppia non si scrive, e la parte
+        // resta nelle rate di chi esce. Il pannello lo dice, unità per unità, con la cifra, e il cancello conta a parte le sue quote.
+        $nomiUnita = Immobile::whereIn('id', array_column($esito['senza_nessuno'] ?? [], 'immobile_id'))->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => self::nomeDellUnita($i)])->all();
+        $this->senzaNessuno = array_map(fn (array $g) => $g + ['unita' => $nomiUnita[(int) $g['immobile_id']] ?? 'l\'unità', 'persona' => (string) $uscente->anagrafica->nome,
+            // I piani con quote in bozza di chi esce in questo gruppo, per la frase di «Chi resta obbligato».
+            'piani_in_bozza' => collect($esito['quote'] ?? [])->filter(fn ($q) => ! empty($q['senza_nessuno']) && ! empty($q['in_bozza']) && (int) $q['immobile_id'] === (int) $g['immobile_id']
+                && (int) $q['gestione_id'] === (int) $g['gestione_id'])->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->unique()->values()->all()],
+            $esito['senza_nessuno'] ?? []);
+
+        $coppie = [];
+        foreach ($esito['coppie'] as $c) {
+            // Le coppie che restano hanno chi sta al posto dell'inquilino: una per persona.
+            $parti = $c['per_persona'] ?? [];
+            $nomi = Anagrafica::whereIn('id', array_keys($parti))->pluck('nome', 'id')->all();
+            foreach ($parti as $anagraficaId => $cents) {
+                $coppie[] = array_diff_key(array_replace($c, ['anagrafica_entrante_id' => (int) $anagraficaId, 'entrante_nome' => $nomi[$anagraficaId] ?? '?', 'importo' => (int) $cents, 'importo_formattato' => MoneyHelper::format((int) $cents)]), ['per_persona' => true]);
+            }
+            if (count($parti) > 1) {
+                $esito['frasi'][] = sprintf('Sulla gestione %s il debito di %s si divide fra chi paga al posto dell\'inquilino nei giorni dopo l\'uscita, per quota e per giorni: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']),
+                    implode(', ', array_map(fn ($id) => sprintf('%s a %s', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?'), array_keys($parti))));
+            }
+        }
+        $esito['coppie'] = $coppie;
+        $totale = (int) array_sum(array_column($coppie, 'importo'));
+        $esito['totale_entrante'] = $totale;
+        $esito['totale_entrante_formattato'] = MoneyHelper::format($totale);
+        $esito['totale_entrante_assoluto_formattato'] = MoneyHelper::format(abs($totale));
+
+        return $esito;
+    }
+
+    /**
+     * R9: chi sta al posto dell'inquilino su un'unità nei giorni dopo l'uscita, come [anagrafica, nome], nell'ordine dei pesi: la regola
+     * della frase «tornano a …» (`ChiPagaAlPostoDellInquilino`).
+     *
+     * @return list<array{0: int, 1: string}>
+     */
+    private function alPostoDopoLUscita(ChiPagaAlPostoDellInquilino $chiPaga, int $immobileId, CarbonImmutable $decorrenza): array
+    {
+        $condominioId = (int) Immobile::whereKey($immobileId)->value('condominio_id');
+        $pesi = $chiPaga->pesi($chiPaga->righe($immobileId), ChiPagaAlPostoDellInquilino::giorniDellaFrase($condominioId, $decorrenza));
+        arsort($pesi);
+        $nomi = Anagrafica::whereIn('id', array_keys($pesi))->pluck('nome', 'id');
+
+        return array_values(array_map(fn ($id) => [(int) $id, (string) ($nomi[$id] ?? '')], array_keys($pesi)));
+    }
+
+    /**
+     * Decisione 77: chi riceve le coppie della fine senza un nuovo inquilino, in parole: «Ugo», «Ugo e Rita», o unità per unità quando
+     * le persone cambiano da un'unità all'altra («Ugo nell'unità «Interno 1» e Rita nell'unità «Box 12»»).
+     *
+     * @param list<array<string, mixed>> $coppie
+     */
+    private static function chiRiceveInParole(array $coppie): string
+    {
+        $perUnita = collect($coppie)->groupBy(fn ($c) => (int) $c['immobile_id'])
+            ->map(fn (Collection $g) => $g->pluck('entrante_nome')->filter()->unique()->values()->all());
+        $elenco = function (array $voci): string {
+            $ultimo = array_pop($voci);
+
+            return $voci === [] ? (string) $ultimo : implode(', ', $voci) . ' e ' . $ultimo;
+        };
+        if ($perUnita->map(fn (array $nomi) => json_encode($nomi))->unique()->count() <= 1) {
+            return $elenco($perUnita->first() ?? ['chi paga al posto dell\'inquilino']);
+        }
+        $nomiUnita = Immobile::whereIn('id', $perUnita->keys()->all())->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => self::nomeDellUnita($i)])->all();
+
+        return $elenco($perUnita->map(fn (array $nomi, int $u) => sprintf('%s nell\'unità «%s»', $elenco($nomi), $nomiUnita[$u] ?? 'l\'unità'))->values()->all());
+    }
+
+    /** Il nome di un'unità nelle frasi della locazione: il nome, o l'etichetta quando il nome manca. */
+    private static function nomeDellUnita(Immobile $unita): string
+    {
+        return trim((string) $unita->nome) !== '' ? (string) $unita->nome : (string) $unita->etichetta;
+    }
+
+    /**
      * DL3 (Fase 1-bis e giro sulle correzioni della .47): i piani con quote sull'unità che hanno una parte a carico dell'inquilino con
      * giorni dal giorno dell'inizio in poi. Lo dicono le righe del riparto registrato: ruolo richiesto «inquilino», anche di ripiego, e
      * la competenza che arriva a quel giorno (`competenza_al`, l'estremo finale dei tratti: l'esercizio dell'ordinaria anche sulla gestione
@@ -583,7 +954,7 @@ class AnteprimaPassaggio
      * - righe di ripiego, pagate da chi c'era quando non c'era un inquilino: le rimborsa chi entra, con il prospetto degli oneri accessori;
      * - righe di chi entra (il rinnovo): sono già nelle sue rate, fino alla fine delle sue righe;
      * - righe di un inquilino che quel giorno non c'è più su quell'unità (il cambio in due passi): restano nelle sue rate, fino alla fine
-     *   delle sue righe, e chi paga i giorni dopo la sua uscita lo decide l'amministratore (decisione 32);
+     *   delle sue righe, e chi paga i giorni dopo la sua uscita lo dice la sua fine locazione (decisioni 32 e 77, `comeSonoUsciti`);
      * - righe di un inquilino che su quell'unità c'è ancora (il coinquilino): restano nelle sue rate.
      * Un piano senza riparto registrato (versione precedente) il prospetto non lo legge, e si dice.
      *
@@ -595,6 +966,7 @@ class AnteprimaPassaggio
         $esito = [];
         $nomeDi = [];
         $ancoraDi = [];
+        $gestioneDi = $ids === [] ? [] : \App\Models\Gestionale\PianoRate::whereIn('id', $ids)->pluck('gestione_id', 'id')->map(fn ($g) => (int) $g)->all();
         foreach ($ids as $pianoId) {
             if (! DB::table('righe_riparto')->where('piano_rate_id', $pianoId)->exists()) {
                 // Terzo giro: un piano della 1.10 non ha il riparto, ma le quote dicono di chi è la parte dell'inquilino. Generato con un
@@ -609,6 +981,7 @@ class AnteprimaPassaggio
                     $inquilini = DB::table('anagrafica_immobile')->where('immobile_id', $u)->where('tipologia', 'inquilino')->whereIn('anagrafica_id', $conQuote)
                         ->distinct()->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all();
                     $p = ['ripiego' => $inquilini === [], 'propri' => false, 'propri_dal' => null, 'propri_fino' => null, 'usciti' => [], 'usciti_dal' => null, 'usciti_fino' => null, 'presenti' => [], 'ripiego_dal' => null];
+                    $usciti = [];
                     foreach ($inquilini as $id) {
                         if ($id === (int) ($entrante?->id ?? 0)) {
                             $p['propri'] = true;
@@ -620,11 +993,13 @@ class AnteprimaPassaggio
                             $p['presenti'][] = $nome;
                         } else {
                             $p['usciti'][] = $nome;
+                            $usciti[] = $id;
                         }
                     }
                     sort($p['usciti']);
                     sort($p['presenti']);
-                    $perUnita[$u] = $p;
+                    $perUnita[$u] = $p + ($usciti !== [] ? $this->comeSonoUsciti((int) $u, $usciti, $giorno, (int) $pianoId) : [])
+                        + ($p['propri'] ? $this->rientroSullUnita((int) $u, $gestioneDi[$pianoId] ?? 0) : []);
                 }
                 ksort($perUnita);
                 $esito[$pianoId] = ['senza_riparto' => true, 'unita' => $perUnita];
@@ -635,7 +1010,7 @@ class AnteprimaPassaggio
                 ->where('ruolo_richiesto', 'inquilino')->where('importo', '!=', 0)
                 ->where(fn ($q) => $q->whereNull('titolarita_al')->orWhereDate('titolarita_al', '>=', $giorno))
                 ->where(fn ($q) => $q->whereNull('competenza_al')->orWhereDate('competenza_al', '>=', $giorno))
-                ->get(['immobile_id', 'anagrafica_id', 'ruolo_risolto', 'conto_id', 'conto_radice_id', 'gradino_competenza', 'competenza_dal', 'competenza_al', 'titolarita_al']);
+                ->get(['immobile_id', 'anagrafica_id', 'ruolo_risolto', 'conto_id', 'conto_radice_id', 'gradino_competenza', 'competenza_dal', 'competenza_al', 'titolarita_dal', 'titolarita_al', 'importo']);
             $perUnita = [];
             foreach ($righe as $r) {
                 // I giorni veri della riga dal giorno dell'inizio: senza, la riga non c'entra (un tratto di capitolo finito prima).
@@ -674,6 +1049,16 @@ class AnteprimaPassaggio
                     continue;
                 }
                 $perUnita[$u]['usciti'][] = $nome;
+                $perUnita[$u]['usciti_id'][] = (int) $r->anagrafica_id;
+                // I giorni della riga, come li legge il prospetto (la competenza dentro la titolarità): la catena parte da lì.
+                $periodo = $r->titolarita_dal !== null && $r->titolarita_al !== null
+                    ? $competenza->intersezione(new \App\Support\PeriodoCompetenza(substr((string) $r->titolarita_dal, 0, 10), substr((string) $r->titolarita_al, 0, 10))) : $competenza;
+                if ($periodo !== null) {
+                    $prima = $perUnita[$u]['usciti_periodi'][(int) $r->anagrafica_id] ?? null;
+                    $perUnita[$u]['usciti_periodi'][(int) $r->anagrafica_id] = $prima === null ? $periodo : $prima->unione($periodo);
+                    // Chiusura della .50: anche l'importo, per il verso della parte di chi entra (`ProspettoOneriAccessori::partiDopo`).
+                    $perUnita[$u]['usciti_righe'][(int) $r->anagrafica_id][] = ['periodo' => $periodo, 'importo' => (int) $r->importo];
+                }
                 $perUnita[$u]['usciti_dal'][] = $primo;
                 $perUnita[$u]['usciti_fino'][] = $fino;
             }
@@ -682,7 +1067,9 @@ class AnteprimaPassaggio
             foreach ($perUnita as $u => $p) {
                 $perUnita[$u] = ['ripiego' => $p['ripiego'], 'ripiego_dal' => $dalDi($p['ripiego_dal']), 'propri' => $p['propri'], 'propri_dal' => $dalDi($p['propri_dal']), 'propri_fino' => $finoDi($p['propri_fino']),
                     'usciti' => collect($p['usciti'])->unique()->sort()->values()->all(), 'usciti_dal' => $dalDi($p['usciti_dal']), 'usciti_fino' => $finoDi($p['usciti_fino']),
-                    'presenti' => collect($p['presenti'])->unique()->sort()->values()->all()];
+                    'presenti' => collect($p['presenti'])->unique()->sort()->values()->all()]
+                    + (! empty($p['usciti_id']) ? $this->comeSonoUsciti((int) $u, $p['usciti_id'], $giorno, (int) $pianoId, $p['usciti_periodi'] ?? [], $p['usciti_righe'] ?? []) : [])
+                    + ($p['propri'] ? $this->rientroSullUnita((int) $u, $gestioneDi[$pianoId] ?? 0) : []);
             }
             if ($perUnita !== []) {
                 ksort($perUnita);
@@ -691,6 +1078,323 @@ class AnteprimaPassaggio
         }
 
         return $esito;
+    }
+
+    /**
+     * Decisione 77 (1.11.0-beta.50), nel cambio d'inquilino in due passi: chi ha pagato i giorni dopo l'uscita dell'inquilino di prima.
+     * Con «Non scriverlo», o senza la scelta (una fine di prima della .50: la strada A′ del prospetto), sono nelle rate di chi è uscito, e
+     * chi entra glieli rimborsa con il prospetto; con «Scrivi» li ha presi con il conguaglio chi paga al posto dell'inquilino, e chi entra
+     * rimborsa lui; con il conguaglio annullato, o la rinuncia della casella di prima, le parti hanno regolato fra loro (decisioni 43 e 46);
+     * con un coinquilino che restava lo decidono le parti (decisione 79). Una riga chiusa a mano, senza un passaggio, non dice niente: chi
+     * paga lo decide l'amministratore, come prima.
+     *
+     * Fase 1-bis della .50 (R7, R8): sul piano con il riparto registrato la fonte è una sola, il prospetto degli oneri accessori, piano per
+     * piano (`ProspettoOneriAccessori::chiHaPagatoDopo`): la sua catena dei conduttori fino all'ultimo, la prima fine del periodo, il piano
+     * che la coppia ha preso, le righe della coppia sulla gestione e sull'unità, il cambio regolato seguito da una fine scritta (decisione
+     * 83.3). Prima il pannello faceva una sua lettura, e poteva nominare una persona diversa da quella del prospetto. Il piano della 1.10,
+     * che il prospetto non legge, guarda la fine sull'unità, con il piano preso e le righe della sua gestione.
+     *
+     * Giro stretto della .50 (G18): con il riparto, anche chi ha pagato per modo (`usciti_per_modo`) e le fini di altri che hanno scritto la
+     * coppia di quei giorni (`usciti_fini`: il giorno), perché la frase segua la catena come il prospetto.
+     *
+     * Chiusura della .50: con il riparto, chi ha preso con la coppia tutti i giorni dopo l'uscita (`usciti_presi_da`, punto 4), anche quelli
+     * prima di chi entra, e il verso della parte di chi entra per come hanno pagato (`usciti_versi`, punti 2 e 3: `scritto` e `non_scritto`,
+     * dal prospetto, `ProspettoOneriAccessori::partiDopo`): 1 la rimborsa, −1 è un suo credito, 0 niente. Solo il segno, non la cifra: due
+     * unità con la stessa storia (l'appartamento e il box) restano una frase sola (`partiPerUnita`). La parte nella coppia di tutta la
+     * gestione resta `usciti_parte`.
+     *
+     * @param list<int> $anagraficaIds
+     * @param array<int, \App\Support\InsiemePeriodi> $periodi i giorni delle righe di ciascuno, per il piano con il riparto
+     * @param array<int, list<array{periodo: \App\Support\InsiemePeriodi, importo: int}>> $righe le righe di ciascuno, con l'importo
+     * @return array{usciti_come: string, usciti_pagato_da: list<string>, usciti_presi_da: list<string>, usciti_per_modo: array<string, list<string>>, usciti_fini: list<string>, usciti_parte: int, usciti_versi: array{scritto: int, non_scritto: int}}
+     */
+    private function comeSonoUsciti(int $immobileId, array $anagraficaIds, string $giorno, ?int $pianoId = null, array $periodi = [], array $righe = []): array
+    {
+        $modi = [];
+        $pagatoDa = [];
+        $presi = [];
+        $perModo = [];
+        $fini = [];
+        $parti = ['scritto' => 0.0, 'non_scritto' => 0.0];
+        $piano = $pianoId !== null ? \App\Models\Gestionale\PianoRate::find($pianoId) : null;
+        $prospetto = app(\App\Services\Riparto\ProspettoOneriAccessori::class);
+        foreach (array_values(array_unique($anagraficaIds)) as $id) {
+            if ($piano !== null && isset($periodi[$id])) {
+                $esito = $prospetto->chiHaPagatoDopo($piano, $id, $immobileId, $periodi[$id], CarbonImmutable::parse($giorno));
+                $modi[] = $esito['come'];
+                $pagatoDa = [...$pagatoDa, ...$esito['pagato_da']];
+                $presi = [...$presi, ...$esito['presi_da']];
+                foreach ($esito['per_modo'] as $modo => $nomi) {
+                    $perModo[$modo] = [...($perModo[$modo] ?? []), ...$nomi];
+                }
+                $nome = (string) Anagrafica::whereKey($id)->value('nome');
+                $fini = [...$fini, ...array_column(array_filter($esito['fini_scritte'], fn (array $f) => (string) ($f['chi_esce'] ?? '') !== $nome), 'del')];
+                foreach ($prospetto->partiDopo($piano, $id, $immobileId, $righe[$id] ?? [], CarbonImmutable::parse($giorno)) as $modo => $quanto) {
+                    $parti[$modo] += $quanto;
+                }
+                continue;
+            }
+            $fine = Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->where('anagrafica_uscente_id', $id)
+                ->whereDate('decorrenza', '<=', $giorno)->orderByDesc('decorrenza')->orderByDesc('id')->first();
+            if ($fine === null) {
+                $modi[] = 'a_mano';
+                continue;
+            }
+            $capo = $fine->capo();
+            $scelta = $capo->registro['conguaglio']['scelta'] ?? null;
+            // Giro stretto della .50 (G2): chi ha preso la coppia sono le persone con una riga, a debito o a credito, tranne chi è uscito.
+            $chiHaLaCoppia = DB::table('saldi')->join('anagrafiche', 'anagrafiche.id', '=', 'saldi.anagrafica_id')->where('saldi.subentro_id', $capo->id)
+                ->where('saldi.immobile_id', $immobileId)->where('saldi.saldo_iniziale', '!=', 0)->where('saldi.anagrafica_id', '!=', $id)
+                ->when($piano !== null, fn ($q) => $q->where('saldi.gestione_id', $piano->gestione_id))->pluck('anagrafiche.nome')->map(fn ($n) => (string) $n)->all();
+            $preso = $piano === null || $piano->presoNelConguaglioDa($fine);
+            $modo = match (true) {
+                $capo->conguaglioAnnullato() || ($scelta === null && $capo->conguaglioRinunciato()) => 'regolato',
+                $fine->anagrafica_entrante_id !== null => $preso && ($scelta === Subentro::CONGUAGLIO_SCRITTO || ($scelta === null && $chiHaLaCoppia !== [])) ? 'scritto' : 'non_scritto',
+                ChiPagaAlPostoDellInquilino::coinquiliniDelPassaggio($capo, $immobileId, $id, CarbonImmutable::parse($fine->decorrenza->toDateString())) !== [] => 'coinquilino',
+                $scelta === Subentro::CONGUAGLIO_SCRITTO && $preso && $chiHaLaCoppia !== [] => 'scritto',
+                default => 'non_scritto',
+            };
+            $modi[] = $modo;
+            if ($modo === 'scritto') {
+                $pagatoDa = [...$pagatoDa, ...$chiHaLaCoppia];
+                $presi = [...$presi, ...$chiHaLaCoppia];
+            } elseif ($modo === 'non_scritto') {
+                $pagatoDa[] = (string) Anagrafica::whereKey($id)->value('nome');
+            }
+        }
+        $modi = array_values(array_unique($modi));
+        // Ultimo giro della .50 (punto 2): la parte di chi entra nella coppia di questa unità e gestione, con il segno, per il verso della frase.
+        $parte = $piano === null ? 0 : (int) array_sum(array_column(array_filter($this->partiDopoScrivi,
+            fn (array $x) => (int) $x['immobile_id'] === $immobileId && (int) $x['gestione_id'] === (int) $piano->gestione_id), 'cifra'));
+
+        return ['usciti_come' => count($modi) === 1 ? $modi[0] : 'misto', 'usciti_pagato_da' => array_values(array_unique(array_filter($pagatoDa))),
+            'usciti_presi_da' => array_values(array_unique(array_filter($presi))),
+            'usciti_per_modo' => array_map(fn (array $n) => array_values(array_unique(array_filter($n))), $perModo), 'usciti_fini' => array_values(array_unique($fini)),
+            'usciti_parte' => $parte, 'usciti_versi' => array_map(fn (float $c) => (int) round($c) <=> 0, $parti)];
+    }
+
+    /**
+     * Decisione 77 (1.11.0-beta.50), con la 45: nel rientro dopo una fine «Scrivi» (il rinnovo con la stessa persona) la parte a carico
+     * dell'inquilino dal giorno dell'inizio è nelle quote di chi entra, ma i giorni dopo la sua uscita li ha presi con la coppia chi pagava
+     * al posto suo: «è già nelle rate di …» sarebbe falso. Chi li ha presi e con quale fine, per la frase del piano fermo.
+     *
+     * @return array{propri_scritto?: array{pagato_da: list<string>, fine_il: string, cifra: int}}
+     */
+    private function rientroSullUnita(int $immobileId, int $gestioneId): array
+    {
+        $voci = array_values(array_filter($this->rientroDopoScrivi, fn (array $f) => (int) $f['immobile_id'] === $immobileId && (int) $f['gestione_id'] === $gestioneId));
+
+        return $voci === [] ? [] : ['propri_scritto' => ['pagato_da' => array_values(array_unique(array_merge(...array_column($voci, 'pagato_da')))), 'fine_il' => (string) $voci[0]['fine_il'],
+            'cifra' => (int) array_sum(array_column($voci, 'cifra'))]];
+    }
+
+    /**
+     * Decisione 77: «la parte … l'ha presa Ugo con il conguaglio scritto alla fine locazione di Ines del …, e Ines gliela rimborsa …». Giro
+     * stretto della .50 (G1): quando nei giorni di chi rientra l'entrata supera la spesa la parte è un credito, ed è chi l'ha presa che la
+     * restituisce.
+     */
+    private function presaConLaFine(array $p, string $dalAl, string $chi, bool $conIlProspetto): string
+    {
+        $piu = count($p['propri_scritto']['pagato_da']) > 1;
+        $chiLHaPresa = $this->elenco($p['propri_scritto']['pagato_da']) ?: 'chi pagava al posto dell\'inquilino';
+        $fine = $this->data(CarbonImmutable::parse($p['propri_scritto']['fine_il']));
+
+        return (int) ($p['propri_scritto']['cifra'] ?? 0) < 0
+            ? sprintf('la parte a carico dell\'inquilino %s %s %s con il conguaglio scritto alla fine locazione di %s del %s, e in quei giorni l\'entrata supera la spesa: %s %s la differenza %s',
+                $dalAl, $piu ? 'l\'hanno presa' : 'l\'ha presa', $chiLHaPresa, $chi, $fine, $chiLHaPresa, $piu ? 'restituiscono' : 'restituisce', $this->frasiObbligati->a($chi))
+            : sprintf('la parte a carico dell\'inquilino %s %s %s con il conguaglio scritto alla fine locazione di %s del %s, e %s %s rimborsa %s',
+                $dalAl, $piu ? 'l\'hanno presa' : 'l\'ha presa', $chiLHaPresa, $chi, $fine, $chi, $piu ? 'la' : 'gliela', $conIlProspetto ? 'con il prospetto degli oneri accessori' : 'fra le parti');
+    }
+
+    /**
+     * DL3, decisione 77: la parte dei giorni dopo l'uscita dell'inquilino di prima, nel cambio d'inquilino in due passi, dopo «resta nelle
+     * rate di …». Senza il prospetto (il piano della 1.10, che il prospetto lascia fuori) il rimborso si regola fra le parti.
+     *
+     * Chiusura della .50: ogni parte con il suo verso. Con «Non scriverlo» (la strada A′) la parte di chi entra può essere un suo credito, se
+     * nei suoi giorni un'entrata supera la spesa: chi l'ha nelle rate gli restituisce la differenza (punto 2, `usciti_versi`). Nel ramo
+     * «misto» la parte presa con la coppia e quella rimasta a chi è uscito hanno ciascuna il suo verso (punto 3, `mistoConIlVerso`). E «i
+     * giorni dopo la sua uscita li hanno presi con il conguaglio …» nomina tutti quelli che li hanno presi, mentre chi entra rimborsa solo chi
+     * ha pagato i suoi giorni (punto 4, `usciti_presi_da`).
+     */
+    private function dopoLUscitaDiPrima(array $p, string $chi, bool $conIlProspetto): string
+    {
+        $usciti = $this->elenco($p['usciti']);
+        $uscita = count($p['usciti']) === 1 ? 'la sua uscita' : 'la loro uscita';
+        $prospetto = $conIlProspetto ? ', con il prospetto degli oneri accessori' : ', fra le parti';
+        $pagatoDa = $this->elenco($p['usciti_pagato_da'] ?? []);
+        // Chiusura della .50 (punto 4): chi ha preso con la coppia i giorni dopo l'uscita, tutti, anche quelli prima del giorno dell'inizio.
+        $presiDa = ($p['usciti_presi_da'] ?? []) ?: ($p['usciti_pagato_da'] ?? []);
+        $presi = $this->elenco($presiDa);
+        $liHaPresi = count($presiDa) > 1 ? 'li hanno presi' : 'li ha presi';
+
+        $perModo = $p['usciti_per_modo'] ?? [];
+        $fini = $p['usciti_fini'] ?? [];
+        $credito = (int) ($p['usciti_parte'] ?? 0) < 0;
+        $piu = count($p['usciti_pagato_da'] ?? []) > 1;
+        // Chiusura della .50 (punto 2): con «Non scriverlo» la parte rimasta nelle rate di chi è uscito, con il suo segno, dal prospetto.
+        $nonScrittoACredito = (int) ($p['usciti_versi']['non_scritto'] ?? 0) < 0;
+        $unaUscitaInDueModi = count($p['usciti']) === 1 && ($perModo['scritto'] ?? []) !== [] && ($perModo['non_scritto'] ?? []) !== []
+            && array_diff(array_keys($perModo), ['scritto', 'non_scritto']) === [];
+
+        return match ($p['usciti_come'] ?? 'a_mano') {
+            // Fase 1-bis della .50 (R8): a chi li ha pagati, come il prospetto, che può essere l'ultimo della catena e non chi ha le righe.
+            'non_scritto' => $nonScrittoACredito
+                ? sprintf('in quei giorni l\'entrata supera la spesa, e %s%s', $this->restituisceLaDifferenza($pagatoDa !== '' ? $pagatoDa : $usciti,
+                    count(($p['usciti_pagato_da'] ?? []) ?: $p['usciti']) > 1, $chi), $prospetto)
+                : sprintf('i giorni dopo %s li rimborsa %s %s%s', $uscita, $chi, $this->frasiObbligati->a($pagatoDa !== '' ? $pagatoDa : $usciti), $prospetto),
+            // Giro stretto della .50 (G18): la coppia l'ha scritta una fine venuta dopo (la decisione 83.3, dopo un cambio regolato fra le parti),
+            // non l'uscita di chi ha le rate: la frase dice quella fine, come la stampa.
+            // Ultimo giro della .50 (punto 2): con la parte di chi entra a credito (un'entrata che nei suoi giorni supera la spesa) è chi ha preso
+            // la coppia che gli restituisce la differenza, come nel rientro (`presaConLaFine`).
+            'scritto' => match (true) {
+                $credito && $pagatoDa !== '' && count($fini) === 1 => sprintf('quei giorni li ha presi %s con il conguaglio della fine locazione del %s; in quei giorni l\'entrata supera la spesa, e %s%s',
+                    $pagatoDa, $this->data(CarbonImmutable::parse($fini[0])), $this->restituisceLaDifferenza($pagatoDa, $piu, $chi), $prospetto),
+                $credito && $pagatoDa !== '' => sprintf('i giorni dopo %s %s con il conguaglio %s; dal giorno dell\'inizio l\'entrata supera la spesa, e %s%s',
+                    $uscita, $liHaPresi, $presi, $this->restituisceLaDifferenza($pagatoDa, $piu, $chi), $prospetto),
+                $credito => sprintf('i giorni dopo %s li ha presi con il conguaglio chi paga al posto dell\'inquilino; dal giorno dell\'inizio l\'entrata supera la spesa, e la differenza la riceve %s%s',
+                    $uscita, $chi, $prospetto),
+                $pagatoDa !== '' && count($fini) === 1 => sprintf('quei giorni li ha presi %s con il conguaglio della fine locazione del %s, e li rimborsa %s %s%s', $pagatoDa,
+                    $this->data(CarbonImmutable::parse($fini[0])), $chi, $this->frasiObbligati->a($pagatoDa), $prospetto),
+                // Chiusura della .50 (punto 4): una coppia presa da più persone in giorni diversi (Ugo fino al 31/8, Elsa dal 1/9), e i giorni di
+                // chi entra pagati solo da una parte di loro.
+                $pagatoDa !== '' && $presi !== $pagatoDa => sprintf('i giorni dopo %s %s con il conguaglio %s, e quelli dal giorno dell\'inizio li rimborsa %s %s%s',
+                    $uscita, $liHaPresi, $presi, $chi, $this->frasiObbligati->a($pagatoDa), $prospetto),
+                $pagatoDa !== '' => sprintf('i giorni dopo %s %s con il conguaglio %s, e li rimborsa %s %s%s', $uscita, $liHaPresi, $pagatoDa, $chi, $this->frasiObbligati->a($pagatoDa), $prospetto),
+                default => sprintf('i giorni dopo %s li ha presi con il conguaglio chi paga al posto dell\'inquilino, e %s glieli rimborsa%s', $uscita, $chi, $prospetto),
+            },
+            'regolato' => sprintf('il conguaglio dei giorni dopo %s le parti lo hanno regolato fra loro', $uscita),
+            'coinquilino' => sprintf('chi paga i giorni dopo %s lo decidono le parti', $uscita),
+            // G18: con un'uscita sola i modi sono della stessa fine (con «Scrivi», i giorni che nessuno copriva sono rimasti a chi è uscito):
+            // la frase nomina chi li ha pagati, come il prospetto. Con più uscite vale la scelta della fine di ciascuno.
+            'misto' => match (true) {
+                $unaUscitaInDueModi => $this->mistoConIlVerso($p, $chi, $uscita, $prospetto),
+                count($p['usciti']) === 1 && $conIlProspetto => sprintf('per i giorni dopo %s il prospetto degli oneri accessori dice chi rimborsa chi', $uscita),
+                default => sprintf('per i giorni dopo %s vale la scelta sul conguaglio della fine di ciascuno%s', $uscita, $conIlProspetto ? ', e il prospetto degli oneri accessori dice chi rimborsa chi' : ''),
+            },
+            default => sprintf('chi paga i giorni dopo %s lo decide l\'amministratore', $uscita),
+        };
+    }
+
+    /**
+     * G18, il ramo «misto» con un'uscita sola: dei giorni dopo l'uscita, quelli presi con la coppia da chi stava al posto dell'inquilino e
+     * quelli in cui nessuno ci stava, rimasti nelle rate di chi è uscito. Chiusura della .50 (punto 3): ogni parte con il suo verso
+     * (`usciti_versi`, dal prospetto). A debito chi entra la rimborsa; a credito (un'entrata che in quei giorni supera la spesa) chi l'ha
+     * pagata gli restituisce la differenza. Con le due parti a debito la frase è quella di prima.
+     */
+    private function mistoConIlVerso(array $p, string $chi, string $uscita, string $prospetto): string
+    {
+        $conLaCoppia = $p['usciti_per_modo']['scritto'];
+        $rimasti = $p['usciti_per_modo']['non_scritto'];
+        $a = $this->elenco($conLaCoppia);
+        $b = $this->elenco($rimasti);
+        $presaACredito = (int) ($p['usciti_versi']['scritto'] ?? 0) < 0;
+        $rimastaACredito = (int) ($p['usciti_versi']['non_scritto'] ?? 0) < 0;
+        if (! $presaACredito && ! $rimastaACredito) {
+            return sprintf('i giorni dopo %s li rimborsa %s %s, che li %s con il conguaglio, e %s per quelli in cui nessuno stava al posto dell\'inquilino%s',
+                $uscita, $chi, $this->frasiObbligati->a($a), count($conLaCoppia) > 1 ? 'hanno presi' : 'ha presi', $this->frasiObbligati->a($b), $prospetto);
+        }
+        $presi = count($conLaCoppia) > 1 ? 'hanno preso' : 'ha preso';
+
+        return sprintf('dei giorni dopo %s, %s; %s%s', $uscita,
+            $presaACredito
+                ? sprintf('in quelli che %s %s con il conguaglio l\'entrata supera la spesa, e %s', $a, $presi, $this->restituisceLaDifferenza($a, count($conLaCoppia) > 1, $chi))
+                : sprintf('quelli che %s %s con il conguaglio li rimborsa %s %s', $a, $presi, $chi, $this->frasiObbligati->a($a)),
+            $rimastaACredito
+                ? sprintf('in quelli in cui nessuno stava al posto dell\'inquilino l\'entrata supera la spesa, e %s', $this->restituisceLaDifferenza($b, count($rimasti) > 1, $chi))
+                : sprintf('quelli in cui nessuno stava al posto dell\'inquilino li rimborsa %s %s', $chi, $this->frasiObbligati->a($b)),
+            $prospetto);
+    }
+
+    /** «Ugo restituisce la differenza a Luca»: il verso di una parte a credito di chi entra. */
+    private function restituisceLaDifferenza(string $chiHaPagato, bool $piu, string $chi): string
+    {
+        return sprintf('%s %s la differenza %s', $chiHaPagato, $piu ? 'restituiscono' : 'restituisce', $this->frasiObbligati->a($chi));
+    }
+
+    /**
+     * R10 della Fase 1-bis della .50: nel cambio d'inquilino con «Non scriverlo» chi entra rimborsa i giorni dopo l'uscita con il prospetto
+     * degli oneri accessori; ma un piano della 1.10, senza riparto registrato, il prospetto lo lascia fuori dopo un passaggio con chi entra
+     * (le persone del riparto ricostruito non sono quelle delle rate): per quel piano il rimborso si regola fra le parti, e si dice.
+     */
+    private function rimborsoSenzaScrivere(array $conguaglio, string $uscente, string $entrante): string
+    {
+        $piani = collect($conguaglio['quote'] ?? [])->filter(fn ($q) => (int) ($q['entrante'] ?? 0) !== 0)->pluck('piano', 'piano_rate_id')->all();
+        $senzaRiparto = self::pianiSenzaRiparto($conguaglio);
+        $nomi = implode('», «', $senzaRiparto);
+        $uno = count($senzaRiparto) === 1;
+
+        return match (true) {
+            $senzaRiparto === [] => sprintf('e %s glieli rimborsa con il prospetto degli oneri accessori.', $entrante),
+            count($senzaRiparto) === count($piani) => sprintf('e il rimborso di %s %s si regola fra le parti: %s «%s» %s generat%s da una versione precedente, senza riparto registrato, e dopo questo passaggio il prospetto degli oneri accessori %s lascia fuori.',
+                $entrante, $this->frasiObbligati->a($uscente), $uno ? 'il piano' : 'i piani', $nomi, $uno ? 'è stato' : 'sono stati', $uno ? 'o' : 'i', $uno ? 'lo' : 'li'),
+            default => sprintf('e %s glieli rimborsa con il prospetto degli oneri accessori; per %s «%s», generat%s da una versione precedente senza riparto registrato, che il prospetto lascia fuori dopo questo passaggio, il rimborso si regola fra le parti.',
+                $entrante, $uno ? 'il piano' : 'i piani', $nomi, $uno ? 'o' : 'i'),
+        };
+    }
+
+    /**
+     * Giro stretto della .50 (G5): il cambio d'inquilino che ha fatto entrare chi esce, se le parti lo hanno regolato fra loro (la casella di
+     * prima della .50, o il conguaglio scritto e poi annullato: decisioni 43 e 46). Dopo un cambio così, senza una fine «Scrivi» di chi era
+     * entrato, il prospetto degli oneri accessori resta alla lettura della 43 e della 46 (decisione 83.3): la parte dell'inquilino è tutta
+     * nelle rate di chi era uscito con quel cambio, e il prospetto non va oltre.
+     */
+    private function cambioRegolatoDiChiEsce(array $dati): ?Subentro
+    {
+        $riga = $dati['riga_uscente'] ?? null;
+        if (! $riga instanceof TitolaritaImmobile) {
+            return null;
+        }
+        $cambio = Subentro::where('tipo_passaggio', 'fine_locazione')->where('riga_entrante_id', (int) $riga->id)->whereNotNull('anagrafica_entrante_id')
+            ->orderByDesc('id')->first()?->capo();
+
+        return $cambio !== null && ! $cambio->conguaglioNonScritto() && ($cambio->conguaglioAnnullato() || $cambio->conguaglioRinunciato()) ? $cambio : null;
+    }
+
+    /**
+     * G5: i piani delle coppie con le quote di chi era uscito prima (`ereditata_da`), per nome, senza quelli della 1.10 (`pianiSenzaRiparto`,
+     * che il prospetto lascia fuori comunque). Dopo un cambio regolato fra le parti il prospetto non va oltre quell'accordo.
+     *
+     * @return list<string>
+     */
+    private static function pianiDopoUnRegolato(array $conguaglio): array
+    {
+        $piani = collect($conguaglio['quote'] ?? [])->filter(fn ($q) => (int) ($q['entrante'] ?? 0) !== 0 && ! empty($q['ereditata_da']))
+            ->pluck('piano')->map(fn ($p) => (string) $p)->unique()->values()->all();
+
+        return array_values(array_diff($piani, self::pianiSenzaRiparto($conguaglio)));
+    }
+
+    /**
+     * G5: la coda della voce «Non scriverlo» dopo un cambio regolato fra le parti. Il rimborso di chi entra a chi esce non lo fa il
+     * prospetto: si regola fra le parti, come l'accordo di prima. Con altri piani accanto, per quelli vale `rimborsoSenzaScrivere`.
+     *
+     * @param list<string> $regolati
+     */
+    private function rimborsoDopoUnRegolato(array $conguaglio, string $uscente, string $entrante, array $regolati, Subentro $cambio): string
+    {
+        $tutti = collect($conguaglio['quote'] ?? [])->filter(fn ($q) => (int) ($q['entrante'] ?? 0) !== 0)->pluck('piano')->unique()->count();
+        $accordo = sprintf('il conguaglio del cambio d\'inquilino del %s %s e %s lo hanno regolato fra loro, e il prospetto degli oneri accessori non va oltre quell\'accordo',
+            $this->data(CarbonImmutable::parse($cambio->decorrenza->toDateString())), (string) ($cambio->registro['nomi']['uscente'] ?? $cambio->uscente?->nome ?? 'chi era uscito'), $uscente);
+        $uno = count($regolati) === 1;
+
+        return count($regolati) === $tutti
+            ? sprintf('e il rimborso di %s %s si regola fra le parti: %s.', $entrante, $this->frasiObbligati->a($uscente), $accordo)
+            : rtrim($this->rimborsoSenzaScrivere($conguaglio, $uscente, $entrante), '.') . sprintf('; per %s «%s» il rimborso si regola fra le parti: %s.',
+                $uno ? 'il piano' : 'i piani', implode('», «', $regolati), $accordo);
+    }
+
+    /**
+     * R10: i piani delle coppie senza riparto registrato (la 1.10), per nome: dopo un passaggio con chi entra il prospetto degli oneri
+     * accessori li lascia fuori.
+     *
+     * @return list<string>
+     */
+    private static function pianiSenzaRiparto(array $conguaglio): array
+    {
+        $piani = collect($conguaglio['quote'] ?? [])->filter(fn ($q) => (int) ($q['entrante'] ?? 0) !== 0)->pluck('piano', 'piano_rate_id')->all();
+        $conRiparto = DB::table('righe_riparto')->whereIn('piano_rate_id', array_keys($piani))->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_map('strval', array_diff_key($piani, array_flip($conRiparto))));
     }
 
     /** DL3: la persona è inquilino dell'unità quel giorno (una riga attiva, con quota, in corso). */
@@ -793,11 +1497,15 @@ class AnteprimaPassaggio
                     $suoi = [];
                     $altre = $p['propri'] || $p['usciti'] !== [] || $p['presenti'] !== [];
                     if ($p['propri']) {
-                        $suoi[] = sprintf('La parte a carico dell\'inquilino %s è già nelle rate di %s.', $this->dalAl($dal, $p['propri_fino'], $p['propri_dal'] ?? null), $chi);
+                        // Decisione 77 (1.11.0-beta.50): dopo una fine «Scrivi» quei giorni li ha presi chi pagava al posto dell'inquilino.
+                        $suoi[] = isset($p['propri_scritto'])
+                            ? ucfirst($this->presaConLaFine($p, $this->dalAl($dal, $p['propri_fino'], $p['propri_dal'] ?? null), $chi, $vecchio === null || $vecchio['solo_propri'])) . '.'
+                            : sprintf('La parte a carico dell\'inquilino %s è già nelle rate di %s.', $this->dalAl($dal, $p['propri_fino'], $p['propri_dal'] ?? null), $chi);
                     }
                     if ($p['usciti'] !== []) {
-                        $suoi[] = sprintf('La parte a carico dell\'inquilino %s resta nelle rate di %s: chi paga i giorni dopo la %s uscita lo decide l\'amministratore.',
-                            $this->dalAl($dal, $p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), count($p['usciti']) === 1 ? 'sua' : 'loro');
+                        // Decisione 77 (1.11.0-beta.50): chi paga i giorni dopo l'uscita lo dice la fine dell'inquilino di prima.
+                        $suoi[] = sprintf('La parte a carico dell\'inquilino %s resta nelle rate di %s: %s.',
+                            $this->dalAl($dal, $p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), $this->dopoLUscitaDiPrima($p, $chi, $vecchio === null));
                     }
                     if ($p['presenti'] !== []) {
                         $suoi[] = sprintf('La parte a carico dell\'inquilino resta nelle rate di %s, che %s.', $this->elenco($p['presenti']), count($p['presenti']) === 1 ? 'resta inquilino' : 'restano inquilini');
@@ -833,12 +1541,14 @@ class AnteprimaPassaggio
         $bozze = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
             ->where('rate_quote.anagrafica_id', $anagraficaId)->whereIn('rate_quote.immobile_id', $immobileIds)
             ->whereNotExists(\App\Models\Gestionale\Rata::aGiornale())
-            ->groupBy('rate.piano_rate_id', 'piani_rate.nome')->orderBy('rate.piano_rate_id')
-            ->get(['rate.piano_rate_id', 'piani_rate.nome', DB::raw('COUNT(*) as n')]);
-        $fermi = \App\Models\Gestionale\PianoRate::immutabiliFra($bozze->pluck('piano_rate_id')->all());
+            ->groupBy('rate.piano_rate_id', 'piani_rate.nome', 'rate_quote.immobile_id')->orderBy('rate.piano_rate_id')
+            ->get(['rate.piano_rate_id', 'piani_rate.nome', 'rate_quote.immobile_id', DB::raw('COUNT(*) as n')]);
+        $fermi = \App\Models\Gestionale\PianoRate::immutabiliFra($bozze->pluck('piano_rate_id')->unique()->values()->all());
 
-        return $bozze->filter(fn ($b) => in_array((int) $b->piano_rate_id, $fermi, true))
-            ->map(fn ($b) => ['nome' => (string) $b->nome, 'quote' => (int) $b->n])->values()->all();
+        // R14 della Fase 1-bis della .50: anche quante per unità, perché dove la locazione continua con un coinquilino non c'è la scelta.
+        return $bozze->filter(fn ($b) => in_array((int) $b->piano_rate_id, $fermi, true))->groupBy('piano_rate_id')
+            ->map(fn (Collection $g) => ['piano_rate_id' => (int) $g->first()->piano_rate_id, 'nome' => (string) $g->first()->nome, 'quote' => (int) $g->sum('n'),
+                'per_unita' => $g->mapWithKeys(fn ($b) => [(int) $b->immobile_id => (int) $b->n])->all()])->values()->all();
     }
 
     /** DL3: «Il piano «Preventivo 2026» non si ricalcola più», oppure «I piani … non si ricalcolano più». */
@@ -1089,11 +1799,12 @@ class AnteprimaPassaggio
 
     /**
      * Decisione 72, rilievo R1 della Fase 1-bis della .48: la scelta sul conguaglio della successione e del legato si chiede con l'arretrato
-     * a nome del defunto e delle coppie proposte (la stessa regola di `RegistraSubentroAction` e del modulo).
+     * a nome del defunto e delle coppie proposte (la stessa regola di `RegistraSubentroAction` e del modulo). Decisione 77 (1.11.0-beta.50):
+     * anche alla fine di una locazione, con un nuovo inquilino o senza, quando l'anteprima propone coppie.
      */
     private function sceltaDelConguaglio(string $tipo, array $dati, array $conguaglio): bool
     {
-        return $tipo === 'successione' && ! $this->arretratoAgliEredi($dati) && self::coppieProposte($conguaglio);
+        return (($tipo === 'successione' && ! $this->arretratoAgliEredi($dati)) || $tipo === 'fine_locazione') && self::coppieProposte($conguaglio);
     }
 
     /**
@@ -1601,9 +2312,12 @@ class AnteprimaPassaggio
                 ? sprintf('%s risulterà proprietario pieno fino al %s compreso; dal %s usufruttuario. %s nudo proprietario dal %s.', $uscente, $finoA, $dalA, $entrante ?? 'Chi entra', $dalA)
                 : sprintf('%s risulterà titolare fino al %s compreso. %s dal %s.', $uscente, $finoA, $entrante ?? 'Chi entra', $dalA),
             'inizio_locazione' => sprintf('%s %s risulterà inquilino dal %s.', $this->fraseProprietariRestano($proprietari), $entrante ?? 'Chi entra', $dalA),
-            'fine_locazione' => $entrante
-                ? sprintf('%s risulterà inquilino fino al %s compreso. %s dal %s.', $uscente, $finoA, $entrante, $dalA)
-                : sprintf('%s risulterà inquilino fino al %s compreso. L\'unità resta sfitta dal %s.', $uscente, $finoA, $dalA),
+            'fine_locazione' => match (true) {
+                $entrante !== null => sprintf('%s risulterà inquilino fino al %s compreso. %s dal %s.', $uscente, $finoA, $entrante, $dalA),
+                // Punto 5 della lista della .50 (rilievo 4): con un altro inquilino quel giorno l'unità non resta sfitta.
+                $this->altriInquilini !== [] => sprintf('%s risulterà inquilino fino al %s compreso. Dal %s %s.', $uscente, $finoA, $dalA, $this->restanoInquilini(false)),
+                default => sprintf('%s risulterà inquilino fino al %s compreso. L\'unità resta sfitta dal %s.', $uscente, $finoA, $dalA),
+            },
             'usufrutto' => ($dati['sottotipo'] ?? 'costituzione') === 'estinzione' && ! empty($dati['accrescimento'])
                 ? sprintf('%s risulterà usufruttuario fino al %s compreso. Dal %s il suo usufrutto si accresce a %s, e la nuda proprietà resta nuda.', $uscente, $finoA, $dalA, $this->elencoUsufruttuari())
                 : (($dati['sottotipo'] ?? 'costituzione') === 'estinzione'
@@ -1613,6 +2327,30 @@ class AnteprimaPassaggio
             'successione' => sprintf('%s risulterà titolare fino al %s compreso, il giorno prima del decesso. %s dal %s.', $uscente, $finoA, $this->elencoEredi(), $dalA),
             default => '',
         };
+    }
+
+    /**
+     * Punto 5 della lista della .50: «resta inquilino Dora», «restano inquilini Dora e Pia», con la quota per il blocco 1. Chi entra il
+     * giorno stesso non resta: «è inquilino Luca».
+     */
+    private function restanoInquilini(bool $conLaQuota): string
+    {
+        // Rilievo della ripresa (punto 5): chi c'era già il giorno prima «resta» inquilino; chi entra il giorno stesso «è» inquilino.
+        $parti = [];
+        $soloLui = count($this->altriInquilini) === 1;
+        foreach ([false, true] as $entra) {
+            $gruppo = array_values(array_filter($this->altriInquilini, fn (array $i) => (bool) ($i['entra'] ?? false) === $entra));
+            if ($gruppo === []) {
+                continue;
+            }
+            $uno = count($gruppo) === 1;
+            $nomi = array_map(fn (array $i) => $conLaQuota && ! $soloLui ? sprintf('%s (%s %%)', $i['nome'], $this->quota($i['quota'])) : $i['nome'], $gruppo);
+            $verbo = $entra ? ($uno ? 'è inquilino' : 'sono inquilini') : ($uno ? 'resta inquilino' : 'restano inquilini');
+            $parti[] = sprintf('%s%s %s%s', $entra && $parti !== [] ? 'ed ' : '', $verbo, $this->elenco($nomi),
+                $conLaQuota && $soloLui ? sprintf(', al %s %%', $this->quota($gruppo[0]['quota'])) : '');
+        }
+
+        return implode(', ', $parti);
     }
 
     private function fraseProprietariRestano(Collection $proprietari): string
@@ -1644,6 +2382,14 @@ class AnteprimaPassaggio
                 break;
             case 'inizio_locazione':
                 $frasi[] = sprintf('%s risulterà inquilino dal %s, al %s %%.', $entrante ?? 'Chi entra', $dalA, $quota);
+                // Giro stretto della .50 (G20): sulle pertinenze spuntate la registrazione scrive chi entra al 100 % (`applicaAllaPertinenza`),
+                // qualunque sia la quota sull'unità: il pannello dice la quota di ciascuna unità.
+                $sullePertinenze = $immobile->pertinenze()->whereIn('id', array_map('intval', (array) ($dati['pertinenze'] ?? [])))->pluck('nome')
+                    ->map(fn ($n) => '«' . $n . '»')->values()->all();
+                if ($sullePertinenze !== []) {
+                    $frasi[] = sprintf('%s %s %s risulterà inquilino dal %s, al %s %%.', count($sullePertinenze) === 1 ? 'Sulla pertinenza' : 'Sulle pertinenze',
+                        $this->elenco($sullePertinenze), $entrante ?? 'chi entra', $dalA, $this->quota(100));
+                }
                 $frasi[] = $this->fraseProprietariRestano($proprietari) . ' La locazione si aggiunge, non sostituisce.';
                 if (! empty($dati['data_fine_locazione'])) {
                     $frasi[] = sprintf('La data di fine (%s) è una scadenza, non un automatismo: il programma non chiude la locazione da solo.', $this->data($dati['data_fine_locazione']));
@@ -1651,9 +2397,12 @@ class AnteprimaPassaggio
                 break;
             case 'fine_locazione':
                 $frasi[] = sprintf('%s risulterà inquilino fino al %s.', $uscente, $finoA);
-                $frasi[] = $entrante
-                    ? sprintf('%s inquilino dal %s, al %s %%.', $entrante, $dalA, $quota)
-                    : sprintf('L\'unità resta sfitta dal %s: nessun inquilino risulterà registrato.', $dalA);
+                $frasi[] = match (true) {
+                    $entrante !== null => sprintf('%s inquilino dal %s, al %s %%.', $entrante, $dalA, $quota),
+                    // Punto 5 della lista della .50 (rilievo 4): chi resta inquilino quel giorno, con la quota.
+                    $this->altriInquilini !== [] => sprintf('Dal %s %s.', $dalA, $this->restanoInquilini(true)),
+                    default => sprintf('L\'unità resta sfitta dal %s: nessun inquilino risulterà registrato.', $dalA),
+                };
                 break;
             case 'usufrutto':
                 if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione' && ! empty($dati['accrescimento'])) {
@@ -1903,15 +2652,35 @@ class AnteprimaPassaggio
             if ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
                 $frasi[] = sprintf('Nessuna rata emessa è intestata %s: non c\'è niente da conguagliare. Le altre quote dell\'unità restano a chi le ha ricevute.', $this->frasiObbligati->a((string) $uscente));
             } elseif ($conguaglio['stato'] === 'calcolato') {
+                $cambioRegolato = $entrante !== null ? $this->cambioRegolatoDiChiEsce($dati) : null;
+                $regolati = $cambioRegolato !== null ? self::pianiDopoUnRegolato($conguaglio) : [];
+                $soloRegolati = count($regolati) === collect($conguaglio['quote'] ?? [])->filter(fn ($q) => (int) ($q['entrante'] ?? 0) !== 0)->pluck('piano')->unique()->count();
                 // Rilievo R4 della Fase 1-bis della .42: con il conguaglio fermo (decisione 40) l'apertura non annuncia due righe che
-                // non ci sono.
-                $frasi[] = $senzaCoppie
-                    ? 'Le rate già emesse non si toccano.'
-                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che entra come inquilino, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota è divisa in proporzione ai giorni.', $uscente, $entrante ?? 'chi entra');
-                array_push($frasi, ...$frasiConguaglio);
+                // non ci sono. Decisione 77 (1.11.0-beta.50): il conguaglio della locazione si sceglie, come quello della successione
+                // (rilievo R2 della .48): l'apertura dice le due strade, e le frasi del calcolo vanno in `frasi_del_conguaglio`.
+                $frasi[] = match (true) {
+                    $senzaCoppie => 'Le rate già emesse non si toccano.',
+                    $scelta && $entrante === null => sprintf('Le rate già emesse non si toccano. Se scrivi il conguaglio, i giorni dopo l\'uscita di %s (%s) passano a chi paga al posto dell\'inquilino, %s: le righe del conguaglio entrano nei saldi e sommano a zero, sulla gestione di ciascun piano, con la quota divisa in proporzione ai giorni. Se non lo scrivi, nei saldi non si scrive niente: i giorni dopo l\'uscita restano nelle rate di %s, e le parti li regolano fra loro con il prospetto degli oneri accessori.',
+                        $uscente, MoneyHelper::format(abs((int) ($conguaglio['totale_entrante'] ?? 0))), self::chiRiceveInParole($conguaglio['coppie'] ?? []), $uscente),
+                    $scelta => sprintf('Le rate già emesse non si toccano. Se scrivi il conguaglio, le sue righe fra %s e %s, che entra come inquilino, entrano nei saldi e sommano a zero, sulla gestione di ciascun piano: la quota è divisa in proporzione ai giorni, e %s dei giorni dopo l\'uscita passano %s. Se non lo scrivi, nei saldi non si scrive niente: i giorni dopo l\'uscita restano nelle rate di %s, %s',
+                        $uscente, $entrante ?? 'chi entra', MoneyHelper::format(abs((int) ($conguaglio['totale_entrante'] ?? 0))), $this->frasiObbligati->a($entrante ?? 'chi entra'),
+                        // G5: dopo un cambio regolato fra le parti le rate sono di chi era uscito con quel cambio, non di chi esce adesso.
+                        $regolati !== [] && $soloRegolati ? (string) ($cambioRegolato->registro['nomi']['uscente'] ?? $cambioRegolato->uscente?->nome ?? $uscente) : $uscente,
+                        $regolati !== [] ? $this->rimborsoDopoUnRegolato($conguaglio, (string) $uscente, $entrante ?? 'chi entra', $regolati, $cambioRegolato)
+                            : $this->rimborsoSenzaScrivere($conguaglio, (string) $uscente, $entrante ?? 'chi entra')),
+                    default => sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che entra come inquilino, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota è divisa in proporzione ai giorni.', $uscente, $entrante ?? 'chi entra'),
+                };
+                array_push($frasi, ...($scelta ? self::fattiDelConguaglio($frasiConguaglio) : $frasiConguaglio));
             } else {
-                $frasi[] = sprintf('Le rate già emesse non si toccano: le %d quote intestate %s (%s) restano sue. Dalla prossima generazione le voci a carico dell\'inquilino tornano %s.', $diChiEsce->count(), $this->frasiObbligati->a((string) $uscente), MoneyHelper::format((int) $diChiEsce->sum('importo')),
-                    $this->frasiObbligati->aChi($this->alPosto));
+                // Decisione 79 (2): dove la locazione continua con un coinquilino le voci non «tornano» a chi paga al posto dell'inquilino;
+                // la frase della fermata, più sotto, dice la cifra.
+                $frasi[] = sprintf('Le rate già emesse non si toccano: le %d quote intestate %s (%s) restano sue.%s', $diChiEsce->count(), $this->frasiObbligati->a((string) $uscente), MoneyHelper::format((int) $diChiEsce->sum('importo')),
+                    match (true) {
+                        $this->fermataCoinquilino !== [] => '',
+                        // Giro stretto della .50 (il ripiego della .47): senza nessuno al posto dell'inquilino le voci restano scoperte.
+                        $this->frasiObbligati->aChi($this->alPosto) === 'al proprietario' => ' Nessuno sta al posto dell\'inquilino dopo l\'uscita: dalla prossima generazione le voci a carico dell\'inquilino restano scoperte.',
+                        default => sprintf(' Dalla prossima generazione le voci a carico dell\'inquilino tornano %s.', $this->frasiObbligati->aChi($this->alPosto)),
+                    });
             }
         } elseif ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
             $frasi[] = sprintf('Nessuna rata emessa è intestata %s: non c\'è niente da conguagliare fra chi esce e chi entra. Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $this->frasiObbligati->a((string) $uscente), $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
@@ -2064,7 +2833,19 @@ class AnteprimaPassaggio
             $dati['usufruttuari'] = $this->usufruttuari->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->values()->all();
         }
         if ($tipo === 'fine_locazione') {
-            $dati['bozze_ferme_di_chi_esce'] = $this->bozzeFermeDiChiEsce;
+            // Punto 4 della lista della .50: le unità dove nessuno sta al posto dell'inquilino, piano per piano, perché la frase non prometta
+            // che «Scrivi il conguaglio» porta anche le loro quote a qualcuno.
+            $dati['bozze_ferme_di_chi_esce'] = array_map(fn (array $b) => $b + ['senza_nessuno' => collect($this->senzaNessuno)
+                ->filter(fn (array $g) => in_array((int) $b['piano_rate_id'], $g['piani_in_bozza'] ?? [], true))->pluck('unita')->unique()->values()->all(),
+                // R14: le unità dove la locazione continua con un coinquilino, se la scelta c'è per le altre: lì «Scrivi» non porta niente.
+                'con_coinquilino' => $this->sceltaQui ? array_values(array_intersect_key($this->unitaConCoinquilino, $b['per_unita'] ?? [])) : []], $this->bozzeFermeDiChiEsce);
+            // Decisioni 77 e 79 (1.11.0-beta.50): la scelta sul conguaglio, il coinquilino che resta, e chi paga al posto dell'inquilino
+            // unità per unità, con la regola della coppia.
+            $dati['scelta_del_conguaglio'] = $this->sceltaQui;
+            $dati['coinquilini'] = $this->fermataCoinquilino;
+            if ($entrante === null) {
+                $dati['al_posto_per_unita'] = $this->frasiObbligati->alPostoPerUnita((int) $condominio->id, $dati['immobili'] ?? [(int) $immobile->id], $this->chiEsce, $dal);
+            }
         }
         if ($tipo === 'successione') {
             $dati['eredi'] = array_map(fn ($e) => ['nome' => $e['anagrafica']->nome, 'quota' => (float) $e['quota']], $this->eredi);
@@ -2266,9 +3047,21 @@ class AnteprimaPassaggio
                 // nella vendita della nuda, R4 riga per riga; un ruolo che chi esce tiene) — nessuna parte cambia persona.
                 ->filter(fn ($q) => $q['esclusa'] || ! empty($q['tutta_fuori']) || (($tipo === 'vendita' || ($tipo === 'successione' && ! $agliEredi)) && $tuttaDiChiEsce($gruppiConguaglio[$q['piano_rate_id'] . '|' . $q['immobile_id'] . '|' . $q['intestatario_id']])))->count())
             : 0;
-        $toccate = $emesseDiChiEsce - $escluseDiChiEsce;
+        // Punto 4 della lista della .50: le emesse di un'unità dove nessuno sta al posto dell'inquilino dopo l'uscita restano a chi esce, e il
+        // conguaglio non le tocca.
+        $emesseSenzaNessuno = $uscente
+            ? min($emesseDiChiEsce - $escluseDiChiEsce, collect($quoteConguaglio)->where('in_bozza', false)->where('intestatario_id', (int) $uscente->anagrafica_id)
+                ->filter(fn ($q) => ! empty($q['senza_nessuno']) && ! $q['esclusa'] && empty($q['tutta_fuori']))->count())
+            : 0;
+        $toccate = $emesseDiChiEsce - $escluseDiChiEsce - $emesseSenzaNessuno;
         if ($toccate > 0) {
             $motivi[] = sprintf('%d %s %s su questa unità', $toccate, $toccate === 1 ? 'quota di rata già emessa' : 'quote di rate già emesse', $this->frasiObbligati->a((string) $uscente->anagrafica?->nome));
+        }
+        if ($emesseSenzaNessuno > 0) {
+            $uno = $emesseSenzaNessuno === 1;
+            $informazioni[] = sprintf('%d %s %s%s: %s, e il conguaglio non %s tocca: %s', $emesseSenzaNessuno, $uno ? 'quota di rata già emessa' : 'quote di rate già emesse',
+                $this->frasiObbligati->a((string) $uscente->anagrafica?->nome), count($immobileIds) > 1 ? '' : ' su questa unità', $uno ? 'resta sua' : 'restano sue', $uno ? 'la' : 'le',
+                $this->nessunoAlPosto(count($immobileIds) > 1));
         }
         if ($escluseDiChiEsce > 0) {
             $uno = $escluseDiChiEsce === 1;
@@ -2442,6 +3235,23 @@ class AnteprimaPassaggio
         // Decisione 35 (beta.42): le bozze di un predecessore che il suo passaggio non ha fatto passare: restano, senza conguaglio.
         $maiPerPiano = collect($quoteConguaglio)->where('in_bozza', true)->where('motivo_bozza', 'mai_passata')
             ->countBy(fn ($q) => $q['piano_rate_id'] . '|' . $q['intestatario_id'])->all();
+        // Punto 4 della lista della .50: le bozze di un'unità dove nessuno sta al posto dell'inquilino dopo l'uscita restano sue, senza
+        // conguaglio (le altre ragioni, contate sopra, vengono prima).
+        $giaContate = ['ordinaria_riservata', 'ordinaria_dell_usufruttuario', 'straordinaria_del_nudo', 'solo_pregresso', 'straordinaria_di_chi_esce', 'fattura_di_chi_esce', 'altra_quota',
+            'non_risolta', 'senza_istantanea', 'catena_ambigua', 'mai_passata'];
+        $nessunoPerPiano = collect($quoteConguaglio)->where('in_bozza', true)->filter(fn ($q) => ! empty($q['senza_nessuno']) && ! in_array($q['motivo_bozza'] ?? null, $giaContate, true))
+            ->countBy(fn ($q) => $q['piano_rate_id'] . '|' . $q['intestatario_id'])->all();
+        // R14 della Fase 1-bis della .50: le bozze di chi esce sulle unità dove la locazione continua con un coinquilino non sono nel calcolo
+        // della coppia: restano sue, senza conguaglio, anche se per le altre unità la scelta c'è.
+        $coinquilinoPerPiano = [];
+        if ($tipo === 'fine_locazione' && $entrante === null && $this->sceltaQui && $uscente !== null) {
+            foreach ($this->bozzeFermeDiChiEsce as $b) {
+                $n = (int) array_sum(array_intersect_key($b['per_unita'] ?? [], $this->unitaConCoinquilino));
+                if ($n > 0) {
+                    $coinquilinoPerPiano[$b['piano_rate_id'] . '|' . (int) $uscente->anagrafica_id] = $n;
+                }
+            }
+        }
         foreach ($immutabili as $p) {
             $passano = $uscente !== null && (int) $p->anagrafica_id === (int) $uscente->anagrafica_id ? min((int) $p->n, $passanoPerPiano[(int) $p->piano_rate_id] ?? 0) : 0;
             $ferme = min((int) $p->n - $passano, $fermePerPiano[$p->piano_rate_id . '|' . $p->anagrafica_id] ?? 0);
@@ -2450,11 +3260,16 @@ class AnteprimaPassaggio
             $ambigue = min((int) $p->n - $passano - $ferme - $nonRisolte - $senza, $ambiguePerPiano[$p->piano_rate_id . '|' . $p->anagrafica_id] ?? 0);
             $mai = min((int) $p->n - $passano - $ferme - $nonRisolte - $senza - $ambigue, $maiPerPiano[$p->piano_rate_id . '|' . $p->anagrafica_id] ?? 0);
             $restano = (int) $p->n - $passano - $ferme - $nonRisolte - $senza - $ambigue - $mai;
+            $nessuno = min($restano, $nessunoPerPiano[$p->piano_rate_id . '|' . $p->anagrafica_id] ?? 0);
+            $restano -= $nessuno;
+            $coinquilino = min($restano, $coinquilinoPerPiano[$p->piano_rate_id . '|' . $p->anagrafica_id] ?? 0);
+            $restano -= $coinquilino;
             // Il numero davanti a ogni parte solo quando le parti sono più d'una.
-            $conNumero = count(array_filter([$passano, $restano, $nonRisolte, $ferme, $senza, $ambigue, $mai])) > 1;
-            // D1 (1.11.0-beta.42): alla fine di una locazione senza un nuovo inquilino il conguaglio non si calcola — chi paga
-            // dopo l'uscita lo sceglierà l'amministratore (decisione 32, con la beta della locazione) —, e la frase non lo promette.
-            $senzaConguaglio = $tipo === 'fine_locazione' && $entrante === null;
+            $conNumero = count(array_filter([$passano, $restano, $nonRisolte, $ferme, $senza, $ambigue, $mai, $nessuno, $coinquilino])) > 1;
+            // D1 (1.11.0-beta.42), decisione 77 (1.11.0-beta.50): alla fine di una locazione senza un nuovo inquilino il conguaglio c'è,
+            // con la scelta, e le quote che restano sono comprese nel conguaglio se lo si scrive; chi paga i giorni dopo l'uscita lo dice
+            // la scelta. Dove la locazione continua con un coinquilino la scelta non c'è (decisione 79), e la frase non la promette.
+            $senzaConguaglio = $tipo === 'fine_locazione' && $entrante === null && ! $this->sceltaQui;
             // Rilievo R5 e punto 8 della ripresa: senza nessuna quota a giornale il perché non è ovvio, e si dice la ragione vera.
             $senzaGiornale = ! DB::table('rate')->where('piano_rate_id', $p->piano_rate_id)->whereExists(\App\Models\Gestionale\Rata::aGiornale())->exists();
             $perche = $senzaGiornale ? \App\Models\Gestionale\PianoRate::find($p->piano_rate_id)?->fraseDelFermo() : null;
@@ -2462,16 +3277,25 @@ class AnteprimaPassaggio
                 $perche !== null ? ' (' . $perche . ')' : '');
             $parti = array_filter([
                 $passano > 0 ? sprintf('%s a %s (cambia l\'intestatario, non l\'importo)', $passano === (int) $p->n ? ($passano === 1 ? 'passa' : 'passano') : sprintf('%d %s', $passano, $passano === 1 ? 'passa' : 'passano'), $entrante ?? 'chi entra') : null,
-                // Rilievo A10: chi decide (decisione 32) e il rimedio, come nelle altre fermate.
-                $restano > 0 && $senzaConguaglio ? sprintf('%s%s, senza conguaglio: alla fine di una locazione senza un nuovo inquilino il programma non lo calcola, e chi paga i giorni dopo l\'uscita lo decide l\'amministratore — se serve, con un saldo manuale dal Wallet sulla stessa gestione', $conNumero ? $restano . ' ' : '', $restano === 1 ? 'resta sua' : 'restano sue') : null,
+                // Rilievo A10: chi decide (decisione 32) e il rimedio, come nelle altre fermate. Decisione 79 (2): con un coinquilino che
+                // resta la scelta non c'è, e la strada a mano la dice la frase della fermata (decisione 80).
+                $restano > 0 && $senzaConguaglio ? sprintf('%s%s, senza conguaglio: %s', $conNumero ? $restano . ' ' : '', $restano === 1 ? 'resta sua' : 'restano sue',
+                    $this->fermataCoinquilino !== [] ? 'con un coinquilino che resta il programma non propone il conguaglio dei giorni dopo l\'uscita, e chi li paga lo decidono le parti'
+                        : 'chi paga i giorni dopo l\'uscita lo decide l\'amministratore') : null,
                 $restano > 0 && ! $senzaConguaglio ? ($conNumero
                     ? sprintf('%d %s %s compres%s nel conguaglio', $restano, $restano === 1 ? 'resta sua' : 'restano sue', $restano === 1 ? 'ed è' : 'e sono', $restano === 1 ? 'a' : 'e')
-                    : sprintf('%s %s compres%s nel conguaglio', $restano === 1 ? 'resta sua' : 'restano sue', $restano === 1 ? 'ed è' : 'e sono', $restano === 1 ? 'a' : 'e')) : null,
+                    : sprintf('%s %s compres%s nel conguaglio', $restano === 1 ? 'resta sua' : 'restano sue', $restano === 1 ? 'ed è' : 'e sono', $restano === 1 ? 'a' : 'e'))
+                    // Decisione 77: alla fine senza un nuovo inquilino, chi paga i giorni dopo l'uscita lo dice la scelta.
+                    . ($tipo === 'fine_locazione' && $entrante === null ? ', se lo scrivi: chi paga i giorni dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio' : '') : null,
                 // Decisione 28.8 c: non «comprese nel conguaglio» — il conguaglio non ne propone (è la frase del blocco 2).
                 $nonRisolte > 0 ? sprintf('%s%s, senza conguaglio: la competenza del piano non si può determinare', $conNumero ? $nonRisolte . ' ' : '', $nonRisolte === 1 ? 'resta sua' : 'restano sue') : null,
                 $senza > 0 ? sprintf('%s%s, senza conguaglio: non %s quanta parte è saldo pregresso', $conNumero ? $senza . ' ' : '', $senza === 1 ? 'resta sua' : 'restano sue', $senza === 1 ? 'dice' : 'dicono') : null,
                 $ambigue > 0 ? sprintf('%s%s, senza conguaglio: la parte che passa non si separa con certezza', $conNumero ? $ambigue . ' ' : '', $ambigue === 1 ? 'resta sua' : 'restano sue') : null,
                 $mai > 0 ? sprintf('%s%s, senza conguaglio: il passaggio di prima non %s ha %s passare, e il piano non è stato ricalcolato', $conNumero ? $mai . ' ' : '', $mai === 1 ? 'resta sua' : 'restano sue', $mai === 1 ? 'la' : 'le', $mai === 1 ? 'fatta' : 'fatte') : null,
+                $nessuno > 0 ? sprintf('%s%s, senza conguaglio: %s', $conNumero ? $nessuno . ' ' : '', $nessuno === 1 ? 'resta sua' : 'restano sue', $this->nessunoAlPosto(count($immobileIds) > 1)) : null,
+                $coinquilino > 0 ? sprintf('%s%s, senza conguaglio: %s %s la locazione continua con un coinquilino, il programma non propone il conguaglio dei giorni dopo l\'uscita, e chi li paga lo decidono le parti',
+                    $conNumero ? $coinquilino . ' ' : '', $coinquilino === 1 ? 'resta sua' : 'restano sue', count($this->unitaConCoinquilino) === 1 ? 'nell\'unità' : 'nelle unità',
+                    $this->elenco(array_map(fn ($u) => '«' . $u . '»', array_values($this->unitaConCoinquilino)))) : null,
                 $ferme > 0 ? sprintf('%s%s: il conguaglio non %s tocca', $conNumero ? $ferme . ' ' : '', $ferme === 1 ? 'resta sua' : 'restano sue', $ferme === 1 ? 'la' : 'le') : null,
             ]);
             // Decisione del 29/09 (28.7): un piano le cui bozze restano tutte a chi le ha, senza che nessuna parte cambi persona,
@@ -2526,9 +3350,14 @@ class AnteprimaPassaggio
                     foreach ($this->partiPerUnita($piano['unita']) as ['unita' => $unita, 'parti' => $p]) {
                         $altre = $p['propri'] || $p['usciti'] !== [] || $p['presenti'] !== [];
                         $suoi = array_values(array_filter([
-                            $p['propri'] ? sprintf('la parte a carico dell\'inquilino %s è già nelle rate di %s', $dalAl($p['propri_fino'], $p['propri_dal'] ?? null), $entrante ?? 'chi entra') : null,
-                            $p['usciti'] !== [] ? sprintf('la parte a carico dell\'inquilino %s resta nelle rate di %s: chi paga i giorni dopo la %s uscita lo decide l\'amministratore — se serve, con un saldo manuale dal Wallet sulla stessa gestione',
-                                $dalAl($p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), count($p['usciti']) === 1 ? 'sua' : 'loro') : null,
+                            $p['propri'] ? (isset($p['propri_scritto'])
+                                ? $this->presaConLaFine($p, $dalAl($p['propri_fino'], $p['propri_dal'] ?? null), $entrante ?? 'chi entra', $vecchio === null || $vecchio['solo_propri'])
+                                : sprintf('la parte a carico dell\'inquilino %s è già nelle rate di %s', $dalAl($p['propri_fino'], $p['propri_dal'] ?? null), $entrante ?? 'chi entra')) : null,
+                            // Decisione 77 (1.11.0-beta.50): chi paga i giorni dopo l'uscita lo dice la fine dell'inquilino di prima; il saldo
+                            // manuale dal Wallet resta solo per la riga chiusa a mano.
+                            $p['usciti'] !== [] ? sprintf('la parte a carico dell\'inquilino %s resta nelle rate di %s: %s',
+                                $dalAl($p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), $this->dopoLUscitaDiPrima($p, $entrante ?? 'chi entra', $vecchio === null)
+                                . (($p['usciti_come'] ?? 'a_mano') === 'a_mano' ? ' — se serve, con un saldo manuale dal Wallet sulla stessa gestione' : '')) : null,
                             $p['presenti'] !== [] ? sprintf('la parte a carico dell\'inquilino resta nelle rate di %s, che %s', $this->elenco($p['presenti']), count($p['presenti']) === 1 ? 'resta inquilino' : 'restano inquilini') : null,
                             $p['ripiego'] ? ($vecchio !== null
                                 ? ($altre ? 'per gli altri giorni il rimborso si regola fra le parti' : 'il rimborso della parte a carico dell\'inquilino si regola fra le parti')

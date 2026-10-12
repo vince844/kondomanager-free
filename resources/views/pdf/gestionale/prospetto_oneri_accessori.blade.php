@@ -9,6 +9,25 @@
     $numero = fn (float $n) => rtrim(rtrim(number_format($n, 2, ',', '.'), '0'), ',');
     $piuPiani = count($prospetto['piani']) > 1;
     $tratti = fn (?array $lista) => $lista ? implode(' + ', array_map(fn ($t) => $data($t['dal']) . '–' . $data($t['al']), $lista)) : '—';
+    // 1.11.0-beta.50 (decisioni 32, 77 e 79): accanto ai giorni dopo l'uscita la fine della locazione e la sua scelta — «Non scriverlo»,
+    // o nessun conguaglio quando la scelta non c'è (le fini di prima della .50) —, e chi li ha pagati.
+    $allaFine = fn (array $v) => 'fine della locazione del ' . $data($v['uscita_del'] ?? null) . match ($v['scelta'] ?? null) {
+        'non_scritto' => ', conguaglio non scritto',
+        // Fase 1-bis della .50 (R2): con «Scrivi», i giorni in cui nessuno stava al posto dell'inquilino.
+        'scritto' => ', nessuno al posto dell\'inquilino',
+        default => ', nessun conguaglio',
+    };
+    $come = fn (array $v) => match (true) {
+        $v['modo'] === 'rate' => 'nelle sue rate',
+        $v['modo'] === 'conguaglio' => 'con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null),
+        // Decisione 83.3 (1.11.0-beta.50): il cambio d'inquilino che le parti hanno regolato fra loro, seguito da una fine scritta.
+        $v['modo'] === 'regolato' => 'regolata fra le parti al cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null),
+        $v['modo'] === 'restituzione' => 'da restituire a ' . ($v['a_chi'] ?? 'chi è uscito') . ' (' . $allaFine($v) . ')',
+        $v['modo'] === 'da_restituire' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . '): si restituisce a chi l\'ha pagata, fra le parti',
+        ($v['strada'] ?? null) === 'A' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . ')',
+        ($v['strada'] ?? null) === 'B' => 'pagata da ' . $v['pagato_da'] . ' con il conguaglio della fine locazione del ' . $data($v['uscita_del'] ?? null) . (! empty($v['oppure']) ? ', o da ' . $v['oppure'] : ''),
+        default => 'pagata da ' . $v['pagato_da'],
+    };
 @endphp
 
 {{-- Il documento del proprietario per il conduttore: B3a, 1.11.0-beta.34 (ProspettoOneriAccessori). --}}
@@ -57,7 +76,7 @@
             <tbody>
                 @foreach($c['voci'] as $v)
                     <tr style="border-bottom: 1px solid #e3e8ef;">
-                        <td style="padding: 3px 5px;">{{ $v['conto'] }}@if($piuPiani)<br><span style="color: #888; font-size: 6.8pt;">{{ $v['piano'] }}</span>@endif</td>
+                        <td style="padding: 3px 5px;">{{ $v['conto'] }}@if($piuPiani)<br><span style="color: #888; font-size: 6.8pt;">{{ $v['piano'] }}</span>@endif @if(! empty($v['nota']))<br><span style="color: #888; font-size: 6.8pt;">{{ $v['nota'] }}</span>@endif</td>
                         <td style="padding: 3px 5px;">
                             @if($v['millesimi'])
                                 {{ $v['tabella'] }}<br><span style="color: #888; font-size: 6.8pt;">{{ $numero($v['millesimi']['valore']) }} su {{ $numero($v['millesimi']['somma']) }} {{ $v['millesimi']['unita'] }}</span>
@@ -69,7 +88,7 @@
                         <td style="padding: 3px 5px;">{{ $tratti($v['competenza']) }}</td>
                         <td style="padding: 3px 5px; text-align: right;">{{ $v['giorni'] ?? '—' }}</td>
                         <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $euro($v['importo']) }}</td>
-                        <td style="padding: 3px 5px; font-size: 7pt;">{{ match ($v['modo']) { 'rate' => 'nelle sue rate', 'conguaglio' => 'con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null), default => 'pagata da ' . $v['pagato_da'] } }}</td>
+                        <td style="padding: 3px 5px; font-size: 7pt;">{{ $come($v) }}</td>
                     </tr>
                 @endforeach
             </tbody>
@@ -80,26 +99,36 @@
                     <td></td>
                 </tr>
                 {{-- Fase 1-bis della .47: la parte pagata con il conguaglio non è una rata, e ha la sua riga. Le righe «di cui» compaiono
-                     quando le parti sono almeno due; quella da rimborsare, come prima, anche da sola. --}}
-                @php($parti = count(array_filter([$c['nelle_sue_rate'], $c['con_il_conguaglio'] ?? 0, $c['da_rimborsare']], fn ($x) => $x !== 0)))
+                     quando le parti sono almeno due; quella da rimborsare, come prima, anche da sola. 1.11.0-beta.50: a chi è uscito con
+                     i giorni dopo l'uscita rimasti nelle sue rate si deve, e ha pagato più del suo totale: le righe non sono «di cui»,
+                     dicono quanto ha pagato e quanto gli si restituisce. --}}
+                @php($restituire = $c['da_rimborsare'] < 0)
+                @php($parti = count(array_filter([$c['nelle_sue_rate'], $c['con_il_conguaglio'] ?? 0, $c['regolato_fra_le_parti'] ?? 0, $c['da_rimborsare']], fn ($x) => $x !== 0)))
                 @if($parti > 1 && $c['nelle_sue_rate'] !== 0)
                     <tr>
-                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">di cui già nelle sue rate</td>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $restituire ? 'nelle sue rate' : 'di cui già nelle sue rate' }}</td>
                         <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['nelle_sue_rate']) }}</td>
                         <td></td>
                     </tr>
                 @endif
                 @if($parti > 1 && ($c['con_il_conguaglio'] ?? 0) !== 0)
                     <tr>
-                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">di cui con il conguaglio del cambio d'inquilino</td>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $restituire ? 'con il conguaglio del cambio d\'inquilino' : 'di cui con il conguaglio del cambio d\'inquilino' }}</td>
                         <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['con_il_conguaglio']) }}</td>
+                        <td></td>
+                    </tr>
+                @endif
+                @if($parti > 1 && ($c['regolato_fra_le_parti'] ?? 0) !== 0)
+                    <tr>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $restituire ? 'regolata fra le parti al cambio d\'inquilino' : 'di cui regolata fra le parti al cambio d\'inquilino' }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['regolato_fra_le_parti']) }}</td>
                         <td></td>
                     </tr>
                 @endif
                 @if($c['da_rimborsare'] !== 0)
                     <tr>
-                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">di cui da rimborsare a chi le ha pagate</td>
-                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['da_rimborsare']) }}</td>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $restituire ? 'da restituire a ' . $c['nome'] . ': i giorni dopo la sua uscita, che ha pagato' : 'di cui da rimborsare a chi le ha pagate' }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($c['da_rimborsare'])) }}</td>
                         <td></td>
                     </tr>
                 @endif
@@ -113,29 +142,51 @@
 @if($prospetto['senza_conduttore']['totale'] !== 0)
     <div style="margin-top: 14px; page-break-inside: avoid;">
         <div style="font-size: 9pt; font-weight: bold; color: #1e3a5f; margin-bottom: 3px;">Giorni senza conduttore</div>
-        <div style="font-size: 7.5pt; color: #555; margin-bottom: 5px;">Voci a carico dell'inquilino per giorni in cui nessun conduttore risulta registrato: restano a chi le ha pagate.</div>
+        {{-- 1.11.0-beta.50 (strada A′): i giorni dopo l'uscita rimasti nelle rate di chi è uscito non restano a lui, gli si restituiscono. --}}
+        @php($daRestituire = (int) collect($prospetto['senza_conduttore']['voci'])->where('modo', 'da_restituire')->sum('importo'))
+        @php($restano = $prospetto['senza_conduttore']['totale'] - $daRestituire)
+        <div style="font-size: 7.5pt; color: #555; margin-bottom: 5px;">{{ match (true) {
+            $daRestituire === 0 => 'Voci a carico dell\'inquilino per giorni in cui nessun conduttore risulta registrato: restano a chi le ha pagate.',
+            $restano === 0 => 'Voci a carico dell\'inquilino per giorni in cui nessun conduttore risulta registrato, dopo l\'uscita di un inquilino che le aveva nelle sue rate: si restituiscono a chi le ha pagate, fra le parti.',
+            default => 'Voci a carico dell\'inquilino per giorni in cui nessun conduttore risulta registrato: restano a carico di chi le ha pagate, salvo i giorni dopo l\'uscita di un inquilino rimasti nelle sue rate, che gli si restituiscono fra le parti.',
+        } }}</div>
         <table style="width: 100%; border-collapse: collapse; font-size: 7.8pt;">
             @foreach($prospetto['senza_conduttore']['voci'] as $v)
                 <tr style="border-bottom: 1px solid #e3e8ef;">
                     <td style="padding: 3px 5px;">{{ $v['conto'] }}@if($piuPiani) <span style="color: #888;">({{ $v['piano'] }})</span>@endif @if(! empty($v['nota']))<br><span style="color: #888; font-size: 6.8pt;">{{ $v['nota'] }}</span>@endif</td>
                     <td style="padding: 3px 5px; text-align: right;">{{ $v['giorni'] ?? '—' }} giorni</td>
                     <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $euro($v['importo']) }}</td>
-                    <td style="padding: 3px 5px; font-size: 7pt;">pagata da {{ $v['pagato_da'] }}</td>
+                    <td style="padding: 3px 5px; font-size: 7pt;">{{ $come($v) }}</td>
                 </tr>
             @endforeach
             <tr style="background: #f5f8fc; font-weight: bold;">
-                <td colspan="2" style="padding: 4px 5px;">Totale che resta a chi ha pagato</td>
+                <td colspan="2" style="padding: 4px 5px;">{{ match (true) {
+                    $daRestituire === 0 => 'Totale che resta a chi ha pagato',
+                    $restano === 0 => 'Totale da restituire a chi le ha pagate, fra le parti',
+                    default => 'Totale dei giorni senza conduttore',
+                } }}</td>
                 <td style="padding: 4px 5px; text-align: right; white-space: nowrap;">{{ $euro($prospetto['senza_conduttore']['totale']) }}</td>
                 <td></td>
             </tr>
+            @if($daRestituire !== 0 && $restano !== 0)
+                <tr><td colspan="2" style="padding: 2px 5px; font-size: 7.5pt;">di cui restano a chi le ha pagate</td><td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($restano) }}</td><td></td></tr>
+                <tr><td colspan="2" style="padding: 2px 5px; font-size: 7.5pt;">di cui da restituire a chi le ha pagate, fra le parti</td><td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($daRestituire) }}</td><td></td></tr>
+            @endif
         </table>
     </div>
 @endif
 
 @if($prospetto['totale_inquilino'] !== 0)
     <p style="font-size: 7.5pt; color: #555; margin-top: 12px;">
-        {{-- R22 (Fase 1-bis): il totale del ruolo inquilino si legge diviso, non come debito di un conduttore. --}}
-        Totale delle voci che il riparto pone sul ruolo inquilino su questa unità nell'esercizio: <strong>{{ $euro($prospetto['totale_inquilino']) }}</strong>{{ $prospetto['senza_conduttore']['totale'] !== 0 ? ', di cui ' . $euro($prospetto['totale_conduttori']) . ' ai conduttori e ' . $euro($prospetto['senza_conduttore']['totale']) . ' che restano a chi le ha pagate' : '' }}.
+        {{-- R22 (Fase 1-bis): il totale del ruolo inquilino si legge diviso, non come debito di un conduttore. 1.11.0-beta.50: la parte senza
+             conduttore che si restituisce a chi è uscito non «resta a chi le ha pagate». --}}
+        @php($daRestituire = (int) collect($prospetto['senza_conduttore']['voci'])->where('modo', 'da_restituire')->sum('importo'))
+        @php($diviso = array_values(array_filter([
+            $euro($prospetto['totale_conduttori']) . ' ai conduttori',
+            $prospetto['senza_conduttore']['totale'] - $daRestituire !== 0 ? $euro($prospetto['senza_conduttore']['totale'] - $daRestituire) . ' che restano a chi le ha pagate' : null,
+            $daRestituire !== 0 ? $euro($daRestituire) . ' da restituire a chi è uscito, fra le parti' : null,
+        ])))
+        Totale delle voci che il riparto pone sul ruolo inquilino su questa unità nell'esercizio: <strong>{{ $euro($prospetto['totale_inquilino']) }}</strong>{{ $prospetto['senza_conduttore']['totale'] !== 0 ? ', di cui ' . implode(', ', array_slice($diviso, 0, -1)) . ' e ' . end($diviso) : '' }}.
     </p>
 @endif
 

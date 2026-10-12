@@ -118,14 +118,31 @@ final class FrasiObbligati
                 // senza, vanno a chi paga al posto dell'inquilino nel riparto (`$proprietari` qui è `alPostoDellInquilino`, nel
                 // pannello e nello storico). La preposizione va con il nome: «tornano ad Anna», «tornano al proprietario».
                 // Fase 1-bis della .47: con la portata del blocco «Rate» — nei piani generati o ricalcolati dopo. Sul piano che non si
-                // ricalcola più le quote di chi esce restano sue, e chi paga i giorni dopo l'uscita lo decide l'amministratore
-                // (decisione 32): il pannello lo dice piano per piano; lo storico no, perché il conteggio di oggi non è quello del giorno.
+                // ricalcola più le quote di chi esce restano sue: il pannello lo dice piano per piano; lo storico no, perché il conteggio
+                // di oggi non è quello del giorno.
+                // Decisione 77 (1.11.0-beta.50): chi paga al posto dell'inquilino unità per unità (`al_posto_per_unita`, la stessa regola
+                // della coppia), e dove la locazione continua con un coinquilino lo si dice (decisione 79).
                 $frasi = [$entrante
                     ? sprintf('Le rate già emesse %s restano sue.', $this->a($uscente ?? 'chi esce'))
-                    : sprintf('Dal %s le voci a carico dell\'inquilino tornano %s, nei piani generati o ricalcolati dopo il passaggio. Le rate già emesse %s restano sue.', $dalA, $this->aChi($proprietari), $this->a($uscente ?? 'chi esce'))];
+                    : sprintf('%s Le rate già emesse %s restano sue.', $this->fraseTornano($dalA, $dati['al_posto_per_unita'] ?? null, $proprietari), $this->a($uscente ?? 'chi esce'))];
                 foreach ($entrante ? [] : ($dati['bozze_ferme_di_chi_esce'] ?? []) as $b) {
-                    $frasi[] = sprintf('Nel piano «%s», che non si ricalcola più, %s %s anche %s: chi paga i giorni dopo l\'uscita lo decide l\'amministratore.', $b['nome'],
-                        $b['quote'] === 1 ? 'resta' : 'restano', $this->a($uscente ?? 'chi esce'), $b['quote'] === 1 ? 'la quota non ancora emessa' : sprintf('le %d quote non ancora emesse', $b['quote']));
+                    $frasi[] = sprintf('Nel piano «%s», che non si ricalcola più, %s %s anche %s: %s.', $b['nome'],
+                        $b['quote'] === 1 ? 'resta' : 'restano', $this->a($uscente ?? 'chi esce'), $b['quote'] === 1 ? 'la quota non ancora emessa' : sprintf('le %d quote non ancora emesse', $b['quote']),
+                        match (true) {
+                            // Decisione 77: la scelta del pannello decide chi paga i giorni dopo l'uscita. Punto 4 della lista della .50: dove
+                            // nessuno sta al posto dell'inquilino, «Scrivi» non li porta a nessuno, e si dice.
+                            ! empty($dati['scelta_del_conguaglio']) => sprintf('chi paga i giorni dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio («Scrivi il conguaglio» li porta a chi paga al posto dell\'inquilino, «Non scriverlo» li lascia nelle rate di %s)%s', $uscente ?? 'chi esce',
+                                ! empty($b['senza_nessuno']) ? sprintf('; %s %s nessuno sta al posto dell\'inquilino, e lì restano nelle rate di %s anche con «Scrivi il conguaglio»', count($b['senza_nessuno']) === 1 ? 'nell\'unità' : 'nelle unità',
+                                    $this->elenco(array_map(fn ($u) => '«' . $u . '»', $b['senza_nessuno'])), $uscente ?? 'chi esce') : '')
+                                // R14 della Fase 1-bis della .50: dove la locazione continua con un coinquilino la scelta non vale.
+                                . (! empty($b['con_coinquilino']) ? sprintf('; %s %s la locazione continua con un coinquilino, e lì restano nelle rate di %s anche con «Scrivi il conguaglio»: chi li paga lo decidono le parti',
+                                    count($b['con_coinquilino']) === 1 ? 'nell\'unità' : 'nelle unità', $this->elenco(array_map(fn ($u) => '«' . $u . '»', $b['con_coinquilino'])), $uscente ?? 'chi esce') : ''),
+                            // Decisione 79 (2): con un coinquilino che resta la scelta non c'è.
+                            ! empty($dati['coinquilini']) => 'con un coinquilino che resta il programma non propone il conguaglio dei giorni dopo l\'uscita, e chi li paga lo decidono le parti',
+                            // Punto 4 della lista della .50: senza nessuno al posto dell'inquilino il conguaglio non c'è.
+                            ! empty($b['senza_nessuno']) => 'nei giorni dopo l\'uscita nessuno sta al posto dell\'inquilino, e il programma non propone il conguaglio',
+                            default => 'chi paga i giorni dopo l\'uscita lo decide l\'amministratore',
+                        });
                 }
                 if ($entrante) {
                     $frasi[] = sprintf('%s risponde delle voci a carico dell\'inquilino dal %s.', $entrante, $dalA);
@@ -284,6 +301,11 @@ final class FrasiObbligati
             // Decisione 28.8 a: l'unità e le pertinenze passate con lo stesso atto.
             'immobili'           => $this->immobiliDelPassaggio($subentro),
         ];
+        if ($tipo === 'fine_locazione' && $subentro->anagrafica_entrante_id === null && empty($subentro->registro['nomi']['entrante'] ?? null)) {
+            // Decisione 77 (1.11.0-beta.50): unità per unità, come il pannello. Il coinquilino dal registro del passaggio, dove c'è: lo
+            // storico dice ciò che il pannello ha detto, anche se poi il coinquilino è uscito lo stesso giorno.
+            $dati['al_posto_per_unita'] = $this->alPostoPerUnita((int) $subentro->condominio_id, $dati['immobili'], $subentro->anagrafica_uscente_id !== null ? (int) $subentro->anagrafica_uscente_id : null, $decorrenza, $subentro->capo());
+        }
         if ($subentro->conAccrescimento()) {
             // 1.11.0-beta.44: gli usufruttuari che hanno ricevuto l'accrescimento, dal registro.
             $nomi = \App\Models\Anagrafica::whereIn('id', $subentro->entranti())->pluck('nome', 'id');
@@ -457,6 +479,77 @@ final class FrasiObbligati
         }
 
         return collect();
+    }
+
+    /**
+     * Decisione 77 (1.11.0-beta.50): chi paga al posto dell'inquilino dopo l'uscita, unità per unità (l'unità e le pertinenze del
+     * passaggio), con la regola della coppia (`ChiPagaAlPostoDellInquilino`) sui giorni della frase: dal giorno del passaggio alla fine
+     * dell'esercizio. E, per la decisione 79 (2), chi resta inquilino: lì la locazione continua. Per un passaggio registrato (`$capo`) il
+     * coinquilino si legge come lo legge il prospetto degli oneri accessori: il registro, dove c'è, se no le righe
+     * (`ChiPagaAlPostoDellInquilino::coinquiliniDelPassaggio`); nel pannello, prima di registrare, le righe.
+     *
+     * @param list<int> $immobileIds
+     * @return list<array{unita: string, nomi: list<string>, coinquilini: list<string>}>
+     */
+    public function alPostoPerUnita(int $condominioId, array $immobileIds, ?int $uscenteId, CarbonImmutable $dal, ?Subentro $capo = null): array
+    {
+        $chiPaga = new ChiPagaAlPostoDellInquilino();
+        $giorni = ChiPagaAlPostoDellInquilino::giorniDellaFrase($condominioId, $dal);
+        $unita = Immobile::whereIn('id', $immobileIds)->get()->keyBy('id');
+        $coinquilini = fn (int $id): array => match (true) {
+            $uscenteId === null => [],
+            $capo !== null => ChiPagaAlPostoDellInquilino::coinquiliniDelPassaggio($capo, $id, $uscenteId, $dal),
+            default => ChiPagaAlPostoDellInquilino::coinquiliniCheRestano($id, $uscenteId, $dal)
+                ->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->unique()->values()->all(),
+        };
+
+        return array_values(array_filter(array_map(fn (int $id) => isset($unita[$id]) ? [
+            'unita' => trim((string) $unita[$id]->nome) !== '' ? (string) $unita[$id]->nome : (string) $unita[$id]->etichetta,
+            'nomi' => $chiPaga->nomi($id, $giorni),
+            'coinquilini' => $coinquilini($id),
+        ] : null, array_map('intval', $immobileIds))));
+    }
+
+    /**
+     * «Dal 1 luglio 2026 le voci a carico dell'inquilino tornano a Ugo, nei piani generati o ricalcolati dopo il passaggio.» Con le
+     * pertinenze di altri proprietari, unità per unità: «tornano a Ugo nell'unità «Interno 1» e a Rita nell'unità «Box 12»» (decisione
+     * 77: sul box la frase sbagliava persona). Dove resta un coinquilino la locazione continua (decisione 79), e le voci si dividono fra gli
+     * inquilini con la regola del riparto.
+     *
+     * @param list<array{unita: string, nomi: list<string>, coinquilini: list<string>}>|null $perUnita
+     */
+    private function fraseTornano(string $dalA, ?array $perUnita, Collection $proprietari): string
+    {
+        $portata = 'nei piani generati o ricalcolati dopo il passaggio';
+        // Giro stretto della .50 (il ripiego della .47 con una sola unità): senza nessuno al posto dell'inquilino dopo l'uscita le voci non
+        // tornano a un proprietario che non c'è, restano scoperte, come dice la frase delle unità senza nessuno.
+        $nessuno = sprintf('Dal %s nessuno sta al posto dell\'inquilino dopo l\'uscita: %s le voci a carico dell\'inquilino restano scoperte.', $dalA, $portata);
+        if ($perUnita === null || $perUnita === []) {
+            return $this->aChi($proprietari) === 'al proprietario' ? $nessuno : sprintf('Dal %s le voci a carico dell\'inquilino tornano %s, %s.', $dalA, $this->aChi($proprietari), $portata);
+        }
+        $aChi = fn (array $nomi) => $nomi === [] ? 'al proprietario' : $this->a($this->elenco($nomi));
+        $stessa = count(array_unique(array_map(fn ($u) => json_encode([$u['nomi'], $u['coinquilini']]), $perUnita))) === 1;
+        if ($stessa) {
+            $u = $perUnita[0];
+
+            $aChiTornano = $u['nomi'] === [] ? $this->aChi($proprietari) : $aChi($u['nomi']);
+
+            return match (true) {
+                $u['coinquilini'] !== [] => sprintf('Dal %s la locazione continua con %s: %s le voci a carico dell\'inquilino si dividono fra gli inquilini per quota e per giorni.', $dalA, $this->elenco($u['coinquilini']), $portata),
+                $aChiTornano === 'al proprietario' => $nessuno,
+                default => sprintf('Dal %s le voci a carico dell\'inquilino tornano %s, %s.', $dalA, $aChiTornano, $portata),
+            };
+        }
+        $tornano = array_map(fn ($u) => sprintf('%s nell\'unità «%s»', $aChi($u['nomi']), $u['unita']), array_values(array_filter($perUnita, fn ($u) => $u['coinquilini'] === [] && $u['nomi'] !== [])));
+        $continua = array_map(fn ($u) => sprintf('Nell\'unità «%s» la locazione continua con %s: %s le voci a carico dell\'inquilino si dividono fra gli inquilini per quota e per giorni.', $u['unita'], $this->elenco($u['coinquilini']), $portata),
+            array_values(array_filter($perUnita, fn ($u) => $u['coinquilini'] !== [])));
+        // Rilievo della ripresa della .50: un'unità dove nessuno sta al posto dell'inquilino dopo l'uscita non ha un proprietario a cui le
+        // voci tornino («al proprietario», il ripiego della .47, contraddiceva la frase del pannello): la generazione le lascia scoperte.
+        $nessuno = array_values(array_map(fn ($u) => '«' . $u['unita'] . '»', array_filter($perUnita, fn ($u) => $u['coinquilini'] === [] && $u['nomi'] === [])));
+        $scoperte = $nessuno === [] ? '' : sprintf('%s %s nessuno sta al posto dell\'inquilino dopo l\'uscita: %s le voci a carico dell\'inquilino restano scoperte.',
+            count($nessuno) === 1 ? 'Nell\'unità' : 'Nelle unità', $this->elenco($nessuno), $portata);
+
+        return implode(' ', array_filter([$tornano === [] ? '' : sprintf('Dal %s le voci a carico dell\'inquilino tornano %s, %s.', $dalA, $this->elenco($tornano), $portata), ...$continua, $scoperte], fn (string $f) => $f !== ''));
     }
 
     /**

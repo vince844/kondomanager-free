@@ -182,7 +182,8 @@ function tratto(r: RigaStorico): string {
                   <p class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
-                      {{ CONGUAGLIO[p.conguaglio.stato] }}<template v-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: {{ p.conguaglio.per_entrante!.join(', ') }}; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      {{ CONGUAGLIO[p.conguaglio.stato] }}<!-- Fase 1-bis della .50 (R11): alla fine senza un nuovo inquilino nessuno entra; la coppia è di chi paga al posto dell'inquilino. --><template v-if="p.conguaglio.stato === 'proposto' && p.tipo_passaggio === 'fine_locazione' && !p.entrante">: <template v-if="p.conguaglio.per_entrante?.length">{{ p.conguaglio.per_entrante.join(', ') }}</template><template v-else>{{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito</template><template v-else>a debito</template> di chi paga al posto dell'inquilino</template>; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      <template v-else-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: {{ p.conguaglio.per_entrante!.join(', ') }}; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'proposto'">: {{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'rinunciato' && p.conguaglio.nota">: «{{ p.conguaglio.nota }}».</template>
                       <template v-else-if="p.conguaglio.stato === 'non_scritto'">: nessuna riga in saldi, la posizione resta com'era<template v-if="p.conguaglio.nota"> («{{ p.conguaglio.nota }}»)</template>.</template>
@@ -192,6 +193,10 @@ function tratto(r: RigaStorico): string {
                   <!-- 1.11.0-beta.44, decisione 65: l'arretrato del defunto, agli eredi o a suo nome. -->
                   <p v-if="p.arretrato?.frase" class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span>{{ p.arretrato.frase }}</span>
+                  </p>
+                  <!-- 1.11.0-beta.50, decisione 77 (3): la fermata dopo «Scrivi il conguaglio», e quanto ne resta dopo l'inizio di una locazione. -->
+                  <p v-for="(f, i) in p.fermate ?? []" :key="`fermata-${i}`" class="flex items-start gap-1.5">
+                    <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span>{{ f }}</span>
                   </p>
                   <!-- Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: si correggono annullando il passaggio. -->
                   <p v-if="p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
@@ -204,6 +209,8 @@ function tratto(r: RigaStorico): string {
                     </button>
                     <form v-else class="space-y-2" @submit.prevent="annullaConguaglio(p)">
                       <p class="text-slate-600 dark:text-slate-400">Toglie insieme le righe del conguaglio dai saldi della gestione; le quote già emesse non cambiano. La nota resta sul passaggio.</p>
+                      <!-- Decisione 83.2 (1.11.0-beta.50): un passaggio dopo si è fermato su questa coppia; annullata, la fermata non vale più. -->
+                      <p v-for="(a, i) in p.conguaglio.avvisi ?? []" :key="`avviso-conguaglio-${i}`" class="text-amber-800 dark:text-amber-300">{{ a }}</p>
                       <Input v-model="formAnnulla.nota_annullamento_conguaglio" placeholder="Come hanno regolato il conguaglio (almeno dieci caratteri)…" class="h-8 text-xs" required minlength="10" />
                       <div class="flex items-center gap-2">
                         <button type="submit" :disabled="formAnnulla.processing || formAnnulla.nota_annullamento_conguaglio.trim().length < 10" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
@@ -214,8 +221,9 @@ function tratto(r: RigaStorico): string {
                       <p v-if="formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio" class="text-[11px] text-red-600 dark:text-red-400">{{ formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio }}</p>
                     </form>
                     <!-- Rilievo R3 della Fase 1-bis della .48: nella successione (e nel legato) «annulla il conguaglio» dichiara un accordo fra
-                         le parti; se il conguaglio non andava scritto, la strada è l'altra (decisione 72). -->
-                    <p v-if="p.tipo_passaggio === 'successione' && !p.annullato" class="mt-1 text-slate-500 dark:text-slate-400">
+                         le parti; se il conguaglio non andava scritto, la strada è l'altra (decisione 72). Decisione 77 (1.11.0-beta.50): lo
+                         stesso alla fine di una locazione, che registrata di nuovo ha le due voci. -->
+                    <p v-if="(p.tipo_passaggio === 'successione' || p.tipo_passaggio === 'fine_locazione') && !p.annullato" class="mt-1 text-slate-500 dark:text-slate-400">
                       Se invece il conguaglio non andava scritto, annulla il passaggio e registralo di nuovo con «Non scriverlo».
                     </p>
                   </div>

@@ -3,29 +3,34 @@
 /**
  * 1.11.0-beta.47 — le frasi della fine locazione: a chi «tornano» le voci a carico dell'inquilino.
  *
- * Nasce da DL2 del laboratorio (rapporto della sessione 3-bis, §5.2; la prima e la seconda forma erano già nel rapporto
- * della sessione 3). Alla fine di una locazione senza un nuovo inquilino il pannello «Cosa cambierà» (`AnteprimaPassaggio`:
- * le frasi di «Chi resta obbligato» e il blocco «Rate») e lo storico dell'unità (`StoricoTitolarita`, che chiama
- * `FrasiObbligati::daSubentro`) dicono a chi «tornano» le voci a carico dell'inquilino. Devono nominare chi le riceve
- * davvero nel riparto — il primo anello dopo l'inquilino nella catena di ripiego (l'usufruttuario, poi il proprietario, poi
- * il nudo proprietario), con il proprietario pieno accanto all'usufruttuario sull'unità mista (decisione 31.1) —, non «i
- * proprietari» di oggi. Con un nuovo inquilino le voci non tornano a nessuno: le paga chi entra.
+ * Nasce da DL2 del laboratorio (rapporto della sessione 3-bis, §5.2; la prima e la seconda forma erano già nel rapporto della
+ * sessione 3). Alla fine di una locazione senza un nuovo inquilino il pannello «Cosa cambierà» (`AnteprimaPassaggio`: le frasi
+ * di «Chi resta obbligato» e il blocco «Rate») e lo storico dell'unità (`StoricoTitolarita`, che chiama
+ * `FrasiObbligati::daSubentro`) dicono a chi «tornano» le voci a carico dell'inquilino. Devono nominare chi le riceve davvero
+ * nel riparto — il primo anello dopo l'inquilino nella catena di ripiego (l'usufruttuario, poi il proprietario, poi il nudo
+ * proprietario), con il proprietario pieno accanto all'usufruttuario sull'unità mista (decisione 31.1) —, non «i proprietari»
+ * in generale. Con un nuovo inquilino le voci non tornano a nessuno: le paga chi entra.
  *
  * Chi è giusto nominare lo dice il piano generato dopo l'uscita (decisione 21: è il riparto che il programma fa con la
- * titolarità registrata). Le cinque forme d'unità sono quelle della decisione 32: piena, comproprietà, usufrutto, mista,
- * mista con due persone. Oggi il pannello sbaglia su tre (nomina la nuda proprietaria, non nomina l'usufruttuario), il
- * blocco «Rate» dice «tornano al proprietario» anche sull'unità in usufrutto, lo storico dice «tornano a al proprietario»
- * sull'unità in usufrutto e non nomina l'usufruttuario diverso dal pieno, e con un nuovo inquilino pannello e storico dicono
- * che le voci «tornano a Ugo».
+ * titolarità registrata). Le cinque forme d'unità sono quelle della decisione 32: piena, comproprietà, usufrutto, mista, mista
+ * con due persone. Prima della correzione il pannello sbagliava su tre (nominava la nuda proprietaria, non nominava
+ * l'usufruttuario), il blocco «Rate» diceva «tornano al proprietario» anche sull'unità in usufrutto, lo storico diceva «tornano
+ * a al proprietario» sull'unità in usufrutto e non nominava l'usufruttuario diverso dal pieno, e con un nuovo inquilino
+ * pannello e storico dicevano che le voci «tornano a Ugo».
  *
- * I controlli, verdi oggi, che devono restarlo dopo la correzione: le cifre del piano generato dopo l'uscita sulle cinque
+ * I controlli, già giusti prima della correzione e che devono restarlo: le cifre del piano generato dopo l'uscita sulle cinque
  * forme (la correzione tocca le parole, non il denaro); le forme in cui la frase è già giusta (piena e comproprietà; nello
  * storico anche la mista); con il nuovo inquilino le cifre del conguaglio e la frase su chi entra.
  *
  * Cosa NON copre: la decisione 32 (chi paga le rate già emesse all'inquilino uscito, e con quale strada) — qui la fine
- * locazione con rate emesse lascia il denaro com'è oggi; DL1 e DL3–DL6 (prospetto degli oneri accessori, inizio locazione
- * su un piano a giornale, unità mista nel prospetto e nella vendita); le pertinenze che finiscono di essere locate con
- * l'unità; la pagina Vue: si guarda la risposta dell'anteprima e lo storico come li calcola il server.
+ * locazione con rate emesse lascia il denaro com'è; DL1 e DL3–DL6 (prospetto degli oneri accessori, inizio locazione su un
+ * piano a giornale, unità mista nel prospetto e nella vendita); le pertinenze che finiscono di essere locate con l'unità; la
+ * pagina Vue: si guarda la risposta dell'anteprima e lo storico come li calcola il server.
+ *
+ * ➕ 1.11.0-beta.50 (decisione 77): con le rate a giornale la fine locazione chiede la scelta sul conguaglio. `flfRegistra` la manda solo
+ * quando il pannello propone coppie, e sceglie la voce che lascia il denaro di prima («Scrivi» nel cambio d'inquilino, «Non scriverlo»
+ * senza nuovo inquilino); i due test del blocco «Rate» con le rate emesse fissano la coppia proposta al posto di «restano sue». Le frasi
+ * «lo decide l'amministratore» del piano fermo restano come sono: la frase nuova non è ancora decisa.
  */
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
@@ -198,12 +203,21 @@ function flfAnteprima($test, array $s, ?Anagrafica $entra = null): array
     return $test->actingAs($test->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), flfModulo($s, $entra))->assertOk()->json();
 }
 
-/** La registrazione dalla rotta vera; la presa d'atto del cancello solo quando il pannello la chiede. */
-function flfRegistra($test, array $s, ?Anagrafica $entra = null): Subentro
+/**
+ * La registrazione dalla rotta vera; la presa d'atto del cancello solo quando il pannello la chiede. Dalla 1.11.0-beta.50 (decisione
+ * 77), quando il pannello propone delle coppie (un piano che non si ricalcola più) la scelta sul conguaglio è obbligatoria: si manda
+ * quella data, o quella che lascia il denaro com'era prima della .50 — «Scrivi» nel cambio d'inquilino (la coppia di partenza di
+ * prima), «Non scriverlo» nella fine senza un nuovo inquilino (le rate restavano a chi esce).
+ */
+function flfRegistra($test, array $s, ?Anagrafica $entra = null, ?string $conguaglio = null): Subentro
 {
     $dati = flfModulo($s, $entra);
-    if (flfAnteprima($test, $s, $entra)['cancello']['richiesto'] ?? false) {
+    $anteprima = flfAnteprima($test, $s, $entra);
+    if ($anteprima['cancello']['richiesto'] ?? false) {
         $dati += ['ho_letto' => true, 'nota_cancello' => 'Disdetta letta, rate emesse controllate'];
+    }
+    if (($anteprima['rate']['conguaglio']['coppie'] ?? []) !== []) {
+        $dati += ['conguaglio' => $conguaglio ?? ($entra !== null ? 'scrivi' : 'non_scrivere')];
     }
     $test->actingAs($test->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), $dati)->assertSessionHasNoErrors();
 
@@ -284,27 +298,31 @@ it('storico, fine locazione registrata senza nuovo inquilino: la frase nomina ch
     $subentro = flfRegistra($this, $s);
     $storico = flfStorico($s, $subentro);
 
-    // Gli stessi nomi del pannello: lo storico dice la stessa cosa, dai fatti registrati. Oggi sull'unità in usufrutto
-    // cerca un proprietario pieno, non lo trova e scrive la clausola dentro la frase: «tornano a al proprietario».
+    // Gli stessi nomi del pannello: lo storico dice la stessa cosa, dai fatti registrati. Prima della correzione, sull'unità in
+    // usufrutto cercava un proprietario pieno, non lo trovava e scriveva la clausola dentro la frase: «tornano a al
+    // proprietario».
     flfTornanoA($storico, $nominati, $esclusi);
     expect($storico)->not->toContain('tornano a al');
 })->with(flfForme());
 
-it('pannello, blocco «Rate» sull\'unità in usufrutto con sei rate emesse a Ines: dalla prossima generazione le voci dell\'inquilino tornano a Ugo, l\'usufruttuario, non «al proprietario»', function () {
+it('pannello, blocco «Rate» sull\'unità in usufrutto con sei rate emesse a Ines: la coppia della fine va a Ugo, l\'usufruttuario, non a Bice e non «al proprietario»', function () {
+    // 1.11.0-beta.50 (decisione 77): con le rate a giornale il blocco «Rate» propone il conguaglio da scegliere, non dice più che le
+    // quote di Ines «restano sue» (la frase che questo test fissava prima della .50). Resta il punto del test (DL2): chi riceve la parte
+    // dell'inquilino è l'usufruttuario, come nel piano generato dopo, mai la nuda proprietaria.
     $s = flfScenario([['Ugo', 'usufruttuario', 100], ['Bice', 'nuda_proprietario', 100]]);
     flfGenera($s);
     flfEmetti($this, $s, '2026-06-30');
     expect(DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('stato', 'emessa')->count())->toBe(6);
 
-    $rate = implode(' ', flfAnteprima($this, $s)['rate']['frasi']);
+    $anteprima = flfAnteprima($this, $s);
+    $rate = implode(' ', $anteprima['rate']['frasi']);
 
-    // Le sei quote di Ines: 36000 / 12 = 3000 a rata, 6 × 3000 = 18000 → € 180,00. Restano sue (decisione 32 non costruita).
-    expect($rate)->toContain('le 6 quote intestate a Ines (€ 180,00) restano sue.')
-        // Un piano generato dopo l'uscita dà la parte dell'inquilino a Ugo, l'usufruttuario (art. 1004 c.c.), non a Bice:
-        // «al proprietario» su quest'unità è falso.
-        ->and(flfTornano($rate))->toContain('Ugo')
-        ->and($rate)->not->toContain('tornano al proprietario')
-        ->and(flfTornano($rate))->not->toContain('Bice');
+    // La coppia: 36000 × [181, 184] = 17852,05 / 18147,95 → 17852 + 18147 = 35999, il centesimo al resto ,95 → 18148, a Ugo
+    // (art. 1004 c.c.), non a Bice.
+    expect(collect($anteprima['rate']['conguaglio']['coppie'] ?? [])->map(fn ($c) => [$c['entrante_nome'], (int) $c['importo']])->all())->toBe([['Ugo', 18148]])
+        ->and($rate)->toContain('€ 181,48')
+        ->and($rate)->not->toContain('Bice')
+        ->and($rate)->not->toContain('tornano al proprietario');
 });
 
 // --- Con un nuovo inquilino ---------------------------------------------------------------------------------------------
@@ -323,7 +341,7 @@ it('pannello, cambio d\'inquilino il 1/7 con sei rate emesse: le voci a carico d
     expect(flfNetti($s))->toBe(['Ines' => 17852, 'Luca' => 18148, 'Ugo' => 84000])
         ->and($frasi)->toContain('Le rate già emesse a Ines restano sue.')
         ->and($frasi)->toContain('Luca risponde delle voci a carico dell\'inquilino dal 1 luglio 2026.')
-        // Il difetto: «Dal 1 luglio 2026 le voci a carico dell'inquilino tornano a Ugo», e non tornano a lui.
+        // Il difetto corretto: «Dal 1 luglio 2026 le voci a carico dell'inquilino tornano a Ugo», e non tornano a lui.
         ->and(flfTornano($frasi))->toBe('');
 });
 
@@ -385,7 +403,7 @@ it('pannello, fine locazione senza nuovo inquilino sul piano fermo: le voci torn
         // Il cancello dello stesso pannello, controllo: le 6 quote restano a Ines e chi paga dopo l'uscita lo decide l'amministratore.
         ->and($motivi)->toContain('il piano «Preventivo 2026» ha 6 quote non ancora emesse intestate a Ines')
         ->and($motivi)->toContain('chi paga i giorni dopo l\'uscita lo decide l\'amministratore')
-        // Il difetto: oggi «Dal 1 luglio 2026 le voci a carico dell'inquilino tornano a Ugo.», al presente e senza portata.
+        // Il difetto corretto: «Dal 1 luglio 2026 le voci a carico dell'inquilino tornano a Ugo.», al presente e senza portata.
         ->and($frasi)->toContain('nei piani generati o ricalcolati dopo il passaggio')
         ->and(flfTornano($frasi))->toContain('Ugo')
         ->and(flfTornano($frasi))->not->toContain('Ines')
@@ -423,9 +441,11 @@ it('pannello, fine locazione senza nuovo inquilino con tutte e dodici le rate em
     $anteprima = flfAnteprima($this, $s);
     $frasi = implode(' ', $anteprima['obbligati']['frasi']);
 
-    // Controllo: nessuna quota di Ines in bozza; le sue 12 quote emesse, 12 × 3000 = 36000 → € 360,00, restano sue.
+    // Controllo: nessuna quota di Ines in bozza. 1.11.0-beta.50 (decisione 77): il blocco «Rate» propone la coppia da scegliere sulle 12
+    // quote emesse (36000 × 184/365 → 18148, € 181,48, a Ugo), non dice più «le 12 quote intestate a Ines (€ 360,00) restano sue».
     expect(flfNonEmesse($s, 'Ines'))->toBe(['quote' => 0, 'importo' => 0])
-        ->and(implode(' ', $anteprima['rate']['frasi']))->toContain('le 12 quote intestate a Ines (€ 360,00) restano sue.')
+        ->and(collect($anteprima['rate']['conguaglio']['coppie'] ?? [])->map(fn ($c) => [$c['entrante_nome'], (int) $c['importo']])->all())->toBe([['Ugo', 18148]])
+        ->and(implode(' ', $anteprima['rate']['frasi']))->toContain('€ 181,48')
         ->and($frasi)->toContain('nei piani generati o ricalcolati dopo il passaggio')
         ->and(flfTornano($frasi))->toContain('Ugo')
         ->and($frasi)->toContain('Le rate già emesse a Ines restano sue.')
@@ -439,12 +459,13 @@ it('storico, fine locazione registrata senza nuovo inquilino sul piano fermo: le
     flfGenera($s);
     flfEmetti($this, $s, '2026-06-30');
     expect(DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('stato', 'emessa')->count())->toBe(6);
-    $storico = flfStorico($s, flfRegistra($this, $s));
+    $storico = flfStorico($s, flfRegistra($this, $s, conguaglio: 'non_scrivere'));
 
-    // Il denaro, controllo: la registrazione lascia a Ines le 6 quote in bozza (6 × 3000 = 18000) e non scrive righe di saldo.
+    // Il denaro, controllo: con «Non scriverlo» (dalla .50 la scelta è obbligatoria: è la voce che lascia il denaro com'era) la
+    // registrazione lascia a Ines le 6 quote in bozza (6 × 3000 = 18000) e non scrive righe di saldo.
     expect(flfNonEmesse($s, 'Ines'))->toBe(['quote' => 6, 'importo' => 18000])
         ->and(DB::table('saldi')->whereNotNull('subentro_id')->where('immobile_id', $s['unita']->id)->count())->toBe(0)
-        // Il difetto: oggi lo storico dice al presente «tornano a Ugo.», come una cosa già avvenuta su tutte le rate.
+        // Il difetto corretto: lo storico diceva al presente «tornano a Ugo.», come una cosa già avvenuta su tutte le rate.
         ->and($storico)->toContain('nei piani generati o ricalcolati dopo il passaggio')
         ->and(flfTornano($storico))->toContain('Ugo')
         ->and(flfTornano($storico))->not->toContain('Ines')
@@ -487,14 +508,14 @@ it('pannello, fine locazione senza nuovo inquilino sul piano fermo con l\'inquil
     // Il denaro, controllo: 36000 / 12 = 3000 a rata; luglio–dicembre in bozza, 6 × 3000 = 18000, restano all'inquilina uscita.
     expect(flfNonEmesse($s, 'Ines'))->toBe(['quote' => 6, 'importo' => 18000])
         ->and($frasi)->toContain('6 quote non ancora emesse')
-        // Il difetto: oggi «Le rate già emesse a Anna Galli restano sue.» e «restano a Anna Galli anche le 6 quote…».
+        // Il difetto corretto: «Le rate già emesse a Anna Galli restano sue.» e «restano a Anna Galli anche le 6 quote…».
         ->and($frasi)->toContain('Le rate già emesse ad Anna Galli restano sue.')
         ->and($frasi)->toContain('restano ad Anna Galli anche le 6 quote non ancora emesse')
         ->and($frasi)->not->toContain('a Anna');
 });
 
-// Rilievo «le query che mettono nomi nelle frasi (bozzeFermeDi) non hanno un test negativo sul perimetro» (basso, sicurezza): controllo,
-// verde oggi. Non copre: il ciclo dei piani fermi altrui dell'inizio locazione (InizioLocazionePianoFermoTest), lo storico, le pertinenze.
+// Rilievo «le query che mettono nomi nelle frasi (bozzeFermeDi) non hanno un test negativo sul perimetro» (basso, sicurezza): controllo.
+// Non copre: il ciclo dei piani fermi altrui dell'inizio locazione (InizioLocazionePianoFermoTest), lo storico, le pertinenze.
 it('perimetro, controllo — Ines inquilina di A e di B nello stesso condominio e di «Scala C» in un altro: la fine su A conta le sole 6 quote di A sul «Preventivo 2026», e non nomina né B né il piano dell\'altro condominio', function () {
     $s = flfScenario([['Ugo', 'proprietario', 100]]);
     $ines = $s['persone']['Ines'];
