@@ -31,6 +31,7 @@ import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import PassaggioProprietaGuide from '@/components/guides/PassaggioProprietaGuide.vue';
 import AnteprimaPassaggio from '@/components/gestionale/immobili/AnteprimaPassaggio.vue';
+import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import PassaggioPertinenzeCard from '@/components/gestionale/immobili/PassaggioPertinenzeCard.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
@@ -496,6 +497,13 @@ const anteprimaSuperata = ref(false);
 let timer: ReturnType<typeof setTimeout> | null = null;
 let ultimaRichiesta = 0;
 
+/** La casella della rinuncia è spuntata, c'è una coppia da non scrivere e la ragione è lunga abbastanza: solo allora parte con l'anteprima. */
+function rinunciaCompleta(): boolean {
+  return !passaggioConLaScelta(props.tipo)
+    && coppieNonScritte(props.tipo, anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.arretrato, form.rinuncia_conguaglio, form.conguaglio)
+    && form.nota_conguaglio.trim().length >= 10;
+}
+
 function corpoAnteprima() {
   return {
     tipo: form.tipo,
@@ -522,6 +530,10 @@ function corpoAnteprima() {
     // dopo «Scrivi» di una fine locazione di prima vale solo se il conguaglio si scrive, e finché la scelta manca il server la dice
     // «se scrivi il conguaglio». Dove la scelta non si chiede non parte: il server la rifiuterebbe.
     conguaglio: sceltaConguaglioDelPassaggio(props.tipo, anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.arretrato) ? form.conguaglio : null,
+    // La rinuncia della vendita e dell'usufrutto (la casella) entra nell'anteprima solo quando è completa, cioè con la ragione di almeno dieci
+    // caratteri come la pretende il server: l'anteprima la legge per sapere se la coppia si scrive (l'avviso «ricalcola prima il piano» c'è solo se
+    // si scrive), e una rinuncia senza ragione tornerebbe 422 e farebbe sparire il pannello con la sua casella. Dove c'è la scelta non parte.
+    ...(rinunciaCompleta() ? { rinuncia_conguaglio: true, nota_conguaglio: form.nota_conguaglio } : { rinuncia_conguaglio: false, nota_conguaglio: null }),
     // Decisione 65: le quote come le scrive l'amministratore («33,33»), al server con il punto.
     ...(eSuccessione.value ? {
       eredi: form.eredi.map(e => ({ anagrafica_id: e.anagrafica_id, quota: String(e.quota).trim().replace(',', '.') })),
@@ -624,9 +636,12 @@ const fraseDellArretrato = computed(() => fraseArretrato(anteprima.value?.rate.a
 const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value
   || (conLaScelta.value ? (form.nota_conguaglio.trim() === '' || form.nota_conguaglio.trim().length >= 10) : form.nota_conguaglio.trim().length >= 10));
 const sceltaSoddisfatta = computed(() => !sceltaRichiesta.value || form.conguaglio !== null);
+// §6.3 della 1.11.0-beta.51: il conguaglio che si scrive prenderebbe un piano da ricalcolare prima. L'anteprima risponde, con la casella o le due
+// voci a portata di mano; la registrazione resta spenta finché l'avviso c'è, e il server la rifiuterebbe comunque.
+const pianoDaRicalcolare = computed(() => anteprima.value?.rate.piano_da_ricalcolare ?? null);
 // Il pannello si ferma solo perché il server chiede l'erede di riferimento: è una scelta, non un dato sbagliato (P6).
 const attesaScelta = computed(() => anteprimaBloccata.value && Object.keys(form.errors).length > 0 && Object.keys(form.errors).every(k => k === 'erede_di_riferimento'));
-const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && cancelloSoddisfatto.value && sceltaSoddisfatta.value && rinunciaSoddisfatta.value && !form.processing);
+const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && !pianoDaRicalcolare.value && cancelloSoddisfatto.value && sceltaSoddisfatta.value && rinunciaSoddisfatta.value && !form.processing);
 
 function submit() {
   vociCambiate.value = null;
@@ -1072,7 +1087,7 @@ function urlTipo(t: TipoPassaggio) {
                   <span class="flex flex-col">
                     <!-- Decisione 69 (2): niente «la proposta della legge»: l'art. 754 c.c. vale con tutte e due le strade, e dove scrivere il debito è una scelta. -->
                     <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">Agli eredi, per quota</span>
-                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Righe di saldo sulla stessa gestione, di segno opposto: la posizione del defunto passa a ogni erede per la sua quota. Con il conguaglio ogni erede risponde della sua quota di tutto, e la posizione del defunto si chiude. Le rate in bozza dei piani che non si ricalcolano più, anche quelle di prima del decesso, vanno all'erede di riferimento, salvo quelle con un pagamento; la parte degli altri eredi si regola con le loro righe di saldo, che entrano nel prossimo piano della stessa gestione.</span>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Righe di saldo sulla stessa gestione, di segno opposto: la posizione del defunto passa a ogni erede per la sua quota. Con il conguaglio ogni erede risponde della sua quota di tutto, e la posizione del defunto si chiude su ciò che c'è già: un piano generato o ricalcolato dopo gli calcola ancora i suoi giorni fino al decesso, e il programma lo dice alla generazione, con la cifra per erede. Le rate in bozza dei piani che non si ricalcolano più, anche quelle di prima del decesso, vanno all'erede di riferimento, salvo quelle con un pagamento; la parte degli altri eredi si regola con le loro righe di saldo, che entrano nel prossimo piano della stessa gestione.</span>
                   </span>
                 </label>
                 <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all"
@@ -1437,7 +1452,7 @@ function urlTipo(t: TipoPassaggio) {
                 <div class="space-y-1">
                   <p class="text-sm font-bold text-slate-800 dark:text-slate-200">Quote che questo passaggio non tocca</p>
                   <ul class="text-[13px] text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-0.5">
-                    <li v-for="m in informazioniCancello" :key="m">{{ m }}</li>
+                    <li v-for="m in informazioniCancello" :key="m"><FraseConImporti :testo="m" /></li>
                   </ul>
                   <p class="text-[11px] text-slate-500 dark:text-slate-400">Restano a chi le ha e nessuna cambia intestatario: per queste non serve la spunta.</p>
                 </div>
@@ -1449,7 +1464,7 @@ function urlTipo(t: TipoPassaggio) {
                 <div class="space-y-1">
                   <p class="text-sm font-bold text-slate-800 dark:text-slate-200">Da sapere</p>
                   <ul class="text-[13px] text-slate-700 dark:text-slate-300 list-disc pl-4 space-y-0.5">
-                    <li v-for="m in avvisiCancello" :key="m">{{ m }}</li>
+                    <li v-for="m in avvisiCancello" :key="m"><FraseConImporti :testo="m" /></li>
                   </ul>
                 </div>
               </div>
@@ -1460,7 +1475,7 @@ function urlTipo(t: TipoPassaggio) {
                 <div class="space-y-1">
                   <p class="text-sm font-bold text-amber-900 dark:text-amber-200">Questo passaggio tocca conti già in corso</p>
                   <ul class="text-[13px] text-amber-800 dark:text-amber-300 list-disc pl-4 space-y-0.5">
-                    <li v-for="m in anteprima.cancello.motivi" :key="m">{{ m }}</li>
+                    <li v-for="m in anteprima.cancello.motivi" :key="m"><FraseConImporti :testo="m" /></li>
                   </ul>
                 </div>
               </div>
@@ -1483,6 +1498,7 @@ function urlTipo(t: TipoPassaggio) {
                 <template v-else-if="anteprimaBloccata">Un dato del modulo non è accettabile: correggi il campo segnato e il pannello riparte da lì.</template>
                 <template v-else-if="!completo">Compila il modulo: il pulsante si attiva quando il pannello «Cosa cambierà» ha calcolato le conseguenze.</template>
                 <template v-else-if="anteprimaInCorso || anteprimaSuperata">Il pannello sta rileggendo il modulo.</template>
+                <template v-else-if="pianoDaRicalcolare">Il piano va ricalcolato prima di registrare, oppure scegli di non scrivere il conguaglio: nel pannello.</template>
                 <template v-else-if="cancelloRichiesto && !cancelloSoddisfatto">Spunta «Ho letto cosa cambierà» e scrivi la nota per attivare la registrazione.</template>
                 <template v-else-if="!sceltaSoddisfatta">Scegli se scrivere il conguaglio: nel pannello, «Scrivi il conguaglio» o «Non scriverlo».</template>
                 <template v-else-if="!rinunciaSoddisfatta && conLaScelta">La nota sul conguaglio è facoltativa, ma se la scrivi deve avere almeno dieci caratteri.</template>

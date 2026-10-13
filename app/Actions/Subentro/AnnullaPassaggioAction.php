@@ -15,6 +15,7 @@ use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\FermataDopoScrivi;
 use App\Services\Subentro\GuardieTitolarita;
+use App\Services\Subentro\QuoteNateDopoIlPassaggio;
 use App\Services\Subentro\VociDaSpostare;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -49,8 +50,11 @@ use Illuminate\Validation\ValidationException;
  * - lo stato che l'annullamento lascerebbe non passa le guardie di «Associa» (una riga associata o ritoccata a mano dopo
  *   il passaggio, fuori dal registro, si sovrappone alla riga che si riapre o porta le quote oltre 100).
  *
- * Un piano generato o ricalcolato dopo il passaggio e non ancora emesso non ferma niente, ma va ricalcolato di nuovo: lo
- * dicono gli `avvisi()`, come l'anteprima del passaggio dice i piani da ricalcolare. Un piano ricalcolato o eliminato
+ * Un piano generato o ricalcolato dopo il passaggio e non ancora emesso non ferma l'annullamento, ma va ricalcolato di nuovo: lo
+ * dicono gli `avvisi()`, come l'anteprima del passaggio dice i piani da ricalcolare. Dalla 1.11.0-beta.51 lo dice anche il piano:
+ * annullato il passaggio, `PianoRate::passaggiDaSeguire` lo conta fra quelli da seguire (con la chiave `annullamento.quota_max_id`
+ * che l'annullamento scrive nel registro) e l'emissione, l'incasso e il rimborso su quel piano si fermano finché non si ricalcola:
+ * emesse così, le quote di chi era entrato andrebbero a giornale per un passaggio che non c'è più. Un piano ricalcolato o eliminato
  * che si è portato via le bozze del registro non ferma niente nemmeno lui: non c'è più niente da rimettere.
  */
 final class AnnullaPassaggioAction
@@ -133,6 +137,21 @@ final class AnnullaPassaggioAction
                 FermataDopoScrivi::rimastiDellaFermata($f),
                 // Decisione 81.2: dopo una fermata la riga a credito può essere di chi è uscito, se la fermata di prima era già stata regolata.
                 FermataDopoScrivi::rigaDelWallet($f, ($f['persona'] ?? 'chi esce') . (isset($f['uscente']) ? ' o di ' . $f['uscente'] : '')));
+        }
+
+        // Coda 254 (1.11.0-beta.51): la fine di un conduttore che ha fatto risalire la parte di una fermata di prima; annullata, la parte torna
+        // com'era, e un saldo o un accordo adeguato nel frattempo si rivede. Se il conguaglio della fine di prima è già annullato non c'è più niente.
+        foreach ($padre->registro['fermata_risale'] ?? [] as $f) {
+            if (! FermataDopoScrivi::fineSenzaConguaglio($f)) {
+                $avvisi[] = FermataDopoScrivi::avvisoRisaleAnnullando($f);
+            }
+        }
+
+        // Decisione 79 (2) e 86.1: l'inizio di una locazione che ha ridotto o azzerato una fermata di prima; annullato, la parte da regolare torna com'era.
+        foreach ($padre->registro['fermata_ridotta'] ?? [] as $f) {
+            if (! FermataDopoScrivi::fineSenzaConguaglio($f)) {
+                $avvisi[] = FermataDopoScrivi::avvisoRidottaAnnullando($f);
+            }
         }
 
         // Decisioni 79 (2) e 80: lo stesso per la fermata del coinquilino, quando il pannello indicava il Wallet.
@@ -347,9 +366,16 @@ final class AnnullaPassaggioAction
             //    chiave esterna è `nullOnDelete`, e un utente che sparisce non deve cancellare la traccia.
             $uscente = $this->nome($padre, 'uscente');
             $entrante = $this->nome($padre, 'entrante');
+            // Il fatto dell'annullamento (1.11.0-beta.51, §6.3; il dato si scrive, non si deriva): il più alto id di
+            // quota di questo momento. Le quote più alte nascono da un ricalcolo fatto dopo, con la titolarità di prima, e non sono
+            // stantie; quelle fino a qui, nate dopo il passaggio, hanno la titolarità del passaggio che non c'è più, e il piano non si
+            // emette senza ricalcolo (`PianoRate::passaggiAnnullatiDaSeguire`). Letto qui, dopo i lock sulle quote dell'unità e con il
+            // ricalcolo serializzato da `Immobile::bloccaDelCondominio`. Non c'è migrazione: il registro è JSON.
+            $quotaMax = (int) DB::table('rate_quote')->max('id');
             foreach ($famiglia as $s) {
                 $registro = $s->registro;
                 $registro['nomi']['annullato_da'] = $utente->name;
+                $registro['annullamento'] = ['quota_max_id' => $quotaMax];
                 $s->forceFill(['annullato_il' => now(), 'annullato_da' => $utente->id, 'nota_annullamento' => $nota, 'registro' => $registro])->save();
             }
 
@@ -376,7 +402,7 @@ final class AnnullaPassaggioAction
     /** Le unità della famiglia. @return list<int> */
     private function unita(Collection $famiglia): array
     {
-        return $famiglia->pluck('immobile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        return QuoteNateDopoIlPassaggio::unita($famiglia);
     }
 
     /** Il nome di una parte, dal registro se la persona non c'è più. */
@@ -475,139 +501,37 @@ final class AnnullaPassaggioAction
         };
     }
 
-    /**
-     * Chi il passaggio ha fatto entrare, su tutta la famiglia: l'entrante, le persone delle righe aperte e quelle delle
-     * righe modificate (il comproprietario che somma, i nudi che all'estinzione tornano pieni). @return list<int>
-     */
+    /** Chi il passaggio ha fatto entrare, su tutta la famiglia (vedi `QuoteNateDopoIlPassaggio::entrati`). @return list<int> */
     private function entrati(Collection $famiglia): array
     {
-        $ids = [];
-        $modificate = [];
-        foreach ($famiglia as $s) {
-            $ids[] = (int) $s->anagrafica_entrante_id;
-            foreach ($s->registro['righe'] ?? [] as $op) {
-                if ($op['operazione'] === 'aperta') {
-                    $ids[] = (int) ($op['dopo']['anagrafica_id'] ?? 0);
-                } elseif ($op['operazione'] === 'modificata') {
-                    $modificate[] = (int) $op['id'];
-                }
-            }
-        }
-        if ($modificate !== []) {
-            $ids = array_merge($ids, DB::table('anagrafica_immobile')->whereIn('id', $modificate)->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all());
-        }
-
-        return array_values(array_unique(array_filter($ids)));
+        return QuoteNateDopoIlPassaggio::entrati($famiglia);
     }
 
     /**
-     * Le quote del registro che esistono ancora e sono ancora quelle del passaggio, riconosciute dalla traccia che il
-     * passaggio ha scritto dentro ciascuna — `regole_calcolo.riassegnazione.subentro_id` sulla bozza passata,
-     * `regole_calcolo.divisa_da` sulla gemella del pregresso — e non solo dall'id. KondoManager dichiara MySQL 5.7+
-     * (Vincenzo, 29/09/2026: la compatibilità resta), e MySQL 5.7 dopo un riavvio fa ripartire il contatore da MAX(id)+1:
-     * una quota nuova può riprendere l'id di una sparita col suo piano. Con l'id giusto e la traccia sbagliata la quota
-     * conta come sparita (giro di verifica, C-R7).
+     * Le quote del registro che esistono ancora e sono ancora quelle del passaggio, riconosciute dalla traccia che il passaggio ha
+     * scritto dentro ciascuna e non solo dall'id (vedi `QuoteNateDopoIlPassaggio::quoteDelRegistro`).
      *
      * @return array{voci: Collection<int, object>, gemelle: Collection<int, object>} per id
      */
     private function quoteDelRegistro(Subentro $padre): array
     {
-        $voci = collect($padre->registro['quote'] ?? []);
-        $righe = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
-            ->whereIn('rate_quote.id', $voci->pluck('id')->merge($voci->pluck('gemella_id'))->filter()->all())
-            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.anagrafica_id', 'rate_quote.importo', 'rate_quote.scrittura_contabile_id', 'rate_quote.importo_pagato', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'piani_rate.nome as piano_nome'])
-            ->keyBy('id');
-
-        $trovate = ['voci' => collect(), 'gemelle' => collect()];
-        foreach ($voci as $voce) {
-            $q = $righe->get((int) $voce['id']);
-            if ($q !== null && (int) $q->rata_id === (int) $voce['rata_id'] && (int) ($this->regole($q)['riassegnazione']['subentro_id'] ?? 0) === (int) $padre->id) {
-                $trovate['voci']->put((int) $voce['id'], $q);
-            }
-            $g = empty($voce['gemella_id']) ? null : $righe->get((int) $voce['gemella_id']);
-            $divisa = $g !== null ? ($this->regole($g)['divisa_da'] ?? []) : [];
-            if ($g !== null && (int) ($divisa['subentro_id'] ?? 0) === (int) $padre->id && (int) ($divisa['rata_quote_id'] ?? 0) === (int) $voce['id']) {
-                $trovate['gemelle']->put((int) $voce['gemella_id'], $g);
-            }
-        }
-
-        return $trovate;
+        return QuoteNateDopoIlPassaggio::quoteDelRegistro($padre);
     }
 
     /** `regole_calcolo` di una quota letta con il query builder, come array. */
     private function regole(object $q): array
     {
-        return is_string($q->regole_calcolo ?? null) ? (json_decode($q->regole_calcolo, true) ?: []) : (array) ($q->regole_calcolo ?? []);
+        return QuoteNateDopoIlPassaggio::regole($q);
     }
 
     /**
-     * Le quote nate dopo il passaggio sulle sue unità che l'annullamento cambierebbe: un piano generato o ricalcolato dopo,
-     * con la titolarità di dopo. «Nate dopo»: oltre l'ultima quota che esisteva al passaggio (`registro.quota_max_id`,
-     * per le quote generate nello stesso secondo) o create dopo di lui (per MySQL 5.7, dove un riavvio fa riusare gli id).
-     * «Che l'annullamento cambierebbe»: quelle il cui riparto su quell'unità (`righe_riparto`) ha un ruolo toccato dal
-     * passaggio, con una competenza che arriva alla decorrenza o oltre, chiunque ne sia il titolare, anche chi è entrato
-     * (rilievo B6 della beta.38: chi vende e resta usufruttuario è fra gli entrati, ma il consuntivo dell'anno prima,
-     * tutto suo, l'annullamento non lo cambia). L'annullamento cambia la
-     * titolarità solo da lì in poi e solo su quei ruoli: il consuntivo dell'anno prima, o una spesa del solo proprietario
-     * dopo una fine locazione, non cambiano e non contano; la parte dell'inquilino che dopo una fine locazione senza
-     * nuovo inquilino va al proprietario (il ripiego della decisione 22) sì (giro di verifica, G-1). Una quota senza
-     * dettaglio del riparto, non nata dal motore, conta solo se è di chi è entrato. Le gemelle del pregresso, che un
-     * passaggio scrive con `divisa_da` (questo, o un altro della stessa unità registrato dopo con un rogito anteriore),
-     * non sono un piano nuovo e non contano.
+     * Le quote nate dopo il passaggio sulle sue unità che l'annullamento cambierebbe: un piano generato o ricalcolato dopo, con la
+     * titolarità di dopo. La regola, con i suoi casi, sta in `QuoteNateDopoIlPassaggio`: dalla beta.51 la legge anche
+     * `PianoRate::passaggiAnnullatiDaSeguire`, e le due non possono divergere.
      */
     private function quoteNateDopo(Subentro $padre, Collection $famiglia): Collection
     {
-        $unita = $this->unita($famiglia);
-        // Le bozze del passaggio non sono nate dopo; un id del registro ripreso da una quota nuova (MySQL 5.7) sì.
-        $voci = $this->quoteDelRegistro($padre)['voci']->keys()->map(fn ($id) => (int) $id)->all();
-        $quote = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
-            ->whereIn('rate_quote.immobile_id', $unita)
-            ->where(fn ($q) => $q->where('rate_quote.id', '>', (int) ($padre->registro['quota_max_id'] ?? PHP_INT_MAX))
-                ->when($padre->created_at !== null, fn ($q) => $q->orWhere('rate_quote.created_at', '>', $padre->created_at)))
-            ->whereNotIn('rate_quote.id', $voci)
-            ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.anagrafica_id', 'rate_quote.immobile_id', 'rate_quote.importo', 'rate_quote.scrittura_contabile_id', 'rate_quote.importo_pagato', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.piano_rate_id', 'piani_rate.nome as piano_nome'])
-            ->reject(fn ($q) => isset($this->regole($q)['divisa_da']))
-            ->values();
-        if ($quote->isEmpty()) {
-            return $quote;
-        }
-
-        // Per unità: da quando e su quali ruoli il passaggio ha cambiato la titolarità.
-        $toccati = [];
-        foreach ($famiglia as $s) {
-            $ruoli = [];
-            foreach ($s->registro['righe'] ?? [] as $op) {
-                foreach (['prima', 'dopo'] as $lato) {
-                    if (isset($op[$lato]['tipologia'])) {
-                        $ruoli[] = (string) $op[$lato]['tipologia'];
-                    }
-                }
-                if ($op['operazione'] !== 'aperta') {
-                    $ruoli[] = (string) DB::table('anagrafica_immobile')->where('id', $op['id'])->value('tipologia');
-                }
-            }
-            $toccati[(int) $s->immobile_id] = ['dal' => $s->decorrenza?->toDateString() ?? '0000-00-00', 'ruoli' => array_values(array_unique(array_filter($ruoli)))];
-        }
-
-        $entrati = $this->entrati($famiglia);
-        $riparto = DB::table('righe_riparto')->whereIn('piano_rate_id', $quote->pluck('piano_rate_id')->unique()->all())->whereIn('immobile_id', $unita)
-            ->get(['piano_rate_id', 'anagrafica_id', 'immobile_id', 'ruolo_richiesto', 'ruolo_risolto', 'competenza_al'])
-            ->groupBy(fn ($r) => $r->piano_rate_id . ':' . $r->anagrafica_id . ':' . $r->immobile_id);
-
-        // Con il dettaglio del riparto decide il riparto, per chiunque; «è fra gli entrati» è il ripiego delle quote senza.
-        // Chi vende e resta usufruttuario, chi resta nudo, il comproprietario che somma e il nudo che torna pieno sono fra
-        // gli entrati ma erano titolari anche prima (rilievo B6 della beta.38); chi entra davvero ha righe col ruolo
-        // toccato e la competenza dalla decorrenza in poi, e resta.
-        return $quote->filter(function ($q) use ($entrati, $toccati, $riparto) {
-            $righe = $riparto->get($q->piano_rate_id . ':' . $q->anagrafica_id . ':' . $q->immobile_id);
-            if ($righe === null || $righe->isEmpty()) {
-                return in_array((int) $q->anagrafica_id, $entrati, true);
-            }
-            $t = $toccati[(int) $q->immobile_id] ?? ['dal' => '0000-00-00', 'ruoli' => []];
-
-            return $righe->contains(fn ($r) => (in_array((string) $r->ruolo_richiesto, $t['ruoli'], true) || in_array((string) $r->ruolo_risolto, $t['ruoli'], true))
-                && ($r->competenza_al === null || substr((string) $r->competenza_al, 0, 10) >= $t['dal']));
-        })->values();
+        return QuoteNateDopoIlPassaggio::per($padre, $famiglia);
     }
 
     private function quoteNonIntatte(Subentro $padre, Collection $famiglia): ?string

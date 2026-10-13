@@ -722,13 +722,18 @@ it('S7 — dopo una vendita l\'estratto conto di chi entra e la situazione debit
     rsQuotaEmessa($this->gestione, $this->condominio, $this->immobile, $this->rossi, 41200);
     $this->actingAs($this->user)->post($this->rotta, rsVendita($riga, $this->bianchi, ['ho_letto' => true, 'nota_cancello' => 'Rogito del 30 aprile, letto il pannello']))->assertRedirect();
 
-    // Estratto conto di chi entra: la nota c'è, nomina i due esercizi e il residuo di Rossi (€ 412,00 non pagati).
+    // Estratto conto di chi entra: la nota c'è, nomina i due esercizi e il residuo di Rossi. Dalla Coda 172 (beta.51) la cifra è al netto
+    // della coppia del conguaglio, che la nota dice nella stessa frase. Conto a mano: la quota emessa è € 412,00 (41200) e Rossi ne ha i
+    // giorni dal 1/1 al 30/4, 120 su 365: 41200 × 120/365 = 13545,2 → 13545 (€ 135,45); la coppia di Bianchi è 41200 − 13545 = 27655 (€ 276,55)
+    // e il non pagato resta 41200 − 27655 = 13545. Prima della Coda 172 la nota diceva € 412,00, cioè anche la parte che Bianchi ha già a debito.
     $props = $this->actingAs($this->user)->get(route('admin.gestionale.anagrafiche.estratto-conto', [$this->condominio, $this->bianchi]))->assertOk()->viewData('page')['props'];
     expect($props['solidarieta'])->toHaveCount(1);
     $nota = $props['solidarieta'][0];
     expect($nota['testo'])->toContain('Bianchi Anna risponde in solido con Rossi Mario')->toContain('esercizi 2026 e 2025')->toContain('art. 63 co. 4')
-        ->toContain('a nome di Rossi Mario risultano oggi € 412,00 non pagati')
-        ->and($nota['residuo_uscente_cents'])->toBe(41200);
+        ->toContain('a nome di Rossi Mario risultano oggi € 135,45 non pagati su questa unità (€ 412,00 nelle rate, di cui € 276,55 già a debito di Bianchi Anna con il conguaglio del 1 maggio 2026)')
+        ->and($nota['residuo_uscente_cents'])->toBe(13545)
+        ->and($nota['residuo_lordo_cents'])->toBe(41200)
+        ->and($nota['coppia_cents'])->toBe(27655);
     // Nessuna quota emessa a Bianchi: la nota non è una rata.
     expect(DB::table('rate_quote')->where('anagrafica_id', $this->bianchi->id)->count())->toBe(0);
 

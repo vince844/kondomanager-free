@@ -24,6 +24,7 @@ import { computed, ref } from 'vue';
 import { AlertTriangle, CalendarClock, Info, LoaderCircle, Receipt, Scale, ShieldCheck, Users, ArrowLeftRight } from 'lucide-vue-next';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import FraseConImporti from './FraseConImporti.vue';
 import type { AnteprimaPassaggioDati } from '@/types/gestionale/passaggi';
 import { competenzaDellaGestione, etichettaEsclusa } from '@/lib/gestionale/passaggi/competenzaGestione';
 import { conguaglioDaScegliereNelPassaggio, conguaglioNonScrittoNelPassaggio, coppieNonScritte, fraseArretrato, sceltaConguaglioDelPassaggio, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
@@ -60,6 +61,11 @@ const pronto = computed(() => props.dati !== null && !props.errore);
 const conguaglio = computed(() => props.dati?.rate.conguaglio ?? null);
 /** C'è almeno una coppia da scrivere: solo allora ha senso poter rinunciare. */
 const haCoppie = computed(() => (conguaglio.value?.coppie.length ?? 0) > 0);
+/**
+ * Il conguaglio che si scrive prenderebbe un piano da ricalcolare prima (§6.3 della 1.11.0-beta.51): la frase la scrive il server, la
+ * registrazione si rifiuta, e il pannello resta con il conguaglio e la sua via d'uscita — la casella della rinuncia, o «Non scriverlo».
+ */
+const pianoDaRicalcolare = computed(() => props.dati?.rate.piano_da_ricalcolare ?? null);
 // Le coppie hanno più di un «chi entra» (S8-30): si elencano con il nome, perché la tabella per gestione non lo dice.
 const piuEntranti = computed(() => new Set((conguaglio.value?.coppie ?? []).map(c => c.anagrafica_entrante_id)).size > 1);
 const notaTroppoCorta = computed(() => rinuncia.value && notaRinuncia.value.trim().length < 10);
@@ -169,7 +175,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
         <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <Users class="w-3.5 h-3.5" /> 1. Anagrafica
         </h4>
-        <p v-for="(f, i) in dati.anagrafica.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
+        <p v-for="(f, i) in dati.anagrafica.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed"><FraseConImporti :testo="f" /></p>
         <p v-if="dati.anagrafica.pertinenze.length" class="text-xs text-slate-500 dark:text-slate-400">
           Pertinenze incluse: {{ dati.anagrafica.pertinenze.join(', ') }}.
         </p>
@@ -181,6 +187,9 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           <Receipt class="w-3.5 h-3.5" /> 2. Rate già emesse
           <span v-if="conguaglio && haCoppie && daScegliere" class="ml-auto inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
             <ArrowLeftRight class="w-3 h-3" /> conguaglio da scegliere
+          </span>
+          <span v-else-if="conguaglio && haCoppie && pianoDaRicalcolare && !rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
+            <AlertTriangle class="w-3 h-3" /> piano da ricalcolare
           </span>
           <span v-else-if="conguaglio && haCoppie && !rinunciaVale" class="ml-auto inline-flex items-center gap-1 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
             <ArrowLeftRight class="w-3 h-3" /> conguaglio proposto
@@ -224,8 +233,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           </table>
         </div>
 
-        <p v-for="(f, i) in dati.rate.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
-        <p v-for="(f, i) in frasiDelConguaglio" :key="`calcolo-${i}`" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{{ f }}</p>
+        <p v-for="(f, i) in dati.rate.frasi" :key="i" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed"><FraseConImporti :testo="f" /></p>
+        <p v-for="(f, i) in frasiDelConguaglio" :key="`calcolo-${i}`" class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed"><FraseConImporti :testo="f" /></p>
 
         <!-- Decisione 25 (B3a): le bozze che passano a chi entra — cambia l'intestatario, non l'importo. -->
         <div v-if="riassegnazione.length" class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -247,6 +256,15 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        <!-- Il piano da ricalcolare prima (§6.3 della beta.51): l'avviso sta sopra il conguaglio, che resta con la sua via d'uscita. -->
+        <div v-if="conguaglio && haCoppie && pianoDaRicalcolare" role="alert" data-testid="piano-da-ricalcolare" class="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-900/10 p-3 flex items-start gap-2.5">
+          <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+          <div class="space-y-1.5 min-w-0">
+            <p class="text-[12px] text-amber-900 dark:text-amber-200 leading-relaxed"><FraseConImporti :testo="pianoDaRicalcolare" /></p>
+            <p class="text-[11px] text-amber-800/90 dark:text-amber-300/90 leading-snug">Finché non ricalcoli il piano o scegli di non scrivere il conguaglio, il passaggio non si registra.</p>
+          </div>
         </div>
 
         <!-- Il conguaglio proposto, per gestione: le righe in saldi e la rinuncia motivata (S5), o la scelta della successione (.48). -->
@@ -272,7 +290,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                        con voci miste la colonna dice «voce per voce» (R5 della Fase 1-bis, `competenzaDellaGestione`). -->
                   <template v-else-if="g.natura === 'straordinaria' || g.gradino.includes('dichiarata')">{{ competenzaDellaGestione(g, GRADINI).etichetta }}<span v-if="competenzaDellaGestione(g, GRADINI).intervallo" class="block">{{ competenzaDellaGestione(g, GRADINI).intervallo }}<template v-if="g.giorni_uscente !== null && g.giorni_uscente !== undefined"> · giorni {{ g.giorni_uscente }} / {{ g.giorni_entrante }}</template></span><span v-else-if="competenzaDellaGestione(g, GRADINI).giorno"> · {{ competenzaDellaGestione(g, GRADINI).giorno }}</span></template>
                   <template v-else>giorni {{ g.giorni_uscente ?? '—' }} / {{ g.giorni_entrante ?? '—' }}<span v-if="g.gradino[0]" class="block">{{ GRADINI[g.gradino[0]] ?? g.gradino[0] }}</span></template>
-                  <span v-if="g.bozze_passate > 0" class="block">intero piano {{ g.importo_lordo_formattato }} − bozze {{ g.bozze_passate_formattato }}</span>
+                  <span v-if="g.bozze_passate > 0" class="block">intero piano <span class="whitespace-nowrap">{{ g.importo_lordo_formattato }}</span> − bozze <span class="whitespace-nowrap">{{ g.bozze_passate_formattato }}</span></span>
                 </td>
                 <td class="px-3 py-1.5 text-right tabular-nums font-semibold whitespace-nowrap" :class="g.importo === 0 ? 'text-slate-400' : 'text-indigo-800 dark:text-indigo-300'">
                   {{ g.importo === 0 ? '—' : cifra(g.importo_formattato) }} <span v-if="g.importo !== 0 && aCredito(g.importo_formattato)" class="block text-[10px] font-normal">a credito</span>
@@ -380,7 +398,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               </tr>
             </tbody>
           </table>
-          <p v-if="fraseDellArretrato" class="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-400 leading-snug border-t border-emerald-100 dark:border-emerald-900/40">{{ fraseDellArretrato }}</p>
+          <p v-if="fraseDellArretrato" class="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-400 leading-snug border-t border-emerald-100 dark:border-emerald-900/40"><FraseConImporti :testo="fraseDellArretrato" /></p>
         </div>
       </section>
 
@@ -390,7 +408,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
           <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-amber-800 dark:text-amber-300">
             <ShieldCheck class="w-3.5 h-3.5" /> 3. Chi resta obbligato
           </h4>
-          <p v-for="(f, i) in dati.obbligati.frasi" :key="i" class="text-sm text-amber-900 dark:text-amber-200 leading-relaxed">{{ f }}</p>
+          <p v-for="(f, i) in dati.obbligati.frasi" :key="i" class="text-sm text-amber-900 dark:text-amber-200 leading-relaxed"><FraseConImporti :testo="f" /></p>
         </div>
       </section>
 
@@ -401,7 +419,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
         </h4>
         <ul class="space-y-1">
           <li v-for="(f, i) in dati.invarianti.frasi" :key="i" class="text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed flex gap-2">
-            <span class="text-slate-300 dark:text-slate-600 select-none">—</span><span>{{ f }}</span>
+            <span class="text-slate-300 dark:text-slate-600 select-none">—</span><span><FraseConImporti :testo="f" /></span>
           </li>
         </ul>
       </section>

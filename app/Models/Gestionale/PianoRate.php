@@ -612,6 +612,10 @@ class PianoRate extends Model
      * Decisione 41: il rifiuto di un incasso, di una compensazione o di un rimborso su una quota di questo piano, se il piano deve
      * ancora seguire un passaggio. Null se non ne ha. `$cosa` = [«un incasso», «l'incasso»].
      *
+     * Dalla beta.51 i passaggi da seguire comprendono quelli annullati dopo il ricalcolo (`passaggiAnnullatiDaSeguire`): le quote del
+     * piano hanno la titolarità di un passaggio che non c'è più, e un incasso su una di loro fermerebbe il ricalcolo prima che il piano
+     * torni alla titolarità di prima. La frase degli attivi è quella di sempre; con attivi e annullati insieme è una sola, con due membri.
+     *
      * @param array{0: string, 1: string} $cosa
      */
     public function fraseRicalcolaPrima(array $cosa = ['un incasso', 'l\'incasso']): ?string
@@ -620,9 +624,94 @@ class PianoRate extends Model
         if ($passaggi === []) {
             return null;
         }
+        [$attivi, $annullati] = self::divisiPerStato($passaggi);
+        $annullatiInParole = $annullati === [] ? '' : sprintf('con la titolarità %s, che poi %s', self::descriviPassaggi($annullati),
+            count(self::senzaPertinenze($annullati)) === 1 ? 'è stato annullato' : 'sono stati annullati');
 
-        return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s su una sua quota lo fermerebbe prima che ne tenga conto. Dopo il ricalcolo registra %s.',
-            $this->nome, self::descriviPassaggi($passaggi), $cosa[0], $cosa[1]);
+        if ($annullati === []) {
+            return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s su una sua quota lo fermerebbe prima che ne tenga conto. Dopo il ricalcolo registra %s.',
+                $this->nome, self::descriviPassaggi($attivi), $cosa[0], $cosa[1]);
+        }
+        if ($attivi === []) {
+            return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate %s, e %s su una sua quota lo fermerebbe prima che torni alla titolarità di prima. Dopo il ricalcolo registra %s.',
+                $this->nome, $annullatiInParole, $cosa[0], $cosa[1]);
+        }
+
+        return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s; %s su una sua quota lo fermerebbe prima che il ricalcolo ne tenga conto e le riporti alla titolarità di prima. Dopo il ricalcolo registra %s.',
+            $this->nome, self::descriviPassaggi($attivi), $annullatiInParole, $cosa[0], $cosa[1]);
+    }
+
+    /**
+     * Beta.51, §6.3: il rifiuto di un passaggio il cui conguaglio prenderebbe questo piano mentre il piano deve ancora seguire un passaggio
+     * annullato. Le quote del piano hanno la titolarità di quel passaggio, e il conguaglio scriverebbe la coppia su quella base: il piano va
+     * ricalcolato prima. Il piano che il conguaglio prende non si riscrive più, quindi il rifiuto dice anche perché il ricalcolo oggi si
+     * rifiuta e la strada fino al ricalcolo (`rimediDelFermo`). In una frase sola: il rifiuto sta in un riquadro senza elenchi.
+     *
+     * @param list<Subentro> $annullati i passaggi annullati che il piano deve ancora seguire
+     */
+    public function fraseRicalcolaPrimaDelPassaggio(array $annullati): string
+    {
+        $frase = sprintf('Ricalcola prima il piano «%s», poi registra questo passaggio: le sue quote sono state calcolate con la titolarità %s, che poi %s, e il conguaglio di questo passaggio le prenderebbe così come sono, intestate a chi non è più titolare.',
+            $this->nome, self::descriviPassaggi($annullati), count(self::senzaPertinenze($annullati)) === 1 ? 'è stato annullato' : 'sono stati annullati');
+
+        return $frase . ($this->conIPassaggiCalcolati(fn (self $p) => ($fermo = $p->fraseDelFermo()) === null ? ''
+            : sprintf(' Oggi il ricalcolo si rifiuta perché il piano %s. Per procedere: %s.', $fermo, implode('; ', $p->rimediDelFermo(inElenco: true, finoAlRicalcolo: true)))));
+    }
+
+    /**
+     * Beta.51, §6.3: i passaggi da seguire divisi per stato, nell'ordine in cui `passaggiDaSeguire()` li dà: prima gli attivi, poi gli
+     * annullati. @param list<Subentro> $passaggi  @return array{0: list<Subentro>, 1: list<Subentro>}
+     */
+    public static function divisiPerStato(array $passaggi): array
+    {
+        return [
+            array_values(array_filter($passaggi, fn (Subentro $p) => ! $p->annullato())),
+            array_values(array_filter($passaggi, fn (Subentro $p) => $p->annullato())),
+        ];
+    }
+
+    /**
+     * Beta.51, §6.3: che cosa farà il ricalcolo dei passaggi da seguire, per il rifiuto del ricalcolo quando il piano ha un movimento:
+     * «terrà conto del passaggio di …» per gli attivi, «riporterà le quote alla titolarità di prima del passaggio di …, che è stato
+     * annullato» per quelli annullati.
+     *
+     * @param list<Subentro> $passaggi
+     */
+    public static function dopoIlRicalcolo(array $passaggi): string
+    {
+        [$attivi, $annullati] = self::divisiPerStato($passaggi);
+        $parti = [];
+        if ($attivi !== []) {
+            $parti[] = 'terrà conto ' . self::descriviPassaggi($attivi);
+        }
+        if ($annullati !== []) {
+            $parti[] = sprintf('riporterà le quote alla titolarità di prima %s, che %s', self::descriviPassaggi($annullati),
+                count(self::senzaPertinenze($annullati)) === 1 ? 'è stato annullato' : 'sono stati annullati');
+        }
+
+        return 'il ricalcolo ' . implode(', e ', $parti);
+    }
+
+    /**
+     * Beta.51, §6.3: le persone a cui, emesso il piano com'è, andrebbero a giornale quote per un passaggio annullato: chi quel passaggio
+     * aveva fatto entrare (`QuoteNateDopoIlPassaggio::entrati`) e che ha quote in questo piano, nell'ordine in cui il passaggio le nomina.
+     * Senza nessuna, tutte quelle che il passaggio aveva fatto entrare. @param list<Subentro> $annullati  @return list<string>
+     */
+    public function nomiDiChiEntravaNegliAnnullati(array $annullati): array
+    {
+        $padri = self::senzaPertinenze($annullati);
+        $ids = [];
+        foreach ($padri as $padre) {
+            $famiglia = collect([$padre])->merge(Subentro::conAnnullati()->where('subentro_padre_id', $padre->id)->orderBy('id')->get());
+            $ids = array_merge($ids, $padre->destinatari() !== [] ? $padre->entranti() : \App\Services\Subentro\QuoteNateDopoIlPassaggio::entrati($famiglia));
+        }
+        $ids = array_values(array_unique($ids));
+        $conQuote = \Illuminate\Support\Facades\DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $this->id)
+            ->whereIn('rate_quote.anagrafica_id', $ids ?: [0])->distinct()->pluck('rate_quote.anagrafica_id')->map(fn ($id) => (int) $id)->all();
+        $scelti = array_values(array_filter($ids, fn (int $id) => in_array($id, $conQuote, true))) ?: $ids;
+        $nomi = \App\Models\Anagrafica::whereIn('id', $scelti ?: [0])->pluck('nome', 'id');
+
+        return array_values(array_filter(array_map(fn (int $id) => $nomi->get($id), $scelti)));
     }
 
     /**
@@ -632,6 +721,11 @@ class PianoRate extends Model
      * fine del suo esercizio; la locazione no (decisione 32: emettere senza ricalcolare vuol dire che paga l'inquilino uscito).
      * Vuoto se il piano ha già quote a giornale: i dati di prima della .42, dove le bozze rimaste si emettono come prima e il
      * conguaglio del passaggio dopo si ferma (decisioni 35 e 41).
+     *
+     * Dalla beta.51 (§6.3) seguono i passaggi attivi, e dopo di loro quelli **annullati dopo il ricalcolo**
+     * (`passaggiAnnullatiDaSeguire`): un piano ricalcolato fra la registrazione e l'annullamento ha le quote con la titolarità di un
+     * passaggio che non c'è più, e emesso così manderebbe a giornale le quote di chi non è più titolare. Chi legge questa lista e usa
+     * l'uscente, il registro o il tipo deve distinguerli con `annullato()`.
      *
      * @return list<Subentro>
      */
@@ -649,7 +743,7 @@ class PianoRate extends Model
         }
         $fine = $this->esercizio?->data_fine ?? $this->gestione?->data_fine;
 
-        return Subentro::with(['uscente', 'immobile'])
+        $attivi = Subentro::with(['uscente', 'immobile'])
             ->whereIn('immobile_id', $gruppi->pluck('immobile_id')->unique()->all())
             ->whereIn('anagrafica_uscente_id', $gruppi->pluck('anagrafica_id')->unique()->all())
             ->whereIn('tipo_passaggio', ['vendita', 'usufrutto', 'successione'])
@@ -663,6 +757,41 @@ class PianoRate extends Model
                 return $g !== null && $this->quoteCeranoAl($p, (int) $g->prima) && $p->created_at !== null
                     && (! $this->presoNelConguaglioDa($p) || $this->presoSoloInParteDa($p));
             })
+            ->values()->all();
+
+        return array_merge($attivi, $this->passaggiAnnullatiDaSeguire($gruppi->pluck('immobile_id')->unique()->all(), $fine));
+    }
+
+    /**
+     * Beta.51, §6.3: i passaggi **annullati** che il piano deve ancora seguire. Vendita, usufrutto o successione annullati, portati al
+     * passaggio padre (una vendita con il box è uno solo), con la decorrenza entro la fine dell'esercizio del piano, di cui il piano ha
+     * quote nate dopo la registrazione e prima dell'annullamento che l'annullamento avrebbe cambiato: la regola è quella degli avvisi
+     * dell'annullamento (`QuoteNateDopoIlPassaggio`), una sola per tutte e due. Le quote di un ricalcolo fatto dopo l'annullamento hanno
+     * già la titolarità di prima e non contano: lo dice la chiave `annullamento.quota_max_id` del registro, in congiunzione con l'ora;
+     * per gli annullamenti di prima della .51 vale la sola ora e nel dubbio la guardia scatta. La locazione resta fuori (decisione 32).
+     * Chiamata solo da `passaggiDaSeguire()`, dopo il controllo delle rate a giornale.
+     *
+     * @param list<int> $unitaDelPiano le unità che hanno quote nel piano
+     * @return list<Subentro> i passaggi padre, ognuno con `annullato()` vero, nell'ordine in cui sono stati registrati
+     */
+    private function passaggiAnnullatiDaSeguire(array $unitaDelPiano, \DateTimeInterface|string|null $fine = null): array
+    {
+        $righe = Subentro::conAnnullati()->whereNotNull('annullato_il')->whereIn('immobile_id', $unitaDelPiano)
+            ->whereIn('tipo_passaggio', ['vendita', 'usufrutto', 'successione'])->get(['id', 'subentro_padre_id']);
+        if ($righe->isEmpty()) {
+            return [];
+        }
+        $padri = Subentro::conAnnullati()->with(['uscente', 'entrante', 'immobile'])
+            ->whereIn('id', $righe->map(fn ($r) => $r->subentro_padre_id ?? $r->id)->unique()->all())
+            ->when($fine !== null, fn ($q) => $q->whereDate('decorrenza', '<=', \Carbon\CarbonImmutable::parse($fine)->toDateString()))
+            ->orderBy('decorrenza')->orderBy('id')->get();
+        if ($padri->isEmpty()) {
+            return [];
+        }
+        $figli = Subentro::conAnnullati()->whereIn('subentro_padre_id', $padri->pluck('id')->all())->orderBy('id')->get()->groupBy('subentro_padre_id');
+
+        return $padri->filter(fn (Subentro $padre) => is_array($padre->registro)
+            && \App\Services\Subentro\QuoteNateDopoIlPassaggio::per($padre, collect([$padre])->merge($figli->get($padre->id, collect())), (int) $this->id)->isNotEmpty())
             ->values()->all();
     }
 

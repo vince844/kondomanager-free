@@ -7,6 +7,230 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.51] - Niente in silenzio
+
+**Non cambia lo schema del database, ma i passaggi e gli annullamenti salvano nel loro registro alcune informazioni nuove.**
+L'annullamento di una vendita, di un usufrutto o di una successione ricorda fino a dove arrivavano le quote dei piani in quel
+momento, così da distinguere i piani ricalcolati dopo; la fine di un inquilino ricorda la parte di una fermata di prima che
+risale; l'inizio di una locazione ricorda la parte della coppia di righe di saldo che il nuovo inquilino ha preso, e chi pagava
+quei giorni; le fermate ricordano l'inquilino la cui fine le ha fatte nascere e, quando più passaggi si fermano sulla stessa
+persona, l'elenco di quei passaggi. Anche le quote di un piano generato dopo una successione con l'arretrato agli eredi, quando il
+cancello della generazione nomina il defunto, ricordano nei parametri del calcolo la persona, l'unità e la cifra detta. Nessuna
+migrazione e nessun dato esistente riscritto: i passaggi registrati prima non hanno queste informazioni e si leggono come prima, e
+gli annullamenti di prima, che non ricordano quel punto, si leggono con la sola ora (nel dubbio, il piano va ricalcolato).
+
+La chiusura dei subentri. Con la beta.50 la locazione ha avuto la sua scelta; questa prende i conti che, dopo un passaggio, potevano
+restare sbagliati senza che il programma lo dicesse, e li fa dire o li ferma: un piano che segue ancora un passaggio annullato, un
+inquilino che finisce dopo una vendita, un defunto che un piano calcola ancora, una nota di solidarietà che contava due volte la
+stessa cifra, un prospetto che dava a una persona i giorni di un'altra. Ogni difetto di calcolo e ogni frase del server hanno prima
+avuto un test rosso; le correzioni sono passate da una revisione avversariale, da un giro sulle correzioni e da una verifica a
+video. I difetti trovati nelle funzioni nuove sono corretti prima del rilascio e non figurano fra le correzioni, che riguardano solo
+ciò che c'era già.
+
+**Cambi di comportamento, detti per primi.**
+- **Dopo un annullamento, un passaggio che prenderebbe un piano da ricalcolare non si registra.** Se una vendita, un usufrutto o una
+  successione è stata registrata, il piano rate è stato ricalcolato con quel passaggio e il passaggio è stato poi annullato, le
+  quote del piano hanno ancora la titolarità di un passaggio che non c'è più. Un nuovo passaggio sulla stessa unità, il cui
+  conguaglio prenderebbe quel piano (nella successione e nella locazione, solo con «Scrivi») mentre un incasso, un credito usato o
+  un conguaglio già scritto su una sua quota ne impediscono il ricalcolo, scriverebbe la coppia di righe di saldo su quelle quote, e
+  la coppia uscirebbe sbagliata. Ora il pannello «Cosa cambierà» mette sopra il conguaglio un riquadro ambra: «Ricalcola prima il
+  piano …, poi registra questo passaggio», con il passaggio annullato, il motivo per cui il ricalcolo oggi si rifiuta e i passi fino
+  al ricalcolo. Il pannello resta, con il conguaglio e la via d'uscita: la casella «Le parti hanno regolato il conguaglio fra loro»
+  nella vendita e nell'usufrutto, «Non scriverlo» nella successione e nella fine di una locazione. Finché non ricalcoli il piano o
+  non scegli di non scrivere il conguaglio, «Registra passaggio» resta spento, con una riga che dice perché; e la registrazione,
+  anche con una richiesta costruita a mano, viene rifiutata prima di scrivere qualunque cosa (errore sul campo del passaggio). Non
+  rifiuta con «Non scriverlo», finché la scelta non è fatta, né per un passaggio annullato su un'altra unità dello stesso piano.
+- **Dopo un annullamento il piano si ricalcola prima di emettere, incassare o rimborsare.** Un piano generato o ricalcolato fra la
+  registrazione di una vendita, di un usufrutto o di una successione e il suo annullamento ha le quote con la titolarità del
+  passaggio e, emesso così, manderebbe a giornale le quote di chi non è più titolare. Nell'esempio, una vendita da Ugo a Elsa
+  dell'1/5 su un'ordinaria di € 1.200,00: dopo il ricalcolo le quote sono € 394,52 a Ugo e € 805,48 a Elsa; annullata la vendita,
+  l'emissione fino al 30/6 mandava a giornale € 197,28 a Ugo e € 402,76 a Elsa (€ 600,04 in tutto, per gli arrotondamenti delle
+  rate), invece di € 600,00 a Ugo. Ora il piano conta fra quelli che devono ancora seguire un passaggio, anche se il passaggio è
+  stato annullato: l'emissione, l'incasso (anche con un credito usato) e il rimborso si rifiutano finché non lo ricalcoli, e
+  dicono quale passaggio è stato annullato e di chi andrebbero a giornale le quote («… perché torni alla titolarità di prima:
+  emesse così, le quote di Elsa andrebbero a giornale per un passaggio che non c'è più»). Il ricalcolo, se il piano ha un
+  movimento, si rifiuta come prima e dice che poi riporterà le quote alla titolarità di prima. Vale anche per la costituzione e
+  l'estinzione dell'usufrutto, per la successione e per la vendita con il box, che è un passaggio solo. Non cambia niente se il
+  piano non è stato ricalcolato dopo il passaggio (le quote c'erano già e tornano com'erano), se il ricalcolo è stato fatto dopo
+  l'annullamento, se la decorrenza è oltre la fine dell'esercizio del piano o se l'annullamento non cambierebbe nessuna quota (una
+  straordinaria deliberata prima della vendita). La locazione resta fuori. Per gli annullamenti fatti prima di questa beta, che
+  non ricordano il punto, conta la sola ora: nel dubbio la guardia scatta, e un ricalcolo la toglie.
+- **La fine di un inquilino dopo una vendita si ferma e chiede la spunta.** Ines esce il 24/1 con «Scrivi» (la coppia, € 355,52, va
+  a Ugo), Luca entra l'8/2, Ugo vende a Elsa il 12/3 e Luca finisce il 18/4. I 258 giorni dopo la fine di Luca li paga Elsa, ma la
+  coppia è a nome di Ugo: € 268,20 di Elsa restavano a Ugo, in silenzio. Il pannello della fine di Luca non diceva niente, il
+  registro non ricordava niente. Ora la fine di un inquilino entrato dopo è una fermata come le altre dopo «Scrivi»: se i giorni che
+  lui copriva tornano a chi paga al posto dell'inquilino e questi non è più chi ha preso la coppia (ha venduto, l'usufrutto è
+  passato, il proprietario è morto), il programma registra la fine, non sposta quella parte e lo dice con la persona, la cifra e la
+  strada a mano; chiede la spunta «Ho letto cosa cambierà» e la nota, e lo storico e il registro della fine conservano la fermata
+  (nell'esempio € 268,20 verso Elsa, a carico di Ugo). La strada a mano è il saldo manuale dal Wallet se nessuna delle due persone
+  ha già un saldo su quella gestione, quell'unità e quell'esercizio; altrimenti la parte si regola fra le parti. La cifra è la
+  variazione della parte di chi riceve quei giorni e non ha già la coppia. Non è una fermata quando quei giorni vanno a un altro
+  inquilino (un coinquilino, o chi entra al suo posto con un cambio d'inquilino in un passo) o a chi ha già la coppia. Se una
+  fermata di prima conteneva già quei giorni, la parte da regolare risale invece di nascere: Ines esce l'1/7 (coppia di € 181,48 a
+  Ugo), Ugo vende a Elsa l'1/10 (fermata di € 90,74), Luca entra l'1/11 (la parte verso Elsa scende a € 30,58) e finisce l'1/12, e
+  la parte verso Elsa risale da € 30,58 a € 61,15. Il pannello, il cancello, lo storico e il registro lo dicono da quanto a quanto,
+  e l'annullamento della fine avvisa che la parte torna com'era.
+- **La nota di solidarietà dice la cifra al netto della coppia.** Nell'estratto conto, nella situazione debitoria e nella schermata
+  dell'incasso, la nota che ricorda la solidarietà di chi compra (art. 63, quarto comma, e art. 67 delle disposizioni di attuazione
+  del codice civile) dice quanto risulta non pagato a nome di chi vende. Dopo un conguaglio «Scrivi» la coppia ha già messo una
+  parte di quelle rate a debito di chi compra, e la nota la contava due volte: con un'ordinaria di € 1.200,00 emessa tutta, una
+  vendita dell'1/5 e niente pagato, diceva € 1.200,00, mentre € 805,48 erano già a debito di Elsa; la parte di Ugo, 120/365 di
+  € 1.200,00, è € 394,52. Ora la cifra è al netto e la coppia sta nella stessa frase: «a nome di Ugo risultano oggi € 394,52 non
+  pagati su questa unità (€ 1.200,00 nelle rate, di cui € 805,48 già a debito di Elsa con il conguaglio del 1 maggio 2026)». Con le
+  rate emesse fino al 30/6 la cifra è la stessa, € 394,52 (€ 600,00 nelle rate, di cui € 205,48); se il netto è zero dice che non
+  risulta nulla di non pagato e che le rate sono tutte già a debito di chi compra. Vale per la vendita piena e per la riserva
+  d'usufrutto, gestione per gestione: il credito di una non copre il debito di un'altra. Con la rinuncia al conguaglio, o dopo il
+  suo annullamento, non c'è coppia e la cifra resta lorda; se la coppia è stata assorbita da un secondo piano, la nota torna alla
+  cifra lorda, che non sottostima mai il debito.
+- **Il cancello della generazione nomina il defunto.** Ugo muore il 1/5; la successione passa l'arretrato agli eredi, Anna al 60 % e
+  Bruno al 40 %. Un piano ordinario di € 1.200,00 generato o ricalcolato dopo calcola ancora Ugo per i suoi giorni fino al decesso:
+  Ugo € 394,52, Anna € 483,29 e Bruno € 322,19. Quelle rate nascono ora, fuori dall'arretrato, e nessuna riga le passava agli eredi:
+  la frase «la posizione del defunto si chiude» lasciava intendere il contrario. Ora il cancello che si apre alla generazione
+  (creazione del piano, ricalcolo, «togli una voce») aggiunge una voce: «La successione di Ugo (decesso del 1 maggio 2026) ha
+  passato l'arretrato agli eredi, ma questo piano calcola ancora per Ugo € 394,52 … Ne rispondono gli eredi, ciascuno per la sua
+  quota (art. 754 c.c.): Anna € 236,71 e Bruno € 157,81». Poi dice la strada: un saldo manuale dal Wallet sulla stessa gestione
+  (€ 394,52 a credito di Ugo, € 236,71 a debito di Anna e € 157,81 a debito di Bruno), che il piano assorbe alla generazione
+  successiva; se qualcuno ha già un saldo su quella gestione e quell'unità, la parte si regola fra le parti. Se il piano non applica
+  i saldi del Wallet lo dice: serve crearlo di nuovo o, alla creazione, registrare i saldi e rimandare il modulo. Dopo la
+  registrazione dei saldi il cancello ritorna a ogni ricalcolo, ma con un'altra frase: «I saldi ci sono già … questo piano li
+  assorbe nelle loro quote con questa generazione. Non serve registrare altro»; vale solo se i saldi sono davvero la parte (la cifra
+  per ognuno, nel verso giusto, a meno di un centesimo): con semplici riporti, di altra cifra, resta «si regola fra le parti». Più
+  successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà) dividono la cifra per ruolo, qualunque sia
+  l'ordine di registrazione; dove un pezzo non si attribuisce, la voce nomina le successioni e dice che la divisione la decide
+  l'amministratore. Anche il modulo della successione dice che la posizione del defunto si chiude su ciò che c'è già.
+- **L'anteprima dell'inizio di una locazione rifiuta quello che rifiuta la registrazione.** Ugo, Ines inquilina al 100 %, rate
+  emesse fino al 30/6. L'anteprima dell'inizio di Luca al 100 % dall'1/7 rispondeva che si poteva, il pannello proponeva il
+  passaggio, e la registrazione rifiutava: «la somma delle quote per inquilino non può superare 100: il 1 luglio 2026 farebbe 200».
+  Ora l'anteprima rifiuta con lo stesso testo e sullo stesso campo (la quota per l'unità, le pertinenze per il box: Ines al 50 % e
+  Luca al 100 % sul box fanno 150). Rifiuta anche la sovrapposizione con una riga d'inquilino di chi entra già finita (dal 1/5 al
+  31/8, contro un inizio dall'1/7), sul campo «chi entra». Il rifiuto non scrive niente, e la stessa regola vale alla registrazione
+  prima di ogni scrittura.
+- **Il prospetto non dà a una persona una voce che matura dopo un cambio d'inquilino.** Una voce di spesa di € 400,00 con competenza
+  dall'1/10 al 31/12, di cui il 30 % all'inquilino (€ 120,00). Ines passa il suo posto a Marco l'1/4 con «Scrivi» in un solo passo,
+  Marco finisce l'1/7 con «Scrivi» e Luca entra l'1/10. La voce è tutta dopo il cambio: non è di Ines. Il prospetto dava a Ines
+  € 208,77 invece di € 88,77 e a Luca € 90,74 invece di € 210,74: € 120,00 a danno di Ugo (con «Non scriverlo» nel cambio, a danno
+  di Ines). La causa: per sapere chi paga una voce il prospetto cercava la fine di un inquilino solo fra le fini senza un nuovo
+  inquilino, e non vedeva il cambio. Non serve un'entrata: basta una voce con la competenza tutta dopo il cambio. Ora segue la
+  catena a ogni passo: Ines resta con € 88,77 e Luca rimborsa a Ugo i € 120,00 che Ugo ha pagato con la coppia (€ 210,74 in tutto);
+  con «Non scriverlo» nel cambio li rimborsa a Ines, che li ha nelle rate.
+- **Più fermate sulla stessa persona: il residuo è uno solo.** Ugo e Anna, comproprietari al 50 %, vendono a Elsa il 12/3 e l'1/4;
+  ognuna delle due vendite si ferma sulla parte di Elsa (€ 153,33 e € 142,94, in tutto € 296,27). Poi Marco entra l'1/6 e toglie a
+  Elsa € 222,46. La beta.50 sottraeva quei € 222,46 da ognuna delle due fermate, e ognuna si azzerava da sola: il pannello diceva
+  «non resta niente da regolare» con € 73,81 ancora da regolare. Ora il residuo è uno, per persona che riceve, e il pannello lo dice
+  in una frase che nomina le fermate. Con più persone a carico il residuo resta uno solo per tutte insieme: la frase dice la cifra
+  di ogni fermata (qui € 153,33 per Ugo e € 142,94 per Anna) e che la parte di ognuno la decide l'amministratore.
+- **L'inizio che azzera una fermata è un'informazione.** Nell'esempio della fine di Luca che ferma € 268,20 verso Elsa, Marco entra
+  lo stesso giorno, il 18/4, e riprende i 258 giorni: la parte di Elsa torna a zero. La fine di Luca ha già chiesto la spunta per
+  € 268,20; l'inizio di Marco non ne chiede una seconda: il pannello dice che non resta niente da regolare fra le parti (prima erano
+  € 268,20), come informazione, senza spunta e senza nota. Se per la fermata di prima avevi registrato il saldo dal Wallet (€ 268,20
+  a credito di Ugo e € 268,20 a debito di Elsa), la frase dice di correggerlo, perché il programma non lo toglie; con la fermata
+  «fra le parti» questa riga non compare. La regola è il residuo zero, non il giorno stesso: con un residuo che resta il motivo del
+  cancello resta. Annullare l'inizio che aveva ridotto o azzerato una fermata avvisa che la parte torna da € 0,00 a € 268,20 e che
+  gli accordi o i saldi adeguati nel frattempo vanno rivisti.
+
+**Le frasi e le stampe.**
+- **La differenza fra il conguaglio della vendita e il piano generato dopo.** Dove il già versato è sia della persona sia dell'unità
+  sullo stesso conto, il conguaglio e il piano generato dopo la vendita danno due cifre diverse. Con una spesa di € 1.200,00 sul
+  100 % del proprietario, Ugo che ha versato € 300,00, l'unità € 200,00 e la vendita dell'1/5, il conguaglio dà € 671,23 a Elsa e
+  € 28,77 a Ugo; il piano generato dopo, € 626,48 e € 73,52: la differenza di € 44,75 non era detta da nessuna parte. Ora la frase
+  del conguaglio dice le due cifre e la differenza, e anche la quota di un comproprietario o dell'inquilina che nel piano di dopo
+  cambia (Anna € 480,33 invece di € 466,67). Con un piano d'acconto applica al già versato la stessa frazione del piano (Elsa
+  € 313,24 e Ugo € 36,76 contro € 335,62 e € 14,38: € 22,38). Dice anche il caso in cui il già versato di Ugo supera la sua parte, o
+  quello dell'unità supera la spesa che resta (in un caso provato € 201,37 a Elsa contro € 0,00), con le cifre. Non c'è con una
+  parte sola del già versato, dove le due strade coincidono al centesimo, né quando chi compra è già sul piano, né quando la
+  differenza è di un centesimo.
+- **Una cifra negativa si dice con le parole.** Nelle frasi del conguaglio un netto negativo era scritto «€ -100,83» e letto come un
+  debito o un credito di segno opposto: ora dice un credito di € 100,83 a Elsa e un debito di € 100,83 a Ugo, e una riga di rimborso
+  dice «€ 100,82 a credito di chi entra». «Coprono più dei suoi giorni» si dice solo se la parte e le bozze hanno lo stesso segno e
+  le bozze superano la parte in valore assoluto. Le righe della riassegnazione e i motivi del cancello seguono la stessa regola, e
+  la riga di una voce di entrata che matura dopo il passaggio dice «l'entrata è di chi entra per intero».
+- **La stampa del prospetto degli oneri accessori.** Nel piede delle sezioni, nel blocco «Giorni senza conduttore» e nella frase
+  finale nessuna cifra si stampa più con «€ -»: un totale negativo è «a favore di» chi lo ha, un credito di chi ha pagato i giorni
+  senza conduttore è «a credito», e «da restituire a … i giorni dopo la sua uscita» si dice solo di chi è uscito (un inquilino
+  ancora lì, a cui chi ha pagato i suoi giorni deve dei soldi, li riceve). La colonna «Importo» delle righe tiene invece il segno:
+  il verso lo dice la colonna «Come». Con un'entrata di € 1.000,00 che supera la spesa dei giorni senza conduttore il piede dice
+  € 118,52 di credito; a Luca, con la coppia a credito, la sezione dice «Totale a favore di Luca € 209,26» e la frase finale elenca
+  le cifre per persona.
+- **Un verso per pagatore, e il credito di chi entra.** Quando i pagatori dei giorni hanno versi diversi, la frase dell'inizio di
+  Luca dice che Luca rimborsa € 87,36 a Elsa e che Ugo gli restituisce € 3,49, e non «li rimborsa Luca a Ugo e a Elsa»; il pannello
+  e il prospetto dicono gli stessi nomi, versi e cifre. Se in un cambio d'inquilino chi entra ha un credito (nell'esempio € 209,26),
+  la frase dice che passa a lui, e con «Non scriverlo» che è chi esce a restituire la differenza, non a rimborsare. Un piano della
+  1.10 senza il riparto registrato, con un capitolo di entrata, dice che le parti si regolano nel verso delle voci: il dato di chi
+  rimborsa chi non c'è, e il programma non lo indovina.
+- **Il box spuntato nella locazione.** Con il box spuntato tre frasi del pannello (lo scaduto di chi esce, il conteggio delle quote
+  emesse e ciò che non cambia) erano imprecise: lo scaduto contava solo l'unità principale, e «12 quote su questa unità» includeva
+  le quote del box. Ora contano l'unità e le pertinenze spuntate e lo dicono («sull'unità e sulle pertinenze spuntate»); lo scaduto
+  della fine di Ines è € 180,00 (€ 162,00 sull'unità e € 18,00 sul box), con la divisione fra parentesi. All'inizio di Luca, se le
+  due unità hanno la stessa storia la frase è una sola, senza il nome dell'unità; con un altro proprietario sul box restano due.
+
+**Correzioni.**
+- Una data dell'atto mandata come elenco da una richiesta costruita a mano, insieme a una scadenza del contratto, faceva comparire
+  una pagina d'errore invece del messaggio sul campo: ora l'anteprima e la registrazione di un passaggio rispondono con l'errore
+  sul campo e non scrivono niente.
+- Nelle frasi del pannello «Cosa cambierà», del cancello e dello storico il simbolo € restava a fine riga, staccato dalla cifra: ora
+  € 268,20 resta unito. Le note che scrive l'amministratore restano com'erano.
+
+**Errata della beta.50.** Il «Non ancora» della beta.50 diceva che la stampa del prospetto, quando chi è uscito deve ricevere una
+restituzione, dice il verso rovesciato e una cifra con il segno meno. Era il contrario: il caso era quello di un'entrata che nei
+giorni dopo l'uscita supera la spesa, e allora la restituzione non va a chi è uscito ma la deve lui. Con una fine di locazione
+dell'1/7 con «Non scriverlo» e un'entrata di € 1.000,00 sul 30 % dell'inquilino, la stampa diceva «Totale da restituire a chi le
+ha pagate, fra le parti, € -118,52» (spese per € 181,48 e un'entrata di € 300,00 nei 184 giorni dopo l'uscita): è chi è uscito,
+che ha tutto l'anno nelle sue rate, a dover restituire € 118,52. Dalla beta.51 la stampa dice «Totale che chi è uscito deve
+restituire, fra le parti». Anche l'altro caso di quel «Non ancora», il cambio d'inquilino in un passo seguito dalla fine di chi
+era entrato, non riguardava solo le entrate: bastava una voce con la competenza tutta dopo il cambio, e c'era già nella beta.48.
+
+**Le guide.** La guida del passaggio dice che si ferma anche la fine di un inquilino entrato dopo (con l'esempio da € 30,58 a
+€ 61,15), che dopo un annullamento il piano va ricalcolato prima di emettere, incassare o rimborsare e che un nuovo passaggio che lo
+prenderebbe non si registra, che l'inizio di una locazione che sfora le quote si rifiuta già nell'anteprima, che l'inizio che azzera
+una fermata è un'informazione, che la nota di solidarietà è al netto della coppia, che il cancello del defunto ritorna dopo i saldi
+e che il prospetto segue le voci lungo i cambi d'inquilino. La guida «creare un piano rate» dice il cancello del defunto, quella del
+«dettaglio piano rate» il ricalcolo dopo un annullamento, e quella dei «saldi iniziali» la strada a mano per una parte che il
+programma non sposta.
+
+**Non ancora.** Le voci di entrata (i proventi dell'antenna, per esempio) hanno ancora dei casi fuori dai passaggi che danno cifre
+sbagliate senza dirlo, e che c'erano già nella 1.10: «Sposta spesa» fra una spesa e un'entrata (il totale del piano cambia del
+doppio dello spostamento), una fattura o una regolazione immediata registrata su una voce di entrata, e un importo negativo
+scritto su una voce di spesa al posto di scegliere il tipo «Entrata»; il badge «Disallineato: ricalcola!» è acceso su ogni piano
+con un'entrata. Si sistemano nella beta successiva, e fino ad allora conviene evitare quelle tre operazioni. L'incasso vero di
+un'entrata da terzi, come l'affitto dell'antenna versato al condominio, non si registra ancora: arriva con il rendiconto. Limiti
+dichiarati dei passaggi: la frase della differenza fra il conguaglio e il piano generato dopo tace quando si vende una parte della
+quota e quando il piano chiede una parte della voce che il programma non sa dire (l'importo del capitolo diviso fra i sottoconti
+in un modo diverso dalla loro somma); con più persone a carico di una fermata il residuo è uno solo e la parte di ognuna la decide
+l'amministratore; se il cancello del defunto trova un saldo unico che comprende riporto e parte (il Wallet ne tiene uno per
+persona, gestione, unità ed esercizio), non sa quanto sia riporto e dice «si regola fra le parti»; il cancello ritorna anche
+quando la parte netta del defunto è zero, con la frase «i saldi ci sono già», e non tace; se la coppia è assorbita da un secondo
+piano la nota di solidarietà resta lorda. Sotto il riquadro ambra del piano da ricalcolare il conguaglio mostra ancora le cifre
+del piano com'è (in un caso provato € 115,06 invece di € 1,78): il riquadro dice di ricalcolare prima il piano e la registrazione
+non passa. La pagina di un piano che segue un passaggio annullato non lo dice: lo dicono il rifiuto dell'emissione e l'anteprima
+di un nuovo passaggio. L'anteprima rifiuta come la registrazione gli sfori di quota dell'inizio di una locazione; per gli altri
+tipi di passaggio il confronto non è ancora fatto. Restano dalla beta.50 una riga del Wallet legata al passaggio che si tolga con
+l'annullamento, la fine di una locazione con un coinquilino che resta e la regola del piano, e, a 375 px, il percorso in alto
+della pagina che sfora di 16 px con un nome di condominio molto lungo.
+
+**Per chi sviluppa.** Nessuna migrazione: le chiavi nuove stanno nel registro JSON del passaggio. `annullamento.quota_max_id` è
+l'id più alto di quota nel momento dell'annullamento; `fermata_risale` (con `prima` e `dopo`) e `giorni_del_conduttore` sono
+chiavi del passaggio; dentro `fermata_dopo_scrivi` ci sono `conduttore_uscente` e `conduttore_uscente_id` (l'inquilino la cui fine
+ha fatto nascere la fermata) e dentro `fermata_ridotta` `passaggi_ids`, `passaggi` e `persone` (un residuo per gruppo di fermate,
+non per fermata). La risposta dell'anteprima porta `rate.piano_da_ricalcolare`, `rate.fermate_risalgono` e
+`rate.giorni_del_conduttore`; la nota di solidarietà aggiunge `residuo_lordo_cents` e `coppia_cents`, e `residuo_uscente_cents`
+diventa il netto. Classi nuove: `DefuntoNelPiano` (la voce `defunto_nel_piano` del cancello della generazione),
+`QuoteNateDopoIlPassaggio` (la regola delle quote nate dopo un passaggio, una sola per gli avvisi dell'annullamento e per
+`PianoRate::passaggiDaSeguire`, che ora vede anche i passaggi annullati) e `ImportoInParole` (le cifre dette con le parole, prima
+dentro `FermataDopoScrivi`). `FermataDopoScrivi::perLaFineDelConduttore` è la fermata della fine di un inquilino;
+`GeneratePianoRateAction::saldiSiApplicano` è la regola dei saldi estratta dal corpo della generazione, e
+`GeneratePianoRateAction::execute` ha il parametro nuovo `allaCreazione`; sulle quote del piano
+`regole_calcolo.parametri.titolarita_alla` porta, quando il cancello nomina un defunto, la chiave `defunti` (persona, unità e
+cifra); `ConguaglioPassaggio::confrontoConIlPiano` è una seconda fonte dichiarata della frase della differenza, confrontata con il
+piano generato davvero. Lato pagina `FraseConImporti.vue` e `importoSenzaACapo.ts`. Test nuovi:
+`Beta51PassaggiFineConduttoreTest`, `Beta51PassaggiParteCheRisaleTest`, `Beta51PassaggiDueFermateTest`,
+`Beta51PassaggiRegistroInizioTest`, `Beta51PassaggiEntrateTest`, `Beta51PassaggiFrasiTest`, `Beta51PassaggiInizioSopraTest`,
+`Beta51PianoRatePassaggioAnnullatoTest`, `Beta51PianoRateDefuntoNelPianoTest`, `Beta51PianoRateNotaCoppiaTest` e i vitest
+`AnteprimaPassaggioPianoDaRicalcolare`, `PassaggioNewPianoDaRicalcolare`, `DestinatariWarningDefunto`, `FraseConImporti`,
+`importoSenzaACapo`, `PassaggioNewImportiSenzaACapo`, `Beta51ImportiSenzaACapo`, `PassaggioProprietaGuide`; riscritti
+`RiservaUsufruttoTest`, `RegistraSubentroTest`, `InizioLocazionePianoFermoTest` e `ConguaglioPerTrattiTest`.
+
+---
+
 ## [1.11.0-beta.50] - I giorni dopo l'uscita
 
 **Non cambia lo schema del database, ma i passaggi salvano nel loro registro alcune informazioni nuove.** Sono la scelta sul

@@ -158,6 +158,11 @@ class AnteprimaPassaggioRequest extends FormRequest
                 $norm[$campo] = filter_var($this->input($campo), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
             }
         }
+        // Una data che non è un valore solo (un elenco, una mappa) non è una data: la regola `after:decorrenza` della scadenza la passava a `Carbon::parse`
+        // (TypeError, una pagina 500). Diventa un valore mancante, e il 422 dice «scrivi la data dell'atto» sul campo.
+        if ($this->has('decorrenza') && ! is_scalar($this->input('decorrenza'))) {
+            $norm['decorrenza'] = null;
+        }
         if ($norm !== []) {
             $this->merge($norm);
         }
@@ -531,6 +536,29 @@ class AnteprimaPassaggioRequest extends FormRequest
                             $principale ? 'unità' : 'pertinenza',
                             mb_strtolower(RuoloAnagraficaImmobile::tryFrom($this->testo('tipologia'))?->label() ?? $this->testo('tipologia')),
                         ));
+                    }
+                }
+            }
+
+            // Coda 247 (1.11.0-beta.51): l'anteprima dell'inizio di una locazione rifiuta quello che la registrazione rifiuta, con lo stesso testo e sullo stesso
+            // campo. Le guardie sulle righe sono quelle di `RegistraSubentroAction::apri` (`GuardieTitolarita`), su ogni unità del passaggio: la quota del modulo
+            // sulla principale, 100 sulle pertinenze (l'inizio non ha un uscente, come `applicaAllaPertinenza`). Lo sforo delle quote sta sul campo che il modulo
+            // mostra: `quota` per l'unità, `pertinenze` per il box. La sovrapposizione della stessa persona la dice già la regola «è già inquilino» più su
+            // (`anagrafica_entrante_id`, il campo del modulo): qui solo dove quella non l'ha vista (una riga passata o futura).
+            // Questa Request è anche quella di `store()`: la guardia vale alla registrazione, prima del lock; l'azione la ripete sotto lock ed è la rete.
+            // Come la registrazione, che si ferma al primo errore e dice prima la sovrapposizione poi lo sforo: con la sovrapposizione già detta, lo sforo no.
+            if ($this->input('tipo') === 'inizio_locazione' && $this->filled('anagrafica_entrante_id') && $this->filled('decorrenza') && is_numeric($this->input('quota'))
+                && ! $v->errors()->has('anagrafica_entrante_id')) {
+                foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+                    $principale = (int) $unita->id === (int) $immobile->id;
+                    $nuova = ['anagrafica_id' => (int) $this->input('anagrafica_entrante_id'), 'tipologia' => 'inquilino', 'quota' => $principale ? (float) $this->input('quota') : 100.0,
+                        'data_inizio' => CarbonImmutable::parse((string) $this->input('decorrenza')), 'data_fine' => null];
+                    foreach (\App\Services\Subentro\GuardieTitolarita::errori($unita->titolarita()->get(), $nuova, null, $principale ? 'quota' : 'pertinenze') as $campo => $messaggio) {
+                        $campo = $campo === 'anagrafica_id' ? 'anagrafica_entrante_id' : $campo;
+                        $v->errors()->add($campo, $unita->nome . ' — ' . mb_lcfirst($messaggio));
+                        if ($campo === 'anagrafica_entrante_id') {
+                            break 2;
+                        }
                     }
                 }
             }

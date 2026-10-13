@@ -112,6 +112,11 @@ final class RegistraSubentroAction
 
                 // 2. Il pannello, ricalcolato qui: è ciò che si scrive. E il cancello (1) sul server.
                 $anteprima = $this->anteprima->calcola($condominio, $immobile, $dati);
+                // Il conguaglio che si scrive prenderebbe un piano da ricalcolare prima (§6.3): l'anteprima lo dice e lascia scegliere «Non scriverlo»,
+                // la registrazione si ferma prima di ogni scrittura.
+                if (! empty($anteprima['rate']['piano_da_ricalcolare'])) {
+                    throw ValidationException::withMessages(['passaggio' => $anteprima['rate']['piano_da_ricalcolare']]);
+                }
                 if ($anteprima['cancello']['richiesto'] && (! $dati['ho_letto'] || mb_strlen(trim((string) ($dati['nota_cancello'] ?? ''))) < 10)) {
                     throw ValidationException::withMessages(['nota_cancello' => 'Questo passaggio tocca rate già emesse o cambia un destinatario: spunta «Ho letto cosa cambierà» e scrivi perché lo registri così (almeno dieci caratteri).']);
                 }
@@ -216,6 +221,10 @@ final class RegistraSubentroAction
                         // all'inizio di una locazione quanto resta da regolare di una fermata di prima (`fermata_ridotta`).
                         + (($anteprima['rate']['fermate_dopo_scrivi'] ?? []) !== [] ? ['fermata_dopo_scrivi' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_dopo_scrivi'])] : [])
                         + (($anteprima['rate']['fermate_ridotte'] ?? []) !== [] ? ['fermata_ridotta' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_ridotte'])] : [])
+                        // Coda 254 (1.11.0-beta.51): la parte che risale alla fine di un conduttore, e (decisione 85.4) la cifra dei giorni del conduttore
+                        // all'inizio di una locazione: il registro le conserva perché lo storico e il laboratorio le ritrovino.
+                        + (($anteprima['rate']['fermate_risalgono'] ?? []) !== [] ? ['fermata_risale' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_risalgono'])] : [])
+                        + (($anteprima['rate']['giorni_del_conduttore'] ?? []) !== [] ? ['giorni_del_conduttore' => $anteprima['rate']['giorni_del_conduttore']] : [])
                         + (($anteprima['rate']['fermata_coinquilino'] ?? []) !== [] ? ['fermata_coinquilino' => $anteprima['rate']['fermata_coinquilino']] : [])
                         + ($coinquiliniLetti !== [] ? ['coinquilini_letti' => $coinquiliniLetti] : [])
                         + (($anteprima['rate']['rinnovo_dopo_scrivi'] ?? []) !== [] ? ['rinnovo_dopo_scrivi' => $anteprima['rate']['rinnovo_dopo_scrivi']] : []),

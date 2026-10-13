@@ -139,6 +139,12 @@ export interface AnteprimaPassaggioDati {
     morosita: { importo: number; importo_formattato: string; intestatario: string | null } | null;
     /** `null` quando non c'è niente da conguagliare: il pannello non mostra mai zero al suo posto. */
     conguaglio: ConguaglioDati | null;
+    /**
+     * 1.11.0-beta.51, §6.3: la frase «Ricalcola prima il piano…» quando il conguaglio che si scrive prenderebbe un piano da ricalcolare prima;
+     * `null` altrimenti. L'anteprima risponde comunque, perché la via d'uscita sta nel pannello (la casella della rinuncia, o «Non scriverlo»);
+     * la registrazione si rifiuta finché l'avviso c'è.
+     */
+    piano_da_ricalcolare?: string | null;
     /** Solo nella successione (1.11.0-beta.44). */
     arretrato?: ArretratoDelDefunto | null;
     frasi: string[];

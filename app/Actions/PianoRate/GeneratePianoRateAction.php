@@ -7,6 +7,7 @@ use App\Models\Evento;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestione;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\Tabella;
@@ -20,6 +21,7 @@ use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Services\Subentro\DefuntoNelPiano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -53,6 +55,8 @@ class GeneratePianoRateAction
      * @param string|null $notaDestinatari La nota del cancello (2), congelata in `regole_calcolo.parametri.titolarita_alla`.
      * @param Esercizio|null $esercizio L'esercizio di riferimento della competenza (i controller lo hanno dall'indirizzo);
      *                                  senza, quello attivo della gestione.
+     * @param bool $allaCreazione La richiesta è la creazione del piano: se il cancello (2) la ferma il piano non esiste, e la strada dei saldi
+     *                            che il cancello indica è un'altra (registrarli e rimandare il modulo).
      * @throws DestinatariCambiatiException Se la risoluzione temporale cambia dei destinatari e $accettaDestinatari è false.
      * @throws \App\Exceptions\Gestionale\RichiedeDeliberaException Straordinario senza data della delibera (decisione 12).
      *
@@ -70,6 +74,7 @@ class GeneratePianoRateAction
         bool $accettaDestinatari = false,
         ?string $notaDestinatari = null,
         ?Esercizio $esercizio = null,
+        bool $allaCreazione = false,
     ): array
     {
         $pianoRate->refresh();
@@ -410,40 +415,21 @@ class GeneratePianoRateAction
         // =========================================================================
         $risoluzione = $this->calcolatore->getRisoluzioneTemporale();
         $cambiamenti = $risoluzione['destinatari_cambiati'];
-        if (!empty($cambiamenti) && !$accettaDestinatari) {
-            throw new DestinatariCambiatiException($this->arricchisciCambiamenti($cambiamenti, $pianoRate));
+        // Se i saldi del Wallet entrano nelle quote di questo piano: una regola sola per il cancello, che lo dice, e per il corpo
+        // della generazione, che lo fa (decisione 80, beta.51).
+        $applicare = $this->saldiSiApplicano($pianoRate, $gestione, $forzaApplicazioneSaldi);
+        // Beta.51, §6.2 (Coda 226): il defunto che questo piano calcola ancora. Dopo una successione con l'arretrato agli eredi, il
+        // motore intesta ancora al defunto i suoi giorni fino al decesso, e nessuna riga li passa agli eredi: il cancello lo dice,
+        // con la cifra, la parte di ogni erede e la strada. Non è una coppia che cambia: viene dopo i cambiamenti del motore.
+        $defunti = app(DefuntoNelPiano::class)->per($pianoRate, $totaliPerImmobile, $applicare, $this->calcolatore->getRigheDettaglio(), $allaCreazione);
+        if ((!empty($cambiamenti) || $defunti !== []) && !$accettaDestinatari) {
+            throw new DestinatariCambiatiException($this->arricchisciCambiamenti(array_merge($cambiamenti, $defunti), $pianoRate));
         }
-        $titolaritaAlla = empty($cambiamenti)
-            ? GenerateRateQuotesAction::TITOLARITA_ATEMPORALE
-            : [
-                'risoluzione'          => 'temporale',
-                'destinatari_cambiati' => true,
-                'nota_cancello'        => $notaDestinatari,
-                // Le coppie (unità, ruolo) cambiate, non le voci: una coppia compare in una voce per conto. La pregressa
-                // senza periodo (decisione 26) non è una coppia: chiede la nota, ma non cambia nessun destinatario.
-                'coppie'               => count(array_unique(array_map(fn ($c) => $c['immobile_id'].'|'.$c['tipologia'], array_filter($cambiamenti, fn ($c) => ($c['motivo'] ?? null) !== 'pregressa_senza_periodo')))),
-            ];
+        $titolaritaAlla = self::titolaritaAlla($cambiamenti, $defunti, $notaDestinatari);
 
         // 3. GESTIONE SALDI
         //
-        // Ordine di precedenza, dal più esplicito al più debole:
-        //   a) l'override passato dal chiamante (creazione del piano);
-        //   b) il piano possiede già dei saldi — un ricalcolo non può perderli
-        //      per strada, è esattamente il bug del "lucchetto orfano";
-        //   c) i piani straordinari non assorbono pregressi se nessuno lo chiede
-        //      esplicitamente: è ciò che il log qui sotto dichiara da sempre, ma
-        //      che senza questo ramo non era vero per i piani generati in differita;
-        //   d) la scelta persistita alla creazione (piani generati più tardi);
-        //   e) il vecchio flag di gestione, per i piani antecedenti alla beta.32.
-        $possiedeSaldi = Saldo::where('piano_rate_id', $pianoRate->id)->exists();
-
-        $applicare = match (true) {
-            $forzaApplicazioneSaldi !== null      => $forzaApplicazioneSaldi,
-            $possiedeSaldi                        => true,
-            $pianoRate->tipo === 'straordinario'  => false,
-            $pianoRate->applica_saldi !== null    => (bool) $pianoRate->applica_saldi,
-            default                               => (bool) $gestione->fresh()->saldo_applicato,
-        };
+        // `$applicare` l'ha deciso `saldiSiApplicano()` prima del cancello (2); l'ordine di precedenza è nel suo commento.
 
         if ($pianoRate->tipo === 'straordinario') {
             Log::info("▶ Piano Straordinario: Saldi ignorati di default (salvo override esplicito).");
@@ -547,6 +533,65 @@ class GeneratePianoRateAction
             'piano_rate_id' => $pianoRate->id,
             'rate_create'   => $stats['rate_create'] ?? count($dateRate),
         ], $stats);
+    }
+
+    /**
+     * I parametri `titolarita_alla` congelati nelle quote (decisione 15): come sono stati risolti i titolari e la nota del cancello (2).
+     * Atemporale se il motore non ha cambiamenti né ci sono defunti da dire. Altrimenti la forma del cancello — `risoluzione` temporale,
+     * `destinatari_cambiati`, `nota_cancello`, `coppie` — anche quando i cambiamenti sono solo voci del defunto, più la chiave `defunti`
+     * (persona, unità e cifra di ogni voce), che c'è solo se ce ne sono: i test che fissano la forma per intero non la conoscono.
+     *
+     * Le coppie (unità, ruolo) cambiate, non le voci: una coppia compare in una voce per conto. La pregressa senza periodo
+     * (decisione 26) non è una coppia: chiede la nota, ma non cambia nessun destinatario. Né lo è la voce del defunto: dice una cifra
+     * che il piano calcola ancora, non un destinatario che cambia.
+     *
+     * @param list<array<string, mixed>> $cambiamenti i cambiamenti del motore
+     * @param list<array<string, mixed>> $defunti le voci di `DefuntoNelPiano`
+     * @return array<string, mixed>
+     */
+    public static function titolaritaAlla(array $cambiamenti, array $defunti, ?string $notaDestinatari): array
+    {
+        if (empty($cambiamenti) && $defunti === []) {
+            return GenerateRateQuotesAction::TITOLARITA_ATEMPORALE;
+        }
+
+        return [
+            'risoluzione'          => 'temporale',
+            'destinatari_cambiati' => true,
+            'nota_cancello'        => $notaDestinatari,
+            'coppie'               => count(array_unique(array_map(fn ($c) => $c['immobile_id'].'|'.$c['tipologia'], array_filter($cambiamenti, fn ($c) => ($c['motivo'] ?? null) !== 'pregressa_senza_periodo')))),
+        ] + ($defunti === [] ? [] : [
+            'defunti'              => array_map(fn (array $d) => ['anagrafica_id' => (int) $d['defunto']['id'], 'immobile_id' => (int) $d['immobile_id'], 'cifra' => (int) $d['cifra']], $defunti),
+        ]);
+    }
+
+    /**
+     * Se i saldi del Wallet entrano nelle quote di questo piano alla prossima generazione (decisione 80, beta.51). Una regola sola
+     * per il corpo della generazione e per il cancello (2): quest'ultimo dice all'amministratore se un saldo registrato dal Wallet
+     * passerà la parte del defunto agli eredi, e non può promettere ciò che il piano non fa. Pura: una sola lettura, nessuna
+     * scrittura.
+     *
+     * Ordine di precedenza, dal più esplicito al più debole:
+     *   a) l'override passato dal chiamante (creazione del piano);
+     *   b) il piano possiede già dei saldi — un ricalcolo non può perderli
+     *      per strada, è esattamente il bug del "lucchetto orfano";
+     *   c) i piani straordinari non assorbono pregressi se nessuno lo chiede
+     *      esplicitamente: è ciò che il log di `execute()` dichiara da sempre, ma
+     *      che senza questo ramo non era vero per i piani generati in differita;
+     *   d) la scelta persistita alla creazione (piani generati più tardi);
+     *   e) il vecchio flag di gestione, per i piani antecedenti alla beta.32.
+     */
+    public function saldiSiApplicano(PianoRate $pianoRate, Gestione $gestione, ?bool $forzaApplicazioneSaldi = null): bool
+    {
+        $possiedeSaldi = Saldo::where('piano_rate_id', $pianoRate->id)->exists();
+
+        return match (true) {
+            $forzaApplicazioneSaldi !== null      => $forzaApplicazioneSaldi,
+            $possiedeSaldi                        => true,
+            $pianoRate->tipo === 'straordinario'  => false,
+            $pianoRate->applica_saldi !== null    => (bool) $pianoRate->applica_saldi,
+            default                               => (bool) $gestione->fresh()->saldo_applicato,
+        };
     }
 
     /**

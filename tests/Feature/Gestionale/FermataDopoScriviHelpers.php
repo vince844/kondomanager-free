@@ -289,6 +289,31 @@ function fds50Fermate(Subentro $passaggio): array
     return Subentro::conAnnullati()->findOrFail($passaggio->id)->registro['fermata_dopo_scrivi'] ?? [];
 }
 
+/**
+ * La fermata detta nel pannello: fra le stringhe dell'anteprima, quelle con la cifra; almeno una nomina la persona che resta a
+ * carico e la strada a mano del caso senza saldo (il Wallet, decisione 80).
+ *
+ * Con `$riceve` la stessa frase deve dire anche il verso delle due righe del Wallet — a credito di chi resta a carico, a debito
+ * di chi riceve i giorni (Elsa nella vendita). Senza questo controllo passerebbero due frasi sbagliate: quella con il segno delle
+ * righe scambiato (chi segue la frase sposta € 181,48 nel verso sbagliato) e quella senza il nome di chi riceve («a debito di chi
+ * entra»). Il controllo guarda le parole «credito» e «debito» seguite dal nome entro poche lettere, non la frase intera: il testo
+ * resta libero.
+ */
+function fds50DiceLaFermata(array $anteprima, string $cifra, string $persona, ?string $riceve = null): void
+{
+    $conLaCifra = fds50Con($anteprima, $cifra);
+    expect($conLaCifra)->not->toBeEmpty("Il pannello non dice la cifra della fermata ({$cifra}).");
+    expect(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, $persona) && str_contains($t, 'Wallet')))
+        ->toBeTrue("Nessuna frase con {$cifra} nomina {$persona} e la strada a mano dal Wallet: " . implode(' | ', $conLaCifra));
+    if ($riceve !== null) {
+        $verso = fn (string $t) => str_contains($t, 'Wallet')
+            && preg_match('/credito[^.|]{0,20}' . preg_quote($persona, '/') . '/u', $t) === 1
+            && preg_match('/debito[^.|]{0,20}' . preg_quote($riceve, '/') . '/u', $t) === 1;
+        expect(collect($conLaCifra)->contains($verso))
+            ->toBeTrue("La frase del Wallet non dice «a credito di {$persona}» e «a debito di {$riceve}»: " . implode(' | ', $conLaCifra));
+    }
+}
+
 /** La voce del passaggio nello storico dell'unità, come la calcola il server per la pagina. */
 function fds50Storico(array $s, Subentro $passaggio): array
 {

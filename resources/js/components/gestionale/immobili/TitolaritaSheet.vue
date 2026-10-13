@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
+import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import { History, FileSignature, ShieldCheck, Scale, LoaderCircle, Landmark } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { StoricoTitolaritaDati, RigaStorico, PassaggioRegistrato } from '@/types/gestionale/passaggi';
@@ -182,9 +183,9 @@ function tratto(r: RigaStorico): string {
                   <p class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
-                      {{ CONGUAGLIO[p.conguaglio.stato] }}<!-- Fase 1-bis della .50 (R11): alla fine senza un nuovo inquilino nessuno entra; la coppia è di chi paga al posto dell'inquilino. --><template v-if="p.conguaglio.stato === 'proposto' && p.tipo_passaggio === 'fine_locazione' && !p.entrante">: <template v-if="p.conguaglio.per_entrante?.length">{{ p.conguaglio.per_entrante.join(', ') }}</template><template v-else>{{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito</template><template v-else>a debito</template> di chi paga al posto dell'inquilino</template>; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
-                      <template v-else-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: {{ p.conguaglio.per_entrante!.join(', ') }}; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di {{ p.conguaglio.importo_formattato }}<template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
-                      <template v-else-if="p.conguaglio.stato === 'proposto'">: {{ p.conguaglio.importo_formattato }} <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      {{ CONGUAGLIO[p.conguaglio.stato] }}<!-- Alla fine senza un nuovo inquilino nessuno entra; la coppia è di chi paga al posto dell'inquilino. --><template v-if="p.conguaglio.stato === 'proposto' && p.tipo_passaggio === 'fine_locazione' && !p.entrante">: <template v-if="p.conguaglio.per_entrante?.length"><FraseConImporti :testo="p.conguaglio.per_entrante.join(', ')" /></template><template v-else><span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span> <template v-if="p.conguaglio.importo < 0">a credito</template><template v-else>a debito</template> di chi paga al posto dell'inquilino</template>; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di <span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      <template v-else-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: <FraseConImporti :testo="p.conguaglio.per_entrante!.join(', ')" />; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di <span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
+                      <template v-else-if="p.conguaglio.stato === 'proposto'">: <span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span> <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'rinunciato' && p.conguaglio.nota">: «{{ p.conguaglio.nota }}».</template>
                       <template v-else-if="p.conguaglio.stato === 'non_scritto'">: nessuna riga in saldi, la posizione resta com'era<template v-if="p.conguaglio.nota"> («{{ p.conguaglio.nota }}»)</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'annullato'"> il {{ p.conguaglio.annullato_il }}<template v-if="p.conguaglio.nota_annullamento">: «{{ p.conguaglio.nota_annullamento }}»</template>.</template>
@@ -192,11 +193,11 @@ function tratto(r: RigaStorico): string {
                   </p>
                   <!-- 1.11.0-beta.44, decisione 65: l'arretrato del defunto, agli eredi o a suo nome. -->
                   <p v-if="p.arretrato?.frase" class="flex items-start gap-1.5">
-                    <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span>{{ p.arretrato.frase }}</span>
+                    <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="p.arretrato.frase" /></span>
                   </p>
                   <!-- 1.11.0-beta.50, decisione 77 (3): la fermata dopo «Scrivi il conguaglio», e quanto ne resta dopo l'inizio di una locazione. -->
                   <p v-for="(f, i) in p.fermate ?? []" :key="`fermata-${i}`" class="flex items-start gap-1.5">
-                    <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span>{{ f }}</span>
+                    <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="f" /></span>
                   </p>
                   <!-- Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: si correggono annullando il passaggio. -->
                   <p v-if="p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
@@ -210,7 +211,7 @@ function tratto(r: RigaStorico): string {
                     <form v-else class="space-y-2" @submit.prevent="annullaConguaglio(p)">
                       <p class="text-slate-600 dark:text-slate-400">Toglie insieme le righe del conguaglio dai saldi della gestione; le quote già emesse non cambiano. La nota resta sul passaggio.</p>
                       <!-- Decisione 83.2 (1.11.0-beta.50): un passaggio dopo si è fermato su questa coppia; annullata, la fermata non vale più. -->
-                      <p v-for="(a, i) in p.conguaglio.avvisi ?? []" :key="`avviso-conguaglio-${i}`" class="text-amber-800 dark:text-amber-300">{{ a }}</p>
+                      <p v-for="(a, i) in p.conguaglio.avvisi ?? []" :key="`avviso-conguaglio-${i}`" class="text-amber-800 dark:text-amber-300"><FraseConImporti :testo="a" /></p>
                       <Input v-model="formAnnulla.nota_annullamento_conguaglio" placeholder="Come hanno regolato il conguaglio (almeno dieci caratteri)…" class="h-8 text-xs" required minlength="10" />
                       <div class="flex items-center gap-2">
                         <button type="submit" :disabled="formAnnulla.processing || formAnnulla.nota_annullamento_conguaglio.trim().length < 10" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
@@ -242,7 +243,7 @@ function tratto(r: RigaStorico): string {
                 <div v-if="!p.annullato" class="rounded-md border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3">
                   <p class="text-[10px] font-bold uppercase tracking-widest text-amber-800 dark:text-amber-300 mb-1.5 flex items-center gap-1.5"><ShieldCheck class="w-3 h-3" /> Chi resta obbligato</p>
                   <ul class="space-y-1.5">
-                    <li v-for="(f, i) in p.obbligati" :key="i" class="text-[12px] leading-relaxed text-amber-950 dark:text-amber-100">{{ f }}</li>
+                    <li v-for="(f, i) in p.obbligati" :key="i" class="text-[12px] leading-relaxed text-amber-950 dark:text-amber-100"><FraseConImporti :testo="f" /></li>
                   </ul>
                 </div>
 
@@ -270,11 +271,11 @@ function tratto(r: RigaStorico): string {
                     </button>
                     <form v-else class="space-y-2" @submit.prevent="annullaPassaggio(p)">
                       <ul class="space-y-1">
-                        <li v-for="(e, i) in p.annullabile.effetti" :key="i" class="text-[11px] text-slate-600 dark:text-slate-400">{{ e }}</li>
+                        <li v-for="(e, i) in p.annullabile.effetti" :key="i" class="text-[11px] text-slate-600 dark:text-slate-400"><FraseConImporti :testo="e" /></li>
                         <li class="text-[11px] text-slate-600 dark:text-slate-400">Il passaggio resta nello storico, annullato, con la tua nota.</li>
                       </ul>
                       <ul v-if="p.annullabile.avvisi.length" class="space-y-1">
-                        <li v-for="(a, i) in p.annullabile.avvisi" :key="i" class="text-[11px] text-amber-800 dark:text-amber-300">{{ a }}</li>
+                        <li v-for="(a, i) in p.annullabile.avvisi" :key="i" class="text-[11px] text-amber-800 dark:text-amber-300"><FraseConImporti :testo="a" /></li>
                       </ul>
                       <Input v-model="formAnnullaPassaggio.nota_annullamento" placeholder="Perché lo annulli (almeno dieci caratteri)…" class="h-8 text-xs" required minlength="10" />
                       <div class="flex items-center gap-2">
@@ -290,7 +291,7 @@ function tratto(r: RigaStorico): string {
                     <button type="button" @click="motivoAperto = motivoAperto === p.id ? null : p.id" class="text-[11px] text-slate-500 dark:text-slate-400 hover:underline">
                       Annulla il passaggio — non consentito: perché?
                     </button>
-                    <p v-if="motivoAperto === p.id" class="mt-1 text-[11px] text-slate-600 dark:text-slate-400">{{ p.annullabile.motivo }}</p>
+                    <p v-if="motivoAperto === p.id" class="mt-1 text-[11px] text-slate-600 dark:text-slate-400"><FraseConImporti :testo="p.annullabile.motivo ?? ''" /></p>
                   </template>
                 </div>
               </li>

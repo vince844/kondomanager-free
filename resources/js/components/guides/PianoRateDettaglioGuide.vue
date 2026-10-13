@@ -106,8 +106,10 @@ defineEmits(['update:open']);
                                 quale, e la strada: per un passaggio, togliere prima le quote a giornale e i movimenti, se ce
                                 ne sono, poi annullarlo dallo storico della sua unità, registrarlo di nuovo e ricalcolare (con un passaggio registrato prima della versione 1.11.0-beta.42 l'ordine è un altro, e lo dice il messaggio). Al
                                 contrario, dopo una vendita o un usufrutto registrati quando il piano si ricalcolava ancora,
-                                emissioni e incassi si rifiutano finché non lo ricalcoli; dopo un cambio d'inquilino no, e un
-                                piano emesso senza ricalcolo lascia le quote all'inquilino di prima.
+                                emissioni, incassi e rimborsi si rifiutano finché non lo ricalcoli; dopo un cambio d'inquilino no, e un
+                                piano emesso senza ricalcolo lascia le quote all'inquilino di prima. Lo stesso vale se il passaggio
+                                è stato annullato dopo il ricalcolo del piano: le quote hanno ancora la titolarità di un passaggio
+                                che non c'è più, e il messaggio dice quale passaggio e di chi andrebbero a giornale le quote.
                             </p>
                         </section>
 

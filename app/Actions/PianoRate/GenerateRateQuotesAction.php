@@ -24,7 +24,9 @@ class GenerateRateQuotesAction
      * `{ risoluzione: 'temporale', destinatari_cambiati: true, nota_cancello, coppie }` — la presa d'atto
      * del cancello (2), decisione 14. Lo stesso quando il piano contiene una pregressa registrata senza
      * periodo (decisione 26, 1.11.0-beta.35), che chiede la nota anche se nessun titolare cambia: allora
-     * `coppie` vale 0.
+     * `coppie` vale 0. E, dalla 1.11.0-beta.51, quando il cancello nomina un defunto che il piano calcola
+     * ancora (`DefuntoNelPiano`): la stessa forma, con in più la chiave `defunti`
+     * `[{ anagrafica_id, immobile_id, cifra }]` (`GeneratePianoRateAction::titolaritaAlla`).
      */
     public const TITOLARITA_ATEMPORALE = ['risoluzione' => 'atemporale'];
 

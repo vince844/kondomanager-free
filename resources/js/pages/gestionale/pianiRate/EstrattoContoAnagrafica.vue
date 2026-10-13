@@ -53,8 +53,13 @@ const props = defineProps<{
     /** Il credito di chi esce ancora in `saldi` (coppia del passaggio non assorbita): non è ancora una quota. */
     credito_in_saldi: number;
   };
-  /** B2, S7: la solidarietà dell'art. 63 co. 4 verso questa persona come entrante — nota, non quota. */
-  solidarieta?: Array<{ subentro_id: number; immobile: string; uscente: string | null; entrante: string | null; decorrenza: string; esercizi: string; residuo_uscente_cents: number; residuo_uscente_formattato: string; testo: string }>;
+  /**
+   * B2, S7: la solidarietà dell'art. 63 co. 4 verso questa persona come entrante — nota, non quota. Dalla beta.51 (Coda 172)
+   * `residuo_uscente_cents` è al netto della coppia del conguaglio ancora nel Wallet; `residuo_lordo_cents` è la cifra prima della
+   * coppia e `coppia_cents` la coppia. La pagina mostra il testo (con `subentro_id` e `immobile`), che dice la coppia nella stessa frase: le cifre in
+   * centesimi servono ai test e al laboratorio.
+   */
+  solidarieta?: Array<{ subentro_id: number; immobile: string; uscente: string | null; entrante: string | null; decorrenza: string; esercizi: string; residuo_uscente_cents: number; residuo_uscente_formattato: string; residuo_lordo_cents: number; coppia_cents: number; testo: string }>;
   /** Coda 167, beta.40: i versamenti che questa persona ha fatto per il debito di un'altra — fuori dal libro, perché non erano suo debito. */
   versamenti_per_altri?: Array<{ scrittura_id: number; data: string | null; protocollo: string | null; per_conto_di: string; importo_cents: number; importo_formattato: string; stornato: boolean }>;
 }>();

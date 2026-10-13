@@ -457,7 +457,8 @@ class PianoRateController extends Controller
                     accettaDestinatari: $accettaDestinatari,
                     notaDestinatari: $notaDestinatari,
                     esercizio: $esercizio,
-                    notaScoperti: $notaScoperti
+                    notaScoperti: $notaScoperti,
+                    allaCreazione: true
                 );
             }
 

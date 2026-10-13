@@ -208,6 +208,14 @@ defineEmits(['update:open']);
                                 la ripartirà e come rimediare. Si va avanti con una nota — è una presa d'atto, non
                                 un'approvazione al buio.
                             </p>
+                            <p class="mt-2">
+                                Lo stesso cancello nomina il <strong>defunto</strong>: se dopo una successione con l'arretrato
+                                agli eredi il piano calcola ancora le quote del defunto per i giorni fino al decesso, dice la
+                                cifra, la parte di ogni erede per quota e la strada — un saldo manuale dal Wallet, se nessuno ha
+                                già un saldo su quella gestione e quell'unità, altrimenti la parte si regola fra le parti. Lo
+                                ripete a ogni ricalcolo, anche dopo la registrazione dei saldi: se quei saldi sono davvero la parte di
+                                ognuno dice che ci sono già, altrimenti dice ancora che la parte si regola fra le parti.
+                            </p>
                         </section>
 
                         <section>

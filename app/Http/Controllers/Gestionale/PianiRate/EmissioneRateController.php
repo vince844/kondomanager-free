@@ -85,9 +85,9 @@ class EmissioneRateController extends Controller
         }
 
         // Decisioni 35 e 41 (1.11.0-beta.42, difetto U1): i passaggi registrati dopo la generazione che hanno lasciato il piano al
-        // ricalcolo (non lo hanno conguagliato, decisione 21). Emesse così, quelle quote resterebbero a chi esce anche per i
-        // giorni dopo, e un passaggio successivo le tratterebbe come passate. Si guarda lo stato del piano all'ora di ogni
-        // passaggio, non quello di adesso: un incasso arrivato dopo il passaggio non lo ha conguagliato (rilievo R1).
+        // ricalcolo (non lo hanno conguagliato, decisione 21), e dalla beta.51 quelli annullati dopo un ricalcolo che li comprendeva. Emesse
+        // così, quelle quote resterebbero a chi esce, o andrebbero a giornale a chi non è più titolare. Si guarda lo stato del piano all'ora
+        // di ogni passaggio, non quello di adesso: un incasso arrivato dopo il passaggio non lo ha conguagliato.
         if (($passaggi = $pianoRate->passaggiDaSeguire()) !== []) {
             return back()->with($this->flashError(self::fraseDaRicalcolare($pianoRate, $passaggi)));
         }
@@ -407,15 +407,30 @@ class EmissioneRateController extends Controller
      */
     public static function fraseDaRicalcolare(PianoRate $piano, array $passaggi): string
     {
-        $voci = PianoRate::vociDeiPassaggi(PianoRate::senzaPertinenze($passaggi));
-        $uno = count($voci) === 1;
-        $nomi = collect($passaggi)->map(fn (Subentro $p) => $p->uscente?->nome)->filter()->unique()->values();
-        $capoversi = [
-            ($uno ? 'Le quote di questo piano sono state calcolate prima di questo passaggio:' : 'Le quote di questo piano sono state calcolate prima di questi passaggi:')
-                . "\n" . self::elencoPuntato($voci),
-            sprintf('Ricalcola il piano prima di emettere, perché tenga conto %s. Se le voci o la data della delibera lasciano quelle quote a %s, il ricalcolo dà le stesse cifre.',
-                $uno ? 'del passaggio' : 'dei passaggi', $nomi->isEmpty() ? 'chi le aveva' : self::nomiInFila($nomi)),
-        ];
+        // Beta.51 (§6.3): fra i passaggi da seguire ci sono anche quelli annullati dopo il ricalcolo del piano. Hanno il loro paragrafo,
+        // con le loro parole; il fermo del ricalcolo vale per tutti, le riserve d'usufrutto solo per i passaggi attivi.
+        [$attivi, $annullati] = PianoRate::divisiPerStato($passaggi);
+        $capoversi = [];
+        if ($attivi !== []) {
+            $voci = PianoRate::vociDeiPassaggi(PianoRate::senzaPertinenze($attivi));
+            $uno = count($voci) === 1;
+            $nomi = collect($attivi)->map(fn (Subentro $p) => $p->uscente?->nome)->filter()->unique()->values();
+            $capoversi[] = ($uno ? 'Le quote di questo piano sono state calcolate prima di questo passaggio:' : 'Le quote di questo piano sono state calcolate prima di questi passaggi:')
+                . "\n" . self::elencoPuntato($voci);
+            $capoversi[] = sprintf('Ricalcola il piano prima di emettere, perché tenga conto %s. Se le voci o la data della delibera lasciano quelle quote a %s, il ricalcolo dà le stesse cifre.',
+                $uno ? 'del passaggio' : 'dei passaggi', $nomi->isEmpty() ? 'chi le aveva' : self::nomiInFila($nomi));
+        }
+        if ($annullati !== []) {
+            // Le quote nate dopo un passaggio poi annullato hanno la titolarità del passaggio: emesse così andrebbero a giornale a chi
+            // non è più titolare. Il ricalcolo le riporta alla titolarità di prima.
+            $voci = PianoRate::vociDeiPassaggi(PianoRate::senzaPertinenze($annullati));
+            $uno = count($voci) === 1;
+            $chi = $piano->nomiDiChiEntravaNegliAnnullati($annullati);
+            $capoversi[] = ($uno ? 'Le quote di questo piano sono state calcolate con questo passaggio, che poi è stato annullato:' : 'Le quote di questo piano sono state calcolate con questi passaggi, che poi sono stati annullati:')
+                . "\n" . self::elencoPuntato($voci);
+            $capoversi[] = sprintf('Ricalcola il piano prima di emettere, perché torni alla titolarità di prima: emesse così, le quote di %s andrebbero a giornale per %s.',
+                $chi === [] ? 'chi era entrato' : self::nomiInFila(collect($chi)), $uno ? 'un passaggio che non c\'è più' : 'passaggi che non ci sono più');
+        }
         // Punto 8 della ripresa e rilievo V9: la ragione vera per cui oggi il ricalcolo si rifiuta, e il rimedio di quella ragione.
         // Le ragioni in una frase, e i passaggi del conguaglio (sempre l'ultima ragione) in elenco subito dopo; i passi arrivano
         // fino al ricalcolo, e un movimento annullato si registra di nuovo nell'ultimo.
@@ -428,7 +443,7 @@ class EmissioneRateController extends Controller
         if ($fermo !== null) {
             $capoversi[] = $fermo;
         }
-        $riserve = PianoRate::senzaPertinenze(collect($passaggi)->filter(fn (Subentro $p) => $p->riservaUsufrutto() && ($p->registro['ordinaria_dopo_atto'] ?? null) === Subentro::ORDINARIA_ALL_USUFRUTTUARIO));
+        $riserve = PianoRate::senzaPertinenze(collect($attivi)->filter(fn (Subentro $p) => $p->riservaUsufrutto() && ($p->registro['ordinaria_dopo_atto'] ?? null) === Subentro::ORDINARIA_ALL_USUFRUTTUARIO));
         if ($riserve !== []) {
             // Non «metti le voci su Usufruttuario dalla loro pagina» (rilievo T-B2 della .41): fuori dal passaggio lo spostamento
             // non va nel registro, l'annullamento non lo nomina e non si vedono le altre unità che la voce tocca (31.5, 31.7).
@@ -554,7 +569,7 @@ class EmissioneRateController extends Controller
      * La frase delle quote ferme (76.3 ritoccata, rilievi LDA-2 e K6): chi e su quale rata, perché, che cosa succede al credito e
      * la strada. La strada non è il solo ricalcolo: il ricalcolo chiede di stornare prima gli incassi, le compensazioni e i
      * rimborsi e di annullare le emissioni del piano, e rilegge il saldo pregresso con il segno di oggi, mentre le versioni di prima
-     * della 1.8.0 lo sottraevano (misurato dallo scettico di LDA-2: un credito di −7500 a rata diventava un debito di +17500). Va
+     * della 1.8.0 lo sottraevano (misurato su LDA-2: un credito di −7500 a rata diventava un debito di +17500). Va
      * controllato prima.
      *
      * Che cosa succede al credito lo si dice per tipo di quota (giro stretto sulle correzioni della Fase 1-bis, LT-3 e G3): una quota

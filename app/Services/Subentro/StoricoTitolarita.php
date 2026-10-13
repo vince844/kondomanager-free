@@ -158,6 +158,9 @@ class StoricoTitolarita
                             : FermataDopoScrivi::fraseStorico($f, FermataDopoScrivi::passateDopo($s, $f)), $s->registro['fermata_dopo_scrivi'] ?? []),
                         ...array_map(fn (array $f) => FermataDopoScrivi::fineSenzaConguaglio($f) ? FermataDopoScrivi::fraseStoricoRidottaAnnullata($f)
                             : FermataDopoScrivi::fraseStoricoRidotta($f), $s->registro['fermata_ridotta'] ?? []),
+                        // Coda 254 (1.11.0-beta.51): la parte che è risalita alla fine di un conduttore.
+                        ...array_map(fn (array $f) => FermataDopoScrivi::fineSenzaConguaglio($f) ? FermataDopoScrivi::fraseStoricoRisaleAnnullata($f)
+                            : FermataDopoScrivi::fraseStoricoRisale($f), $s->registro['fermata_risale'] ?? []),
                         // R12 della Fase 1-bis: anche la fermata del coinquilino (decisione 79, punto 2), che ha chiesto la spunta.
                         ...array_map([FermataDopoScrivi::class, 'fraseStoricoCoinquilino'], $s->registro['fermata_coinquilino'] ?? []),
                     ],

@@ -312,7 +312,7 @@ it('S8-bis L1-5 — il netting si legge dal congelato, non dai contributi di ogg
 
 /*
 |--------------------------------------------------------------------------
-| Verifica della strada (b) — scettico «conguaglio» (B2-1 … B2-4)
+| Verifica della strada (b) — il conguaglio (B2-1 … B2-4)
 |--------------------------------------------------------------------------
 */
 
@@ -345,7 +345,12 @@ it('strada (b), B2-2 — quota pura NEGATIVA (nota di credito a riparto, −20.0
         ->and($r['totale_entrante'])->toBe(-10083)
         ->and($r['quote'][0]['entrante'])->toBe(-10083)->and($r['quote'][0]['uscente'])->toBe(-9918)
         ->and($r['coppie'][0]['importo'])->toBe(-10083)
-        ->and(implode("\n", $r['frasi']))->toContain('credito € -100,83 a Venditore Ugo, debito € -100,83 a Acquirente Elsa');
+        // Coda 251-c (1.11.0-beta.51): una cifra negativa si dice con le parole, non «€ -100,83». Il conto a mano è lo stesso (−10.083 a chi entra: Elsa
+        // ha un credito di € 100,83, Ugo un debito uguale), e la frase lo dice con i versi giusti: prima «credito € -100,83 a Venditore Ugo, debito €
+        // -100,83 a Acquirente Elsa» (due segni meno che si leggevano come un credito e un debito di segno opposto), ora «credito € 100,83 a
+        // Acquirente Elsa, debito € 100,83 a Venditore Ugo».
+        ->and(implode("\n", $r['frasi']))->toContain('credito € 100,83 a Acquirente Elsa, debito € 100,83 a Venditore Ugo')
+        ->and(implode("\n", $r['frasi']))->not->toContain('€ -');
 });
 
 it('strada (b), B2-3 — segni misti: Manutenzione +50.000 sul tratto 1/1–31/3 (finito prima) e Rimborso −20.000 sulla base: le righe «emesse» ridicono 0 e −10.082 col loro segno, non due metà per teste', function () {
@@ -368,7 +373,9 @@ it('strada (b), B2-3 — segni misti: Manutenzione +50.000 sul tratto 1/1–31/3
         ->and((int) array_sum(array_column($r['quote'][0]['per_capitolo'], 'importo_emesso')))->toBe(30000);
     $frasi = implode("\n", $r['frasi']);
     expect($frasi)->toContain('Manutenzione: € 500,00, competenza 1 gennaio 2026–31 marzo 2026 — resta a Venditore Ugo')
-        ->toContain('Rimborso: € -200,00, competenza 1 gennaio 2026–31 dicembre 2026 — 181 giorni a Venditore Ugo, 184 a Acquirente Elsa → € -100,82 a chi entra')
+        // Coda 251-c (1.11.0-beta.51): la voce di entrata si dice con le parole. Conto a mano invariato: −20.000 × 184/365 = −10.082,19 → € 100,82, e la
+        // parte di chi entra è un credito («€ 100,82 a credito di chi entra»), non «€ -100,82 a chi entra».
+        ->toContain('Rimborso: € 200,00 di entrata, competenza 1 gennaio 2026–31 dicembre 2026 — 181 giorni a Venditore Ugo, 184 a Acquirente Elsa → € 100,82 a credito di chi entra')
         ->not->toContain('€ -50,41');
 });
 

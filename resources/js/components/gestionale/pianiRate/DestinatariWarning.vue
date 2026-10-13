@@ -16,6 +16,10 @@
  * - `pregressa_senza_periodo` (decisione 26, 1.11.0-beta.35): una fattura pregressa registrata senza il periodo in cui
  *   il costo è maturato. Non è una coppia che cambia — nessuna unità, nessun ruolo — ma il piano non sa se in quell'anno
  *   l'unità era di qualcun altro, quindi lo dice e chiede la nota anche quando nessun titolare cambia quest'anno.
+ * - `defunto_nel_piano` (1.11.0-beta.51, §6.2): dopo una successione con l'arretrato agli eredi, il piano calcola ancora per il
+ *   defunto i suoi giorni fino al decesso, e nessuna riga li passa agli eredi. Come la pregressa non è una coppia che cambia: il
+ *   server porta la frase già scritta (chi, quanto, a chi tocca, la strada del Wallet) e le cifre già formattate; il componente le
+ *   mostra con la tabella erede / quota / parte, non le ricalcola e non le conta fra le unità del titolo.
  *
  * Tema **chiaro** come `ScopertoWarning` (nessuna classe `dark:`), e per la stessa ragione: il badge
  * dei ruoli viaggia con `tema="chiaro"`.
@@ -24,6 +28,7 @@ import { computed, ref } from 'vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
+import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CalendarClock, ExternalLink } from 'lucide-vue-next';
 
@@ -33,7 +38,7 @@ export interface DestinatarioCambiato {
   tipologia: string;
   conto_id: number | null;
   conto_nome: string | null;
-  motivo: 'pro_rata_giorni' | 'fuori_periodo' | 'pregressa_senza_periodo';
+  motivo: 'pro_rata_giorni' | 'fuori_periodo' | 'pregressa_senza_periodo' | 'defunto_nel_piano';
   /** Solo per `pregressa_senza_periodo`. */
   fattura_id?: number;
   fattura_numero?: string;
@@ -50,6 +55,24 @@ export interface DestinatarioCambiato {
   giorni_periodo?: number;
   giorni_scoperti?: number;
   ripiego?: { ruolo: string | null; giorni_residui: number; righe: { riga_id: number; giorni: number; anagrafica_nome?: string | null }[] } | null;
+  /**
+   * Solo per `defunto_nel_piano` (`DefuntoNelPiano`): il defunto, il decesso, la cifra che il piano calcola ancora per lui (con il segno:
+   * positivo = debito) e la parte di ogni erede per la sua quota ereditata sull'unità, già formattate; se il Wallet è libero per passare la
+   * parte agli eredi, se il piano applica i saldi, chi ha già un saldo; la frase con la strada. Il componente legge `frase`, `eredi`,
+   * `immobile_id` e `defunto.id`: le altre chiavi servono ai test e al laboratorio. Con più successioni dello stesso defunto sull'unità la cifra
+   * si divide per ruolo; se non si può dividere (`parti_da_decidere`) gli eredi hanno la quota e nessuna parte (`cifra` nulla).
+   */
+  passaggio_id?: number;
+  defunto?: { id: number; nome: string };
+  decesso?: string;
+  cifra?: number;
+  cifra_formattata?: string;
+  eredi?: { id: number; nome: string; quota: number; cifra: number | null; cifra_formattata: string | null }[];
+  wallet?: boolean;
+  piano_applica_saldi?: boolean;
+  con_un_saldo?: string[];
+  parti_da_decidere?: boolean;
+  frase?: string;
 }
 
 const RUOLI: Record<string, string> = { proprietario: 'proprietario', nuda_proprietario: 'nudo proprietario', usufruttuario: 'usufruttuario', inquilino: 'inquilino' };
@@ -88,25 +111,39 @@ const GRADINI: Record<string, string> = {
 const dataBreve = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
 const periodoBreve = (p: { dal: string; al: string }[]) => p.map(t => `${dataBreve(t.dal)}–${dataBreve(t.al)}`).join(' + ');
 
-// Le coppie che cambiano e le pregresse senza periodo sono due cose diverse: si contano e si mostrano a parte.
-const coppie = computed(() => props.destinatari.filter(d => d.motivo !== 'pregressa_senza_periodo'));
+// Le coppie che cambiano, le pregresse senza periodo e i defunti che il piano calcola ancora sono tre cose diverse: si contano e si
+// mostrano a parte. Il defunto non è una coppia che cambia: non sta nella tabella delle coppie e non conta fra le unità del titolo.
+const coppie = computed(() => props.destinatari.filter(d => d.motivo !== 'pregressa_senza_periodo' && d.motivo !== 'defunto_nel_piano'));
 const pregresse = computed(() => props.destinatari.filter(d => d.motivo === 'pregressa_senza_periodo'));
+const defunti = computed(() => props.destinatari.filter(d => d.motivo === 'defunto_nel_piano'));
 const unita = computed(() => new Set(coppie.value.map(d => d.immobile_id)).size);
+// I defunti sono le persone, non le voci: lo stesso defunto su due unità (l'appartamento e il box) è un defunto.
+const persone = computed(() => new Set(defunti.value.map(d => d.defunto?.id)).size);
+
+// La quota ereditata, come si legge: «60 %», «33,34 %».
+const quotaInParole = (q: number) => `${Number(q).toLocaleString('it-IT', { maximumFractionDigits: 4 })} %`;
 
 // La fattura di una pregressa, in una finestra: il numero da solo non basta a riconoscerla (Vincenzo a video, 27/09/2026).
 type FatturaDelCancello = NonNullable<DestinatarioCambiato['fattura']>;
 const fatturaAperta = ref<FatturaDelCancello | null>(null);
 
-// La nota dice che cosa si è letto: con le sole pregresse nessun titolare cambia (R12 della Fase 1-bis).
+// La nota dice che cosa si è letto: con le sole pregresse nessun titolare cambia, e con il solo defunto
+// nessuna coppia: si nominano le cose che ci sono, nell'ordine in cui la pagina le mostra.
 const lettoCosa = computed(() => {
-  const pregressa = pregresse.value.length === 1 ? 'come si ripartisce la pregressa' : 'come si ripartiscono le pregresse';
-  if (!coppie.value.length) return pregressa;
+  const parti: string[] = [];
+  if (coppie.value.length) parti.push('chi cambia');
+  if (pregresse.value.length) parti.push(pregresse.value.length === 1 ? 'come si ripartisce la pregressa' : 'come si ripartiscono le pregresse');
+  if (defunti.value.length) parti.push(persone.value === 1 ? 'le quote del defunto' : 'le quote dei defunti');
+  if (parti.length < 2) return parti[0] ?? '';
 
-  return pregresse.value.length ? `chi cambia e ${pregressa}` : 'chi cambia';
+  return `${parti.slice(0, -1).join(', ')} e ${parti[parti.length - 1]}`;
 });
-const esempioNota = computed(() => (coppie.value.length
-  ? 'Es: rogito del 30/04 registrato, il conguaglio delle rate emesse è nel passaggio…'
-  : 'Es: nell\'anno della spesa l\'unità era della stessa proprietaria…'));
+const esempioNota = computed(() => {
+  if (coppie.value.length) return 'Es: rogito del 30/04 registrato, il conguaglio delle rate emesse è nel passaggio…';
+  if (!pregresse.value.length && defunti.value.length) return 'Es: ho letto la cifra del defunto e la strada indicata per gli eredi…';
+
+  return 'Es: nell\'anno della spesa l\'unità era della stessa proprietaria…';
+});
 </script>
 
 <template>
@@ -116,7 +153,8 @@ const esempioNota = computed(() => (coppie.value.length
       <div>
         <h3 class="font-bold text-amber-900 text-base">
           <template v-if="coppie.length">Il periodo di competenza cambia chi paga su {{ unita }} {{ unita === 1 ? 'unità' : 'unità' }}</template>
-          <template v-else>{{ pregresse.length === 1 ? 'Una fattura pregressa non ha il periodo' : `${pregresse.length} fatture pregresse non hanno il periodo` }} in cui il costo è maturato</template>
+          <template v-else-if="pregresse.length">{{ pregresse.length === 1 ? 'Una fattura pregressa non ha il periodo' : `${pregresse.length} fatture pregresse non hanno il periodo` }} in cui il costo è maturato</template>
+          <template v-else>{{ persone === 1 ? 'Il piano calcola ancora per un defunto' : `Il piano calcola ancora per ${persone} defunti` }}</template>
         </h3>
         <p v-if="coppie.length" class="text-sm text-amber-800 mt-1">
           Su queste unità un titolare è entrato o uscito dentro il periodo della spesa: la quota si divide
@@ -147,6 +185,33 @@ const esempioNota = computed(() => (coppie.value.length
           registrala di nuovo con il periodo e crea di nuovo il piano (una fattura dentro un piano non si storna).</template>
         <template v-else>storna la fattura, registrala di nuovo con il periodo e poi crea il piano.</template>
       </p>
+    </div>
+
+    <!-- Beta.51, §6.2: il defunto che il piano calcola ancora. La frase la scrive il server; qui si leggono la frase e la parte di ogni erede. -->
+    <div v-if="defunti.length" class="p-4 space-y-4 border-b border-amber-200 bg-white/50">
+      <div v-for="d in defunti" :key="`${d.immobile_id}-${d.defunto?.id}`" data-defunto class="space-y-2">
+        <!-- Fino a cinque importi: il simbolo e la cifra non si separano a capo (Coda 255). -->
+        <p class="text-sm text-amber-900 leading-relaxed"><FraseConImporti :testo="d.frase ?? ''" /></p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left">
+            <thead class="bg-amber-100/30 text-amber-900 text-xs uppercase font-semibold">
+              <tr>
+                <th class="px-4 py-2">Erede</th>
+                <!-- La quota ereditata sull'unità, non la parte con cui si divide la cifra: la divisione è la colonna accanto. -->
+                <th class="px-4 py-2">Quota dell'unità</th>
+                <th class="px-4 py-2 text-right">Parte</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-amber-100 bg-white/50">
+              <tr v-for="e in d.eredi ?? []" :key="e.id">
+                <td class="px-4 py-2 font-medium text-slate-900">{{ e.nome }}</td>
+                <td class="px-4 py-2 text-slate-700 tabular-nums">{{ quotaInParole(e.quota) }}</td>
+                <td class="px-4 py-2 text-right text-slate-900 font-semibold tabular-nums">{{ e.cifra_formattata ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div v-if="coppie.length" class="p-0 overflow-x-auto">

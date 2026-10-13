@@ -1646,10 +1646,14 @@ it('DL3, perimetro di «c\'è ancora» — Ines inquilina dell\'Interno 1 e dell
 });
 
 // Secondo giro sulle correzioni, «c'è ancora» unità per unità: Ines esce dall'appartamento e resta inquilina del box. Su ciascuna unità
-// la frase dice la sua storia. NON copre: la frase finale sul piano generato dopo (dice la divisione fra Ines e Luca anche per
-// l'appartamento, dove Luca sarà solo), il prospetto; la registrazione: con il coinquilino sul box spuntato la pertinenza dà a chi
-// entra la quota di chi esce (100) e lo sforo la rifiuta; è un limite di prima di questa beta.
-it('Pertinenze (d) — Ines inquilina al 50 % dell\'Interno 1 e del Box 12 esce dal solo appartamento; Luca entra al 50 % su tutti e due: sull\'appartamento «dopo la sua uscita», sul box «che resta inquilino»', function () {
+// la frase dice la sua storia.
+//
+// RISCRITTO nella 1.11.0-beta.51 (Coda 247; la decisione 85.6 mette la 247 nella .51). Il test chiedeva l'anteprima di un inizio in cui Luca entra
+// al 50 % sull'appartamento e sul box spuntato, dove Ines resta inquilina al 50 %: la pertinenza dà a chi entra la quota 100 (l'inizio non ha un uscente,
+// `applicaAllaPertinenza`), e 50 + 100 fa 150 sul box. L'anteprima rispondeva 200 e mostrava le frasi, la registrazione rifiutava con 422 («un limite di
+// prima di questa beta», diceva il commento): ora la Request dell'anteprima, che è anche quella di `store()`, rifiuta con lo stesso testo e sullo stesso
+// campo. Il test diventa due: il rifiuto, uguale alla registrazione, e la frase sull'appartamento in un inizio che si registra (senza il box).
+it('Pertinenze (d) — Ines inquilina al 50 % dell\'Interno 1 e del Box 12 esce dal solo appartamento; Luca entra al 50 % su tutti e due: l\'anteprima rifiuta come la registrazione (Ines 50 + Luca 100 sul box fanno 150)', function () {
     $s = ilpfConBox($this, inesSullUnita: true, inesSulBox: true);
     $ines = $s['ines'];
     DB::table('anagrafica_immobile')->where('anagrafica_id', $ines->id)->where('tipologia', 'inquilino')->update(['quota' => 50]);
@@ -1661,14 +1665,39 @@ it('Pertinenze (d) — Ines inquilina al 50 % dell\'Interno 1 e del Box 12 esce 
     expect(DB::table('anagrafica_immobile')->where('anagrafica_id', $ines->id)->where('immobile_id', $s['unita']->id)->value('data_fine'))->not->toBeNull()
         ->and(DB::table('anagrafica_immobile')->where('anagrafica_id', $ines->id)->where('immobile_id', $s['box']->id)->value('data_fine'))->toBeNull();
 
-    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), ['quota' => 50] + ilpfInizioConBox($s))
-        ->assertOk()->json();
+    // Conto a mano: sul box la quota di Ines (50) più quella che la pertinenza dà a chi entra (100) fa 150, oltre il tetto di 100.
+    $dati = ['quota' => 50] + ilpfInizioConBox($s);
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), $dati);
+    $registrazione = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), $dati + ['ho_letto' => true, 'nota_cancello' => 'Contratto letto, rate controllate bene']);
+    $messaggio = 'Box 12 — la somma delle quote per inquilino non può superare 100: il 1 luglio 2026 farebbe 150.';
+
+    expect($anteprima->status())->toBe(422)
+        ->and($registrazione->status())->toBe(422)
+        ->and($anteprima->json('errors'))->toBe(['pertinenze' => [$messaggio]])
+        ->and($registrazione->json('errors'))->toBe($anteprima->json('errors'));
+});
+
+it('Pertinenze (d) — lo stesso inizio senza il box spuntato si registra, e l\'anteprima dice la storia dell\'appartamento («dopo la sua uscita»), senza nominare il box', function () {
+    // Fonte: la metà del test di prima che resta vera. Con il solo appartamento Luca al 50 % non sfora (Ines è uscita il 30/6): l'anteprima dice che la
+    // parte a carico dell'inquilino dal 1 luglio resta nelle rate di Ines, e non parla del box (la sua storia, «che resta inquilino», non si può più
+    // costruire in un inizio che si registra: il box dà a chi entra la quota 100, e Ines vi resta al 50 %).
+    $s = ilpfConBox($this, inesSullUnita: true, inesSulBox: true);
+    $ines = $s['ines'];
+    DB::table('anagrafica_immobile')->where('anagrafica_id', $ines->id)->where('tipologia', 'inquilino')->update(['quota' => 50]);
+    expect(ilpfRicalcola($this, $s, $s['piano'])['type'])->toBe('success');
+    ilpfEmettiFino($this, $s, $s['piano'], '2026-06-30');
+    ilpfFineDiInesSu($this, $s, $ines, $s['unita']);
+
+    $dati = ['quota' => 50, 'pertinenze' => []] + ilpfInizioConBox($s);
+    $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), $dati)->assertOk()->json();
     $frase = implode(' ', $anteprima['rate']['frasi']);
 
     // 1.11.0-beta.50 (revisione dei test della Fase 1): senza la clausola «lo decide l'amministratore», falsa dopo la fine con «Non
     // scriverlo».
-    expect($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli', $s['unita']->etichetta_estesa))
-        ->and($frase)->toContain(sprintf('Nell\'unità «%s» la parte a carico dell\'inquilino resta nelle rate di Ines Galli, che resta inquilino.', $s['box']->etichetta_estesa));
+    expect($frase)->toContain('La parte a carico dell\'inquilino dal 1 luglio 2026 resta nelle rate di Ines Galli')
+        ->and($frase)->not->toContain($s['box']->etichetta_estesa)
+        ->and($frase)->not->toContain('che resta inquilino');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), $dati + ['ho_letto' => true, 'nota_cancello' => 'Contratto letto, rate controllate bene'])->assertSessionHasNoErrors();
 });
 
 /*

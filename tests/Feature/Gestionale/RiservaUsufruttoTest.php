@@ -52,10 +52,10 @@
  *   una voce da spostare e con la legge resta a due persone (Coda 216, sentinella in `OrdinariaDopoAttoTest`).
  *   L'ordinaria da fatture con la competenza dichiarata (decisione 26) nella riserva segue il ramo dell'ordinaria, e non
  *   ha un test suo;
- * - la nota di solidarietà non legge la coppia (Coda 172): con la straordinaria deliberata dopo l'atto la cifra delle
- *   certe, € 400,00, conta quote che la coppia ha già spostato su chi compra, e la fissa com'è la sentinella della Coda
- *   172; la nota non legge nemmeno la competenza dichiarata sulla fattura. Della nota il giorno dell'atto è provato il
- *   punto aperto, non le certe;
+ * - la nota di solidarietà legge la coppia dalla beta.51 (Coda 172): con la straordinaria deliberata dopo l'atto le certe,
+ *   € 400,00, sono quote che la coppia ha già spostato su chi compra, e la nota lo dice nella stessa frase (il test «Coda 172»
+ *   di questo file); la nota non legge la competenza dichiarata sulla fattura. Della nota il giorno dell'atto è provato il
+ *   punto aperto e, con la coppia, le certe;
  * - in attesa delle decisioni di Vincenzo, senza asserire quale esito è giusto: l'annullamento della riserva — e della
  *   costituzione, anteriore — dopo un piano generato ed emesso con la voce sull'«Usufruttuario» o sull'«Inquilino» senza
  *   inquilino, che oggi si ferma (rilievo R2: è provato che storico e rotta concordano, e che con l'inquilino dal primo
@@ -85,7 +85,7 @@
  *   della delibera e senza righe di riparto, le bozze di chi vendeva prima prendono il motivo «predecessore», che in
  *   `ConguaglioPassaggio::decidiBozze` viene prima di «non risolta». Il pannello dice insieme «restano sue e sono comprese
  *   nel conguaglio» (cancello) o «si conguagliano qui» (blocco 2) e «Nessun conguaglio proposto su quelle quote», con le
- *   coppie vuote (sonda C3 dello scettico). Dichiarato, non corretto, e nessun test lo asserisce.
+ *   coppie vuote. Dichiarato, non corretto, e nessun test lo asserisce.
  * Il suggerimento sotto «Ho ricevuto copia autentica» nel modulo (V4), il riquadro «Quote che questo passaggio non tocca»
  * (cantiere C6: è provato il campo `cancello.informazioni` che lo riempie) e la guida in-app non hanno un test: si
  * verificano a video. Il riquadro è da verificare a video anche dopo i cantieri C7 e C8, che ne hanno cambiato il contenuto
@@ -943,15 +943,21 @@ it('testi T4 — nota di solidarietà della riserva: il punto aperto (art. 63 co
         ->not->toContain('€ 800,00');
 });
 
-it('testi T4, controprova — la nota della vendita piena non cambia: con otto rate emesse a Ugo prima di registrarla il residuo è uno solo, € 800,00, e il testo è quello di sempre', function () {
+it('testi T4, controprova — la nota della vendita piena è al netto della coppia (Coda 172): con otto rate emesse a Ugo prima di registrarla il non pagato è € 800,00, ma € 405,48 sono già a debito di Elsa con il conguaglio e Ugo risponde di € 394,52', function () {
     $s = ruScenario('prima_rata', 0);
     ruEmetti($s, '2026-08-31');
     ruRegistra($this, $s, ['tipo' => 'vendita', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => '2026-05-01', 'quota' => 100, 'tipologia' => 'proprietario',
         'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06', 'estremi_titolo' => 'rep. 1', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Vendita piena, rogito letto']);
 
+    // Conto a mano (oracolo O-172-4 della beta.51): Elsa 245/365 di 120000 = 80547,95 → 80548; le quattro rate in bozza (da settembre a
+    // dicembre, 40000) passano a lei con la registrazione, quindi la coppia è 80548 − 40000 = 40548. Il non pagato emesso a Ugo è 80000
+    // (otto rate da 10000); tolta la coppia restano 80000 − 40548 = 39452, che sono i 120/365 di 120000: la parte di Ugo per giorni.
+    expect(ruCoppia($s))->toBe([40548, -40548]);
     $nota = app(NotaSolidarieta::class)->per($s['c'], $s['a'])[0];
-    expect($nota['residuo_uscente_cents'])->toBe(80000)
-        ->and($nota['testo'])->toBe('Acquirente Elsa risponde in solido con Venditore Ugo per i contributi di Interno 1 (Int. 1) relativi agli esercizi 2026 e 2025 (art. 63 co. 4 disp. att. c.c.). Nessuna quota è intestata a Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 800,00 non pagati su questa unità. Chi paga in forza della solidarietà ha regresso verso il venditore, salvo diverso accordo (Cass. 11199/2021).');
+    expect($nota['residuo_uscente_cents'])->toBe(39452)
+        ->and($nota['residuo_lordo_cents'])->toBe(80000)
+        ->and($nota['coppia_cents'])->toBe(40548)
+        ->and($nota['testo'])->toBe('Acquirente Elsa risponde in solido con Venditore Ugo per i contributi di Interno 1 (Int. 1) relativi agli esercizi 2026 e 2025 (art. 63 co. 4 disp. att. c.c.). Nessuna quota è intestata a Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 394,52 non pagati su questa unità (€ 800,00 nelle rate, di cui € 405,48 già a debito di Acquirente Elsa con il conguaglio del 1 maggio 2026). Chi paga in forza della solidarietà ha regresso verso il venditore, salvo diverso accordo (Cass. 11199/2021).');
 });
 
 it('testi T7 — nello storico anche le righe toccate dalla riserva portano il sottotipo del passaggio (la riga chiusa di chi vende, la sua riga d\'usufrutto, la nuda proprietà di chi compra), così la riga e il passaggio hanno lo stesso nome', function () {
@@ -1117,25 +1123,30 @@ it('nota di solidarietà della riserva, straordinarie — conta la data della de
         'a nome di Venditore Ugo risultano oggi € 800,00 non pagati su questa unità per contributi sorti prima del 1 maggio 2026.',
         'Le spese straordinarie senza data della delibera (€ 800,00) sono contate prima dell\'atto.',
     ], 'ne risultano oggi'],
-    // Delle certe (art. 67 ult. co.) qui non si dice la cifra: è quella della Coda 172, fissata dalla sua sentinella, sotto.
+    // Delle certe (art. 67 ult. co.) qui non si dice la cifra: è quella della Coda 172, provata dal test «Coda 172» qui sotto.
     'deliberata il 20 maggio: niente nel punto aperto' => ['dopo', 0, [
         'a nome di Venditore Ugo non risulta oggi nulla di non pagato su questa unità per contributi sorti prima del 1 maggio 2026.',
     ], 'senza data della delibera'],
 ]);
 
-// Sentinella della Coda 172: fissa il comportamento di oggi, noto come sbagliato. La straordinaria deliberata il 20 maggio,
-// dopo l'atto, è di chi compra: le due quote emesse a Ugo prima della registrazione (giugno e luglio, € 400,00) la coppia
-// del conguaglio le ha già spostate su Elsa, ma la nota non legge la coppia e le conta fra le certe di Ugo. Quando la coda
-// si corregge questo test deve cambiare; il punto aperto (zero) lo asserisce, e resta, il test qui sopra.
-it('sentinella della Coda 172 — fissa il comportamento di oggi, noto come sbagliato: nella nota della riserva, con la straordinaria deliberata dopo l\'atto, le quote emesse a chi vende (€ 400,00) stanno fra le certe anche se la coppia le ha già spostate su chi compra; quando la coda si corregge questo test deve cambiare', function () {
+// La Coda 172 (beta.51, decisione 85.2) in una riserva: la straordinaria deliberata il 20 maggio, dopo l'atto, è di chi compra, e le due
+// quote emesse a Ugo prima della registrazione (giugno e luglio, € 400,00) la coppia del conguaglio le ha già spostate su Elsa. La nota
+// le legge: fra le certe (art. 67 ult. co.) non resta niente da pagare a nome di Ugo, e la coppia sta nella stessa frase. Il punto
+// aperto (zero) lo asserisce, e non cambia, il test qui sopra: la coppia non lo tocca mai. Prima della .51 la nota non leggeva la
+// coppia e diceva «ne risultano oggi € 400,00 non pagati» (la fissava una sentinella).
+it('Coda 172 — nella nota della riserva, con la straordinaria deliberata dopo l\'atto, le quote emesse a chi vende (€ 400,00) che la coppia ha già spostato su chi compra stanno fra le certe ma non sono più da pagare: «non ne risulta oggi nulla di non pagato… (€ 400,00 nelle rate, tutte già a debito di Acquirente Elsa)»', function () {
     $s = ruScenario('prima_rata', 0, 'straordinaria', '2026-05-20', '2026-06-05', 6);
     ruEmetti($s, '2026-07-31');
     ruRegistra($this, $s, ruRiserva($s));
 
-    // La coppia: € 400,00 a debito di Elsa, a credito di Ugo.
+    // La coppia: € 400,00 a debito di Elsa, a credito di Ugo. Le certe (delibera dopo l'atto) valgono 40000 lorde, 0 al netto della coppia.
     expect(ruCoppia($s))->toBe([40000, -40000]);
-    expect(app(NotaSolidarieta::class)->per($s['c'], $s['a'])[0]['testo'])
-        ->toContain('(art. 67 ult. co. disp. att. c.c.): a nome di Venditore Ugo ne risultano oggi € 400,00 non pagati, per contributi sorti da quel giorno in poi.');
+    $nota = app(NotaSolidarieta::class)->per($s['c'], $s['a'])[0];
+    expect($nota['testo'])
+        ->toContain('(art. 67 ult. co. disp. att. c.c.): a nome di Venditore Ugo non ne risulta oggi nulla di non pagato, per contributi sorti da quel giorno in poi (€ 400,00 nelle rate, tutte già a debito di Acquirente Elsa con il conguaglio del 1 maggio 2026).')
+        ->not->toContain('ne risultano oggi € 400,00 non pagati');
+    // Il punto aperto non è toccato dalla coppia.
+    expect($nota['residuo_uscente_cents'])->toBe(0)->and($nota['residuo_lordo_cents'])->toBe(0);
 });
 
 // --- La mappa dei casi della beta.38: i test mirati (le celle che le griglie di `InvariantiPassaggiTest` non dicono) ----
@@ -1414,7 +1425,7 @@ it('mappa dei casi, rilievo R3 (decisione 28.8 c) — in una catena le quote di 
     expect($subentro->nota_cancello)->toBeNull();
 });
 
-// Rilievo R3 nella vendita piena, sulle quote già emesse (decisione 28.8 c; sonda C1 dello scettico). Nella catena Ugo → Zeta
+// Caso R3 nella vendita piena, sulle quote già emesse (decisione 28.8 c). Nella catena Ugo → Zeta
 // (vendita piena, pregresso di Ugo spalmato) → Elsa (vendita piena del 1/6) le gemelle di solo pregresso lasciate a Ugo
 // sulle rate emesse dopo la prima vendita hanno quota pura zero e niente per chi entra. Il motivo le contava fra le quote
 // del predecessore «la parte che ne resta passa ancora», che per loro è falso: ora il numero e la frase sono quelli delle
@@ -1458,7 +1469,7 @@ it('mappa dei casi, rilievo R3 nella vendita piena (decisione 28.8 c) — le gem
         '1 quota di rata già emessa a Venditore Ugo: resta sua, questo passaggio non la tocca'],
 ]);
 
-// Rilievo R3 nell'estinzione dell'usufrutto (decisione 28.8 c; lo scettico l'ha trovato nella griglia: RE · SG · SR · T−, S3E,
+// Caso R3 nell'estinzione dell'usufrutto (decisione 28.8 c; combinazioni della griglia: RE · SG · SR · T−, S3E,
 // RVE). La riserva su una straordinaria deliberata dopo l'atto fa passare a Elsa le bozze e lascia a Ugo le gemelle del suo
 // pregresso; quando l'usufrutto di Ugo si estingue, le gemelle sono di Ugo, che esce. Sono quote di soli saldi pregressi:
 // il motivo della bozza è `solo_pregresso` (viene prima dell'esclusione della straordinaria, che l'estinzione non conguaglia),

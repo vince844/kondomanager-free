@@ -115,7 +115,7 @@
  *   I6, nella rivendita della nuda proprietà con un piano generato dopo la riserva e la voce sul «Proprietario» (la
  *   ricetta mirata F=RV · G=dopo), guarda solo le quote con `riservata_da`. «Come dice ogni voce» non è nella griglia: lo
  *   prova `OrdinariaDopoAttoTest`;
- * - la nota di solidarietà che non legge la coppia (Coda 172): la nota non è nella griglia;
+ * - la nota di solidarietà, che dalla beta.51 legge la coppia (Coda 172): la nota non è nella griglia;
  * - S1E, i due genitori che donano con riserva e poi muore uno dei due (griglia B): valgono solo I1–I4. Dalla 1.11.0-beta.43
  *   la nuda del figlio si consolida per legge solo per la metà del genitore morto (`NudiDellEstinzione`, prova a mano in
  *   `EstinzioneConPiuUsufruttiTest`); l'accrescimento, se l'atto lo prevede, è materia della successione;
@@ -320,7 +320,7 @@ function invVincoli(): array
  * Le ricette mirate: combinazioni di tre o più valori che la griglia a coppie non garantisce. Il generatore le completa
  * come le altre. Ciascuna dice che cosa deve esercitare davvero (`esercita`, vedi `invEsercizi()`): ogni caso che contiene
  * i suoi valori lo controlla, e fallisce se non succede — così una mirata che il completamento svuota non passa a vuoto
- * (verdetto dello scettico sulla griglia: la mirata S1, completata con il piano generato dopo, non aveva conguaglio).
+ * (la mirata S1, completata con il piano generato dopo, non aveva conguaglio).
  *
  * @return list<array{ricetta: array<string, string>, esercita: list<string>}>
  */
@@ -366,7 +366,7 @@ function invMirate(): array
         ['ricetta' => ['F' => 'R', 'N' => 'SC', 'E' => 'E12'], 'esercita' => ['i6bis', 'valore']],
         ['ricetta' => ['F' => 'R', 'N' => 'SD', 'E' => 'SR'], 'esercita' => ['i6bis', 'valore']],
         // Il piano generato dopo i passaggi che precedono, con qualcosa di emesso: la griglia a coppie non lo garantisce, e
-        // prima di queste mirate RE e CPVN con G=dopo capitavano solo senza emissione (verdetto dello scettico).
+        // prima di queste mirate RE e CPVN con G=dopo capitavano solo senza emissione.
         ['ricetta' => ['F' => 'RE', 'N' => 'O', 'E' => 'E4', 'V' => 'U', 'G' => 'dopo'], 'esercita' => ['coppia']],
         ['ricetta' => ['F' => 'CPVN', 'N' => 'SD', 'E' => 'E4', 'G' => 'dopo'], 'esercita' => ['denaro']],
     ];
@@ -599,7 +599,7 @@ function invCoppieAZero(array $foto, array $famiglia = [], array $parti = []): a
  * (`ConguaglioPassaggio`, `importo = lordo − passate`), e con un solo entrante non può fallire. Prende due cose sole: una
  * coppia dove non c'è nessuna quota, e una divisione fra più nudi proprietari (`AnteprimaPassaggio`, S8-30) che non
  * conserva la somma — non che la divisione segua le quote. Se il valore sia giusto lo dice l'oracolo di
- * `invRegolaDelDenaro`, dove c'è (verdetto dello scettico: prima questo controllo si presentava come il valore). @return list<string>
+ * `invRegolaDelDenaro`, dove c'è (prima questo controllo si presentava come il valore). @return list<string>
  */
 function invCoerenzaDelleCoppie(?array $cong): array
 {
@@ -777,7 +777,7 @@ function invRegolaDelDenaro(array $caso, array $r, ?array $cong, array $foto0, a
             }
         }
         if ($regola['solo_riservate']) {
-            // Senza quote con `riservata_da` il controllo qui sotto non guarda niente (verdetto dello scettico: nella rivendita
+            // Senza quote con `riservata_da` il controllo qui sotto non guarda niente (nella rivendita
             // passava a vuoto). Quando la nuda proprietà viene da una riserva e l'ordinaria è emessa, le quote di chi si è
             // riservato l'usufrutto nel conguaglio ci sono sempre; dopo una costituzione (CPVN) non ce ne sono, per costruzione.
             $conta['riservate'] = $restano->count();
@@ -1112,7 +1112,7 @@ it('griglia A — un passaggio sotto esame: il denaro si conserva (I1), le coppi
 it('griglia B — le catene si annullano all\'indietro: il primo passaggio non si annulla finché ce n\'è uno dopo, a stato invariato, e ogni passo annullato ritrova la sua fotografia; lungo la catena il denaro si conserva e le coppie fanno zero', function (string $catena, array $combinazione) {
     // La prima rata della straordinaria il 5 del mese prima del primo passaggio: così «emessa in parte prima del primo»
     // è vero anche nelle catene che cominciano il 1 marzo (VR, VR+RV), dove la rata di aprile verrebbe dopo e la catena
-    // non muoverebbe denaro (verdetto dello scettico). Nelle altre è il 5 aprile, come nella griglia A.
+    // non muoverebbe denaro. Nelle altre è il 5 aprile, come nella griglia A.
     $primaScadenza = CarbonImmutable::parse(invCatene()[$catena]['passaggi'][0][3])->subMonthNoOverflow()->day(5)->toDateString();
     $r = $combinazione + ['F' => $catena, 'V' => 'P', 'D' => '1', 'P' => 'no', 'K' => 'no', 'G' => 'prima', 'prima_scadenza' => $primaScadenza];
     $foto = [];
@@ -1274,7 +1274,7 @@ it('griglia C — le due forme del risolutore danno le stesse righe su ogni peri
 // stessa forma, che non dice a chi vadano (`FrasiObbligati::SALVO_SALDI_DELL_UNITA`). La nota senza il saldo la fissano per
 // intero «testi T4, controprova» e le note della riserva in `RiservaUsufruttoTest`. Il denaro non cambia — se quei saldi
 // debbano seguire chi era titolare nel periodo è una regola di denaro, la Coda 174 — ed è fissato com'è come sentinella
-// della Coda 174: quando la regola cambierà, questo test diventa rosso e le frasi vanno rilette. Il test rosso dei test
+// della Coda 174: quando la regola cambierà, questo test diventa rosso e le frasi vanno rilette. Il test
 // sulle combinazioni asseriva zero a chi compra: era la regola della Coda 174, non ancora decisa.
 it('coerenza, decisione 28.8 a — con un saldo intestato all\'unità la frase «Il programma non intesta nulla a chi compra» e la nota di solidarietà nominano l\'eccezione, nella riserva e nella vendita, in anteprima, nello storico e nella nota; senza, la frase resta quella di prima. Sentinella della Coda 174: il piano straordinario generato dopo addebita oggi l\'arretrato dell\'unità tutto a chi compra nella riserva, e nella vendita piena lo divide con chi vende', function (string $forma, string $senza, string $con, array $arretrato) {
     $s = ruScenario('tutte_rate', 0, 'straordinaria', '2026-05-20', '2026-06-05', 6, genera: false);
@@ -1345,8 +1345,8 @@ it('coerenza, decisione 28.8 a — un saldo intestato al solo box, pertinenza ve
 // piena: chi compra in solido con chi vende (art. 63 co. 4), e basta. Con un usufruttuario sull'unità alla data dell'atto,
 // dal giorno dell'atto chi compra la nuda proprietà risponde in solido anche con lui (art. 67 ult. co.), e la nota ora lo
 // dice. Due strade per arrivarci: la rivendita della nuda proprietà nata da una riserva, e la vendita della nuda proprietà
-// nata da una costituzione (anteriore alla beta). Le righe non dicono su quale quota stia ciascun usufrutto (sonda B1 dello
-// scettico: la nota nominava anche l'usufruttuaria dell'altra metà): la nota nomina le persone solo quando le quote degli
+// nata da una costituzione (anteriore alla beta). Le righe non dicono su quale quota stia ciascun usufrutto (la nota nominava anche l'usufruttuaria
+// dell'altra metà): la nota nomina le persone solo quando le quote degli
 // usufrutti sommano quelle delle nude proprietà e l'usufruttuario è uno solo (grava su tutte) o il nudo proprietario è uno
 // solo, chi compra (tutte gravano sulla sua); altrimenti dice «l'usufruttuario della quota acquistata», senza nomi. Con due
 // usufruttuari certi la forma è «in solido con gli usufruttuari …». La nota della vendita piena non cambia: la fissa per
@@ -1358,7 +1358,7 @@ it('coerenza, decisione 28.8 b — la nota di solidarietà della vendita della s
         ruRegistra($this, $s, ruRiserva($s, extra: ['quota' => 50]));
         ruRegistra($this, $s, ruRiserva(['rigaV' => $rigaM] + $s, extra: ['quota' => 50]));
     } elseif (in_array($origine, ['altra_meta_usufrutto', 'altra_meta_senza_usufrutto'], true)) {
-        // Nora ha la nuda proprietà dell'altra metà: con Rita usufruttuaria (sonda B1), o senza un usufrutto registrato.
+        // Nora ha la nuda proprietà dell'altra metà: con Rita usufruttuaria, o senza un usufrutto registrato.
         $s = ruScenario('prima_rata', 0);
         DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['quota' => 50]);
         $nora = \App\Models\Anagrafica::forceCreate(['nome' => 'Figlia Nora', 'email' => "inv-n{$s['unita']->id}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'INVNORAFIGL' . str_pad((string) $s['unita']->id, 5, '0', STR_PAD_LEFT)]);
@@ -1413,7 +1413,7 @@ it('coerenza, decisione 28.8 b — la nota di solidarietà della vendita della s
     'due genitori donano con riserva, poi la nuda proprietà si rivende: due usufruttuari certi' => ['due_genitori', 'Acquirente Elsa', 'risponde in solido con gli usufruttuari Venditore Ugo e Madre Rita'],
     // Due nudi proprietari (Nora e Carlo) e un solo usufruttuario, su tutta la nuda proprietà: grava anche sulla metà venduta.
     'due nudi proprietari e un solo usufrutto su tutta: la metà venduta ne è gravata' => ['meta_rivenduta', 'Acquirente Elsa', 'e Venditore Ugo, usufruttuario, rispondono in solido'],
-    // Sonda B1: due nudi proprietari e due usufruttuari, e le righe non dicono chi è su quale metà.
+    // Due nudi proprietari e due usufruttuari, e le righe non dicono chi è su quale metà.
     'l\'altra metà ha un altro usufrutto: nessun nome' => ['altra_meta_usufrutto', 'Acquirente Elsa', 'risponde in solido con l\'usufruttuario della quota acquistata'],
     // Un solo usufruttuario, ma le quote non tornano: la nuda proprietà di Nora ha un usufrutto non registrato, e dalle righe
     // quello di Ugo potrebbe essere il suo.

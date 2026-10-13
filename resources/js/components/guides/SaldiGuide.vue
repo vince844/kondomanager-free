@@ -252,6 +252,10 @@ defineEmits(['update:open']);
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                   <span><strong>Chi esce con un credito</strong> lo vede nel suo estratto conto quando un piano ha assorbito la coppia: da lì si compensa su altre rate o si rimborsa dalla cassa.</span>
                 </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Una parte che il programma non sposta</strong> (un passaggio che si ferma su una parte, il defunto che un piano calcola ancora) si passa a mano con due righe di segno opposto da qui, sulla stessa gestione, unità ed esercizio: la riga a credito a chi la deve avere, quella a debito a chi la deve pagare, e il prossimo piano le assorbe. Il pannello e il cancello la indicano solo se nessuna delle due persone ha già un saldo lì, perché il Wallet accetta una sola riga per persona, gestione, unità ed esercizio; altrimenti dicono che la parte si regola fra le parti. Se registri le righe per una parte che poi cambia (un inizio di locazione che la riduce o la azzera), il programma non le toglie: vanno corrette qui.</span>
+                </li>
               </ul>
             </div>
           </section>

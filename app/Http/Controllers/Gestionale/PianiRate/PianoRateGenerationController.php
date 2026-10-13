@@ -62,7 +62,9 @@ class PianoRateGenerationController extends Controller
 
             return back()->with($this->flashError(
                 "Impossibile ricalcolare: ci sono rate con incassi registrati, o crediti già usati in compensazione o rimborsati. Annulla prima quei movimenti."
-                . ($daSeguire !== [] ? ' Poi il ricalcolo terrà conto ' . PianoRate::descriviPassaggi($daSeguire) . '.' : '')
+                // Beta.51 (§6.3): fra i passaggi da seguire ci sono anche quelli annullati dopo il ricalcolo, e per loro il ricalcolo non «terrà
+                // conto» di niente: riporterà le quote alla titolarità di prima.
+                . ($daSeguire !== [] ? ' Poi ' . PianoRate::dopoIlRicalcolo($daSeguire) . '.' : '')
             ));
         }
 
