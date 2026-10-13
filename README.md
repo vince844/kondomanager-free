@@ -1,7 +1,7 @@
 [![Read in English](https://img.shields.io/badge/Read_in-English-red.svg)](README.en.md)
 [![Leggi in Italiano](https://img.shields.io/badge/Leggi_in-Italiano-green.svg)](README.md)
 [![Leia em Português](https://img.shields.io/badge/Leia_em-Português-yellow.svg)](README.pt-br.md)
-[![Generic badge](https://img.shields.io/badge/Version-1.9.1-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
+[![Generic badge](https://img.shields.io/badge/Version-1.10.0-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 [![Forum](https://img.shields.io/badge/Forum-Comunità-orange.svg)](https://kondomanager.short.gy/km-forum)
 [![GitHub stars](https://img.shields.io/github/stars/vince844/kondomanager-free?style=social)](https://github.com/vince844/kondomanager-free/stargazers)
