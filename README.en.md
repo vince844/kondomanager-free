@@ -33,7 +33,7 @@
 
 You can view a demo of the project at the following address:
 
-👉 **[KondoManager demo](https://rebrand.ly/kondomanager)**
+👉 **[KondoManager demo](https://kondomanager.short.gy/kondo)**
 
 **Warning:** For security reasons, some features such as email sending and notifications have been disabled.
 

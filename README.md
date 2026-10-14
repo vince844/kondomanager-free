@@ -38,7 +38,7 @@
 
 Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 
-👉 **[KondoManager demo](https://rebrand.ly/kondomanager)**
+👉 **[KondoManager demo](https://kondomanager.short.gy/kondo)**
 
 **Attenzione:** Per questioni di sicurezza alcune funzionalità quali l'invio delle email e notifiche sono state disattivate.
 
