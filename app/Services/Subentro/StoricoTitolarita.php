@@ -268,13 +268,16 @@ class StoricoTitolarita
             return ['scelta' => $scelta, 'voci' => [], 'testo' => sprintf('Dal %s come dice ogni voce, scelta alla registrazione: le voci sul «Proprietario» %s, le altre %s. Le voci non sono state toccate.',
                 $dal, $s->riservaUsufrutto() ? 'passano a chi ha comprato la nuda proprietà' : 'restano al nudo proprietario', $s->riservaUsufrutto() ? 'restano all\'usufruttuario' : 'vanno all\'usufruttuario')];
         }
-        $voci = array_map(fn (array $v) => sprintf('%s (%s, %s): prima %s, dopo %s', $v['conto'] ?? '?', $v['tabella'] ?? '?', $v['gestione'] ?? '?', VociDaSpostare::coefficientiAParole($v['prima'] ?? []), VociDaSpostare::coefficientiAParole($v['dopo'] ?? [])),
-            $registro['voci_spostate'] ?? []);
+        $spostate = $registro['voci_spostate'] ?? [];
+        $voci = array_map(fn (array $v) => sprintf('%s: prima %s, dopo %s', VociDaSpostare::etichetta($v), VociDaSpostare::coefficientiAParole($v['prima'] ?? []), VociDaSpostare::coefficientiAParole($v['dopo'] ?? [])),
+            $spostate);
+        // Se a passare sono solo entrate l'art. 1004 c.c., che riguarda le spese, non si cita.
+        $soloEntrate = $spostate !== [] && array_filter($spostate, fn (array $v) => ($v['tipo'] ?? null) !== 'entrata') === [];
 
-        return ['scelta' => $scelta, 'voci' => $voci, 'testo' => sprintf('Dal %s all\'usufruttuario (art. 1004 c.c.), la proposta di legge: %s', $dal, match (count($voci)) {
+        return ['scelta' => $scelta, 'voci' => $voci, 'testo' => sprintf('Dal %s all\'usufruttuario%s, la proposta di legge: %s', $dal, $soloEntrate ? '' : ' (art. 1004 c.c.)', match (count($voci)) {
             0 => 'nessuna voce spostata.',
-            1 => 'questa voce è passata dal «Proprietario» all\'«Usufruttuario».',
-            default => 'queste voci sono passate dal «Proprietario» all\'«Usufruttuario».',
+            1 => ($soloEntrate ? 'questa entrata è passata' : 'questa voce è passata') . ' dal «Proprietario» all\'«Usufruttuario».',
+            default => ($soloEntrate ? 'queste entrate sono passate' : 'queste voci sono passate') . ' dal «Proprietario» all\'«Usufruttuario».',
         })];
     }
 

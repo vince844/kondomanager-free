@@ -14,6 +14,7 @@ use App\Services\CalcoloQuoteService;
 use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\Riparto\DettaglioRiparto;
 use App\Services\Riparto\PeriodoDellaRiga;
+use App\Services\Riparto\QuotaDellaChiamata;
 use App\Support\ImportoInParole;
 use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
@@ -2789,7 +2790,7 @@ final class ConguaglioPassaggio
             if ($quota === null) {
                 continue;
             }
-            $applicato = fn (int $versato) => $quota >= 1.0 ? $versato : (int) floor($versato * $quota);
+            $applicato = fn (int $versato) => QuotaDellaChiamata::applica($versato, $quota);
             $versati = array_map($applicato, ContributoVersato::perImmobileESoggetto(Conto::class, $contoId)[$immobileId] ?? []);
             $altri = DB::table('righe_riparto')->where('piano_rate_id', $pianoRateId)->where('immobile_id', $immobileId)->where('conto_id', $contoId)->where('tipo', RigaRiparto::TIPO_RIPARTO)
                 ->where('anagrafica_id', '!=', $uscenteId)->selectRaw('anagrafica_id, SUM(importo) as lordo')->groupBy('anagrafica_id')->pluck('lordo', 'anagrafica_id');
@@ -2837,35 +2838,13 @@ final class ConguaglioPassaggio
 
     /**
      * Coda 160: la quota di questa chiamata sul budget della voce, come la calcola `CalcoloQuoteService::nettingGiaVersato` per applicare il già versato
-     * (seconda fonte dichiarata, come `comeLoDarebbeIlPiano`): 1 se il piano chiede l'intera voce, altrimenti la frazione che ne chiede. Il piano chiede
-     * meno del budget quando forza l'importo del capitolo (`piano_rate_capitoli.importo`) sotto quello del conto: la quota è il distribuito sul conto
-     * diviso il nominale, che il fattore di copertura (la parte che resta scoperta) lascia sul rapporto fra l'importo forzato e quello del conto. Non c'è
-     * un importo forzato sul conto: la quota è 1. L'importo forzato sta sul capitolo e si divide fra i sottoconti: vale 1 solo se è la somma dei
-     * sottoconti, altrimenti non si può dire e la frase tace.
+     * (seconda fonte dichiarata, come `comeLoDarebbeIlPiano`). Il conto sta in `QuotaDellaChiamata`, che serve anche all'atteso del badge «Disallineato».
      *
      * @return float|null null se la frazione non si può dire
      */
     private function quotaDellaChiamata(int $pianoRateId, int $contoId): ?float
     {
-        $conto = Conto::query()->whereKey($contoId)->first(['id', 'importo', 'parent_id']);
-        if ($conto === null) {
-            return null;
-        }
-        $nominale = abs((int) $conto->importo);
-        $forzato = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRateId)->where('conto_id', $contoId)->value('importo');
-        if ($forzato === null && $conto->parent_id !== null) {
-            $dalCapitolo = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRateId)->where('conto_id', $conto->parent_id)->value('importo');
-            if ($dalCapitolo !== null) {
-                return abs((int) $dalCapitolo) === abs((int) Conto::query()->where('parent_id', $conto->parent_id)->sum('importo')) ? 1.0 : null;
-            }
-        }
-        if ($forzato === null || $nominale === 0 || abs((int) $forzato) >= $nominale) {
-            return 1.0;
-        }
-        $distribuito = abs((int) DB::table('righe_riparto')->where('piano_rate_id', $pianoRateId)->where('conto_id', $contoId)->where('tipo', RigaRiparto::TIPO_RIPARTO)->sum('importo'));
-        $totaleNominale = abs((int) $forzato) > 0 ? (int) round($nominale * $distribuito / abs((int) $forzato)) : 0;
-
-        return $distribuito > 0 && $totaleNominale > 0 ? min(1.0, $distribuito / $totaleNominale) : null;
+        return QuotaDellaChiamata::perConto($pianoRateId, $contoId);
     }
 
     /**

@@ -184,6 +184,172 @@ class Conto extends Model
         return $ids;
     }
 
+    /**
+     * I tipi di voce che si addebitano alle persone (segno +1). Ogni altro tipo si accredita (segno −1).
+     *
+     * È l'unica lista fuori dal motore di ripartizione: il motore applica la stessa clausola con tre copie letterali sue
+     * (`CalcoloQuoteService`), e chi conta le voci del piano (atteso, totali delle pagine, copertura del cruscotto) legge il
+     * segno da qui. Un test (`T1.12`) fa sì che nessun'altra copia nasca altrove.
+     */
+    public const TIPI_DI_SPESA = ['spesa', 'uscita'];
+
+    public static function segnoDelTipo(string $tipo): int
+    {
+        return in_array($tipo, self::TIPI_DI_SPESA, true) ? 1 : -1;
+    }
+
+    /**
+     * Il segno con cui il motore distribuisce questa voce: +1 se la addebita, −1 se la accredita.
+     *
+     * Segue l'ordine del motore. Una voce con tabelle millesimali proprie, o senza sottoconti, ha il segno del proprio
+     * tipo. Un capitolo senza tabelle ha il segno dei suoi sottoconti, ciascuno con la stessa regola: contano quelli nati
+     * fino alla data del piano (`$snapshotAl`) e, se nessuno è nato fino ad allora, tutti quelli di adesso. Se i sottoconti
+     * hanno segni diversi vale il tipo del capitolo: per dividere un importo fra spese ed entrate, come fa il motore, serve
+     * {@see ripartoPerSegno()}.
+     *
+     * Il tipo deve essere stato caricato: una lettura parziale della voce non si completa a caso, perché un segno uguale
+     * per tutte le voci farebbe risultare sbagliato ogni piano.
+     *
+     * @throws \LogicException se il tipo della voce non è caricato
+     */
+    public function segno(?\Carbon\CarbonInterface $snapshotAl = null): int
+    {
+        $tipo = $this->tipoCaricato();
+
+        $this->loadMissing('tabelleMillesimali');
+
+        if ($this->tabelleMillesimali->isNotEmpty()) {
+            return self::segnoDelTipo($tipo);
+        }
+
+        $figli = $this->sottocontiDelPiano($snapshotAl);
+
+        if ($figli->isEmpty()) {
+            return self::segnoDelTipo($tipo);
+        }
+
+        $segni = $figli->map(fn (self $s) => $s->segno($snapshotAl))->unique();
+
+        return $segni->count() === 1 ? (int) $segni->first() : self::segnoDelTipo($tipo);
+    }
+
+    /**
+     * Se questa voce è un capitolo che il motore divide fra spese ed entrate: senza tabelle proprie, con sottoconti (gli stessi che sceglie
+     * {@see segno()}) che non hanno tutti lo stesso segno, o dei quali uno è a sua volta misto.
+     *
+     * Per un capitolo così {@see segno()} dà il tipo del capitolo e non dice da che parte stanno i suoi sottoconti: chi sposta un importo
+     * da o verso il capitolo ne cambia il totale in un modo che il segno da solo non mostra.
+     *
+     * @throws \LogicException se il tipo di una voce non è caricato
+     */
+    public function eMisto(?\Carbon\CarbonInterface $snapshotAl = null): bool
+    {
+        $this->tipoCaricato();
+
+        $this->loadMissing('tabelleMillesimali');
+
+        if ($this->tabelleMillesimali->isNotEmpty()) {
+            return false;
+        }
+
+        $figli = $this->sottocontiDelPiano($snapshotAl);
+
+        if ($figli->isEmpty()) {
+            return false;
+        }
+
+        return $figli->contains(fn (self $s) => $s->eMisto($snapshotAl))
+            || $figli->map(fn (self $s) => $s->segno($snapshotAl))->unique()->count() > 1;
+    }
+
+    /**
+     * Come il motore divide `$cents` di questa voce fra spese ed entrate, in valore assoluto e in centesimi.
+     *
+     * Una voce con tabelle millesimali proprie, o senza sottoconti, porta tutto l'importo nel proprio tipo. Un capitolo senza
+     * tabelle passa l'importo ai sottoconti (gli stessi che sceglie {@see segno()}) in proporzione al loro importo, e l'ultimo
+     * prende il resto; se la somma dei loro importi non è maggiore di zero, in parti uguali. È la divisione di
+     * `CalcoloQuoteService::processaConti`, riga per riga, con lo stesso arrotondamento; ogni sottoconto ripete la regola. Un
+     * capitolo con sottoconti di tipo diverso dà quindi una parte alle spese e una alle entrate, come il motore le distribuisce.
+     *
+     * @return array{spese: int, entrate: int}
+     *
+     * @throws \LogicException se il tipo di una voce non è caricato
+     */
+    public function ripartoPerSegno(int $cents, ?\Carbon\CarbonInterface $snapshotAl = null): array
+    {
+        $tipo = $this->tipoCaricato();
+
+        $this->loadMissing('tabelleMillesimali');
+
+        $figli = $this->tabelleMillesimali->isNotEmpty() ? collect() : $this->sottocontiDelPiano($snapshotAl);
+
+        if ($figli->isEmpty()) {
+            return self::segnoDelTipo($tipo) > 0
+                ? ['spese' => abs($cents), 'entrate' => 0]
+                : ['spese' => 0, 'entrate' => abs($cents)];
+        }
+
+        $totaleFigli = (int) $figli->sum('importo');
+        $numero = $figli->count();
+        $assegnato = 0;
+        $spese = 0;
+        $entrate = 0;
+
+        foreach ($figli->values() as $indice => $figlio) {
+            if ($indice === $numero - 1) {
+                $quota = $cents - $assegnato;
+            } elseif ($totaleFigli > 0) {
+                $quota = (int) round($cents * ($figlio->importo / $totaleFigli));
+            } else {
+                $quota = (int) round($cents / $numero);
+            }
+            $assegnato += $quota;
+
+            $parti = $figlio->ripartoPerSegno($quota, $snapshotAl);
+            $spese += $parti['spese'];
+            $entrate += $parti['entrate'];
+        }
+
+        return ['spese' => $spese, 'entrate' => $entrate];
+    }
+
+    /** L'importo con il segno con cui il motore lo distribuisce: le spese meno le entrate in cui lo divide ({@see ripartoPerSegno()}). */
+    public function importoConSegno(int $cents, ?\Carbon\CarbonInterface $snapshotAl = null): int
+    {
+        $parti = $this->ripartoPerSegno($cents, $snapshotAl);
+
+        return $parti['spese'] - $parti['entrate'];
+    }
+
+    /** Il tipo della voce, se è stato caricato: una `select` parziale non si completa a caso. */
+    private function tipoCaricato(): string
+    {
+        $tipo = $this->getAttributes()['tipo'] ?? null;
+
+        if ($tipo === null || $tipo === '') {
+            throw new \LogicException("Conto::segno(): il tipo della voce {$this->getKey()} non è caricato, e il segno non si indovina.");
+        }
+
+        return (string) $tipo;
+    }
+
+    /**
+     * I sottoconti che il motore guarda per questa voce: quelli nati fino alla data del piano e, se nessuno è nato fino ad allora,
+     * tutti quelli di adesso. Senza data, tutti.
+     *
+     * @return \Illuminate\Support\Collection<int, self>
+     */
+    public function sottocontiDelPiano(?\Carbon\CarbonInterface $snapshotAl)
+    {
+        $this->loadMissing('sottoconti');
+
+        $figli = $snapshotAl === null
+            ? $this->sottoconti
+            : $this->sottoconti->filter(fn (self $s) => $s->created_at === null || $s->created_at->lte($snapshotAl));
+
+        return $figli->isEmpty() ? $this->sottoconti : $figli;
+    }
+
     public function getHasRateEmesseAttribute(): bool
     {
         // Check 1: piano rate direttamente collegato a questo conto

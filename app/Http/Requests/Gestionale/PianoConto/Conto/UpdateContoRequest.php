@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
+use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\Conto;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -161,6 +162,21 @@ class UpdateContoRequest extends FormRequest
                     'isCapitolo',
                     'Non è possibile trasformare un capitolo con sottoconti in una voce di spesa normale'
                 );
+            }
+
+            // Si rifiuta solo un importo cambiato in negativo: una voce già negativa (dato delle versioni precedenti) si rinomina e si porta
+            // a «Entrata» senza toccare l'importo, che il modale rimanda sempre. Non si porta a «Spesa» da un'entrata: sarebbe una spesa
+            // negativa nuova, quella che la creazione rifiuta. Il controllo viene prima dei blocchi del controller, così un meno prende il
+            // suo testo e non quello delle rate approvate o dell'importo già impegnato.
+            if (! $this->boolean('isCapitolo') && ImportoSenzaSegno::eNegativo($this->input('importo'))) {
+                $importoInvariato = $conto && MoneyHelper::toCents($this->input('importo')) === (int) $conto->importo;
+                $entrataPortataASpesa = $conto
+                    && Conto::segnoDelTipo((string) ($conto->tipo ?? 'spesa')) !== 1
+                    && Conto::segnoDelTipo((string) $this->input('tipo')) === 1;
+
+                if (! $importoInvariato || $entrataPortataASpesa) {
+                    ImportoSenzaSegno::rifiuta($validator, 'importo', ImportoSenzaSegno::rifiutoPerIlTipo($this->input('tipo')));
+                }
             }
 
             if (!$this->boolean('isCapitolo')) {

@@ -15,9 +15,11 @@ use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\FatturaRettificataNelPianoException;
 use App\Exceptions\Gestionale\FatturaStornataNelPianoException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
+use App\Exceptions\Gestionale\SpesaNegativaNelPianoException;
 use App\Models\Anagrafica;
 use App\Models\Esercizio;
 use App\Services\Riparto\CompetenzaDelPiano;
+use App\Services\Riparto\SpeseNegativeNelPiano;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\SaldoEsercizioService;
@@ -57,9 +59,12 @@ class GeneratePianoRateAction
      *                                  senza, quello attivo della gestione.
      * @param bool $allaCreazione La richiesta è la creazione del piano: se il cancello (2) la ferma il piano non esiste, e la strada dei saldi
      *                            che il cancello indica è un'altra (registrarli e rimandare il modulo).
+     * @param list<int> $appenaSincronizzate Le voci che «Sincronizza» ha appena scritto nel piano: se una è negativa il rifiuto non dice di toglierla dal piano,
+     *                                        perché il rifiuto annulla la scrittura e nel piano non c'è nessuna copia.
      * @throws DestinatariCambiatiException Se la risoluzione temporale cambia dei destinatari e $accettaDestinatari è false.
      * @throws \App\Exceptions\Gestionale\RichiedeDeliberaException Straordinario senza data della delibera (decisione 12).
      *
+     * @throws SpesaNegativaNelPianoException Se il piano contiene una voce di spesa con un importo negativo (il motore la addebiterebbe in positivo).
      * @throws ScopertiNonAccettatiException Se vi sono quote scoperte e $accettaScoperti è false.
      * @throws \RuntimeException Se il calcolo non produce alcuna quota (errore di configurazione tabelle/anagrafiche).
      *
@@ -75,6 +80,7 @@ class GeneratePianoRateAction
         ?string $notaDestinatari = null,
         ?Esercizio $esercizio = null,
         bool $allaCreazione = false,
+        array $appenaSincronizzate = [],
     ): array
     {
         $pianoRate->refresh();
@@ -88,6 +94,13 @@ class GeneratePianoRateAction
             $pianoRate->load('gestione');
         }
         $gestione = $pianoRate->gestione;
+
+        // Una voce di spesa con un importo negativo il motore la addebita in positivo: ci si ferma prima di scrivere qualunque cosa, e il
+        // rifiuto la nomina. Lo straordinario non ha voci, ma fatture.
+        $speseNegative = app(SpeseNegativeNelPiano::class)->trova($pianoRate, $appenaSincronizzate);
+        if ($speseNegative !== []) {
+            throw new SpesaNegativaNelPianoException($pianoRate, $speseNegative, $allaCreazione);
+        }
 
         // R1 della Fase 1-bis (1.11.0-beta.35): una fattura stornata quando lo storno non guardava i piani è rimasta nel
         // suo piano, e il motore non esclude le stornate. Ci si ferma prima di scrivere qualunque cosa.

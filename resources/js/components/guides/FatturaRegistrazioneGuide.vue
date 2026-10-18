@@ -110,7 +110,7 @@ defineEmits(['update:open']);
               <p class="mb-3">
                 A sinistra i dati del documento (fornitore, numero, date, conto di addebito, allegato
                 PDF/XML/P7M); a destra il <strong>registro voci di spesa</strong>: una o più righe, ognuna
-                agganciata a un capitolo del preventivo, con il proprio imponibile e la propria aliquota IVA.
+                agganciata a un capitolo di spesa, con il proprio imponibile e la propria aliquota IVA.
                 Alla registrazione nasce la scrittura in partita doppia con protocollo <strong>FTP</strong>
                 e il debito verso il fornitore entra nello scadenziario.
               </p>
@@ -130,6 +130,10 @@ defineEmits(['update:open']);
                     commissioni bancarie, bolli. Scrivi 0 nella colonna %.</li>
                 <li>Ogni capitolo mostra il <strong>residuo di budget</strong> nel menu di scelta: il confronto
                     è sempre sul lordo (imponibile + IVA), la stessa base del preventivo.</li>
+                <li>Le <strong>voci di entrata non compaiono</strong> nel menu e il programma le rifiuta: una
+                    fattura è un costo, e su un'entrata creerebbe uno sforo che il piano integrativo
+                    accrediterebbe ai condòmini invece di chiedere. In modifica, una riga che sta già su
+                    un'entrata resta visibile e si porta su una voce di spesa per salvare.</li>
               </ul>
             </section>
             <div class="p-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800/50 flex gap-3">

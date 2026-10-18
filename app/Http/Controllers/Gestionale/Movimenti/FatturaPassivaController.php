@@ -903,7 +903,12 @@ class FatturaPassivaController extends Controller
             ->pluck('totale', 'target_id');
 
         // 5. Conti con residuo budget e storico movimenti recenti
+        // Il capitolo di una fattura è una voce di spesa: le entrate non si offrono. In modifica restano le voci che le righe hanno già, anche
+        // di entrata (dato delle versioni precedenti): il menu le mostra spente e la riga si porta su una voce di spesa. L'`or` sta dentro il
+        // gruppo, e il perimetro del condominio fuori: una voce di un altro condominio non rientra da lì.
+        $vociDelleRighe = $escludiFattura?->righe()->whereNotNull('conto_id')->pluck('conto_id')->all() ?? [];
         $conti = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+            ->where(fn ($q) => $q->whereIn('tipo', Conto::TIPI_DI_SPESA)->orWhereIn('id', $vociDelleRighe))
             ->with('parent')
             ->whereDoesntHave('sottoconti')
             ->get();
@@ -935,6 +940,7 @@ class FatturaPassivaController extends Controller
                 return [
                     'id' => $conto->id,
                     'nome' => $conto->nome,
+                    'tipo' => $conto->tipo,
                     'parent_nome' => $conto->parent ? $conto->parent->nome : null,
                     '_sort_key' => $conto->parent ? $conto->parent->nome.' '.$conto->nome : $conto->nome,
                     'codice' => null,
@@ -970,9 +976,14 @@ class FatturaPassivaController extends Controller
         // legate a un immobile, che il servizio registra apposta senza capitolo
         // (FatturaPassivaService::registraFattura(), «SMISTAMENTO INTELLIGENTE
         // IMPREVISTI»): proporle come capitolo sarebbe proporre un buco.
+        // Solo le voci di spesa del condominio: la proposta deve stare fra quelle che il menu offre.
         $ultimiConti = DB::table('righe_fattura')
             ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->join('conti', 'conti.id', '=', 'righe_fattura.conto_id')
+            ->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')
             ->where('fatture_passive.condominio_id', $condominio->id)
+            ->where('piani_conti.condominio_id', $condominio->id)
+            ->whereIn('conti.tipo', Conto::TIPI_DI_SPESA)
             ->whereNotNull('righe_fattura.conto_id')
             ->select('fatture_passive.fornitore_id', 'righe_fattura.conto_id')
             ->orderByDesc('fatture_passive.data_documento')

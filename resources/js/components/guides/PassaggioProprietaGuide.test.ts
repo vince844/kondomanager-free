@@ -4,7 +4,7 @@
  * 1.11.0-beta.51 — la guida in-app «Registrare un passaggio» (`PassaggioProprietaGuide.vue`): il punto sulla fermata dice che un passaggio che
  * cambia chi paga al posto dell'inquilino si ferma sulla parte della fine «Scrivi» e che «conta solo il periodo in cui nessun conduttore era
  * registrato: i giorni di un conduttore li rimborsa lui, con il prospetto». Vero finché il conduttore c'è; DL7 lo smentisce quando esce (Coda 254): i
- * suoi giorni tornano a chi paga al posto dell'inquilino da quel giorno, e se questo non è più chi ha preso la coppia la parte non si sposta da sola.
+ * giorni che copriva tornano a chi paga al posto dell'inquilino da quel giorno, e se questo non è più chi ha preso la coppia la parte non si sposta da sola.
  * La guida deve dirlo, nel punto stesso, e il suo incipit deve dire che si ferma anche la fine di un conduttore che libera i giorni.
  *
  * Nessun test leggeva quella frase (misurato: grep su tests, resources, lang, docs: solo la guida e quattro documenti che la citano). Si monta la guida con i
@@ -12,7 +12,7 @@
  *
  * Il testo che la guida deve avere: all'incipit del punto, «… un passaggio che cambia chi paga al posto dell'inquilino, o la fine di un
  * conduttore che ne libera i giorni, si ferma su quella parte»; dopo «lo storico del passaggio lo ricorda», «Lo stesso vale quando finisce la
- * locazione di un conduttore entrato dopo, anche se è la stessa persona uscita e poi rientrata: i suoi giorni tornano a chi paga al posto
+ * locazione di un conduttore entrato dopo, anche se è la stessa persona uscita e poi rientrata: i giorni che copriva tornano a chi paga al posto
  * dell'inquilino da quel giorno, …», con l'esempio «da € 30,58 a € 61,15 con la fine di Luca». I test cercano questi pezzi, non la frase intera: le
  * parole fra l'uno e l'altro le sceglie chi scrive.
  *

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useForm, Head, router, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info, CalendarRange } from 'lucide-vue-next';
 import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
+import FormErrorSummary from '@/components/FormErrorSummary.vue';
+import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useFattureSimili } from '@/composables/useFattureSimili';
@@ -90,6 +92,8 @@ interface Gestione {
 interface Conto {
     id: number
     nome: string
+    /** Una voce senza `tipo` vale «spesa»: il capitolo di una fattura è sempre una voce di spesa. */
+    tipo?: 'spesa' | 'entrata'
     parent_nome?: string | null
     residuo_budget?: number
     is_capiente?: boolean
@@ -706,6 +710,48 @@ const confermaAvvisoESalva = () => {
     doSubmit();
 };
 
+/**
+ * Il riepilogo dei rifiuti (`FormErrorSummary`, lo stesso della registrazione): il conto di addebito sta nel pannello laterale, e la chiave
+ * `error` del server (una scrittura che non si compone) non ha nessun campo; senza il riepilogo il salvataggio rifiutato non mostra niente.
+ * Le chiavi che hanno già la loro finestra non si ripetono.
+ */
+const etichetteErrori = computed<Record<string, string>>(() => {
+    const etichette: Record<string, string> = {
+        numero_documento: 'Numero documento',
+        data_documento: 'Data documento',
+        data_scadenza: 'Scadenza',
+        competenza_dal: 'Competenza (dal)',
+        competenza_al: 'Competenza (al)',
+        gestione_id: 'Gestione',
+        conto_corrente_id: 'Conto addebito',
+        modalita_pagamento: 'Modalità di pagamento',
+        iban_fornitore: 'IBAN fornitore',
+    };
+
+    Object.keys(form.errors).forEach((chiave) => {
+        const riga = chiave.match(/^righe\.(\d+)\./);
+        if (riga) etichette[chiave] = `Riga ${Number(riga[1]) + 1}`;
+    });
+
+    return etichette;
+});
+
+const CHIAVI_CON_FINESTRA_PROPRIA = ['modifica_vietata', 'avviso_nota', 'fattura_rettificata_id'];
+const erroriDelRiepilogo = computed<Record<string, string>>(() => Object.fromEntries(
+    Object.entries(form.errors as Record<string, string>).filter(([chiave]) => !CHIAVI_CON_FINESTRA_PROPRIA.includes(chiave)),
+));
+
+// Il riquadro va portato sotto gli occhi: il pulsante di salvataggio sta in fondo alla pagina e il riepilogo in testa.
+const riepilogoErrori = ref<HTMLElement | null>(null);
+const portaInVistaIlRiepilogo = () => nextTick(() => {
+    if (Object.keys(erroriDelRiepilogo.value).length === 0) return;
+    riepilogoErrori.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    riepilogoErrori.value?.focus?.();
+});
+
+// L'errore di un campo sparisce appena il campo cambia valore: corretta la riga, il rifiuto non resta a dire che ha sbagliato.
+usePuliziaErrori(form as any);
+
 const doSubmit = () => {
     form.transform((data) => {
         const payload = {
@@ -790,6 +836,7 @@ const doSubmit = () => {
                 rifiutoNotaCollegata.value = errors.fattura_rettificata_id;
             }
             confermaAvvisoNota.value = false;
+            portaInVistaIlRiepilogo();
         },
     });
 };
@@ -824,6 +871,10 @@ const pageGuides = [
                 :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
                 back-text="Indietro"
             />
+
+            <div ref="riepilogoErrori" tabindex="-1" class="outline-none">
+                <FormErrorSummary :errors="erroriDelRiepilogo" :labels="etichetteErrori" />
+            </div>
 
             <!-- Banner warning -->
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
@@ -1227,10 +1278,11 @@ const pageGuides = [
                                                 :disabled="riga.is_sopravvenienza"
                                                 label="nome"
                                                 :reduce="(c: Conto) => c.id"
+                                                :selectable="(c: Conto) => c.tipo !== 'entrata'"
                                                 placeholder="Cerca capitolo..."
                                                 class="style-chooser w-full"
                                                 append-to-body>
-                                                <template #option="{ nome, parent_nome, residuo_budget, is_capiente }">
+                                                <template #option="{ nome, parent_nome, residuo_budget, is_capiente, tipo }">
                                                     <div class="flex items-center justify-between py-1.5 border-b border-transparent hover:border-slate-100 dark:hover:border-slate-800">
                                                         <div class="flex flex-col">
                                                             <span v-if="parent_nome" class="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
@@ -1238,6 +1290,7 @@ const pageGuides = [
                                                             </span>
                                                             <span class="font-medium text-sm text-slate-800 dark:text-slate-200" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">
                                                                 {{ nome }}
+                                                                <em v-if="tipo === 'entrata'" class="ml-1 text-[10px] font-semibold not-italic uppercase tracking-wider text-slate-400 dark:text-slate-500" title="Una voce di entrata non è il capitolo di una fattura">Entrata</em>
                                                             </span>
                                                         </div>
                                                         <span class="text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap ml-4 border"
@@ -1253,6 +1306,9 @@ const pageGuides = [
                                                     </div>
                                                 </template>
                                             </v-select>
+                                            <p v-if="(form.errors as any)[`righe.${idx}.conto_id`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.conto_id`] }}
+                                            </p>
                                             <p v-if="competenzaPianoDi(riga.conto_id)" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-start gap-1">
                                                 <CalendarRange class="w-3 h-3 mt-0.5 shrink-0" />
                                                 <span>Nel piano «{{ competenzaPianoDi(riga.conto_id)!.piano }}» questa voce matura su {{ descriviTratti(competenzaPianoDi(riga.conto_id)!.tratti) }}: il riparto ordinario segue quei giorni, non la competenza dichiarata sulla fattura.</span>
@@ -1279,6 +1335,9 @@ const pageGuides = [
                                                     </div>
                                                 </template>
                                             </v-select>
+                                            <p v-if="(form.errors as any)[`righe.${idx}.immobile_id`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.immobile_id`] }}
+                                            </p>
                                         </div>
                                     </div>
 

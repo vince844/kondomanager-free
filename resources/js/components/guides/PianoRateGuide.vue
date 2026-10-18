@@ -147,7 +147,7 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 <strong>Scegliendo delle voci</strong>, ne finanzi solo alcune — per esempio il solo
                                 riscaldamento — e per ciascuna puoi chiedere un <strong>importo parziale</strong>
-                                invece dell'intero.
+                                invece dell'intero. L'importo si scrive senza il segno, anche per una voce di entrata, come un affitto o un canone: ha l'etichetta <strong>«Entrata»</strong> e si sottrae alle spese, e con delle entrate il totale delle voci scelte si chiama <strong>«Da ripartire»</strong>, con le spese e le entrate fra parentesi. Le versioni precedenti permettevano una voce di spesa con un importo negativo, che il calcolo delle quote addebita in positivo: se il piano ne prenderebbe una, con le voci scelte o con tutto il preventivo, non si crea, e il messaggio dice quale voce correggere nel piano dei conti.
                             </p>
                         </section>
 
@@ -211,8 +211,7 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 Lo stesso cancello nomina il <strong>defunto</strong>: se dopo una successione con l'arretrato
                                 agli eredi il piano calcola ancora le quote del defunto per i giorni fino al decesso, dice la
-                                cifra, la parte di ogni erede per quota e la strada — un saldo manuale dal Wallet, se nessuno ha
-                                già un saldo su quella gestione e quell'unità, altrimenti la parte si regola fra le parti. Lo
+                                cifra, la parte di ogni erede per quota e la strada — un saldo manuale dal Wallet, se nessuno ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti. Lo
                                 ripete a ogni ricalcolo, anche dopo la registrazione dei saldi: se quei saldi sono davvero la parte di
                                 ognuno dice che ci sono già, altrimenti dice ancora che la parte si regola fra le parti.
                             </p>

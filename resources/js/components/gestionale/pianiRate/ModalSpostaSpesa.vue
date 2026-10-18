@@ -8,14 +8,16 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertTriangle, ArrowRightLeft, Wallet, Lightbulb, Info } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { destinazioniAmmesse, TIPO_MISTO } from '@/lib/gestionale/pianiRate/budgetMovements';
 
 const props = defineProps<{
   show: boolean;
   pianoRateId: number;
   condominioId: number;
   // Sources deve avere importo_residuo (int) per la logica e formatted_residuo (string) per la UI
-  sources: Array<{ id: number; nome: string; importo_residuo: number; formatted_residuo: string }>;
-  destinations: Array<{ id: number; nome: string }>;
+  // `tipo` manca sulle sorgenti dei piani straordinari (sono fatture): lì il filtro delle destinazioni lascia passare tutto. Altrimenti è «spesa», «entrata» o «misto».
+  sources: Array<{ id: number; nome: string; importo_residuo: number; formatted_residuo: string; tipo?: string | null }>;
+  destinations: Array<{ id: number; nome: string; tipo?: string | null }>;
 }>();
 
 const emit = defineEmits(['update:show', 'success']);
@@ -31,6 +33,19 @@ const form = useForm({
 // Computed per ottenere il saldo della sorgente selezionata
 const selectedSource = computed(() => {
   return props.sources.find(s => s.id === Number(form.source_id));
+});
+
+// Si sposta fra voci dello stesso tipo, quello del segno con cui il motore le distribuisce: il totale del piano è la somma delle voci con quel segno, e fra una spesa e un'entrata cambierebbe.
+const destinazioniOfferte = computed(() => destinazioniAmmesse(props.destinations, selectedSource.value));
+
+// Le frasi sul tipo valgono dove le sorgenti hanno il tipo (le voci di un piano ordinario). Nei piani straordinari le sorgenti sono fatture, senza tipo: il filtro lascia passare tutto.
+const sorgentiConTipo = computed(() => props.sources.some(s => !!s.tipo));
+
+// Cambiando la sorgente, una destinazione che non è più offerta si svuota: non resterebbe scelta una voce che il menu non mostra.
+watch(() => form.source_id, () => {
+  if (form.destination_id && !destinazioniOfferte.value.some(d => String(d.id) === form.destination_id)) {
+    form.destination_id = '';
+  }
 });
 
 // Validazione Importo: Confrontiamo Centesimi con Centesimi per evitare errori di virgola mobile
@@ -132,9 +147,10 @@ watch(() => props.show, (val) => {
                 v-for="source in sources" 
                 :key="source.id" 
                 :value="String(source.id)"
-                :disabled="source.importo_residuo <= 0"
+                :disabled="source.importo_residuo <= 0 || source.tipo === TIPO_MISTO"
               >
-                {{ source.nome }} (Disp: € {{ source.formatted_residuo }})
+                <template v-if="source.tipo === TIPO_MISTO">{{ source.nome }} (capitolo con spese ed entrate: non si sposta)</template>
+                <template v-else>{{ source.nome }} (Disp: € {{ source.formatted_residuo }})</template>
               </SelectItem>
             </SelectContent>
           </Select>
@@ -157,7 +173,7 @@ watch(() => props.show, (val) => {
                 class="max-h-[200px]"
             >
               <SelectItem 
-                v-for="dest in destinations" 
+                v-for="dest in destinazioniOfferte" 
                 :key="dest.id" 
                 :value="String(dest.id)"
                 :disabled="dest.id === Number(form.source_id)"
@@ -166,6 +182,10 @@ watch(() => props.show, (val) => {
               </SelectItem>
             </SelectContent>
           </Select>
+          <p v-if="sorgentiConTipo" class="text-xs text-muted-foreground">
+            Si sposta fra voci dello stesso tipo: spese con spese, entrate con entrate. Non si offrono i capitoli con spese ed entrate insieme, né le voci che si
+            sovrapporrebbero a un capitolo o ai sottoconti già nel piano: sposta il budget sulla voce che c'è.
+          </p>
           <span v-if="form.errors.destination_id" class="text-xs text-red-500">{{ form.errors.destination_id }}</span>
         </div>
 

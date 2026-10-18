@@ -20,6 +20,7 @@ class StoreFatturaRequest extends FormRequest
     public function rules(): array
     {
         $isPregresso = filter_var($this->input('is_pregresso', false), FILTER_VALIDATE_BOOLEAN);
+        $condominioId = (int) $this->route('condominio')->id;
 
         // ⚠️ Vedi la nota estesa in UpdateFatturaRequest: il `min:0` sull'imponibile di riga
         // vale **solo** per la nota di credito, dove il segno lo porta già il moltiplicatore
@@ -72,7 +73,7 @@ class StoreFatturaRequest extends FormRequest
             // quindi la metà si rifiuta qui, non si tollera. `dal = al` è la delibera puntuale (D2).
             'competenza_dal'     => 'nullable|date|required_with:competenza_al',
             'competenza_al'      => 'nullable|date|required_with:competenza_dal|after_or_equal:competenza_dal',
-            'conto_corrente_id'  => 'nullable|exists:conti_contabili,id',
+            'conto_corrente_id'  => PerimetroFattura::regolaContoDiAddebito($condominioId),
             'modalita_pagamento' => 'required|string',
             'stato_approvazione' => 'required|in:da_approvare,approvata,contestata,sforo_motivato',
             
@@ -122,7 +123,7 @@ class StoreFatturaRequest extends FormRequest
             // quindi la regola non ha falsi positivi — è la rete sotto, non un cambio di flusso.
             'dati_extra.override_budget.importo_sforo'         => 'required_with:dati_extra.override_budget|integer|min:0',
             'dati_extra.override_budget.strategia_rientro'     => 'required_with:dati_extra.override_budget|in:conguaglio_fine_anno,rata_integrativa,fondo_riserva',
-            'dati_extra.override_budget.fondo_patrimoniale_id' => 'nullable|integer|exists:conti_contabili,id',
+            'dati_extra.override_budget.fondo_patrimoniale_id' => PerimetroFattura::regolaFondo($condominioId),
 
             'dati_extra.log_legale_sopravvenienza'                           => 'nullable|array',
             'dati_extra.log_legale_sopravvenienza.nome_voce'                 => 'required_with:dati_extra.log_legale_sopravvenienza|string|min:5',
@@ -132,7 +133,7 @@ class StoreFatturaRequest extends FormRequest
             'dati_extra.log_legale_sopravvenienza.is_ordinario'              => 'required_with:dati_extra.log_legale_sopravvenienza|boolean',
             'dati_extra.log_legale_sopravvenienza.richiede_copertura'        => 'required_with:dati_extra.log_legale_sopravvenienza|boolean',
             'dati_extra.log_legale_sopravvenienza.motivazione_sforo'         => 'nullable|string',
-            'dati_extra.log_legale_sopravvenienza.tabella_millesimale_id'    => 'nullable|integer|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
+            'dati_extra.log_legale_sopravvenienza.tabella_millesimale_id'    => PerimetroFattura::regolaTabella($condominioId, 'required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale'),
             'dati_extra.log_legale_sopravvenienza.percentuale_proprietario'  => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
             'dati_extra.log_legale_sopravvenienza.percentuale_inquilino'     => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
             'dati_extra.log_legale_sopravvenienza.percentuale_usufruttuario' => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
@@ -155,11 +156,12 @@ class StoreFatturaRequest extends FormRequest
             // a più aliquote non ricostruisce il numero vero.
             $rules['imposta_pregressa']          = 'nullable|numeric|min:0';
             $rules['data_competenza_originaria'] = 'nullable|date';
-            $rules['saldo_patrimoniale_id']      = 'nullable|integer|exists:saldi,id';
+            $rules['saldo_patrimoniale_id']      = PerimetroFattura::regolaDebito($condominioId);
             
             $rules['coperture']                       = 'nullable|array';
             $rules['coperture.*.tipo_copertura']      = 'required_with:coperture|in:rata_0,sopravvenienza,fondo_riserva,saldo_patrimoniale';
             $rules['coperture.*.importo']             = 'required_with:coperture|numeric|min:0';
+            // Il perimetro della fonte dipende dal tipo della sua riga: si controlla in `withValidator`.
             $rules['coperture.*.fonte_id']            = 'nullable|integer';
             $rules['coperture.*.nota_amministratore'] = 'nullable|string|max:500';
 
@@ -173,18 +175,8 @@ class StoreFatturaRequest extends FormRequest
             // Conto::find() e ne usa il conto_contabile_id per la riga DARE. Un id di
             // un altro condominio avrebbe agganciato la scrittura al mastro altrui,
             // inquinandone i saldi senza che nulla lo segnalasse.
-            $rules['righe.*.conto_id'] = [
-                'nullable',
-                Rule::exists('conti', 'id')->whereIn(
-                    'piano_conto_id',
-                    fn ($q) => $q->select('id')->from('piani_conti')
-                        ->where('condominio_id', $this->route('condominio')->id)
-                ),
-            ];
-            $rules['righe.*.immobile_id'] = [
-                'nullable',
-                Rule::exists('immobili', 'id')->where('condominio_id', $this->route('condominio')->id),
-            ];
+            $rules['righe.*.conto_id'] = PerimetroFattura::regolaVoce($condominioId);
+            $rules['righe.*.immobile_id'] = PerimetroFattura::regolaUnita($condominioId);
             $rules['righe.*.is_sopravvenienza']  = 'nullable|boolean';
 
             // Design §8 punto 9: la base ritenuta non coincide con l'imponibile IVA
@@ -218,13 +210,12 @@ class StoreFatturaRequest extends FormRequest
 
     public function messages(): array
     {
-        return [
+        return array_merge(PerimetroFattura::messaggi(), [
             'fattura_rettificata_id.exists' => 'La fattura che la nota rettifica dev\'essere una fattura dello stesso fornitore, registrata in questo condominio.',
             'fattura_rettificata_id.prohibited_unless' => 'Solo una nota di credito rettifica una fattura.',
             'dati_extra.override_budget.motivazione.min' => 'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
             'dati_extra.override_budget.motivazione.required_with' => 'La motivazione è obbligatoria quando si supera il budget.',
             'dati_extra.override_budget.strategia_rientro.required_with' => 'Devi selezionare una strategia di rientro per lo sforo.',
-            'dati_extra.override_budget.fondo_patrimoniale_id.exists' => 'Il fondo di riserva selezionato non è valido.',
             'data_competenza_originaria.required_if' => 'La data di origine è obbligatoria per i debiti pregressi (verifica prescrizione).',
             'coperture.required_if' => 'Devi specificare come coprire questo debito pregresso.',
             'imponibile_pregresso.required_if' => 'L\'importo della fattura pregressa è obbligatorio.',
@@ -238,7 +229,7 @@ class StoreFatturaRequest extends FormRequest
             'righe.*.importo_imponibile.required_with' => 'L\'importo è obbligatorio.',
             'righe.*.importo_imponibile.min'          => "Su una nota di credito l'importo di riga non può essere negativo: "
                 .'il segno lo mette già il tipo di documento. Scrivi la cifra da accreditare.',
-        ];
+        ]);
     }
 
     public function withValidator($validator): void
@@ -247,10 +238,18 @@ class StoreFatturaRequest extends FormRequest
             
             $isPregresso = filter_var($this->input('is_pregresso', false), FILTER_VALIDATE_BOOLEAN);
 
+            $condominioId = (int) $this->route('condominio')->id;
+
             // FIX: Se è un debito pregresso, ignoriamo del tutto l'analisi delle righe
             if (!$isPregresso) {
                 $righe = $this->input('righe', []);
                 $haLavoriPrivati = false;
+
+                // Il capitolo di una fattura è una voce di spesa. La nota di credito del fornitore è il documento che disfa una fattura
+                // sbagliata: resta com'è.
+                if ($this->input('tipo_documento') === 'fattura') {
+                    PerimetroFattura::rifiutaLeEntrate($validator, $righe, $condominioId);
+                }
 
                 // ⚠️ **Una nota di credito deve restare un credito — il vincolo è sul documento.**
                 // Ha sostituito il `min:0` per riga: le singole righe di una nota possono essere
@@ -319,6 +318,10 @@ class StoreFatturaRequest extends FormRequest
                         'SCUDO PATRIMONIALE: Non puoi utilizzare il Fondo Riserva condominiale per coprire spese private.'
                     );
                 }
+            }
+
+            if ($isPregresso) {
+                PerimetroFattura::controllaLeFonti($validator, $this->input('coperture'), $condominioId);
             }
 
             $this->guardiaNaturaPercipienteMancante($validator);

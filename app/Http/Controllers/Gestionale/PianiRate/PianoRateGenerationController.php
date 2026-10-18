@@ -9,6 +9,7 @@ use App\Enums\StatoPianoRate;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
+use App\Exceptions\Gestionale\SpesaNegativaNelPianoException;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Immobile;
@@ -95,10 +96,14 @@ class PianoRateGenerationController extends Controller
             // 3. Sincronizzazione Granulare
             $orphanIds = $validated['orphan_ids'] ?? [];
             $nuoviCapitoli = 0;
+            $appenaSincronizzate = [];
             
             // Se l'array è vuoto, significa che l'utente ha scelto "Ricalcola (Senza aggiunte)"
             if (!empty($orphanIds)) {
+                $vociPrima = $this->vociDelPiano($pianoRate);
                 $nuoviCapitoli = $syncAction->execute($pianoRate, $orphanIds);
+                // Le voci scritte adesso non hanno una copia che il piano tenga da prima: se il fermo le trova negative lo dice come voci.
+                $appenaSincronizzate = array_values(array_diff($this->vociDelPiano($pianoRate), $vociPrima));
             }
 
             // 4. Reset e Rigenerazione Inbox
@@ -120,6 +125,7 @@ class PianoRateGenerationController extends Controller
                 accettaDestinatari: $accettaDestinatari,
                 notaDestinatari: $notaDestinatari,
                 esercizio: $esercizio,
+                appenaSincronizzate: $appenaSincronizzate,
             ));
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
@@ -161,11 +167,20 @@ class PianoRateGenerationController extends Controller
         } catch (DestinatariCambiatiException $e) {
             DB::rollBack();
             return back()->with('destinatari_warning', $e->getCambiamenti());
+        } catch (SpesaNegativaNelPianoException $e) {
+            DB::rollBack();
+            return back()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore rigenerazione piano rate", ['error' => $e->getMessage()]);
             return back()->with($this->flashError("Errore durante il ricalcolo: " . $e->getMessage()));
         }
+    }
+
+    /** @return list<int> gli id delle voci che stanno nella pivot del piano */
+    private function vociDelPiano(PianoRate $pianoRate): array
+    {
+        return DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->pluck('conto_id')->map(fn ($id) => (int) $id)->all();
     }
 
 }

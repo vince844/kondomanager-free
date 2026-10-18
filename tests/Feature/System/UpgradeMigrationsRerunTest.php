@@ -222,6 +222,9 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // Beta.43 (decisione 55): la riga di titolarità da cui viene ogni riga di riparto — colonna più chiave esterna, due
     // statement su MySQL. Nessun travaso: i piani di prima restano senza legame, e il conguaglio lo deduce al volo.
     '2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table',
+    // La frase del promemoria del credito: riscrive **dati** (`eventi.description`) e nessuna struttura, quindi la riesecuzione è un
+    // no-op strutturale. La sua idempotenza sta nella `WHERE` sulla frase vecchia: al secondo giro non trova righe.
+    '2026_10_17_100000_riscrivi_descrizioni_promemoria_credito',
 ]);
 
 it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {

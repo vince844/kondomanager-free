@@ -171,7 +171,7 @@ final class AnnullaPassaggioAction
                 ? 'La voce che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» resta com\'è: %s. Vale per tutta la tabella, anche per le altre unità in usufrutto; se va riportata com\'era, si cambia dalla pagina della voce.'
                 : 'Le voci che questo passaggio ha spostato dal «Proprietario» all\'«Usufruttuario» restano come sono: %s. Valgono per tutta la tabella, anche per le altre unità in usufrutto; se vanno riportate com\'erano, si cambiano dalla pagina della voce.',
                 // Rilievo A6 della Fase 1-bis: i coefficienti di prima, dal registro. «Al Proprietario» era falso per una voce divisa.
-                $this->elenco(array_map(fn (array $v) => sprintf('%s (%s, %s; prima %s)', $v['conto'] ?? '?', $v['tabella'] ?? '?', $v['gestione'] ?? '?', VociDaSpostare::coefficientiAParole($v['prima'] ?? [])), $voci)));
+                $this->elenco(array_map(fn (array $v) => VociDaSpostare::etichetta($v, sprintf('; prima %s', VociDaSpostare::coefficientiAParole($v['prima'] ?? []))), $voci)));
         }
 
         // Decisione 46 (rilievo W2): con la rinuncia o con il conguaglio annullato le parti hanno regolato fra loro. Annullato e

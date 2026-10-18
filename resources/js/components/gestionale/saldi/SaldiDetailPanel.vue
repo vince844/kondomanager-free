@@ -206,29 +206,47 @@ const modalForm = ref({
   importo: ''
 });
 
-function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
-  const idAssegnati = props.immobile.saldi
-    .filter((s: any) => s.gestione_id == gestioneId && s.anagrafica_id != null)
+// Chi ha già un saldo sulla gestione. Il server (`CreateSaldoRequest`) non conta le righe che un passaggio ha scritto
+// (`subentro_id`): chi ha solo la riga di un conguaglio può avere accanto il suo saldo manuale.
+function idConUnSaldo(gestioneId: number | null): number[] {
+  return props.immobile.saldi
+    .filter((s: any) => s.gestione_id == gestioneId && s.anagrafica_id != null && s.subentro_id == null)
     .map((s: any) => s.anagrafica_id);
-    
+}
+
+// Un saldo per l'intero immobile (senza persona) sulla gestione: il server (`CreateSaldoRequest`) ne ammette uno solo, e non conta le righe
+// che un passaggio ha scritto.
+function haUnSaldoSolidale(gestioneId: number | null): boolean {
+  return props.immobile.saldi.some((s: any) => s.gestione_id == gestioneId && s.anagrafica_id == null && s.subentro_id == null);
+}
+
+// Il rifiuto del server alla richiesta del modale (un secondo saldo per l'intero immobile o per la stessa persona, un importo non valido):
+// si legge qui, nel modale, che resta aperto.
+const erroreModale = ref<string | null>(null);
+
+function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
+  const idAssegnati = idConUnSaldo(gestioneId);
+
   const liberi = props.immobile.anagrafiche?.filter(a => !idAssegnati.includes(a.id)) || [];
 
+  erroreModale.value = null;
   modalForm.value = {
     gestioneId,
     tipo,
-    targetType: 'solidale',
+    // Dove l'intero immobile ha già il suo saldo la scelta di partenza è la persona.
+    targetType: haUnSaldoSolidale(gestioneId) ? 'personale' : 'solidale',
     anagraficaId: liberi.length === 1 ? liberi[0].id : null,
     importo: ''
   };
   showAddModal.value = true;
 }
 
+const saldoSolidaleEsiste = computed(() => haUnSaldoSolidale(modalForm.value.gestioneId));
+
 const anagraficheDisponibili = computed(() => {
   if (!modalForm.value.gestioneId || !props.immobile.anagrafiche) return [];
 
-  const idAssegnati = props.immobile.saldi
-    .filter((s: any) => s.gestione_id == modalForm.value.gestioneId && s.anagrafica_id != null)
-    .map((s: any) => s.anagrafica_id);
+  const idAssegnati = idConUnSaldo(modalForm.value.gestioneId);
 
   return props.immobile.anagrafiche.filter(a => !idAssegnati.includes(a.id));
 });
@@ -252,6 +270,7 @@ function submitAddModal() {
   
   const finalCents = modalForm.value.tipo === 'credito' ? -cents : cents;
 
+  erroreModale.value = null;
   router.post(
     route('admin.gestionale.saldi.store', { condominio: props.condominio.id }),
     {
@@ -260,7 +279,14 @@ function submitAddModal() {
       gestione_id:    modalForm.value.gestioneId,
       saldo_iniziale: finalCents,
     },
-    { preserveScroll: true, onSuccess: () => closeAddModal() }
+    {
+      preserveScroll: true,
+      onSuccess: () => closeAddModal(),
+      // Qualunque campo dia il rifiuto, il modale lo mostra: `anagrafica_id` (un saldo c'è già), `saldo_iniziale`, `error`.
+      onError: (errors: Record<string, string>) => {
+        erroreModale.value = Array.from(new Set(Object.values(errors).filter(Boolean))).join(' ') || null;
+      },
+    }
   );
 }
 
@@ -578,9 +604,9 @@ function submitAddModal() {
               <label class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">A chi è assegnato?</label>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 
-                <label class="cursor-pointer">
-                  <input type="radio" v-model="modalForm.targetType" value="solidale" class="peer sr-only" />
-                  <div class="h-full rounded-xl border-2 dark:border-slate-700 p-4 transition-all peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-900/20 hover:bg-slate-50 dark:hover:bg-slate-800 relative">
+                <label :class="saldoSolidaleEsiste ? 'cursor-not-allowed' : 'cursor-pointer'">
+                  <input type="radio" v-model="modalForm.targetType" value="solidale" :disabled="saldoSolidaleEsiste" class="peer sr-only" />
+                  <div class="h-full rounded-xl border-2 dark:border-slate-700 p-4 transition-all peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-900/20 hover:bg-slate-50 dark:hover:bg-slate-800 peer-disabled:opacity-50 peer-disabled:hover:bg-transparent relative">
                     <div class="flex items-center gap-2 mb-2 text-indigo-700 dark:text-indigo-400">
                       <Building2 class="w-5 h-5" />
                       <span class="font-bold text-sm">Intero immobile</span>
@@ -589,6 +615,9 @@ function submitAddModal() {
                       Solidale. Verrà ripartito in automatico fra chi ha un diritto reale sull'unità — mai l'inquilino — al momento della generazione del piano rate (Art. 63).
                     </p>
                   </div>
+                  <p v-if="saldoSolidaleEsiste" class="mt-1.5 text-xs leading-snug text-amber-700 dark:text-amber-400">
+                    Questa gestione ha già un saldo per l'intero immobile: modifica quello esistente.
+                  </p>
                 </label>
 
                 <label class="cursor-pointer">
@@ -637,6 +666,10 @@ function submitAddModal() {
                 </div>
 
               </div>
+            </div>
+
+            <div v-if="erroreModale" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 dark:border-rose-900/40 dark:bg-rose-900/10 px-4 py-3 text-sm text-rose-900 dark:text-rose-200 flex items-start gap-2">
+              <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" /><span>{{ erroreModale }}</span>
             </div>
 
             <div class="space-y-1.5">

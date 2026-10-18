@@ -57,6 +57,16 @@ const props = defineProps<{
    * `passaggi` sono quelli del conguaglio, che va sotto l'ultima ragione. Null se il piano si riscrive.
    */
   fermo_del_piano?: { ragioni: string[]; passaggi: string[]; rimedi: string[] } | null;
+  /**
+   * Il piano contiene una voce di spesa con un importo negativo, che il motore addebita in positivo: nomina la voce con la cifra e dice le
+   * strade, tutte (nessuna è già scelta). C'è in ogni stato del piano e non spegne niente: il cestino dipende da `fermo_del_piano`.
+   */
+  avviso_spesa_negativa?: { titolo: string; voci: string[]; situazione: string; strade: string[] } | null;
+  /**
+   * Un capitolo ha la sua riga nel piano insieme a quelle dei suoi sottoconti: il motore passa la quota del capitolo ai sottoconti e salta la loro riga, quindi
+   * il piano chiede più di quanto ripartisce. Nomina il capitolo e i sottoconti e dice come uscirne. Fisso finché le righe sono sovrapposte, senza pulsanti.
+   */
+  avviso_righe_sovrapposte?: { titolo: string; voci: string[]; situazione: string; strade: string[] } | null;
   copertura: {
       scoperto_count: number;
       orfani: Array<{ id: number; nome: string; importo: number; da_sposta_spesa?: boolean }>;
@@ -848,6 +858,54 @@ const printRipartoCapitoli = () => {
 
           
           <div
+              v-if="avviso_spesa_negativa"
+              role="alert"
+              class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-sm dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+          >
+              <div class="flex gap-3">
+                  <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+                  <div class="space-y-2">
+                      <p class="font-semibold">{{ avviso_spesa_negativa.titolo }}</p>
+                      <ul v-if="avviso_spesa_negativa.voci.length > 1" class="list-disc space-y-0.5 pl-4">
+                          <li v-for="(voce, i) in avviso_spesa_negativa.voci" :key="i">{{ voce }}</li>
+                      </ul>
+                      <p v-else>{{ avviso_spesa_negativa.voci[0] }}</p>
+                      <p>{{ avviso_spesa_negativa.situazione }}</p>
+                      <div v-if="avviso_spesa_negativa.strade.length">
+                          <p class="font-medium">Le strade possibili:</p>
+                          <ul class="mt-0.5 list-disc space-y-0.5 pl-4">
+                              <li v-for="(strada, i) in avviso_spesa_negativa.strade" :key="i">{{ strada }}</li>
+                          </ul>
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <div
+              v-if="avviso_righe_sovrapposte"
+              role="alert"
+              class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+              <div class="flex gap-3">
+                  <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                  <div class="space-y-2">
+                      <p class="font-semibold">{{ avviso_righe_sovrapposte.titolo }}</p>
+                      <ul v-if="avviso_righe_sovrapposte.voci.length > 1" class="list-disc space-y-0.5 pl-4">
+                          <li v-for="(voce, i) in avviso_righe_sovrapposte.voci" :key="i">{{ voce }}</li>
+                      </ul>
+                      <p v-else>{{ avviso_righe_sovrapposte.voci[0] }}</p>
+                      <p>{{ avviso_righe_sovrapposte.situazione }}</p>
+                      <div v-if="avviso_righe_sovrapposte.strade.length">
+                          <p class="font-medium">Come uscirne:</p>
+                          <ul class="mt-0.5 list-disc space-y-0.5 pl-4">
+                              <li v-for="(strada, i) in avviso_righe_sovrapposte.strade" :key="i">{{ strada }}</li>
+                          </ul>
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <div
               v-if="pianoRate.nota_scoperti"
               class="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700
                      dark:bg-slate-900/30 px-4 py-3 text-xs text-slate-600 dark:text-slate-400"
@@ -1302,7 +1360,12 @@ const printRipartoCapitoli = () => {
                             <p class="text-[10px] text-gray-500">
                                 {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • 
                                 <span :class="{'text-red-600 font-bold dark:text-red-400': isDisallineato}">
-                                    totale preventivo: {{ euro(props.pianoRate.totale_capitoli) }}
+                                    <template v-if="(props.pianoRate.totale_entrate ?? 0) > 0">
+                                        da ripartire: {{ euro(props.pianoRate.totale_da_ripartire) }} (spese {{ euro(props.pianoRate.totale_spese) }}, entrate {{ euro(props.pianoRate.totale_entrate) }})
+                                    </template>
+                                    <template v-else>
+                                        totale preventivo: {{ euro(props.pianoRate.totale_da_ripartire) }}
+                                    </template>
                                 </span>
                             </p>
                         </div>
@@ -1344,6 +1407,9 @@ const printRipartoCapitoli = () => {
                                     <span v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 dark:bg-neutral-800 dark:border-neutral-800">
                                         <CheckCircle2 class="w-3 h-3" /> Standard
                                     </span>
+                                    <span v-if="capitolo.tipo === 'entrata'" class="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60" title="Le entrate si sottraggono alle spese">
+                                        Entrata
+                                    </span>
                                 </div>
                                 <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">Include: {{ capitolo.figli_names }}</p>
                                 <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1 dark:text-amber-400">
@@ -1360,7 +1426,7 @@ const printRipartoCapitoli = () => {
                                     :piano-rate-id="props.pianoRate.id"
                                     @stornato="showFeedback('Movimento stornato', 'I fondi sono tornati alla voce di origine.', false)"
                                 />
-                                <span class="text-xs font-medium text-gray-700 dark:text-neutral-300">{{ euro(capitolo.importo) }}</span>
+                                <span class="text-xs font-medium text-gray-700 dark:text-neutral-300">{{ capitolo.tipo === 'entrata' ? euro(-Math.abs(capitolo.importo)) : euro(capitolo.importo) }}</span>
                                 <button 
                                     @click="confirmDetachItem(capitolo)"
                                     :disabled="switchState || isRecalculateBlocked"
@@ -1921,6 +1987,10 @@ const printRipartoCapitoli = () => {
             <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60">
                 <RotateCw class="w-4 h-4 shrink-0 mt-0.5" />
                 <span><strong>Importante:</strong> Tutte le rate dei condomini verranno ricalcolate immediatamente.</span>
+            </div>
+            <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60">
+                <CalendarDays class="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Se la voce ha dei <strong>tratti di competenza</strong>, con la rimozione si perdono: annotali prima, perché si riscrivono solo ricreando il piano.</span>
             </div>
         </div>
     </ConfirmDialog>

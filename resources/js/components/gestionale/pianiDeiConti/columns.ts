@@ -86,15 +86,21 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
       enableSorting: false,
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Budget & Composizione' }),
     cell: ({ row }) => {
+      // «Preventivo» è la somma delle sole voci di spesa; le voci di entrata hanno la loro riga.
       const totale = row.original.importo_totale ?? 0;
+      const entrate = row.original.importo_entrate ?? 0;
       const capitoliCount = row.original.capitoli_count ?? 0;
-      
+      const vociDiEntrata = row.original.capitoli_entrate_count ?? 0;
+
       return h('div', { class: 'flex flex-col gap-1' }, [
         h('span', { class: 'text-sm font-bold text-slate-700 dark:text-slate-300' }, euro(totale)),
         h('span', { class: 'text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-tight' }, [
             h(Layers, { class: 'w-3 h-3' }),
-            `${capitoliCount} voci di spesa`
+            vociDiEntrata > 0 ? `${capitoliCount} voci (${vociDiEntrata} di entrata)` : `${capitoliCount} voci di spesa`
         ]),
+        vociDiEntrata > 0
+          ? h('span', { class: 'text-xs text-slate-500' }, `Entrate ${euro(entrate)}`)
+          : null,
       ]);
     },
   },

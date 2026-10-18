@@ -1470,6 +1470,7 @@ return [
                     ],
                     'help' => [
                         'supplier_prefill' => 'Será pré-preenchido nas faturas.',
+                        'income_usufruct' => 'Uma renda ou taxa que o condomínio recebe é um fruto civil e cabe ao usufrutuário (art. 984 do Código Civil italiano); se o título do usufruto disser outra coisa, vale entre as partes. Nas unidades em usufruto decide esta rubrica: com «Usufrutuário %» a 100 a receita vai para o usufrutuário, com «Proprietário %» a 100 para o nu-proprietário. Com o usufrutuário inserido à mão na ficha da unidade, uma data de início a meio do ano não divide a receita dia a dia, salvo uma linha de usufruto terminada na véspera; uma data de fim divide. «Registra passaggio» divide os dias.',
                     ],
                     'actions' => [
                         'saving' => 'A guardar...',

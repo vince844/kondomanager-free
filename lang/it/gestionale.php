@@ -1115,6 +1115,7 @@ return [
                     ],
                     'help' => [
                         'supplier_prefill' => 'Verrà precompilato nelle fatture.',
+                        'income_usufruct' => 'Un affitto o un canone che il condominio incassa è un frutto civile e spetta all\'usufruttuario (art. 984 c.c.); se il titolo dell\'usufrutto dice altro, vale fra le parti. Sulle unità in usufrutto decide questa voce: con «Usufruttuario %» a 100 l\'entrata va all\'usufruttuario, con «Proprietario %» a 100 al nudo proprietario. Con l\'usufruttuario inserito a mano nella scheda dell\'unità, una data di inizio a metà anno non divide l\'entrata giorno per giorno, salvo una riga di usufrutto chiusa il giorno prima; una data di fine sì. «Registra passaggio» divide i giorni.',
                     ],
                     'actions' => [
                         'saving' => 'Salvataggio...',

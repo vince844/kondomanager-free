@@ -209,6 +209,8 @@ export interface VoceDaSpostare {
   id: number;
   conto_id: number;
   conto: string;
+  /** Spesa o entrata: un'entrata che è un frutto civile passa all'«Usufruttuario» per l'art. 984 c.c. Assente nel pannello di una versione di prima: vale una spesa. */
+  tipo?: 'spesa' | 'entrata';
   tabella: string;
   gestione: string;
   /** La parte della voce sul «Proprietario», in percentuale. */

@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { Plus, AlertTriangle, Wallet, Receipt, FolderTree, Settings2, Calculator, Lock, Printer, ChevronDown } from 'lucide-vue-next'
+import { Plus, AlertTriangle, Wallet, Receipt, FolderTree, Settings2, Calculator, Lock, Printer, ChevronDown, TrendingUp } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -45,6 +45,9 @@ const props = defineProps<{
   fornitori: Array<{ id: number, ragione_sociale: string }>
   tabelle: Array<{ id: number, nome: string }>
   totalePreventivo: number
+  // Le voci di entrata hanno il loro totale (valore assoluto): il preventivo conta le sole voci di spesa.
+  totaleEntrate?: number
+  totaleDaRipartire?: number
   totaleSopravvenienze: number
   totaleConsuntivo: number
 }>()
@@ -116,7 +119,7 @@ const pageGuides = [
   },
   {
     title: 'Preventivo e Consuntivo',
-    description: 'Per ogni voce vedi quanto avevi previsto e quanto hai speso davvero. Clicca il consuntivo per scoprire da quali movimenti nasce.',
+    description: 'Per ogni voce vedi quanto avevi previsto e quanto hai speso davvero. Clicca il consuntivo per scoprire da quali movimenti nasce. Il preventivo conta le sole voci di spesa: le entrate hanno il loro totale.',
     icon: Calculator,
     colorVariant: 'amber' as const
   }
@@ -406,6 +409,12 @@ const printRiparto = () => {
                   <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
                     <Wallet class="w-3 h-3" />
                     Preventivo: {{ euro(props.totalePreventivo) }}
+                  </span>
+                  <span v-if="(props.totaleEntrate ?? 0) > 0"
+                        class="bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm"
+                        :title="`Le entrate si sottraggono alle spese: da ripartire ${euro(props.totaleDaRipartire ?? 0)}.`">
+                    <TrendingUp class="w-3 h-3" />
+                    Entrate: {{ euro(props.totaleEntrate ?? 0) }}
                   </span>
                   <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
                     <Receipt class="w-3 h-3" />

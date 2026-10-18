@@ -15,6 +15,8 @@ import { useTabelle } from '@/composables/useTabelle'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import vSelect from 'vue-select'
 import MoneyInput from '@/components/MoneyInput.vue'
+import SuggerimentoEntrataUsufrutto from './SuggerimentoEntrataUsufrutto.vue'
+import { trans } from 'laravel-vue-i18n'
 import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 
 interface Emits {
@@ -45,7 +47,9 @@ const moneyOptions = ref({
   decimal: ',',          
   precision: 2,            
   allowBlank: false,
-  masked: true 
+  masked: true,
+  // Il segno lo decide il tipo della voce: il meno non si scrive (come nel Wallet dei saldi e nel modulo del piano).
+  disableNegative: true
 })
 
 const form = useForm({
@@ -269,6 +273,7 @@ const submit = () => {
                 class="mt-1"
                 @focus="form.clearErrors('importo')"
               />
+              <p class="mt-1 text-xs text-muted-foreground">Si scrive senza il segno: lo decide il tipo della voce.</p>
               <InputError :message="form.errors.importo" />
             </div>
 
@@ -291,18 +296,20 @@ const submit = () => {
 
             <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
               <div>
-                <Label class="text-xs">Proprietario %</Label>
+                <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.owner_percent') }}</Label>
                 <Input v-model="form.percentuale_proprietario" placeholder="100" class="h-8 mt-1" />
               </div>
               <div>
-                <Label class="text-xs">Inquilino %</Label>
+                <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.tenant_percent') }}</Label>
                 <Input v-model="form.percentuale_inquilino" placeholder="0" class="h-8 mt-1" />
               </div>
               <div>
-                <Label class="text-xs">Usufruttuario %</Label>
+                <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.usufructuary_percent') }}</Label>
                 <Input v-model="form.percentuale_usufruttuario" placeholder="0" class="h-8 mt-1" />
               </div>
             </div>
+
+            <SuggerimentoEntrataUsufrutto v-if="!isCapitolo && form.tipo === 'entrata'" />
 
             <div>
               <Label for="note">Note</Label>

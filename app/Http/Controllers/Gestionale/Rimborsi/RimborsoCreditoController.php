@@ -9,6 +9,7 @@ use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\RataQuote;
+use App\Services\Gestionale\EventiRataCondomino;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Carbon\CarbonImmutable;
@@ -50,6 +51,10 @@ class RimborsoCreditoController extends Controller
             $request->input('nota') ? trim((string) $request->input('nota')) : null,
             Auth::id(),
         );
+
+        // Il credito restituito cambia il netto della rata: il promemoria della persona nel portale si riallinea come dopo un incasso.
+        $eventiRata = app(EventiRataCondomino::class);
+        $eventiRata->allineaPagato($eventiRata->coppieToccate($scrittura));
 
         return back()->with($this->flashSuccess(sprintf(
             'Rimborso registrato (%s): %s a %s dalla cassa «%s». Il credito della quota si è chiuso per quell\'importo.',

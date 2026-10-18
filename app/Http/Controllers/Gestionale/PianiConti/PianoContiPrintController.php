@@ -46,8 +46,19 @@ class PianoContiPrintController extends Controller
             $conto->setRelation('sottoconti', OrdinamentoConti::applica($conto->sottoconti, $ordina));
         });
 
+        // «Totale preventivo» è la somma delle sole voci di spesa; le voci di entrata si sommano a parte (in valore assoluto)
+        // e il netto da ripartire è la differenza.
         $totalePreventivo     = 0;
+        $totaleEntrate        = 0;
         $totaleSopravvenienze = 0;
+
+        $contaVoce = function (Conto $voce) use (&$totalePreventivo, &$totaleEntrate) {
+            if (Conto::segnoDelTipo((string) $voce->tipo) > 0) {
+                $totalePreventivo += $voce->importo ?? 0;
+            } else {
+                $totaleEntrate += abs($voce->importo ?? 0);
+            }
+        };
 
         foreach ($conti as $conto) {
             if ($conto->is_tecnico) {
@@ -61,12 +72,12 @@ class PianoContiPrintController extends Controller
                     if ($s->is_tecnico) {
                         $totaleSopravvenienze += $s->importo ?? 0;
                     } else {
-                        $totalePreventivo += $s->importo ?? 0;
+                        $contaVoce($s);
                     }
                 }
                 // Se il conto è foglia (nessun sottoconto), conta lui stesso
                 if ($conto->sottoconti->isEmpty()) {
-                    $totalePreventivo += $conto->importo ?? 0;
+                    $contaVoce($conto);
                 }
             }
         }
@@ -77,6 +88,8 @@ class PianoContiPrintController extends Controller
             'pianoConto'           => $pianoConto,
             'conti'                => $conti,
             'totalePreventivo'     => $totalePreventivo,
+            'totaleEntrate'        => $totaleEntrate,
+            'totaleDaRipartire'    => $totalePreventivo - $totaleEntrate,
             'totaleSopravvenienze' => $totaleSopravvenienze,
         ];
 

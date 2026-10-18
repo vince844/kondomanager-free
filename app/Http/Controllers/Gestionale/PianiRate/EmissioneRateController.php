@@ -22,6 +22,7 @@ use App\Events\Gestionale\RataEmessa;
 use App\Enums\EventoTipo;
 use App\Models\Evento;
 use App\Services\Gestionale\CreditoService;
+use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -898,28 +899,16 @@ class EmissioneRateController extends Controller
                         $rataIds[] = $rataId;
                         
                         // FIX: Recuperiamo l'ID di Marta (o del condomino a cui appartiene l'evento)
-                        $paganteId = $evt->anagrafiche->first()->id ?? null;
-                        
-                        if ($paganteId) {
-                            // Ora sommiamo SOLO i soldi di questo specifico condomino
-                            $importoPagato = DB::table('rate_quote')
-                                ->where('rata_id', $rataId)
-                                ->where('anagrafica_id', $paganteId) 
-                                ->sum('importo_pagato');
-                                
-                            $importoTotale = DB::table('rate_quote')
-                                ->where('rata_id', $rataId)
-                                ->where('anagrafica_id', $paganteId) 
-                                ->sum('importo');
+                        $pagante = $evt->anagrafiche->first();
 
-                            if ($importoPagato > 0 && $importoPagato >= $importoTotale) {
-                                $meta['status'] = 'paid'; 
-                            } elseif ($importoPagato > 0) {
-                                $meta['status'] = 'partial'; 
-                            }
-                            
-                            $meta['importo_pagato'] = $importoPagato;
-                            $meta['importo_restante'] = max(0, $importoTotale - $importoPagato);
+                        if ($pagante) {
+                            // Lo stato si calcola come per ogni altro scrittore del promemoria: dalle quote **di questa
+                            // persona** su questa rata, con il segno. Un credito puro resta un credito, non si azzera.
+                            $eventiRata = app(EventiRataCondomino::class);
+                            $quotePersona = RataQuote::with('immobile')->where('rata_id', $rataId)->where('anagrafica_id', $pagante->id)->get();
+                            $evt->meta = $meta;
+                            $eventiRata->applica($evt, $eventiRata->stato($quotePersona), $pagante, Rata::findOrFail($rataId));
+                            $meta = $evt->meta;
                         }
                     }
 

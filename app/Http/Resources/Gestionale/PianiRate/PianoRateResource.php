@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Gestionale\PianiRate;
 
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
+use App\Services\PianoRateQuoteService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\DB;
@@ -13,13 +14,12 @@ class PianoRateResource extends JsonResource
     {
         $isStraordinario = $this->tipo === 'straordinario';
 
-        // 1. CARICAMENTO RELAZIONI E CALCOLO TOTALE REALE
+        // 1. CARICAMENTO RELAZIONI E TOTALI
         if ($isStraordinario) {
             // SCENARIO 2: Leggiamo le fatture
             if (!$this->relationLoaded('fattureStraordinarie')) {
                 $this->load('fattureStraordinarie.fornitore');
             }
-            $totaleReale = $this->fattureStraordinarie->sum('pivot.importo_collegato');
         } else {
             // SCENARIO 1: Leggiamo i capitoli (Vecchia logica invariata)
             if (!$this->relationLoaded('capitoli')) {
@@ -27,12 +27,11 @@ class PianoRateResource extends JsonResource
                     $q->withPivot(['importo', 'note']);
                 }]);
             }
-            $totaleReale = $this->capitoli->sum(function ($capitolo) {
-                return !is_null($capitolo->pivot->importo) 
-                    ? $capitolo->pivot->importo 
-                    : $capitolo->importo;
-            });
         }
+
+        // Le spese e le entrate che il piano chiede, con lo stesso segno e lo stesso arrotondamento dell'atteso del badge:
+        // le voci di entrata non si sommano alle spese.
+        $totali = app(PianoRateQuoteService::class)->totaliPerSegnoCents($this->resource);
 
         // Gestione Stato
         $statoValue = $this->stato instanceof \UnitEnum ? $this->stato->value : $this->stato;
@@ -61,7 +60,9 @@ class PianoRateResource extends JsonResource
             'motivazione_autorizzazione'    => $this->motivazione_autorizzazione,
             'approvato_da_user_id'          => $this->approvato_da_user_id,
             'approvato_il'                  => $this->approvato_il?->format('Y-m-d H:i:s'),
-            'totale_capitoli'               => (int) $totaleReale,
+            'totale_spese'                  => $totali['spese'],
+            'totale_entrate'                => $totali['entrate'],
+            'totale_da_ripartire'           => $totali['spese'] - $totali['entrate'],
             'totale_piano'                  => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
             'gestione'                      => new GestioneResource($this->whenLoaded('gestione')),
             'budget_movements'              => $this->whenLoaded('budgetMovements'),
@@ -127,6 +128,7 @@ class PianoRateResource extends JsonResource
                             'note'              => $c->pivot->note,
                             'is_parent'         => $isParent,
                             'figli_names'       => $isParent ? $sottocontiSnapshot->pluck('nome')->join(', ') : '',
+                            'tipo'              => $c->segno($this->created_at) < 0 ? 'entrata' : 'spesa',
                         ];
                     });
                 }),

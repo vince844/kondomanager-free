@@ -92,7 +92,7 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">A chi è intestato</h3>
             <p class="mb-3">
-              Alla creazione scegli se il saldo appartiene all'unità nel suo insieme o a una persona precisa. La scelta cambia chi se lo vedrà addebitato quando le rate vengono emesse.
+              Alla creazione scegli se il saldo appartiene all'unità nel suo insieme o a una persona precisa. La scelta cambia chi se lo vedrà addebitato quando le rate vengono emesse. Per ogni gestione ed esercizio l'unità può avere un solo saldo per l'intero immobile e uno per persona, senza contare quelli scritti da un passaggio: dove l'intero immobile ha già il suo, la scelta è spenta e il modulo chiede di modificare quello esistente; il menu della persona offre solo chi non ha già il suo.
             </p>
             <div class="space-y-3">
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -254,7 +254,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Una parte che il programma non sposta</strong> (un passaggio che si ferma su una parte, il defunto che un piano calcola ancora) si passa a mano con due righe di segno opposto da qui, sulla stessa gestione, unità ed esercizio: la riga a credito a chi la deve avere, quella a debito a chi la deve pagare, e il prossimo piano le assorbe. Il pannello e il cancello la indicano solo se nessuna delle due persone ha già un saldo lì, perché il Wallet accetta una sola riga per persona, gestione, unità ed esercizio; altrimenti dicono che la parte si regola fra le parti. Se registri le righe per una parte che poi cambia (un inizio di locazione che la riduce o la azzera), il programma non le toglie: vanno corrette qui.</span>
+                  <span><strong>Una parte che il programma non sposta</strong> (un passaggio che si ferma su una parte, il defunto che un piano calcola ancora) si passa a mano con righe di segno opposto da qui, sulla stessa gestione, unità ed esercizio, una per persona: a credito di chi la deve avere, a debito di chi la deve pagare, e il prossimo piano le assorbe. Il pannello e il cancello la indicano solo se nessuna delle persone coinvolte ha già lì un saldo che non sia stato scritto da un passaggio, perché il Wallet accetta un solo saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: la riga di un conguaglio non occupa il posto, e la riga a mano si aggiunge accanto; altrimenti dicono che la parte si regola fra le parti. Se registri le righe per una parte che poi cambia (un inizio di locazione che la riduce o la azzera), il programma non le toglie: vanno corrette qui.</span>
                 </li>
               </ul>
             </div>

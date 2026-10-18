@@ -47,7 +47,7 @@ final class VociDaSpostare
     /**
      * @param list<int> $immobileIds l'unità del passaggio e le pertinenze
      * @param CarbonImmutable $decorrenza il giorno dell'atto
-     * @return list<array{id: int, conto_id: int, conto: string, tabella: string, gestione: string, percentuale: float, bloccata: bool, altre_unita: list<array{immobile_id: int, immobile: string, usufruttuari: string, nudi: string, importo: ?int, importo_formattato: ?string}>}>
+     * @return list<array{id: int, conto_id: int, conto: string, tipo: string, tabella: string, gestione: string, percentuale: float, bloccata: bool, altre_unita: list<array{immobile_id: int, immobile: string, usufruttuari: string, nudi: string, importo: ?int, importo_formattato: ?string}>}>
      */
     public function candidate(int $condominioId, array $immobileIds, CarbonImmutable $decorrenza): array
     {
@@ -75,7 +75,7 @@ final class VociDaSpostare
             ->whereExists(fn ($q) => $q->from('quote_tabella')->whereColumn('quote_tabella.tabella_id', 'ctm.tabella_id')
                 ->whereIn('quote_tabella.immobile_id', $immobileIds)->where('quote_tabella.valore', '>', 0))
             ->orderBy('piani_conti.gestione_id')->orderBy('conti.nome')->orderBy('tabelle.nome')
-            ->get(['ctm.id', 'ctm.conto_id', 'ctm.tabella_id', 'conti.nome as conto', 'tabelle.nome as tabella', 'piani_conti.gestione_id']);
+            ->get(['ctm.id', 'ctm.conto_id', 'ctm.tabella_id', 'conti.nome as conto', 'conti.tipo as tipo', 'tabelle.nome as tabella', 'piani_conti.gestione_id']);
         if ($associazioni->isEmpty()) {
             return [];
         }
@@ -99,6 +99,8 @@ final class VociDaSpostare
                 'id'          => (int) $a->id,
                 'conto_id'    => (int) $a->conto_id,
                 'conto'       => (string) $a->conto,
+                // Spesa o entrata: un'entrata che è un frutto civile passa all'«Usufruttuario» per l'art. 984 c.c., non per l'art. 1004 c.c.
+                'tipo'        => (string) $a->tipo,
                 'tabella'     => (string) $a->tabella,
                 'gestione'    => (string) ($gestioni[$a->gestione_id]->nome ?? ''),
                 'percentuale' => $percentuale,
@@ -288,6 +290,17 @@ final class VociDaSpostare
     }
 
     /**
+     * Il nome di una voce spostata come lo scrivono lo storico e l'annullamento: «Affitto antenna (Proprietà, Ordinaria 2026, entrata)». Per una
+     * spesa non c'è il tipo, come nei registri di prima.
+     *
+     * @param array{conto?: string, tabella?: string, gestione?: string, tipo?: string} $v
+     */
+    public static function etichetta(array $v, string $dopoLaGestione = ''): string
+    {
+        return sprintf('%s (%s, %s%s%s)', $v['conto'] ?? '?', $v['tabella'] ?? '?', $v['gestione'] ?? '?', ($v['tipo'] ?? null) === 'entrata' ? ', entrata' : '', $dopoLaGestione);
+    }
+
+    /**
      * «Proprietario 70 %, Usufruttuario 30 %»: i coefficienti di una voce come li scrive il registro del passaggio
      * (`voci_spostate[].prima` e `.dopo`), per lo storico e per l'annullamento.
      *
@@ -307,12 +320,12 @@ final class VociDaSpostare
      * nessuno ha visto, o con una parte diversa da quella mostrata. Conta ciò che decide lo spostamento e ciò che il pannello
      * ne dice: la voce, se è bloccata, la sua parte sul «Proprietario», le altre unità che tocca.
      *
-     * @param list<array{id: int, bloccata: bool, percentuale: float, altre_unita: list<array{immobile_id: int}>}> $candidate
+     * @param list<array{id: int, tipo?: string, bloccata: bool, percentuale: float, altre_unita: list<array{immobile_id: int}>}> $candidate
      */
     public static function impronta(array $candidate): string
     {
         $righe = array_map(fn (array $v) => [
-            (int) $v['id'], (bool) $v['bloccata'], round((float) $v['percentuale'], 2),
+            (int) $v['id'], (bool) $v['bloccata'], round((float) $v['percentuale'], 2), (string) ($v['tipo'] ?? 'spesa'),
             collect($v['altre_unita'] ?? [])->pluck('immobile_id')->map(fn ($id) => (int) $id)->sort()->values()->all(),
         ], $candidate);
         usort($righe, fn ($a, $b) => $a[0] <=> $b[0]);
@@ -355,7 +368,10 @@ final class VociDaSpostare
                 'created_at' => now(), 'updated_at' => now(),
             ], $dopo));
 
-            $registro[] = ['id' => (int) $v['id'], 'conto' => $v['conto'], 'tabella' => $v['tabella'], 'gestione' => $v['gestione'], 'prima' => $prima, 'dopo' => $dopo];
+            // Il tipo si scrive solo per un'entrata: il registro di una spesa resta com'era.
+            $registro[] = ['id' => (int) $v['id'], 'conto' => $v['conto']]
+                + (($v['tipo'] ?? 'spesa') === 'entrata' ? ['tipo' => 'entrata'] : [])
+                + ['tabella' => $v['tabella'], 'gestione' => $v['gestione'], 'prima' => $prima, 'dopo' => $dopo];
         }
 
         return $registro;

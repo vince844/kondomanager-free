@@ -476,7 +476,11 @@ class PianoContiController extends Controller
         // "Preventivo" includeva già gli sfori e non era più un preventivo: accanto al
         // nuovo totale Consuntivo l'incoerenza sarebbe stata evidente (due numeri che
         // convergono man mano che si sfora, invece di divergere).
+        // «Preventivo» è la somma delle sole voci di spesa; le voci di entrata hanno il loro totale (in valore assoluto) e il
+        // netto da ripartire è la differenza. Il padre-mastro ha importo zero: i sottoconti si contano uno per uno, ciascuno
+        // col suo tipo.
         $totalePreventivo = 0;
+        $totaleEntrate = 0;
         $totaleSopravvenienze = 0;
         $totaleConsuntivo = 0;
 
@@ -493,7 +497,7 @@ class PianoContiController extends Controller
         // si vedeva: la riga non c'era e il badge sembrava coerente con l'elenco. Da questa beta
         // la riga c'è, e un preventivo di € 2.400,00 a video accanto a un badge che non lo
         // comprende è una contraddizione sulla stessa schermata — nata qui, quindi da chiudere qui.
-        $sommaRamo = function ($conto, bool $dentroTecnico) use (&$sommaRamo, &$totalePreventivo, &$totaleSopravvenienze, &$totaleConsuntivo, $preventivoDi, $spesoDi) {
+        $sommaRamo = function ($conto, bool $dentroTecnico) use (&$sommaRamo, &$totalePreventivo, &$totaleEntrate, &$totaleSopravvenienze, &$totaleConsuntivo, $preventivoDi, $spesoDi) {
             $totaleConsuntivo += $spesoDi($conto);
 
             // Il flag `is_tecnico` si eredita lungo il ramo: un figlio di una sopravvenienza è
@@ -502,8 +506,10 @@ class PianoContiController extends Controller
 
             if ($tecnico) {
                 $totaleSopravvenienze += (int) $conto->importo;
-            } else {
+            } elseif (Conto::segnoDelTipo((string) $conto->tipo) > 0) {
                 $totalePreventivo += $preventivoDi($conto);
+            } else {
+                $totaleEntrate += abs($preventivoDi($conto));
             }
 
             foreach ($conto->sottoconti as $sottoconto) {
@@ -526,6 +532,8 @@ class PianoContiController extends Controller
             'fornitori'             => $fornitori,
             'tabelle'               => Tabella::query()->where('condominio_id', $condominio->id)->orderBy('nome')->get(['id', 'nome']),
             'totalePreventivo'      => $totalePreventivo,
+            'totaleEntrate'         => $totaleEntrate,
+            'totaleDaRipartire'     => $totalePreventivo - $totaleEntrate,
             'totaleSopravvenienze'  => $totaleSopravvenienze,
             'totaleConsuntivo'      => $totaleConsuntivo,
         ]);

@@ -33,7 +33,7 @@
 
 Pode visualizar uma demonstração do projeto no seguinte endereço:
 
-👉 **[Demonstração KondoManager](https://rebrand.ly/kondomanager)**
+👉 **[Demonstração KondoManager](https://kondomanager.short.gy/kondo)**
 
 **Atenção:** Por questões de segurança, algumas funcionalidades como o envio de emails e notificações foram desativadas.
 

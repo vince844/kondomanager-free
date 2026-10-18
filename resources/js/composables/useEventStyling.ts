@@ -1,8 +1,9 @@
 import { 
     ClockAlert, ClockArrowUp, CheckCircle2, AlertCircle, 
     ArrowUpFromLine, ArrowDownToLine, AlertTriangle, XCircle, 
-    CalendarDays, Info, Coins, PieChart, LucideIcon, History
+    CalendarDays, Info, Coins, PieChart, LucideIcon, History, Clock
 } from 'lucide-vue-next';
+import { compensazioneDopoLEmissione, inAttesaDellaCompensazione } from '@/lib/eventi/compensazione';
 
 // Interfaccia per il valore di ritorno (utile per intellisense)
 interface EventStyle {
@@ -108,13 +109,37 @@ export function useEventStyling() {
             };
         }
         
-        if (status === 'paid') {
+        // Un credito puro già saldato, con il credito ancora a favore della persona, non è «Pagato»: non c'è un pagamento. Passa a «A credito» più sotto.
+        if (status === 'paid' && !(type === 'scadenza_rata_condomino' && isCreditSource)) {
             return { 
                 color: 'text-emerald-600 dark:text-emerald-400', 
                 bgColor: 'bg-emerald-50 dark:bg-emerald-900/20', 
                 borderColor: 'border-emerald-200 dark:border-emerald-800', 
                 icon: CheckCircle2, 
                 label: 'Pagato' 
+            };
+        }
+
+        // In attesa della compensazione: la persona non ha altro da versare e una sua quota aspetta il credito di un'altra. Viene
+        // prima di «A credito» e di «Pagato parz.», che qui direbbero il falso.
+        if (type === 'scadenza_rata_condomino' && inAttesaDellaCompensazione(meta)) {
+            return {
+                color: 'text-blue-600 dark:text-blue-400 font-medium',
+                bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+                borderColor: 'border-blue-200 dark:border-blue-800',
+                icon: Clock,
+                label: 'In attesa della compensazione'
+            };
+        }
+
+        // Netto zero su una rata non ancora emessa: nessun versamento e nessuna compensazione ancora, quindi non «Pagato parz.».
+        if (type === 'scadenza_rata_condomino' && compensazioneDopoLEmissione(meta)) {
+            return {
+                color: 'text-blue-600 dark:text-blue-400 font-medium',
+                bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+                borderColor: 'border-blue-200 dark:border-blue-800',
+                icon: Clock,
+                label: 'Da compensare'
             };
         }
 

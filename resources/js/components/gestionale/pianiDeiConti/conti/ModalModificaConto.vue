@@ -13,6 +13,7 @@ import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapito
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import vSelect from 'vue-select'
 import MoneyInput from '@/components/MoneyInput.vue'
+import SuggerimentoEntrataUsufrutto from './SuggerimentoEntrataUsufrutto.vue'
 import { Info, Lock, TriangleAlert } from 'lucide-vue-next'
 import { trans } from 'laravel-vue-i18n'
 import type { Conto } from '@/types/gestionale/conti'
@@ -475,6 +476,8 @@ const submit = () => {
             </div>
             <InputError :message="form.errors.percentuale_proprietario" />
           </div>
+
+          <SuggerimentoEntrataUsufrutto v-if="!isCapitolo && !suPiuTabelle && form.tipo === 'entrata'" />
 
           <div v-if="!isCapitolo" class="bg-slate-50 p-4 rounded-md border border-slate-200 grid grid-cols-2 gap-4">
             <div>

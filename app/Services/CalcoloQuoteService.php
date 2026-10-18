@@ -382,29 +382,45 @@ class CalcoloQuoteService
             'conti_caricati' => $conti->count(),
         ]);
 
+        // [DIAG] Quanto il piano chiede: gli importi forzati delle sole voci del piano (le radici), col segno con cui il
+        // motore le distribuisce. Si somma prima di `processaConti`, che aggiunge alla stessa mappa le quote dei figli di un
+        // capitolo padre: dopo, il padre conterebbe due volte.
+        $totaleOverrides = 0;
+        foreach ($conti as $radice) {
+            if (in_array($radice->id, $contiImpegnatiIds) || ! isset($this->pivotOverrides[$radice->id])) {
+                continue;
+            }
+            $totaleOverrides += $radice->importoConSegno($this->pivotOverrides[$radice->id], $this->pianoRateCreatedAt);
+        }
+
         $processatiIds = [];
         $this->processaConti($conti, $totali, $contiImpegnatiIds, $processatiIds);
 
-        // [DIAG] Riepilogo delta: importo pianificato vs importo effettivamente distribuito
-        $totaleOverrides   = array_sum($this->pivotOverrides);
+        // [DIAG] Riepilogo delta: importo pianificato vs importo effettivamente distribuito. Il già versato che il motore
+        // assorbe riduce le rate, non l'importo del piano: si toglie dal confronto.
+        $giaVersatoAssorbito = 0;
+        foreach ($this->nettingApplicato as $perUnita) {
+            $giaVersatoAssorbito += array_sum($perUnita);
+        }
         $totaleDistribuito = 0;
         foreach ($totali as $immobili) {
             foreach ($immobili as $importo) {
                 $totaleDistribuito += $importo;
             }
         }
-        $delta = $totaleOverrides - $totaleDistribuito;
+        $delta = $totaleOverrides - $giaVersatoAssorbito - $totaleDistribuito;
 
         Log::info("Riepilogo Ripartizione", [
             'piano_rate_id'              => $pianoRate?->id,
             'importo_override_pianificato' => $totaleOverrides,
+            'gia_versato_assorbito'      => $giaVersatoAssorbito,
             'importo_effettivamente_distribuito' => $totaleDistribuito,
             'delta_non_ripartito'        => $delta,
             'soggetti_trovati'           => count($totali),
         ]);
 
         if ($delta !== 0) {
-            Log::warning("calcolaPerGestione: delta non ripartito = {$delta} centesimi. Verificare tabelle millesimali.", [
+            Log::warning("calcolaPerGestione: una parte dell'importo del piano non è stata ripartita: {$delta} centesimi (importo del piano {$totaleOverrides}, già versato assorbito {$giaVersatoAssorbito}, ripartito {$totaleDistribuito}).", [
                 'piano_rate_id' => $pianoRate?->id,
             ]);
         }

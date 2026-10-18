@@ -827,6 +827,21 @@ it('rilievo L3: nella successione anche le frasi della straordinaria non citano 
     expect($testo)->toContain('(straordinaria)')->not->toContain('Cass.')->not->toContain('art. 63')->not->toContain('chi compra');
 });
 
+it('con un piano che si ricalcola ancora e l\'arretrato agli eredi, il pannello dice che il saldo manuale dal Wallet vale se nessuno ha già, su quella gestione, quell\'unità e quell\'esercizio, un saldo che non sia stato scritto da un passaggio', function () {
+    $s = ruScenario('prima_rata', 0);
+    $anna = sucErede($s, 'Anna Erede');
+
+    $avvisi = implode(' | ', ruAnteprima($this, $s, sucCorpo($s, [[$anna, 100]]))['cancello']['avvisi']);
+
+    // le righe dell'arretrato agli eredi sono saldi scritti da un passaggio: non occupano il posto, e il cancello indica ancora il Wallet.
+    // La regola del Wallet vale per gestione, unità ed esercizio: «lì» direbbe la gestione soltanto, e chi ha un saldo su un'altra unità della stessa
+    // gestione, letta la frase alla lettera, andrebbe «fra le parti» mentre il Wallet accetta la riga. La frase dice «su quella gestione, quell'unità e quell'esercizio»:
+    // il cancello (`DefuntoNelPiano`) cerca il saldo con l'esercizio del piano.
+    expect($avvisi)->toContain('un saldo manuale dal Wallet sulla stessa gestione (una riga a credito di Venditore Ugo e una a debito di ogni erede, per la sua quota) se nessuno ha già, su quella gestione, quell\'unità e quell\'esercizio, un saldo che non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti; se i saldi registrati sono già la parte di ognuno, dice che ci sono già e che non serve registrare altro; e dice se il piano applica i saldi del Wallet')
+        ->not->toContain('se nessuno ha già un saldo lì')
+        ->not->toContain('se nessuno ha già lì un saldo');
+});
+
 it('decisione 66 (1): con un piano che si ricalcola ancora e l\'arretrato agli eredi, il pannello avvisa che i giorni del defunto restano a suo nome dopo il ricalcolo', function () {
     $s = ruScenario('prima_rata', 0);
     $anna = sucErede($s, 'Anna Erede');

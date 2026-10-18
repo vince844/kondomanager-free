@@ -14,7 +14,7 @@
  *
  * ⚠️ Ogni affermazione di questo file è stata verificata sul codice il 12/08/2026; il conto da cui esce
  * il credito riportato e lo storno (scheda «Credito» e «Conferma») il 10/10/2026, con la 1.11.0-beta.49, e
- * il credito delle entrate dell'anno e la quota rimasta fuori dall'emissione l'11/10/2026, nella stessa beta.
+ * il credito delle entrate dell'anno e la quota rimasta fuori dall'emissione l'11/10/2026, nella stessa beta; il portale del condòmino, il badge «Credito attivo» e «In attesa della compensazione» il 17/10/2026, con la 1.11.0-beta.52.
  * Alcune descrivono comportamenti che sono difetti aperti, non scelte: sono segnati «per ora» e hanno
  * una voce in roadmap. Se li correggi, questo file va corretto con loro.
  */
@@ -240,7 +240,7 @@ defineEmits(['update:open']);
                                 gestione della rata è già incluso. Il pulsante non applica l'importo da sé: marca la riga e lascia
                                 fare alla distribuzione automatica, impegnando il credito
                                 <strong>per la parte che il contante lascia scoperta</strong>. Un secondo clic lo
-                                rilascia.
+                                rilascia. Finché non lo usi, il portale lo dice al condòmino: quando non ha altro da versare ma una sua quota da pagare aspetta il credito che ha su un'altra quota della stessa rata, la rata emessa compare <strong>«In attesa della compensazione»</strong>, con la cifra da compensare e la frase che la compensazione la registra l'amministratore.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
                                 Premendolo mentre sei in manuale, la pagina <strong>torna in automatico</strong> e
@@ -278,7 +278,8 @@ defineEmits(['update:open']);
                                 proventi dell'antenna, per esempio) ripartita su un'unità con poche o nessuna spesa. Quel credito
                                 non viene da un esercizio precedente, e sta fra i crediti verso condomini anche con la rata in
                                 bozza: l'emissione della rata lo chiude. Una quota con tutte e due le parti si usa prima dal
-                                credito riportato, poi dalle entrate.
+                                credito riportato, poi dalle entrate. Il portale del condòmino mostra quel credito: se sulla stessa rata non ha
+                                altro da pagare dice che l'amministratore può usarlo o restituirlo, altrimenti che la compensazione la registra l'amministratore.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
                                 Senza il conto «Fondo Passate Gestioni» (2301) la compensazione di un credito riportato con la
@@ -303,10 +304,8 @@ defineEmits(['update:open']);
                         <div class="flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
                             <Info class="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
                             <p class="text-xs text-slate-600 dark:text-slate-400">
-                                Il badge <strong>«Credito attivo»</strong> descrive i crediti come «automaticamente
-                                attivi e pronti per la compensazione». Per ora la scritta promette più di quanto
-                                accada: segnala che su quella riga c'è un credito, non che verrà usato. Va comunque
-                                premuto «Usa credito».
+                                Il badge <strong>«Credito attivo»</strong> segnala che su quella riga c'è un credito
+                                che puoi usare con «Usa credito»: non dice che verrà usato.
                             </p>
                         </div>
                     </TabsContent>

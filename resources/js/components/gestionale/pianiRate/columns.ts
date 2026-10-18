@@ -108,26 +108,34 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
     },
   },
   {
-    accessorKey: 'totale_capitoli',
+    accessorKey: 'totale_da_ripartire',
       /**
-       * ⚠️ **Non ordinabile.** «Importo totale» è aggregato dai capitoli: ordinarlo richiede una somma in sottoquery, che è una scelta sul costo della query.
+       * ⚠️ **Non ordinabile.** Il totale è aggregato dalle voci del piano: ordinarlo richiede una somma in sottoquery, che è una scelta sul costo della query.
        *
        * Il server accetta solo le chiavi dichiarate nella richiesta: lasciarla cliccabile
        * manderebbe l'amministratore in un errore di validazione al primo clic.
        */
       enableSorting: false,
     /**
-     * ⚠️ **Si chiamava «Importo totale», e non lo era.** La cella legge `totale_capitoli`, cioè la
-     * somma dei capitoli a preventivo: su un piano che assorbe il pregresso con una Rata 0 il
-     * dettaglio mostrava € 3.400,00 e l'elenco € 1.600,00 per lo stesso piano. Due risposte alla
-     * stessa domanda in due posti. Il nome ora dice quale delle due è.
+     * ⚠️ **Non è «Importo totale».** La cifra è il netto che il piano chiede alle persone: le spese meno le entrate, perché le voci di
+     * entrata si sottraggono come le distribuisce il motore. Su un piano che assorbe il pregresso con una Rata 0 il dettaglio mostra
+     * € 3.400,00 e questa colonna € 1.600,00 per lo stesso piano: il pregresso sta in un'altra cifra, e il nome dice quale delle due è.
+     *
+     * L'intestazione non cambia da una riga all'altra: per un piano di sole spese «Da ripartire» è la stessa cifra di prima. Quando ci
+     * sono entrate una seconda riga dice da dove viene.
      */
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Preventivo' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Da ripartire' }),
     cell: ({ row }) => {
-      // Usiamo la funzione euro della tua composable
-      const totale = row.original.totale_capitoli || 0;
+      const daRipartire = row.original.totale_da_ripartire || 0;
+      const spese = row.original.totale_spese || 0;
+      const entrate = row.original.totale_entrate || 0;
 
-      return h('div', { class: 'font-bold text-sm text-slate-700 dark:text-slate-300' }, euro(totale));
+      return h('div', { class: 'flex flex-col' }, [
+        h('span', { class: 'font-bold text-sm text-slate-700 dark:text-slate-300' }, euro(daRipartire)),
+        entrate > 0
+          ? h('span', { class: 'text-xs text-slate-500' }, `spese ${euro(spese)}, entrate ${euro(entrate)}`)
+          : null,
+      ]);
     },
   },
   {

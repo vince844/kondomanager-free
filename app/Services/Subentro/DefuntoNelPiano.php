@@ -34,8 +34,8 @@ use Carbon\CarbonImmutable;
  * - **Il Wallet entra in un piano solo se il piano applica i saldi** (`GeneratePianoRateAction::saldiSiApplicano`): una frase che
  *   promettesse «registra un saldo dal Wallet» a un piano che non li applica direbbe ciò che il piano non fa. Le varianti: V1 il saldo
  *   si può registrare e il piano lo assorbe; V2 si può registrare ma il piano non li applica (serve crearlo di nuovo; alla creazione, dove il
- *   piano non esiste ancora, basta registrarli e rimandare il modulo); V3 qualcuno ha già un saldo su quella gestione e quell'unità, e la
- *   parte si regola fra le parti; V4 il defunto e tutti gli eredi hanno un saldo che questa generazione assorbe nelle quote **e quei saldi
+ *   piano non esiste ancora, basta registrarli e rimandare il modulo); V3 qualcuno ha già un saldo su quella gestione e quell'unità, fra
+ *   quelli che un passaggio non ha scritto, e la parte si regola fra le parti; V4 il defunto e tutti gli eredi hanno un saldo che questa generazione assorbe nelle quote **e quei saldi
  *   spostano davvero la parte**: i saldi ci sono già e non serve registrare altro. Un riporto che non è la parte (il consuntivo, un credito
  *   di prima) non basta: con saldi di altra cifra resta V3.
  *
@@ -154,8 +154,8 @@ final class DefuntoNelPiano
                 'cifra_formattata' => $e['cifra'] === null ? null : self::cifra($e['cifra'])];
         }
 
-        // La strada della decisione 80: il Wallet accetta un saldo per persona, gestione, unità ed esercizio; con un saldo già lì la riga
-        // verrebbe rifiutata e la parte si regola fra le parti.
+        // La strada della decisione 80: il Wallet accetta un saldo per persona, gestione, unità ed esercizio, fra quelli che un passaggio non
+        // ha scritto; con un saldo già lì la riga verrebbe rifiutata e la parte si regola fra le parti.
         $persone = array_merge([$defuntoId], array_column($eredi, 'id'));
         $esercizioId = $piano->esercizio_id !== null ? (int) $piano->esercizio_id : null;
         $conUnSaldo = FermataDopoScrivi::conUnSaldo($persone, (int) $piano->gestione_id, $immobileId, $esercizioId);

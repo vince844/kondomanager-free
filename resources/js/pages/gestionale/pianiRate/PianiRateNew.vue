@@ -28,6 +28,7 @@ import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
+import { centesimiDaImporto, fraseDaRipartire, totaliDaImportiInEuro } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import { avvisoFatturaNelCarrello, notaCollegataNelCarrello, senzaCompetenzaScelte } from '@/lib/gestionale/pianiRate/avvisoCarrello';
 import Alert from '@/components/Alert.vue';
 import type { Flash } from '@/types/flash';
@@ -40,6 +41,8 @@ import type { BreadcrumbItem } from '@/types';
 interface Capitolo {
   id: number;
   nome: string;
+  /** Spesa o entrata: le entrate si sottraggono alle spese, come le distribuisce il motore. */
+  tipo: string;
   is_radice?: boolean;
   parent_id?: number | null;
   /** La competenza già dichiarata sulla voce in un piano di questa gestione (decisione 20): si propone, non si impone. */
@@ -55,6 +58,7 @@ interface Capitolo {
 interface CapitoloDettaglio {
   id: number;
   nome: string;
+  tipo: string;
   importo_totale: number;
   residuo: number;
   importo_da_usare: string | number | undefined;
@@ -257,10 +261,11 @@ const avvisoDi = (fat: any) => avvisoFatturaNelCarrello(fat, contestoCarrello.va
 // Il messaggio del server — una generazione fermata («Urgenza» con una pregressa senza periodo), una gestione senza piano
 // dei conti — e gli errori sulle fatture del carrello (una stornata nel frattempo). La pagina non li mostrava: «Salva»
 // non faceva niente di visibile, e il motivo stava solo nel log (verifica a video della 1.11.0-beta.35). Si mostrano
-// accanto al pulsante, dove è chi ha appena premuto.
+// accanto al pulsante, dove è chi ha appena premuto. Anche gli errori dell'importo di una voce nella configurazione (`capitoli_config…`):
+// il campo non permette il segno, ma una richiesta costruita non deve restare muta.
 const flashMessage = computed(() => usePage<{ flash: { message?: Flash } }>().props.flash?.message ?? null);
 const erroriCarrello = computed(() => Object.entries(form.errors as Record<string, string>)
-  .filter(([campo]) => campo.startsWith('fatture_config'))
+  .filter(([campo]) => campo.startsWith('fatture_config') || campo.startsWith('capitoli_config'))
   .map(([, messaggio]) => messaggio));
 
 // Con «Urgenza» il campo della delibera sparisce: il valore battuto prima non deve restare nel form e viaggiare
@@ -354,15 +359,9 @@ const autorizzazioneStraordinaria = ref({
 // - "1250.50" (JS pura) se il campo non è mai stato toccato e resta al valore
 //   iniziale che gli abbiamo passato noi (vedi toMoneyFieldString più sotto)
 // Le due notazioni si distinguono dalla presenza della virgola: solo la prima
-// la usa come separatore decimale. Stessa identica logica di MoneyHelper::toCents() lato PHP.
-const parseMoney = (val: any): number => {
-  if (val === null || val === undefined || val === '') return 0;
-  if (typeof val === 'number') return val;
-  const str = val.toString().trim();
-  if (!str.includes(',')) return Number(str) || 0;
-  // Trasforma "1.250,50" in 1250.50
-  return Number(str.replace(/\./g, '').replace(',', '.')) || 0;
-};
+// la usa come separatore decimale. La regola è una sola, quella di `centesimiDaImporto` (che ricalca MoneyHelper::toCents() lato PHP),
+// la stessa che usa il totale della creazione: qui si torna in euro, per i confronti con i residui che la pagina tiene in euro.
+const parseMoney = (val: any): number => centesimiDaImporto(val) / 100;
 
 // Converte un numero grezzo (es. dal backend) nella stringa da usare come valore
 // INIZIALE di un v-model collegato a MoneyInput. Deve essere già in notazione JS
@@ -477,12 +476,11 @@ const competenzeConErrori = computed(() => vociFuoriBase.value.some(v => erroreD
 
 const PRESET_ORDINE: PresetCompetenza[] = ['gestione', 'esercizio', 'stagione', 'manuale'];
 
-const totaleSelezionatoFormatted = computed(() => {
-  const tot = capitoliDettaglio.value.reduce((acc, curr) => {
-    return acc + parseMoney(curr.importo_da_usare);
-  }, 0);
-  return euro(tot); // Sostituito formatMoney con euro
-});
+// Il totale delle voci scelte, con le entrate che si sottraggono. I campi sono in euro: la conversione in centesimi avviene una
+// volta sola, in `totaliDaImportiInEuro`, e qui si formatta dichiarando i centesimi (l'`euro` di questa pagina legge euro).
+const totaleSelezionatoFormatted = computed(() =>
+  fraseDaRipartire(totaliDaImportiInEuro(capitoliDettaglio.value), (centesimi) => euro(centesimi, { fromCents: true }))
+);
 
 const mostraDistribuzioneSaldo = computed(() => {
   if (props.saldoInfo.has_movimenti !== undefined) {
@@ -672,6 +670,7 @@ watch(() => form.capitoli_ids, (newIds) => {
         capitoliDettaglio.value.push({
           id: id,
           nome: capOriginale.nome,
+          tipo: capOriginale.tipo,
           importo_totale: capOriginale.importo_totale ?? 0,
           residuo: capOriginale.residuo ?? 0,
           // Stringa fin da subito (non un numero grezzo): se l'utente non tocca il campo,
@@ -1134,6 +1133,11 @@ const submit = () => {
                       <span class="text-[10px] text-slate-500">Budget: {{ euro(option.importo_totale) }}</span>
                     </div>
                     <div class="flex items-center">
+                      <span v-if="option.tipo === 'entrata'"
+                            class="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-sky-200"
+                            title="Le entrate si sottraggono alle spese">
+                        Entrata
+                      </span>
                       <span v-if="option.is_sforo"
                             class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-rose-200">
                         <TrendingDown class="w-3 h-3" /> Sforo: {{ euro(option.residuo) }}
@@ -1165,7 +1169,7 @@ const submit = () => {
             <div v-if="capitoliDettaglio.length > 0" class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
               <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
                 <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2"><List class="w-4 h-4" /> Ripartizione manuale voci</span>
-                <span class="text-sm font-bold text-primary bg-white px-3 py-1 rounded border shadow-sm">Totale richiesto: {{ totaleSelezionatoFormatted }}</span>
+                <span class="text-sm font-bold text-primary bg-white px-3 py-1 rounded border shadow-sm">{{ totaleSelezionatoFormatted }}</span>
               </div>
               <div class="divide-y divide-slate-100 max-h-[350px] overflow-y-auto">
                 <div v-for="(cap) in capitoliDettaglio" :key="cap.id" class="p-3 hover:bg-slate-50 transition-colors group">

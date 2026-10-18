@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\PianoRate;
 
+use App\Http\Requests\Gestionale\PianoConto\Conto\ImportoSenzaSegno;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -72,6 +73,15 @@ class CreatePianoRateRequest extends FormRequest
                         break;
                     }
                     $precedente = $t['al'];
+                }
+            }
+
+            // L'importo che il piano forza su una voce si scrive senza il segno, come quello della voce: lo decide il tipo. Una configurazione che
+            // non è una lista, o una riga già in errore, la rifiutano le regole del campo.
+            $configurazione = $this->input('capitoli_config');
+            foreach (is_array($configurazione) ? $configurazione : [] as $i => $conf) {
+                if (is_array($conf) && ImportoSenzaSegno::eNegativo($conf['importo'] ?? null)) {
+                    ImportoSenzaSegno::rifiuta($validator, "capitoli_config.{$i}.importo", ImportoSenzaSegno::PER_IL_PIANO);
                 }
             }
 

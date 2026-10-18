@@ -6,6 +6,7 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Saldo;
+use App\Services\Riparto\QuotaDellaChiamata;
 use Illuminate\Support\Collection;
 
 class PianoRateQuoteService
@@ -100,22 +101,97 @@ class PianoRateQuoteService
     }
 
     /**
-     * Quanto il piano **dovrebbe** mettere in rata: i capitoli collegati, o le fatture se è
-     * straordinario.
+     * Quanto il piano chiede alle persone e quanto accredita loro, in centesimi e in valore assoluto.
+     *
+     * Le voci di spesa sommano alle spese, quelle di entrata alle entrate: il segno di ogni voce è quello con cui il motore la
+     * distribuisce (`Conto::ripartoPerSegno()`, letto alla data del piano). Un capitolo i cui sottoconti sono di tipo diverso divide
+     * l'importo della pivot fra spese ed entrate come lo divide il motore. La pivot `piano_rate_capitoli` tiene l'importo positivo,
+     * come lo scrive la pagina; il segno lo rifà chi legge. Un piano straordinario chiede la somma delle fatture collegate e non ha
+     * entrate.
+     *
+     * `id_spese` sono le voci con una parte di spesa: il già versato si legge solo su quelle. Per la riga di un capitolo senza tabelle sono anche i suoi sottoconti
+     * con una parte di spesa, quelli che il motore guarda (`sottocontiConParteDiSpesa`): il già versato sta su di loro, non sul capitolo.
+     *
+     * @return array{spese: int, entrate: int, id_spese: int[]}
      */
-    public function totaleAttesoCents(PianoRate $pianoRate): int
+    public function totaliPerSegnoCents(PianoRate $pianoRate): array
     {
         if ($pianoRate->tipo === 'straordinario') {
             $pianoRate->loadMissing('fattureStraordinarie');
 
-            return (int) $pianoRate->fattureStraordinarie
-                ->sum(fn ($fattura) => $fattura->pivot->importo_collegato);
+            return [
+                'spese' => (int) $pianoRate->fattureStraordinarie->sum(fn ($fattura) => $fattura->pivot->importo_collegato),
+                'entrate' => 0,
+                'id_spese' => [],
+            ];
         }
 
-        $pianoRate->loadMissing('capitoli');
+        $pianoRate->loadMissing(['capitoli.tabelleMillesimali', 'capitoli.sottoconti.tabelleMillesimali']);
 
-        $budget = (int) $pianoRate->capitoli
-            ->sum(fn ($capitolo) => $capitolo->pivot->importo ?? $capitolo->importo);
+        $spese = 0;
+        $entrate = 0;
+        $idSpese = [];
+
+        foreach ($pianoRate->capitoli as $capitolo) {
+            $parti = $capitolo->ripartoPerSegno((int) ($capitolo->pivot->importo ?? $capitolo->importo), $pianoRate->created_at);
+
+            $spese += $parti['spese'];
+            $entrate += $parti['entrate'];
+
+            if ($parti['spese'] > 0 || $capitolo->segno($pianoRate->created_at) > 0) {
+                $idSpese[] = $capitolo->id;
+            }
+
+            // Il motore passa la copia ai sottoconti solo se è positiva: con la copia a zero salta il capitolo, e il già versato dei sottoconti non entra.
+            if ($capitolo->tabelleMillesimali->isEmpty() && $capitolo->sottoconti->isNotEmpty() && (int) ($capitolo->pivot->importo ?? $capitolo->importo) > 0) {
+                array_push($idSpese, ...$this->sottocontiConParteDiSpesa($capitolo, $pianoRate->created_at));
+            }
+        }
+
+        return ['spese' => $spese, 'entrate' => $entrate, 'id_spese' => array_values(array_unique($idSpese))];
+    }
+
+    /**
+     * I sottoconti con una parte di spesa che il motore guarda sotto la riga di un capitolo senza tabelle con la copia positiva (il chiamante lo controlla):
+     * quelli nati fino alla creazione del piano o, se nessuno lo è, tutti quelli di adesso (come `Conto::ripartoPerSegno`); un sottoconto senza tabelle e con dei sottoconti suoi passa la parte ai suoi, a ogni livello.
+     * Il già versato di una voce con le tabelle sta su di lei, e il motore lo toglie dalle sue quote.
+     *
+     * @return list<int>
+     */
+    private function sottocontiConParteDiSpesa(Conto $capitolo, ?\Carbon\CarbonInterface $creatoIl): array
+    {
+        $figli = $creatoIl === null
+            ? $capitolo->sottoconti
+            : $capitolo->sottoconti->filter(fn (Conto $s) => $s->created_at === null || $s->created_at->lte($creatoIl));
+        if ($figli->isEmpty()) {
+            $figli = $capitolo->sottoconti;
+        }
+
+        $ids = [];
+        foreach ($figli as $figlio) {
+            if ($figlio->tabelleMillesimali->isEmpty() && $figlio->sottoconti->isNotEmpty()) {
+                array_push($ids, ...$this->sottocontiConParteDiSpesa($figlio, $creatoIl));
+            } elseif ($figlio->segno($creatoIl) > 0) {
+                $ids[] = (int) $figlio->id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Quanto il piano **dovrebbe** mettere in rata: le spese dei capitoli collegati meno le loro entrate, o le fatture se è
+     * straordinario.
+     *
+     * Con la sola entrata il netto è negativo (le persone ricevono un credito) e resta tale: il tetto a zero vale per le spese.
+     */
+    public function totaleAttesoCents(PianoRate $pianoRate): int
+    {
+        $totali = $this->totaliPerSegnoCents($pianoRate);
+
+        if ($pianoRate->tipo === 'straordinario') {
+            return $totali['spese'];
+        }
 
         // ⚠️ **Il già versato va tolto dall'atteso, o il badge grida al lupo su un piano giusto.**
         //
@@ -133,11 +209,27 @@ class PianoRateQuoteService
         // mai una quota sotto zero: se un'unità ha versato **più** della sua parte, l'applicato è
         // minore del registrato e il confronto torna a divergere. Quella sovra-contribuzione ha
         // però già la sua segnalazione dedicata nell'Inbox, e non passa di qui.
-        $giaVersato = (int) ContributoVersato::where('target_type', Conto::class)
-            ->whereIn('target_id', $pianoRate->capitoli->pluck('id'))
-            ->sum('importo_cents');
+        //
+        // Il già versato si legge sulle sole voci di spesa: la pagina «Già versato» non offre le voci di
+        // entrata, e il motore non applica il netting a una quota negativa.
+        //
+        // Si toglie quello che il motore toglie, non tutto: con un acconto (o un saldo) il piano chiede una
+        // parte della voce, e ne toglie la stessa parte del già versato, con l'arrotondamento per difetto di
+        // ogni parte (di persona o dell'unità). Togliere tutto il già versato a un acconto darebbe un atteso
+        // più basso delle quote generate, e il badge accenderebbe «Disallineato» su un piano giusto che
+        // «Ricalcola» non spegne. Non si legge il netting registrato in `righe_riparto`: un già versato
+        // scritto dopo la generazione non ci sta, e il badge acceso è quello che invita a ricalcolare.
+        $conVersato = ContributoVersato::where('target_type', Conto::class)
+            ->whereIn('target_id', $totali['id_spese'])
+            ->distinct()
+            ->pluck('target_id');
 
-        return max(0, $budget - $giaVersato);
+        $giaVersato = 0;
+        foreach ($conVersato as $contoId) {
+            $giaVersato += QuotaDellaChiamata::giaVersatoApplicato((int) $pianoRate->id, (int) $contoId);
+        }
+
+        return max(0, $totali['spese'] - $giaVersato) - $totali['entrate'];
     }
 
     /**

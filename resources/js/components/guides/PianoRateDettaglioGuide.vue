@@ -84,6 +84,7 @@ defineEmits(['update:open']);
                                 modificato un preventivo o una tabella millesimale dopo che questo piano è
                                 stato generato. Le quote mostrate non corrispondono più ai dati attuali finché
                                 non premi <strong>Ricalcola</strong>.</p>
+                                <p>Le voci di entrata si contano con il segno meno, come fa il calcolo delle quote.</p>
                             </div>
                         </div>
 
@@ -149,6 +150,11 @@ defineEmits(['update:open']);
                                 quell'importo, e il messaggio d'errore te lo dice in euro — non solo il pivot
                                 di questo piano, anche lo speso reale del libro giornale.
                             </p>
+                            <p class="mt-2">
+                                Si sposta fra voci dello stesso tipo: spese con spese, entrate con entrate, come il piano le conta (un capitolo di spesa che passa l'importo ai soli sottoconti di entrata conta come un'entrata). Fra
+                                una spesa e un'entrata il totale del piano cambierebbe, e il programma lo
+                                rifiuta: il menu della destinazione offre solo le voci del tipo della sorgente. Un capitolo che il piano divide fra spese ed entrate non si sposta e non riceve budget, e il menu non offre le voci che si sovrapporrebbero a un capitolo o a dei sottoconti già nel piano, perché di due righe sovrapposte il piano conta solo quella del capitolo. Se nel piano un capitolo ha la sua riga insieme a quelle dei suoi sottoconti e il piano conta solo quella del capitolo, un riquadro in cima alla pagina lo dice e indica come uscirne. Nei piani straordinari «Sposta spesa» non funziona: il menu della sorgente elenca le fatture, ma lo spostamento lavora sulle voci, e il programma lo rifiuta sempre.
+                            </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
@@ -174,7 +180,7 @@ defineEmits(['update:open']);
                                 <li><strong>Parziale</strong> — l'importo incluso è inferiore al preventivo
                                     originale della voce.</li>
                                 <li><strong>Standard</strong> — nessuna delle precedenti: la voce entra per
-                                    l'intero preventivo.</li>
+                                    l'intero preventivo.</li> <li><strong>Entrata</strong> — si aggiunge alle altre su una voce che il piano conta con il segno meno, come un affitto o un canone: l'importo compare con il meno e si sottrae alle spese. Con delle entrate la riga sotto il titolo della sezione dice quanto resta da ripartire, con le spese e le entrate fra parentesi, al posto del totale preventivo.</li>
                             </ul>
                             <p class="mt-2">
                                 Il cestino accanto a ogni voce la rimuove dal piano — e <strong>ricalcola
@@ -189,6 +195,19 @@ defineEmits(['update:open']);
                                 ognuno ha il proprio pulsante per restituire esattamente quella cifra. La voce
                                 rimossa torna disponibile fra le «orfane» e si può reintrodurre in seguito con
                                 «Sincronizza».
+                            </p>
+                            <p class="mt-2">
+                                Le versioni precedenti permettevano una voce di spesa con un importo
+                                <strong>negativo</strong>, e il calcolo delle quote la addebita in positivo.
+                                «Ricalcola» si ferma dove il calcolo la addebiterebbe in positivo, la nomina e dice che cosa fare, e
+                                un riquadro in cima alla pagina la segnala in ogni stato del piano. Se il piano tiene
+                                una copia dell'importo della voce, correggere la voce non basta: si toglie la voce
+                                con il cestino e si riaggiunge con «Sincronizza» (un sottoconto, o un capitolo che divide la copia fra i sottoconti, no: si elimina il
+                                piano e si ricrea), e togliendola si perdono i suoi
+                                tratti di competenza, da annotare prima e da riscrivere ricreando il piano. Se le
+                                voci con la copia negativa sono più d'una, si elimina il piano e si ricrea. «Ricalcola» si ferma anche per un capitolo che nel piano ha una copia a zero o negativa da dividere fra i sottoconti, se uno di questi ha un importo negativo, anche di entrata: corretto il sottoconto, «Ricalcola» passa, ma la copia del capitolo resta com'era, e per cambiarla si elimina il piano e si ricrea. Un piano approvato va
+                                prima riportato in bozza, e questo azzera il numero del verbale e la nota
+                                dell'approvazione: annotali prima.
                             </p>
                         </section>
 

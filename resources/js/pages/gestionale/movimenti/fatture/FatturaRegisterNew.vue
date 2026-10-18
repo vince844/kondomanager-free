@@ -112,6 +112,8 @@ interface Gestione {
 interface Conto {
     id: number
     nome: string
+    /** Il server offre solo voci di spesa: il capitolo di una fattura non è mai un'entrata. */
+    tipo?: 'spesa' | 'entrata'
     parent_nome?: string | null
     residuo_budget?: number
     is_capiente?: boolean

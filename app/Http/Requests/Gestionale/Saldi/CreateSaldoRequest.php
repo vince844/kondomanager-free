@@ -10,8 +10,8 @@ use Illuminate\Validation\Validator;
 /**
  * Valida e blocca i duplicati per entrambi i tipi di saldo:
  *
- * Personale: una sola riga per (esercizio, gestione, immobile, anagrafica)
- * Solidale:  una sola riga per (esercizio, gestione, immobile) con anagrafica_id NULL
+ * Personale: un solo saldo per (esercizio, gestione, immobile, anagrafica), fra quelli che un passaggio non ha scritto
+ * Solidale:  un solo saldo per (esercizio, gestione, immobile) con anagrafica_id NULL, fra quelli che un passaggio non ha scritto
  */
 class CreateSaldoRequest extends FormRequest
 {

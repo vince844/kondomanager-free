@@ -53,6 +53,7 @@ class UpdateFatturaRequest extends FormRequest
         // Quello che va difeso resta vero e si difende dove vive: **una nota di credito deve
         // restare un credito**. Il controllo è sulla somma delle righe, in `withValidator()`.
         $isNotaCredito = $this->route('fattura')?->tipo_documento === 'nota_credito';
+        $condominioId = (int) $this->route('condominio')->id;
 
         return [
             // Coda 165: la conferma dell'avviso quando la nota modificata rettifica una fattura in un piano che ha già
@@ -71,7 +72,7 @@ class UpdateFatturaRequest extends FormRequest
             'competenza_al'      => 'nullable|date|required_with:competenza_dal|after_or_equal:competenza_dal',
             'modalita_pagamento' => 'required|string',
             'iban_fornitore'     => 'nullable|string',
-            'conto_corrente_id'  => 'nullable|exists:conti_contabili,id',
+            'conto_corrente_id'  => PerimetroFattura::regolaContoDiAddebito($condominioId),
             'applica_ritenuta'   => 'nullable|boolean',
             'dati_extra.fiscal.motivo_esclusione_ritenuta' => [
                 'nullable', 'string', Rule::in(array_column(MotivoEsclusioneRitenuta::cases(), 'value')),
@@ -87,8 +88,8 @@ class UpdateFatturaRequest extends FormRequest
             'righe.*.descrizione'        => 'required|string',
             'righe.*.importo_imponibile' => 'required|numeric',
             'righe.*.aliquota_iva'       => 'required|numeric|min:0|max:100',
-            'righe.*.conto_id'           => 'nullable|exists:conti,id',
-            'righe.*.immobile_id'        => 'nullable|exists:immobili,id',
+            'righe.*.conto_id'           => PerimetroFattura::regolaVoce($condominioId),
+            'righe.*.immobile_id'        => PerimetroFattura::regolaUnita($condominioId),
             'righe.*.concorre_base_ritenuta' => 'nullable|boolean',
             'righe.*.natura_riga_ritenuta' => [
                 'nullable', 'string', Rule::in(array_column(NaturaRigaRitenuta::cases(), 'value')),
@@ -112,7 +113,7 @@ class UpdateFatturaRequest extends FormRequest
 
     public function messages(): array
     {
-        return [
+        return array_merge(PerimetroFattura::messaggi(), [
             'file.prohibited' => 'Non è più possibile allegare un documento da qui: usa il pulsante «Allega» nella pagina di dettaglio della fattura.',
             'righe.required'                          => 'Devi inserire almeno una voce di spesa.',
             'righe.*.descrizione.required'            => 'La causale della riga è obbligatoria.',
@@ -124,7 +125,7 @@ class UpdateFatturaRequest extends FormRequest
             'competenza_dal.required_with'            => 'La competenza vuole entrambe le date: manca l\'inizio.',
             'competenza_al.required_with'             => 'La competenza vuole entrambe le date: manca la fine.',
             'competenza_al.after_or_equal'            => 'La fine della competenza non può precedere l\'inizio.',
-        ];
+        ]);
     }
 
     public function withValidator($validator): void
@@ -176,6 +177,18 @@ class UpdateFatturaRequest extends FormRequest
                         'Il capitolo di spesa è obbligatorio per righe non assegnate a un immobile.'
                     );
                 }
+            }
+
+            // Il capitolo di una fattura è una voce di spesa; la nota di credito, che disfa una fattura sbagliata, resta com'è. Le voci che la
+            // fattura ha già sulle righe cambiano la frase: la riga è già lì, e va portata su una voce di spesa.
+            $fattura = $this->route('fattura');
+            if ($fattura?->tipo_documento === 'fattura') {
+                PerimetroFattura::rifiutaLeEntrate(
+                    $validator,
+                    $righe,
+                    (int) $this->route('condominio')->id,
+                    $fattura->righe()->whereNotNull('conto_id')->pluck('conto_id')->map(fn ($id) => (int) $id)->all(),
+                );
             }
 
             $this->guardiaNaturaPercipienteMancante($validator);

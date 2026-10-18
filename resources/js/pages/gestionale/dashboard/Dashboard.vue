@@ -5,6 +5,7 @@ import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { etichettaFabbisogno } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -24,7 +25,10 @@ const props = defineProps<{
   esercizio: Esercizio;    
   esercizi: Esercizio[];   
   copertura: {
-    preventivo: number;
+    // In centesimi. Le voci di entrata si sottraggono: da ripartire = spese − entrate.
+    spese: number;
+    entrate: number;
+    da_ripartire: number;
     pianificato: number;
     virtuale: number;
     addebiti_personali: number; 
@@ -162,10 +166,24 @@ const suggerimentoOperativo = computed(() => {
     return null;
 });
 
+// Il riquadro del fabbisogno: con le entrate si chiama «Da ripartire» e mostra il netto, senza resta com'è. Barra e percentuale
+// dividono per il netto: se non è maggiore di zero (la sola entrata) non c'è niente da coprire, e non si divide. La copertura è
+// completa (100 %) se il piano non chiede più del netto, cioè il delta non è positivo; altrimenti è zero.
+const nienteDaCoprire = computed(() => !!props.copertura && props.copertura.da_ripartire <= 0);
+const nomeRiquadroFabbisogno = computed(() => etichettaFabbisogno(props.copertura?.entrate ?? 0));
+
+const suggerimentoFabbisogno = computed(() => {
+    const entrate = props.copertura?.entrate ?? 0;
+    return entrate > 0
+        ? `Fabbisogno reale condominiale (preventivo + sfori autorizzati), al netto delle entrate di ${euro(entrate)}. Esclude categoricamente le spese ad personam.`
+        : 'Fabbisogno reale condominiale (preventivo + sfori autorizzati). Esclude categoricamente le spese ad personam.';
+});
+
 const percentualeFormattata = computed(() => {
-    if (!props.copertura || props.copertura.preventivo === 0) return '0.0';
+    if (!props.copertura) return '0.0';
+    if (nienteDaCoprire.value) return deltaReale.value <= 0 ? '100.0' : '0.0';
     const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
-    const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
+    const rawPct = (totaleCoperto / props.copertura.da_ripartire) * 100;
 
     if (statoCopertura.value === 'deficit' || statoCopertura.value === 'documented' || statoCopertura.value === 'misaligned') {
         if (rawPct >= 99.9) return '99.9'; 
@@ -176,9 +194,10 @@ const percentualeFormattata = computed(() => {
 });
 
 const larghezzaBarra = computed(() => {
-    if (!props.copertura || props.copertura.preventivo === 0) return '0%';
+    if (!props.copertura) return '0%';
+    if (nienteDaCoprire.value) return deltaReale.value <= 0 ? '100%' : '0%';
     const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
-    const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
+    const rawPct = (totaleCoperto / props.copertura.da_ripartire) * 100;
     return Math.min(rawPct, 100) + '%';
 });
 
@@ -321,16 +340,16 @@ onUnmounted(() => {
     
                                     <div class="bg-slate-50/50 dark:bg-slate-800/30 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center">
                                         <div class="flex items-center gap-1.5 mb-1.5">
-                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">Fabbisogno Condiviso</p>
+                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">{{ nomeRiquadroFabbisogno }}</p>
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
-                                                    <TooltipContent><p class="text-xs max-w-[200px]">Fabbisogno reale condominiale (preventivo + sfori autorizzati). Esclude categoricamente le spese ad personam.</p></TooltipContent>
+                                                    <TooltipContent><p class="text-xs max-w-[200px]">{{ suggerimentoFabbisogno }}</p></TooltipContent>
                                                 </Tooltip>
                                             </TooltipProvider>
                                         </div>
                                         <p class="text-base font-black text-slate-700 dark:text-slate-200 leading-none">
-                                            {{ euro(copertura.preventivo) }}
+                                            {{ euro(copertura.da_ripartire) }}
                                         </p>
                                     </div>
                                     

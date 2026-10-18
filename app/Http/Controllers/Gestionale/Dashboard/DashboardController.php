@@ -38,6 +38,8 @@ class DashboardController extends Controller
         if ($esercizio) {
             $esercizio->load('gestioni');
             $totPrev = 0; 
+            $totSpese = 0;
+            $totEntrate = 0;
             $totPian = 0; 
             $totVirtualeGlobale = 0;
             $totBudgetPuro = 0;
@@ -233,9 +235,18 @@ class DashboardController extends Controller
                     $budgetTeorico = $item['budget_teorico'];
                     $spesoReale = $fatturatoMap[$item['id']] ?? 0;
 
-                    $fabbisognoRealeGestione += max($budgetTeorico, $spesoReale);
-                    $budgetPuroGestione += $budgetTeorico;
-                    $virtualeGestione += $item['copertura_virtuale'] ?? 0;
+                    // Le voci di entrata si sottraggono: il fabbisogno da ripartire è il netto, come lo distribuisce il motore.
+                    $segno = $item['segno'];
+                    $fabbisognoVoce = max($budgetTeorico, $spesoReale);
+
+                    $fabbisognoRealeGestione += $segno * $fabbisognoVoce;
+                    if ($segno > 0) {
+                        $totSpese += $fabbisognoVoce;
+                    } else {
+                        $totEntrate += $fabbisognoVoce;
+                    }
+                    $budgetPuroGestione += $segno * $budgetTeorico;
+                    $virtualeGestione += $segno * ($item['copertura_virtuale'] ?? 0);
                 }
 
                 $totPrev += $fabbisognoRealeGestione;
@@ -280,7 +291,7 @@ class DashboardController extends Controller
                 $pianiRate = PianoRate::where('gestione_id', $gestione->id)
                     ->with([
                         'capitoli' => function($q) {
-                            $q->select('conti.id', 'conti.importo');
+                            $q->select('conti.id', 'conti.importo', 'conti.tipo');
                         }, 
                         'fattureStraordinarie', 
                         'rate.rateQuote'
@@ -311,7 +322,9 @@ class DashboardController extends Controller
             $deltaReale = $totPrev - ($totPian + $totVirtualeGlobale);
 
             $copertura = [
-                'preventivo'         => $totPrev, 
+                'spese'              => $totSpese,
+                'entrate'            => $totEntrate,
+                'da_ripartire'       => $totPrev,
                 'pianificato'        => $totPian, 
                 'virtuale'           => $totVirtualeGlobale, 
                 'addebiti_personali' => $addebitiPersonali,

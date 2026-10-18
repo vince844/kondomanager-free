@@ -7,6 +7,7 @@ use App\Enums\NaturaGestione;
 use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
+use App\Exceptions\Gestionale\SpesaNegativaNelPianoException;
 use App\Enums\StatoPianoRate;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
@@ -26,6 +27,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Gestionale\BudgetMovementService;
 use App\Services\Gestionale\SaldoEsercizioService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\PianoRateCreatorService;
@@ -41,7 +43,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\Riparto\AvvisoSpeseNegative;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Services\Riparto\SpeseNegativeNelPiano;
 
 class PianoRateController extends Controller
 {
@@ -419,6 +423,15 @@ class PianoRateController extends Controller
 
             $pianoRate->load('capitoli');
 
+            // Anche senza generare: un piano nato con la copia di una voce di spesa negativa chiederebbe poi di togliere la voce e riaggiungerla.
+            // Con la generazione lo controlla l'Action.
+            if (empty($validated['genera_subito'])) {
+                $speseNegative = app(SpeseNegativeNelPiano::class)->trova($pianoRate);
+                if ($speseNegative !== []) {
+                    throw new SpesaNegativaNelPianoException($pianoRate, $speseNegative, allaCreazione: true);
+                }
+            }
+
             // 5. Ricorrenza
             if (!empty($validated['recurrence_enabled'])) {
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
@@ -498,6 +511,9 @@ class PianoRateController extends Controller
         } catch (DestinatariCambiatiException $e) {
             DB::rollBack();
             return back()->withInput()->with('destinatari_warning', $e->getCambiamenti());
+        } catch (SpesaNegativaNelPianoException $e) {
+            DB::rollBack();
+            return back()->withInput()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -635,12 +651,15 @@ class PianoRateController extends Controller
                 ];
             });
         } else {
-            // Logica Piani Ordinari (Legge dai capitoli come faceva prima)
-            $sources = $pianoRate->capitoli->map(function ($conto) {
+            // Logica Piani Ordinari (Legge dai capitoli come faceva prima). Il tipo è quello del segno con cui il motore distribuisce la voce:
+            // il modale offre come destinazione solo le voci dello stesso tipo, e un capitolo con spese ed entrate insieme non si sposta.
+            $pianoRate->loadMissing(['capitoli.tabelleMillesimali', 'capitoli.sottoconti.tabelleMillesimali']);
+            $sources = $pianoRate->capitoli->map(function ($conto) use ($pianoRate) {
                 $importoReale = $conto->pivot->importo ?? $conto->importo; 
                 return [
                     'id'                => $conto->id,
                     'nome'              => $conto->nome,
+                    'tipo'              => BudgetMovementService::tipoDelSegno($conto, $pianoRate->created_at),
                     'importo_residuo'   => $importoReale,
                     'formatted_residuo' => MoneyHelper::format($importoReale, false)
                 ];
@@ -649,17 +668,12 @@ class PianoRateController extends Controller
         // -------------------------------------------------------------
 
         $destinations = [];
+        $avvisoRigheSovrapposte = null;
         $pianoContoId = $pianoRate->gestione->pianoConto?->id;
 
         if ($pianoContoId) {
-            $destinations = Conto::where('piano_conto_id', $pianoContoId)
-                ->orderBy('nome')
-                ->visibili()
-                ->get(['id', 'nome'])
-                ->map(fn($c) => [
-                    'id' => $c->id,
-                    'nome' => $c->nome,
-                ]);
+            $destinations = app(BudgetMovementService::class)->destinazioniPerLaPagina($pianoRate, $pianoContoId);
+            $avvisoRigheSovrapposte = app(BudgetMovementService::class)->avvisoRigheSovrapposte($pianoRate, $pianoContoId);
         } else {
             Log::warning("Sposta Spesa: Nessun Piano Conto trovato per la gestione {$pianoRate->gestione_id}");
         }
@@ -680,6 +694,11 @@ class PianoRateController extends Controller
             // passaggi del conguaglio (sotto l'ultima ragione) e i rimedi uno per voce: l'avviso li mette in elenco, perché in una
             // frase sola erano un blocco.
             'fermo_del_piano' => $pianoRate->fermoPerLaPagina(),
+            // Una voce di spesa con l'importo negativo il motore la addebita in positivo: l'avviso c'è in ogni stato del piano, anche quando le vie
+            // per correggerlo rifiutano già (rate emesse, incassi, un passaggio che l'ha conguagliato). Non è una ragione del fermo: non spegne niente.
+            'avviso_spesa_negativa' => app(AvvisoSpeseNegative::class)->perLaPagina($pianoRate),
+            // Un capitolo che ha la sua riga insieme a quelle dei suoi sottoconti: il motore le salta, e il piano chiede più di quanto ripartisce. Dice come uscirne.
+            'avviso_righe_sovrapposte' => $avvisoRigheSovrapposte,
             'needsMigration' => false, 
             'copertura' => $coperturaData,
             'sources' => $sources, // <--- Ora questo conterrà le fatture!
@@ -1119,6 +1138,10 @@ class PianoRateController extends Controller
             return back()
                 ->with('destinatari_warning', $e->getCambiamenti())
                 ->with('destinatari_warning_detach', (int) $capitoloId);
+        } catch (SpesaNegativaNelPianoException $e) {
+            // Il rollback annulla anche il detach: la voce resta nel piano.
+            DB::rollBack();
+            return back()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
             return back()->with($this->flashError("Errore durante la rimozione: " . $e->getMessage()));

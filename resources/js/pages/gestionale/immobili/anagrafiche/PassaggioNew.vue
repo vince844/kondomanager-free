@@ -155,7 +155,7 @@ const form = useForm({
   ho_letto: false,
   nota_cancello: '',
   // Decisioni 31.5 e 31.6 (beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal giorno dell'atto.
-  // La legge (art. 1004 c.c.) è già scelta; le voci da spostare sono tutte spuntate, e qui si tengono quelle senza spunta.
+  // La legge (art. 1004 c.c.) è già scelta; le voci da spostare, entrate comprese (art. 984 c.c.), sono tutte spuntate, e qui si tengono quelle senza spunta.
   ordinaria_dopo_atto: 'usufruttuario' as 'usufruttuario' | 'voce',
   voci_da_tenere: [] as number[],
   // Decisione 57 (1.11.0-beta.43, D2): all'estinzione, con un altro usufrutto in corso, i nudi che tornano pieni — senza una
@@ -1213,7 +1213,7 @@ function urlTipo(t: TipoPassaggio) {
             </Card>
 
             <!-- Decisioni 31.5 e 31.6 (beta.41): alla costituzione e alla riserva d'usufrutto, chi paga l'ordinaria dal giorno
-                 dell'atto. La legge è già scelta; le voci sono tutte spuntate. Le conseguenze le scrive il server. -->
+                 dell'atto. La legge è già scelta; le voci, entrate comprese, sono tutte spuntate. Le conseguenze le scrive il server. -->
             <Card v-if="ordinaria" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
                 <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Chi paga l'ordinaria dal giorno dell'atto</CardTitle>
@@ -1254,16 +1254,20 @@ function urlTipo(t: TipoPassaggio) {
                     :class="voceSpuntata(v, form.voci_da_tenere) ? 'bg-white border-purple-300 dark:bg-slate-950 dark:border-purple-800' : 'bg-white border-slate-200 dark:bg-slate-950 dark:border-slate-700'">
                     <input type="checkbox" :checked="voceSpuntata(v, form.voci_da_tenere)" @change="form.voci_da_tenere = cambiaSpunta(form.voci_da_tenere, v.id)" class="w-4 h-4 mt-0.5 accent-purple-600 rounded border-slate-300" />
                     <span class="flex flex-col gap-0.5 min-w-0">
-                      <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ v.conto }}</span>
+                      <span class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ v.conto }}</span>
+                        <span v-if="v.tipo === 'entrata'" class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">Entrata</span>
+                      </span>
                       <span class="text-[11px] text-slate-500 dark:text-slate-400">
                         {{ v.tabella }} · {{ v.gestione }}<template v-if="v.percentuale < 100"> · il {{ v.percentuale.toLocaleString('it-IT') }} % sul «Proprietario»</template>
                       </span>
+                      <span v-if="v.tipo === 'entrata' && voceSpuntata(v, form.voci_da_tenere)" class="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">Se è un frutto civile, come un affitto o un canone, l'art. 984 c.c. lo dà all'usufruttuario (se il titolo dell'usufrutto dice altro, vale fra le parti): l'entrata passa all'«Usufruttuario». Togli la spunta se deve restare al nudo proprietario.</span>
                       <span v-if="!voceSpuntata(v, form.voci_da_tenere)" class="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">Resta sul «Proprietario»: nei piani che verranno andrà al nudo proprietario<template v-if="ordinaria.nudo">, {{ ordinaria.nudo }}</template>.</span>
                       <span v-else-if="v.altre_unita.length" class="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
                         Vale per tutta la tabella: cambia anche
                         <template v-for="(u, i) in v.altre_unita" :key="u.immobile_id">
                           <template v-if="i > 0">{{ i === v.altre_unita.length - 1 ? ' e ' : ', ' }}</template>
-                          <strong class="font-medium">{{ u.immobile }}</strong> ({{ u.nudi ? `da ${u.nudi} a ${u.usufruttuari}` : `a ${u.usufruttuari}` }}<template v-if="u.importo_formattato && u.importo">, {{ u.importo_formattato }} nell'ultimo piano</template>)</template>.
+                          <strong class="font-medium">{{ u.immobile }}</strong> ({{ u.nudi ? `da ${u.nudi} a ${u.usufruttuari}` : `a ${u.usufruttuari}` }}<template v-if="u.importo_formattato && u.importo && v.tipo !== 'entrata'">, {{ u.importo_formattato }} nell'ultimo piano</template>)</template>.
                       </span>
                     </span>
                   </label>

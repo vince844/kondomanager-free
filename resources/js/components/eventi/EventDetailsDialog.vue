@@ -7,14 +7,24 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Clock, XCircle, TrendingDown } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3'; 
+import { compensazioneDopoLEmissione, inAttesaDellaCompensazione } from '@/lib/eventi/compensazione';
 
 const props = defineProps<{ isOpen: boolean; evento: any; }>();
 const emit = defineEmits(['close']);
 const { getEventStyle } = useEventStyling();
 const { euro } = useCurrencyFormatter(); 
 const isProcessing = ref(false); 
+// Il rifiuto del server alla segnalazione (errore sul campo `evento`): si legge sopra i pulsanti, che restano spenti. La via
+// d'uscita è chiudere la finestra: il rifiuto non passa a un altro promemoria né resta alla riapertura.
+const rifiuto = ref<string | null>(null);
+const inviaBloccato = computed(() => isProcessing.value || rifiuto.value !== null);
+
+watch(
+    () => [props.isOpen, props.evento?.id, props.evento?.meta?.status, props.evento?.meta?.importo_restante],
+    () => { rifiuto.value = null; }
+);
 
 const isAdmin = computed(() => props.evento?.meta?.type === 'emissione_rata');
 const isCondomino = computed(() => props.evento?.meta?.type === 'scadenza_rata_condomino');
@@ -34,20 +44,50 @@ const importoRestante = computed<number>(() => props.evento?.meta?.importo_resta
 
 const importoPagato = computed<number>(() => Number(props.evento?.meta?.importo_pagato || 0));
 
+// «Già versato» è il contante che la persona ha dato (`importo_versato`); `importo_pagato` è il pagato netto, che un credito usato su un'altra
+// rata o restituito riduce, e un credito di un'altra rata usato qui aumenta. Un promemoria salvato prima non ha `importo_versato`: allora il
+// pagato era l'unico numero e vale lui.
+const importoVersato = computed<number>(() => Number(props.evento?.meta?.importo_versato ?? props.evento?.meta?.importo_pagato ?? 0));
+// Ciò che separa il versato dal pagato, perché la colonna torni: positivo se un credito è uscito dalla rata (usato altrove o restituito),
+// negativo se un credito è entrato in questa (di un'altra rata o di un'altra quota della stessa rata).
+const creditoFuoriDallaRata = computed<number>(() => importoVersato.value - importoPagato.value);
+// Il credito che resta a favore della persona quando non resta niente da versare: il pagato supera il netto (un credito di un'altra quota non è
+// stato usato, o c'è uno strapagamento) e il restante si ferma a zero. La colonna torna solo con una riga che dica quanto resta. Un promemoria
+// salvato prima non ha `importo_versato`, e il suo pagato conta le sole quote positive: un credito già usato lo fa sembrare più alto del netto, e
+// la riga direbbe un credito che non c'è. Lì la riga non si mostra.
+const creditoRimasto = computed<number>(() => {
+    if (!isCondomino.value || importoOriginale.value <= 0.01 || Math.abs(importoRestante.value) > 0.01) return 0;
+    if (props.evento?.meta?.importo_versato === undefined || props.evento?.meta?.importo_versato === null) return 0;
+    return Math.max(0, importoPagato.value - importoOriginale.value);
+});
+
 // Stati di pagamento
 const isPaid = computed(() => props.evento?.meta?.status === 'paid'); 
 const isReported = computed(() => props.evento?.meta?.status === 'reported');
 const isRejected = computed(() => props.evento?.meta?.status === 'rejected');
 
+// In attesa della compensazione: la persona non ha altro da versare e una sua quota aspetta il credito di un'altra sulla stessa
+// rata, che l'amministratore deve ancora compensare. Su una rata non ancora emessa non c'è niente da aspettare.
+const daCompensare = computed<number>(() => Number(props.evento?.meta?.da_compensare || 0));
+const isInAttesaDellaCompensazione = computed(() => isCondomino.value && !isReported.value && !isRejected.value && inAttesaDellaCompensazione(props.evento?.meta));
+// Netto zero su una rata non ancora emessa: niente da versare, e la compensazione la registra l'amministratore dopo l'emissione.
+const isCompensazioneDopoLEmissione = computed(() => isCondomino.value && compensazioneDopoLEmissione(props.evento?.meta));
+
 // Gestione visiva: Un evento è "Credito" solo se il suo importo totale nel DB è negativo (es. Rata Zero con credito)
 const isGeneratingCredit = computed(() => isCondomino.value && importoOriginale.value < -0.01);
+// Il credito c'è ancora (restante negativo), oppure è stato usato o restituito per intero (restante zero): nel secondo caso non c'è più un
+// credito a favore da mostrare, e non c'è niente da versare. Con un restante positivo il netto è a credito ma una quota resta da pagare (il credito è
+// stato rimborsato o usato altrove): non è né l'uno né l'altro, e la rata si paga come ogni altra.
+const creditoAncoraAFavore = computed(() => isGeneratingCredit.value && importoRestante.value < -0.01);
+const creditoUsatoORestituito = computed(() => isGeneratingCredit.value && Math.abs(importoRestante.value) <= 0.01);
 
-// Nessun pagamento richiesto: importo restante è zero o meno (es. Saldo Iniziale con credito che azzera la rata)
-const isNothingToPay = computed(() => isCondomino.value && !isGeneratingCredit.value && importoRestante.value <= 0.01 && !isPaid.value);
+// Nessun pagamento richiesto: importo restante è zero o meno (es. Saldo Iniziale con credito che azzera la rata). Se una quota aspetta ancora la
+// compensazione il credito non è stato applicato, e la frase «completamente compensato» direbbe il falso.
+const isNothingToPay = computed(() => isCondomino.value && !isGeneratingCredit.value && importoRestante.value <= 0.01 && !isPaid.value && daCompensare.value <= 0);
 
 const isRataZero = computed(() => props.evento?.meta?.numero_rata === 0);
 
-// Una rata è coperta solo se l'importo restante è zero ma non è ancora segnata come pagata (raro in V1.9, ma possibile)
+// Restante zero su un netto positivo senza «paid»: di solito una quota aspetta la compensazione con un credito («In attesa della compensazione»); colora solo la cifra
 const isFullyCoveredByCredit = computed(() => importoRestante.value === 0 && importoOriginale.value > 0 && !isPaid.value && isCondomino.value);
 
 // --- CALCOLO SCADENZA ---
@@ -56,10 +96,9 @@ const daysDiff = computed(() => {
     return differenceInDays(new Date(props.evento.start_time), new Date()); 
 });
 
-// Mostriamo l'allarme rosso solo se c'è effettivamente un debito residuo sulla rata
+// Mostriamo l'allarme rosso solo se c'è effettivamente un debito residuo sulla rata: il restante positivo, anche con il netto a credito
 const isExpired = computed(() => 
     daysDiff.value < 0 && 
-    !isGeneratingCredit.value && 
     !isPaid.value && 
     !isReported.value && 
     importoRestante.value > 0.01
@@ -80,7 +119,7 @@ const reportPayment = () => {
     router.post(route('user.eventi.report_payment', props.evento.id), {}, {
         preserveScroll: true,
         onSuccess: () => { isProcessing.value = false; emit('close'); },
-        onError: () => isProcessing.value = false
+        onError: (errori: Record<string, string>) => { isProcessing.value = false; rifiuto.value = Object.values(errori)[0] ?? null; }
     });
 };
 
@@ -130,7 +169,7 @@ const reportPaymentWithCredit = () => {
     }, {
         preserveScroll: true,
         onSuccess: () => { isProcessing.value = false; emit('close'); },
-        onError: () => { isProcessing.value = false; }
+        onError: (errori: Record<string, string>) => { isProcessing.value = false; rifiuto.value = Object.values(errori)[0] ?? null; }
     });
 };
 
@@ -161,11 +200,11 @@ const reportPaymentWithCredit = () => {
 
                     <div>
                          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1"> 
-                             {{ isAdmin ? 'Totale emissione rata' : (isGeneratingCredit ? 'Credito di questa rata' : 'Totale da versare') }} 
+                             {{ isAdmin ? 'Totale emissione rata' : (creditoAncoraAFavore ? 'Credito di questa rata' : 'Totale da versare') }} 
                          </span>
                         
                         <span class="text-4xl font-bold tracking-tight block tabular-nums" 
-                              :class="isGeneratingCredit ? 'text-blue-600 dark:text-blue-400' : (isFullyCoveredByCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white')"> 
+                              :class="creditoAncoraAFavore ? 'text-blue-600 dark:text-blue-400' : (isFullyCoveredByCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white')"> 
                             {{ euro(importoRestante, { forcePlus: false }) }} 
                         </span>
 
@@ -211,14 +250,28 @@ const reportPaymentWithCredit = () => {
                                 </div>
                             </div>
                             
-                            <div v-if="importoPagato > 0.01" class="mt-4 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 -mx-2 px-3 py-3 rounded">
+                            <div v-if="importoVersato > 0.01 || importoPagato > 0.01 || Math.abs(creditoFuoriDallaRata) > 0.01" class="mt-4 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 -mx-2 px-3 py-3 rounded">
                                 <div class="flex justify-between text-slate-500 dark:text-slate-400 mb-1 text-xs">
                                     <span>Totale rata calcolato</span>
                                     <span>{{ euro(importoOriginale) }}</span>
                                 </div>
-                                <div class="flex justify-between text-emerald-600 dark:text-emerald-500 font-medium pb-2 border-b border-slate-200 dark:border-slate-700 text-xs">
-                                    <span class="flex items-center gap-1"><CheckCircle class="w-3 h-3" /> Già versato</span>
-                                    <span>- {{ euro(importoPagato) }}</span>
+                                <div class="pb-2 border-b border-slate-200 dark:border-slate-700 text-xs space-y-1">
+                                    <div v-if="importoVersato > 0.01" class="flex justify-between text-emerald-600 dark:text-emerald-500 font-medium">
+                                        <span class="flex items-center gap-1"><CheckCircle class="w-3 h-3" /> Già versato</span>
+                                        <span>- {{ euro(importoVersato) }}</span>
+                                    </div>
+                                    <div v-if="creditoFuoriDallaRata > 0.01" class="flex justify-between text-slate-500 dark:text-slate-400">
+                                        <span>Credito usato altrove o restituito</span>
+                                        <span>+ {{ euro(creditoFuoriDallaRata) }}</span>
+                                    </div>
+                                    <div v-else-if="creditoFuoriDallaRata < -0.01" class="flex justify-between text-emerald-600 dark:text-emerald-500 font-medium">
+                                        <span>Credito applicato da un'altra quota</span>
+                                        <span>- {{ euro(-creditoFuoriDallaRata) }}</span>
+                                    </div>
+                                    <div v-if="creditoRimasto > 0.01" class="flex justify-between text-slate-500 dark:text-slate-400">
+                                        <span>Credito ancora a tuo favore</span>
+                                        <span>+ {{ euro(creditoRimasto) }}</span>
+                                    </div>
                                 </div>
                                 <div class="flex justify-between items-center mt-2">
                                     <span class="font-bold text-sm text-slate-900 dark:text-white">Residuo da pagare</span>
@@ -279,7 +332,7 @@ const reportPaymentWithCredit = () => {
 
                     <div v-if="isCondomino">
 
-                        <div v-if="isPaid" class="mb-6 p-6 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col items-center justify-center text-center gap-3">
+                        <div v-if="isPaid && !isGeneratingCredit" class="mb-6 p-6 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col items-center justify-center text-center gap-3">
                             <div class="p-3 bg-emerald-100 rounded-full text-emerald-600 shadow-sm">
                                 <CheckCircle class="w-8 h-8" />
                             </div>
@@ -318,7 +371,31 @@ const reportPaymentWithCredit = () => {
                                 </div>
                             </div>
 
-                            <div v-if="isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                            <div v-if="isInAttesaDellaCompensazione" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
+                                    <Clock class="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-blue-800 mb-1">In attesa della compensazione</h4>
+                                    <p class="text-xs text-blue-700 leading-relaxed">
+                                        Non devi versare altro. L'amministratore deve ancora registrare la compensazione di <span class="font-bold">{{ euro(daCompensare) }}</span> fra una tua quota da pagare e un tuo credito.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-else-if="creditoUsatoORestituito" class="mb-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-emerald-100 rounded-full text-emerald-600 shrink-0 mt-0.5">
+                                    <CheckCircle class="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-emerald-800 mb-1">Nessun pagamento richiesto</h4>
+                                    <p class="text-xs text-emerald-700 leading-relaxed">
+                                        Il credito di questa rata è stato usato o restituito: non resta niente da versare né da ricevere.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-else-if="creditoAncoraAFavore" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
                                 <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
                                     <TrendingDown class="w-4 h-4" />
                                 </div>
@@ -326,6 +403,18 @@ const reportPaymentWithCredit = () => {
                                     <h4 class="text-sm font-bold text-blue-800 mb-1">Credito a tuo favore</h4>
                                     <p class="text-xs text-blue-700 leading-relaxed mb-2">
                                         Questo documento certifica un credito a tuo favore di <span class="font-bold">{{ euro(Math.abs(importoRestante)) }}</span>. Non è richiesto alcun pagamento.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-else-if="isCompensazioneDopoLEmissione" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
+                                    <Clock class="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-blue-800 mb-1">Da compensare</h4>
+                                    <p class="text-xs text-blue-700 leading-relaxed">
+                                        Non devi versare altro. Dopo l'emissione della rata, la compensazione di <span class="font-bold">{{ euro(daCompensare) }}</span> fra una tua quota da pagare e un tuo credito la registra l'amministratore.
                                     </p>
                                 </div>
                             </div>
@@ -368,6 +457,8 @@ const reportPaymentWithCredit = () => {
                                         <span class="font-bold text-xl text-amber-700">{{ euro(importoRestante) }}</span>
                                     </div>
                                 </div>
+
+                                <p v-if="rifiuto" role="alert" class="mb-3 text-xs text-red-700 dark:text-red-400">{{ rifiuto }}</p>
                                 
                                 <div v-if="!isEmitted && !isRejected">
                                     <div class="p-3 rounded-lg bg-slate-100 border border-slate-200 mb-3 flex gap-3 items-start">
@@ -421,12 +512,12 @@ const reportPaymentWithCredit = () => {
                                                 </div>
 
                                                 <div v-if="creditoCapiente">
-                                                    <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-10 shadow-sm transition-all rounded-lg text-xs">
+                                                    <Button @click="reportPaymentWithCredit" :disabled="inviaBloccato" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-10 shadow-sm transition-all rounded-lg text-xs">
                                                         {{ isProcessing ? 'Elaborazione in corso...' : 'Sì, salda la rata con il credito' }}
                                                     </Button>
                                                 </div>
                                                 <div v-else>
-                                                    <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-10 shadow-sm transition-all rounded-lg text-xs">
+                                                    <Button @click="reportPaymentWithCredit" :disabled="inviaBloccato" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium h-10 shadow-sm transition-all rounded-lg text-xs">
                                                         {{ isProcessing ? 'Elaborazione in corso...' : 'Ho pagato la differenza (' + euro(differenzaDaPagare) + ')' }}
                                                     </Button>
                                                 </div>
@@ -442,7 +533,7 @@ const reportPaymentWithCredit = () => {
 
                                         <Button class="w-full h-12 text-white shadow-sm font-semibold rounded-lg" 
                                                 :class="isRejected ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'"
-                                                :disabled="isProcessing" 
+                                                :disabled="inviaBloccato" 
                                                 @click="reportPayment">
                                             {{ isProcessing ? 'Invio in corso...' : (isRejected ? 'Ho ri-effettuato il pagamento (Segnala di nuovo)' : 'Ho pagato l\'intera rata tramite bonifico') }}
                                         </Button>
@@ -456,7 +547,7 @@ const reportPaymentWithCredit = () => {
                         <Button as-child class="w-full h-12 text-white font-semibold shadow-lg rounded-lg" :class="isExpired ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'"><a :href="evento.meta.action_url" class="flex items-center justify-center gap-2">{{ isExpired ? 'Emetti subito' : "Vai all'emissione" }}<ArrowRight class="w-4 h-4" /></a></Button>
                     </div>
 
-                    <div v-if="evento.description && !(isCondomino && isPaid)" :class="hasFinancialDetails ? 'mt-3 pt-3 border-t border-slate-100 dark:border-slate-800' : ''">
+                    <div v-if="evento.description && !(isCondomino && isPaid && !isGeneratingCredit)" :class="hasFinancialDetails ? 'mt-3 pt-3 border-t border-slate-100 dark:border-slate-800' : ''">
                         <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">{{ evento.description }}</p>
                     </div>
                 </div>

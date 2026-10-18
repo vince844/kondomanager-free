@@ -137,9 +137,10 @@ class FetchCapitoliPerGestioneController extends Controller
 
             $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap, $dichiarate) {
                 // Troviamo il budget per l'interfaccia
-                $budgetTeorico = (int) $c->importo;
+                // Una voce di entrata vale il suo valore assoluto, come per il motore e per la copertura: un'entrata scritta con il meno non è uno sforo.
+                $budgetTeorico = BudgetCoverageService::importoDellaVoce($c, (int) $c->importo);
                 if ($budgetTeorico === 0 && $c->sottoconti->isNotEmpty()) {
-                    $budgetTeorico = (int) $c->sottoconti->sum('importo');
+                    $budgetTeorico = (int) $c->sottoconti->sum(fn ($figlio) => BudgetCoverageService::importoDellaVoce($figlio, (int) $figlio->importo));
                 }
 
                 $spesoReale = $this->getSpesoRealeRicorsivo($c, $fatturatoMap);
@@ -178,6 +179,8 @@ class FetchCapitoliPerGestioneController extends Controller
                 return [
                     'id'              => $c->id,
                     'nome'            => $nome,
+                    // Il tipo serve alla pagina per contare le voci di entrata con il segno meno, come il motore.
+                    'tipo'            => $c->tipo,
                     'importo_totale'  => MoneyHelper::fromCents($budgetTeorico),
                     'speso_reale'     => MoneyHelper::fromCents($spesoReale),
                     'residuo'         => MoneyHelper::fromCents($residuo),

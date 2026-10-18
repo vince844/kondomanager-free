@@ -1680,7 +1680,7 @@ onMounted(async () => {
 
                                                     <span v-if="parseResiduoQuota(r.residuo) < 0"
                                                         class="inline-flex items-center text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter"
-                                                        title="I crediti sono automaticamente attivi e pronti per la compensazione">
+                                                        title="Su questa riga c'è un credito che puoi usare con «Usa credito».">
                                                         <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Credito Attivo
                                                     </span>
 

@@ -423,8 +423,8 @@ class AnteprimaPassaggio
     /**
      * Decisioni 79 (2) e 80: la frase della fermata del coinquilino, con la cifra e la persona. Chi paga non lo sa il programma, e non lo
      * indovina: la frase dice la strada a mano per ciascuno dei candidati, per nome (Fase 1-bis della .50, R9). Il saldo manuale dal Wallet
-     * solo a chi non ha già un saldo su quella gestione (il Wallet ne accetta uno per persona, gestione, unità ed esercizio); per chi ce l'ha,
-     * la parte si regola fra le parti; se il saldo ce l'ha chi esce, fra le parti per tutti. Con più soggetti il verbo è al plurale (R20).
+     * solo a chi non ha già un saldo su quella gestione (il Wallet ne accetta uno per persona, gestione, unità ed esercizio, fra quelli che un
+     * passaggio non ha scritto); per chi ce l'ha, la parte si regola fra le parti; se il saldo ce l'ha chi esce, fra le parti per tutti. Con più soggetti il verbo è al plurale (R20).
      */
     private static function fraseDelCoinquilino(array $f, bool $conLUnita): string
     {
@@ -801,7 +801,8 @@ class AnteprimaPassaggio
                 $u = (int) $c['immobile_id'];
                 // Fase 1-bis della .50 (R9): chi potrebbe pagare quei giorni, per nome: i coinquilini che restano e chi sta al posto
                 // dell'inquilino dopo l'uscita (il proprietario, o l'usufruttuario). Decisione 80: il Wallet si indica solo a chi non ha già
-                // un saldo sulla gestione, sull'unità e sull'esercizio (il Wallet ne accetta uno), e solo se non ce l'ha chi esce.
+                // un saldo sulla gestione, sull'unità e sull'esercizio (il Wallet ne accetta uno, fra quelli che un passaggio non ha scritto),
+                // e solo se non ce l'ha chi esce.
                 $candidati = $coinquilini[$u]->map(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id, (string) ($t->anagrafica?->nome ?? '')])
                     ->concat($alPosto[$u] ??= $this->alPostoDopoLUscita($chiPaga, $u, $decorrenza))->filter(fn ($x) => $x[1] !== '' && $x[0] !== (int) $uscente->anagrafica_id)
                     ->unique(0)->values();
@@ -2194,24 +2195,48 @@ class AnteprimaPassaggio
             // (il blocco delle rate lo dice): «nel conguaglio» era vero solo per la costituzione.
             $riserva = $this->riserva($tipo, $dati);
             $sulleEmesse = $riserva ? 'restano sue anche sulle rate già emesse, senza conguaglio,' : 'nel conguaglio delle rate già emesse';
-            $frasi[] = sprintf('Dal %s le spese ordinarie sono di %s, usufruttuario (art. 1004 c.c.)%s Le voci create dopo, e quelle delle gestioni che si apriranno, partono dal «Proprietario»: per darle all\'usufruttuario mettile su «Usufruttuario».', $dal, $usufruttuario ?? 'chi ha l\'usufrutto', match (true) {
+            // Se a passare sono solo entrate nessuna spesa passa all'«Usufruttuario»: l'art. 1004 c.c., che riguarda le spese, non si cita.
+            $soloEntrate = $spostate !== [] && array_filter($spostate, fn ($v) => ($v['tipo'] ?? 'spesa') !== 'entrata') === [];
+            $passano = $soloEntrate ? 'per le entrate che passano all\'«Usufruttuario»' : 'per le voci che passano all\'«Usufruttuario»';
+            $chi = $usufruttuario ?? 'chi ha l\'usufrutto';
+            $frasi[] = sprintf('Dal %s %s%s Le voci create dopo, e quelle delle gestioni che si apriranno, partono dal «Proprietario»: per darle all\'usufruttuario mettile su «Usufruttuario».', $dal, match (true) {
+                $soloEntrate && ! $emesse => sprintf('l\'usufruttuario è %s', $chi),
+                $soloEntrate => sprintf('le spese ordinarie sono di %s, usufruttuario', $chi),
+                default => sprintf('le spese ordinarie sono di %s, usufruttuario (art. 1004 c.c.)', $chi),
+            }, match (true) {
+                $soloEntrate && ! $emesse => ': nei piani generati o ricalcolati dopo passano all\'«Usufruttuario» le sole entrate.',
                 $emesse && $voci !== [] && count($spostate) === count($voci) => ': ' . $sulleEmesse . ' e, per le voci di oggi, nei piani generati o ricalcolati dopo.',
-                $emesse && $spostate !== [] => ': ' . $sulleEmesse . ' e, per le voci che passano all\'«Usufruttuario», nei piani generati o ricalcolati dopo.',
+                $emesse && $spostate !== [] => ': ' . $sulleEmesse . ' e, ' . $passano . ', nei piani generati o ricalcolati dopo.',
                 $emesse => ': ' . rtrim($sulleEmesse, ',') . '.',
                 $voci !== [] && count($spostate) === count($voci) => ': per le voci di oggi, nei piani generati o ricalcolati dopo.',
-                $spostate !== [] => ': per le voci che passano all\'«Usufruttuario», nei piani generati o ricalcolati dopo.',
+                $spostate !== [] => ': ' . $passano . ', nei piani generati o ricalcolati dopo.',
                 // Rilievo T2-7: una frase a sé, non un «ma» dopo i due punti.
                 default => '. Su questa unità però non ci sono rate emesse da conguagliare e nessuna voce si sposta: in questo passaggio la scelta non cambia niente.',
             });
             if ($spostate !== []) {
-                $frasi[] = sprintf('Per i piani che verranno, %s dal «Proprietario» all\'«Usufruttuario»: %s.', count($spostate) === 1 ? 'questa voce passa' : 'queste voci passano', $this->elenco(array_map(fn ($v) => sprintf('%s (%s, %s)', $v['conto'], $v['tabella'], $v['gestione']), $spostate)));
-                $altre = collect($spostate)->flatMap(fn ($v) => $v['altre_unita'])->groupBy('immobile_id');
+                $frasi[] = sprintf('Per i piani che verranno, %s dal «Proprietario» all\'«Usufruttuario»: %s.', count($spostate) === 1 ? 'questa voce passa' : 'queste voci passano', $this->elenco(array_map(fn ($v) => VociDaSpostare::etichetta($v), $spostate)));
+                // Una voce di entrata non è sempre un frutto civile (un rimborso, un recupero spese non lo sono): se lo è, come un affitto o un
+                // canone, passa per l'art. 984 c.c. e non per l'art. 1004 c.c., che riguarda le spese. Lo dice una frase sua, in forma condizionale.
+                $entrate = array_values(array_filter($spostate, fn ($v) => ($v['tipo'] ?? 'spesa') === 'entrata'));
+                $spese = array_values(array_filter($spostate, fn ($v) => ($v['tipo'] ?? 'spesa') !== 'entrata'));
+                if ($entrate !== []) {
+                    $frasi[] = count($entrate) === 1
+                        ? sprintf('L\'entrata %s passa all\'«Usufruttuario»: se è un frutto civile, come un affitto o un canone, spetta all\'usufruttuario (art. 984 c.c.; se il titolo dell\'usufrutto dice altro, vale fra le parti); l\'art. 1004 c.c. riguarda le spese.', $this->nomiVoci($entrate))
+                        : sprintf('Le entrate %s passano all\'«Usufruttuario»: se sono frutti civili, come un affitto o un canone, spettano all\'usufruttuario (art. 984 c.c.; se il titolo dell\'usufrutto dice altro, vale fra le parti); l\'art. 1004 c.c. riguarda le spese.', $this->nomiVoci($entrate));
+                }
+                $altre = collect($spese)->flatMap(fn ($v) => $v['altre_unita'])->groupBy('immobile_id');
                 if ($altre->isNotEmpty()) {
                     $frasi[] = sprintf('Una voce vale per tutta la tabella: cambia chi paga anche su %s, dal nudo proprietario all\'usufruttuario. Dove non c\'è usufrutto paga il proprietario, come prima.', $this->elenco($altre->map(function (Collection $u) {
                         $importo = $u->sum(fn ($x) => (int) ($x['importo'] ?? 0));
 
                         return sprintf('%s (%s)%s', $u->first()['immobile'], $u->first()['usufruttuari'], $importo !== 0 ? sprintf(', %s nell\'ultimo piano', MoneyHelper::format($importo)) : '');
                     })->values()->all()));
+                }
+                // Per un'entrata l'importo dell'ultimo piano non si scrive: è un credito, e il segno meno non dice niente a chi legge.
+                $altreEntrate = collect($entrate)->flatMap(fn ($v) => $v['altre_unita'])->groupBy('immobile_id');
+                if ($altreEntrate->isNotEmpty()) {
+                    $frasi[] = sprintf('Un\'entrata vale per tutta la tabella: cambia chi la riceve anche su %s, dal nudo proprietario all\'usufruttuario. Dove non c\'è usufrutto la riceve il proprietario, come prima.',
+                        $this->elenco($altreEntrate->map(fn (Collection $u) => sprintf('%s (%s)', $u->first()['immobile'], $u->first()['usufruttuari']))->values()->all()));
                 }
             }
             // Decisioni 31.8 e 31.9, testi della revisione della Fase 1-ter (T-A1, T-B1, T-B2): il rimedio vero dipende dal piano che
@@ -2235,40 +2260,46 @@ class AnteprimaPassaggio
 
                 return $nomi->count() === 1 ? sprintf('nel piano «%s», %s', $nomi[0], $uno) : sprintf('nei piani %s, %s', $this->elenco($nomi->map(fn ($n) => '«' . $n . '»')->all()), $piu);
             };
-            $conGiornaleVale = $riserva
-                ? sprintf('l\'ordinaria resta a %s, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia', $usufruttuario ?? 'chi vende')
-                : sprintf('il conguaglio dà a %s l\'ordinaria dal %s, anche sulle quote ancora in bozza', $usufruttuario ?? 'chi ha l\'usufrutto', $dal);
+            // Ciò che il piano a giornale lascia o dà: l'ordinaria per le spese, «l'entrata di quella voce» per un'entrata.
+            $conGiornaleVale = function (array $tipi, bool $una) use ($riserva, $usufruttuario, $dal): string {
+                $cosa = in_array('entrata', $tipi, true) ? $this->ordinariaOEntrata($tipi, $una) : 'l\'ordinaria';
+
+                return $riserva
+                    ? sprintf('%s resta a %s, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia', $cosa, $usufruttuario ?? 'chi vende')
+                    : sprintf('il conguaglio dà a %s %s dal %s, anche sulle quote ancora in bozza', $usufruttuario ?? 'chi ha l\'usufrutto', $cosa, $dal);
+            };
             if ($senzaGiornale->isNotEmpty()) {
                 $unPiano = $nomiPiani($senzaGiornale)->count() === 1;
-                $frasiBloccate[] = sprintf('%s %s %s: %s, non c\'è conguaglio, e generato o ricalcolato %s darà dal %s l\'ordinaria di %s a %s, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio %s: con il passaggio %s; poi %s.',
-                    $una($senzaGiornale) ? 'La voce' : 'Le voci', $this->nomiVoci($senzaGiornale->values()->all()) . ($una($senzaGiornale) ? ' è' : ' sono'),
+                $frasiBloccate[] = sprintf('%s %s %s: %s, non c\'è conguaglio, e generato o ricalcolato %s darà dal %s %s a %s, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio %s: con il passaggio %s; poi %s.',
+                    $una($senzaGiornale) ? 'La voce' : 'Le voci', $this->nomiVociConTipo($senzaGiornale->values()->all()) . ($una($senzaGiornale) ? ' è' : ' sono'),
                     $nel($senzaGiornale, 'approvato e ancora senza niente a giornale', 'approvati e ancora senza niente a giornale'),
-                    $una($senzaGiornale) ? 'non si sposta' : 'non si spostano', $unPiano ? 'il piano' : 'ogni piano', $dal, $una($senzaGiornale) ? 'quella voce' : 'quelle voci', $nudo ?? 'il nudo proprietario',
+                    $una($senzaGiornale) ? 'non si sposta' : 'non si spostano', $unPiano ? 'il piano' : 'ogni piano', $dal, $this->ordinariaOEntrata($senzaGiornale->pluck('tipo')->all(), $una($senzaGiornale)), $nudo ?? 'il nudo proprietario',
                     $unPiano ? 'riporta il piano in bozza dalla sua pagina' : 'riporta in bozza, dalla loro pagina, tutti questi piani',
                     $una($senzaGiornale) ? 'la voce si sposterà' : 'le voci si sposteranno', $unPiano ? 'riapprova il piano e ricalcolalo' : 'riapprovali e ricalcolali');
             }
             if ($conGiornale->isNotEmpty()) {
                 $frasiBloccate[] = sprintf('%s %s %s: %s, e per %s non serve: %s. %s sul «Proprietario» per i piani che verranno in questa gestione.',
-                    $una($conGiornale) ? 'La voce' : 'Le voci', $this->nomiVoci($conGiornale->values()->all()) . ($una($conGiornale) ? ' è' : ' sono'),
+                    $una($conGiornale) ? 'La voce' : 'Le voci', $this->nomiVociConTipo($conGiornale->values()->all()) . ($una($conGiornale) ? ' è' : ' sono'),
                     $nel($conGiornale, 'che non si ricalcola più', 'che non si ricalcolano più'),
-                    $una($conGiornale) ? 'non si sposta' : 'non si spostano', $nomiPiani($conGiornale)->count() === 1 ? 'quel piano' : 'quei piani', $conGiornaleVale, $una($conGiornale) ? 'Resta' : 'Restano');
+                    $una($conGiornale) ? 'non si sposta' : 'non si spostano', $nomiPiani($conGiornale)->count() === 1 ? 'quel piano' : 'quei piani', $conGiornaleVale($conGiornale->pluck('tipo')->all(), $una($conGiornale)), $una($conGiornale) ? 'Resta' : 'Restano');
             }
             if ($daFatture->isNotEmpty()) {
                 $frasiBloccate[] = sprintf('%s %s nelle fatture %s: %s sul «Proprietario», e nei piani ordinari generati o ricalcolati %s a %s, nudo proprietario.',
-                    $una($daFatture) ? 'La voce' : 'Le voci', $this->nomiVoci($daFatture->values()->all()) . ($una($daFatture) ? ' è' : ' sono'),
+                    $una($daFatture) ? 'La voce' : 'Le voci', $this->nomiVociConTipo($daFatture->values()->all()) . ($una($daFatture) ? ' è' : ' sono'),
                     str_replace(['nel piano', 'nei piani'], ['del piano straordinario', 'dei piani straordinari'], $nel($daFatture, 'approvato', 'approvati')),
                     $una($daFatture) ? 'resta' : 'restano', $una($daFatture) ? 'andrà' : 'andranno', $nudo ?? 'il nudo proprietario');
             }
             foreach ($miste as $v) {
                 $perCaso = collect($v['piani_bloccanti'] ?? [])->groupBy($caso)->map(fn (Collection $pp) => $this->elenco($pp->pluck('nome')->unique()->map(fn ($n) => '«' . $n . '»')->values()->all()));
+                $entrata = ($v['tipo'] ?? 'spesa') === 'entrata';
                 $parti = array_values(array_filter([
-                    isset($perCaso['giornale']) ? sprintf('%s, che non si ricalcola più: lì %s', $perCaso['giornale'], $conGiornaleVale) : null,
-                    isset($perCaso['senza']) ? sprintf('%s, approvato e ancora senza niente a giornale: generato o ricalcolato, darà dal %s l\'ordinaria della voce a %s, nudo proprietario', $perCaso['senza'], $dal, $nudo ?? 'il nudo proprietario') : null,
+                    isset($perCaso['giornale']) ? sprintf('%s, che non si ricalcola più: lì %s', $perCaso['giornale'], $conGiornaleVale([$v['tipo'] ?? 'spesa'], true)) : null,
+                    isset($perCaso['senza']) ? sprintf('%s, approvato e ancora senza niente a giornale: generato o ricalcolato, darà dal %s %s a %s, nudo proprietario', $perCaso['senza'], $dal, $entrata ? 'l\'entrata della voce' : 'l\'ordinaria della voce', $nudo ?? 'il nudo proprietario') : null,
                     isset($perCaso['fatture']) ? sprintf('%s, straordinario, nelle sue fatture', $perCaso['fatture']) : null,
                 ]));
                 // Nessun rimedio: un piano a giornale non torna in bozza, e uno straordinario in bozza sposterebbe anche la sua parte
                 // straordinaria (art. 1005).
-                $frasiBloccate[] = sprintf('La voce %s è bloccata da più piani — %s. Non si sposta.', $this->nomiVoci([$v]), implode('; ', $parti));
+                $frasiBloccate[] = sprintf('La voce %s è bloccata da più piani — %s. Non si sposta.', $this->nomiVociConTipo([$v]), implode('; ', $parti));
             }
             array_push($frasi, ...$frasiBloccate);
             $tenute = array_values(array_filter($voci, fn ($v) => ! $v['spostata'] && ! $v['bloccata']));
@@ -2289,6 +2320,26 @@ class AnteprimaPassaggio
             'frasi_altri_usufrutti' => $altriUsufrutti,
             // Rilievo S1: il modulo la rimanda con la registrazione, che rifiuta se l'elenco è cambiato nel frattempo.
             'impronta' => VociDaSpostare::impronta($voci), 'ereditata' => null];
+    }
+
+    /**
+     * Ciò che una voce spostata dà all'usufruttuario: l'ordinaria per una spesa, l'entrata per un'entrata, «l'ordinaria o l'entrata» se
+     * le voci sono di tutti e due i tipi.
+     *
+     * @param list<string> $tipi
+     */
+    private function ordinariaOEntrata(array $tipi, bool $una): string
+    {
+        $voce = $una ? 'quella voce' : 'quelle voci';
+
+        $entrate = in_array('entrata', $tipi, true);
+        $spese = array_filter($tipi, fn ($t) => $t !== 'entrata') !== [];
+
+        return match (true) {
+            $entrate && $spese => 'l\'ordinaria o l\'entrata di ' . $voce,
+            $entrate => 'l\'entrata di ' . $voce,
+            default => 'l\'ordinaria di ' . $voce,
+        };
     }
 
     /**
@@ -2320,7 +2371,7 @@ class AnteprimaPassaggio
             $associazioni = DB::table('conto_tabella_millesimale as ctm')->join('conti', 'conti.id', '=', 'ctm.conto_id')
                 ->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')->join('gestioni', 'gestioni.id', '=', 'piani_conti.gestione_id')
                 ->whereIn('ctm.id', array_column($spostate, 'id'))->orderBy('conti.nome')
-                ->get(['ctm.tabella_id', 'conti.nome as conto', 'gestioni.id as gestione_id', 'gestioni.nome as gestione', 'gestioni.data_inizio', 'gestioni.data_fine']);
+                ->get(['ctm.tabella_id', 'conti.nome as conto', 'conti.tipo as tipo', 'gestioni.id as gestione_id', 'gestioni.nome as gestione', 'gestioni.data_inizio', 'gestioni.data_fine']);
             $perUsufrutto = [];
             foreach ($associazioni as $a) {
                 $righe = DB::table('anagrafica_immobile')
@@ -2335,8 +2386,9 @@ class AnteprimaPassaggio
                     if (! (Subentro::origineDellUsufrutto((int) $r->id, (int) $r->immobile_id)?->ordinariaComeLaVoce() ?? false)) {
                         continue;
                     }
-                    $perUsufrutto[$r->id . '|' . $a->gestione_id] ??= ['riga' => $r, 'gestione' => $a->gestione, 'voci' => []];
+                    $perUsufrutto[$r->id . '|' . $a->gestione_id] ??= ['riga' => $r, 'gestione' => $a->gestione, 'voci' => [], 'tipi' => []];
                     $perUsufrutto[$r->id . '|' . $a->gestione_id]['voci'][] = $a->conto;
+                    $perUsufrutto[$r->id . '|' . $a->gestione_id]['tipi'][] = $a->tipo;
                 }
             }
             foreach ($perUsufrutto as $u) {
@@ -2345,8 +2397,8 @@ class AnteprimaPassaggio
                 $periodo = $r->data_fine !== null
                     ? sprintf('dal %s al %s', $this->data(CarbonImmutable::parse($r->data_inizio)), $this->data(CarbonImmutable::parse($r->data_fine)))
                     : sprintf('dal %s', $this->data(CarbonImmutable::parse($r->data_inizio)));
-                $frasi[] = sprintf('L\'usufrutto di %s su %s, %s, è nato con la scelta «come dice ogni voce»: spostando %s sull\'«Usufruttuario», i piani della gestione «%s» generati o ricalcolati dopo daranno l\'ordinaria di %s a %s, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.',
-                    $r->nome, $r->immobile, $periodo, $this->elenco($voci), $u['gestione'], count($voci) === 1 ? 'quella voce' : 'quelle voci', $r->nome);
+                $frasi[] = sprintf('L\'usufrutto di %s su %s, %s, è nato con la scelta «come dice ogni voce»: spostando %s sull\'«Usufruttuario», i piani della gestione «%s» generati o ricalcolati dopo daranno %s a %s, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.',
+                    $r->nome, $r->immobile, $periodo, $this->elenco($voci), $u['gestione'], $this->ordinariaOEntrata($u['tipi'], count($voci) === 1), $r->nome);
             }
 
             return $frasi;
@@ -2366,14 +2418,24 @@ class AnteprimaPassaggio
                 ->whereIn('ctm.id', $ids)->whereIn('ctm.tabella_id', $tabelle)
                 ->where(fn ($q) => $q->whereNull('gestioni.data_fine')->orWhereDate('gestioni.data_fine', '>=', $decorrenza->toDateString()))
                 ->whereExists(fn ($q) => $q->from('conto_tabella_ripartizioni')->whereColumn('conto_tabella_ripartizioni.conto_tabella_millesimale_id', 'ctm.id')->where('soggetto', 'usufruttuario'))
-                ->orderBy('conti.nome')->pluck('conti.nome')->unique()->values()->all();
+                ->orderBy('conti.nome')->get(['conti.nome as nome', 'conti.tipo as tipo']);
+            $tipi = $voci->pluck('tipo')->unique()->values()->all();
+            $voci = $voci->pluck('nome')->unique()->values()->all();
             if ($voci === []) {
                 continue;
             }
             $chi = $origine->riservaUsufrutto() ? ($origine->registro['nomi']['uscente'] ?? null) : ($origine->registro['nomi']['entrante'] ?? null);
             $una = count($voci) === 1;
-            $frasi[] = sprintf('%s %s %s già sull\'«Usufruttuario» dall\'usufrutto di %s su %s, nato il %s con la legge: con «come dice ogni voce» %s paga l\'usufruttuario anche qui, perché è il ruolo che la voce dice oggi.',
-                $una ? 'La voce' : 'Le voci', $this->elenco($voci), $una ? 'è' : 'sono', $chi ?? 'chi l\'aveva', $origine->immobile?->nome ?? 'un\'unità', $this->data($origine->decorrenza), $una ? 'la' : 'le');
+            $cl = $una ? 'la' : 'le';
+            $entrate = in_array('entrata', $tipi, true);
+            $spese = array_filter($tipi, fn ($t) => $t !== 'entrata') !== [];
+            $verbo = match (true) {
+                $entrate && $spese => "$cl paga o $cl riceve",
+                $entrate => "$cl riceve",
+                default => "$cl paga",
+            };
+            $frasi[] = sprintf('%s %s %s già sull\'«Usufruttuario» dall\'usufrutto di %s su %s, nato il %s con la legge: con «come dice ogni voce» %s l\'usufruttuario anche qui, perché è il ruolo che la voce dice oggi.',
+                $una ? 'La voce' : 'Le voci', $this->elenco($voci), $una ? 'è' : 'sono', $chi ?? 'chi l\'aveva', $origine->immobile?->nome ?? 'un\'unità', $this->data($origine->decorrenza), $verbo);
         }
 
         return $frasi;
@@ -2388,8 +2450,11 @@ class AnteprimaPassaggio
      * Le voci bloccate (31.8, 31.9) a parte: `bloccati_qui` se le blocca solo questo piano, `bloccati_altrove` se le blocca
      * anche, o soltanto, un altro (rilievo T-B2).
      *
+     * Le voci si nominano per nome; se fra quelle di un elenco c'è un'entrata, tutte con la loro etichetta (`VociDaSpostare::etichetta()`),
+     * e `tipi` dice di quali tipi sono, perché il cancello scelga le parole giuste («l'ordinaria» o «l'entrata»).
+     *
      * @param list<int> $pianoIds
-     * @return list<array{nome: string, conti: list<string>, per_scelta: list<string>, bloccati_qui: list<string>, bloccati_altrove: list<string>}>
+     * @return list<array{nome: string, conti: list<string>, per_scelta: list<string>, bloccati_qui: list<string>, bloccati_altrove: list<string>, tipi: array{conti: list<string>, per_scelta: list<string>, bloccati_qui: list<string>, bloccati_altrove: list<string>}}>
      */
     private function vociOrdinarieAlNudo(array $pianoIds, int $anagraficaId, array $immobileIds, CarbonImmutable $decorrenza, array $contiSpostati = [], array|bool $perScelta = []): array
     {
@@ -2404,6 +2469,7 @@ class AnteprimaPassaggio
         $righe = DB::table('righe_riparto')
             ->join('piani_rate', 'piani_rate.id', '=', 'righe_riparto.piano_rate_id')
             ->join('gestioni', 'gestioni.id', '=', 'piani_rate.gestione_id')
+            ->leftJoin('conti', 'conti.id', '=', 'righe_riparto.conto_id')
             ->whereIn('righe_riparto.piano_rate_id', $pianoIds)
             ->where('righe_riparto.anagrafica_id', $anagraficaId)
             ->whereIn('righe_riparto.immobile_id', $immobileIds)
@@ -2413,25 +2479,38 @@ class AnteprimaPassaggio
             ->whereNotIn('righe_riparto.conto_id', $contiSpostati)
             ->where(fn ($q) => $q->whereNull('righe_riparto.competenza_al')->orWhereDate('righe_riparto.competenza_al', '>=', $decorrenza->toDateString()))
             ->orderBy('piani_rate.id')->orderBy('righe_riparto.id')
-            ->get(['piani_rate.id', 'piani_rate.nome', 'gestioni.tipo', 'righe_riparto.conto_nome', 'righe_riparto.conto_id'])
+            ->get(['piani_rate.id', 'piani_rate.nome', 'gestioni.tipo', 'gestioni.nome as gestione_nome', 'conti.tipo as tipo_conto', 'righe_riparto.conto_nome', 'righe_riparto.tabella_nome', 'righe_riparto.conto_id'])
             ->filter(fn ($r) => NaturaGestione::daStringa($r->tipo) === NaturaGestione::Ordinaria);
         // Chi blocca le voci, proposte o no.
         $bloccatiDa = $this->vociDaSpostare->bloccatiDa($righe->pluck('conto_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all());
         $bloccata = fn ($r) => array_key_exists((int) $r->conto_id, $bloccatiDa);
-        $nomi = fn (Collection $c) => $c->pluck('conto_nome')->filter()->unique()->values()->all();
+        $entrata = fn ($r) => ($r->tipo_conto ?? 'spesa') === 'entrata';
+        $nomi = function (Collection $c) use ($entrata): array {
+            $righe = $c->filter(fn ($r) => $r->conto_nome !== null && $r->conto_nome !== '');
+
+            return $righe->map(fn ($r) => $righe->contains($entrata)
+                ? VociDaSpostare::etichetta(['conto' => $r->conto_nome, 'tabella' => $r->tabella_nome, 'gestione' => $r->gestione_nome, 'tipo' => $r->tipo_conto])
+                : $r->conto_nome)->unique()->values()->all();
+        };
+        $tipi = fn (Collection $c) => $c->filter(fn ($r) => $r->conto_nome !== null && $r->conto_nome !== '')->map(fn ($r) => $entrata($r) ? 'entrata' : 'spesa')->unique()->values()->all();
 
         return $righe->groupBy('id')
-            ->map(function (Collection $righe) use ($diScelta, $bloccatiDa, $bloccata, $nomi) {
+            ->map(function (Collection $righe) use ($diScelta, $bloccatiDa, $bloccata, $nomi, $tipi) {
                 $pianoId = (int) $righe->first()->id;
                 $libere = $righe->reject($diScelta);
                 $soloQui = fn ($r) => ($bloccatiDa[(int) $r->conto_id] ?? []) === [$pianoId];
+                $conti = $libere->reject($bloccata);
+                $perScelta = $righe->filter($diScelta);
+                $bloccatiQui = $libere->filter(fn ($r) => $bloccata($r) && $soloQui($r));
+                $bloccatiAltrove = $libere->filter(fn ($r) => $bloccata($r) && ! $soloQui($r));
 
                 return [
                     'nome' => (string) $righe->first()->nome,
-                    'conti' => $nomi($libere->reject($bloccata)),
-                    'per_scelta' => $nomi($righe->filter($diScelta)),
-                    'bloccati_qui' => $nomi($libere->filter(fn ($r) => $bloccata($r) && $soloQui($r))),
-                    'bloccati_altrove' => $nomi($libere->filter(fn ($r) => $bloccata($r) && ! $soloQui($r))),
+                    'conti' => $nomi($conti),
+                    'per_scelta' => $nomi($perScelta),
+                    'bloccati_qui' => $nomi($bloccatiQui),
+                    'bloccati_altrove' => $nomi($bloccatiAltrove),
+                    'tipi' => ['conti' => $tipi($conti), 'per_scelta' => $tipi($perScelta), 'bloccati_qui' => $tipi($bloccatiQui), 'bloccati_altrove' => $tipi($bloccatiAltrove)],
                 ];
             })
             ->values()->all();
@@ -3338,8 +3417,8 @@ class AnteprimaPassaggio
             foreach ($alNudo as $piano) {
                 if ($piano['per_scelta'] !== []) {
                     // Rilievo A5: con la scelta fatta piano ricalcolato e conguaglio sono già coerenti; si dice il fatto, niente consiglio.
-                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» (%s) vanno a %s, nudo proprietario, %s',
-                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), implode(', ', $piano['per_scelta']), $entrante ?? 'chi compra',
+                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, %s',
+                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['per_scelta'], $piano['tipi']['per_scelta']), $entrante ?? 'chi compra',
                         $contiPerScelta === true ? 'per la scelta «come dice ogni voce»' : 'perché hai tolto loro la spunta');
                 }
                 // Rilievo T-B2 della revisione della Fase 1-ter: per una voce bloccata (31.8, 31.9) «mettila su Usufruttuario»
@@ -3347,17 +3426,23 @@ class AnteprimaPassaggio
                 // Se la blocca solo questo piano, che non ha niente a giornale, il rimedio è riportarlo in bozza prima di
                 // registrare: con il passaggio la voce si sposta. Se la blocca un altro piano, dal passaggio non c'è rimedio.
                 if ($piano['bloccati_qui'] !== []) {
-                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» (%s) vanno a %s, nudo proprietario, anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.): il piano le blocca, e il passaggio non le sposta. Se devono restare a %s, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio: con il passaggio si sposteranno su «Usufruttuario»; poi riapprova il piano e ricalcolalo. Dopo la registrazione la strada è annullare il passaggio dallo storico dell\'unità, riportare il piano in bozza e registrarlo di nuovo; il piano va comunque ricalcolato prima di emetterlo',
-                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), implode(', ', $piano['bloccati_qui']), $entrante ?? 'chi compra', $uscente->anagrafica?->nome);
+                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, anche se fra le parti %s: il piano le blocca, e il passaggio non le sposta. Se devono restare a %s, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio: con il passaggio si sposteranno su «Usufruttuario»; poi riapprova il piano e ricalcolalo. Dopo la registrazione la strada è annullare il passaggio dallo storico dell\'unità, riportare il piano in bozza e registrarlo di nuovo; il piano va comunque ricalcolato prima di emetterlo',
+                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['bloccati_qui'], $piano['tipi']['bloccati_qui']), $entrante ?? 'chi compra',
+                        $this->fraLeParti($piano['tipi']['bloccati_qui'], count($piano['bloccati_qui'])), $uscente->anagrafica?->nome);
                 }
                 if ($piano['bloccati_altrove'] !== []) {
-                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» (%s) vanno a %s, nudo proprietario, anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.): un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale; il piano va comunque ricalcolato prima di emetterlo',
-                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), implode(', ', $piano['bloccati_altrove']), $entrante ?? 'chi compra');
+                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, anche se fra le parti %s: un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale; il piano va comunque ricalcolato prima di emetterlo',
+                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['bloccati_altrove'], $piano['tipi']['bloccati_altrove']), $entrante ?? 'chi compra',
+                        $this->fraLeParti($piano['tipi']['bloccati_altrove'], count($piano['bloccati_altrove'])));
                 }
                 if ($piano['conti'] === []) {
                     continue;
                 }
-                $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» (%s) vanno a %s, nudo proprietario, perché il programma addebita secondo i coefficienti anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.); se devono restare a %s, che resta usufruttuario, prima di ricalcolare metti quelle voci su «Usufruttuario», che dove non c\'è usufrutto le dà al proprietario e mai all\'inquilino; non su «Inquilino», che su un\'unità affittata le fa pagare all\'inquilino (guida «Ruoli e usufrutto»)', $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), implode(', ', $piano['conti']), $entrante ?? 'chi compra', $uscente->anagrafica?->nome);
+                // Dove non c'è un inquilino l'«Inquilino» non riceve niente; su un'unità affittata una spesa gliela fa pagare, un'entrata gliela dà.
+                $alInquilino = ! in_array('spesa', $piano['tipi']['conti'], true) ? 'le dà all\'inquilino' : 'le fa pagare all\'inquilino';
+                $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, perché il programma addebita secondo i coefficienti anche se fra le parti %s; se devono restare a %s, che resta usufruttuario, prima di ricalcolare metti quelle voci su «Usufruttuario», che dove non c\'è usufrutto le dà al proprietario e mai all\'inquilino; non su «Inquilino», che su un\'unità affittata %s (guida «Ruoli e usufrutto»)',
+                    $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['conti'], $piano['tipi']['conti']), $entrante ?? 'chi compra',
+                    $this->fraLeParti($piano['tipi']['conti'], count($piano['conti'])), $uscente->anagrafica?->nome, $alInquilino);
             }
             if ($ricalcolabiliDiChiEsce->pluck('piano_rate_id')->unique()->count() > count($alNudo)) {
                 $motivi[] = sprintf('un piano rate già generato intesta quote %s: il destinatario cambierebbe', $this->frasiObbligati->a((string) $uscente->anagrafica?->nome));
@@ -3366,7 +3451,7 @@ class AnteprimaPassaggio
             // quote nascono dopo, e l'arretrato di questo passaggio non le comprende: si passano agli eredi a mano; il cancello della generazione lo dice.
             if ($tipo === 'successione' && $agliEredi && $decorrenza !== null) {
                 $nomi = $ricalcolabiliDiChiEsce->pluck('nome')->unique()->values()->all();
-                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà agli eredi i giorni dal %s, divisi per quota, e lascerà a %s le quote dei giorni fino al %s, che l\'arretrato di questo passaggio non comprende. Per passarle agli eredi, quando il piano si ricalcola il cancello della generazione ne dice la cifra e la strada: un saldo manuale dal Wallet sulla stessa gestione (una riga a credito di %s e una a debito di ogni erede, per la sua quota) se nessuno ha già un saldo lì, altrimenti la parte si regola fra le parti; e dice se il piano applica i saldi del Wallet',
+                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà agli eredi i giorni dal %s, divisi per quota, e lascerà a %s le quote dei giorni fino al %s, che l\'arretrato di questo passaggio non comprende. Per passarle agli eredi, quando il piano si ricalcola il cancello della generazione ne dice la cifra e la strada: un saldo manuale dal Wallet sulla stessa gestione (una riga a credito di %s e una a debito di ogni erede, per la sua quota) se nessuno ha già, su quella gestione, quell\'unità e quell\'esercizio, un saldo che non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti; se i saldi registrati sono già la parte di ognuno, dice che ci sono già e che non serve registrare altro; e dice se il piano applica i saldi del Wallet',
                     count($nomi) === 1 ? 'il piano «' . $nomi[0] . '»' : 'i piani ' . $this->elenco(array_map(fn ($n) => '«' . $n . '»', $nomi)),
                     $this->data($decorrenza), $uscente->anagrafica?->nome, $this->data($decorrenza->subDay()), $uscente->anagrafica?->nome);
                 if (count($nomi) > 1) {
@@ -3590,6 +3675,51 @@ class AnteprimaPassaggio
     private function nomiVoci(array $voci): string
     {
         return $this->elenco(collect($voci)->countBy('conto')->map(fn (int $n, string $nome) => $n > 1 ? sprintf('%s (%d voci)', $nome, $n) : $nome)->values()->all());
+    }
+
+    /**
+     * L'elenco delle voci in una frase del cancello della riserva: fra parentesi, come per le spese; se ha un'entrata fra trattini, perché le
+     * etichette portano già le loro parentesi.
+     *
+     * @param list<string> $nomi
+     * @param list<string> $tipi i tipi delle voci dell'elenco, «spesa» o «entrata»
+     */
+    private function vociDelCancello(array $nomi, array $tipi): string
+    {
+        return in_array('entrata', $tipi, true) ? '— ' . $this->elenco($nomi) . ' —' : '(' . implode(', ', $nomi) . ')';
+    }
+
+    /**
+     * Ciò che fra le parti spetta all'usufruttuario, per le voci del cancello: l'ordinaria per le spese (art. 1004 c.c.); un'entrata gli spetta se è
+     * un frutto civile, e l'art. 1004 c.c., che riguarda le spese, non la riguarda.
+     *
+     * @param list<string> $tipi i tipi delle voci dell'elenco, «spesa» o «entrata»
+     */
+    private function fraLeParti(array $tipi, int $voci): string
+    {
+        $entrate = in_array('entrata', $tipi, true);
+        $spese = array_filter($tipi, fn ($t) => $t !== 'entrata') !== [];
+
+        return match (true) {
+            $entrate && $spese => 'l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.), e lo è l\'entrata, se è un frutto civile',
+            $entrate => $voci === 1 ? 'l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario' : 'l\'entrata di quelle voci, se sono frutti civili, è dell\'usufruttuario',
+            default => 'l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.)',
+        };
+    }
+
+    /**
+     * Come `nomiVoci()`, ma se fra le voci c'è un'entrata ogni voce si nomina con la sua etichetta («Affitto antenna (Proprietà,
+     * Ordinaria 2026, entrata)»): una voce di entrata non si scambia per una spesa, nemmeno una con lo stesso nome.
+     *
+     * @param list<array{conto: string, tipo?: string}> $voci
+     */
+    private function nomiVociConTipo(array $voci): string
+    {
+        if (! collect($voci)->contains(fn ($v) => ($v['tipo'] ?? 'spesa') === 'entrata')) {
+            return $this->nomiVoci($voci);
+        }
+
+        return $this->elenco(collect($voci)->map(fn ($v) => VociDaSpostare::etichetta($v))->countBy()->map(fn (int $n, string $nome) => $n > 1 ? sprintf('%s (%d voci)', $nome, $n) : $nome)->values()->all());
     }
 
     private function elenco(array $voci): string

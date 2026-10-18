@@ -2,6 +2,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Models\Gestionale\Conto;
 use App\Models\Gestione;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +35,7 @@ class BudgetCoverageService
         foreach ($this->appiattisciConti($contiRadice) as $conto) {
             $isLeaf = $conto->sottoconti->isEmpty();
             
-            $budgetTeorico   = (int) $conto->importo;
+            $budgetTeorico   = self::importoDellaVoce($conto, (int) $conto->importo);
             $spesoReale      = $fatturatoMap[$conto->id] ?? 0;
             $fabbisognoReale = max($budgetTeorico, $spesoReale);
 
@@ -66,6 +67,8 @@ class BudgetCoverageService
                 'nome'               => $conto->nome,
                 'padre'              => $conto->parent?->nome,
                 'is_leaf'            => $isLeaf,
+                'tipo'               => $conto->tipo,
+                'segno'              => Conto::segnoDelTipo((string) $conto->tipo),
                 'budget'             => $fabbisognoReale,
                 'budget_teorico'     => $budgetTeorico,
                 'pianificato'        => $pianificato,
@@ -82,10 +85,12 @@ class BudgetCoverageService
         $totBudget      = 0;
         $totPianificato = 0;
         
+        // I totali contano le entrate col segno meno, come le distribuisce il motore: il fabbisogno e il pianificato
+        // sono il netto da ripartire. Per voce la copertura resta sul valore assoluto.
         foreach ($report as $r) {
             if ($r['is_leaf']) {
-                $totBudget      += $r['budget'];
-                $totPianificato += $r['pianificato'];
+                $totBudget      += $r['segno'] * $r['budget'];
+                $totPianificato += $r['segno'] * $r['pianificato'];
             }
         }
 
@@ -94,6 +99,19 @@ class BudgetCoverageService
             'items'  => $report,
             'totali' => ['budget' => $totBudget, 'pianificato' => $totPianificato],
         ];
+    }
+
+    /**
+     * L'importo di una voce come lo legge il motore. Una voce di entrata vale il suo valore assoluto: il motore le toglie il segno (`−abs`), quindi
+     * un'entrata scritta con il meno (dato delle versioni dalla 1.7.0 alla 1.11.0-beta.51) accredita come una positiva, e la copertura non la deve vedere in deficit.
+     * Una voce di spesa resta col suo segno: la spesa negativa il motore la addebita in positivo, e la ferma il fermo del piano (`SpeseNegativeNelPiano`).
+     * Il tipo manca sugli oggetti semplici dei test unitari: senza tipo la voce è di spesa.
+     *
+     * @param  object  $conto  una voce del piano dei conti (o un oggetto con `tipo`)
+     */
+    public static function importoDellaVoce(object $conto, int $importo): int
+    {
+        return Conto::segnoDelTipo((string) ($conto->tipo ?? 'spesa')) < 0 ? abs($importo) : $importo;
     }
 
     private function calcolaCoperturaReale($contiRadice, $pianiRate): array
@@ -136,20 +154,20 @@ class BudgetCoverageService
 
                     $residuoPiano = is_null($capitolo->pivot->importo)
                         ? (function () use ($capitolo, $contoModel): int {
-                            $padreBudget = (int) $capitolo->importo;
+                            $padreBudget = self::importoDellaVoce($contoModel, (int) $capitolo->importo);
                             // Mastro padre (importo=0): NULL significa "copri tutto il fabbisogno dei figli"
                             if ($padreBudget === 0) {
-                                $padreBudget = (int) $contoModel->sottoconti->sum('importo');
+                                $padreBudget = (int) $contoModel->sottoconti->sum(fn ($figlio) => self::importoDellaVoce($figlio, (int) $figlio->importo));
                             }
                             return $padreBudget;
                           })()
-                        : (int) $capitolo->pivot->importo;
+                        : self::importoDellaVoce($contoModel, (int) $capitolo->pivot->importo);
 
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $residuoPiano;
 
                     $figliDaSoddisfare = [];
                     foreach ($sottocontiValidi as $figlio) {
-                        $budgetTeorico  = (int) $figlio->importo;
+                        $budgetTeorico  = self::importoDellaVoce($figlio, (int) $figlio->importo);
                         $copertoAttuale = $map[$figlio->id] ?? 0;
                         $deficit        = $budgetTeorico - $copertoAttuale;
                         if ($deficit > 0) {
@@ -196,9 +214,10 @@ class BudgetCoverageService
                 $contoModel = $contiById[$capitolo->id] ?? null;
 
                 if ($contoModel && $contoModel->sottoconti->isEmpty()) {
-                    $impegnato = !is_null($capitolo->pivot->importo)
-                        ? (int) $capitolo->pivot->importo
-                        : (int) $capitolo->importo;
+                    $impegnato = self::importoDellaVoce(
+                        $contoModel,
+                        !is_null($capitolo->pivot->importo) ? (int) $capitolo->pivot->importo : (int) $capitolo->importo
+                    );
 
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $impegnato;
                 }

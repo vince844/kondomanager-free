@@ -12,6 +12,8 @@ import { useTabelle } from '@/composables/useTabelle'
 import vSelect from 'vue-select'
 import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 import type { Conto } from '@/types/gestionale/conti'
+import SuggerimentoEntrataUsufrutto from './SuggerimentoEntrataUsufrutto.vue'
+import { trans } from 'laravel-vue-i18n'
 
 interface TabellaAssociata {
   id: number
@@ -234,7 +236,7 @@ const submit = () => {
           </div>
 
           <p class="text-xs text-gray-500 mt-1">
-            Percentuale della spesa attribuita a questa tabella
+            Percentuale della voce attribuita a questa tabella
             <span class="font-medium">(1–{{ maxCoefficiente }}%)</span>
           </p>
           <InputError :message="form.errors.coefficiente" />
@@ -245,7 +247,7 @@ const submit = () => {
           <Label class="text-sm font-medium mb-3 block">Ripartizione per soggetti</Label>
           <div class="grid grid-cols-3 gap-4">
             <div>
-              <Label for="proprietario" class="text-xs">Proprietario %</Label>
+              <Label for="proprietario" class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.owner_percent') }}</Label>
               <!-- FIX: type="number" + v-model.number su tutti e tre i campi -->
               <Input
                 id="proprietario"
@@ -256,7 +258,7 @@ const submit = () => {
               />
             </div>
             <div>
-              <Label for="inquilino" class="text-xs">Inquilino %</Label>
+              <Label for="inquilino" class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.tenant_percent') }}</Label>
               <Input
                 id="inquilino"
                 v-model.number="form.percentuale_inquilino"
@@ -266,7 +268,7 @@ const submit = () => {
               />
             </div>
             <div>
-              <Label for="usufruttuario" class="text-xs">Usufruttuario %</Label>
+              <Label for="usufruttuario" class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.usufructuary_percent') }}</Label>
               <Input
                 id="usufruttuario"
                 v-model.number="form.percentuale_usufruttuario"
@@ -293,6 +295,7 @@ const submit = () => {
             </Button>
           </div>
           <InputError :message="form.errors.percentuale_proprietario" />
+          <SuggerimentoEntrataUsufrutto v-if="props.conto?.tipo === 'entrata'" class="mt-3" />
         </div>
 
         <DialogFooter class="flex justify-end space-x-2 mt-6">

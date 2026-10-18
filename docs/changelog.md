@@ -7,6 +7,353 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.52] - Il segno delle entrate
+
+**Tocca i dati del database, senza cambiare lo schema: una migrazione riscrive la frase del promemoria del credito e riallinea i
+promemoria del caso misto scritti prima di questa beta.** La migrazione lavora solo sui promemoria delle rate che il condòmino vede
+nel portale, e fa tre cose. Dove la descrizione contiene ancora, esatta, la frase della 1.8.0 che prometteva la compensazione
+automatica del credito sulle rate successive, sostituisce quella frase e lascia il resto del testo com'è: al suo posto «il credito
+resta a tuo favore. L'amministratore può usarlo per compensare una tua quota da pagare o restituirtelo.», oppure «il credito è stato
+usato o restituito.» se la persona ha su quella rata quote a credito non annullate e sono tutte già pagate per intero. Poi ricalcola,
+con lo stesso calcolo che il programma usa da questa beta, i promemoria scritti prima che portano il riferimento alla rata, per una
+persona sola che sulla rata ha quote attive dei due segni, una da pagare e una a credito (il caso misto), saldati compresi: una
+segnalazione della persona resta com'è e si aggiornano i numeri, e il testo si riscrive solo se è ancora quello scritto dal
+programma. Infine scrive nel registro quanti promemoria già saldati hanno ancora una quota da pagare, senza toccarli. Non cambia lo
+schema, le date né gli altri eventi, e dei promemoria fuori dal caso misto non cambia le descrizioni senza la frase esatta, gli stati
+e gli importi, che si riscrivono al primo movimento sulla rata. Aggiorna solo la descrizione e i dati del promemoria, senza toccare
+`updated_at`: i promemoria pagati non tornano a comparire nel portale per trenta giorni. Ogni promemoria riscritto va nel registro
+dell'applicazione, e uno che non si riesce a riallineare ci va come avviso, senza fermare l'aggiornamento. Si può rilanciare: la
+frase vecchia non c'è più e un promemoria riallineato non si ricalcola una seconda volta, quindi il secondo giro non cambia niente di
+ciò che il primo ha scritto, e riprova solo un promemoria che non era riuscito a riallineare. Senza migrazione, i promemoria scritti
+da adesso salvano anche il contante versato dalla persona e quanto aspetta la compensazione, e il registro di un passaggio
+d'usufrutto segna come entrata la voce di entrata che sposta all'«Usufruttuario»; un passaggio registrato prima si legge come prima.
+
+La voce di entrata fuori dai passaggi. Le voci di entrata, come l'affitto di un'antenna, in alcune operazioni il programma le
+trattava come spese senza dirlo: «Sposta spesa» fra una spesa e un'entrata, una fattura o una regolazione immediata su un'entrata, un
+importo negativo scritto al posto del tipo «Entrata», dieci totali che sommavano le entrate alle spese. Le prime tre erano nel «Non
+ancora» della beta.51, che dei dieci totali nominava solo il badge «Disallineato: ricalcola!». Con loro il promemoria del portale per
+una quota a credito, che prometteva una compensazione che il programma non fa da solo. Il segno di una voce ora si legge come lo
+legge il calcolo delle quote, che non cambia. Ci sono anche l'art. 984 c.c. per le entrate sulle unità in usufrutto e tre correzioni
+dei passaggi: due di frasi e una del selettore del Wallet. Ogni difetto ha prima avuto un test rosso; le correzioni sono passate da
+una revisione avversariale, da due giri di verifica sulle correzioni e da una verifica a video. I difetti trovati nelle funzioni
+nuove sono corretti prima del rilascio e non figurano fra le correzioni, che riguardano solo ciò che c'era già.
+
+**Cambi di comportamento, detti per primi.**
+- **«Sposta spesa» si fa solo fra voci dello stesso tipo.** Con «Spese generali» a € 1.200,00 e l'entrata «Affitto antenna» a
+  € 240,00 il piano chiede € 960,00. Spostare € 50,00 dalla spesa all'entrata lo portava a € 860,00, e al contrario a € 1.060,00: il
+  totale cambiava del doppio dello spostamento, con il messaggio di successo. Ora lo spostamento fra una spesa e un'entrata si
+  rifiuta prima di scrivere, sotto «Sposta su»: ««Spese generali» è una spesa e «Affitto antenna» è un'entrata: il budget si sposta
+  solo fra voci dello stesso tipo, altrimenti il totale del piano cambierebbe. Scegli una voce dello stesso tipo.» Il menu della
+  destinazione offre solo le voci del tipo della sorgente, e una destinazione scelta prima si svuota se con la sorgente nuova non è
+  più ammessa. Il tipo è quello con cui il calcolo distribuisce la voce: un capitolo di tipo «Spesa (uscita)» senza tabelle proprie e
+  con i soli sottoconti di entrata conta come un'entrata (spostandogli € 100,00 da una spesa il piano passava da € 1.200,00 a
+  € 1.000,00), e un capitolo con sottoconti di spesa e di entrata insieme non si sposta e non riceve (lo spostamento portava il piano
+  da € 1.400,00 a € 1.320,00): nel menu della sorgente compare spento, con «(capitolo con spese ed entrate: non si sposta)». Lo
+  storno di uno spostamento già scritto non passa da questo controllo. C'era dalla v1.9.0.
+- **«Sposta spesa» non sovrappone una voce a un capitolo o ai sottoconti già nel piano.** Nel piano «Spese generali» a € 1.200,00 e i
+  sottoconti «Ascensore» (€ 600,00) e «Caldaia» (€ 400,00) del capitolo «Manutenzione»: € 2.200,00. Spostare € 100,00 su
+  «Manutenzione» scriveva una riga per il capitolo, e il calcolo, che dà la quota del capitolo ai sottoconti e salta le loro righe,
+  contava solo quella: il piano scendeva a € 1.200,00 e «Ricalcola» rispondeva con successo. Ora lo spostamento si rifiuta:
+  ««Manutenzione» non è nel piano, ma lo sono i suoi sottoconti «Ascensore» e «Caldaia»: con una riga anche per il capitolo il piano
+  conterebbe solo quella e non più le righe dei sottoconti. Sposta il budget su uno dei sottoconti.»; verso un sottoconto il cui
+  capitolo è nel piano la frase dice di spostare il budget sul capitolo, e il menu non offre più queste voci. La sovrapposizione
+  segue la regola del calcolo: un capitolo con tabelle millesimali proprie non passa la quota ai sottoconti, e contano i sottoconti
+  nati fino alla creazione del piano, o tutti se nessuno lo è. Nei piani che il vecchio spostamento aveva già colpito il rifiuto dice
+  come uscirne, e la pagina mostra un riquadro (fra le funzioni nuove). Anche questo controllo non si applica allo storno. C'era
+  dalla v1.9.0.
+- **Il capitolo di una fattura è una voce di spesa.** Una fattura di € 300,00 registrata sull'entrata «Affitto antenna» (€ 240,00)
+  creava uno sforo di € 60,00, e il piano integrativo che lo recuperava accreditava € 30,00 a testa invece di chiederli. Ora la
+  registrazione non offre le voci di entrata, la voce proposta dall'ultima fattura del fornitore è solo una voce di spesa del
+  condominio, e il server rifiuta sul campo della riga: ««Affitto antenna» è una voce di entrata: il capitolo di una fattura è una
+  voce di spesa. Scegli un'altra voce.» Nella modifica di una fattura già scritta su un'entrata la riga mostra la voce, che nel menu
+  è spenta e segnata «Entrata», e il salvataggio si rifiuta finché la riga non va su una voce di spesa, anche se non la tocchi:
+  «Questa riga è sulla voce di entrata «Affitto antenna»: il capitolo di una fattura è una voce di spesa. Scegli una voce di spesa
+  per salvare la modifica.» Restano come prima la nota di credito del fornitore, le righe con l'unità (il capitolo si scarta), quelle
+  a € 0,00 e quelle di sopravvenienza; una riga negativa si rifiuta come una positiva, e lo storno di una fattura già scritta su
+  un'entrata passa. C'era dalla v1.9.0.
+- **La regolazione immediata non si usa per un'entrata.** Una regolazione di € 300,00 su un'entrata scriveva un costo in DARE e la
+  cassa in AVERE: un'uscita di banca che non c'era. Ora il menu del capitolo offre solo le voci di spesa e il server rifiuta sul
+  campo del capitolo: ««Affitto antenna» è una voce di entrata: la regolazione immediata registra un'uscita di cassa e non si usa per
+  un'entrata. Scegli una voce di spesa.» Lo storno di una regolazione già scritta passa. C'era dalla v1.10.0.
+- **L'importo di una voce si scrive senza il segno.** Una voce di spesa scritta a meno € 240,00, invece che con il tipo «Entrata», il
+  calcolo la addebita in positivo: accanto a «Spese generali» a € 1.200,00 il piano chiedeva € 1.440,00 invece di € 960,00. Ora nella
+  nuova voce il campo non accetta il meno (scritto «-240,00» resta «240,00») e sotto dice «Si scrive senza il segno: lo decide il
+  tipo della voce.»; il server rifiuta un importo negativo con «Una voce di spesa non può avere un importo negativo. Se è un
+  provento, per esempio l'affitto di un'antenna, scegli «Entrata» e scrivi l'importo senza il segno.» o, per un'entrata, «L'importo
+  di una voce di entrata si scrive senza il segno: è il tipo «Entrata» a ridurre quanto si chiede ai condòmini.» Nella modifica si
+  rifiuta un importo cambiato in negativo, con lo stesso testo (prima, per una voce in nessun piano, rispondeva «L'importo minimo
+  consentito è € 0,00 (già impegnato nei piani rate)»): una voce già negativa, dato delle versioni passate, si rinomina e si porta a
+  «Entrata» senza toccare l'importo, ma un'entrata negativa non si porta a «Spesa (uscita)» senza correggere l'importo. Nella
+  creazione del piano l'importo scelto per una voce non può essere negativo («L'importo di una voce nel piano non può essere
+  negativo. Scrivi l'importo senza il segno: lo decide il tipo della voce.»), e il rifiuto si legge accanto a «Salva piano rate». Un
+  capitolo scritto col meno si crea a zero, come prima. C'era dalla v1.7.0; nella configurazione del piano dalla v1.9.0.
+- **Un piano con una voce di spesa negativa si ferma prima di scrivere.** Un piano con una voce di spesa a meno € 240,00 si
+  ricalcolava in silenzio chiedendo € 1.440,00 invece di € 960,00. Ora si fermano prima di scrivere la creazione del piano (anche
+  senza generarlo subito), la generazione, «Ricalcola», «Sincronizza» e «Rimuovi voce e ricalcola», anche quando si toglie una voce
+  positiva mentre un'altra è negativa (la voce resta nel piano). Il messaggio in testa alla pagina nomina la voce, la cifra
+  addebitata e la strada con il suo costo: «Il piano non si ricalcola: la voce di spesa «Rimborso» ha un importo negativo (meno
+  € 240,00) e il piano la addebiterebbe in positivo, per € 240,00. Correggi l'importo della voce nel piano dei conti: se è un
+  provento, scegli «Entrata» e scrivi l'importo senza il segno. Il piano tiene una copia dell'importo della voce e correggere la voce
+  non la cambia: togli la voce dal piano con «Rimuovi voce e ricalcola» e riaggiungila con «Sincronizza». Togliendola si perdono i
+  suoi tratti di competenza, se ne ha: annotali prima e riscrivili ricreando il piano.» Un piano approvato va prima riportato in
+  bozza, e il messaggio avvisa che così si azzerano i dati dell'approvazione, da annotare prima. Con più voci negative, con un
+  sottoconto (che «Sincronizza» non riaggiunge) o con la copia di un capitolo la strada è eliminare il piano e ricrearlo, e il
+  messaggio dice che cosa si perde: il riparto manuale dei saldi solidali, i tratti di competenza delle voci, la ricorrenza, gli
+  spostamenti di budget fra le voci e gli importi scelti per le voci. Il fermo scatta anche per un sottoconto di spesa negativo sotto
+  un capitolo con la copia positiva, se la somma dei sottoconti resta positiva, e per un capitolo con la copia a zero o negativa se
+  almeno un suo sottoconto è negativo, di spesa o di entrata; con la copia negativa anche senza, se il calcolo la addebita in
+  positivo. Non scatta per una voce di entrata scritta col meno fuori da un capitolo così, perché il calcolo le toglie il segno, né
+  nei piani straordinari. Nell'esempio, la voce corretta a € 200,00, tolta e riaggiunta, porta il piano a € 1.400,00; portata a
+  «Entrata» con € 240,00, a € 960,00. Il dato era possibile dalla v1.7.0; il fermo è nuovo.
+- **Il promemoria del portale non chiede ciò che il credito copre.** Una persona ha sulla stessa rata una quota da pagare di € 50,00
+  e un credito di € 10,00 su un'altra quota: il netto è € 40,00. Dopo i € 40,00 versati la finestra della rata diceva «Totale rata
+  calcolato € 40,00 · Già versato − € 40,00 · Residuo da pagare € 10,00» e offriva «Ho pagato l'intera rata tramite bonifico». Ora
+  l'agenda, il cruscotto e la finestra dicono «In attesa della compensazione» e «Non devi versare altro. L'amministratore deve ancora
+  registrare la compensazione di € 10,00 fra una tua quota da pagare e un tuo credito.», senza pulsanti; dopo «Usa credito» la rata è
+  saldata e il già versato resta € 40,00. Su una rata non ancora emessa con il netto a zero l'etichetta è «Da compensare», e la frase
+  dice che la compensazione la registra l'amministratore dopo l'emissione. Una segnalazione che arriva lo stesso su una rata senza
+  niente da versare si rifiuta prima di scrivere, con «Su questa rata non resta niente da versare: la compensazione di € 10,00 la
+  registra l'amministratore. Non devi fare altro.» (senza compensazione, «Su questa rata non resta niente da versare. Non devi fare
+  altro.»), e il rifiuto si legge nella finestra. Un credito puro è «A credito» finché il credito c'è; usato o restituito, la
+  finestra dice «Il credito di questa rata è stato usato o restituito: non resta niente da versare né da ricevere.» «Già versato» è
+  il contante della persona, senza il credito usato, e le righe «Credito usato altrove o restituito», «Credito applicato da un'altra
+  quota» e «Credito ancora a tuo favore» fanno tornare la colonna dove serve. Il riquadro rosso della scadenza compare anche con il
+  netto a credito se resta un importo da versare, e la finestra aperta mostra lo stato di adesso quando la pagina si ricarica. Il
+  testo del promemoria, solo in italiano come prima, segue lo stesso stato: per un credito puro «Non è richiesto alcun pagamento: il
+  credito resta a tuo favore. L'amministratore può usarlo per compensare una tua quota da pagare o restituirtelo.»; un testo
+  ritoccato a mano non si riscrive. La frase che prometteva la compensazione automatica c'era dalla v1.8.0, il pagato contato sulle
+  sole quote da pagare dopo un incasso dalla v1.9.0.
+- **Una quota annullata non tiene aperta la verifica incassi.** Una quota da pagare annullata e mai pagata non conta più né per il
+  promemoria della persona né per la rata saldata: dopo un incasso o il suo storno, se le altre quote da pagare della rata sono
+  pagate, il compito della verifica incassi si chiude, come dice il promemoria.
+
+**Funzioni nuove.**
+- **L'avviso della voce di spesa negativa sulla pagina del piano.** Con rate emesse, incassi, crediti usati o un passaggio che lo ha
+  conguagliato un piano non si ricalcola, non perde voci e non si elimina: il fermo si raggiunge solo dopo aver annullato tutto, e
+  fino ad allora la voce resta addebitata in positivo senza che nessuno lo dica. Ora la pagina del piano mostra, in ogni stato e
+  senza pulsanti, un riquadro rosso sopra la nota degli scoperti: «Il piano contiene una voce di spesa con un importo negativo», una
+  frase per voce con la cifra addebitata («La voce «Rimborso vecchio» ha un importo negativo (meno € 240,00) e il piano la addebita
+  in positivo, per € 240,00.»), la situazione e le strade possibili, tutte, senza sceglierne una. In bozza «Ricalcola» si ferma; da
+  approvato il piano va prima riportato in bozza; con quote a giornale, incassi, crediti usati o il conguaglio di un passaggio
+  «Ricalcola», «Rimuovi voce e ricalcola» ed «Elimina» lo rifiutano, e le strade sono annullare nell'ordine che funziona e poi
+  correggere, oppure un saldo: «Se il piano non si può più riscrivere (incassi o crediti usati da tenere, o un passaggio di
+  titolarità che l'ha conguagliato), regola la differenza con un saldo sulle unità, da «Saldi iniziali»: questo piano non lo legge
+  più, entra nel prossimo piano della gestione che applica i saldi, o nell'esercizio dopo. Il Wallet tiene un saldo per persona,
+  gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: dove la persona ne ha già uno, si corregge quello, se
+  nessun piano l'ha ancora assorbito o se il piano che l'ha assorbito si può ancora riscrivere; se l'ha già assorbito un piano che
+  non si riscrive più, il Wallet non accetta né un secondo saldo né la correzione, e per quella persona la differenza va
+  nell'esercizio dopo. Se il saldo è fra quelli da cui una successione ha calcolato l'arretrato agli eredi, il Wallet lo dice e
+  indica la strada.» La riga dei totali della pagina conta la voce come il calcolo, in positivo (con «Spese generali» a € 1.200,00 e
+  l'entrata «Affitto antenna» a € 240,00, «da ripartire: € 1.200,00 (spese € 1.440,00, entrate € 240,00)»). Il cestino resta acceso:
+  è la via d'uscita.
+- **Il riquadro delle righe sovrapposte.** Dove un capitolo ha nel piano la sua riga insieme a quelle dei suoi sottoconti, come
+  poteva lasciarlo il vecchio «Sposta spesa», il calcolo conta solo la riga del capitolo, e la somma delle righe non è quella
+  ripartita. La pagina del piano lo dice in un riquadro ambra: «Nel piano un capitolo ha la sua riga insieme a quelle dei suoi
+  sottoconti», una frase per capitolo, «La somma delle righe non è quella che il piano ripartisce: «Ricalcola» non lo corregge, e
+  «Sposta spesa» non offre queste voci come destinazione.», e l'uscita: togliere il capitolo dal piano con «Rimuovi voce e ricalcola»
+  e, se il capitolo ha ricevuto budget con «Sposta spesa», stornare prima quello spostamento dallo storico, con l'icona dell'orologio
+  accanto all'importo. Nell'esempio di «Manutenzione» lo storno e la rimozione del capitolo riportano il piano a € 2.200,00.
+- **L'avviso del capitolo con la copia a zero o negativa.** Dove nessuna voce è più negativa ma un capitolo ha nel piano una copia a
+  zero o negativa e dei sottoconti con degli importi, per esempio dopo aver corretto il sottoconto che il fermo nominava, «Ricalcola»
+  passa e il capitolo resta com'era. La pagina lo dice: «Il piano contiene un capitolo con la copia a zero o negativa», una frase per
+  capitolo che dice la copia e i sottoconti («… il piano ripartisce la copia fra i sottoconti, non i loro importi.»), ««Ricalcola»
+  non segnala questo capitolo e non ne cambia la copia: se è la cifra che volevi, non c'è niente da correggere.», e la strada:
+  eliminare il piano e ricrearlo, con quello che si perde. Non compare se la copia viene da uno spostamento di budget partito dal
+  capitolo, né per un capitolo con tabelle proprie, con la copia positiva, con i sottoconti tutti a zero o nati dopo il piano. Per
+  esempio, con una spesa di € 1.200,00 e nel piano il capitolo «Antenna» a zero, con i sottoconti «Manutenzione antenna» a € 100,00 e
+  «Affitto antenna», di entrata, scritto a meno € 500,00: il fermo nomina l'affitto; corretto a € 500,00, «Ricalcola» passa e il
+  piano resta a € 1.200,00, e ricreandolo il totale va a € 800,00.
+- **L'art. 984 c.c. nei modali della voce di entrata.** Scegliendo «Entrata» nella nuova voce, nella modifica di una voce che sta su
+  una tabella sola e nel collegamento a una tabella compare una nota: «Un affitto o un canone che il condominio incassa è un frutto
+  civile e spetta all'usufruttuario (art. 984 c.c.); se il titolo dell'usufrutto dice altro, vale fra le parti. Sulle unità in
+  usufrutto decide questa voce: con «Usufruttuario %» a 100 l'entrata va all'usufruttuario, con «Proprietario %» a 100 al nudo
+  proprietario. Con l'usufruttuario inserito a mano nella scheda dell'unità, una data di inizio a metà anno non divide l'entrata
+  giorno per giorno, salvo una riga di usufrutto chiusa il giorno prima; una data di fine sì. «Registra passaggio» divide i giorni.»
+  Il programma non sceglie al posto tuo: una nuova voce parte da «Proprietario %» a 100, e il calcolo non cambia. Con Elsa nuda
+  proprietaria, Ugo usufruttuario, una spesa di € 1.200,00 e un affitto di € 240,00: con l'affitto sul «Proprietario» Elsa paga
+  € 960,00 e Ugo niente; sull'«Usufruttuario» Elsa paga € 1.200,00 e Ugo ha € 240,00 a credito. Con l'affitto sull'«Usufruttuario» e
+  l'usufrutto costituito da «Registra passaggio» il 1/5 l'affitto segue i giorni: € 78,90 a chi era proprietario per i 120 giorni
+  prima (240 × 120/365), € 161,10 all'usufruttuario per i 245 dopo. Le etichette «Proprietario %», «Inquilino %» e «Usufruttuario %»
+  della nuova voce e del collegamento ora si traducono, e il collegamento dice «Percentuale della voce attribuita a questa tabella»
+  invece che «della spesa».
+- **Il pannello della costituzione d'usufrutto dice quando una voce è un'entrata.** Nell'elenco delle voci che passano dal
+  «Proprietario» all'«Usufruttuario» un'entrata ha l'etichetta «Entrata» e, spuntata, la frase «Se è un frutto civile, come un
+  affitto o un canone, l'art. 984 c.c. lo dà all'usufruttuario (se il titolo dell'usufrutto dice altro, vale fra le parti): l'entrata
+  passa all'«Usufruttuario». Togli la spunta se deve restare al nudo proprietario.»; per le altre unità in usufrutto della tabella
+  non si mostra l'importo dell'ultimo piano, che per un'entrata sarebbe un credito col meno.
+- **Il riepilogo dei rifiuti nella modifica della fattura.** In cima al modulo di modifica c'è il riepilogo degli errori, lo stesso
+  della registrazione, portato in vista e con il nome del campo («Conto addebito», «Riga 2», …); l'errore della voce e quello
+  dell'unità si leggono anche sotto il loro menu, e spariscono appena il campo cambia. Le finestre che hanno già il loro messaggio
+  non lo ripetono. Prima un rifiuto del server senza un campo, o quello sul conto di addebito, non compariva da nessuna parte, e il
+  salvataggio sembrava non fare niente.
+- **Il Wallet: «Intero immobile» e il rifiuto nel modale.** Nel modale «Aggiungi credito» (o debito), se la gestione ha già un saldo
+  per l'intero immobile la scelta «Intero immobile» è spenta, con «Questa gestione ha già un saldo per l'intero immobile: modifica
+  quello esistente.», e il modale parte da «Soggetto specifico»; le righe scritte da un passaggio non occupano il posto, come per il
+  server. Un rifiuto del server, per esempio un secondo saldo o un importo non valido, si legge nel modale, che resta aperto: prima
+  non si vedeva niente.
+
+**I totali, le frasi e le stampe.**
+- **I totali tolgono le entrate dalle spese.** Dieci totali sommavano le voci di entrata come spese. Con «Spese generali» a
+  € 1.200,00 e «Affitto antenna» a € 240,00, su un piano giusto di € 960,00, il badge «Disallineato: ricalcola!» restava acceso
+  (atteso € 1.440,00 contro € 960,00) e «Ricalcola» non lo spegneva, il cruscotto diceva «URGENTE» e «Delta: +€ 480,00», la distinta
+  delle spese «TOTALE PREVENTIVO € 1.440,00» mentre le stampe del riparto dicevano € 960,00, e la creazione del piano «Totale
+  richiesto» € 1.440,00. Ora il piano dei conti dice «Preventivo: € 1.200,00», le sole spese, con il badge «Entrate: € 240,00» e il
+  suggerimento «Le entrate si sottraggono alle spese: da ripartire € 960,00.», e l'elenco dei piani dei conti € 1.200,00 con «2 voci
+  (1 di entrata)» ed «Entrate € 240,00». La distinta in PDF dice «TOTALE PREVENTIVO € 1.200,00», «ENTRATE € 240,00» e «DA RIPARTIRE
+  (spese meno entrate) € 960,00», mostra l'entrata nella sua riga con «(entrata)» e il meno, somma il totale generale sul da
+  ripartire (€ 960,00 più € 300,00 di sopravvenienze fanno € 1.260,00) e chiude con «Le entrate si sottraggono alle spese: il
+  preventivo da ripartire fra i condòmini è la differenza.» La pagina del piano rate dice «2 voci incluse • da ripartire: € 960,00
+  (spese € 1.200,00, entrate € 240,00)», segna l'entrata «Entrata» con «€ -240,00», e il badge è spento. L'elenco dei piani rate ha
+  la colonna «Da ripartire», prima «Preventivo» (per i piani di sole spese la cifra non cambia, salvo una voce di spesa negativa, che
+  ora conta in positivo come nel calcolo), con «spese € 1.200,00, entrate € 240,00» sotto. Il cruscotto chiama il riquadro «Da
+  ripartire» (€ 960,00), dice «… al netto delle entrate di € 240,00 …», «Allineato» e 100 %; con il netto a zero o negativo, per
+  esempio con le sole entrate, dice 100 % se il piano non chiede più del netto. La creazione del piano dice «Da ripartire: € 960,00
+  (spese € 1.200,00, entrate € 240,00)» e segna l'entrata nel selettore delle voci. Un'entrata scritta col meno, dato possibile dalla
+  1.7.0 alla 1.11.0-beta.51, conta per il suo valore assoluto nel cruscotto, nelle voci scoperte e nel selettore del piano nuovo, che
+  non la propone come sforo da recuperare. Senza entrate, salvo il nome della colonna dell'elenco, le parole restano quelle di prima
+  («Totale richiesto», «Fabbisogno Condiviso», «totale preventivo») e la distinta è quella di prima. Il badge c'era dalla v1.9.0,
+  nella forma di oggi dalla v1.10.0; la distinta dalla v1.9.1.
+- **Il badge «Disallineato» con un acconto e un già versato.** Una voce di € 1.000,00, € 200,00 già versati e un acconto di € 500,00:
+  il piano chiede € 400,00, perché toglie dal già versato la stessa metà che chiede della voce, mentre l'atteso del badge lo toglieva
+  tutto e diceva € 300,00. Il badge era acceso su un piano giusto, e «Ricalcola» non lo spegneva. Ora l'atteso toglie il già versato
+  con la stessa quota del calcolo, mai un centesimo in più del versato, e il badge è spento anche con un acconto di un terzo e un
+  saldo dei due terzi di € 1.200,00 con € 300,00 versati (€ 300,00 e € 600,00) e con la riga di un capitolo e il già versato sui
+  sottoconti. Un già versato registrato dopo la generazione accende ancora il badge: il piano va ricalcolato. C'era dalla v1.10.0.
+- **Le frasi dei passaggi d'usufrutto con un'entrata.** Il pannello «Cosa cambierà» di un passaggio d'usufrutto metteva le entrate
+  sotto l'art. 1004 c.c., che riguarda le spese. Ora, dove passano all'«Usufruttuario» solo entrate, la frase non cita l'art. 1004
+  c.c. (senza rate emesse dice «… l'usufruttuario è …: nei piani generati o ricalcolati dopo passano all'«Usufruttuario» le sole
+  entrate.»), e lo storico «… questa entrata è passata dal «Proprietario» all'«Usufruttuario».»; nello storico e nell'avviso
+  dell'annullamento la voce spostata è detta entrata fra parentesi («Affitto antenna (Proprietà, Ordinaria 2026, entrata)»), e le
+  frasi delle voci bloccate dicono «l'entrata di quella voce», o «l'ordinaria o l'entrata di quelle voci», invece dell'ordinaria.
+- **Le frasi della fine di un inquilino entrato dopo.** La beta.51 diceva «Con la fine della locazione di Luca i suoi giorni dal 18
+  aprile 2026 tornano a chi paga al posto dell'inquilino …», ma i giorni dopo la fine non sono di Luca, e lo storico «… i giorni di
+  Luca dal 1 dicembre 2026 tornano …», con l'ordine delle parole storto. Ora le due frasi del pannello dicono «… i giorni dal 18
+  aprile 2026 tornano a chi paga al posto dell'inquilino …», e lo storico «Con questa fine la parte verso Elsa … risale da € 30,58 a
+  € 61,15 (gestione …): dal 1 dicembre 2026, finita la locazione di Luca, i giorni tornano a chi paga al posto dell'inquilino, da
+  regolare a mano fra …». Le cifre non cambiano, e nessun dato va corretto: le frasi si leggono dal registro. La guida del passaggio
+  dice «i giorni che copriva».
+- **La regola del Wallet con la sua eccezione, nelle guide e nella successione.** Cinque punti delle guide dicevano la regola del
+  Wallet, un saldo per persona, gestione, unità ed esercizio, senza dire che non contano quelli scritti da un passaggio: chi aveva
+  solo la riga di un conguaglio leggeva «si regola fra le parti» dove il pannello gli proponeva il Wallet. Lo stesso diceva l'avviso
+  della successione, dove le righe dell'arretrato agli eredi le ha scritte proprio un passaggio. Ora la guida dei saldi iniziali dice
+  «… perché il Wallet accetta un solo saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio:
+  la riga di un conguaglio non occupa il posto, e la riga a mano si aggiunge accanto», le guide del passaggio e del piano rate danno
+  la strada a mano a chi non ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che non sia stato scritto da un
+  passaggio, e l'avviso della successione dice «se nessuno ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che
+  non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti; se i saldi registrati sono già la parte di
+  ognuno, dice che ci sono già e che non serve registrare altro». Le frasi che il pannello compone con i nomi erano già vere e
+  restano. Nell'esempio, con la riga del passaggio già nel Wallet, Ugo ed Elsa registrano il loro saldo manuale, un secondo saldo
+  manuale della stessa persona si rifiuta, e il piano dopo assorbe le righe sommate: Ugo € 35,77 ed Elsa € 319,75 a debito, Ines
+  € 355,52 a credito. C'era dalla beta.50 nelle guide, dalla beta.51 nell'avviso della successione.
+- **Il credito nell'incasso, e la conferma del cestino.** Nella schermata dell'incasso il suggerimento sul credito di una riga faceva
+  credere che il credito si usasse da solo; ora dice «Su questa riga c'è un credito che puoi usare con «Usa credito».». La conferma
+  di «Rimuovi voce e ricalcola» aggiunge «Se la voce ha dei tratti di competenza, con la rimozione si perdono: annotali prima, perché
+  si riscrivono solo ricreando il piano.»
+
+**Correzioni.**
+- Nella modifica di una fattura una riga accettava la voce o l'unità di un altro condominio, e i costi passavano da un libro
+  all'altro (€ 130,00 uscivano dai costi del primo condominio ed entravano in quelli del secondo); il conto di addebito, e in
+  registrazione il fondo di riserva, il debito e la fonte di una copertura e la tabella millesimale di un imprevisto, potevano essere
+  di un altro condominio, e un elenco al posto dell'id portava a video «Array to string conversion» con il testo della query. Ora la
+  voce, l'unità, il conto di addebito, il fondo di riserva, il debito, la fonte di una copertura e la tabella millesimale si
+  controllano nel condominio della pagina, ciascuno con il suo messaggio sul campo («La voce scelta non appartiene a questo
+  condominio.», e così per gli altri); il fondo di riserva dev'essere il mastro di una cassa di tipo fondo, e la fonte di una
+  copertura per sopravvenienza una voce di spesa. Dal modulo queste scelte non si potevano fare: il rifiuto riguarda le richieste
+  costruite a mano. È integrità dei dati, non riservatezza, perché istanza e database sono di un solo cliente. La modifica lo
+  permetteva dalla v1.9.1.
+- Un elenco al posto dell'id in «Sposta spesa» e nella regolazione immediata, possibile solo con una richiesta costruita a mano,
+  finiva in un errore del server con il testo dell'eccezione: ora è un errore sul campo («La voce da cui spostare il budget non è
+  valida: scegli una voce dal menu «Preleva da».», «La voce su cui spostare il budget non è valida: scegli una voce dal menu «Sposta
+  su».»), e nella regolazione lo stesso per gestione, esercizio, capitolo, cassa e fornitore.
+- Il rimborso di un credito non riallineava il promemoria della persona nel portale, che restava com'era. Ora incasso, «Usa credito»,
+  rimborso e i loro storni passano dallo stesso calcolo: con il netto di € 40,00 versato e poi il rimborso del credito di € 10,00,
+  restano € 10,00 da versare e niente da compensare. Se la scrittura tocca solo il credito, un promemoria segnalato dalla persona
+  resta segnalato e si aggiornano i numeri.
+- La X dei messaggi copriva il testo dei messaggi lunghi, come il fermo di «Ricalcola»: le varianti del riquadro toglievano lo spazio
+  a destra riservato alla X (16 px invece di 40). Ora lo spazio c'è, su tutte le pagine che usano il riquadro dei messaggi. C'era
+  dalla 1.10.0-beta.17.
+- Nel Wallet, con «Soggetto specifico», il selettore delle persone escludeva chi aveva solo righe scritte da un passaggio, e la
+  strada a mano delle fermate non si poteva fare dall'interfaccia, anche se il server la accettava: nel condominio di prova delle
+  guide offriva solo Luca, ora anche Ugo, Ines ed Elsa. Le righe scritte da un passaggio non occupano il posto, come per il server.
+  C'era dalla beta.31, che ha portato le righe del conguaglio nel Wallet, e si vedeva dalla beta.50, che propone quella strada.
+
+**Errata della beta.50 e della beta.51.** Cinque voci dei changelog della beta.50 e della beta.51 dicevano la regola del Wallet senza
+la sua eccezione: nella beta.50 «Il coinquilino che resta» («se nessuna delle due persone ha già un saldo su quella gestione, unità
+ed esercizio (il Wallet accetta una sola riga per persona, gestione, unità ed esercizio)») e «La fermata dopo «Scrivi»» («solo se
+nessuna delle due persone della riga ha già un saldo su quella gestione, unità ed esercizio»); nella beta.51 «La fine di un inquilino
+dopo una vendita si ferma e chiede la spunta» («se nessuna delle due persone ha già un saldo su quella gestione, quell'unità e
+quell'esercizio»), «Il cancello della generazione nomina il defunto» («se qualcuno ha già un saldo su quella gestione e quell'unità,
+la parte si regola fra le parti») e il «Non ancora» («il Wallet ne tiene uno per persona, gestione, unità ed esercizio»). La regola è
+un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: le righe che un passaggio ha
+scritto, come la coppia di un conguaglio o l'arretrato passato agli eredi, non occupano il posto. Quindi la strada a mano è il saldo
+manuale dal Wallet anche per chi ha già la riga di un conguaglio, e «si regola fra le parti» vale solo se una delle persone ha già un
+saldo che un passaggio non ha scritto. Il resto di quelle voci resta vero, e anche ciò che il «Non ancora» della beta.51 diceva delle
+voci di entrata.
+
+**Le guide.** La guida «dettaglio piano rate» dice che le entrate si contano col meno, che «Sposta spesa» si fa fra voci dello stesso
+tipo, che nei piani straordinari non funziona e si rifiuta sempre, e che cosa fare con una voce di spesa negativa (il fermo, il
+riquadro, la copia del piano, il sottoconto, i tratti di competenza, la bozza). La guida del riparto con l'usufrutto aggiunge l'art.
+984 c.c. alle regole, una sezione sulle entrate (un affitto, un canone) con la cautela sull'usufrutto inserito a mano, e le entrate
+nel passaggio. La guida della registrazione delle fatture dice che le voci di entrata non compaiono e si rifiutano, e che in modifica
+una riga su un'entrata va portata su una voce di spesa; quella della regolazione immediata che il capitolo è sempre una voce di
+spesa; quella delle operazioni sui conti la distinta con le entrate; quella dell'incasso che il portale mostra il credito, e dice che
+l'amministratore può usarlo o restituirlo se sulla stessa rata la persona non ha altro da pagare, altrimenti che la compensazione la
+registra l'amministratore. Le guide del passaggio, dei saldi iniziali e della creazione del piano rate dicono la regola del Wallet
+con la sua eccezione, e la guida del passaggio dice la fine di un inquilino con «i giorni che copriva»; la guida in testa al piano
+dei conti dice che il preventivo conta le sole voci di spesa.
+
+**Non ancora.** Con un piano a voci scelte che lascia fuori un'entrata il cruscotto dice 125 % (il piano chiede € 1.200,00 contro
+€ 960,00 da ripartire), e l'elenco delle voci non coperte nomina ancora l'entrata. Un capitolo con sottoconti di spesa e di entrata
+il calcolo lo divide in proporzione fra le due: «Sposta spesa» non lo muove e i totali della pagina del piano, dell'elenco dei piani
+rate e del badge lo dividono come il calcolo, ma la correzione del calcolo è della 1.12. Nella 1.12 anche «Sincronizza» di un
+capitolo con un sottoconto nato dopo il piano, che addebita l'entrata come una spesa (c'era dalla v1.9.0); lo spostamento da una
+sorgente sovrapposta, che passa ancora nei piani della forma di prima della 1.9 già colpiti dal vecchio «Sposta spesa»; il cambio di
+tipo di una voce che ha già movimenti. Nei piani straordinari «Sposta spesa» non funziona e si rifiuta sempre: il menu della sorgente
+elenca le fatture, ma lo spostamento cerca la sorgente fra le voci, con l'identificativo interno della fattura, e il rifiuto non dice
+perché: «L'elemento source id selezionato non è valido.» se nessuna voce del condominio ha quell'identificativo, altrimenti un altro
+rifiuto dello spostamento, a volte con il nome di una voce che non c'entra, o «La voce sorgente non è presente in questo piano
+rate.». Niente si sposta. Il fermo ha un falso positivo accettato, con un'entrata i cui sottoconti di entrata sono scritti col meno:
+in alcuni casi si ferma anche dove il calcolo distribuirebbe giusto, e la strada è correggere gli importi dei sottoconti. Delle frasi
+del pannello sull'ordinaria il modulo del passaggio mostra solo la prima, dalla beta.41: la frase sull'art. 984 c.c. e quella su chi
+riceve un'entrata nelle altre unità della tabella esistono ma non arrivano a video; si vedono l'etichetta «Entrata» e la frase sotto
+la voce. La frase del conguaglio con un netto di entrata dice ancora «all'usufruttuario, art. 1004 c.c.». I promemoria salvati prima
+di questa beta e non del caso misto restano come sono fino al primo movimento sulla rata: quelli «Rata saldata» con una quota da
+pagare (la migrazione li conta) e quelli che leggono il pagato al posto del versato. Un versamento fatto da un altro per conto della
+persona («Versato da») il portale lo conta come suo. Il testo del promemoria è solo in italiano, e lo spagnolo dei testi nuovi è una
+copia dell'inglese. L'incasso vero di un'entrata da terzi, come l'affitto dell'antenna versato al condominio, non si registra ancora:
+arriva con il rendiconto. Restano i limiti dichiarati dei passaggi della beta.51.
+
+**Per chi sviluppa.** Una migrazione di dati, `2026_10_17_100000_riscrivi_descrizioni_promemoria_credito`, nel dataset di
+`UpgradeMigrationsRerunTest`: nessuna colonna, `down()` vuoto di proposito. Tolte o cambiate: `totale_capitoli` del piano rate non
+c'è più, al suo posto `totale_spese`, `totale_entrate` e `totale_da_ripartire`; `copertura.preventivo` del cruscotto diventa
+`copertura.spese`, `copertura.entrate` e `copertura.da_ripartire`; `importo_totale` di `PianoDeiContiResource` è la somma delle sole
+spese, con `importo_entrate` e `capitoli_entrate_count`; il piano dei conti manda `totaleEntrate` e `totaleDaRipartire`;
+`BudgetCoverageService::analyze()` porta `tipo` e `segno` per voce e somma i totali col segno. Nuove: `tipo` su sorgenti e
+destinazioni di «Sposta spesa» (`spesa`, `entrata`, `misto`), sui capitoli del piano rate, sulle voci del selettore della creazione e
+del modulo delle fatture; le props `avviso_spesa_negativa` e `avviso_righe_sovrapposte` della pagina del piano; nel meta del
+promemoria `importo_versato` e `da_compensare`; `voci_spostate[].tipo` nel registro dei passaggi; `tipo` nelle voci da spostare
+dell'anteprima e nella loro impronta (un pannello mostrato prima dell'aggiornamento si rifiuta con il messaggio di sempre e si
+rilegge). Classi nuove: `App\Services\Riparto\SpeseNegativeNelPiano` (il fermo, in sola lettura, con la stessa selezione e lo stesso
+importo del calcolo), `AvvisoSpeseNegative`, `QuotaDellaChiamata` (spostata da `ConguaglioPassaggio` senza modifiche, serve anche al
+badge), `App\Exceptions\Gestionale\SpesaNegativaNelPianoException`, `App\Http\Requests\Gestionale\Movimenti\PerimetroFattura`,
+`App\Http\Requests\Gestionale\PianoConto\Conto\ImportoSenzaSegno`; lato pagina `totaliPerTipo.ts` (l'unica conversione euro →
+centesimi della creazione del piano), `compensazione.ts`, `SuggerimentoEntrataUsufrutto.vue`, `destinazioniAmmesse` e `TIPO_MISTO` in
+`budgetMovements.ts`. Costanti e metodi nuovi: `Conto::TIPI_DI_SPESA`, `segnoDelTipo()`, `segno()`, `eMisto()`, `ripartoPerSegno()`,
+`importoConSegno()` e `sottocontiDelPiano()` (`segno()` lancia `LogicException` se il tipo non è caricato: la `select` del cruscotto
+ora porta `conti.tipo`); `BudgetMovementService::tipoDelSegno()`, `sovrapposteAlPiano()`, `destinazioniPerLaPagina()` e
+`avvisoRigheSovrapposte()`; `PianoRateQuoteService::totaliPerSegnoCents()`; `BudgetCoverageService::importoDellaVoce()`;
+`EventiRataCondomino::stato()`, `applica()` e `descrizione()` pubblici, e `coppieToccate()` con il terzo elemento;
+`GeneratePianoRateAction::execute()` con il parametro `appenaSincronizzate`;
+`RegistraRegolazioneImmediataAction::messaggioVoceDiEntrata()`; `VociDaSpostare::etichetta()`; la chiave di traduzione
+`income_usufruct` in quattro lingue. Il calcolo delle quote non cambia: in `CalcoloQuoteService` cambia solo il registro, che riporta
+il già versato assorbito e dice quanto dell'importo del piano non è stato ripartito, anche senza entrate (prima sbagliava con un già
+versato e con un capitolo nel piano, contato due volte). `AggiornaScadenziarioCondomino` resta, con un commento che dice che nessuno
+lo chiama. Test nuovi: 43 file `Beta52*Test.php`, con tre scenari condivisi, e 37 file vitest; cambiati `DashboardFinancialTest` (le
+chiavi nuove), `SuccessioneTest` (un test nuovo), il dataset di `UpgradeMigrationsRerunTest` e l'intestazione di
+`PassaggioProprietaGuide.test.ts`.
+
+---
+
 ## [1.11.0-beta.51] - Niente in silenzio
 
 **Non cambia lo schema del database, ma i passaggi e gli annullamenti salvano nel loro registro alcune informazioni nuove.**

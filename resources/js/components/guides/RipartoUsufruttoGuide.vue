@@ -48,6 +48,10 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span>Un <strong>affitto</strong> o un <strong>canone</strong> che il condominio incassa è un frutto civile e spetta all'usufruttuario (<strong>art. 984 c.c.</strong>); se il titolo dell'usufrutto dice altro, vale fra le parti.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                   <span>Verso il condominio rispondono <strong>in solido</strong> (art. 67 disp. att. c.c.): il condominio può chiedere a ciascuno dei due.</span>
                 </li>
                 <li class="flex gap-2">
@@ -74,7 +78,7 @@ defineEmits(['update:open']);
               <div class="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-900/50">
                 <h4 class="font-bold text-amber-900 dark:text-amber-300 mb-2">2. Coefficiente della voce</h4>
                 <p class="text-amber-800 dark:text-amber-200/80 leading-relaxed text-[13px]">
-                  Lo imposti associando la voce di spesa alla tabella millesimale. Dice quale ruolo sostiene la spesa: «Usufruttuario 100 %» manda all'usufruttuario la quota dell'unità; sull'unità divisa fra piena proprietà e usufrutto, solo la sua parte. Vale per tutte le unità della tabella. È qui che opera la catena.
+                  Lo imposti associando la voce di spesa o di entrata alla tabella millesimale. Dice quale ruolo sostiene la spesa o riceve l'entrata: «Usufruttuario 100 %» manda all'usufruttuario la quota dell'unità; sull'unità divisa fra piena proprietà e usufrutto, solo la sua parte. Vale per tutte le unità della tabella. È qui che opera la catena.
                 </p>
               </div>
             </div>
@@ -93,7 +97,7 @@ defineEmits(['update:open']);
                   <span>Proprietario</span><span>→</span><span>Nudo proprietario</span>
                 </div>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Sull'unità in usufrutto la voce va al nudo proprietario, mai all'usufruttuario o all'inquilino. È l'impostazione per le spese straordinarie.
+                  Sull'unità in usufrutto la voce va al nudo proprietario, mai all'usufruttuario o all'inquilino. È l'impostazione per le spese straordinarie. Per una voce di entrata è l'impostazione che dà l'entrata al nudo proprietario.
                 </p>
               </div>
 
@@ -103,7 +107,7 @@ defineEmits(['update:open']);
                   <span>Usufruttuario</span><span>→</span><span>Proprietario</span><span>→</span><span>Nudo proprietario</span>
                 </div>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Sull'unità in usufrutto la voce va all'usufruttuario; dove non c'è usufrutto, al proprietario, come una voce sul «Proprietario». Mai all'inquilino. È l'impostazione per le spese ordinarie che restano alla proprietà.
+                  Sull'unità in usufrutto la voce va all'usufruttuario; dove non c'è usufrutto, al proprietario, come una voce sul «Proprietario». Mai all'inquilino. È l'impostazione per le spese ordinarie che restano alla proprietà. Per una voce di entrata è l'impostazione dell'art. 984 c.c.: l'affitto o il canone va all'usufruttuario.
                 </p>
               </div>
 
@@ -124,6 +128,23 @@ defineEmits(['update:open']);
                 Un ruolo registrato con quota zero conta come assente. E se un ruolo copre solo una parte dell'anno — un inquilino che lascia l'appartamento a giugno — i giorni scoperti passano al ruolo successivo della catena.
               </div>
             </div>
+          </section>
+
+          <!-- Le entrate -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Le entrate: un affitto, un canone</h3>
+            <p class="mb-3">
+              Una voce di entrata si imposta come una spesa: la associ a una tabella e scegli i coefficienti. Cambia chi la riceve. L'<strong>art. 984 c.c.</strong> dà gli affitti e i canoni all'usufruttuario; il programma non lo applica da solo, decide la voce, come per le spese. Una nuova voce di entrata parte dal «Proprietario»: per darla all'usufruttuario metti «Usufruttuario 100 %». Dove non c'è usufrutto l'entrata va al proprietario.
+            </p>
+            <p class="mb-3">
+              Un esempio, su un'unità con Elsa nuda proprietaria e Ugo usufruttuario, con una spesa di € 1.200,00 sul «Proprietario» e un affitto di € 240,00: con l'affitto sul «Proprietario» Elsa paga € 960,00 e Ugo niente; con l'affitto sull'«Usufruttuario» Elsa paga € 1.200,00 e a Ugo vanno € 240,00 a credito.
+            </p>
+            <p class="mb-3">
+              «Registra passaggio» divide l'entrata giorno per giorno fra chi è usufruttuario prima e dopo la data dell'atto. Con l'usufrutto inserito a mano nella scheda dell'unità, una data di inizio a metà anno non divide l'entrata giorno per giorno, salvo una riga di usufrutto chiusa il giorno prima: l'usufruttuario la riceve dall'inizio dell'anno, come paga le spese dall'inizio dell'anno. Una data di fine invece la divide: dopo quel giorno l'entrata non è più sua.
+            </p>
+            <p class="text-[13px] text-slate-500 dark:text-slate-400">
+              Se il titolo di un usufrutto dice altro, vale fra le parti: scrivilo nelle note interne della riga del titolare (qui sotto, «Gli accordi fra le parti»).
+            </p>
           </section>
 
           <!-- Sezione 4 -->
@@ -162,6 +183,9 @@ defineEmits(['update:open']);
                 <span>Con «come dice ogni voce», le voci restano come sono e il conguaglio le segue una per una: quelle sul «Proprietario» al nudo proprietario, le altre all'usufruttuario.</span>
               </li>
             </ul>
+            <p class="mb-3">
+              Anche le voci di entrata sul «Proprietario» passano sull'«Usufruttuario»: nell'elenco hanno l'etichetta «Entrata»; per un affitto o un canone la ragione è l'art. 984 c.c., non l'art. 1004 c.c., che riguarda le spese. Togli la spunta a un'entrata che deve restare al nudo proprietario.
+            </p>
             <p class="mb-3">
               Una voce vale per tutta la tabella: spostarla cambia chi paga anche sulle altre unità in usufrutto, e il pannello le elenca, con l'importo dell'ultimo piano. Dove non c'è usufrutto paga il proprietario, come prima.
             </p>

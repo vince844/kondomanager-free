@@ -100,7 +100,7 @@ final class FermataDopoScrivi
                 'coppia' => $c['riga'], 'cifra' => $cifra, 'dal' => ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString(), 'assorbita' => $c['assorbita'],
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($parti))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $parti[$id]], array_keys($parti)),
-                // Decisione 80: il saldo manuale dal Wallet solo se nessuna delle persone della riga ne ha già uno lì.
+                // Decisione 80: il saldo manuale dal Wallet solo se nessuna delle persone della riga ne ha già uno lì, fra quelli che un passaggio non ha scritto.
                 'wallet' => $conUnSaldo === [], 'con_un_saldo' => $conUnSaldo,
             ];
         }
@@ -233,7 +233,7 @@ final class FermataDopoScrivi
                 'assorbita' => $gruppo->contains(fn (Saldo $x) => (bool) $x->is_applicato),
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($nuovePerPersona))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $nuovePerPersona[$id]], array_keys($nuovePerPersona)),
-                // Decisione 80: il saldo manuale dal Wallet solo se nessuna delle persone della riga ne ha già uno lì.
+                // Decisione 80: il saldo manuale dal Wallet solo se nessuna delle persone della riga ne ha già uno lì, fra quelli che un passaggio non ha scritto.
                 'wallet' => $conUnSaldo === [], 'con_un_saldo' => $conUnSaldo,
                 // Chi esce adesso: nella fermata di una fine di conduttore la chiave `conduttore` di `fermata_ridotta` (chi entra) non c'entra.
                 'conduttore_uscente' => (string) $uscente->anagrafica?->nome, 'conduttore_uscente_id' => $chi,
@@ -824,8 +824,8 @@ final class FermataDopoScrivi
     }
 
     /**
-     * La coda della frase di una fermata ridotta o azzerata: se per quella fermata si è registrato il saldo dal Wallet, va corretto. Al condizionale: il
-     * Wallet tiene un saldo solo per persona, gestione, unità ed esercizio, e il programma non sa se quello che c'è sia il saldo della fermata o un riporto.
+     * La coda della frase di una fermata ridotta o azzerata: se per quella fermata si è registrato il saldo dal Wallet, va corretto. Al condizionale: il Wallet tiene
+     * un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio, e il programma non sa se quello che c'è sia il saldo della fermata o un riporto.
      *
      * @param array<string, mixed> $f la voce di `fermateRidotte`
      */
@@ -889,13 +889,13 @@ final class FermataDopoScrivi
 
     /**
      * Coda 254 (1.11.0-beta.51): la frase del pannello per la fermata della fine di un conduttore. Il passaggio che si ferma è la fine della
-     * locazione di chi esce adesso (`conduttore_uscente`), non una vendita: i suoi giorni tornano a chi paga al posto dell'inquilino da quel
+     * locazione di chi esce adesso (`conduttore_uscente`), non una vendita: i giorni che copriva tornano a chi paga al posto dell'inquilino da quel
      * giorno, e se questo non è più chi ha preso la coppia la parte non si sposta da sola. La coppia non si ricalcola più (l'ha presa la fine
      * di chi era uscito prima): le frasi «tornano a …» valgono per i piani futuri.
      */
     private static function frasePannelloFineDelConduttore(array $f): string
     {
-        return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla gestione %s (%s). Con la fine della locazione di %s i suoi giorni dal %s tornano a chi paga al posto dell\'inquilino, e la parte di quei giorni tocca %s, ma il programma non la sposta: %s. %s',
+        return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla gestione %s (%s). Con la fine della locazione di %s i giorni dal %s tornano a chi paga al posto dell\'inquilino, e la parte di quei giorni tocca %s, ma il programma non la sposta: %s. %s',
             $f['inquilino'], self::data($f['fine_il']), self::presa((string) $f['persona'], (int) $f['coppia'], ! empty($f['piu_persone'])), $f['gestione'], $f['unita'],
             $f['conduttore_uscente'], self::data($f['dal']), self::a(self::elenco($f['verso'])),
             (int) $f['cifra'] < 0 ? 'in quei giorni l\'entrata supera la spesa, e ' . self::aCarico((int) $f['cifra'], '', (string) $f['persona']) : self::aCarico((int) $f['cifra'], '', (string) $f['persona']),
@@ -1087,7 +1087,7 @@ final class FermataDopoScrivi
         $frase = sprintf('La locazione continuava con %s: il conguaglio dei giorni dopo l\'uscita di %s non c\'è, e %s sulla gestione %s (%s) sono rimasti nelle rate di %s',
             $restano, $f['persona'] ?? '?', self::soldi((int) ($f['cifra'] ?? 0)), $f['gestione'] ?? '?', $f['unita'] ?? '', $f['persona'] ?? '?');
         // Giro stretto della .50 (G14): la strada che il pannello aveva indicato, dal registro (decisione 80): il saldo manuale dal Wallet per
-        // chi non aveva già un saldo, fra le parti per chi lo aveva. Un registro senza i candidati, o senza il Wallet, dice la frase di prima.
+        // chi non aveva già un saldo che un passaggio non ha scritto, fra le parti per chi lo aveva. Un registro senza i candidati, o senza il Wallet, dice la frase di prima.
         if (! isset($f['al_posto']) || empty($f['wallet'])) {
             return $frase . ', da regolare a mano fra le parti con chi li paga.';
         }
@@ -1117,7 +1117,7 @@ final class FermataDopoScrivi
      */
     public static function fraseRisale(array $f): string
     {
-        return sprintf('Con la fine della locazione di %s i suoi giorni dal %s tornano a chi paga al posto dell\'inquilino: la parte verso %s %s sale da %s a %s sulla gestione %s (%s). La parte da regolare a mano fra %s è questa, e il programma non la sposta.',
+        return sprintf('Con la fine della locazione di %s i giorni dal %s tornano a chi paga al posto dell\'inquilino: la parte verso %s %s sale da %s a %s sulla gestione %s (%s). La parte da regolare a mano fra %s è questa, e il programma non la sposta.',
             $f['conduttore_uscente'], self::data($f['dal']), self::elenco($f['verso']), self::dellaFermata($f), self::cifraInParole((int) $f['prima']), self::cifraInParole((int) $f['dopo']),
             $f['gestione'], $f['unita'], self::fraLeParti($f));
     }
@@ -1132,9 +1132,9 @@ final class FermataDopoScrivi
     /** La frase dello storico della fine che ha fatto risalire la parte, dal registro. */
     public static function fraseStoricoRisale(array $f): string
     {
-        return sprintf('Con questa fine, %s la parte verso %s risale da %s a %s (gestione %s, %s): i giorni di %s dal %s tornano a chi paga al posto dell\'inquilino, da regolare a mano fra %s.',
-            self::dellaFermata($f), self::elenco($f['verso'] ?? []) ?: 'chi è entrato', self::cifraInParole((int) ($f['prima'] ?? 0)), self::cifraInParole((int) ($f['dopo'] ?? 0)),
-            $f['gestione'] ?? '?', $f['unita'] ?? '', $f['conduttore_uscente'] ?? 'il conduttore', self::data((string) ($f['dal'] ?? '')), self::fraLeParti($f));
+        return sprintf('Con questa fine la parte verso %s %s risale da %s a %s (gestione %s, %s): dal %s, finita la locazione di %s, i giorni tornano a chi paga al posto dell\'inquilino, da regolare a mano fra %s.',
+            self::elenco($f['verso'] ?? []) ?: 'chi è entrato', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? 0)), self::cifraInParole((int) ($f['dopo'] ?? 0)),
+            $f['gestione'] ?? '?', $f['unita'] ?? '', self::data((string) ($f['dal'] ?? '')), $f['conduttore_uscente'] ?? 'il conduttore', self::fraLeParti($f));
     }
 
     /** La frase dello storico della fine che ha fatto risalire la parte, quando il conguaglio della fine di prima è stato annullato dopo. */
@@ -1621,7 +1621,7 @@ final class FermataDopoScrivi
         return isset($f['conduttore_uscente']) ? 'con la fine della locazione di ' . $f['conduttore_uscente'] : 'con questo passaggio';
     }
 
-    /** Decisione 80: la strada a mano, con il verso delle righe del Wallet, o fra le parti con chi ha già un saldo. */
+    /** Decisione 80: la strada a mano, con il verso delle righe del Wallet, o fra le parti con chi ha già un saldo che un passaggio non ha scritto (`conUnSaldo`). */
     private static function stradaAMano(array $f): string
     {
         $verso = self::elenco($f['verso']);

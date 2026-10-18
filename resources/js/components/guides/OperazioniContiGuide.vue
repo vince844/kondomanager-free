@@ -39,7 +39,7 @@ defineEmits(['update:open']);
               <ul class="space-y-3">
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Creare le voci:</strong> clicca su "Aggiungi voce". Per creare un sottoconto dipendente da una voce principale, seleziona quella voce nel campo <em>Capitolo padre</em>.</span>
+                  <span><strong>Creare le voci:</strong> clicca su "Aggiungi voce". Per creare un sottoconto dipendente da una voce principale, seleziona quella voce nel campo <em>Capitolo padre</em>. L'importo si scrive senza il segno, anche per un affitto o un canone: lo decide il <em>Tipo di movimento</em>, «Spesa (uscita)» o «Entrata», e le entrate si sottraggono alle spese.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -101,7 +101,7 @@ defineEmits(['update:open']);
             <div class="mt-3 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-[13px]">
               <p class="font-bold text-slate-800 dark:text-slate-200 mb-1">In testata, gli stessi tre numeri per l'intero piano</p>
               <p class="text-slate-600 dark:text-slate-400">
-                <strong>Preventivo</strong> è il totale deliberato e non cresce quando si sfora; <strong>Consuntivo</strong> è la spesa complessiva; <strong>Sopravvenienze</strong> raccoglie a parte le voci nate fuori preventivo.
+                <strong>Preventivo</strong> è il totale deliberato delle voci di spesa e non cresce quando si sfora; con voci di entrata accanto compare <strong>Entrate</strong>, il loro totale, e passandoci sopra il mouse leggi quanto resta da ripartire; <strong>Consuntivo</strong> è la spesa complessiva; <strong>Sopravvenienze</strong> raccoglie a parte le voci nate fuori preventivo.
               </p>
             </div>
           </section>
@@ -206,7 +206,7 @@ defineEmits(['update:open']);
               Dal menu "Stampe" in alto a destra:
             </p>
             <ul class="list-disc list-inside space-y-1 text-[13px] text-slate-600 dark:text-slate-400 pl-2">
-              <li><strong>Distinta base:</strong> il riepilogo delle voci con i relativi preventivi. Rispetta l'ordinamento scelto a schermo, nome o codice.</li>
+              <li><strong>Distinta base:</strong> il riepilogo delle voci con i relativi preventivi. Rispetta l'ordinamento scelto a schermo, nome o codice. Se il piano ha voci di entrata, le mostra con il meno e riporta a parte le spese, le entrate e la somma da ripartire.</li>
               <li><strong>Ripartizione spese:</strong> proietta come i preventivi verranno suddivisi per singola unità — il documento da portare in assemblea per la delibera.</li>
             </ul>
           </section>

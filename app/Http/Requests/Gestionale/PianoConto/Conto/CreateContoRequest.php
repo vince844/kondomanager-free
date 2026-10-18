@@ -113,6 +113,11 @@ class CreateContoRequest extends FormRequest
                 }
             }
 
+            // Il meno si rifiuta su ogni voce, di spesa o di entrata: il segno lo decide il tipo, e il motore legge il valore assoluto.
+            if (! $this->boolean('isCapitolo') && ImportoSenzaSegno::eNegativo($this->input('importo'))) {
+                ImportoSenzaSegno::rifiuta($validator, 'importo', ImportoSenzaSegno::rifiutoPerIlTipo($this->input('tipo')));
+            }
+
             if (!$this->boolean('isCapitolo')) {
                 $somma = $this->percentuale_proprietario + 
                          $this->percentuale_inquilino + 
