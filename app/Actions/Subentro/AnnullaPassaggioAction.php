@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\FermataDopoScrivi;
+use App\Services\Subentro\FrasiObbligati;
 use App\Services\Subentro\GuardieTitolarita;
 use App\Services\Subentro\QuoteNateDopoIlPassaggio;
 use App\Services\Subentro\VociDaSpostare;
@@ -77,6 +78,13 @@ final class AnnullaPassaggioAction
             : 'Il conguaglio di questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.';
     }
 
+    /** Il rifiuto con un saldo del Wallet legato al passaggio già assorbito da un piano: la stessa frase della coppia, con le stesse strade. */
+    private static function fraseLegateAssorbite(Collection $legate, array $presiDaSeguire): string
+    {
+        return AnnullaConguaglioAction::fraseAssorbite($legate, 'Un saldo del Wallet legato a questo passaggio è già stato assorbito da un piano rate, e il passaggio non si annulla così com\'è.',
+            'torna qui', perIlPassaggio: true, presiDaSeguire: $presiDaSeguire, legate: true);
+    }
+
     public function motivoBlocco(Subentro $passaggio): ?string
     {
         $padre = $passaggio->subentro_padre_id ? Subentro::conAnnullati()->find($passaggio->subentro_padre_id) : $passaggio;
@@ -100,6 +108,19 @@ final class AnnullaPassaggioAction
                 'torna qui', perIlPassaggio: true, presiDaSeguire: $this->presiDaSeguire($famiglia), conArretrato: $padre->arretratoAgliEredi());
         }
 
+        // 1.11.0-beta.53 (Coda 244): un saldo del Wallet legato a questo passaggio, già assorbito da un piano, ferma l'annullamento come la
+        // coppia, con le stesse strade d'uscita.
+        $legate = Saldo::where('passaggio_id', $padre->id)->where('is_applicato', true)->with('pianoRate')->get();
+        if ($legate->isNotEmpty()) {
+            return self::fraseLegateAssorbite($legate, $this->presiDaSeguire($famiglia));
+        }
+
+        return $this->motivoDelleQuoteEDelleRighe($padre, $famiglia);
+    }
+
+    /** Le ultime regole di `motivoBlocco`, dopo i passaggi registrati dopo e i piani: le quote toccate dopo il passaggio, le righe corrette a mano. */
+    private function motivoDelleQuoteEDelleRighe(Subentro $padre, Collection $famiglia): ?string
+    {
         if ($motivo = $this->quoteNonIntatte($padre, $famiglia)) {
             return $motivo;
         }
@@ -123,21 +144,10 @@ final class AnnullaPassaggioAction
             ->map(fn (string $piano) => sprintf('Il piano «%s» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo, così quote e riparto tornano sulla titolarità di prima.', $piano))
             ->all();
 
-        // Decisione 77 (3), 1.11.0-beta.50: la fermata dopo «Scrivi» lasciava una parte della coppia da regolare a mano; un saldo manuale
-        // scritto per lei dal Wallet non è legato al passaggio (Coda 244), e annullarlo non lo toglie.
-        foreach ($padre->registro['fermata_dopo_scrivi'] ?? [] as $f) {
-            // Giro stretto della .50 (G11): annullato dopo il conguaglio della fine, la fermata non vale più, come dice lo storico della
-            // stessa vendita (decisione 83.2). Resta solo il saldo manuale che l'amministratore può aver registrato per lei.
-            if (FermataDopoScrivi::fineSenzaConguaglio($f)) {
-                $avvisi[] = 'La fermata di questo passaggio non vale più, perché il conguaglio della fine è stato annullato: se per lei hai registrato un saldo manuale dal Wallet, annullare il passaggio non lo toglie. Toglilo dal Wallet, prima o dopo.';
-
-                continue;
-            }
-            $avvisi[] = sprintf('Con questo passaggio %s, da regolare a mano: se per questo hai registrato un saldo manuale dal Wallet (%s), annullare il passaggio non lo toglie. Toglilo dal Wallet, prima o dopo.',
-                FermataDopoScrivi::rimastiDellaFermata($f),
-                // Decisione 81.2: dopo una fermata la riga a credito può essere di chi è uscito, se la fermata di prima era già stata regolata.
-                FermataDopoScrivi::rigaDelWallet($f, ($f['persona'] ?? 'chi esce') . (isset($f['uscente']) ? ' o di ' . $f['uscente'] : '')));
-        }
+        // 1.11.0-beta.53: i saldi scritti a mano dal Wallet dopo la registrazione, senza legarli a un passaggio (la strada a mano di
+        // prima del legame, o un saldo qualunque), per ogni passaggio: si nominano, non si toccano. I saldi legati a questo passaggio li dice
+        // l'effetto (si tolgono); la fermata dopo «Scrivi» e quella del coinquilino non hanno più un avviso loro: senza saldi non c'è niente da dire.
+        array_push($avvisi, ...FermataDopoScrivi::avvisiDeiSaldiAMano($padre));
 
         // Coda 254 (1.11.0-beta.51): la fine di un conduttore che ha fatto risalire la parte di una fermata di prima; annullata, la parte torna
         // com'era, e un saldo o un accordo adeguato nel frattempo si rivede. Se il conguaglio della fine di prima è già annullato non c'è più niente.
@@ -151,14 +161,6 @@ final class AnnullaPassaggioAction
         foreach ($padre->registro['fermata_ridotta'] ?? [] as $f) {
             if (! FermataDopoScrivi::fineSenzaConguaglio($f)) {
                 $avvisi[] = FermataDopoScrivi::avvisoRidottaAnnullando($f);
-            }
-        }
-
-        // Decisioni 79 (2) e 80: lo stesso per la fermata del coinquilino, quando il pannello indicava il Wallet.
-        foreach ($padre->registro['fermata_coinquilino'] ?? [] as $f) {
-            if (! empty($f['wallet'])) {
-                $avvisi[] = sprintf('Con questo passaggio %s dei giorni dopo l\'uscita di %s sono rimasti nelle sue rate sulla gestione %s, perché la locazione continuava con %s: se per questo hai registrato un saldo manuale dal Wallet, annullare il passaggio non lo toglie. Toglilo dal Wallet, prima o dopo.',
-                    \App\Helpers\MoneyHelper::format((int) ($f['cifra'] ?? 0)), $f['persona'] ?? 'chi esce', $f['gestione'] ?? '?', $this->elenco($f['restano'] ?? []) ?: 'un coinquilino');
             }
         }
 
@@ -204,21 +206,23 @@ final class AnnullaPassaggioAction
         $rate = $this->quoteDelRegistro($padre)['voci']->pluck('rata_id')->unique()->count();
 
         return self::frasiEffetti(
-            ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(), 'arretrato' => count($padre->saldiDellArretrato())],
+            ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(), 'arretrato' => count($padre->saldiDellArretrato()),
+                'legate' => self::legateInParole(Saldo::where('passaggio_id', $padre->id)->orderBy('id')->get())],
             $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false, $padre->successione(),
         );
     }
 
     /**
-     * Le frasi dell'esito, prima (`$fatto` falso, nel modulo) o dopo (nel messaggio di conferma): la stessa lettura.
+     * Le frasi dell'esito, prima (`$fatto` falso, nel modulo) o dopo (nel messaggio di conferma): la stessa lettura. `$successione` non cambia la
+     * preposizione, che è la stessa in ogni passaggio.
      *
-     * @param array{rate: int, saldi: int} $conti
+     * @param array{rate: int, saldi: int, arretrato?: int, legate?: array{testo: string, plurale: bool}|null} $conti
      * @return list<string>
      */
     public static function frasiEffetti(array $conti, ?string $uscente, ?string $entrante, bool $fatto, bool $successione = false): array
     {
-        // Rilievo R5 della Fase 1-bis della .48, decisione 73 (4): nella successione «ad» davanti ai nomi che cominciano per A.
-        $a = fn (string $nome) => $successione ? app(\App\Services\Subentro\FrasiObbligati::class)->a($nome) : 'a ' . $nome;
+        // «ad» davanti ai nomi che cominciano per A, in ogni passaggio, come in `descrivi`.
+        $a = fn (string $nome) => FrasiObbligati::a($nome);
         // «Scritte dal passaggio»: una riga associata a mano dopo, che non si scontra con niente, resta (giro di verifica, G-4).
         $frasi = [$fatto ? 'Le righe di titolarità scritte dal passaggio sono tornate come prima.' : 'Le righe di titolarità scritte dal passaggio tornano come prima.'];
         $n = (int) $conti['rate'];
@@ -239,12 +243,32 @@ final class AnnullaPassaggioAction
             };
             $frasi[] = $cosa . ($fatto ? ($conguaglio && $arretrato ? ' sono stati tolti' : ' è stato tolto') : ($conguaglio && $arretrato ? ' si tolgono' : ' si toglie')) . ' dai saldi della gestione.';
         }
+        // 1.11.0-beta.53 (Coda 244): i saldi del Wallet legati al passaggio si tolgono con lui, e si dicono con il verso a parole.
+        if (! empty($conti['legate']['testo'])) {
+            $piu = (bool) $conti['legate']['plurale'];
+            $frasi[] = sprintf('%s %s: %s.', $piu ? 'I saldi del Wallet legati a questo passaggio' : 'Il saldo del Wallet legato a questo passaggio',
+                $fatto ? ($piu ? 'sono stati tolti' : 'è stato tolto') : ($piu ? 'si tolgono' : 'si toglie'), $conti['legate']['testo']);
+        }
 
         return $frasi;
     }
 
     /**
-     * @return array{righe: int, rate: int, saldi: int, arretrato: int, avvisi: list<string>, uscente: ?string, entrante: ?string, successione: bool}
+     * Le righe legate al passaggio, nelle parole degli effetti: «€ 60,16 a credito di Ugo e € 60,16 a debito di Elsa (gestione Ordinaria 2026)»;
+     * null se non ce ne sono (una riga a zero non si dice).
+     *
+     * @param Collection<int, Saldo> $legate
+     * @return array{testo: string, plurale: bool}|null
+     */
+    private static function legateInParole(Collection $legate): ?array
+    {
+        $dette = $legate->filter(fn (Saldo $x) => (int) $x->saldo_iniziale !== 0)->values()->load(['anagrafica:id,nome', 'gestione:id,nome']);
+
+        return $dette->isEmpty() ? null : ['testo' => FermataDopoScrivi::righeInParole($dette), 'plurale' => $dette->count() > 1];
+    }
+
+    /**
+     * @return array{righe: int, rate: int, saldi: int, arretrato: int, avvisi: list<string>, uscente: ?string, entrante: ?string, successione: bool, legate: array{testo: string, plurale: bool}|null}
      */
     public function execute(Subentro $passaggio, string $nota, User $utente): array
     {
@@ -290,6 +314,8 @@ final class AnnullaPassaggioAction
             $promemoria = DB::table('anagrafica_evento')->whereIn('id', $ponte)->lockForUpdate()->pluck('evento_id')->all();
             DB::table('eventi')->whereIn('id', $promemoria)->lockForUpdate()->pluck('id');
             $saldi = Saldo::whereIn('subentro_id', $idsFamiglia)->lockForUpdate()->with('pianoRate')->get();
+            // 1.11.0-beta.53 (Coda 244): i saldi del Wallet legati al passaggio, dopo le righe che il passaggio ha scritto.
+            $legate = Saldo::where('passaggio_id', $padreId)->lockForUpdate()->get();
 
             $famiglia = $this->famiglia($padre);
             if ($motivo = $this->motivoBlocco($padre)) {
@@ -308,6 +334,14 @@ final class AnnullaPassaggioAction
                 throw ValidationException::withMessages(['passaggio' => 'Le righe del conguaglio di questo passaggio non sommano zero: qualcosa è stato modificato a mano. Controlla i saldi della gestione prima di annullare.']);
             }
             Saldo::whereIn('id', $saldi->pluck('id'))->delete();
+
+            //    Poi i saldi del Wallet legati al passaggio, bloccati qui sopra: un'assorbita l'ha già fermato `motivoBlocco`, letto dopo i blocchi
+            //    nella stessa transazione; le libere si tolgono, anche una gamba sola (sono righe scritte a mano, non una coppia che deve sommare
+            //    zero), e il registro le conserva.
+            $legateInParole = self::legateInParole($legate);
+            $legateTolte = $legate->map(fn (Saldo $x) => ['id' => (int) $x->id, 'anagrafica_id' => $x->anagrafica_id === null ? null : (int) $x->anagrafica_id, 'gestione_id' => (int) $x->gestione_id,
+                'immobile_id' => (int) $x->immobile_id, 'esercizio_id' => (int) $x->esercizio_id, 'saldo_iniziale' => (int) $x->saldo_iniziale])->values()->all();
+            Saldo::whereIn('id', $legate->pluck('id'))->delete();
 
             // 2. Le bozze passate a chi è entrato tornano com'erano; la quota del pregresso rimasta a chi esce si riunisce.
             //    Una bozza sparita col suo piano (ricalcolato o eliminato dopo) non ha niente da rimettere: si salta, e non
@@ -375,12 +409,13 @@ final class AnnullaPassaggioAction
             foreach ($famiglia as $s) {
                 $registro = $s->registro;
                 $registro['nomi']['annullato_da'] = $utente->name;
-                $registro['annullamento'] = ['quota_max_id' => $quotaMax];
+                // I saldi legati tolti, sul passaggio padre: una cancellazione si lascia ispezionare.
+                $registro['annullamento'] = ['quota_max_id' => $quotaMax] + ((int) $s->id === $padreId && $legateTolte !== [] ? ['saldi_legati_tolti' => $legateTolte] : []);
                 $s->forceFill(['annullato_il' => now(), 'annullato_da' => $utente->id, 'nota_annullamento' => $nota, 'registro' => $registro])->save();
             }
 
             return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante,
-                'successione' => $padre->successione()];
+                'successione' => $padre->successione(), 'legate' => $legateInParole];
         }, 3);
 
         // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.
@@ -440,11 +475,11 @@ final class AnnullaPassaggioAction
             $insieme = $ultimo->subentro_padre_id !== null && $ultimo->padre !== null && (int) $ultimo->padre->immobile_id !== (int) $s->immobile_id
                 ? ($ultimo->padre->immobile?->nome ?? 'un\'altra unità') : null;
             $inciso = match (true) {
-                $stessoGiorno && $insieme !== null => " con la stessa data, registrato dopo, insieme a {$insieme}",
+                $stessoGiorno && $insieme !== null => ' con la stessa data, registrato dopo, insieme ' . FrasiObbligati::a($insieme),
                 $stessoGiorno => ' con la stessa data, registrato dopo',
-                $prima && $insieme !== null => ", registrato dopo, con una data precedente, insieme a {$insieme}",
+                $prima && $insieme !== null => ', registrato dopo, con una data precedente, insieme ' . FrasiObbligati::a($insieme),
                 $prima => ', registrato dopo, con una data precedente',
-                $insieme !== null => ", registrato insieme a {$insieme}",
+                $insieme !== null => ', registrato insieme ' . FrasiObbligati::a($insieme),
                 default => '',
             };
             $via = match (true) {
@@ -489,8 +524,8 @@ final class AnnullaPassaggioAction
             // Testi T8 della beta.38: «o donazione», come il tipo di base; la donazione della nuda proprietà è il caso più frequente.
             // Rilievo W4 del giro sulle correzioni della .42: la vendita della sola nuda proprietà si dice, perché due vendite dello
             // stesso giorno fra le stesse persone (la piena e la nuda) non si confondano. La piena resta «la vendita».
-            'vendita' => ($s->riservaUsufrutto() ? 'la vendita o donazione con riserva d\'usufrutto' : ($s->tipologia === 'nuda_proprietario' ? 'la vendita della nuda proprietà' : 'la vendita')) . ($uscente !== null ? " da {$uscente}" : '') . ($entrante !== null ? " a {$entrante}" : ''),
-            'inizio_locazione' => 'l\'inizio locazione' . ($entrante !== null ? " a {$entrante}" : ''),
+            'vendita' => ($s->riservaUsufrutto() ? 'la vendita o donazione con riserva d\'usufrutto' : ($s->tipologia === 'nuda_proprietario' ? 'la vendita della nuda proprietà' : 'la vendita')) . ($uscente !== null ? " da {$uscente}" : '') . ($entrante !== null ? ' ' . FrasiObbligati::a($entrante) : ''),
+            'inizio_locazione' => 'l\'inizio locazione' . ($entrante !== null ? ' ' . FrasiObbligati::a($entrante) : ''),
             'fine_locazione' => 'la fine locazione' . ($uscente !== null ? " di {$uscente}" : '') . ($entrante !== null ? ", con {$entrante} al suo posto" : ''),
             'usufrutto' => $s->tipologia === 'proprietario'
                 ? 'l\'estinzione dell\'usufrutto' . ($uscente !== null ? " di {$uscente}" : '') . ($s->conAccrescimento() ? ', con l\'accrescimento' : '')
@@ -567,8 +602,8 @@ final class AnnullaPassaggioAction
                 ->whereIn('rate_quote.rata_id', $emesse->pluck('rata_id')->unique()->all())->where('rate_quote.importo_pagato', '!=', 0)
                 ->pluck('rate.numero_rata')->map(fn ($n) => (int) $n)->unique()->sort()->values()->all();
             $chiNome = $nomi[$chi->anagrafica_id] ?? 'chi è entrato';
-            // Rilievo AMM-2 del giro sulle correzioni della .48: nella successione «ad» davanti ai nomi che cominciano per A.
-            $aChi = $padre->successione() ? app(\App\Services\Subentro\FrasiObbligati::class)->a($chiNome) : 'a ' . $chiNome;
+            // «ad» davanti ai nomi che cominciano per A, in ogni passaggio, come in `descrivi`.
+            $aChi = FrasiObbligati::a($chiNome);
 
             if ($conPagamenti === []) {
                 return sprintf('Dopo il passaggio %s %s %s. Annulla l\'emissione di %s, poi torna qui: le rate già in mano ai condòmini non si spostano da sole.',

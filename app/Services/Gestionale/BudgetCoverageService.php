@@ -69,6 +69,8 @@ class BudgetCoverageService
                 'is_leaf'            => $isLeaf,
                 'tipo'               => $conto->tipo,
                 'segno'              => Conto::segnoDelTipo((string) $conto->tipo),
+                // Una voce di spesa scritta con il meno: la copertura la conta in positivo, come il motore, ma un piano nuovo non la finanzia.
+                'spesa_negativa'     => Conto::eSpesaNegativa((string) $conto->tipo, (int) $conto->importo),
                 'budget'             => $fabbisognoReale,
                 'budget_teorico'     => $budgetTeorico,
                 'pianificato'        => $pianificato,
@@ -102,16 +104,20 @@ class BudgetCoverageService
     }
 
     /**
-     * L'importo di una voce come lo legge il motore. Una voce di entrata vale il suo valore assoluto: il motore le toglie il segno (`−abs`), quindi
-     * un'entrata scritta con il meno (dato delle versioni dalla 1.7.0 alla 1.11.0-beta.51) accredita come una positiva, e la copertura non la deve vedere in deficit.
-     * Una voce di spesa resta col suo segno: la spesa negativa il motore la addebita in positivo, e la ferma il fermo del piano (`SpeseNegativeNelPiano`).
+     * L'importo di una voce come lo legge il motore: il valore assoluto, dal lato del suo tipo (`Conto::partiDelTipo`). Il motore toglie il segno a
+     * ogni voce, quindi una voce scritta con il meno (dato delle versioni dalla 1.7.0 alla 1.11.0-beta.51) conta come una positiva: un'entrata
+     * accredita, una spesa addebita, e la copertura non le deve vedere in deficit né scoperte per il loro segno.
+     * Una spesa negativa non si finanzia con un piano nuovo (`getCapitoliFinanziabili` la salta): un piano che la tiene la addebita già, e
+     * la creazione che la prende dalla voce la ferma il fermo del piano (`SpeseNegativeNelPiano`).
      * Il tipo manca sugli oggetti semplici dei test unitari: senza tipo la voce è di spesa.
      *
      * @param  object  $conto  una voce del piano dei conti (o un oggetto con `tipo`)
      */
     public static function importoDellaVoce(object $conto, int $importo): int
     {
-        return Conto::segnoDelTipo((string) ($conto->tipo ?? 'spesa')) < 0 ? abs($importo) : $importo;
+        $parti = Conto::partiDelTipo((string) ($conto->tipo ?? 'spesa'), $importo);
+
+        return $parti['spese'] + $parti['entrate'];
     }
 
     private function calcolaCoperturaReale($contiRadice, $pianiRate): array
@@ -347,6 +353,12 @@ class BudgetCoverageService
 
         foreach ($analysisReport['items'] as $item) {
             if (!($item['is_leaf'] ?? false)) {
+                continue;
+            }
+
+            // Una voce di spesa scritta con il meno non si finanzia: un piano che la tiene la addebita già, e un piano nuovo la addebiterebbe in
+            // positivo. Fuori da qui la creazione ricade sull'importo della voce, negativo, e il fermo del piano la ferma con il suo testo.
+            if ($item['spesa_negativa'] ?? false) {
                 continue;
             }
 

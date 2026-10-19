@@ -883,7 +883,7 @@ it('A13 — dopo una vendita il messaggio conta le rate tornate e nomina le part
     apEmetti($s);
     $subentro = apRegistra($this, $s, apVendita($s['rigaV'], $s['a']));
 
-    apAnnulla($this, $s, $subentro)->assertRedirect()->assertSessionHas('message', fn ($m) => str_contains($m['message'], 'Le quote di 8 rate passate a Acquirente Elsa sono tornate a Venditore Ugo')
+    apAnnulla($this, $s, $subentro)->assertRedirect()->assertSessionHas('message', fn ($m) => str_contains($m['message'], 'Le quote di 8 rate passate ad Acquirente Elsa sono tornate a Venditore Ugo')
         && str_contains($m['message'], 'Il conguaglio è stato tolto dai saldi della gestione.'));
 });
 
@@ -909,7 +909,7 @@ it('A15 e A16 — il blocco nomina il tipo del passaggio che viene dopo, e se è
     apRegistra($this, $s, apVendita($s['rigaV'], $s['a'], '2026-05-01', ['pertinenze' => [$box->id]]));
 
     expect(apAnnulla($this, $s, $s0, unita: $box)->assertUnprocessable()->json('errors.passaggio.0'))
-        ->toBe('Dopo questo, su Box 12, c\'è un altro passaggio, registrato insieme a Interno 1: la vendita da Venditore Ugo a Acquirente Elsa, dal 1 maggio 2026. Si annulla dallo storico di Interno 1, poi questo.');
+        ->toBe('Dopo questo, su Box 12, c\'è un altro passaggio, registrato insieme a Interno 1: la vendita da Venditore Ugo ad Acquirente Elsa, dal 1 maggio 2026. Si annulla dallo storico di Interno 1, poi questo.');
 });
 
 it('C-R3 — un saldo che il piano stava usando e che è sparito durante la generazione ferma il piano, invece di lasciarlo dentro le quote', function () {
@@ -1052,7 +1052,7 @@ it('G-5 — la rata emessa dopo il passaggio ha già un pagamento, anche di un a
     DB::table('rate_quote')->where('rata_id', $rata5)->where('anagrafica_id', $s['d']->id)->update(['importo_pagato' => 5000]);
 
     expect(apAnnulla($this, $s, $subentro)->assertUnprocessable()->json('errors.passaggio.0'))
-        ->toContain('è stata emessa a Acquirente Elsa la rata 5 del piano «Preventivo 2026», e sulla rata 5 ci sono già dei pagamenti')
+        ->toContain('è stata emessa ad Acquirente Elsa la rata 5 del piano «Preventivo 2026», e sulla rata 5 ci sono già dei pagamenti')
         ->toContain('andrebbero stornati prima tutti gli incassi di quella rata, anche quelli degli altri condòmini')
         ->toContain('Ogni storno resta nel giornale');
 });

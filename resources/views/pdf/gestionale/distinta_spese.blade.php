@@ -16,11 +16,18 @@
     </div>
 </div>
 
-{{-- Con almeno una voce di entrata il documento le mostra col meno e riporta a parte spese, entrate e somma da ripartire. --}}
+{{-- Con almeno una voce di entrata il documento le mostra col meno e riporta a parte spese, entrate e somma da ripartire.
+     Ogni riga porta il valore del calcolo delle quote (`Conto::partiDelTipo`): una spesa scritta con il meno da una versione vecchia
+     si addebita in positivo, la riga lo dice («scritta con il meno») e una nota in fondo la nomina. --}}
 @php
     $conEntrate = ($totaleEntrate ?? 0) > 0;
     $eEntrata = fn ($voce) => $conEntrate && \App\Models\Gestionale\Conto::segnoDelTipo((string) $voce->tipo) < 0;
-    $importoDi = fn ($voce) => $eEntrata($voce) ? -abs($voce->importo ?? 0) : ($voce->importo ?? 0);
+    $importoDi = function ($voce) {
+        $parti = \App\Models\Gestionale\Conto::partiDelTipo((string) $voce->tipo, (int) ($voce->importo ?? 0));
+
+        return $parti['spese'] - $parti['entrate'];
+    };
+    $scrittaColMeno = fn ($voce) => \App\Models\Gestionale\Conto::eSpesaNegativa((string) $voce->tipo, (int) ($voce->importo ?? 0));
     $mostra = fn ($centesimi) => number_format($centesimi / 100, 2, ',', '.');
 @endphp
 
@@ -50,7 +57,7 @@
             @forelse($padre->sottoconti->where('is_tecnico', false) as $sottoconto)
                 <tr>
                     <td style="padding: 5px 8px 5px 20px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #b0c4de; border-right: 1px solid #b0c4de;">
-                        {{ $sottoconto->nome }}@if($eEntrata($sottoconto)) (entrata)@endif
+                        {{ $sottoconto->nome }}@if($eEntrata($sottoconto)) (entrata)@endif @if($scrittaColMeno($sottoconto)) (scritta con il meno)@endif
                         @if($sottoconto->note)
                             <br><span style="font-size: 7.5pt; color: #666;">{{ $sottoconto->note }}</span>
                         @endif
@@ -64,7 +71,7 @@
             @empty
                 <tr>
                     <td style="padding: 5px 8px 5px 20px; border-bottom: 1px solid #e2e8f0; border-left: 1px solid #b0c4de; border-right: 1px solid #b0c4de;">
-                        {{ $padre->nome }}@if($eEntrata($padre)) (entrata)@endif
+                        {{ $padre->nome }}@if($eEntrata($padre)) (entrata)@endif @if($scrittaColMeno($padre)) (scritta con il meno)@endif
                     </td>
                     <td style="padding: 5px 8px; text-align: right; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #b0c4de;">
                         {{ $mostra($importoDi($padre)) }}
@@ -137,6 +144,9 @@
     @if($conEntrate)
         <br>Le entrate si sottraggono alle spese: il preventivo da ripartire fra i condòmini è la differenza.
     @endif
+    @foreach($speseNegative ?? [] as $negativa)
+        <br>La voce «{{ $negativa['nome'] }}» ha nel piano dei conti un importo negativo (meno € {{ $mostra(abs($negativa['importo'])) }}): il calcolo delle quote la addebita in positivo, e così la conta questa distinta.
+    @endforeach
 </div>
 
 @endsection

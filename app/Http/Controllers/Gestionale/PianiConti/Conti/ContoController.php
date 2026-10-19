@@ -12,9 +12,11 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Tabella;
+use App\Services\Gestionale\BloccoDellaVoce;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException; 
 
 /**
@@ -132,13 +134,16 @@ class ContoController extends Controller
             $isCapitolo = $data['isCapitolo'] ?? false;
             $isSottoConto = $data['isSottoConto'] ?? false;
             $richiedeGiaVersato = $data['richiedeGiaVersato'] ?? false;
-            $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
 
             // FIX bug "voce a zero perde la tabella millesimale": lo stato
             // PERSISTITO prima di questo update è l'unica fonte di verità su
             // se questo conto era già un capitolo. Va letto ORA, prima che
             // $conto->update() più sotto lo sovrascriva.
             $eraGiaCapitolo = (bool) $conto->is_capitolo;
+
+            // Un capitolo che resta capitolo non riscrive l'importo: la sua scheda non lo mostra, e azzerarlo (è un dato delle versioni fino alla 1.9.1)
+            // cambierebbe ciò che il motore addebita. Una voce che diventa un capitolo lo porta a zero.
+            $nuovoImporto = $isCapitolo ? ($eraGiaCapitolo ? (int) $conto->importo : 0) : MoneyHelper::toCents($data['importo'] ?? 0);
 
             // Guard strutturale: un capitolo con sottoconti non può diventare una voce normale
             if ($isCapitolo === false && $conto->sottoconti()->exists()) {
@@ -147,19 +152,61 @@ class ContoController extends Controller
                 ]);
             }
 
-            // CONTROLLI DI SICUREZZA: Scattano solo se l'utente tenta di modificare l'importo di una spesa
-            if (!$isCapitolo && $nuovoImporto != $conto->importo) {
-                
-                // 1. HARD LOCK: Blocco totale se esistono rate già approvate, emesse o chiuse.
-                $hasHardLock = $conto->pianiRate()->whereIn('stato', ['approvato', 'emesso', 'chiuso'])->exists() ||
-                               ($conto->parent && $conto->parent->pianiRate()->whereIn('stato', ['approvato', 'emesso', 'chiuso'])->exists());
+            // 1. HARD LOCK: una voce che un piano approvato, emesso o chiuso tiene, con la sua riga o con quella di un capitolo sopra di lei, non
+            // cambia importo, padre, tipo, tabella né percentuali, non torna voce se è un capitolo, e non si sposta sotto un capitolo che un piano così
+            // tiene: il motore la raggiungerebbe in un altro modo, e il piano addebiterebbe un'altra cifra, o ad altre persone. La regola è una sola
+            // (`Conto::pianiCheBloccanoLaVoce`): la scheda della voce e le frasi che propongono di correggere una voce la leggono da lì. Il rifiuto dice
+            // la strada della bozza (`BloccoDellaVoce`), sotto il primo campo cambiato; se la sola ragione è il padre nuovo, sotto il padre.
+            $nuovoPadre = $isSottoConto && ! empty($data['parent_id']) ? (int) $data['parent_id'] : null;
+            $padreCambia = $nuovoPadre !== ($conto->parent_id === null ? null : (int) $conto->parent_id);
+            $tipoCambia = Conto::segnoDelTipo((string) $data['tipo']) !== Conto::segnoDelTipo((string) $conto->tipo);
+            // Una voce che diventa un capitolo porta l'importo a zero: anche quello è un cambio dell'importo.
+            $importoCambia = $nuovoImporto != $conto->importo;
+            $tornaVoce = $eraGiaCapitolo && ! $isCapitolo;
 
-                if ($hasHardLock) {
-                    // Lanciamo un'eccezione di validazione così Inertia la mostra in rosso sotto il campo "importo"
+            /*
+             * Quante tabelle millesimali sono collegate a questa voce, **prima** di toccarla.
+             *
+             * Serve al blocco qui sopra e al ramo più sotto: la scheda di modifica ne conosce una sola, quindi su una
+             * voce che ne ha più d'una non è in grado di rappresentare ciò che c'è.
+             */
+            $tabelleCollegate = DB::table('conto_tabella_millesimale')
+                ->where('conto_id', $conto->id)
+                ->count();
+            $campoDellaTabella = $this->campoDellaTabellaCheCambia($conto, $data, (bool) $isCapitolo, $eraGiaCapitolo, $tabelleCollegate);
+
+            if ($importoCambia || $tipoCambia || $padreCambia || $tornaVoce || $campoDellaTabella !== null) {
+                $tengonoLaVoce = Conto::pianiCheBloccanoLaVoce([(int) $conto->id])[(int) $conto->id] ?? [];
+                // Un padre nuovo che sta già sopra la voce è nella sua catena: i piani che lo tengono tengono già lei.
+                $tengonoIlPadre = $padreCambia && $nuovoPadre !== null && ! in_array($nuovoPadre, Conto::catene([(int) $conto->id])[(int) $conto->id], true)
+                    ? (Conto::pianiCheBloccanoLaVoce([$nuovoPadre])[$nuovoPadre] ?? [])
+                    : [];
+
+                if ($tengonoLaVoce !== [] || $tengonoIlPadre !== []) {
+                    // Un capitolo che torna voce si rifiuta sotto «isCapitolo» con la frase del capitolo, anche se la scheda gli scrive un importo: l'importo
+                    // nuovo è una conseguenza del cambio, non la ragione del rifiuto.
+                    $campo = $tengonoLaVoce === [] ? 'parent_id' : match (true) {
+                        $tornaVoce => 'isCapitolo',
+                        $importoCambia => 'importo',
+                        $tipoCambia => 'tipo',
+                        $padreCambia => 'parent_id',
+                        default => $campoDellaTabella,
+                    };
+
+                    // Lanciamo un'eccezione di validazione così Inertia la mostra in rosso sotto il campo cambiato
                     throw ValidationException::withMessages([
-                        'importo' => "Modifica inibita: l'importo è bloccato da rate già approvate o emesse."
+                        $campo => BloccoDellaVoce::rifiutoDellaModifica(
+                            $tengonoLaVoce,
+                            $tengonoIlPadre === [] ? null : (string) Conto::query()->whereKey($nuovoPadre)->value('nome'),
+                            $tengonoIlPadre,
+                            $campo === 'isCapitolo',
+                        ),
                     ]);
                 }
+            }
+
+            // CONTROLLI DI SICUREZZA: Scattano solo se l'utente tenta di modificare l'importo di una spesa
+            if (! $isCapitolo && $importoCambia) {
 
                 // 2. SOFT LOCK (Blocco Elastico): Impedisce di scendere sotto la soglia già impegnata.
                 // Usiamo il pattern di Fallback: se l'importo in pivot è NULL, usiamo l'intero importo del conto.
@@ -206,16 +253,6 @@ class ContoController extends Controller
             // capitolo, ora lo diventa) — mai su un resave a parità di stato,
             // che prima cancellava tabella/ripartizioni di una voce reale
             // solo perché isCapitolo veniva (ri)calcolato male a monte.
-            /*
-             * Quante tabelle millesimali sono collegate a questa voce, **prima** di toccarla.
-             *
-             * Serve al ramo qui sotto: la scheda di modifica ne conosce una sola, quindi su una
-             * voce che ne ha più d'una non è in grado di rappresentare ciò che c'è.
-             */
-            $tabelleCollegate = DB::table('conto_tabella_millesimale')
-                ->where('conto_id', $conto->id)
-                ->count();
-
             if ($isCapitolo && ! $eraGiaCapitolo) {
                 $contoTabellaIds = DB::table('conto_tabella_millesimale')
                     ->where('conto_id', $conto->id)
@@ -394,28 +431,20 @@ class ContoController extends Controller
             return back()->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
         }
         
-        // Prevenzione 2: Non puoi eliminare un conto se è agganciato a piani rate in stato bloccante
-        // (bozza non blocca l'eliminazione)
-        $statiBloccanti = ['approvato', 'emesso', 'chiuso'];
+        // Prevenzione 2: una voce con delle righe di fattura non si elimina, e riportare un piano in bozza non le toglie: la frase dice le righe,
+        // prima di quella dei piani, che proporrebbe una bozza dopo la quale la voce resterebbe lì.
+        $righeDiFattura = DB::table('righe_fattura')->where('conto_id', $conto->id)->count();
 
-        // CORRETTO — il conto direttamente in un piano bloccante
-        $lockDiretto = $conto->pianiRate()
-            ->whereIn('stato', $statiBloccanti)
-            ->exists();
-
-        // Il padre ha un piano bloccante E questo conto è incluso in quel piano
-        $lockIndiretto = false;
-        if ($conto->parent) {
-            $lockIndiretto = $conto->parent->pianiRate()
-                ->whereIn('stato', $statiBloccanti)
-                ->whereHas('capitoli', fn($q) => $q->where('conto_id', $conto->id))
-                ->exists();
+        if ($righeDiFattura > 0) {
+            return back()->with($this->flashError(BloccoDellaVoce::rifiutoDelleRigheDiFattura($righeDiFattura)));
         }
 
-        $lock = $lockDiretto || $lockIndiretto;
+        // Prevenzione 3: una voce che un piano approvato, emesso o chiuso tiene, con la sua riga o con quella di un capitolo sopra di lei, non si
+        // elimina: il piano perderebbe ciò che addebita. È la regola della modifica (`Conto::pianiCheBloccanoLaVoce`); un piano in bozza non blocca.
+        $tengonoLaVoce = Conto::pianiCheBloccanoLaVoce([(int) $conto->id])[(int) $conto->id] ?? [];
 
-        if ($lock) {
-            return back()->with($this->flashError(__('gestionale.error_conto_locked_by_rate_plan')));
+        if ($tengonoLaVoce !== []) {
+            return back()->with($this->flashError(BloccoDellaVoce::rifiutoDellEliminazione($tengonoLaVoce)));
         }
 
         try {
@@ -430,8 +459,45 @@ class ContoController extends Controller
                 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with($this->flashError($e->getMessage()));
+            // Il messaggio del database non è per l'amministratore: si scrive nel registro, e la pagina dice che l'eliminazione non è riuscita.
+            Log::error('Errore durante l\'eliminazione della voce', ['conto_id' => $conto->id, 'piano_conto_id' => $pianoConto->id, 'message' => $e->getMessage()]);
+
+            return back()->with($this->flashError(__('gestionale.error_delete_conto')));
         }
+    }
+
+    /**
+     * Il campo della scheda sotto cui va il rifiuto, se il salvataggio cambierebbe la tabella o le percentuali della voce; nullo se le lascia com'è.
+     *
+     * Si confronta lo stato che il salvataggio lascia con quello che c'è: la scheda rimanda sempre la tabella e le percentuali, anche quando si cambia
+     * solo il nome. Una voce che diventa un capitolo perde le sue tabelle; un capitolo che resta tale non le tocca; una voce su più tabelle non si
+     * tocca da qui (vedi più sotto): la scheda ne conosce una sola.
+     *
+     * @param  array<string, mixed>  $data  la richiesta validata
+     */
+    private function campoDellaTabellaCheCambia(Conto $conto, array $data, bool $isCapitolo, bool $eraGiaCapitolo, int $tabelleCollegate): ?string
+    {
+        if ($isCapitolo) {
+            return ! $eraGiaCapitolo && $tabelleCollegate > 0 ? 'tabella_millesimale_id' : null;
+        }
+
+        if ($tabelleCollegate > 1) {
+            return null;
+        }
+
+        $legame = DB::table('conto_tabella_millesimale')->where('conto_id', $conto->id)->first();
+        if ($legame === null || (int) $legame->tabella_id !== (int) ($data['tabella_millesimale_id'] ?? 0)) {
+            return 'tabella_millesimale_id';
+        }
+
+        $oggi = DB::table('conto_tabella_ripartizioni')->where('conto_tabella_millesimale_id', $legame->id)->pluck('percentuale', 'soggetto');
+        foreach (['proprietario', 'inquilino', 'usufruttuario'] as $soggetto) {
+            if (round((float) ($oggi[$soggetto] ?? 0), 2) !== round((float) ($data["percentuale_{$soggetto}"] ?? 0), 2)) {
+                return 'percentuale_proprietario';
+            }
+        }
+
+        return null;
     }
 
     private function resolveContoContabileId(int $condominioId, string $tipoSpesa): ?int

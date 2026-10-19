@@ -13,7 +13,7 @@
  * vecchia mostrerebbe «€ 0,00» senza che nessun altro test se ne accorga, per questo si legge la cella vera.
  *
  * Le frasi che dicono come si ottiene il netto («da ripartire … (spese …, entrate …)») si firmano con la clausola del motore, letta alla lettera:
- * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService.php:1500-1502` e `:1586-1589`): le voci di
+ * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e quello con l'importo della voce): le voci di
  * un tipo diverso da spesa e uscita si sottraggono.
  *
  * Il componente è il file vero, `createColumns()`: le celle si disegnano con Vue in un contenitore finto.

@@ -111,7 +111,7 @@ it('con il riscaldamento sui suoi tratti la divisione è voce per voce: chi entr
         ->and($conti['Pulizie']['giorni_entrante'])->toBe(184)->and($conti['Pulizie']['entrante'])->toBe(25205);
 
     $frasi = implode("\n", $r['frasi']);
-    expect($frasi)->toContain('voce per voce')->toContain('Riscaldamento: € 1.000,00, competenza 1 gennaio 2026–15 aprile 2026 + 15 ottobre 2026–31 dicembre 2026 — 105 giorni a Venditore Ugo, 78 a Acquirente Elsa → € 426,23 a chi entra.')
+    expect($frasi)->toContain('voce per voce')->toContain('Riscaldamento: € 1.000,00, competenza 1 gennaio 2026–15 aprile 2026 + 15 ottobre 2026–31 dicembre 2026 — 105 giorni a Venditore Ugo, 78 ad Acquirente Elsa → € 426,23 a chi entra.')
         ->toContain('Pulizie: € 500,00');
 });
 
@@ -347,9 +347,9 @@ it('strada (b), B2-2 — quota pura NEGATIVA (nota di credito a riparto, −20.0
         ->and($r['coppie'][0]['importo'])->toBe(-10083)
         // Coda 251-c (1.11.0-beta.51): una cifra negativa si dice con le parole, non «€ -100,83». Il conto a mano è lo stesso (−10.083 a chi entra: Elsa
         // ha un credito di € 100,83, Ugo un debito uguale), e la frase lo dice con i versi giusti: prima «credito € -100,83 a Venditore Ugo, debito €
-        // -100,83 a Acquirente Elsa» (due segni meno che si leggevano come un credito e un debito di segno opposto), ora «credito € 100,83 a
+        // -100,83 ad Acquirente Elsa» (due segni meno che si leggevano come un credito e un debito di segno opposto), ora «credito € 100,83 a
         // Acquirente Elsa, debito € 100,83 a Venditore Ugo».
-        ->and(implode("\n", $r['frasi']))->toContain('credito € 100,83 a Acquirente Elsa, debito € 100,83 a Venditore Ugo')
+        ->and(implode("\n", $r['frasi']))->toContain('credito € 100,83 ad Acquirente Elsa, debito € 100,83 a Venditore Ugo')
         ->and(implode("\n", $r['frasi']))->not->toContain('€ -');
 });
 
@@ -375,7 +375,7 @@ it('strada (b), B2-3 — segni misti: Manutenzione +50.000 sul tratto 1/1–31/3
     expect($frasi)->toContain('Manutenzione: € 500,00, competenza 1 gennaio 2026–31 marzo 2026 — resta a Venditore Ugo')
         // Coda 251-c (1.11.0-beta.51): la voce di entrata si dice con le parole. Conto a mano invariato: −20.000 × 184/365 = −10.082,19 → € 100,82, e la
         // parte di chi entra è un credito («€ 100,82 a credito di chi entra»), non «€ -100,82 a chi entra».
-        ->toContain('Rimborso: € 200,00 di entrata, competenza 1 gennaio 2026–31 dicembre 2026 — 181 giorni a Venditore Ugo, 184 a Acquirente Elsa → € 100,82 a credito di chi entra')
+        ->toContain('Rimborso: € 200,00 di entrata, competenza 1 gennaio 2026–31 dicembre 2026 — 181 giorni a Venditore Ugo, 184 ad Acquirente Elsa → € 100,82 a credito di chi entra')
         ->not->toContain('€ -50,41');
 });
 
@@ -430,8 +430,8 @@ it('strada (b), B2-1 — quota del predecessore su un piano con il riscaldamento
     $frasi = implode("\n", $r['frasi']);
     expect($frasi)
         ->toContain('la quota ordinaria (€ 1.500,00 su 1 quota) è emessa a Prima Anna: la sua competenza è passata a Venditore Ugo dal 1 luglio 2026 con un passaggio precedente, e quella parte è divisa voce per voce')
-        ->toContain('Riscaldamento: € 1.000,00, competenza 1 gennaio 2026–15 aprile 2026 + 15 ottobre 2026–31 dicembre 2026 — emessa a Prima Anna: 105 giorni a Prima Anna, 78 a Acquirente Elsa → € 426,23 a chi entra.')
-        ->toContain('Pulizie: € 500,00, competenza 1 gennaio 2026–31 dicembre 2026 — emessa a Prima Anna: 181 giorni a Prima Anna, 92 a Venditore Ugo, 92 a Acquirente Elsa → € 126,03 a chi entra.')
+        ->toContain('Riscaldamento: € 1.000,00, competenza 1 gennaio 2026–15 aprile 2026 + 15 ottobre 2026–31 dicembre 2026 — emessa a Prima Anna: 105 giorni a Prima Anna, 78 ad Acquirente Elsa → € 426,23 a chi entra.')
+        ->toContain('Pulizie: € 500,00, competenza 1 gennaio 2026–31 dicembre 2026 — emessa a Prima Anna: 181 giorni a Prima Anna, 92 a Venditore Ugo, 92 ad Acquirente Elsa → € 126,03 a chi entra.')
         ->not->toContain('resta a Venditore Ugo')
         ->not->toContain('giorni a Venditore Ugo, 78');
 });

@@ -46,17 +46,21 @@ class PianoContiPrintController extends Controller
             $conto->setRelation('sottoconti', OrdinamentoConti::applica($conto->sottoconti, $ordina));
         });
 
-        // «Totale preventivo» è la somma delle sole voci di spesa; le voci di entrata si sommano a parte (in valore assoluto)
-        // e il netto da ripartire è la differenza.
+        // «Totale preventivo» è la somma delle sole voci di spesa; le voci di entrata si sommano a parte e il netto da ripartire è la
+        // differenza. Ogni voce conta come la conta il calcolo delle quote, per il valore assoluto dal lato del suo tipo
+        // (`Conto::partiDelTipo`): una spesa scritta con il meno da una versione vecchia si addebita in positivo, la sua riga porta il
+        // valore del calcolo e una nota in fondo la nomina (`speseNegative`), così righe e totali tornano fra loro.
         $totalePreventivo     = 0;
         $totaleEntrate        = 0;
         $totaleSopravvenienze = 0;
+        $speseNegative        = [];
 
-        $contaVoce = function (Conto $voce) use (&$totalePreventivo, &$totaleEntrate) {
-            if (Conto::segnoDelTipo((string) $voce->tipo) > 0) {
-                $totalePreventivo += $voce->importo ?? 0;
-            } else {
-                $totaleEntrate += abs($voce->importo ?? 0);
+        $contaVoce = function (Conto $voce) use (&$totalePreventivo, &$totaleEntrate, &$speseNegative) {
+            $parti = Conto::partiDelTipo((string) $voce->tipo, (int) ($voce->importo ?? 0));
+            $totalePreventivo += $parti['spese'];
+            $totaleEntrate += $parti['entrate'];
+            if (Conto::eSpesaNegativa((string) $voce->tipo, (int) ($voce->importo ?? 0))) {
+                $speseNegative[] = ['nome' => (string) $voce->nome, 'importo' => (int) $voce->importo];
             }
         };
 
@@ -91,6 +95,7 @@ class PianoContiPrintController extends Controller
             'totaleEntrate'        => $totaleEntrate,
             'totaleDaRipartire'    => $totalePreventivo - $totaleEntrate,
             'totaleSopravvenienze' => $totaleSopravvenienze,
+            'speseNegative'        => $speseNegative,
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.distinta_spese', $data, [

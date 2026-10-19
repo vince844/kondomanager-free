@@ -44,30 +44,40 @@ function b51dComune(): string
     return 'La successione di Ugo (decesso del 1 maggio 2026) ha passato l\'arretrato agli eredi, ma questo piano calcola ancora per Ugo € 394,52 su Interno A: la competenza è anteriore al decesso e le rate nascono ora, fuori dall\'arretrato. Ne rispondono gli eredi, ciascuno per la sua quota (art. 754 c.c.): Anna € 236,71 e Bruno € 157,81.';
 }
 
-/** V2: nessuno ha un saldo, ma il piano non applica i saldi del Wallet. */
+/**
+ * V2: nessuno ha un saldo, ma il piano non applica i saldi del Wallet. Dalla 1.11.0-beta.53 la strada sono i saldi dal Wallet legati alla
+ * successione: si fissa il pezzo della frase che lo dice, con le righe.
+ */
 function b51dV2(string $ugo = '€ 394,52', string $anna = '€ 236,71', string $bruno = '€ 157,81'): string
 {
-    return 'Questo piano non applica i saldi del Wallet: un saldo registrato adesso non entra qui. Per passare la parte agli eredi con il Wallet registra i saldi ('
-        . $ugo . ' a credito di Ugo, ' . $anna . ' a debito di Anna e ' . $bruno . ' a debito di Bruno) e crea di nuovo il piano; altrimenti la parte si regola fra le parti.';
+    return 'registra dal Wallet i saldi legati alla successione ('
+        . $ugo . ' a credito di Ugo, ' . $anna . ' a debito di Anna e ' . $bruno . ' a debito di Bruno) e crea di nuovo il piano';
 }
 
-/** V2 alla creazione: il piano non esiste ancora (il cancello annulla la richiesta), e i saldi si registrano prima di rimandare il modulo. */
+/** V2 alla creazione: il piano non esiste ancora (il cancello annulla la richiesta), e i saldi legati si registrano prima di rimandare il modulo. */
 function b51dV2Creazione(string $ugo = '€ 394,52', string $anna = '€ 236,71', string $bruno = '€ 157,81'): string
 {
-    return 'Con il Wallet com\'è adesso il piano non applica i saldi, e non è ancora stato creato: se registri adesso i saldi ('
-        . $ugo . ' a credito di Ugo, ' . $anna . ' a debito di Anna e ' . $bruno . ' a debito di Bruno) e rimandi il modulo, il piano li assorbe; altrimenti la parte si regola fra le parti.';
+    return 'adesso dal Wallet i saldi legati alla successione ('
+        . $ugo . ' a credito di Ugo, ' . $anna . ' a debito di Anna e ' . $bruno . ' a debito di Bruno) e rimandi il modulo, il piano li assorbe';
 }
 
-/** V1: nessuno ha un saldo e il piano li applica. */
+/** V1: nessuno ha un saldo e il piano li applica: i saldi dal Wallet legati alla successione. */
 function b51dV1(): string
 {
-    return 'Per passare la parte agli eredi registra un saldo manuale dal Wallet sulla stessa gestione, € 394,52 a credito di Ugo, € 236,71 a debito di Anna e € 157,81 a debito di Bruno: il piano lo assorbe alla prossima generazione.';
+    return 'Per passare la parte agli eredi registra dal Wallet i saldi legati alla successione del 1 maggio 2026, sulla stessa gestione: € 394,52 a credito di Ugo, € 236,71 a debito di Anna e € 157,81 a debito di Bruno; il piano li assorbe alla prossima generazione.';
 }
 
-/** V3: qualcuno ha già un saldo su quella gestione e quell'unità (decisione 80). */
+/**
+ * Quella che era V3 (qualcuno ha già un saldo su quella gestione e quell'unità): dalla 1.11.0-beta.53, se nessuna riga è legata alla successione e
+ * qualcuno ha un saldo che non è la parte, il programma dice che non sa se quei saldi la comprendono, e indica i saldi legati. `$chi` è nella forma
+ * di prima («Ugo ha già un saldo», «Ugo, Anna e Bruno hanno già un saldo»): se ne prendono i nomi e il numero.
+ */
 function b51dV3(string $chi): string
 {
-    return 'Se vanno agli eredi, la parte si regola fra le parti: ' . $chi . ' su quella gestione e quell\'unità, e il programma non ne registra un secondo.';
+    $piu = str_contains($chi, ' hanno già un saldo');
+    $nomi = str_replace([' hanno già un saldo', ' ha già un saldo'], '', $chi);
+
+    return $nomi . ($piu ? ' hanno' : ' ha') . ' su quella gestione e quell\'unità saldi non legati alla successione, e il programma non sa se comprendono la parte';
 }
 
 /** V4 (decisione 86.4): il defunto e gli eredi hanno il loro saldo, quel saldo è la parte, e il piano lo assorbe nelle quote con questa generazione. */
@@ -349,25 +359,26 @@ it('O-62-5 (e) — un saldo di Ugo su un\'altra gestione non conta: strada liber
     expect($voce['wallet'])->toBeTrue()->and($voce['con_un_saldo'])->toBe([])->and($voce['frase'])->toContain(b51dV1());
 });
 
-it('DT3 — la scelta Wallet / fra le parti del cancello coincide con FermataDopoScrivi::stradaDelWallet per le stesse persone, gestione, unità ed esercizio', function () {
-    // Fonte unica: il cancello CHIAMA stradaDelWallet (seconda fonte dichiarata, decisione 80). Le due viste non possono divergere.
+it('DT3 — la scelta del cancello coincide con FermataDopoScrivi::conUnSaldo per le stesse persone, gestione, unità ed esercizio', function () {
+    // Fonte unica: il cancello chiama `conUnSaldo` (seconda fonte dichiarata, decisione 80), che non conta né le righe scritte da un passaggio né
+    // quelle legate a un passaggio. Con un saldo non legato di Bruno il cancello dice che il programma non sa se comprende la parte.
     $s = b51dOrdinaria($this, applicaSaldi: true);
     $persone = [$s->persona('ugo')->id, $s->persona('anna')->id, $s->persona('bruno')->id];
     $g = $s->gestioni['Ordinaria 2026']['g']->id;
     $u = $s->unita['A']->id;
 
     $libero = Beta51Scenario::voceDelDefunto($s->cancello('Preventivo 2026'));
-    expect(FermataDopoScrivi::stradaDelWallet($persone, $g, $u, $s->e->id))->toBeTrue();
+    expect(FermataDopoScrivi::conUnSaldo($persone, $g, $u, $s->e->id))->toBe([]);
     expect($libero)->not->toBeNull();
-    expect($libero['wallet'])->toBe(FermataDopoScrivi::stradaDelWallet($persone, $g, $u, $s->e->id));
+    expect($libero['wallet'])->toBeTrue();
 
     $s->saldo('bruno', 'A', 'Ordinaria 2026', 3000);
     $occupato = Beta51Scenario::voceDelDefunto($s->cancello('Preventivo 2026'));
-    expect(FermataDopoScrivi::stradaDelWallet($persone, $g, $u, $s->e->id))->toBeFalse();
+    expect(FermataDopoScrivi::conUnSaldo($persone, $g, $u, $s->e->id))->toBe([(int) $s->persona('bruno')->id]);
     expect($occupato)->not->toBeNull();
-    expect($occupato['wallet'])->toBe(FermataDopoScrivi::stradaDelWallet($persone, $g, $u, $s->e->id))
-        // La coda della frase è quella che dà la fermata (gemella dichiarata di `stradaAMano`).
-        ->and($occupato['frase'])->toContain('ha già un saldo su quella gestione e quell\'unità, e il programma non ne registra un secondo');
+    expect($occupato['wallet'])->toBeFalse()
+        ->and($occupato['frase'])->toContain(b51dV3('Bruno ha già un saldo'))
+        ->and($occupato['frase'])->not->toContain('il programma non ne registra un secondo');
 });
 
 // --- O-62-6, O-62-7: dove la voce non c'è -----------------------------------------------------------------------------------
@@ -508,11 +519,13 @@ it('O-62-15 — due successioni non annullate dello stesso defunto sulla stessa 
         ->and(b51dEredi($voci[0]))->toBe(['Anna' => 11836, 'Bruno' => 7890, 'Carla' => 19726])
         ->and(array_sum(b51dEredi($voci[0])))->toBe(39452)
         ->and($voci[0]['passaggi_ids'])->toHaveCount(2)
-        ->and($voci[0]['frase'])->toBe('Le successioni di Ugo (decesso del 1 maggio 2026) hanno passato l\'arretrato agli eredi, ma questo piano calcola ancora per Ugo € 394,52 su Interno A: '
+        ->and($voci[0]['frase'])->toStartWith('Le successioni di Ugo (decesso del 1 maggio 2026) hanno passato l\'arretrato agli eredi, ma questo piano calcola ancora per Ugo € 394,52 su Interno A: '
             . 'la competenza è anteriore al decesso e le rate nascono ora, fuori dall\'arretrato. '
             . 'La cifra è divisa per ruolo, come nel riparto del piano: € 197,26 per la proprietà e € 197,26 per la nuda proprietà. '
             . 'Ne rispondono gli eredi, ciascuno per la sua quota (art. 754 c.c.): Anna € 118,36, Bruno € 78,90 e Carla € 197,26. '
-            . 'Per passare la parte agli eredi registra un saldo manuale dal Wallet sulla stessa gestione, € 394,52 a credito di Ugo, € 118,36 a debito di Anna, € 78,90 a debito di Bruno e € 197,26 a debito di Carla: il piano lo assorbe alla prossima generazione.');
+            . 'Per passare la parte agli eredi registra dal Wallet i saldi legati')
+        // Dalla 1.11.0-beta.53 la strada sono i saldi dal Wallet legati alla successione, con le righe di ognuno.
+        ->and($voci[0]['frase'])->toContain('sulla stessa gestione: € 394,52 a credito di Ugo, € 118,36 a debito di Anna, € 78,90 a debito di Bruno e € 197,26 a debito di Carla; il piano li assorbe alla prossima generazione.');
 })->with(['la proprietà e poi la nuda' => [false], 'la nuda e poi la proprietà' => [true]]);
 
 it('O-62-15, l\'esito vero — registrati i saldi della divisione per ruolo, il ricalcolo li assorbe: ognuno paga la sua quota dell\'anno (Anna 36000, Bruno 24000, Carla 60000) e Ugo 0; il cancello poi dice che i saldi ci sono già', function (bool $nudaPrima) {

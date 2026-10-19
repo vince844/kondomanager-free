@@ -13,7 +13,10 @@
  *
  * Quando il tipo manca (piano straordinario: le sorgenti sono fatture) il filtro lascia passare tutto, come prima, e il modale non dice che si sposta fra voci
  * dello stesso tipo: sarebbe falso. Un capitolo con spese ed entrate insieme arriva come «misto»: come sorgente si vede ma non si sceglie, come
- * destinazione non si offre; il modale dice perché.
+ * destinazione non si offre; il modale dice perché. Le voci che l'avviso della pagina nomina per un importo negativo, di spesa o di entrata, e i
+ * capitoli che le ripartiscono, arrivano già fuori dai menu, e come destinazione anche le voci di spesa scritte con il meno (`BudgetMovementService`):
+ * il modale lo dice sotto la sorgente e sotto la destinazione, solo per il menu da cui il server ne ha tolta qualcuna (`speseNegativeFuori`,
+ * `BudgetMovementService::speseNegativeFuoriDaiMenu`), perché le frasi rimandano all'avviso della pagina, che c'è solo con le sorgenti tolte (T297.57).
  *
  * I test che cominciano con «controprova» proteggono ciò che la correzione non deve rompere: sono verdi prima e dopo.
  *
@@ -50,8 +53,8 @@ const sorgenti = [
 
 let finestra: VueWrapper | null = null;
 
-async function monta(sources: Record<string, unknown>[], destinations: Record<string, unknown>[]) {
-    finestra = mount(ModalSpostaSpesa, { attachTo: document.body, props: { show: true, pianoRateId: 1, condominioId: 1, sources: sources as never, destinations: destinations as never } });
+async function monta(sources: Record<string, unknown>[], destinations: Record<string, unknown>[], speseNegativeFuori?: { sorgenti: boolean; destinazioni: boolean }) {
+    finestra = mount(ModalSpostaSpesa, { attachTo: document.body, props: { show: true, pianoRateId: 1, condominioId: 1, sources: sources as never, destinations: destinations as never, speseNegativeFuori } });
     await flushPromises();
 }
 
@@ -199,6 +202,58 @@ describe('senza il tipo sulle sorgenti (piano straordinario: le sorgenti sono fa
 
         expect(document.body.textContent).toContain('Si sposta fra voci dello stesso tipo: spese con spese, entrate con entrate.');
         expect(document.body.textContent).toContain('Non si offrono i capitoli con spese ed entrate insieme');
+    });
+});
+
+describe('le voci di spesa scritte con il meno', () => {
+    // `BudgetMovementService::destinazioniPerLaPagina` e `sorgentiPerLaPagina` (`Beta53SpesaNegativaSpostaSpesaTest`, T297.41–T297.54): i menu arrivano già
+    // senza queste voci, e il modale dice perché mancano.
+    const testoNormalizzato = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
+
+    test('T297.57 sotto la destinazione il modale nomina le voci di spesa scritte con il meno, i capitoli che le ripartiscono e le voci che l\'avviso nomina', async () => {
+        await monta(sorgenti, [...spese, ...entrate], { sorgenti: true, destinazioni: true });
+
+        expect(testoNormalizzato()).toContain('Non si offrono i capitoli con spese ed entrate insieme, né le voci che si sovrapporrebbero a un capitolo o ai sottoconti già nel '
+            + 'piano: sposta il budget sulla voce che c\'è. Non si offrono neanche le voci di spesa scritte con il meno, che il piano addebiterebbe in positivo, né i '
+            + 'capitoli che le ripartiscono, né le voci che l\'avviso della pagina nomina.');
+    });
+
+    test('T297.57 sotto la sorgente il modale dice che le voci contate con un importo negativo, di spesa o di entrata, e i capitoli che le ripartiscono, non si offrono', async () => {
+        await monta(sorgenti, [...spese, ...entrate], { sorgenti: true, destinazioni: true });
+
+        expect(testoNormalizzato()).toContain('Non si offrono le voci che il piano conta con un importo negativo, né i capitoli che le ripartiscono: '
+            + 'l\'avviso in cima alla pagina le nomina.');
+        expect(testoNormalizzato()).not.toContain('le voci di spesa che il piano conta con un importo negativo');
+    });
+
+    test('T297.57 senza voci di spesa scritte con il meno fuori dai menu il modale non ne parla, e la frase sulla destinazione resta', async () => {
+        await monta(sorgenti, [...spese, ...entrate], { sorgenti: false, destinazioni: false });
+
+        expect(testoNormalizzato()).not.toContain('scritte con il meno');
+        expect(testoNormalizzato()).not.toContain('l\'avviso in cima alla pagina');
+        expect(testoNormalizzato()).toContain('Non si offrono i capitoli con spese ed entrate insieme, né le voci che si sovrapporrebbero a un capitolo o ai sottoconti già nel '
+            + 'piano: sposta il budget sulla voce che c\'è.');
+        finestra?.unmount();
+        document.body.innerHTML = '';
+
+        await monta(sorgenti, [...spese, ...entrate]);
+        expect(testoNormalizzato()).not.toContain('scritte con il meno');
+        expect(testoNormalizzato()).not.toContain('l\'avviso in cima alla pagina');
+    });
+
+    test('T297.57 con una spesa scritta con il meno fuori dal piano, tolta solo dalle destinazioni, il modale lo dice sotto la destinazione e basta', async () => {
+        await monta(sorgenti, [...spese, ...entrate], { sorgenti: false, destinazioni: true });
+
+        expect(testoNormalizzato()).toContain('Non si offrono neanche le voci di spesa scritte con il meno, che il piano addebiterebbe in positivo, né i capitoli che le ripartiscono.');
+        expect(testoNormalizzato()).not.toContain('l\'avviso in cima alla pagina');
+        expect(testoNormalizzato()).not.toContain('l\'avviso della pagina');
+    });
+
+    test('controprova — T297.57 nel piano straordinario, dove le sorgenti sono fatture, il modale non lo dice', async () => {
+        await monta([{ id: 9, nome: 'Ft. 12 (Impresa Rossi)', importo_residuo: 50000, formatted_residuo: '500,00' }], [...spese, ...entrate], { sorgenti: false, destinazioni: true });
+
+        expect(testoNormalizzato()).not.toContain('scritte con il meno');
+        expect(testoNormalizzato()).not.toContain('con un importo negativo');
     });
 });
 

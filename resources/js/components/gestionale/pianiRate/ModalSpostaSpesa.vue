@@ -18,6 +18,9 @@ const props = defineProps<{
   // `tipo` manca sulle sorgenti dei piani straordinari (sono fatture): lì il filtro delle destinazioni lascia passare tutto. Altrimenti è «spesa», «entrata» o «misto».
   sources: Array<{ id: number; nome: string; importo_residuo: number; formatted_residuo: string; tipo?: string | null }>;
   destinations: Array<{ id: number; nome: string; tipo?: string | null }>;
+  // Se il server ha tolto dai menu delle voci per un importo negativo (`BudgetMovementService::speseNegativeFuoriDaiMenu`): le sorgenti, se l'avviso della pagina
+  // nomina una voce del piano; le destinazioni, anche per una voce di spesa scritta con il meno. Il modale lo dice solo sotto il menu che le ha perse.
+  speseNegativeFuori?: { sorgenti: boolean; destinazioni: boolean } | null;
 }>();
 
 const emit = defineEmits(['update:show', 'success']);
@@ -157,6 +160,10 @@ watch(() => props.show, (val) => {
           <p v-if="selectedSource" class="text-xs text-emerald-600 font-medium flex items-center gap-1 dark:text-emerald-400">
               <Wallet class="w-3 h-3" /> Disponibili: {{ euro(selectedSource.importo_residuo) }}
           </p>
+          <!-- Le sorgenti arrivano dal server senza le voci che l'avviso della spesa negativa nomina (`BudgetMovementService::sorgentiPerLaPagina`). -->
+          <p v-if="sorgentiConTipo && speseNegativeFuori?.sorgenti" class="text-xs text-muted-foreground">
+            Non si offrono le voci che il piano conta con un importo negativo, né i capitoli che le ripartiscono: l'avviso in cima alla pagina le nomina.
+          </p>
           <span v-if="form.errors.source_id" class="text-xs text-red-500">{{ form.errors.source_id }}</span>
         </div>
 
@@ -184,7 +191,9 @@ watch(() => props.show, (val) => {
           </Select>
           <p v-if="sorgentiConTipo" class="text-xs text-muted-foreground">
             Si sposta fra voci dello stesso tipo: spese con spese, entrate con entrate. Non si offrono i capitoli con spese ed entrate insieme, né le voci che si
-            sovrapporrebbero a un capitolo o ai sottoconti già nel piano: sposta il budget sulla voce che c'è.
+            sovrapporrebbero a un capitolo o ai sottoconti già nel piano: sposta il budget sulla voce che c'è.<template v-if="speseNegativeFuori?.destinazioni"> Non si
+            offrono neanche le voci di spesa scritte con il meno, che il piano addebiterebbe in positivo, né i capitoli che le
+            ripartiscono<template v-if="speseNegativeFuori?.sorgenti">, né le voci che l'avviso della pagina nomina</template>.</template>
           </p>
           <span v-if="form.errors.destination_id" class="text-xs text-red-500">{{ form.errors.destination_id }}</span>
         </div>

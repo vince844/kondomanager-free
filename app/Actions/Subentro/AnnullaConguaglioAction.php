@@ -19,7 +19,7 @@ use Illuminate\Validation\ValidationException;
  * nelle quote e toglierlo qui lascerebbe il piano a raccontare un conguaglio che non esiste più. In
  * quel caso si dice quale piano e quale strada, col criterio di `PianoRate::eImmutabile()`: se non ha
  * emesso nulla a giornale né incassato, lo si riporta in bozza e lo si elimina (il lucchetto si riapre) e
- * si torna qui; se ha emesso o incassato, resta il saldo manuale di segno opposto. Le righe delle
+ * si torna qui; se ha emesso o incassato, resta un saldo manuale di segno opposto, legato a quel passaggio dal Wallet. Le righe delle
  * pertinenze (subentri figli) vanno con il padre.
  */
 final class AnnullaConguaglioAction
@@ -58,7 +58,7 @@ final class AnnullaConguaglioAction
             // successione dopo. Toglierle lascerebbe al defunto un credito finto e agli eredi un debito calcolato su righe che non ci sono più.
             if (($successione = Subentro::successioneCheLeggeISaldi($righe->pluck('id')->all(), (int) $padre->condominio_id)) !== null) {
                 // Rilievo GC12 del giro: le righe degli eredi possono essere un credito, e conta la riga del defunto, non tutte e due.
-                throw ValidationException::withMessages(['conguaglio' => sprintf('Una riga di questo conguaglio è fra le cifre da cui è calcolato l\'arretrato di %s, passato agli eredi con la successione del %s: annullarlo lascerebbe sbagliate le righe degli eredi. Annulla prima la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione; se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale.',
+                throw ValidationException::withMessages(['conguaglio' => sprintf('Una riga di questo conguaglio è fra le cifre da cui è calcolato l\'arretrato di %s, passato agli eredi con la successione del %s: annullarlo lascerebbe sbagliate le righe degli eredi. Annulla prima la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione; se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale legato al passaggio di questo conguaglio, dal Wallet.',
                     $successione->uscente?->nome ?? 'questa persona', \Carbon\CarbonImmutable::parse($successione->decorrenza)->locale('it')->translatedFormat('j F Y'))]);
             }
 
@@ -116,7 +116,7 @@ final class AnnullaConguaglioAction
      *
      * @param \Illuminate\Support\Collection<int, Saldo> $assorbite righe con `is_applicato`, con `pianoRate` caricato
      */
-    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno, bool $perIlPassaggio = false, array $presiDaSeguire = [], bool $conArretrato = false): string
+    public static function fraseAssorbite(\Illuminate\Support\Collection $assorbite, string $apertura, string $ritorno, bool $perIlPassaggio = false, array $presiDaSeguire = [], bool $conArretrato = false, bool $legate = false): string
     {
         $piani = $assorbite->map(fn (Saldo $s) => $s->pianoRate)->filter()->unique('id');
         $correggibili = $piani->reject(fn ($p) => $p->eImmutabile())->pluck('nome')->all();
@@ -132,17 +132,20 @@ final class AnnullaConguaglioAction
             $perche = $piano->fraseDelFermo() ?? 'non si riscrive più';
             $inMano = in_array('scrittura', $piano->ragioniDelFermo(), true) ? ': le quote sono in mano ai condòmini' : '';
             if (! $perIlPassaggio) {
-                $frase .= sprintf(' Il piano «%s» %s%s, e la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.', $piano->nome, $perche, $inMano);
+                $frase .= sprintf(' Il piano «%s» %s%s, e la correzione passa da un saldo manuale di segno opposto sulla stessa gestione, legato a quel passaggio dal Wallet: non occupa il posto di un riporto.', $piano->nome, $perche, $inMano);
                 continue;
             }
             // Decisione 50 (rilievo W6): per l'annullamento del passaggio il saldo manuale non sblocca niente. Due strade, prima la
             // breve: il passaggio resta, e il piano che ha preso si emette così com'è (decisione 38); poi la completa.
             // Rilievo X3: la strada breve solo se i piani presi dal passaggio si emettono davvero così come sono.
             $breve = $presiDaSeguire === []
-                ? ($conArretrato
+                ? ($legate
+                    // 1.11.0-beta.53 (Coda 244): un saldo del Wallet legato al passaggio, già nel piano.
+                    ? sprintf(' Il passaggio può restare: il piano «%s» si emette così com\'è, con i saldi legati a questo passaggio già dentro.', $piano->nome)
+                    : ($conArretrato
                     // Rilievo L10 della Fase 1-bis della .44: nella successione con l'arretrato agli eredi le righe nel piano sono di più eredi.
                     ? sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e ogni erede regola la sua parte con le righe del conguaglio e dell\'arretrato già dentro il piano «%s».', $piano->nome)
-                    : sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e chi entra paga i suoi giorni con la coppia già dentro il piano «%s».', $piano->nome))
+                    : sprintf(' Il passaggio può restare: i piani che ha preso si emettono così come sono, e chi entra paga i suoi giorni con la coppia già dentro il piano «%s».', $piano->nome)))
                 : sprintf(' Il passaggio non può restare così: %s «%s», preso da questo passaggio, deve ancora seguire un passaggio e non si emette senza ricalcolo.', count($presiDaSeguire) === 1 ? 'il piano' : 'i piani', implode('», «', $presiDaSeguire));
             $frase .= $breve . sprintf(' Per annullarlo%s, il piano «%s», che %s%s, va prima riaperto — %s —; poi riportalo in bozza, elimina il piano (il lucchetto si riapre) e %s; poi rifai il piano.',
                 $presiDaSeguire === [] ? ' comunque' : '', $piano->nome, $perche, $inMano !== '' ? ', e le quote sono in mano ai condòmini' : '', implode('; ', $piano->rimediDelFermo()), $ritorno);

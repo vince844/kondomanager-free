@@ -1282,7 +1282,7 @@ it('coerenza, decisione 28.8 a — con un saldo intestato all\'unità la frase �
         + ['ho_letto' => true, 'nota_cancello' => 'Rogito letto, passaggio del 1 maggio'];
     $frasi = fn () => implode("\n", ruAnteprima($this, $s, $dati)['obbligati']['frasi']);
     $nota = fn () => app(\App\Services\Subentro\NotaSolidarieta::class)->per($s['c'], $s['a'])[0]['testo'] ?? '';
-    $nellaNota = 'Nessuna quota è intestata a Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: ';
+    $nellaNota = 'Nessuna quota è intestata ad Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: ';
 
     expect($frasi())->toContain($senza)->not->toContain('saldi intestati all\'unità');
     \App\Models\Saldo::create(['esercizio_id' => $s['e']->id, 'condominio_id' => $s['c']->id, 'anagrafica_id' => null, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 18000, 'origine' => 'manuale', 'is_applicato' => false]);
@@ -1300,13 +1300,13 @@ it('coerenza, decisione 28.8 a — con un saldo intestato all\'unità la frase �
         ->and($nota())->toContain($nellaNota);
 })->with([
     'vendita o donazione con riserva d\'usufrutto' => ['riserva',
-        'Il programma non intesta nulla a Acquirente Elsa per quel periodo.',
-        'Il programma non intesta nulla a Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano.',
+        'Il programma non intesta nulla ad Acquirente Elsa per quel periodo.',
+        'Il programma non intesta nulla ad Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano.',
         // Tutto a chi compra la nuda proprietà: la catena solidale della straordinaria parte dal nudo proprietario.
         ['Elsa' => 18000, 'Ugo' => 0]],
     'vendita piena' => ['vendita',
-        'Il programma non intesta nulla a Acquirente Elsa: la nota resta qui',
-        'Il programma non intesta nulla a Acquirente Elsa, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: la nota resta qui',
+        'Il programma non intesta nulla ad Acquirente Elsa: la nota resta qui',
+        'Il programma non intesta nulla ad Acquirente Elsa, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: la nota resta qui',
         // Metà per uno: senza periodo `vincolaQuery` prende anche la riga chiusa di chi vende, e le due righe «proprietario» al
         // 100 % si dividono l'arretrato. Per questo la frase non dice a chi vada.
         ['Elsa' => 9000, 'Ugo' => 9000]],
@@ -1322,8 +1322,8 @@ it('coerenza, decisione 28.8 a — un saldo intestato al solo box, pertinenza ve
     $box = Immobile::forceCreate(['condominio_id' => $s['c']->id, 'nome' => 'Box 12', 'descrizione' => 'Box', 'interno' => 'B12', 'pertinenza_di_immobile_id' => $s['unita']->id]);
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $s['v']->id, 'immobile_id' => $box->id, 'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
     $dati = ruPassaggio('vendita', $s['rigaV'], $s['a'], '2026-05-01', 100, [$box->id]) + ['ho_letto' => true, 'nota_cancello' => 'Rogito letto, passaggio del 1 maggio'];
-    $salvo = 'Il programma non intesta nulla a Acquirente Elsa, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: la nota resta qui';
-    $nellaNota = 'Nessuna quota è intestata a Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: ';
+    $salvo = 'Il programma non intesta nulla ad Acquirente Elsa, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: la nota resta qui';
+    $nellaNota = 'Nessuna quota è intestata ad Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: ';
 
     expect(implode("\n", ruAnteprima($this, $s, $dati)['obbligati']['frasi']))->not->toContain('saldi intestati all\'unità');
     $saldo = \App\Models\Saldo::create(['esercizio_id' => $s['e']->id, 'condominio_id' => $s['c']->id, 'anagrafica_id' => null, 'immobile_id' => $box->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 18000, 'origine' => 'manuale', 'is_applicato' => false]);

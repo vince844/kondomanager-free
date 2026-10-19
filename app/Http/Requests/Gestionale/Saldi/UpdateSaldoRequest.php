@@ -50,7 +50,7 @@ class UpdateSaldoRequest extends FormRequest
                 }
 
                 // B2 (inv. 19): la coppia di conguaglio di un passaggio somma zero per costruzione, e non si
-                // tocca a metà. Si corregge dal passaggio, o con un saldo manuale a parte.
+                // tocca a metà. Si corregge dal passaggio, o con un saldo manuale a parte, legato a quel passaggio.
                 if ($saldo->dellArretrato()) {
                     $validator->errors()->add('saldo', \App\Models\Saldo::FRASE_ARRETRATO);
                     return;
@@ -65,7 +65,7 @@ class UpdateSaldoRequest extends FormRequest
                     return;
                 }
                 if ($saldo->subentro_id !== null) {
-                    $validator->errors()->add('saldo', 'Questa riga fa parte del conguaglio di un passaggio di titolarità (righe di segno opposto che sommano zero, una coppia per ogni persona che entra): non si modifica da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota; se un piano le ha già emesse, resta il saldo manuale di segno opposto.');
+                    $validator->errors()->add('saldo', 'Questa riga fa parte del conguaglio di un passaggio di titolarità (righe di segno opposto che sommano zero, una coppia per ogni persona che entra): non si modifica da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota; se un piano le ha già emesse, resta un saldo manuale di segno opposto, legato a quel passaggio dal Wallet.');
                     return;
                 }
 
@@ -86,6 +86,13 @@ class UpdateSaldoRequest extends FormRequest
                                 . (($rimedi = $piano->rimediDelFermo()) !== [] ? 'Per correggerlo: ' . implode('; ', $rimedi) . '.' : '')
                             : 'Non puoi modificare un saldo già incluso in un piano rate emesso.'
                     );
+                    return;
+                }
+
+                // 1.11.0-beta.53 (Coda 244): una riga legata a un passaggio resta sulla gestione su cui è stata scritta. La modifica cambia
+                // l'importo e il legame resta (le regole non hanno `passaggio_id`).
+                if ($saldo->passaggio_id !== null && (int) $this->input('gestione_id') !== (int) $saldo->gestione_id) {
+                    $validator->errors()->add('gestione_id', 'Un saldo legato a un passaggio resta sulla sua gestione: per spostarlo, eliminalo e registralo di nuovo.');
                     return;
                 }
 

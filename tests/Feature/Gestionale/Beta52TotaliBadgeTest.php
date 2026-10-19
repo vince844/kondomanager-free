@@ -6,7 +6,7 @@
  *
  * Il badge «Disallineato: ricalcola!» e l'atteso del piano con le voci di entrata.
  *
- * Il motore dà il segno dal tipo della voce (`CalcoloQuoteService.php:1500-1502` e `:1586-1589`: una voce che non è di spesa si
+ * Il motore dà il segno dal tipo della voce (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e quello con l'importo della voce: una voce che non è di spesa si
  * distribuisce con il segno meno), ma la pivot `piano_rate_capitoli` tiene l'importo positivo, come lo scrive la pagina. Chi confronta
  * la pivot con le quote generate deve rifare il segno: `PianoRateQuoteService::totaleAttesoCents` non lo fa, e ogni piano con
  * un'entrata nasce «Disallineato» con un delta di due volte l'entrata, che «Ricalcola» non spegne.

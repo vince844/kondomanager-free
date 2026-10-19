@@ -271,10 +271,10 @@ class StoricoTitolarita
         $spostate = $registro['voci_spostate'] ?? [];
         $voci = array_map(fn (array $v) => sprintf('%s: prima %s, dopo %s', VociDaSpostare::etichetta($v), VociDaSpostare::coefficientiAParole($v['prima'] ?? []), VociDaSpostare::coefficientiAParole($v['dopo'] ?? [])),
             $spostate);
-        // Se a passare sono solo entrate l'art. 1004 c.c., che riguarda le spese, non si cita.
+        // Se a passare sono solo entrate l'art. 1004 c.c., che riguarda le spese, non si cita, e la frase non dice la regola di legge.
         $soloEntrate = $spostate !== [] && array_filter($spostate, fn (array $v) => ($v['tipo'] ?? null) !== 'entrata') === [];
 
-        return ['scelta' => $scelta, 'voci' => $voci, 'testo' => sprintf('Dal %s all\'usufruttuario%s, la proposta di legge: %s', $dal, $soloEntrate ? '' : ' (art. 1004 c.c.)', match (count($voci)) {
+        return ['scelta' => $scelta, 'voci' => $voci, 'testo' => sprintf('Dal %s all\'usufruttuario%s: %s', $dal, $soloEntrate ? '' : ', secondo la regola di legge (art. 1004 c.c.)', match (count($voci)) {
             0 => 'nessuna voce spostata.',
             1 => ($soloEntrate ? 'questa entrata è passata' : 'questa voce è passata') . ' dal «Proprietario» all\'«Usufruttuario».',
             default => ($soloEntrate ? 'queste entrate sono passate' : 'queste voci sono passate') . ' dal «Proprietario» all\'«Usufruttuario».',

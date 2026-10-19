@@ -251,14 +251,14 @@ it('M43 — Dora tolta a mano e Ines uscita con «Non scriverlo»: due modi dive
     expect(mcb50FraseInizio($this, $s))->toContain('resta nelle rate di Dora e Ines: per i giorni dopo la loro uscita vale la scelta sul conguaglio della fine di ciascuno, e il prospetto degli oneri accessori dice chi rimborsa chi.');
 });
 
-it('M47 — la riga di Ines chiusa a mano, senza un passaggio: il cancello dell\'inizio di Luca indica il saldo manuale dal Wallet, che resta la strada solo per questo caso', function () {
+it('M47 — la riga di Ines chiusa a mano, senza un passaggio: il cancello dell\'inizio di Luca indica il Wallet, con i saldi legati a questo passaggio, che resta la strada solo per questo caso', function () {
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]]);
     DB::table('anagrafica_immobile')->where('id', fclRiga($s, 'Ines'))->update(['data_fine' => '2026-06-30']);
     fclPersona($s, 'Luca');
 
     $informazioni = implode(' | ', fclAnteprima($this, $s, mcb50Inizio($s, 'Luca'))['cancello']['informazioni']);
 
-    expect($informazioni)->toContain('resta nelle rate di Ines: chi paga i giorni dopo la sua uscita lo decide l\'amministratore — se serve, con un saldo manuale dal Wallet sulla stessa gestione');
+    expect($informazioni)->toContain('resta nelle rate di Ines: chi paga i giorni dopo la sua uscita lo decide l\'amministratore — se serve, dal Wallet con saldi legati a questo passaggio, sulla stessa gestione');
 });
 
 it('M46, M54 — un piano della 1.10, senza riparto: dopo la fine di Ines con «Non scriverlo» l\'inizio di Luca dice che il rimborso a Ines si regola fra le parti, perché il prospetto quel piano lo lascia fuori', function () {
@@ -564,7 +564,7 @@ it('M78 — la fermata della successione verso Anna e Bruno: la strada del Walle
 
     $a = fclAnteprima($this, $s, fds50ModuloSuccessione($s, Subentro::ARRETRATO_AL_DEFUNTO, Subentro::SCRIVI_IL_CONGUAGLIO, '2026-10-01'));
 
-    expect(implode(' ', $a['rate']['frasi']))->toContain('registra un saldo manuale dal Wallet sulla stessa gestione: € 90,74 a credito di Ugo, € 45,37 a debito di Anna e € 45,37 a debito di Bruno.');
+    expect(implode(' ', $a['rate']['frasi']))->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: € 90,74 a credito di Ugo, € 45,37 a debito di Anna e € 45,37 a debito di Bruno.');
 });
 
 it('M49 — Ines rientra il 1/10 con due piani fermi: sul preventivo la parte l\'ha presa Ugo con la coppia della fine, sul riscaldamento (fermo dopo la fine, senza coppia) è già nelle rate di Ines', function () {
@@ -828,11 +828,11 @@ it('M102 — «Annulla il conguaglio» dopo una fine «Scrivi» scrive nel regis
     expect($persone)->toBe(['Ines' => -18148, 'Ugo' => 18148]);
 });
 
-it('M103 — annullare la fine con Dora che resta: l\'avviso del saldo manuale dal Wallet c\'è solo se il pannello indicava il Wallet', function () {
-    // Decisione 80: con un saldo di Ines già sulla gestione il pannello non indicava il Wallet (la parte si regola fra le parti), e
-    // l'annullamento non deve dire «se hai registrato un saldo manuale dal Wallet … Toglilo dal Wallet».
+it('M103 — annullare la fine con Dora che resta non avvisa più di un saldo manuale dal Wallet scritto per la fermata, con o senza il riporto di Ines', function () {
+    // Dalla 1.11.0-beta.53 gli avvisi dell'annullamento non leggono il registro della fermata: i saldi legati al passaggio li dice l'effetto,
+    // quelli scritti a mano senza legame la ricerca dei saldi a mano scritti dopo (`Beta53SaldiAManoDiPrimaTest`). Senza saldi, niente avviso.
     $avviso = 'perché la locazione continuava con Dora: se per questo hai registrato un saldo manuale dal Wallet';
-    foreach ([false => true, true => false] as $riporto => $conIlWallet) {
+    foreach ([false, true] as $riporto) {
         $s = fclScenario([['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
         if ($riporto) {
             fclRiporto($s, 'Ines', 5000);
@@ -843,19 +843,21 @@ it('M103 — annullare la fine con Dora che resta: l\'avviso del saldo manuale d
 
         $avvisi = implode(' | ', app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($fine->fresh()));
 
-        expect(str_contains($avvisi, $avviso))->toBe($conIlWallet, $avvisi);
+        expect(str_contains($avvisi, $avviso))->toBeFalse($avvisi)
+            ->and(str_contains($avvisi, 'Wallet'))->toBeFalse($avvisi);
     }
 });
 
-it('M105 — annullare la vendita che si è fermata dopo «Scrivi»: l\'avviso dice che il saldo manuale dal Wallet scritto per la fermata non si toglie da solo', function () {
-    // Coda 244: il saldo manuale non è legato al passaggio. 18148 × 92/184 = 9074 (€ 90,74).
+it('M105 — annullare la vendita che si è fermata dopo «Scrivi», senza saldi scritti dopo: gli avvisi non dicono più «annullare il passaggio non lo toglie», che non c\'è niente da togliere', function () {
+    // Coda 244: i saldi legati alla vendita si tolgono con lei; quelli a mano non legati, se ci sono, li nomina la ricerca dei saldi a mano.
     $s = mcb50DopoScrivi($this);
     fclPersona($s, 'Elsa');
     $vendita = fds50Registra($this, $s, fds50ModuloVendita($s, 'Ugo', 'Elsa', '2026-10-01'))['subentro'];
 
     $avvisi = implode(' | ', app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($vendita->fresh()));
 
-    expect($avvisi)->toContain('Con questo passaggio € 90,74 dei giorni dopo l\'uscita di Ines sono rimasti a carico di Ugo sulla gestione Ordinaria 2026, da regolare a mano: se per questo hai registrato un saldo manuale dal Wallet (€ 90,74 a credito di Ugo, a debito di Elsa), annullare il passaggio non lo toglie.');
+    expect($avvisi)->not->toContain('annullare il passaggio non lo toglie')
+        ->and($avvisi)->not->toContain('sono rimasti a carico di Ugo sulla gestione Ordinaria 2026, da regolare a mano');
 });
 
 it('M108 — annullata la vendita che si era fermata, lo storico non dice più la fermata', function () {

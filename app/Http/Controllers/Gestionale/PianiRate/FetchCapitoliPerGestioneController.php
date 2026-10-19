@@ -8,9 +8,11 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestione;
 use App\Models\Gestionale\BudgetMovement;
+use App\Models\Gestionale\Conto;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\Riparto\CompetenzaDichiarataPerVoce;
+use App\Services\Riparto\VoceDiSpesaNegativa;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -135,9 +137,16 @@ class FetchCapitoliPerGestioneController extends Controller
                 (int) $esercizioId,
             );
 
-            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap, $dichiarate) {
+            // Le voci di spesa scritte con il meno, i piani della gestione che le addebitano già e quelli che ne bloccano l'importo: la nota dice dove stanno.
+            $speseNegative = $conti->filter(fn ($c) => Conto::eSpesaNegativa((string) $c->tipo, (int) $c->importo));
+            $pianiDelleNegative = VoceDiSpesaNegativa::pianiPerVoce($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all(), (int) $gestioneId);
+            $bloccoDelleNegative = Conto::pianiCheBloccanoLaVoce($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all());
+            $negativeAlTerzoLivello = VoceDiSpesaNegativa::alTerzoLivello($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap, $dichiarate, $pianiDelleNegative, $bloccoDelleNegative, $negativeAlTerzoLivello) {
                 // Troviamo il budget per l'interfaccia
-                // Una voce di entrata vale il suo valore assoluto, come per il motore e per la copertura: un'entrata scritta con il meno non è uno sforo.
+                // Ogni voce vale il suo valore assoluto, come per il motore e per la copertura: un'entrata scritta con il meno non è uno sforo,
+                // e una spesa scritta con il meno il motore la addebita in positivo.
                 $budgetTeorico = BudgetCoverageService::importoDellaVoce($c, (int) $c->importo);
                 if ($budgetTeorico === 0 && $c->sottoconti->isNotEmpty()) {
                     $budgetTeorico = (int) $c->sottoconti->sum(fn ($figlio) => BudgetCoverageService::importoDellaVoce($figlio, (int) $figlio->importo));
@@ -159,6 +168,15 @@ class FetchCapitoliPerGestioneController extends Controller
                     $isSforo = false; // Se è scudato, non è uno sforo "attivo"
                 }
 
+                // Una voce di spesa scritta con il meno non si propone mai: spenta, senza sforo, con la nota che dice la strada (correggerla, o la
+                // pagina del piano che la addebita già). Prima diceva «Esaurito» senza piano e «Sforo da recuperare» con il piano che la addebita.
+                $spesaNegativa = Conto::eSpesaNegativa((string) $c->tipo, (int) $c->importo);
+                if ($spesaNegativa) {
+                    $residuo = 0;
+                    $isDisabled = true;
+                    $isSforo = false;
+                }
+
                 $nome = $c->parent_id ? "{$c->parent->nome} > {$c->nome}" : "[CAPITOLO] {$c->nome}";
                 $daSpostaSpesa = $finanziabileData['da_sposta_spesa'] ?? false;
 
@@ -175,6 +193,9 @@ class FetchCapitoliPerGestioneController extends Controller
                 } elseif (max($budgetTeorico, $spesoReale) === 0) {
                     $nota = "Nessun budget o spesa";
                 }
+                if ($spesaNegativa) {
+                    $nota = VoceDiSpesaNegativa::nota((string) $c->nome, (int) $c->importo, $pianiDelleNegative[(int) $c->id] ?? [], $bloccoDelleNegative[(int) $c->id] ?? [], in_array((int) $c->id, $negativeAlTerzoLivello, true));
+                }
 
                 return [
                     'id'              => $c->id,
@@ -187,6 +208,7 @@ class FetchCapitoliPerGestioneController extends Controller
                     'disabled'        => $isDisabled,
                     'is_sforo'        => $isSforo,
                     'da_sposta_spesa' => $daSpostaSpesa,
+                    'spesa_negativa'  => $spesaNegativa,
                     'note'            => $nota,
                     // B2, S6: la sezione «Competenza delle voci» elenca le radici quando il piano include tutto.
                     'is_radice'       => $c->parent_id === null,

@@ -9,7 +9,7 @@
  *   `piano_rate_capitoli`): la frase che dice che cosa si perde li nomina.
  * - La strada del saldo dice dove il saldo entra: un saldo scritto dopo la generazione non entra in questo piano ma nel prossimo piano della gestione che applica i
  *   saldi, o nell'esercizio dopo; dove la persona ha già un saldo si corregge quello finché nessun piano l'ha assorbito, perché il Wallet ne accetta uno solo per
- *   persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio.
+ *   persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio.
  * - Una voce già corretta con la copia ancora negativa è «già corretta» anche nella testa del rifiuto, come nell'avviso.
  *
  * Fonte dell'atteso: i conti a mano di ogni test (spese generali € 1.200,00, Ascensore € 600,00, Rimborso € 100,00 corretto: € 1.900,00), le regole di
@@ -172,7 +172,7 @@ it('la strada del saldo dice dove entra e che cosa fare dove la persona ha già 
 
     expect(end($avviso['strade']))->toBe('Se il piano non si può più riscrivere (incassi o crediti usati da tenere, o un passaggio di titolarità che l\'ha conguagliato), regola la differenza con un saldo sulle unità, da «Saldi iniziali»: '
         .'questo piano non lo legge più, entra nel prossimo piano della gestione che applica i saldi, o nell\'esercizio dopo. '
-        .'Il Wallet tiene un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: dove la persona ne ha già uno, si corregge quello, se nessun piano l\'ha ancora assorbito o se il piano che l\'ha assorbito si può ancora riscrivere; se l\'ha già assorbito un piano che non si riscrive più, il Wallet non accetta né un secondo saldo né la correzione, e per quella persona la differenza va nell\'esercizio dopo. Se il saldo è fra quelli da cui una successione ha calcolato l\'arretrato agli eredi, il Wallet lo dice e indica la strada.');
+        .'Il Wallet tiene un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio: dove la persona ne ha già uno, si corregge quello, se nessun piano l\'ha ancora assorbito o se il piano che l\'ha assorbito si può ancora riscrivere; se l\'ha già assorbito un piano che non si riscrive più, il Wallet non accetta né un secondo saldo né la correzione, e per quella persona la differenza va nell\'esercizio dopo. Se il saldo è fra quelli da cui una successione ha calcolato l\'arretrato agli eredi, il Wallet lo dice e indica la strada.');
 });
 
 it('controprova — dove la persona ha già un saldo, quello nuovo si rifiuta, e se un piano l\'ha assorbito anche quello vecchio non si modifica', function () {

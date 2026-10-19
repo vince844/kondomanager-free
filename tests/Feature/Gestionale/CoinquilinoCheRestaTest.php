@@ -6,8 +6,8 @@
  * Ines e Dora sono inquiline dell'Interno 1 al 50 %; il 1/7 Ines esce e Dora resta. Nessun documento dice a chi vanno i giorni dopo
  * l'uscita di Ines (il coinquilino che resta, il proprietario, le parti): il programma non lo indovina. Alla fine locazione la scelta
  * del conguaglio non c'è: nessuna coppia, nessuna scelta, e un `conguaglio` mandato a mano si rifiuta. Il pannello lo dice, con la
- * cifra e la persona (decisione 80), e indica il saldo manuale dal Wallet solo se Ines non ha già un saldo su quella gestione (il
- * Wallet ne accetta uno per persona, gestione, unità ed esercizio); altrimenti dice che la parte si regola fra le parti. Il pannello
+ * cifra e la persona (decisione 80), e indica il Wallet, con i saldi legati al passaggio, anche se Ines ha già un saldo su quella
+ * gestione: dalla 1.11.0-beta.53 il posto del Wallet non conta le righe legate a un passaggio (prima diceva «fra le parti»). Il pannello
  * non dice le due frasi che lo contraddirebbero, segnalate dalla revisione della Fase 1 e tolte: la riga «credito € 90,74 a Ines,
  * debito € 90,74 a Ugo» e «resteranno intestate a Ines e si conguagliano qui».
  *
@@ -117,16 +117,15 @@ it('il pannello dice la fermata con la cifra e la persona: € 90,74 dei giorni 
         ->and($frasi)->toContain('Wallet');
 });
 
-it('con un saldo di Ines già sulla gestione il pannello dice la cifra e che la parte si regola fra le parti, e non indica il Wallet, che rifiuterebbe la riga', function () {
-    // Decisione 80: «il Wallet solo se la persona non ha già un saldo su quella gestione; altrimenti dicono che la parte si regola fra le
-    // parti».
+it('con un saldo di Ines già sulla gestione il pannello dice la cifra e indica lo stesso il Wallet, con i saldi legati al passaggio, non «fra le parti»', function () {
+    // Dalla 1.11.0-beta.53 la riga legata non occupa il posto, e il Wallet c'è anche per chi ha già un saldo (prima: «fra le parti», senza il Wallet).
     $s = ccrScenario($this, riporto: true);
 
     $frasi = fclFrasi(fclAnteprima($this, $s, fclModulo($s)));
 
     expect(collect(fclPeriodi($frasi))->contains(fn ($p) => str_contains($p, '€ 90,74') && str_contains($p, 'Ines') && ! str_contains($p, 'credito € 90,74') && ! str_contains($p, 'debito € 90,74')))->toBeTrue($frasi)
-        ->and($frasi)->toContain('fra le parti')
-        ->and($frasi)->not->toContain('Wallet');
+        ->and($frasi)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga')
+        ->and($frasi)->not->toContain('fra le parti: Ines ha già un saldo');
 });
 
 it('il pannello con Dora che resta non dice le due frasi che contraddicono la fermata: nessuna riga «credito/debito € 90,74», nessun «si conguagliano qui»', function () {

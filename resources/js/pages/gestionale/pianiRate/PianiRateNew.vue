@@ -50,6 +50,8 @@ interface Capitolo {
   disabled: boolean;
   is_sforo: boolean;
   da_sposta_spesa?: boolean;
+  /** Una voce di spesa scritta con il meno: il server la manda spenta, e `note` dice la strada (correggerla, o il piano che la addebita già). */
+  spesa_negativa?: boolean;
   importo_totale: number;
   residuo: number;
   note?: string;
@@ -1138,7 +1140,14 @@ const submit = () => {
                             title="Le entrate si sottraggono alle spese">
                         Entrata
                       </span>
-                      <span v-if="option.is_sforo"
+                      <!-- Una voce di spesa scritta con il meno non è «Esaurito»: un piano nuovo non la addebita. La nota del server dice perché. -->
+                      <span v-if="option.spesa_negativa"
+                            class="flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-amber-200"
+                            :title="option.note">
+                        <Ban class="w-3 h-3" /> Importo negativo
+                      </span>
+
+                      <span v-else-if="option.is_sforo"
                             class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-md font-bold uppercase ml-2 border border-rose-200">
                         <TrendingDown class="w-3 h-3" /> Sforo: {{ euro(option.residuo) }}
                       </span>

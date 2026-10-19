@@ -31,6 +31,14 @@ export interface Saldo {
   fermo_del_piano?: { perche: string | null; rimedi: string[]; ragioni: Array<'scrittura' | 'incasso' | 'credito' | 'conguaglio'> } | null;
   subentro_id?: number | null;
   subentro?: { id: number; decorrenza: string; tipo_passaggio: string } | null;
+  /**
+   * 1.11.0-beta.53: il passaggio a cui l'amministratore ha legato la riga dal modale («Legato a un passaggio»). Una riga legata non occupa
+   * il posto di un riporto e si toglie se il passaggio si annulla. `e_legata` e `passaggio_in_parole` («la vendita del 1 novembre 2026») li
+   * manda il server (`SaldoInizialeController::esponiILegami`).
+   */
+  passaggio_id?: number | null;
+  e_legata?: boolean;
+  passaggio_in_parole?: string | null;
   origine: string;
   gestione_id: number;
   anagrafica_id: number | null;
@@ -67,4 +75,14 @@ export interface ImmobileConSaldi {
   palazzina: { name: string } | null;
   anagrafiche: AnagraficaConSaldi[];
   saldi: Saldo[]; 
+  /** 1.11.0-beta.53: i passaggi a cui il modale può legare una riga di questa unità, dal più recente registrato (li manda il server). */
+  passaggi_legabili?: PassaggioLegabile[];
+}
+
+/** Un passaggio a cui legare una riga del Wallet: l'id del passaggio padre, le parole, le persone, e se il registro ha una parte da regolare a mano. */
+export interface PassaggioLegabile {
+  id: number;
+  parole: string;
+  persone: string[];
+  con_parte_a_mano: boolean;
 }

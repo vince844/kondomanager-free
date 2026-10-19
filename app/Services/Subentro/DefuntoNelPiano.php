@@ -18,7 +18,8 @@ use Carbon\CarbonImmutable;
  * competenza anteriore, calcola ancora per il defunto i suoi giorni fino al decesso: le rate nascono ora, fuori dall'arretrato, e
  * nessuna riga le passa agli eredi. Con la sola frase «la posizione del defunto si chiude» il pannello lo lasciava intendere
  * chiuso; qui il cancello (2) di `GeneratePianoRateAction` lo dice al momento giusto, con la cifra, la parte di ogni erede per quota
- * (art. 754 c.c.) e la strada, la stessa del conguaglio: il saldo manuale dal Wallet, se si può fare davvero (decisione 80).
+ * (art. 754 c.c.) e la strada, la stessa del conguaglio: dalla 1.11.0-beta.53 i saldi dal Wallet legati alla successione, che non occupano il
+ * posto di un riporto.
  *
  * Una voce per defunto e unità, nella forma dei cambiamenti del motore (`motivo` = `defunto_nel_piano`), così il cancello, le tre rotte che
  * lo mostrano e il flash non cambiano. Le chiavi `passaggio_id`, `passaggi_ids`, `decesso`, `cifra`, `cifra_formattata` di testa, `wallet`,
@@ -32,16 +33,28 @@ use Carbon\CarbonImmutable;
  *   «calcola ancora per» il defunto, non che gli «intesta»: con i saldi manuali già assorbiti la sua quota netta è zero, e il cancello
  *   ritorna lo stesso a ogni ricalcolo, con la frase V4 che dice che i saldi ci sono già (decisione 86.4; farlo tacere è della 1.11.1).
  * - **Il Wallet entra in un piano solo se il piano applica i saldi** (`GeneratePianoRateAction::saldiSiApplicano`): una frase che
- *   promettesse «registra un saldo dal Wallet» a un piano che non li applica direbbe ciò che il piano non fa. Le varianti: V1 il saldo
- *   si può registrare e il piano lo assorbe; V2 si può registrare ma il piano non li applica (serve crearlo di nuovo; alla creazione, dove il
- *   piano non esiste ancora, basta registrarli e rimandare il modulo); V3 qualcuno ha già un saldo su quella gestione e quell'unità, fra
- *   quelli che un passaggio non ha scritto, e la parte si regola fra le parti; V4 il defunto e tutti gli eredi hanno un saldo che questa generazione assorbe nelle quote **e quei saldi
- *   spostano davvero la parte**: i saldi ci sono già e non serve registrare altro. Un riporto che non è la parte (il consuntivo, un credito
- *   di prima) non basta: con saldi di altra cifra resta V3.
+ *   promettesse «registra un saldo dal Wallet» a un piano che non li applica direbbe ciò che il piano non fa. Le varianti: V1 i saldi
+ *   legati alla successione si registrano e il piano li assorbe; V2 si registrano ma il piano non li applica (serve crearlo di nuovo; alla
+ *   creazione, dove il piano non esiste ancora, basta registrarli e rimandare il modulo); V4 il defunto e tutti gli eredi hanno saldi che
+ *   questa generazione assorbe nelle quote **e quei saldi spostano davvero la parte**: i saldi ci sono già e non serve registrare altro. Il
+ *   confronto è per persona: chi ha righe legate alla successione si confronta con quelle (un riporto accanto non conta); chi non ne ha, con i
+ *   saldi non legati, come prima della 1.11.0-beta.53 (tutti quelli senza righe legate devono avere la loro parte). V5: fra chi non ha righe
+ *   legate, qualcuno ha su quella gestione e quell'unità saldi non legati e la parte non torna (un riporto, il consuntivo, un credito di
+ *   prima): il programma non sa se la comprendono, e lo dice. La frase chiede solo ciò che manca: le righe di chi non ha niente, al
+ *   condizionale quelle di chi ha saldi non legati che il programma non sa leggere, la correzione di una riga legata che non è la parte, e
+ *   dice di chi la parte c'è già. Con il piano che non applica i saldi, se i saldi non legati comprendono la parte basta creare di nuovo il
+ *   piano, che li assorbe; le righe legate alla successione si leggono anche lì, e chi le ha già non se le vede chiedere di nuovo (la porta
+ *   del Wallet le rifiuterebbe come doppione): il piano creato di nuovo le assorbe. Se la parte si regola fra le parti, le righe legate ancora
+ *   libere nel Wallet si tolgono: il prossimo piano della gestione che applica i saldi le assorbirebbe. Le righe legate già assorbite da un
+ *   altro piano della stessa gestione che si riscrive ancora (`saldiLegatiAltrove`) non si chiedono di nuovo nemmeno loro: la frase dice in
+ *   quale piano sono e le due strade, secondo di chi sono (eliminare quel piano, e le righe tornano libere; o registrare quelle di questo
+ *   piano dopo aver emesso quell'altro, quando le sue sono ferme). La regola della porta resta quella. Seguendola, nessuna parte entra due volte.
  *
  * I saldi «che entrano» sono quelli che la generazione assorbe (`GenerateSaldiAction`): liberi nel Wallet (non applicati, anche quelli della
  * 1.7.x e della 1.8.x, senza piano) o già di questo piano, sulla stessa gestione, unità ed esercizio, e solo se il piano applica i saldi. Non
- * contano le righe dei passaggi (`subentro_id`) né un saldo che un altro piano ha già assorbito.
+ * contano le righe dei passaggi (`subentro_id`), le righe legate a un passaggio (`passaggio_id`, contate a parte) né un saldo che un altro
+ * piano ha già assorbito. Le righe legate alla successione si leggono per gestione e unità, senza l'esercizio, come le assorbe la generazione;
+ * quelle già in un altro piano, nell'esercizio aperto, dove la porta del Wallet guarda il doppione.
  *
  * Più successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà, due ruoli): la cifra del motore è per persona e
  * unità, e si divide per ruolo leggendo il dettaglio del riparto che il motore ha appena calcolato — la riga di titolarità di ogni riga di
@@ -49,8 +62,8 @@ use Carbon\CarbonImmutable;
  * addebito diretto, un dettaglio che non c'è, una successione con l'arretrato a suo nome), la voce nomina tutte le successioni e dice che la
  * divisione la decide l'amministratore: senza cifre per erede, senza la strada del Wallet.
  *
- * Seconde fonti dichiarate: la strada del Wallet è `FermataDopoScrivi::conUnSaldo` (la stessa della fermata);
- * la coda di V3 è la gemella di `FermataDopoScrivi::stradaAMano`, che è privata; la divisione per quota è
+ * Seconde fonti dichiarate: chi ha già un saldo non legato è `FermataDopoScrivi::conUnSaldo` (la stessa regola del posto del Wallet);
+ * le righe di V1 sono le gemelle di quelle di `FermataDopoScrivi::stradaAMano`, che è privata; la divisione per quota è
  * `MoneyHelper::ripartisciPerQuote` con i pesi dell'arretrato (`AnteprimaPassaggio::pesiDegliEredi`); i saldi che entrano sono la
  * selezione di `GenerateSaldiAction::execute`.
  */
@@ -154,18 +167,28 @@ final class DefuntoNelPiano
                 'cifra_formattata' => $e['cifra'] === null ? null : self::cifra($e['cifra'])];
         }
 
-        // La strada della decisione 80: il Wallet accetta un saldo per persona, gestione, unità ed esercizio, fra quelli che un passaggio non
-        // ha scritto; con un saldo già lì la riga verrebbe rifiutata e la parte si regola fra le parti.
+        // Chi ha già un saldo su quella gestione, quell'unità e quell'esercizio, senza contare quelli scritti da un passaggio né quelli legati a un
+        // passaggio (il posto del Wallet): la strada è sempre il Wallet con i saldi legati alla successione, e questi saldi dicono chi, senza la
+        // sua parte, ha un saldo che il programma non sa leggere (V5).
         $persone = array_merge([$defuntoId], array_column($eredi, 'id'));
         $esercizioId = $piano->esercizio_id !== null ? (int) $piano->esercizio_id : null;
         $conUnSaldo = FermataDopoScrivi::conUnSaldo($persone, (int) $piano->gestione_id, $immobileId, $esercizioId);
         $wallet = $conUnSaldo === [];
         $nomiConUnSaldo = array_values(array_map(fn (int $id) => $id === $defuntoId ? $defunto : ($nomiPersone[$id] ?? ''), array_values(array_filter($persone, fn (int $id) => in_array($id, $conUnSaldo, true)))));
-        // Decisione 86.4: il defunto e tutti i suoi eredi hanno un saldo che questa generazione assorbe nelle quote, e quei saldi sono la parte
-        // che passa agli eredi (la cifra, per ognuno, nel verso giusto, a meno di un centesimo di resto). Un riporto o un credito di prima
-        // non lo sono: con saldi di altra cifra, o con qualcuno senza saldo, la parte non è passata e vale la strada di prima.
+        // Decisione 86.4: il defunto e tutti i suoi eredi hanno saldi che questa generazione assorbe nelle quote, e quei saldi sono la parte
+        // che passa agli eredi (la cifra, per ognuno, nel verso giusto, a meno di un centesimo di resto). Il confronto è per persona (`chiHaLaParte`):
+        // le righe legate alla successione per chi ne ha, i saldi non legati per gli altri, come prima della .53.
+        $passaggiIds = array_values(array_unique(array_map(fn (Subentro $x) => (int) $x->capo()->id, $successioni)));
+        // Le righe legate alla successione si leggono anche con il piano che non applica i saldi: chi le ha già non se le vede chiedere di nuovo
+        // (la porta del Wallet le rifiuterebbe come doppione), e il piano creato di nuovo le assorbe.
+        $legati = $perErede !== null ? self::saldiLegati($persone, $piano, $immobileId, $passaggiIds) : [];
+        // Le righe legate già assorbite da un altro piano della stessa gestione che si riscrive ancora: questo piano non le assorbe, e la porta del
+        // Wallet rifiuta una seconda riga per le stesse persone finché sono lì.
+        $altrove = $perErede !== null ? self::saldiLegatiAltrove($persone, $piano, $immobileId, $passaggiIds) : [];
         $saldiCheEntrano = $pianoApplicaSaldi && $perErede !== null ? self::saldiCheEntrano($persone, $piano, $immobileId, $esercizioId) : [];
-        $partePassata = $perErede !== null && $pianoApplicaSaldi && ! $wallet && self::sonoLaParte($saldiCheEntrano, $defuntoId, $cifra, $eredi);
+        $strada = self::chiHaLaParte($persone, $defuntoId, $cifra, $eredi, $legati, $saldiCheEntrano, $conUnSaldo, $pianoApplicaSaldi && $perErede !== null, $altrove)
+            + ['successione' => self::allaSuccessione($decessi, count($successioni) > 1)];
+        $partePassata = $strada['parte_passata'];
 
         return [
             'immobile_id'         => $immobileId,
@@ -190,7 +213,7 @@ final class DefuntoNelPiano
             'parti_da_decidere'   => $perErede === null,
             'frase'               => $perErede === null
                 ? $this->fraseDaDecidere($defunto, $decessi, $unita, $cifra, $successioni, $nomiPersone)
-                : $this->frase($defunto, $decessi, $unita, $cifra, $eredi, $wallet, $pianoApplicaSaldi, $allaCreazione, $nomiConUnSaldo, $partePassata, count($successioni) > 1 ? $this->divisionePerRuolo($successioni, $pezzi) : null),
+                : $this->frase($defunto, $decessi, $unita, $cifra, $eredi, $pianoApplicaSaldi, $allaCreazione, $strada, $partePassata, count($successioni) > 1 ? $this->divisionePerRuolo($successioni, $pezzi) : null),
         ];
     }
 
@@ -270,7 +293,8 @@ final class DefuntoNelPiano
 
     /**
      * I saldi che questa generazione assorbe nelle quote delle persone, sulla gestione, l'unità e l'esercizio del piano, per persona: la selezione
-     * di `GenerateSaldiAction` (liberi nel Wallet, o già di questo piano), senza le righe dei passaggi e i debiti verso i fornitori. Un saldo della
+     * di `GenerateSaldiAction` (liberi nel Wallet, o già di questo piano), senza le righe dei passaggi, le righe legate a un passaggio (le legge
+     * `saldiLegati`) e i debiti verso i fornitori. Un saldo della
      * 1.7.x o della 1.8.x, senza piano e con `is_applicato` falso, è libero come uno registrato adesso. Chi ha più saldi li somma.
      *
      * @param list<int> $persone
@@ -279,32 +303,129 @@ final class DefuntoNelPiano
     private static function saldiCheEntrano(array $persone, PianoRate $piano, int $immobileId, ?int $esercizioId): array
     {
         return Saldo::whereIn('anagrafica_id', $persone ?: [0])->where('gestione_id', $piano->gestione_id)->where('immobile_id', $immobileId)
-            ->whereNull('subentro_id')->whereNull('fornitore_id')->where('saldo_iniziale', '!=', 0)
+            ->whereNull('subentro_id')->whereNull('passaggio_id')->whereNull('fornitore_id')->where('saldo_iniziale', '!=', 0)
             ->when($esercizioId !== null, fn ($q) => $q->where('esercizio_id', $esercizioId))
             ->where(fn ($q) => $q->where('is_applicato', false)->orWhere('piano_rate_id', $piano->id))
             ->get()->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->mapWithKeys(fn (int $cents, $id) => [(int) $id => $cents])->all();
     }
 
     /**
-     * I saldi che entrano sono la parte che passa agli eredi: il defunto ha un credito pari alla cifra, ogni erede un debito pari alla sua parte
-     * (con il segno della cifra, che un credito del defunto rovescia), a meno di un centesimo di resto.
+     * Le righe del Wallet legate alle successioni della voce che questa generazione assorbe, per persona: sulla gestione e l'unità del piano,
+     * libere o già di questo piano, senza filtro d'esercizio (la generazione le prende per gestione). Chi ne ha più d'una le somma.
      *
-     * @param array<int, int> $saldi id della persona => centesimi
-     * @param list<array<string, mixed>> $eredi
+     * @param list<int> $persone
+     * @param list<int> $passaggiIds le successioni padre
+     * @return array<int, array{cents: int, righe: int}> id della persona => la somma in centesimi (positivo = debito) e quante righe
      */
-    private static function sonoLaParte(array $saldi, int $defuntoId, int $cifra, array $eredi): bool
+    private static function saldiLegati(array $persone, PianoRate $piano, int $immobileId, array $passaggiIds): array
+    {
+        return Saldo::whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0])->where('gestione_id', $piano->gestione_id)
+            ->where('immobile_id', $immobileId)->where('saldo_iniziale', '!=', 0)
+            ->where(fn ($q) => $q->where('is_applicato', false)->orWhere('piano_rate_id', $piano->id))
+            ->get()->groupBy('anagrafica_id')->mapWithKeys(fn ($g, $id) => [(int) $id => ['cents' => (int) $g->sum('saldo_iniziale'), 'righe' => $g->count()]])->all();
+    }
+
+    /**
+     * Le righe del Wallet legate alle successioni della voce già assorbite da un altro piano della stessa gestione che si riscrive ancora (in bozza,
+     * o approvato senza emissioni né incassi), per persona: questo piano non le assorbe, e la porta del Wallet (`SaldoInizialeController::scriviLegata`)
+     * rifiuta una seconda riga per la stessa persona finché sono lì, perché il doppione conta le righe che si possono ancora modificare. Solo le
+     * righe dell'esercizio aperto, dove la porta scrive (`FermataDopoScrivi::fuoriDalWallet`): per una riga di un altro esercizio la porta ne
+     * accetta una nuova. Una riga in un piano che non si riscrive più è di quel piano, e qui non conta.
+     *
+     * @param list<int> $persone
+     * @param list<int> $passaggiIds le successioni padre
+     * @return array<int, array{cents: int, righe: int, piani: list<PianoRate>}> id della persona => la somma, quante righe e i piani che le hanno
+     */
+    private static function saldiLegatiAltrove(array $persone, PianoRate $piano, int $immobileId, array $passaggiIds): array
+    {
+        $righe = Saldo::with('pianoRate')->whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0])->where('gestione_id', $piano->gestione_id)
+            ->where('immobile_id', $immobileId)->where('saldo_iniziale', '!=', 0)->where('is_applicato', true)->whereNotNull('piano_rate_id')->where('piano_rate_id', '!=', $piano->id)
+            ->orderBy('id')->get()->filter(fn (Saldo $x) => $x->pianoRate !== null && ! $x->pianoRate->eImmutabile())->values();
+        $fuori = FermataDopoScrivi::fuoriDalWallet($righe)->pluck('id')->all();
+
+        return $righe->reject(fn (Saldo $x) => in_array($x->id, $fuori, true))->groupBy('anagrafica_id')
+            ->mapWithKeys(fn ($g, $id) => [(int) $id => ['cents' => (int) $g->sum('saldo_iniziale'), 'righe' => $g->count(), 'piani' => $g->pluck('pianoRate')->unique('id')->values()->all()]])->all();
+    }
+
+    /** «alla successione del 1 maggio 2026», o con più successioni «alle successioni del 1 maggio 2026»; con `$conData` falso senza la data. @param list<string> $decessi */
+    private static function allaSuccessione(array $decessi, bool $piu, bool $conData = true): string
+    {
+        $giorni = array_map(fn (string $d) => CarbonImmutable::parse($d)->locale('it')->translatedFormat('j F Y'), $decessi);
+
+        return ($piu ? 'alle successioni' : 'alla successione') . ($conData ? ' del ' . implode(' e del ', $giorni) : '');
+    }
+
+    /**
+     * La parte di ognuno, nel verso del Wallet: il defunto ha un credito pari alla cifra, ogni erede un debito pari alla sua parte (con il segno
+     * della cifra, che un credito del defunto rovescia).
+     *
+     * @param list<array<string, mixed>> $eredi
+     * @return array<int, int> id della persona => centesimi (positivo = debito)
+     */
+    private static function attesi(int $defuntoId, int $cifra, array $eredi): array
     {
         $attesi = [$defuntoId => -$cifra];
         foreach ($eredi as $e) {
             $attesi[(int) $e['id']] = (int) $e['cifra'];
         }
-        foreach ($attesi as $id => $atteso) {
-            if (! array_key_exists($id, $saldi) || abs($saldi[$id] - $atteso) > 1) {
-                return false;
+
+        return $attesi;
+    }
+
+    /**
+     * Chi ha già la sua parte, persona per persona, a meno di un centesimo di resto e nel verso giusto. Chi ha righe legate alla successione si
+     * confronta con quelle (un riporto accanto non conta): se non tornano, sono «da correggere». Chi non ne ha si confronta con i saldi non
+     * legati che questa generazione assorbe, come prima della 1.11.0-beta.53: la parte di queste persone è passata se ognuna ha la sua. Se non
+     * lo è, chi di loro ha un saldo non legato su quella gestione e quell'unità (`conUnSaldo`) è «incerto» — il programma non sa se lo
+     * comprende —, chi non ha niente «manca». Con `$siLegge` falso (il piano non applica i saldi) i saldi non legati non si leggono: chi ne ha
+     * uno è incerto, gli altri senza righe legate mancano, e la parte non è passata (questo piano non assorbe niente); le righe legate si
+     * confrontano lo stesso, perché il piano creato di nuovo le assorbe. Con la cifra che non si divide `$legati` è vuoto. Chi non ha righe legate
+     * libere ma ne ha in un altro piano che si riscrive ancora (`$altrove`) non si confronta: le sue sono di quel piano, e la porta del Wallet non ne
+     * accetta altre finché sono lì; la parte non è passata.
+     *
+     * @param list<int> $persone il defunto e gli eredi, nell'ordine della frase
+     * @param list<array<string, mixed>> $eredi
+     * @param array<int, array{cents: int, righe: int}> $legati
+     * @param array<int, int> $saldiCheEntrano
+     * @param list<int> $conUnSaldo
+     * @param array<int, array{cents: int, righe: int, piani: list<PianoRate>}> $altrove
+     * @return array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, altrove: list<int>, righe_altrove: int, piani_altrove: list<PianoRate>}
+     */
+    private static function chiHaLaParte(array $persone, int $defuntoId, int $cifra, array $eredi, array $legati, array $saldiCheEntrano, array $conUnSaldo, bool $siLegge, array $altrove = []): array
+    {
+        $attesi = self::attesi($defuntoId, $cifra, $eredi);
+        $torna = fn (int $cents, int $id): bool => abs($cents - ($attesi[$id] ?? 0)) <= 1;
+        $okLegati = [];
+        $daCorreggere = [];
+        $senzaLegate = [];
+        $inUnAltroPiano = [];
+        foreach ($persone as $id) {
+            if (! isset($legati[$id]) && isset($altrove[$id])) {
+                $inUnAltroPiano[] = $id;
+            } elseif (! isset($legati[$id])) {
+                $senzaLegate[] = $id;
+            } elseif ($torna($legati[$id]['cents'], $id)) {
+                $okLegati[] = $id;
+            } else {
+                $daCorreggere[$id] = $legati[$id] + ['atteso' => (int) ($attesi[$id] ?? 0)];
             }
         }
+        $senzaLegateOk = $siLegge && $senzaLegate !== []
+            && collect($senzaLegate)->every(fn (int $id) => array_key_exists($id, $saldiCheEntrano) && $torna($saldiCheEntrano[$id], $id));
+        $restano = $senzaLegateOk ? [] : $senzaLegate;
 
-        return true;
+        return [
+            'parte_passata' => $siLegge && $daCorreggere === [] && $inUnAltroPiano === [] && ($senzaLegate === [] || $senzaLegateOk),
+            'defunto_id' => $defuntoId,
+            'altrove' => $inUnAltroPiano,
+            'righe_altrove' => (int) array_sum(array_map(fn (int $id) => $altrove[$id]['righe'], $inUnAltroPiano)),
+            'piani_altrove' => collect($inUnAltroPiano)->flatMap(fn (int $id) => $altrove[$id]['piani'])->unique('id')->values()->all(),
+            'ok' => array_values(array_filter($persone, fn (int $id) => in_array($id, $okLegati, true) || ($senzaLegateOk && in_array($id, $senzaLegate, true)))),
+            'ok_legati' => $okLegati,
+            'incerti' => array_values(array_filter($restano, fn (int $id) => in_array($id, $conUnSaldo, true))),
+            'mancanti' => array_values(array_filter($restano, fn (int $id) => ! in_array($id, $conUnSaldo, true))),
+            'da_correggere' => $daCorreggere,
+        ];
     }
 
     /**
@@ -366,13 +487,17 @@ final class DefuntoNelPiano
     }
 
     /**
-     * La frase del cancello: la parte comune (chi, quanto, perché e a chi tocca) e la variante della strada, V1, V2, V3 o V4.
+     * La frase del cancello: la parte comune (chi, quanto, perché e a chi tocca) e la variante della strada, V1, V2, V4 o V5. Le righe da
+     * registrare sono solo quelle che mancano (`chiHaLaParte`). Con il piano che non applica i saldi i saldi non legati non si leggono: senza
+     * condizione si chiedono le righe di chi non ha niente, al condizionale quelle di chi ha saldi non legati, e la strada è creare di nuovo il piano;
+     * le righe legate alla successione sì: di chi le ha la parte c'è già (o la riga si corregge), e il piano creato di nuovo le assorbe. Con righe
+     * legate di qualcuno già in un altro piano che si riscrive ancora, la variante è `conRigheAltrove`.
      *
-     * @param list<array{nome: string, cifra: int}> $eredi
+     * @param list<array{id: int, nome: string, cifra: int}> $eredi
      * @param list<string> $decessi
-     * @param list<string> $nomiConUnSaldo
+     * @param array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, successione: string} $strada
      */
-    private function frase(string $defunto, array $decessi, string $unita, int $cifra, array $eredi, bool $wallet, bool $pianoApplicaSaldi, bool $allaCreazione, array $nomiConUnSaldo, bool $partePassata, ?string $perRuolo): string
+    private function frase(string $defunto, array $decessi, string $unita, int $cifra, array $eredi, bool $pianoApplicaSaldi, bool $allaCreazione, array $strada, bool $partePassata, ?string $perRuolo): string
     {
         $credito = $cifra < 0;
         $parteDegliEredi = self::elenco(array_map(fn (array $e) => sprintf('%s %s', $e['nome'], MoneyHelper::format(abs($e['cifra']))), $eredi));
@@ -383,31 +508,189 @@ final class DefuntoNelPiano
                 : sprintf('Ne rispondono gli eredi, ciascuno per la sua quota (art. 754 c.c.): %s.', $parteDegliEredi));
 
         // Le righe del Wallet che passano la parte agli eredi, ognuna con il suo verso: chi ha il debito riceve una riga a credito e
-        // viceversa (positivo = debito). Un credito del defunto le rovescia.
-        $righe = self::elenco(array_merge(
-            [sprintf('%s a %s di %s', MoneyHelper::format(abs($cifra)), $credito ? 'debito' : 'credito', $defunto)],
-            array_map(fn (array $e) => sprintf('%s a %s di %s', MoneyHelper::format(abs($e['cifra'])), $credito ? 'credito' : 'debito', $e['nome']), $eredi),
-        ));
+        // viceversa (positivo = debito). Un credito del defunto le rovescia. Per persona: il defunto, poi gli eredi.
+        $nomeDi = [$strada['defunto_id'] => $defunto];
+        $rigaDi = [$strada['defunto_id'] => sprintf('%s a %s di %s', MoneyHelper::format(abs($cifra)), $credito ? 'debito' : 'credito', $defunto)];
+        foreach ($eredi as $e) {
+            $nomeDi[(int) $e['id']] = $e['nome'];
+            $rigaDi[(int) $e['id']] = sprintf('%s a %s di %s', MoneyHelper::format(abs($e['cifra'])), $credito ? 'credito' : 'debito', $e['nome']);
+        }
+        $righe = self::elenco(array_values($rigaDi));
+        $nomiDi = fn (array $ids): array => array_values(array_map(fn (int $id) => $nomeDi[$id] ?? '', $ids));
+        $righeDi = fn (array $ids): string => self::elenco(array_values(array_map(fn (int $id) => $rigaDi[$id] ?? '', $ids)));
 
-        $strada = match (true) {
-            // V4 (decisione 86.4): il defunto e gli eredi hanno già il loro saldo, quel saldo è la parte, e questo piano lo assorbe con questa
-            // generazione: dire che «si regola fra le parti» inviterebbe a un secondo regolamento a mano di soldi che il piano sposta.
-            $partePassata => sprintf('I saldi ci sono già: %s hanno un saldo su quella gestione e quell\'unità, e questo piano li assorbe nelle loro quote con questa generazione. Non serve registrare altro.',
-                self::elenco($nomiConUnSaldo)),
-            // V3: qualcuno ha già un saldo (decisione 80). Se il piano non applica i saldi, si dice anche perché quelli già registrati non
-            // entrano nelle sue quote: è la promessa che il piano non manterrebbe.
-            ! $wallet => sprintf('Se vanno agli eredi, la parte si regola fra le parti: %s già un saldo su quella gestione e quell\'unità, e il programma non ne registra un secondo.',
-                self::elenco($nomiConUnSaldo) . (count($nomiConUnSaldo) > 1 ? ' hanno' : ' ha'))
-                . ($pianoApplicaSaldi ? '' : ' Questo piano non applica i saldi del Wallet: quelli già registrati non entrano nelle sue quote.'),
-            // V2: il Wallet è libero ma il piano non applica i saldi. Alla creazione il piano non esiste ancora (il cancello annulla la richiesta):
-            // registrare i saldi e rimandare il modulo li fa entrare.
-            ! $pianoApplicaSaldi && $allaCreazione => sprintf('Con il Wallet com\'è adesso il piano non applica i saldi, e non è ancora stato creato: se registri adesso i saldi (%s) e rimandi il modulo, il piano li assorbe; altrimenti la parte si regola fra le parti.', $righe),
-            ! $pianoApplicaSaldi => sprintf('Questo piano non applica i saldi del Wallet: un saldo registrato adesso non entra qui. Per passare la parte agli eredi con il Wallet registra i saldi (%s) e crea di nuovo il piano; altrimenti la parte si regola fra le parti.', $righe),
-            // V1: il Wallet è libero e il piano li applica.
-            default => sprintf('Per passare la parte agli eredi registra un saldo manuale dal Wallet sulla stessa gestione, %s: il piano lo assorbe alla prossima generazione.', $righe),
+        $allaSuccessione = $strada['successione'];
+        $senzaData = str_starts_with($allaSuccessione, 'alle ') ? 'alle successioni' : 'alla successione';
+        $tutti = $nomiDi(array_keys($nomeDi));
+        $incerti = $strada['incerti'];
+        $mancanti = $strada['mancanti'];
+        $piuMancanti = count($mancanti) > 1;
+        // «il saldo legato alla successione del … che manca», «i saldi legati alla successione del … che mancano».
+        $cheMancano = sprintf('%s %s che %s', $piuMancanti ? 'i saldi legati' : 'il saldo legato', $allaSuccessione, $piuMancanti ? 'mancano' : 'manca');
+        // Una riga legata che non è la parte si corregge, non si registra di nuovo: la porta la rifiuterebbe come doppione.
+        $daCorreggere = implode(' ', array_map(fn (int $id, array $x) => $x['righe'] > 1
+            ? sprintf('Per %s i saldi legati %s sommano %s invece di %s: correggili dal Wallet.', $nomeDi[$id] ?? '', $senzaData, self::inVerso($x['cents']), self::inVerso($x['atteso']))
+            : sprintf('Per %s il saldo legato %s è di %s invece di %s: correggilo dal Wallet.', $nomeDi[$id] ?? '', $senzaData, self::inVerso($x['cents']), self::inVerso($x['atteso'])),
+            array_keys($strada['da_correggere']), array_values($strada['da_correggere'])));
+        $nonApplica = 'Questo piano non applica i saldi del Wallet: quelli già registrati non entrano nelle sue quote.';
+        // Con il piano che non applica i saldi le righe legate alla successione già registrate non entrano qui, ma il piano creato di nuovo le
+        // assorbe: di chi le ha, la parte c'è già, e non si chiede di nuovo (la porta rifiuterebbe il doppione); una che non è la parte si corregge.
+        $conLegate = $strada['ok_legati'] !== [] || $strada['da_correggere'] !== [];
+        $okLegati = $nomiDi($strada['ok_legati']);
+        $primaDelPiano = implode(' ', array_filter([
+            $okLegati === [] ? '' : sprintf('%s di %s %s già, nei saldi legati %s.', count($okLegati) > 1 ? 'Le parti' : 'La parte', self::elenco($okLegati), count($okLegati) > 1 ? 'ci sono' : 'c\'è', $senzaData),
+            $daCorreggere,
+        ], fn (string $x) => $x !== ''));
+        $unite = fn (string ...$pezzi): string => implode(' ', array_filter($pezzi, fn (string $x) => $x !== ''));
+        // «La parte si regola fra le parti» con righe legate già registrate e libere nel Wallet: restano lì, e il prossimo piano della gestione che
+        // applica i saldi le assorbirebbe, regolando la parte una seconda volta. Si tolgono.
+        $coda = $conLegate ? ', e allora i saldi legati alla successione ancora liberi nel Wallet si tolgono: altrimenti li assorbe il prossimo piano della stessa gestione che applica i saldi' : '';
+        $senzaPianoNuovo = 'Senza un piano nuovo la parte si regola fra le parti' . $coda . '.';
+        $oppure = ', oppure la parte si regola fra le parti' . $coda . '.';
+        // V2: il piano non applica i saldi. Alla creazione il piano non esiste ancora (il cancello annulla la richiesta): registrare i saldi legati e
+        // rimandare il modulo li fa entrare; altrimenti si crea di nuovo il piano. Con righe legate già registrate, solo quelle che mancano.
+        $v2 = match (true) {
+            ! $conLegate && $allaCreazione => sprintf('Con il Wallet com\'è adesso il piano non applica i saldi, e non è ancora stato creato: se registri adesso dal Wallet i saldi legati %s (%s) e rimandi il modulo, il piano li assorbe; altrimenti la parte si regola fra le parti.', $senzaData, $righe),
+            ! $conLegate => sprintf('Questo piano non applica i saldi del Wallet: un saldo registrato adesso non entra qui. Per passare la parte agli eredi registra dal Wallet i saldi legati %s (%s) e crea di nuovo il piano; altrimenti la parte si regola fra le parti.', $senzaData, $righe),
+            $allaCreazione && $mancanti !== [] => $unite($nonApplica, $primaDelPiano, sprintf('Il piano non è ancora stato creato: registra adesso dal Wallet %s (%s) e rimanda il modulo (il piano li assorbe con quelli già registrati)%s',
+                $cheMancano, $righeDi($mancanti), $oppure)),
+            $allaCreazione => $unite($nonApplica, $primaDelPiano, sprintf('Il piano non è ancora stato creato: %srimanda il modulo (il piano assorbe i saldi legati %s) e non registrare altro%s',
+                $daCorreggere !== '' ? 'poi ' : '', $senzaData, $oppure)),
+            $mancanti !== [] => $unite($nonApplica, $primaDelPiano, sprintf('Per passare la parte agli eredi registra dal Wallet %s (%s) e crea di nuovo il piano, che assorbe anche i saldi legati già registrati. %s',
+                $cheMancano, $righeDi($mancanti), $senzaPianoNuovo)),
+            default => $unite($nonApplica, $primaDelPiano, sprintf('%s il piano, che assorbe i saldi legati %s, e non registrare altro. %s',
+                $daCorreggere !== '' ? 'Poi crea di nuovo' : 'Crea di nuovo', $senzaData, $senzaPianoNuovo)),
         };
 
-        return $comune . ' ' . $strada;
+        // La strada di V2 dopo la frase di V5, che dice già che il piano non applica i saldi. Qui il piano non legge i saldi non legati: le
+        // righe di chi non ha niente si chiedono senza condizione, quelle degli incerti solo se i loro saldi non legati non comprendono la parte.
+        // Se la comprendono il piano creato di nuovo li assorbe (alla creazione, con il Wallet che non ha saldi liberi, un altro piano li ha già
+        // assorbiti): chiedere anche le righe legate farebbe entrare la parte due volte.
+        $incertiAlSingolare = count($incerti) === 1 ? 'il saldo legato' : 'i saldi legati';
+        $v2DopoV5 = match (true) {
+            $allaCreazione && $mancanti === [] => sprintf('Il piano non è ancora stato creato: se quelli non legati comprendono la parte non serve registrare altro; se non la comprendono, registra adesso dal Wallet %s %s (%s) e rimanda il modulo (il piano li assorbe)%s',
+                $incertiAlSingolare, $senzaData, $righeDi($incerti), $oppure),
+            $allaCreazione => sprintf('Il piano non è ancora stato creato: registra adesso dal Wallet %s (%s) e, se quelli non legati non la comprendono, anche %s; poi rimanda il modulo (il piano li assorbe)%s',
+                $cheMancano, $righeDi($mancanti), $righeDi($incerti), $oppure),
+            $mancanti === [] => sprintf('Se quelli non legati comprendono la parte, crea di nuovo il piano, che assorbe quelli ancora liberi nel Wallet, e non registrare altro; se non la comprendono, registra dal Wallet %s %s (%s) e crea di nuovo il piano. %s',
+                $incertiAlSingolare, $senzaData, $righeDi($incerti), $senzaPianoNuovo),
+            default => sprintf('Per passare la parte agli eredi registra dal Wallet %s (%s) e, se quelli non legati non la comprendono, anche %s; poi crea di nuovo il piano. %s',
+                $cheMancano, $righeDi($mancanti), $righeDi($incerti), $senzaPianoNuovo),
+        };
+        $ok = $nomiDi($strada['ok']);
+        $ciSonoGia = $ok === [] ? '' : sprintf('%s di %s %s già.', count($ok) > 1 ? 'Quelli' : 'Quello', self::elenco($ok), count($ok) > 1 ? 'ci sono' : 'c\'è');
+        $poi = fn (string $prima): string => implode(' ', array_filter([$prima, $daCorreggere, $ciSonoGia], fn (string $x) => $x !== ''));
+
+        $variante = match (true) {
+            // Le righe legate di qualcuno sono già in un altro piano che si riscrive ancora (prima delle V4: con loro la parte non è passata).
+            $strada['altrove'] !== [] => $this->conRigheAltrove($strada, $nomiDi, $righeDi, $cheMancano, $senzaData, $pianoApplicaSaldi, $allaCreazione,
+                $unite(! $pianoApplicaSaldi ? $nonApplica : '', $primaDelPiano), $coda),
+            // V4 (decisione 86.4), con le righe legate alla successione: sono la parte, e questo piano le assorbe con questa generazione.
+            $partePassata && count($strada['ok_legati']) === count($tutti) => sprintf('I saldi ci sono già: %s hanno saldi legati %s su quella gestione e quell\'unità, e questo piano li assorbe nelle loro quote con questa generazione. Non serve registrare altro.',
+                self::elenco($tutti), $allaSuccessione),
+            // V4 con le righe miste: i saldi non legati di chi non ha righe legate sono la sua parte, e le righe legate quella degli altri.
+            $partePassata && $strada['ok_legati'] !== [] => sprintf('I saldi ci sono già: %s hanno un saldo su quella gestione e quell\'unità (%s di %s %s %s), e questo piano li assorbe nelle loro quote con questa generazione. Non serve registrare altro.',
+                self::elenco($tutti), count($strada['ok_legati']) > 1 ? 'quelli' : 'quello', self::elenco($nomiDi($strada['ok_legati'])), count($strada['ok_legati']) > 1 ? 'legati' : 'legato', $allaSuccessione),
+            // V4 con i saldi non legati di prima, che sono la parte: dire che «si regola fra le parti» inviterebbe a un secondo regolamento a mano
+            // di soldi che il piano sposta.
+            $partePassata => sprintf('I saldi ci sono già: %s hanno un saldo su quella gestione e quell\'unità, e questo piano li assorbe nelle loro quote con questa generazione. Non serve registrare altro.',
+                self::elenco($tutti)),
+            // V5: fra chi non ha righe legate qualcuno ha un saldo non legato e la parte non torna (un riporto, un credito di prima). Il programma non
+            // sa se lo comprende: lo dice, chiede le righe di chi non ha niente e, al condizionale, le loro. Se il piano non applica i saldi, si dice
+            // anche perché quelli già registrati non entrano.
+            $incerti !== [] => sprintf('%s %s su quella gestione e quell\'unità saldi non legati %s, e il programma non sa se comprendono la parte',
+                self::elenco($nomiDi($incerti)), count($incerti) > 1 ? 'hanno' : 'ha', $senzaData)
+                . (! $pianoApplicaSaldi
+                    ? '. ' . $unite($nonApplica, $primaDelPiano, $v2DopoV5)
+                    : $poi($mancanti === []
+                        ? sprintf(': se la comprendono non serve registrare altro; altrimenti registra dal Wallet %s %s (%s), che il piano assorbe alla prossima generazione.',
+                            count($incerti) > 1 ? 'i saldi legati' : 'il saldo legato', $allaSuccessione, $righeDi($incerti))
+                        : sprintf(': registra dal Wallet %s (%s) e, se quelli non legati non la comprendono, anche %s; il piano li assorbe alla prossima generazione.',
+                            $cheMancano, $righeDi($mancanti), $righeDi($incerti)))),
+            ! $pianoApplicaSaldi => $v2,
+            // V1: il piano applica i saldi, e nessuno ha la sua parte: tutte le righe.
+            $mancanti !== [] && count($mancanti) === count($tutti) => sprintf('Per passare la parte agli eredi registra dal Wallet i saldi legati %s, sulla stessa gestione: %s; il piano li assorbe alla prossima generazione.', $allaSuccessione, $righe),
+            // V1 con qualcuno che ha già la sua parte: solo le righe che mancano.
+            $mancanti !== [] => $poi(sprintf('Per passare la parte agli eredi registra dal Wallet %s, sulla stessa gestione: %s; il piano %s assorbe alla prossima generazione.',
+                $cheMancano, $righeDi($mancanti), $piuMancanti ? 'li' : 'lo')),
+            // Non manca niente, ma una riga legata non è la parte.
+            default => $poi(''),
+        };
+
+        return $comune . ' ' . $variante;
+    }
+
+    /**
+     * La strada quando le righe legate alla successione di qualcuno sono già in un altro piano della stessa gestione che si riscrive ancora
+     * (`saldiLegatiAltrove`): questo piano non le assorbe, e la porta del Wallet non ne accetta altre per le stesse persone finché sono lì. La frase
+     * non le chiede di nuovo: dice dove sono e le due strade che dalla pagina passano, secondo di chi sono. Se sono di questo piano, si elimina
+     * quell'altro (riportato prima in bozza, se è approvato), le righe tornano libere nel Wallet e questo piano le assorbe (creato di nuovo, se non
+     * applica i saldi; alla creazione, rimandando il modulo). Se sono di quell'altro, quelle di questo piano si registrano dopo che quello è emesso
+     * (approvato prima, se è in bozza): da allora le sue righe sono ferme, e la porta accetta le nuove. Chi non ha niente, o ha saldi non legati che
+     * il programma non sa leggere, ha le sue righe come nelle altre varianti; chi ha già la sua parte, o una riga da correggere, è detto in `$prima`.
+     *
+     * @param array<string, mixed> $strada il risultato di `chiHaLaParte`
+     * @param callable(list<int>): list<string> $nomiDi
+     * @param callable(list<int>): string $righeDi
+     */
+    private function conRigheAltrove(array $strada, callable $nomiDi, callable $righeDi, string $cheMancano, string $senzaData, bool $pianoApplicaSaldi, bool $allaCreazione, string $prima, string $coda): string
+    {
+        $piani = collect($strada['piani_altrove']);
+        $uno = $piani->count() === 1;
+        $nomi = $piani->map(fn (PianoRate $p) => '«' . $p->nome . '»')->all();
+        $approvato = fn (PianoRate $p): bool => $p->stato === \App\Enums\StatoPianoRate::APPROVATO;
+        $piu = $strada['righe_altrove'] > 1;
+        $chi = $strada['altrove'];
+        $dove = sprintf('%s %s di %s %s già %s %s, che non %s ancora %s: finché %s lì, il Wallet non ne accetta %s per %s.',
+            $piu ? 'I saldi legati' : 'Il saldo legato', $senzaData, self::elenco($nomiDi($chi)), $piu ? 'sono' : 'è', $uno ? 'nel piano' : 'nei piani', self::elenco($nomi),
+            $uno ? 'è' : 'sono', $uno ? 'emesso' : 'emessi', $piu ? 'sono' : 'è', $piu ? 'altri' : 'un altro', count($chi) > 1 ? 'le stesse persone' : 'la stessa persona');
+        $elimina = match (true) {
+            $uno && $approvato($piani->first()) => sprintf('riporta %s in bozza ed eliminalo dalla sua pagina', $nomi[0]),
+            $uno => sprintf('elimina %s dalla sua pagina', $nomi[0]),
+            default => sprintf('elimina %s dalle loro pagine%s', self::elenco($nomi), $piani->contains($approvato) ? ' (riportando prima in bozza quelli approvati)' : ''),
+        };
+        // Il piano da emettere si nomina: con un pronome la frase si legge riferita a questo piano. Dopo il suo nome, questo piano si dice «questo piano».
+        $dopoAver = match (true) {
+            $uno && $approvato($piani->first()) => 'dopo aver emesso ' . $nomi[0],
+            $uno => 'dopo aver approvato ed emesso ' . $nomi[0],
+            default => 'dopo aver emesso quei piani' . ($piani->contains(fn (PianoRate $p) => ! $approvato($p)) ? ' (approvando prima quelli in bozza)' : ''),
+        };
+        [$sono, $tornano, $li, $quelli] = $piu ? ['sono', 'tornano liberi', 'li', 'quelli'] : ['è', 'torna libero', 'lo', 'quello'];
+        $diQuello = $uno ? $nomi[0] : 'quei piani';
+        $nuove = $righeDi($chi);
+        $strade = match (true) {
+            $allaCreazione => sprintf('Il piano non è ancora stato creato. Se %s di questo piano, %s, così %s nel Wallet, e rimanda il modulo (il piano %s assorbe). Se %s di %s, registra dal Wallet %s di questo piano (%s) %s, e rimanda il modulo.',
+                $sono, $elimina, $tornano, $li, $sono, $diQuello, $quelli, $nuove, $dopoAver),
+            $pianoApplicaSaldi => sprintf('Se %s di questo piano, %s: %s nel Wallet, e questo piano %s assorbe alla prossima generazione. Se %s di %s, registra dal Wallet %s di questo piano (%s) %s: questo piano %s assorbe alla prossima generazione.',
+                $sono, $elimina, $tornano, $li, $sono, $diQuello, $quelli, $nuove, $dopoAver, $li),
+            default => sprintf('Se %s di questo piano, %s, così %s nel Wallet, e crea di nuovo questo piano, che %s assorbe. Se %s di %s, registra dal Wallet %s di questo piano (%s) %s, e crea di nuovo questo piano.',
+                $sono, $elimina, $tornano, $li, $sono, $diQuello, $quelli, $nuove, $dopoAver),
+        };
+        $incerti = $strada['incerti'];
+        // Chi ha la sua parte in saldi non legati che questa generazione assorbe (le righe legate di chi le ha sono già dette in `$prima`).
+        $conINonLegati = array_values(array_diff($strada['ok'], $strada['ok_legati']));
+        $pezzi = [
+            $prima,
+            $conINonLegati === [] ? '' : sprintf('%s di %s %s già.', count($conINonLegati) > 1 ? 'Quelli' : 'Quello', self::elenco($nomiDi($conINonLegati)), count($conINonLegati) > 1 ? 'ci sono' : 'c\'è'),
+            $dove,
+            $strada['mancanti'] !== [] ? sprintf('Registra dal Wallet %s (%s).', $cheMancano, $righeDi($strada['mancanti'])) : '',
+            $incerti !== [] ? sprintf('%s %s su quella gestione e quell\'unità saldi non legati %s, e il programma non sa se comprendono la parte: se non la comprendono, registra dal Wallet anche %s.',
+                self::elenco($nomiDi($incerti)), count($incerti) > 1 ? 'hanno' : 'ha', $senzaData, $righeDi($incerti)) : '',
+            $strade,
+            match (true) {
+                $allaCreazione && ! $pianoApplicaSaldi => 'Senza il piano la parte si regola fra le parti' . $coda . '.',
+                ! $pianoApplicaSaldi => 'Senza un piano nuovo la parte si regola fra le parti' . $coda . '.',
+                default => '',
+            },
+        ];
+
+        return implode(' ', array_filter($pezzi, fn (string $x) => $x !== ''));
+    }
+
+    /** «€ 236,71 a debito», «€ 394,52 a credito», «€ 0,00» (positivo = debito). */
+    private static function inVerso(int $cents): string
+    {
+        return MoneyHelper::format(abs($cents)) . ($cents > 0 ? ' a debito' : ($cents < 0 ? ' a credito' : ''));
     }
 
     /** «€ 394,52», e per un credito «€ 394,52 a credito» (mai il segno meno). */

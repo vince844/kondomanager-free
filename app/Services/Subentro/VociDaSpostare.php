@@ -12,8 +12,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Decisioni 31.5 e 31.6 (1.11.0-beta.41): le voci che, scegliendo al passaggio «l'ordinaria all'usufruttuario» (art. 1004
- * c.c., la proposta di legge), si spostano dal «Proprietario» all'«Usufruttuario», perché i piani futuri diano l'ordinaria a
+ * Decisioni 31.5 e 31.6 (1.11.0-beta.41): le voci che, scegliendo al passaggio «l'ordinaria all'usufruttuario» secondo la regola
+ * di legge (art. 1004 c.c.), si spostano dal «Proprietario» all'«Usufruttuario», perché i piani futuri diano l'ordinaria a
  * chi gode del bene come la dà il conguaglio. Senza, lo stesso euro andava a due persone diverse a seconda che arrivasse da
  * un piano o da un conguaglio (Coda 171).
  *
@@ -31,8 +31,8 @@ use Illuminate\Support\Facades\DB;
  * proprietario all'usufruttuario.
  *
  * **Le voci bloccate.** Una voce compresa in un piano approvato, emesso o chiuso ha la ripartizione bloccata: la pagina della
- * voce la fa cambiare solo annullando il piano (`Conto::getHasRateEmesseAttribute()`, e per i piani da fatture le voci delle
- * loro fatture, come `ContoResource`). Il passaggio rispetta lo stesso blocco (decisione 31.8, 02/10/2026): la voce si
+ * voce la fa cambiare solo annullando il piano (`Conto::getHasRateEmesseAttribute()`, e per i piani da fatture le voci che il
+ * motore straordinario ripartisce, con la regola del piano dei conti: `Conto::righeDeiPianiStraordinari`). Il passaggio rispetta lo stesso blocco (decisione 31.8, 02/10/2026): la voce si
  * elenca con `bloccata`, non si sposta, e il piano già emesso resta com'è — anche nelle stampe ricostruite dei piani senza
  * dettaglio del riparto, che leggono i coefficienti di oggi. Un piano «globale» (senza capitoli: comprende tutte le voci della
  * gestione) approvato, emesso o chiuso le blocca tutte, anche se la pagina della voce non lo vede (decisione 31.9, 03/10/2026).
@@ -152,23 +152,18 @@ final class VociDaSpostare
     }
 
     /**
-     * Le voci con la ripartizione bloccata, come le blocca la pagina della voce: comprese in un piano approvato, emesso o
-     * chiuso (`Conto::getHasRateEmesseAttribute()`), o nelle fatture di un piano straordinario in uno di quegli stati.
+     * Le voci con la ripartizione bloccata: comprese in un piano approvato, emesso o chiuso (`Conto::getHasRateEmesseAttribute()`,
+     * la regola di prima della 1.11.0-beta.53 per i piani ordinari: la pagina della voce legge invece `Conto::pianiCheBloccanoLaVoce`,
+     * che segue anche la catena dei capitoli), o nelle fatture di un piano straordinario in uno di quegli stati, con una riga di spesa
+     * fuori preventivo o una copertura di sopravvenienza sulla voce (`Conto::righeDeiPianiStraordinari`, la regola della pagina).
      *
      * @param list<int> $contoIds
      * @return array<int, true>
      */
     private function contiBloccati(array $contoIds): array
     {
-        // Gli stessi stati di `Conto::getHasRateEmesseAttribute()`.
-        $stati = ['approvato', 'emesso', 'chiuso'];
         $bloccati = Conto::whereIn('id', $contoIds)->get()->filter(fn (Conto $c) => $c->has_rate_emesse)->pluck('id')->all();
-        $daFatture = DB::table('righe_fattura')
-            ->join('piano_rate_fatture', 'piano_rate_fatture.fattura_passiva_id', '=', 'righe_fattura.fattura_passiva_id')
-            ->join('piani_rate', 'piani_rate.id', '=', 'piano_rate_fatture.piano_rate_id')
-            ->whereIn('righe_fattura.conto_id', $contoIds)
-            ->where('piani_rate.tipo', 'straordinario')->whereIn('piani_rate.stato', $stati)
-            ->pluck('righe_fattura.conto_id')->all();
+        $daFatture = Conto::righeDeiPianiStraordinari($contoIds)->pluck('conto_id')->all();
 
         return array_fill_keys(array_map('intval', array_merge($bloccati, $daFatture)), true);
     }
@@ -190,11 +185,8 @@ final class VociDaSpostare
         $padri = DB::table('conti')->whereIn('id', $contoIds)->whereNotNull('parent_id')->pluck('parent_id', 'id');
         $daiPadri = DB::table('piano_rate_capitoli')->join('piani_rate', 'piani_rate.id', '=', 'piano_rate_capitoli.piano_rate_id')
             ->whereIn('piano_rate_capitoli.conto_id', $padri->values()->all())->whereIn('piani_rate.stato', $stati)->get(['piano_rate_capitoli.conto_id', 'piani_rate.id', 'piani_rate.nome']);
-        $daFatture = DB::table('righe_fattura')
-            ->join('piano_rate_fatture', 'piano_rate_fatture.fattura_passiva_id', '=', 'righe_fattura.fattura_passiva_id')
-            ->join('piani_rate', 'piani_rate.id', '=', 'piano_rate_fatture.piano_rate_id')
-            ->whereIn('righe_fattura.conto_id', $contoIds)->where('piani_rate.tipo', 'straordinario')->whereIn('piani_rate.stato', $stati)
-            ->get(['righe_fattura.conto_id', 'piani_rate.id', 'piani_rate.nome']);
+        // La regola del piano dei conti: le righe di spesa fuori preventivo e le coperture di sopravvenienza, le sole che il motore straordinario ripartisce sulla voce.
+        $daFatture = Conto::righeDeiPianiStraordinari($contoIds);
         $globali = DB::table('piani_rate')->whereIn('gestione_id', $gestioneIds)->where('tipo', 'ordinario')->whereIn('stato', $stati)
             ->whereNotExists(fn ($q) => $q->from('piano_rate_capitoli')->whereColumn('piano_rate_capitoli.piano_rate_id', 'piani_rate.id'))
             ->get(['gestione_id', 'id', 'nome']);

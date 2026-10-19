@@ -155,6 +155,12 @@ defineEmits(['update:open']);
                                 una spesa e un'entrata il totale del piano cambierebbe, e il programma lo
                                 rifiuta: il menu della destinazione offre solo le voci del tipo della sorgente. Un capitolo che il piano divide fra spese ed entrate non si sposta e non riceve budget, e il menu non offre le voci che si sovrapporrebbero a un capitolo o a dei sottoconti già nel piano, perché di due righe sovrapposte il piano conta solo quella del capitolo. Se nel piano un capitolo ha la sua riga insieme a quelle dei suoi sottoconti e il piano conta solo quella del capitolo, un riquadro in cima alla pagina lo dice e indica come uscirne. Nei piani straordinari «Sposta spesa» non funziona: il menu della sorgente elenca le fatture, ma lo spostamento lavora sulle voci, e il programma lo rifiuta sempre.
                             </p>
+                            <p class="mt-2">
+                                Una voce di spesa che il piano conta con un importo negativo, il suo o quello della copia, non cede e non riceve budget, e nemmeno il capitolo
+                                del piano che la ripartisce: il piano la addebita in positivo, e lo spostamento cambierebbe il totale. È la voce che nomina l'avviso in cima alla
+                                pagina. Non riceve budget neanche una voce di spesa scritta con il meno che il piano non conta così, né un capitolo fuori dal piano che la
+                                ripartirebbe: il piano la addebiterebbe in positivo. I menu non offrono queste voci dove il programma le rifiuterebbe.
+                            </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
 use App\Models\Gestionale\Conto;
+use App\Services\Gestionale\BloccoDellaVoce;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -110,6 +111,14 @@ class CreateContoRequest extends FormRequest
                         'parent_id',
                         'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
                     );
+                } elseif ($parent) {
+                    // Una voce nuova sotto un capitolo che un piano approvato, emesso o chiuso tiene: il motore la raggiungerebbe dalla riga del capitolo, e il
+                    // piano addebiterebbe anche lei (`Conto::pianiCheBloccanoLaVoce`, la regola della modifica). In bozza il piano non blocca.
+                    $tengonoIlCapitolo = Conto::pianiCheBloccanoLaVoce([(int) $parent->id])[(int) $parent->id] ?? [];
+
+                    if ($tengonoIlCapitolo !== []) {
+                        $validator->errors()->add('parent_id', BloccoDellaVoce::rifiutoDellaVoceNuova((string) $parent->nome, $tengonoIlCapitolo));
+                    }
                 }
             }
 

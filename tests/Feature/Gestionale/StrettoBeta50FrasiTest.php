@@ -298,7 +298,7 @@ it('G5, la guardia — con il primo cambio scritto la catena c\'è: la voce «No
 // G8: gli avvisi della 83.2 dopo «Annulla il conguaglio» non stanno in un messaggio di successo che si chiude da solo
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('G8 — «Annulla il conguaglio» della fine dopo la fermata della vendita: il messaggio con l\'avviso del Wallet da rivedere è un avviso (warning), che resta, non un successo che si chiude dopo sei secondi', function () {
+it('G8 — «Annulla il conguaglio» della fine dopo la fermata della vendita: il messaggio con l\'avviso della fermata da rivedere è un avviso (warning), che resta, non un successo che si chiude dopo sei secondi', function () {
     // `PassaggioController::annullaConguaglio` usa sempre `flashSuccess`, anche con le fermate in coda; `annulla` (l'annullamento del
     // passaggio) passa a `flashWarning` quando ci sono avvisi (regola L-R1: un avviso è una cosa ancora da fare). `Alert.vue` chiude da
     // solo ogni tipo che non sia `error` o `warning`.
@@ -306,10 +306,11 @@ it('G8 — «Annulla il conguaglio» della fine dopo la fermata della vendita: i
 
     [$tipo, $testo] = sbfMessaggio(sbfAnnullaConguaglio($this, $s, $s['fine'])->assertSessionHasNoErrors());
 
-    // Controlli: l'annullamento riesce, il messaggio dice la fermata della vendita (€ 90,74) e il Wallet (decisione 83.2).
+    // Controlli: l'annullamento riesce, il messaggio dice la fermata della vendita (€ 90,74) che non vale più (decisione 83.2). Senza saldi legati
+    // alla vendita (dalla 1.11.0-beta.53) l'avviso dice l'accordo fra le parti da rivedere, non un saldo del Wallet.
     expect($testo)->toStartWith('Conguaglio annullato')
         ->and($testo)->toContain('€ 90,74')
-        ->and($testo)->toContain('Wallet');
+        ->and($testo)->toContain('quella fermata non vale più');
 
     expect($tipo)->toBe('warning', 'Il messaggio con l\'avviso della fermata è di tipo «' . $tipo . '», e si chiude da solo: ' . $testo);
 });
@@ -330,13 +331,14 @@ it('G8, la guardia — «Annulla il conguaglio» di una fine senza nessuna ferma
 // G11: annullato il conguaglio della fine, gli avvisi dell'annullamento della vendita non danno per valida la sua fermata
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('G11 — annullato il conguaglio della fine, l\'annullamento della vendita del 1/10 non avvisa che € 90,74 «sono rimasti a carico di Ugo, da regolare a mano»: dice che la fermata non vale più, come lo storico della stessa vendita', function () {
-    // `AnnullaPassaggioAction::avvisi` cicla su `fermata_dopo_scrivi` senza chiamare `FermataDopoScrivi::fineSenzaConguaglio`, che lo
-    // storico invece usa (decisione 83.2). Resta da dire solo l'invito a togliere dal Wallet l'eventuale saldo manuale.
+it('G11 — annullato il conguaglio della fine, l\'annullamento della vendita del 1/10 non avvisa che € 90,74 «sono rimasti a carico di Ugo, da regolare a mano», e lo storico dice che la fermata non vale più', function () {
+    // Dalla 1.11.0-beta.53 gli avvisi dell'annullamento non leggono più il registro della fermata («se per questo hai registrato un saldo
+    // manuale dal Wallet… Toglilo dal Wallet»): i saldi legati alla vendita li dice l'effetto dell'annullamento, quelli scritti a mano senza
+    // legame la ricerca dei saldi a mano scritti dopo (`Beta53SaldiAManoDiPrimaTest`). Senza saldi, nessun avviso sulla fermata, prima e dopo.
     $s = sbfCasoH($this);
 
-    // Controllo: prima dell'annullamento del conguaglio l'avviso della vendita dice la fermata, con il Wallet.
-    expect(implode(' | ', app(AnnullaPassaggioAction::class)->avvisi($s['vendita']->fresh())))->toContain('€ 90,74')->toContain('Toglilo dal Wallet');
+    // Controllo: prima dell'annullamento del conguaglio nessun avviso della vendita parla del Wallet.
+    expect(implode(' | ', app(AnnullaPassaggioAction::class)->avvisi($s['vendita']->fresh())))->not->toContain('Toglilo dal Wallet');
 
     sbfAnnullaConguaglio($this, $s, $s['fine'])->assertSessionHasNoErrors();
     $avvisi = app(AnnullaPassaggioAction::class)->avvisi($s['vendita']->fresh());
@@ -348,8 +350,8 @@ it('G11 — annullato il conguaglio della fine, l\'annullamento della vendita de
 
     $ancoraValida = fn (array $lista) => array_values(array_filter($lista, fn (string $a) => str_contains($a, 'sono rimasti a carico di Ugo') && preg_match('/non val(e|gono) più/u', $a) !== 1));
     expect($ancoraValida($avvisi))->toBe([], 'L\'avviso dell\'annullamento della vendita dice ancora la fermata come valida: ' . implode(' | ', $avvisi))
-        ->and(collect($avvisi)->contains(fn (string $a) => preg_match('/non val(e|gono) più/u', $a) === 1 && str_contains($a, 'Wallet')))
-        ->toBeTrue('L\'avviso non dice che la fermata non vale più, con il saldo manuale dal Wallet da togliere: ' . implode(' | ', $avvisi))
+        ->and(collect($avvisi)->contains(fn (string $a) => str_contains($a, 'Toglilo dal Wallet')))
+        ->toBeFalse('L\'avviso dice ancora di togliere dal Wallet un saldo che il programma non vede: ' . implode(' | ', $avvisi))
         ->and($ancoraValida(explode(' | ', $dalloStorico)))->toBe([], 'Gli avvisi dell\'annullamento nello storico dicono ancora la fermata come valida: ' . $dalloStorico);
 });
 
@@ -383,8 +385,8 @@ it('G12 (1) — due vendite dopo la fine «Scrivi» (Ugo → Elsa il 1/9, Elsa �
     $prima = fds50Storico($s, $s['fine'])['conguaglio']['avvisi'] ?? [];
     [, $messaggio] = sbfMessaggio(sbfAnnullaConguaglio($this, $s, $s['fine'])->assertSessionHasNoErrors());
 
-    // Controllo: l'avviso della prima vendita, con il Wallet che il suo pannello aveva indicato (`wallet` vero).
-    expect(collect($prima)->contains(fn (string $a) => str_contains($a, '€ 120,33') && str_contains($a, 'a credito di Ugo, a debito di Elsa')))->toBeTrue();
+    // Controllo: l'avviso della prima vendita, con la sua cifra (senza saldi legati alla vendita dice l'accordo fra le parti da rivedere).
+    expect(collect($prima)->contains(fn (string $a) => str_contains($a, '€ 120,33') && str_contains($a, 'La vendita del 1 settembre 2026')))->toBeTrue();
 
     // L'avviso della seconda vendita è quello con la sua cifra e senza quella della prima (che può dire, con la decisione 82.2, la parte
     // passata a Carlo). Nel messaggio gli avvisi sono uno dopo l'altro: si guarda il testo tutto. La riga del Wallet si cerca in ogni forma
@@ -418,8 +420,8 @@ it('G12 (1), lo storico — annullato il conguaglio della fine, lo storico della
     expect(preg_match('/€ 60,16[^.]*o (di|fra) Elsa/u', $storico))->toBe(1, 'Lo storico della seconda vendita, annullato il conguaglio, perde l\'alternativa di Elsa: ' . $storico);
 });
 
-it('G12 (2) — Ugo ha già un saldo sulla gestione, la fine «Scrivi» e la vendita a Elsa del 1/10: il pannello aveva detto «fra le parti», e l\'avviso di «Annulla il conguaglio» non indica la riga del Wallet (€ 90,74 a credito di Ugo, a debito di Elsa), che il Wallet rifiuterebbe', function () {
-    // Decisione 80: con un saldo già lì il Wallet non accetta una seconda riga di Ugo. La fermata: 18148 × 92/184 = 9074 (€ 90,74).
+it('G12 (2) — Ugo ha già un saldo sulla gestione, la fine «Scrivi» e la vendita a Elsa del 1/10: il pannello indica il Wallet con i saldi legati, e senza saldi legati l\'avviso di «Annulla il conguaglio» non indica una riga del Wallet (€ 90,74 a credito di Ugo, a debito di Elsa) che non c\'è', function () {
+    // Dalla 1.11.0-beta.53 la riga legata non occupa il posto: il pannello indica il Wallet anche con il riporto di Ugo. La fermata: 18148 × 92/184 = 9074 (€ 90,74).
     $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], riporti: ['Ugo' => 5000]);
     $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
     fclEmetti($this, $s, '2026-09-30');
@@ -430,14 +432,14 @@ it('G12 (2) — Ugo ha già un saldo sulla gestione, la fine «Scrivi» e la ven
     $prima = fds50Storico($s, $fine)['conguaglio']['avvisi'] ?? [];
     [, $messaggio] = sbfMessaggio(sbfAnnullaConguaglio($this, $s, $fine)->assertSessionHasNoErrors());
 
-    // Controlli: la fermata è di € 90,74 senza il Wallet, e il pannello della vendita l'ha detto.
-    expect([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null])->toBe([9074, false])
-        ->and(implode(' ', $registrata['anteprima']['rate']['frasi']))->toContain('la parte si regola fra le parti: Ugo ha già un saldo');
+    // Controlli: la fermata è di € 90,74 con il Wallet, e il pannello della vendita l'ha detto.
+    expect([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null])->toBe([9074, true])
+        ->and(implode(' ', $registrata['anteprima']['rate']['frasi']))->toContain('registra dal Wallet i saldi legati a questo passaggio');
 
     $avvisi = array_values(array_filter([...$prima, ...sbfPezzi($messaggio)], fn (string $a) => str_contains($a, '€ 90,74')));
     expect($avvisi)->not->toBe([])
         ->and(array_values(array_filter($avvisi, fn (string $a) => preg_match('/a credito di [^)]*a debito di Elsa/u', $a) === 1)))
-        ->toBe([], 'L\'avviso indica la riga del Wallet anche dove il pannello aveva detto «fra le parti»: ' . implode(' | ', $avvisi));
+        ->toBe([], 'L\'avviso indica una riga del Wallet che non c\'è: ' . implode(' | ', $avvisi));
 });
 
 it('la concordanza — dopo la fermata di un legato, l\'avviso di «Annulla il conguaglio» non dice «Il legato del 1 ottobre 2026 si è fermata»', function () {
@@ -531,10 +533,10 @@ it('G13, la guardia — la prima fermata dice «Ugo ha preso € 181,48», la su
 // G14 e G15: la fermata del coinquilino nello storico e nel pannello
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('G14 — Ines esce mentre Dora resta, nessuno ha un saldo: il pannello indica il saldo manuale dal Wallet, e lo storico della fermata dice la stessa strada, non «da regolare a mano fra le parti»', function () {
-    // `FermataDopoScrivi::fraseStoricoCoinquilino` ha la coda fissa «da regolare a mano fra le parti con chi li paga»: nel vocabolario della
-    // decisione 80 «fra le parti» è l'alternativa al Wallet. Il registro ha `wallet` vero, `al_posto` [Ugo], `con_un_saldo` []. La cifra:
-    // 18000 × 184/365 = 9073,97 → 9074 (€ 90,74).
+it('G14 — Ines esce mentre Dora resta, nessuno ha un saldo: il pannello indica il Wallet con i saldi legati al passaggio, e lo storico della fermata dice la stessa strada, non «da regolare a mano fra le parti»', function () {
+    // `FermataDopoScrivi::fraseStoricoCoinquilino` aveva la coda fissa «da regolare a mano fra le parti con chi li paga». Il registro ha `wallet`
+    // vero, `al_posto` [Ugo] e, dalla 1.11.0-beta.53, `strada` = `legata`. La cifra: 18000 × 184/365 = 9073,97 → 9074 (€ 90,74). Gli avvisi
+    // dell'annullamento non leggono più il registro della fermata: senza saldi, nessun avviso sul Wallet.
     $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
@@ -542,54 +544,56 @@ it('G14 — Ines esce mentre Dora resta, nessuno ha un saldo: il pannello indica
     $f = $fine->registro['fermata_coinquilino'][0] ?? [];
     $storico = collect(fds50Con(sbfStoricoSenzaAnnullabile($s, $fine), '€ 90,74'))->first(fn (string $t) => str_contains($t, 'Dora')) ?? '';
 
-    // Controlli: il pannello indica il Wallet, il registro lo conserva, l'avviso dell'annullamento ne parla.
-    expect(implode(' ', $a['rate']['frasi']))->toContain('registra un saldo manuale dal Wallet')
-        ->and([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null, $f['al_posto'] ?? null, $f['con_un_saldo'] ?? null])->toBe([9074, true, ['Ugo'], []])
-        ->and(implode(' | ', app(AnnullaPassaggioAction::class)->avvisi($fine->fresh())))->toContain('Wallet')
+    // Controlli: il pannello indica il Wallet, il registro lo conserva.
+    expect(implode(' ', $a['rate']['frasi']))->toContain('registra dal Wallet i saldi legati a questo passaggio')
+        ->and([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null, $f['al_posto'] ?? null, $f['strada'] ?? null])->toBe([9074, true, ['Ugo'], 'legata'])
+        ->and(implode(' | ', app(AnnullaPassaggioAction::class)->avvisi($fine->fresh())))->not->toContain('Toglilo dal Wallet')
         ->and($storico)->not->toBe('');
 
     expect(str_contains($storico, 'Wallet'))->toBeTrue('Lo storico della fermata non dice la strada che il pannello aveva indicato (il Wallet): ' . $storico);
 });
 
-it('G14, la guardia — Ugo e Dora hanno già un saldo: il pannello dice «fra le parti», e lo storico non indica il Wallet', function () {
+it('G14, con i saldi — Ugo e Dora hanno già un saldo: il pannello e lo storico dicono lo stesso il Wallet con i saldi legati, non «fra le parti»', function () {
     $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: ['Ugo' => 5000, 'Dora' => 3000]);
 
     $fine = fclRegistra($this, $s, fclModulo($s));
     $storico = implode(' ', fds50Con(sbfStoricoSenzaAnnullabile($s, $fine), '€ 90,74'));
 
-    expect($fine->registro['fermata_coinquilino'][0]['wallet'] ?? null)->toBeFalse()
-        ->and($storico)->toContain('fra le parti')
-        ->and($storico)->not->toContain('Wallet');
+    expect($fine->registro['fermata_coinquilino'][0]['wallet'] ?? null)->toBeTrue()
+        ->and($storico)->toContain('la strada indicata erano i saldi dal Wallet legati a questo passaggio')
+        ->and($storico)->not->toContain('fra le parti');
 });
 
-it('G15 (A) — Ines esce, Dora resta, Ugo e Dora hanno già un saldo: la frase non dice «Se li pagano Dora e Ugo», come se pagassero insieme, ma le due alternative', function () {
-    // `AnteprimaPassaggio::fraseDelCoinquilino`, ramo `$senza`: coinquilini e chi sta al posto messi insieme e passati a `$seLiPaga` come
-    // coinquilini. Nel ramo del Wallet sono «Dora, o Ugo». La cifra: € 90,74.
+it('G15 (A) — Ines esce, Dora resta, Ugo e Dora hanno già un saldo: la frase non dice «Se li pagano Dora e Ugo», come se pagassero insieme, ma le due alternative, con il Wallet legato', function () {
+    // `AnteprimaPassaggio::fraseDelCoinquilino`: coinquilini e chi sta al posto sono due alternative, «Dora, o Ugo». Dalla 1.11.0-beta.53 il
+    // Wallet anche per chi ha già un saldo. La cifra: € 90,74.
     $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: ['Ugo' => 5000, 'Dora' => 3000]);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
     $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora')) ?? '';
 
-    // Controlli: la fermata c'è, € 90,74, e tutti e due hanno un saldo (nessun Wallet).
+    // Controlli: la fermata c'è, € 90,74, con il Wallet legato.
     expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
-        ->and($a['rate']['fermata_coinquilino'][0]['wallet'] ?? null)->toBeFalse()
-        ->and($frase)->toContain('la parte si regola fra le parti');
+        ->and($a['rate']['fermata_coinquilino'][0]['wallet'] ?? null)->toBeTrue()
+        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio')
+        ->and($frase)->not->toContain('fra le parti');
 
     expect(str_contains($frase, 'li pagano Dora e Ugo'))->toBeFalse('Le due alternative si leggono come chi paga insieme: ' . $frase)
         ->and(str_contains($frase, 'Dora, o Ugo'))->toBeTrue('La frase non dice le due alternative, «Dora, o Ugo»: ' . $frase);
 });
 
 it('G15 (B) — Ugo e Rita comproprietari (Rita con un saldo), Ines esce e restano Dora e Pia: la coda del Wallet dice una riga a debito di ciascuno che li paga, non «una a debito di chi li paga» quando sono due', function () {
-    // La coda del Wallet è al singolare anche per il gruppo «Dora e Pia». La parte di Ines: 36000 × 50 % = 18000, 18000 × 184/365 = 9074.
+    // La coda del Wallet è al singolare anche per il gruppo «Dora e Pia». La parte di Ines: 36000 × 50 % = 18000, 18000 × 184/365 = 9074. Dalla
+    // 1.11.0-beta.53 anche Rita, con il suo saldo, sta nel Wallet legato.
     $s = sbfScenario($this, [['Ugo', 'proprietario', 50], ['Rita', 'proprietario', 50]], ['inquilini' => [['Ines', 50], ['Dora', 25], ['Pia', 25]]], riporti: ['Rita' => 1000]);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
     $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora e Pia')) ?? '';
     $colWallet = collect(sbfPezzi($frase))->first(fn (string $p) => str_contains($p, 'Dora e Pia') && str_contains($p, 'Wallet')) ?? '';
 
-    // Controlli: la fermata, € 90,74; Rita ha la strada «fra le parti»; il verbo al plurale per Dora e Pia (R20).
+    // Controlli: la fermata, € 90,74; nessuno «fra le parti»; il verbo al plurale per Dora e Pia (R20).
     expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
-        ->and($frase)->toContain('se li paga Rita, la parte si regola fra le parti')
+        ->and($frase)->not->toContain('la parte si regola fra le parti')
         ->and($colWallet)->toContain('li pagano Dora e Pia');
 
     expect(str_contains($colWallet, 'ciascuno'))->toBeTrue('Con due persone che pagano la coda del Wallet dice «una a debito di chi li paga»: ' . $colWallet);
@@ -606,7 +610,7 @@ it('G15 (B), chi sta al posto in due — Ugo e Rita comproprietari senza un sald
 
     // Controlli: la fermata, € 90,74, con il Wallet, e al posto dell'inquilino Ugo e Rita, detti come l'alternativa a Dora.
     $f = $a['rate']['fermata_coinquilino'][0] ?? [];
-    expect([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null, $f['al_posto'] ?? null, $f['con_un_saldo'] ?? null])->toBe([9074, true, ['Ugo', 'Rita'], []])
+    expect([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null, $f['al_posto'] ?? null, $f['strada'] ?? null])->toBe([9074, true, ['Ugo', 'Rita'], 'legata'])
         ->and($colWallet)->toContain('Dora, o Ugo e Rita');
 
     expect(str_contains($colWallet, 'ciascuno'))->toBeTrue('Con Ugo e Rita che pagano insieme la coda del Wallet dice «una a debito di chi li paga»: ' . $colWallet);

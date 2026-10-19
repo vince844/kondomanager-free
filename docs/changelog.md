@@ -7,6 +7,30 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.53] - Il saldo legato al passaggio
+
+**Tocca lo schema del database: una colonna nuova, `passaggio_id`, nella tabella dei saldi, con la chiave esterna sui passaggi di
+titolarità.** La migrazione non sposta né riscrive dati: i saldi che ci sono restano come sono, senza legame. L'aggiornamento la applica
+da sé.
+
+**Che cosa fa la beta.**
+- **Il saldo del Wallet si lega a un passaggio.** Quando un passaggio di titolarità lascia una parte che il programma non sposta da sé,
+  la passi dal Wallet con due saldi legati a quel passaggio: non occupano il posto di un riporto e si tolgono insieme al passaggio, se lo
+  annulli. Il modale «Aggiungi credito» (e quello del debito) ha la scelta «Legato a un passaggio».
+- **Le frasi dei passaggi dicono i fatti.** Per ogni persona, quanto sommano i suoi saldi legati e quanto vale la sua parte. La nota di
+  solidarietà dice a parte i saldi legati, e annullando un passaggio il programma nomina, senza toccarli, i saldi
+  scritti a mano dal Wallet dopo la registrazione senza legarli a un passaggio.
+- **Una voce di spesa scritta col meno si conta in positivo in ogni totale**, come la conta il calcolo delle quote: nel piano dei conti,
+  nella distinta, nell'elenco e nel cruscotto. La creazione di un piano non la propone e «Sposta spesa» non la muove.
+- **Un piano approvato blocca anche il padre, il tipo, la tabella e le percentuali di una voce**, non solo l'importo.
+- **«ad» davanti ai nomi che cominciano per «a»** in tutte le frasi dei passaggi.
+- **Correzioni.** Il modale «Aggiungi credito» non nasconde più una frase e non taglia il menu delle persone; la riga di una voce nel
+  piano dei conti non mostra più un piano straordinario che non esiste; la conferma di «Rimuovi voce» sulle voci di entrata, la guida della
+  regolazione immediata e le frasi delle fermate dopo una fermata sono corrette.
+- **Guida.** La guida dei saldi iniziali ha una sezione nuova, «Il saldo legato a un passaggio».
+
+---
+
 ## [1.11.0-beta.52] - Il segno delle entrate
 
 **Tocca i dati del database, senza cambiare lo schema: una migrazione riscrive la frase del promemoria del credito e riallinea i

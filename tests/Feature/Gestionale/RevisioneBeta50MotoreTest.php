@@ -470,7 +470,7 @@ it('R4 (b) — la fine di Ines del 1/7 con «Scrivi», poi la successione di Ugo
     expect(fds50Netti($s))->toBe(['Ines' => 36000, 'Ugo' => 84000]);
 });
 
-it('R4 (c) — la fine di Ines del 1/7 con «Scrivi», poi la vendita di Ugo a Elsa datata 1/5, che si è fermata su € 181,48: la fine non si annulla finché c\'è la vendita, e la vendita si annulla con l\'avviso del Wallet', function () {
+it('R4 (c) — la fine di Ines del 1/7 con «Scrivi», poi la vendita di Ugo a Elsa datata 1/5, che si è fermata su € 181,48: la fine non si annulla finché c\'è la vendita, e la vendita si annulla per prima', function () {
     // Prima della correzione la vendita, con la data prima, non si annullava («c'è un altro passaggio: la fine»), e la fine si
     // annullava da sola: la fermata restava nel registro della vendita, e il saldo manuale che il pannello aveva indicato restava
     // senza avviso.
@@ -484,15 +484,16 @@ it('R4 (c) — la fine di Ines del 1/7 con «Scrivi», poi la vendita di Ugo a E
     expect(rbmMotivo($fine) ?? '(nessun motivo: la fine si annullerebbe sotto la vendita che si è fermata sulla sua coppia)')
         ->toContain('la vendita da Ugo a Elsa')->toContain('1 maggio 2026')->toContain('registrato dopo');
 
+    // Dalla 1.11.0-beta.53 senza saldi scritti dopo la vendita gli avvisi non parlano del Wallet: i saldi legati li toglie l'annullamento.
     $avvisi = rbmAvvisi($vendita);
     expect(rbmAnnulla($this, $s, $vendita))->toBe('annullato')
-        ->and($avvisi)->toContain('€ 181,48')->toContain('Toglilo dal Wallet');
+        ->and($avvisi)->not->toContain('Toglilo dal Wallet');
 
     expect(rbmAnnulla($this, $s, $fine))->toBe('annullato');
     expect(fds50Netti($s))->toBe(['Ines' => 36000, 'Ugo' => 84000]);
 });
 
-it('R4 (d) — la fine di Ines del 1/7 con «Scrivi», l\'inizio di Luca dal 1/11, poi la vendita di Ugo a Elsa del 1/10, fermata su € 30,58: l\'inizio non si annulla finché c\'è la vendita, che si annulla per prima con l\'avviso', function () {
+it('R4 (d) — la fine di Ines del 1/7 con «Scrivi», l\'inizio di Luca dal 1/11, poi la vendita di Ugo a Elsa del 1/10, fermata su € 30,58: l\'inizio non si annulla finché c\'è la vendita, che si annulla per prima', function () {
     // La fermata conta solo ottobre, perché da novembre c'è Luca: 18148 × 31/184 = 3057,54 → 3058. Prima della correzione la vendita non
     // si annullava («c'è un altro passaggio: l'inizio di Luca, dal 1 novembre»), e l'inizio sì: la vendita restava con la fermata di €
     // 30,58, che senza Luca sarebbe stata € 90,74.
@@ -509,7 +510,7 @@ it('R4 (d) — la fine di Ines del 1/7 con «Scrivi», l\'inizio di Luca dal 1/1
 
     $avvisi = rbmAvvisi($vendita);
     expect(rbmAnnulla($this, $s, $vendita))->toBe('annullato')
-        ->and($avvisi)->toContain('€ 30,58')->toContain('Toglilo dal Wallet');
+        ->and($avvisi)->not->toContain('Toglilo dal Wallet');
 
     // Resta la fine con la sua coppia: Ines 36000 − 18148 = 17852, Ugo 84000 + 18148 = 102148.
     expect(rbmAnnulla($this, $s, $inizio))->toBe('annullato');

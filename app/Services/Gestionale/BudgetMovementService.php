@@ -2,11 +2,14 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\MoneyHelper;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\BudgetMovement;
 use App\Models\Gestionale\PianoConto;
+use App\Services\Riparto\SpeseNegativeNelPiano;
+use App\Services\Riparto\VoceDiSpesaNegativa;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -42,10 +45,12 @@ class BudgetMovementService
 
         // Il totale del piano è la somma delle voci col segno con cui il motore le distribuisce (spese con +, entrate con −): spostare budget
         // fra una spesa e un'entrata lo cambierebbe del doppio. Il segno è quello della voce o, per un capitolo, quello dei suoi sottoconti, e un
-        // capitolo con spese ed entrate insieme non si sposta. Lo storno resta fuori: restituisce ciò che è già stato spostato, anche se nel
-        // frattempo una delle due voci ha cambiato tipo.
+        // capitolo con spese ed entrate insieme non si sposta. Per la stessa ragione non si preleva da una voce di spesa che il piano conta per il
+        // valore assoluto di un importo negativo, né le si dà budget (`controllaSpesaNegativa`, la destinazione più sotto). Lo storno resta fuori:
+        // restituisce ciò che è già stato spostato, anche se nel frattempo una delle due voci ha cambiato tipo o importo.
         if ($reversesMovementId === null) {
             $this->controllaStessoTipo($piano, $sourceId, $destId);
+            $this->controllaSpesaNegativa($piano, $sourceId, false);
         }
 
         return DB::transaction(function () use ($piano, $sourceId, $destId, $amount, $reason, $userId, $reversesMovementId) {
@@ -105,6 +110,7 @@ class BudgetMovementService
             // che c'è già e non crea righe nuove.
             if ($reversesMovementId === null) {
                 $this->controllaDestinazioneNelPiano($piano, $destId, $destPivot !== null);
+                $this->controllaSpesaNegativa($piano, $destId, true);
             }
 
             $destOldAmount = $destPivot ? ($destPivot->importo ?? Conto::find($destId)->importo) : 0;
@@ -219,6 +225,188 @@ class BudgetMovementService
 
         throw ValidationException::withMessages(['destination_id' => $chi($da, $tipoDa) . ' e ' . $chi($a, $tipoA)
             . ': il budget si sposta solo fra voci dello stesso tipo, altrimenti il totale del piano cambierebbe. Scegli una voce dello stesso tipo.']);
+    }
+
+    /**
+     * Una voce di spesa scritta con il meno (dato delle versioni fino alla 1.11.0-beta.51) non dà e non riceve budget. Il motore addebita una voce di spesa
+     * per il valore assoluto del suo importo o della copia del piano (`CalcoloQuoteService::processaConti`): spostare € 100,00 su una copia di −€ 240,00 la
+     * porta a −€ 140,00 e il piano chiede € 200,00 in meno, e con € 240,00 la copia va a zero, l'avviso della pagina si spegne e «Ricalcola» passa con la
+     * voce ancora negativa nel piano dei conti.
+     *
+     * Si rifiuta, sorgente o destinazione, una voce che l'avviso della pagina nomina ({@see vociDellAvviso()}); come destinazione anche ogni altra voce di
+     * spesa con l'importo negativo, fuori dal piano, con la copia a zero o con una copia positiva, perché il budget spostato il piano lo addebiterebbe
+     * in positivo, e un capitolo fuori dal piano con un sottoconto negativo, su cui il motore ripartirebbe la copia nuova. Una voce fuori dal condominio
+     * del piano non si nomina: la sua assenza dal perimetro la rifiuta la richiesta.
+     *
+     * @throws ValidationException sul campo `destination_id` o `source_id`
+     */
+    private function controllaSpesaNegativa(PianoRate $piano, int $contoId, bool $comeDestinazione): void
+    {
+        $voce = Conto::query()
+            ->whereIn('piano_conto_id', PianoConto::query()->where('condominio_id', $piano->condominio_id)->select('id'))
+            ->find($contoId, ['id', 'nome', 'tipo', 'importo']);
+
+        if ($voce === null) {
+            return;
+        }
+
+        $campo = $comeDestinazione ? 'destination_id' : 'source_id';
+        $nominate = $this->vociDellAvviso($piano)[$contoId] ?? [];
+
+        if ($nominate !== []) {
+            throw ValidationException::withMessages([$campo => VoceDiSpesaNegativa::spostamentoNelPiano((string) $voce->nome, $nominate, $comeDestinazione)]);
+        }
+
+        if (! $comeDestinazione) {
+            return;
+        }
+
+        $riga = DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->where('conto_id', $contoId)->first(['importo']);
+        if (! Conto::eSpesaNegativa((string) $voce->tipo, (int) $voce->importo)) {
+            // Un capitolo che il piano non tiene: con la riga nuova il motore ne ripartirebbe la copia sui sottoconti, anche su quello negativo.
+            $figlio = $riga === null ? $this->sottocontoNegativo($voce, $piano->created_at) : null;
+            if ($figlio !== null) {
+                throw ValidationException::withMessages([$campo => VoceDiSpesaNegativa::spostamentoSulCapitolo(
+                    (string) $voce->nome,
+                    (string) $figlio->nome,
+                    (int) $figlio->importo,
+                    Conto::pianiCheBloccanoLaVoce([(int) $figlio->id])[(int) $figlio->id] ?? [],
+                    (int) $figlio->parent_id === (int) $voce->id ? null : (string) Conto::query()->whereKey($figlio->parent_id)->value('nome'),
+                    VoceDiSpesaNegativa::alTerzoLivello([(int) $figlio->id]) !== [],
+                    VoceDiSpesaNegativa::pianiCheLaPerdono((int) $figlio->id),
+                )]);
+            }
+
+            return;
+        }
+
+        $copia = $riga?->importo;
+        $altriPiani = array_values(array_filter(
+            VoceDiSpesaNegativa::pianiPerVoce([$contoId], (int) $piano->gestione_id)[$contoId] ?? [],
+            fn (array $p) => $p['id'] !== (int) $piano->id,
+        ));
+
+        throw ValidationException::withMessages([$campo => VoceDiSpesaNegativa::spostamentoSuUnaSpesaNegativa(
+            (string) $voce->nome,
+            (int) $voce->importo,
+            $copia !== null && (int) $copia > 0 ? (int) $copia : null,
+            $altriPiani,
+            Conto::pianiCheBloccanoLaVoce([$contoId])[$contoId] ?? [],
+            VoceDiSpesaNegativa::alTerzoLivello([$contoId]) !== [],
+            VoceDiSpesaNegativa::pianiCheLaPerdono($contoId),
+        )]);
+    }
+
+    /**
+     * Il primo sottoconto di spesa con l'importo negativo fra quelli a cui il motore passerebbe la copia del capitolo, a qualunque livello: quelli nati
+     * fino alla data del piano, o tutti se nessuno lo è ({@see Conto::sottocontiDelPiano()}), e non oltre un capitolo con le sue tabelle.
+     */
+    private function sottocontoNegativo(Conto $capitolo, ?CarbonInterface $alla): ?Conto
+    {
+        $capitolo->loadMissing('tabelleMillesimali');
+        if ($capitolo->tabelleMillesimali->isNotEmpty()) {
+            return null;
+        }
+
+        foreach ($capitolo->sottocontiDelPiano($alla) as $figlio) {
+            if (Conto::eSpesaNegativa((string) $figlio->tipo, (int) $figlio->importo)) {
+                return $figlio;
+            }
+            if (($nipote = $this->sottocontoNegativo($figlio, $alla)) !== null) {
+                return $nipote;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Le voci che l'avviso della pagina del piano nomina, per voce: la voce con la copia negativa, o senza copia con l'importo negativo, e il capitolo
+     * del piano che la ripartisce, a qualunque livello sopra di lei, con la sua copia o senza (con le voci dei suoi sottoconti). È lo stesso rilevamento
+     * del fermo e dell'avviso; il capitolo è quello da cui il motore scende fino alla voce ({@see righeCheLaRipartiscono()}).
+     *
+     * @return array<int, list<array<string, mixed>>> conto => le voci dell'avviso che lo riguardano
+     */
+    private function vociDellAvviso(PianoRate $piano): array
+    {
+        $voci = app(SpeseNegativeNelPiano::class)->trova($piano);
+        if ($voci === []) {
+            return [];
+        }
+
+        $sopra = $this->righeCheLaRipartiscono($piano, array_map(fn (array $v) => (int) $v['conto_id'], $voci));
+        $perVoce = [];
+        foreach ($voci as $v) {
+            $perVoce[(int) $v['conto_id']][] = $v;
+            foreach ($sopra[(int) $v['conto_id']] ?? [] as $id) {
+                $perVoce[$id][] = $v;
+            }
+        }
+
+        return $perVoce;
+    }
+
+    /**
+     * Le righe del piano sopra ciascuna voce data da cui il motore scende fino a lei, dall'alto (`CalcoloQuoteService::processaConti`). La discesa
+     * parte dalla riga più in alto nella catena dei padri. Con una copia, un capitolo con le sue tabelle la ripartisce lì, e un capitolo senza la divide
+     * fra i sottoconti nati fino alla data del piano (tutti, se nessuno lo è: {@see Conto::sottocontiDelPiano()}). Dove la discesa si ferma la voce non è
+     * ripartita da quella riga, e una riga più in basso riparte: un capitolo con le sue tabelle sopra un sottoconto con la sua riga non lo ripartisce, e
+     * spostare budget sul capitolo lascia il totale del piano com'è.
+     *
+     * Senza copia il motore visita tutti i sottoconti, ma lo spostamento dà una copia alla riga: la discesa si prova come con quella copia. Dove si ferma,
+     * se più in basso c'è un'altra riga la voce resta a lei, e la riga di sopra non la ripartisce; se non c'è, la copia nuova toglierebbe la voce dal piano,
+     * e la riga la ripartisce.
+     *
+     * @param  list<int>  $contiIds
+     * @return array<int, list<int>> voce => le righe sopra di lei che la ripartiscono; una voce che nessuna riga sopra di lei ripartisce non c'è
+     */
+    private function righeCheLaRipartiscono(PianoRate $piano, array $contiIds): array
+    {
+        $copie = [];
+        foreach (DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->get(['conto_id', 'importo']) as $riga) {
+            $copie[(int) $riga->conto_id] = $riga->importo === null ? null : (int) $riga->importo;
+        }
+        if ($copie === []) {
+            return [];
+        }
+
+        $catene = Conto::catene($contiIds);
+        $conti = Conto::query()->with(['tabelleMillesimali', 'sottoconti'])->whereIn('id', array_merge(...array_values($catene)))->get()->keyBy('id');
+
+        $sopra = [];
+        foreach ($catene as $voce => $catena) {
+            $righe = [];
+            $conCopia = false;
+            $ultimo = count($catena) - 1;
+            foreach ($catena as $k => $id) {
+                if (array_key_exists($id, $copie)) {
+                    // La prima riga della catena fa partire la discesa; una riga più in basso, senza la copia di sopra, ci porta la sua.
+                    $conCopia = ($righe !== [] && $conCopia) || $copie[$id] !== null;
+                    $righe[] = $id;
+                }
+                if ($k === $ultimo || $righe === []) {
+                    continue;
+                }
+
+                $conto = $conti->get($id);
+                $prossimo = $catena[$k + 1];
+                if ($conto !== null && $conto->tabelleMillesimali->isEmpty() && $conto->sottocontiDelPiano($piano->created_at)->contains(fn (Conto $f) => (int) $f->id === $prossimo)) {
+                    continue;
+                }
+                $piuInBasso = array_filter(array_slice($catena, $k + 1), fn (int $sotto) => array_key_exists($sotto, $copie)) !== [];
+                if ($conCopia || $piuInBasso) {
+                    $righe = [];
+                    $conCopia = false;
+                }
+            }
+
+            $righe = array_values(array_filter($righe, fn (int $id) => $id !== $voce));
+            if ($righe !== []) {
+                $sopra[$voce] = $righe;
+            }
+        }
+
+        return $sopra;
     }
 
     /** Il rifiuto per uno o più capitoli con sottoconti di spesa e di entrata, che il piano divide fra le due: non si spostano e non si ricevono. */
@@ -383,7 +571,8 @@ class BudgetMovementService
 
     /**
      * Le voci che la pagina del piano offre come destinazione, col tipo calcolato dal segno. Non si offre una voce sovrapposta a un capitolo del piano o a
-     * dei sottoconti del piano, anche se ha già la sua riga: il server la rifiuterebbe ({@see controllaDestinazioneNelPiano()}).
+     * dei sottoconti del piano, anche se ha già la sua riga, né una voce di spesa scritta con il meno, una voce che l'avviso della pagina nomina o un
+     * capitolo fuori dal piano con un sottoconto negativo: il server la rifiuterebbe ({@see controllaDestinazioneNelPiano()}, {@see controllaSpesaNegativa()}).
      *
      * @return Collection<int, array{id: int, nome: string, tipo: string}>
      */
@@ -393,18 +582,92 @@ class BudgetMovementService
             ->where('piano_conto_id', $pianoContoId)
             ->orderBy('nome')
             ->visibili()
-            ->with(['tabelleMillesimali', 'sottoconti.tabelleMillesimali'])
-            ->get(['id', 'nome', 'tipo']);
+            ->with(['tabelleMillesimali', 'sottoconti.tabelleMillesimali', 'sottoconti.sottoconti'])
+            ->get(['id', 'nome', 'tipo', 'importo']);
 
         $perimetro = $this->perimetroDelPiano($piano, $pianoContoId);
+        $nominate = $this->vociDellAvviso($piano);
 
         return $voci
-            ->reject(function (Conto $c) use ($perimetro) {
+            ->reject(function (Conto $c) use ($piano, $perimetro, $nominate) {
+                if ($this->fuoriPerUnaSpesaNegativa($c, $piano, $perimetro, $nominate)) {
+                    return true;
+                }
+
                 $sovrapposte = self::sovrapposteAlPiano($c->id, $perimetro['padri'], $perimetro['nelPiano'], $perimetro['raggiunti']);
 
                 return $sovrapposte['capitoli'] !== [] || $sovrapposte['sottoconti'] !== [];
             })
             ->map(fn (Conto $c) => ['id' => $c->id, 'nome' => $c->nome, 'tipo' => self::tipoDelSegno($c, $piano->created_at)])
+            ->values();
+    }
+
+    /**
+     * La voce non si offre come destinazione per una spesa scritta con il meno: l'avviso della pagina la nomina, è lei una spesa con l'importo negativo,
+     * o è un capitolo fuori dal piano con un sottoconto negativo ({@see controllaSpesaNegativa()}).
+     *
+     * @param  array{padri: array<int, int|null>, raggiunti: array<int, list<int>>, nelPiano: list<int>}  $perimetro
+     * @param  array<int, list<array<string, mixed>>>  $nominate  {@see vociDellAvviso()}
+     */
+    private function fuoriPerUnaSpesaNegativa(Conto $c, PianoRate $piano, array $perimetro, array $nominate): bool
+    {
+        return isset($nominate[(int) $c->id])
+            || Conto::eSpesaNegativa((string) $c->tipo, (int) $c->importo)
+            || (! in_array((int) $c->id, $perimetro['nelPiano'], true) && $this->sottocontoNegativo($c, $piano->created_at) !== null);
+    }
+
+    /**
+     * Se i menu di «Sposta spesa» lasciano fuori delle voci per una spesa scritta con il meno: le sorgenti, se l'avviso della pagina nomina una riga del
+     * piano ({@see sorgentiPerLaPagina()}); le destinazioni, se una voce del piano dei conti è fuori per questo ({@see destinazioniPerLaPagina()}). Il
+     * modale lo dice solo sotto il menu che le ha perse: la frase della sorgente rimanda all'avviso della pagina.
+     *
+     * @return array{sorgenti: bool, destinazioni: bool}
+     */
+    public function speseNegativeFuoriDaiMenu(PianoRate $piano, ?int $pianoContoId): array
+    {
+        $nominate = $this->vociDellAvviso($piano);
+        $sorgenti = $piano->tipo !== 'straordinario'
+            && DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->whereIn('conto_id', array_keys($nominate))->exists();
+        if ($pianoContoId === null) {
+            return ['sorgenti' => $sorgenti, 'destinazioni' => false];
+        }
+
+        $perimetro = $this->perimetroDelPiano($piano, $pianoContoId);
+        $destinazioni = Conto::query()
+            ->where('piano_conto_id', $pianoContoId)
+            ->visibili()
+            ->with(['tabelleMillesimali', 'sottoconti.tabelleMillesimali', 'sottoconti.sottoconti'])
+            ->get(['id', 'nome', 'tipo', 'importo'])
+            ->contains(fn (Conto $c) => $this->fuoriPerUnaSpesaNegativa($c, $piano, $perimetro, $nominate));
+
+        return ['sorgenti' => $sorgenti, 'destinazioni' => $destinazioni];
+    }
+
+    /**
+     * Le voci di un piano ordinario che la pagina offre come sorgente, con il tipo calcolato dal segno e il residuo che il piano ne finanzia (la copia,
+     * o l'importo della voce se la copia è nulla). Non si offre una voce che l'avviso della pagina nomina, né il capitolo del piano che la ripartisce: il
+     * server la rifiuterebbe come sorgente ({@see controllaSpesaNegativa()}), con lo stesso rilevamento con cui la pagina non la offre come destinazione.
+     *
+     * @return Collection<int, array{id: int, nome: string, tipo: string, importo_residuo: int, formatted_residuo: string}>
+     */
+    public function sorgentiPerLaPagina(PianoRate $piano): Collection
+    {
+        $piano->loadMissing(['capitoli.tabelleMillesimali', 'capitoli.sottoconti.tabelleMillesimali']);
+        $nominate = $this->vociDellAvviso($piano);
+
+        return $piano->capitoli
+            ->reject(fn (Conto $c) => isset($nominate[(int) $c->id]))
+            ->map(function (Conto $c) use ($piano) {
+                $residuo = $c->pivot->importo ?? $c->importo;
+
+                return [
+                    'id' => $c->id,
+                    'nome' => $c->nome,
+                    'tipo' => self::tipoDelSegno($c, $piano->created_at),
+                    'importo_residuo' => $residuo,
+                    'formatted_residuo' => MoneyHelper::format($residuo, false),
+                ];
+            })
             ->values();
     }
 

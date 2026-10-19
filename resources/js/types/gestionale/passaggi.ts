@@ -183,7 +183,7 @@ export interface AnteprimaPassaggioDati {
 
 /**
  * Alla costituzione e alla riserva d'usufrutto l'amministratore sceglie chi paga l'ordinaria dal giorno dell'atto:
- * `usufruttuario` (art. 1004 c.c., la proposta di legge) o `voce` (come dice ogni voce). Con la legge le `voci` sul
+ * `usufruttuario`, secondo la regola di legge (art. 1004 c.c.), o `voce` (come dice ogni voce). Con la legge le `voci` sul
  * «Proprietario» delle gestioni ordinarie passano all'«Usufruttuario», salvo quelle a cui si toglie la spunta.
  */
 export interface OrdinariaDopoAtto {

@@ -6,8 +6,8 @@
  *
  * Il segno di una voce, in un posto solo: `Conto::segno()`. Per dividere un importo fra spese ed entrate, `Conto::ripartoPerSegno()`.
  *
- * Il motore distribuisce una voce di spesa o di uscita con il segno più e ogni altra voce con il meno (`CalcoloQuoteService.php:1500-1502` e
- * `:1586-1589`). Chi deve contare le stesse voci (l'atteso del piano, i totali delle pagine, la copertura del cruscotto) legge il segno da
+ * Il motore distribuisce una voce di spesa o di uscita con il segno più e ogni altra voce con il meno (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e
+ * quello con l'importo della voce). Chi deve contare le stesse voci (l'atteso del piano, i totali delle pagine, la copertura del cruscotto) legge il segno da
  * `Conto::segno()`, che segue l'ordine del motore: una voce con tabelle proprie, o una foglia, ha il segno del proprio tipo; un padre senza
  * tabelle ha il segno dei suoi sottoconti nati fino alla data del piano, e se nessuno è nato prima (sottoconti arrivati dopo il piano) di
  * tutti i sottoconti attuali, con la stessa regola a ogni livello; se i sottoconti sono di segno diverso vale il tipo del padre.

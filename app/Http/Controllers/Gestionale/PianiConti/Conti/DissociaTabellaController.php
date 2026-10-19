@@ -8,6 +8,7 @@ use App\Models\Esercizio;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Tabella;
+use App\Services\Gestionale\BloccoDellaVoce;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,12 @@ class DissociaTabellaController extends Controller
      */
     public function __invoke(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto, Tabella $tabella): RedirectResponse
     {
+        // Una voce che un piano approvato, emesso o chiuso tiene, con la sua riga o con quella di un capitolo sopra di lei, non cambia tabella né
+        // percentuali: il motore la ripartirebbe ad altre persone (`Conto::pianiCheBloccanoLaVoce`, la stessa regola del salvataggio della voce).
+        if ($rifiuto = BloccoDellaVoce::rifiutoPerLaVoce($conto)) {
+            return redirect()->back()->with('message', ['message' => $rifiuto, 'type' => 'error']);
+        }
+
         try {
             DB::beginTransaction();
 

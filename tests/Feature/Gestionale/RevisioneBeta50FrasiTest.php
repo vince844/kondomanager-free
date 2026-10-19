@@ -116,8 +116,8 @@ function rbfStoricoSenzaAnnullabile(array $s, Subentro $passaggio): array
 
 it('R20 — Ines esce mentre restano Dora e Pia: la frase del coinquilino non dice «Se li paga Dora e Pia», con il verbo al singolare', function (array $riporti) {
     // Ines al 50 %, Dora e Pia al 25 %: la parte dell'inquilino di Ines è 36000 × 50 % = 18000, e i giorni dopo l'uscita 18000 × 184/365 =
-    // 9073,97 → 9074 (€ 90,74). La frase è `AnteprimaPassaggio::fraseDelCoinquilino`, rami del Wallet e «fra le parti»: «Se li paga %s».
-    // Il ramo «fra le parti» con il riporto di Ines (decisione 80: il Wallet non accetta una seconda riga sua).
+    // 9073,97 → 9074 (€ 90,74). La frase è `AnteprimaPassaggio::fraseDelCoinquilino`: «Se li paga %s». Dalla 1.11.0-beta.53 il Wallet, con i
+    // saldi legati al passaggio, anche con il riporto di Ines (la riga legata non occupa il posto).
     $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 25], ['Pia', 25]]], riporti: $riporti);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
@@ -127,51 +127,37 @@ it('R20 — Ines esce mentre restano Dora e Pia: la frase del coinquilino non di
     expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
         ->and(collect($a['rate']['fermata_coinquilino'])->pluck('restano')->flatten()->all())->toBe(['Dora', 'Pia'])
         ->and($frase)->toContain('€ 90,74')
-        ->and($frase)->toContain($riporti === [] ? 'registra un saldo manuale dal Wallet' : 'la parte si regola fra le parti');
+        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio')
+        ->and($frase)->not->toContain('la parte si regola fra le parti');
 
     expect(preg_match('/\bli paga \p{Lu}\p{L}* e \p{Lu}/u', $frase))->toBe(0, 'Il verbo è al singolare con due soggetti: ' . $frase);
 })->with([
     'il ramo del Wallet' => [[]],
-    'il ramo «fra le parti», con il riporto di Ines' => [['Ines' => 5000]],
+    'con il riporto di Ines, lo stesso Wallet' => [['Ines' => 5000]],
 ]);
 
-it('R9 — la fermata del coinquilino quando chi potrebbe pagare ha già un saldo sulla gestione (il riporto di Ugo o di Dora): per lui la frase non indica il Wallet, che rifiuterebbe la sua riga, ma dice che la parte si regola fra le parti, con il nome', function (string $conIlSaldo) {
-    // Decisione 80: il saldo manuale dal Wallet si indica solo se la riga si può scrivere davvero; il Wallet accetta un saldo per persona,
-    // gestione, unità ed esercizio. `AnteprimaPassaggio::conguaglioDellaFine` controlla solo Ines (`stradaDelWallet([uscente])`), e la
-    // frase dice «Se li paga Dora, o il proprietario, registra un saldo manuale dal Wallet»: seguendola con chi ha già il riporto, la riga
-    // di Ines (−9074) passa e l'altra si rifiuta, e Ines resta con € 90,74 di credito che nessuno paga. La cifra: 18000 × 184/365 = 9073,97
-    // → 9074. La correzione verificata: la frase si divide per candidato, con i nomi; per chi ha un saldo «fra le parti».
+it('R9 — la fermata del coinquilino quando chi potrebbe pagare ha già un saldo sulla gestione (il riporto di Ugo o di Dora): la frase indica a tutti il Wallet, con i saldi legati al passaggio, e le due righe legate si scrivono accanto al riporto', function (string $conIlSaldo) {
+    // Fino alla .52 la frase diceva «fra le parti» per chi aveva già un saldo (il Wallet rifiutava la sua riga). Dalla 1.11.0-beta.53 la riga
+    // legata al passaggio non occupa il posto: il Wallet c'è per tutti i candidati. La cifra: 18000 × 184/365 = 9073,97 → 9074.
     $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: [$conIlSaldo => 5000]);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
     $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora')) ?? '';
 
-    // Controlli: la fermata c'è, € 90,74; e il Wallet rifiuta davvero la riga di chi ha già il riporto.
     expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
-        ->and($frase)->toContain('€ 90,74');
+        ->and($frase)->toContain('€ 90,74')
+        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga')
+        ->and($frase)->not->toContain('fra le parti');
+
+    // Controllo: una riga non legata di chi ha già il riporto il Wallet la rifiuta ancora (il posto è occupato); quella legata al passaggio no.
+    $fine = fclRegistra($this, $s, fclModulo($s));
     $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
         'anagrafica_id' => $s['persone'][$conIlSaldo]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 9074,
     ])->assertSessionHasErrors(['anagrafica_id' => 'Esiste già un saldo per questa anagrafica in questa gestione.']);
-
-    // Una condizione alla volta: le frasi divise ai punti, ai punti e virgola e a ogni «se li paga» (la correzione può dire i candidati
-    // nella stessa frase). Indica il Wallet a chi ha il saldo la condizione che lo nomina e porta al Wallet senza dire «fra le parti»
-    // (una spiegazione come «il Wallet non ne accetta un secondo» accanto a «fra le parti» non lo indica). Per Ugo la frase dice «il
-    // proprietario».
-    $condizioni = collect(rbfPezzi($frase))->flatMap(fn (string $p) => preg_split('/(?=\b[Ss]e li pag)/u', $p, -1, PREG_SPLIT_NO_EMPTY))->map(fn ($p) => trim($p))->all();
-    $chi = $conIlSaldo === 'Ugo' ? '/Ugo|il proprietario/u' : '/Dora/u';
-    $colWallet = array_values(array_filter($condizioni, fn (string $p) => str_contains($p, 'Wallet') && ! str_contains($p, 'fra le parti') && preg_match($chi, $p) === 1));
-    expect($colWallet)->toBe([], 'La frase indica il Wallet anche a chi ha già un saldo: ' . $frase)
-        ->and(collect($condizioni)->contains(fn (string $p) => str_contains($p, 'fra le parti') && str_contains($p, $conIlSaldo)))
-        ->toBeTrue('La frase non dice, con il nome, che per ' . $conIlSaldo . ' la parte si regola fra le parti: ' . $frase);
-
-    // Se il Wallet resta indicato per l'altro candidato, le sue due righe si scrivono davvero (la riga di Ines e la sua).
-    $altro = $conIlSaldo === 'Ugo' ? 'Dora' : 'Ugo';
-    if (collect($condizioni)->contains(fn (string $p) => str_contains($p, 'Wallet') && ! str_contains($p, 'fra le parti'))) {
-        foreach ([['Ines', -9074], [$altro, 9074]] as [$nome, $importo]) {
-            $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
-                'anagrafica_id' => $s['persone'][$nome]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo,
-            ])->assertSessionHasNoErrors();
-        }
+    foreach ([['Ines', -9074], [$conIlSaldo, 9074]] as [$nome, $importo]) {
+        $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
+            'anagrafica_id' => $s['persone'][$nome]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $fine->id,
+        ])->assertSessionHasNoErrors();
     }
 })->with(['il riporto di Ugo' => ['Ugo'], 'il riporto di Dora' => ['Dora']]);
 
@@ -265,8 +251,8 @@ it('R15 — successione di Ugo il 1/10 senza coppie (con l\'arretrato al defunto
 
 /**
  * Il caso H della revisione: la fine di Ines il 1/7 con «Scrivi» (Ines −18148, Ugo +18148), le rate fino al 30/9, la vendita di Ugo a Elsa
- * il 1/10 con la fermata di € 90,74 (18148 × 92/184 = 9074, esatto), e il saldo manuale dal Wallet che la frase della decisione 80 indica:
- * Ugo −9074, Elsa +9074. Con `$luca` anche l'inizio della locazione di Luca il 1/11, che riduce la fermata (`fermata_ridotta`): dei 92
+ * il 1/10 con la fermata di € 90,74 (18148 × 92/184 = 9074, esatto), e i saldi del Wallet che la frase della fermata indica, legati alla
+ * vendita dal modale (dalla 1.11.0-beta.53): Ugo −9074, Elsa +9074. Con `$luca` anche l'inizio della locazione di Luca il 1/11, che riduce la fermata (`fermata_ridotta`): dei 92
  * giorni dal 1/10 restano senza conduttore i 31 di ottobre. 18148 × [92, 31, 61] / 184 = 9074 / 3057,54 / 6016,46 (Ugo, Elsa, Luca) → 9074
  * + 3057 + 6016 = 18147, il centesimo al resto più grande (,54) va a Elsa → resta da regolare la parte di Elsa, 3058 (€ 30,58): la cifra di
  * `InizioDopoScriviTest` (S7) e di `M92`.
@@ -284,6 +270,7 @@ function rbfCasoH($test, bool $luca = false): array
     foreach ([['Ugo', -9074], ['Elsa', 9074]] as [$chi, $importo]) {
         $test->actingAs($test->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
             'anagrafica_id' => $s['persone'][$chi]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo,
+            'passaggio_id' => $s['vendita']->id,
         ])->assertSessionHasNoErrors();
     }
     if ($luca) {
@@ -299,13 +286,13 @@ function rbfAnnullaConguaglio($test, array $s, Subentro $fine, string $nota = 'L
     return $test->actingAs($test->user)->delete(route('admin.gestionale.immobili.passaggi.annulla-conguaglio', [$s['c'], $s['unita'], $fine]), ['nota_annullamento_conguaglio' => $nota]);
 }
 
-/** Un testo che dice la fermata della vendita da rivedere: il passaggio, la cifra e il saldo manuale dal Wallet. */
+/** Un testo che dice la fermata della vendita da rivedere: il passaggio, la cifra e i saldi del Wallet legati alla vendita. */
 function rbfAvvisoDellaFermata(string $t): bool
 {
     return str_contains($t, 'vendita del 1 ottobre 2026') && str_contains($t, '€ 90,74') && str_contains($t, 'Wallet');
 }
 
-it('R5, decisione 83.2 — prima di confermare «Annulla il conguaglio» della fine, lo storico avvisa che la vendita del 1/10 si era fermata su quella coppia (€ 90,74) e che il saldo manuale dal Wallet va rivisto', function () {
+it('R5, decisione 83.2 — prima di confermare «Annulla il conguaglio» della fine, lo storico avvisa che la vendita del 1/10 si era fermata su quella coppia (€ 90,74) e che i saldi del Wallet legati alla vendita vanno rivisti', function () {
     // `AnnullaConguaglioAction` non guarda le fermate: c'è la guardia della successione (67.3), nessuna sulle fermate. Decisione 83.2: un
     // avviso, non un rifiuto, detto prima di confermare (lo storico, accanto ad `annullabile` del conguaglio) e ripetuto nel messaggio.
     $s = rbfCasoH($this);
@@ -324,7 +311,7 @@ it('R5, decisione 83.2 — prima di confermare «Annulla il conguaglio» della f
         ->toBeTrue('Prima di confermare, lo storico della fine non dice la fermata della vendita del 1 ottobre 2026 (€ 90,74) né il Wallet: ' . implode(' | ', fds50Testi($voce)));
 });
 
-it('R5, decisione 83.2 — «Annulla il conguaglio» dopo la fermata della vendita riesce, e il messaggio dice la fermata (€ 90,74, la vendita del 1/10) e il saldo manuale dal Wallet da rivedere', function () {
+it('R5, decisione 83.2 — «Annulla il conguaglio» dopo la fermata della vendita riesce, e il messaggio dice la fermata (€ 90,74, la vendita del 1/10) e i saldi del Wallet legati alla vendita da rivedere', function () {
     $s = rbfCasoH($this);
 
     $r = rbfAnnullaConguaglio($this, $s, $s['fine']);
@@ -935,7 +922,7 @@ function rbfDopoLaPrimaVendita($test, array $titolari = [['Ugo', 'proprietario',
     return $s;
 }
 
-it('ripresa, la guardia — la seconda vendita (Elsa → Carlo il 1/11) dopo la fermata della prima: il registro conserva chi esce e la fermata di prima (uscente_id, uscente, dopo_la_fermata, piu_persone), e lo storico, il motivo del cancello e l\'avviso dell\'annullamento li dicono', function () {
+it('ripresa, la guardia — la seconda vendita (Elsa → Carlo il 1/11) dopo la fermata della prima: il registro conserva chi esce e la fermata di prima (uscente_id, uscente, dopo_la_fermata, piu_persone), e lo storico e il motivo del cancello li dicono; l\'annullamento, senza saldi scritti dopo, non avvisa di un saldo del Wallet', function () {
     // Le chiavi nuove di `FermataDopoScrivi::perIlRegistro` e le frasi che le leggono (decisione 81.2), che non avevano un test. Le cifre (di
     // `CorrezioniDellaBeta50Test`): la coppia 18148; la prima vendita, Ugo 62 giorni ed Elsa 122: 18148 × 122/184 = 12032,91 → la fermata
     // 12033 (€ 120,33) verso Elsa; la seconda, Ugo 62, Elsa 61, Carlo 61: 6115,09 / 6016,46 / 6016,46, il centesimo a pari resto a chi esce
@@ -949,9 +936,12 @@ it('ripresa, la guardia — la seconda vendita (Elsa → Carlo il 1/11) dopo la 
 
     expect([(int) ($f['uscente_id'] ?? 0), $f['uscente'] ?? null, $f['dopo_la_fermata'] ?? null, $f['piu_persone'] ?? null, $f['persona'] ?? null, (int) ($f['cifra'] ?? 0)])
         ->toBe([(int) $s['persone']['Elsa']->id, 'Elsa', ['passaggio' => 'la vendita del 1 settembre 2026', 'cifra' => 12033], false, 'Ugo', 6016])
-        ->and($motivi)->toContain('€ 60,16 dei giorni dopo l\'uscita di Ines restano a carico di Ugo (gestione Ordinaria 2026): il conguaglio scritto alla fine locazione del 1 luglio 2026 non passa a Carlo con questo passaggio, come non era passato a Elsa con la vendita del 1 settembre 2026')
+        // Dalla 1.11.0-beta.53 il motivo dice anche l'alternativa, come il pannello.
+        ->and($motivi)->toContain('€ 60,16 dei giorni dopo l\'uscita di Ines restano a carico di Ugo, o di Elsa se la fermata della vendita del 1 settembre 2026 è già stata regolata (gestione Ordinaria 2026): il conguaglio scritto alla fine locazione del 1 luglio 2026 non passa a Carlo con questo passaggio, come non era passato a Elsa con la vendita del 1 settembre 2026')
         ->and(implode(' ', fds50Storico($s, $seconda)['fermate'] ?? []))->toContain('da regolare a mano con Carlo, o fra Elsa e Carlo se la fermata della vendita del 1 settembre 2026 era già stata regolata.')
-        ->and(implode(' | ', app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($seconda->fresh())))->toContain('(€ 60,16 a credito di Ugo o di Elsa, a debito di Carlo)');
+        // Dalla 1.11.0-beta.53 gli avvisi dell'annullamento non leggono il registro della fermata: nominano i saldi scritti a mano dopo la
+        // registrazione (qui nessuno), e i saldi legati li dice l'effetto.
+        ->and(implode(' | ', app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($seconda->fresh())))->not->toContain('a debito di Carlo')->not->toContain('Wallet');
 });
 
 it('ripresa — Ugo e Rita comproprietari al 50 %, Ugo vende la sua metà a Elsa il 1/9 (la fermata, € 60,16, resta a carico di Ugo), Elsa rivende a Carlo il 1/11: la seconda vendita non dice che la fermata di prima è «rimasta a carico di Ugo e Rita», né che i € 30,08 di Carlo restano a carico di Ugo e Rita', function () {

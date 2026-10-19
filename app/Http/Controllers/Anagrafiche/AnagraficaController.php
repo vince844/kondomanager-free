@@ -314,12 +314,21 @@ class AnagraficaController extends Controller
         $righeDellaPersona = \Illuminate\Support\Facades\DB::table('anagrafica_immobile')->where('anagrafica_id', $anagrafica->id)->get(['id', 'immobile_id']);
         $unitaDellaPersona = $righeDellaPersona->pluck('immobile_id')->unique()->all();
         $idRighe = $righeDellaPersona->pluck('id')->map(fn ($id) => (int) $id)->all();
-        if (\App\Models\Gestionale\Subentro::where('anagrafica_uscente_id', $anagrafica->id)->orWhere('anagrafica_entrante_id', $anagrafica->id)->exists()
+        $parteDiUnPassaggio = \App\Models\Gestionale\Subentro::where('anagrafica_uscente_id', $anagrafica->id)->orWhere('anagrafica_entrante_id', $anagrafica->id)->exists()
             || \App\Models\Saldo::where('anagrafica_id', $anagrafica->id)->whereNotNull('subentro_id')->exists()
             || ($unitaDellaPersona !== [] && \App\Models\Gestionale\Subentro::whereIn('immobile_id', $unitaDellaPersona)->get()
-                ->contains(fn ($s) => in_array((int) $anagrafica->id, $s->entranti(), true) || array_intersect($s->righeDelRegistro(), $idRighe) !== []))) {
+                ->contains(fn ($s) => in_array((int) $anagrafica->id, $s->entranti(), true) || array_intersect($s->righeDelRegistro(), $idRighe) !== []));
+        // 1.11.0-beta.53 (Coda 244): anche un saldo del Wallet legato a un passaggio. La cascata lo toglierebbe in silenzio, e
+        // l'annullamento del passaggio non lo troverebbe più per toglierlo o nominarlo.
+        $legate = \App\Models\Saldo::where('anagrafica_id', $anagrafica->id)->whereNotNull('passaggio_id')->get(['id', 'condominio_id', 'esercizio_id', 'passaggio_id']);
+        if ($parteDiUnPassaggio || $legate->isNotEmpty()) {
+            // Chi ha solo saldi legati non compare in un passaggio: sono i saldi che la nominano, e la frase dice i loro fatti. Chi è parte di un
+            // passaggio resta anche senza.
             return back()->with(
-                $this->flashError('Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione, usufrutto o successione): non si può eliminare, perché lo storico delle unità e il conguaglio in saldi la nominano.')
+                $this->flashError($parteDiUnPassaggio
+                    ? 'Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione, usufrutto o successione): non si può eliminare, perché lo storico delle unità, il conguaglio in saldi e i saldi legati a un passaggio la nominano.'
+                    : 'Questa anagrafica non si può eliminare, perché i saldi legati a un passaggio di titolarità (vendita, locazione, usufrutto o successione) la nominano. '
+                        . \App\Services\Subentro\FermataDopoScrivi::fattiDeiLegati($legate, null, 'la parte', togli: true))
             );
         }
 

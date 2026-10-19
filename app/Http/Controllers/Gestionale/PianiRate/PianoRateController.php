@@ -652,18 +652,9 @@ class PianoRateController extends Controller
             });
         } else {
             // Logica Piani Ordinari (Legge dai capitoli come faceva prima). Il tipo è quello del segno con cui il motore distribuisce la voce:
-            // il modale offre come destinazione solo le voci dello stesso tipo, e un capitolo con spese ed entrate insieme non si sposta.
-            $pianoRate->loadMissing(['capitoli.tabelleMillesimali', 'capitoli.sottoconti.tabelleMillesimali']);
-            $sources = $pianoRate->capitoli->map(function ($conto) use ($pianoRate) {
-                $importoReale = $conto->pivot->importo ?? $conto->importo; 
-                return [
-                    'id'                => $conto->id,
-                    'nome'              => $conto->nome,
-                    'tipo'              => BudgetMovementService::tipoDelSegno($conto, $pianoRate->created_at),
-                    'importo_residuo'   => $importoReale,
-                    'formatted_residuo' => MoneyHelper::format($importoReale, false)
-                ];
-            });
+            // il modale offre come destinazione solo le voci dello stesso tipo, e un capitolo con spese ed entrate insieme non si sposta. Una voce
+            // che l'avviso della spesa negativa nomina, e il capitolo che la ripartisce, non si offrono: il server le rifiuta come sorgente.
+            $sources = app(BudgetMovementService::class)->sorgentiPerLaPagina($pianoRate);
         }
         // -------------------------------------------------------------
 
@@ -703,6 +694,8 @@ class PianoRateController extends Controller
             'copertura' => $coperturaData,
             'sources' => $sources, // <--- Ora questo conterrà le fatture!
             'destinations' => $destinations,
+            // Da quale menu di «Sposta spesa» il server ha tolto delle voci di spesa scritte con il meno: il modale lo dice solo lì.
+            'spese_negative_fuori_dai_menu' => app(BudgetMovementService::class)->speseNegativeFuoriDaiMenu($pianoRate, $pianoContoId),
             'has_unpublished_rates' => Evento::where('meta->type', 'scadenza_rata_condomino')
                 ->where('meta->context->piano_rate_id', $pianoRate->id)
                 ->where('meta->is_emitted', true)        

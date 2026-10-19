@@ -65,7 +65,10 @@ function b52EbAGiornale(): array
     return $s;
 }
 
-/** Un piano straordinario con una fattura su una voce: la voce è bloccata anche dalle fatture del piano, se è approvato. */
+/**
+ * Un piano straordinario con una fattura su una voce: la voce è bloccata anche dalle fatture del piano, se è approvato. La riga è di spesa fuori
+ * preventivo, la sola che il piano straordinario ripartisce sulla voce (dalla 1.11.0-beta.53 la riga ordinaria di una fattura non blocca la sua voce).
+ */
 function b52EbPianoDaFatture(array $s, int $conto, string $stato = 'approvato'): void
 {
     $piano = PianoRate::create(['gestione_id' => $s['g']->id, 'condominio_id' => $s['c']->id, 'esercizio_id' => $s['e']->id, 'nome' => 'Spese da finanziare', 'stato' => $stato,
@@ -76,7 +79,7 @@ function b52EbPianoDaFatture(array $s, int $conto, string $stato = 'approvato'):
         'data_documento' => '2026-01-02', 'data_scadenza' => '2026-02-01', 'is_pregresso' => false, 'importo_imponibile' => 10000, 'importo_iva' => 0, 'importo_ritenuta' => 0,
         'totale_documento' => 10000, 'netto_a_pagare' => 10000, 'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico']);
     DB::table('righe_fattura')->insert(['fattura_passiva_id' => $fattura->id, 'conto_id' => $conto, 'immobile_id' => null, 'descrizione' => 'Canone', 'aliquota_iva' => 0,
-        'importo_imponibile' => 10000, 'importo_iva' => 0, 'is_sopravvenienza' => false, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now()]);
+        'importo_imponibile' => 10000, 'importo_iva' => 0, 'is_sopravvenienza' => true, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now()]);
     $piano->fatture()->attach($fattura->id, ['importo_collegato' => 10000]);
 }
 
@@ -117,17 +120,17 @@ it('piano approvato senza niente a giornale: la voce di entrata si nomina con la
     $dati = $passaggio === 'riserva' ? ruRiserva($s) : b52UsCostituzione($s);
     $bloccate = ruAnteprima($this, $s, $dati)['ordinaria']['frasi_bloccate'];
 
-    expect($bloccate)->toBe(['La voce ' . B52EB_ETICHETTA_ENTRATA . ' è nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si sposta, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'entrata di quella voce a ' . $chi . ', nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio la voce si sposterà; poi riapprova il piano e ricalcolalo.']);
+    expect($bloccate)->toBe(['La voce ' . B52EB_ETICHETTA_ENTRATA . ' è nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si sposta, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'entrata di quella voce ' . $chi . ', nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio la voce si sposterà; poi riapprova il piano e ricalcolalo.']);
 })->with([
-    'riserva' => ['riserva', 'Acquirente Elsa'],
-    'costituzione' => ['costituzione', 'Venditore Ugo'],
+    'riserva' => ['riserva', 'ad Acquirente Elsa'],
+    'costituzione' => ['costituzione', 'a Venditore Ugo'],
 ]);
 
 it('piano approvato senza niente a giornale, con una spesa e un\'entrata: «l\'ordinaria o l\'entrata di quelle voci», e nessuna delle due è chiamata solo «ordinaria»', function () {
     $s = b52EbApprovato(conLaSpesa: true);
     $bloccate = ruAnteprima($this, $s, ruRiserva($s))['ordinaria']['frasi_bloccate'];
 
-    expect($bloccate)->toBe(['Le voci ' . B52EB_ETICHETTA_ENTRATA . ' e ' . B52EB_ETICHETTA_SPESA . ' sono nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si spostano, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'ordinaria o l\'entrata di quelle voci a Acquirente Elsa, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio le voci si sposteranno; poi riapprova il piano e ricalcolalo.']);
+    expect($bloccate)->toBe(['Le voci ' . B52EB_ETICHETTA_ENTRATA . ' e ' . B52EB_ETICHETTA_SPESA . ' sono nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si spostano, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'ordinaria o l\'entrata di quelle voci ad Acquirente Elsa, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio le voci si sposteranno; poi riapprova il piano e ricalcolalo.']);
 });
 
 it('piano con rate a giornale: nella riserva «l\'entrata di quella voce resta» a chi vende, nella costituzione «il conguaglio dà» l\'entrata a chi entra', function (string $passaggio, string $frase) {
@@ -138,7 +141,7 @@ it('piano con rate a giornale: nella riserva «l\'entrata di quella voce resta»
     expect($bloccate)->toBe(['La voce ' . B52EB_ETICHETTA_ENTRATA . ' è nel piano «Preventivo 2026», che non si ricalcola più: non si sposta, e per quel piano non serve: ' . $frase . ' Resta sul «Proprietario» per i piani che verranno in questa gestione.']);
 })->with([
     'riserva' => ['riserva', 'l\'entrata di quella voce resta a Venditore Ugo, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia.'],
-    'costituzione' => ['costituzione', 'il conguaglio dà a Acquirente Elsa l\'entrata di quella voce dal 1 maggio 2026, anche sulle quote ancora in bozza.'],
+    'costituzione' => ['costituzione', 'il conguaglio dà ad Acquirente Elsa l\'entrata di quella voce dal 1 maggio 2026, anche sulle quote ancora in bozza.'],
 ]);
 
 it('voce nelle fatture di un piano straordinario approvato: nominata come entrata, con la sua etichetta', function () {
@@ -146,7 +149,7 @@ it('voce nelle fatture di un piano straordinario approvato: nominata come entrat
     b52EbPianoDaFatture($s, b52EbConto($s['ctmEntrata']));
     $bloccate = ruAnteprima($this, $s, ruRiserva($s))['ordinaria']['frasi_bloccate'];
 
-    expect($bloccate)->toBe(['La voce ' . B52EB_ETICHETTA_ENTRATA . ' è nelle fatture del piano straordinario «Spese da finanziare», approvato: resta sul «Proprietario», e nei piani ordinari generati o ricalcolati andrà a Acquirente Elsa, nudo proprietario.']);
+    expect($bloccate)->toBe(['La voce ' . B52EB_ETICHETTA_ENTRATA . ' è nelle fatture del piano straordinario «Spese da finanziare», approvato: resta sul «Proprietario», e nei piani ordinari generati o ricalcolati andrà ad Acquirente Elsa, nudo proprietario.']);
 });
 
 it('voce bloccata da più piani: la frase la nomina come entrata e per ogni piano dice «l\'entrata della voce»', function (string $primoPiano, string $parte) {
@@ -162,14 +165,14 @@ it('voce bloccata da più piani: la frase la nomina come entrata e per ogni pian
     expect($bloccate)->toBe(['La voce ' . B52EB_ETICHETTA_ENTRATA . ' è bloccata da più piani — ' . $parte . '; «Spese da finanziare», straordinario, nelle sue fatture. Non si sposta.']);
 })->with([
     'preventivo a giornale' => ['giornale', '«Preventivo 2026», che non si ricalcola più: lì l\'entrata di quella voce resta a Venditore Ugo, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia'],
-    'preventivo senza niente a giornale' => ['senza', '«Preventivo 2026», approvato e ancora senza niente a giornale: generato o ricalcolato, darà dal 1 maggio 2026 l\'entrata della voce a Acquirente Elsa, nudo proprietario'],
+    'preventivo senza niente a giornale' => ['senza', '«Preventivo 2026», approvato e ancora senza niente a giornale: generato o ricalcolato, darà dal 1 maggio 2026 l\'entrata della voce ad Acquirente Elsa, nudo proprietario'],
 ]);
 
 it('controprova — una spesa bloccata dice «l\'ordinaria di quella voce» e si nomina per il solo nome, come prima', function () {
     $s = ruScenario('prima_rata', 0);
     $bloccate = ruAnteprima($this, $s, ruRiserva($s))['ordinaria']['frasi_bloccate'];
 
-    expect($bloccate)->toBe(['La voce Spese generali è nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si sposta, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'ordinaria di quella voce a Acquirente Elsa, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio la voce si sposterà; poi riapprova il piano e ricalcolalo.']);
+    expect($bloccate)->toBe(['La voce Spese generali è nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si sposta, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'ordinaria di quella voce ad Acquirente Elsa, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio la voce si sposterà; poi riapprova il piano e ricalcolalo.']);
 });
 
 // --- I motivi del cancello della riserva ------------------------------------------------------------------------------------------
@@ -178,7 +181,7 @@ it('cancello — l\'entrata bloccata dal piano che si ricalcola: elenco fra trat
     $s = b52EbConRighe(['entrata']);
     $motivi = b52EbMotivi($this, $s);
 
-    expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno a Acquirente Elsa, nudo proprietario, anche se fra le parti l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario: il piano le blocca, e il passaggio non le sposta. Se devono restare a Venditore Ugo, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio')
+    expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno ad Acquirente Elsa, nudo proprietario, anche se fra le parti l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario: il piano le blocca, e il passaggio non le sposta. Se devono restare a Venditore Ugo, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio')
         ->not->toContain('1004')
         ->not->toContain('l\'ordinaria');
 });
@@ -187,14 +190,14 @@ it('cancello — una spesa e un\'entrata bloccate insieme: l\'art. 1004 c.c. res
     $s = b52EbConRighe(['spese', 'entrata']);
     $motivi = b52EbMotivi($this, $s);
 
-    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_SPESA . ' e ' . B52EB_ETICHETTA_ENTRATA . ' — vanno a Acquirente Elsa, nudo proprietario, anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.), e lo è l\'entrata, se è un frutto civile: il piano le blocca, e il passaggio non le sposta.');
+    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_SPESA . ' e ' . B52EB_ETICHETTA_ENTRATA . ' — vanno ad Acquirente Elsa, nudo proprietario, anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.), e lo è l\'entrata, se è un frutto civile: il piano le blocca, e il passaggio non le sposta.');
 });
 
 it('cancello — due entrate bloccate dal piano: l\'elenco le nomina tutte e due e la clausola va al plurale', function () {
     $s = b52EbConRighe(['entrata', 'canone'], conUnSecondoCanone: true);
     $motivi = b52EbMotivi($this, $s);
 
-    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' e Canone parcheggio (Proprietà, Ordinaria 2026, entrata) — vanno a Acquirente Elsa, nudo proprietario, anche se fra le parti l\'entrata di quelle voci, se sono frutti civili, è dell\'usufruttuario: il piano le blocca')
+    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' e Canone parcheggio (Proprietà, Ordinaria 2026, entrata) — vanno ad Acquirente Elsa, nudo proprietario, anche se fra le parti l\'entrata di quelle voci, se sono frutti civili, è dell\'usufruttuario: il piano le blocca')
         ->not->toContain('1004');
 });
 
@@ -203,7 +206,7 @@ it('cancello — l\'entrata bloccata da un altro piano approvato: stesse parole,
     b52EbPianoDaFatture($s, b52EbConto($s['ctmEntrata']));
     $motivi = b52EbMotivi($this, $s);
 
-    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno a Acquirente Elsa, nudo proprietario, anche se fra le parti l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario: un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale')
+    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno ad Acquirente Elsa, nudo proprietario, anche se fra le parti l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario: un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale')
         ->not->toContain('1004');
 });
 
@@ -211,7 +214,7 @@ it('cancello — l\'entrata che il passaggio non propone (coefficienti che non f
     $s = b52EbConRighe(['spese'], stato: 'bozza', ripartizioneEntrata: ['proprietario' => 60, 'usufruttuario' => 30]);
     $motivi = b52EbMotivi($this, $s);
 
-    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno a Acquirente Elsa, nudo proprietario, perché il programma addebita secondo i coefficienti anche se fra le parti l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario;')
+    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno ad Acquirente Elsa, nudo proprietario, perché il programma addebita secondo i coefficienti anche se fra le parti l\'entrata di quella voce, se è un frutto civile, è dell\'usufruttuario;')
         ->toContain('non su «Inquilino», che su un\'unità affittata le dà all\'inquilino')
         ->not->toContain('1004')
         ->not->toContain('fa pagare');
@@ -222,7 +225,7 @@ it('cancello — l\'entrata a cui hai tolto la spunta: nominata con l\'etichetta
     $dati = ruRiserva($s, extra: ['voci_da_tenere' => [$s['ctmEntrata']]]);
     $motivi = implode(' | ', ruAnteprima($this, $s, $dati)['cancello']['motivi']);
 
-    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno a Acquirente Elsa, nudo proprietario, perché hai tolto loro la spunta');
+    expect($motivi)->toContain('le voci sul «Proprietario» — ' . B52EB_ETICHETTA_ENTRATA . ' — vanno ad Acquirente Elsa, nudo proprietario, perché hai tolto loro la spunta');
 });
 
 // --- Quando a passare sono solo entrate -------------------------------------------------------------------------------------------
@@ -263,7 +266,7 @@ it('lo storico, se a passare sono solo entrate, apre senza l\'art. 1004 c.c. e d
     $s = b52UsScenarioPannello();
     $sub = ruRegistra($this, $s, ruRiserva($s, extra: ['voci_da_tenere' => [b52UsAssociazioneSpese($s)]]));
 
-    expect(fds50Storico($s, $sub)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario, la proposta di legge: questa entrata è passata dal «Proprietario» all\'«Usufruttuario».');
+    expect(fds50Storico($s, $sub)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario: questa entrata è passata dal «Proprietario» all\'«Usufruttuario».');
 });
 
 it('lo storico con due entrate che passano: «queste entrate sono passate», senza l\'art. 1004 c.c.', function () {
@@ -271,12 +274,12 @@ it('lo storico con due entrate che passano: «queste entrate sono passate», sen
     b52UsVoce($s, 'Canone parcheggio', 'entrata', 12000, ['proprietario' => 100]);
     $sub = ruRegistra($this, $s, ruRiserva($s, extra: ['voci_da_tenere' => [b52UsAssociazioneSpese($s)]]));
 
-    expect(fds50Storico($s, $sub)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario, la proposta di legge: queste entrate sono passate dal «Proprietario» all\'«Usufruttuario».');
+    expect(fds50Storico($s, $sub)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario: queste entrate sono passate dal «Proprietario» all\'«Usufruttuario».');
 });
 
-it('controprova — lo storico con una spesa fra le voci che passano cita l\'art. 1004 c.c. come prima', function () {
+it('lo storico con una spesa fra le voci che passano cita l\'art. 1004 c.c. come la regola di legge', function () {
     $s = b52UsScenarioPannello();
     $sub = ruRegistra($this, $s, ruRiserva($s));
 
-    expect(fds50Storico($s, $sub)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: queste voci sono passate dal «Proprietario» all\'«Usufruttuario».');
+    expect(fds50Storico($s, $sub)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario, secondo la regola di legge (art. 1004 c.c.): queste voci sono passate dal «Proprietario» all\'«Usufruttuario».');
 });

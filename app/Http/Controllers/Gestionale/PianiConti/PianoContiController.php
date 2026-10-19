@@ -17,6 +17,7 @@ use App\Models\Tabella;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestione;
+use App\Services\Gestionale\BloccoDellaVoce;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
@@ -469,6 +470,18 @@ class PianoContiController extends Controller
         ContoResource::$budgetOriginaliMap = $budgetOriginaliMap; // Passata
         ContoResource::$spesoMap = $fatturatoMap;
         ContoResource::$pianiStraordinariMap = $pianiStraordinariMap;
+        // Il blocco dei piani approvati per ogni voce dell'albero, a ogni livello, letto una volta.
+        $idDellAlbero = [];
+        $raccogli = function ($voci) use (&$raccogli, &$idDellAlbero) {
+            foreach ($voci as $voce) {
+                $idDellAlbero[] = (int) $voce->id;
+                if ($voce->relationLoaded('sottoconti')) {
+                    $raccogli($voce->sottoconti);
+                }
+            }
+        };
+        $raccogli($conti);
+        ContoResource::$bloccoMap = Conto::pianiCheBloccanoLaVoce($idDellAlbero);
 
         // --- FIX v1.9.23: TOTALI SEPARATI (Preventivo vs Sopravvenienze) ---
         // beta.30: i totali usano il budget ORIGINALE, non `$conto->importo` — che poco
@@ -476,13 +489,15 @@ class PianoContiController extends Controller
         // "Preventivo" includeva già gli sfori e non era più un preventivo: accanto al
         // nuovo totale Consuntivo l'incoerenza sarebbe stata evidente (due numeri che
         // convergono man mano che si sfora, invece di divergere).
-        // «Preventivo» è la somma delle sole voci di spesa; le voci di entrata hanno il loro totale (in valore assoluto) e il
-        // netto da ripartire è la differenza. Il padre-mastro ha importo zero: i sottoconti si contano uno per uno, ciascuno
-        // col suo tipo.
+        // «Preventivo» è la somma delle sole voci di spesa; le voci di entrata hanno il loro totale e il netto da ripartire è la
+        // differenza. Ogni voce conta come la conta il calcolo delle quote, per il valore assoluto dal lato del suo tipo
+        // (`Conto::partiDelTipo`): una spesa scritta con il meno da una versione vecchia si addebita in positivo, e la pagina la
+        // nomina (`speseNegative`). Il padre-mastro ha importo zero: i sottoconti si contano uno per uno, ciascuno col suo tipo.
         $totalePreventivo = 0;
         $totaleEntrate = 0;
         $totaleSopravvenienze = 0;
         $totaleConsuntivo = 0;
+        $speseNegative = [];
 
         // Il budget originale vale per il PREVENTIVO. Non per le sopravvenienze: quelle
         // nascono fuori preventivo, il loro budget originale è zero per definizione, e
@@ -497,7 +512,7 @@ class PianoContiController extends Controller
         // si vedeva: la riga non c'era e il badge sembrava coerente con l'elenco. Da questa beta
         // la riga c'è, e un preventivo di € 2.400,00 a video accanto a un badge che non lo
         // comprende è una contraddizione sulla stessa schermata — nata qui, quindi da chiudere qui.
-        $sommaRamo = function ($conto, bool $dentroTecnico) use (&$sommaRamo, &$totalePreventivo, &$totaleEntrate, &$totaleSopravvenienze, &$totaleConsuntivo, $preventivoDi, $spesoDi) {
+        $sommaRamo = function ($conto, bool $dentroTecnico) use (&$sommaRamo, &$totalePreventivo, &$totaleEntrate, &$totaleSopravvenienze, &$totaleConsuntivo, &$speseNegative, $preventivoDi, $spesoDi) {
             $totaleConsuntivo += $spesoDi($conto);
 
             // Il flag `is_tecnico` si eredita lungo il ramo: un figlio di una sopravvenienza è
@@ -506,10 +521,13 @@ class PianoContiController extends Controller
 
             if ($tecnico) {
                 $totaleSopravvenienze += (int) $conto->importo;
-            } elseif (Conto::segnoDelTipo((string) $conto->tipo) > 0) {
-                $totalePreventivo += $preventivoDi($conto);
             } else {
-                $totaleEntrate += abs($preventivoDi($conto));
+                $parti = Conto::partiDelTipo((string) $conto->tipo, $preventivoDi($conto));
+                $totalePreventivo += $parti['spese'];
+                $totaleEntrate += $parti['entrate'];
+                if (Conto::eSpesaNegativa((string) $conto->tipo, $preventivoDi($conto))) {
+                    $speseNegative[] = ['id' => (int) $conto->id, 'nome' => (string) $conto->nome, 'importo' => $preventivoDi($conto)];
+                }
             }
 
             foreach ($conto->sottoconti as $sottoconto) {
@@ -520,6 +538,19 @@ class PianoContiController extends Controller
         foreach ($conti as $conto) {
             $sommaRamo($conto, false);
         }
+
+        // Le voci di spesa scritte con il meno, con i piani della gestione che le addebitano (anche dalla riga di un capitolo sopra di loro): la
+        // pagina le nomina sotto i totali, e per una voce in un piano non propone una correzione che lì verrebbe rifiutata, ma rimanda alle pagine
+        // dei piani il cui avviso la nomina (`avviso`). `bloccano` sono i piani che ne bloccano l'importo senza addebitarla (un piano approvato che
+        // tiene la voce o il suo capitolo): lì la pagina non propone di correggere l'importo, ma nomina il piano. `terzo_livello` dice una voce al terzo
+        // livello, che si salva solo con un capitolo padre di primo livello: la pagina lo dice prima della correzione.
+        $pianiDelleNegative = $gestione
+            ? \App\Services\Riparto\VoceDiSpesaNegativa::pianiPerVoce(array_column($speseNegative, 'id'), (int) $gestione->id)
+            : [];
+        $bloccoDelleNegative = Conto::pianiCheBloccanoLaVoce(array_column($speseNegative, 'id'));
+        $negativeAlTerzoLivello = \App\Services\Riparto\VoceDiSpesaNegativa::alTerzoLivello(array_column($speseNegative, 'id'));
+        $speseNegative = array_map(fn ($v) => $v + ['piani' => $pianiDelleNegative[$v['id']] ?? [], 'bloccano' => $bloccoDelleNegative[$v['id']] ?? [],
+            'terzo_livello' => in_array($v['id'], $negativeAlTerzoLivello, true)], $speseNegative);
         // -----------------------------------------------------------------
 
         $fornitori = Fornitore::attivi()->orderBy('ragione_sociale')->get(['id', 'ragione_sociale']);
@@ -536,6 +567,7 @@ class PianoContiController extends Controller
             'totaleDaRipartire'     => $totalePreventivo - $totaleEntrate,
             'totaleSopravvenienze'  => $totaleSopravvenienze,
             'totaleConsuntivo'      => $totaleConsuntivo,
+            'speseNegative'         => $speseNegative,
         ]);
     }
 
@@ -578,6 +610,31 @@ class PianoContiController extends Controller
 
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
     {
+        $vociIds = Conto::where('piano_conto_id', $pianoConto->id)->pluck('id')->all();
+
+        // Una voce con delle righe di fattura non si elimina, e riportare un piano in bozza non le toglie: la frase dice le righe, prima di quella dei
+        // piani, che proporrebbe una bozza dopo la quale il piano dei conti resterebbe lì.
+        $vociConRighe = DB::table('righe_fattura')->whereIn('conto_id', $vociIds)->distinct()->count('conto_id');
+        if ($vociConRighe > 0) {
+            return to_route('admin.gestionale.esercizi.piani-conti.index', [
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id,
+            ])->with($this->flashError(BloccoDellaVoce::rifiutoDelPianoDeiContiPerLeRighe($vociConRighe)));
+        }
+
+        // Le voci se ne vanno con il piano dei conti, e con loro le righe dei piani rate che le tengono: un piano approvato, emesso o chiuso che ne
+        // tiene una lo impedisce, con la regola delle voci (`Conto::pianiCheBloccanoLaVoce`). Un piano in bozza non blocca.
+        $tengono = array_merge([], ...array_values(Conto::pianiCheBloccanoLaVoce($vociIds)));
+        if ($tengono !== []) {
+            return to_route('admin.gestionale.esercizi.piani-conti.index', [
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id,
+            ])->with($this->flashError(BloccoDellaVoce::frase(
+                'Eliminazione inibita: il piano dei conti non si elimina finché delle sue voci sono ' . BloccoDellaVoce::nelPiano($tengono),
+                $tengono,
+                'elimina il piano dei conti',
+                'il piano dei conti resta',
+            )));
+        }
+
         try {
             $pianoConto->delete();
             return to_route('admin.gestionale.esercizi.piani-conti.index', [

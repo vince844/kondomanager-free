@@ -205,7 +205,7 @@ class PassaggioController extends Controller
                 // Decisione 25: con le bozze che passano la coppia può rovesciarsi, e allora il credito è di chi entra.
                 'conguaglio_rovesciato' => $esito['coppie'] > 0 && (int) ($anteprima['rate']['conguaglio']['totale_entrante'] ?? 0) < 0,
                 'riassegnate' => $esito['riassegnate'] ?? 0,
-                'riassegnate_frase' => $this->fraseRiassegnate($anteprima['rate']['conguaglio']['riassegnazione'] ?? [], $subentro->entrante?->nome, $subentro->successione()),
+                'riassegnate_frase' => $this->fraseRiassegnate($anteprima['rate']['conguaglio']['riassegnazione'] ?? [], $subentro->entrante?->nome),
                 'rinuncia'    => $subentro->conguaglioRinunciato(),
                 // Decisione 72 (1.11.0-beta.48): il conguaglio della successione non scritto, senza un accordo dichiarato.
                 'non_scritto' => $subentro->conguaglioNonScritto(),
@@ -226,11 +226,11 @@ class PassaggioController extends Controller
 
     /**
      * «Le 8 rate in bozza del piano «Preventivo 2026» sono passate a Bianchi Anna»: la stessa cosa che il pannello
-     * diceva al futuro, detta al passato dopo la scrittura (decisione 25).
+     * diceva al futuro, detta al passato dopo la scrittura (decisione 25). «ad» davanti a un nome che comincia per A, in ogni passaggio.
      *
      * @param list<array{piano: string, n: int}> $riassegnazione
      */
-    private function fraseRiassegnate(array $riassegnazione, ?string $entrante, bool $successione = false): ?string
+    private function fraseRiassegnate(array $riassegnazione, ?string $entrante): ?string
     {
         if ($riassegnazione === []) {
             return null;
@@ -239,10 +239,7 @@ class PassaggioController extends Controller
             ? sprintf('la rata in bozza del piano «%s» è passata', $r['piano'])
             : sprintf('le %d rate in bozza del piano «%s» sono passate', $r['n'], $r['piano']), $riassegnazione);
 
-        // Rilievo R5 della Fase 1-bis della .48, decisione 73 (4): nella successione «ad» davanti ai nomi che cominciano per A.
-        $chi = $entrante ?? 'chi entra';
-
-        return ucfirst(implode('; ', $parti)) . sprintf(' %s: è cambiato l\'intestatario, non l\'importo.', $successione ? app(\App\Services\Subentro\FrasiObbligati::class)->a($chi) : 'a ' . $chi);
+        return ucfirst(implode('; ', $parti)) . sprintf(' %s: è cambiato l\'intestatario, non l\'importo.', \App\Services\Subentro\FrasiObbligati::a($entrante ?? 'chi entra'));
     }
 
     /**

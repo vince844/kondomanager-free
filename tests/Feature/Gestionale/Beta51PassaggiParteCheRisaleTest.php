@@ -168,12 +168,18 @@ it('O-INT-ANNULLA — gli avvisi dell\'annullamento della fine di Luca dicono ch
 
 it('O-INT-AVVISI — «Annulla il conguaglio» di Ines, con la fine di Luca registrata: gli avvisi nominano anche la salita della parte verso Elsa (da € 30,58 a € 61,15) e il Wallet da rivedere', function () {
     $s = b51aInt($this);
+    // I saldi della strada a mano della vendita, legati a lei dal modale del Wallet (dalla 1.11.0-beta.53 l'avviso nomina i saldi legati).
+    foreach ([['Ugo', -9074], ['Elsa', 9074]] as [$chi, $importo]) {
+        $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
+            'anagrafica_id' => $s['persone'][$chi]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $s['vendita']->id,
+        ])->assertSessionHasNoErrors();
+    }
     fds50Registra($this, $s, b51aIntFine($s, '2026-12-01'));
 
     $avvisi = b51aAvvisiDelConguaglio($s['fine_ines']);
     $salita = collect($avvisi)->filter(fn ($t) => str_contains($t, '30,58') && str_contains($t, '61,15'))->values();
     expect($salita)->toHaveCount(1, 'Gli avvisi di «Annulla il conguaglio» non dicono la salita (€ 30,58 → € 61,15): ' . implode(' | ', $avvisi));
     expect(str_contains($salita[0], 'Elsa'))->toBeTrue('L\'avviso non nomina Elsa: ' . $salita[0]);
-    // Il Wallet della fermata della vendita resta fra gli avvisi, com'era.
+    // Il Wallet della fermata della vendita resta fra gli avvisi, con i saldi legati a lei.
     expect(collect($avvisi)->contains(fn ($t) => str_contains($t, 'La vendita del 1 ottobre 2026') && str_contains($t, 'Wallet')))->toBeTrue('Manca l\'avviso della vendita con il Wallet: ' . implode(' | ', $avvisi));
 });

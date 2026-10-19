@@ -13,7 +13,7 @@
  * La parola «da ripartire» compare dove il netto differisce dalle spese; una colonna fissa dell'elenco porta sempre il nome del netto.
  *
  * Le frasi che dicono come si ottiene il netto («da ripartire … (spese …, entrate …)») si firmano con la clausola del motore, letta alla lettera:
- * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService.php:1500-1502` e `:1586-1589`): le voci di
+ * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e quello con l'importo della voce): le voci di
  * un tipo diverso da spesa e uscita si sottraggono.
  *
  * Aperto l'elenco, ogni voce di entrata porta l'etichetta «Entrata» e l'importo con il meno, come le stampe del riparto.

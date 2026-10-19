@@ -51,6 +51,8 @@ const props = defineProps<{
   needsMigration: boolean;
   sources: Array<any>;      
   destinations: Array<any>; 
+  // Da quale menu di «Sposta spesa» il server ha tolto delle voci di spesa scritte con il meno (`BudgetMovementService::speseNegativeFuoriDaiMenu`).
+  spese_negative_fuori_dai_menu?: { sorgenti: boolean; destinazioni: boolean } | null;
   has_unpublished_rates?: boolean;
   /**
    * Perché il piano non si riscrive più e come si riapre, una voce per riga (`PianoRate::ragioniInParole()`, `rimediDelFermo()`);
@@ -128,7 +130,9 @@ const formApprovazione = ref({
 
 const orphanCheckboxes = reactive<Record<number, boolean>>({});
 
-const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean, importo: number } | null>(null);
+// `tipo` è quello che il server manda per ogni voce (`PianoRateResource`, dal segno della voce alla data del piano): con un'entrata la conferma
+// dice che il totale da ripartire aumenta.
+const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean, importo: number, tipo?: string } | null>(null);
 const isDeleteItemModalOpen = ref(false);
 const isCapitoliExpanded = ref(false);
 const isReloadingCapitoli = ref(false);
@@ -1969,10 +1973,11 @@ const printRipartoCapitoli = () => {
             </p>
         </div>
         <div v-else class="text-sm text-gray-700 dark:text-neutral-300">
-            Stai per eliminare la voce di spesa:
+            {{ itemToDelete?.tipo === 'entrata' ? 'Stai per eliminare la voce di entrata:' : 'Stai per eliminare la voce di spesa:' }}
             <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center dark:bg-neutral-900">
                 <span>{{ itemToDelete?.nome }}</span>
-                <span class="font-bold text-slate-900 dark:text-neutral-100">{{ itemToDelete?.importo ? euro(itemToDelete.importo) : '' }}</span>
+                <!-- «L'importo indicato» è una grandezza: una copia scritta col meno (dato di prima della 1.11.0-beta.52) si mostra senza il segno. -->
+                <span class="font-bold text-slate-900 dark:text-neutral-100">{{ itemToDelete?.importo ? euro(Math.abs(itemToDelete.importo)) : '' }}</span>
             </div>
         </div>
         <div class="mt-4 space-y-3">
@@ -1982,7 +1987,9 @@ const printRipartoCapitoli = () => {
             </div>
             <div class="flex items-start gap-2 text-xs text-slate-600 dark:text-neutral-300">
                 <PieChart class="w-4 h-4 text-blue-600 shrink-0 dark:text-blue-400" />
-                <span>Il <strong>totale del piano diminuirà</strong> dell'importo indicato.</span>
+                <!-- Per un gruppo la conferma non mostra un importo accanto al nome: la frase dice di quale importo si tratta. -->
+                <span v-if="itemToDelete?.tipo === 'entrata'">Il <strong>totale da ripartire aumenterà</strong> {{ itemToDelete?.is_parent ? 'dell\'importo del gruppo' : 'dell\'importo indicato' }}.</span>
+                <span v-else>Il <strong>totale del piano diminuirà</strong> {{ itemToDelete?.is_parent ? 'dell\'importo del gruppo' : 'dell\'importo indicato' }}.</span>
             </div>
             <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60">
                 <RotateCw class="w-4 h-4 shrink-0 mt-0.5" />
@@ -2001,6 +2008,7 @@ const printRipartoCapitoli = () => {
         :condominio-id="props.condominio.id"
         :sources="props.sources"
         :destinations="props.destinations"
+        :spese-negative-fuori="props.spese_negative_fuori_dai_menu"
         @success="showFeedback('Budget Spostato', 'Operazione completata con successo. Il residuo è stato aggiornato.', false)"
     />
 

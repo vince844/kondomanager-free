@@ -45,7 +45,7 @@ defineEmits(['update:open']);
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                   <span><strong>Due livelli, non tre:</strong> il capitolo raggruppa, il sottoconto porta l'importo e la tabella millesimale. Come <em>capitolo padre</em> si può scegliere solo una voce di primo livello — un sottoconto non può averne altri sotto di sé.
                   <br />
-                  Se aggiornando da una versione precedente trovi una voce con un <strong>triangolo ambra</strong>, è finita al terzo livello quando era ancora possibile: finché resta lì, un piano rate generato includendo tutte le voci <strong>non la addebita</strong>. Spostala sotto un capitolo di primo livello, oppure eliminala. Per trovarle tutte:
+                  Se aggiornando da una versione precedente trovi una voce con un <strong>triangolo ambra</strong>, è finita al terzo livello quando era ancora possibile: finché resta lì, un piano rate generato includendo tutte le voci <strong>non la addebita</strong>. Spostala sotto un capitolo di primo livello. Per trovarle tutte:
                   <code class="text-xs">php artisan kondomanager:verifica-struttura-conti</code>.</span>
                 </li>
                 <li class="flex gap-2">
@@ -69,7 +69,7 @@ defineEmits(['update:open']);
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                 <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Preventivo — «quanto avevo previsto»</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  L'importo deliberato per quella voce, <strong>IVA inclusa</strong>: il consuntivo con cui viene confrontato somma il lordo delle fatture, quindi un preventivo scritto al netto risulterebbe sforato appena registrata la prima spesa. Il budget inserito nei sottoconti risale e si somma sul capitolo padre. Si modifica selezionando la voce e usando "Modifica" nel pannello di destra.
+                  L'importo deliberato per quella voce, <strong>IVA inclusa</strong>: il consuntivo con cui viene confrontato somma il lordo delle fatture, quindi un preventivo scritto al netto risulterebbe sforato appena registrata la prima spesa. Il budget inserito nei sottoconti risale e si somma sul capitolo padre. Si modifica selezionando la voce e usando "Modifica" nel pannello di destra. Se la voce, o un capitolo sopra di lei, è in un piano rate approvato, o se un piano straordinario approvato finanzia una spesa fuori preventivo registrata sulla voce o su un capitolo sopra di lei, o la copertura di una spesa pregressa sulla voce, l'importo, il capitolo padre, il tipo, la tabella e le percentuali non si cambiano finché il piano non torna in bozza dalla sua pagina; lo stesso vale per un capitolo che un piano approvato tiene: non torna voce, e sotto di lui non si aggiungono né si spostano voci. La scheda lo dice.
                 </p>
               </div>
 
@@ -168,7 +168,7 @@ defineEmits(['update:open']);
                   <AlertTriangle class="w-4 h-4 text-amber-500" /> Quando la ripartizione è bloccata
                 </h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Se la voce è inclusa in un piano rate approvato o con rate già emesse, le tabelle non si possono più modificare: cambiarle renderebbe i riparti già comunicati ai condòmini diversi da quelli ricalcolati. Per intervenire occorre prima annullare il piano rate associato.
+                  Se la voce, o un capitolo sopra di lei, è in un piano rate approvato, o se un piano straordinario approvato finanzia una spesa fuori preventivo registrata sulla voce o su un capitolo sopra di lei, o la copertura di una spesa pregressa sulla voce, le tabelle e le percentuali non si possono più modificare: cambiarle renderebbe i riparti del piano diversi da quelli approvati. Per intervenire occorre prima riportare il piano in bozza dalla sua pagina; con delle rate emesse, prima vanno annullate le emissioni.
                 </p>
               </div>
             </div>

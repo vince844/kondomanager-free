@@ -7,7 +7,7 @@ import { Pencil, Trash2, Lock, Plus, Users, Coins, TrendingUp, TrendingDown, Che
 import MoneyInput from '@/components/MoneyInput.vue';
 import { unformat } from 'v-money3';
 import vSelect from "vue-select";
-import type { ImmobileConSaldi } from "@/types/gestionale/saldi";
+import type { ImmobileConSaldi, PassaggioLegabile } from "@/types/gestionale/saldi";
 import type { Building } from "@/types/buildings";
 import { etichettaRuolo } from "@/lib/gestionale/ruoli-immobile";
 
@@ -203,21 +203,42 @@ const modalForm = ref({
   tipo: 'debito' as 'credito' | 'debito',
   targetType: 'solidale' as 'solidale' | 'personale',
   anagraficaId: null as number | null,
-  importo: ''
+  importo: '',
+  // 1.11.0-beta.53: «Legato a un passaggio», spento di partenza; il passaggio lo sceglie l'amministratore, senza preselezioni.
+  legato: false,
+  passaggioId: null as number | null,
 });
 
-// Chi ha già un saldo sulla gestione. Il server (`CreateSaldoRequest`) non conta le righe che un passaggio ha scritto
-// (`subentro_id`): chi ha solo la riga di un conguaglio può avere accanto il suo saldo manuale.
+// Chi ha già un saldo sulla gestione. Il server (`CreateSaldoRequest`) non conta né le righe che un passaggio ha scritto
+// (`subentro_id`) né quelle legate a un passaggio (`passaggio_id`): chi ha solo righe così può avere accanto il suo saldo manuale.
 function idConUnSaldo(gestioneId: number | null): number[] {
   return props.immobile.saldi
-    .filter((s: any) => s.gestione_id == gestioneId && s.anagrafica_id != null && s.subentro_id == null)
+    .filter((s: any) => s.gestione_id == gestioneId && s.anagrafica_id != null && s.subentro_id == null && s.passaggio_id == null)
     .map((s: any) => s.anagrafica_id);
 }
 
-// Un saldo per l'intero immobile (senza persona) sulla gestione: il server (`CreateSaldoRequest`) ne ammette uno solo, e non conta le righe
-// che un passaggio ha scritto.
+// Un saldo per l'intero immobile (senza persona) sulla gestione: il server (`CreateSaldoRequest`) ne ammette uno solo, e non conta né le
+// righe che un passaggio ha scritto né quelle legate a un passaggio.
 function haUnSaldoSolidale(gestioneId: number | null): boolean {
-  return props.immobile.saldi.some((s: any) => s.gestione_id == gestioneId && s.anagrafica_id == null && s.subentro_id == null);
+  return props.immobile.saldi.some((s: any) => s.gestione_id == gestioneId && s.anagrafica_id == null && s.subentro_id == null && s.passaggio_id == null);
+}
+
+/** I passaggi a cui legare una riga di questa unità, come li manda il server (dal più recente registrato). */
+const passaggiLegabili = computed<PassaggioLegabile[]>(() => props.immobile.passaggi_legabili ?? []);
+
+/** Una riga legata è di una persona: l'interruttore conta solo con «Soggetto specifico». */
+const legato = computed(() => modalForm.value.targetType === 'personale' && modalForm.value.legato);
+
+/** La voce del selettore: «la vendita del 1 ottobre 2026 (Ugo, Elsa) · c'è una parte da regolare a mano». */
+function vocePassaggio(p: PassaggioLegabile): string {
+  return `${p.parole}${p.persone.length > 0 ? ` (${p.persone.join(', ')})` : ''}${p.con_parte_a_mano ? ' · c\'è una parte da regolare a mano' : ''}`;
+}
+
+/** Acceso o spento, la scelta riparte da capo: nessun passaggio e nessuna persona già scelti. */
+function cambiaLegato() {
+  modalForm.value.passaggioId = null;
+  modalForm.value.anagraficaId = null;
+  erroreModale.value = null;
 }
 
 // Il rifiuto del server alla richiesta del modale (un secondo saldo per l'intero immobile o per la stessa persona, un importo non valido):
@@ -236,7 +257,9 @@ function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
     // Dove l'intero immobile ha già il suo saldo la scelta di partenza è la persona.
     targetType: haUnSaldoSolidale(gestioneId) ? 'personale' : 'solidale',
     anagraficaId: liberi.length === 1 ? liberi[0].id : null,
-    importo: ''
+    importo: '',
+    legato: false,
+    passaggioId: null,
   };
   showAddModal.value = true;
 }
@@ -245,6 +268,8 @@ const saldoSolidaleEsiste = computed(() => haUnSaldoSolidale(modalForm.value.ges
 
 const anagraficheDisponibili = computed(() => {
   if (!modalForm.value.gestioneId || !props.immobile.anagrafiche) return [];
+  // Una riga legata non occupa il posto: si offrono tutte le persone dell'unità, anche chi ha già un saldo.
+  if (legato.value) return props.immobile.anagrafiche;
 
   const idAssegnati = idConUnSaldo(modalForm.value.gestioneId);
 
@@ -262,6 +287,7 @@ function submitAddModal() {
       alert('Seleziona un soggetto per il debito/credito personale.');
       return;
   }
+  if (legato.value && !modalForm.value.passaggioId) return;
 
   const rawValue = unformat(modalForm.value.importo, moneyOptions.value);
   
@@ -278,11 +304,12 @@ function submitAddModal() {
       immobile_id:    props.immobile.id,
       gestione_id:    modalForm.value.gestioneId,
       saldo_iniziale: finalCents,
+      ...(legato.value ? { passaggio_id: modalForm.value.passaggioId } : {}),
     },
     {
       preserveScroll: true,
       onSuccess: () => closeAddModal(),
-      // Qualunque campo dia il rifiuto, il modale lo mostra: `anagrafica_id` (un saldo c'è già), `saldo_iniziale`, `error`.
+      // Qualunque campo dia il rifiuto, il modale lo mostra: `anagrafica_id` (un saldo c'è già), `saldo_iniziale`, `passaggio_id`, `error`.
       onError: (errors: Record<string, string>) => {
         erroreModale.value = Array.from(new Set(Object.values(errors).filter(Boolean))).join(' ') || null;
       },
@@ -426,6 +453,8 @@ function submitAddModal() {
                       <Building2 v-if="item.isSolidale" class="w-3 h-3 text-indigo-500 shrink-0" />
                       {{ item.anagrafica.nome }} {{ item.anagrafica.cognome }}
                       <span v-if="item.isSolidale" class="text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1 rounded uppercase tracking-widest font-bold ml-1">Art. 63</span>
+                      <span v-if="item.saldo.e_legata" class="text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-1 rounded uppercase tracking-widest font-bold ml-1"
+                            :title="`Legato al passaggio: ${item.saldo.passaggio_in_parole}. Si toglie se annulli il passaggio; se un piano lo ha già assorbito, il passaggio non si annulla finché quel piano non è eliminato (il lucchetto si riapre).`">Passaggio</span>
                     </span>
 
                     <template v-if="editingSaldoId === item.saldo.id">
@@ -501,6 +530,8 @@ function submitAddModal() {
                       <Building2 v-if="item.isSolidale" class="w-3 h-3 text-indigo-500 shrink-0" />
                       {{ item.anagrafica.nome }} {{ item.anagrafica.cognome }}
                       <span v-if="item.isSolidale" class="text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1 rounded uppercase tracking-widest font-bold ml-1">Art. 63</span>
+                      <span v-if="item.saldo.e_legata" class="text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-1 rounded uppercase tracking-widest font-bold ml-1"
+                            :title="`Legato al passaggio: ${item.saldo.passaggio_in_parole}. Si toglie se annulli il passaggio; se un piano lo ha già assorbito, il passaggio non si annulla finché quel piano non è eliminato (il lucchetto si riapre).`">Passaggio</span>
                     </span>
 
                     <template v-if="editingSaldoId === item.saldo.id">
@@ -584,9 +615,11 @@ function submitAddModal() {
       <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
         <div class="fixed inset-0 bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm" @click="closeAddModal"></div>
         
-        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col border dark:border-slate-700">
+        <!-- Coda 308: il modale non taglia ciò che esce (il menu delle persone sta nel corpo della pagina); il contenuto scorre se il modale
+             è più alto dello schermo, e testata e piede hanno gli angoli arrotondati loro. -->
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[calc(100dvh-2rem)] flex flex-col border dark:border-slate-700">
           
-          <div class="px-6 py-4 border-b flex items-center justify-between"
+          <div class="px-6 py-4 border-b rounded-t-2xl flex items-center justify-between shrink-0"
                :class="modalForm.tipo === 'credito' ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-800'">
             <div>
               <h3 class="text-lg font-bold" :class="modalForm.tipo === 'credito' ? 'text-emerald-900 dark:text-emerald-300' : 'text-red-900 dark:text-red-300'">
@@ -599,12 +632,12 @@ function submitAddModal() {
             <button @click="closeAddModal" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/50 dark:bg-slate-800/50 p-1.5 rounded-full"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
           </div>
 
-          <div class="p-6 space-y-6">
+          <div class="p-6 space-y-6 overflow-y-auto min-h-0">
             <div class="space-y-3">
               <label class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">A chi è assegnato?</label>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 
-                <label :class="saldoSolidaleEsiste ? 'cursor-not-allowed' : 'cursor-pointer'">
+                <label class="order-1" :class="saldoSolidaleEsiste ? 'cursor-not-allowed' : 'cursor-pointer'">
                   <input type="radio" v-model="modalForm.targetType" value="solidale" :disabled="saldoSolidaleEsiste" class="peer sr-only" />
                   <div class="h-full rounded-xl border-2 dark:border-slate-700 p-4 transition-all peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-900/20 hover:bg-slate-50 dark:hover:bg-slate-800 peer-disabled:opacity-50 peer-disabled:hover:bg-transparent relative">
                     <div class="flex items-center gap-2 mb-2 text-indigo-700 dark:text-indigo-400">
@@ -615,12 +648,14 @@ function submitAddModal() {
                       Solidale. Verrà ripartito in automatico fra chi ha un diritto reale sull'unità — mai l'inquilino — al momento della generazione del piano rate (Art. 63).
                     </p>
                   </div>
-                  <p v-if="saldoSolidaleEsiste" class="mt-1.5 text-xs leading-snug text-amber-700 dark:text-amber-400">
-                    Questa gestione ha già un saldo per l'intero immobile: modifica quello esistente.
-                  </p>
                 </label>
 
-                <label class="cursor-pointer">
+                <!-- Coda 308: la frase in una riga sua della griglia, sotto la prima scelta su una colonna e sotto le due su due colonne. -->
+                <p v-if="saldoSolidaleEsiste" class="order-2 sm:order-3 sm:col-span-2 -mt-1.5 text-xs leading-snug text-amber-700 dark:text-amber-400">
+                  Questa gestione ha già un saldo per l'intero immobile: modifica quello esistente.
+                </p>
+
+                <label class="order-3 sm:order-2 cursor-pointer">
                   <input type="radio" v-model="modalForm.targetType" value="personale" class="peer sr-only" />
                   <div class="h-full rounded-xl border-2 dark:border-slate-700 p-4 transition-all peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-900/20 hover:bg-slate-50 dark:hover:bg-slate-800 relative">
                     <div class="flex items-center gap-2 mb-2 text-slate-700 dark:text-slate-300">
@@ -634,7 +669,23 @@ function submitAddModal() {
                 </label>
               </div>
 
-              <div v-if="modalForm.targetType === 'personale'" class="mt-3">
+              <div v-if="modalForm.targetType === 'personale'" class="mt-3 space-y-3">
+
+                <!-- 1.11.0-beta.53: «Legato a un passaggio», fuori dal selettore delle persone: c'è anche quando tutti hanno già un saldo. -->
+                <label v-if="passaggiLegabili.length > 0" class="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+                  <input type="checkbox" v-model="modalForm.legato" @change="cambiaLegato" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span class="text-sm">
+                    <span class="font-semibold text-slate-700 dark:text-slate-200">Legato a un passaggio</span>
+                    <span class="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Per la parte di un passaggio che il programma non sposta: il saldo non occupa il posto di un riporto, e si toglie se annulli il passaggio.</span>
+                  </span>
+                </label>
+                <p v-else class="text-xs text-slate-500 dark:text-slate-400">Su questa unità non ci sono passaggi a cui legare un saldo.</p>
+
+                <select v-if="legato" v-model="modalForm.passaggioId"
+                        class="w-full text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                  <option :value="null" disabled>Scegli il passaggio</option>
+                  <option v-for="p in passaggiLegabili" :key="p.id" :value="p.id">{{ vocePassaggio(p) }}</option>
+                </select>
   
                 <div v-if="anagraficheDisponibili.length > 0">
                   <v-select 
@@ -642,7 +693,8 @@ function submitAddModal() {
                     :options="anagraficheDisponibili" 
                     v-model="modalForm.anagraficaId"
                     :reduce="(a: any) => a.id"
-                    placeholder="Cerca o seleziona l'anagrafica..."
+                    :placeholder="legato ? 'Scegli la persona' : 'Cerca o seleziona l\'anagrafica...'"
+                    append-to-body
                   >
                     <template #option="{ nome, cognome, pivot }">
                       <div class="flex flex-col py-1">
@@ -663,6 +715,7 @@ function submitAddModal() {
                 <div v-else class="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
                   Tutti i soggetti associati hanno già un saldo per questa gestione. <br>
                   <strong>Suggerimento:</strong> modifica l'importo della riga già esistente.
+                  <span v-if="passaggiLegabili.length > 0" class="block mt-1">Per la parte di un passaggio, attiva «Legato a un passaggio»: un saldo legato non occupa il posto e si toglie se annulli il passaggio.</span>
                 </div>
 
               </div>
@@ -689,14 +742,14 @@ function submitAddModal() {
 
           </div>
 
-          <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t dark:border-slate-700 flex justify-end gap-3">
+          <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t dark:border-slate-700 rounded-b-2xl flex justify-end gap-3 shrink-0">
             <button @click="closeAddModal" class="px-5 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
               Annulla
             </button>
             <button @click="submitAddModal" 
                     class="px-5 py-2.5 rounded-lg text-sm font-bold text-white transition-all shadow-sm flex items-center gap-2"
                     :class="modalForm.tipo === 'credito' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'"
-                    :disabled="!modalForm.importo || (modalForm.targetType === 'personale' && !modalForm.anagraficaId)">
+                    :disabled="!modalForm.importo || (modalForm.targetType === 'personale' && !modalForm.anagraficaId) || (legato && !modalForm.passaggioId)">
               <svg v-if="modalForm.tipo === 'credito'" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
               <TrendingDown v-else class="w-4 h-4" />
               Salva {{ modalForm.tipo === 'credito' ? 'Credito' : 'Debito' }}
@@ -742,7 +795,7 @@ function submitAddModal() {
               </p>
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
                 <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Con il conguaglio fanno un conto solo: non si tolgono da sole, e nemmeno annullando il solo conguaglio. Per cambiare la scelta <strong>annulla il passaggio dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati») e registralo di nuovo.</p>
-                <p class="text-slate-500">Se un piano le ha già assorbite e non si riscrive più, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite e non si riscrive più, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione, legato a quel passaggio con «Aggiungi credito» o «Aggiungi debito»: non occupa il posto di un riporto.</p>
               </div>
             </template>
 
@@ -754,7 +807,7 @@ function submitAddModal() {
               </p>
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
                 <p>Il prossimo piano rate della gestione assorbe queste righe come qualunque saldo. Per cambiarle <strong>annulla la successione dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati») e registrala di nuovo.</p>
-                <p class="text-slate-500">Se un piano le ha già assorbite e non si riscrive più, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite e non si riscrive più, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione, legato a quel passaggio con «Aggiungi credito» o «Aggiungi debito»: non occupa il posto di un riporto.</p>
               </div>
             </template>
 
@@ -766,7 +819,7 @@ function submitAddModal() {
               </p>
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
                 <p>Annullare questo conguaglio lascerebbe sbagliate le righe degli eredi. Per farlo <strong>annulla prima la successione dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»), poi questo conguaglio, e registra di nuovo la successione.</p>
-                <p class="text-slate-500">Se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale sulla stessa gestione.</p>
+                <p class="text-slate-500">Se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale sulla stessa gestione, legato al passaggio di questo conguaglio con «Aggiungi credito» o «Aggiungi debito»: non occupa il posto di un riporto.</p>
               </div>
             </template>
 
@@ -779,7 +832,7 @@ function submitAddModal() {
               </p>
               <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-2 text-xs leading-normal">
                 <p>Il prossimo piano rate della gestione le assorbe come qualunque saldo. Se le parti hanno regolato il conguaglio in un altro modo, <strong>annullalo dallo storico dell'unità</strong> (Titolari → Storico → «Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota, finché nessun piano le ha assorbite. Nella successione, se gli eredi non vogliono il conguaglio, non annullare il conguaglio: annulla la successione dallo storico dell'unità e registrala di nuovo con l'arretrato a nome del defunto e «Non scriverlo». Lo stesso alla fine di una locazione: se il conguaglio non andava scritto, annulla il passaggio dallo storico dell'unità e registralo di nuovo con «Non scriverlo».</p>
-                <p class="text-slate-500">Se un piano le ha già assorbite e quel piano si riscrive ancora, riportalo in bozza ed eliminalo (il lucchetto si riapre), poi annulla il conguaglio dallo storico (nella successione, la successione stessa, come detto sopra). Se quel piano non si riscrive più — quote a giornale, un incasso, o il conguaglio di un altro passaggio —, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione.</p>
+                <p class="text-slate-500">Se un piano le ha già assorbite e quel piano si riscrive ancora, riportalo in bozza ed eliminalo (il lucchetto si riapre), poi annulla il conguaglio dallo storico (nella successione, la successione stessa, come detto sopra). Se quel piano non si riscrive più — quote a giornale, un incasso, o il conguaglio di un altro passaggio —, la correzione passa da un saldo manuale di segno opposto sulla stessa gestione, legato a quel passaggio con «Aggiungi credito» o «Aggiungi debito»: non occupa il posto di un riporto.</p>
               </div>
             </template>
 

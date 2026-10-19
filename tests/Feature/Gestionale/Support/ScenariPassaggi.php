@@ -124,7 +124,7 @@ function ruRiserva(array $s, string $decorrenza = '2026-05-01', array $extra = [
         'tipo' => 'vendita', 'sottotipo' => 'riserva_usufrutto', 'riga_uscente_id' => $s['rigaV'], 'anagrafica_entrante_id' => $s['a']->id, 'decorrenza' => $decorrenza,
         'quota' => 100, 'tipologia' => 'nuda_proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06',
         'estremi_titolo' => 'atto notaio Verdi, rep. 777', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Rogito letto: vendita della nuda proprietà con riserva d\'usufrutto',
-        // La scelta sull'ordinaria è obbligatoria (rilievo A3 della beta.41): la proposta di legge, come nel modulo.
+        // La scelta sull'ordinaria è obbligatoria dalla beta.41: all'usufruttuario secondo la regola di legge (art. 1004 c.c.), come nel modulo.
         'ordinaria_dopo_atto' => 'usufruttuario',
     ], $extra);
 }

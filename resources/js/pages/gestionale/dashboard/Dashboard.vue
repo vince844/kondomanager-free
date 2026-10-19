@@ -47,6 +47,9 @@ const props = defineProps<{
         strategia: string;
         gestione: string;
         gestione_id?: number;
+        /** Una voce di spesa scritta con il meno: la creazione non la propone, e `nota` dice la strada. */
+        spesa_negativa?: boolean;
+        nota?: string | null;
     }>;
     scoperto_count: number;
   } | null;
@@ -809,6 +812,10 @@ onUnmounted(() => {
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-600 text-white">
                                                     Rata Integrativa
                                                 </span>
+                                                <span v-else-if="orfano.spesa_negativa"
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
+                                                    Importo negativo
+                                                </span>
                                                 <span v-else 
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
                                                     Sforo Aperto
@@ -843,12 +850,16 @@ onUnmounted(() => {
                                                 <template v-else-if="orfano.strategia === 'fondo_riserva'">
                                                     Coperta dal fondo di riserva patrimoniale. Nessuna azione richiesta.
                                                 </template>
+                                                <!-- La creazione del piano non propone la voce (è spenta nel selettore): la nota del server dice la strada. -->
+                                                <template v-else-if="orfano.spesa_negativa">
+                                                    {{ orfano.nota }}
+                                                </template>
                                                 <template v-else>
                                                     Voce senza copertura attiva. Delibera un piano rate per finanziare questo importo.
                                                 </template>
                                             </p>
 
-                                            <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia)" 
+                                            <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia) && !orfano.spesa_negativa" 
                                                 :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}&conto_id=${orfano.id}`">
                                                 <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm shrink-0">
                                                     Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />

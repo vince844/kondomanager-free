@@ -116,6 +116,8 @@ describe('la voce di terzo livello si vede', () => {
         // L'avviso deve dire cosa fare, non solo che c'è un problema.
         expect(segnalati[0]).toContain('due livelli');
         expect(segnalati[0]).toContain('primo livello');
+        // L'eliminazione non è una strada da proporre: una voce con delle righe di fattura non si elimina.
+        expect(segnalati[0]).not.toContain('elimin');
         // E deve nominare la conseguenza che costa denaro: un avviso puramente strutturale
         // («questa voce è nel posto sbagliato») si rimanda a domani. Questa riga è anche il
         // presidio contro il rischio opposto — che il testo resti così dopo che qualcuno avrà

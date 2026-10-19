@@ -33,9 +33,10 @@ function testoDellaGuida(): string {
 }
 
 describe('SaldiGuide — a chi è intestato il saldo', () => {
-    test('un solo saldo per l\'intero immobile e uno per persona, per gestione ed esercizio, senza contare quelli scritti da un passaggio', () => {
-        // «può avere»: è il massimo che il server ammette, non un saldo che c'è sempre.
-        expect(testoDellaGuida()).toContain('Per ogni gestione ed esercizio l\'unità può avere un solo saldo per l\'intero immobile e uno per persona, senza contare quelli scritti da un passaggio');
+    test('un solo saldo per l\'intero immobile e uno per persona, per gestione ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio', () => {
+        // «può avere»: è il massimo che il server ammette, non un saldo che c'è sempre. Il server non conta né le righe scritte da un passaggio né
+        // quelle legate a un passaggio dal modale (`Beta53SaldoLegatoPortaTest.php`).
+        expect(testoDellaGuida()).toContain('Per ogni gestione ed esercizio l\'unità può avere un solo saldo per l\'intero immobile e uno per persona, senza contare quelli scritti da un passaggio né quelli legati a un passaggio');
     });
 
     test('dove l\'intero immobile ha già il suo saldo la scelta è spenta, e il menu della persona offre solo chi non ha già il suo', () => {

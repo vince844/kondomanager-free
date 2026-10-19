@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { useForm } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -39,6 +39,9 @@ const isSottoConto = ref(false)
 const richiedeGiaVersato = ref(false)
 const { tabelle, isLoading: isLoadingTabelle, fetchTabelle } = useTabelle()
 const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti, reset: resetCapitoli } = useCapitoliConti()
+/** I capitoli che un piano approvato tiene: una voce nuova sotto di loro cambierebbe quel piano, e il salvataggio lo rifiuta (`CreateContoRequest`). */
+const capitoloSelezionabile = (c: CapitoloDropdown) => !c.blocco
+const ciSonoCapitoliBloccati = computed(() => capitoli.value.some((c) => !!c.blocco))
 
 const moneyOptions = ref({
   prefix: '',              
@@ -225,9 +228,16 @@ const submit = () => {
                 @open="onDropdownCapitoliOpen"
                 :loading="isLoadingCapitoli"
                 :clearable="true"
+                :selectable="capitoloSelezionabile"
                 class="mt-1"
               >
+                <template #option="capitolo">
+                  <span :class="{ 'text-slate-400': !!capitolo.blocco }">{{ capitolo.blocco ? `${capitolo.nome} (${capitolo.blocco})` : capitolo.nome }}</span>
+                </template>
               </v-select>
+              <p v-if="ciSonoCapitoliBloccati" class="text-[11px] text-slate-500 mt-1">
+                I capitoli che un piano approvato tiene non si scelgono finché il piano non torna in bozza.
+              </p>
               <InputError :message="form.errors.parent_id" />
             </div>
 

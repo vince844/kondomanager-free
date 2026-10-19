@@ -184,8 +184,10 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                 ->where('esercizio_id', $fattura->esercizio_id)
                 ->whereNull('fornitore_id')
                 // B2 (S5): la coppia del conguaglio di un passaggio somma zero e non è provvista — la gamba
-                // positiva da sola gonfierebbe la rata 0 (stessa esclusione di FatturaPassivaController).
+                // positiva da sola gonfierebbe la rata 0 (stessa esclusione di FatturaPassivaController). Lo stesso
+                // per le righe legate a un passaggio (1.11.0-beta.53).
                 ->whereNull('subentro_id')
+                ->whereNull('passaggio_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 

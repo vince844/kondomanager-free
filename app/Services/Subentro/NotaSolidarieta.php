@@ -46,6 +46,13 @@ use Illuminate\Support\Facades\DB;
  * cifra: toglierla ancora la conterebbe due volte e direbbe «nulla di non pagato» a chi deve ancora la sua parte (decisione 86.3). Nella
  * .51 la nota torna allora alla cifra lorda, che non sottostima mai il debito; il netto del solo credito non ancora usato (la fonte
  * sarebbe `RataQuote::creditoDisponibile` delle quote di chi esce nel piano di `saldi.piano_rate_id`) è della 1.11.1.
+ *
+ * Le righe del Wallet legate alla vendita (1.11.0-beta.53, Coda 244: la parte di una fermata passata a mano) **non** entrano nel netto: nel
+ * caso di base la parte che spostano viene dalla coppia della fine di una locazione, un saldo fuori dalle rate di chi vende, e toglierla
+ * direbbe meno del dovuto. La nota resta lorda per loro (lo stesso principio della 86.3, la cifra che non sottostima mai il debito) e le
+ * dice a parte, dopo la parentesi della coppia: «Elsa ha inoltre a suo debito € 60,16 con un saldo scritto a mano per lo stesso passaggio.»
+ * Dove la riga sposta una parte delle rate emesse (la fermata della 31.11) quella parte compare due volte, in eccesso. Una riga legata già
+ * assorbita da un piano non si dice più, come la coppia assorbita.
  */
 final class NotaSolidarieta
 {
@@ -113,6 +120,7 @@ final class NotaSolidarieta
             $primaDellAtto = $riserva ? ($criterio ? ' per contributi sorti prima del ' : ' con scadenza prima del ') . $alGiorno : '';
 
             $conLaCoppia = fn (int $lordo, int $coperto) => $this->parentesiDellaCoppia($lordo, $coperto, $chiCompraNome, $alGiorno);
+            $legate = $this->fraseDelleLegate($s, $chiCompraNome);
             $residuoFrase = $residuo > 0
                 ? sprintf('a nome di %s risultano oggi %s non pagati su questa unità%s%s', $s->uscente?->nome ?? 'chi è uscito', MoneyHelper::format($residuo), $conLaCoppia($aperto['lordo'], $aperto['coperto']), $primaDellAtto)
                 : sprintf('a nome di %s non risulta oggi nulla di non pagato su questa unità%s%s', $s->uscente?->nome ?? 'chi è uscito', $conLaCoppia($aperto['lordo'], $aperto['coperto']), $primaDellAtto);
@@ -134,7 +142,7 @@ final class NotaSolidarieta
             // intestata a …» nomina l'eccezione, con la forma delle frasi su chi resta obbligato. A chi vada è la Coda 174.
             $salvo = $this->frasi->saldiIntestatiAllUnita($this->frasi->immobiliDelPassaggio($s)) ? FrasiObbligati::SALVO_SALDI_DELL_UNITA : '';
             $testo = $s->riservaUsufrutto() ? sprintf(
-                'Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido per i contributi di %s (art. 67 ult. co. disp. att. c.c.)%s. Se %s risponda anche di quelli non pagati da %s prima dell\'atto, negli esercizi %s e %s (art. 63 co. 4), la giurisprudenza non l\'ha chiarito: decide l\'amministratore. Nessuna quota è intestata a %s per quel periodo%s: %s.%s',
+                'Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido per i contributi di %s (art. 67 ult. co. disp. att. c.c.)%s. Se %s risponda anche di quelli non pagati da %s prima dell\'atto, negli esercizi %s e %s (art. 63 co. 4), la giurisprudenza non l\'ha chiarito: decide l\'amministratore. Nessuna quota è intestata %s per quel periodo%s: %s.%s%s',
                 $alGiorno, $s->entrante?->nome ?? 'chi è entrato', $s->uscente?->nome ?? 'chi è uscito', $unita,
                 match (true) {
                     $dopoLAtto > 0 => sprintf(': a nome di %s ne risultano oggi %s non pagati, %s%s', $s->uscente?->nome ?? 'chi è uscito', MoneyHelper::format($dopoLAtto), $criterio ? 'per contributi sorti da quel giorno in poi' : 'con scadenza da quel giorno in poi', $conLaCoppia($allAtto['dopo_lordo'], $allAtto['coperto'])),
@@ -143,14 +151,15 @@ final class NotaSolidarieta
                     default => '',
                 },
                 $s->entrante?->nome ?? 'chi è entrato', $s->uscente?->nome ?? 'chi è uscito', $corrente, $precedente,
-                $s->entrante?->nome ?? 'chi è entrato', $salvo, $residuoFrase,
+                FrasiObbligati::a($s->entrante?->nome ?? 'chi è entrato'), $salvo, $residuoFrase, $legate,
                 ($criterio ? ' Per le spese straordinarie conta la data della delibera, per le altre la scadenza della rata.' : '')
                     . (($allAtto['senza_delibera'] ?? 0) > 0 ? sprintf(' Le spese straordinarie senza data della delibera (%s) sono contate prima dell\'atto.', MoneyHelper::format($allAtto['senza_delibera'])) : ''),
             ) : sprintf(
-                '%s risponde in solido con %s per i contributi di %s relativi agli esercizi %s e %s (art. 63 co. 4 disp. att. c.c.). Nessuna quota è intestata a %s per quel periodo%s: %s. Chi paga in forza della solidarietà ha regresso verso il venditore, salvo diverso accordo (Cass. 11199/2021).%s',
+                '%s risponde in solido con %s per i contributi di %s relativi agli esercizi %s e %s (art. 63 co. 4 disp. att. c.c.). Nessuna quota è intestata %s per quel periodo%s: %s.%s Chi paga in forza della solidarietà ha regresso verso il venditore, salvo diverso accordo (Cass. 11199/2021).%s',
                 $s->entrante?->nome ?? 'Chi è entrato', $s->uscente?->nome ?? 'chi è uscito', $unita, $corrente, $precedente,
-                $s->entrante?->nome ?? 'chi è entrato', $salvo,
+                FrasiObbligati::a($s->entrante?->nome ?? 'chi è entrato'), $salvo,
                 $residuoFrase,
+                $legate,
                 $conUsufruttuario,
             );
 
@@ -250,6 +259,30 @@ final class NotaSolidarieta
             ->where('is_applicato', false)
             ->selectRaw('gestione_id, SUM(saldo_iniziale) as coppia')->groupBy('gestione_id')
             ->pluck('coppia', 'gestione_id')->map(fn ($c) => (int) $c)->all();
+    }
+
+    /**
+     * Le righe del Wallet legate a questo passaggio (1.11.0-beta.53), a chi compra e sull'unità della nota, ancora nel Wallet (`is_applicato`
+     * falso): dette a parte, con la loro somma e il verso, perché non entrano nel netto. « Elsa ha inoltre a suo debito € 60,16 con un saldo
+     * scritto a mano per lo stesso passaggio.», o con più righe «con saldi scritti a mano»; a credito «a suo credito». Vuota senza righe, o se
+     * le righe sommano zero.
+     */
+    private function fraseDelleLegate(Subentro $s, string $chiCompra): string
+    {
+        $righe = DB::table('saldi')
+            ->where('passaggio_id', $s->capo()->id)
+            ->where('anagrafica_id', $s->anagrafica_entrante_id)
+            ->where('immobile_id', $s->immobile_id)
+            ->where('is_applicato', false)
+            ->where('saldo_iniziale', '!=', 0)
+            ->pluck('saldo_iniziale')->map(fn ($c) => (int) $c);
+        $somma = (int) $righe->sum();
+        if ($somma === 0) {
+            return '';
+        }
+
+        return sprintf(' %s ha inoltre a suo %s %s con %s per lo stesso passaggio.', $chiCompra, $somma < 0 ? 'credito' : 'debito', MoneyHelper::format(abs($somma)),
+            $righe->count() > 1 ? 'saldi scritti a mano' : 'un saldo scritto a mano');
     }
 
     /**

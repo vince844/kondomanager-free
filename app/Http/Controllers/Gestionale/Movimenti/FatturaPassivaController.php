@@ -754,11 +754,14 @@ class FatturaPassivaController extends Controller
             // `SaldoEsercizioService`. Qui e nella query gemella dei debiti fornitori era
             // l'unico posto rimasto a orientarsi su `anagrafica_id`.
             // B2 (S5): la coppia di conguaglio di un passaggio somma zero — il debito di chi entra
-            // qui gonfierebbe la provvista senza che esista denaro nuovo. Fuori.
+            // qui gonfierebbe la provvista senza che esista denaro nuovo. Fuori. Dalla 1.11.0-beta.53
+            // fuori anche le righe legate a un passaggio: la parte di una fermata passata a mano, che sposta
+            // denaro fra due persone e non ne porta di nuovo.
             $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $esercizio->id)
                 ->whereNull('fornitore_id')
                 ->whereNull('subentro_id')
+                ->whereNull('passaggio_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 

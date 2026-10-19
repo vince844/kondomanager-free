@@ -36,8 +36,11 @@ import AnteprimaPassaggio from './AnteprimaPassaggio.vue';
 
 // --- R5: l'avviso di «Annulla il conguaglio» -------------------------------------------------------------------------------------
 
-/** L'avviso che il server dà per il caso H (`FermataDopoScrivi::avvisiDelConguaglio`). */
-const AVVISO = 'La vendita del 1 ottobre 2026 si è fermata su questo conguaglio: € 90,74 dei giorni dal 1 ottobre 2026 sono rimasti a carico di Ugo sulla gestione Ordinaria 2026, da regolare a mano con Elsa. Annullato il conguaglio, quella fermata non vale più: se per questo hai registrato un saldo manuale dal Wallet (€ 90,74 a credito di Ugo, a debito di Elsa), rivedilo, perché l\'annullamento non lo toglie.';
+/**
+ * L'avviso che il server dà per il caso H (`FermataDopoScrivi::avvisiDelConguaglio`), con i saldi del Wallet legati alla vendita: la forma che
+ * `Beta53AnnullaConRigheLegateTest.php` prova che il server manda.
+ */
+const AVVISO = 'La vendita del 1 ottobre 2026 si è fermata su questo conguaglio: € 90,74 dei giorni dal 1 ottobre 2026 sono rimasti a carico di Ugo sulla gestione Ordinaria 2026, da regolare a mano con Elsa. Annullato il conguaglio, quella fermata non vale più. I saldi del Wallet legati alla vendita del 1 ottobre 2026 sommano oggi € 90,74 a credito di Ugo e € 90,74 a debito di Elsa; la parte della sua fermata è € 0,00. L\'annullamento del conguaglio non li cambia: correggi dal Wallet i saldi che si modificano.';
 
 /** La voce dello storico della fine di Ines con «Scrivi», come la dà `StoricoTitolarita`, con gli avvisi del conguaglio dati. */
 function fine(avvisi: string[]): any {

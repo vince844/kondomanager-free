@@ -508,8 +508,8 @@ describe('AnteprimaPassaggio — la vendita resta com\'è (beta.48, decisione 73
 
 /**
  * Giro stretto sulle correzioni della Fase 1-bis (beta.48), rilievi bassi della lente testi:
- * - AMM-1: `aNome` valeva per ogni tipo, e nella vendita il piede diceva «Emesso ad Aldo Venditore» accanto alle frasi del server con
- *   «a Aldo Venditore»; il verbale dice «ad» nella successione, la vendita resta com'è.
+ * - AMM-1: il piede della tabella e la tabella delle coppie dicono «ad» davanti a un nome che comincia per A in ogni passaggio, come le
+ *   frasi del server (decisione 100, punto 3).
  * - AMM-3: nel legato a due le voci della scelta dicevano «una coppia per ogni erede», «all'erede di riferimento», «gli altri eredi».
  * - AMM-5: «Non scriverlo» diceva «quelle in bozza passano a chi entra», falso dove una parte delle bozze resta al defunto (il decesso al
  *   1° settembre: le bozze 5–8 scadono prima e restano a Ugo); le bozze che passano sono quelle dell'elenco del pannello.
@@ -528,12 +528,12 @@ describe('AnteprimaPassaggio — giro stretto sulle correzioni (beta.48)', () =>
         return dati;
     }
 
-    test('AMM-1: nella vendita il piede della tabella resta «Emesso a Aldo Venditore», come le frasi del server', () => {
+    test('AMM-1: nella vendita il piede della tabella dice «Emesso ad Aldo Venditore», come le frasi del server', () => {
         const dati = anteprimaVendita();
         dati.rate.emesse = dati.rate.emesse.map((r: any) => ({ ...r, intestatario: 'Aldo Venditore' }));
         const testo = monta(dati, null, 'vendita').text();
-        expect(testo).toContain('Emesso a Aldo Venditore');
-        expect(testo).not.toContain('Emesso ad Aldo');
+        expect(testo).toContain('Emesso ad Aldo Venditore');
+        expect(testo).not.toContain('Emesso a Aldo');
     });
 
     test('AMM-1: nella successione il piede dice «Emesso ad Aldo Venditore»', () => {
@@ -542,7 +542,7 @@ describe('AnteprimaPassaggio — giro stretto sulle correzioni (beta.48)', () =>
         expect(monta(dati).text()).toContain('Emesso ad Aldo Venditore');
     });
 
-    test('AMM-1: fuori dalla successione la tabella delle coppie resta con «a» (l\'estinzione dell\'usufrutto con due nudi)', () => {
+    test('AMM-1: fuori dalla successione la tabella delle coppie dice «ad» davanti a un nome con la A (l\'estinzione dell\'usufrutto con due nudi)', () => {
         const dati = anteprimaVendita();
         const base = { gestione_id: 1, gestione: 'Ordinaria 2026', immobile_id: 1, esercizio_id: 1, per_nudo: null };
         dati.rate.conguaglio.coppie = [
@@ -550,8 +550,9 @@ describe('AnteprimaPassaggio — giro stretto sulle correzioni (beta.48)', () =>
             { ...base, importo: 274, importo_formattato: '€ 2,74', anagrafica_entrante_id: 4, entrante_nome: 'Bruno Nudo' },
         ];
         const c = celle(monta(dati, null, 'usufrutto'));
-        expect(celleCon(c, 'a', 'Alba Nuda')).toHaveLength(1);
-        expect(celleCon(c, 'ad', 'Alba Nuda')).toEqual([]);
+        expect(celleCon(c, 'ad', 'Alba Nuda')).toHaveLength(1);
+        expect(celleCon(c, 'a', 'Alba Nuda')).toEqual([]);
+        expect(celleCon(c, 'a', 'Bruno Nudo')).toHaveLength(1);
     });
 
     test('AMM-3: nel legato a due le voci della scelta non chiamano «eredi» chi riceve l\'unità', () => {

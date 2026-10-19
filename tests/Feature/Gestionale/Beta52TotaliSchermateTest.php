@@ -13,8 +13,8 @@
  * `totale_da_ripartire`) e `totale_capitoli`, che sommava le entrate come spese, sparisce: nessun codice può più usarlo con il vecchio
  * significato.
  *
- * Scenario: spese € 1.200,00 ed entrata € 240,00 (da ripartire € 960,00). Nel piano dei conti i totali sono quelli scritti dall'amministratore
- * (le spese come sono, le entrate in valore assoluto); nel piano rate seguono il motore (valore assoluto per tutte le voci).
+ * Scenario: spese € 1.200,00 ed entrata € 240,00 (da ripartire € 960,00). Nel piano dei conti e nel piano rate i totali seguono il motore: ogni
+ * voce per il valore assoluto del suo importo, dal lato del suo tipo (`Conto::partiDelTipo`), anche una spesa scritta con il meno da una versione vecchia.
  *
  * I test che cominciano con «controprova» sono verdi prima e dopo la correzione.
  */
@@ -159,13 +159,13 @@ it('T1.7k un padre in pivot con una spesa e un\'entrata come sottoconti: la pagi
     expect($props['disallineato'])->toBeFalse();
 });
 
-it('T1.7l il piano dei conti con una spesa scritta negativa (dato di una versione vecchia): le spese restano come scritte (−240,00), le entrate in valore assoluto', function () {
-    // L\'asimmetria è voluta e dichiarata: nel piano dei conti i totali sono quelli che l\'amministratore ha scritto, e una spesa negativa è un dato
-    // che la generazione del piano rifiuta. Il piano rate e l\'atteso, che seguono il motore, la contano in valore assoluto (T1.5e in `Beta52TotaliBadgeTest`).
+it('T1.7l il piano dei conti con una spesa scritta negativa (dato di una versione vecchia): la spesa conta in valore assoluto (240,00), come la addebita il motore', function () {
+    // Come il piano rate e l\'atteso (T1.5e in `Beta52TotaliBadgeTest`): il motore addebita la spesa negativa in positivo, e un totale che la sommasse col
+    // segno direbbe un preventivo diverso da quello che le quote chiedono.
     $s = b52tScenario($this);
     DB::table('conti')->where('id', $s['spesa']->id)->update(['importo' => -24000]);
 
     $riga = b52tProps($this, 'admin.gestionale.esercizi.piani-conti.index', [$s['c'], $s['e']])['pianiDeiConti'][0];
 
-    expect(collect($riga)->only(['importo_totale', 'importo_entrate'])->all())->toEqual(['importo_totale' => -24000, 'importo_entrate' => 24000]);
+    expect(collect($riga)->only(['importo_totale', 'importo_entrate'])->all())->toEqual(['importo_totale' => 24000, 'importo_entrate' => 24000]);
 });

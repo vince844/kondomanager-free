@@ -417,14 +417,14 @@ class AnteprimaPassaggio
         }
         $anteprima['cancello']['richiesto'] = $anteprima['cancello']['motivi'] !== [];
 
-        return $tipo === 'successione' && $uscente !== null ? $this->conLaD($anteprima, $uscente) : $anteprima;
+        return $anteprima;
     }
 
     /**
      * Decisioni 79 (2) e 80: la frase della fermata del coinquilino, con la cifra e la persona. Chi paga non lo sa il programma, e non lo
-     * indovina: la frase dice la strada a mano per ciascuno dei candidati, per nome (Fase 1-bis della .50, R9). Il saldo manuale dal Wallet
-     * solo a chi non ha già un saldo su quella gestione (il Wallet ne accetta uno per persona, gestione, unità ed esercizio, fra quelli che un
-     * passaggio non ha scritto); per chi ce l'ha, la parte si regola fra le parti; se il saldo ce l'ha chi esce, fra le parti per tutti. Con più soggetti il verbo è al plurale (R20).
+     * indovina: la frase dice la strada a mano per i candidati, per nome (R9 della .50). Dalla 1.11.0-beta.53 la strada è il
+     * Wallet per tutti, con i saldi legati a questo passaggio: non occupano il posto di un riporto, e chi ha già un saldo lì può avere anche
+     * la riga legata. Con più soggetti il verbo è al plurale (R20), e con più persone che pagano le righe a debito sono una ciascuno (G15).
      */
     private static function fraseDelCoinquilino(array $f, bool $conLUnita): string
     {
@@ -433,37 +433,15 @@ class AnteprimaPassaggio
         $frase = sprintf('%sa locazione continua con %s: il programma non propone il conguaglio dei giorni dopo l\'uscita di %s (%s sulla gestione %s), che restano nelle rate di %s, e non sceglie chi li paga: lo decidono le parti.',
             $conLUnita ? sprintf('Nell\'unità «%s» l', $f['unita']) : 'L', $restano, $f['persona'],
             (int) $f['cifra'] < 0 ? MoneyHelper::format(-(int) $f['cifra']) . ' di credito' : MoneyHelper::format((int) $f['cifra']), $f['gestione'], $f['persona']);
-        $conUnSaldo = (array) ($f['con_un_saldo'] ?? []);
-        $alPosto = (array) ($f['al_posto'] ?? []);
         // «Se li paga Dora, o Ugo», «Se li pagano Dora e Pia, o Ugo»: i coinquilini, poi chi sta al posto dell'inquilino. Senza i nomi (un
         // registro di prima), il proprietario.
-        $seLiPaga = function (array $coinquilini, array $altri) use ($elenco): string {
-            $chi = array_values(array_filter([$elenco($coinquilini), $elenco($altri)], fn (string $x) => $x !== ''));
+        $alPosto = isset($f['al_posto']) ? (array) $f['al_posto'] : ['il proprietario'];
+        $coinquilini = (array) $f['restano'];
+        $chi = array_values(array_filter([$elenco($coinquilini), $elenco($alPosto)], fn (string $x) => $x !== ''));
+        $seLiPaga = sprintf('se %s %s', count($coinquilini) > 1 || ($coinquilini === [] && count($alPosto) > 1) ? 'li pagano' : 'li paga', implode(', o ', $chi));
 
-            return sprintf('se %s %s', count($coinquilini) > 1 || ($coinquilini === [] && count($altri) > 1) ? 'li pagano' : 'li paga', implode(', o ', $chi));
-        };
-        $haSaldo = fn (array $nomi): string => $elenco($nomi) . (count($nomi) > 1 ? ' hanno' : ' ha');
-        if (! isset($f['al_posto'])) {
-            $alPosto = ['il proprietario'];
-        }
-        if (in_array($f['persona'], $conUnSaldo, true) || ($f['wallet'] === false && ! isset($f['al_posto']))) {
-            return $frase . ' ' . ucfirst($seLiPaga($f['restano'], $alPosto)) . sprintf(', la parte si regola fra le parti: %s già un saldo su quella gestione, e il programma non ne registra un secondo.',
-                $haSaldo([$f['persona']]));
-        }
-        $conWallet = [array_values(array_diff($f['restano'], $conUnSaldo)), array_values(array_diff($alPosto, $conUnSaldo))];
-        // Giro stretto della .50 (G15): i coinquilini e chi sta al posto dell'inquilino restano due alternative anche fra chi ha già un saldo
-        // («Dora, o Ugo»), e quando a pagare insieme sono in più le righe a debito sono una ciascuno.
-        $senza = [array_values(array_intersect($f['restano'], $conUnSaldo)), array_values(array_intersect($alPosto, $conUnSaldo))];
-        $parti = [];
-        if ($conWallet[0] !== [] || $conWallet[1] !== []) {
-            $parti[] = $seLiPaga($conWallet[0], $conWallet[1]) . sprintf(', registra un saldo manuale dal Wallet sulla stessa gestione: una riga a credito di %s e una a debito di %s',
-                $f['persona'], count($conWallet[0]) > 1 || count($conWallet[1]) > 1 ? 'ciascuno che li paga' : 'chi li paga');
-        }
-        if ($senza[0] !== [] || $senza[1] !== []) {
-            $parti[] = $seLiPaga($senza[0], $senza[1]) . sprintf(', la parte si regola fra le parti: %s già un saldo su quella gestione e quell\'unità, e il programma non ne registra un secondo', $haSaldo([...$senza[0], ...$senza[1]]));
-        }
-
-        return $frase . ' ' . ucfirst(implode('; ', $parti)) . '.';
+        return $frase . ' ' . ucfirst($seLiPaga) . sprintf(', registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di %s e una a debito di %s.',
+            $f['persona'], count($coinquilini) > 1 || count($alPosto) > 1 ? 'ciascuno che li paga' : 'chi li paga');
     }
 
     /**
@@ -484,37 +462,6 @@ class AnteprimaPassaggio
 
         return ($conLUnita && $unita !== [] ? sprintf('%s %s ', count($unita) === 1 ? 'nell\'unità' : 'nelle unità', $this->elenco(array_map(fn ($u) => '«' . $u . '»', $unita))) : '')
             . 'nessuno sta al posto dell\'inquilino nei giorni dopo l\'uscita';
-    }
-
-    /**
-     * Rilievo R5 della Fase 1-bis della .48, decisione 73 (4): nelle frasi della successione «ad» davanti ai nomi che cominciano per A
-     * («passano ad Anna»), con la regola di `FrasiObbligati::a()`. Le frasi del conguaglio sono quelle della vendita, scritte con «a %s»:
-     * come `ConguaglioPassaggio::perGliEredi()` le adatta alla successione, qui si corregge la preposizione davanti ai nomi del defunto e
-     * degli eredi, in tutte le frasi del pannello e del cancello. Fuori dalla successione le frasi restano come sono.
-     */
-    private function conLaD(array $anteprima, TitolaritaImmobile $uscente): array
-    {
-        // Rilievo AMM-2 del giro sulle correzioni: anche i nomi di chi ha le altre quote dell'unità (un comproprietario).
-        $nomi = array_values(array_filter(array_unique([(string) $uscente->anagrafica?->nome, ...array_map(fn ($e) => (string) $e['anagrafica']->nome, $this->eredi),
-            ...array_map('strval', $anteprima['rate']['altre']['intestatari'] ?? [])]),
-            fn (string $n) => $n !== '' && $this->frasiObbligati->a($n) === 'ad ' . $n));
-        if ($nomi === []) {
-            return $anteprima;
-        }
-        $correggi = fn ($f) => is_string($f) ? $this->frasiObbligati->conLaD($f, $nomi) : $f;
-        foreach (['anagrafica.frasi', 'rate.frasi', 'rate.frasi_del_conguaglio', 'rate.conguaglio.frasi', 'obbligati.frasi', 'invarianti.frasi', 'cancello.motivi', 'cancello.informazioni', 'cancello.avvisi'] as $chiave) {
-            if (is_array($lista = data_get($anteprima, $chiave))) {
-                data_set($anteprima, $chiave, array_map($correggi, $lista));
-            }
-        }
-        foreach (['frase', 'frase_senza_conguaglio', 'frase_da_scegliere'] as $chiave) {
-            if (isset($anteprima['rate']['arretrato'][$chiave])) {
-                $anteprima['rate']['arretrato'][$chiave] = $correggi($anteprima['rate']['arretrato'][$chiave]);
-            }
-        }
-        $anteprima['riferimento']['frase'] = $correggi($anteprima['riferimento']['frase']);
-
-        return $anteprima;
     }
 
     /**
@@ -700,8 +647,8 @@ class AnteprimaPassaggio
                 $resta = (int) ($parti[(int) $uscente->anagrafica_id] ?? 0);
                 $coda = $resta !== 0 ? sprintf('; il credito di %s scende quindi a %s', $uscente->anagrafica?->nome ?? 'chi esce', MoneyHelper::format((int) $c['importo'] - $resta)) : '';
                 $righe[] = $genealogia === [] || array_filter($perQuota, fn ($cents) => (int) $cents !== 0) == array_filter($parti, fn ($cents) => (int) $cents !== 0)
-                    ? sprintf('Sulla gestione %s il debito di %s si divide per quota: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s (%s %%)' : '%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
-                    : sprintf('Sulla gestione %s il debito di %s si divide secondo la parte dell\'usufrutto che torna a ciascun nudo proprietario: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano a %s' : '%s a %s', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?'), array_keys($parti))), $coda);
+                    ? sprintf('Sulla gestione %s il debito di %s si divide per quota: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano %s (%s %%)' : '%s %s (%s %%)', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?'), rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
+                    : sprintf('Sulla gestione %s il debito di %s si divide secondo la parte dell\'usufrutto che torna a ciascun nudo proprietario: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano %s' : '%s %s', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?')), array_keys($parti))), $coda);
             }
             $esito['coppie'] = $coppie;
             foreach ($restaAChiEsce as $u) {
@@ -758,7 +705,7 @@ class AnteprimaPassaggio
             }
             if (count($pesi) > 1) {
                 $esito['frasi'][] = sprintf('Sulla gestione %s il debito di %s si divide per la quota d\'usufrutto: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']),
-                    implode(', ', array_map(fn ($id) => sprintf('%s a %s (%s %%)', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?', $this->quota($pesi[$id])), array_keys($parti))));
+                    implode(', ', array_map(fn ($id) => sprintf('%s %s (%s %%)', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?'), $this->quota($pesi[$id])), array_keys($parti))));
             }
         }
         $esito['coppie'] = $coppie;
@@ -800,23 +747,20 @@ class AnteprimaPassaggio
             foreach ($fermi['stato'] === 'calcolato' ? $fermi['coppie'] : [] as $c) {
                 $u = (int) $c['immobile_id'];
                 // Fase 1-bis della .50 (R9): chi potrebbe pagare quei giorni, per nome: i coinquilini che restano e chi sta al posto
-                // dell'inquilino dopo l'uscita (il proprietario, o l'usufruttuario). Decisione 80: il Wallet si indica solo a chi non ha già
-                // un saldo sulla gestione, sull'unità e sull'esercizio (il Wallet ne accetta uno, fra quelli che un passaggio non ha scritto),
-                // e solo se non ce l'ha chi esce.
+                // dell'inquilino dopo l'uscita (il proprietario, o l'usufruttuario). La strada è il Wallet per tutti, con i saldi legati a
+                // questo passaggio (1.11.0-beta.53): non occupano il posto, perché il Wallet ne accetta uno per persona, gestione, unità ed
+                // esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio.
                 $candidati = $coinquilini[$u]->map(fn (TitolaritaImmobile $t) => [(int) $t->anagrafica_id, (string) ($t->anagrafica?->nome ?? '')])
                     ->concat($alPosto[$u] ??= $this->alPostoDopoLUscita($chiPaga, $u, $decorrenza))->filter(fn ($x) => $x[1] !== '' && $x[0] !== (int) $uscente->anagrafica_id)
                     ->unique(0)->values();
-                $conUnSaldo = FermataDopoScrivi::conUnSaldo([(int) $uscente->anagrafica_id, ...$candidati->pluck(0)->all()], (int) $c['gestione_id'], $u, $c['esercizio_id'] ?? null);
-                $esceConUnSaldo = in_array((int) $uscente->anagrafica_id, $conUnSaldo, true);
                 $this->fermataCoinquilino[] = [
                     'immobile_id' => $u, 'unita' => $nomiUnita[$u] ?? 'l\'unità',
                     'gestione_id' => (int) $c['gestione_id'], 'gestione' => (string) ($c['gestione'] ?? '?'), 'esercizio_id' => $c['esercizio_id'] ?? null,
                     'cifra' => (int) $c['importo'], 'persona_id' => (int) $uscente->anagrafica_id, 'persona' => (string) $uscente->anagrafica->nome,
                     'restano' => $coinquilini[$u]->map(fn (TitolaritaImmobile $t) => $t->anagrafica?->nome)->filter()->unique()->values()->all(),
                     'al_posto' => $candidati->reject(fn ($x) => $coinquilini[$u]->contains(fn (TitolaritaImmobile $t) => (int) $t->anagrafica_id === $x[0]))->pluck(1)->values()->all(),
-                    'con_un_saldo' => Anagrafica::whereIn('id', $conUnSaldo)->pluck('nome')->map(fn ($n) => (string) $n)->values()->all(),
-                    // Il Wallet è indicato almeno per uno dei candidati: allora una riga del Wallet può esistere, e l'annullamento lo ricorda.
-                    'wallet' => ! $esceConUnSaldo && $candidati->contains(fn ($x) => ! in_array($x[0], $conUnSaldo, true)),
+                    // Il pannello indica il Wallet, con i saldi legati a questo passaggio: lo storico lo ricorda (`fraseStoricoCoinquilino`).
+                    'wallet' => true, 'strada' => FermataDopoScrivi::STRADA_LEGATA,
                 ];
             }
         }
@@ -879,7 +823,7 @@ class AnteprimaPassaggio
             }
             if (count($parti) > 1) {
                 $esito['frasi'][] = sprintf('Sulla gestione %s il debito di %s si divide fra chi paga al posto dell\'inquilino nei giorni dopo l\'uscita, per quota e per giorni: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']),
-                    implode(', ', array_map(fn ($id) => sprintf('%s a %s', MoneyHelper::format((int) $parti[$id]), $nomi[$id] ?? '?'), array_keys($parti))));
+                    implode(', ', array_map(fn ($id) => sprintf('%s %s', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?')), array_keys($parti))));
             }
         }
         $esito['coppie'] = $coppie;
@@ -1857,7 +1801,7 @@ class AnteprimaPassaggio
                 $frasi[] = sprintf(! empty($dati['legato']) ? 'Sulla gestione %s la parte di chi riceve l\'unità, %s%s, si divide per quota: %s.%s' : 'Sulla gestione %s la parte degli eredi, %s%s, si divide per quota: %s.%s', $g['gestione'] ?? 'gestione', ImportoInParole::cifraInParole($lordo),
                     ($g['natura'] ?? null) === NaturaGestione::Straordinaria->value ? '' : ' per i giorni dal decesso',
                     implode(', ', array_map(fn ($id) => sprintf('%s %s (%s %%)', ImportoInParole::cifraInParole((int) $parti[$id]), $this->frasiObbligati->a($nomi[$id] ?? '?'), $this->numeroQuota((float) $pesi[$id])), array_keys($parti))),
-                    $passate !== 0 ? sprintf(' Le rate in bozza (%s) vanno a %s, che le paga con quelle: la sua parte nel conguaglio scende di altrettanto.', ImportoInParole::cifraInParole($passate), $nomi[$riferimentoId] ?? 'l\'erede di riferimento') : '');
+                    $passate !== 0 ? sprintf(' Le rate in bozza (%s) vanno %s, che le paga con quelle: la sua parte nel conguaglio scende di altrettanto.', ImportoInParole::cifraInParole($passate), FrasiObbligati::a($nomi[$riferimentoId] ?? 'l\'erede di riferimento')) : '');
             }
         }
         $esito['coppie'] = $coppie;
@@ -1871,7 +1815,7 @@ class AnteprimaPassaggio
         // La frase del calcolo dice delle bozze «che passano a suo nome», con chi entra al singolare: con più eredi le bozze vanno al
         // solo erede di riferimento, e la frase lo nomina.
         if (count($pesi) > 1 && isset($nomi[$riferimentoId])) {
-            $esito['frasi'] = array_map(fn (string $f) => str_replace('che passano a suo nome', 'che passano a ' . $nomi[$riferimentoId], $f), $esito['frasi']);
+            $esito['frasi'] = array_map(fn (string $f) => str_replace('che passano a suo nome', 'che passano ' . FrasiObbligati::a($nomi[$riferimentoId]), $f), $esito['frasi']);
         }
         // Rilievo AMM-3 del giro sulle correzioni della .48: le frasi del calcolo parlano di eredi; nel legato chi riceve l'unità non lo è.
         if (! empty($dati['legato'])) {
@@ -2070,7 +2014,7 @@ class AnteprimaPassaggio
             $eredi[] = ['anagrafica_id' => (int) $id, 'nome' => $nomi[$id] ?? '?', 'quota' => (float) $pesi[$id], 'importo' => (int) $c,
                 'importo_formattato' => MoneyHelper::format(abs((int) $c)) . ((int) $c < 0 ? ' a credito' : '')];
         }
-        $aChi = fn (array $e) => $e['importo'] < 0 ? sprintf('%s di %s', $e['importo_formattato'], $e['nome']) : sprintf('%s a %s', $e['importo_formattato'], $e['nome']);
+        $aChi = fn (array $e) => $e['importo'] < 0 ? sprintf('%s di %s', $e['importo_formattato'], $e['nome']) : sprintf('%s %s', $e['importo_formattato'], FrasiObbligati::a($e['nome']));
         // Rilievo GC1 del giro sulle correzioni: la prima frase dice il segno dell'arretrato (al netto del conguaglio), la seconda il
         // risultato con il conguaglio, che per ogni erede è la sua quota della posizione del defunto con le bozze passate: i due segni
         // divergono quando il defunto ha lasciato aperto meno dei giorni degli eredi (le rate mensili pagate fino al decesso).
@@ -2265,15 +2209,15 @@ class AnteprimaPassaggio
                 $cosa = in_array('entrata', $tipi, true) ? $this->ordinariaOEntrata($tipi, $una) : 'l\'ordinaria';
 
                 return $riserva
-                    ? sprintf('%s resta a %s, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia', $cosa, $usufruttuario ?? 'chi vende')
-                    : sprintf('il conguaglio dà a %s %s dal %s, anche sulle quote ancora in bozza', $usufruttuario ?? 'chi ha l\'usufrutto', $cosa, $dal);
+                    ? sprintf('%s resta %s, che resta usufruttuario, anche sulle quote ancora in bozza, e non si conguaglia', $cosa, FrasiObbligati::a($usufruttuario ?? 'chi vende'))
+                    : sprintf('il conguaglio dà %s %s dal %s, anche sulle quote ancora in bozza', FrasiObbligati::a($usufruttuario ?? 'chi ha l\'usufrutto'), $cosa, $dal);
             };
             if ($senzaGiornale->isNotEmpty()) {
                 $unPiano = $nomiPiani($senzaGiornale)->count() === 1;
-                $frasiBloccate[] = sprintf('%s %s %s: %s, non c\'è conguaglio, e generato o ricalcolato %s darà dal %s %s a %s, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio %s: con il passaggio %s; poi %s.',
+                $frasiBloccate[] = sprintf('%s %s %s: %s, non c\'è conguaglio, e generato o ricalcolato %s darà dal %s %s %s, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio %s: con il passaggio %s; poi %s.',
                     $una($senzaGiornale) ? 'La voce' : 'Le voci', $this->nomiVociConTipo($senzaGiornale->values()->all()) . ($una($senzaGiornale) ? ' è' : ' sono'),
                     $nel($senzaGiornale, 'approvato e ancora senza niente a giornale', 'approvati e ancora senza niente a giornale'),
-                    $una($senzaGiornale) ? 'non si sposta' : 'non si spostano', $unPiano ? 'il piano' : 'ogni piano', $dal, $this->ordinariaOEntrata($senzaGiornale->pluck('tipo')->all(), $una($senzaGiornale)), $nudo ?? 'il nudo proprietario',
+                    $una($senzaGiornale) ? 'non si sposta' : 'non si spostano', $unPiano ? 'il piano' : 'ogni piano', $dal, $this->ordinariaOEntrata($senzaGiornale->pluck('tipo')->all(), $una($senzaGiornale)), FrasiObbligati::a($nudo ?? 'il nudo proprietario'),
                     $unPiano ? 'riporta il piano in bozza dalla sua pagina' : 'riporta in bozza, dalla loro pagina, tutti questi piani',
                     $una($senzaGiornale) ? 'la voce si sposterà' : 'le voci si sposteranno', $unPiano ? 'riapprova il piano e ricalcolalo' : 'riapprovali e ricalcolali');
             }
@@ -2284,17 +2228,17 @@ class AnteprimaPassaggio
                     $una($conGiornale) ? 'non si sposta' : 'non si spostano', $nomiPiani($conGiornale)->count() === 1 ? 'quel piano' : 'quei piani', $conGiornaleVale($conGiornale->pluck('tipo')->all(), $una($conGiornale)), $una($conGiornale) ? 'Resta' : 'Restano');
             }
             if ($daFatture->isNotEmpty()) {
-                $frasiBloccate[] = sprintf('%s %s nelle fatture %s: %s sul «Proprietario», e nei piani ordinari generati o ricalcolati %s a %s, nudo proprietario.',
+                $frasiBloccate[] = sprintf('%s %s nelle fatture %s: %s sul «Proprietario», e nei piani ordinari generati o ricalcolati %s %s, nudo proprietario.',
                     $una($daFatture) ? 'La voce' : 'Le voci', $this->nomiVociConTipo($daFatture->values()->all()) . ($una($daFatture) ? ' è' : ' sono'),
                     str_replace(['nel piano', 'nei piani'], ['del piano straordinario', 'dei piani straordinari'], $nel($daFatture, 'approvato', 'approvati')),
-                    $una($daFatture) ? 'resta' : 'restano', $una($daFatture) ? 'andrà' : 'andranno', $nudo ?? 'il nudo proprietario');
+                    $una($daFatture) ? 'resta' : 'restano', $una($daFatture) ? 'andrà' : 'andranno', FrasiObbligati::a($nudo ?? 'il nudo proprietario'));
             }
             foreach ($miste as $v) {
                 $perCaso = collect($v['piani_bloccanti'] ?? [])->groupBy($caso)->map(fn (Collection $pp) => $this->elenco($pp->pluck('nome')->unique()->map(fn ($n) => '«' . $n . '»')->values()->all()));
                 $entrata = ($v['tipo'] ?? 'spesa') === 'entrata';
                 $parti = array_values(array_filter([
                     isset($perCaso['giornale']) ? sprintf('%s, che non si ricalcola più: lì %s', $perCaso['giornale'], $conGiornaleVale([$v['tipo'] ?? 'spesa'], true)) : null,
-                    isset($perCaso['senza']) ? sprintf('%s, approvato e ancora senza niente a giornale: generato o ricalcolato, darà dal %s %s a %s, nudo proprietario', $perCaso['senza'], $dal, $entrata ? 'l\'entrata della voce' : 'l\'ordinaria della voce', $nudo ?? 'il nudo proprietario') : null,
+                    isset($perCaso['senza']) ? sprintf('%s, approvato e ancora senza niente a giornale: generato o ricalcolato, darà dal %s %s %s, nudo proprietario', $perCaso['senza'], $dal, $entrata ? 'l\'entrata della voce' : 'l\'ordinaria della voce', FrasiObbligati::a($nudo ?? 'il nudo proprietario')) : null,
                     isset($perCaso['fatture']) ? sprintf('%s, straordinario, nelle sue fatture', $perCaso['fatture']) : null,
                 ]));
                 // Nessun rimedio: un piano a giornale non torna in bozza, e uno straordinario in bozza sposterebbe anche la sua parte
@@ -2304,11 +2248,11 @@ class AnteprimaPassaggio
             array_push($frasi, ...$frasiBloccate);
             $tenute = array_values(array_filter($voci, fn ($v) => ! $v['spostata'] && ! $v['bloccata']));
             if ($tenute !== []) {
-                $frasi[] = sprintf(count($tenute) === 1 ? 'Resta sul «Proprietario» la voce %s: nei piani che verranno andrà a %s, nudo proprietario.' : 'Restano sul «Proprietario» le voci %s: nei piani che verranno andranno a %s, nudo proprietario.',
-                    $this->nomiVoci($tenute), $nudo ?? 'il nudo proprietario');
+                $frasi[] = sprintf(count($tenute) === 1 ? 'Resta sul «Proprietario» la voce %s: nei piani che verranno andrà %s, nudo proprietario.' : 'Restano sul «Proprietario» le voci %s: nei piani che verranno andranno %s, nudo proprietario.',
+                    $this->nomiVoci($tenute), FrasiObbligati::a($nudo ?? 'il nudo proprietario'));
             }
         } else {
-            $frasi[] = sprintf('Dal %s le spese ordinarie seguono la voce: quelle sul «Proprietario» vanno a %s, nudo proprietario, le altre a %s, usufruttuario. Lo stesso nel conguaglio delle rate già emesse. Le voci non si toccano.', $dal, $nudo ?? 'il nudo proprietario', $usufruttuario ?? 'chi ha l\'usufrutto');
+            $frasi[] = sprintf('Dal %s le spese ordinarie seguono la voce: quelle sul «Proprietario» vanno %s, nudo proprietario, le altre %s, usufruttuario. Lo stesso nel conguaglio delle rate già emesse. Le voci non si toccano.', $dal, FrasiObbligati::a($nudo ?? 'il nudo proprietario'), FrasiObbligati::a($usufruttuario ?? 'chi ha l\'usufrutto'));
         }
         // Decisione 33 (1.11.0-beta.42, D-U1): un usufrutto della gestione nato con la scelta opposta, anche finito. In una chiave
         // sua: il modulo mostra delle `frasi` solo la prima, la conclusione, e queste devono vedersi prima della conferma.
@@ -2397,8 +2341,8 @@ class AnteprimaPassaggio
                 $periodo = $r->data_fine !== null
                     ? sprintf('dal %s al %s', $this->data(CarbonImmutable::parse($r->data_inizio)), $this->data(CarbonImmutable::parse($r->data_fine)))
                     : sprintf('dal %s', $this->data(CarbonImmutable::parse($r->data_inizio)));
-                $frasi[] = sprintf('L\'usufrutto di %s su %s, %s, è nato con la scelta «come dice ogni voce»: spostando %s sull\'«Usufruttuario», i piani della gestione «%s» generati o ricalcolati dopo daranno %s a %s, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.',
-                    $r->nome, $r->immobile, $periodo, $this->elenco($voci), $u['gestione'], $this->ordinariaOEntrata($u['tipi'], count($voci) === 1), $r->nome);
+                $frasi[] = sprintf('L\'usufrutto di %s su %s, %s, è nato con la scelta «come dice ogni voce»: spostando %s sull\'«Usufruttuario», i piani della gestione «%s» generati o ricalcolati dopo daranno %s %s, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.',
+                    $r->nome, $r->immobile, $periodo, $this->elenco($voci), $u['gestione'], $this->ordinariaOEntrata($u['tipi'], count($voci) === 1), FrasiObbligati::a($r->nome));
             }
 
             return $frasi;
@@ -2535,7 +2479,7 @@ class AnteprimaPassaggio
                 default => sprintf('%s risulterà inquilino fino al %s compreso. L\'unità resta sfitta dal %s.', $uscente, $finoA, $dalA),
             },
             'usufrutto' => ($dati['sottotipo'] ?? 'costituzione') === 'estinzione' && ! empty($dati['accrescimento'])
-                ? sprintf('%s risulterà usufruttuario fino al %s compreso. Dal %s il suo usufrutto si accresce a %s, e la nuda proprietà resta nuda.', $uscente, $finoA, $dalA, $this->elencoUsufruttuari())
+                ? sprintf('%s risulterà usufruttuario fino al %s compreso. Dal %s il suo usufrutto si accresce %s, e la nuda proprietà resta nuda.', $uscente, $finoA, $dalA, FrasiObbligati::a($this->elencoUsufruttuari()))
                 : (($dati['sottotipo'] ?? 'costituzione') === 'estinzione'
                 ? sprintf('%s risulterà usufruttuario fino al %s compreso. Dal %s %s %s.', $uscente, $finoA, $dalA, $this->elencoNudi($nudo), $this->tornaPieno())
                 : sprintf('%s risulterà proprietario pieno fino al %s compreso; dal %s nudo proprietario. %s usufruttuario dal %s.', $uscente, $finoA, $dalA, $entrante ?? 'Chi entra', $dalA)),
@@ -2703,11 +2647,11 @@ class AnteprimaPassaggio
                     ? sprintf('%s: il passaggio non %s tocca; %s', $this->elenco($escluse->pluck('nome')->all()), $escluse->count() === 1 ? 'la' : 'le',
                         $escluse->count() === 1 ? sprintf('se è anche di %s, registra la successione anche dalla pertinenza.', $uscente ?? 'chi esce')
                             : sprintf('per quelle che sono anche di %s, registra la successione anche da lì.', $uscente ?? 'chi esce'))
-                    : sprintf('%s: il passaggio non %s tocca, %s a %s.',
+                    : sprintf('%s: il passaggio non %s tocca, %s %s.',
                         $this->elenco($escluse->pluck('nome')->all()),
                         $escluse->count() === 1 ? 'la' : 'le',
                         $escluse->count() === 1 ? 'resta' : 'restano',
-                        $uscente ?? 'chi ne è titolare oggi');
+                        FrasiObbligati::a($uscente ?? 'chi ne è titolare oggi'));
             }
         }
 
@@ -2943,7 +2887,7 @@ class AnteprimaPassaggio
                 : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, a cui l\'usufrutto si accresce, è proposto come righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (art. 1004 c.c.), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $this->elencoUsufruttuari());
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
             }
         } elseif ($estinzione && $this->nudi->isNotEmpty() && $altriNudi->isEmpty() && $nomiDelleCoppie === []) {
             // Il solo nudo è chi esce: torna pieno, e non c'è niente da conguagliare.
@@ -2963,7 +2907,7 @@ class AnteprimaPassaggio
                     : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s, che resta come nudo proprietario, e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (dal %s all\'usufruttuario, art. 1004 c.c.), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $entrante ?? 'chi entra', $this->data($dal)));
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
             }
         } elseif ($this->riserva($tipo, $dati)) {
             // Testi T5 della Fase 1-bis: la straordinaria segue la competenza — la delibera, o quella dichiarata sulla fattura
@@ -2974,7 +2918,7 @@ class AnteprimaPassaggio
                 : 'Le rate già emesse non si toccano. %s resta usufruttuario e continua a dovere la quota ordinaria (art. 1004 c.c.): l\'ordinaria non si conguaglia. La quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella; dal %s il titolare è %s, nudo proprietario (art. 1005 c.c.). Dove serve, il conguaglio è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano.', $uscente, $this->data($dal), $entrante ?? 'chi entra');
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
             }
         } elseif ($tipo === 'successione' && ! $senzaCoppie) {
             // Decisione 65 (4): il conguaglio per giorni della vendita, con il debito di chi entra diviso fra gli eredi per quota.
@@ -3017,13 +2961,13 @@ class AnteprimaPassaggio
             // (`frasi_del_conguaglio`, la mette insieme `frasiDelConguaglio()`): qui restano i fatti, che valgono con qualunque scelta.
             array_push($frasi, ...($scelta ? self::fattiDelConguaglio($frasiConguaglio) : $frasiConguaglio));
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
             }
         } elseif ($senzaCoppie) {
             $frasi[] = 'Le rate già emesse non si toccano.';
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
             }
         } else {
             // Testi T5 (cantiere C6): come nella riserva, la straordinaria segue la competenza — la delibera, o quella dichiarata
@@ -3031,7 +2975,7 @@ class AnteprimaPassaggio
             $frasi[] = sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria è divisa in proporzione ai giorni; la quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $uscente, $entrante ?? 'chi entra');
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano a %s: questo passaggio non le riguarda.', $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
             }
         }
 
@@ -3271,10 +3215,10 @@ class AnteprimaPassaggio
             $netto = (int) ($arretrato['totale'] ?? 0);
             if (count($eredi) === 1 && $netto !== 0) {
                 $avvisi[] = $netto > 0
-                    ? sprintf('l\'arretrato va tutto a %s, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), di quel debito risponde ogni erede per la sua quota ereditaria (art. 754 c.c.): in quel caso lascialo a nome di %s',
-                        $eredi[0]['nome'] ?? 'l\'erede', $defunto)
-                    : sprintf('il credito di %s va tutto a %s, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), il credito è dell\'eredità, e si divide con le quote ereditarie: in quel caso lascialo a nome di %s',
-                        $defunto, $eredi[0]['nome'] ?? 'l\'erede', $defunto);
+                    ? sprintf('l\'arretrato va tutto %s, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), di quel debito risponde ogni erede per la sua quota ereditaria (art. 754 c.c.): in quel caso lascialo a nome di %s',
+                        FrasiObbligati::a($eredi[0]['nome'] ?? 'l\'erede'), $defunto)
+                    : sprintf('il credito di %s va tutto %s, l\'unico erede registrato su questa unità. Se l\'eredità ha altri eredi (un testamento o una divisione che assegna l\'unità a un erede solo), il credito è dell\'eredità, e si divide con le quote ereditarie: in quel caso lascialo a nome di %s',
+                        $defunto, FrasiObbligati::a($eredi[0]['nome'] ?? 'l\'erede'), $defunto);
             }
         }
 
@@ -3417,8 +3361,8 @@ class AnteprimaPassaggio
             foreach ($alNudo as $piano) {
                 if ($piano['per_scelta'] !== []) {
                     // Rilievo A5: con la scelta fatta piano ricalcolato e conguaglio sono già coerenti; si dice il fatto, niente consiglio.
-                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, %s',
-                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['per_scelta'], $piano['tipi']['per_scelta']), $entrante ?? 'chi compra',
+                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno %s, nudo proprietario, %s',
+                        $piano['nome'], FrasiObbligati::a($uscente->anagrafica?->nome), $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['per_scelta'], $piano['tipi']['per_scelta']), FrasiObbligati::a($entrante ?? 'chi compra'),
                         $contiPerScelta === true ? 'per la scelta «come dice ogni voce»' : 'perché hai tolto loro la spunta');
                 }
                 // Rilievo T-B2 della revisione della Fase 1-ter: per una voce bloccata (31.8, 31.9) «mettila su Usufruttuario»
@@ -3426,13 +3370,13 @@ class AnteprimaPassaggio
                 // Se la blocca solo questo piano, che non ha niente a giornale, il rimedio è riportarlo in bozza prima di
                 // registrare: con il passaggio la voce si sposta. Se la blocca un altro piano, dal passaggio non c'è rimedio.
                 if ($piano['bloccati_qui'] !== []) {
-                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, anche se fra le parti %s: il piano le blocca, e il passaggio non le sposta. Se devono restare a %s, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio: con il passaggio si sposteranno su «Usufruttuario»; poi riapprova il piano e ricalcolalo. Dopo la registrazione la strada è annullare il passaggio dallo storico dell\'unità, riportare il piano in bozza e registrarlo di nuovo; il piano va comunque ricalcolato prima di emetterlo',
-                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['bloccati_qui'], $piano['tipi']['bloccati_qui']), $entrante ?? 'chi compra',
-                        $this->fraLeParti($piano['tipi']['bloccati_qui'], count($piano['bloccati_qui'])), $uscente->anagrafica?->nome);
+                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno %s, nudo proprietario, anche se fra le parti %s: il piano le blocca, e il passaggio non le sposta. Se devono restare %s, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio: con il passaggio si sposteranno su «Usufruttuario»; poi riapprova il piano e ricalcolalo. Dopo la registrazione la strada è annullare il passaggio dallo storico dell\'unità, riportare il piano in bozza e registrarlo di nuovo; il piano va comunque ricalcolato prima di emetterlo',
+                        $piano['nome'], FrasiObbligati::a($uscente->anagrafica?->nome), $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['bloccati_qui'], $piano['tipi']['bloccati_qui']), FrasiObbligati::a($entrante ?? 'chi compra'),
+                        $this->fraLeParti($piano['tipi']['bloccati_qui'], count($piano['bloccati_qui'])), FrasiObbligati::a($uscente->anagrafica?->nome));
                 }
                 if ($piano['bloccati_altrove'] !== []) {
-                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, anche se fra le parti %s: un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale; il piano va comunque ricalcolato prima di emetterlo',
-                        $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['bloccati_altrove'], $piano['tipi']['bloccati_altrove']), $entrante ?? 'chi compra',
+                    $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno %s, nudo proprietario, anche se fra le parti %s: un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale; il piano va comunque ricalcolato prima di emetterlo',
+                        $piano['nome'], FrasiObbligati::a($uscente->anagrafica?->nome), $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['bloccati_altrove'], $piano['tipi']['bloccati_altrove']), FrasiObbligati::a($entrante ?? 'chi compra'),
                         $this->fraLeParti($piano['tipi']['bloccati_altrove'], count($piano['bloccati_altrove'])));
                 }
                 if ($piano['conti'] === []) {
@@ -3440,9 +3384,9 @@ class AnteprimaPassaggio
                 }
                 // Dove non c'è un inquilino l'«Inquilino» non riceve niente; su un'unità affittata una spesa gliela fa pagare, un'entrata gliela dà.
                 $alInquilino = ! in_array('spesa', $piano['tipi']['conti'], true) ? 'le dà all\'inquilino' : 'le fa pagare all\'inquilino';
-                $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote a %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno a %s, nudo proprietario, perché il programma addebita secondo i coefficienti anche se fra le parti %s; se devono restare a %s, che resta usufruttuario, prima di ricalcolare metti quelle voci su «Usufruttuario», che dove non c\'è usufrutto le dà al proprietario e mai all\'inquilino; non su «Inquilino», che su un\'unità affittata %s (guida «Ruoli e usufrutto»)',
-                    $piano['nome'], $uscente->anagrafica?->nome, $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['conti'], $piano['tipi']['conti']), $entrante ?? 'chi compra',
-                    $this->fraLeParti($piano['tipi']['conti'], count($piano['conti'])), $uscente->anagrafica?->nome, $alInquilino);
+                $motivi[] = sprintf('il piano «%s», non ancora emesso, intesta quote %s: se lo ricalcoli, dal %s le voci sul «Proprietario» %s vanno %s, nudo proprietario, perché il programma addebita secondo i coefficienti anche se fra le parti %s; se devono restare %s, che resta usufruttuario, prima di ricalcolare metti quelle voci su «Usufruttuario», che dove non c\'è usufrutto le dà al proprietario e mai all\'inquilino; non su «Inquilino», che su un\'unità affittata %s (guida «Ruoli e usufrutto»)',
+                    $piano['nome'], FrasiObbligati::a($uscente->anagrafica?->nome), $this->data($decorrenzaRiserva), $this->vociDelCancello($piano['conti'], $piano['tipi']['conti']), FrasiObbligati::a($entrante ?? 'chi compra'),
+                    $this->fraLeParti($piano['tipi']['conti'], count($piano['conti'])), FrasiObbligati::a($uscente->anagrafica?->nome), $alInquilino);
             }
             if ($ricalcolabiliDiChiEsce->pluck('piano_rate_id')->unique()->count() > count($alNudo)) {
                 $motivi[] = sprintf('un piano rate già generato intesta quote %s: il destinatario cambierebbe', $this->frasiObbligati->a((string) $uscente->anagrafica?->nome));
@@ -3451,9 +3395,9 @@ class AnteprimaPassaggio
             // quote nascono dopo, e l'arretrato di questo passaggio non le comprende: si passano agli eredi a mano; il cancello della generazione lo dice.
             if ($tipo === 'successione' && $agliEredi && $decorrenza !== null) {
                 $nomi = $ricalcolabiliDiChiEsce->pluck('nome')->unique()->values()->all();
-                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà agli eredi i giorni dal %s, divisi per quota, e lascerà a %s le quote dei giorni fino al %s, che l\'arretrato di questo passaggio non comprende. Per passarle agli eredi, quando il piano si ricalcola il cancello della generazione ne dice la cifra e la strada: un saldo manuale dal Wallet sulla stessa gestione (una riga a credito di %s e una a debito di ogni erede, per la sua quota) se nessuno ha già, su quella gestione, quell\'unità e quell\'esercizio, un saldo che non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti; se i saldi registrati sono già la parte di ognuno, dice che ci sono già e che non serve registrare altro; e dice se il piano applica i saldi del Wallet',
+                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà agli eredi i giorni dal %s, divisi per quota, e lascerà %s le quote dei giorni fino al %s, che l\'arretrato di questo passaggio non comprende. Per passarle agli eredi, quando il piano si ricalcola il cancello della generazione ne dice la cifra e la strada: i saldi dal Wallet legati a questa successione, sulla stessa gestione (una riga a credito di %s e una a debito di ogni erede, per la sua quota); se il piano applica i saldi del Wallet e i saldi, legati o di prima, sono già la parte di ognuno, dice che ci sono già e che non serve registrare altro; se non li applica, lo dice, e la strada passa da un piano creato di nuovo',
                     count($nomi) === 1 ? 'il piano «' . $nomi[0] . '»' : 'i piani ' . $this->elenco(array_map(fn ($n) => '«' . $n . '»', $nomi)),
-                    $this->data($decorrenza), $uscente->anagrafica?->nome, $this->data($decorrenza->subDay()), $uscente->anagrafica?->nome);
+                    $this->data($decorrenza), FrasiObbligati::a($uscente->anagrafica?->nome), $this->data($decorrenza->subDay()), $uscente->anagrafica?->nome);
                 if (count($nomi) > 1) {
                     $avvisi[array_key_last($avvisi)] = str_replace([' si ricalcola ancora: ricalcolato, darà', ', e lascerà a'], [' si ricalcolano ancora: ricalcolati, daranno', ', e lasceranno a'], $avvisi[array_key_last($avvisi)]);
                 }
@@ -3462,9 +3406,9 @@ class AnteprimaPassaggio
                 // ma nascono dopo, con il ricalcolo, e le rate si emettono a suo nome: lo si dice prima.
                 $nomi = $ricalcolabiliDiChiEsce->pluck('nome')->unique()->values()->all();
                 $defunto = $uscente->anagrafica?->nome ?? 'questa persona';
-                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà %s i giorni dal %s, divisi per quota, e lascerà a %s le quote dei giorni fino al %s: con l\'arretrato a suo nome restano intestate a %s («eredi di %s»), e il ricalcolo ne mette una parte in ogni rata del piano, anche in quelle che scadono dopo il decesso',
+                $avvisi[] = sprintf('%s si ricalcola ancora: ricalcolato, darà %s i giorni dal %s, divisi per quota, e lascerà %s le quote dei giorni fino al %s: con l\'arretrato a suo nome restano intestate %s («eredi di %s»), e il ricalcolo ne mette una parte in ogni rata del piano, anche in quelle che scadono dopo il decesso',
                     count($nomi) === 1 ? 'il piano «' . $nomi[0] . '»' : 'i piani ' . $this->elenco(array_map(fn ($n) => '«' . $n . '»', $nomi)),
-                    empty($arretrato['legato']) ? 'agli eredi' : 'a chi riceve l\'unità per legato', $this->data($decorrenza), $defunto, $this->data($decorrenza->subDay()), $defunto, $defunto);
+                    empty($arretrato['legato']) ? 'agli eredi' : 'a chi riceve l\'unità per legato', $this->data($decorrenza), FrasiObbligati::a($defunto), $this->data($decorrenza->subDay()), FrasiObbligati::a($defunto), $defunto);
                 if (count($nomi) > 1) {
                     $avvisi[array_key_last($avvisi)] = str_replace([' si ricalcola ancora: ricalcolato, darà', ', e lascerà a', ' in ogni rata del piano,'], [' si ricalcolano ancora: ricalcolati, daranno', ', e lasceranno a', ' in ogni rata dei piani,'], $avvisi[array_key_last($avvisi)]);
                 }
@@ -3547,7 +3491,7 @@ class AnteprimaPassaggio
             $testa = sprintf('il piano «%s» ha %d %s non ancora %s intestat%s %s: non si può più ricalcolare%s', $p->nome, $p->n, $p->n === 1 ? 'quota' : 'quote', $p->n === 1 ? 'emessa' : 'emesse', $p->n === 1 ? 'a' : 'e', $this->frasiObbligati->a((string) $p->intestatario),
                 $perche !== null ? ' (' . $perche . ')' : '');
             $parti = array_filter([
-                $passano > 0 ? sprintf('%s a %s (cambia l\'intestatario, non l\'importo)', $passano === (int) $p->n ? ($passano === 1 ? 'passa' : 'passano') : sprintf('%d %s', $passano, $passano === 1 ? 'passa' : 'passano'), $entrante ?? 'chi entra') : null,
+                $passano > 0 ? sprintf('%s %s (cambia l\'intestatario, non l\'importo)', $passano === (int) $p->n ? ($passano === 1 ? 'passa' : 'passano') : sprintf('%d %s', $passano, $passano === 1 ? 'passa' : 'passano'), FrasiObbligati::a($entrante ?? 'chi entra')) : null,
                 // Rilievo A10: chi decide (decisione 32) e il rimedio, come nelle altre fermate. Decisione 79 (2): con un coinquilino che
                 // resta la scelta non c'è, e la strada a mano la dice la frase della fermata (decisione 80).
                 $restano > 0 && $senzaConguaglio ? sprintf('%s%s, senza conguaglio: %s', $conNumero ? $restano . ' ' : '', $restano === 1 ? 'resta sua' : 'restano sue',
@@ -3585,7 +3529,7 @@ class AnteprimaPassaggio
             // Rilievo GC16 del giro sulle correzioni: «il credito … € 5,48», senza un secondo «a credito».
             $motivi[] = sprintf('%s di %s al netto del conguaglio, %s, passa agli eredi con righe di saldo sulla stessa gestione: %s', (int) $arretrato['totale'] < 0 ? 'il credito' : 'l\'arretrato', $uscente?->anagrafica?->nome,
                 MoneyHelper::format(abs((int) $arretrato['totale'])),
-                implode(', ', array_map(fn ($e) => sprintf((int) $e['importo'] < 0 ? '%s di %s' : '%s a %s', $e['importo_formattato'], $e['nome']), $arretrato['eredi'])));
+                implode(', ', array_map(fn ($e) => ((int) $e['importo'] < 0 ? sprintf('%s di %s', $e['importo_formattato'], $e['nome']) : sprintf('%s %s', $e['importo_formattato'], FrasiObbligati::a($e['nome']))), $arretrato['eredi'])));
         } elseif ($arretrato !== null && ((int) ($arretrato['resta'] ?? 0) !== 0 || (int) ($arretrato['resta_senza_conguaglio'] ?? 0) !== 0)) {
             $cifra = fn (int $c) => MoneyHelper::format(abs($c)) . ($c < 0 ? ' a credito' : '');
             $resta = (int) ($arretrato['resta'] ?? 0);
@@ -3624,11 +3568,11 @@ class AnteprimaPassaggio
                             $p['propri'] ? (isset($p['propri_scritto'])
                                 ? $this->presaConLaFine($p, $dalAl($p['propri_fino'], $p['propri_dal'] ?? null), $entrante ?? 'chi entra', $vecchio === null || $vecchio['solo_propri'])
                                 : sprintf('la parte a carico dell\'inquilino %s è già nelle rate di %s', $dalAl($p['propri_fino'], $p['propri_dal'] ?? null), $entrante ?? 'chi entra')) : null,
-                            // Decisione 77 (1.11.0-beta.50): chi paga i giorni dopo l'uscita lo dice la fine dell'inquilino di prima; il saldo
-                            // manuale dal Wallet resta solo per la riga chiusa a mano.
+                            // Decisione 77 (1.11.0-beta.50): chi paga i giorni dopo l'uscita lo dice la fine dell'inquilino di prima; il Wallet,
+                            // con i saldi legati a questo passaggio, resta solo per la riga chiusa a mano.
                             $p['usciti'] !== [] ? sprintf('la parte a carico dell\'inquilino %s resta nelle rate di %s: %s',
                                 $dalAl($p['usciti_fino'], $p['usciti_dal'] ?? null), $this->elenco($p['usciti']), $this->dopoLUscitaDiPrima($p, $entrante ?? 'chi entra', $vecchio === null)
-                                . (($p['usciti_come'] ?? 'a_mano') === 'a_mano' ? ' — se serve, con un saldo manuale dal Wallet sulla stessa gestione' : '')) : null,
+                                . (($p['usciti_come'] ?? 'a_mano') === 'a_mano' ? ' — se serve, dal Wallet con saldi legati a questo passaggio, sulla stessa gestione' : '')) : null,
                             $p['presenti'] !== [] ? sprintf('la parte a carico dell\'inquilino resta nelle rate di %s, che %s', $this->elenco($p['presenti']), count($p['presenti']) === 1 ? 'resta inquilino' : 'restano inquilini') : null,
                             $p['ripiego'] ? ($vecchio !== null
                                 ? ($altre ? 'per gli altri giorni il rimborso si regola fra le parti' : 'il rimborso della parte a carico dell\'inquilino si regola fra le parti')

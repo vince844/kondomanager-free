@@ -50,6 +50,13 @@ final class FermataDopoScrivi
     /** Il prefisso delle chiavi dei conduttori nei pesi: rimborsano con il prospetto, e non sono mai chi riceve una fermata. */
     private const CONDUTTORE = 'c';
 
+    /**
+     * La strada a mano di una fermata registrata dalla 1.11.0-beta.53 (Coda 244): i saldi del Wallet legati al passaggio, che non occupano il
+     * posto di un riporto e si tolgono se il passaggio si annulla. Un registro senza la chiave `strada` è di prima: il pannello indicava il
+     * saldo manuale dal Wallet solo se nessuno aveva già un saldo lì (`wallet`), e le frasi che leggono quel registro lo dicono com'era.
+     */
+    public const STRADA_LEGATA = 'legata';
+
     private int $prossimoId = -1;
 
     public function __construct(
@@ -92,7 +99,6 @@ final class FermataDopoScrivi
             foreach ($c['pezzi'] as $p) {
                 $dal = $p['tratti']->dal()->lt($dal) ? $p['tratti']->dal() : $dal;
             }
-            $conUnSaldo = self::conUnSaldo([$chi, ...array_keys($parti)], $c['gestione_id'], $c['immobile_id'], $c['esercizio_id']);
             $out[] = [
                 'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
                 'saldo_id' => $c['saldo_id'], 'persona_id' => $chi, 'persona' => (string) $uscente->anagrafica?->nome,
@@ -100,8 +106,10 @@ final class FermataDopoScrivi
                 'coppia' => $c['riga'], 'cifra' => $cifra, 'dal' => ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString(), 'assorbita' => $c['assorbita'],
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($parti))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $parti[$id]], array_keys($parti)),
-                // Decisione 80: il saldo manuale dal Wallet solo se nessuna delle persone della riga ne ha già uno lì, fra quelli che un passaggio non ha scritto.
-                'wallet' => $conUnSaldo === [], 'con_un_saldo' => $conUnSaldo,
+                // La strada a mano è il Wallet, con i saldi legati a questo passaggio: anche se una delle persone della riga ne ha già uno lì, la
+                // riga legata non occupa il posto (un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio
+                // né quelli legati a un passaggio). Il Wallet c'è sempre.
+                'wallet' => true, 'strada' => self::STRADA_LEGATA,
             ];
         }
 
@@ -202,6 +210,8 @@ final class FermataDopoScrivi
                 $chiVaria = array_flip(array_values($variate));
                 $risale[] = array_replace(self::voceDelGruppo($g), [
                     'prima' => (int) array_sum(array_intersect_key($primaDiLui, $chiVaria)), 'dopo' => (int) array_sum(array_intersect_key($dopoDiLui, $chiVaria)),
+                    // La parte di ognuno che riceve, anche di chi non varia, prima e dopo questa fine: le righe legate portano la fermata intera.
+                    'parti_prima' => self::partiDeiRiceventi($g, $primaDiLui), 'parti_dopo' => self::partiDeiRiceventi($g, $dopoDiLui),
                     'verso' => array_values(array_map(fn (int $id) => (string) collect($g['riceventi'])->firstWhere('anagrafica_id', $id)['nome'], array_values($variate))),
                     'conduttore_uscente' => (string) $uscente->anagrafica?->nome, 'conduttore_uscente_id' => $chi, 'dal' => $decorrenza->toDateString(),
                 ]);
@@ -223,18 +233,19 @@ final class FermataDopoScrivi
             foreach ($c['pezzi'] as $p) {
                 $dal = $p['tratti']->dal()->lt($dal) ? $p['tratti']->dal() : $dal;
             }
-            $conUnSaldo = self::conUnSaldo([...array_keys($hanno), ...array_keys($nuovePerPersona)], $c['gestione_id'], $c['immobile_id'], $c['esercizio_id']);
             $nuove[] = [
                 'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
                 'saldo_id' => (int) $r->id, 'persona_id' => $primo, 'persona' => self::elenco(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($hanno))),
                 'piu_persone' => count($hanno) > 1,
+                // Più persone a carico insieme: ognuna con il suo id, perché le frasi delle righe legate leggono le righe di tutte, non della prima.
+                ...(count($hanno) > 1 ? ['persone' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($hanno))), 'persone_ids' => array_keys($hanno)] : []),
                 'immobile_id' => $c['immobile_id'], 'unita' => $c['unita'], 'gestione_id' => $c['gestione_id'], 'gestione' => $c['gestione'], 'esercizio_id' => $c['esercizio_id'],
                 'coppia' => (int) array_sum($hanno), 'cifra' => $cifra, 'dal' => ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString(),
                 'assorbita' => $gruppo->contains(fn (Saldo $x) => (bool) $x->is_applicato),
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($nuovePerPersona))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $nuovePerPersona[$id]], array_keys($nuovePerPersona)),
-                // Decisione 80: il saldo manuale dal Wallet solo se nessuna delle persone della riga ne ha già uno lì, fra quelli che un passaggio non ha scritto.
-                'wallet' => $conUnSaldo === [], 'con_un_saldo' => $conUnSaldo,
+                // La strada a mano è il Wallet, con i saldi legati a questo passaggio (la fine della locazione del conduttore).
+                'wallet' => true, 'strada' => self::STRADA_LEGATA,
                 // Chi esce adesso: nella fermata di una fine di conduttore la chiave `conduttore` di `fermata_ridotta` (chi entra) non c'entra.
                 'conduttore_uscente' => (string) $uscente->anagrafica?->nome, 'conduttore_uscente_id' => $chi,
             ];
@@ -303,7 +314,6 @@ final class FermataDopoScrivi
             if ($suaParte !== null) {
                 // Chi esce ha la sua parte della coppia (l'erede, con l'arretrato agli eredi): la fermata è la prima, a suo carico. Giro stretto
                 // della .50 (G13): la coppia non l'ha presa lui, gli è arrivata con la successione, e la frase lo dice (`ereditata`).
-                $conUnSaldo = self::conUnSaldo([$chi, ...array_keys($parti)], $c['gestione_id'], $c['immobile_id'], $c['esercizio_id']);
                 $out[] = [
                     'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
                     'saldo_id' => (int) $r->id, 'persona_id' => $chi, 'persona' => (string) $uscente->anagrafica?->nome,
@@ -312,14 +322,31 @@ final class FermataDopoScrivi
                     'assorbita' => $gruppo->contains(fn (Saldo $x) => (bool) $x->is_applicato),
                     'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($parti))),
                     'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $parti[$id]], array_keys($parti)),
-                    'wallet' => $conUnSaldo === [], 'con_un_saldo' => $conUnSaldo,
+                    'wallet' => true, 'strada' => self::STRADA_LEGATA,
                 ] + self::ereditata($c, $chi, (int) $fine->condominio_id);
                 continue;
             }
             // La fermata di prima ha detto a carico di chi è rimasta la parte di chi esce: la parte dei giorni che passa con questo passaggio
             // viene da lì, non da tutti quelli che hanno righe nella coppia (due comproprietari: la parte di Elsa veniva dalla riga di Ugo).
-            $diPrima = $this->fermataDi($c, $chi);
-            if (($diPrima['persona_id'] ?? null) !== null && isset($hanno[$diPrima['persona_id']])) {
+            // La parte che chi esce ha oggi viene dai passaggi della catena della sua riga (`passaggiDellaRiga`): contano le fermate di quei passaggi, e
+            // quelle della fine di un conduttore registrate dopo il primo (i giorni che tornano non sono un passaggio della riga), non quelle di una parte
+            // già rivenduta né di un'altra riga della stessa persona. Senza la catena (una riga cambiata a mano), l'ultima fermata, come prima.
+            $daiPassaggi = self::passaggiDellaRiga((int) $c['immobile_id'], self::rigaCheChiude((int) $c['immobile_id'], $uscente, $decorrenza), $chi);
+            $diPrimaTutte = $daiPassaggi === [] ? array_slice($this->fermateDi($c, $chi), 0, 1)
+                : array_values(array_filter($this->fermateDi($c, $chi), fn (array $x) => in_array($x['capo_id'], $daiPassaggi, true)
+                    || ($x['del_conduttore'] && $x['capo_id'] >= $daiPassaggi[0])));
+            $diPrima = $diPrimaTutte[0] ?? null;
+            if (count($diPrimaTutte) > 1) {
+                // Chi esce ha sommato parti avute con più fermate (Elsa compra la parte di Anna, poi quella di Ugo, e rivende tutto; o compra e poi
+                // eredita): la cifra viene da più fermate, ognuna a carico di chi ha la sua riga della coppia, o di chi esce se quella fermata è regolata,
+                // e il programma non sa quale parte venga da quale. Resta a carico delle persone di quelle fermate insieme, e l'alternativa è la parte
+                // di chi esce, non la fermata di un passaggio solo.
+                $origini = array_merge(...array_map(fn (array $x) => $x['persone_ids'], $diPrimaTutte));
+                if (! in_array(null, $origini, true) && array_intersect_key($hanno, array_flip($origini)) !== []) {
+                    $hanno = array_intersect_key($hanno, array_flip($origini));
+                }
+                $diPrima = null;
+            } elseif (($diPrima['persona_id'] ?? null) !== null && isset($hanno[$diPrima['persona_id']])) {
                 $hanno = [$diPrima['persona_id'] => $hanno[$diPrima['persona_id']]];
             }
             arsort($hanno);
@@ -327,6 +354,8 @@ final class FermataDopoScrivi
                 'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
                 'saldo_id' => (int) $r->id, 'persona_id' => (int) array_key_first($hanno), 'persona' => self::elenco(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($hanno))),
                 'piu_persone' => count($hanno) > 1,
+                // Più persone a carico insieme: ognuna con il suo id, perché le frasi delle righe legate leggono le righe di tutte, non della prima.
+                ...(count($hanno) > 1 ? ['persone' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($hanno))), 'persone_ids' => array_keys($hanno)] : []),
                 // Chi esce, che non ha righe nella coppia, e la fermata che gli ha detto la sua parte.
                 'uscente_id' => $chi, 'uscente' => (string) $uscente->anagrafica?->nome,
                 'dopo_la_fermata' => $diPrima === null ? null : ['passaggio' => $diPrima['passaggio'], 'cifra' => $diPrima['cifra']],
@@ -336,7 +365,7 @@ final class FermataDopoScrivi
                 'assorbita' => $gruppo->contains(fn (Saldo $x) => (bool) $x->is_applicato),
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($parti))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $parti[$id]], array_keys($parti)),
-                'wallet' => false, 'con_un_saldo' => [],
+                'wallet' => false,
             ];
         }
 
@@ -420,26 +449,87 @@ final class FermataDopoScrivi
     }
 
     /**
-     * Decisione 81.2: la fermata registrata che ha detto a chi esce la sua parte di una coppia (l'ultima, se sono più d'una): il passaggio e
-     * la cifra, per le frasi. Null se nessuna lo nomina.
+     * Decisione 81.2: le fermate registrate che hanno detto a chi esce una sua parte della coppia, dall'ultima: una per passaggio, con il passaggio e la cifra per le
+     * frasi, il passaggio padre (`capo_id`), se è la fermata della fine di un conduttore (`del_conduttore`) e chi è rimasto a carico (`persona_id` se è
+     * uno; `persone_ids` tutti, o `[null]` se una fermata di prima della 1.11.0-beta.53 ha più persone senza i loro ids).
      *
-     * @return array{passaggio: string, cifra: int, persona_id: ?int}|null `persona_id`: chi è rimasto a carico della fermata di prima, se è uno
+     * @return list<array{passaggio: string, cifra: int, persona_id: ?int, capo_id: int, del_conduttore: bool, persone_ids: list<?int>}>
      */
-    private function fermataDi(array $c, int $anagraficaId): ?array
+    private function fermateDi(array $c, int $anagraficaId): array
     {
-        $passaggi = Subentro::where('immobile_id', $c['immobile_id'])->whereNull('annullato_il')->orderByDesc('id')->get()->map(fn (Subentro $s) => $s->capo())->unique('id');
-        foreach ($passaggi as $s) {
-            foreach ($s->annullato() ? [] : ($s->registro['fermata_dopo_scrivi'] ?? []) as $f) {
+        $out = [];
+        foreach (Subentro::where('immobile_id', $c['immobile_id'])->whereNull('annullato_il')->orderByDesc('id')->get() as $qui) {
+            $s = $qui->capo();
+            if (isset($out[(int) $s->id]) || $s->annullato()) {
+                continue;
+            }
+            foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $f) {
                 $parte = collect($f['parti'] ?? [])->first(fn ($p) => (int) ($p['anagrafica_id'] ?? 0) === $anagraficaId);
                 if ($parte !== null && (int) ($f['fine_id'] ?? 0) === (int) $c['fine']->id && (int) ($f['immobile_id'] ?? 0) === (int) $c['immobile_id']
                     && (int) ($f['gestione_id'] ?? 0) === (int) $c['gestione_id']) {
-                    return ['passaggio' => self::passaggioInParole($s), 'cifra' => (int) $parte['cifra'],
-                        'persona_id' => empty($f['piu_persone']) && isset($f['persona_id']) ? (int) $f['persona_id'] : null];
+                    $out[(int) $s->id] = ['passaggio' => self::passaggioInParole($s), 'cifra' => (int) $parte['cifra'],
+                        'persona_id' => empty($f['piu_persone']) && isset($f['persona_id']) ? (int) $f['persona_id'] : null, 'capo_id' => (int) $s->id,
+                        'del_conduttore' => isset($f['conduttore_uscente']),
+                        'persone_ids' => match (true) {
+                            empty($f['piu_persone']) => [isset($f['persona_id']) ? (int) $f['persona_id'] : null],
+                            isset($f['persone_ids']) => array_map('intval', (array) $f['persone_ids']),
+                            default => [null],
+                        }];
+                    break;
                 }
             }
         }
 
-        return null;
+        return array_values($out);
+    }
+
+    /** La riga che questo passaggio chiude sull'unità della coppia: la riga del modulo, o sulla pertinenza quella che la registrazione chiude davvero (decisione 81.3). */
+    private static function rigaCheChiude(int $immobileId, TitolaritaImmobile $uscente, CarbonImmutable $decorrenza): ?int
+    {
+        return $immobileId === (int) $uscente->immobile_id ? (int) $uscente->id
+            : self::rigaDellaPertinenza($immobileId, (int) $uscente->anagrafica_id, (string) $uscente->tipologia, $decorrenza->subDay());
+    }
+
+    /**
+     * I passaggi da cui viene la parte che una persona ha oggi su un'unità, dalla sua riga: il passaggio che l'ha aperta (o che ci ha sommato una quota,
+     * lo stesso giorno) e, se per aprirla ha chiuso una riga di prima della stessa persona (chi compra l'altra metà: la riga si chiude e se ne apre una
+     * con la somma), i passaggi di quella riga, e così indietro, come li scrive il registro di ogni passaggio (`righe`). Le parti avute prima di
+     * un'uscita non ci sono: la loro riga l'ha chiusa la rivendita, non un acquisto. I passaggi padre, dal primo; vuoto se la riga non si trova.
+     *
+     * @return list<int>
+     */
+    private static function passaggiDellaRiga(int $immobileId, ?int $rigaId, int $anagraficaId): array
+    {
+        if ($rigaId === null) {
+            return [];
+        }
+        $passaggi = Subentro::where('immobile_id', $immobileId)->orderBy('id')->get();
+        $sue = array_flip(TitolaritaImmobile::where('immobile_id', $immobileId)->where('anagrafica_id', $anagraficaId)->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $origini = [];
+        $daLeggere = [$rigaId];
+        $lette = [];
+        while (($riga = array_pop($daLeggere)) !== null) {
+            if (isset($lette[$riga])) {
+                continue;
+            }
+            $lette[$riga] = true;
+            foreach ($passaggi as $p) {
+                $operazioni = (array) ($p->registro['righe'] ?? []);
+                $haLaRiga = collect($operazioni)->contains(fn ($o) => in_array($o['operazione'] ?? null, ['aperta', 'modificata'], true) && (int) ($o['id'] ?? 0) === $riga);
+                if (! $haLaRiga || $p->capo()->annullato()) {
+                    continue;
+                }
+                $origini[(int) $p->capo()->id] = true;
+                foreach ($operazioni as $o) {
+                    if (($o['operazione'] ?? null) === 'chiusa' && isset($sue[(int) ($o['id'] ?? 0)])) {
+                        $daLeggere[] = (int) $o['id'];
+                    }
+                }
+            }
+        }
+        ksort($origini);
+
+        return array_keys($origini);
     }
 
     /**
@@ -624,6 +714,8 @@ final class FermataDopoScrivi
                 'prima' => $primaDiLui, 'residuo' => $residuo,
                 'parti' => array_values(array_filter(array_map(fn (array $p) => ['anagrafica_id' => (int) $p['anagrafica_id'], 'nome' => (string) $p['nome'], 'cifra' => (int) ($con[(int) $p['anagrafica_id']] ?? 0)], $g['riceventi']),
                     fn (array $p) => $p['cifra'] !== 0)),
+                // La parte di ognuno prima di questo inizio: annullato l'inizio, torna questa (`avvisoRidottaAnnullando`).
+                'parti_prima' => self::partiDeiRiceventi($g, $ora),
                 'conduttore' => (string) $entrante->nome, 'dal' => $decorrenza->toDateString(),
             ];
         }
@@ -764,20 +856,37 @@ final class FermataDopoScrivi
             // Il giorno della fine «Scrivi» che ha scritto la coppia: tutte le fermate di un gruppo stanno sulla stessa coppia.
             'fine_il' => $g['c']['fine']->decorrenza->toDateString(),
         ];
+        // Decisione 81.2: la fermata di chi era entrato con un passaggio già fermato non dice chi risponde della parte, se chi ha le righe della
+        // coppia o chi esce: la voce porta chi è uscito, e le frasi delle righe legate nominano tutte e due. Solo se tutte le fermate del gruppo sono
+        // di quel tipo e di una persona uscita sola: con una fermata normale accanto, l'alternativa riguarderebbe anche la sua parte.
+        $uscito = self::uscitoDelleFermate(array_column($g['fermate'], 'f'));
+        if ($uscito !== null) {
+            $voce += ['uscente_id' => (int) $uscito['uscente_id'], 'uscente' => (string) ($uscito['uscente'] ?? '?'), 'dopo_la_fermata' => $uscito['dopo_la_fermata'] ?? null];
+        }
         if (count($g['fermate']) === 1) {
-            return $voce;
+            // Una fermata con più persone a carico insieme (decisione 81.2) le porta tutte, con i loro ids.
+            return isset($f['persone'], $f['persone_ids']) ? $voce + ['persone' => array_values((array) $f['persone']), 'persone_ids' => array_values(array_map('intval', (array) $f['persone_ids']))] : $voce;
         }
         $persone = [];
         $aCarico = [];
         foreach ($g['fermate'] as $x) {
-            $persone[(int) $x['f']['persona_id']] ??= (string) ($x['f']['persona'] ?? '?');
-            $aCarico[(int) $x['f']['persona_id']] = ($aCarico[(int) $x['f']['persona_id']] ?? 0) + (int) $x['f']['cifra'];
+            // Una fermata a carico di più persone insieme le porta tutte (`persone`, `persone_ids`): le persone della voce sono loro, e il carico di
+            // quella fermata è di tutte insieme.
+            $suoi = isset($x['f']['persone'], $x['f']['persone_ids']) && count((array) $x['f']['persone']) === count((array) $x['f']['persone_ids'])
+                ? array_combine(array_map('intval', (array) $x['f']['persone_ids']), array_map('strval', (array) $x['f']['persone']))
+                : [(int) $x['f']['persona_id'] => (string) ($x['f']['persona'] ?? '?')];
+            foreach ($suoi as $id => $nome) {
+                $persone[$id] ??= $nome;
+            }
+            $chiave = implode(',', array_keys($suoi));
+            $aCarico[$chiave] = ['persona' => self::elenco(array_values($suoi)), 'cifra' => ($aCarico[$chiave]['cifra'] ?? 0) + (int) $x['f']['cifra']];
         }
 
         return array_replace($voce, [
-            'persona' => self::elenco(array_values($persone)), 'persone' => array_values($persone), 'cifra' => (int) array_sum(array_map(fn (array $x) => (int) $x['f']['cifra'], $g['fermate'])),
+            'persona' => self::elenco(array_values($persone)), 'persone' => array_values($persone), 'persone_ids' => array_keys($persone),
+            'cifra' => (int) array_sum(array_map(fn (array $x) => (int) $x['f']['cifra'], $g['fermate'])),
             // La cifra che ogni persona a carico aveva lasciato con le sue fermate: il residuo è uno solo per tutte, e la parte di ognuna la decide l'amministratore.
-            'a_carico' => array_values(array_map(fn (int $id) => ['persona' => $persone[$id], 'cifra' => $aCarico[$id]], array_keys($persone))),
+            'a_carico' => array_values($aCarico),
             'verso' => array_column($g['riceventi'], 'nome'),
             'passaggi_ids' => array_map(fn (array $x) => (int) $x['s']->id, $g['fermate']),
             'passaggi' => array_map(fn (array $x) => self::passaggioInParole($x['s']), $g['fermate']),
@@ -785,9 +894,23 @@ final class FermataDopoScrivi
     }
 
     /**
-     * I saldi che le fermate del gruppo hanno indicato di registrare dal Wallet (decisione 80): per ognuna, la persona a carico, la cifra e le parti di
-     * chi riceve, come le dice `stradaAMano`. Le fermate che hanno detto «si regola fra le parti» non ne hanno. Serve a dire, quando l'inizio di una
-     * locazione riduce o azzera la fermata, di correggere il saldo che l'amministratore ha registrato su quell'indicazione: il programma non lo toglie.
+     * La parte di ognuno che riceve in un gruppo di fermate, con le cifre date (`residuiDelleFermate`), anche a zero: per le frasi delle righe legate.
+     *
+     * @param array{riceventi: list<array{anagrafica_id: int, nome: string}>} $g
+     * @param array<int, int> $cifre anagrafica → centesimi
+     * @return list<array{anagrafica_id: int, nome: string, cifra: int}>
+     */
+    private static function partiDeiRiceventi(array $g, array $cifre): array
+    {
+        return array_map(fn (array $r) => ['anagrafica_id' => (int) $r['anagrafica_id'], 'nome' => (string) $r['nome'], 'cifra' => (int) ($cifre[(int) $r['anagrafica_id']] ?? 0)], $g['riceventi']);
+    }
+
+    /**
+     * I saldi che le fermate del gruppo hanno indicato di registrare dal Wallet (decisione 80), per le fermate registrate prima della 1.11.0-beta.53
+     * (senza la chiave `strada`): per ognuna, la persona a carico, la cifra e le parti di chi riceve. Le fermate che hanno detto «si regola fra le
+     * parti» non ne hanno. Serve a dire, quando l'inizio di una locazione riduce o azzera la fermata, di correggere il saldo che l'amministratore ha
+     * registrato su quell'indicazione, al condizionale: il saldo di allora non era legato al passaggio. Dalla .53 le righe sono legate al
+     * passaggio, e `codaDelWallet` le legge dal Wallet.
      *
      * @param array{fermate: list<array{s: Subentro, f: array<string, mixed>}>} $g
      * @return list<array{persona: string, cifra: int, parti: list<array{nome: string, cifra: int}>}>
@@ -796,7 +919,7 @@ final class FermataDopoScrivi
     {
         $out = [];
         foreach ($g['fermate'] as $x) {
-            if (! ($x['f']['wallet'] ?? true)) {
+            if (! ($x['f']['wallet'] ?? true) || isset($x['f']['strada'])) {
                 continue;
             }
             $out[] = ['persona' => (string) ($x['f']['persona'] ?? '?'), 'cifra' => (int) $x['f']['cifra'],
@@ -820,17 +943,24 @@ final class FermataDopoScrivi
         }
 
         return sprintf(' Il residuo è uno solo per %s insieme: la parte di ognuno la decidi tu, partendo da quella della sua fermata (%s).',
-            self::elenco(array_column($carico, 'persona')), self::elenco(array_map(fn (array $x) => sprintf('%s per %s', self::soldi((int) $x['cifra']), $x['persona']), $carico)));
+            self::elenco((array) ($f['persone'] ?? array_column($carico, 'persona'))), self::elenco(array_map(fn (array $x) => sprintf('%s per %s', self::soldi((int) $x['cifra']), $x['persona']), $carico)));
     }
 
     /**
-     * La coda della frase di una fermata ridotta o azzerata: se per quella fermata si è registrato il saldo dal Wallet, va corretto. Al condizionale: il Wallet tiene
-     * un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio, e il programma non sa se quello che c'è sia il saldo della fermata o un riporto.
+     * La coda della frase di una fermata ridotta o azzerata: i fatti dei saldi del Wallet legati ai passaggi della voce (`fattiDeiLegati`), con la
+     * parte che resta di ognuno. Senza saldi legati, per le fermate registrate prima della 1.11.0-beta.53 che indicavano il Wallet, la coda di
+     * allora, al condizionale: quel saldo non era legato al passaggio, e il programma non sa se quello che c'è sia il saldo della fermata o un
+     * riporto. Senza saldi legati e con un registro nuovo, niente.
      *
      * @param array<string, mixed> $f la voce di `fermateRidotte`
      */
     private static function codaDelWallet(array $f): string
     {
+        $righe = self::righeDellaVoce($f);
+        if ($righe->isNotEmpty()) {
+            return ' ' . self::fattiDeiLegati($righe, self::partiConChiLePorta($f, (array) ($f['parti'] ?? [])), 'la parte che resta', chiNonLiCambia: 'il programma',
+                passaggiDellaVoce: self::passaggiIds($f));
+        }
         $saldi = $f['dal_wallet'] ?? [];
         if ($saldi === []) {
             return '';
@@ -847,20 +977,9 @@ final class FermataDopoScrivi
     public static function perIlRegistro(array $f): array
     {
         return array_intersect_key($f, array_flip(['fine_id', 'fine_il', 'inquilino', 'saldo_id', 'persona_id', 'persona', 'immobile_id', 'unita', 'gestione_id', 'gestione',
-            'esercizio_id', 'coppia', 'cifra', 'dal', 'assorbita', 'verso', 'parti', 'wallet', 'passaggio_id', 'passaggio', 'prima', 'residuo', 'conduttore',
-            'uscente_id', 'uscente', 'dopo_la_fermata', 'piu_persone', 'ereditata', 'passaggi_ids', 'passaggi', 'persone', 'dopo', 'conduttore_uscente', 'conduttore_uscente_id']));
-    }
-
-    /**
-     * Decisione 80 (1.11.0-beta.50): la strada a mano di una fermata è il saldo manuale dal Wallet solo se si può fare davvero. Il Wallet
-     * accetta un saldo per persona, gestione, unità ed esercizio (le righe dei passaggi non occupano il posto, `CreateSaldoRequest`): con
-     * un saldo già lì la riga verrebbe rifiutata, e passerebbe solo quella dell'altra persona. Allora la parte si regola fra le parti.
-     *
-     * @param list<int> $persone chi resta a carico e chi riceve, quando si conosce
-     */
-    public static function stradaDelWallet(array $persone, int $gestioneId, int $immobileId, ?int $esercizioId): bool
-    {
-        return self::conUnSaldo($persone, $gestioneId, $immobileId, $esercizioId) === [];
+            'esercizio_id', 'coppia', 'cifra', 'dal', 'assorbita', 'verso', 'parti', 'wallet', 'strada', 'passaggio_id', 'passaggio', 'prima', 'residuo', 'conduttore',
+            'uscente_id', 'uscente', 'dopo_la_fermata', 'piu_persone', 'ereditata', 'passaggi_ids', 'passaggi', 'persone', 'persone_ids', 'dopo', 'conduttore_uscente', 'conduttore_uscente_id',
+            'parti_prima', 'parti_dopo']));
     }
 
     /**
@@ -879,8 +998,8 @@ final class FermataDopoScrivi
                 // Giro stretto della .50 (G13): l'erede non ha preso la coppia, gli è arrivata con la successione; la frase dice chi l'ha presa.
                 isset($f['ereditata']) ? self::presa((string) $f['ereditata']['da'], (int) $f['ereditata']['coppia']) : self::presa((string) $f['persona'], (int) $f['coppia']),
                 $f['gestione'], $f['unita'],
-                isset($f['ereditata']) ? sprintf(' Con %s una parte, %s, è passata %s.', $f['ereditata']['passaggio'], self::cifraInParole((int) $f['coppia']), self::a((string) $f['persona'])) : '',
-                self::data($f['dal']), self::a(self::elenco($f['verso'])),
+                isset($f['ereditata']) ? sprintf(' Con %s una parte, %s, è passata %s.', $f['ereditata']['passaggio'], self::cifraInParole((int) $f['coppia']), FrasiObbligati::a((string) $f['persona'])) : '',
+                self::data($f['dal']), FrasiObbligati::a(self::elenco($f['verso'])),
                 (int) $f['cifra'] < 0 ? 'in quei giorni l\'entrata supera la spesa, e ' . self::aCarico((int) $f['cifra'], '', (string) $f['persona']) : self::aCarico((int) $f['cifra'], '', (string) $f['persona']),
                 self::stradaAMano($f));
 
@@ -897,7 +1016,7 @@ final class FermataDopoScrivi
     {
         return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla gestione %s (%s). Con la fine della locazione di %s i giorni dal %s tornano a chi paga al posto dell\'inquilino, e la parte di quei giorni tocca %s, ma il programma non la sposta: %s. %s',
             $f['inquilino'], self::data($f['fine_il']), self::presa((string) $f['persona'], (int) $f['coppia'], ! empty($f['piu_persone'])), $f['gestione'], $f['unita'],
-            $f['conduttore_uscente'], self::data($f['dal']), self::a(self::elenco($f['verso'])),
+            $f['conduttore_uscente'], self::data($f['dal']), FrasiObbligati::a(self::elenco($f['verso'])),
             (int) $f['cifra'] < 0 ? 'in quei giorni l\'entrata supera la spesa, e ' . self::aCarico((int) $f['cifra'], '', (string) $f['persona']) : self::aCarico((int) $f['cifra'], '', (string) $f['persona']),
             self::stradaAMano($f));
     }
@@ -914,14 +1033,14 @@ final class FermataDopoScrivi
         return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla gestione %s (%s). %s Con questo passaggio la parte di quei giorni dal %s tocca %s, ma il programma non la sposta: %s. Se vanno %s, la parte si regola fra le parti: chi la restituisce dipende da come è stata regolata %s, e il programma non lo sa.',
             $f['inquilino'], self::data($f['fine_il']), self::presa((string) $f['persona'], (int) $f['coppia'], ! empty($f['piu_persone'])), $f['gestione'], $f['unita'],
             match (true) {
-                $prima !== null && (int) $prima['cifra'] < 0 => sprintf('%s non ha spostato la parte di %s, un credito di %s, rimasto %s da regolare a mano.', ucfirst((string) $prima['passaggio']), $f['uscente'], MoneyHelper::format(-(int) $prima['cifra']), self::a((string) $f['persona'])),
+                $prima !== null && (int) $prima['cifra'] < 0 => sprintf('%s non ha spostato la parte di %s, un credito di %s, rimasto %s da regolare a mano.', ucfirst((string) $prima['passaggio']), $f['uscente'], MoneyHelper::format(-(int) $prima['cifra']), FrasiObbligati::a((string) $f['persona'])),
                 $prima !== null => sprintf('%s non ha spostato la parte di %s, %s, rimasta a carico di %s da regolare a mano.', ucfirst((string) $prima['passaggio']), $f['uscente'], MoneyHelper::format((int) $prima['cifra']), $f['persona']),
-                (int) $f['cifra'] < 0 => sprintf('La parte di %s non è passata con la coppia, ed è rimasta %s.', $f['uscente'], self::a((string) $f['persona'])),
+                (int) $f['cifra'] < 0 => sprintf('La parte di %s non è passata con la coppia, ed è rimasta %s.', $f['uscente'], FrasiObbligati::a((string) $f['persona'])),
                 default => sprintf('La parte di %s non è passata con la coppia, ed è rimasta a carico di %s.', $f['uscente'], $f['persona']),
             },
-            self::data($f['dal']), self::a(self::elenco($f['verso'])),
+            self::data($f['dal']), FrasiObbligati::a(self::elenco($f['verso'])),
             self::aCarico((int) $f['cifra'], '', (string) $f['persona'], oppure: $f['uscente'] . ' se ' . self::regolataPrima($f)),
-            self::a(self::elenco($f['verso'])), $prima !== null ? 'la fermata ' . self::di((string) $prima['passaggio']) : 'la parte di ' . $f['uscente']);
+            FrasiObbligati::a(self::elenco($f['verso'])), $prima !== null ? 'la fermata ' . self::di((string) $prima['passaggio']) : 'la parte di ' . $f['uscente']);
     }
 
     /** Decisione 81.2: «la fermata della vendita del 1 settembre 2026 è già stata regolata», o la parte di chi esce. */
@@ -935,14 +1054,16 @@ final class FermataDopoScrivi
     /** Il motivo del cancello: corto, con la persona e la cifra. */
     public static function motivoCancello(array $f, bool $seScrivi = false): string
     {
+        // Decisione 81.2: dopo una fermata la parte è a carico di chi ha le righe della coppia, o di chi esce se la fermata di prima è regolata, come nel pannello.
         $motivo = sprintf('%s (gestione %s): il conguaglio scritto alla fine locazione del %s non passa %s %s',
-            self::aCarico((int) $f['cifra'], 'dei giorni dopo l\'uscita di ' . $f['inquilino'], (string) $f['persona']), $f['gestione'], self::data($f['fine_il']), self::a(self::elenco($f['verso'])),
+            self::aCarico((int) $f['cifra'], 'dei giorni dopo l\'uscita di ' . $f['inquilino'], (string) $f['persona'], oppure: isset($f['uscente_id']) ? $f['uscente'] . ' se ' . self::regolataPrima($f) : null),
+            $f['gestione'], self::data($f['fine_il']), FrasiObbligati::a(self::elenco($f['verso'])),
             self::conQuestoPassaggio($f));
         if (isset($f['uscente_id'])) {
             // Decisione 81.2: come non era passato a chi esce con il passaggio fermato prima.
             $motivo .= isset($f['dopo_la_fermata']['passaggio'])
-                ? sprintf(', come non era passato %s con %s', self::a((string) $f['uscente']), $f['dopo_la_fermata']['passaggio'])
-                : sprintf(', come non era passato %s', self::a((string) $f['uscente']));
+                ? sprintf(', come non era passato %s con %s', FrasiObbligati::a((string) $f['uscente']), $f['dopo_la_fermata']['passaggio'])
+                : sprintf(', come non era passato %s', FrasiObbligati::a((string) $f['uscente']));
         }
 
         return $seScrivi ? 'se scrivi il conguaglio, ' . $motivo : $motivo;
@@ -968,7 +1089,7 @@ final class FermataDopoScrivi
         }
 
         return rtrim($frase, '.') . sprintf('; di questi, %s.', self::elenco(array_map(fn (array $p) => sprintf('%s %s passati %s con %s',
-            self::soldi((int) $p['cifra']), abs((int) $p['cifra']) === 1 ? 'è' : 'sono', self::a(self::elenco($p['verso'])), $p['passaggio']), $passate)));
+            self::soldi((int) $p['cifra']), abs((int) $p['cifra']) === 1 ? 'è' : 'sono', FrasiObbligati::a(self::elenco($p['verso'])), $p['passaggio']), $passate)));
     }
 
     /**
@@ -1026,22 +1147,32 @@ final class FermataDopoScrivi
 
         return sprintf('Il conguaglio scritto alla fine locazione di %s è stato annullato dopo questo inizio: %s %s (%s rimasti %s), che con questo inizio %s da regolare per %s, %s.',
             $f['inquilino'] ?? 'l\'inquilino', $piu ? 'le fermate' : 'la fermata', self::elenco(array_map(fn (string $p) => self::di($p), self::passaggiDellaVoce($f, 'un passaggio di prima'))),
-            self::soldi((int) ($f['cifra'] ?? 0)), self::diChiResta((int) ($f['cifra'] ?? 0), (string) ($f['persona'] ?? '?')), $piu ? 'restavano' : 'restava',
+            self::soldi((int) ($f['cifra'] ?? 0)),
+            self::diChiResta((int) ($f['cifra'] ?? 0), (string) ($f['persona'] ?? '?'), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) : null),
+            $piu ? 'restavano' : 'restava',
             self::cifraInParole((int) ($f['residuo'] ?? 0)), $piu ? 'non valgono più' : 'non vale più');
     }
 
     /**
-     * Decisione 83.2 (1.11.0-beta.50): gli avvisi di «Annulla il conguaglio» di una fine «Scrivi», detti prima di confermare e nel messaggio. Un
-     * passaggio registrato dopo si è fermato su questa coppia (la vendita, la costituzione, la successione…), e la sua fermata, con la strada a
-     * mano che indicava (il saldo manuale dal Wallet), non vale più. Un avviso, non un rifiuto: il conguaglio resta annullabile.
+     * Gli avvisi di «Annulla il conguaglio», detti prima di confermare e nel messaggio. Un avviso, non un rifiuto: il conguaglio resta annullabile.
+     *
+     * - Decisione 83.2 (1.11.0-beta.50), per una fine «Scrivi»: un passaggio registrato dopo si è fermato su questa coppia (la vendita, la
+     *   costituzione, la successione…), e la sua fermata non vale più: la sua parte è zero. Dalla 1.11.0-beta.53 l'avviso dice i fatti dei saldi
+     *   del Wallet legati a quel passaggio (`fattiDeiLegati`).
+     * - Dalla 1.11.0-beta.53 (Coda 244), per ogni passaggio: i saldi del Wallet legati al passaggio stesso restano, e l'avviso ne dice i fatti
+     *   (`avvisoDeiLegati`).
      *
      * @return list<string>
      */
     public static function avvisiDelConguaglio(Subentro $fine): array
     {
         $capo = $fine->capo();
-        if ($capo->tipo_passaggio !== 'fine_locazione' || $capo->conguaglioAnnullato()) {
+        if ($capo->conguaglioAnnullato()) {
             return [];
+        }
+        $suiLegati = self::avvisoDeiLegati($capo);
+        if ($capo->tipo_passaggio !== 'fine_locazione') {
+            return $suiLegati === null ? [] : [$suiLegati];
         }
         $avvisi = [];
         foreach (Subentro::where('condominio_id', $capo->condominio_id)->where('id', '>', $capo->id)->whereNull('subentro_padre_id')->orderBy('id')->get() as $s) {
@@ -1051,8 +1182,13 @@ final class FermataDopoScrivi
                 if ((int) ($f['fine_id'] ?? 0) !== (int) $capo->id) {
                     continue;
                 }
-                $avvisi[] = sprintf('%s ha fatto risalire la parte verso %s %s da %s a %s. Annullato il conguaglio, quella parte non vale più: se per questo hai registrato un saldo manuale dal Wallet, o le parti hanno regolato la differenza fra loro, rivedilo, perché l\'annullamento non lo toglie.',
-                    ucfirst(self::passaggioInParole($s)), self::elenco($f['verso'] ?? []) ?: 'chi è entrato', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? 0)), self::cifraInParole((int) ($f['dopo'] ?? 0)));
+                $righe = self::righeDellaVoce($f);
+                $avvisi[] = sprintf('%s ha fatto risalire la parte verso %s %s da %s a %s. Annullato il conguaglio, quella parte non vale più: %s',
+                    ucfirst(self::passaggioInParole($s)), self::elenco($f['verso'] ?? []) ?: 'chi è entrato', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? 0)), self::cifraInParole((int) ($f['dopo'] ?? 0)),
+                    $righe->isNotEmpty()
+                        ? 'se le parti hanno regolato la differenza fra loro, quell\'accordo va rivisto. ' . self::fattiDeiLegati($righe, [], 'la parte della sua fermata', chiNonLiCambia: 'l\'annullamento del conguaglio',
+                            passaggiDellaVoce: self::passaggiIds($f))
+                        : 'se per questo hai registrato un saldo manuale dal Wallet, o le parti hanno regolato la differenza fra loro, rivedilo, perché l\'annullamento non lo toglie.');
             }
             foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $f) {
                 if ((int) ($f['fine_id'] ?? 0) !== (int) $capo->id) {
@@ -1061,20 +1197,125 @@ final class FermataDopoScrivi
                 $verso = self::elenco($f['verso'] ?? []) ?: 'chi è entrato';
                 $parole = self::passaggioInParole($s);
                 // Giro stretto della .50 (G12): l'avviso legge il registro della fermata come il pannello e lo storico. Dopo una fermata
-                // (decisione 81.2) la parte è a carico di chi ha la coppia, o di chi è uscito; il saldo manuale dal Wallet si nomina solo se il
-                // pannello lo aveva indicato (decisione 80), altrimenti è l'accordo fra le parti da rivedere.
-                $avvisi[] = sprintf('%s si è %s su questo conguaglio: %s sulla gestione %s, da regolare a mano con %s. Annullato il conguaglio, quella fermata non vale più: %s',
+                // (decisione 81.2) la parte è a carico di chi ha la coppia, o di chi è uscito. Dalla 1.11.0-beta.53 l'avviso dice i fatti dei saldi
+                // del Wallet legati a quel passaggio, che restano (sono del passaggio, che c'è ancora): senza il conguaglio la parte della fermata è
+                // zero. Senza saldi legati, per un registro di prima che indicava il Wallet la frase di allora, al condizionale, altrimenti l'accordo
+                // fra le parti da rivedere.
+                $righe = self::righeDellaVoce(['passaggio_id' => (int) $s->id] + array_intersect_key($f, array_flip(['immobile_id', 'gestione_id'])));
+                $avvisi[] = sprintf('%s si è %s su questo conguaglio: %s sulla gestione %s, da regolare a mano con %s. Annullato il conguaglio, quella fermata non vale più%s',
                     ucfirst($parole), str_starts_with($parole, 'il ') ? 'fermato' : 'fermata',
                     self::aCarico((int) $f['cifra'], 'dei giorni dal ' . self::data($f['dal']), (string) ($f['persona'] ?? '?'), passato: true,
-                        oppure: isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) : null),
+                        oppure: isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) . ',' : null),
                     $f['gestione'] ?? '?', $verso,
-                    ($f['wallet'] ?? true)
-                        ? sprintf('se per questo hai registrato un saldo manuale dal Wallet (%s), rivedilo, perché l\'annullamento non lo toglie.', self::rigaDelWallet($f, (string) ($f['persona'] ?? '?')))
-                        : 'se le parti l\'hanno regolata fra loro, quell\'accordo va rivisto.');
+                    match (true) {
+                        $righe->isNotEmpty() => '. ' . self::fattiDeiLegati($righe, [], 'la parte della sua fermata', chiNonLiCambia: 'l\'annullamento del conguaglio'),
+                        ! isset($f['strada']) && ($f['wallet'] ?? true) => sprintf(': se per questo hai registrato un saldo manuale dal Wallet (%s), rivedilo, perché l\'annullamento non lo toglie.', self::rigaDelWallet($f, (string) ($f['persona'] ?? '?'))),
+                        default => ': se le parti l\'hanno regolata fra loro, quell\'accordo va rivisto.',
+                    });
             }
         }
 
-        return $avvisi;
+        return $suiLegati === null ? $avvisi : [...$avvisi, $suiLegati];
+    }
+
+    /**
+     * L'avviso di «Annulla il conguaglio» sui saldi del Wallet legati al passaggio stesso (1.11.0-beta.53, Coda 244). Il rifiuto del conguaglio
+     * assorbito da un piano che non si riscrive più indica la correzione con un saldo legato a quel passaggio: tolta la coppia, la correzione
+     * conta da sola. Fra le righe legate allo stesso passaggio ci sono anche quelle della sua fermata, e i dati non le distinguono: l'avviso non
+     * le tocca, e ne dice i fatti per gestione e unità (`fattiDeiLegati`), con la parte della fermata di questo passaggio come è oggi
+     * (`parteDellaFermata`): zero se il passaggio non ne ha una, se il conguaglio su cui si era fermata è stato annullato, o se un inizio l'ha
+     * azzerata (`chiLaAzzera`, la regola del selettore del modale). Null senza righe legate.
+     */
+    private static function avvisoDeiLegati(Subentro $capo): ?string
+    {
+        $righe = Saldo::with(['gestione:id,nome', 'immobile:id,nome'])->where('passaggio_id', (int) $capo->id)->orderBy('id')->get();
+        if ($righe->isEmpty()) {
+            return null;
+        }
+        $gruppi = $righe->groupBy(fn (Saldo $x) => $x->immobile_id . '|' . $x->gestione_id);
+        // L'unità si nomina quando il passaggio ne ha più d'una (le pertinenze), anche se le righe legate stanno tutte su una: «non ha una fermata su
+        // questa gestione» sarebbe falso per un box, la cui vendita ha la fermata sull'unità.
+        $piuUnita = collect([(int) $capo->immobile_id, ...$capo->pertinenze()->pluck('immobile_id')->all(), ...$righe->pluck('immobile_id')->all()])
+            ->filter()->map(fn ($id) => (int) $id)->unique()->count() > 1;
+        $fatti = $gruppi->map(function (Collection $g) use ($capo, $piuUnita) {
+            $x = $g->first();
+            $parte = self::parteDellaFermata($capo, (int) $x->immobile_id, (int) $x->gestione_id, $piuUnita);
+
+            return self::fattiDeiLegati($g, $parte['parti'], $parte['quale'], chiNonLiCambia: 'l\'annullamento del conguaglio',
+                soggetto: sprintf('a questo passaggio sulla gestione %s%s', $x->gestione?->nome ?? '?', $piuUnita ? sprintf(' (%s)', $x->immobile?->nome ?? '?') : ''), perche: $parte['perche']);
+        })->values()->all();
+
+        return 'Annullato il conguaglio, un saldo del Wallet legato a questo passaggio che lo correggeva conta da solo. ' . implode(' ', $fatti);
+    }
+
+    /**
+     * La parte della fermata che un passaggio ha lasciato su un'unità e una gestione, come è oggi, nella forma di `fattiDeiLegati`. Senza una
+     * fermata lì, o con una fermata che non vale più (il conguaglio su cui si era fermata è stato annullato) o che un inizio ha azzerato, la parte
+     * è zero, e la frase dice perché. Altrimenti è quanto ne resta per ogni persona che riceve, con le righe di adesso (`residuiDelleFermate`: un
+     * inizio dopo la riduce, la fine del conduttore la fa risalire), e chi resta a carico con la cifra opposta. `parti` null se non si legge da
+     * sola: le fermate di più passaggi sulle stesse persone (decisione 86.1), la fermata di chi era entrato con un passaggio già fermato (decisione
+     * 81.2), più persone a carico, la fermata del coinquilino.
+     *
+     * @param bool $piuUnita il passaggio ha più unità (la principale e le pertinenze): la frase dice anche l'unità
+     * @return array{parti: list<array{ids: list<int>, nomi: list<string>, cifra: int}>|null, quale: string, perche: ?string}
+     */
+    private static function parteDellaFermata(Subentro $capo, int $immobileId, int $gestioneId, bool $piuUnita = false): array
+    {
+        $fermate = collect(['fermata_dopo_scrivi', 'fermata_coinquilino'])
+            ->flatMap(fn (string $k) => collect($capo->registro[$k] ?? [])->filter(fn ($f) => is_array($f) && (int) ($f['immobile_id'] ?? 0) === $immobileId
+                && (int) ($f['gestione_id'] ?? 0) === $gestioneId)->map(fn (array $f) => [$k, $f]))->values();
+        $quale = 'la parte della fermata di questo passaggio';
+        if ($fermate->isEmpty()) {
+            return ['parti' => [], 'quale' => 'la parte da regolare a mano con questo passaggio', 'perche' => 'non ha una fermata su questa gestione' . ($piuUnita ? ' e su questa unità' : '')];
+        }
+        $dopo = Subentro::where('condominio_id', $capo->condominio_id)->whereNull('subentro_padre_id')->where('id', '>', $capo->id)->orderBy('id')->get();
+        $valgono = $fermate->reject(fn (array $x) => self::fineSenzaConguaglio($x[1]) || self::chiLaAzzera($x[0], $x[1], $capo, $dopo) !== null)->values();
+        if ($valgono->isEmpty()) {
+            $azzeranti = $fermate->map(fn (array $x) => self::fineSenzaConguaglio($x[1]) ? null : self::chiLaAzzera($x[0], $x[1], $capo, $dopo))->filter()->unique('id')->values();
+
+            return ['parti' => [], 'quale' => $quale, 'perche' => $azzeranti->isEmpty() || $fermate->contains(fn (array $x) => self::fineSenzaConguaglio($x[1]))
+                ? 'il conguaglio su cui si era fermata è stato annullato'
+                : sprintf('%s l\'ha azzerata', self::elenco($azzeranti->map(fn (Subentro $s) => self::passaggioInParole($s))->all()))];
+        }
+        $calcolo = new self();
+        $parti = [];
+        foreach ($valgono as [$chiave, $f]) {
+            $sua = $chiave === 'fermata_dopo_scrivi' ? $calcolo->parteDiOggi($capo, $f) : null;
+            if ($sua === null) {
+                return ['parti' => null, 'quale' => $quale, 'perche' => null];
+            }
+            $parti = [...$parti, ...$sua];
+        }
+
+        return ['parti' => $parti, 'quale' => $quale, 'perche' => null];
+    }
+
+    /**
+     * Quanto resta oggi di una fermata di un passaggio (`parteDellaFermata`): il suo gruppo (`gruppiDiFermate`), con le righe di adesso. Null se
+     * il gruppo ha le fermate di più passaggi, o se chi resta a carico non è una persona sola.
+     *
+     * @param array<string, mixed> $f la voce `fermata_dopo_scrivi` del registro del passaggio
+     * @return list<array{ids: list<int>, nomi: list<string>, cifra: int}>|null
+     */
+    private function parteDiOggi(Subentro $capo, array $f): ?array
+    {
+        if (! empty($f['piu_persone']) || isset($f['uscente_id'])) {
+            return null;
+        }
+        foreach ($this->gruppiDiFermate([(int) ($f['immobile_id'] ?? 0)]) as $g) {
+            $sua = collect($g['fermate'])->contains(fn (array $x) => (int) $x['s']->id === (int) $capo->id && (int) ($x['f']['fine_id'] ?? 0) === (int) ($f['fine_id'] ?? 0)
+                && (int) ($x['f']['gestione_id'] ?? 0) === (int) ($f['gestione_id'] ?? 0));
+            if (! $sua) {
+                continue;
+            }
+            if (count($g['fermate']) > 1) {
+                return null;
+            }
+
+            return self::partiConChiLePorta($f, self::partiDeiRiceventi($g, $this->residuiDelleFermate($g, $this->chiPaga->righe((int) $g['immobile_id']))));
+        }
+
+        return null;
     }
 
     /**
@@ -1086,12 +1327,12 @@ final class FermataDopoScrivi
         $restano = self::elenco((array) ($f['restano'] ?? [])) ?: 'un coinquilino';
         $frase = sprintf('La locazione continuava con %s: il conguaglio dei giorni dopo l\'uscita di %s non c\'è, e %s sulla gestione %s (%s) sono rimasti nelle rate di %s',
             $restano, $f['persona'] ?? '?', self::soldi((int) ($f['cifra'] ?? 0)), $f['gestione'] ?? '?', $f['unita'] ?? '', $f['persona'] ?? '?');
-        // Giro stretto della .50 (G14): la strada che il pannello aveva indicato, dal registro (decisione 80): il saldo manuale dal Wallet per
-        // chi non aveva già un saldo che un passaggio non ha scritto, fra le parti per chi lo aveva. Un registro senza i candidati, o senza il Wallet, dice la frase di prima.
+        // Giro stretto della .50 (G14): la strada che il pannello aveva indicato, dal registro. Un registro di prima della 1.11.0-beta.53 (decisione 80):
+        // il saldo manuale dal Wallet per chi non aveva già un saldo che un passaggio non ha scritto, fra le parti per chi lo aveva. Un registro senza
+        // i candidati, o senza il Wallet, dice la frase di prima.
         if (! isset($f['al_posto']) || empty($f['wallet'])) {
             return $frase . ', da regolare a mano fra le parti con chi li paga.';
         }
-        $conUnSaldo = (array) ($f['con_un_saldo'] ?? []);
         $restanoNomi = (array) ($f['restano'] ?? []);
         $alPosto = (array) $f['al_posto'];
         $seLiPagava = function (array $coinquilini, array $altri): string {
@@ -1099,6 +1340,12 @@ final class FermataDopoScrivi
 
             return sprintf('se %s %s', count($coinquilini) > 1 || ($coinquilini === [] && count($altri) > 1) ? 'li pagavano' : 'li pagava', implode(', o ', $chi));
         };
+        // Un registro dalla 1.11.0-beta.53: il pannello indicava a tutti i candidati i saldi dal Wallet legati al passaggio.
+        if (($f['strada'] ?? null) === self::STRADA_LEGATA) {
+            return $frase . ': ' . $seLiPagava($restanoNomi, $alPosto) . sprintf(', la strada indicata erano i saldi dal Wallet legati a questo passaggio, sulla stessa gestione: una riga a credito di %s e una a debito di %s.',
+                $f['persona'] ?? '?', count($restanoNomi) > 1 || count($alPosto) > 1 ? 'ciascuno che li pagava' : 'chi li pagava');
+        }
+        $conUnSaldo = (array) ($f['con_un_saldo'] ?? []);
         $conWallet = [array_values(array_diff($restanoNomi, $conUnSaldo)), array_values(array_diff($alPosto, $conUnSaldo))];
         $parti = [$seLiPagava($conWallet[0], $conWallet[1]) . sprintf(', la strada indicata era il saldo manuale dal Wallet sulla stessa gestione: una riga a credito di %s e una a debito di %s',
             $f['persona'] ?? '?', count($conWallet[0]) > 1 || count($conWallet[1]) > 1 ? 'ciascuno che li pagava' : 'chi li pagava')];
@@ -1119,7 +1366,366 @@ final class FermataDopoScrivi
     {
         return sprintf('Con la fine della locazione di %s i giorni dal %s tornano a chi paga al posto dell\'inquilino: la parte verso %s %s sale da %s a %s sulla gestione %s (%s). La parte da regolare a mano fra %s è questa, e il programma non la sposta.',
             $f['conduttore_uscente'], self::data($f['dal']), self::elenco($f['verso']), self::dellaFermata($f), self::cifraInParole((int) $f['prima']), self::cifraInParole((int) $f['dopo']),
-            $f['gestione'], $f['unita'], self::fraLeParti($f));
+            $f['gestione'], $f['unita'], self::fraLeParti($f)) . self::codaDelRisale($f);
+    }
+
+    /**
+     * La coda della frase della parte che risale, gemella di `codaDelWallet`: i fatti dei saldi del Wallet legati al passaggio della fermata
+     * (`fattiDeiLegati`), con la parte nuova di ognuno. Senza saldi legati, niente: la frase resta quella di prima della 1.11.0-beta.53.
+     *
+     * @param array<string, mixed> $f la voce di `perLaFineDelConduttore()['risale']`
+     */
+    private static function codaDelRisale(array $f): string
+    {
+        $righe = self::righeDellaVoce($f);
+
+        return $righe->isEmpty() ? '' : ' ' . self::fattiDeiLegati($righe, self::partiConChiLePorta($f, self::partiDellaVoce($f, 'parti_dopo', 'dopo')), 'la parte nuova', chiNonLiCambia: 'il programma',
+            passaggiDellaVoce: self::passaggiIds($f));
+    }
+
+    /**
+     * La parte di ognuno che riceve in una voce del registro, dalla chiave data (`parti_dopo`, `parti_prima`). Una voce scritta prima che il
+     * registro avesse la chiave dice solo la cifra in tutto (`$totale`): chi riceve è allora una parte sola, con i nomi di `verso`.
+     *
+     * @return list<array{anagrafica_id: int|list<int>, nome: string|list<string>, cifra: int}>
+     */
+    private static function partiDellaVoce(array $f, string $chiave, string $totale): array
+    {
+        if (is_array($f[$chiave] ?? null)) {
+            return array_values($f[$chiave]);
+        }
+        $verso = array_values(array_map('strval', (array) ($f['verso'] ?? [])));
+
+        return [['anagrafica_id' => self::idsDalleRighe(self::righeDellaVoce($f), $verso), 'nome' => $verso, 'cifra' => (int) ($f[$totale] ?? 0)]];
+    }
+
+    /**
+     * Gli ids delle persone con i nomi dati che hanno righe fra quelle date: chi non ne ha non ha un id, e per le frasi «non ne ha uno».
+     *
+     * @param Collection<int, Saldo> $righe
+     * @param list<string> $nomi
+     * @return list<int>
+     */
+    private static function idsDalleRighe(Collection $righe, array $nomi): array
+    {
+        return $righe->isEmpty() ? [] : $righe->load('anagrafica:id,nome')->filter(fn (Saldo $x) => in_array((string) ($x->anagrafica?->nome ?? ''), $nomi, true))
+            ->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    /**
+     * La parte di ognuno di una voce, nella forma di `fattiDeiLegati`: ogni persona che riceve con la sua cifra, e chi resta a carico con la cifra
+     * opposta della somma. Più persone a carico (decisione 86.1, `persone` e `persone_ids`) sono una parte sola, che fra loro decide l'amministratore.
+     * Dopo una fermata (decisione 81.2) chi resta a carico è chi ha le righe della coppia, o chi è uscito se la fermata di prima è già stata regolata:
+     * il programma non sa quale, e la voce nomina tutte e due con l'alternativa (`oppure`), purché tutte le sue fermate siano di quel tipo e di chi è
+     * uscito sia sempre la stessa persona. In un gruppo che mescola fermate di quel tipo con altre la parte di ognuno non si legge dalla voce: null.
+     *
+     * @param list<array{anagrafica_id: int|list<int>, nome: string|list<string>, cifra: int}> $parti
+     * @return list<array{ids: list<int>, nomi: list<string>, cifra: int, oppure?: string}>|null
+     */
+    private static function partiConChiLePorta(array $f, array $parti): ?array
+    {
+        $fermate = self::fermateDellaVoce($f);
+        $uscito = self::uscitoDelleFermate($fermate);
+        if ($uscito === null && array_filter($fermate, fn (array $x) => isset($x['uscente_id'])) !== []) {
+            return null;
+        }
+        $voci = array_map(fn (array $p) => ['ids' => array_map('intval', (array) $p['anagrafica_id']), 'nomi' => array_map('strval', (array) $p['nome']), 'cifra' => (int) $p['cifra']], $parti);
+        $totale = (int) array_sum(array_column($voci, 'cifra'));
+        $persone = array_values(array_map('strval', (array) ($f['persone'] ?? [])));
+        $ids = array_values(array_map('intval', (array) ($f['persone_ids'] ?? [])));
+        // Una voce scritta prima di `persone_ids` ha i nomi e non gli ids: si leggono dalle righe, e chi non ne ha non ha un id («non ne ha uno»).
+        $carico = count($persone) > 1
+            ? ['ids' => count($ids) === count($persone) ? $ids : self::idsDalleRighe(self::righeDellaVoce($f), $persone), 'nomi' => $persone, 'cifra' => -$totale]
+            : ['ids' => [(int) ($f['persona_id'] ?? 0)], 'nomi' => [(string) ($f['persona'] ?? '?')], 'cifra' => -$totale];
+        if ($uscito !== null) {
+            $carico = ['ids' => [...$carico['ids'], (int) $uscito['uscente_id']], 'nomi' => [...$carico['nomi'], (string) ($uscito['uscente'] ?? '?')], 'oppure' => self::regolataPrima($uscito)] + $carico;
+        }
+
+        return [$carico, ...$voci];
+    }
+
+    /**
+     * Decisione 81.2: la fermata che dice chi è uscito, se lo dicono tutte le fermate date e dicono la stessa persona. Un gruppo che mescola fermate
+     * di chi era entrato con un passaggio già fermato e fermate normali, o con più persone uscite, non ha un uscito solo: a carico di chi sia ogni
+     * parte non si legge dalla voce.
+     *
+     * @param list<array<string, mixed>> $fermate
+     * @return array<string, mixed>|null la prima fermata, che porta `uscente_id`, `uscente` e `dopo_la_fermata`; senza `dopo_la_fermata` se le fermate
+     *                                   vengono da fermate di prima diverse
+     */
+    private static function uscitoDelleFermate(array $fermate): ?array
+    {
+        $uscenti = array_map(fn (array $f) => $f['uscente_id'] ?? null, $fermate);
+        if ($fermate === [] || in_array(null, $uscenti, true) || count(array_unique($uscenti)) !== 1) {
+            return null;
+        }
+        // L'alternativa («o di Elsa se la fermata della vendita del … è già stata regolata») è della prima fermata: vale per tutte solo se tutte
+        // vengono dalla stessa fermata di prima e lasciano la parte alla stessa persona. Elsa che rivende a Carlo la parte avuta da Anna e poi quella
+        // avuta da Ugo ha due alternative diverse, e la voce non sa quale vale per quale cifra: ognuna è di Elsa se la sua fermata è regolata, e
+        // l'alternativa è la parte di Elsa («o di Elsa se la parte di Elsa è già stata regolata»), senza la fermata di un passaggio solo.
+        $prima = array_map(fn (array $f) => (string) ($f['dopo_la_fermata']['passaggio'] ?? ''), $fermate);
+        $carico = array_map(fn (array $f) => (int) ($f['persona_id'] ?? 0), $fermate);
+
+        return count(array_unique($prima)) === 1 && count(array_unique($carico)) === 1 ? $fermate[0] : ['dopo_la_fermata' => null] + $fermate[0];
+    }
+
+    /**
+     * Le fermate di una voce, come le conserva il registro dei suoi passaggi (`passaggio_id`, e con più fermate `passaggi_ids`) sulla sua coppia. La
+     * voce che porta chi è uscito (`voceDelGruppo`) ha tutte le fermate di quel tipo con la stessa persona uscita, ed è la fermata di tutte; una
+     * scritta prima della 1.11.0-beta.53 non lo porta, e si legge dal registro.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function fermateDellaVoce(array $f): array
+    {
+        if (isset($f['uscente_id'])) {
+            return [$f];
+        }
+        $ids = self::passaggiIds($f);
+
+        return $ids === [] ? [] : Subentro::conAnnullati()->whereIn('id', $ids)->orderBy('id')->get()
+            ->flatMap(fn (Subentro $p) => collect($p->registro['fermata_dopo_scrivi'] ?? [])->filter(fn ($g) => is_array($g) && (int) ($g['fine_id'] ?? 0) === (int) ($f['fine_id'] ?? 0)
+                && (int) ($g['immobile_id'] ?? 0) === (int) ($f['immobile_id'] ?? 0) && (int) ($g['gestione_id'] ?? 0) === (int) ($f['gestione_id'] ?? 0)))
+            ->values()->all();
+    }
+
+    /**
+     * I fatti delle righe del Wallet legate a un passaggio (decisione 100, punto 2), in una forma sola per ogni frase che ne parla: la fermata
+     * ridotta, la parte che risale, l'annullamento di un inizio o di una fine, «Annulla il conguaglio», il rifiuto dell'eliminazione di una persona.
+     * Il programma porta i fatti, l'amministratore decide (`decide_l_amministratore`); la frase non sceglie quale riga toccare né di quanto.
+     *
+     * - Per ogni persona, quanto sommano oggi le sue righe (anche a zero: «€ 0,00 per Elsa»), e quanto vale la sua parte, con il verso (positivo =
+     *   debito). Chi non ha righe si nomina se la sua parte non è zero. Una parte di più persone insieme (la divisione la decide l'amministratore)
+     *   si dice con la cifra del gruppo. Una parte che il programma non sa di chi sia (decisione 81.2) si dice con l'alternativa, e non è mai «già la
+     *   parte». Se le righe sommano già la parte, la frase lo dice e finisce lì.
+     * - Quali righe non si modificano più, e perché: in un piano che non si riscrive più, o in un esercizio che non è quello aperto, l'unico che la
+     *   pagina dei saldi mostra (`libera`). Le righe a zero non contano, tranne quando si tolgono: ogni riga blocca l'eliminazione della persona.
+     * - Dove si fa il passo dopo, con le regole della pagina: il Wallet corregge le righe che si modificano, e la porta (`SaldoInizialeController::
+     *   scriviLegata`) accetta un saldo legato con la differenza da chi non ne ha una che si modifica (il doppione conta solo quelle), non per un
+     *   passaggio annullato né su una gestione che non è attiva; senza un esercizio aperto la pagina dei saldi non si apre, e la frase dice di
+     *   aprirlo. Con `$togli` (il rifiuto dell'eliminazione di una persona) le righe si tolgono: quelle che si modificano dal Wallet, quelle di un
+     *   altro esercizio annullando il passaggio dallo storico dell'unità, che dice se prima c'è qualcosa da fare; quelle in un piano che non si
+     *   riscrive più non si tolgono, e la persona resta.
+     *
+     * @param Collection<int, Saldo> $righe le righe legate, anche a zero
+     * @param list<array{ids: list<int>, nomi: list<string>, cifra: int, oppure?: string}>|null $parte la parte di ognuno; `[]` vuol dire zero per tutti;
+     *                                                                            null: non si sa (la frase la tace, e il passo dopo è al condizionale).
+     *                                                                            Una voce con `oppure` è di una persona o dell'ultima dei suoi nomi, se
+     *                                                                            vale la condizione data: non sapendo quale, non dice mai «già la parte»
+     * @param string $quale «la parte nuova», «la parte che resta», «la parte che torna», «la parte della fermata di questo passaggio»
+     * @param ?string $chiNonLiCambia «il programma», «annullare il passaggio»: apre il passo dopo («Il programma non li cambia: …»)
+     * @param ?string $soggetto i passaggi come li dice la frase («a questo passaggio sulla gestione Ordinaria 2026»); senza, dalle righe
+     * @param ?string $perche perché la parte è quella («il conguaglio su cui si era fermata è stato annullato»)
+     * @param list<int> $passaggiDellaVoce i passaggi della voce (con più fermate sulle stesse persone, tutti): la parte è di tutti insieme, e un
+     *                                     saldo legato in più si lega a uno di loro; senza, i passaggi delle righe
+     */
+    public static function fattiDeiLegati(Collection $righe, ?array $parte, string $quale, ?string $chiNonLiCambia = null, ?string $soggetto = null, ?string $perche = null, bool $togli = false,
+        array $passaggiDellaVoce = []): string
+    {
+        $righe = Saldo::with(['anagrafica:id,nome', 'pianoRate', 'esercizio:id,nome,stato', 'gestione:id,attiva'])->whereIn('id', $righe->pluck('id')->all() ?: [0])->orderBy('id')->get();
+        if ($righe->isEmpty()) {
+            return '';
+        }
+        $libera = self::libera($righe);
+        $passaggi = Subentro::conAnnullati()->whereIn('id', array_values(array_unique([...$righe->pluck('passaggio_id')->filter()->map(fn ($id) => (int) $id)->all(),
+            ...array_map('intval', $passaggiDellaVoce)])) ?: [0])->orderBy('id')->get();
+        $piu = $righe->count() > 1;
+        $nomi = [];
+        foreach ($righe as $x) {
+            $nomi[(int) $x->anagrafica_id] ??= (string) ($x->anagrafica?->nome ?? '?');
+        }
+        $somme = $righe->groupBy(fn (Saldo $x) => (int) $x->anagrafica_id)->map(fn (Collection $g) => (int) $g->sum('saldo_iniziale'))->all();
+        $sommaDi = fn (array $ids): int => (int) array_sum(array_map(fn (int $id) => $somme[$id] ?? 0, $ids));
+        $voci = $parte === null ? null : self::vociDellaParte($parte, $nomi);
+
+        // Quanto sommano oggi le righe di ognuno, e chi ha una parte e nessuna riga.
+        $senzaRighe = [];
+        foreach (array_filter($voci ?? [], fn (array $v) => $v['cifra'] !== 0) as $v) {
+            foreach ($v['nomi'] as $k => $nome) {
+                // Una voce scritta prima delle chiavi per persona ha i nomi e non sempre gli ids: chi ha righe si riconosce dal nome.
+                $haRighe = count($v['ids']) === count($v['nomi']) ? isset($somme[$v['ids'][$k]]) : in_array($nome, $nomi, true);
+                if (! $haRighe && ! in_array($nome, $senzaRighe, true)) {
+                    $senzaRighe[] = $nome;
+                }
+            }
+        }
+        $testa = sprintf('%s %s %s %s', $piu ? 'I saldi del Wallet legati' : 'Il saldo del Wallet legato',
+            $soggetto ?? self::elenco($passaggi->map(fn (Subentro $p) => self::al(self::passaggioInParole($p)))->all()), $piu ? 'sommano oggi' : 'è oggi di',
+            self::elenco(array_map(fn (int $id) => self::cifraDi($somme[$id], [$nomi[$id]]), array_keys($somme))))
+            . ($senzaRighe === [] ? '' : sprintf(', e %s non %s', self::elenco($senzaRighe), count($senzaRighe) > 1 ? 'ne hanno' : 'ne ha'));
+
+        // Chi non ha già la sua parte: senza la parte, tutti quelli che hanno righe.
+        $daVedere = $voci === null
+            ? array_map(fn (int $id) => ['ids' => [$id], 'nomi' => [$nomi[$id]], 'cifra' => 0], array_keys($somme))
+            : array_values(array_filter($voci, fn (array $v) => isset($v['oppure']) || $sommaDi($v['ids']) !== $v['cifra']));
+        if ($daVedere === [] && ! $togli) {
+            return $testa . sprintf(': %s già %s.', $piu ? 'sono' : 'è', $quale);
+        }
+        $frasi = [$testa . match (true) {
+            $voci === null => '',
+            collect($voci)->every(fn (array $v) => $v['cifra'] === 0) => sprintf('; %s è %s', $quale, MoneyHelper::format(0)),
+            default => sprintf('; %s è %s', $quale, self::elenco(array_map(fn (array $v) => self::cifraDi($v['cifra'], $v['nomi'], insieme: true, oppure: $v['oppure'] ?? null), $voci))),
+        } . ($voci !== null && $perche !== null ? ': ' . $perche : '') . '.'];
+
+        // Le righe che non si modificano più, e perché; a zero non contano, tranne quando si tolgono: ogni riga blocca l'eliminazione della persona.
+        $contano = $togli ? $righe : $righe->filter(fn (Saldo $x) => (int) $x->saldo_iniziale !== 0);
+        [$neiPiani, $altrove] = $contano->reject($libera)->partition(fn (Saldo $x) => $x->eBloccato());
+        $inParole = fn (Collection $g): string => $g->map(fn (Saldo $x) => self::rigaInParole($x))->implode(', ');
+        $quelli = fn (Collection $g, string $dove): string => sprintf('%s %s (%s)', $g->count() > 1 ? 'quelli' : 'quello', $dove, $inParole($g));
+        $piani = $neiPiani->map(fn (Saldo $x) => $x->pianoRate?->nome)->filter()->unique()->values()->all();
+        $nelPiano = match (count($piani)) {
+            0 => 'già applicati a un piano rate',
+            1 => sprintf('nel piano «%s», che non si riscrive più', $piani[0]),
+            default => sprintf('nei piani «%s», che non si riscrivono più', implode('», «', $piani)),
+        };
+        $nellEsercizio = fn (Collection $g): string => sprintf('nell\'esercizio «%s», %s', $g->first()->esercizio?->nome ?? '?',
+            $g->first()->esercizio?->stato === 'chiuso' ? 'che è chiuso' : 'che non è quello aperto');
+        $esercizi = $altrove->groupBy('esercizio_id')->values();
+
+        if ($togli) {
+            $libere = $righe->filter($libera);
+            if ($libere->isNotEmpty()) {
+                $frasi[] = $libere->count() === $righe->count()
+                    ? sprintf('Se non %s più, %s dai saldi dell\'unità.', $piu ? 'servono' : 'serve', $piu ? 'toglili' : 'toglilo')
+                    : sprintf('%s dell\'esercizio aperto (%s), se non %s più, si %s dai saldi dell\'unità.', $libere->count() > 1 ? 'Quelli' : 'Quello',
+                        $libere->map(fn (Saldo $x) => self::rigaInParole($x))->implode(', '), $libere->count() > 1 ? 'servono' : 'serve', $libere->count() > 1 ? 'tolgono' : 'toglie');
+            }
+            foreach ($esercizi as $g) {
+                $suoi = $passaggi->whereIn('id', $g->pluck('passaggio_id')->unique()->all())->values();
+                $frasi[] = sprintf('%s i saldi dell\'unità non %s mostrano: se non %s più, si %s annullando %s dallo storico dell\'unità, che dice se prima c\'è qualcosa da fare, e un passaggio avvenuto davvero poi si registra di nuovo.',
+                    ucfirst($quelli($g, $nellEsercizio($g))) . ',', $g->count() > 1 ? 'li' : 'lo', $g->count() > 1 ? 'servono' : 'serve', $g->count() > 1 ? 'tolgono' : 'toglie',
+                    self::elenco($suoi->map(fn (Subentro $p) => self::passaggioInParole($p))->all()));
+            }
+            if ($neiPiani->isNotEmpty()) {
+                $frasi[] = sprintf('Non si %s più %s: la persona resta.', $neiPiani->count() > 1 ? 'tolgono' : 'toglie', $quelli($neiPiani, $nelPiano));
+            }
+
+            return implode(' ', $frasi);
+        }
+
+        $ferme = array_values(array_filter([$neiPiani->isEmpty() ? null : $quelli($neiPiani, $nelPiano), ...$esercizi->map(fn (Collection $g) => $quelli($g, $nellEsercizio($g)))->all()]));
+        if ($ferme !== []) {
+            $frasi[] = sprintf('Non si %s più %s.', $neiPiani->count() + $altrove->count() > 1 ? 'modificano' : 'modifica', self::elenco($ferme));
+        }
+
+        // Il passo dopo, con le regole della pagina dei saldi e della porta.
+        $apri = ($chiNonLiCambia !== null ? sprintf('%s non %s cambia: ', $chiNonLiCambia, $piu ? 'li' : 'lo') : '')
+            . ($voci === null ? sprintf('se non %s %s, ', $piu ? 'sono' : 'è', $quale) : '');
+        if (self::esercizioAperto((int) $righe->first()->condominio_id) === null) {
+            $frasi[] = 'Oggi non c\'è un esercizio aperto, e la pagina dei saldi corregge e registra solo nell\'esercizio aperto: aprine uno prima.';
+
+            return implode(' ', $frasi);
+        }
+        $haUnaLibera = fn (int $id): bool => $righe->contains(fn (Saldo $x) => (int) $x->anagrafica_id === $id && $libera($x));
+        $correggi = collect($daVedere)->contains(fn (array $v) => collect($v['ids'])->contains($haUnaLibera));
+        $senza = collect($daVedere)->contains(fn (array $v) => count($v['ids']) < count($v['nomi']) || collect($v['ids'])->contains(fn (int $id) => ! $haUnaLibera($id)));
+        $rifiuto = match (true) {
+            $passaggi->contains(fn (Subentro $p) => $p->annullato()) => 'per un passaggio annullato',
+            $righe->contains(fn (Saldo $x) => ! (bool) ($x->gestione?->attiva ?? false)) => 'su una gestione che non è attiva',
+            default => null,
+        };
+        $a = $passaggi->count() > 1 ? 'a uno di quei passaggi' : self::al(self::passaggioInParole($passaggi->first()));
+        $correggiLi = $piu ? 'correggi dal Wallet i saldi che si modificano' : 'correggilo dal Wallet';
+        $frasi[] = ucfirst($apri . match (true) {
+            $correggi && $senza && $rifiuto === null => sprintf('%s, e per chi non ne ha uno registra la differenza con un saldo legato %s.', $correggiLi, $a),
+            $correggi && $senza => sprintf('%s; un saldo legato in più il Wallet non lo accetta %s.', $correggiLi, $rifiuto),
+            $correggi => $correggiLi . '.',
+            $rifiuto === null => sprintf('registra dal Wallet la differenza con un saldo legato %s.', $a),
+            default => sprintf('dal Wallet non si corregge niente: i saldi non si modificano, e un saldo legato in più il Wallet non lo accetta %s.', $rifiuto),
+        });
+
+        return implode(' ', $frasi);
+    }
+
+    /**
+     * Le voci della parte nella forma di `fattiDeiLegati`, nell'ordine delle persone delle righe (le altre dopo): le voci di persone che non
+     * hanno una cifra, o con gli stessi ids, si fondono sommando; chi ha righe e nessuna voce ha una parte di zero.
+     *
+     * @param list<array{ids: list<int>, nomi: list<string>, cifra: int, oppure?: string}> $parte
+     * @param array<int, string> $nomi le persone delle righe, nel loro ordine
+     * @return list<array{ids: list<int>, nomi: list<string>, cifra: int, oppure?: string}>
+     */
+    private static function vociDellaParte(array $parte, array $nomi): array
+    {
+        $voci = [];
+        foreach ($parte as $v) {
+            $ids = array_values(array_map('intval', $v['ids']));
+            // Con i nomi: una voce scritta prima non ha gli ids di chi non ha righe, e due voci senza ids non sono la stessa.
+            $chiave = implode(',', $ids) . '|' . implode(',', $v['nomi']);
+            $voci[$chiave] ??= ['ids' => $ids, 'nomi' => array_values($v['nomi']), 'cifra' => 0] + (isset($v['oppure']) ? ['oppure' => $v['oppure']] : []);
+            $voci[$chiave]['cifra'] += (int) $v['cifra'];
+        }
+        $coperti = array_merge([], ...array_map(fn (array $v) => $v['ids'], array_values($voci)));
+        foreach ($nomi as $id => $nome) {
+            if (! in_array($id, $coperti, true)) {
+                $voci[$id . '|' . $nome] = ['ids' => [$id], 'nomi' => [$nome], 'cifra' => 0];
+            }
+        }
+        $posto = array_flip(array_keys($nomi));
+        $voci = array_values($voci);
+        $primo = fn (array $v): int => min([PHP_INT_MAX, ...array_map(fn (int $id) => $posto[$id] ?? PHP_INT_MAX, $v['ids'])]);
+        // La voce con l'alternativa chiude l'elenco: la condizione non si legge come se riguardasse la voce dopo.
+        usort($voci, fn (array $x, array $y) => [isset($x['oppure']), $primo($x)] <=> [isset($y['oppure']), $primo($y)]);
+
+        return $voci;
+    }
+
+    /**
+     * «€ 30,58 a debito di Elsa», «€ 30,58 a credito di Ugo», «€ 0,00 per Elsa»; con `$insieme` un gruppo: «€ 30,58 a credito di Ugo e Anna insieme».
+     * Con `$oppure` l'ultimo dei nomi è l'alternativa della decisione 81.2: «€ 30,58 a credito di Ugo, o di Elsa se la fermata della vendita del … è già
+     * stata regolata».
+     */
+    private static function cifraDi(int $cifra, array $nomi, bool $insieme = false, ?string $oppure = null): string
+    {
+        if ($cifra === 0) {
+            return MoneyHelper::format(0) . ' per ' . self::elenco($nomi);
+        }
+        $alternativa = $oppure !== null && count($nomi) > 1 ? array_pop($nomi) : null;
+
+        return sprintf('%s a %s di %s%s%s', MoneyHelper::format(abs($cifra)), $cifra > 0 ? 'debito' : 'credito', self::elenco($nomi), $insieme && count($nomi) > 1 ? ' insieme' : '',
+            $alternativa === null ? '' : sprintf(', o di %s se %s', $alternativa, $oppure));
+    }
+
+    /**
+     * Le righe del Wallet legate ai passaggi di una voce del registro (`passaggio_id`, e con più fermate `passaggi_ids`), sulla sua unità e sulla sua
+     * gestione, anche a zero: per la porta una riga a zero è una riga come le altre.
+     *
+     * @return Collection<int, Saldo>
+     */
+    private static function righeDellaVoce(array $f): Collection
+    {
+        $ids = self::passaggiIds($f);
+
+        return $ids === [] ? collect() : Saldo::whereIn('passaggio_id', $ids)
+            ->when(isset($f['immobile_id']), fn ($q) => $q->where('immobile_id', (int) $f['immobile_id']))
+            ->when(isset($f['gestione_id']), fn ($q) => $q->where('gestione_id', (int) $f['gestione_id']))
+            ->orderBy('id')->get();
+    }
+
+    /** I passaggi di una voce del registro: `passaggio_id` e, con più fermate sulle stesse persone, `passaggi_ids`. @return list<int> */
+    private static function passaggiIds(array $f): array
+    {
+        return array_values(array_unique(array_filter([(int) ($f['passaggio_id'] ?? 0), ...array_map('intval', (array) ($f['passaggi_ids'] ?? []))])));
+    }
+
+    /**
+     * La riga che la pagina dei saldi corregge, e che la porta conta come doppione: non ferma in un piano che non si riscrive più, e nell'esercizio
+     * aperto del suo condominio.
+     *
+     * @param Collection<int, Saldo> $saldi le righe da leggere, per i loro condomini
+     * @return \Closure(Saldo): bool
+     */
+    private static function libera(Collection $saldi): \Closure
+    {
+        $aperti = $saldi->pluck('condominio_id')->unique()->mapWithKeys(fn ($id) => [(int) $id => self::esercizioAperto((int) $id)]);
+
+        return fn (Saldo $x): bool => ! $x->eBloccato() && (int) $x->esercizio_id === (int) ($aperti[(int) $x->condominio_id] ?? 0);
+    }
+
+    /** L'esercizio aperto del condominio, con la regola della pagina dei saldi e della porta (`HasEsercizio::getEsercizioCorrente`): il primo con lo stato «aperto». */
+    private static function esercizioAperto(int $condominioId): ?int
+    {
+        return \App\Models\Condominio::find($condominioId)?->esercizi()->where('stato', 'aperto')->first()?->id;
     }
 
     /** Il motivo del cancello per la parte che risale: corto, con le due cifre. */
@@ -1147,20 +1753,35 @@ final class FermataDopoScrivi
     /** L'avviso dell'annullamento della fine di un conduttore: la parte che era risalita torna com'era. */
     public static function avvisoRisaleAnnullando(array $f): string
     {
-        return sprintf('Con questo passaggio la parte verso %s %s è risalita da %s a %s: annullandolo torna da %s a %s. Se per questo hai registrato un saldo manuale dal Wallet, o le parti hanno regolato la differenza fra loro, quel saldo o quell\'accordo vanno rivisti: annullare il passaggio non li toglie.',
+        $testa = sprintf('Con questo passaggio la parte verso %s %s è risalita da %s a %s: annullandolo torna da %s a %s.',
             self::elenco($f['verso'] ?? []) ?: 'chi è entrato', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? 0)), self::cifraInParole((int) ($f['dopo'] ?? 0)),
             self::cifraInParole((int) ($f['dopo'] ?? 0)), self::cifraInParole((int) ($f['prima'] ?? 0)));
+        if (($righe = self::righeDellaVoce($f))->isNotEmpty()) {
+            return $testa . ' Se le parti hanno regolato la differenza fra loro, quell\'accordo va rivisto. '
+                . self::fattiDeiLegati($righe, self::partiConChiLePorta($f, self::partiDellaVoce($f, 'parti_prima', 'prima')), 'la parte che torna', chiNonLiCambia: 'annullare il passaggio',
+                    passaggiDellaVoce: self::passaggiIds($f));
+        }
+
+        return $testa . ' Se per questo hai registrato un saldo manuale dal Wallet, o le parti hanno regolato la differenza fra loro, quel saldo o quell\'accordo vanno rivisti: annullare il passaggio non li toglie.';
     }
 
     /**
      * L'avviso dell'annullamento dell'inizio che ha ridotto o azzerato una fermata (il gemello di `avvisoRisaleAnnullando`): annullato l'inizio, la parte
-     * da regolare torna quella di prima. Un accordo fra le parti, o un saldo dal Wallet, adeguati al residuo nel frattempo si rivedono.
+     * da regolare torna quella di prima. Un accordo fra le parti adeguato al residuo nel frattempo si rivede; dei saldi del Wallet legati ai passaggi
+     * della fermata l'avviso dice i fatti (`fattiDeiLegati`), con la parte che torna di ognuno.
      */
     public static function avvisoRidottaAnnullando(array $f): string
     {
-        return sprintf('Con questo inizio la parte verso %s %s è scesa da %s a %s: annullandolo torna da %s a %s. Se le parti hanno già regolato la differenza, o per questo hai registrato un saldo manuale dal Wallet, rivedilo: annullare il passaggio non lo toglie.',
+        $testa = sprintf('Con questo inizio la parte verso %s %s è scesa da %s a %s: annullandolo torna da %s a %s.',
             self::elenco($f['verso'] ?? []) ?: 'chi riceve', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? $f['cifra'] ?? 0)), self::cifraInParole((int) ($f['residuo'] ?? 0)),
             self::cifraInParole((int) ($f['residuo'] ?? 0)), self::cifraInParole((int) ($f['prima'] ?? $f['cifra'] ?? 0)));
+        if (($righe = self::righeDellaVoce($f))->isNotEmpty()) {
+            return $testa . ' Se le parti hanno già regolato la differenza fra loro, quell\'accordo va rivisto. '
+                . self::fattiDeiLegati($righe, self::partiConChiLePorta($f, self::partiDellaVoce($f + ['prima' => (int) ($f['cifra'] ?? 0)], 'parti_prima', 'prima')), 'la parte che torna',
+                    chiNonLiCambia: 'annullare il passaggio', passaggiDellaVoce: self::passaggiIds($f));
+        }
+
+        return $testa . ' Se le parti hanno già regolato la differenza, o per questo hai registrato un saldo manuale dal Wallet, rivedilo: annullare il passaggio non lo toglie.';
     }
 
     /** La frase del rientro: un'informazione, con l'alternativa del rinnovo (annullare la fine, l'ultimo passaggio, e rifarla). */
@@ -1173,7 +1794,7 @@ final class FermataDopoScrivi
         $frase = (int) $f['cifra'] < 0
             ? sprintf('%s rientra dal %s dopo la sua fine locazione del %s, che ha scritto il conguaglio: nei giorni dal %s, sulla gestione %s (%s), l\'entrata supera la spesa, e con la coppia %s %s anche il credito di quei giorni, %s, che %s %s.',
                 $f['persona'], self::data($f['dal']), self::data($f['fine_il']), self::data($f['dal']), $f['gestione'], $f['unita'], $chi, $piu ? 'hanno avuto' : 'ha avuto',
-                MoneyHelper::format(-(int) $f['cifra']), $piu ? 'restituiscono' : 'restituisce', self::a((string) $f['persona']))
+                MoneyHelper::format(-(int) $f['cifra']), $piu ? 'restituiscono' : 'restituisce', FrasiObbligati::a((string) $f['persona']))
             : sprintf('%s rientra dal %s dopo la sua fine locazione del %s, che ha scritto il conguaglio: %s dei giorni dal %s, sulla gestione %s (%s), %s %s, e %s glieli rimborsa con il prospetto degli oneri accessori.',
                 $f['persona'], self::data($f['dal']), self::data($f['fine_il']), MoneyHelper::format((int) $f['cifra']), self::data($f['dal']), $f['gestione'], $f['unita'],
                 $piu ? 'li hanno presi' : 'li ha presi', $chi, $f['persona']);
@@ -1204,13 +1825,17 @@ final class FermataDopoScrivi
         // Giro stretto della .50 (G1): con una fermata negativa (un credito di chi ha ricevuto, rimasto a chi ha la coppia) il verso della
         // restituzione è l'altro: se le parti hanno già regolato il credito, è chi l'ha ricevuto che restituisce la differenza.
         $credito = (int) $f['cifra'] < 0;
+        // Decisione 81.2: dopo una fermata chi risponde della parte è chi ha le righe della coppia, o chi è uscito se la fermata di prima è già stata
+        // regolata; il programma non sa quale, e la frase non ne nomina uno solo.
+        $dopoUnaFermata = isset($f['uscente_id']);
 
         return sprintf('%s %s lasciato %s %s%s dei giorni dopo l\'uscita di %s, da regolare a mano con %s%s. Con questo inizio %s: %s. Se %s hanno già regolato %s, %s vanno restituiti %s.%s',
-            ucfirst(self::elenco(self::passaggiDellaVoce($f))), count(self::passaggiDellaVoce($f)) > 1 ? 'hanno' : 'ha', $credito ? self::a((string) $f['persona']) : 'a carico di ' . $f['persona'],
+            ucfirst(self::elenco(self::passaggiDellaVoce($f))), count(self::passaggiDellaVoce($f)) > 1 ? 'hanno' : 'ha',
+            self::diChiResta((int) $f['cifra'], (string) $f['persona'], $dopoUnaFermata ? $f['uscente'] . ' se ' . self::regolataPrima($f) : null) . ($dopoUnaFermata ? ',' : ''),
             MoneyHelper::format(abs((int) $f['cifra'])), $credito ? ' di credito' : '', $f['inquilino'], $verso,
             $prima !== (int) $f['cifra'] ? sprintf(' (con le locazioni registrate da allora, %s)', MoneyHelper::format(abs($prima))) : '',
-            self::giorniDelConduttore($f), $resta, self::fraLeParti($f), MoneyHelper::format(abs($prima)), MoneyHelper::format(abs($prima - (int) $f['residuo'])),
-            $credito ? self::a((string) $f['persona']) : self::a($verso), self::codaDellePersoneACarico($f) . self::codaDelWallet($f));
+            self::giorniDelConduttore($f), $resta, $dopoUnaFermata ? 'chi ne risponde e ' . $verso : self::fraLeParti($f), MoneyHelper::format(abs($prima)), MoneyHelper::format(abs($prima - (int) $f['residuo'])),
+            $credito ? ($dopoUnaFermata ? 'a chi ne risponde' : FrasiObbligati::a((string) $f['persona'])) : FrasiObbligati::a($verso), self::codaDellePersoneACarico($f) . self::codaDelWallet($f));
     }
 
     /** Il motivo del cancello dopo una fermata: la cifra che resta da regolare, al posto di quella detta dal passaggio. */
@@ -1235,6 +1860,53 @@ final class FermataDopoScrivi
         return (int) ($f['residuo'] ?? 0) === 0 && ($f['parti'] ?? []) === [];
     }
 
+    /**
+     * Della fermata di una voce del registro non resta niente da regolare: l'ultima voce scritta su quella fermata, da questo passaggio o da uno
+     * non annullato registrato dopo, è l'inizio di una locazione che la azzera (decisione 86.2). La voce della fermata sta nel registro del suo
+     * passaggio, quanto ne resta in quello dell'inizio che viene dopo; la fine del conduttore che la fa risalire la riapre. Una voce è sulla
+     * stessa fermata se nomina lo stesso passaggio (`passaggio_id`, o fra i `passaggi_ids` di una voce di più fermate) sulla stessa coppia: la
+     * stessa fine, unità e gestione. La fermata del coinquilino non ha voci dopo.
+     *
+     * @param string $chiave la chiave del registro della voce: `fermata_dopo_scrivi`, `fermata_ridotta`, `fermata_risale`, `fermata_coinquilino`
+     * @param array<string, mixed> $f la voce
+     * @param Subentro $s il passaggio padre nel cui registro sta la voce
+     * @param iterable<Subentro> $passaggi i passaggi padre del condominio: contano quelli registrati dopo `$s`, non annullati
+     */
+    public static function nienteDaRegolare(string $chiave, array $f, Subentro $s, iterable $passaggi): bool
+    {
+        return self::chiLaAzzera($chiave, $f, $s, $passaggi) !== null;
+    }
+
+    /**
+     * L'inizio che ha azzerato la fermata di una voce del registro, con la regola di `nienteDaRegolare`: il passaggio dell'ultima voce scritta su
+     * quella fermata, se è un inizio che la azzera; null se della fermata resta qualcosa da regolare (o se l'ultima voce è la fine di un
+     * conduttore che la fa risalire). Se la voce stessa è l'inizio che azzera, è `$s`.
+     *
+     * @param iterable<Subentro> $passaggi i passaggi padre del condominio: contano quelli registrati dopo `$s`, non annullati
+     */
+    public static function chiLaAzzera(string $chiave, array $f, Subentro $s, iterable $passaggi): ?Subentro
+    {
+        if ($chiave === 'fermata_coinquilino') {
+            return null;
+        }
+        $nominati = fn (array $g): array => array_values(array_filter([(int) ($g['passaggio_id'] ?? 0), ...array_map('intval', (array) ($g['passaggi_ids'] ?? []))]));
+        $fermate = $chiave === 'fermata_dopo_scrivi' ? [(int) $s->id] : $nominati($f);
+        $stessa = fn (array $g): bool => array_intersect($fermate, $nominati($g)) !== [] && (int) ($g['fine_id'] ?? 0) === (int) ($f['fine_id'] ?? 0)
+            && (int) ($g['immobile_id'] ?? 0) === (int) ($f['immobile_id'] ?? 0) && (int) ($g['gestione_id'] ?? 0) === (int) ($f['gestione_id'] ?? 0);
+        $ultima = [$chiave, $f, $s];
+        foreach (collect($passaggi)->filter(fn (Subentro $x) => (int) $x->id > (int) $s->id && ! $x->annullato())->sortBy('id') as $x) {
+            foreach (['fermata_ridotta', 'fermata_risale'] as $k) {
+                foreach ($x->registro[$k] ?? [] as $g) {
+                    if (is_array($g) && $stessa($g)) {
+                        $ultima = [$k, $g, $x];
+                    }
+                }
+            }
+        }
+
+        return $ultima[0] === 'fermata_ridotta' && self::azzerata($ultima[1]) ? $ultima[2] : null;
+    }
+
     /** La frase dello storico dell'inizio dopo una fermata, dal registro. */
     public static function fraseStoricoRidotta(array $f): string
     {
@@ -1243,8 +1915,9 @@ final class FermataDopoScrivi
         $azzerata = self::azzerata($f);
 
         return sprintf('Con questo inizio, %s (%s rimasti %s) %s fra %s%s: %s.',
-            self::dellaFermata($f, 'di un passaggio di prima'), self::soldi((int) ($f['cifra'] ?? 0)), self::diChiResta((int) ($f['cifra'] ?? 0), (string) ($f['persona'] ?? '?')),
-            $azzerata ? 'non resta niente da regolare' : ($credito ? 'resta da regolare' : 'restano da regolare'), self::fraLeParti($f),
+            self::dellaFermata($f, 'di un passaggio di prima'), self::soldi((int) ($f['cifra'] ?? 0)),
+            self::diChiResta((int) ($f['cifra'] ?? 0), (string) ($f['persona'] ?? '?'), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . self::regolataPrima($f) : null),
+            $azzerata ? 'non resta niente da regolare' : ($credito ? 'resta da regolare' : 'restano da regolare'), self::fraLeParti($f, false),
             $azzerata ? '' : ' ' . ($credito ? 'un credito di ' . MoneyHelper::format(abs((int) ($f['residuo'] ?? 0))) : MoneyHelper::format((int) ($f['residuo'] ?? 0))),
             self::giorniDelConduttore($f));
     }
@@ -1273,9 +1946,18 @@ final class FermataDopoScrivi
         return (count($passaggi) > 1 ? 'delle fermate ' : 'della fermata ') . self::elenco(array_map(fn (string $p) => self::di($p), $passaggi));
     }
 
-    /** Chi è rimasto a carico e chi ha ricevuto, in una frase: «Ugo e Elsa»; con più persone a carico (decisione 86.1) «Ugo, Anna e Elsa». */
-    private static function fraLeParti(array $f): string
+    /**
+     * Chi è rimasto a carico e chi ha ricevuto, in una frase: «Ugo e Elsa»; con più persone a carico (decisione 86.1) «Ugo, Anna e Elsa». Dopo una
+     * fermata (decisione 81.2) chi risponde della parte non è uno solo: «chi ne risponde (Ugo, o Elsa se la fermata … è già stata regolata) e Carlo»,
+     * o senza la parentesi (`$diChi` falso) se la frase l'ha già detto.
+     */
+    private static function fraLeParti(array $f, bool $diChi = true): string
     {
+        if (isset($f['uscente_id'])) {
+            $riceve = self::elenco((array) ($f['verso'] ?? [])) ?: 'chi è entrato';
+
+            return $diChi ? sprintf('chi ne risponde (%s, o %s se %s) e %s', $f['persona'] ?? '?', $f['uscente'] ?? '?', self::regolataPrima($f), $riceve) : 'chi ne risponde e ' . $riceve;
+        }
         $persone = array_values(array_filter((array) ($f['persone'] ?? []), fn ($p) => is_string($p) && $p !== ''));
         $verso = (array) ($f['verso'] ?? []);
 
@@ -1602,15 +2284,100 @@ final class FermataDopoScrivi
     }
 
     /**
-     * Decisione 80: le persone che hanno già un saldo sulla gestione, sull'unità e sull'esercizio (le righe dei passaggi escluse).
+     * Le persone che hanno già un saldo sulla gestione, sull'unità e sull'esercizio, senza contare quelli scritti da un passaggio né quelli
+     * legati a un passaggio: chi occupa il posto del Wallet. Non decide più la strada a mano (dalla 1.11.0-beta.53 è sempre il Wallet, con i
+     * saldi legati al passaggio); serve al cancello del defunto, per dire se un saldo non legato può già comprendere la parte.
      *
      * @param list<int> $persone
      * @return list<int>
      */
     public static function conUnSaldo(array $persone, int $gestioneId, int $immobileId, ?int $esercizioId): array
     {
-        return Saldo::whereIn('anagrafica_id', $persone ?: [0])->where('gestione_id', $gestioneId)->where('immobile_id', $immobileId)->whereNull('subentro_id')
+        return Saldo::whereIn('anagrafica_id', $persone ?: [0])->where('gestione_id', $gestioneId)->where('immobile_id', $immobileId)->whereNull('subentro_id')->whereNull('passaggio_id')
             ->when($esercizioId !== null, fn ($q) => $q->where('esercizio_id', $esercizioId))->distinct()->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->values()->all();
+    }
+
+    // --- I saldi del Wallet legati a un passaggio (1.11.0-beta.53, Coda 244) ----------------------------------------------------
+
+    /**
+     * Una riga del Wallet a parole, con il verso e mai il meno: «€ 60,16 a credito di Ugo», «€ 60,16 a debito di Elsa»; a zero non ha un verso:
+     * «€ 0,00 per Dora». Con `$conPiano` anche il piano che l'ha già assorbita: «…, già nel piano «Preventivo 2026»».
+     */
+    public static function rigaInParole(Saldo $x, bool $conPiano = false): string
+    {
+        $cifra = (int) $x->saldo_iniziale;
+
+        return ($cifra === 0 ? sprintf('%s per %s', MoneyHelper::format(0), (string) ($x->anagrafica?->nome ?? '?'))
+            : sprintf('%s a %s di %s', MoneyHelper::format(abs($cifra)), $cifra < 0 ? 'credito' : 'debito', (string) ($x->anagrafica?->nome ?? '?')))
+            . ($conPiano && $x->piano_rate_id !== null && $x->pianoRate !== null ? sprintf(', già nel piano «%s»', $x->pianoRate->nome) : '');
+    }
+
+    /**
+     * Le righe in una frase, per gestione: «€ 60,16 a credito di Ugo e € 60,16 a debito di Elsa (gestione Ordinaria 2026)»; più gestioni con il
+     * punto e virgola. La usano l'annullamento (le righe legate che si tolgono, i saldi a mano scritti dopo) e gli avvisi.
+     *
+     * @param Collection<int, Saldo> $saldi con la persona e la gestione
+     */
+    public static function righeInParole(Collection $saldi, bool $conPiano = false): string
+    {
+        return $saldi->groupBy('gestione_id')
+            ->map(fn (Collection $g) => sprintf('%s (gestione %s)', self::elenco($g->map(fn (Saldo $x) => self::rigaInParole($x, $conPiano))->all()), $g->first()->gestione?->nome ?? '?'))
+            ->implode('; ');
+    }
+
+    /**
+     * Le righe che la pagina dei saldi non mostra: stanno in un esercizio che non è quello aperto del loro condominio. La pagina legge solo
+     * quello, con la regola di `HasEsercizio::getEsercizioCorrente` (il primo esercizio del condominio con lo stato «aperto»): lì una riga di
+     * un altro esercizio non si modifica né si toglie, e la porta ne accetta una nuova nell'esercizio aperto (`fattiDeiLegati`).
+     *
+     * @param Collection<int, Saldo> $saldi con `condominio_id` ed `esercizio_id`
+     * @return Collection<int, Saldo>
+     */
+    public static function fuoriDalWallet(Collection $saldi): Collection
+    {
+        $aperti = $saldi->pluck('condominio_id')->unique()
+            ->mapWithKeys(fn ($id) => [(int) $id => self::esercizioAperto((int) $id)]);
+
+        return $saldi->filter(fn (Saldo $x) => (int) $x->esercizio_id !== (int) ($aperti[(int) $x->condominio_id] ?? 0))->values();
+    }
+
+    /**
+     * Gli avvisi dell'annullamento di un passaggio sui saldi scritti a mano dal Wallet dopo la sua registrazione, senza legarli a nessun passaggio:
+     * la strada a mano di prima della 1.11.0-beta.53, o un saldo qualunque. La coincidenza non prova che una riga sia di quel passaggio: si
+     * nominano, non si toccano. Sulle unità del passaggio (il padre e le pertinenze passate con lui), i saldi manuali di una persona che ha o
+     * ha avuto una riga su quell'unità, non scritti da un passaggio né legati a uno, non dei fornitori, diversi da zero, scritti dopo la
+     * registrazione (la data di creazione è al secondo: una riga scritta nello stesso secondo della registrazione non conta, perché non si
+     * sa se è venuta prima o dopo; dalla pagina non succede, la registrazione e il Wallet sono due pagine). Un saldo scritto prima e
+     * modificato dopo non si nomina: la data di modifica cambia anche quando un piano lo assorbe, e non dice chi l'ha cambiato. Un avviso per
+     * unità, con la persona, la cifra a parole, la gestione e il piano che l'ha già assorbito.
+     *
+     * @return list<string>
+     */
+    public static function avvisiDeiSaldiAMano(Subentro $capo): array
+    {
+        $unita = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($capo->id)->orWhere('subentro_padre_id', $capo->id))->orderBy('id')->pluck('immobile_id')
+            ->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $saldi = Saldo::with(['anagrafica:id,nome', 'gestione:id,nome', 'pianoRate:id,nome', 'immobile:id,nome'])
+            ->whereIn('immobile_id', $unita ?: [0])->where('origine', 'manuale')
+            ->whereNull('subentro_id')->whereNull('passaggio_id')->whereNull('fornitore_id')->whereNotNull('anagrafica_id')
+            ->where('saldo_iniziale', '!=', 0)->where('created_at', '>', $capo->created_at)
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('anagrafica_immobile')
+                ->whereColumn('anagrafica_immobile.anagrafica_id', 'saldi.anagrafica_id')->whereColumn('anagrafica_immobile.immobile_id', 'saldi.immobile_id'))
+            ->orderBy('id')->get();
+        $avvisi = [];
+        foreach ($unita as $u) {
+            $qui = $saldi->where('immobile_id', $u)->values();
+            if ($qui->isEmpty()) {
+                continue;
+            }
+            $piu = $qui->count() > 1;
+            $avvisi[] = sprintf($piu
+                ? 'Dalla registrazione di questo passaggio sono stati scritti a mano dal Wallet, su %s, saldi non legati a nessun passaggio: %s. Se erano per questo passaggio, annullarlo non li toglie: rivedili dal Wallet, prima o dopo.'
+                : 'Dalla registrazione di questo passaggio è stato scritto a mano dal Wallet, su %s, un saldo non legato a nessun passaggio: %s. Se era per questo passaggio, annullarlo non lo toglie: rivedilo dal Wallet, prima o dopo.',
+                $qui->first()->immobile?->nome ?? 'l\'unità', self::righeInParole($qui, conPiano: true));
+        }
+
+        return $avvisi;
     }
 
     // --- Le parole ---------------------------------------------------------------------------------------------------------------
@@ -1621,22 +2388,19 @@ final class FermataDopoScrivi
         return isset($f['conduttore_uscente']) ? 'con la fine della locazione di ' . $f['conduttore_uscente'] : 'con questo passaggio';
     }
 
-    /** Decisione 80: la strada a mano, con il verso delle righe del Wallet, o fra le parti con chi ha già un saldo che un passaggio non ha scritto (`conUnSaldo`). */
+    /**
+     * La strada a mano, con il verso delle righe del Wallet: i saldi legati a questo passaggio, che non occupano il posto di un riporto. Il Wallet
+     * c'è sempre (dalla 1.11.0-beta.53): una persona con un saldo già lì può avere anche la riga legata.
+     */
     private static function stradaAMano(array $f): string
     {
         $verso = self::elenco($f['verso']);
-        if ($f['wallet'] ?? true) {
-            // Giro stretto della .50 (G1): ogni riga con il suo verso. Con una parte negativa (un credito di chi entra) la riga di chi riceve è a
-            // credito, e quella di chi resta a carico a debito.
-            $debiti = array_map(fn (array $p) => sprintf('%s a %s di %s', MoneyHelper::format(abs((int) $p['cifra'])), (int) $p['cifra'] < 0 ? 'credito' : 'debito', $p['nome']), $f['parti'] ?? []);
+        // Giro stretto della .50 (G1): ogni riga con il suo verso. Con una parte negativa (un credito di chi entra) la riga di chi riceve è a
+        // credito, e quella di chi resta a carico a debito.
+        $debiti = array_map(fn (array $p) => sprintf('%s a %s di %s', MoneyHelper::format(abs((int) $p['cifra'])), (int) $p['cifra'] < 0 ? 'credito' : 'debito', $p['nome']), $f['parti'] ?? []);
 
-            return sprintf('Se vanno %s, registra un saldo manuale dal Wallet sulla stessa gestione: %s a %s di %s%s %s.', self::a($verso), MoneyHelper::format(abs((int) $f['cifra'])),
-                (int) $f['cifra'] < 0 ? 'debito' : 'credito', $f['persona'], count($debiti) > 1 ? ',' : ' e', self::elenco($debiti));
-        }
-        $nomi = Anagrafica::whereIn('id', $f['con_un_saldo'] ?? [])->pluck('nome')->map(fn ($n) => (string) $n)->values()->all();
-
-        return sprintf('Se vanno %s, la parte si regola fra le parti: %s già un saldo su quella gestione e quell\'unità, e il programma non ne registra un secondo.',
-            self::a($verso), $nomi === [] ? 'una delle persone ha' : self::elenco($nomi) . (count($nomi) > 1 ? ' hanno' : ' ha'));
+        return sprintf('Se vanno %s, registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: %s a %s di %s%s %s. Un saldo legato non occupa il posto di un riporto, e si toglie se annulli il passaggio.',
+            FrasiObbligati::a($verso), MoneyHelper::format(abs((int) $f['cifra'])), (int) $f['cifra'] < 0 ? 'debito' : 'credito', $f['persona'], count($debiti) > 1 ? ',' : ' e', self::elenco($debiti));
     }
 
     /**
@@ -1656,7 +2420,7 @@ final class FermataDopoScrivi
     private static function diChiResta(int $cifra, string $chi, ?string $oppure = null): string
     {
         return $cifra < 0
-            ? self::a($chi) . ($oppure !== null ? ', o ' . self::a($oppure) : '')
+            ? FrasiObbligati::a($chi) . ($oppure !== null ? ', o ' . FrasiObbligati::a($oppure) : '')
             : 'a carico di ' . $chi . ($oppure !== null ? ', o di ' . $oppure : '');
     }
 
@@ -1705,12 +2469,13 @@ final class FermataDopoScrivi
     /**
      * «la vendita del 1 ottobre 2026», per le frasi dei passaggi di dopo: l'unica copia del sostantivo, che chiamano anche lo storico e il
      * prospetto degli oneri accessori (che lo dice con la sua data, `$conData` falso). Con la fine di una locazione (Coda 254) è «la fine della
-     * locazione di Luca».
+     * locazione di Luca», con l'inizio «l'inizio della locazione di Luca».
      */
     public static function passaggioInParole(Subentro $s, bool $conData = true): string
     {
         $tipo = match (true) {
             $s->tipo_passaggio === 'fine_locazione' => 'la fine della locazione di ' . self::nomeDiChiEsce($s),
+            $s->tipo_passaggio === 'inizio_locazione' => 'l\'inizio della locazione di ' . (string) ($s->registro['nomi']['entrante'] ?? $s->entrante?->nome ?? 'chi entra'),
             $s->tipo_passaggio === 'vendita' && $s->riservaUsufrutto() => 'la vendita con riserva d\'usufrutto',
             $s->tipo_passaggio === 'vendita' => 'la vendita',
             $s->estinzioneUsufrutto() => 'l\'estinzione dell\'usufrutto',
@@ -1721,6 +2486,17 @@ final class FermataDopoScrivi
         };
 
         return $conData ? sprintf('%s del %s', $tipo, self::data($s->decorrenza->toDateString())) : $tipo;
+    }
+
+    /** «alla vendita», «all'estinzione», «al legato»: la preposizione articolata davanti alle parole del passaggio, gemella di `di()`. */
+    public static function al(string $parole): string
+    {
+        return match (true) {
+            str_starts_with($parole, 'la ') => 'alla ' . substr($parole, 3),
+            str_starts_with($parole, 'il ') => 'al ' . substr($parole, 3),
+            str_starts_with($parole, 'l\'') => 'all\'' . substr($parole, 2),
+            default => FrasiObbligati::a($parole),
+        };
     }
 
     /** «della vendita», «dell'estinzione», «del legato»: la preposizione articolata davanti alle parole del passaggio. */
@@ -1742,11 +2518,6 @@ final class FermataDopoScrivi
     private static function data(string $iso): string
     {
         return CarbonImmutable::parse(substr($iso, 0, 10))->locale('it')->translatedFormat('j F Y');
-    }
-
-    private static function a(string $nome): string
-    {
-        return (preg_match('/^[aàAÀ]/u', $nome) === 1 ? 'ad ' : 'a ') . $nome;
     }
 
     private static function elenco(array $voci): string

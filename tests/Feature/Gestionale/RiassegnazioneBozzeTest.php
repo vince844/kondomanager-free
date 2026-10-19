@@ -199,7 +199,7 @@ it('vendita il 1° maggio, quattro rate emesse: le otto bozze passano a chi entr
     // L'anteprima dice cosa succederà alle bozze, e propone la coppia che poi si scrive.
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
     $frasi = implode("\n", $anteprima['rate']['conguaglio']['frasi'] ?? []);
-    expect($frasi)->toContain('passano a Acquirente Elsa')->toContain('cambia l\'intestatario, non l\'importo')
+    expect($frasi)->toContain('passano ad Acquirente Elsa')->toContain('cambia l\'intestatario, non l\'importo')
         ->and((int) $anteprima['rate']['conguaglio']['totale_entrante'])->toBe(548);
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), rbVendita($s))->assertSessionHasNoErrors();
@@ -306,7 +306,7 @@ it('una bozza già pagata in parte non passa: l\'anticipo è di chi esce, la quo
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']]), rbVendita($s))->assertOk()->json();
     expect($anteprima['rate']['conguaglio']['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditore Ugo', 'n' => 1, 'motivo' => 'pagata']])
         ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('Compresa la quota del piano «Preventivo 2026» non ancora emessa che ha già un pagamento: resterà intestata a Venditore Ugo e si conguaglia qui.')
-        ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('il piano «Preventivo 2026» ha 8 quote non ancora emesse intestate a Venditore Ugo: non si può più ricalcolare, 7 passano a Acquirente Elsa (cambia l\'intestatario, non l\'importo); 1 resta sua ed è compresa nel conguaglio');
+        ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('il piano «Preventivo 2026» ha 8 quote non ancora emesse intestate a Venditore Ugo: non si può più ricalcolare, 7 passano ad Acquirente Elsa (cambia l\'intestatario, non l\'importo); 1 resta sua ed è compresa nel conguaglio');
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), rbVendita($s))->assertSessionHasNoErrors();
     expect(DB::table('rate_quote')->where('rata_id', $rata7)->value('anagrafica_id'))->toBe($s['v']->id)
@@ -362,12 +362,12 @@ it('rogito il 5 maggio, lo stesso giorno della rata 5: la rata passa, le bozze c
     // 120.000 × 241/365 = 79.232,9 → 79.233; le otto bozze da maggio valgono 80.000.
     expect((int) $anteprima['rate']['conguaglio']['totale_entrante'])->toBe(-767)
         ->and($anteprima['rate']['conguaglio']['totale_entrante_assoluto_formattato'])->toBe('€ 7,67')
-        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('credito € 7,67 a Acquirente Elsa, debito € 7,67 a Venditore Ugo (la parte di Acquirente Elsa sull\'intero piano è € 792,33, e le rate in bozza che passano a suo nome valgono € 800,00: coprono più dei suoi giorni)');
+        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('credito € 7,67 ad Acquirente Elsa, debito € 7,67 a Venditore Ugo (la parte di Acquirente Elsa sull\'intero piano è € 792,33, e le rate in bozza che passano a suo nome valgono € 800,00: coprono più dei suoi giorni)');
 
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), rbVendita($s, '2026-05-05'))
         ->assertSessionHasNoErrors()
         ->assertSessionHas('passaggio_registrato', fn ($p) => $p['conguaglio'] === '€ 7,67' && $p['conguaglio_rovesciato'] === true && $p['riassegnate'] === 8
-            && str_contains((string) $p['riassegnate_frase'], 'Le 8 rate in bozza del piano «Preventivo 2026» sono passate a Acquirente Elsa'));
+            && str_contains((string) $p['riassegnate_frase'], 'Le 8 rate in bozza del piano «Preventivo 2026» sono passate ad Acquirente Elsa'));
     // Il debito è di chi esce: somma zero, e i totali per persona tornano ai giorni (124 e 241).
     expect(rbCoppia($s))->toBe([-767, 767])
         ->and(rbQuote($s)['v_preventivo'] + 767)->toBe(40767)
@@ -501,7 +501,7 @@ it('R5 nel conguaglio (difetto della beta.31) — la proprietaria paga per ripie
     // La riga di ripiego di Ugo: 120.000 × 120/365 = 39.452 per 120 giorni (gen–feb e nov–dic); a Elsa i 61 di novembre e
     // dicembre, 39.452 × 61/120 = 20.055 — prima della correzione 39.452 × 245/365 = 26.481.
     expect($g['importo_lordo'])->toBe(20055)->and($g['importo'])->toBe(20055 - $g['bozze_passate_importo'])
-        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('59 a Venditore Ugo, 61 a Acquirente Elsa');
+        ->and(implode("\n", $anteprima['rate']['conguaglio']['frasi']))->toContain('59 a Venditore Ugo, 61 ad Acquirente Elsa');
 });
 
 it('R8 — straordinaria con competenza dichiarata su tutto l\'anno e un già versato della persona: la spesa è divisa, le bozze restano a chi esce anche se il versato rende negativa la sua parte', function () {
@@ -539,8 +539,8 @@ it('R11 e R12 — catena con pregresso spalmato: alla rivendita il pannello dà 
     ])->assertOk()->json();
     $frasi = implode("\n", $anteprima['rate']['conguaglio']['frasi']);
 
-    expect($frasi)->toContain('123 a Acquirente Elsa, 122 a Compratrice Bice')->not->toContain('243 a Acquirente Elsa')
-        ->toContain('delle quote intestate a Venditore Ugo sono saldi pregressi')->not->toContain('delle quote intestate a Acquirente Elsa sono saldi pregressi')
+    expect($frasi)->toContain('123 ad Acquirente Elsa, 122 a Compratrice Bice')->not->toContain('243 ad Acquirente Elsa')
+        ->toContain('delle quote intestate a Venditore Ugo sono saldi pregressi')->not->toContain('delle quote intestate ad Acquirente Elsa sono saldi pregressi')
         ->and(collect($anteprima['rate']['conguaglio']['quote_in_bozza'])->firstWhere('intestatario', 'Venditore Ugo')['motivo'])->toBe('solo_pregresso');
 });
 

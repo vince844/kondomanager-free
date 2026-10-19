@@ -300,6 +300,15 @@ it('U1 — dopo una vendita con il piano ancora da ricalcolare, l\'emissione si 
     expect(DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('stato', 'emessa')->count())->toBe(2);
 });
 
+it('U1 — il venditore con un nome che comincia per A: la frase del piano da ricalcolare dice «ad Aldo Venditore», non «a Aldo Venditore»', function () {
+    $s = spScenario(12, 'prima_rata', 0);
+    $s['v']->update(['nome' => 'Aldo Venditore']);
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']]), spVendita($s, '2026-02-01'))->assertSessionHasNoErrors()->assertRedirect();
+
+    $r = spEmetti($this, $s, [spRata($s, 1), spRata($s, 2)], '2026-02-10');
+    expect($r->getSession()->get('message')['message'])->toEndWith('Se le voci o la data della delibera lasciano quelle quote ad Aldo Venditore, il ricalcolo dà le stesse cifre.');
+});
+
 it('U1, dati delle versioni prima — piano emesso senza ricalcolo dopo una vendita, poi una seconda vendita: il conguaglio si ferma sulle quote di Ugo e lo dice, nessuna coppia', function () {
     $s = spScenario(12, 'prima_rata', 0);
     $zeta = Anagrafica::forceCreate(['nome' => 'Zeta Seconda', 'email' => 'sp-zeta@test.it', 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'SPZETASECONDA001']);

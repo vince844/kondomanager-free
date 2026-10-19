@@ -9,8 +9,8 @@
  * passaggio abbassa il peso di Ugo fra chi sta al posto dell'inquilino (vendita, costituzione, estinzione, successione con
  * l'arretrato al defunto e «Scrivi»), la parte di quei giorni dal passaggio in poi non passa da sola: senza la fermata andrebbe a
  * chi entra in silenzio, € 90,74 in meno nel caso misurato. Il programma non la scrive, registra il passaggio, conserva la
- * fermata nel registro e la dice con la persona, la cifra e la strada a mano: il saldo manuale dal Wallet solo se la persona non
- * ha già un saldo su quella gestione, altrimenti «si regola fra le parti» (decisione 80). La cifra conta solo i giorni dopo il
+ * fermata nel registro e la dice con la persona, la cifra e la strada a mano: dal Wallet, con i saldi legati al passaggio, che non
+ * occupano il posto di un riporto (dalla 1.11.0-beta.53; prima, con un saldo già lì, «si regola fra le parti»). La cifra conta solo i giorni dopo il
  * passaggio in cui non c'è un conduttore registrato (correzione S1 della revisione).
  *
  * LE CIFRE, fatte a mano (regole scritte nelle misure della .50): € 1.200,00, 30 % «Inquilino» = 36000, 70 % «Proprietario» =
@@ -29,8 +29,8 @@
  *
  * Che cosa copre, dalle rotte vere (anteprima, registrazione, emissione, annullamento, Wallet): la fermata con la vendita il 1/10,
  * la vendita datata prima e registrata dopo, la costituzione, l'estinzione dell'usufrutto, la successione con l'arretrato al
- * defunto e «Scrivi»; il registro che la conserva e lo storico che la dice; la frase della decisione 80 nei due rami (Wallet / fra
- * le parti) e la strada del Wallet seguita fino all'oracolo; la coppia già assorbita da un piano (letta da `is_applicato` e
+ * defunto e «Scrivi»; il registro che la conserva e lo storico che la dice; la frase della strada a mano, anche con un saldo già sulla
+ * gestione (il Wallet con i saldi legati), e la strada del Wallet seguita fino all'oracolo; la coppia già assorbita da un piano (letta da `is_applicato` e
  * `piano_rate_id`); nessuna fermata con la riserva, la successione con l'arretrato agli eredi, la successione con l'arretrato al
  * defunto e «Non scriverlo», «Non scriverlo» alla fine, il conguaglio della fine annullato; i giorni coperti da un conduttore
  * registrato (S1 della revisione, Luca dal 1/9 e dal 1/11); l'annullamento dall'ultimo (decisione 27). Aggiunti nella revisione
@@ -39,15 +39,15 @@
  * arrotondamento per difetto e per eccesso); la comproprietà al 50 % (la fermata è la riga di chi esce, non la coppia dell'unità);
  * la coppia di una successione con «Scrivi», che non è una fine e non fa fermare nessuno.
  * ➕ Fusione della Fase 1 (11/10/2026), dalle scelte di progetto del verbale («Le scelte di progetto sulle questioni aperte dai
- * test»): la fermata è un motivo del cancello, con la spunta (prende la mutazione M15, che sopravviveva); la decisione 80 quando il
- * saldo sulla gestione ce l'ha chi riceve (Elsa): niente Wallet, «fra le parti».
+ * test»): la fermata è un motivo del cancello, con la spunta (prende la mutazione M15, che sopravviveva); la strada a mano quando il
+ * saldo sulla gestione ce l'ha chi riceve (Elsa): dalla 1.11.0-beta.53 il Wallet, con i saldi legati.
  *
  * Che cosa NON copre: il rinnovo e l'inizio dopo una fermata (S7) — sono in `InizioDopoScriviTest.php`; il coinquilino che resta
  * (decisione 79 punto 2, area della fine locazione); le pertinenze (il box con la fine spuntata), l'unità mista e la persona con
  * due righe (i pesi «per persona con tutte le sue righe», correzione (4) della revisione delle misure), due fini di fila,
  * l'ordine inverso (vendita registrata prima della fine con data dopo: la coppia della fine per tratti, area della fine), la
- * vendita della nuda proprietà, più gestioni o più piani con voci dell'inquilino, gli esercizi non solari e il 2028; l'avviso
- * dell'annullamento sul saldo manuale scritto per la fermata (Coda 244); il prospetto degli oneri accessori dopo una fermata
+ * vendita della nuda proprietà, più gestioni o più piani con voci dell'inquilino, gli esercizi non solari e il 2028; l'annullamento
+ * con i saldi legati e con quelli scritti a mano senza legame (in `Beta53AnnullaConRigheLegateTest` e `Beta53SaldiAManoDiPrimaTest`); il prospetto degli oneri accessori dopo una fermata
  * (area del prospetto); la pagina Vue del pannello: si guarda la risposta dell'anteprima e lo storico come li calcola il server;
  * MySQL.
  *
@@ -255,7 +255,9 @@ it('decisione 80, la strada seguita: con il saldo manuale dal Wallet che la fras
     expect(fds50Netti($s))->toBe(['Elsa' => 30247, 'Ines' => 17852, 'Ugo' => 71901]);
 });
 
-it('decisione 80, l\'altro ramo: Ugo ha già un saldo (€ 50,00 di riporto) sulla gestione, il Wallet rifiuterebbe la sua riga, e la frase dice che la parte si regola fra le parti, senza il Wallet', function () {
+it('decisione 80 con la riga legata: Ugo ha già un saldo (€ 50,00 di riporto) sulla gestione, e la frase indica lo stesso il Wallet, con i saldi legati al passaggio, che si scrivono accanto al riporto', function () {
+    // Dalla 1.11.0-beta.53 il posto del Wallet non conta le righe legate a un passaggio: la strada a mano si fa sempre dal Wallet (prima la
+    // frase diceva «fra le parti», perché la riga di Ugo era rifiutata). Le righe legate le prova `Beta53SaldoLegatoPortaTest`.
     $s = fds50Scenario();
     Saldo::create(['esercizio_id' => $s['e']->id, 'condominio_id' => $s['c']->id, 'anagrafica_id' => $s['persone']['Ugo']->id, 'immobile_id' => $s['unita']->id,
         'gestione_id' => $s['g']->id, 'saldo_iniziale' => 5000, 'origine' => 'manuale', 'is_applicato' => false]);
@@ -270,23 +272,19 @@ it('decisione 80, l\'altro ramo: Ugo ha già un saldo (€ 50,00 di riporto) sul
     expect(fds50CifrePerPersona($vendita))->toBe([(int) $s['persone']['Ugo']->id => 9074]);
     $conLaCifra = fds50Con($anteprima, '€ 90,74');
     expect($conLaCifra)->not->toBeEmpty()
-        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'Ugo') && str_contains($t, 'fra le parti')))
-        ->toBeTrue('La frase della fermata non dice che la parte si regola fra le parti: ' . implode(' | ', $conLaCifra))
-        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'Wallet')))
-        ->toBeFalse('La frase indica il Wallet, che per Ugo rifiuta la riga: ' . implode(' | ', $conLaCifra));
+        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: € 90,74 a credito di Ugo e € 90,74 a debito di Elsa')))
+        ->toBeTrue('La frase della fermata non indica il Wallet con i saldi legati: ' . implode(' | ', $conLaCifra))
+        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'fra le parti')))
+        ->toBeFalse('La frase dice ancora «fra le parti»: ' . implode(' | ', $conLaCifra));
 
-    // Controllo, già giusto prima della .50: il Wallet rifiuta davvero la riga di Ugo (una sola riga per persona, gestione, unità ed
-    // esercizio, le righe delle coppie escluse). È il motivo della decisione 80.
+    // La riga legata di Ugo si scrive accanto al riporto: non occupa il posto.
     $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
-        'anagrafica_id' => $s['persone']['Ugo']->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => -9074,
-    ])->assertSessionHasErrors(['anagrafica_id' => 'Esiste già un saldo per questa anagrafica in questa gestione.']);
+        'anagrafica_id' => $s['persone']['Ugo']->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => -9074, 'passaggio_id' => $vendita->id,
+    ])->assertSessionHasNoErrors();
 });
 
-it('decisione 80, il saldo ce l\'ha chi riceve: Elsa ha già un saldo (€ 50,00) sulla gestione e sull\'unità, il Wallet rifiuterebbe la sua riga, e la frase dice che la parte si regola fra le parti, senza il Wallet', function () {
-    // Scelte di progetto della Fase 1 (verbale, decisione 80, «la persona»): il Wallet si indica solo se la strada a mano si può fare
-    // davvero, cioè se nessuna delle due persone della riga (chi resta a carico, Ugo, e chi riceve, Elsa) ha già un saldo su quella
-    // gestione, unità ed esercizio; altrimenti «fra le parti». Con il Wallet passerebbe solo la riga a credito di Ugo, e i € 90,74 che
-    // Elsa deve sparirebbero. Il saldo di Elsa si scrive dopo l'emissione, prima della vendita: non entra nel piano.
+it('decisione 80 con la riga legata, il saldo ce l\'ha chi riceve: Elsa ha già un saldo (€ 50,00) sulla gestione e sull\'unità, e la frase indica lo stesso il Wallet con i saldi legati al passaggio', function () {
+    // Il saldo di Elsa si scrive dopo l'emissione, prima della vendita: non entra nel piano. Prima la frase diceva «fra le parti».
     $s = fds50DopoScrivi($this);
     fds50Emetti($this, $s, '2026-09-30');
     Saldo::create(['esercizio_id' => $s['e']->id, 'condominio_id' => $s['c']->id, 'anagrafica_id' => $s['persone']['Elsa']->id, 'immobile_id' => $s['unita']->id,
@@ -297,16 +295,15 @@ it('decisione 80, il saldo ce l\'ha chi riceve: Elsa ha già un saldo (€ 50,00
     expect(fds50CifrePerPersona($vendita))->toBe([(int) $s['persone']['Ugo']->id => 9074]);
     $conLaCifra = fds50Con($anteprima, '€ 90,74');
     expect($conLaCifra)->not->toBeEmpty()
-        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'Ugo') && str_contains($t, 'fra le parti')))
-        ->toBeTrue('La frase della fermata non dice che la parte si regola fra le parti: ' . implode(' | ', $conLaCifra))
-        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'Wallet')))
-        ->toBeFalse('La frase indica il Wallet, che per Elsa rifiuta la riga: ' . implode(' | ', $conLaCifra));
+        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: € 90,74 a credito di Ugo e € 90,74 a debito di Elsa')))
+        ->toBeTrue('La frase della fermata non indica il Wallet con i saldi legati: ' . implode(' | ', $conLaCifra))
+        ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'fra le parti')))
+        ->toBeFalse('La frase dice ancora «fra le parti»: ' . implode(' | ', $conLaCifra));
 
-    // Controllo, già giusto prima della .50: il Wallet rifiuta davvero la riga di Elsa (una sola riga per persona, gestione, unità ed
-    // esercizio, le righe delle coppie escluse).
+    // La riga legata di Elsa si scrive accanto al suo saldo.
     $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
-        'anagrafica_id' => $s['persone']['Elsa']->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 9074,
-    ])->assertSessionHasErrors(['anagrafica_id' => 'Esiste già un saldo per questa anagrafica in questa gestione.']);
+        'anagrafica_id' => $s['persone']['Elsa']->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 9074, 'passaggio_id' => $vendita->id,
+    ])->assertSessionHasNoErrors();
 });
 
 // --- La coppia già assorbita da un piano ---------------------------------------------------------------------------------------

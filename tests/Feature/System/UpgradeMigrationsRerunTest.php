@@ -225,6 +225,9 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // La frase del promemoria del credito: riscrive **dati** (`eventi.description`) e nessuna struttura, quindi la riesecuzione è un
     // no-op strutturale. La sua idempotenza sta nella `WHERE` sulla frase vecchia: al secondo giro non trova righe.
     '2026_10_17_100000_riscrivi_descrizioni_promemoria_credito',
+    // Beta.53 (Coda 244): il passaggio a cui l'amministratore lega una riga del Wallet — colonna più chiave esterna verso `subentri`, due
+    // statement su MySQL. Nessun travaso: le righe di prima restano senza legame.
+    '2026_10_18_100000_add_passaggio_id_to_saldi_table',
 ]);
 
 it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {
@@ -240,4 +243,22 @@ it('decisione 55 — la migrazione del legame interrotta fra i due statement (co
     expect($legame())->toHaveCount(1)
         ->and($legame()->first()['foreign_table'])->toBe('anagrafica_immobile')
         ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('set null');
+});
+
+it('la migrazione del passaggio delle righe del Wallet interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, restrict', function () {
+    $path = database_path('migrations/2026_10_18_100000_add_passaggio_id_to_saldi_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_10_18_100000_add_passaggio_id_to_saldi_table');
+    $migration = require $path;
+    $legame = fn () => collect(Schema::getForeignKeys('saldi'))->filter(fn ($k) => $k['columns'] === ['passaggio_id'])->values();
+    Schema::table('saldi', fn ($table) => $table->dropForeign(['passaggio_id']));
+    expect($legame())->toHaveCount(0)
+        ->and(Schema::hasColumn('saldi', 'passaggio_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect($legame())->toHaveCount(1)
+        ->and($legame()->first()['foreign_table'])->toBe('subentri')
+        ->and($legame()->first()['foreign_columns'])->toBe(['id'])
+        ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('restrict');
 });

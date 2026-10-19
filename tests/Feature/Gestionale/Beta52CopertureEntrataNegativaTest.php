@@ -9,8 +9,9 @@
  * un'integrativa fatta con quella cifra accreditava due volte. Ora le voci di entrata contano per il loro valore assoluto, in `analyze()`, nei passi di
  * `calcolaCoperturaReale()` e nel selettore (`FetchCapitoliPerGestioneController`).
  *
- * Le voci di spesa restano col loro segno: una spesa negativa il motore la addebita in positivo, e a fermarla è il fermo del piano
- * (`Beta52VoceEntrataFermoTest`); un valore assoluto anche su di loro lascerebbe passare la creazione di un piano con una spesa negativa.
+ * Anche una voce di spesa conta per il suo valore assoluto, come la addebita il motore: una spesa negativa ha il fabbisogno e la copertura in
+ * positivo. Perché la creazione di un piano non la addebiti, la voce non è mai una voce da finanziare e il fermo del piano la ferma
+ * (`Beta52VoceEntrataFermoTest`, `Beta53SpesaNegativaCreazioneTest`).
  *
  * Fonte dell'atteso: i conti a mano di ogni test (spese € 1.200,00, entrata € 240,00: il piano chiede € 960,00; il fabbisogno da ripartire è il netto) e il
  * comportamento del motore (`processaConti`, `−abs` sull'entrata), che qui non cambia.
@@ -237,12 +238,12 @@ it('un capitolo d\'entrata con la copia negativa copre i suoi sottoconti d\'entr
     expect([$mappa[1], $mappa[2], $mappa[3]])->toBe([40000, 30000, 10000]);
 });
 
-it('controprova — una spesa negativa resta col suo segno: la copertura non la legge in valore assoluto', function () {
+it('una spesa negativa con la copia negativa nel piano è coperta per il valore assoluto della copia, come la addebita il motore', function () {
     $spesa = be52EntVoce(1, 'Rimborso', -24000, 'spesa');
 
     $mappa = be52EntCoperturaReale([$spesa], [[$spesa, -24000]]);
 
-    expect($mappa[1])->toBe(-24000);
+    expect($mappa[1])->toBe(24000);
 });
 
 it('controprova — un\'entrata e una spesa positive restano quelle di sempre', function () {

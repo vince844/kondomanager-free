@@ -73,14 +73,14 @@ final class FrasiObbligati
                     return $this->frasiRiserva($chiEntra, $chiEsce, $dalA, $corrente, $precedente, $dati, $registrato, $salvo);
                 }
                 $frasi = [sprintf(
-                    '%s risponde in solido con %s per i contributi di questa unità relativi all\'esercizio %s e all\'esercizio %s (art. 63 co. 4 disp. att. c.c.). Il programma non intesta nulla a %s%s: la nota resta qui e nella situazione debitoria dell\'unità, e chi paga in forza della solidarietà ha regresso verso il venditore per quanto ha pagato al condominio, salvo diverso accordo fra le parti (Cass. 11199/2021).',
-                    $chiEntra, $chiEsce, $corrente, $precedente, $chiEntra, $salvo,
+                    '%s risponde in solido con %s per i contributi di questa unità relativi all\'esercizio %s e all\'esercizio %s (art. 63 co. 4 disp. att. c.c.). Il programma non intesta nulla %s%s: la nota resta qui e nella situazione debitoria dell\'unità, e chi paga in forza della solidarietà ha regresso verso il venditore per quanto ha pagato al condominio, salvo diverso accordo fra le parti (Cass. 11199/2021).',
+                    $chiEntra, $chiEsce, $corrente, $precedente, FrasiObbligati::a($chiEntra), $salvo,
                 )];
                 $copiaIl = $dati['copia_autentica_il'] ?? null;
                 if (! ($dati['copia_autentica'] ?? false)) {
                     $frasi[] = $registrato
-                        ? sprintf('Finché il condominio non riceve copia autentica del titolo, l\'obbligo verso il condominio resta a %s (art. 63 co. 5 disp. att. c.c.): la liberazione decorre dal giorno in cui la copia arriva, e quel giorno si registra qui.', $chiEsce)
-                        : sprintf('Finché non ricevi copia autentica del titolo, l\'obbligo verso il condominio resta a %s (art. 63 co. 5 disp. att. c.c.). Registra pure il passaggio: l\'anagrafe si aggiorna sulla comunicazione scritta del condòmino (art. 1130 n. 6 c.c.), il titolo serve a un altro effetto.', $chiEsce);
+                        ? sprintf('Finché il condominio non riceve copia autentica del titolo, l\'obbligo verso il condominio resta %s (art. 63 co. 5 disp. att. c.c.): la liberazione decorre dal giorno in cui la copia arriva, e quel giorno si registra qui.', FrasiObbligati::a($chiEsce))
+                        : sprintf('Finché non ricevi copia autentica del titolo, l\'obbligo verso il condominio resta %s (art. 63 co. 5 disp. att. c.c.). Registra pure il passaggio: l\'anagrafe si aggiorna sulla comunicazione scritta del condòmino (art. 1130 n. 6 c.c.), il titolo serve a un altro effetto.', FrasiObbligati::a($chiEsce));
                 } elseif ($registrato && $copiaIl !== null) {
                     $frasi[] = sprintf('Copia autentica del titolo ricevuta il %s: da quel giorno %s è liberato verso il condominio per i contributi successivi (art. 63 co. 5 disp. att. c.c.). La solidarietà del comma 4 sui contributi dell\'esercizio in corso e del precedente non dipende dalla copia e resta.', $this->data($copiaIl), $chiEsce);
                 }
@@ -156,8 +156,8 @@ final class FrasiObbligati
                     // nudo proprietario e gli usufruttuari che restano (art. 67 ult. co.); fra loro vale la natura della spesa.
                     $chi = $this->elenco($dati['usufruttuari']);
 
-                    return [sprintf('Dal %s %s, %s anche della parte di %s, e il nudo proprietario rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Le rate già emesse a %s restano sue.',
-                        $dalA, $chi, count($dati['usufruttuari']) > 1 ? 'usufruttuari' : 'usufruttuario', $uscente ?? 'chi esce', $uscente ?? 'chi esce')];
+                    return [sprintf('Dal %s %s, %s anche della parte di %s, e il nudo proprietario rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Le rate già emesse %s restano sue.',
+                        $dalA, $chi, count($dati['usufruttuari']) > 1 ? 'usufruttuari' : 'usufruttuario', $uscente ?? 'chi esce', FrasiObbligati::a($uscente ?? 'chi esce'))];
                 }
                 if (($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
                     // 1.11.0-beta.43: quando sull'unità restano altri titolari (un altro usufrutto con i suoi nudi, il proprietario
@@ -173,21 +173,21 @@ final class FrasiObbligati
                             ? ' (per ' . NudiDellEstinzione::percentuale((float) ($n['parte'] ?? $n['quota'] ?? 0)) . ')' : ''), $lista);
                         $ultimo = array_pop($nomi);
 
-                        return [sprintf('Dal %s %s %s della parte dell\'usufrutto che finisce e ne %s; per il resto dell\'unità rispondono, come prima, i titolari di quella parte%s. Le rate già emesse a %s restano sue.',
+                        return [sprintf('Dal %s %s %s della parte dell\'usufrutto che finisce e ne %s; per il resto dell\'unità rispondono, come prima, i titolari di quella parte%s. Le rate già emesse %s restano sue.',
                             $dalA, $nomi === [] ? $ultimo : implode(', ', $nomi) . ' e ' . $ultimo, $piu ? 'tornano proprietari pieni' : 'torna proprietario pieno',
                             $piu ? 'rispondono, ciascuno per la sua parte' : 'risponde',
                             $usufruttoCheResta || $inParte ? ' (il nudo proprietario e l\'usufruttuario in solido, art. 67 ult. co. disp. att. c.c.)' : '',
-                            $uscente ?? 'chi esce')];
+                            FrasiObbligati::a($uscente ?? 'chi esce'))];
                     }
                     if (is_array($nudo) && count($nudo) > 1) {
                         $elenco = array_map(fn ($n) => sprintf('%s (%s %%)', $n['nome'] ?? '?', rtrim(rtrim(number_format((float) ($n['quota'] ?? 0), 2, ',', '.'), '0'), ',')), $nudo);
                         $ultimo = array_pop($elenco);
 
-                        return [sprintf('Dal %s %s tornano proprietari pieni e rispondono di tutte le spese dell\'unità, ciascuno per la sua quota. Le rate già emesse a %s restano sue.', $dalA, implode(', ', $elenco) . ' e ' . $ultimo, $uscente ?? 'chi esce')];
+                        return [sprintf('Dal %s %s tornano proprietari pieni e rispondono di tutte le spese dell\'unità, ciascuno per la sua quota. Le rate già emesse %s restano sue.', $dalA, implode(', ', $elenco) . ' e ' . $ultimo, FrasiObbligati::a($uscente ?? 'chi esce'))];
                     }
                     $nome = is_array($nudo) ? ($nudo[0]['nome'] ?? null) : $nudo;
 
-                    return [sprintf('Dal %s %s torna proprietario pieno e risponde di tutte le spese dell\'unità. Le rate già emesse a %s restano sue.', $dalA, $nome ?? 'il nudo proprietario', $uscente ?? 'chi esce')];
+                    return [sprintf('Dal %s %s torna proprietario pieno e risponde di tutte le spese dell\'unità. Le rate già emesse %s restano sue.', $dalA, $nome ?? 'il nudo proprietario', FrasiObbligati::a($uscente ?? 'chi esce'))];
                 }
 
                 // Decisione 29.3 (beta.38): dal 2013 verso il condominio nudo proprietario e usufruttuario rispondono in solido
@@ -216,7 +216,7 @@ final class FrasiObbligati
             // secondo i coefficienti — il rinvio alla guida è lo stesso della costituzione.
             sprintf('Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido verso il condominio (art. 67 ult. co. disp. att. c.c.); fra di loro le spese ordinarie sono dell\'usufruttuario (art. 1004 c.c.), quelle straordinarie del nudo proprietario (art. 1005 c.c.). Come il programma li addebita è scritto nella guida «Ruoli e usufrutto».', $dalA, $chiEntra, $chiEsce),
             // Decisione 28.8 a: con un saldo intestato all'unità la frase nomina l'eccezione, come nella vendita piena.
-            sprintf('Se %s risponda anche dei contributi non pagati da %s negli esercizi %s e %s (art. 63 co. 4 disp. att. c.c.), come chi compra in una vendita piena, la giurisprudenza non l\'ha chiarito: decide l\'amministratore. Il programma non intesta nulla a %s per quel periodo%s.', $chiEntra, $chiEsce, $corrente, $precedente, $chiEntra, $salvo),
+            sprintf('Se %s risponda anche dei contributi non pagati da %s negli esercizi %s e %s (art. 63 co. 4 disp. att. c.c.), come chi compra in una vendita piena, la giurisprudenza non l\'ha chiarito: decide l\'amministratore. Il programma non intesta nulla %s per quel periodo%s.', $chiEntra, $chiEsce, $corrente, $precedente, FrasiObbligati::a($chiEntra), $salvo),
         ];
         $copiaIl = $dati['copia_autentica_il'] ?? null;
         $frasi[] = $registrato && ($dati['copia_autentica'] ?? false) && $copiaIl !== null
@@ -566,27 +566,23 @@ final class FrasiObbligati
         return $this->a($this->elenco($nomi));
     }
 
-    /** «a Ugo», «ad Anna», «a chi esce»: la preposizione con il nome, per le frasi che nominano una persona (1.11.0-beta.47). */
-    public function a(string $nome): string
-    {
-        return (preg_match('/^[aàAÀ]/u', $nome) === 1 ? 'ad ' : 'a ') . $nome;
-    }
-
     /**
-     * Rilievo R5 della Fase 1-bis della .48: in una frase già scritta con «a %s», «ad» davanti ai nomi dati — quelli per cui `a()` dà
-     * «ad». La «a» si corregge solo se è una parola a sé e il nome è intero («a Anna», non «Maria Anna» né «a Annalisa» se Annalisa non è
-     * fra i nomi).
-     *
-     * @param list<string> $nomi
+     * «a Ugo», «ad Anna», «a chi esce»: la preposizione con il nome, per le frasi che nominano una persona (1.11.0-beta.47). È l'unica copia
+     * della regola: ogni frase dei passaggi la chiama dove dice «a» davanti a un nome o a una parola, in ogni passaggio (decisione 100, punto 3).
+     * Davanti a un articolo (i ripieghi senza nome: «il nudo proprietario», «l'erede di riferimento») la preposizione è articolata: «al», «all'».
+     * L'articolo è quello in minuscolo; un cognome come «Lo Presti» o «La Rosa» è un nome, e resta «a Lo Presti».
      */
-    public function conLaD(string $frase, array $nomi): string
+    public static function a(?string $nome): string
     {
-        if ($nomi === []) {
-            return $frase;
+        $nome = (string) $nome;
+        if (preg_match('/^(il|lo|la|i|gli|le) /u', $nome, $m) === 1) {
+            return ['il' => 'al', 'lo' => 'allo', 'la' => 'alla', 'i' => 'ai', 'gli' => 'agli', 'le' => 'alle'][$m[1]] . ' ' . substr($nome, strlen($m[0]));
         }
-        $alternative = implode('|', array_map(fn (string $n) => preg_quote($n, '/'), $nomi));
+        if (str_starts_with($nome, 'l\'')) {
+            return 'all\'' . substr($nome, 2);
+        }
 
-        return (string) preg_replace('/(?<![\p{L}\p{N}\'’])a (?=(?:' . $alternative . ')(?![\p{L}\p{N}]))/u', 'ad ', $frase);
+        return (preg_match('/^[aàAÀ]/u', $nome) === 1 ? 'ad ' : 'a ') . $nome;
     }
 
 }

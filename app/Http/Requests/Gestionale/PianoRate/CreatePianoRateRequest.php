@@ -85,8 +85,52 @@ class CreatePianoRateRequest extends FormRequest
                 }
             }
 
+            $this->guardiaSpeseNegative($validator);
             $this->guardiaFattureRettificate($validator);
         });
+    }
+
+    /**
+     * Una voce di spesa scritta con il meno (dato delle versioni fino alla 1.11.0-beta.51) non entra in un piano nuovo con una cifra: il motore la
+     * addebita in positivo, e se un piano la tiene già la addebiterebbe una seconda volta. Il selettore della creazione la spegne; una richiesta che
+     * la porta lo stesso con un importo si rifiuta sul campo della riga, nominando la voce, e i piani che la addebitano se ce ne sono (`VoceDiSpesaNegativa`).
+     * Vale anche per un sottoconto, che il fermo del piano su una copia positiva non vede.
+     *
+     * Una riga con l'importo vuoto non si rifiuta qui: la copia è l'importo della voce, negativo, e la ferma il fermo del piano. Una riga a zero
+     * neppure, e il piano nasce con la copia a zero: non addebita la voce, e `VoceDiSpesaNegativa::pianiPerVoce` non lo conta.
+     * Una riga il cui id è già rifiutato (fuori dal condominio, inesistente) si salta: questa regola non legge quella voce e non ne dice il nome.
+     */
+    private function guardiaSpeseNegative($validator): void
+    {
+        $configurazione = $this->input('capitoli_config');
+        if ($this->input('tipo') === 'straordinario' || ! is_array($configurazione)) {
+            return;
+        }
+
+        $condominioId = $this->idDelCondominio();
+        foreach ($configurazione as $i => $conf) {
+            if (! is_array($conf) || empty($conf['id']) || $validator->errors()->has("capitoli_config.{$i}.id") || $validator->errors()->has("capitoli_config.{$i}.importo")) {
+                continue;
+            }
+            $importo = $conf['importo'] ?? null;
+            if (! is_string($importo) || trim($importo) === '' || \App\Helpers\MoneyHelper::toCents($importo) <= 0) {
+                continue;
+            }
+
+            $voce = \App\Models\Gestionale\Conto::whereKey($conf['id'])
+                ->whereIn('piano_conto_id', fn ($q) => $q->select('id')->from('piani_conti')->where('condominio_id', $condominioId))
+                ->with('pianoConto')
+                ->first();
+            if ($voce === null || ! \App\Models\Gestionale\Conto::eSpesaNegativa((string) $voce->tipo, (int) $voce->importo)) {
+                continue;
+            }
+
+            $gestioneId = (int) ($voce->pianoConto?->gestione_id ?? 0);
+            $piani = \App\Services\Riparto\VoceDiSpesaNegativa::pianiPerVoce([(int) $voce->id], $gestioneId)[(int) $voce->id] ?? [];
+            $bloccano = \App\Models\Gestionale\Conto::pianiCheBloccanoLaVoce([(int) $voce->id])[(int) $voce->id] ?? [];
+            $terzoLivello = \App\Services\Riparto\VoceDiSpesaNegativa::alTerzoLivello([(int) $voce->id]) !== [];
+            $validator->errors()->add("capitoli_config.{$i}.importo", \App\Services\Riparto\VoceDiSpesaNegativa::rifiuto((string) $voce->nome, (int) $voce->importo, $piani, $bloccano, $terzoLivello));
+        }
     }
 
     /**

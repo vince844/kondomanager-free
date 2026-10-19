@@ -211,9 +211,14 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 Lo stesso cancello nomina il <strong>defunto</strong>: se dopo una successione con l'arretrato
                                 agli eredi il piano calcola ancora le quote del defunto per i giorni fino al decesso, dice la
-                                cifra, la parte di ogni erede per quota e la strada — un saldo manuale dal Wallet, se nessuno ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti. Lo
-                                ripete a ogni ricalcolo, anche dopo la registrazione dei saldi: se quei saldi sono davvero la parte di
-                                ognuno dice che ci sono già, altrimenti dice ancora che la parte si regola fra le parti.
+                                cifra, la parte di ogni erede per quota e la strada — i saldi dal Wallet legati alla successione. Lo
+                                ripete a ogni ricalcolo: se il piano applica i saldi del Wallet e i saldi, legati alla successione o
+                                di prima, sono la parte di ognuno, dice che ci sono già; con saldi non legati di altra cifra dice che il
+                                programma non sa se la comprendono. Se il piano non applica i saldi non legge quelli non legati, e la
+                                strada passa da un piano creato di nuovo, che li assorbe; quelli legati alla successione li legge
+                                anche lì, e non li chiede di nuovo a chi li ha. Se un altro piano della stessa gestione, non ancora
+                                emesso, li ha già assorbiti, non li chiede di nuovo: dice in quale piano sono e le due strade,
+                                eliminare quel piano o registrare quelli di questo dopo aver emesso quell'altro.
                             </p>
                         </section>
 

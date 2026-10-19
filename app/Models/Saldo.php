@@ -28,6 +28,7 @@ class Saldo extends Model
         'gestione_id',    // La gestione a cui appartiene il debito/credito (Novità v1.9)
         'piano_rate_id',  // Il piano rate che ha assorbito questo saldo (chi ha chiuso il lucchetto)
         'subentro_id',    // Il passaggio di titolarità che ha generato la riga di conguaglio (B2, D9); nullo per i saldi ordinari
+        'passaggio_id',   // Il passaggio a cui l'amministratore ha legato la riga scritta dal Wallet (1.11.0-beta.53); nullo per i saldi ordinari e per le righe di un passaggio
         // Positivo = DEBITO del condòmino, negativo = CREDITO. È la convenzione di tutto il
         // progetto — vedi `docs/architettura_saldi_iniziali.md`. Il commento diceva il
         // contrario, e stava proprio sulla riga che chiunque legge per capire il segno.
@@ -62,8 +63,24 @@ class Saldo extends Model
         return $this->belongsTo(\App\Models\Gestionale\Subentro::class, 'subentro_id');
     }
 
+    /**
+     * Il passaggio di titolarità a cui l'amministratore ha legato questa riga scritta dal Wallet (1.11.0-beta.53, Coda 244): la parte di
+     * una fermata che il programma non sposta. Si lega sempre al passaggio padre, anche per una riga sul box passato con lui. Una riga
+     * legata non occupa il posto di un riporto e si toglie quando il passaggio si annulla; non ha mai `subentro_id`.
+     */
+    public function passaggio(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Gestionale\Subentro::class, 'passaggio_id');
+    }
+
+    /** Una riga del Wallet legata a un passaggio. */
+    public function legata(): bool
+    {
+        return $this->passaggio_id !== null;
+    }
+
     /** Perché una riga dell'arretrato non si modifica né si cancella da sola: il Wallet lo dice con queste parole. */
-    public const FRASE_ARRETRATO = 'Questa riga fa parte dell\'arretrato di una successione (la posizione del defunto passata agli eredi: per ogni erede due righe di segno opposto, una al defunto e una all\'erede, che sommano zero): non si modifica e non si cancella da sola. Si toglie annullando il passaggio dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
+    public const FRASE_ARRETRATO = 'Questa riga fa parte dell\'arretrato di una successione (la posizione del defunto passata agli eredi: per ogni erede due righe di segno opposto, una al defunto e una all\'erede, che sommano zero): non si modifica e non si cancella da sola. Si toglie annullando il passaggio dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta un saldo manuale di segno opposto, legato a quel passaggio dal Wallet.';
 
     /**
      * Decisione 67 (3): perché un saldo da cui una successione ha calcolato l'arretrato agli eredi non si modifica né si cancella;
@@ -87,7 +104,7 @@ class Saldo extends Model
      * Rilievo L1 della Fase 1-bis: una gamba del conguaglio di una successione con l'arretrato agli eredi. Conguaglio e arretrato fanno un
      * conto solo, e l'annullamento del solo conguaglio si rifiuta: la strada è annullare il passaggio.
      */
-    public const FRASE_CONGUAGLIO_CON_ARRETRATO = 'Questa riga fa parte del conguaglio di una successione con l\'arretrato agli eredi: conguaglio e arretrato fanno un conto solo, e la riga non si modifica né si cancella da sola. Si toglie annullando la successione dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta il saldo manuale di segno opposto.';
+    public const FRASE_CONGUAGLIO_CON_ARRETRATO = 'Questa riga fa parte del conguaglio di una successione con l\'arretrato agli eredi: conguaglio e arretrato fanno un conto solo, e la riga non si modifica né si cancella da sola. Si toglie annullando la successione dallo storico dell\'unità («Passaggi registrati»); se un piano l\'ha già assorbita, resta un saldo manuale di segno opposto, legato a quel passaggio dal Wallet.';
 
     /** Una delle righe dell'arretrato di una successione (1.11.0-beta.44, decisione 65), non del conguaglio. */
     public function dellArretrato(): bool

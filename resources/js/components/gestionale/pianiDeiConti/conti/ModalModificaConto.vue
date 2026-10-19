@@ -103,7 +103,18 @@ watch(
   },
 )
 
-const isImportoLocked = computed(() => props.conto?.has_rate_emesse === true)
+/**
+ * Il blocco dei piani approvati, con la regola del salvataggio (`Conto::pianiCheBloccanoLaVoce`, che il server manda in `blocco`): una voce che un
+ * piano approvato tiene, con la sua riga o con quella di un capitolo sopra di lei, o che un piano straordinario approvato finanzia con una spesa fuori preventivo
+ * registrata sulla voce, non cambia importo, padre, tipo, tabella né percentuali, e la scheda non lascia scrivere ciò che il salvataggio rifiuterebbe. `has_rate_emesse` non
+ * decide qui: aveva una condizione sulla data di creazione che il salvataggio non ha.
+ */
+const blocco = computed(() => props.conto?.blocco ?? null)
+const isBloccata = computed(() => blocco.value !== null)
+const isImportoLocked = isBloccata
+/** I capitoli padre che un piano approvato tiene: la voce spostata sotto di loro cambierebbe quel piano, e il salvataggio lo rifiuta. */
+const capitoloSelezionabile = (c: CapitoloDropdown) => !c.blocco
+const ciSonoCapitoliBloccati = computed(() => capitoli.value.some((c) => !!c.blocco))
 const hasSottoconti = computed(() => (props.conto?.sottoconti?.length ?? 0) > 0)
 // Ha già una tabella millesimale reale collegata: se true, trasformare questo
 // conto in capitolo cancellerebbe dati veri (tabella + ripartizioni), non un
@@ -300,7 +311,7 @@ const submit = () => {
           <input v-model="form.richiedeGiaVersato" type="hidden" />
 
           <div
-            v-if="!isCapitolo && (isImportoLocked || (props.conto?.impegnato ?? 0) > 0)"
+            v-if="isBloccata || (!isCapitolo && (props.conto?.impegnato ?? 0) > 0)"
             class="bg-blue-50/80 border border-blue-200 rounded-lg p-4 space-y-3 mb-6"
           >
             <div class="flex items-start gap-3">
@@ -309,14 +320,10 @@ const submit = () => {
               </div>
 
               <div class="text-sm text-blue-900">
-                <strong>{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.locked_notice.title') }}</strong>
+                <strong v-if="isBloccata">Restrizioni sulla voce:</strong>
+                <strong v-else>{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.locked_notice.title') }}</strong>
 
-                <span v-if="isImportoLocked" class="block mt-1 text-blue-800/80">
-                  {{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.locked_notice.locked_by_installments_text') }}
-                  <br /><br />
-                  <strong>{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.locked_notice.how_to_fix') }}</strong>
-                  {{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.locked_notice.locked_by_installments_how_to_fix') }}
-                </span>
+                <span v-if="isBloccata" class="block mt-1 text-blue-800/80">{{ blocco?.frase }}</span>
 
                 <span v-else-if="(props.conto?.impegnato ?? 0) > 0" class="block mt-1 text-blue-800/80">
                   {{
@@ -367,27 +374,28 @@ const submit = () => {
           <div v-if="!isCapitolo" class="flex items-center gap-6 pb-2">
             <Label class="font-medium">{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.labels.movement_type') }}</Label>
             <div class="flex items-center gap-2">
-              <input id="spesa" v-model="form.tipo" type="radio" value="spesa" />
+              <input id="spesa" v-model="form.tipo" type="radio" value="spesa" :disabled="isBloccata" />
               <Label for="spesa">{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.options.expense_outgoing') }}</Label>
             </div>
             <div class="flex items-center gap-2">
-              <input id="entrata" v-model="form.tipo" type="radio" value="entrata" />
+              <input id="entrata" v-model="form.tipo" type="radio" value="entrata" :disabled="isBloccata" />
               <Label for="entrata">{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.options.income') }}</Label>
             </div>
           </div>
+          <InputError v-if="!isCapitolo" :message="form.errors.tipo" />
 
           <div class="flex flex-col gap-3 border-y border-gray-100 py-3">
             <div class="flex items-center justify-between">
               <Label for="editIsCapitolo" class="cursor-pointer">
                 {{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.is_expense_chapter') }}
               </Label>
-              <Switch id="editIsCapitolo" v-model="isCapitolo" :disabled="isSottoConto || hasSottoconti" />
+              <Switch id="editIsCapitolo" v-model="isCapitolo" :disabled="isSottoConto || hasSottoconti || isBloccata" />
             </div>
             <div class="flex items-center justify-between">
               <Label for="editIsSottoConto" class="cursor-pointer">
                 {{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.is_expense_subaccount') }}
               </Label>
-              <Switch id="editIsSottoConto" v-model="isSottoConto" :disabled="isCapitolo" />
+              <Switch id="editIsSottoConto" v-model="isSottoConto" :disabled="isCapitolo || isBloccata" />
             </div>
             <div v-if="!isCapitolo" class="flex items-center justify-between">
               <div class="flex items-center gap-1.5">
@@ -409,6 +417,7 @@ const submit = () => {
               <Switch id="editRichiedeGiaVersato" v-model="richiedeGiaVersato" />
             </div>
           </div>
+          <InputError :message="form.errors.isCapitolo" />
 
           <div v-if="isSottoConto">
             <Label>{{ trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.labels.parent_chapter') }}</Label>
@@ -419,9 +428,18 @@ const submit = () => {
               :placeholder="trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.placeholders.parent_chapter')"
               :reduce="(c: CapitoloDropdown) => c.id"
               :loading="isLoadingCapitoli"
-              :clearable="true"
+              :clearable="!isBloccata"
+              :disabled="isBloccata"
+              :selectable="capitoloSelezionabile"
               @open="onDropdownCapitoliOpen"
-            />
+            >
+              <template #option="capitolo">
+                <span :class="{ 'text-slate-400': !!capitolo.blocco }">{{ capitolo.blocco ? `${capitolo.nome} (${capitolo.blocco})` : capitolo.nome }}</span>
+              </template>
+            </v-select>
+            <p v-if="!isBloccata && ciSonoCapitoliBloccati" class="text-[11px] text-slate-500 mt-1">
+              I capitoli che un piano approvato tiene non si scelgono finché il piano non torna in bozza.
+            </p>
             <InputError :message="form.errors.parent_id" />
           </div>
 
@@ -456,7 +474,8 @@ const submit = () => {
               label="nome"
               :placeholder="trans('gestionale.list_pages.piani_conti.show.new_entry_modal.placeholders.allocation_table')"
               :reduce="(t: TabellaDropdown) => t.id"
-              :clearable="true"
+              :clearable="!isBloccata"
+              :disabled="isBloccata"
             />
             <InputError :message="form.errors.tabella_millesimale_id" />
           </div>
@@ -464,15 +483,15 @@ const submit = () => {
           <div v-if="!isCapitolo && !suPiuTabelle" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.owner_percent') }}</Label>
-              <Input v-model="form.percentuale_proprietario" class="h-8 mt-1" placeholder="100" />
+              <Input v-model="form.percentuale_proprietario" class="h-8 mt-1" placeholder="100" :disabled="isBloccata" />
             </div>
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.tenant_percent') }}</Label>
-              <Input v-model="form.percentuale_inquilino" class="h-8 mt-1" placeholder="0" />
+              <Input v-model="form.percentuale_inquilino" class="h-8 mt-1" placeholder="0" :disabled="isBloccata" />
             </div>
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.usufructuary_percent') }}</Label>
-              <Input v-model="form.percentuale_usufruttuario" class="h-8 mt-1" placeholder="0" />
+              <Input v-model="form.percentuale_usufruttuario" class="h-8 mt-1" placeholder="0" :disabled="isBloccata" />
             </div>
             <InputError :message="form.errors.percentuale_proprietario" />
           </div>

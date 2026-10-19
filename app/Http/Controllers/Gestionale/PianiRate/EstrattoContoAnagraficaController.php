@@ -114,13 +114,19 @@ class EstrattoContoAnagraficaController extends Controller
         // eredi (rilievo X10 della Fase 1-bis), né le righe dei passaggi precedenti che quell'arretrato ha letto (le sue fonti, G4 del giro
         // sulle correzioni): lì la posizione del defunto si chiude a zero per costruzione, e quel «credito» è già passato agli eredi. Con
         // l'arretrato a suo nome la coppia resta un credito vero; una successione annullata torna a contare tutto.
-        $successioniChiuse = \App\Models\Gestionale\Subentro::where('condominio_id', $condominio->id)->where('tipo_passaggio', 'successione')
-            ->where('anagrafica_uscente_id', $anagrafica->id)->get()->filter(fn ($s) => $s->arretratoAgliEredi());
+        $successioniDelDefunto = \App\Models\Gestionale\Subentro::where('condominio_id', $condominio->id)->where('tipo_passaggio', 'successione')
+            ->where('anagrafica_uscente_id', $anagrafica->id)->get();
+        $successioniChiuse = $successioniDelDefunto->filter(fn ($s) => $s->arretratoAgliEredi());
+        // 1.11.0-beta.53 (Coda 244): anche i saldi del Wallet legati a un passaggio, lo stesso credito della coppia. Non quelli del defunto
+        // legati alla sua successione con l'arretrato agli eredi (la scelta, anche quando l'arretrato non ha scritto righe): pareggiano la
+        // quota che il piano calcola ancora per lui, e non diventano una quota da rimborsare.
+        $legateAlDefunto = $successioniDelDefunto->filter(fn ($s) => ($s->capo()->registro['arretrato']['scelta'] ?? null) === \App\Models\Gestionale\Subentro::ARRETRATO_AGLI_EREDI)
+            ->map(fn ($s) => (int) $s->capo()->id)->unique()->values()->all();
         $creditoInSaldi = (int) $anagrafica->saldi()
             ->where('condominio_id', $condominio->id)
             ->where('is_applicato', false)
-            ->whereNotNull('subentro_id')
-            ->whereNotIn('subentro_id', $successioniChiuse->pluck('id')->all())
+            ->where(fn ($q) => $q->where(fn ($c) => $c->whereNotNull('subentro_id')->whereNotIn('subentro_id', $successioniChiuse->pluck('id')->all()))
+                ->orWhere(fn ($l) => $l->whereNotNull('passaggio_id')->whereNotIn('passaggio_id', $legateAlDefunto)))
             ->whereNotIn('id', $successioniChiuse->flatMap(fn ($s) => $s->fontiDellArretrato())->all())
             ->get(['gestione_id', 'immobile_id', 'saldo_iniziale'])
             ->groupBy(fn ($r) => $r->gestione_id . '|' . $r->immobile_id)

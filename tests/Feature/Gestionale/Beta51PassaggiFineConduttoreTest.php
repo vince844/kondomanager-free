@@ -62,7 +62,7 @@ it('O-DL7 — la fine di Luca il 18/4 dopo la vendita del 12/3: il pannello ferm
         ->and($f['gestione'])->toBe('Ordinaria 2026')
         ->and($f['unita'])->toBe('Interno 1')
         ->and($f['wallet'])->toBeTrue()
-        ->and($f['con_un_saldo'])->toBe([])
+        ->and($f['strada'] ?? null)->toBe('legata')
         // La chiave `conduttore` in `fermata_ridotta` vuol dire chi ENTRA: nella fermata della fine di un conduttore chi ESCE
         // si chiama `conduttore_uscente`.
         ->and($f['conduttore_uscente'] ?? null)->toBe('Luca')
@@ -141,9 +141,16 @@ it('O-DL7-VISTE — € 268,20 in ogni vista: pannello, cancello, registro, stor
     // Lo storico della fine di Luca dice la fermata (sezione «fermate»), non solo gli avvisi.
     $voce = fds50Storico($s, $fine);
     expect(collect($voce['fermate'] ?? [])->contains(fn ($t) => str_contains((string) $t, '268,20')))->toBeTrue('Le fermate dello storico non dicono € 268,20: ' . json_encode($voce['fermate'] ?? []));
-    // Gli avvisi dell'annullamento (fine di Luca, l'ultimo passaggio): l'annullamento non toglie il saldo manuale dal Wallet.
-    $avvisi = implode(' | ', $voce['annullabile']['avvisi'] ?? []);
-    expect(str_contains($avvisi, '268,20'))->toBeTrue("Gli avvisi dell'annullamento della fine di Luca non dicono € 268,20: «{$avvisi}»");
+    // I saldi della strada a mano, legati alla fine di Luca dal modale del Wallet (dalla 1.11.0-beta.53): l'annullamento li toglie e lo dice.
+    foreach ([['Ugo', -26820], ['Elsa', 26820]] as [$chi, $importo]) {
+        $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
+            'anagrafica_id' => $s['persone'][$chi]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $fine->id,
+        ])->assertSessionHasNoErrors();
+    }
+    // Gli avvisi e gli effetti dell'annullamento (fine di Luca, l'ultimo passaggio): i saldi legati alla fine si tolgono con lei.
+    $voce = fds50Storico($s, $fine);
+    $avvisi = implode(' | ', [...($voce['annullabile']['avvisi'] ?? []), ...($voce['annullabile']['effetti'] ?? [])]);
+    expect(str_contains($avvisi, '268,20'))->toBeTrue("Gli avvisi e gli effetti dell'annullamento della fine di Luca non dicono € 268,20: «{$avvisi}»");
 
     // Concordanza (decisione 85.4): la cifra dei giorni di Luca all'inizio (33993) meno la parte che gli resta dopo la fine (7173, il
     // prospetto) è la parte che torna: 26820, con la tolleranza di un centesimo scritta come asserzione (il tie-break dell'inizio
@@ -431,7 +438,7 @@ it('O-DL7-RIENTRO — chi esce con «Scrivi», rientra e riesce dopo una vendita
     expect(b51aFermate($a))->toBe([['Ugo', 26820, ['Elsa']]]);
     $f = $a['rate']['fermate_dopo_scrivi'][0];
     expect($f['wallet'])->toBeTrue()
-        ->and($f['con_un_saldo'])->toBe([]);
+        ->and($f['strada'] ?? null)->toBe('legata');
     expect(str_contains(b51aTestoAnteprima($a), 'una delle persone ha'))->toBeFalse('La frase dice un saldo che nessuno ha: ' . b51aTestoAnteprima($a));
 });
 
@@ -493,44 +500,47 @@ it('sentinella — O-DL7-RISERVA: con la vendita della nuda con riserva d\'usufr
 
 // --- Il Wallet e la sua regola (decisione 80) ----------------------------------------------------------------------------------------------
 
-it('O-DL7-WALLET — senza saldi il Wallet è la strada; con un saldo manuale di Ugo o di Elsa la parte si regola fra le parti e la frase nomina chi ha il saldo, non «una delle persone»', function () {
-    // Fonte: conUnSaldo, decisione 80: il Wallet accetta un saldo per persona, gestione, unità ed esercizio.
+it('O-DL7-WALLET — senza saldi e con un saldo manuale di Ugo o di Elsa il Wallet è la strada, con i saldi legati alla fine di Luca: nessun «fra le parti»', function () {
+    // Fonte: dalla 1.11.0-beta.53 il posto del Wallet non conta le righe legate a un passaggio, e la riga legata si scrive anche accanto a un
+    // riporto (prima, con un saldo manuale di Ugo o di Elsa, la frase diceva «fra le parti»). `conUnSaldo` conta ancora i saldi non legati.
     $casi = ['nessuno' => b51aDl7ConVendita($this), 'Ugo' => b51aDl7ConVendita($this), 'Elsa' => b51aDl7ConVendita($this)];
     foreach (['Ugo', 'Elsa'] as $chi) {
         b51aSaldoManuale($casi[$chi], $chi, 5000);
-        // Controllo del setup: la regola della decisione 80 vede il saldo manuale di quella persona sulla gestione, l'unità e l'esercizio della coppia.
+        // Controllo del setup: `conUnSaldo` vede il saldo manuale di quella persona sulla gestione, l'unità e l'esercizio della coppia.
         $esercizio = DB::table('saldi')->where('subentro_id', $casi[$chi]['fine_ines']->id)->value('esercizio_id');
         expect(\App\Services\Subentro\FermataDopoScrivi::conUnSaldo([(int) $casi[$chi]['persone']['Ugo']->id, (int) $casi[$chi]['persone']['Elsa']->id], (int) $casi[$chi]['g']->id,
             (int) $casi[$chi]['unita']->id, $esercizio === null ? null : (int) $esercizio))->toBe([(int) $casi[$chi]['persone'][$chi]->id]);
     }
 
-    $senza = b51aAnteprimaFine($this, $casi['nessuno'], 'Luca', '2026-04-18');
-    expect($senza['rate']['fermate_dopo_scrivi'][0]['wallet'] ?? null)->toBeTrue()
-        ->and($senza['rate']['fermate_dopo_scrivi'][0]['con_un_saldo'] ?? null)->toBe([]);
-
-    foreach (['Ugo', 'Elsa'] as $chi) {
+    foreach (['nessuno', 'Ugo', 'Elsa'] as $chi) {
         $a = b51aAnteprimaFine($this, $casi[$chi], 'Luca', '2026-04-18');
         $f = $a['rate']['fermate_dopo_scrivi'][0] ?? [];
-        expect($f['wallet'] ?? null)->toBeFalse("Con un saldo di {$chi} il Wallet è ancora la strada.")
-            ->and($f['con_un_saldo'] ?? [])->toBe([(int) $casi[$chi]['persone'][$chi]->id]);
+        expect($f['wallet'] ?? null)->toBeTrue("Con un saldo di {$chi} il Wallet non è la strada.")
+            ->and($f['strada'] ?? null)->toBe('legata');
         $frasi = b51aFrasiConCifra($a, '€ 268,20');
-        expect(collect($frasi)->contains(fn ($t) => str_contains($t, 'fra le parti') && str_contains($t, "{$chi} ha già un saldo")))
-            ->toBeTrue("La frase non dice «fra le parti» e «{$chi} ha già un saldo»: " . implode(' | ', $frasi));
-        expect(str_contains(implode(' | ', $frasi), 'una delle persone'))->toBeFalse('La frase non nomina chi ha il saldo: ' . implode(' | ', $frasi));
+        expect(collect($frasi)->contains(fn ($t) => str_contains($t, 'registra dal Wallet i saldi legati a questo passaggio')))
+            ->toBeTrue("La frase non indica il Wallet con i saldi legati ({$chi}): " . implode(' | ', $frasi));
+        expect(str_contains(implode(' | ', $frasi), 'fra le parti'))->toBeFalse('La frase dice ancora «fra le parti»: ' . implode(' | ', $frasi));
     }
 });
 
 // --- L'annullamento, gli avvisi e lo storico -----------------------------------------------------------------------------------------------
 
-it('O-DL7-ANNULLA — annullata la fine di Luca (l\'ultimo passaggio) la riga si riapre: la fermata non vale più, il prospetto torna a 15 giorni senza conduttore, e gli avvisi prima di annullare nominano € 268,20 e il Wallet', function () {
+it('O-DL7-ANNULLA — annullata la fine di Luca (l\'ultimo passaggio) la riga si riapre: la fermata non vale più, il prospetto torna a 15 giorni senza conduttore, e prima di annullare il programma nomina € 268,20 e i saldi del Wallet legati alla fine', function () {
     // Fonte: annullata la fine la riga di Luca si riapre e i 258 giorni tornano a Luca nei pesi: senza conduttore restano i 15 giorni di Ugo
     // prima dell'inizio di Luca (1559), e Luca ha di nuovo 33993 (327 giorni). Gli avvisi dicono la fermata che cade e il saldo manuale
     // dal Wallet che l'annullamento non toglie.
     $s = b51aDl7ConVendita($this);
     $fine = b51aRegistraFine($this, $s, 'Luca', '2026-04-18');
+    // I saldi della strada a mano, legati alla fine di Luca dal modale del Wallet (dalla 1.11.0-beta.53): l'annullamento li toglie e lo dice.
+    foreach ([['Ugo', -26820], ['Elsa', 26820]] as [$chi, $importo]) {
+        $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
+            'anagrafica_id' => $s['persone'][$chi]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $fine->id,
+        ])->assertSessionHasNoErrors();
+    }
 
-    $avvisi = fds50Storico($s, $fine)['annullabile']['avvisi'] ?? [];
-    $testo = implode(' | ', $avvisi);
+    $annullabile = fds50Storico($s, $fine)['annullabile'] ?? [];
+    $testo = implode(' | ', [...($annullabile['avvisi'] ?? []), ...($annullabile['effetti'] ?? [])]);
     expect(str_contains($testo, '268,20'))->toBeTrue("Gli avvisi non nominano € 268,20: «{$testo}»")
         ->and(str_contains($testo, 'Wallet'))->toBeTrue("Gli avvisi non nominano il Wallet: «{$testo}»");
 
@@ -544,6 +554,12 @@ it('O-DL7-AVVISI — «Annulla il conguaglio» di Ines, con la fine di Luca regi
     // Fonte: avvisiDelConguaglio legge anche le fermate delle fini di conduttore: cade con la coppia, il saldo manuale dal Wallet da rivedere.
     $s = b51aDl7ConVendita($this);
     $fineLuca = b51aRegistraFine($this, $s, 'Luca', '2026-04-18');
+    // I saldi della strada a mano, legati alla fine di Luca dal modale del Wallet (dalla 1.11.0-beta.53): l'annullamento li toglie e lo dice.
+    foreach ([['Ugo', -26820], ['Elsa', 26820]] as [$chi, $importo]) {
+        $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
+            'anagrafica_id' => $s['persone'][$chi]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $fineLuca->id,
+        ])->assertSessionHasNoErrors();
+    }
 
     $avvisi = b51aAvvisiDelConguaglio($s['fine_ines']);
     $luca = collect($avvisi)->filter(fn ($t) => str_contains($t, '268,20') && str_contains($t, 'fine della locazione di Luca'))->values();

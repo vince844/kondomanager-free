@@ -79,7 +79,8 @@ function b52WalletSenzaEccezione(string $testo): array
         }
         foreach ($m[0] as [$frammento, $byte]) {
             $da = max(0, $byte - 100);
-            $finestra = substr($testo, $da, 100 + strlen($frammento) + 200);
+            // La finestra si taglia ai byte senza spezzare una lettera: un taglio a metà di «é» rende il testo non valido, e la ricerca non trova niente.
+            $finestra = mb_strcut($testo, $da, 100 + strlen($frammento) + 200);
             if (! preg_match(B52_WALLET_ECCEZIONE, $finestra)) {
                 $trovati[$da] = '…' . trim($finestra) . '…';
             }
@@ -202,9 +203,9 @@ it('le frasi che AnteprimaPassaggio scrive nel pannello dicono la regola del Wal
 
 it('controprova — la lettura delle stringhe vede la frase della successione, e la guardia segnala «se nessuno ha già un saldo lì» e accetta la formula con l\'eccezione', function () {
     $stringhe = b52WalletStringhe(base_path('app/Services/Subentro/AnteprimaPassaggio.php'));
-    expect(array_values(array_filter($stringhe, fn ($t) => str_contains($t, 'un saldo manuale dal Wallet sulla stessa gestione'))))->not->toBe([]);
-    // la frase dice dove vale la regola, come il cancello che la applica (`DefuntoNelPiano`, con l'esercizio del piano): la gestione, l'unità e l'esercizio, non «lì» (la gestione soltanto)
-    expect(array_values(array_filter($stringhe, fn ($t) => str_contains($t, "se nessuno ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che non sia stato scritto da un passaggio"))))->not->toBe([]);
+    // Dalla 1.11.0-beta.53 la frase della successione dice i saldi dal Wallet legati a lei, senza la condizione su chi ha già un saldo.
+    expect(array_values(array_filter($stringhe, fn ($t) => str_contains($t, 'i saldi dal Wallet legati a questa successione, sulla stessa gestione'))))->not->toBe([]);
+    expect(array_values(array_filter($stringhe, fn ($t) => str_contains($t, "se nessuno ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che non sia stato scritto da un passaggio"))))->toBe([]);
 
     $vecchia = 'un saldo manuale dal Wallet sulla stessa gestione (una riga a credito di %s e una a debito di ogni erede, per la sua quota) se nessuno ha già un saldo lì, altrimenti la parte si regola fra le parti';
     $giusta = 'un saldo manuale dal Wallet sulla stessa gestione (una riga a credito di %s e una a debito di ogni erede, per la sua quota) se nessuno ha già, su quella gestione, quell\'unità e quell\'esercizio, un saldo che non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti';
@@ -258,7 +259,8 @@ function b52WalletCommentoSenzaEccezione(string $commento, array $modelli): arra
         }
         foreach ($m[0] as [$frammento, $byte]) {
             $da = max(0, $byte - 100);
-            $finestra = substr($commento, $da, 100 + strlen($frammento) + 200);
+            // La finestra si taglia ai byte senza spezzare una lettera: un taglio a metà di «é» rende il testo non valido, e la ricerca non trova niente.
+            $finestra = mb_strcut($commento, $da, 100 + strlen($frammento) + 200);
             if (! preg_match(B52_WALLET_ECCEZIONE_NEL_COMMENTO, $finestra)) {
                 $senza[] = '…' . trim($finestra) . '…';
             }

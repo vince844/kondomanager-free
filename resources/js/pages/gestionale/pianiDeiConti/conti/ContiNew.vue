@@ -50,6 +50,16 @@ const props = defineProps<{
   totaleDaRipartire?: number
   totaleSopravvenienze: number
   totaleConsuntivo: number
+  /**
+   * Le voci di spesa scritte con il meno da una versione vecchia: il preventivo le conta in positivo, come il calcolo delle quote, mentre la
+   * riga le mostra col meno. `importo` è quello scritto, in centesimi; `piani` sono i piani della gestione che la addebitano, e `avviso` dice se
+   * l'avviso della pagina del piano nomina la voce (lo decide il server, `VoceDiSpesaNegativa::pianiPerVoce`); `bloccano` sono i piani approvati che la
+   * tengono, e finché la tengono la voce non cambia importo, padre né tipo: con `capitolo` se il piano tiene un capitolo sopra la voce e non lei, e con `movimenti` («incasso», «credito», «passaggio») se sulle sue
+   * quote c'è un incasso o un credito usato o rimborsato, o se un passaggio di titolarità di prima della 1.11.0-beta.42, registrato dopo l'emissione,
+   * ha preso il piano nel conguaglio, «passaggio_senza_registro» se quel passaggio è di prima della 1.11.0-beta.37 (`Conto::pianiCheBloccanoLaVoce`). `terzo_livello` dice una voce al terzo livello o più in basso, che si salva solo
+   * con un capitolo padre di primo livello (`VoceDiSpesaNegativa::alTerzoLivello`).
+   */
+  speseNegative?: Array<{ id: number, nome: string, importo: number, piani: Array<{ id: number, nome: string, avviso: boolean }>, bloccano?: Array<{ id: number, nome: string, capitolo: string | null, movimenti?: Array<'incasso' | 'credito' | 'passaggio' | 'passaggio_senza_registro'> }>, terzo_livello?: boolean }>
 }>()
 
 const { generatePath } = usePermission()
@@ -94,6 +104,121 @@ const openGuide = (id: string) => {
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 const { euro } = useCurrencyFormatter()
+
+/**
+ * La frase di una voce di spesa scritta con il meno, a pezzi: i piani sono collegamenti alla loro pagina. Fuori da ogni piano la frase dice come
+ * correggerla; in un piano rimanda solo alle pagine dei piani il cui avviso nomina la voce, che dicono le strade secondo lo stato del piano (con il
+ * piano approvato l'importo della voce non si cambia, e cambiarne il tipo lascia le rate addebitate). In un piano la frase non dice la cifra che il
+ * calcolo addebita: è quella della copia del piano, che può essere un'altra, e la pagina del piano la dice. Dove nessuna pagina ha l'avviso (il piano
+ * ne tiene una copia positiva) nomina i piani e dice che la addebitano in positivo.
+ *
+ * Fuori da ogni piano, se un piano approvato tiene la voce o un capitolo sopra di lei senza addebitarla, la voce non cambia importo, padre né tipo
+ * («Modifica inibita», `Conto::pianiCheBloccanoLaVoce`): la frase nomina quel piano e dice la strada che passa, il piano riportato in bozza prima
+ * della correzione, con quello che costa e con che cosa annullare prima delle emissioni; se un passaggio di prima della 1.11.0-beta.37 ferma
+ * l'annullamento delle emissioni, dice che la voce resta com'è. Una voce sotto un sottoconto si salva solo con un capitolo padre di primo livello: la
+ * frase lo dice prima della correzione e della bozza. Sono le parole di `VoceDiSpesaNegativa` e di `BloccoDellaVoce` per la nota del selettore, senza
+ * «nel piano dei conti», perché la pagina è quella.
+ */
+type PianoDellaVoce = { id: number, nome: string, avviso: boolean }
+type PianoCheBlocca = { id: number, nome: string, capitolo: string | null, movimenti?: Array<'incasso' | 'credito' | 'passaggio' | 'passaggio_senza_registro'> }
+type PezzoDellaFrase = { testo: string } | { piano: { id: number, nome: string } }
+const elencoDeiNomi = (nomi: string[]) => nomi.length <= 1 ? nomi.join('') : `${nomi.slice(0, -1).join(', ')} e ${nomi[nomi.length - 1]}`
+/** I nomi dei piani, ciascuno fra virgolette e con il collegamento, uniti con la virgola e l'ultimo con «e». */
+const pezziDeiPiani = (piani: Array<{ id: number, nome: string }>): PezzoDellaFrase[] => piani.flatMap((piano, i) => [
+  ...(i > 0 ? [{ testo: i === piani.length - 1 ? ' e ' : ', ' }] : []),
+  { testo: '«' }, { piano }, { testo: '»' },
+])
+/** Chi il piano tiene: «la voce è», «il suo capitolo «X» è», «la voce e il suo capitolo «X» sono», «i suoi capitoli «X» e «Y» sono». */
+const chiTiene = (bloccano: PianoCheBlocca[]): string => {
+  const capitoli = bloccano.map((piano) => piano.capitolo).filter((c, i, tutti): c is string => c !== null && tutti.indexOf(c) === i)
+  const dellaVoce = bloccano.some((piano) => piano.capitolo === null)
+  const suoi = capitoli.length === 0 ? null : (capitoli.length === 1 ? `il suo capitolo «${capitoli[0]}»` : `i suoi capitoli ${elencoDeiNomi(capitoli.map((c) => `«${c}»`))}`)
+  if (suoi === null) return 'la voce è'
+  return dellaVoce ? `la voce e ${suoi} sono` : `${suoi} ${capitoli.length === 1 ? 'è' : 'sono'}`
+}
+/** La strada di una voce che un piano approvato tiene: la bozza, poi `poi`; con un passaggio di prima della 1.11.0-beta.37, che cosa resta. */
+const stradaBloccata = (bloccano: PianoCheBlocca[], poi: string): PezzoDellaFrase[] => {
+  const piani = bloccano.filter((piano, i) => bloccano.findIndex((altro) => altro.id === piano.id) === i)
+  const uno = piani.length === 1
+  const premessa: PezzoDellaFrase[] = [{ testo: ` L'importo, il padre e il tipo non si cambiano finché ${chiTiene(bloccano)} ${uno ? 'nel piano ' : 'nei piani '}` }, ...pezziDeiPiani(piani)]
+  // Un passaggio di prima della 1.11.0-beta.37 ferma l'annullamento delle emissioni e dal programma non si annulla: la bozza non è una strada.
+  const fermi = piani.filter((piano) => (piano.movimenti ?? []).includes('passaggio_senza_registro'))
+  if (fermi.length > 0) {
+    return [
+      ...premessa,
+      { testo: `, ${uno ? 'approvato' : 'approvati'}, e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che dal programma non si annulla, ferma l'annullamento delle emissioni ` },
+      ...(fermi.length < piani.length ? [{ testo: 'di ' }, ...pezziDeiPiani(fermi)] : [{ testo: uno ? 'del piano' : 'dei piani' }]),
+      { testo: ': la voce resta com\'è.' },
+    ]
+  }
+  return [
+    ...premessa,
+    { testo: `, ${uno ? 'approvato' : 'approvati'}: ${uno ? 'riporta prima il piano in bozza dalla sua pagina' : 'riporta prima i piani in bozza dalle loro pagine'}, poi ${poi}; `
+      + `se è un provento, scegli «Entrata» e scrivi l'importo senza il segno. `
+      + `${uno ? 'Riportandolo' : 'Riportandoli'} in bozza si azzerano il numero del verbale e la nota dell'approvazione: annotali prima; con delle rate emesse, ` },
+    ...primaDelleEmissioni(piani),
+  ]
+}
+/**
+ * Che cosa annullare prima delle emissioni: l'annullamento di un'emissione rifiuta una rata con un incasso o un credito usato o rimborsato, e la rata
+ * emessa prima di un passaggio di titolarità di prima della 1.11.0-beta.42 che ha preso il piano nel conguaglio. Quei movimenti e quei passaggi si
+ * annullano prima, e si registrano di nuovo dopo la correzione. Si nominano i piani che li hanno, se non li hanno tutti. Un passaggio seguito da altre
+ * rate emesse chiede di annullare prima quelle: la frase lo dice.
+ */
+const primaDelleEmissioni = (piani: PianoCheBlocca[]): PezzoDellaFrase[] => {
+  const con = (tipi: string[]) => piani.filter((piano) => (piano.movimenti ?? []).some((m) => tipi.includes(m)))
+  const conMovimenti = con(['incasso', 'credito'])
+  const conPassaggi = con(['passaggio'])
+  if (conMovimenti.length === 0 && conPassaggi.length === 0) return [{ testo: 'prima vanno annullate le emissioni.' }]
+  const pezzi: PezzoDellaFrase[] = [{ testo: 'prima vanno annullati' }]
+  if (conMovimenti.length > 0) {
+    const tipi = conMovimenti.flatMap((piano) => piano.movimenti ?? [])
+    const cosa = [tipi.includes('incasso') ? 'gli incassi registrati' : null, tipi.includes('credito') ? 'i crediti usati o rimborsati' : null].filter(Boolean).join(' e ')
+    pezzi.push(...(conMovimenti.length === piani.length ? [{ testo: ` ${cosa} sulle rate` }] : [{ testo: ` ${cosa} sulle rate di ` }, ...pezziDeiPiani(conMovimenti)]))
+  }
+  if (conPassaggi.length > 0) {
+    pezzi.push({ testo: `${conMovimenti.length > 0 ? ' e' : ''}, ciascuno dallo storico della sua unità, i passaggi di titolarità registrati dopo l'emissione` })
+    if (conPassaggi.length < piani.length) pezzi.push({ testo: ' delle rate di ' }, ...pezziDeiPiani(conPassaggi))
+  }
+  pezzi.push({ testo: conPassaggi.length > 0
+    ? ' (da registrare di nuovo dopo), poi le emissioni; se dopo un passaggio sono state emesse altre rate, il suo annullamento chiede di annullare prima quelle.'
+    : ' (da registrare di nuovo dopo), poi le emissioni.' })
+  return pezzi
+}
+const fraseDellaSpesaNegativa = (voce: { nome: string, importo: number, piani: PianoDellaVoce[], bloccano?: PianoCheBlocca[], terzo_livello?: boolean }): PezzoDellaFrase[] => {
+  const cifra = euro(Math.abs(voce.importo))
+  const testa = `La voce «${voce.nome}» ha un importo negativo (meno ${cifra}): `
+  if (voce.piani.length === 0) {
+    const bloccano = voce.bloccano ?? []
+    // Un piano che blocca l'importo tiene la voce, o il suo capitolo, senza addebitarla: la cifra del calcolo non si dice accanto al suo nome.
+    const pezzi: PezzoDellaFrase[] = [{ testo: bloccano.length > 0
+      ? `${testa}il preventivo la conta in positivo, per ${cifra}.`
+      : `${testa}il calcolo delle quote la addebiterebbe in positivo, per ${cifra}, e il preventivo la conta così.` }]
+    if (bloccano.length > 0) {
+      const ferma = bloccano.some((piano) => (piano.movimenti ?? []).includes('passaggio_senza_registro'))
+      if (voce.terzo_livello === true && !ferma) pezzi.push({ testo: ' È sotto un sottoconto, e il piano dei conti non lo prevede: ogni sua modifica chiede come capitolo padre una voce di primo livello.' })
+      pezzi.push(...stradaBloccata(bloccano, voce.terzo_livello === true ? 'scegli il capitolo padre e correggi l\'importo' : 'correggi l\'importo'))
+    } else {
+      pezzi.push({ testo: voce.terzo_livello === true
+        ? ' È sotto un sottoconto, e il piano dei conti non lo prevede: scegli prima come suo capitolo padre una voce di primo livello, poi correggi l\'importo; se è un provento, scegli «Entrata» e scrivi l\'importo senza il segno.'
+        : ' Se è un provento, scegli «Entrata» e scrivi l\'importo senza il segno.' })
+    }
+    return pezzi
+  }
+  const pezzi: PezzoDellaFrase[] = [{ testo: `${testa}il preventivo la conta in positivo, per ${cifra}.` }]
+  pezzi.push({ testo: voce.piani.length === 1 ? ' È nel piano ' : ' È nei piani ' }, ...pezziDeiPiani(voce.piani))
+  const conAvviso = voce.piani.filter((piano) => piano.avviso === true)
+  if (conAvviso.length === 0) {
+    pezzi.push({ testo: voce.piani.length === 1 ? ', che la addebita in positivo.' : ', che la addebitano in positivo.' })
+  } else if (conAvviso.length === voce.piani.length) {
+    pezzi.push({ testo: voce.piani.length === 1 ? ': la pagina del piano dice che cosa fare.' : ': le pagine dei piani dicono che cosa fare.' })
+  } else {
+    const nomi = elencoDeiNomi(conAvviso.map((piano) => `«${piano.nome}»`))
+    pezzi.push({ testo: conAvviso.length === 1 ? `: la pagina di ${nomi} dice che cosa fare.` : `: le pagine di ${nomi} dicono che cosa fare.` })
+  }
+  return pezzi
+}
+const paginaDelPiano = (id: number) => route('admin.gestionale.esercizi.piani-rate.show', { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: id })
 
 const headerBreadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -420,6 +545,14 @@ const printRiparto = () => {
                     <Receipt class="w-3 h-3" />
                     Consuntivo: {{ euro(props.totaleConsuntivo) }}
                   </span>
+                </div>
+                <!-- Una voce di spesa scritta con il meno: la riga dice il meno e il preventivo la conta in positivo. La frase la nomina. -->
+                <div v-if="(props.speseNegative ?? []).length > 0" class="mt-3 space-y-1.5">
+                  <p v-for="voce in props.speseNegative" :key="voce.id"
+                     class="flex gap-2 text-xs leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60">
+                    <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span><template v-for="(pezzo, i) in fraseDellaSpesaNegativa(voce)" :key="i"><Link v-if="'piano' in pezzo" :href="paginaDelPiano(pezzo.piano.id)" class="font-semibold underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100">{{ pezzo.piano.nome }}</Link><template v-else>{{ pezzo.testo }}</template></template></span>
+                  </p>
                 </div>
               </div>
 

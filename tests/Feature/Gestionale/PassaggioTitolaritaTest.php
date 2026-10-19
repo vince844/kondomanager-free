@@ -371,7 +371,7 @@ it('S8-4 — urgenza senza delibera e senza competenza dichiarata: il pannello n
 
     $json = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $this->immobile]), corpoAnteprimaVendita($riga, $bianchi))->assertOk()->json();
     expect($json['rate']['conguaglio']['coppie'])->toBe([])
-        ->and($json['rate']['conguaglio']['non_risolte'][0]['motivo'])->toContain('intervento urgente senza delibera')->toContain('si dichiara sulle fatture del piano')->toContain('saldo manuale dal Wallet')->not->toContain('rinuncia motivata')
+        ->and($json['rate']['conguaglio']['non_risolte'][0]['motivo'])->toContain('intervento urgente senza delibera')->toContain('si dichiara sulle fatture del piano')->toContain('dal Wallet con saldi legati a questo passaggio')->not->toContain('rinuncia motivata')
         ->not->toContain('registrala sul piano e ricalcola');
 });
 

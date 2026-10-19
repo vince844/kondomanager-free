@@ -81,8 +81,9 @@ it('O-2F — due vendite sulla parte di Elsa (€ 153,33 e € 142,94) e Marco d
     // Il residuo è uno solo per Ugo e Anna insieme (la fermata ridotta non lo divide): la frase dice che la parte di ognuno la decide l'amministratore, e da
     // quale cifra partire (quella della fermata di ciascuno: 15333 e 14294).
     expect($frasi[0])->toContain(' Il residuo è uno solo per Ugo e Anna insieme: la parte di ognuno la decidi tu, partendo da quella della sua fermata (€ 153,33 per Ugo e € 142,94 per Anna).');
-    // Le due fermate avevano indicato il Wallet: la frase dice di correggere i due saldi, ognuno con la cifra della sua fermata.
-    expect($frasi[0])->toEndWith(' Se per quelle fermate hai registrato il saldo dal Wallet (€ 153,33 a credito di Ugo e € 153,33 a debito di Elsa; € 142,94 a credito di Anna e € 142,94 a debito di Elsa), correggilo: il programma non lo toglie.');
+    // Dalla 1.11.0-beta.53 la frase dice i saldi da correggere solo se ci sono saldi legati alle fermate; qui non ce ne sono (le frasi con i
+    // saldi legati sono in `Beta53FrasiStradaLegataTest`).
+    expect($frasi[0])->not->toContain('hai registrato il saldo dal Wallet');
     $motivi = collect($a['cancello']['motivi'])->filter(fn ($m) => str_contains($m, 'fermata') || str_contains($m, 'fermate'))->values();
     expect($motivi)->toHaveCount(1)
         ->and(str_contains($motivi[0], '€ 73,81') && str_contains($motivi[0], '€ 296,27'))->toBeTrue('Il motivo non dice € 73,81 e € 296,27: ' . $motivi[0])
@@ -168,34 +169,39 @@ it('O-DL7-DUEPASSI — se Marco entra due giorni dopo (il 20/4) la fermata non s
         ->and($a['cancello']['richiesto'])->toBeTrue();
 });
 
-it('O-DL7-DUEPASSI, il saldo del Wallet — la fine di Luca ha indicato di registrare dal Wallet € 268,20 (a credito di Ugo e a debito di Elsa): se l\'inizio di Marco lo stesso giorno azzera la fermata, la frase dice di correggere quel saldo, perché il programma non lo toglie', function (string $il, string $quanto) {
+it('O-DL7-DUEPASSI, il saldo del Wallet — la fine di Luca ha indicato di registrare dal Wallet € 268,20 (a credito di Ugo e a debito di Elsa), legati a lei: se l\'inizio di Marco lo stesso giorno azzera la fermata, la frase dice di correggere quei saldi legati, perché il programma non li cambia', function (string $il, string $quanto) {
     $s = b51aDl7ConVendita($this);
     $fine = b51aRegistraFine($this, $s, 'Luca', '2026-04-18');
     $fermata = collect(b51aRegistro($fine)['fermata_dopo_scrivi'] ?? [])->first();
     expect($fermata['wallet'] ?? null)->toBeTrue();
 
-    // Il saldo come lo indica la fermata: Ugo a credito e Elsa a debito di € 268,20 (positivo = debito).
-    b51aSaldoManuale($s, 'Ugo', -26820);
-    b51aSaldoManuale($s, 'Elsa', 26820);
+    // I saldi come li indica la fermata, legati alla fine di Luca dal modale del Wallet: Ugo a credito e Elsa a debito di € 268,20 (positivo = debito).
+    foreach ([['Ugo', -26820], ['Elsa', 26820]] as [$chi, $importo]) {
+        $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
+            'anagrafica_id' => $s['persone'][$chi]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $fine->id,
+        ])->assertSessionHasNoErrors();
+    }
     $a = fclAnteprima($this, $s, fds50ModuloInizio($s, 'Marco', $il));
     $frase = collect($a['rate']['frasi'])->first(fn ($t) => str_contains($t, 'fine della locazione di Luca') && str_contains($t, 'da regolare'));
 
     // La frase, in coda a quella di sempre: quel che l'inizio riduce o azzera ha un saldo registrato su indicazione del programma.
     expect($frase)->not->toBeNull('Nessuna frase del pannello dice la fermata ridotta: ' . implode(' | ', $a['rate']['frasi']))
         ->and($frase)->toContain($quanto)
-        ->and($frase)->toEndWith(' Se per quella fermata hai registrato il saldo dal Wallet (€ 268,20 a credito di Ugo e € 268,20 a debito di Elsa), correggilo: il programma non lo toglie.');
+        ->and($frase)->toContain('I saldi del Wallet legati alla fine della locazione di Luca del 18 aprile 2026 sommano oggi € 268,20 a credito di Ugo e € 268,20 a debito di Elsa; la parte che resta è ')
+        ->and($frase)->toContain('Il programma non li cambia: correggi dal Wallet i saldi che si modificano.')
+        ->and($frase)->not->toContain('correggilo: il programma non lo toglie');
 })->with([
     'azzerata, lo stesso giorno (86.2, senza spunta)' => ['2026-04-18', 'non resta niente da regolare'],
     'ridotta, due giorni dopo (con la spunta)' => ['2026-04-20', 'resta da regolare € 2,08 con Elsa'],
 ]);
 
-it('O-DL7-DUEPASSI, il saldo del Wallet — se la fermata di Luca non ha indicato il Wallet (Ugo ed Elsa avevano già un saldo: «si regola fra le parti») la frase non parla di un saldo da correggere', function () {
+it('O-DL7-DUEPASSI, il saldo del Wallet — con un riporto di Ugo e nessun saldo legato alla fine di Luca la frase non parla di un saldo da correggere', function () {
     $s = b51aDl7ConVendita($this);
-    // Un saldo già nel Wallet per Ugo (un riporto) prima della fine di Luca: la fermata dice che la parte si regola fra le parti.
+    // Un saldo già nel Wallet per Ugo (un riporto) prima della fine di Luca: dalla 1.11.0-beta.53 la fermata indica lo stesso il Wallet legato.
     b51aSaldoManuale($s, 'Ugo', 5000);
     $fine = b51aRegistraFine($this, $s, 'Luca', '2026-04-18');
     $fermata = collect(b51aRegistro($fine)['fermata_dopo_scrivi'] ?? [])->first();
-    expect($fermata['wallet'] ?? null)->toBeFalse();
+    expect($fermata['wallet'] ?? null)->toBeTrue();
 
     $a = fclAnteprima($this, $s, fds50ModuloInizio($s, 'Marco', '2026-04-18'));
     $frase = collect($a['rate']['frasi'])->first(fn ($t) => str_contains($t, 'fine della locazione di Luca') && str_contains($t, 'da regolare'));

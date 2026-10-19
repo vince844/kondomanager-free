@@ -161,7 +161,7 @@ it('piano ordinario con quattro rate emesse: nessuna bozza passa e nessun congua
     expect($frasi)->toContain('resta usufruttuario')->toContain('art. 1004 c.c.')
         // Le due frasi della riserva: per gestione e per le bozze che restano («non passano a chi compra»). Senza pronomi
         // (V3 della verifica a video): il programma non conosce il genere delle persone, e «le deve lui» non serviva.
-        ->toContain('Venditore Ugo resta usufruttuario (art. 1004 c.c.): non passano a Acquirente Elsa.')->toContain('non passano a chi compra la nuda proprietà')
+        ->toContain('Venditore Ugo resta usufruttuario (art. 1004 c.c.): non passano ad Acquirente Elsa.')->toContain('non passano a chi compra la nuda proprietà')
         ->not->toContain(' lui')
         ->not->toContain('regolate alla costituzione')->not->toContain('già regolate')->not->toContain('non ne risponde');
     // Il blocco 2 del pannello lo dice con le sue parole, prima delle righe del conguaglio.
@@ -615,9 +615,9 @@ it('rilievo B3, testi T3 — nella rivendita le frasi nominano chi resta usufrut
     [, $rivendita] = ruRivendita($s);
     $anteprima = ruAnteprima($this, $s, $rivendita);
     $frasi = implode("\n", $anteprima['rate']['conguaglio']['frasi']);
-    expect($frasi)->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare a Acquirente Elsa: Venditore Ugo resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a Compratore Carlo.')
+    expect($frasi)->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare ad Acquirente Elsa: Venditore Ugo resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a Compratore Carlo.')
         ->toContain('resteranno intestate a Venditore Ugo: sono spese ordinarie, e Venditore Ugo resta usufruttuario (art. 1004 c.c.)')
-        ->not->toContain('restano a Acquirente Elsa')->not->toContain('costituzione')->not->toContain('già regolate')->not->toContain('si conguagliano qui');
+        ->not->toContain('restano ad Acquirente Elsa')->not->toContain('costituzione')->not->toContain('già regolate')->not->toContain('si conguagliano qui');
     // Cantiere C6 (decisione di Vincenzo del 29/09): quelle quote restano per legge a chi le ha, e il pannello le dice come
     // informazione, senza spunta; in nessuna delle due liste «passano ancora».
     expect(implode("\n", $anteprima['cancello']['informazioni']))
@@ -640,7 +640,7 @@ it('rilievo B3 — catena riserva, estinzione dell\'usufrutto e vendita piena: l
         ->and($conguaglio['per_gestione'][0]['per_periodo'][0])->toMatchArray([
             'ereditata_da' => 'Venditore Ugo', 'decorrenza_acquisto' => '2026-09-01', 'giorni_periodo' => 122, 'giorni_uscente' => 61, 'giorni_entrante' => 61, 'uscente' => 20055, 'entrante' => 20055,
         ])
-        ->and(implode("\n", $conguaglio['frasi']))->toContain('è emessa a Venditore Ugo: la sua competenza è passata a Acquirente Elsa dal 1 settembre 2026 con un passaggio precedente, e quella parte (122 giorni) è divisa in proporzione ai giorni: 61 a Acquirente Elsa, 61 a Compratore Carlo.');
+        ->and(implode("\n", $conguaglio['frasi']))->toContain('è emessa a Venditore Ugo: la sua competenza è passata ad Acquirente Elsa dal 1 settembre 2026 con un passaggio precedente, e quella parte (122 giorni) è divisa in proporzione ai giorni: 61 ad Acquirente Elsa, 61 a Compratore Carlo.');
 });
 
 it('rilievo B3, controprova — senza riserva la catena non cambia: vendita piena e poi rivendita, la competenza di Ugo è passata a Elsa il giorno della prima vendita', function () {
@@ -690,14 +690,14 @@ it('rilievo B3 — la catena prima della riserva: Ugo vende a Zeta, Zeta vende a
         // Dalla .42 il piano emesso prima della vendita è preso dal suo conguaglio: le 8 bozze da maggio sono passate a Zeta.
         ->and($conguaglio['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditrice Zeta', 'n' => 8, 'motivo' => 'ordinaria_riservata', 'usufruttuario' => 'Venditrice Zeta']])
         ->and(implode("\n", $conguaglio['frasi']))->toContain('Le 8 quote del piano «Preventivo 2026» non ancora emesse resteranno intestate a Venditrice Zeta: sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.)')
-        ->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo e Venditrice Zeta — sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.): non passano a Acquirente Elsa.');
+        ->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo e Venditrice Zeta — sono spese ordinarie, e Venditrice Zeta resta usufruttuario (art. 1004 c.c.): non passano ad Acquirente Elsa.');
     ruRegistra($this, $s, $riserva);
 
     [, $rivendita] = ruRivendita($s);
     $conguaglio = ruAnteprima($this, $s, $rivendita)['rate']['conguaglio'];
     expect($conguaglio['coppie'])->toBe([])
         ->and($conguaglio['quote_in_bozza'])->toBe([['piano' => 'Preventivo 2026', 'intestatario' => 'Venditrice Zeta', 'n' => 8, 'motivo' => 'ordinaria_riservata', 'usufruttuario' => 'Venditrice Zeta']])
-        ->and(implode("\n", $conguaglio['frasi']))->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo e Venditrice Zeta — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare a Acquirente Elsa: Venditrice Zeta resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a Compratore Carlo.');
+        ->and(implode("\n", $conguaglio['frasi']))->toContain('Sulla gestione Ordinaria 2026: € 1.200,00 restano a Venditore Ugo e Venditrice Zeta — sono spese ordinarie, e la vendita o donazione con riserva d\'usufrutto non le ha fatte passare ad Acquirente Elsa: Venditrice Zeta resta usufruttuario (art. 1004 c.c.), e non passano nemmeno a Compratore Carlo.');
     ruRegistra($this, $s, $rivendita);
 
     // Una coppia sola in tutta la catena, quella della prima vendita: Zeta, 306 giorni, 120000 × 306/365 = 100603, meno le 8 bozze
@@ -935,7 +935,7 @@ it('testi T4 — nota di solidarietà della riserva: il punto aperto (art. 63 co
     $dopo = $nota();
 
     expect([$prima['residuo_uscente_cents'], $dopo['residuo_uscente_cents']])->toBe([40000, 40000]);
-    expect($prima['testo'])->toContain('Nessuna quota è intestata a Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 400,00 non pagati su questa unità con scadenza prima del 1 maggio 2026.')
+    expect($prima['testo'])->toContain('Nessuna quota è intestata ad Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 400,00 non pagati su questa unità con scadenza prima del 1 maggio 2026.')
         ->not->toContain('ne risultano oggi');
     expect($dopo['testo'])
         ->toContain('rispondono in solido per i contributi di Interno 1 (Int. 1) (art. 67 ult. co. disp. att. c.c.): a nome di Venditore Ugo ne risultano oggi € 400,00 non pagati, con scadenza da quel giorno in poi.')
@@ -957,7 +957,7 @@ it('testi T4, controprova — la nota della vendita piena è al netto della copp
     expect($nota['residuo_uscente_cents'])->toBe(39452)
         ->and($nota['residuo_lordo_cents'])->toBe(80000)
         ->and($nota['coppia_cents'])->toBe(40548)
-        ->and($nota['testo'])->toBe('Acquirente Elsa risponde in solido con Venditore Ugo per i contributi di Interno 1 (Int. 1) relativi agli esercizi 2026 e 2025 (art. 63 co. 4 disp. att. c.c.). Nessuna quota è intestata a Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 394,52 non pagati su questa unità (€ 800,00 nelle rate, di cui € 405,48 già a debito di Acquirente Elsa con il conguaglio del 1 maggio 2026). Chi paga in forza della solidarietà ha regresso verso il venditore, salvo diverso accordo (Cass. 11199/2021).');
+        ->and($nota['testo'])->toBe('Acquirente Elsa risponde in solido con Venditore Ugo per i contributi di Interno 1 (Int. 1) relativi agli esercizi 2026 e 2025 (art. 63 co. 4 disp. att. c.c.). Nessuna quota è intestata ad Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 394,52 non pagati su questa unità (€ 800,00 nelle rate, di cui € 405,48 già a debito di Acquirente Elsa con il conguaglio del 1 maggio 2026). Chi paga in forza della solidarietà ha regresso verso il venditore, salvo diverso accordo (Cass. 11199/2021).');
 });
 
 it('testi T7 — nello storico anche le righe toccate dalla riserva portano il sottotipo del passaggio (la riga chiusa di chi vende, la sua riga d\'usufrutto, la nuda proprietà di chi compra), così la riga e il passaggio hanno lo stesso nome', function () {
@@ -1036,7 +1036,7 @@ it('cancello, nella riserva stessa — l\'ordinaria emessa e le bozze restano pe
     ]],
     'straordinaria deliberata dopo l\'atto: le emesse si conguagliano e le bozze passano' => ['straordinaria', true, [
         '2 quote di rate già emesse a Venditore Ugo su questa unità',
-        'il piano «Rifacimento facciata» ha 4 quote non ancora emesse intestate a Venditore Ugo: non si può più ricalcolare, passano a Acquirente Elsa (cambia l\'intestatario, non l\'importo)',
+        'il piano «Rifacimento facciata» ha 4 quote non ancora emesse intestate a Venditore Ugo: non si può più ricalcolare, passano ad Acquirente Elsa (cambia l\'intestatario, non l\'importo)',
     ], []],
 ]);
 
@@ -1116,7 +1116,7 @@ it('nota di solidarietà della riserva, straordinarie — conta la data della de
     }
 })->with([
     'deliberata il 15 marzo, rate da aprile: tutto arretrato' => ['prima', 80000, [
-        'Nessuna quota è intestata a Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 800,00 non pagati su questa unità per contributi sorti prima del 1 maggio 2026.',
+        'Nessuna quota è intestata ad Acquirente Elsa per quel periodo: a nome di Venditore Ugo risultano oggi € 800,00 non pagati su questa unità per contributi sorti prima del 1 maggio 2026.',
         'Per le spese straordinarie conta la data della delibera, per le altre la scadenza della rata.',
     ], 'ne risultano oggi'],
     'senza data della delibera: arretrato, per prudenza' => ['senza delibera', 80000, [
@@ -1338,7 +1338,7 @@ it('mappa dei casi, rilievo B1 — l\'avviso del ricalcolo vale anche per una vo
 
     $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']))['cancello']['motivi']);
     if ($caso === 'senza coefficienti') {
-        expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa, nudo proprietario')
+        expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno ad Acquirente Elsa, nudo proprietario')
             ->not->toContain('il destinatario cambierebbe');
     } else {
         expect($motivi)->toContain('un piano rate già generato intesta quote a Venditore Ugo: il destinatario cambierebbe')->not->toContain('se lo ricalcoli');

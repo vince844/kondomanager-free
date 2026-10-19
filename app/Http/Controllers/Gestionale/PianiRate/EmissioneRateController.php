@@ -24,6 +24,7 @@ use App\Models\Evento;
 use App\Services\Gestionale\CreditoService;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
+use App\Services\Subentro\FrasiObbligati;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
@@ -418,8 +419,8 @@ class EmissioneRateController extends Controller
             $nomi = collect($attivi)->map(fn (Subentro $p) => $p->uscente?->nome)->filter()->unique()->values();
             $capoversi[] = ($uno ? 'Le quote di questo piano sono state calcolate prima di questo passaggio:' : 'Le quote di questo piano sono state calcolate prima di questi passaggi:')
                 . "\n" . self::elencoPuntato($voci);
-            $capoversi[] = sprintf('Ricalcola il piano prima di emettere, perché tenga conto %s. Se le voci o la data della delibera lasciano quelle quote a %s, il ricalcolo dà le stesse cifre.',
-                $uno ? 'del passaggio' : 'dei passaggi', $nomi->isEmpty() ? 'chi le aveva' : self::nomiInFila($nomi));
+            $capoversi[] = sprintf('Ricalcola il piano prima di emettere, perché tenga conto %s. Se le voci o la data della delibera lasciano quelle quote %s, il ricalcolo dà le stesse cifre.',
+                $uno ? 'del passaggio' : 'dei passaggi', FrasiObbligati::a($nomi->isEmpty() ? 'chi le aveva' : self::nomiInFila($nomi)));
         }
         if ($annullati !== []) {
             // Le quote nate dopo un passaggio poi annullato hanno la titolarità del passaggio: emesse così andrebbero a giornale a chi
@@ -602,7 +603,7 @@ class EmissioneRateController extends Controller
             $una ? 'a' : 'e',
             $tipo)];
         if ($crediti->isNotEmpty()) {
-            $frasi[] = sprintf('Il credito resta a %s, da usare o rimborsare.', self::nomiInFila($crediti->pluck('nome')->unique()->values()));
+            $frasi[] = sprintf('Il credito resta %s, da usare o rimborsare.', FrasiObbligati::a(self::nomiInFila($crediti->pluck('nome')->unique()->values())));
         }
         if ($zeri->isNotEmpty()) {
             $unoZero = $zeri->count() === 1;

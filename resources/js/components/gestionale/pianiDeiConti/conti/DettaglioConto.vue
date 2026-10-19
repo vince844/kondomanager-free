@@ -131,8 +131,16 @@ const residuoDisponibile = computed(() =>
   Math.max(0, 100 - sommaCoefficienti.value)
 )
 
+/**
+ * Le tabelle e le percentuali di una voce che un piano approvato tiene non si cambiano: il server manda `blocco` con la regola del salvataggio
+ * (`Conto::pianiCheBloccanoLaVoce`, che conta anche i piani straordinari approvati che finanziano una spesa fuori preventivo registrata sulla voce) e la frase con la
+ * strada della bozza. `has_rate_emesse` non decide qui, come nella scheda della voce: conta anche le righe ordinarie di una fattura che un piano straordinario
+ * finanzia, che il server non blocca, e il riquadro direbbe «Ripartizione bloccata» senza la frase.
+ */
+const ripartizioneBloccata = computed(() => !!props.conto?.blocco)
+
 const aggiungiDisabilitato = computed(() =>
-  residuoDisponibile.value === 0 || !!props.conto?.has_rate_emesse
+  residuoDisponibile.value === 0 || ripartizioneBloccata.value
 )
 
 const statusColorClass = computed(() => {
@@ -595,7 +603,7 @@ const statusColorClass = computed(() => {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                <TooltipContent v-if="props.conto.has_rate_emesse" side="top" class="text-[11px] max-w-[200px] text-center">
+                <TooltipContent v-if="ripartizioneBloccata" side="top" class="text-[11px] max-w-[200px] text-center">
                   Piano rate approvato: ripartizione bloccata.
                 </TooltipContent>
                 <TooltipContent v-else-if="aggiungiDisabilitato" side="top" class="text-[11px] max-w-[200px] text-center">
@@ -606,19 +614,19 @@ const statusColorClass = computed(() => {
           </div>
         </CardHeader>
 
-        <!-- BANNER LOCK: piano approvato con rate emesse.
+        <!-- BANNER LOCK: piano approvato che tiene la voce, o un capitolo sopra di lei.
              Sta DENTRO la sezione, sotto la sua intestazione: spiega perché è
              bloccata questa ripartizione, non è un avviso di pagina. Sopra
-             l'header sembrava riferirsi a tutto il pannello. -->
+             l'header sembrava riferirsi a tutto il pannello. La frase è quella
+             del server, la stessa del rifiuto del salvataggio. -->
         <div
-          v-if="props.conto.has_rate_emesse"
+          v-if="ripartizioneBloccata"
           class="mx-3 mt-3 flex items-start gap-2.5 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50/70 text-sm"
         >
           <Lock class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
           <p class="text-amber-800 text-xs leading-relaxed">
             <span class="font-bold">Ripartizione bloccata.</span>
-            Questa voce è inclusa in un piano rate approvato o con rate già emesse.
-            Per modificare le tabelle è necessario prima annullare il piano rate associato.
+            {{ props.conto.blocco?.frase }}
           </p>
         </div>
 
@@ -696,18 +704,18 @@ const statusColorClass = computed(() => {
                                 variant="ghost"
                                 size="icon"
                                 class="h-7 w-7"
-                                :class="props.conto.has_rate_emesse
+                                :class="ripartizioneBloccata
                                   ? 'text-muted-foreground opacity-40 cursor-not-allowed'
                                   : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'"
-                                :disabled="props.conto.has_rate_emesse"
-                                @click="!props.conto.has_rate_emesse && modificaTabella(tabella)"
+                                :disabled="ripartizioneBloccata"
+                                @click="!ripartizioneBloccata && modificaTabella(tabella)"
                               >
                                 <Edit class="w-3 h-3" />
                               </Button>
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top" class="text-[10px]">
-                            {{ props.conto.has_rate_emesse ? 'Piano approvato — bloccato' : 'Modifica' }}
+                            {{ ripartizioneBloccata ? 'Piano approvato — bloccato' : 'Modifica' }}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -721,18 +729,18 @@ const statusColorClass = computed(() => {
                                 variant="ghost"
                                 size="icon"
                                 class="h-7 w-7"
-                                :class="props.conto.has_rate_emesse
+                                :class="ripartizioneBloccata
                                   ? 'text-muted-foreground opacity-40 cursor-not-allowed'
                                   : 'text-destructive hover:bg-destructive/10'"
-                                :disabled="props.conto.has_rate_emesse"
-                                @click="!props.conto.has_rate_emesse && rimuoviTabella(tabella)"
+                                :disabled="ripartizioneBloccata"
+                                @click="!ripartizioneBloccata && rimuoviTabella(tabella)"
                               >
                                 <Trash2 class="w-3 h-3" />
                               </Button>
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top" class="text-[10px]">
-                            {{ props.conto.has_rate_emesse ? 'Piano approvato — bloccato' : 'Rimuovi' }}
+                            {{ ripartizioneBloccata ? 'Piano approvato — bloccato' : 'Rimuovi' }}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

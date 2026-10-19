@@ -34,9 +34,9 @@ require_once __DIR__.'/SforoConGiaVersatoTest.php';
  *     XML → registrazione → righe_fattura → SUM(imponibile + iva) → budget del capitolo
  *         → CalcoloQuoteService → quota del proprietario
  *
- * Il punto stretto è `CalcoloQuoteService.php:320-325`, che somma le righe con
- * `SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva)`: è da lì che il costo
- * reale di una spesa entra nel riparto.
+ * Il punto stretto è la somma `SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva)`,
+ * che il motore fa nella guardia del già versato (`CalcoloQuoteService::guardiaSovraFinanziamentoGiaVersato`):
+ * lì il costo reale della voce si confronta con il suo budget.
  */
 
 /**

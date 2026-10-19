@@ -212,7 +212,7 @@ it('U4 — Ugo usufruttuario e Bice nuda dell\'appartamento e del box; il 1/5 Bi
     expect(cdcNetti($s, $box))->toBe(['Bice Nuda' => 4011, 'Venditore Ugo' => 7989])
         ->and(cdcNetti($s, $s['unita']))->toBe(['Acquirente Elsa' => 36099, 'Venditore Ugo' => 71901])
         // Il pannello dice chi entra su ciascuna unità.
-        ->and(implode(' ', $an['rate']['conguaglio']['frasi']))->toContain('debito € 40,11 a Bice Nuda')->toContain('debito € 360,99 a Acquirente Elsa');
+        ->and(implode(' ', $an['rate']['conguaglio']['frasi']))->toContain('debito € 40,11 a Bice Nuda')->toContain('debito € 360,99 ad Acquirente Elsa');
 });
 
 it('DV1 — Ugo vende a Elsa il 1/5, Elsa a Bruno il 1/7, Bruno a Carlo il 15/9, con le rate emesse fra un passaggio e l\'altro: ognuno paga i suoi giorni al centesimo', function () {

@@ -7,14 +7,19 @@ use App\Http\Requests\Gestionale\Saldi\CreateSaldoRequest;
 use App\Http\Requests\Gestionale\Saldi\UpdateSaldoRequest;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
+use App\Models\Gestionale\Subentro;
 use App\Models\Gestione;
+use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Services\Subentro\FermataDopoScrivi;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class SaldoInizialeController extends Controller
@@ -50,6 +55,7 @@ class SaldoInizialeController extends Controller
             ->get();
 
         $this->esponiLucchettoCalcolato($immobili);
+        $this->esponiILegami($immobili, $condominio);
 
         $gestioni = Gestione::where('condominio_id', $condominio->id)
             ->where('attiva', true)
@@ -127,6 +133,47 @@ class SaldoInizialeController extends Controller
         }
     }
 
+    /**
+     * 1.11.0-beta.53 (Coda 244): il legame di ogni riga a un passaggio (`e_legata`, `passaggio_in_parole`) e, per ogni unità, i passaggi a cui
+     * il modale può legare una riga (`passaggi_legabili`): i passaggi padre non annullati la cui famiglia comprende l'unità, con il registro
+     * (quelli di prima della 1.11.0-beta.37 non si annullano dal programma, e una riga legata a loro non si toglierebbe), dal più recente
+     * registrato. Per ognuno l'id, le parole, i nomi di chi esce e di chi entra, e se il registro ha una parte da regolare a mano su
+     * quell'unità: un'informazione, non un filtro. Del passaggio non si manda altro, e il registro resta sul server.
+     */
+    private function esponiILegami(Collection $immobili, Condominio $condominio): void
+    {
+        $capi = Subentro::where('condominio_id', $condominio->id)->whereNull('subentro_padre_id')
+            ->with(['uscente:id,nome', 'pertinenze:id,subentro_padre_id,immobile_id'])->orderByDesc('id')->get()
+            ->filter(fn (Subentro $p) => is_array($p->registro))->values();
+        $nomiEntranti = \App\Models\Anagrafica::whereIn('id', $capi->flatMap(fn (Subentro $p) => $p->entranti())->unique()->values()->all() ?: [0])->pluck('nome', 'id');
+        $persone = fn (Subentro $p): array => array_values(array_filter(array_map('strval', [
+            $p->uscente?->nome ?? ($p->registro['nomi']['uscente'] ?? null),
+            ...($p->entranti() !== []
+                ? array_map(fn (int $id) => $nomiEntranti[$id] ?? null, $p->entranti())
+                : [$p->registro['nomi']['entrante'] ?? null]),
+        ]), fn (string $n) => $n !== ''));
+        // Una fermata che non vale più (il conguaglio su cui si era fermata è stato annullato) o che un inizio ha azzerato non lascia una parte
+        // da regolare a mano: né nel registro dell'inizio, né in quello del passaggio che l'ha lasciata.
+        $conParteAMano = fn (Subentro $p, int $immobileId): bool => collect(['fermata_dopo_scrivi', 'fermata_risale', 'fermata_ridotta', 'fermata_coinquilino'])
+            ->contains(fn (string $chiave) => collect($p->registro[$chiave] ?? [])->contains(fn ($f) => is_array($f) && (int) ($f['immobile_id'] ?? 0) === $immobileId
+                && ! FermataDopoScrivi::fineSenzaConguaglio($f) && ! FermataDopoScrivi::nienteDaRegolare($chiave, $f, $p, $capi)));
+
+        $legati = Subentro::conAnnullati()->whereIn('id', $immobili->pluck('saldi')->flatten()->pluck('passaggio_id')->filter()->unique()->values()->all() ?: [0])->get()
+            ->mapWithKeys(fn (Subentro $p) => [(int) $p->id => FermataDopoScrivi::passaggioInParole($p)]);
+
+        foreach ($immobili as $immobile) {
+            $id = (int) $immobile->id;
+            $immobile->passaggi_legabili = $capi
+                ->filter(fn (Subentro $p) => (int) $p->immobile_id === $id || $p->pertinenze->contains(fn (Subentro $f) => (int) $f->immobile_id === $id))
+                ->map(fn (Subentro $p) => ['id' => (int) $p->id, 'parole' => FermataDopoScrivi::passaggioInParole($p), 'persone' => $persone($p), 'con_parte_a_mano' => $conParteAMano($p, $id)])
+                ->values()->all();
+            foreach ($immobile->saldi as $saldo) {
+                $saldo->e_legata = $saldo->passaggio_id !== null;
+                $saldo->passaggio_in_parole = $saldo->passaggio_id !== null ? ($legati[(int) $saldo->passaggio_id] ?? null) : null;
+            }
+        }
+    }
+
     public function store(CreateSaldoRequest $request, Condominio $condominio)
     {
         $validated = $request->validated();
@@ -142,7 +189,7 @@ class SaldoInizialeController extends Controller
             403, 'Gestione non appartiene a questo condominio.'
         );
 
-        Saldo::create([
+        $riga = [
             'esercizio_id'   => $esercizioAttivo->id,
             'condominio_id'  => $condominio->id,
             'immobile_id'    => $validated['immobile_id'],
@@ -150,9 +197,44 @@ class SaldoInizialeController extends Controller
             'gestione_id'    => $validated['gestione_id'],
             'saldo_iniziale' => $validated['saldo_iniziale'],
             'origine'        => 'manuale',
-        ]);
+        ];
+
+        if (! empty($validated['passaggio_id'])) {
+            $this->scriviLegata($riga, (int) $validated['passaggio_id']);
+        } else {
+            Saldo::create($riga);
+        }
 
         return back()->with($this->flashSuccess('Saldo aggiunto al Wallet con successo.'));
+    }
+
+    /**
+     * 1.11.0-beta.53 (Coda 244): la riga legata a un passaggio, con il controllo del doppione nella transazione e i blocchi nell'ordine
+     * dell'annullamento (`AnnullaPassaggioAction::execute`): prima le unità della famiglia, poi i passaggi, poi i saldi. La famiglia si legge
+     * prima della transazione, come fa l'annullamento: le righe figlie nascono solo con il padre e le loro unità non cambiano più. Un passaggio
+     * annullato nel frattempo si rifiuta; il doppione (passaggio, persona, gestione, unità ed esercizio) conta solo le righe legate che si
+     * possono ancora modificare: una riga ferma in un piano con quote a giornale non impedisce quella che la corregge.
+     *
+     * @param array<string, mixed> $riga
+     */
+    private function scriviLegata(array $riga, int $passaggioId): void
+    {
+        $famiglia = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($passaggioId)->orWhere('subentro_padre_id', $passaggioId))->pluck('immobile_id', 'id');
+
+        DB::transaction(function () use ($riga, $passaggioId, $famiglia) {
+            Immobile::bloccaPerScrivere($famiglia->values());
+            $bloccati = Subentro::conAnnullati()->whereIn('id', $famiglia->keys()->all())->lockForUpdate()->get();
+            if ($bloccati->firstWhere('id', $passaggioId)?->annullato() ?? true) {
+                throw ValidationException::withMessages(['passaggio_id' => CreateSaldoRequest::FRASE_PASSAGGIO_ALTRUI]);
+            }
+            $doppione = Saldo::where('passaggio_id', $passaggioId)->where('anagrafica_id', $riga['anagrafica_id'])->where('gestione_id', $riga['gestione_id'])
+                ->where('immobile_id', $riga['immobile_id'])->where('esercizio_id', $riga['esercizio_id'])->lockForUpdate()->with('pianoRate')->get()
+                ->reject(fn (Saldo $x) => $x->eBloccato());
+            if ($doppione->isNotEmpty()) {
+                throw ValidationException::withMessages(['anagrafica_id' => 'Questa persona ha già un saldo legato a questo passaggio su questa gestione e su questa unità: modifica quello.']);
+            }
+            Saldo::create($riga + ['passaggio_id' => $passaggioId]);
+        }, 3);
     }
 
     public function update(UpdateSaldoRequest $request, Condominio $condominio, Saldo $saldo)

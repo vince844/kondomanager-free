@@ -21,7 +21,7 @@ use App\Services\Import\Rilievo;
  * `quote_tabella` ha una colonna `escluso`, che a prima vista sarebbe il posto giusto per dire
  * «questa unità è stata considerata e non partecipa». **Non la legge nessuno**: verificato il
  * 06/08/2026 con `grep -rn "escluso" app/ resources/js/` — compare solo in `$fillable` e
- * `$casts` di `QuotaTabella`. Il motore (`CalcoloQuoteService:655-694`) cicla su *tutte* le
+ * `$casts` di `QuotaTabella`. Il motore (`CalcoloQuoteService::distribuisciSuTabelle`) cicla su *tutte* le
  * righe, somma `valore` e salta quelle con valore ≤ 0.
  *
  * Quindi una riga marcata esclusa ma con un valore verrebbe **conteggiata lo stesso**, e

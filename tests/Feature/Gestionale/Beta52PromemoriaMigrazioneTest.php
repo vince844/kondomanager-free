@@ -171,7 +171,7 @@ it('M7 un credito già usato o restituito non resta «a tuo favore»: la frase d
     expect($d($inParte))->toContain('Non è richiesto alcun pagamento: '.B52T_FRASE_NUOVA)->not->toContain(B52T_FRASE_USATO);
 });
 
-it('M7b un promemoria senza il riferimento alla rata nel meta riceve la frase di sempre: non c\'è una quota da leggere', function () {
+it('un promemoria senza il riferimento alla rata nel meta riceve la frase di sempre: non c\'è una quota da leggere', function () {
     $id = b52tEventoConDescrizione(B52T_VECCHIA_180);
 
     b52tEseguiMigrazione();

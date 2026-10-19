@@ -12,7 +12,7 @@
  * di spesa. Le cifre arrivano dal server in centesimi (`totalePreventivo`, `totaleEntrate`, `totaleDaRipartire`).
  *
  * Il suggerimento del badge («Le entrate si sottraggono alle spese: …») detta una regola e si firma con la clausola del motore, letta alla lettera:
- * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService.php:1500-1502` e `:1586-1589`).
+ * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e quello con l'importo della voce).
  *
  * La pagina è quella vera: si stubbano la cornice, i modali, l'albero, la finestra dei movimenti e il dettaglio della voce. La guida in testa
  * alla pagina è quella vera, e si apre per leggere le schede.

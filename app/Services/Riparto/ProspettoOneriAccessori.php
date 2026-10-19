@@ -1639,12 +1639,15 @@ final class ProspettoOneriAccessori
         // già regolati, e la restituzione non si fa due volte.
         // Giro stretto della .50 (G19): la scelta nulla nella voce non vuol dire una fine di prima della .50 (con «Scrivi» un piano che la coppia
         // non ha preso ha la scelta nulla): conta il registro della fine, che dalla .50 ha la scelta. E il saldo è uno scritto dal Wallet
-        // (`manuale`), non quello dell'importatore.
+        // (`manuale`), non quello dell'importatore. Dalla 1.11.0-beta.53 (Coda 244) una riga legata a un altro passaggio non è un saldo per quei
+        // giorni: il legame dice di chi è. Una riga legata a quella fine sì.
         $senzaScelta = $dellUscita->filter(fn ($v) => $v['strada'] === 'A' && ($v['scelta'] ?? null) === null
-            && $immobileId !== null && $this->finePrimaDellaCinquanta($immobileId, (string) $v['uscita_del']));
+            && $immobileId !== null && $this->finePrimaDellaCinquanta($immobileId, (string) $v['uscita_del']) !== null);
         if ($immobileId !== null && $senzaScelta->isNotEmpty()) {
             $gestioni = PianoRate::whereIn('id', $senzaScelta->pluck('piano_rate_id')->filter()->unique()->all())->pluck('gestione_id')->all();
-            if ($gestioni !== [] && DB::table('saldi')->whereNull('subentro_id')->where('origine', 'manuale')->where('immobile_id', $immobileId)->whereIn('gestione_id', $gestioni)->exists()) {
+            $fini = $senzaScelta->map(fn ($v) => (int) $this->finePrimaDellaCinquanta($immobileId, (string) $v['uscita_del'])?->capo()->id)->filter()->unique()->values()->all();
+            if ($gestioni !== [] && DB::table('saldi')->whereNull('subentro_id')->where('origine', 'manuale')->where('immobile_id', $immobileId)->whereIn('gestione_id', $gestioni)
+                ->where(fn ($q) => $q->whereNull('passaggio_id')->orWhereIn('passaggio_id', $fini ?: [0]))->exists()) {
                 $frasi[] = 'Sull\'unità c\'è un saldo manuale scritto dal Wallet sulla stessa gestione: se è stato scritto per i giorni dopo l\'uscita, come il pannello indicava nelle versioni precedenti alla fine di una locazione, quei giorni sono già regolati, e la parte da restituire non si restituisce una seconda volta.';
             }
         }
@@ -1656,14 +1659,14 @@ final class ProspettoOneriAccessori
     }
 
     /**
-     * G19: la fine della locazione dell'unità in quel giorno è di prima della .50 (il suo registro non ha la scelta sul conguaglio). Sulla
-     * pertinenza la fine trovata è il figlio, e la scelta sta nel registro del padre.
+     * G19: la fine della locazione dell'unità in quel giorno, se è di prima della .50 (il suo registro non ha la scelta sul conguaglio); null
+     * altrimenti. Sulla pertinenza la fine trovata è il figlio, e la scelta sta nel registro del padre.
      */
-    private function finePrimaDellaCinquanta(int $immobileId, string $giorno): bool
+    private function finePrimaDellaCinquanta(int $immobileId, string $giorno): ?Subentro
     {
         $fine = Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->whereDate('decorrenza', substr($giorno, 0, 10))->orderByDesc('id')->first();
 
-        return $fine !== null && ! isset($fine->capo()->registro['conguaglio']);
+        return $fine !== null && ! isset($fine->capo()->registro['conguaglio']) ? $fine : null;
     }
 
     /**

@@ -56,12 +56,13 @@ final class SpeseNegativeNelPiano
 
     /**
      * @param  list<int>  $appenaSincronizzate  le voci che «Sincronizza» ha appena scritto nel piano: contano come voci, non come copia
-     * @return list<array{conto_id: int, nome: string, importo: int, origine: string, padre: ?string, padre_id: ?int, copia_del_capitolo: ?int, appena_sincronizzato: bool, sottoconto: bool, voce_negativa: bool, discendenti_negativi: bool, capitolo: bool, misto: bool, fuori_dal_piano: bool, dal_piano_dei_conti: bool}> `importo` in centesimi, negativo;
+     * @return list<array{conto_id: int, nome: string, importo: int, origine: string, padre: ?string, padre_id: ?int, copia_del_capitolo: ?int, appena_sincronizzato: bool, sottoconto: bool, voce_negativa: bool, importo_della_voce: int, discendenti_negativi: bool, capitolo: bool, misto: bool, fuori_dal_piano: bool, dal_piano_dei_conti: bool}> `importo` in centesimi, negativo;
      *         `origine`: la copia del piano è negativa, oppure la voce stessa (nessuna copia), oppure un figlio che il capitolo con la copia pesa;
      *         `copia_del_capitolo`: per un figlio, la copia a zero o negativa del capitolo (nulla se il capitolo ripartisce una copia positiva);
      *         `appena_sincronizzato`: il capitolo del figlio è una voce che «Sincronizza» ha appena scritto, quindi la copia non è ancora nel piano;
      *         `sottoconto`: la voce ha un padre (un sottoconto tolto dal piano non si riaggiunge con «Sincronizza», che riaggiunge solo i capitoli);
      *         `voce_negativa`: la voce nel piano dei conti ha ancora un importo negativo (correggerla è una strada);
+     *         `importo_della_voce`: l'importo della voce nel piano dei conti, in centesimi (con la copia, può essere un'altra cifra);
      *         `discendenti_negativi`: un suo sottoconto, a qualunque livello, ha un importo negativo (correggerlo è l'altra strada: la voce è «già corretta» solo se nessuno dei due lo è);
      *         `capitolo`: la copia è quella di un capitolo senza tabelle con dei sottoconti nel piano (non si toglie con «Rimuovi voce» e «Sincronizza»: la pagina non riaggiunge i sottoconti);
      *         `misto`: quel capitolo ha sottoconti di spesa e di entrata, che il motore divide in un modo che non è la somma dei loro importi;
@@ -301,7 +302,7 @@ final class SpeseNegativeNelPiano
         }
     }
 
-    /** @return array{conto_id: int, nome: string, importo: int, origine: string, padre: ?string, padre_id: ?int, copia_del_capitolo: ?int, appena_sincronizzato: bool, sottoconto: bool, voce_negativa: bool, discendenti_negativi: bool, capitolo: bool, misto: bool, fuori_dal_piano: bool} */
+    /** @return array{conto_id: int, nome: string, importo: int, origine: string, padre: ?string, padre_id: ?int, copia_del_capitolo: ?int, appena_sincronizzato: bool, sottoconto: bool, voce_negativa: bool, importo_della_voce: int, discendenti_negativi: bool, capitolo: bool, misto: bool, fuori_dal_piano: bool} */
     private function voce(Conto $conto, int $importo, string $origine, ?string $padre, ?int $padreId = null, ?int $copiaDelCapitolo = null, bool $capitolo = false, bool $misto = false, bool $fuoriDalPiano = false): array
     {
         $discendentiNegativi = $this->haDiscendentiNegativi($conto);
@@ -317,6 +318,7 @@ final class SpeseNegativeNelPiano
             'appena_sincronizzato' => false,
             'sottoconto' => $conto->parent_id !== null,
             'voce_negativa' => (int) $conto->importo < 0,
+            'importo_della_voce' => (int) $conto->importo,
             'discendenti_negativi' => $discendentiNegativi,
             'capitolo' => $capitolo,
             'misto' => $misto,
@@ -340,7 +342,8 @@ final class SpeseNegativeNelPiano
 
     /**
      * La testa del rifiuto, senza l'apertura: «la voce di spesa «A» ha un importo negativo (meno € 240,00) e il piano la addebiterebbe in positivo, per € 240,00».
-     * Una voce e più voci hanno la loro forma; una voce già corretta con la copia ancora negativa lo dice (la copia non si cambia correggendo la voce); un
+     * Una voce e più voci hanno la loro forma; una voce già corretta con la copia ancora negativa lo dice (la copia non si cambia correggendo la voce), e una
+     * voce con la copia negativa di un'altra cifra dice le due cifre, perché il piano addebita quella della copia; un
      * figlio negativo sotto un capitolo con la copia ha una frase propria, perché la cifra che il piano addebita di più non è quella del figlio, e un figlio
      * sotto un capitolo con la copia a zero o negativa ne ha un'altra, perché lì il totale non torna per un altro motivo.
      *
@@ -361,6 +364,8 @@ final class SpeseNegativeNelPiano
                     . ($misto ? 'la ' . self::DIVISIONE_DEL_CAPITOLO_MISTO : "la addebiterebbe in positivo, per {$cifra}"),
                 self::soloLaCopia($semplici[0]) => "la voce di spesa «{$semplici[0]['nome']}» ha nel piano una copia negativa (meno {$cifra}) e il piano la "
                     . ($misto ? self::DIVISIONE_DEL_CAPITOLO_MISTO : "addebiterebbe in positivo, per {$cifra}"),
+                self::copiaDiversa($semplici[0]) => "la voce di spesa «{$semplici[0]['nome']}» ha un importo negativo (meno " . self::cifra($semplici[0]['importo_della_voce'])
+                    . ") e nel piano una copia negativa (meno {$cifra}): il piano la " . ($misto ? self::DIVISIONE_DEL_CAPITOLO_MISTO : "addebiterebbe in positivo, per {$cifra}"),
                 default => "la voce di spesa «{$semplici[0]['nome']}» ha un importo negativo (meno {$cifra}) e il piano la addebiterebbe in positivo, per {$cifra}",
             };
         } elseif ($semplici !== []) {
@@ -371,6 +376,7 @@ final class SpeseNegativeNelPiano
                 . implode(', ', array_map(fn ($v) => match (true) {
                     self::giaCorretta($v) => "«{$v['nome']}» (già corretta, ma con la copia a meno " . self::cifra($v['importo']) . ')',
                     self::soloLaCopia($v) => "«{$v['nome']}» (con la copia a meno " . self::cifra($v['importo']) . ')',
+                    self::copiaDiversa($v) => "«{$v['nome']}» (meno " . self::cifra($v['importo_della_voce']) . ', con la copia a meno ' . self::cifra($v['importo']) . ')',
                     default => "«{$v['nome']}» (meno " . self::cifra($v['importo']) . ')',
                 }, $semplici));
         }
@@ -398,6 +404,12 @@ final class SpeseNegativeNelPiano
     public static function soloLaCopia(array $v): bool
     {
         return $v['origine'] === self::ORIGINE_COPIA && ! $v['voce_negativa'] && $v['discendenti_negativi'];
+    }
+
+    /** La voce ha un importo negativo e il piano ne tiene una copia negativa con un'altra cifra: si dicono tutte e due. @param array<string, mixed> $v */
+    public static function copiaDiversa(array $v): bool
+    {
+        return $v['origine'] === self::ORIGINE_COPIA && $v['voce_negativa'] && isset($v['importo_della_voce']) && $v['importo_della_voce'] !== $v['importo'];
     }
 
     /**

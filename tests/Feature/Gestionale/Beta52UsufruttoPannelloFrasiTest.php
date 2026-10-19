@@ -183,7 +183,7 @@ it('un usufrutto nato «come dice ogni voce» sulla stessa tabella: per l\'entra
 
     $cosa = $conLeSpese ? 'l\'ordinaria o l\'entrata di quelle voci' : 'l\'entrata di quella voce';
     $spostando = $conLeSpese ? 'Affitto antenna e Spese generali' : 'Affitto antenna';
-    expect($frasi)->toBe(['L\'usufrutto di Acquirente Elsa su Interno 1, dal 1 febbraio 2026 al 30 aprile 2026, è nato con la scelta «come dice ogni voce»: spostando ' . $spostando . ' sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno ' . $cosa . ' a Acquirente Elsa, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.']);
+    expect($frasi)->toBe(['L\'usufrutto di Acquirente Elsa su Interno 1, dal 1 febbraio 2026 al 30 aprile 2026, è nato con la scelta «come dice ogni voce»: spostando ' . $spostando . ' sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno ' . $cosa . ' ad Acquirente Elsa, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.']);
 })->with(['con le spese' => [true], 'solo l\'entrata' => [false]]);
 
 it('controprova — un usufrutto nato «come dice ogni voce» sulla stessa tabella: per le sole spese la frase dice «l\'ordinaria di quella voce» come prima', function () {
@@ -192,7 +192,7 @@ it('controprova — un usufrutto nato «come dice ogni voce» sulla stessa tabel
     $dati = b52UsCostituzione($s, ['riga_uscente_id' => $rigaUgo, 'anagrafica_entrante_id' => $dora->id, 'decorrenza' => '2026-07-01', 'voci_da_tenere' => [$s['ctmEntrata']]]);
     $testo = implode("\n", ruAnteprima($this, $s, $dati)['ordinaria']['frasi_altri_usufrutti']);
 
-    expect(str_contains($testo, 'spostando Spese generali sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno l\'ordinaria di quella voce a Acquirente Elsa'))->toBeTrue($testo);
+    expect(str_contains($testo, 'spostando Spese generali sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno l\'ordinaria di quella voce ad Acquirente Elsa'))->toBeTrue($testo);
 });
 
 it('un usufrutto nato con la legge sulla stessa tabella: con «come dice ogni voce» l\'entrata «la riceve» l\'usufruttuario, le spese insieme all\'entrata «le paga o le riceve»', function (array $tieni) {

@@ -15,7 +15,7 @@
  *
  * La frase della nota («Le entrate si sottraggono alle spese: il preventivo da ripartire fra i condòmini è la differenza.») detta una regola e si firma
  * con la clausola che la applica, letta alla lettera: `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)`
- * (`CalcoloQuoteService.php:1500-1502` per l'importo del piano, `:1586-1589` per quello della voce): una voce di un tipo diverso da spesa e uscita
+ * (`CalcoloQuoteService::processaConti`: il ramo con l'importo del piano e quello con l'importo della voce): una voce di un tipo diverso da spesa e uscita
  * si distribuisce con il meno. La nota dice «preventivo da ripartire», non «somma delle rate»: il già versato riduce le rate, non il preventivo.
  *
  * Con le sopravvenienze il «TOTALE GENERALE» somma le sopravvenienze al netto da ripartire, e non al preventivo: spese € 1.200,00, entrata

@@ -212,7 +212,7 @@ it('S3, vendita — Ugo vende la metà piena a Elsa il 1/4: le bozze restano a U
         ->and(DB::table('rate_quote')->where('anagrafica_id', $s['a']->id)->count())->toBe(0)
         ->and(qceFrasi($anteprima))
         ->toContain('ogni quota comprende anche la spesa della parte dell\'unità che Venditore Ugo tiene, e la quota non passa intera, quindi resteranno intestate a Venditore Ugo e la parte che passa si conguaglia qui.')
-        ->toContain('90 giorni a Venditore Ugo, 275 a Acquirente Elsa → € 452,05 a chi entra.');
+        ->toContain('90 giorni a Venditore Ugo, 275 ad Acquirente Elsa → € 452,05 a chi entra.');
 });
 
 it('vendita della nuda su un\'unità mista — Ugo proprietario pieno di metà e nudo dell\'altra, Rita usufruttuaria; voce sull\'«Usufruttuario»; Ugo vende la nuda a Fede il 1/4: nessun conguaglio, e le bozze di Ugo restano sue perché sono della metà che tiene, non per l\'art. 1004', function () {
@@ -297,7 +297,7 @@ it('S3, vendita su un piano senza righe di riparto (generato prima della beta.29
 
     // Come con le righe: a Elsa la metà piena dal 1/4, 60000 × 275/365 = 45205.
     expect(qceNetti($s))->toBe([$s['v']->id => 74795, $s['a']->id => 45205])
-        ->and(qceFrasi($anteprima))->toContain('Si divide solo la parte della quota che passa, € 600,00 su € 1.200,00; il resto è della parte dell\'unità che Venditore Ugo tiene (l\'usufrutto), e non passa a Acquirente Elsa.');
+        ->and(qceFrasi($anteprima))->toContain('Si divide solo la parte della quota che passa, € 600,00 su € 1.200,00; il resto è della parte dell\'unità che Venditore Ugo tiene (l\'usufrutto), e non passa ad Acquirente Elsa.');
 });
 
 it('il nudo proprietario tornato pieno costituisce l\'usufrutto — Rita usufruttuaria, Ugo nudo; l\'usufrutto si estingue il 1/5 col piano già emesso, Ugo costituisce l\'usufrutto a Carlo il 1/7 con la legge: le righe di Ugo da nudo passano a Carlo per i giorni (€ 604,93)', function () {

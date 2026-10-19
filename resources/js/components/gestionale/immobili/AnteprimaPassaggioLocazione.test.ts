@@ -110,8 +110,11 @@ function cambio(): any {
     return dati;
 }
 
-/** La fermata del coinquilino (Ines e Dora al 50 %, Ines esce, Dora resta): nessuna coppia, la frase con la cifra e la persona. */
-const FERMATA = 'La locazione continua con Dora: il programma non propone il conguaglio dei giorni dopo l\'uscita di Ines (€ 90,74 sulla gestione Ordinaria 2026), che restano nelle rate di Ines, e non sceglie chi li paga: lo decidono le parti. Se li paga Dora, o il proprietario, registra un saldo manuale dal Wallet sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga.';
+/**
+ * La fermata del coinquilino (Ines e Dora al 50 %, Ines esce, Dora resta): nessuna coppia, la frase con la cifra e la persona; la strada a mano
+ * sono i saldi dal Wallet legati al passaggio, come la frase che il server manda (`Beta53FrasiStradaLegataTest.php`).
+ */
+const FERMATA = 'La locazione continua con Dora: il programma non propone il conguaglio dei giorni dopo l\'uscita di Ines (€ 90,74 sulla gestione Ordinaria 2026), che restano nelle rate di Ines, e non sceglie chi li paga: lo decidono le parti. Se li paga Dora, o il proprietario, registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga.';
 function coinquilino(): any {
     const dati = fineSenza();
     dati.rate.emesse = emesse(1500, '€ 15,00');

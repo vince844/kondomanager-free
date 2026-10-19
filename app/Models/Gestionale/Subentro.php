@@ -292,7 +292,7 @@ class Subentro extends Model
 
     /**
      * Decisione 31.5 (1.11.0-beta.41): chi paga l'ordinaria dal giorno dell'atto, scelto dall'amministratore alla costituzione
-     * o alla riserva d'usufrutto. `usufruttuario` (art. 1004 c.c.) è la proposta di legge, e lo è anche per i passaggi
+     * o alla riserva d'usufrutto. `usufruttuario` (art. 1004 c.c.) è la regola di legge, e lo è anche per i passaggi
      * registrati prima, che non lo scrivevano: era la regola fissa. Con `voce` l'ordinaria ha seguito le voci, una per una —
      * nella riserva sono passate a chi ha comprato la nuda proprietà le sole voci sul «Proprietario», nella costituzione sono
      * rimaste al nudo proprietario —, e i passaggi che vengono dopo lo devono sapere (`ConguaglioPassaggio::predecessori()`).
@@ -394,6 +394,12 @@ class Subentro extends Model
 
     /** La coppia di conguaglio (D9): due righe, stesso `subentro_id`, somma zero. */
     public function saldi(): HasMany { return $this->hasMany(Saldo::class, 'subentro_id'); }
+
+    /**
+     * Le righe del Wallet che l'amministratore ha legato a questo passaggio (1.11.0-beta.53, Coda 244): la parte di una fermata passata a
+     * mano. Si legano al passaggio padre, anche quelle sul box passato con lui; si tolgono quando il passaggio si annulla.
+     */
+    public function saldiLegati(): HasMany { return $this->hasMany(Saldo::class, 'passaggio_id'); }
 
     /** Il PDF del titolo allegato al passaggio (S5); documento **dell'unità**, solo dell'amministratore. */
     public function documento(): BelongsTo { return $this->belongsTo(\App\Models\Documento::class, 'documento_id'); }

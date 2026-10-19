@@ -61,14 +61,14 @@ function monta(p: any, storico: Record<string, unknown> = {}) {
 
 describe('TitolaritaSheet — annullare un passaggio', () => {
     test('annullabile: il comando apre la nota, gli avvisi si leggono prima, e senza dieci caratteri non si conferma', async () => {
-        const w = monta(passaggio({ annullabile: { si: true, motivo: null, avvisi: ['Il piano «Conguaglio luglio» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo.'], effetti: ['Le righe di titolarità scritte dal passaggio tornano come prima.', 'Le quote di 8 rate passate a Acquirente Elsa tornano a Venditore Ugo, con le regole di prima.'] } }));
+        const w = monta(passaggio({ annullabile: { si: true, motivo: null, avvisi: ['Il piano «Conguaglio luglio» è stato generato o ricalcolato dopo il passaggio: ricalcolalo di nuovo.'], effetti: ['Le righe di titolarità scritte dal passaggio tornano come prima.', 'Le quote di 8 rate passate ad Acquirente Elsa tornano a Venditore Ugo, con le regole di prima.'] } }));
         const apri = w.findAll('button').find((b) => b.text() === 'Annulla il passaggio…');
         expect(apri).toBeDefined();
         await apri!.trigger('click');
 
         expect(w.text()).toContain('Il piano «Conguaglio luglio» è stato generato o ricalcolato dopo il passaggio');
         // Fase 1-bis A13: che cosa torna come prima lo dice il server, passaggio per passaggio; niente frase fissa.
-        expect(w.text()).toContain('Le quote di 8 rate passate a Acquirente Elsa tornano a Venditore Ugo');
+        expect(w.text()).toContain('Le quote di 8 rate passate ad Acquirente Elsa tornano a Venditore Ugo');
         expect(w.text()).not.toContain('il conguaglio tornano come prima');
         const conferma = () => w.findAll('button').find((b) => b.text().includes('Annulla il passaggio') && b.attributes('type') === 'submit')!;
         expect(conferma().attributes('disabled')).toBeDefined();
@@ -116,7 +116,7 @@ describe('TitolaritaSheet — annullare un passaggio', () => {
     test('rifiutato dal server perché lo stato è cambiato: lo storico ricaricato dice «non consentito», e il perché si apre da solo', async () => {
         let opzioni: Record<string, any> = {};
         const spia = vi.spyOn(router, 'delete').mockImplementation(((_url: string, o: Record<string, any>) => { opzioni = o; }) as any);
-        const motivo = 'Dopo il passaggio è stata emessa a Acquirente Elsa la rata 5 del piano «Preventivo 2026».';
+        const motivo = 'Dopo il passaggio è stata emessa ad Acquirente Elsa la rata 5 del piano «Preventivo 2026».';
         const w = monta(passaggio());
         await w.findAll('button').find((b) => b.text() === 'Annulla il passaggio…')!.trigger('click');
         await w.findAll('input').find((i) => (i.attributes('placeholder') ?? '').startsWith('Perché lo annulli'))!.setValue('Data del rogito sbagliata');
@@ -173,12 +173,13 @@ describe('TitolaritaSheet — la vendita o donazione con riserva d\'usufrutto (b
 describe('TitolaritaSheet — chi paga l\'ordinaria dal giorno dell\'atto (beta.41)', () => {
     // Rilievo A2: la scelta decide i conguagli dei passaggi dopo; si legge nello storico anche quando non si può più annullare.
     test('la scelta e le voci spostate si leggono, anche con il passaggio non più annullabile', () => {
+        // Il testo è quello che il server manda (`OrdinariaDopoAttoTest.php`, «riserva, la legge»).
         const testo = monta(passaggio({
             sottotipo: 'riserva_usufrutto',
-            ordinaria: { scelta: 'usufruttuario', testo: 'Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: questa voce è passata dal «Proprietario» all\'«Usufruttuario».', voci: ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %'] },
+            ordinaria: { scelta: 'usufruttuario', testo: 'Dal 1 maggio 2026 all\'usufruttuario, secondo la regola di legge (art. 1004 c.c.): questa voce è passata dal «Proprietario» all\'«Usufruttuario».', voci: ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %'] },
             annullabile: { si: false, motivo: 'Un piano ha già assorbito il conguaglio.', avvisi: [], effetti: [] },
         })).text();
-        expect(testo).toContain('Ordinaria: Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge');
+        expect(testo).toContain('Ordinaria: Dal 1 maggio 2026 all\'usufruttuario, secondo la regola di legge (art. 1004 c.c.)');
         expect(testo).toContain('Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %.');
     });
 

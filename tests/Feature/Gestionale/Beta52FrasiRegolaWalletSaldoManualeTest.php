@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Cosa resta scoperto: la riga del Wallet legata al passaggio e la compilazione automatica del modale dalla fermata (non ci sono); un
+ * Cosa resta scoperto: la riga del Wallet legata al passaggio (in `Beta53SaldoLegatoPortaTest`) e la compilazione automatica del modale dalla fermata (non c'è); un
  * saldo intestato a una persona di un altro condominio (la regola è del pannello, che gestisce l'intera installazione); il selettore del
  * pannello dei saldi, che è in `SaldiDetailPanelPassaggi.test.ts`.
  *
@@ -94,7 +94,7 @@ it('controprova — una gamba della coppia non si modifica e non si cancella da 
         ->and((int) Saldo::find($gamba->id)->saldo_iniziale)->toBe((int) $gamba->saldo_iniziale);
 });
 
-it('controprova — dopo i due saldi manuali la fermata non propone più il Wallet a Ugo e a Elsa: hanno già un saldo che un passaggio non ha scritto', function () {
+it('controprova — dopo i due saldi manuali non legati `conUnSaldo` conta Ugo ed Elsa: hanno già un saldo che un passaggio non ha scritto né è legato a un passaggio', function () {
     $s = b51aDl7ConVendita($this);
     b51aRegistraFine($this, $s, 'Luca', '2026-04-18');
     b52WalletPostSaldo($this, $s, 'Ugo', -26820)->assertSessionHasNoErrors();

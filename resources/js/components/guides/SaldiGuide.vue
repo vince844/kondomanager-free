@@ -92,7 +92,7 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">A chi è intestato</h3>
             <p class="mb-3">
-              Alla creazione scegli se il saldo appartiene all'unità nel suo insieme o a una persona precisa. La scelta cambia chi se lo vedrà addebitato quando le rate vengono emesse. Per ogni gestione ed esercizio l'unità può avere un solo saldo per l'intero immobile e uno per persona, senza contare quelli scritti da un passaggio: dove l'intero immobile ha già il suo, la scelta è spenta e il modulo chiede di modificare quello esistente; il menu della persona offre solo chi non ha già il suo.
+              Alla creazione scegli se il saldo appartiene all'unità nel suo insieme o a una persona precisa. La scelta cambia chi se lo vedrà addebitato quando le rate vengono emesse. Per ogni gestione ed esercizio l'unità può avere un solo saldo per l'intero immobile e uno per persona, senza contare quelli scritti da un passaggio né quelli legati a un passaggio: dove l'intero immobile ha già il suo, la scelta è spenta e il modulo chiede di modificare quello esistente; il menu della persona offre solo chi non ha già il suo. Con «Legato a un passaggio» il menu offre tutte le persone dell'unità, anche chi ha già il suo.
             </p>
             <div class="space-y-3">
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -246,7 +246,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Se le parti hanno regolato il conguaglio in un altro modo</strong> (nel prezzo, con un accordo scritto), si annulla dallo storico dell'unità — Titolari → Storico → «Passaggi registrati» — con una nota: le sue righe spariscono insieme. Solo finché nessun piano le ha assorbite; dopo, se il piano non ha emesso nulla, si riporta in bozza e si elimina, altrimenti resta il saldo manuale di segno opposto. Nella successione con l'arretrato a nome del defunto e alla fine di una locazione, con un nuovo inquilino o senza, quando il conguaglio ha righe da proporre, si sceglie alla registrazione se scriverlo: con «Non scriverlo» le righe non nascono affatto.</span>
+                  <span><strong>Se le parti hanno regolato il conguaglio in un altro modo</strong> (nel prezzo, con un accordo scritto), si annulla dallo storico dell'unità — Titolari → Storico → «Passaggi registrati» — con una nota: le sue righe spariscono insieme. Solo finché nessun piano le ha assorbite; dopo, se il piano non ha emesso nulla, si riporta in bozza e si elimina, altrimenti resta un saldo manuale di segno opposto, legato a quel passaggio. Nella successione con l'arretrato a nome del defunto e alla fine di una locazione, con un nuovo inquilino o senza, quando il conguaglio ha righe da proporre, si sceglie alla registrazione se scriverlo: con «Non scriverlo» le righe non nascono affatto.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -254,7 +254,38 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Una parte che il programma non sposta</strong> (un passaggio che si ferma su una parte, il defunto che un piano calcola ancora) si passa a mano con righe di segno opposto da qui, sulla stessa gestione, unità ed esercizio, una per persona: a credito di chi la deve avere, a debito di chi la deve pagare, e il prossimo piano le assorbe. Il pannello e il cancello la indicano solo se nessuna delle persone coinvolte ha già lì un saldo che non sia stato scritto da un passaggio, perché il Wallet accetta un solo saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: la riga di un conguaglio non occupa il posto, e la riga a mano si aggiunge accanto; altrimenti dicono che la parte si regola fra le parti. Se registri le righe per una parte che poi cambia (un inizio di locazione che la riduce o la azzera), il programma non le toglie: vanno corrette qui.</span>
+                  <span><strong>Una parte che il programma non sposta</strong> (un passaggio che si ferma su una parte, il defunto che un piano calcola ancora) si passa a mano con saldi legati al passaggio: vedi «Il saldo legato a un passaggio», qui sotto.</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- 9 — Il saldo legato a un passaggio -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Il saldo legato a un passaggio</h3>
+            <p class="mb-3">
+              A volte un passaggio di titolarità lascia una parte che il programma <strong>non sposta da sé</strong>: lo dice con la cifra il pannello «Cosa cambierà» prima di registrarlo, e poi lo storico dell'unità. Quella parte la passi tu, da qui, con <strong>due saldi legati al passaggio</strong>: un credito a chi la deve avere e un debito della stessa cifra a chi la deve pagare.
+            </p>
+            <div class="p-4 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 text-[13px] mb-3">
+              <strong>Un esempio.</strong> Ines, inquilina di Ugo, lascia l'appartamento il 1 luglio: con «Scrivi il conguaglio» i giorni dopo la sua uscita passano a Ugo, € 181,48. Il 1 novembre Ugo vende a Elsa. I giorni dal 1 novembre ora sono di Elsa, ma il programma non sposta la coppia della fine della locazione: € 60,16 restano a carico di Ugo, e il pannello della vendita lo dice. Se toccano a Elsa, da qui apri «Aggiungi credito», scegli «Soggetto specifico» e spunta «Legato a un passaggio»: la vendita del 1 novembre, Ugo, € 60,16. Poi «Aggiungi debito»: la stessa vendita, Elsa, € 60,16. Il prossimo piano rate della gestione che applica i saldi li assorbe: a Ugo toglie € 60,16, a Elsa li chiede.
+            </div>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul class="space-y-2">
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Una riga per persona</strong>, sulla stessa gestione e sulla stessa unità della parte. Il menu del passaggio offre quelli dell'unità e segnala quelli che hanno una parte da regolare a mano.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Non occupa il posto del riporto.</strong> Il Wallet tiene un solo saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio: lo scrivi anche a chi ha già il suo. Per la stessa persona e lo stesso passaggio, finché il primo si modifica, ce n'è uno solo: si corregge quello.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Se annulli il passaggio, si tolgono con lui.</strong> Se un piano rate li ha già assorbiti, il passaggio non si annulla finché quel piano non è eliminato (il lucchetto si riapre).</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Se la parte poi cambia</strong> (un inizio di locazione che la riduce o la azzera, la fine del conduttore che la fa risalire, l'annullamento di un altro passaggio o del conguaglio), il programma non tocca i saldi: la frase del passaggio dice, per ogni persona, quanto sommano oggi i suoi saldi legati e quanto vale la sua parte, e quali non si modificano più (in un piano che non si riscrive più, o in un esercizio che non è quello aperto). Chi ha un saldo legato che si modifica lo corregge qui; chi non ne ha uno registra qui la differenza con un saldo legato in più. Se la frase non sa a chi spetta la parte (una seconda vendita dopo una fermata: a chi ha le righe della coppia, o a chi esce se la fermata di prima è già stata regolata) li nomina tutti e due; se la parte non si legge da sola (per esempio una seconda vendita dopo una fermata insieme a una fermata normale sulle stesse persone), non la dice e indica che cosa correggere se i saldi non sono la parte.</span>
                 </li>
               </ul>
             </div>

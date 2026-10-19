@@ -21,14 +21,14 @@ final class AvvisoSpeseNegative
     /**
      * La strada del saldo dice dove entra la differenza e che cosa fare se la persona ha già un saldo. Il piano ha già letto i saldi quando è stato generato: un saldo
      * scritto dopo non lo cambia, entra nel prossimo piano della gestione che applica i saldi, o nell'esercizio dopo. Il Wallet accetta un solo saldo per persona,
-     * gestione, unità ed esercizio, senza contare quelli scritti da un passaggio (`CreateSaldoRequest`): dove la persona ne ha già uno, il saldo nuovo si rifiuta e
+     * gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio (`CreateSaldoRequest`): dove la persona ne ha già uno, il saldo nuovo si rifiuta e
      * si corregge quello che c'è, finché il piano che l'ha assorbito si può riscrivere: niente a giornale, nessun movimento sulle quote, nessun conguaglio (`UpdateSaldoRequest`, con `Saldo::eBloccato()`).
      * Se l'ha assorbito un piano che non si riscrive più non si fa né l'uno né l'altro, e la differenza va nell'esercizio dopo; un saldo da cui una successione ha
      * calcolato l'arretrato agli eredi non si corregge, e il Wallet dice la strada (`Saldo::fraseFonteDellArretrato()`).
      */
     public const STRADA_DEL_SALDO = 'Se il piano non si può più riscrivere (incassi o crediti usati da tenere, o un passaggio di titolarità che l\'ha conguagliato), regola la differenza con un saldo sulle unità, da «Saldi iniziali»: '
         . 'questo piano non lo legge più, entra nel prossimo piano della gestione che applica i saldi, o nell\'esercizio dopo. '
-        . 'Il Wallet tiene un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: dove la persona ne ha già uno, si corregge quello, se nessun piano l\'ha ancora assorbito o se il piano che l\'ha assorbito si può ancora riscrivere; se l\'ha già assorbito un piano che non si riscrive più, il Wallet non accetta né un secondo saldo né la correzione, e per quella persona la differenza va nell\'esercizio dopo. Se il saldo è fra quelli da cui una successione ha calcolato l\'arretrato agli eredi, il Wallet lo dice e indica la strada.';
+        . 'Il Wallet tiene un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio: dove la persona ne ha già uno, si corregge quello, se nessun piano l\'ha ancora assorbito o se il piano che l\'ha assorbito si può ancora riscrivere; se l\'ha già assorbito un piano che non si riscrive più, il Wallet non accetta né un secondo saldo né la correzione, e per quella persona la differenza va nell\'esercizio dopo. Se il saldo è fra quelli da cui una successione ha calcolato l\'arretrato agli eredi, il Wallet lo dice e indica la strada.';
 
     public function __construct(private SpeseNegativeNelPiano $spese) {}
 
@@ -165,6 +165,7 @@ final class AvvisoSpeseNegative
             $v['origine'] === SpeseNegativeNelPiano::ORIGINE_FIGLIO => "Il sottoconto «{$v['nome']}», sotto il capitolo «{$v['padre']}», ha un importo negativo (meno {$cifra}): il piano ripartisce l'importo del capitolo anche su di lui, e il totale supera quello del capitolo.",
             SpeseNegativeNelPiano::giaCorretta($v) => "La voce «{$v['nome']}» è già corretta, ma il piano ne tiene ancora la copia negativa (meno {$cifra}) e " . ($misto ? $divisione : "la addebita in positivo, per {$cifra}."),
             SpeseNegativeNelPiano::soloLaCopia($v) => "La voce «{$v['nome']}» ha nel piano una copia negativa (meno {$cifra}) e il piano " . ($misto ? $divisione : "la addebita in positivo, per {$cifra}."),
+            SpeseNegativeNelPiano::copiaDiversa($v) => "La voce «{$v['nome']}» ha un importo negativo (meno " . SpeseNegativeNelPiano::cifra($v['importo_della_voce']) . ") e nel piano una copia negativa (meno {$cifra}): il piano " . ($misto ? $divisione : "la addebita in positivo, per {$cifra}."),
             default => "La voce «{$v['nome']}» ha un importo negativo (meno {$cifra}) e il piano la addebita in positivo, per {$cifra}.",
         };
     }

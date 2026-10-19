@@ -12,6 +12,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\PianoRateQuoteService;
+use App\Services\Riparto\VoceDiSpesaNegativa;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
 use App\Services\Dashboard\Widgets\ControlliPostImportWidget;
@@ -255,6 +256,12 @@ class DashboardController extends Controller
                 $totVirtualeGlobale += $virtualeGestione; 
 
                 // --- 3. Analisi Deficit Pura ---
+                // Una voce di spesa scritta con il meno resta fra le scoperte (il calcolo la addebita in positivo), ma la creazione non la propone:
+                // la scheda dice la sua nota, che nomina i piani che la addebitano o dice di correggerla, e non porta alla creazione.
+                $idDelleNegative = collect($report['items'])->filter(fn ($i) => $i['spesa_negativa'] ?? false)->pluck('id')->map(fn ($id) => (int) $id)->all();
+                $pianiDelleNegative = VoceDiSpesaNegativa::pianiPerVoce($idDelleNegative, (int) $gestione->id);
+                $bloccoDelleNegative = Conto::pianiCheBloccanoLaVoce($idDelleNegative);
+                $negativeAlTerzoLivello = VoceDiSpesaNegativa::alTerzoLivello($idDelleNegative);
                 foreach ($report['items'] as $item) {
                     if (!($item['is_leaf'] ?? false)) continue;
 
@@ -275,6 +282,7 @@ class DashboardController extends Controller
                             $tipoStrategia = 'conguaglio';       
                         }
 
+                        $spesaNegativa = (bool) ($item['spesa_negativa'] ?? false);
                         $vociScoperte[] = [
                             'id'          => $item['id'],
                             'nome'        => $item['nome'],
@@ -282,7 +290,12 @@ class DashboardController extends Controller
                             'gestione'    => $gestione->nome,
                             'gestione_id' => $gestione->id,
                             'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget_teorico'],
-                            'strategia'   => $tipoStrategia 
+                            'strategia'   => $tipoStrategia,
+                            'spesa_negativa' => $spesaNegativa,
+                            // L'importo scritto della voce è il suo valore assoluto col meno: `budget_teorico` lo conta in positivo.
+                            'nota'        => $spesaNegativa
+                                ? VoceDiSpesaNegativa::nota((string) $item['nome'], -(int) $item['budget_teorico'], $pianiDelleNegative[(int) $item['id']] ?? [], $bloccoDelleNegative[(int) $item['id']] ?? [], in_array((int) $item['id'], $negativeAlTerzoLivello, true))
+                                : null,
                         ];
 
                     }

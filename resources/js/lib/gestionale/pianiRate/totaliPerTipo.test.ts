@@ -5,7 +5,7 @@
  * che monta la pagina vera.
  *
  * Il gemello TypeScript di `Conto::segno()`: i totali delle schermate che non passano dal server (il «Totale richiesto» della creazione del
- * piano) contano le voci di entrata con il segno meno, come fa il motore (`CalcoloQuoteService.php:1500-1502` e `:1586-1589`: una voce che non
+ * piano) contano le voci di entrata con il segno meno, come fa il motore (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e quello con l'importo della voce: una voce che non
  * è di spesa né di uscita si distribuisce con −abs(importo)).
  *
  * Il modulo espone: `segnoDelTipo(tipo)`, `totaliPerTipo(voci)` (centesimi interi), `centesimiDaImporto(valore)` e `totaliDaImportiInEuro(voci)`

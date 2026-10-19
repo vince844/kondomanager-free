@@ -98,8 +98,8 @@ const fraseDellArretrato = computed(() => fraseArretrato(arretrato.value, rinunc
 // Rilievo R2: le frasi del calcolo per quota valgono solo se il conguaglio si scrive — prima della scelta servono a scegliere, con
 // «Non scriverlo» sarebbero false (Bruno e Carla non hanno niente da pagare).
 const frasiDelConguaglio = computed(() => (nonScritto.value ? [] : props.dati?.rate.frasi_del_conguaglio ?? []));
-// Rilievo AMM-1 del giro sulle correzioni: «ad» davanti ai nomi con la A nella successione (decisione 73.4); fuori, come alla .47.
-const aChi = (nome: string) => (props.tipo === 'successione' ? aNome(nome) : `a ${nome}`);
+// «ad» davanti ai nomi con la A, in ogni passaggio, con la regola del server (`FrasiObbligati::a`).
+const aChi = aNome;
 // Rilievo AMM-3: chi riceve l'unità per legato non è un erede.
 const legato = computed(() => arretrato.value?.legato === true);
 // Verifica a video della .48: «€ 531,45 a credito» non sta nella colonna stretta del pannello; «a credito» va a capo, sotto la cifra.

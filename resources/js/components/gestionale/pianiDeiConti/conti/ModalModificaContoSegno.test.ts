@@ -6,7 +6,8 @@
  * Il server rifiuta un importo cambiato in negativo (`UpdateContoRequest`, `Beta52VoceEntrataImportoNegativoTest`) e lascia passare una voce già negativa
  * il cui importo non cambia: il modulo rimanda sempre l'importo, quindi una voce negativa si deve aprire con il suo segno (se il campo lo togliesse, al
  * salvataggio la voce cambierebbe segno in silenzio). Il campo di modifica non vieta il meno (`disableNegative` sta solo nel modulo nuovo): il rifiuto è
- * del server, compare sotto il campo, e il campo resta scrivibile; «Entrata» resta scegliibile, anche quando l'importo è bloccato da rate emesse.
+ * del server, compare sotto il campo, e il campo resta scrivibile. Con un piano approvato che tiene la voce, l'importo e il tipo non si cambiano
+ * (`ModalModificaContoBlocco.test.ts`): «Entrata» non si sceglie, e l'importo resta quello che il server ha.
  *
  * Il modulo di modifica non ha la riga che dice di scrivere l'importo senza il segno: quella sta nel modulo nuovo, dove il campo toglie il meno in silenzio. Qui il meno
  * non si toglie e il server rifiuta con il testo giusto sotto il campo, quindi una seconda spiegazione sarebbe una ripetizione.
@@ -67,14 +68,24 @@ describe('una voce già negativa', () => {
         expect(campo().value).toBe('-240,00');
     });
 
-    test('controprova — «Entrata» si sceglie e l\'importo resta quello che il server ha, anche con l\'importo bloccato da rate emesse', async () => {
-        await monta({ ...voceNegativa, has_rate_emesse: true });
+    test('con un piano approvato che la tiene «Entrata» non si sceglie, e l\'importo resta quello che il server ha', async () => {
+        await monta({ ...voceNegativa, blocco: { piani: [{ id: 9, nome: 'Ordinario 2026' }], frase: 'L\'importo, il padre e il tipo della voce non si cambiano finché la voce è nel piano «Ordinario 2026», approvato.' } });
+
+        (document.querySelector('input#entrata') as HTMLInputElement).click();
+        await flushPromises();
+
+        expect(modulo().tipo).toBe('spesa');
+        expect(campo().disabled).toBe(true);
+        expect(campo().value).toBe('-240,00');
+    });
+
+    test('controprova — senza un piano approvato che la tiene «Entrata» si sceglie e l\'importo resta quello che il server ha', async () => {
+        await monta(voceNegativa);
 
         (document.querySelector('input#entrata') as HTMLInputElement).click();
         await flushPromises();
 
         expect(modulo().tipo).toBe('entrata');
-        expect(campo().disabled).toBe(true);
         expect(campo().value).toBe('-240,00');
     });
 });

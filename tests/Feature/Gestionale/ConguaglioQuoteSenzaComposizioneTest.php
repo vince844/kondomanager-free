@@ -72,7 +72,7 @@ it('quote senza composizione e un saldo pregresso assorbito dal piano: il congua
 
     // Trattate come «tutta spesa», la rata 1 avrebbe passato a Elsa 245/365 dei € 300,00 di Ugo.
     expect(scFrasi($anteprima))
-        ->toContain('Piano «Preventivo 2026»: le sue quote sono state generate da una versione che non salvava quanta parte di ogni rata è saldo pregresso, e su questa unità il piano ha assorbito un saldo pregresso: la spesa dell\'anno non si separa dal pregresso — se serve un conguaglio, si scrive con un saldo manuale dal Wallet sulla stessa gestione. Nessun conguaglio proposto su quelle quote.')
+        ->toContain('Piano «Preventivo 2026»: le sue quote sono state generate da una versione che non salvava quanta parte di ogni rata è saldo pregresso, e su questa unità il piano ha assorbito un saldo pregresso: la spesa dell\'anno non si separa dal pregresso — se serve un conguaglio, si scrive dal Wallet con saldi legati a questo passaggio, sulla stessa gestione. Nessun conguaglio proposto su quelle quote.')
         ->toContain('Le 8 quote del piano «Preventivo 2026» non ancora emesse resteranno intestate a Venditore Ugo, senza conguaglio: non dicono quanta parte è saldo pregresso.')
         ->and(implode(' | ', $anteprima['cancello']['motivi']))->toContain('restano sue, senza conguaglio: non dicono quanta parte è saldo pregresso')
         ->and(ruCoppia($s))->toBe([0, 0])

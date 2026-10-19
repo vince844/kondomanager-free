@@ -130,7 +130,7 @@ it('31.6 — una voce a cui si toglie la spunta resta sul «Proprietario», e il
     $ordinaria = ruAnteprima($this, $s, ruRiserva($s, extra: ['voci_da_tenere' => [odaAssociazione($s)]]))['ordinaria'];
 
     expect($ordinaria['voci'][0]['spostata'])->toBeFalse()
-        ->and(implode("\n", $ordinaria['frasi']))->toContain('Resta sul «Proprietario» la voce Spese generali: nei piani che verranno andrà a Acquirente Elsa, nudo proprietario.')
+        ->and(implode("\n", $ordinaria['frasi']))->toContain('Resta sul «Proprietario» la voce Spese generali: nei piani che verranno andrà ad Acquirente Elsa, nudo proprietario.')
         ->not->toContain('questa voce passa');
 });
 
@@ -460,7 +460,7 @@ it('31.5 — con la legge la voce spostata non scende più al nudo proprietario:
     $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s, extra: $tenuta ? ['voci_da_tenere' => [odaAssociazione($s)]] : []))['cancello']['motivi']);
 
     $tenuta
-        ? expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa')
+        ? expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno ad Acquirente Elsa')
         : expect($motivi)->not->toContain('se lo ricalcoli');
 })->with(['spostata' => [false], 'tenuta' => [true]]);
 
@@ -573,7 +573,7 @@ it('31.9 — un piano ordinario senza capitoli approvato comprende tutte le voci
     expect($ordinaria['voci'][0])->toMatchArray(['bloccata' => true, 'bloccata_da' => 'piano_globale', 'spostata' => false])
         ->and(implode("\n", $ordinaria['frasi']))
         // Il piano non ha niente a giornale: non c'è conguaglio, e il piano ricalcolato seguirebbe la voce rimasta sul «Proprietario».
-        ->toContain('La voce Spese generali è nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si sposta, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'ordinaria di quella voce a Acquirente Elsa, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio la voce si sposterà; poi riapprova il piano e ricalcolalo.')
+        ->toContain('La voce Spese generali è nel piano «Preventivo 2026», approvato e ancora senza niente a giornale: non si sposta, non c\'è conguaglio, e generato o ricalcolato il piano darà dal 1 maggio 2026 l\'ordinaria di quella voce ad Acquirente Elsa, nudo proprietario: la scelta non lo raggiunge. Per applicarla, prima di registrare il passaggio riporta il piano in bozza dalla sua pagina: con il passaggio la voce si sposterà; poi riapprova il piano e ricalcolalo.')
         ->not->toContain('come dalla pagina della voce')->not->toContain('questa voce passa');
 
     $subentro = ruRegistra($this, $s, ruRiserva($s));
@@ -595,7 +595,10 @@ it('31.9, controprove — non blocca un piano straordinario senza capitoli (le s
 /**
  * La voce «Spese generali» dello scenario dentro un piano: quello dello scenario, come lo lega la generazione dalla pagina
  * dei piani (`SyncOrphanChaptersAction`), o un piano straordinario da fatture sulla stessa gestione, con una fattura sulla
- * voce. `$stato` è lo stato del piano da fatture.
+ * voce. `$stato` è lo stato del piano da fatture. La fattura ha sulla voce una riga di spesa fuori preventivo, la sola che il
+ * piano straordinario addebita sulle tabelle della voce (`fatture`); o è una pregressa, che la voce la porta nella copertura di
+ * sopravvenienza (`pregressa`); o è mista, con una riga ordinaria sulla voce e la sopravvenienza su un'altra voce, «Imprevisti»
+ * (`mista`): la riga ordinaria il piano straordinario non la addebita.
  */
 function odaVoceInUnPiano(array $s, string $come, string $stato): void
 {
@@ -610,12 +613,40 @@ function odaVoceInUnPiano(array $s, string $come, string $stato): void
     $fornitoreId = DB::table('fornitori')->insertGetId(['ragione_sociale' => 'Manutenzioni Srl', 'soggetto_ritenuta' => false, 'ritenuta_decisa_il' => now(), 'perc_imponibile_ritenuta' => 100, 'perc_ritenuta' => 4,
         'giorni_scadenza' => 30, 'modalita_pagamento_default' => 'bonifico', 'created_at' => now(), 'updated_at' => now()]);
     $fattura = FatturaPassiva::create(['condominio_id' => $s['c']->id, 'fornitore_id' => $fornitoreId, 'esercizio_id' => $s['e']->id, 'tipo_documento' => 'fattura', 'numero_documento' => "FT-ODB{$s['unita']->id}",
-        'data_documento' => '2026-01-02', 'data_scadenza' => '2026-02-01', 'is_pregresso' => false, 'importo_imponibile' => 10000, 'importo_iva' => 0, 'importo_ritenuta' => 0,
+        'data_documento' => '2026-01-02', 'data_scadenza' => '2026-02-01', 'is_pregresso' => $come === 'pregressa', 'importo_imponibile' => 10000, 'importo_iva' => 0, 'importo_ritenuta' => 0,
         'totale_documento' => 10000, 'netto_a_pagare' => 10000, 'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico']);
-    DB::table('righe_fattura')->insert(['fattura_passiva_id' => $fattura->id, 'conto_id' => $conto->id, 'immobile_id' => null, 'descrizione' => 'Pulizie', 'aliquota_iva' => 0,
-        'importo_imponibile' => 10000, 'importo_iva' => 0, 'is_sopravvenienza' => false, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now()]);
+    $riga = fn (int $contoId, bool $sopravvenienza) => DB::table('righe_fattura')->insert(['fattura_passiva_id' => $fattura->id, 'conto_id' => $contoId, 'immobile_id' => null,
+        'descrizione' => 'Pulizie', 'aliquota_iva' => 0, 'importo_imponibile' => 10000, 'importo_iva' => 0, 'is_sopravvenienza' => $sopravvenienza, 'is_rateizzata' => false,
+        'created_at' => now(), 'updated_at' => now()]);
+    if ($come === 'pregressa') {
+        DB::table('fattura_coperture')->insert(['fattura_passiva_id' => $fattura->id, 'tipo_copertura' => 'sopravvenienza', 'importo' => 10000, 'stato' => 'pianificata',
+            'conto_id' => $conto->id, 'created_at' => now(), 'updated_at' => now()]);
+    } elseif ($come === 'mista') {
+        odaVoce($s['g'], 'Imprevisti', (int) DB::table('tabelle')->where('condominio_id', $s['c']->id)->value('id'));
+        $riga($conto->id, false);
+        $riga((int) Conto::where('nome', 'Imprevisti')->value('id'), true);
+    } else {
+        $riga($conto->id, true);
+    }
     $piano->fatture()->attach($fattura->id, ['importo_collegato' => 10000]);
 }
+
+it('31.8, con la regola del piano dei conti (1.11.0-beta.53) — la voce di una pregressa che un piano straordinario approvato finanzia con la copertura di sopravvenienza non si sposta; la riga ordinaria di una fattura mista non blocca la sua voce', function (string $come, array $atteso) {
+    $s = ruScenario('prima_rata', 0);
+    $s['piano']->update(['stato' => 'bozza']);
+    odaVoceInUnPiano($s, $come, 'approvato');
+    $nomi = Conto::pluck('nome', 'id')->all();
+
+    $voci = collect(ruAnteprima($this, $s, ruRiserva($s))['ordinaria']['voci'])
+        ->mapWithKeys(fn (array $v) => [$nomi[(int) $v['conto_id']] => ['bloccata' => $v['bloccata'], 'spostata' => $v['spostata']]])->sortKeys()->all();
+    $nelPianoDeiConti = collect(Conto::pianiCheBloccanoLaVoce(array_map('intval', array_keys($nomi))))->keys()->map(fn ($id) => $nomi[$id])->sort()->values()->all();
+
+    expect($voci)->toBe($atteso)
+        ->and($nelPianoDeiConti)->toBe(array_keys(array_filter($atteso, fn (array $v) => $v['bloccata'])));
+})->with([
+    'la pregressa, con la copertura di sopravvenienza' => ['pregressa', ['Spese generali' => ['bloccata' => true, 'spostata' => false]]],
+    'la fattura mista' => ['mista', ['Imprevisti' => ['bloccata' => true, 'spostata' => false], 'Spese generali' => ['bloccata' => false, 'spostata' => true]]],
+]);
 
 it('31.5 — le frasi delle rate già emesse dicono la scelta: con «come la voce» la riserva e la costituzione non promettono più l\'ordinaria all\'usufruttuario', function (string $passaggio, ?string $scelta, string $frase) {
     $s = ruScenario('prima_rata', 0);
@@ -657,7 +688,7 @@ it('verifica a video — la frase conclusiva promette i piani che verranno solo 
 
     expect($frasi[0])->toBe('Dal 1 maggio 2026 le spese ordinarie sono di Venditore Ugo, usufruttuario (art. 1004 c.c.)' . $finale . ' Le voci create dopo, e quelle delle gestioni che si apriranno, partono dal «Proprietario»: per darle all\'usufruttuario mettile su «Usufruttuario».');
     if ($tenere === ['pulizie']) {
-        expect(implode("\n", $frasi))->toContain('Restano sul «Proprietario» le voci Pulizie (2 voci): nei piani che verranno andranno a Acquirente Elsa, nudo proprietario.');
+        expect(implode("\n", $frasi))->toContain('Restano sul «Proprietario» le voci Pulizie (2 voci): nei piani che verranno andranno ad Acquirente Elsa, nudo proprietario.');
     }
 })->with([
     // Il piano è in bozza e non c'è niente di emesso: niente conguaglio da promettere (rilievo T-A1 della revisione della 1-ter).
@@ -741,7 +772,7 @@ it('rilievo D5 — riserva «come dice ogni voce», estinzione, poi vendita pien
     // La voce è arrivata a Elsa il 1/09, non il 1/05 della riserva: 122 giorni, 61 a Elsa (prima: «dal 1 maggio», e senza
     // dettaglio anche 245 giorni, 184 a Elsa — il denaro era giusto, il testo no).
     expect(implode("\n", ruAnteprima($this, $s, $vendita)['rate']['frasi']))
-        ->toContain('è emessa a Venditore Ugo: la sua competenza è passata a Acquirente Elsa dal 1 settembre 2026 con un passaggio precedente, e quella parte (122 giorni) è divisa in proporzione ai giorni: 61 a Acquirente Elsa, 61 a Compratore Carlo.');
+        ->toContain('è emessa a Venditore Ugo: la sua competenza è passata ad Acquirente Elsa dal 1 settembre 2026 con un passaggio precedente, e quella parte (122 giorni) è divisa in proporzione ai giorni: 61 ad Acquirente Elsa, 61 a Compratore Carlo.');
     ruRegistra($this, $s, $vendita);
 
     expect(odaDebitoDi($s, $carlo))->toBe(20055);
@@ -771,12 +802,12 @@ it('rilievo D5 — la stessa catena con una voce metà sul «Proprietario» e me
     // Con il dettaglio le due righe della voce si dividono ciascuna (60000 × 61/365 = 10027,40 → € 100,27, due volte): un
     // centesimo meno della voce intera (120000 × 61/365 = 20054,79), come per la voce divisa di D6 — riga per riga (29.1).
     'con il dettaglio del riparto' => [false, 20054, [
-        'la sua competenza è passata a Acquirente Elsa dal 1 maggio 2026 per le voci sul «Proprietario» e dal 1 settembre 2026 per le altre, con passaggi precedenti, e quella parte è divisa voce per voce',
-        '  · Spese generali (parte sul «Proprietario»): € 600,00, competenza 1 gennaio 2026–31 dicembre 2026 — emessa a Venditore Ugo: 120 giorni a Venditore Ugo, 184 a Acquirente Elsa, 61 a Compratore Carlo → € 100,27 a chi entra.',
-        '  · Spese generali (parte sugli altri ruoli): € 600,00, competenza 1 gennaio 2026–31 dicembre 2026 — emessa a Venditore Ugo: 243 giorni a Venditore Ugo, 61 a Acquirente Elsa, 61 a Compratore Carlo → € 100,27 a chi entra.',
+        'la sua competenza è passata ad Acquirente Elsa dal 1 maggio 2026 per le voci sul «Proprietario» e dal 1 settembre 2026 per le altre, con passaggi precedenti, e quella parte è divisa voce per voce',
+        '  · Spese generali (parte sul «Proprietario»): € 600,00, competenza 1 gennaio 2026–31 dicembre 2026 — emessa a Venditore Ugo: 120 giorni a Venditore Ugo, 184 ad Acquirente Elsa, 61 a Compratore Carlo → € 100,27 a chi entra.',
+        '  · Spese generali (parte sugli altri ruoli): € 600,00, competenza 1 gennaio 2026–31 dicembre 2026 — emessa a Venditore Ugo: 243 giorni a Venditore Ugo, 61 ad Acquirente Elsa, 61 a Compratore Carlo → € 100,27 a chi entra.',
     ]],
     'senza, dalla ricostruzione del motore' => [true, 20055, [
-        'la sua competenza è passata a Acquirente Elsa dal 1 maggio 2026 per le voci sul «Proprietario» e dal 1 settembre 2026 per le altre, con passaggi precedenti; a Compratore Carlo va la parte dal giorno del passaggio (61 giorni).',
+        'la sua competenza è passata ad Acquirente Elsa dal 1 maggio 2026 per le voci sul «Proprietario» e dal 1 settembre 2026 per le altre, con passaggi precedenti; a Compratore Carlo va la parte dal giorno del passaggio (61 giorni).',
     ]],
 ]);
 
@@ -834,7 +865,7 @@ it('frasi — la voce che resta per la scelta lo dice: non «la competenza finis
     ruEmetti($s);
     $frasi = implode("\n", ruAnteprima($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']))['rate']['frasi']);
 
-    expect($frasi)->toContain('Sulla gestione Ordinaria 2026: nessun conguaglio — l\'ordinaria segue la voce, per la scelta «come dice ogni voce»: le voci delle quote emesse a Venditore Ugo (€ 1.200,00) non passano a Acquirente Elsa.')
+    expect($frasi)->toContain('Sulla gestione Ordinaria 2026: nessun conguaglio — l\'ordinaria segue la voce, per la scelta «come dice ogni voce»: le voci delle quote emesse a Venditore Ugo (€ 1.200,00) non passano ad Acquirente Elsa.')
         ->and($frasi)->not->toContain('finisce prima del');
 })->with(['con le righe del riparto' => false, 'senza righe (anteriore alla beta.29)' => true]);
 
@@ -854,7 +885,7 @@ it('frasi — una voce divisa fra due ruoli: le due parti hanno un nome diverso,
     $s = odaVoceDivisa();
     $frasi = implode("\n", ruAnteprima($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']))['rate']['frasi']);
 
-    expect($frasi)->toContain('  · Spese generali (parte sul «Proprietario»): € 120,00, competenza 1 gennaio 2026–31 dicembre 2026 — 120 giorni a Venditore Ugo, 245 a Acquirente Elsa → € 80,55 a chi entra.')
+    expect($frasi)->toContain('  · Spese generali (parte sul «Proprietario»): € 120,00, competenza 1 gennaio 2026–31 dicembre 2026 — 120 giorni a Venditore Ugo, 245 ad Acquirente Elsa → € 80,55 a chi entra.')
         ->and($frasi)->toContain('  · Spese generali (parte sugli altri ruoli): € 1.080,00, competenza 1 gennaio 2026–31 dicembre 2026 — resta a Venditore Ugo per la scelta «come dice ogni voce».');
 });
 
@@ -863,7 +894,7 @@ it('frasi — senza righe, con una voce divisa, si dice che per giorni si divide
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
     $frasi = implode("\n", ruAnteprima($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => 'voce']))['rate']['frasi']);
 
-    expect($frasi)->toContain('credito € 80,55 a Venditore Ugo, debito € 80,55 a Acquirente Elsa — la quota ordinaria (€ 1.200,00 su 12 quote) è divisa in proporzione ai giorni di competenza: 120 a Venditore Ugo, 245 a Acquirente Elsa. Per la scelta «come dice ogni voce» si divide solo la parte delle voci che passano, € 120,00 su € 1.200,00; il resto non passa a Acquirente Elsa.');
+    expect($frasi)->toContain('credito € 80,55 a Venditore Ugo, debito € 80,55 ad Acquirente Elsa — la quota ordinaria (€ 1.200,00 su 12 quote) è divisa in proporzione ai giorni di competenza: 120 a Venditore Ugo, 245 ad Acquirente Elsa. Per la scelta «come dice ogni voce» si divide solo la parte delle voci che passano, € 120,00 su € 1.200,00; il resto non passa ad Acquirente Elsa.');
 });
 
 it('frasi — l\'estinzione di un usufrutto nato «come dice ogni voce» dice la scelta del passaggio da cui è nato, non «l\'ordinaria divisa in proporzione ai giorni»', function (?string $scelta, string $frase) {
@@ -954,7 +985,7 @@ it('rilievo A2 — lo storico dice la scelta: con la legge le voci spostate con 
 
     expect(odaStorico($s, $subentro)['ordinaria'])->toBe(['scelta' => $scelta ?? 'usufruttuario', 'voci' => $voci, 'testo' => $testo]);
 })->with([
-    'riserva, la legge' => ['riserva', null, 'Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: questa voce è passata dal «Proprietario» all\'«Usufruttuario».', ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %']],
+    'riserva, la legge' => ['riserva', null, 'Dal 1 maggio 2026 all\'usufruttuario, secondo la regola di legge (art. 1004 c.c.): questa voce è passata dal «Proprietario» all\'«Usufruttuario».', ['Spese generali (Proprietà, Ordinaria 2026): prima Proprietario 100 %, dopo Usufruttuario 100 %']],
     'riserva, come la voce' => ['riserva', 'voce', 'Dal 1 maggio 2026 come dice ogni voce, scelta alla registrazione: le voci sul «Proprietario» passano a chi ha comprato la nuda proprietà, le altre restano all\'usufruttuario. Le voci non sono state toccate.', []],
     'costituzione, come la voce' => ['costituzione', 'voce', 'Dal 1 maggio 2026 come dice ogni voce, scelta alla registrazione: le voci sul «Proprietario» restano al nudo proprietario, le altre vanno all\'usufruttuario. Le voci non sono state toccate.', []],
 ]);
@@ -962,7 +993,7 @@ it('rilievo A2 — lo storico dice la scelta: con la legge le voci spostate con 
 it('rilievo A2 — con la legge e la spunta tolta: «nessuna voce spostata»; la vendita piena non ne parla', function () {
     $s = ruScenario('prima_rata', 0);
     $riserva = ruRegistra($this, $s, ruRiserva($s, extra: ['voci_da_tenere' => [odaAssociazione($s)]]));
-    expect(odaStorico($s, $riserva)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario (art. 1004 c.c.), la proposta di legge: nessuna voce spostata.');
+    expect(odaStorico($s, $riserva)['ordinaria']['testo'])->toBe('Dal 1 maggio 2026 all\'usufruttuario, secondo la regola di legge (art. 1004 c.c.): nessuna voce spostata.');
 
     $t = ruScenario('prima_rata', 0);
     $vendita = ruRegistra($this, $t, ruRiserva($t, extra: ['sottotipo' => null, 'tipologia' => 'proprietario']));
@@ -1027,7 +1058,7 @@ it('rilievo B1 (decisione 28.5) — piano ordinario non emesso che blocca una vo
     expect($anteprima['ordinaria']['voci'][0]['bloccata'])->toBeTrue()
         ->and($anteprima['ordinaria']['voci'][0]['bloccata_da'])->toBe($come === 'capitoli' ? 'piano' : 'piano_globale')
         ->and(implode(' | ', $anteprima['cancello']['motivi']))
-        ->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa, nudo proprietario')
+        ->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno ad Acquirente Elsa, nudo proprietario')
         ->toContain('fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.): il piano le blocca, e il passaggio non le sposta. Se devono restare a Venditore Ugo, che resta usufruttuario, riporta il piano in bozza dalla sua pagina prima di registrare il passaggio: con il passaggio si sposteranno su «Usufruttuario»; poi riapprova il piano e ricalcolalo')
         // Il consiglio che la pagina della voce non permette (con i capitoli) e che il passaggio non esegue non c'è più.
         ->not->toContain('metti quelle voci su «Usufruttuario»')
@@ -1047,7 +1078,7 @@ it('rilievo T-B2 — la voce è bloccata da un altro piano (le fatture di uno st
     $anteprima = ruAnteprima($this, $s, ruRiserva($s));
     expect($anteprima['ordinaria']['voci'][0]['bloccata'])->toBeTrue()
         ->and(implode(' | ', $anteprima['cancello']['motivi']))
-        ->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa, nudo proprietario, anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.): un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale')
+        ->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno ad Acquirente Elsa, nudo proprietario, anche se fra le parti l\'ordinaria è dell\'usufruttuario (art. 1004 c.c.): un altro piano approvato le blocca, e il passaggio non le sposta — il riquadro «Chi paga l\'ordinaria dal giorno dell\'atto» dice quale')
         ->not->toContain('metti quelle voci su «Usufruttuario»')
         ->not->toContain('riporta il piano in bozza')
         ->and(implode("\n", $anteprima['ordinaria']['frasi_bloccate']))->toContain('è nelle fatture del piano straordinario «Spese da finanziare», approvato');
@@ -1061,7 +1092,7 @@ it('rilievo A5 — con «come dice ogni voce», o con la spunta tolta, il cancel
     }
 
     $motivi = implode(' | ', ruAnteprima($this, $s, ruRiserva($s, extra: $extra))['cancello']['motivi']);
-    expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno a Acquirente Elsa, nudo proprietario, ' . $perche)
+    expect($motivi)->toContain('il piano «Preventivo 2026», non ancora emesso, intesta quote a Venditore Ugo: se lo ricalcoli, dal 1 maggio 2026 le voci sul «Proprietario» (Spese generali) vanno ad Acquirente Elsa, nudo proprietario, ' . $perche)
         ->not->toContain('fra le parti l\'ordinaria è dell\'usufruttuario')
         ->not->toContain('metti quelle voci su');
 })->with([
@@ -1154,7 +1185,7 @@ it('decisione 33 — la costituzione con la legge sposta la voce anche per i gio
     $ordinaria = ruAnteprima($this, $s, odaCostituzione($s, ['riga_uscente_id' => $rigaUgo, 'anagrafica_entrante_id' => $dora->id, 'decorrenza' => '2026-07-01']))['ordinaria'];
 
     // Nel rapporto: Elsa paga € 292,60 per gli 89 giorni (1/2–30/4) che la sua scelta dava al nudo proprietario.
-    expect($ordinaria['frasi_altri_usufrutti'])->toBe(['L\'usufrutto di Acquirente Elsa su Interno 1, dal 1 febbraio 2026 al 30 aprile 2026, è nato con la scelta «come dice ogni voce»: spostando Spese generali sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno l\'ordinaria di quella voce a Acquirente Elsa, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.']);
+    expect($ordinaria['frasi_altri_usufrutti'])->toBe(['L\'usufrutto di Acquirente Elsa su Interno 1, dal 1 febbraio 2026 al 30 aprile 2026, è nato con la scelta «come dice ogni voce»: spostando Spese generali sull\'«Usufruttuario», i piani della gestione «Ordinaria 2026» generati o ricalcolati dopo daranno l\'ordinaria di quella voce ad Acquirente Elsa, usufruttuario, anche per i giorni di quell\'usufrutto, e non più al nudo proprietario. Per lasciarla al nudo proprietario, togli la spunta alla voce qui sopra.']);
 });
 
 it('decisione 33, l\'altro verso — con «come dice ogni voce» dopo un usufrutto nato con la legge, la voce è già sull\'«Usufruttuario», e il pannello lo dice', function () {

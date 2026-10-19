@@ -57,6 +57,7 @@ import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata,
 import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
 import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
+import { aNome } from '@/lib/gestionale/passaggi/preposizione';
 import { partiUguali, quoteCheNonTornano } from '@/lib/gestionale/passaggi/quoteEredi';
 import { conguaglioDaScegliereNelPassaggio, coppieNonScritte, fraseArretrato, passaggioConLaScelta, sceltaConguaglioDelPassaggio, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
 
@@ -1267,7 +1268,7 @@ function urlTipo(t: TipoPassaggio) {
                         Vale per tutta la tabella: cambia anche
                         <template v-for="(u, i) in v.altre_unita" :key="u.immobile_id">
                           <template v-if="i > 0">{{ i === v.altre_unita.length - 1 ? ' e ' : ', ' }}</template>
-                          <strong class="font-medium">{{ u.immobile }}</strong> ({{ u.nudi ? `da ${u.nudi} a ${u.usufruttuari}` : `a ${u.usufruttuari}` }}<template v-if="u.importo_formattato && u.importo && v.tipo !== 'entrata'">, {{ u.importo_formattato }} nell'ultimo piano</template>)</template>.
+                          <strong class="font-medium">{{ u.immobile }}</strong> ({{ u.nudi ? `da ${u.nudi} ${aNome(u.usufruttuari)}` : aNome(u.usufruttuari) }}<template v-if="u.importo_formattato && u.importo && v.tipo !== 'entrata'">, {{ u.importo_formattato }} nell'ultimo piano</template>)</template>.
                       </span>
                     </span>
                   </label>
