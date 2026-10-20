@@ -342,8 +342,8 @@ class AnteprimaPassaggio
         foreach ($this->fermataCoinquilino as $f) {
             $anteprima['rate']['frasi'][] = self::fraseDelCoinquilino($f, count($immobileIds) > 1);
             // Coda 252.7c: un credito si dice con le parole («€ 59,26 di credito»), come nella frase.
-            $anteprima['cancello']['motivi'][] = sprintf('%s dei giorni dopo l\'uscita di %s restano nelle sue rate sulla gestione %s%s: la locazione continua con %s, e il programma non propone il conguaglio',
-                ImportoInParole::soldi((int) $f['cifra']), $f['persona'], $f['gestione'], count($immobileIds) > 1 ? sprintf(' («%s»)', $f['unita']) : '', $this->elenco($f['restano']));
+            $anteprima['cancello']['motivi'][] = sprintf('%s dei giorni dopo l\'uscita di %s restano nelle sue rate sulla %s%s: la locazione continua con %s, e il programma non propone il conguaglio',
+                ImportoInParole::soldi((int) $f['cifra']), $f['persona'], FrasiObbligati::gestione($f['gestione']), count($immobileIds) > 1 ? sprintf(' («%s»)', $f['unita']) : '', $this->elenco($f['restano']));
         }
         // Punto 4 della lista della .50: dove nessuno sta al posto dell'inquilino nei giorni dopo l'uscita la coppia non c'è, e si dice.
         foreach ($this->senzaNessuno as $g) {
@@ -430,9 +430,9 @@ class AnteprimaPassaggio
     {
         $elenco = fn (array $v): string => count($v) <= 1 ? (string) ($v[0] ?? '') : implode(', ', array_slice($v, 0, -1)) . ' e ' . end($v);
         $restano = $elenco($f['restano']) ?: 'un coinquilino';
-        $frase = sprintf('%sa locazione continua con %s: il programma non propone il conguaglio dei giorni dopo l\'uscita di %s (%s sulla gestione %s), che restano nelle rate di %s, e non sceglie chi li paga: lo decidono le parti.',
+        $frase = sprintf('%sa locazione continua con %s: il programma non propone il conguaglio dei giorni dopo l\'uscita di %s (%s sulla %s), che restano nelle rate di %s, e non sceglie chi li paga: lo decidono le parti.',
             $conLUnita ? sprintf('Nell\'unità «%s» l', $f['unita']) : 'L', $restano, $f['persona'],
-            (int) $f['cifra'] < 0 ? MoneyHelper::format(-(int) $f['cifra']) . ' di credito' : MoneyHelper::format((int) $f['cifra']), $f['gestione'], $f['persona']);
+            (int) $f['cifra'] < 0 ? MoneyHelper::format(-(int) $f['cifra']) . ' di credito' : MoneyHelper::format((int) $f['cifra']), FrasiObbligati::gestione($f['gestione']), $f['persona']);
         // «Se li paga Dora, o Ugo», «Se li pagano Dora e Pia, o Ugo»: i coinquilini, poi chi sta al posto dell'inquilino. Senza i nomi (un
         // registro di prima), il proprietario.
         $alPosto = isset($f['al_posto']) ? (array) $f['al_posto'] : ['il proprietario'];
@@ -450,8 +450,8 @@ class AnteprimaPassaggio
      */
     private function fraseSenzaNessuno(array $g, bool $conLUnita): string
     {
-        return sprintf('%s nessuno sta al posto dell\'inquilino nei giorni dopo l\'uscita di %s: la parte di quei giorni, %s sulla gestione %s, resta nelle rate di %s%s, e il programma non la propone a nessuno.',
-            $conLUnita ? sprintf('Nell\'unità «%s»', $g['unita']) : 'Sull\'unità', $g['persona'], MoneyHelper::format((int) $g['importo']), $g['gestione'] ?? '?', $g['persona'],
+        return sprintf('%s nessuno sta al posto dell\'inquilino nei giorni dopo l\'uscita di %s: la parte di quei giorni, %s sulla %s, resta nelle rate di %s%s, e il programma non la propone a nessuno.',
+            $conLUnita ? sprintf('Nell\'unità «%s»', $g['unita']) : 'Sull\'unità', $g['persona'], MoneyHelper::format((int) $g['importo']), FrasiObbligati::gestione($g['gestione'] ?? '?'), $g['persona'],
             $this->sceltaQui ? ' anche se scrivi il conguaglio' : '');
     }
 
@@ -647,8 +647,8 @@ class AnteprimaPassaggio
                 $resta = (int) ($parti[(int) $uscente->anagrafica_id] ?? 0);
                 $coda = $resta !== 0 ? sprintf('; il credito di %s scende quindi a %s', $uscente->anagrafica?->nome ?? 'chi esce', MoneyHelper::format((int) $c['importo'] - $resta)) : '';
                 $righe[] = $genealogia === [] || array_filter($perQuota, fn ($cents) => (int) $cents !== 0) == array_filter($parti, fn ($cents) => (int) $cents !== 0)
-                    ? sprintf('Sulla gestione %s il debito di %s si divide per quota: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano %s (%s %%)' : '%s %s (%s %%)', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?'), rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
-                    : sprintf('Sulla gestione %s il debito di %s si divide secondo la parte dell\'usufrutto che torna a ciascun nudo proprietario: %s%s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano %s' : '%s %s', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?')), array_keys($parti))), $coda);
+                    ? sprintf('Sulla %s il debito di %s si divide per quota: %s%s.', FrasiObbligati::gestione($c['gestione'] ?? null), MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano %s (%s %%)' : '%s %s (%s %%)', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?'), rtrim(rtrim(number_format($pesi[$id], 2, ',', '.'), '0'), ',')), array_keys($parti))), $coda)
+                    : sprintf('Sulla %s il debito di %s si divide secondo la parte dell\'usufrutto che torna a ciascun nudo proprietario: %s%s.', FrasiObbligati::gestione($c['gestione'] ?? null), MoneyHelper::format((int) $c['importo']), implode(', ', array_map(fn ($id) => sprintf((int) $id === (int) $uscente->anagrafica_id ? '%s restano %s' : '%s %s', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?')), array_keys($parti))), $coda);
             }
             $esito['coppie'] = $coppie;
             foreach ($restaAChiEsce as $u) {
@@ -704,7 +704,7 @@ class AnteprimaPassaggio
                 }
             }
             if (count($pesi) > 1) {
-                $esito['frasi'][] = sprintf('Sulla gestione %s il debito di %s si divide per la quota d\'usufrutto: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']),
+                $esito['frasi'][] = sprintf('Sulla %s il debito di %s si divide per la quota d\'usufrutto: %s.', FrasiObbligati::gestione($c['gestione'] ?? null), MoneyHelper::format((int) $c['importo']),
                     implode(', ', array_map(fn ($id) => sprintf('%s %s (%s %%)', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?'), $this->quota($pesi[$id])), array_keys($parti))));
             }
         }
@@ -822,7 +822,7 @@ class AnteprimaPassaggio
                 $coppie[] = array_diff_key(array_replace($c, ['anagrafica_entrante_id' => (int) $anagraficaId, 'entrante_nome' => $nomi[$anagraficaId] ?? '?', 'importo' => (int) $cents, 'importo_formattato' => MoneyHelper::format((int) $cents)]), ['per_persona' => true]);
             }
             if (count($parti) > 1) {
-                $esito['frasi'][] = sprintf('Sulla gestione %s il debito di %s si divide fra chi paga al posto dell\'inquilino nei giorni dopo l\'uscita, per quota e per giorni: %s.', $c['gestione'] ?? 'gestione', MoneyHelper::format((int) $c['importo']),
+                $esito['frasi'][] = sprintf('Sulla %s il debito di %s si divide fra chi paga al posto dell\'inquilino nei giorni dopo l\'uscita, per quota e per giorni: %s.', FrasiObbligati::gestione($c['gestione'] ?? null), MoneyHelper::format((int) $c['importo']),
                     implode(', ', array_map(fn ($id) => sprintf('%s %s', MoneyHelper::format((int) $parti[$id]), FrasiObbligati::a($nomi[$id] ?? '?')), array_keys($parti))));
             }
         }
@@ -1798,7 +1798,7 @@ class AnteprimaPassaggio
             }
             if (count($pesi) > 1 && $lordo !== 0) {
                 // Ultima revisione (UE6): la straordinaria va per delibera, non «per i giorni».
-                $frasi[] = sprintf(! empty($dati['legato']) ? 'Sulla gestione %s la parte di chi riceve l\'unità, %s%s, si divide per quota: %s.%s' : 'Sulla gestione %s la parte degli eredi, %s%s, si divide per quota: %s.%s', $g['gestione'] ?? 'gestione', ImportoInParole::cifraInParole($lordo),
+                $frasi[] = sprintf(! empty($dati['legato']) ? 'Sulla %s la parte di chi riceve l\'unità, %s%s, si divide per quota: %s.%s' : 'Sulla %s la parte degli eredi, %s%s, si divide per quota: %s.%s', FrasiObbligati::gestione($g['gestione'] ?? null), ImportoInParole::cifraInParole($lordo),
                     ($g['natura'] ?? null) === NaturaGestione::Straordinaria->value ? '' : ' per i giorni dal decesso',
                     implode(', ', array_map(fn ($id) => sprintf('%s %s (%s %%)', ImportoInParole::cifraInParole((int) $parti[$id]), $this->frasiObbligati->a($nomi[$id] ?? '?'), $this->numeroQuota((float) $pesi[$id])), array_keys($parti))),
                     $passate !== 0 ? sprintf(' Le rate in bozza (%s) vanno %s, che le paga con quelle: la sua parte nel conguaglio scende di altrettanto.', ImportoInParole::cifraInParole($passate), FrasiObbligati::a($nomi[$riferimentoId] ?? 'l\'erede di riferimento')) : '');

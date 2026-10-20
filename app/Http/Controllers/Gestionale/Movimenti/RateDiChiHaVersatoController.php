@@ -6,6 +6,7 @@ use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\RataQuote;
+use App\Services\Subentro\FrasiObbligati;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -36,14 +37,16 @@ class RateDiChiHaVersatoController extends Controller
 
         return response()->json([
             'rate' => $quote->map(fn (RataQuote $q) => [
-                'id'          => $q->id,
-                'numero_rata' => $q->rata->numero_rata,
-                'gestione_id' => $q->rata->pianoRate->gestione_id,
-                'gestione'    => $q->rata->pianoRate->gestione?->nome,
-                'scadenza'    => $q->data_scadenza?->format('d/m/Y'),
+                'id'             => $q->id,
+                'numero_rata'    => $q->rata->numero_rata,
+                'gestione_id'    => $q->rata->pianoRate->gestione_id,
+                'gestione'       => $q->rata->pianoRate->gestione?->nome,
+                // La gestione come la scrive una frase («gestione Tetto», «Gestione ordinaria»): la regola sta in `FrasiObbligati::gestione`.
+                'gestione_frase' => FrasiObbligati::gestione($q->rata->pianoRate->gestione?->nome),
+                'scadenza'       => $q->data_scadenza?->format('d/m/Y'),
                 // In euro, come la situazione debitoria: il modulo lavora in euro decimali.
-                'residuo'     => MoneyHelper::fromCents(max(0, $q->importo - $q->importo_pagato)),
-                'pagata'      => $q->importo_pagato >= $q->importo,
+                'residuo'        => MoneyHelper::fromCents(max(0, $q->importo - $q->importo_pagato)),
+                'pagata'         => $q->importo_pagato >= $q->importo,
             ])->values(),
         ]);
     }

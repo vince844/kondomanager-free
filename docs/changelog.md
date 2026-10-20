@@ -7,6 +7,27 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.54] - Le catene delle fermate
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi e i passaggi già registrati
+restano com'erano.
+
+**Che cosa fa la beta.**
+- **Le fermate dopo «Scrivi il conguaglio» dicono le cifre giuste in più casi di passaggi che si susseguono sulla stessa unità.** Dopo la
+  fine di una locazione, la costituzione, la riserva e l'estinzione dell'usufrutto su un'unità divisa fra piena proprietà e usufrutto non
+  sbagliano più la parte da regolare a mano, e la vendita dopo una fermata a carico di più persone nomina solo le persone di quella
+  fermata, se è stata registrata dalla beta.53 in poi.
+- **La rivendita dell'erede che aveva anche comprato una parte**, se quell'acquisto aveva lasciato una fermata, dice a carico di chi è:
+  dell'erede e delle persone delle fermate di prima insieme, senza indicare il Wallet, perché la parte di ognuno la decide
+  l'amministratore. Se l'erede è l'unico erede di chi gli aveva venduto, la fermata è sua, con il Wallet.
+- **Il riparto di un'unità divisa fra piena proprietà e usufrutto** legge anche la riga a quota zero chiusa il giorno prima di un'altra
+  dello stesso ruolo, che vale dalla sua data d'inizio. Cambiano i piani generati o ricalcolati dopo l'aggiornamento; quelli già emessi
+  restano.
+- **Le frasi dei passaggi nominano la gestione una volta sola:** «sulla Gestione ordinaria», non «sulla gestione Gestione ordinaria».
+- **Guide.** La «Guida: registrare un passaggio» e la «Guida: ruoli e usufrutto» dicono il comportamento di adesso.
+
+---
+
 ## [1.11.0-beta.53] - Il saldo legato al passaggio
 
 **Tocca lo schema del database: una colonna nuova, `passaggio_id`, nella tabella dei saldi, con la chiave esterna sui passaggi di

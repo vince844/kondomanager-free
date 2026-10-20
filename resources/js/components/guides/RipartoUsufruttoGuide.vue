@@ -125,7 +125,7 @@ defineEmits(['update:open']);
             <div class="mt-4 p-4 rounded-lg bg-slate-100 dark:bg-slate-800 flex gap-3 text-[13px]">
               <Info class="w-5 h-5 text-slate-500 shrink-0" />
               <div>
-                Un ruolo registrato con quota zero conta come assente. E se un ruolo copre solo una parte dell'anno — un inquilino che lascia l'appartamento a giugno — i giorni scoperti passano al ruolo successivo della catena.
+                Un ruolo registrato con quota zero non paga: la voce passa al ruolo successivo della catena. La sua riga conta solo come riga chiusa il giorno prima di un'altra dello stesso ruolo, che allora vale dalla sua data d'inizio. E se un ruolo copre solo una parte dell'anno — un inquilino che lascia l'appartamento a giugno — i giorni scoperti passano al ruolo successivo della catena.
               </div>
             </div>
           </section>

@@ -42,6 +42,8 @@ use App\Models\Gestionale\ContributoVersato;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
+require_once __DIR__.'/ScenarioLastrico.php';
+
 uses(RefreshDatabase::class);
 
 test('la copertura già versata si scomputa tutta, anche se la spesa è decurtata', function () {

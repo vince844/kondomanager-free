@@ -123,3 +123,26 @@ describe('PassaggioProprietaGuide — la chiusura dei subentri', () => {
         expect(testo).toContain('si legge «a favore di …» e non con il segno meno');
     });
 });
+
+describe('PassaggioProprietaGuide — lo storico della prima vendita dopo la seconda (decisione 108)', () => {
+    test('dice quando lo storico della prima vendita dice quanto è passato: se la parte rivenduta viene da quella vendita sola, non con più acquisti o con una parte avuta con la successione nella stessa riga; e la seconda vendita dell\'erede di chi aveva venduto è sua, con il Wallet, solo se è l\'unico erede, mentre con più eredi resta a carico di tutti loro, senza il Wallet', () => {
+        const testo = testoDellaGuida();
+
+        expect(testo).toContain('lo storico della prima dice quanto è passato quando la parte rivenduta viene da quella vendita sola');
+        expect(testo).toContain('non quando chi rivende ha comprato da più persone o ha nella stessa riga anche una parte avuta con la successione');
+        expect(testo).toContain('il programma non divide la cifra fra le origini, e la rivendita dice a carico di chi resta');
+        expect(testo).toContain('Se chi rivende è l\'unico erede di chi gli aveva venduto, la seconda vendita è la sua, con il Wallet, come la fermata dell\'erede che non ha comprato niente, e lo storico della prima non dice quanto è passato');
+        expect(testo).toContain('se gli eredi sono più d\'uno, resta a carico di tutti loro insieme, o di chi rivende se la fermata della prima vendita è già stata regolata, senza il Wallet');
+    });
+
+    test('controprova — non dice più, senza condizioni, che lo storico della prima dice quanto è passato', () => {
+        expect(testoDellaGuida()).not.toContain('e lo storico della prima dice quanto è passato. Quando poi');
+    });
+
+    test('controprova — non dice più che la seconda vendita è sempre dell\'erede, con il Wallet, «come la fermata di ogni erede»', () => {
+        const testo = testoDellaGuida();
+
+        expect(testo).not.toContain('come la fermata di ogni erede');
+        expect(testo).not.toContain('se chi rivende è l\'erede di chi gli aveva venduto, la seconda vendita è la sua');
+    });
+});

@@ -22,6 +22,7 @@ use App\Helpers\MoneyHelper;
 use App\Models\Esercizio;
 use App\Services\Gestionale\DoubleEntryValidator;
 use App\Services\Gestionale\PianoCreditoIncasso;
+use App\Services\Subentro\FrasiObbligati;
 use Illuminate\Support\Facades\DB;
 
 class StoreIncassoRateAction
@@ -457,7 +458,7 @@ class StoreIncassoRateAction
                     // fra gestioni dice di essere stata confermata.
                     $gestioneAccredito = $quotaAccredito->rata?->pianoRate?->gestione;
                     if ($gestioneAccredito && (int) $gestioneAccredito->id !== (int) $gestioneId) {
-                        $noteEccedenza .= " — gestione {$gestioneAccredito->nome}, scelta dall'amministratore";
+                        $noteEccedenza .= ' — ' . FrasiObbligati::gestione($gestioneAccredito->nome) . ", scelta dall'amministratore";
                     }
                 } else {
                     $quotaAccredito = $quotaPerEccedenza;

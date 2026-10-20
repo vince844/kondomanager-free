@@ -73,8 +73,9 @@ const riga = (id: number, padre: number, descrizione: string, residuo: number, s
 const CREDITO_UGO = riga(501, 90, 'Saldo iniziale', -100, '2026-01-01');
 const DEBITO_UGO = riga(601, 91, 'Rata n.3', 300, '2026-03-31');
 
-const rataDiElsa = (id: number, numero: number, scadenza: string, residuo: number, gestione = ORDINARIA) => ({
-    id, numero_rata: numero, piano: 'Piano 2026', gestione_id: gestione.id, gestione: gestione.nome, scadenza,
+// `gestione_frase` è la gestione come la scrive una frase: la compone il server (`FrasiObbligati::gestione`), la pagina la stampa com'è.
+const rataDiElsa = (id: number, numero: number, scadenza: string, residuo: number, gestione = ORDINARIA, frase = `gestione ${gestione.nome}`) => ({
+    id, numero_rata: numero, piano: 'Piano 2026', gestione_id: gestione.id, gestione: gestione.nome, gestione_frase: frase, scadenza,
     residuo, pagata: residuo === 0,
 });
 
@@ -310,6 +311,19 @@ describe('la rata della parte in più (30.8)', () => {
 
         expect(conferma(wrapper).attributes('disabled')).toBeUndefined();
         expect(wrapper.text()).toContain('È una rata della gestione Tetto 2026: la parte in più passa a quella gestione.');
+    });
+
+    // Beta.54: «Gestione ordinaria» è il nome della gestione di base di ogni condominio nuovo, e la pagina non ripete la parola davanti.
+    test('l\'altra gestione si chiama «Gestione ordinaria»: la frase la nomina una volta sola', async () => {
+        const base = { id: 8, nome: 'Gestione ordinaria', tipo: 'ordinaria' };
+        const wrapper = await apri([DEBITO_UGO], SOLO_DEBITO, [rataDiElsa(732, 1, '30/09/2026', 500, base, 'Gestione ordinaria')]);
+        await versatoDa(wrapper, ELSA);
+
+        form(wrapper).quota_parte_in_piu_id = 732;
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('È una rata della Gestione ordinaria: la parte in più passa a quella gestione.');
+        expect(wrapper.text()).not.toContain('gestione Gestione ordinaria');
     });
 });
 

@@ -1065,7 +1065,10 @@ test('il modulo riceve le rate emesse di chi ha versato, per scegliere dove va l
         ->and($rate[1]['residuo'])->toEqual(200)
         ->and($rate[1]['gestione_id'])->toBe($s->gestione->id)
         ->and($rate[1]['gestione'])->toBe('Ordinaria')
-        ->and(array_keys($rate[1]))->toEqualCanonicalizing(['id', 'numero_rata', 'gestione_id', 'gestione', 'scadenza', 'residuo', 'pagata']);
+        // Beta.54: il server manda anche la gestione come la scrive una frase (`FrasiObbligati::gestione`), e la chiave entra nell'elenco che questo
+        // test fissava; il caso del nome che comincia già per «Gestione» è nel test dopo.
+        ->and($rate[1]['gestione_frase'])->toBe('gestione Ordinaria')
+        ->and(array_keys($rate[1]))->toEqualCanonicalizing(['id', 'numero_rata', 'gestione_id', 'gestione', 'gestione_frase', 'scadenza', 'residuo', 'pagata']);
 });
 
 test('registro e mastrino danno anche chi ha versato e il debitore separati, per la cella a due righe (R9)', function () {
@@ -1206,6 +1209,53 @@ test('la rotta delle rate di chi ha versato rifiuta un id che non sia un numero 
     $this->actingAs(utenteDellEstrattoPerConto())
         ->getJson(route('admin.gestionale.rate-di-chi-ha-versato', ['condominio' => $s->condominio->id]) . '?anagrafica_id[]=' . $s->compratore->id)
         ->assertStatus(422);
+});
+
+test('la rotta delle rate di chi ha versato non mostra niente di un altro condominio: chi sta solo là non ha rate, chi sta in tutti e due ha solo quelle di questo, e senza il pannello non si entra', function () {
+    $s = scenarioPerContoDi();
+    $qui = quotaDelCompratore($s, $s->rata5);
+    $altro = Condominio::create([
+        'nome' => 'Condominio Via dei Pini', 'uuid' => (string) Str::uuid(),
+        'indirizzo' => 'Via dei Pini 9', 'citta' => 'Milano', 'cap' => '20100', 'provincia' => 'MI',
+    ]);
+    $gestioneAltra = Gestione::create(['condominio_id' => $altro->id, 'nome' => 'Riscaldamento riservato del palazzo dei Pini', 'tipo' => 'ordinaria', 'data_inizio' => '2026-01-01']);
+    $pianoAltro = PianoRate::create(['condominio_id' => $altro->id, 'gestione_id' => $gestioneAltra->id, 'nome' => 'Piano dei Pini', 'numero_rate' => 1]);
+    $rataAltra = Rata::create(['piano_rate_id' => $pianoAltro->id, 'numero_rata' => 1, 'data_scadenza' => '2026-07-31', 'importo_totale' => 10000, 'stato' => 'emessa']);
+    $immobileAltro = Immobile::create([
+        'condominio_id' => $altro->id, 'nome' => 'Interno 7', 'descrizione' => 'Appartamento', 'interno' => '7', 'foglio' => '2', 'particella' => '2', 'subalterno' => '7',
+    ]);
+    // Una persona che sta solo nell'altro condominio, con una rata emessa là.
+    $soloLa = Anagrafica::create([
+        'nome' => 'Bianca Colli', 'email' => 'bianca-colli@test.it', 'indirizzo' => 'Via dei Pini 9', 'cap' => '20100', 'citta' => 'Milano', 'provincia' => 'MI', 'codice_fiscale' => 'CLLBNC80A41F205Y',
+    ]);
+    $soloLa->condomini()->attach($altro->id);
+    RataQuote::create([
+        'rata_id' => $rataAltra->id, 'anagrafica_id' => $soloLa->id, 'immobile_id' => $immobileAltro->id,
+        'importo' => 10000, 'importo_pagato' => 0, 'stato' => 'da_pagare', 'data_scadenza' => '2026-07-31',
+    ]);
+    // Chi ha versato ha una rata emessa anche nell'altro condominio.
+    quotaDelCompratore($s, $rataAltra, 10000);
+
+    $rotta = route('admin.gestionale.rate-di-chi-ha-versato', ['condominio' => $s->condominio->id]);
+
+    // Senza accesso non c'è risposta (401), e senza il pannello dell'amministratore la rotta è chiusa (403).
+    $this->getJson($rotta . '?anagrafica_id=' . $s->compratore->id)->assertUnauthorized();
+    $this->actingAs(\App\Models\User::factory()->create())->getJson($rotta . '?anagrafica_id=' . $s->compratore->id)->assertForbidden();
+    $amministratore = utenteDellEstrattoPerConto();
+
+    // Un elenco al posto dell'id è un errore (422), non l'anagrafica n.1 di un altro palazzo.
+    $this->actingAs($amministratore)->getJson($rotta . '?anagrafica_id[]=' . $s->compratore->id)->assertStatus(422);
+
+    // Chi sta solo nell'altro condominio non ha rate in questo: l'elenco è vuoto, non un errore e non le rate di là.
+    $risposta = $this->actingAs($amministratore)->getJson($rotta . '?anagrafica_id=' . $soloLa->id)->assertOk();
+    expect($risposta->json('rate'))->toBe([])
+        ->and($risposta->getContent())->not->toContain('Pini');
+
+    // Chi sta in tutti e due ha solo la rata di questo, e nella risposta non c'è niente dell'altro: né il nome della gestione né la rata.
+    $risposta = $this->actingAs($amministratore)->getJson($rotta . '?anagrafica_id=' . $s->compratore->id)->assertOk();
+    expect(array_column($risposta->json('rate'), 'id'))->toBe([$qui->id])
+        ->and($risposta->getContent())->not->toContain('riservato')
+        ->and($risposta->getContent())->not->toContain('Pini');
 });
 
 /** Una seconda gestione con una rata emessa e la quota del venditore su di essa. */
@@ -1465,4 +1515,38 @@ test('gestione, cassa e rate mandate come elenco sono un errore, non la gestione
         ->assertSessionHasErrors('dettaglio_pagamenti.0.rata_id');
 
     expect(ScritturaContabile::count())->toBe(0);
+});
+
+test('la nota della parte in più in un\'altra gestione nomina la gestione una volta sola: «Gestione ordinaria», non «gestione Gestione ordinaria» (beta.54)', function (string $nome, string $detta) {
+    $s = scenarioPerContoDi();
+    $altra = Gestione::create(['condominio_id' => $s->condominio->id, 'nome' => $nome, 'tipo' => 'straordinaria', 'data_inizio' => '2026-01-01']);
+    $pianoAltro = PianoRate::create(['condominio_id' => $s->condominio->id, 'gestione_id' => $altra->id, 'nome' => 'Altro piano', 'numero_rate' => 1]);
+    $rataAltra = Rata::create(['piano_rate_id' => $pianoAltro->id, 'numero_rata' => 1, 'data_scadenza' => '2026-09-30', 'importo_totale' => 50000, 'stato' => 'emessa']);
+    $quotaAltra = quotaDelCompratore($s, $rataAltra, 50000);
+
+    incassaPerConto($s, ['versato_da_id' => $s->compratore->id, 'importo_totale' => 350.00, 'eccedenza' => 50.00, 'quota_parte_in_piu_id' => $quotaAltra->id]);
+
+    $riga = RigaScrittura::where('anagrafica_id', $s->compratore->id)->where('tipo_riga', 'avere')->firstOrFail();
+    $attesa = " — {$detta}, scelta dall'amministratore";
+    expect($riga->note)->toContain($attesa)
+        ->and($riga->note)->not->toContain('gestione Gestione');
+})->with([
+    'il nome di base che il programma dà ad ogni condominio' => ['Gestione ordinaria', 'Gestione ordinaria'],
+    'un nome senza la parola' => ['Tetto', 'gestione Tetto'],
+]);
+
+test('il modulo riceve la gestione delle rate come la scrive una frase, con la parola una volta sola (beta.54)', function () {
+    $s = scenarioPerContoDi();
+    $base = Gestione::create(['condominio_id' => $s->condominio->id, 'nome' => 'Gestione ordinaria', 'tipo' => 'ordinaria', 'data_inizio' => '2026-01-01']);
+    $pianoBase = PianoRate::create(['condominio_id' => $s->condominio->id, 'gestione_id' => $base->id, 'nome' => 'Piano di base', 'numero_rate' => 1]);
+    $rataBase = Rata::create(['piano_rate_id' => $pianoBase->id, 'numero_rata' => 1, 'data_scadenza' => '2026-08-31', 'importo_totale' => 20000, 'stato' => 'emessa']);
+    $quotaBase = quotaDelCompratore($s, $rataBase, 20000);
+
+    $rate = $this->actingAs(utenteDellEstrattoPerConto())
+        ->getJson(route('admin.gestionale.rate-di-chi-ha-versato', ['condominio' => $s->condominio->id, 'anagrafica_id' => $s->compratore->id]))
+        ->assertOk()->json('rate');
+
+    $diBase = collect($rate)->firstWhere('id', $quotaBase->id);
+    expect($diBase['gestione'])->toBe('Gestione ordinaria')
+        ->and($diBase['gestione_frase'])->toBe('Gestione ordinaria');
 });

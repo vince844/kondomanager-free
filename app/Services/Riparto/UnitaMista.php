@@ -90,11 +90,12 @@ final class UnitaMista
 
         $insieme = $periodo instanceof InsiemePeriodi ? $periodo : InsiemePeriodi::uno($periodo);
 
-        // Il tratto in cui ogni riga vale nel periodo (D7: la data d'inizio conta solo con un predecessore della stessa
-        // tipologia, quindi la coppia per il predecessore è quella della riga, non l'insieme).
+        // Il tratto in cui ogni riga vale nel periodo. La regola D7 (la data d'inizio conta solo con un predecessore della stessa tipologia chiuso il
+        // giorno prima) si legge su tutte le righe attive della tipologia, anche a quota zero, come la leggono la catena del ripiego, il peso e i giorni
+        // scoperti: una riga a quota zero chiusa il giorno prima è un predecessore. I tratti e il controllo del cento contano invece solo le righe con una quota.
         $tratti = [];
         foreach ([[$ruoloRisolto, $righeRuolo], [$gemello->value, $righeGemello]] as [$ruolo, $righe]) {
-            $stessaCoppia = $attive->filter(fn ($r) => ($r->tipologia ?? null) === $ruolo)->values();
+            $stessaCoppia = $righeUnita->filter(fn ($r) => (bool) ($r->attivo ?? false) && ($r->tipologia ?? null) === $ruolo)->values();
             foreach ($righe as $riga) {
                 $tratto = $this->titolari->trattoEffettivo($riga, $insieme, $stessaCoppia);
                 if ($tratto !== null) {

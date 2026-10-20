@@ -585,4 +585,22 @@ final class FrasiObbligati
         return (preg_match('/^[aàAÀ]/u', $nome) === 1 ? 'ad ' : 'a ') . $nome;
     }
 
+    /**
+     * «gestione Ordinaria 2026», «Gestione ordinaria»: il nome di una gestione come lo scrive una frase, che ci mette davanti «sulla», «della» o
+     * le parentesi e non ripete la parola. «Gestione ordinaria» è il nome che il programma dà alla gestione di base di ogni condominio nuovo
+     * (`CondominioService`): «sulla gestione Gestione ordinaria» diceva due volte la stessa cosa. Il nome che comincia già per la parola intera,
+     * in qualunque maiuscola, resta com'è; ogni altro la riceve davanti («Gestioni 2026» non comincia per la parola). Il nome tiene la sua
+     * maiuscola, perché è un nome proprio: «sulla Gestione ordinaria», «sulla gestione riscaldamento 2026». Senza un nome resta la parola. È
+     * l'unica copia della regola: ogni frase che nomina una gestione la chiama invece di scrivere «gestione» nel formato.
+     */
+    public static function gestione(?string $nome): string
+    {
+        $nome = trim((string) $nome);
+        if ($nome === '') {
+            return 'gestione';
+        }
+
+        return preg_match('/^gestione\b/iu', $nome) === 1 ? $nome : 'gestione ' . $nome;
+    }
+
 }

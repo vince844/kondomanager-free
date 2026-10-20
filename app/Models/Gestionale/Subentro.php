@@ -7,6 +7,7 @@ use App\Models\Condominio;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\User;
+use App\Services\Subentro\FrasiObbligati;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -466,7 +467,7 @@ class Subentro extends Model
 
         return $voci->isEmpty() ? null : $voci->map(fn (array $v) => $piuEredi && ! array_key_exists('persone', $v)
             // Rilievo denaro-g1 del giro sulle correzioni: chi riceve l'unità per legato non è un erede.
-            ? sprintf($this->legato() ? 'il conguaglio sulla gestione %s, ma le cifre di ciascuno non sono nel registro' : 'il conguaglio sulla gestione %s, ma le cifre per erede non sono nel registro', $v['gestione'] ?? '?')
+            ? sprintf($this->legato() ? 'il conguaglio sulla %s, ma le cifre di ciascuno non sono nel registro' : 'il conguaglio sulla %s, ma le cifre per erede non sono nel registro', FrasiObbligati::gestione($v['gestione'] ?? '?'))
             : self::cifreInParole($v, $this->anagrafica_uscente_id !== null ? (int) $this->anagrafica_uscente_id : null))->join('; ');
     }
 
@@ -482,12 +483,12 @@ class Subentro extends Model
     {
         $persone = collect($voce['persone'] ?? [])->filter(fn ($p) => (int) ($p['importo'] ?? 0) !== 0 && ($chiEsce === null || (int) ($p['anagrafica_id'] ?? 0) !== $chiEsce))->values();
         if ($persone->count() < 2) {
-            return sprintf('%s sulla gestione %s', \App\Helpers\MoneyHelper::format(abs((int) ($voce['importo'] ?? 0))), $voce['gestione'] ?? '?');
+            return sprintf('%s sulla %s', \App\Helpers\MoneyHelper::format(abs((int) ($voce['importo'] ?? 0))), FrasiObbligati::gestione($voce['gestione'] ?? '?'));
         }
         $pezzi = $persone->map(fn ($p) => sprintf('%s a %s di %s', \App\Helpers\MoneyHelper::format(abs((int) $p['importo'])), (int) $p['importo'] < 0 ? 'credito' : 'debito', $p['nome'] ?? '?'))->all();
         $ultimo = array_pop($pezzi);
 
-        return sprintf('%s e %s sulla gestione %s', implode(', ', $pezzi), $ultimo, $voce['gestione'] ?? '?');
+        return sprintf('%s e %s sulla %s', implode(', ', $pezzi), $ultimo, FrasiObbligati::gestione($voce['gestione'] ?? '?'));
     }
 
     /**

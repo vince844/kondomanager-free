@@ -264,7 +264,7 @@ const mostraSceltaCredito = computed(() => conVersatoDa.value && creditoPosizion
 const creditoPrimaScelto = computed(() => conVersatoDa.value && form.credito_prima === true);
 
 /** Le rate emesse di chi ha versato, fra cui va la parte in più (30.8). Arrivano dal server quando si sceglie la persona. */
-const rateDiChiHaVersato = ref<Array<{ id: number; numero_rata: number | string; gestione_id: number; gestione: string | null; scadenza: string | null; residuo: number; pagata: boolean }>>([]);
+const rateDiChiHaVersato = ref<Array<{ id: number; numero_rata: number | string; gestione_id: number; gestione: string | null; gestione_frase: string; scadenza: string | null; residuo: number; pagata: boolean }>>([]);
 let caricamentoRateDiChiHaVersato = 0;
 const caricaRateDiChiHaVersato = async (anagraficaId: number | null) => {
     const mio = ++caricamentoRateDiChiHaVersato;
@@ -1351,7 +1351,7 @@ onMounted(async () => {
                                         </template>
                                     </v-select>
                                     <p v-if="parteInPiuFuoriGestione && rataParteInPiu" class="mt-1 text-[11px] leading-snug text-amber-700 font-medium">
-                                        È una rata della gestione {{ rataParteInPiu.gestione }}: la parte in più passa a quella gestione.
+                                        È una rata della {{ rataParteInPiu.gestione_frase }}: la parte in più passa a quella gestione.
                                     </p>
                                     <InputError :message="form.errors.quota_parte_in_piu_id" class="mt-1" />
                                 </template>

@@ -9,6 +9,9 @@
  * data di inizio a metà anno non divide l'entrata (salvo una riga di usufrutto chiusa il giorno prima) e la data di fine sì; il giorno per
  * giorno lo fa «Registra passaggio».
  *
+ * Il ruolo a quota zero (decisione 107.2): non paga, ma la sua riga è il predecessore che fa valere la data d'inizio di un'altra riga dello stesso ruolo, anche
+ * sull'unità mista; la guida non lo dice «assente».
+ *
  * Una voce di entrata del programma non è solo un affitto o un canone (un rimborso, un recupero spese non sono frutti civili): la guida non dice che
  * ogni entrata è un frutto civile, e dice che la ragione dell'art. 984 c.c. vale «per un affitto o un canone».
  *
@@ -114,5 +117,21 @@ describe('RipartoUsufruttoGuide — le voci di entrata e l\'art. 984 c.c.', () =
         expect(testo).toContain('Anche le voci di entrata sul «Proprietario» passano sull\'«Usufruttuario»');
         expect(testo).toContain('etichetta «Entrata»');
         expect(testo).toContain('per un affitto o un canone la ragione è l\'art. 984 c.c., non l\'art. 1004 c.c., che riguarda le spese');
+    });
+});
+
+describe('RipartoUsufruttoGuide — il ruolo a quota zero', () => {
+    test('dice che un ruolo a quota zero non paga e passa la voce al ruolo successivo, ma la sua riga conta come riga chiusa il giorno prima di un\'altra dello stesso ruolo', () => {
+        const testo = testoDellaGuida();
+
+        expect(testo).toContain('Un ruolo registrato con quota zero non paga: la voce passa al ruolo successivo della catena.');
+        expect(testo).toContain('La sua riga conta solo come riga chiusa il giorno prima di un\'altra dello stesso ruolo, che allora vale dalla sua data d\'inizio.');
+    });
+
+    test('controprova — non dice che un ruolo a quota zero «conta come assente»: la sua riga è il predecessore che fa valere la data d\'inizio, come dice il punto sulle entrate', () => {
+        const testo = testoDellaGuida();
+
+        expect(testo).not.toContain('conta come assente');
+        expect(testo).toContain('salvo una riga di usufrutto chiusa il giorno prima');
     });
 });
