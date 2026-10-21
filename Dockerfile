@@ -32,7 +32,7 @@
 # base: PHP con le estensioni, nginx e supervisor. Comune a vendor e runtime così le estensioni
 # si installano una volta sola e composer verifica la piattaforma giusta.
 # ---------------------------------------------------------------------------------------------
-FROM php:8.4-fpm-bookworm AS base
+FROM php:8.4.27-fpm-bookworm AS base
 
 # I pacchetti -dev servono solo a compilare le estensioni: dopo restano le librerie di runtime
 # (trovate con ldd sui .so compilati, com'è d'uso nell'immagine ufficiale di PHP) e i -dev se ne
