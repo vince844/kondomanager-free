@@ -133,13 +133,6 @@ final class RegistraSubentroAction
                 if ($sceltaDelConguaglio && ($dati['conguaglio'] ?? null) === null) {
                     throw ValidationException::withMessages(['conguaglio' => 'Scegli se scrivere il conguaglio: il programma non lo sceglie al posto tuo.']);
                 }
-                // Decisione 79 (2): con un coinquilino che resta la coppia non c'è, e nemmeno la scelta. Un valore mandato a mano si rifiuta
-                // sul campo (rilievo SIC-2 della .48), non si ignora. La casella di prima, che un modulo rimasto aperto può mandare, no:
-                // senza coppie non ha mai contato (verifica S5, R13).
-                if ($tipo === 'fine_locazione' && ! $sceltaDelConguaglio && ($dati['conguaglio'] ?? null) !== null && empty($dati['rinuncia_conguaglio'])
-                    && ($anteprima['rate']['fermata_coinquilino'] ?? []) !== []) {
-                    throw ValidationException::withMessages(['conguaglio' => 'La locazione continua con un coinquilino: il programma non propone il conguaglio dei giorni dopo l\'uscita, e la scelta non c\'è. Ricarica la pagina.']);
-                }
                 $rinuncia = $coppieProposte && ($sceltaDelConguaglio
                     ? $dati['conguaglio'] === Subentro::NON_SCRIVERE_IL_CONGUAGLIO
                     : $tipo !== 'successione' && ! empty($dati['rinuncia_conguaglio']));
@@ -190,6 +183,9 @@ final class RegistraSubentroAction
 
                 // 4. Il passaggio.
                 $periodiDellaCoppia = $sceltaDelConguaglio ? self::periodiDellaCoppia($anteprima['rate']['conguaglio']['coppie']) : [];
+                // Coda 245 (1.11.0-beta.55): la regola del piano, gruppo per gruppo, dove la locazione continua con un coinquilino; anche senza una coppia (e
+                // quindi senza la scelta), quando la prima fine ha solo il resto: la fine è l'anello dei passaggi dopo, e il prospetto la legge.
+                $delPiano = self::delPiano($anteprima['rate']['conguaglio']['per_gestione'] ?? [], $coinquiliniLetti, $sceltaDelConguaglio);
                 $subentro = Subentro::create([
                     'condominio_id'          => $condominio->id,
                     'immobile_id'            => $immobile->id,
@@ -212,11 +208,13 @@ final class RegistraSubentroAction
                         // Decisione 72: la scelta della successione e del legato; dalla .50 anche della locazione (decisione 77), con i
                         // periodi della coppia della fine senza un nuovo inquilino.
                         + ($sceltaDelConguaglio ? ['conguaglio' => ['scelta' => $rinuncia ? Subentro::CONGUAGLIO_NON_SCRITTO : Subentro::CONGUAGLIO_SCRITTO]
-                            + ($periodiDellaCoppia !== [] ? ['periodi' => $periodiDellaCoppia] : [])] : [])
+                            + ($periodiDellaCoppia !== [] ? ['periodi' => $periodiDellaCoppia] : [])
+                            + ($delPiano !== [] ? ['piano' => $delPiano] : [])] : ($delPiano !== [] ? ['conguaglio' => ['piano' => $delPiano]] : []))
                         // Decisione 46: con la rinuncia, ciò che le parti hanno regolato fra loro, per gestione (e, dalla .48, per persona;
                         // dalla .50, nella locazione, anche chi esce, con il segno dei saldi).
                         + ($rinuncia ? ['regolato_fuori' => Subentro::regolatoFuoriDalleCoppie($anteprima['rate']['conguaglio']['coppie'],
-                            $tipo === 'fine_locazione' && $uscente !== null ? ['anagrafica_id' => (int) $uscente->anagrafica_id, 'nome' => (string) $uscente->anagrafica?->nome] : null)] : [])
+                            $tipo === 'fine_locazione' && $uscente !== null ? ['anagrafica_id' => (int) $uscente->anagrafica_id, 'nome' => (string) $uscente->anagrafica?->nome] : null,
+                            $tipo === 'fine_locazione' && $uscente !== null && $entrante !== null)] : [])
                         // Decisioni 77 (3) e 79 (2): le fermate, perché lo storico le dica e il supporto completo, dopo la 1.11, le ritrovi; e
                         // all'inizio di una locazione quanto resta da regolare di una fermata di prima (`fermata_ridotta`).
                         + (($anteprima['rate']['fermate_dopo_scrivi'] ?? []) !== [] ? ['fermata_dopo_scrivi' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_dopo_scrivi'])] : [])
@@ -225,7 +223,8 @@ final class RegistraSubentroAction
                         // all'inizio di una locazione: il registro le conserva perché lo storico e il laboratorio le ritrovino.
                         + (($anteprima['rate']['fermate_risalgono'] ?? []) !== [] ? ['fermata_risale' => array_map([FermataDopoScrivi::class, 'perIlRegistro'], $anteprima['rate']['fermate_risalgono'])] : [])
                         + (($anteprima['rate']['giorni_del_conduttore'] ?? []) !== [] ? ['giorni_del_conduttore' => $anteprima['rate']['giorni_del_conduttore']] : [])
-                        + (($anteprima['rate']['fermata_coinquilino'] ?? []) !== [] ? ['fermata_coinquilino' => $anteprima['rate']['fermata_coinquilino']] : [])
+                        // Coda 245 (decisione 95.6 b): ciò che la regola del piano cambierebbe e la coppia di un passaggio dopo non scrive.
+                        + (($anteprima['rate']['resto_del_piano'] ?? []) !== [] ? ['resto_del_piano' => $anteprima['rate']['resto_del_piano']] : [])
                         + ($coinquiliniLetti !== [] ? ['coinquilini_letti' => $coinquiliniLetti] : [])
                         + (($anteprima['rate']['rinnovo_dopo_scrivi'] ?? []) !== [] ? ['rinnovo_dopo_scrivi' => $anteprima['rate']['rinnovo_dopo_scrivi']] : []),
                 ]);
@@ -309,11 +308,47 @@ final class RegistraSubentroAction
             ->groupBy(fn (array $c) => $c['gestione_id'] . '|' . $c['immobile_id'] . '|' . ($c['esercizio_id'] ?? ''))
             ->map(fn ($g) => ['gestione_id' => (int) $g->first()['gestione_id'], 'immobile_id' => (int) $g->first()['immobile_id'],
                 'esercizio_id' => $g->first()['esercizio_id'] !== null ? (int) $g->first()['esercizio_id'] : null,
-                'importo' => (int) $g->sum('importo'), 'periodi' => $g->first()['giorni_dopo']]
+                // Coda 245 (1.11.0-beta.55): con la regola del piano i periodi sono solo quelli del ripiego (i giorni che nessun conduttore copre),
+                // e l'importo è la sua parte, non la somma della coppia: le righe dei conduttori non sono giorni dopo l'uscita.
+                'importo' => ($g->first()['regola'] ?? null) === 'piano' ? (int) array_sum(array_column($g->first()['giorni_dopo'], 'importo')) : (int) $g->sum('importo'),
+                'periodi' => $g->first()['giorni_dopo']]
                 // Fase 1-bis della .50 (R2): i giorni dopo l'uscita che nessuno copriva, la cui parte è rimasta nelle rate di chi esce. Il
                 // prospetto degli oneri accessori li legge da qui.
                 + (! empty($g->first()['scoperti']) ? ['scoperti' => $g->first()['scoperti']] : []))
             ->values()->all();
+    }
+
+    /**
+     * Coda 245 (1.11.0-beta.55): la regola del piano nel registro (`conguaglio.piano`), un gruppo per gestione, unità ed esercizio dove la
+     * locazione continua con un coinquilino: chi esce, i coinquilini letti alla registrazione, le righe scritte con il segno (`parti`), il resto
+     * che la regola lascia fra le parti, chi è del ripiego, i giorni che non copre nessuno, e voce per voce la parte di prima e di dopo di
+     * ognuno (la fotografia che il prospetto mette voce per voce). `segue_fine_id` è la fine con la regola del piano che questo passaggio
+     * segue: nessuna, per la fine stessa; per un passaggio dopo sullo stesso anello (decisione 95.6 b: la fine di chi restava, il cambio
+     * d'inquilino) quella fine, con chi era già uscito (`gia_usciti`) e chi entra nel cambio (`entra`). Chi lo legge: lo storico, il pannello
+     * dei passaggi dopo (`RegolaDelPiano::sullAnello`), le fermate dalla parte del proprietario, «Annulla il conguaglio», il prospetto, il laboratorio.
+     *
+     * Senza la scelta (nessuna coppia) solo la prima fine con il resto: senza `conguaglio.piano` i passaggi dopo tornerebbero alla regola dei giorni,
+     * mentre la frase della fine indica una strada (il Wallet, o il prospetto) che porta al piano. Un passaggio dopo senza coppia è già sull'anello della
+     * sua fine, e il resto lo conserva `resto_del_piano`. Dopo una fine delle beta con la fermata del coinquilino sull'unità e la gestione il resto si
+     * dice e basta (`dopo_la_fermata_del_coinquilino`).
+     *
+     * @param list<array<string, mixed>> $perGestione
+     * @param list<array{immobile_id: int, restano: list<string>}> $coinquiliniLetti
+     * @return list<array<string, mixed>>
+     */
+    private static function delPiano(array $perGestione, array $coinquiliniLetti, bool $conLaScelta): array
+    {
+        $restano = collect($coinquiliniLetti)->mapWithKeys(fn (array $c) => [(int) $c['immobile_id'] => $c['restano']])->all();
+
+        return array_values(array_map(fn (array $g) => [
+            'gestione_id' => (int) $g['gestione_id'], 'immobile_id' => (int) $g['immobile_id'],
+            'esercizio_id' => $g['esercizio_id'] !== null ? (int) $g['esercizio_id'] : null,
+            'uscente_id' => (int) $g['piano']['uscente_id'], 'coinquilini' => $restano[(int) $g['immobile_id']] ?? [],
+            'segue_fine_id' => isset($g['piano']['segue_fine_id']) ? (int) $g['piano']['segue_fine_id'] : null,
+        ] + array_intersect_key($g['piano'], array_flip(['parti', 'resto', 'ripiego', 'periodi', 'nessuno', 'scoperti', 'giorni', 'nomi', 'voci', 'gia_usciti', 'entra'])),
+            array_filter($perGestione, fn (array $g) => ($g['regola'] ?? null) === 'piano' && ($g['piano'] ?? null) !== null
+                && (($g['piano']['parti'] ?? []) !== [] || ($g['piano']['resto'] ?? []) !== [])
+                && ($conLaScelta || (! isset($g['piano']['segue_fine_id']) && empty($g['piano']['dopo_la_fermata_del_coinquilino']))))));
     }
 
     /**

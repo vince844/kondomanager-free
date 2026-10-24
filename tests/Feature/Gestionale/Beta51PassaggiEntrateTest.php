@@ -567,18 +567,21 @@ it('sentinella — O-252.7c — la seconda vendita (Elsa a Carlo l\'1/11) dopo l
         ->and(b51aFrasiConMenoEuro(['f' => b51aTestiDelleFermate($a)]))->toBe([], 'Il pannello dice la fermata con una cifra «€ -».');
 });
 
-it('O-252.7c — il coinquilino che resta con la coppia a credito: i giorni dopo l\'uscita di Ines (€ 59,26 di credito) restano nelle sue rate, detti con le parole', function () {
-    // Fonte: Ines e Dora al 50 %: spese 18000 × 184/365 = 9074; antenna 15000 (la sua metà, tutta dopo l'uscita) → 9074 − 15000 = −5926.
-    // Misurato su TEST: fermata_coinquilino cifra −5926, «€ 59,26 di credito».
+it('O-252.7c — il coinquilino che resta con l\'entrata che pesa più della spesa: con la regola del piano Ines ha un debito di € 89,34 e Dora un credito, detti con le parole', function () {
+    // Coda 245 (1.11.0-beta.55): prima la fine aveva la fermata del coinquilino, «€ 59,26 di credito» (i giorni dopo l'uscita di Ines: spese
+    // 18000 × 184/365 = 9074, antenna 15000 → −5926), e nessuna coppia. Con la regola del piano la coppia c'è: la spesa
+    // si ridivide sull'anno, 36000 × 9050/27300 → Ines 11934 (− 6066); l'antenna − 30000 dal 1/10 è tutta di Dora, e Ines riprende i suoi
+    // − 15000 (+ 15000): Ines + 8934 (debito), Dora − 8934 (credito).
     $s = fclScenario([['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
     b51aCapitolo($s, 'Affitto antenna', 'entrata', 100000, '2026-10-01', '2026-12-31');
     fclGenera($s);
     fclEmetti($this, $s, '2026-06-30');
     $a = fclAnteprima($this, $s, fclModulo($s, null, '2026-07-01'));
 
-    expect(collect($a['rate']['fermata_coinquilino'])->map(fn ($f) => [$f['persona'], (int) $f['cifra'], $f['restano']])->all())->toBe([['Ines', -5926, ['Dora']]])
-        ->and(str_contains(implode(' ', $a['rate']['frasi']), '€ 59,26 di credito'))->toBeTrue('La frase del coinquilino non dice € 59,26 di credito.')
-        ->and(b51aFrasiConMenoEuro(['f' => b51aTestiDelleFermate($a)]))->toBe([], 'Il pannello dice la fermata con una cifra «€ -».');
+    expect($a['rate'])->not->toHaveKey('fermata_coinquilino')
+        ->and(collect($a['rate']['conguaglio']['coppie'])->map(fn ($c) => [(string) $c['entrante_nome'], (int) $c['importo']])->all())->toBe([['Dora', -8934]])
+        ->and(implode(' ', $a['rate']['frasi']))->toContain('€ 89,34 a debito di Ines e € 89,34 a credito di Dora')
+        ->and(b51aFrasiConMenoEuro(['f' => $a['rate']['frasi']]))->toBe([], 'Il pannello dice una cifra «€ -».');
 });
 
 it('sentinella — O-252.7c — il box con la coppia a credito: la fine di Ines con il box spuntato scrive due coppie, € 106,67 a credito sull\'unità e € 11,85 sul box', function () {

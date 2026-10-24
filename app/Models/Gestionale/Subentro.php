@@ -8,6 +8,7 @@ use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\User;
 use App\Services\Subentro\FrasiObbligati;
+use App\Services\Subentro\RegolaDelPiano;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -427,12 +428,16 @@ class Subentro extends Model
     /**
      * Fase 1-bis della 1.11.0-beta.50 (R11): a chi il condominio addebita, ricalcolando, i giorni che le parti avevano regolato fra loro.
      * Alla fine di una locazione senza un nuovo inquilino nessuno entra: i giorni dopo l'uscita vanno a chi paga al posto dell'inquilino.
+     * Coda 245 (1.11.0-beta.55): dove la locazione continuava con un coinquilino (la regola del piano nel registro), a ciascun conduttore
+     * la sua parte, per quota e per giorni.
      */
     public function aChiVannoIGiorni(): string
     {
-        return $this->tipo_passaggio === 'fine_locazione' && $this->anagrafica_entrante_id === null && empty($this->registro['nomi']['entrante'] ?? null)
-            ? 'i giorni dopo l\'uscita a chi paga al posto dell\'inquilino'
-            : 'a chi entra i suoi giorni';
+        return match (true) {
+            ($this->registro['conguaglio']['piano'] ?? []) !== [] => 'a ciascun conduttore la sua parte, per quota e per giorni',
+            $this->tipo_passaggio === 'fine_locazione' && $this->anagrafica_entrante_id === null && empty($this->registro['nomi']['entrante'] ?? null) => 'i giorni dopo l\'uscita a chi paga al posto dell\'inquilino',
+            default => 'a chi entra i suoi giorni',
+        };
     }
 
     /**
@@ -472,6 +477,38 @@ class Subentro extends Model
     }
 
     /**
+     * Coda 245 (1.11.0-beta.55): alla fine di una locazione con «Non scriverlo» la coppia non entra nei saldi e le parti la regolano fra loro: le cifre per persona, dal
+     * registro (`regolato_fuori`), come le dice l'avviso dell'annullamento. Null se il conguaglio è stato scritto (un conguaglio non scritto non si annulla: non ha righe), se non è la fine di una locazione
+     * (nella successione e nel legato «Non scriverlo» non dichiara un accordo, decisione 72) o se il registro non ha cifre.
+     */
+    public function lasciatoFraLeParti(): ?string
+    {
+        if ($this->tipo_passaggio !== 'fine_locazione' || ! $this->conguaglioNonScritto()) {
+            return null;
+        }
+        $voci = collect($this->registro['regolato_fuori'] ?? [])->filter(fn ($v) => is_array($v) && collect($v['persone'] ?? [])->contains(fn ($p) => (int) ($p['importo'] ?? 0) !== 0));
+        if ($voci->isEmpty()) {
+            return null;
+        }
+        $frasi = $voci->map(function (array $v): string {
+            $pezzi = collect($v['persone'])->filter(fn ($p) => (int) ($p['importo'] ?? 0) !== 0)
+                ->map(fn ($p) => sprintf('%s a %s di %s', \App\Helpers\MoneyHelper::format(abs((int) $p['importo'])), (int) $p['importo'] < 0 ? 'credito' : 'debito', $p['nome'] ?? '?'))->values()->all();
+            $ultimo = array_pop($pezzi);
+
+            return sprintf('%s, sulla %s', $pezzi === [] ? $ultimo : implode(', ', $pezzi) . ' e ' . $ultimo, FrasiObbligati::gestione($v['gestione'] ?? '?'));
+        });
+
+        $frase = sprintf('Le parti regolano fra loro %s.', $frasi->join('; '));
+        // Dove la locazione continua con un coinquilino la coppia di chi esce può lasciare fuori una parte (chi era già uscito): con «Non scriverlo» il gruppo della regola del
+        // piano la conserva nel registro, e il prospetto la dice come dice la coppia.
+        $gruppi = (array) ($this->registro['conguaglio']['piano'] ?? []);
+        $gestioni = $gruppi === [] ? [] : \App\Models\Gestione::whereIn('id', array_unique(array_map(fn ($g) => (int) ($g['gestione_id'] ?? 0), $gruppi)))->pluck('nome', 'id')->map(fn ($n) => (string) $n)->all();
+        $resto = RegolaDelPiano::fraseDelRestoFraLeParti($gruppi, (string) ($this->uscente?->nome ?? ($this->registro['nomi']['uscente'] ?? 'chi esce')), $gestioni);
+
+        return $resto === null ? $frase : $frase . ' ' . $resto;
+    }
+
+    /**
      * 1.11.0-beta.48 (P3): con più persone dalla parte di chi entra (gli eredi, i nudi che tornano pieni) la somma delle coppie ha
      * segni diversi e non è la cifra di nessuno — «€ 5,48» era € 531,45 a credito di Anna e € 268,47 e € 268,46 a debito di Bruno
      * e Carla —: si dice la cifra di ciascuno. Con una persona sola, la somma come prima. Dalla 1.11.0-beta.50 la locazione porta anche
@@ -498,19 +535,25 @@ class Subentro extends Model
      * @param iterable<array{gestione_id:int, gestione:string, importo:int}> $coppie
      * @param array{anagrafica_id:int, nome:string}|null $chiEsce decisione 77 (1.11.0-beta.50): nella locazione anche chi esce, con il segno
      *                                                           dei saldi (la sua riga sarebbe stata a credito: negativa)
+     * @param bool $perUnita Coda 245 (1.11.0-beta.55): nel cambio d'inquilino anche le cifre unità per unità (`per_unita`)
      * @return list<array{gestione_id:int, gestione:string, importo:int}>
      */
-    public static function regolatoFuoriDalleCoppie(iterable $coppie, ?array $chiEsce = null): array
+    public static function regolatoFuoriDalleCoppie(iterable $coppie, ?array $chiEsce = null, bool $perUnita = false): array
     {
+        $persone = fn ($g) => [
+            ...($chiEsce !== null ? [['anagrafica_id' => (int) $chiEsce['anagrafica_id'], 'nome' => (string) $chiEsce['nome'], 'importo' => -(int) $g->sum('importo')]] : []),
+            ...$g->groupBy(fn ($c) => (int) ($c['anagrafica_entrante_id'] ?? 0))
+                ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($p->first()['entrante_nome'] ?? '?'), 'importo' => (int) $p->sum('importo')])
+                ->values()->all(),
+        ];
+
         return collect($coppie)->groupBy(fn ($c) => (int) $c['gestione_id'])
             ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($g->first()['gestione'] ?? '?'), 'importo' => (int) $g->sum('importo'),
                 // P3 della 1.11.0-beta.48: la cifra di ciascuna persona che entra, per i messaggi con più eredi o più nudi.
-                'persone' => [
-                    ...($chiEsce !== null ? [['anagrafica_id' => (int) $chiEsce['anagrafica_id'], 'nome' => (string) $chiEsce['nome'], 'importo' => -(int) $g->sum('importo')]] : []),
-                    ...$g->groupBy(fn ($c) => (int) ($c['anagrafica_entrante_id'] ?? 0))
-                        ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($p->first()['entrante_nome'] ?? '?'), 'importo' => (int) $p->sum('importo')])
-                        ->values()->all(),
-                ]])
+                'persone' => $persone($g)]
+                // Coda 245 (1.11.0-beta.55): nel cambio d'inquilino (`$perUnita`) le stesse cifre unità per unità (l'unità e le pertinenze spuntate), per il
+                // prospetto degli oneri accessori (`RegolaDelPiano::regolatiDelCambio`).
+                + ($perUnita ? ['per_unita' => $g->groupBy(fn ($c) => (int) ($c['immobile_id'] ?? 0))->map(fn ($u, $iid) => ['immobile_id' => (int) $iid, 'persone' => $persone($u)])->values()->all()] : []))
             ->values()->all();
     }
 }

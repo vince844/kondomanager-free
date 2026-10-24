@@ -31,9 +31,10 @@
  * rivende a Carlo (1/12, 75 % per 31 giorni: 2293,16 → 2293), Carlo rivende a Dora (15/12, 17 giorni: 1257,54 → 1258).
  *
  * Che cosa NON copre: la divisione della cifra fra l'erede e chi gli ha venduto (€ 11,47 e € 7,64): è una scelta delle parti, e la frase non la divide;
- * più di due vendite dopo l'erede (l'alternativa nomina l'ultima fermata); la parte della cifra che sta nella riga di un altro titolare della coppia e che un
- * passaggio di prima aveva fermato a suo carico (sull'unità mista con l'estinzione dell'usufrutto di Zeno, € 15,29 di € 30,58 stanno nella riga di Zeno, e
- * l'estinzione li aveva fermati a carico di Zeno: la frase li mette a carico di Bruno per intero, ed è la Coda 346); MySQL.
+ * più di due vendite dopo l'erede (l'alternativa nomina l'ultima fermata); MySQL. La parte della cifra che sta nella riga di un altro titolare della coppia e che un
+ * passaggio di prima aveva fermato a carico di quel titolare, quando era il defunto a riceverla (l'estinzione dell'usufrutto di Zeno: € 15,29 di € 30,58 stanno nella
+ * riga di Zeno), la dice dalla 1.11.0-beta.55 la Coda 346: il test «successione nella catena, fermata di prima del defunto» qui sotto la fissa, e
+ * `Beta55FermataRigaDelDefuntoTest` la prova nelle altre forme.
  */
 
 use App\Models\Gestionale\Subentro;
@@ -353,11 +354,12 @@ it('Coda 341 (più acquisti) — Bruno compra da Anna (1/10) e da Carlo (5/10), 
         . 'Con questo passaggio la parte di quei giorni dal 1 dicembre 2026 tocca a Dora, ma il programma non la sposta: € 22,93 restano a carico di Anna, Carlo e Bruno, '
         . 'o di Bruno se la parte di Bruno è già stata regolata. '
         . 'Se vanno a Dora, la parte si regola fra le parti: chi la restituisce dipende da come è stata regolata la parte di Bruno, e il programma non lo sa.');
-    // Il motivo del cancello non dice «come non era passato a Bruno»: la parte avuta con la successione gli è passata, sono le parti comprate che no.
+    // Il motivo del cancello non dice «come non era passato a Bruno»: la parte avuta con la successione gli è passata, sono le parti dei due acquisti che no. Dalla 1.11.0-beta.55
+    // (Coda 348) li nomina, invece di dire «le parti che aveva comprato», che per un passaggio che non è un acquisto (l'estinzione di un usufrutto) era falso.
     expect(fds50Testi($pannello))->toContain('€ 22,93 dei giorni dopo l\'uscita di Ines restano a carico di Anna, Carlo e Bruno, o di Bruno se la parte di Bruno è già stata regolata (gestione Ordinaria 2026): '
-        . 'il conguaglio scritto alla fine locazione del 1 luglio 2026 non passa a Dora con questo passaggio, come non erano passate a Bruno le parti che aveva comprato');
+        . 'il conguaglio scritto alla fine locazione del 1 luglio 2026 non passa a Dora con questo passaggio, come non era passato a Bruno con la vendita del 1 ottobre 2026 e con la vendita del 5 ottobre 2026');
     foreach (fds50Con($pannello, 'non passa a Dora') as $motivo) {
-        expect($motivo)->not->toContain('come non era passato a Bruno');
+        expect($motivo)->not->toEndWith('come non era passato a Bruno');
     }
     fer54SenzaNomiMancanti($pannello);
 });
@@ -585,11 +587,13 @@ it('Coda 341 (fine di un conduttore nella catena) — Luca entra l\'1/8, Anna ve
     // l'arretrato agli eredi: la sua riga passa a Bruno (6806) e a Elsa (6805), e con lei la fermata. La rivendita di Bruno vale 18148 × 62,5 × 31/18400 = 1910,96 → € 19,11,
     // a carico di chi aveva la fermata di Luca (gli eredi di Ugo e Anna) e di Bruno, che ha anche la parte avuta con la successione.
     expect(fer54Registro($fineDiLuca))->toBe([['persone' => ['Ugo', 'Anna'], 'cifra' => 2170, 'riceve' => ['Bruno' => 2170], 'uscente' => null, 'dopo_la_fermata' => null, 'wallet' => true, 'strada' => 'legata']]);
+    // La fermata di Luca era a carico di Ugo e di Anna: il registro sa le tre persone che ne rispondono ora (Bruno ed Elsa, eredi di Ugo, e Anna), e dalla 1.11.0-beta.55 (Coda 348)
+    // la frase le dice, come dice «rimasta a carico di Anna» quando la persona è una sola.
     expect(fer54Registro($p3))->toBe([[
         'persone' => ['Bruno', 'Elsa', 'Anna'], 'cifra' => 1911, 'riceve' => ['Carlo' => 1911], 'uscente' => 'Bruno',
-        'dopo_la_fermata' => ['passaggio' => 'la fine della locazione di Luca del 5 ottobre 2026', 'cifra' => 2170], 'wallet' => false, 'strada' => null,
+        'dopo_la_fermata' => ['passaggio' => 'la fine della locazione di Luca del 5 ottobre 2026', 'cifra' => 2170, 'persona' => 'Bruno, Elsa e Anna'], 'wallet' => false, 'strada' => null,
     ]]);
-    expect(fer54Frase($pannello, 'Con questo passaggio'))->toContain('La fine della locazione di Luca del 5 ottobre 2026 non ha spostato la parte di Bruno, € 21,70, da regolare a mano. ')
+    expect(fer54Frase($pannello, 'Con questo passaggio'))->toContain('La fine della locazione di Luca del 5 ottobre 2026 non ha spostato la parte di Bruno, € 21,70, rimasta a carico di Bruno, Elsa e Anna da regolare a mano. ')
         ->and(fer54Frase($pannello, 'Con questo passaggio'))->toContain('€ 19,11 restano a carico di Bruno, Elsa e Anna, o di Bruno se la fermata della fine della locazione di Luca del 5 ottobre 2026 è già stata regolata.');
     fer54SenzaNomiMancanti($pannello);
 });
@@ -611,7 +615,7 @@ it('Coda 341 (arretrato al defunto, guardia) — Anna vende a Bruno, Ugo muore c
     fer54SenzaNomiMancanti($pannello);
 });
 
-it('Coda 341 (successione nella catena, fermata di prima del defunto) — Ugo vende la metà piena a Bruno, l\'usufrutto di Zeno si estingue, Ugo muore (la sua metà piena a Bruno) e Bruno rivende tutto a Carlo: € 30,58 a carico di Bruno con il Wallet, e nessun nome manca', function () {
+it('Coda 341 (successione nella catena, fermata di prima del defunto) — Ugo vende la metà piena a Bruno, l\'usufrutto di Zeno si estingue, Ugo muore (la sua metà piena a Bruno) e Bruno rivende tutto a Carlo: € 30,58 a carico di Zeno e Bruno, senza il Wallet, e nessun nome manca', function () {
     $s = fer54BaseMista($this);
     fer54Passo($this, $s, fds50ModuloVendita($s, 'Ugo', 'Bruno', '2026-10-01', 50));
     fer54Passo($this, $s, ['quota' => 50] + fds50ModuloEstinzione($s, 'Zeno', '2026-10-05'));
@@ -623,16 +627,21 @@ it('Coda 341 (successione nella catena, fermata di prima del defunto) — Ugo ve
 
     // Conto a mano: Bruno ha 50 dall'1/10, 100 dal 15/10 (la sua metà più quella di Ugo) fino al 30/11; Zeno è usufruttuario fino al 4/10; Ugo ha 50 fino al 30/9 e 50 dal 5/10
     // al 14/10. Carlo con il 100 % per 31 giorni: 18148 × 3100/18400 = 3057,54 → 3058 (resti maggiori). La fermata di prima (la vendita a Bruno, € 45,37) era di Ugo,
-    // e Bruno è il suo solo erede: la cifra è la fermata dell'erede, a suo carico, con il Wallet.
-    // Una parte della cifra (la metà B, € 15,29) sta nella riga della coppia di Zeno, e l'estinzione dell'usufrutto l'aveva fermata a carico di Zeno verso Ugo: la frase la
-    // mette a carico di Bruno per intero. È la Coda 346, che si risolve nella 1.11.0-beta.55: qui si fissa che cosa dice oggi la frase (niente nome mancante, niente
-    // alternativa a se stesso).
-    expect(fer54Registro($p3))->toBe([['persone' => ['Bruno'], 'cifra' => 3058, 'riceve' => ['Carlo' => 3058], 'uscente' => null, 'dopo_la_fermata' => null, 'wallet' => true, 'strada' => 'legata']]);
-    expect(fer54Frase($pannello, 'Con questo passaggio'))->toBe('La fine locazione di Ines del 1 luglio 2026 ha scritto il conguaglio: dei giorni dopo la sua uscita Ugo ha preso € 90,74 sulla gestione Ordinaria 2026 (Interno 1). '
-        . 'Con la successione del 15 ottobre 2026 una parte, € 90,74, è passata a Bruno. '
-        . 'Con questo passaggio la parte di quei giorni dal 1 dicembre 2026 tocca a Carlo, ma il programma non la sposta: € 30,58 restano a carico di Bruno. '
-        . 'Se vanno a Carlo, registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: € 30,58 a credito di Bruno e € 30,58 a debito di Carlo. '
-        . 'Un saldo legato non occupa il posto di un riporto, e si toglie se annulli il passaggio.');
+    // e Bruno è il suo solo erede: è già sua, e la frase non la dice.
+    // Una parte della cifra (la metà B, € 15,29) sta nella riga della coppia di Zeno, e l'estinzione dell'usufrutto l'aveva fermata a carico di Zeno verso Ugo (18148 × 9000/18400 =
+    // 8876,74 → 8877 meno 4537: 4340): con la successione quella fermata è passata a Bruno, e la rivendita la vede. Prima della 1.11.0-beta.55 (Coda 346) la catena della riga seguiva
+    // solo le righe di Bruno, e la frase metteva tutto a carico di Bruno, con il Wallet; ora la cifra è a carico di Zeno e di Bruno insieme, senza il Wallet, perché il programma non
+    // sa quale parte stia in quale riga. La fermata dell'estinzione l'aveva ricevuta Ugo, e a Bruno è passata con la successione: la frase dice la parte di Ugo (cambiato nella
+    // 1.11.0-beta.55, dopo la correzione della Coda 346: prima diceva «la parte di Bruno, € 43,40»; nel registro `di` e `passata`).
+    expect(fer54Registro($p3))->toBe([['persone' => ['Zeno', 'Bruno'], 'cifra' => 3058, 'riceve' => ['Carlo' => 3058], 'uscente' => 'Bruno',
+        'dopo_la_fermata' => ['passaggio' => 'l\'estinzione dell\'usufrutto del 5 ottobre 2026', 'cifra' => 4340, 'persona' => 'Zeno', 'di' => 'Ugo', 'passata' => 'la successione del 15 ottobre 2026 a Bruno'],
+        'wallet' => false, 'strada' => null]]);
+    expect(fer54Frase($pannello, 'Con questo passaggio'))->toBe('La fine locazione di Ines del 1 luglio 2026 ha scritto il conguaglio: dei giorni dopo la sua uscita Ugo ha preso € 90,74 sulla gestione Ordinaria 2026 (Interno 1), '
+        . 'e con la successione del 15 ottobre 2026 una parte, € 90,74, è passata a Bruno. '
+        . 'L\'estinzione dell\'usufrutto del 5 ottobre 2026 non ha spostato la parte di Ugo, € 43,40, passata con la successione del 15 ottobre 2026 a Bruno, rimasta a carico di Zeno da regolare a mano. '
+        . 'Con questo passaggio la parte di quei giorni dal 1 dicembre 2026 tocca a Carlo, ma il programma non la sposta: € 30,58 restano a carico di Zeno e Bruno, '
+        . 'o di Bruno se la fermata dell\'estinzione dell\'usufrutto del 5 ottobre 2026 è già stata regolata. '
+        . 'Se vanno a Carlo, la parte si regola fra le parti: chi la restituisce dipende da come è stata regolata la fermata dell\'estinzione dell\'usufrutto del 5 ottobre 2026, e il programma non lo sa.');
     fer54SenzaNomiMancanti($pannello);
 });
 
@@ -678,13 +687,20 @@ it('la frase dell\'erede con più acquisti dice ogni fermata di prima con la sua
         ->and($frase)->not->toContain('€ -');
 });
 
-it('il motivo del cancello dell\'erede: con una fermata di prima nomina il passaggio, con più acquisti dice che sono le parti comprate a non essergli passate', function () {
+it('il motivo del cancello dell\'erede: con una fermata di prima nomina il passaggio, con più fermate nomina tutti i passaggi (anche quelli che non sono acquisti)', function () {
     // Una fermata di prima sola: come non era passato a Bruno con quella vendita.
     expect(FermataDopoScrivi::motivoCancello(fer54Fermata(FER54_DOPO_LA_VENDITA_DI_ANNA)))
         ->toEndWith('non passa a Carlo con questo passaggio, come non era passato a Bruno con la vendita del 1 ottobre 2026');
-    // Più acquisti: la parte avuta con la successione gli è passata, non si può dire che nulla gli era passato.
+    // Più fermate di prima: la parte avuta con la successione gli è passata, non si può dire che nulla gli era passato; sono le parti dei passaggi nominati che no, e dalla 1.11.0-beta.55
+    // (Coda 348) il motivo li nomina, perché uno può non essere un acquisto («le parti che aveva comprato» era falso per l'estinzione di un usufrutto).
+    expect(FermataDopoScrivi::motivoCancello(['dopo_le_fermate' => [
+        ['passaggio' => 'la vendita del 1 ottobre 2026', 'cifra' => 2268, 'persona' => 'Anna'],
+        ['passaggio' => 'l\'estinzione dell\'usufrutto del 5 ottobre 2026', 'cifra' => 4340, 'persona' => 'Zeno'],
+    ]] + fer54Fermata(null)))
+        ->toEndWith('non passa a Carlo con questo passaggio, come non era passato a Bruno con la vendita del 1 ottobre 2026 e con l\'estinzione dell\'usufrutto del 5 ottobre 2026');
+    // Senza passaggi da nominare il motivo è quello di chi non ha ricevuto niente.
     expect(FermataDopoScrivi::motivoCancello(fer54Fermata(null)))
-        ->toEndWith('non passa a Carlo con questo passaggio, come non erano passate a Bruno le parti che aveva comprato');
+        ->toEndWith('non passa a Carlo con questo passaggio, come non era passato a Bruno');
 });
 
 it('Coda 341 (acquisto dopo l\'eredità, unità mista) — Ugo vende la metà piena a Elsa, muore (la nuda a Bruno, arretrato agli eredi), Elsa vende la metà piena a Bruno e Bruno la rivende a Carlo: € 15,29 a carico di Bruno, con il Wallet; Zeno non c\'entra', function () {

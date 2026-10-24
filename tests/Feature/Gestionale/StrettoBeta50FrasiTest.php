@@ -530,90 +530,109 @@ it('G13, la guardia — la prima fermata dice «Ugo ha preso € 181,48», la su
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// G14 e G15: la fermata del coinquilino nello storico e nel pannello
+// G14 e G15: la strada del Wallet nello storico e nel pannello (dalla 1.11.0-beta.55 il resto della regola del piano; la fermata del coinquilino
+// resta nei registri delle beta, «G14, con i saldi»)
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('G14 — Ines esce mentre Dora resta, nessuno ha un saldo: il pannello indica il Wallet con i saldi legati al passaggio, e lo storico della fermata dice la stessa strada, non «da regolare a mano fra le parti»', function () {
-    // `FermataDopoScrivi::fraseStoricoCoinquilino` aveva la coda fissa «da regolare a mano fra le parti con chi li paga». Il registro ha `wallet`
-    // vero, `al_posto` [Ugo] e, dalla 1.11.0-beta.53, `strada` = `legata`. La cifra: 18000 × 184/365 = 9073,97 → 9074 (€ 90,74). Gli avvisi
-    // dell'annullamento non leggono più il registro della fermata: senza saldi, nessun avviso sul Wallet.
+it('G14 — dopo la fine di Ines con «Scrivi», la fine di Dora, nessuno ha un saldo: il pannello indica il Wallet con i saldi legati al passaggio per il resto della regola del piano, e lo storico dice la stessa strada, non «da regolare a mano fra le parti»', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 la prova era sulla fermata del coinquilino della fine di Ines (€ 90,74, `fermata_coinquilino` con
+    // `al_posto` [Ugo]), che non si scrive più: la fine di Ines con Dora che resta ha la regola del piano. La strada a mano del Wallet c'è nel resto della
+    // fine di Dora dopo quella fine (decisione 95.6 b, il caso C4): Dora − 7875 → Ugo, e restano fuori Ines − 1199 e Ugo + 1199; il registro lo conserva in
+    // `resto_del_piano` con `wallet` vero e `strada` = `legata`. Gli avvisi dell'annullamento non dicono «Toglilo dal Wallet»: senza saldi legati non c'è
+    // niente da togliere, e l'avviso dice che le parti, se l'avevano regolata, rivedono l'accordo.
     $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
+    $mod = ['quota' => 50] + fclModulo($s, null, '2026-10-01', [], 'Dora');
 
-    $a = fclAnteprima($this, $s, fclModulo($s));
-    $fine = fclRegistra($this, $s, fclModulo($s));
-    $f = $fine->registro['fermata_coinquilino'][0] ?? [];
-    $storico = collect(fds50Con(sbfStoricoSenzaAnnullabile($s, $fine), '€ 90,74'))->first(fn (string $t) => str_contains($t, 'Dora')) ?? '';
+    $a = fclAnteprima($this, $s, $mod);
+    $fine = fclRegistra($this, $s, $mod + ['conguaglio' => 'scrivi'])->fresh();
+    $r = $fine->registro['resto_del_piano'][0] ?? [];
+    $storico = collect(fds50Con(sbfStoricoSenzaAnnullabile($s, $fine), '€ 11,99'))->first(fn (string $t) => str_contains($t, 'Ines')) ?? '';
 
     // Controlli: il pannello indica il Wallet, il registro lo conserva.
     expect(implode(' ', $a['rate']['frasi']))->toContain('registra dal Wallet i saldi legati a questo passaggio')
-        ->and([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null, $f['al_posto'] ?? null, $f['strada'] ?? null])->toBe([9074, true, ['Ugo'], 'legata'])
+        ->and([(int) ($r['cifra'] ?? 0), $r['wallet'] ?? null, $r['strada'] ?? null])->toBe([1199, true, 'legata'])
         ->and(implode(' | ', app(AnnullaPassaggioAction::class)->avvisi($fine->fresh())))->not->toContain('Toglilo dal Wallet')
         ->and($storico)->not->toBe('');
 
-    expect(str_contains($storico, 'Wallet'))->toBeTrue('Lo storico della fermata non dice la strada che il pannello aveva indicato (il Wallet): ' . $storico);
-});
-
-it('G14, con i saldi — Ugo e Dora hanno già un saldo: il pannello e lo storico dicono lo stesso il Wallet con i saldi legati, non «fra le parti»', function () {
-    $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: ['Ugo' => 5000, 'Dora' => 3000]);
-
-    $fine = fclRegistra($this, $s, fclModulo($s));
-    $storico = implode(' ', fds50Con(sbfStoricoSenzaAnnullabile($s, $fine), '€ 90,74'));
-
-    expect($fine->registro['fermata_coinquilino'][0]['wallet'] ?? null)->toBeTrue()
-        ->and($storico)->toContain('la strada indicata erano i saldi dal Wallet legati a questo passaggio')
+    expect(str_contains($storico, 'Wallet'))->toBeTrue('Lo storico del resto non dice la strada che il pannello aveva indicato (il Wallet): ' . $storico)
         ->and($storico)->not->toContain('fra le parti');
 });
 
-it('G15 (A) — Ines esce, Dora resta, Ugo e Dora hanno già un saldo: la frase non dice «Se li pagano Dora e Ugo», come se pagassero insieme, ma le due alternative, con il Wallet legato', function () {
-    // `AnteprimaPassaggio::fraseDelCoinquilino`: coinquilini e chi sta al posto sono due alternative, «Dora, o Ugo». Dalla 1.11.0-beta.53 il
-    // Wallet anche per chi ha già un saldo. La cifra: € 90,74.
+it('G14, con i saldi — Ugo e Dora hanno già un saldo: lo storico di una fine con la fermata del coinquilino dice lo stesso il Wallet con i saldi legati, non «fra le parti»', function () {
+    // Coda 245 (1.11.0-beta.55): la registrazione non scrive più la fermata del coinquilino (la fine ha la regola del piano). Il registro delle
+    // beta .50–.53 si scrive qui a mano, come lo scriveva allora, e lo storico lo legge com'era: la frase dello storico resta vera.
     $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: ['Ugo' => 5000, 'Dora' => 3000]);
 
-    $a = fclAnteprima($this, $s, fclModulo($s));
-    $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora')) ?? '';
+    $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere'])->fresh();
+    $registro = $fine->registro;
+    unset($registro['conguaglio'], $registro['regolato_fuori'], $registro['coinquilini_letti']);
+    $registro['piani_presi'] = [];
+    $registro['fermata_coinquilino'] = [['immobile_id' => (int) $s['unita']->id, 'unita' => 'Interno 1', 'gestione_id' => (int) $s['g']->id, 'gestione' => 'Ordinaria 2026',
+        'esercizio_id' => (int) $s['e']->id, 'cifra' => 9074, 'persona_id' => (int) $s['persone']['Ines']->id, 'persona' => 'Ines', 'restano' => ['Dora'], 'al_posto' => ['Ugo'],
+        'wallet' => true, 'strada' => 'legata']];
+    $fine->registro = $registro;
+    $fine->save();
+    $storico = implode(' ', fds50Con(sbfStoricoSenzaAnnullabile($s, $fine->fresh()), '€ 90,74'));
 
-    // Controlli: la fermata c'è, € 90,74, con il Wallet legato.
-    expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
-        ->and($a['rate']['fermata_coinquilino'][0]['wallet'] ?? null)->toBeTrue()
-        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio')
+    expect($storico)->toContain('la strada indicata erano i saldi dal Wallet legati a questo passaggio')
+        ->and($storico)->not->toContain('fra le parti');
+});
+
+it('G15 (A) — dopo la fine di Ines, la fine di Dora quando Ugo e Dora hanno già un saldo: la frase dice le persone del resto, ognuna con la sua cifra, non due alternative, con il Wallet legato', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 qui c'era la fermata del coinquilino della fine di Ines, che non sapeva chi pagava i giorni dopo l'uscita
+    // e diceva due alternative, «Dora, o Ugo». La regola del piano lo sa: nel resto della fine di Dora (C4) Ines − 1199 e Ugo + 1199, persone e cifre,
+    // con la strada del Wallet anche per Ugo, che ha già un saldo (dalla 1.11.0-beta.53 la riga legata non occupa il posto). I riporti sono saldi
+    // pregressi, fuori dall'anello: le cifre non cambiano.
+    $s = sbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: ['Ugo' => 5000, 'Dora' => 3000]);
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
+
+    $a = fclAnteprima($this, $s, ['quota' => 50] + fclModulo($s, null, '2026-10-01', [], 'Dora'));
+    $frase = $a['rate']['frasi'][0] ?? '';
+
+    // Controlli: il resto c'è, € 11,99, con il Wallet legato.
+    expect(collect($a['rate']['resto_del_piano'])->sum('cifra'))->toBe(1199)
+        ->and($a['rate']['resto_del_piano'][0]['wallet'] ?? null)->toBeTrue()
+        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla gestione Ordinaria 2026: € 11,99 a credito di Ines e € 11,99 a debito di Ugo.')
         ->and($frase)->not->toContain('fra le parti');
 
-    expect(str_contains($frase, 'li pagano Dora e Ugo'))->toBeFalse('Le due alternative si leggono come chi paga insieme: ' . $frase)
-        ->and(str_contains($frase, 'Dora, o Ugo'))->toBeTrue('La frase non dice le due alternative, «Dora, o Ugo»: ' . $frase);
+    expect(str_contains($frase, 'Dora, o Ugo'))->toBeFalse('La frase dice ancora due alternative: ' . $frase);
 });
 
-it('G15 (B) — Ugo e Rita comproprietari (Rita con un saldo), Ines esce e restano Dora e Pia: la coda del Wallet dice una riga a debito di ciascuno che li paga, non «una a debito di chi li paga» quando sono due', function () {
-    // La coda del Wallet è al singolare anche per il gruppo «Dora e Pia». La parte di Ines: 36000 × 50 % = 18000, 18000 × 184/365 = 9074. Dalla
-    // 1.11.0-beta.53 anche Rita, con il suo saldo, sta nel Wallet legato.
-    $s = sbfScenario($this, [['Ugo', 'proprietario', 50], ['Rita', 'proprietario', 50]], ['inquilini' => [['Ines', 50], ['Dora', 25], ['Pia', 25]]], riporti: ['Rita' => 1000]);
+it('G15 (B) — Ugo e Rita comproprietari (Rita con un saldo), Ines esce e poi Dora, mentre Pia resta: la coda del Wallet dice la riga di ciascuna persona del resto, con la sua cifra', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 la prova era sulla fermata del coinquilino della fine di Ines, con la coda del Wallet al plurale per il
+    // gruppo «Dora e Pia» che poteva pagare. Ora la fine di Ines con Dora e Pia che restano ha la regola del piano, e la coda del Wallet è quella del resto
+    // della fine di Dora (decisione 95.6 b, il caso C3-Dora): Ines 40, Dora 30, Pia 30; dopo la fine di Ines Ines 8944, Dora 13528, Pia 13528; Dora esce il
+    // 1/10 e Pia resta: 7240, 8190, 10950 (somma 26380) → Ines 9880, Dora 11177, Pia 14943. Dora − 2351 → Pia, e restano fuori Ines + 936 e Pia − 936:
+    // una riga per persona, con la sua cifra. Ugo e Rita non sono sull'anello (Pia copre tutto l'anno); il saldo di Rita non c'entra.
+    $s = sbfScenario($this, [['Ugo', 'proprietario', 50], ['Rita', 'proprietario', 50]], ['inquilini' => [['Ines', 40], ['Dora', 30], ['Pia', 30]]], riporti: ['Rita' => 1000]);
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
 
-    $a = fclAnteprima($this, $s, fclModulo($s));
-    $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora e Pia')) ?? '';
-    $colWallet = collect(sbfPezzi($frase))->first(fn (string $p) => str_contains($p, 'Dora e Pia') && str_contains($p, 'Wallet')) ?? '';
+    $a = fclAnteprima($this, $s, ['quota' => 30] + fclModulo($s, null, '2026-10-01', [], 'Dora'));
+    $frase = $a['rate']['frasi'][0] ?? '';
 
-    // Controlli: la fermata, € 90,74; nessuno «fra le parti»; il verbo al plurale per Dora e Pia (R20).
-    expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
+    expect(collect($a['rate']['resto_del_piano'][0]['parti'] ?? [])->pluck('cifra', 'nome')->all())->toBe(['Ines' => 936, 'Pia' => -936])
         ->and($frase)->not->toContain('la parte si regola fra le parti')
-        ->and($colWallet)->toContain('li pagano Dora e Pia');
-
-    expect(str_contains($colWallet, 'ciascuno'))->toBeTrue('Con due persone che pagano la coda del Wallet dice «una a debito di chi li paga»: ' . $colWallet);
+        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla gestione Ordinaria 2026: € 9,36 a debito di Ines e € 9,36 a credito di Pia.');
 });
 
-it('G15 (B), chi sta al posto in due — Ugo e Rita comproprietari senza un saldo, Ines e Dora inquiline al 50 %: anche quando i due che pagano insieme sono quelli al posto dell\'inquilino, la coda del Wallet dice una riga a debito di ciascuno', function () {
-    // La regola della correzione è sul gruppo che paga, non sui soli coinquilini: «Se li paga Dora, o Ugo e Rita» vuol dire una riga se paga
-    // Dora, due se pagano Ugo e Rita. Nessuno ha un saldo, quindi tutti nel ramo del Wallet. La parte di Ines: 18000 × 184/365 = 9073,97 → 9074.
+it('G15 (B), chi sta al posto in due — Ugo e Rita comproprietari senza un saldo, Ines e Dora inquiline al 50 %: dopo la fine di Ines la fine di Dora divide la sua coppia fra Ugo e Rita, e la coda del Wallet dice la riga di ciascuno, con la sua cifra', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 la prova era sulla fermata del coinquilino della fine di Ines, con «Dora, o Ugo e Rita» come alternative.
+    // Ora la regola del piano: dopo la fine di Ines con «Scrivi» Ines 11934, Dora 24066; Dora esce il 1/10 e i 92 giorni dal 1/10 vanno a chi sta al
+    // posto dell'inquilino, Ugo e Rita al 50 %: 36000 × 46 / 365 = 4536,99 ciascuno, Ines 10734,85, Dora 16191,18 → Ines 10735, Dora 16191, Ugo 4537, Rita
+    // 4537. La differenza di Dora, − 7875, si divide fra Ugo e Rita in proporzione alle loro differenze (4537 e 4537): 3937,5 ciascuno, il centesimo a
+    // pari resto a chi viene prima, Ugo → Ugo 3938, Rita 3937. Restano fuori Ines − 1199, Ugo + 599, Rita + 600: una riga per persona, con la sua cifra.
     $s = sbfScenario($this, [['Ugo', 'proprietario', 50], ['Rita', 'proprietario', 50]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
 
-    $a = fclAnteprima($this, $s, fclModulo($s));
-    $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora')) ?? '';
-    $colWallet = collect(sbfPezzi($frase))->first(fn (string $p) => str_contains($p, 'Ugo e Rita') && str_contains($p, 'Wallet')) ?? '';
+    $a = fclAnteprima($this, $s, ['quota' => 50] + fclModulo($s, null, '2026-10-01', [], 'Dora'));
+    $frase = $a['rate']['frasi'][0] ?? '';
+    $r = $a['rate']['resto_del_piano'][0] ?? [];
 
-    // Controlli: la fermata, € 90,74, con il Wallet, e al posto dell'inquilino Ugo e Rita, detti come l'alternativa a Dora.
-    $f = $a['rate']['fermata_coinquilino'][0] ?? [];
-    expect([(int) ($f['cifra'] ?? 0), $f['wallet'] ?? null, $f['al_posto'] ?? null, $f['strada'] ?? null])->toBe([9074, true, ['Ugo', 'Rita'], 'legata'])
-        ->and($colWallet)->toContain('Dora, o Ugo e Rita');
-
-    expect(str_contains($colWallet, 'ciascuno'))->toBeTrue('Con Ugo e Rita che pagano insieme la coda del Wallet dice «una a debito di chi li paga»: ' . $colWallet);
+    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Rita', 3937], [(int) $s['unita']->id, 'Ugo', 3938]])
+        ->and(collect($r['parti'] ?? [])->pluck('cifra', 'nome')->all())->toBe(['Ines' => -1199, 'Ugo' => 599, 'Rita' => 600])
+        ->and([$r['wallet'] ?? null, $r['strada'] ?? null])->toBe([true, 'legata'])
+        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla gestione Ordinaria 2026: € 11,99 a credito di Ines, € 5,99 a debito di Ugo e € 6,00 a debito di Rita.');
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

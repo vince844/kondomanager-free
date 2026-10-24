@@ -66,3 +66,73 @@ describe('TitolaritaSheet — la fine di una locazione (1.11.0-beta.50)', () => 
         expect(monta(passaggio({ tipo_passaggio: 'vendita' })).text()).not.toContain('registralo di nuovo con «Non scriverlo»');
     });
 });
+
+/**
+ * 1.11.0-beta.55 — «Annulla il conguaglio» si offre solo dove la rotta lo accetta. Se una successione con l'arretrato agli eredi ha preso fra le sue fonti una riga della
+ * coppia, il server (`StoricoTitolarita`, la stessa regola di `AnnullaConguaglioAction`) manda `annullabile: false` e il perché con la strada (`motivo`): la scheda lo
+ * mostra al posto del comando, e non ha avvisi da seguire. Senza `motivo` (l'arretrato agli eredi del conguaglio stesso) resta la frase di sempre.
+ */
+describe('TitolaritaSheet — il conguaglio che una successione ha letto (1.11.0-beta.55)', () => {
+    const MOTIVO = 'Una riga di questo conguaglio è fra le cifre da cui è calcolato l\'arretrato di Ugo, passato agli eredi con la successione del 15 ottobre 2026: annullarlo lascerebbe '
+        + 'sbagliate le righe degli eredi. Annulla prima la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione.';
+    const conguaglio = (extra: Record<string, unknown> = {}) => ({
+        stato: 'proposto', importo: 18148, importo_formattato: '€ 181,48', applicato: false, nota: null, nota_annullamento: null, annullato_il: null, annullabile: true, avvisi: [], ...extra,
+    });
+    const comandi = (w: ReturnType<typeof monta>) => w.findAll('button').filter((b) => /annulla il conguaglio/i.test(b.text()));
+
+    test('dice il perché e la strada al posto del comando', () => {
+        const w = monta(passaggio({ conguaglio: conguaglio({ annullabile: false, motivo: MOTIVO }) }));
+
+        expect(w.text()).toContain(MOTIVO);
+        expect(comandi(w)).toHaveLength(0);
+        expect(w.text()).not.toContain('Le parti hanno regolato diversamente');
+        // Non è l'arretrato agli eredi del conguaglio stesso: la frase di quel caso non c'entra.
+        expect(w.text()).not.toContain('Per cambiare la scelta annulla il passaggio e registralo di nuovo.');
+    });
+
+    test('controllo — con l\'arretrato agli eredi del conguaglio stesso resta la frase di sempre', () => {
+        const w = monta(passaggio({ conguaglio: conguaglio({ annullabile: false }) }));
+
+        expect(w.text()).toContain('Per cambiare la scelta annulla il passaggio e registralo di nuovo.');
+        expect(comandi(w)).toHaveLength(0);
+    });
+
+    test('controllo — dove il conguaglio si annulla il comando c\'è, e il perché non si dice', () => {
+        const w = monta(passaggio({ conguaglio: conguaglio() }));
+
+        expect(comandi(w)).toHaveLength(1);
+        expect(w.text()).not.toContain('Annulla prima la successione');
+    });
+});
+
+/**
+ * 1.11.0-beta.55 — la fine di una locazione con «Non scriverlo»: nei saldi non c'è niente, e lo storico dice le cifre che le parti si regolano fra loro (il server le manda in
+ * `fra_le_parti`, dal registro): € 60,66 a credito di Ines e a debito di Dora. Con «Scrivi» le cifre sono nei saldi, e la frase non c'è.
+ */
+describe('TitolaritaSheet — le cifre che «Non scriverlo» lascia fra le parti (1.11.0-beta.55)', () => {
+    const FRA_LE_PARTI = 'Le parti regolano fra loro € 60,66 a credito di Ines e € 60,66 a debito di Dora, sulla gestione Ordinaria 2026.';
+    const nonScritto = (extra: Record<string, unknown> = {}) => ({
+        stato: 'non_scritto', importo: 0, importo_formattato: '€ 0,00', per_entrante: [], applicato: false, nota: null, nota_annullamento: null, annullato_il: null, annullabile: true, avvisi: [], ...extra,
+    });
+
+    test('lo storico dice «nessuna riga in saldi» e, accanto, le cifre che le parti si regolano fra loro', () => {
+        const testo = monta(passaggio({ conguaglio: nonScritto({ fra_le_parti: FRA_LE_PARTI }) })).text();
+
+        expect(testo).toContain('Conguaglio non scritto: nessuna riga in saldi, la posizione resta com\'era.');
+        expect(testo).toContain(FRA_LE_PARTI);
+    });
+
+    test('con la nota facoltativa la nota viene prima delle cifre', () => {
+        const testo = monta(passaggio({ conguaglio: nonScritto({ nota: 'Dora rimborsa a Ines a fine anno', fra_le_parti: FRA_LE_PARTI }) })).text();
+
+        expect(testo).toContain('la posizione resta com\'era («Dora rimborsa a Ines a fine anno»). ' + FRA_LE_PARTI);
+    });
+
+    test('controllo — senza le cifre (la successione, o un registro che non le ha) la frase non c\'è', () => {
+        const testo = monta(passaggio({ conguaglio: nonScritto({ fra_le_parti: null }) })).text();
+
+        expect(testo).toContain('Conguaglio non scritto: nessuna riga in saldi, la posizione resta com\'era.');
+        expect(testo).not.toContain('Le parti regolano fra loro');
+        expect(testo).not.toMatch(/\bnull\b/);
+    });
+});

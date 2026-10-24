@@ -129,16 +129,17 @@ final class FrasiObbligati
                     $frasi[] = sprintf('Nel piano «%s», che non si ricalcola più, %s %s anche %s: %s.', $b['nome'],
                         $b['quote'] === 1 ? 'resta' : 'restano', $this->a($uscente ?? 'chi esce'), $b['quote'] === 1 ? 'la quota non ancora emessa' : sprintf('le %d quote non ancora emesse', $b['quote']),
                         match (true) {
+                            // Coda 245 (1.11.0-beta.55): dove la locazione continua con un coinquilino «Scrivi il conguaglio» ridivide la parte
+                            // dell'inquilino con la regola del piano fra chi è stato conduttore.
+                            ! empty($dati['scelta_del_conguaglio']) && ! empty($b['tutte_con_regola_del_piano']) => sprintf('chi paga la parte dell\'inquilino dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio («Scrivi il conguaglio» la ridivide con la regola del piano fra chi è stato conduttore, «Non scriverlo» la lascia nelle rate di %s)', $uscente ?? 'chi esce'),
                             // Decisione 77: la scelta del pannello decide chi paga i giorni dopo l'uscita. Punto 4 della lista della .50: dove
                             // nessuno sta al posto dell'inquilino, «Scrivi» non li porta a nessuno, e si dice.
                             ! empty($dati['scelta_del_conguaglio']) => sprintf('chi paga i giorni dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio («Scrivi il conguaglio» li porta a chi paga al posto dell\'inquilino, «Non scriverlo» li lascia nelle rate di %s)%s', $uscente ?? 'chi esce',
                                 ! empty($b['senza_nessuno']) ? sprintf('; %s %s nessuno sta al posto dell\'inquilino, e lì restano nelle rate di %s anche con «Scrivi il conguaglio»', count($b['senza_nessuno']) === 1 ? 'nell\'unità' : 'nelle unità',
                                     $this->elenco(array_map(fn ($u) => '«' . $u . '»', $b['senza_nessuno'])), $uscente ?? 'chi esce') : '')
-                                // R14 della Fase 1-bis della .50: dove la locazione continua con un coinquilino la scelta non vale.
-                                . (! empty($b['con_coinquilino']) ? sprintf('; %s %s la locazione continua con un coinquilino, e lì restano nelle rate di %s anche con «Scrivi il conguaglio»: chi li paga lo decidono le parti',
-                                    count($b['con_coinquilino']) === 1 ? 'nell\'unità' : 'nelle unità', $this->elenco(array_map(fn ($u) => '«' . $u . '»', $b['con_coinquilino'])), $uscente ?? 'chi esce') : ''),
-                            // Decisione 79 (2): con un coinquilino che resta la scelta non c'è.
-                            ! empty($dati['coinquilini']) => 'con un coinquilino che resta il programma non propone il conguaglio dei giorni dopo l\'uscita, e chi li paga lo decidono le parti',
+                                // Coda 245: le unità dove la locazione continua con un coinquilino, accanto alle altre.
+                                . (! empty($b['con_regola_del_piano']) ? sprintf('; %s %s la locazione continua con un coinquilino, e lì «Scrivi il conguaglio» ridivide la parte dell\'inquilino con la regola del piano fra chi è stato conduttore',
+                                    count($b['con_regola_del_piano']) === 1 ? 'nell\'unità' : 'nelle unità', $this->elenco(array_map(fn ($u) => '«' . $u . '»', $b['con_regola_del_piano']))) : ''),
                             // Punto 4 della lista della .50: senza nessuno al posto dell'inquilino il conguaglio non c'è.
                             ! empty($b['senza_nessuno']) => 'nei giorni dopo l\'uscita nessuno sta al posto dell\'inquilino, e il programma non propone il conguaglio',
                             default => 'chi paga i giorni dopo l\'uscita lo decide l\'amministratore',

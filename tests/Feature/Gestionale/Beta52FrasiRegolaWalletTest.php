@@ -292,7 +292,10 @@ it('controprova — ogni file dei commenti dice la regola almeno una volta: un m
     }
 
     expect($trovati)->toBeGreaterThan(0, "Nessun commento di $file dice la regola con le parole dei modelli.");
-})->with(array_keys(B52_WALLET_COMMENTI));
+// Coda 245 (1.11.0-beta.55): in AnteprimaPassaggio la regola la diceva solo il commento della fermata del coinquilino, che con la regola del piano
+// non c'è più (il pannello non indica più il Wallet per quella fine). Il file resta fra quelli guardati qui sopra: un commento nuovo con la
+// regola deve avere l'eccezione; la controprova «almeno una volta» vale per gli altri.
+})->with(array_values(array_diff(array_keys(B52_WALLET_COMMENTI), ['app/Services/Subentro/AnteprimaPassaggio.php'])));
 
 it('controprova — i modelli dei commenti segnalano la regola senza l\'eccezione e accettano quella con l\'eccezione', function (string $file, string $commento, bool $segnalato) {
     expect(b52WalletCommentoSenzaEccezione($commento, B52_WALLET_COMMENTI[$file]) !== [])->toBe($segnalato);

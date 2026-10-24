@@ -17,6 +17,7 @@ use App\Services\Subentro\FermataDopoScrivi;
 use App\Services\Subentro\FrasiObbligati;
 use App\Services\Subentro\GuardieTitolarita;
 use App\Services\Subentro\QuoteNateDopoIlPassaggio;
+use App\Services\Subentro\RegolaDelPiano;
 use App\Services\Subentro\VociDaSpostare;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -157,6 +158,15 @@ final class AnnullaPassaggioAction
             }
         }
 
+        // Coda 245 (decisione 95.6 b): il passaggio con la regola del piano che ha lasciato fuori dal conguaglio una parte (il resto): annullato,
+        // quella parte non c'è più, e i saldi del Wallet legati al passaggio si tolgono con lui. Anche dopo «Annulla il conguaglio», della fine di
+        // prima o di questo passaggio: il resto è la differenza del piano del passaggio (decisione 111.3), e fin lì valeva.
+        foreach ($padre->registro['resto_del_piano'] ?? [] as $r) {
+            if (! empty($r['wallet'])) {
+                $avvisi[] = RegolaDelPiano::avvisoDelRestoAnnullando($r, Saldo::where('passaggio_id', (int) $padre->id)->where('immobile_id', (int) $r['immobile_id'])->exists());
+            }
+        }
+
         // Decisione 79 (2) e 86.1: l'inizio di una locazione che ha ridotto o azzerato una fermata di prima; annullato, la parte da regolare torna com'era.
         foreach ($padre->registro['fermata_ridotta'] ?? [] as $f) {
             if (! FermataDopoScrivi::fineSenzaConguaglio($f)) {
@@ -184,8 +194,10 @@ final class AnnullaPassaggioAction
                 // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti. Dalla .50 anche
                 // quello della locazione (decisione 77), e la frase dice di quale passaggio è.
                 $avvisi[] = $padre->conguaglioNonScritto() && ! $padre->conguaglioAnnullato()
-                    ? sprintf('Il conguaglio %s non è stato scritto (%s): se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita a ciascuno i suoi giorni.',
-                        $padre->conguaglioInParole(), $cifra ?? 'le cifre non sono nel registro')
+                    ? sprintf('Il conguaglio %s non è stato scritto (%s): se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita %s.',
+                        $padre->conguaglioInParole(), $cifra ?? 'le cifre non sono nel registro',
+                        // Coda 245 (1.11.0-beta.55): con la regola del piano, a ciascun conduttore la sua parte, per quota e per giorni.
+                        ($padre->registro['conguaglio']['piano'] ?? []) !== [] ? $padre->aChiVannoIGiorni() : 'a ciascuno i suoi giorni')
                     : sprintf('Le parti hanno già regolato fra loro %s: se il passaggio si registra di nuovo e il piano si ricalcola, il condominio addebita %s, e quell\'accordo va rifatto fra le parti.',
                         $cifra ?? 'il conguaglio di questo passaggio', $padre->aChiVannoIGiorni());
             }

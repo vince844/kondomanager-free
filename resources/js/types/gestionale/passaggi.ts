@@ -93,10 +93,22 @@ export interface ConguaglioDati {
     /** Decisione 25 (B3a): la parte di chi entra sull'intero piano, e il preventivo delle bozze che passano a lui. `importo` è la differenza. */
     importo_lordo: number; importo_lordo_formattato: string;
     bozze_passate: number; bozze_passate_importo: number; bozze_passate_formattato: string;
+    /**
+     * Coda 245 (1.11.0-beta.55): la regola del gruppo alla fine di una locazione — `piano` dove la locazione continua con un coinquilino, `giorni`
+     * altrove — e, con la regola del piano, la sua fotografia (le parti per persona, voce per voce: la stessa di `conguaglio.piano` nel registro).
+     */
+    regola?: 'piano' | 'giorni' | null;
+    piano?: Record<string, unknown> | null;
   }[];
   /** Una per (gestione, unità), solo se ≠ 0: è ciò che finisce in `saldi`. */
   /** Chi entra sta dentro la coppia: con più nudi proprietari all'estinzione dell'usufrutto ogni coppia ha il suo (S8-30). */
-  coppie: { gestione_id: number; gestione: string | null; immobile_id: number; esercizio_id: number | null; importo: number; importo_formattato?: string; anagrafica_entrante_id?: number; entrante_nome?: string }[];
+  coppie: { gestione_id: number; gestione: string | null; immobile_id: number; esercizio_id: number | null; importo: number; importo_formattato?: string; anagrafica_entrante_id?: number; entrante_nome?: string; regola?: 'piano' }[];
+  /**
+   * Coda 245 (1.11.0-beta.55): alla fine di una locazione, la regola delle coppie: tutte della regola del piano, nessuna, o alcune (l'unità e il box);
+   * `piano_coppia` e `misto_coppia` quando la regola del piano lascia fuori una parte (il resto: la fine di chi restava dopo un'altra fine, il conduttore
+   * senza quote; o i giorni che non copre nessuno, che restano a chi esce).
+   */
+  regola?: 'piano' | 'piano_coppia' | 'giorni' | 'misto' | 'misto_coppia';
   totale_entrante: number;
   totale_entrante_formattato: string;
   /** Con le bozze che passano la coppia può rovesciarsi: il verso lo dice il segno di `totale_entrante`. */
@@ -155,13 +167,13 @@ export interface AnteprimaPassaggioDati {
      * registrazione pretende. Il modulo la ricalcola con `sceltaConguaglioDelPassaggio`, che dice lo stesso.
      */
     scelta_del_conguaglio?: boolean;
-    /**
-     * Decisioni 79 (2) e 80: dove la locazione continua con un coinquilino, la cifra dei giorni dopo l'uscita che resta a chi esce. La
-     * frase e il motivo del cancello arrivano già scritti in `frasi` e in `cancello.motivi`.
-     */
-    fermata_coinquilino?: { immobile_id: number; unita: string; gestione_id: number; gestione: string; esercizio_id: number | null; cifra: number; persona_id: number; persona: string; restano: string[]; wallet: boolean }[];
     /** R10 della Fase 1-bis della .50: nel cambio d'inquilino, i piani che il prospetto degli oneri accessori lascerà fuori (la 1.10). */
     prospetto_esclude?: string[];
+    /**
+     * Coda 245: gli stessi piani unità per unità. Sull'anello di una fine con la regola del piano il prospetto legge il piano della 1.10 per l'appartamento, e con il
+     * box spuntato lo lascia fuori per il box: la voce «Non scriverlo» dice dove.
+     */
+    prospetto_esclude_dove?: { piano: string; unita: string }[];
     /**
      * Giro stretto della .50 (G5): nel cambio d'inquilino, i piani su cui il passaggio che ha dato i giorni a chi esce è stato regolato fra
      * le parti (decisione 83.3): con «Non scriverlo» il prospetto non va oltre quell'accordo, e il rimborso si regola fra le parti.
@@ -303,8 +315,12 @@ export interface PassaggioRegistrato {
     nota: string | null;
     nota_annullamento: string | null;
     annullato_il: string | null;
+    /** Coda 245 (1.11.0-beta.55): alla fine di una locazione con «Non scriverlo», le cifre che le parti si regolano fra loro (dal registro); null altrimenti. */
+    fra_le_parti?: string | null;
     /** Con l'arretrato agli eredi il conguaglio da solo non si annulla: coppia e arretrato fanno un conto solo (1.11.0-beta.44). */
     annullabile?: boolean;
+    /** Se una successione con l'arretrato agli eredi ha letto la coppia (1.11.0-beta.55): perché non si annulla e la strada, al posto del comando; null altrimenti. */
+    motivo?: string | null;
     /**
      * Con più persone che entrano, la riga di ciascuna («€ 316,71 a credito di Anna»); vuoto con una sola (1.11.0-beta.44). Alla fine di
      * una locazione senza un nuovo inquilino anche con una sola: chi paga al posto dell'inquilino (Fase 1-bis della .50, R11).

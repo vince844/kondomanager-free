@@ -112,6 +112,11 @@ final class ConguaglioPassaggio
      *                             ogni gruppo, le parti per persona di chi riceve (`parti`, `nomi`, `periodi`) quando chi entra non è una
      *                             persona sola: la fine di una locazione senza un nuovo inquilino. Le parti vuote dicono che nessuno sta
      *                             al posto dell'inquilino in quei giorni: il gruppo esce dal calcolo e va in `senza_nessuno`
+     * @param ?\Closure $regolaDelPiano Coda 245 (1.11.0-beta.55): `fn (int $immobileId, int $gestioneId, list<int> $pianoIds): ?array` dà, per
+     *                                 i gruppi di un'unità dove la locazione continua con un coinquilino, la coppia della regola del piano
+     *                                 (`RegolaDelPiano::dellaFine`): le parti per persona con il segno, al posto della parte di chi esce
+     *                                 divisa per giorni; con `ferma` il gruppo non ha una coppia, e il motivo va fra le non risolte. Null:
+     *                                 il gruppo segue `$chiRiceve`
      * @return array{
      *   stato: 'calcolato'|'nessuna_rata',
      *   quote: list<array<string,mixed>>,
@@ -122,7 +127,7 @@ final class ConguaglioPassaggio
      *   pregressi: int, non_risolte: list<array{piano:string, motivo:string}>, frasi: list<string>
      * }
      */
-    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false, bool $soloStraordinario = false, bool $ordinariaComeLaVoce = false, array $ruoliCheRestano = [], bool $piuNudi = false, array $entrantiPerUnita = [], ?string $passaggio = null, array $righeUscenti = [], array $nudiOra = [], bool $tutteLeBozze = false, int $eredi = 0, ?\Closure $chiRiceve = null): array
+    public function calcola(Anagrafica $uscente, ?Anagrafica $entrante, array $immobileIds, CarbonImmutable $decorrenza, bool $soloOrdinario = false, bool $riassegnaBozze = false, bool $nudaProprieta = false, bool $soloStraordinario = false, bool $ordinariaComeLaVoce = false, array $ruoliCheRestano = [], bool $piuNudi = false, array $entrantiPerUnita = [], ?string $passaggio = null, array $righeUscenti = [], array $nudiOra = [], bool $tutteLeBozze = false, int $eredi = 0, ?\Closure $chiRiceve = null, ?\Closure $regolaDelPiano = null): array
     {
         $this->eredi = $eredi;
         $predecessori = $this->predecessori((int) $uscente->id, $immobileIds);
@@ -746,7 +751,7 @@ final class ConguaglioPassaggio
         // stessa gestione su esercizi diversi non si fondono su un esercizio solo). Dentro il gruppo i periodi
         // possono differire (piani con competenze diverse): i giorni e le frasi sono **per periodo** (R10).
         $nomiNudi = Anagrafica::whereIn('id', collect($pesiNudoGruppo)->flatMap(fn ($p) => array_keys($p))->unique()->values()->all())->pluck('nome', 'id');
-        $perGestione = collect($quote)->groupBy(fn ($q) => $q['gestione_id'] . '|' . $q['immobile_id'] . '|' . ($q['esercizio_id'] ?? ''))->map(function (Collection $g) use ($uscente, $nomiNudi, $pesiNudoGruppo, $chiRiceve) {
+        $perGestione = collect($quote)->groupBy(fn ($q) => $q['gestione_id'] . '|' . $q['immobile_id'] . '|' . ($q['esercizio_id'] ?? ''))->map(function (Collection $g) use ($uscente, $nomiNudi, $pesiNudoGruppo, $chiRiceve, $regolaDelPiano, &$nonRisolte) {
             $prima = $g->first();
             // Decisione 56: all'estinzione, la coppia per nudo proprietario dai pesi della genealogia, se coprono ogni gruppo che passa
             // qualcosa a chi entra; altrimenti null, e la coppia si divide per quota come prima. E chi la riceve, per le frasi.
@@ -804,14 +809,29 @@ final class ConguaglioPassaggio
             // Decisione 77 (1.11.0-beta.50): alla fine di una locazione senza un nuovo inquilino la parte dei giorni dopo l'uscita va a chi
             // paga al posto dell'inquilino, per persona e per giorno. Le persone e le parti le dice chi chiama, dai periodi del gruppo; le
             // frasi nominano loro, unità per unità.
-            $perPersona = $perNudo === null && $chiRiceve !== null && $lordo - $passate !== 0
-                ? $chiRiceve((int) $prima['immobile_id'], $perPeriodo->all(), $lordo - $passate) : null;
+            // Coda 245 (1.11.0-beta.55): dove la locazione continua con un coinquilino la parte dell'inquilino si ridivide con la regola del
+            // piano, sui piani del gruppo che il conguaglio legge (le quote risolte, non escluse): le parti per persona, con il segno.
+            $delPiano = $regolaDelPiano !== null
+                ? $regolaDelPiano((int) $prima['immobile_id'], (int) $prima['gestione_id'], $g->filter(fn ($q) => ! $q['non_risolta'] && ! $q['esclusa'])->pluck('piano_rate_id')->unique()->values()->all())
+                : null;
+            if ($delPiano !== null && isset($delPiano['ferma'])) {
+                $nonRisolte[] = ['piano' => (string) $prima['piano'], 'motivo' => (string) $delPiano['ferma']];
+            }
+            $perPersona = $delPiano !== null && ! isset($delPiano['ferma'])
+                ? ['parti' => array_diff_key($delPiano['parti'], [(int) $uscente->id => true]), 'nomi' => $delPiano['nomi'], 'periodi' => $delPiano['periodi'] !== [] ? $delPiano['periodi'] : null]
+                : ($perNudo === null && $chiRiceve !== null && $delPiano === null && $lordo - $passate !== 0
+                    ? $chiRiceve((int) $prima['immobile_id'], $perPeriodo->all(), $lordo - $passate) : null);
+            if ($delPiano !== null && isset($delPiano['ferma'])) {
+                $perPersona = null;
+            }
             if ($perPersona !== null) {
                 $riceve = array_values(array_filter(array_map(fn ($chi) => $perPersona['nomi'][$chi] ?? null, array_keys($perPersona['parti']))));
             }
             // Fase 1-bis della .50 (R2): la parte dei giorni dopo l'uscita che nessuno copre resta nelle rate di chi esce, e la coppia è
             // la somma delle parti di chi paga al posto dell'inquilino.
             $scoperta = (int) ($perPersona['scoperta'] ?? 0);
+            // Coda 245: la coppia della regola del piano è la somma delle parti di chi riceve, con il segno (chi esce ha l'opposto).
+            $importoDelGruppo = $delPiano === null ? $lordo - $passate - $scoperta : (isset($delPiano['ferma']) ? 0 : (int) array_sum($perPersona['parti'] ?? []));
 
             return [
                 'gestione_id'    => $prima['gestione_id'],
@@ -841,10 +861,10 @@ final class ConguaglioPassaggio
                 'giorni_entrante' => $unico['giorni_entrante'] ?? null,
                 'giorni_periodo' => $unico['giorni_periodo'] ?? null,
                 'per_periodo'    => $perPeriodo->all(),
-                'importo'        => $lordo - $passate - $scoperta,
-                'importo_formattato' => MoneyHelper::format($lordo - $passate - $scoperta),
-                'importo_lordo'  => $lordo - $scoperta,
-                'importo_lordo_formattato' => MoneyHelper::format($lordo - $scoperta),
+                'importo'        => $importoDelGruppo,
+                'importo_formattato' => MoneyHelper::format($importoDelGruppo),
+                'importo_lordo'  => $delPiano === null ? $lordo - $scoperta : $importoDelGruppo + $passate,
+                'importo_lordo_formattato' => MoneyHelper::format($delPiano === null ? $lordo - $scoperta : $importoDelGruppo + $passate),
                 // R2: la parte dei giorni che nessuno copre, i suoi tratti e i giorni coperti, per le frasi.
                 'scoperta'       => $scoperta,
                 'scoperti'       => $scoperta !== 0 ? ($perPersona['scoperti'] ?? null) : null,
@@ -872,6 +892,10 @@ final class ConguaglioPassaggio
                 // Chi riceve la parte di chi entra, quando la genealogia la divide per nudo (o la decisione 77 per persona): le frasi
                 // nominano lui, non tutti i nudi.
                 'entrante_nome'  => $riceve === [] ? null : (count($riceve) === 1 ? $riceve[0] : implode(', ', array_slice($riceve, 0, -1)) . ' e ' . end($riceve)),
+                // Coda 245: la regola del gruppo (`piano` dove la locazione continua con un coinquilino) e la sua fotografia, per le frasi e
+                // per il registro (`conguaglio.piano`).
+                'regola'         => $delPiano !== null ? 'piano' : ($perPersona !== null ? 'giorni' : null),
+                'piano'          => $delPiano !== null && ! isset($delPiano['ferma']) ? $delPiano : null,
             ];
         })->values();
 
@@ -880,7 +904,7 @@ final class ConguaglioPassaggio
         // scoperti. Esce dal calcolo, dalle frasi e dalle bozze «comprese nel conguaglio», e lo dice chi chiama (`senza_nessuno`): la sua
         // parte resta nelle rate di chi esce.
         $chiaveDelGruppo = fn (array $x) => $x['gestione_id'] . '|' . $x['immobile_id'] . '|' . ($x['esercizio_id'] ?? '');
-        $senzaNessuno = $perGestione->filter(fn ($g) => is_array($g['per_persona']) && $g['per_persona'] === [])->values();
+        $senzaNessuno = $perGestione->filter(fn ($g) => $g['regola'] !== 'piano' && is_array($g['per_persona']) && $g['per_persona'] === [])->values();
         if ($senzaNessuno->isNotEmpty()) {
             $fuori = array_flip($senzaNessuno->map($chiaveDelGruppo)->all());
             $perGestione = $perGestione->reject(fn ($g) => isset($fuori[$chiaveDelGruppo($g)]))->values();
@@ -898,7 +922,8 @@ final class ConguaglioPassaggio
             'esercizio_id' => $g['esercizio_id'],
             'importo'      => $g['importo'],
             'per_nudo'     => $g['per_nudo'],
-        ] + ($g['per_persona'] !== null ? ['per_persona' => $g['per_persona'], 'giorni_dopo' => $g['giorni_dopo']] + (! empty($g['scoperti']) ? ['scoperti' => $g['scoperti']] : []) : []))->values()->all();
+        ] + ($g['per_persona'] !== null ? ['per_persona' => $g['per_persona'], 'giorni_dopo' => $g['giorni_dopo']] + (! empty($g['scoperti']) ? ['scoperti' => $g['scoperti']] : []) : [])
+            + ($g['regola'] === 'piano' ? ['regola' => 'piano'] : []))->values()->all();
 
         $totale = (int) array_sum(array_column($coppie, 'importo'));
 
@@ -2283,8 +2308,17 @@ final class ConguaglioPassaggio
         }
 
         $entranteDelPassaggio = $entrante;
+        $piuUnita = $perGestione->pluck('immobile_id')->unique()->count() > 1;
         foreach ($perGestione as $g) {
             $gestione = FrasiObbligati::gestione($g['gestione'] ?? null);
+            // Coda 245 (1.11.0-beta.55): dove la locazione continua con un coinquilino la coppia è della regola del piano, e le sue righe la
+            // dicono per persona e voce per voce. Senza una coppia (la competenza finisce prima dell'uscita) restano le frasi di sempre.
+            if (($g['regola'] ?? null) === 'piano' && ($g['piano'] === null || (int) $g['importo'] !== 0 || ($g['piano']['parti'] ?? []) !== [])) {
+                if ($g['piano'] !== null) {
+                    array_push($frasi, ...RegolaDelPiano::frasiDelCalcolo($g['piano'], $gestione, $piuUnita ? (string) ($g['immobile_nome'] ?? '') : null));
+                }
+                continue;
+            }
             // U4 (decisione 59, 1.11.0-beta.43): chi entra può cambiare da un'unità all'altra del passaggio — nell'estinzione
             // dell'usufrutto il box ha il suo nudo proprietario —, e la frase lo nomina.
             $entrante = $g['entrante_nome'] ?? $entrantiPerUnita[(int) ($g['immobile_id'] ?? 0)] ?? $entranteDelPassaggio;
@@ -2486,7 +2520,6 @@ final class ConguaglioPassaggio
         // Fase 1-bis della .50 (R2): la parte dei giorni dopo l'uscita che nessuno copre resta nelle rate di chi esce, e si dice. Giro stretto
         // della .50 (G16): con più unità nel passaggio la frase dice di quale parla (il gruppo è per gestione e unità), e una parte negativa
         // (un'entrata che in quei giorni supera la spesa) si dice a credito, con le parole.
-        $piuUnita = $perGestione->pluck('immobile_id')->unique()->count() > 1;
         foreach ($perGestione as $g) {
             if (! empty($g['scoperta']) && ! empty($g['scoperti'])) {
                 $tratti = implode(' e ', array_map(fn (array $t) => sprintf('dal %s al %s', $this->data($t['dal']), $this->data($t['al'])), $g['scoperti']));

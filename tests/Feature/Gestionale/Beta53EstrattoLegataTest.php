@@ -32,7 +32,9 @@ it('Ines esce e Dora resta: il credito di Ines legato alla fine (€ 90,74) è c
     fclGenera($s);
     fclEmetti($this, $s, '2026-06-30');
     $this->travel(1)->minutes();
-    $fine = fclRegistra($this, $s, fclModulo($s))->fresh();
+    // Coda 245 (1.11.0-beta.55): con un coinquilino che resta la scelta c'è, e qui si registra con «Non scriverlo»: nessuna coppia, come la fine
+    // con la fermata del coinquilino delle beta .50–.53 da cui viene il caso (le righe legate e il credito non cambiano).
+    $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere'])->fresh();
     $this->travel(1)->minutes();
     foreach ([['Ines', -9074], ['Dora', 9074]] as [$chi, $cents]) {
         expect(sl53Errori($this->actingAs($this->user)->from('/saldi')->post(route('admin.gestionale.saldi.store', [$s['c']]), [
@@ -42,7 +44,7 @@ it('Ines esce e Dora resta: il credito di Ines legato alla fine (€ 90,74) è c
     $rimborso = fn (string $chi) => $this->actingAs($this->user)->get(route('admin.gestionale.anagrafiche.estratto-conto', [$s['c'], $s['persone'][$chi]]))->assertOk()
         ->viewData('page')['props']['rimborso']['credito_in_saldi'];
 
-    // La fine con il coinquilino che resta non ha coppia: il credito di Ines è la sola riga legata. Dora ha un debito: niente.
+    // La fine con «Non scriverlo» non ha coppia: il credito di Ines è la sola riga legata. Dora ha un debito: niente.
     expect($rimborso('Ines'))->toBe(9074)
         ->and($rimborso('Dora'))->toBe(0);
 });

@@ -26,7 +26,8 @@
  *
  * Cosa NON copre: la pagina Vue (le due voci al posto della casella, `rinunciaConguaglio.ts`, il testo a video); il prospetto degli
  * oneri dopo il cambio con «Non scriverlo» (la strada A′: è nelle versioni nuove di `ProspettoCambioInquilinoTest`) e il cambio in due
- * passi (area del prospetto); due cambi di fila; il cambio con un coinquilino che resta; «Annulla il conguaglio» dopo «Scrivi» (resta
+ * passi (area del prospetto); due cambi di fila; il cambio con un coinquilino che resta (la coppia di oggi, verso chi entra: dalla 1.11.0-beta.55
+ * la regola del piano vale per la fine senza un nuovo inquilino, `Beta55CoinquilinoCoppiaDelPianoTest`); «Annulla il conguaglio» dopo «Scrivi» (resta
  * com'è, decisioni 43 e 46: `ProspettoCambioInquilinoTest`); MySQL.
  */
 

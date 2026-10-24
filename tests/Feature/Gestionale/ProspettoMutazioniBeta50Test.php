@@ -60,20 +60,37 @@ it('M142 — Ines dal 1/3 ed esce il 1/7 con «Non scriverlo»: i giorni senza c
         ->and($testo)->toMatch('/di cui da restituire a chi le ha pagate, fra le parti ?€ 181,48/u');
 });
 
-it('M122 — Ines esce il 1/7 e Dora resta, con € 120,00 già versati dall\'unità: i giorni dopo l\'uscita restano nelle rate di Ines al lordo, e il suo totale è quello delle sue rate', function () {
-    // Strada C (decisione 79): la voce dopo l'uscita è il pezzo lordo della voce (`$lordo`), come la voce di prima dell'uscita; il
-    // versato dell'unità si sconta una volta, nella sua riga. Ines 50 %: 18000 × [181, 184] / 365 = 8926,03 / 9073,97 → 8926 e 9074; il
-    // versato, 12000 × 30 % / 2 = 1800. 8926 + 9074 − 1800 = 16200, le sue rate. Con il pezzo netto la voce sarebbe 8167, e il totale
-    // € 152,92, meno di ciò che Ines ha nelle rate.
+it('M122 — Ines esce il 1/7 e Dora resta, con € 120,00 già versati dall\'unità: con la fermata del coinquilino di una beta i giorni dopo l\'uscita restano nelle rate di Ines al lordo; con la regola del piano l\'anello è al netto', function () {
+    // Strada C (decisione 79), dei registri delle beta .50–.53 con la fermata del coinquilino: la voce dopo l'uscita è il pezzo lordo della voce (`$lordo`), come la
+    // voce di prima dell'uscita; il versato dell'unità si sconta una volta, nella sua riga. Ines 50 %: 18000 × [181, 184] / 365 = 8926,03 / 9073,97 → 8926 e 9074; il
+    // versato, 12000 × 30 % / 2 = 1800. 8926 + 9074 − 1800 = 16200, le sue rate. Con il pezzo netto la voce sarebbe 8167, e il totale € 152,92, meno di ciò che Ines
+    // ha nelle rate. Coda 245 (1.11.0-beta.55): una fine registrata oggi con un coinquilino che resta ha la regola del piano, e la strada C resta solo per i registri
+    // delle beta: qui il registro di quella fine si riscrive com'era (nessuna scelta, la fermata del coinquilino), come in `Beta55CoinquilinoRegistriVecchiTest`.
     $s = pflScenario(inquilini: [['Ines Moretti', 50], ['Dora Neri', 50]]);
     pflVersatoDellUnita($s, 12000);
     pflSeiRateEmesse($this, $s);
-    pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', null);
+    $fine = pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', 'non_scrivere');
+    $registro = $fine->registro;
+    unset($registro['conguaglio'], $registro['regolato_fuori'], $registro['coinquilini_letti']);
+    $registro['piani_presi'] = [];
+    $registro['fermata_coinquilino'] = [['immobile_id' => (int) $s['unita']->id, 'unita' => 'Interno 1', 'gestione_id' => (int) $s['g']->id, 'gestione' => 'Ordinaria 2026',
+        'esercizio_id' => (int) $s['e']->id, 'cifra' => 8167, 'persona_id' => (int) $s['persone']['Ines Moretti']->id, 'persona' => 'Ines Moretti', 'restano' => ['Dora Neri'],
+        'al_posto' => ['Ugo Rinaldi'], 'wallet' => true, 'strada' => 'legata']];
+    \Illuminate\Support\Facades\DB::table('subentri')->where('id', $fine->id)->update(['registro' => json_encode($registro)]);
 
     $p = pflProspetto($s);
 
     expect(pflConduttori($p)['Ines Moretti'])->toBe([16200, 16200, 0, 365])
         ->and(collect(pflSezione($p, 'Ines Moretti')['voci'])->firstWhere('strada', 'C')['importo'] ?? null)->toBe(9074);
+
+    // La regola del piano: l'anello è al netto della parte dell'unità del versato, 36000 − 3600 = 32400 (congelato 16200 e 16200); 32400 × 9050/27300 = 10740,66 →
+    // Ines 10741, Dora 21659 (∓ 5459). Nelle loro rate 16200 ciascuna, e con «Scrivi» niente da rimborsare.
+    $s = pflScenario(inquilini: [['Ines Moretti', 50], ['Dora Neri', 50]]);
+    pflVersatoDellUnita($s, 12000);
+    pflSeiRateEmesse($this, $s);
+    pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', 'scrivi');
+
+    expect(pflConduttori(pflProspetto($s)))->toBe(['Dora Neri' => [21659, 16200, 0, 365], 'Ines Moretti' => [10741, 16200, 0, 181]]);
 });
 
 it('M125 — Ines esce il 1/7 con «Non scriverlo» e rientra il 1/10, con € 120,00 già versati dall\'unità: i suoi giorni sono 273, e le si restituiscono solo luglio–settembre, al netto', function () {

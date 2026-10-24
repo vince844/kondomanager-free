@@ -40,7 +40,8 @@
  *   chiave `conguaglio.scelta`, non sull'intero `conguaglio`: il verbale vuole anche i periodi della coppia nel registro.
  *
  * Cosa NON copre: la pagina Vue e il modulo (le due voci, la conferma spenta, le frasi a video); il cambio d'inquilino con un nuovo
- * inquilino (`CambioInquilinoSceltaTest`); il coinquilino che resta (`CoinquilinoCheRestaTest`); la fermata della vendita dopo
+ * inquilino (`CambioInquilinoSceltaTest`); il coinquilino che resta (dalla 1.11.0-beta.55 la regola del piano: `CoinquilinoCheRestaTest`,
+ * `Beta55RegolaDelPianoTest`, `Beta55CoinquilinoCoppiaDelPianoTest`); la fermata della vendita dopo
  * «Scrivi» e l'inizio di una locazione dopo una fine «Scrivi» (area della fermata); il prospetto dell'unità principale con le due
  * strade, il cambio in due passi e le fini senza scelta nel registro nella stampa (area del prospetto); un `conguaglio` mandato a mano
  * quando l'anteprima non propone coppie; le gestioni straordinarie e gli esercizi non solari; MySQL.

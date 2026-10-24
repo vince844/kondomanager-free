@@ -2,6 +2,7 @@
 
 namespace App\Services\Subentro;
 
+use App\Actions\Subentro\AnnullaConguaglioAction;
 use App\Helpers\DateHelper;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
@@ -107,6 +108,11 @@ class StoricoTitolarita
                     $saldi->isNotEmpty() => 'proposto',
                     default => 'nessuno',
                 };
+                // «Annulla il conguaglio» si offre dove la rotta lo accetta: non con l'arretrato agli eredi del conguaglio stesso, e non se una successione ha preso fra le sue
+                // fonti una riga di questa coppia (`AnnullaConguaglioAction`, la stessa regola): lì lo storico dice la strada al posto del comando, e non ha avvisi da seguire.
+                // La ricerca legge le successioni del condominio, e si fa solo dove il comando c'è.
+                $letto = $conguaglio === 'proposto' && ! $s->annullato() && ! $s->arretratoAgliEredi() ? AnnullaConguaglioAction::successioneCheLeggeLaCoppia($s) : null;
+                $siAnnulla = ! $s->arretratoAgliEredi() && $letto === null;
 
                 return [
                     'id' => $s->id,
@@ -141,12 +147,16 @@ class StoricoTitolarita
                         'per_entrante' => $this->conguaglioPerEntrante($saldi, (int) $s->anagrafica_uscente_id, $s->aChiVannoIGiorni() !== 'a chi entra i suoi giorni'),
                         'applicato' => $saldi->contains(fn ($x) => (bool) $x->is_applicato),
                         'nota' => $s->nota_conguaglio,
+                        // Coda 245: con «Non scriverlo» alla fine di una locazione le cifre che le parti si regolano fra loro (il registro le ha in `regolato_fuori`).
+                        'fra_le_parti' => $s->lasciatoFraLeParti(),
                         'nota_annullamento' => $s->nota_annullamento_conguaglio,
                         'annullato_il' => $s->conguaglio_annullato_il ? $this->giornoUtente($s->conguaglio_annullato_il) : null,
                         // Con l'arretrato agli eredi la coppia e l'arretrato fanno un conto solo (`AnnullaConguaglioAction`).
-                        'annullabile' => ! $s->arretratoAgliEredi(),
+                        'annullabile' => $siAnnulla,
+                        // Perché non si annulla, e la strada, dove la scheda non la sa da sé (una successione ha letto la coppia): null altrimenti.
+                        'motivo' => $letto === null ? null : AnnullaConguaglioAction::fraseDellaSuccessione($letto),
                         // Decisione 83.2 (1.11.0-beta.50): prima di confermare, le fermate dei passaggi dopo su questa coppia e il Wallet da rivedere.
-                        'avvisi' => $conguaglio === 'proposto' && ! $s->annullato() ? FermataDopoScrivi::avvisiDelConguaglio($s) : [],
+                        'avvisi' => $conguaglio === 'proposto' && ! $s->annullato() && $siAnnulla ? FermataDopoScrivi::avvisiDelConguaglio($s) : [],
                     ],
                     'arretrato' => $s->successione() ? $this->arretrato($s, $righeArretrato) : null,
                     // Decisione 77 (3), 1.11.0-beta.50: la fermata dopo «Scrivi» e quanto ne resta dopo l'inizio di una locazione, dal registro.
@@ -155,7 +165,7 @@ class StoricoTitolarita
                         // Decisione 82.2: con la parte passata dopo, con il passaggio di chi l'aveva ricevuta. Decisione 83.2: con il conguaglio
                         // della fine annullato la fermata non vale più, e si dice.
                         ...array_map(fn (array $f) => FermataDopoScrivi::fineSenzaConguaglio($f) ? FermataDopoScrivi::fraseStoricoAnnullata($f)
-                            : FermataDopoScrivi::fraseStorico($f, FermataDopoScrivi::passateDopo($s, $f)), $s->registro['fermata_dopo_scrivi'] ?? []),
+                            : FermataDopoScrivi::fraseStorico($f, FermataDopoScrivi::passateDopo($s, $f), FermataDopoScrivi::tornateDopo($s, $f)), $s->registro['fermata_dopo_scrivi'] ?? []),
                         ...array_map(fn (array $f) => FermataDopoScrivi::fineSenzaConguaglio($f) ? FermataDopoScrivi::fraseStoricoRidottaAnnullata($f)
                             : FermataDopoScrivi::fraseStoricoRidotta($f), $s->registro['fermata_ridotta'] ?? []),
                         // Coda 254 (1.11.0-beta.51): la parte che è risalita alla fine di un conduttore.
@@ -163,6 +173,8 @@ class StoricoTitolarita
                             : FermataDopoScrivi::fraseStoricoRisale($f), $s->registro['fermata_risale'] ?? []),
                         // R12 della Fase 1-bis: anche la fermata del coinquilino (decisione 79, punto 2), che ha chiesto la spunta.
                         ...array_map([FermataDopoScrivi::class, 'fraseStoricoCoinquilino'], $s->registro['fermata_coinquilino'] ?? []),
+                        // Coda 245 (decisione 95.6 b): ciò che la regola del piano cambierebbe e la coppia di questo passaggio non ha scritto.
+                        ...array_map(fn (array $r) => RegolaDelPiano::fraseStoricoDelResto($r, $s), $s->registro['resto_del_piano'] ?? []),
                     ],
                     'obbligati' => $s->annullato() ? [] : $this->frasiObbligati->daSubentro($s),
                     // Rilievo A2 della Fase 1-bis della beta.41: la scelta sull'ordinaria, dal registro. Decide i conguagli dei

@@ -82,25 +82,33 @@ it('M11 — una riga d\'inquilino di Dora con quota zero non è un coinquilino c
 
     $a = fclAnteprima($this, $s, fclModulo($s));
 
+    // Coda 245 (1.11.0-beta.55): la chiave della fermata del coinquilino non c'è più; con un coinquilino vero la coppia sarebbe della regola del
+    // piano (`regola` = `piano`), qui è quella dei giorni.
     expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Ugo', 18148]])
-        ->and($a['rate']['fermata_coinquilino'])->toBe([])
+        ->and($a['rate'])->not->toHaveKey('fermata_coinquilino')
+        ->and($a['rate']['conguaglio']['regola'])->toBe('giorni')
         ->and(fclFrasi($a))->not->toContain('la locazione continua con Dora');
 });
 
-it('M12, M90 — Dora è uscita il 1/7, il giorno stesso, prima di Ines: alla fine di Ines nessun coinquilino resta, e la coppia della parte di Ines va a Ugo', function () {
+it('M12, M90 — Dora è uscita il 1/7, il giorno stesso, prima di Ines: alla fine di Ines nessun coinquilino resta, e la coppia della parte di Ines va a Ugo, con la regola del piano della fine di Dora', function (string $scelta) {
     // Ines e Dora al 50 %. La fine di Dora (registrata prima) chiude la sua riga al 30/6: il 1/7 Dora non c'è più. Il coinquilino si
     // guarda il giorno del passaggio (`inCorsoIl($decorrenza)`); guardato il giorno prima, Dora c'era ancora, e la fine di Ines diceva
-    // «la locazione continua con Dora» senza proporre niente. La parte di Ines: 18000 × [181, 184] / 365 = 8926,03 / 9073,97 → 9074.
+    // «la locazione continua con Dora».
+    // Coda 245 (1.11.0-beta.55): la fine di Dora, con Ines che restava, è una fine con la regola del piano (la scelta c'è: Dora − 6066, Ines + 6066
+    // con «Scrivi»), e la fine di Ines lo stesso giorno sta sul suo anello (decisione 95.6 b): la differenza del piano del passaggio. Prima Dora 11934
+    // e Ines 24066; dopo Dora 8926, Ines 8926, Ugo 18148 (36000 × 90,5 / 365 = 8926,03 e 18147,95): la coppia di Ines è − 15140 a Ugo, e restano fuori
+    // Dora − 3008 e Ugo + 3008 (C6.5a a parti scambiate). Le cifre non dipendono dalla scelta della fine di Dora. Prima della .55: Ugo + 9074, i giorni.
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
-    $dora = fclRegistra($this, $s, fclModulo($s, null, '2026-07-01', [], 'Dora'));
-    expect($dora->registro['fermata_coinquilino'] ?? [])->not->toBe([]);
+    $dora = fclRegistra($this, $s, ['quota' => 50] + fclModulo($s, null, '2026-07-01', [], 'Dora') + ['conguaglio' => $scelta]);
+    expect($dora->registro['conguaglio']['piano'] ?? [])->not->toBe([]);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
 
-    expect($a['rate']['fermata_coinquilino'])->toBe([])
-        ->and(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Ugo', 9074]])
+    expect($a['rate'])->not->toHaveKey('fermata_coinquilino')
+        ->and(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Ugo', 15140]])
+        ->and(collect($a['rate']['resto_del_piano'][0]['parti'] ?? [])->pluck('cifra', 'nome')->all())->toBe(['Dora' => -3008, 'Ugo' => 3008])
         ->and(fclFrasi($a))->not->toContain('la locazione continua con Dora');
-});
+})->with(['dopo «Scrivi»' => ['scrivi'], 'dopo «Non scriverlo»' => ['non_scrivere']]);
 
 it('M21 — con due persone al posto dell\'inquilino la frase del calcolo dice la divisione per persona: € 108,89 a Ugo e € 72,59 a Rita', function () {
     // La frase «si divide fra chi paga al posto dell'inquilino …» si scrive quando le parti sono più d'una (`count($parti) > 1`). Ugo
@@ -155,21 +163,33 @@ it('M34, M110 — nel blocco «Chi resta obbligato» le quote non emesse dicono 
     expect($obbligati)->toContain('restano a Ines anche le 6 quote non ancora emesse: chi paga i giorni dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio («Scrivi il conguaglio» li porta a chi paga al posto dell\'inquilino, «Non scriverlo» li lascia nelle rate di Ines).');
 });
 
-it('M26, M29, M33, M35, M40 — con Dora che resta: il motivo del cancello con la cifra (senza il nome dell\'unità, che è una sola), la parte delle quote che restano, e niente «tornano» né «lo decide l\'amministratore»', function () {
-    // Le frasi del coinquilino nei quattro posti dove il codice le sceglie: il motivo della fermata in `cancello.motivi` (non fra le
-    // informazioni: è un motivo, con la spunta), senza «(«Interno 1»)» con un'unità sola; la parte «restano sue, senza conguaglio» del
-    // cancello; l'apertura del blocco «Rate» senza «Dalla prossima generazione … tornano»; la frase delle bozze in «Chi resta obbligato».
+it('M26, M29, M33, M35, M40 — con Dora che resta: il cancello ha i motivi di sempre, con le 6 bozze comprese nel conguaglio, se lo scrivi, e nessun motivo del coinquilino; «Chi resta obbligato» dice la scelta con la regola del piano', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 qui c'erano il motivo della fermata del coinquilino (€ 90,74 «restano nelle sue rate … non propone
+    // il conguaglio»), le bozze «senza conguaglio: con un coinquilino che resta … lo decidono le parti» e la stessa frase in «Chi resta
+    // obbligato». Con la regola del piano la scelta c'è: le bozze sono comprese nel conguaglio, se lo scrivi, e chi paga lo decide la scelta.
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
     $motivi = implode(' | ', $a['cancello']['motivi']);
     $obbligati = implode(' ', $a['obbligati']['frasi']);
 
-    expect($a['cancello']['motivi'])->toContain('€ 90,74 dei giorni dopo l\'uscita di Ines restano nelle sue rate sulla gestione Ordinaria 2026: la locazione continua con Dora, e il programma non propone il conguaglio')
-        ->and($motivi)->toContain('senza conguaglio: con un coinquilino che resta il programma non propone il conguaglio dei giorni dopo l\'uscita, e chi li paga lo decidono le parti')
-        ->and($motivi)->not->toContain('lo decide l\'amministratore')
+    expect($motivi)->not->toContain('€ 90,74')
+        ->and($motivi)->not->toContain('coinquilino')
+        // Con la regola del piano non sono «i giorni dopo l'uscita» a passare a chi decide la scelta, ma la parte dell'inquilino divisa fra chi è stato conduttore: come «Chi resta obbligato».
+        ->and($motivi)->toContain('restano sue e sono comprese nel conguaglio, se lo scrivi: chi paga la parte dell\'inquilino dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio')
+        ->and($motivi)->not->toContain('chi paga i giorni dopo l\'uscita')
         ->and(implode(' ', $a['rate']['frasi']))->not->toContain('Dalla prossima generazione')
-        ->and($obbligati)->toContain('anche le 6 quote non ancora emesse: con un coinquilino che resta il programma non propone il conguaglio dei giorni dopo l\'uscita, e chi li paga lo decidono le parti.');
+        ->and($obbligati)->toContain('anche le 6 quote non ancora emesse: chi paga la parte dell\'inquilino dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio («Scrivi il conguaglio» la ridivide con la regola del piano fra chi è stato conduttore, «Non scriverlo» la lascia nelle rate di Ines).')
+        ->and($obbligati)->not->toContain('lo decidono le parti');
+});
+
+it('M26 (guardia) — senza un coinquilino che resta il cancello dice ancora «chi paga i giorni dopo l\'uscita»', function () {
+    $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]]);
+
+    $motivi = implode(' | ', fclAnteprima($this, $s, fclModulo($s))['cancello']['motivi']);
+
+    expect($motivi)->toContain('restano sue e sono comprese nel conguaglio, se lo scrivi: chi paga i giorni dopo l\'uscita lo decide l\'amministratore con la scelta sul conguaglio')
+        ->and($motivi)->not->toContain('la parte dell\'inquilino');
 });
 
 it('M30 — nel cambio d\'inquilino il cancello dice «comprese nel conguaglio, se lo scrivi» senza la coda della fine senza un nuovo inquilino', function () {
@@ -234,11 +254,18 @@ it('M41 — una fine di prima della .50 con la casella «le parti hanno regolato
         ->and($frase)->not->toContain('li rimborsa Luca a Ines');
 });
 
-it('M52 — Ines è uscita mentre Dora restava: l\'inizio di Luca dice che chi paga i giorni dopo l\'uscita di Ines lo decidono le parti', function () {
+it('M52 — Ines è uscita mentre Dora restava, con la regola del piano: l\'inizio di Luca dice le cifre della regola del piano e chi rimborsa chi, non che lo decidono le parti', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 la fine di Ines con Dora che restava lasciava i giorni dopo l'uscita nelle rate di Ines, e l'inizio di
+    // Luca diceva «resta nelle rate di Ines: chi paga i giorni dopo la sua uscita lo decidono le parti». Ora la fine di Ines ha la regola del piano
+    // (con «Scrivi»: Ines 11934, Dora 24066), e l'inizio di Luca dal 1/7 al 50 % è un'informazione con le sue cifre (il cambio in due passi): Luca
+    // 50 × 184 = 9200, Ines 9050, Dora 18250 (somma 36500) danno 9073,97, 8926,03 e 18000 → Luca 9074, Ines 8926, Dora 18000: Luca + 9074, Dora − 6066,
+    // Ines − 3008.
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
-    fclRegistra($this, $s, fclModulo($s));
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
 
-    expect(mcb50FraseInizio($this, $s, '2026-07-01', 50))->toContain('resta nelle rate di Ines: chi paga i giorni dopo la sua uscita lo decidono le parti.');
+    $frase = mcb50FraseInizio($this, $s, '2026-07-01', 50);
+    expect($frase)->toContain('Con Luca dal 1 luglio 2026 al 50 % la regola del piano darebbe Luca € 90,74, Dora € 180,00 e Ines € 89,26: il programma non scrive niente, e Luca rimborsa con il prospetto degli oneri accessori € 60,66 a Dora e € 30,08 a Ines.')
+        ->and($frase)->not->toContain('lo decidono le parti');
 });
 
 it('M43 — Dora tolta a mano e Ines uscita con «Non scriverlo»: due modi diversi, e l\'inizio di Luca dice che vale la scelta della fine di ciascuno', function () {
@@ -526,7 +553,9 @@ it('M66, M79 — dopo la fermata della vendita, Luca e poi Marco: l\'inizio di M
 
     expect($ridotte)->toHaveCount(1)
         ->and([$ridotte[0]['cifra'], $ridotte[0]['prima'], $ridotte[0]['residuo']])->toBe([9074, 6115, 3057])
-        ->and(implode(' ', $a['rate']['frasi']))->toContain('€ 90,74 dei giorni dopo l\'uscita di Ines, da regolare a mano con Elsa (con le locazioni registrate da allora, € 61,15)')
+        // Coda 351 (1.11.0-beta.55): la cifra di prima cambia anche con una ricompera, non solo con una locazione: la parentesi dice «i passaggi
+        // registrati da allora» (prima «le locazioni»). Le cifre non cambiano.
+        ->and(implode(' ', $a['rate']['frasi']))->toContain('€ 90,74 dei giorni dopo l\'uscita di Ines, da regolare a mano con Elsa (con i passaggi registrati da allora, € 61,15)')
         ->and(implode(' ', $a['rate']['frasi']))->toContain('resta da regolare € 30,57 con Elsa');
 });
 
@@ -609,30 +638,37 @@ function mcb50SecondaGestione(array $s): \App\Models\Gestionale\PianoRate
 // Difetti veri, corretti: il pannello dell'inizio e il prospetto dicevano due cose diverse
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('Punto 3 — Dora esce il 1/7 mentre Ines (al tempo) resta, poi Ines esce lo stesso giorno: l\'inizio di Luca legge il coinquilino di Dora dal registro, come il prospetto, e non promette che Luca rimborsa anche Dora', function () {
-    // Trovato con la mutazione M12 (e M43, M52). `comeSonoUsciti` decideva il «coinquilino» ricontando le righe d'inquilino in corso il
-    // giorno della fine (`coinquiliniCheRestano`), mentre il prospetto (`coinquilinoCheResta`) legge prima il registro della fine, dove
-    // il pannello di allora ha scritto la fermata del coinquilino. Uscita anche Ines, il 1/7 nessuno «restava»: per il pannello
-    // dell'inizio la fine di Dora diventava «non scritto» (Luca le rimborsa i suoi giorni con il prospetto); il prospetto, registrato
-    // l'inizio, dà a Dora la strada C («resta un coinquilino, e chi li paga lo decidono le parti») e a Luca solo la parte di Ines. Il
-    // denaro: 36000 a metà, 18000 a testa; dopo il 1/7 la parte di ciascuna è 18000 × 184/365 = 9073,97 → 9074.
+it('Punto 3 — Dora esce il 1/7 mentre Ines (al tempo) resta, poi Ines esce lo stesso giorno: l\'inizio di Luca dice la regola del piano, come il prospetto, e non promette che Luca rimborsa anche Dora', function () {
+    // Trovato con la mutazione M12 (e M43, M52): l'inizio di Luca e il prospetto devono leggere la fine di Dora allo stesso modo. Coda 245 (1.11.0-beta.55): la fine
+    // di Dora, con Ines che resta, ha la scelta e la regola del piano (qui «Scrivi»: Dora 50 × 181 = 9050, Ines 50 × 365 = 18250, 36000 × 9050/27300 = 11934,07 →
+    // Dora − 6066, Ines + 6066); la fine di Ines lo stesso giorno, con «Non scriverlo», sta sul suo anello: prima Dora 11934 e Ines 24066, dopo Dora 8926, Ines 8926 e
+    // Ugo, al posto dell'inquilino dal 1/7, 18148: la coppia non scritta Ines − 15140 → Ugo, e fuori Dora − 3008 e Ugo + 3008. Luca entra il 1/7 al 100 %: tutti i
+    // giorni sono coperti, Dora 9050, Ines 9050, Luca 18400 (somma 36500) → 8926,03, 8926,03, 18147,95 → Luca 18148, e Ugo non ha più parte: Luca + 18148, Ugo
+    // − 18148. Il pannello lo dice («Luca rimborsa … € 181,48 a Ugo») e il prospetto lo stesso: Luca rimborsa a Ugo 18148, e Ugo restituisce a Ines 15140 e a Dora
+    // 3008, la differenza che la fine di Ines ha lasciato fra le parti. Prima (decisione 79) Luca rimborsava 9074 a Ines, e Dora aveva la strada C.
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
-    fclRegistra($this, $s, fclModulo($s, null, '2026-07-01', [], 'Dora'));
-    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere']);
+    fclRegistra($this, $s, ['quota' => 50] + fclModulo($s, null, '2026-07-01', [], 'Dora') + ['conguaglio' => 'scrivi']);
+    fclRegistra($this, $s, ['quota' => 50] + fclModulo($s) + ['conguaglio' => 'non_scrivere']);
 
     $frase = mcb50FraseInizio($this, $s);
     fclRegistra($this, $s, mcb50Inizio($s, 'Luca'));
     $prospetto = app(\App\Services\Riparto\ProspettoOneriAccessori::class)->calcola($s['unita']->fresh(), $s['e']);
-    $dora = collect($prospetto['conduttori'])->firstWhere('nome', 'Dora');
-    $luca = collect($prospetto['conduttori'])->firstWhere('nome', 'Luca');
+    $sezione = fn (string $nome) => collect($prospetto['conduttori'])->firstWhere('nome', $nome);
+    $rimborsi = fn (?array $x) => collect($x['regola_del_piano']['rimborsi'] ?? [])->map(fn ($r) => [$r['verso'], $r['nome'], (int) $r['importo']])->all();
 
-    // Il prospetto: Luca rimborsa 9074, tutti a Ines; i giorni di Dora dopo il 1/7 restano suoi, con la strada C.
-    expect((int) $luca['da_rimborsare'])->toBe(9074)
-        ->and(collect($luca['voci'])->pluck('pagato_da')->filter()->unique()->values()->all())->toBe(['Ines'])
-        ->and(collect($dora['voci'])->contains(fn ($v) => ($v['strada'] ?? null) === 'C' && (int) $v['importo'] === 9074))->toBeTrue();
-    // Il pannello dell'inizio (prima della correzione sbagliava): non deve promettere a Dora un rimborso di Luca che il
-    // prospetto non fa.
-    expect($frase)->not->toContain('li rimborsa Luca a Dora');
+    expect([(int) $sezione('Luca')['totale'], (int) $sezione('Luca')['da_rimborsare']])->toBe([18148, 18148])
+        ->and($rimborsi($sezione('Luca')))->toBe([['a', 'Ugo', 18148]])
+        ->and([(int) $sezione('Dora')['totale'], (int) $sezione('Dora')['nelle_sue_rate'], (int) $sezione('Dora')['con_il_conguaglio'], (int) $sezione('Dora')['da_rimborsare']])->toBe([8926, 18000, -6066, -3008])
+        ->and($rimborsi($sezione('Dora')))->toBe([['da', 'Ugo', 3008]])
+        ->and([(int) $sezione('Ines')['totale'], (int) $sezione('Ines')['nelle_sue_rate'], (int) $sezione('Ines')['con_il_conguaglio'], (int) $sezione('Ines')['da_rimborsare']])->toBe([8926, 18000, 6066, -15140])
+        ->and($rimborsi($sezione('Ines')))->toBe([['da', 'Ugo', 15140]])
+        ->and(collect($prospetto['conduttori'])->flatMap(fn ($c) => $c['voci'])->contains(fn ($v) => ($v['strada'] ?? null) === 'C'))->toBeFalse();
+    // Il pannello dell'inizio dice le stesse persone e la stessa cifra, e non promette a Dora un rimborso di Luca che il prospetto non fa.
+    expect($frase)->toContain('Luca rimborsa con il prospetto degli oneri accessori € 181,48 a Ugo')
+        ->and($frase)->not->toContain('li rimborsa Luca a Dora');
+    // La stampa dice anche Ugo, che senza giorni senza conduttore riceve da Luca e restituisce a Ines e a Dora.
+    expect(fclStampa($s))->toContain('da rimborsare a Ugo da Luca: con l\'inizio della locazione di Luca del 01/07/2026 € 181,48')
+        ->toContain('da restituire a Ines da Ugo: la fine della locazione del 01/07/2026 non ha scritto il conguaglio € 151,40');
 });
 
 it('Punto 2 — un cambio d\'inquilino di prima della .50 con la coppia scritta (Ines → Marco), poi la fine di Marco: le righe del cambio dicono che la coppia è scritta, e l\'inizio di Luca non dice che Luca rimborsa Ines, come il prospetto, che fa rimborsare Marco', function () {
@@ -729,15 +765,18 @@ it('Decisione 81.3 (dato anomalo) — sul box Ugo ha anche una riga a quota zero
 // ---------------------------------------------------------------------------------------------------------------------
 
 it('M86 — con Dora che resta, un modulo rimasto aperto da prima della .50 manda solo la casella della rinuncia: la fine si registra, senza rifiuto', function () {
-    // `RegistraSubentroAction` rifiuta un `conguaglio` mandato a mano dove la scelta non c'è, ma non quello che `datiPassaggio` ricava
-    // dalla casella di prima (`empty($dati['rinuncia_conguaglio'])`, verifica S5, R13): senza le coppie la casella non ha mai contato.
-    // Senza l'eccezione il modulo vecchio si fermava con «la scelta non c'è. Ricarica la pagina».
+    // Fino alla .54 `RegistraSubentroAction` rifiutava un `conguaglio` mandato a mano con un coinquilino che resta, ma non quello che
+    // `datiPassaggio` ricava dalla casella di prima (`empty($dati['rinuncia_conguaglio'])`, verifica S5, R13): senza le coppie la casella non
+    // aveva mai contato. Senza l'eccezione il modulo vecchio si fermava con «la scelta non c'è. Ricarica la pagina».
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
 
     fclStore($this, $s, fclModulo($s) + ['rinuncia_conguaglio' => true, 'nota_conguaglio' => 'Le parti hanno regolato fra loro alla riconsegna'])->assertSessionHasNoErrors();
 
+    // Coda 245 (1.11.0-beta.55): con Dora che resta le coppie ora ci sono (la regola del piano) e la scelta si chiede; la casella del modulo
+    // rimasto aperto vale «Non scriverlo» (`AnteprimaPassaggioRequest`), e il registro lo dice.
     expect(Subentro::where('immobile_id', $s['unita']->id)->where('tipo_passaggio', 'fine_locazione')->count())->toBe(1)
-        ->and(fclRigheDeiPassaggi($s))->toBe(0);
+        ->and(fclRigheDeiPassaggi($s))->toBe(0)
+        ->and(fclUltimo($s)->registro['conguaglio']['scelta'] ?? null)->toBe(Subentro::CONGUAGLIO_NON_SCRITTO);
 });
 
 it('M88, M93, M115 — il registro della fine «Scrivi» senza un nuovo inquilino conserva i periodi della coppia; quello del cambio d\'inquilino no', function () {
@@ -839,12 +878,15 @@ it('M103 — annullare la fine con Dora che resta non avvisa più di un saldo ma
         }
         fclGenera($s);
         fclEmetti($this, $s, '2026-06-30');
-        $fine = fclRegistra($this, $s, fclModulo($s));
+        // Coda 245 (1.11.0-beta.55): con il coinquilino la scelta c'è; con «Non scriverlo» l'avviso dice che il conguaglio non è stato scritto e a
+        // chi andrebbe la parte ricalcolando (a ciascun conduttore la sua parte, per quota e per giorni), senza il Wallet.
+        $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere']);
 
         $avvisi = implode(' | ', app(\App\Actions\Subentro\AnnullaPassaggioAction::class)->avvisi($fine->fresh()));
 
         expect(str_contains($avvisi, $avviso))->toBeFalse($avvisi)
-            ->and(str_contains($avvisi, 'Wallet'))->toBeFalse($avvisi);
+            ->and(str_contains($avvisi, 'Wallet'))->toBeFalse($avvisi)
+            ->and($avvisi)->toContain('il condominio addebita a ciascun conduttore la sua parte, per quota e per giorni');
     }
 });
 
@@ -932,8 +974,11 @@ it('M121 — l\'Interno 1 e il box spuntato, con Dora che resta solo sul box: il
     // `coinquilinoCheResta` legge nel registro la fermata del coinquilino **dell'unità** (`immobile_id`): la fermata del box non vale per
     // l'Interno 1. Interno 1 (900 millesimi): 32400 × [181, 184] / 365 → 16067 a Ines, la coppia 16333 a Ugo.
     $s = mcb50ConSeiRate($this, [['Ugo', 'proprietario', 100]], ['box' => [['Ugo', 'proprietario', 100], ['Ines', 'inquilino', 50], ['Dora', 'inquilino', 50]]]);
+    // Coda 245 (1.11.0-beta.55): sul box, dove resta Dora, la coppia è della regola del piano (anello 3600, congelato 1800 e 1800, dopo 3600 ×
+    // 9050/27300 = 1193,4 → Ines 1193, Dora 2407: ∓ 607) e il registro ha la regola del piano del box, non più la fermata del coinquilino.
     $fine = fclRegistra($this, $s, fclModulo($s, null, '2026-07-01', [$s['box']]) + ['conguaglio' => 'scrivi']);
-    expect(collect($fine->registro['fermata_coinquilino'] ?? [])->pluck('immobile_id')->all())->toBe([(int) $s['box']->id]);
+    expect(collect($fine->registro['conguaglio']['piano'] ?? [])->pluck('immobile_id')->all())->toBe([(int) $s['box']->id])
+        ->and(fclSaldi($s, $s['box']))->toBe(['Dora' => 607, 'Ines' => -607]);
 
     expect(fclProspetto($s))->toBe(['conduttori' => ['ines' => [16067, 16067, 0, 181]], 'senza' => [16333, 184]]);
 });

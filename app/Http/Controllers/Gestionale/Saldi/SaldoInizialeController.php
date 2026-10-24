@@ -154,9 +154,13 @@ class SaldoInizialeController extends Controller
         ]), fn (string $n) => $n !== ''));
         // Una fermata che non vale più (il conguaglio su cui si era fermata è stato annullato) o che un inizio ha azzerato non lascia una parte
         // da regolare a mano: né nel registro dell'inizio, né in quello del passaggio che l'ha lasciata.
-        $conParteAMano = fn (Subentro $p, int $immobileId): bool => collect(['fermata_dopo_scrivi', 'fermata_risale', 'fermata_ridotta', 'fermata_coinquilino'])
+        // Coda 245 (1.11.0-beta.55): anche il resto della regola del piano di un passaggio con la regola del piano, quando la sua strada è il Wallet
+        // (`wallet`: tutte le sue persone possono avere una riga in saldi). È la differenza del piano del passaggio (decisione 111.3): «Annulla il
+        // conguaglio», della fine di prima o di questo passaggio, non lo toglie.
+        $conParteAMano = fn (Subentro $p, int $immobileId): bool => collect(['fermata_dopo_scrivi', 'fermata_risale', 'fermata_ridotta', 'fermata_coinquilino', 'resto_del_piano'])
             ->contains(fn (string $chiave) => collect($p->registro[$chiave] ?? [])->contains(fn ($f) => is_array($f) && (int) ($f['immobile_id'] ?? 0) === $immobileId
-                && ! FermataDopoScrivi::fineSenzaConguaglio($f) && ! FermataDopoScrivi::nienteDaRegolare($chiave, $f, $p, $capi)));
+                && ($chiave === 'resto_del_piano' ? ! empty($f['wallet'])
+                    : ! FermataDopoScrivi::fineSenzaConguaglio($f) && ! FermataDopoScrivi::nienteDaRegolare($chiave, $f, $p, $capi))));
 
         $legati = Subentro::conAnnullati()->whereIn('id', $immobili->pluck('saldi')->flatten()->pluck('passaggio_id')->filter()->unique()->values()->all() ?: [0])->get()
             ->mapWithKeys(fn (Subentro $p) => [(int) $p->id => FermataDopoScrivi::passaggioInParole($p)]);

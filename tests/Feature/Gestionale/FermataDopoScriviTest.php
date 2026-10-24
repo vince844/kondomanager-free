@@ -43,7 +43,7 @@
  * saldo sulla gestione ce l'ha chi riceve (Elsa): dalla 1.11.0-beta.53 il Wallet, con i saldi legati.
  *
  * Che cosa NON copre: il rinnovo e l'inizio dopo una fermata (S7) — sono in `InizioDopoScriviTest.php`; il coinquilino che resta
- * (decisione 79 punto 2, area della fine locazione); le pertinenze (il box con la fine spuntata), l'unità mista e la persona con
+ * (dalla 1.11.0-beta.55 la regola del piano, Coda 245: `Beta55RegolaDelPianoTest`, `Beta55CoinquilinoCoppiaDelPianoTest`); le pertinenze (il box con la fine spuntata), l'unità mista e la persona con
  * due righe (i pesi «per persona con tutte le sue righe», correzione (4) della revisione delle misure), due fini di fila,
  * l'ordine inverso (vendita registrata prima della fine con data dopo: la coppia della fine per tratti, area della fine), la
  * vendita della nuda proprietà, più gestioni o più piani con voci dell'inquilino, gli esercizi non solari e il 2028; l'annullamento

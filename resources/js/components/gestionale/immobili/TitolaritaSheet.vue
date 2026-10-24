@@ -180,6 +180,7 @@ function tratto(r: RigaStorico): string {
                 <p v-if="p.pertinenze.length" class="text-[11px] text-slate-500 dark:text-slate-400">Insieme a: {{ p.pertinenze.join(', ') }}.</p>
 
                 <div v-if="!p.annullato" class="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5">
+                  <!-- Coda 245: con «Non scriverlo» alla fine di una locazione, dopo «nessuna riga in saldi» le cifre che le parti si regolano fra loro (`fra_le_parti`, dal registro). -->
                   <p class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
@@ -187,7 +188,7 @@ function tratto(r: RigaStorico): string {
                       <template v-else-if="p.conguaglio.stato === 'proposto' && (p.conguaglio.per_entrante?.length ?? 0) > 1">: <FraseConImporti :testo="p.conguaglio.per_entrante!.join(', ')" />; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di <span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'proposto'">: <span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span> <template v-if="p.conguaglio.importo < 0">a credito di chi entra, debito uguale a chi esce</template><template v-else>a chi entra, credito uguale a chi esce</template><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
                       <template v-else-if="p.conguaglio.stato === 'rinunciato' && p.conguaglio.nota">: «{{ p.conguaglio.nota }}».</template>
-                      <template v-else-if="p.conguaglio.stato === 'non_scritto'">: nessuna riga in saldi, la posizione resta com'era<template v-if="p.conguaglio.nota"> («{{ p.conguaglio.nota }}»)</template>.</template>
+                      <template v-else-if="p.conguaglio.stato === 'non_scritto'">: nessuna riga in saldi, la posizione resta com'era<template v-if="p.conguaglio.nota"> («{{ p.conguaglio.nota }}»)</template>. <template v-if="p.conguaglio.fra_le_parti"><FraseConImporti :testo="p.conguaglio.fra_le_parti" /></template></template>
                       <template v-else-if="p.conguaglio.stato === 'annullato'"> il {{ p.conguaglio.annullato_il }}<template v-if="p.conguaglio.nota_annullamento">: «{{ p.conguaglio.nota_annullamento }}»</template>.</template>
                     </span>
                   </p>
@@ -199,9 +200,11 @@ function tratto(r: RigaStorico): string {
                   <p v-for="(f, i) in p.fermate ?? []" :key="`fermata-${i}`" class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="f" /></span>
                   </p>
-                  <!-- Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: si correggono annullando il passaggio. -->
+                  <!-- Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: si correggono annullando il passaggio. Se una successione ha letto la
+                       coppia, il server dice il perché e la strada (`motivo`): prima la successione, poi il conguaglio. -->
                   <p v-if="p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
-                    Il conguaglio non si annulla da solo: con l'arretrato agli eredi, conguaglio e arretrato fanno un conto unico. Per cambiare la scelta annulla il passaggio e registralo di nuovo.
+                    <template v-if="p.conguaglio.motivo">{{ p.conguaglio.motivo }}</template>
+                    <template v-else>Il conguaglio non si annulla da solo: con l'arretrato agli eredi, conguaglio e arretrato fanno un conto unico. Per cambiare la scelta annulla il passaggio e registralo di nuovo.</template>
                   </p>
                   <!-- Le righe si tolgono insieme, finché nessun piano le ha assorbite -->
                   <div v-else-if="p.conguaglio.stato === 'proposto' && !p.conguaglio.applicato && condominioId && immobileId" class="pl-[18px]">

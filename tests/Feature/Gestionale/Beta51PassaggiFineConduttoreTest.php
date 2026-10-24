@@ -394,6 +394,9 @@ it('sentinella — O-DL7-COINQ: con Luca e Dora al 50 % la fine di Luca non si f
     // e Dora 327 al 50 %: i pesi del codice (quota × giorni, normalizzati sui giorni coperti) danno Luca 56,98 e Dora 270,02. T = (163,5 −
     // 56,98) × 35552/342 = 11074. I giorni liberati vanno a Dora, che è conduttrice e rimborsa con il prospetto, non
     // a chi paga al posto dell'inquilino: Ugo ed Elsa non cambiano peso. Cifra 0.
+    // Coda 245 (1.11.0-beta.55): resta così. Dora resta, ma Luca non ha quote del piano (è entrato su un piano che non si ricalcolava più): la fine
+    // di Luca non ha una coppia, né quella della regola del piano; e l'anello non ha una fine con la regola del piano prima. Sull'anello di una
+    // fine con la regola del piano la stessa fine sarebbe un'informazione (decisione 45, art. 9 L. 392/1978).
     $s = b51aDl7($this, ['senzaLuca' => true]);
     fds50Registra($this, $s, ['quota' => 50] + fds50ModuloInizio($s, 'Luca', '2026-02-08'));
     fds50Registra($this, $s, ['quota' => 50] + fds50ModuloInizio($s, 'Dora', '2026-02-08'));

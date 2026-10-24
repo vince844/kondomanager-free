@@ -8,8 +8,8 @@
  * Il modulo lo può sapere da solo: la pagina riceve `titolari`, le righe in corso dell'unità con tipologia, quota e date
  * (`PassaggioController::create`), e chi esce è la riga scelta. Un'altra riga d'inquilino con una quota, in corso il giorno prima
  * dell'uscita e il giorno stesso, è il coinquilino che resta (la regola del prospetto, `coinquilinoCheResta`). Dora qui è inquilina
- * dal 2019, senza fine: lo è per qualunque data. Il pannello lo sa anche dal server (`rate.fermata_coinquilino`), ma solo quando ci
- * sono rate da fermare: la casella si legge prima, e anche senza.
+ * dal 2019, senza fine: lo è per qualunque data. Il pannello lo sa anche dal server (le frasi del conguaglio, `rate.frasi`), ma solo quando ci
+ * sono rate da conguagliare: la casella si legge prima, e anche senza.
  *
  * Si monta la pagina con `shallowMount` (i figli sono segnaposto), come in `PassaggioNewLocazione.test.ts`; la data si scrive dal
  * segnaposto del calendario. L'anteprima del server non serve: `axios.post` resta in attesa.

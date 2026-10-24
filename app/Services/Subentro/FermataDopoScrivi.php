@@ -50,6 +50,9 @@ final class FermataDopoScrivi
     /** Il prefisso delle chiavi dei conduttori nei pesi: rimborsano con il prospetto, e non sono mai chi riceve una fermata. */
     private const CONDUTTORE = 'c';
 
+    /** La chiave della quota passata con le fermate a chi riceve, nei pesi (decisione 112.1, `laQuota`): nessuna anagrafica ha un id negativo. */
+    private const QUOTA_DELLA_FERMATA = -1;
+
     /**
      * La strada a mano di una fermata registrata dalla 1.11.0-beta.53 (Coda 244): i saldi del Wallet legati al passaggio, che non occupano il
      * posto di un riporto e si tolgono se il passaggio si annulla. Un registro senza la chiave `strada` è di prima: il pannello indicava il
@@ -72,10 +75,14 @@ final class FermataDopoScrivi
      * @param list<array{anagrafica: Anagrafica, quota: float}> $eredi
      * @param list<int> $saldiPortati le righe che il passaggio stesso porta a chi entra (l'arretrato agli eredi, `fonti`)
      * @param Collection<int, TitolaritaImmobile>|null $nudi i nudi che tornano pieni all'estinzione
+     * @param list<array<string, mixed>>|null $ridotte Coda 351: qui le fermate di prima che il passaggio riduce perché riporta i giorni all'unica persona a carico
+     *                                                (`ridottaDaChiRicompra`), nella forma di `fermateRidotte`
+     * @param list<array<string, mixed>>|null $senzaRiga Coda 353: qui gli avvisi dove chi compra ha una riga della coppia e non si sa in quale riga stavano i giorni di chi esce
+     *                                                   (`fraseSenzaRiga`): senza l'avviso sarebbe silenzio, e non c'è una fermata da dire
      * @return list<array<string, mixed>>
      */
     public function per(string $tipo, ?string $sottotipo, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante, array $eredi, array $immobileIds, CarbonImmutable $decorrenza,
-        array $saldiPortati = [], ?Collection $nudi = null, bool $accrescimento = false): array
+        array $saldiPortati = [], ?Collection $nudi = null, bool $accrescimento = false, ?array &$ridotte = null, ?array &$senzaRiga = null): array
     {
         if ($uscente === null || in_array($tipo, ['inizio_locazione', 'fine_locazione'], true)) {
             return [];
@@ -90,30 +97,120 @@ final class FermataDopoScrivi
             $prima = $this->chiPaga->dividi($c['totale'], $pesiPrima, $chi);
             $dopo = $this->chiPaga->dividi($c['totale'], $pesiDopo, $chi);
             $parti = self::chiRiceve($pesiPrima, $pesiDopo, $prima, $dopo, $chi);
-            $cifra = (int) array_sum($parti);
-            if ($cifra === 0) {
+            if ((int) array_sum($parti) === 0) {
                 continue;
             }
-            $nomi = Anagrafica::whereIn('id', array_keys($parti))->pluck('nome', 'id');
             $dal = $c['pezzi'][0]['tratti']->dal();
             foreach ($c['pezzi'] as $p) {
                 $dal = $p['tratti']->dal()->lt($dal) ? $p['tratti']->dal() : $dal;
             }
-            $out[] = [
+            // Coda 354: la parte che chi entra prende dalla quota che una fermata aveva lasciato a chi esce nella riga di un altro non è a suo carico.
+            [$parti, $dalleFermate] = $this->conLeFermateNellaRiga($c, $uscente, $decorrenza, $righe, $parti);
+            $daqui = ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString();
+            $cifra = (int) array_sum($parti);
+            $nomi = Anagrafica::whereIn('id', array_keys($parti))->pluck('nome', 'id');
+            $out = [...$out, ...($cifra === 0 ? [] : [[
                 'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
                 'saldo_id' => $c['saldo_id'], 'persona_id' => $chi, 'persona' => (string) $uscente->anagrafica?->nome,
                 'immobile_id' => $c['immobile_id'], 'unita' => $c['unita'], 'gestione_id' => $c['gestione_id'], 'gestione' => $c['gestione'], 'esercizio_id' => $c['esercizio_id'],
-                'coppia' => $c['riga'], 'cifra' => $cifra, 'dal' => ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString(), 'assorbita' => $c['assorbita'],
+                'coppia' => $c['riga'], 'cifra' => $cifra, 'dal' => $daqui, 'assorbita' => $c['assorbita'],
+                ...((int) ($c['resto_del_ripiego']['per'][$chi] ?? 0) !== 0 ? ['resto_del_ripiego' => ['cifra' => (int) $c['resto_del_ripiego']['per'][$chi],
+                    'piano' => (int) $c['riga'] + (int) $c['resto_del_ripiego']['per'][$chi], 'con' => self::chiSiRegola((array) $c['resto_del_ripiego']['altri'], (int) $c['resto_del_ripiego']['per'][$chi])]] : []),
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($parti))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $parti[$id]], array_keys($parti)),
                 // La strada a mano è il Wallet, con i saldi legati a questo passaggio: anche se una delle persone della riga ne ha già uno lì, la
                 // riga legata non occupa il posto (un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio
                 // né quelli legati a un passaggio). Il Wallet c'è sempre.
                 'wallet' => true, 'strada' => self::STRADA_LEGATA,
-            ];
+            ]]), ...array_map(fn (array $x) => $this->dallaFermataNellaRiga($c, $uscente, $x, $daqui), $dalleFermate)];
         }
 
-        return [...$out, ...$this->dopoUnaFermata($tipo, $sottotipo, $uscente, $entrante, $eredi, $immobileIds, $decorrenza, $nudiIds, $accrescimento)];
+        $ridotte = [];
+        $senzaRiga = [];
+
+        return [...$out, ...$this->dopoUnaFermata($tipo, $sottotipo, $uscente, $entrante, $eredi, $immobileIds, $decorrenza, $nudiIds, $accrescimento,
+            agliEredi: $tipo === 'successione' && $saldiPortati !== [], ridotte: $ridotte, senzaRiga: $senzaRiga)];
+    }
+
+    /**
+     * Coda 354 (1.11.0-beta.55): la riga che chi esce chiude può avere, oltre alla sua parte della coppia, la quota che una fermata gli ha lasciato nella riga di un
+     * altro (Bruno, pieno della metà A, compra la nuda della B e l'usufrutto di Zeno si estingue: i giorni della B sono di Bruno, e stanno nella riga della coppia di
+     * Zeno). La parte che chi entra prende da quella quota non è di chi esce: resta a carico di chi era a carico della fermata, o di chi esce se quella fermata è già
+     * stata regolata, come dopo una fermata (decisione 81.2). Le quote della riga per origine sono quelle del registro dei passaggi (`quotePerOrigine`); la parte di
+     * ognuno che riceve si divide per quota, la sua per prima (i giorni sono gli stessi: è la stessa riga). Contano le fermate che sanno chi è a carico, una persona o più
+     * persone insieme.
+     *
+     * @param array<int, int> $parti la parte di chi riceve, tutta
+     * @return array{0: array<int, int>, 1: list<array{fermata: array<string, mixed>, parti: array<int, int>}>} la parte dalla sua riga, e quella da ogni fermata
+     */
+    private function conLeFermateNellaRiga(array $c, TitolaritaImmobile $uscente, CarbonImmutable $decorrenza, Collection $righe, array $parti): array
+    {
+        $chi = (int) $uscente->anagrafica_id;
+        $rigaId = self::rigaCheChiude((int) $c['immobile_id'], $uscente, $decorrenza);
+        $riga = $righe->first(fn ($r) => (int) $r->id === $rigaId);
+        $ricevute = array_values(array_filter($this->fermateDi($c, [$chi]), fn (array $x) => (int) $x['ricevuto_da'] === $chi
+            && ! in_array(null, $x['persone_ids'], true) && ! in_array($chi, $x['persone_ids'], true)));
+        if ($riga === null || $ricevute === []) {
+            return [$parti, []];
+        }
+        $perOrigine = self::quotePerOrigine($righe, Subentro::where('immobile_id', (int) $c['immobile_id'])->orderBy('id')->get(), $chi,
+            array_combine(array_column($ricevute, 'capo_id'), array_column($ricevute, 'capo_id')))[$rigaId] ?? [];
+        $quote = [];
+        foreach ($ricevute as $k => $x) {
+            if ((float) ($perOrigine[$x['capo_id']] ?? 0.0) > 1e-9) {
+                $quote[$k] = (float) $perOrigine[$x['capo_id']];
+            }
+        }
+        // Con una riga cambiata a mano dopo la fermata le quote possono superarla: la sua parte allora è zero (il tetto della quota, come in `laQuota`).
+        $sua = max(0.0, (float) $riga->quota - (float) array_sum($quote));
+        $mie = [];
+        $dalle = [];
+        foreach ($parti as $id => $cent) {
+            foreach (MoneyHelper::ripartisciPerQuote((int) $cent, ['sua' => $sua] + $quote) as $o => $x) {
+                if ($o === 'sua') {
+                    $mie[(int) $id] = (int) $x;
+                } else {
+                    $dalle[(int) $o][(int) $id] = (int) $x;
+                }
+            }
+        }
+
+        return [array_filter($mie, fn (int $x) => $x !== 0),
+            array_values(array_filter(array_map(fn (int $k, array $p) => ['fermata' => $ricevute[$k], 'parti' => array_filter($p, fn (int $x) => $x !== 0), 'quota' => $quote[$k]],
+                array_keys($dalle), $dalle), fn (array $x) => $x['parti'] !== []))];
+    }
+
+    /**
+     * Coda 354: la voce della parte che viene dalla quota di una fermata nella riga di chi esce (`conLeFermateNellaRiga`), nella forma di `dopoUnaFermata`: a carico di chi
+     * era a carico della fermata, o di chi esce se è già stata regolata (decisione 81.2), senza il Wallet.
+     *
+     * @param array{fermata: array<string, mixed>, parti: array<int, int>} $x
+     * @return array<string, mixed>
+     */
+    private function dallaFermataNellaRiga(array $c, TitolaritaImmobile $uscente, array $x, string $dal, ?int $saldoId = null, ?bool $assorbita = null): array
+    {
+        $persone = array_map('intval', $x['fermata']['persone_ids']);
+        $hanno = array_intersect_key($this->chiHaLaCoppia($c, (int) $c['fine']->condominio_id), array_flip($persone));
+        $nomi = Anagrafica::whereIn('id', [...$persone, ...array_keys($x['parti'])])->pluck('nome', 'id');
+        // Una fermata a carico di più persone insieme (decisione 86.1) le porta tutte, con i loro ids, come in `dopoUnaFermata`.
+        $piu = count($persone) > 1;
+
+        return [
+            'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
+            'saldo_id' => $saldoId ?? $c['saldo_id'], 'persona_id' => $persone[0], 'persona' => self::elenco(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), $persone)),
+            'piu_persone' => $piu,
+            ...($piu ? ['persone' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), $persone)), 'persone_ids' => $persone] : []),
+            'uscente_id' => (int) $uscente->anagrafica_id, 'uscente' => (string) $uscente->anagrafica?->nome,
+            'dopo_la_fermata' => ['passaggio' => $x['fermata']['passaggio'], 'cifra' => $x['fermata']['cifra']],
+            'immobile_id' => $c['immobile_id'], 'unita' => $c['unita'], 'gestione_id' => $c['gestione_id'], 'gestione' => $c['gestione'], 'esercizio_id' => $c['esercizio_id'],
+            'coppia' => (int) array_sum($hanno), 'cifra' => (int) array_sum($x['parti']), 'dal' => $dal, 'assorbita' => $assorbita ?? $c['assorbita'],
+            'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($x['parti']))),
+            'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $x['parti'][$id]], array_keys($x['parti'])),
+            'wallet' => false,
+            // Decisione 112.1: la quota della fermata di prima nella riga che chiude, la sola che questa voce passa a chi riceve. Un passaggio dopo (l'inizio di un conduttore,
+            // la rivendita di chi riceve) toglie alla voce i giorni di questa quota, non quelli della riga intera che chi riceve ha aperto (`quotePerOrigine`, il tetto).
+            ...(isset($x['quota']) ? ['quota_della_riga' => (float) $x['quota']] : []),
+        ];
     }
 
     /**
@@ -129,7 +226,8 @@ final class FermataDopoScrivi
      *
      * Se una fermata di prima conteneva già quei giorni (INT: la vendita ha lasciato € 90,74 a Elsa, Luca ne ha tolti € 60,16 entrando, e
      * uscendo li restituisce) la parte che «risale» dentro quella fermata non è una fermata nuova: si dice da quanto a quanto sale, e la
-     * fermata nuova è solo il resto (`max(0, variazione − salita)`, `residuiDelleFermate`). La salita non dovrebbe superare la variazione: il
+     * fermata nuova è solo il resto (`max(0, variazione − salita)`, `residuiDelleFermate`). Con chi riceve che ha anche una sua parte della coppia
+     * risalgono i soli giorni della quota della fermata (decisione 112.1). La salita non dovrebbe superare la variazione: il
      * residuo di una fermata è la parte della persona fermata fra zero e la cifra della fermata, quindi sale al più quanto sale la sua parte.
      * Nessun test costruisce il caso contrario; se per un dato anomalo capitasse, il `max(0, …)` lo porta a zero invece di scrivere una fermata
      * negativa (e la salita resta detta, da quanto a quanto).
@@ -266,21 +364,31 @@ final class FermataDopoScrivi
      *
      * Chi ha le righe della coppia lo dice `chiHaLaCoppia`: dopo una successione con l'arretrato agli eredi la coppia del defunto è passata
      * agli eredi. Le persone di una fermata di prima si leggono nello stesso modo (`alPostoDeiDefunti`): chi è morto con l'arretrato agli eredi ha
-     * lasciato loro la sua riga, e con lei la fermata che aveva. Se chi esce è uno di loro, la parte che ha avuto con la successione è sua, ma non è
-     * detto che sia tutta la parte che vende: prima si legge la catena dei passaggi della sua riga. Se la successione è nella catena (o la catena non si
-     * legge, una riga cambiata a mano) e nessun altro passaggio ha lasciato una fermata, l'erede non ha comprato niente e la fermata è come la prima: a suo
-     * carico, con il Wallet. Se in catena ci sono anche fermate di altri passaggi (ha comprato una parte da chi aveva la coppia, prima o dopo l'eredità) la
-     * cifra viene da più origini, ognuna a carico di chi ha la sua riga della coppia, e il programma non sa quale parte venga da quale: resta a carico di
-     * chi esce e delle persone di quelle fermate insieme, e il Wallet non si indica. Se la successione non è nella catena (la parte avuta con la
-     * successione sta su un'altra riga di chi esce) per questa riga chi esce non è a carico, e vale la regola di chi non ha una parte, salvo che la fermata
-     * di prima sia rimasta a lui soltanto (la vendita di Ugo a Bruno, poi Ugo muore e Bruno è suo erede): allora la fermata è la sua, come quella di ogni erede.
+     * lasciato loro la sua riga, e con lei la fermata che aveva. Le quote del defunto passano con la loro storia, qualunque sia la sorte dell'arretrato: le fermate
+     * dove riceveva lui (la sua riga nata da un'estinzione o dall'acquisto della quota di un altro, che `passaggiDellaRiga` segue) sono anche di chi esce. Se chi esce
+     * è uno di loro, la parte che ha avuto con la successione è sua, ma non è detto che sia tutta la parte che vende: prima si legge la catena dei passaggi della sua
+     * riga. Se la successione è nella catena (o la catena non si legge, una riga cambiata a mano) e nessun altro passaggio ha lasciato una fermata, l'erede non ha
+     * comprato niente e la fermata è come la prima: a suo carico, con il Wallet. Se in catena ci sono anche fermate di altri passaggi (ha comprato una parte da chi
+     * aveva la coppia, prima o dopo l'eredità) la cifra viene da più origini, ognuna a carico di chi ha la sua riga della coppia, e il programma non sa quale parte
+     * venga da quale: resta a carico di chi esce e delle persone di quelle fermate insieme, e il Wallet non si indica. Una successione della catena con l'arretrato
+     * a nome del defunto e «Non scriverlo» non ha fermata, ma è un'origine anche lei: i giorni dopo il decesso stanno nella riga che è rimasta al defunto, che è a
+     * carico come lo sarebbe la sua fermata con «Scrivi». Se la successione non è nella catena (la parte avuta con la successione sta su un'altra riga di chi esce)
+     * per questa riga chi esce non è a carico, e vale la regola di chi non ha una parte, salvo che la fermata di prima sia rimasta a lui soltanto (la vendita di Ugo a
+     * Bruno, poi Ugo muore e Bruno è suo erede): allora la fermata è la sua, come quella di ogni erede. Quando il passaggio è la successione dell'erede, anche lui con
+     * l'arretrato agli eredi (Coda 350), quella parte passa con la sua posizione e non c'è fermata.
+     *
+     * Chi riceve non è chi ha una riga qualunque nella coppia: è chi non ha già preso quei giorni. Le persone a carico (le persone delle fermate di prima, lette
+     * come i loro eredi) dicono in quale riga stavano: se è una persona sola, e a ricevere è lei, i giorni sono già nella sua riga e non c'è niente da regolare (il
+     * proprietario unico che vende a Elsa e la ricompra); se sono più persone insieme, o a ricevere è un'altra persona, anche se ha una sua riga nella coppia (Anna
+     * vende a Elsa, Elsa vende a Ugo: i giorni stanno nella riga di Anna), la parte che sta nella riga di un altro si dice. Se le persone non si sanno (una fermata di prima
+     * con più persone senza i loro id, nessuna fermata nella catena), chi ha una riga della coppia non riceve, come prima.
      *
      * @param list<array{anagrafica: Anagrafica, quota: float}> $eredi
      * @param list<int> $nudiIds
      * @return list<array<string, mixed>>
      */
     private function dopoUnaFermata(string $tipo, ?string $sottotipo, TitolaritaImmobile $uscente, ?Anagrafica $entrante, array $eredi, array $immobileIds, CarbonImmutable $decorrenza,
-        array $nudiIds, bool $accrescimento): array
+        array $nudiIds, bool $accrescimento, bool $agliEredi = false, array &$ridotte = [], array &$senzaRiga = []): array
     {
         $chi = (int) $uscente->anagrafica_id;
         $righeDellaCoppia = Saldo::with('gestione')->whereIn('immobile_id', $immobileIds)->whereNotNull('subentro_id')->where('saldo_iniziale', '!=', 0)->orderBy('id')->get();
@@ -305,31 +413,32 @@ final class FermataDopoScrivi
             if (abs($pesiPrima[$chi] ?? 0.0) <= 1e-9) {
                 continue;
             }
-            $pesiDopo = $this->pesi($this->conIlPassaggio($righe, $c['immobile_id'], $tipo, $sottotipo, $uscente, $entrante, $eredi, $nudiIds, $accrescimento, $decorrenza), $c['pezzi']);
+            $righeDopo = $this->conIlPassaggio($righe, $c['immobile_id'], $tipo, $sottotipo, $uscente, $entrante, $eredi, $nudiIds, $accrescimento, $decorrenza);
+            $pesiDopo = $this->pesi($righeDopo, $c['pezzi']);
             $prima = $this->chiPaga->dividi($c['totale'], $pesiPrima, $chi);
             $dopo = $this->chiPaga->dividi($c['totale'], $pesiDopo, $chi);
-            // Chi riceve: come nella prima fermata, senza chi ha le righe della coppia, che quei giorni li ha già presi.
-            $parti = self::chiRiceve($pesiPrima, $pesiDopo, $prima, $dopo, $chi, $hanno);
-            $cifra = (int) array_sum($parti);
-            if ($cifra === 0) {
-                continue;
-            }
-            $nomi = Anagrafica::whereIn('id', [...array_keys($parti), ...array_keys($hanno)])->pluck('nome', 'id');
-            $dal = $c['pezzi'][0]['tratti']->dal();
-            foreach ($c['pezzi'] as $p) {
-                $dal = $p['tratti']->dal()->lt($dal) ? $p['tratti']->dal() : $dal;
-            }
+            $tuttiICheHanno = $hanno;
             // La parte che chi esce ha oggi viene dai passaggi della catena della sua riga (`passaggiDellaRiga`): contano le fermate di quei passaggi, e
             // quelle della fine di un conduttore registrate dopo il primo (i giorni che tornano non sono un passaggio della riga), non quelle di una parte
             // già rivenduta né di un'altra riga della stessa persona. Senza la catena (una riga cambiata a mano), l'ultima fermata, come prima.
-            $daiPassaggi = self::passaggiDellaRiga((int) $c['immobile_id'], self::rigaCheChiude((int) $c['immobile_id'], $uscente, $decorrenza), $chi);
-            $diPrimaTutte = $daiPassaggi === [] ? array_slice($this->fermateDi($c, $chi), 0, 1)
-                : array_values(array_filter($this->fermateDi($c, $chi), fn (array $x) => in_array($x['capo_id'], $daiPassaggi, true)
+            $rigaChiude = self::rigaCheChiude((int) $c['immobile_id'], $uscente, $decorrenza);
+            $daiPassaggi = self::passaggiDellaRiga((int) $c['immobile_id'], $rigaChiude, $chi);
+            // La parte che il defunto aveva ricevuto con una fermata passa all'erede con la successione: le fermate dove ha ricevuto lui sono anche di chi esce.
+            $fermate = $this->fermateDi($c, [$chi, ...self::defuntiDellaCatena($daiPassaggi)]);
+            $diPrimaTutte = $daiPassaggi === [] ? array_slice($fermate, 0, 1)
+                : array_values(array_filter($fermate, fn (array $x) => in_array($x['capo_id'], $daiPassaggi, true)
                     || ($x['del_conduttore'] && $x['capo_id'] >= $daiPassaggi[0])));
             // Le persone di una fermata di prima si leggono come le righe della coppia: chi è morto con l'arretrato agli eredi ha lasciato loro la sua riga, e con lei la
             // fermata che aveva.
             $diPrimaTutte = self::coiLoroEredi($diPrimaTutte, self::alPostoDeiDefunti($c, (int) $fine->condominio_id));
-            $personeDiPrima = array_merge([], ...array_column($diPrimaTutte, 'persone_ids'));
+            // Una successione della catena senza fermata (l'arretrato è rimasto a nome del defunto e il conguaglio non è stato scritto) non ha detto niente a nessuno: i
+            // giorni di chi esce dopo il decesso stanno ancora nella riga che è rimasta al defunto, che è a carico come lo sarebbe la fermata della successione con «Scrivi».
+            // È un'origine solo se il defunto ha una riga fra le persone a carico: senza (ha comprato la sua parte con una fermata, e i suoi giorni stanno nella riga di chi gliel'ha
+            // venduta) la successione non aggiunge niente alla fermata di prima, che resta l'unica origine.
+            $defuntiSenzaFermata = array_values(array_filter(self::defuntiSenzaFermata($daiPassaggi), fn (int $id) => isset($hanno[$id])));
+            $personeDiPrima = [...array_merge([], ...array_column($diPrimaTutte, 'persone_ids')), ...$defuntiSenzaFermata];
+            // Le origini della parte che chi esce vende: una per fermata di prima, una per ogni successione senza fermata.
+            $nOrigini = count($diPrimaTutte) + count($defuntiSenzaFermata);
             // Chi esce ha una sua parte della coppia solo come erede (decisione 65), e la successione conta se è un passaggio della catena della sua riga. Se la
             // parte avuta con la successione sta su un'altra riga, per questa non è a carico e vale la regola di chi non ha una parte, salvo che sia fra le persone
             // della fermata di prima: la fermata di chi gli ha lasciato la coppia è sua.
@@ -340,9 +449,96 @@ final class FermataDopoScrivi
             }
             // Se la fermata di prima è rimasta a lui soltanto (il defunto di cui è l'unico erede), non ci sono altre origini: la fermata è la sua, come per l'erede che
             // non ha comprato niente. Lo stesso quando ha una sua parte della coppia e nella catena della riga non c'è nessuna fermata di prima: la riga l'ha comprata
-            // da chi la coppia non l'aveva, quella vendita non si è fermata (chi ha la coppia non riceve), e nessun'altra persona risponde della parte.
+            // da chi la coppia non l'aveva, quella vendita non si è fermata (chi la compra era già la persona a carico di quei giorni), e nessun'altra persona risponde
+            // della parte. Se la catena della riga non si legge (`$daiPassaggi` vuoto: una riga cambiata o riaperta a mano, nel registro di nessun passaggio) il programma non sa da dove
+            // vengano i giorni che vende, e li legge come suoi, come faceva la .53: anche se prima aveva ricevuto una fermata, di cui non può dire quanta parte sia rimasta in quella riga.
             $soloLui = $suaParte !== null && $personeDiPrima !== [] && ! in_array(null, $personeDiPrima, true) && array_values(array_unique($personeDiPrima)) === [$chi];
-            if ((($dallaSuccessione || $suaParte !== null) && ($daiPassaggi === [] || $diPrimaTutte === [])) || $soloLui) {
+            $aSuoCarico = (($dallaSuccessione || $suaParte !== null) && ($daiPassaggi === [] || $nOrigini === 0)) || $soloLui;
+            // Coda 350: con l'arretrato agli eredi la successione passa agli eredi tutta la posizione del defunto, e con lei la parte della coppia che aveva avuto da una
+            // successione di prima, come la sua riga: l'arretrato che passa agli eredi la contiene già. Non resta a carico di nessuno.
+            if ($agliEredi && $aSuoCarico) {
+                continue;
+            }
+            // La fermata di prima ha detto a carico di chi è rimasta la parte di chi esce: la parte dei giorni che passa con questo passaggio
+            // viene da lì, non da tutti quelli che hanno righe nella coppia (due comproprietari: la parte di Elsa veniva dalla riga di Ugo). Con una sola origine, se è
+            // una fermata, la frase la nomina («o di Elsa se la fermata della vendita del 1 ottobre è già stata regolata»); con più origini nessuna è «la» fermata di prima,
+            // e l'alternativa è la parte di chi esce.
+            $diPrima = $nOrigini === 1 && $diPrimaTutte !== [] ? $diPrimaTutte[0] : null;
+            $restretto = false;
+            if (! $aSuoCarico) {
+                // Se chi esce ha anche una parte avuta con la successione (l'erede che ha comprato), la cifra viene da quella, a suo carico, e dalle origini della catena,
+                // a carico di chi le ha ricevute, e il programma non sa quale parte venga da quale: resta a carico di chi esce e delle persone di quelle origini insieme (la
+                // successione di Ugo, la vendita di Anna: Bruno e Anna). Chi esce ha sommato parti avute con più origini (Elsa compra la parte di Anna, poi quella di Ugo, e
+                // rivende tutto): la stessa cosa, senza chi esce, o con lui se quella fermata è regolata. Con una origine sola, a carico delle sue persone, una o più.
+                $origini = $dallaSuccessione ? [$chi, ...$personeDiPrima] : $personeDiPrima;
+                if (! in_array(null, $origini, true) && ($dallaSuccessione || array_intersect_key($hanno, array_flip($origini)) !== [])) {
+                    $hanno = array_intersect_key($hanno, array_flip($origini));
+                    $restretto = true;
+                }
+            }
+            // Chi riceve, e quanto: come nella prima fermata, ma non chi ha già preso quei giorni. I giorni che chi esce passa stanno nelle righe delle persone a carico
+            // (`$hanno`, ristretto alle persone della fermata di prima): se è una persona sola, e a ricevere è lei, li ha già nella sua riga e non c'è niente da regolare (il
+            // proprietario unico che vende e ricompra); se sono più persone insieme, o è a ricevere un'altra persona, anche se ha una riga sua nella coppia, la parte che sta
+            // nella riga di un altro si dice. Se chi esce è lui a carico, chi riceve non ha la riga dei suoi giorni. Se le persone non si sanno (una fermata di prima con più
+            // persone senza i loro id, nessuna fermata nella catena) resta la regola della .50: chi ha una riga della coppia non riceve, e se la fermata sarebbe stata sua il programma
+            // dice che non sa nella riga di chi stavano i giorni (Coda 353, `$senzaRiga`).
+            $esclusi = match (true) {
+                $aSuoCarico => [],
+                ! $restretto => $hanno,
+                count($hanno) === 1 => $hanno,
+                default => [],
+            };
+            $parti = self::chiRiceve($pesiPrima, $pesiDopo, $prima, $dopo, $chi, $esclusi);
+            $cifra = (int) array_sum($parti);
+            if ($cifra === 0) {
+                // Coda 351: i giorni che chi esce passa tornano all'unica persona che ha la riga di quei giorni, che li ha già nella sua parte (chi ricompra la sua stessa
+                // parte), e non nasce una fermata: si riduce quella di prima, come con l'inizio di una locazione. Con più persone che potrebbero averli non si sa nella riga
+                // di chi stavano, e la ridotta non si dice (vedi sotto l'avviso). Coda 356: anche la successione di chi riceveva, quando l'erede è l'unica persona a carico;
+                // con l'arretrato agli eredi la posizione di chi muore, con la sua parte della fermata, passa all'erede, e la parte si estingue.
+                if (count($hanno) === 1) {
+                    array_push($ridotte, ...$this->ridottaDaChiRicompra($c, $chi, (int) array_key_first($hanno), $righe, $righeDopo, $decorrenza,
+                        successione: $tipo === 'successione', agliEredi: $tipo === 'successione' && $agliEredi));
+                }
+                // Coda 353: con più persone che potrebbero averli, non si sa nella riga di chi stavano i giorni di chi esce (nessun passaggio registrato che lo dica), e chi compra ha una riga
+                // della coppia: non si inventa una fermata, ma il silenzio sarebbe una scelta. Si dice che il programma non lo sa, con quanto sarebbe da regolare se i giorni stessero in un'altra riga.
+                // Con più persone a ricevere (la successione a due eredi che hanno la coppia) ognuna potrebbe dover regolare con l'altra, e il programma non lo dice.
+                $dellaSuaRiga = count($hanno) > 1 ? self::chiRiceve($pesiPrima, $pesiDopo, $prima, $dopo, $chi) : [];
+                if (count($dellaSuaRiga) === 1 && array_sum($dellaSuaRiga) !== 0) {
+                    $nomiSenzaRiga = Anagrafica::whereIn('id', [...array_keys($hanno), ...array_keys($dellaSuaRiga)])->pluck('nome', 'id');
+                    $dalSenzaRiga = $c['pezzi'][0]['tratti']->dal();
+                    foreach ($c['pezzi'] as $p) {
+                        $dalSenzaRiga = $p['tratti']->dal()->lt($dalSenzaRiga) ? $p['tratti']->dal() : $dalSenzaRiga;
+                    }
+                    $senzaRiga[] = [
+                        'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
+                        'unita' => $c['unita'], 'gestione' => $c['gestione'], 'uscente' => (string) $uscente->anagrafica?->nome,
+                        'persona' => self::elenco(array_map(fn (int $id) => (string) ($nomiSenzaRiga[$id] ?? '?'), array_keys($hanno))), 'coppia' => (int) array_sum($hanno),
+                        'verso' => array_values(array_map(fn (int $id) => (string) ($nomiSenzaRiga[$id] ?? '?'), array_keys($dellaSuaRiga))), 'cifra' => (int) array_sum($dellaSuaRiga),
+                        'dal' => ($decorrenza->gt($dalSenzaRiga) ? $decorrenza : $dalSenzaRiga)->toDateString(),
+                    ];
+                }
+                continue;
+            }
+            $nomi = Anagrafica::whereIn('id', [...array_keys($parti), ...array_keys($tuttiICheHanno)])->pluck('nome', 'id');
+            $dal = $c['pezzi'][0]['tratti']->dal();
+            foreach ($c['pezzi'] as $p) {
+                $dal = $p['tratti']->dal()->lt($dal) ? $p['tratti']->dal() : $dal;
+            }
+            // Coda 355: l'erede che ha anche comprato una quota fermata muore con l'arretrato agli eredi. La parte che aveva avuto con la successione passa ai suoi eredi
+            // con la sua posizione (Coda 350); resta da dire la parte delle quote che le fermate di prima gli avevano lasciato nella riga di un altro, per quota della riga
+            // che chiude (`conLeFermateNellaRiga`), come la fermata di chi aveva comprato senza la coppia. Se le quote non si leggono, la regola di prima.
+            if ($agliEredi && $dallaSuccessione && ! $aSuoCarico && $defuntiSenzaFermata === []) {
+                [, $dalle] = $this->conLeFermateNellaRiga($c, $uscente, $decorrenza, $righe, $parti);
+                if ($dalle !== []) {
+                    foreach ($dalle as $x) {
+                        // `agli_eredi`: chi esce è morto e la sua posizione è passata a chi riceve, le frasi non lo nominano come chi risponde.
+                        $out[] = $this->dallaFermataNellaRiga($c, $uscente, $x, ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString(), (int) $r->id,
+                            $gruppo->contains(fn (Saldo $y) => (bool) $y->is_applicato)) + ['agli_eredi' => true];
+                    }
+                    continue;
+                }
+            }
+            if ($aSuoCarico) {
                 // L'erede non ha altre origini: la fermata è la prima, a suo carico. Giro stretto della .50 (G13): la coppia non l'ha presa lui, gli è
                 // arrivata con la successione, e la frase lo dice (`ereditata`).
                 $out[] = [
@@ -357,33 +553,22 @@ final class FermataDopoScrivi
                 ] + self::ereditata($c, $chi, (int) $fine->condominio_id);
                 continue;
             }
-            // La fermata di prima ha detto a carico di chi è rimasta la parte di chi esce: la parte dei giorni che passa con questo passaggio
-            // viene da lì, non da tutti quelli che hanno righe nella coppia (due comproprietari: la parte di Elsa veniva dalla riga di Ugo).
-            $diPrima = $diPrimaTutte[0] ?? null;
-            if ($dallaSuccessione) {
-                // L'erede ha anche comprato: la cifra viene dalla parte avuta con la successione, a suo carico, e dalle fermate della catena, a carico di chi le
-                // ha ricevute, e il programma non sa quale parte venga da quale. Resta a carico di chi esce e delle persone di quelle fermate insieme (la
-                // successione di Ugo, la vendita di Anna: Bruno e Anna); l'alternativa è la fermata di prima se è una sola, altrimenti la parte di chi esce.
-                $origini = [$chi, ...array_merge(...array_map(fn (array $x) => $x['persone_ids'], $diPrimaTutte))];
-                if (! in_array(null, $origini, true)) {
-                    $hanno = array_intersect_key($hanno, array_flip($origini));
-                }
-                $diPrima = count($diPrimaTutte) === 1 ? $diPrimaTutte[0] : null;
-            } elseif (count($diPrimaTutte) > 1) {
-                // Chi esce ha sommato parti avute con più fermate (Elsa compra la parte di Anna, poi quella di Ugo, e rivende tutto; o compra e poi
-                // eredita): la cifra viene da più fermate, ognuna a carico di chi ha la sua riga della coppia, o di chi esce se quella fermata è regolata,
-                // e il programma non sa quale parte venga da quale. Resta a carico delle persone di quelle fermate insieme, e l'alternativa è la parte
-                // di chi esce, non la fermata di un passaggio solo.
-                $origini = array_merge(...array_map(fn (array $x) => $x['persone_ids'], $diPrimaTutte));
-                if (! in_array(null, $origini, true) && array_intersect_key($hanno, array_flip($origini)) !== []) {
-                    $hanno = array_intersect_key($hanno, array_flip($origini));
-                }
-                $diPrima = null;
-            } elseif ($diPrima !== null && ! in_array(null, $diPrima['persone_ids'], true) && array_intersect_key($hanno, array_flip($diPrima['persone_ids'])) !== []) {
-                // Una fermata di prima sola: a carico delle sue persone, una o più (la vendita dopo una fermata a più persone).
-                $hanno = array_intersect_key($hanno, array_flip($diPrima['persone_ids']));
-            }
             arsort($hanno);
+            // Chi riceve è una delle persone a carico (Elsa ha comprato da Anna e da Ugo e rivende tutto a Ugo): una parte dei giorni sta già nella sua riga, e la cifra intera non è a carico di tutti
+            // allo stesso modo. Dove le origini sono fermate della catena di chi esce, la frase dice la cifra per persona.
+            $cifre = array_intersect_key($parti, $hanno) !== [] ? $this->cifrePerPersona($c, $chi, $rigaChiude, $diPrimaTutte, $hanno, $cifra, $nomi) : null;
+            // Con l'erede la frase dice anche di chi era rimasta la fermata di prima (`persona`, una persona o più, se il registro le sa), perché le persone a carico sono
+            // quelle di tutte le origini. Le fermate la cui persona è solo chi esce sono già sue (il defunto di cui è l'unico erede): non c'è niente da regolare, e non si dicono.
+            // Con una fermata sola da dire (e nessuna successione senza fermata fra le origini) è «la» fermata di prima; con più, nessuna lo è: la frase le dice una per una, dalla
+            // più vecchia.
+            $daDire = $dallaSuccessione ? array_values(array_filter(array_reverse($diPrimaTutte), fn (array $x) => ! self::tuttaDiChiEsce($x, $chi))) : [];
+            if ($dallaSuccessione) {
+                $diPrima = count($daDire) === 1 && $defuntiSenzaFermata === [] ? $daDire[0] : null;
+            }
+            // Coda 346 (1.11.0-beta.55): la fermata che aveva ricevuto il defunto si dice con il suo nome, e con la successione che ne ha passato la parte (`di`, `passata`).
+            $dellaFermata = fn (array $x): array => ['passaggio' => $x['passaggio'], 'cifra' => $x['cifra']]
+                + ($dallaSuccessione && ! in_array(null, $x['persone_ids'], true) ? ['persona' => self::elenco(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), $x['persone_ids']))] : [])
+                + ($x['ricevuto_da'] !== $chi ? ['di' => (string) Anagrafica::whereKey($x['ricevuto_da'])->value('nome'), 'passata' => self::passataAgliEredi($x['ricevuto_da'], $daiPassaggi)] : []);
             $out[] = [
                 'fine_id' => $c['fine']->id, 'fine_il' => $c['fine']->decorrenza->toDateString(), 'inquilino' => self::nomeDiChiEsce($c['fine']),
                 'saldo_id' => (int) $r->id, 'persona_id' => (int) array_key_first($hanno), 'persona' => self::elenco(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($hanno))),
@@ -392,12 +577,10 @@ final class FermataDopoScrivi
                 ...(count($hanno) > 1 ? ['persone' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($hanno))), 'persone_ids' => array_keys($hanno)] : []),
                 // Chi esce, che non ha righe nella coppia, e la fermata che gli ha detto la sua parte.
                 'uscente_id' => $chi, 'uscente' => (string) $uscente->anagrafica?->nome,
-                // Con l'erede la frase dice anche di chi era rimasta la fermata di prima (`persona`), perché le persone a carico sono quelle di tutte le origini.
-                'dopo_la_fermata' => $diPrima === null ? null : ['passaggio' => $diPrima['passaggio'], 'cifra' => $diPrima['cifra']]
-                    + ($dallaSuccessione && $diPrima['persona_id'] !== null ? ['persona' => (string) ($nomi[$diPrima['persona_id']] ?? '?')] : []),
-                // Con l'erede e più fermate di prima nessuna è «la» fermata di prima: la frase le dice una per una, dalla più vecchia, e di chi è rimasta ognuna.
-                ...($dallaSuccessione && count($diPrimaTutte) > 1 ? ['dopo_le_fermate' => array_map(fn (array $x) => ['passaggio' => $x['passaggio'], 'cifra' => $x['cifra']]
-                    + ($x['persona_id'] !== null ? ['persona' => (string) ($nomi[$x['persona_id']] ?? '?')] : []), array_reverse($diPrimaTutte))] : []),
+                'dopo_la_fermata' => $diPrima === null ? null : $dellaFermata($diPrima),
+                ...($dallaSuccessione && $diPrima === null && $daDire !== [] ? ['dopo_le_fermate' => array_map($dellaFermata, $daDire)] : []),
+                // Le successioni della catena senza fermata (l'arretrato a nome del defunto e «Non scriverlo»): la parte avuta con loro è rimasta a carico del defunto, e la frase lo dice.
+                ...($dallaSuccessione && $defuntiSenzaFermata !== [] ? ['dopo_le_successioni' => self::successioniSenzaFermata($daiPassaggi, $defuntiSenzaFermata)] : []),
                 'immobile_id' => $c['immobile_id'], 'unita' => $c['unita'], 'gestione_id' => $c['gestione_id'], 'gestione' => $c['gestione'], 'esercizio_id' => $c['esercizio_id'],
                 // G13: la riga di chi è rimasto a carico (di tutti, se sono più d'uno), non tutta la coppia.
                 'coppia' => (int) array_sum($hanno), 'cifra' => $cifra, 'dal' => ($decorrenza->gt($dal) ? $decorrenza : $dal)->toDateString(),
@@ -405,16 +588,61 @@ final class FermataDopoScrivi
                 'verso' => array_values(array_map(fn (int $id) => (string) ($nomi[$id] ?? '?'), array_keys($parti))),
                 'parti' => array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $parti[$id]], array_keys($parti)),
                 'wallet' => false,
-            ] + ($dallaSuccessione ? self::ereditata($c, $chi, (int) $fine->condominio_id) : []);
+            ] + ($cifre !== null ? ['cifre_per_persona' => $cifre] : [])
+                // Coda 353: le persone a carico non si sanno (nessuna origine registrata che le dica) e più di una potrebbe avere i giorni: le frasi non ne nominano nessuna.
+                + (! $restretto && ! $dallaSuccessione && count($hanno) > 1 ? ['riga_non_nota' => true] : [])
+                + ($dallaSuccessione ? self::ereditata($c, $chi, (int) $fine->condominio_id) : []);
         }
 
         return $out;
     }
 
     /**
+     * La cifra di una fermata dove chi riceve è una delle persone a carico, divisa fra loro: per origine, in proporzione alla quota che ogni fermata di prima ha dato alla riga che chi
+     * esce vende (`quotePerOrigine`), e dentro l'origine fra le sue persone (gli eredi di un defunto), in proporzione alla loro riga della coppia. Il centesimo che avanza va alla fermata
+     * più vecchia. Null se non si sa dividere: la riga di chi esce non si legge, o le quote delle fermate non sono tutta la sua riga (una parte viene da altro: un acquisto senza fermata,
+     * una successione, una riga cambiata a mano).
+     *
+     * @param array<string, mixed> $c la coppia
+     * @param list<array<string, mixed>> $diPrimaTutte le fermate di prima, dall'ultima (`fermateDi`)
+     * @param array<int, int> $hanno le persone a carico, con la loro riga della coppia
+     * @param Collection<int, string> $nomi
+     * @return list<array{anagrafica_id: int, nome: string, cifra: int}>|null nell'ordine delle persone a carico
+     */
+    private function cifrePerPersona(array $c, int $chi, ?int $rigaId, array $diPrimaTutte, array $hanno, int $cifra, Collection $nomi): ?array
+    {
+        $righe = $this->chiPaga->righe((int) $c['immobile_id']);
+        $riga = $righe->first(fn ($r) => (int) $r->id === $rigaId);
+        $origini = array_values(array_reverse($diPrimaTutte));
+        $perPassaggio = self::quotePerOrigine($righe, Subentro::where('immobile_id', (int) $c['immobile_id'])->orderBy('id')->get(), $chi,
+            array_combine(array_column($origini, 'capo_id'), array_column($origini, 'capo_id')))[$rigaId] ?? [];
+        $quote = array_map(fn (array $x) => (float) ($perPassaggio[(int) $x['capo_id']] ?? 0.0), $origini);
+        if (abs(array_sum($quote) - (float) ($riga->quota ?? -1)) > 1e-6) {
+            return null;
+        }
+        $perOrigine = MoneyHelper::ripartisciPerQuote($cifra, $quote);
+        $perPersona = [];
+        foreach ($origini as $i => $x) {
+            $righeDelleSue = [];
+            foreach ($x['persone_ids'] as $id) {
+                $righeDelleSue[(int) $id] = (float) ($hanno[(int) $id] ?? 0.0);
+            }
+            foreach (MoneyHelper::ripartisciPerQuote($perOrigine[$i], $righeDelleSue) as $id => $cent) {
+                $perPersona[$id] = ($perPersona[$id] ?? 0) + $cent;
+            }
+        }
+
+        // Nell'ordine delle persone a carico (la riga più grande per prima), come le dice la frase.
+        $ordine = array_filter(array_unique([...array_keys($hanno), ...array_keys($perPersona)]), fn (int $id) => isset($perPersona[$id]));
+
+        return array_values(array_map(fn (int $id) => ['anagrafica_id' => $id, 'nome' => (string) ($nomi[$id] ?? '?'), 'cifra' => $perPersona[$id]], $ordine));
+    }
+
+    /**
      * Chi ha le righe a debito di una coppia, in centesimi (anagrafica → centesimi). Una successione con l'arretrato agli eredi che ha preso
      * fra le sue fonti la riga di una persona ha passato agli eredi tutta la sua posizione, coppia compresa (decisione 65): quella riga è
-     * degli eredi, ciascuno per la sua quota, con i resti maggiori.
+     * degli eredi, ciascuno per la sua quota, con i resti maggiori. Coda 350: le successioni si leggono in catena (`catena`), e la riga di chi è
+     * morto dopo, anche lui con l'arretrato agli eredi, è dei suoi eredi.
      *
      * @param array{righe: array<int, int>, saldi: array<int, list<int>>} $c
      * @return array<int, int>
@@ -423,19 +651,46 @@ final class FermataDopoScrivi
     {
         $hanno = $c['righe'];
         foreach ($c['saldi'] as $anagraficaId => $ids) {
-            $successione = Subentro::successioneCheLeggeISaldi($ids, $condominioId);
-            $eredi = $successione !== null && $successione->arretratoAgliEredi() ? self::quoteDegliEredi($successione) : [];
-            if ($eredi === [] || ! isset($hanno[$anagraficaId])) {
+            $catena = self::catena((int) $anagraficaId, (int) $c['righe'][$anagraficaId], $ids, $condominioId);
+            if ($catena[0]['successione'] === null) {
                 continue;
             }
-            $cifra = $hanno[$anagraficaId];
             unset($hanno[$anagraficaId]);
-            foreach (MoneyHelper::ripartisciPerQuote($cifra, $eredi) as $erede => $parte) {
-                $hanno[(int) $erede] = ($hanno[(int) $erede] ?? 0) + (int) $parte;
+            foreach ($catena as $x) {
+                $hanno[$x['chi']] = ($hanno[$x['chi']] ?? 0) + $x['cifra'];
             }
         }
 
         return array_filter($hanno, fn (int $cent) => $cent !== 0);
+    }
+
+    /**
+     * Coda 350: chi ha oggi la riga della coppia di una persona, con le successioni con l'arretrato agli eredi lette in catena. La successione che ha preso fra le sue
+     * fonti una riga della persona ha passato ai suoi eredi tutta la sua posizione (decisione 65), ciascuno per la sua quota con i resti maggiori; se un erede è morto a sua
+     * volta con l'arretrato agli eredi, la successione che ha preso fra le sue fonti le righe dell'arretrato che la prima gli aveva scritto ha passato la sua parte ai suoi
+     * eredi, e così avanti: la riga di Mario è di Ugo dopo la prima successione, di Bruno dopo la seconda. Ogni voce dice chi l'ha ora, quanto, l'ultima successione che
+     * gliel'ha passata (null se nessuna: la riga è ancora della persona) e i defunti per cui è passata, dal primo.
+     *
+     * @param list<int> $saldoIds le righe della persona da cui si parte
+     * @return non-empty-list<array{chi: int, cifra: int, successione: ?Subentro, defunti: list<int>}>
+     */
+    private static function catena(int $persona, int $cifra, array $saldoIds, int $condominioId): array
+    {
+        $successione = Subentro::successioneCheLeggeISaldi($saldoIds, $condominioId);
+        $eredi = $successione !== null && $successione->arretratoAgliEredi() ? self::quoteDegliEredi($successione) : [];
+        if ($eredi === []) {
+            return [['chi' => $persona, 'cifra' => $cifra, 'successione' => null, 'defunti' => []]];
+        }
+        $righeDegliEredi = Saldo::whereIn('id', $successione->saldiDellArretrato())->get(['id', 'anagrafica_id'])->groupBy(fn (Saldo $x) => (int) $x->anagrafica_id);
+        $out = [];
+        foreach (MoneyHelper::ripartisciPerQuote($cifra, $eredi) as $erede => $parte) {
+            $suoi = ($righeDegliEredi[(int) $erede] ?? collect())->map(fn (Saldo $x) => (int) $x->id)->values()->all();
+            foreach (self::catena((int) $erede, (int) $parte, $suoi, $condominioId) as $x) {
+                $out[] = ['chi' => $x['chi'], 'cifra' => $x['cifra'], 'successione' => $x['successione'] ?? $successione, 'defunti' => [$persona, ...$x['defunti']]];
+            }
+        }
+
+        return $out;
     }
 
     /** Le quote degli eredi di una successione (persona → quota ereditata), nell'ordine del modulo e senza chi ha quota zero. @return array<int, float> */
@@ -446,7 +701,8 @@ final class FermataDopoScrivi
 
     /**
      * Chi ha preso il posto di chi è morto con l'arretrato agli eredi, sulle righe di questa coppia: il defunto e i suoi eredi, nell'ordine del modulo. È la
-     * stessa lettura di `chiHaLaCoppia`, per le persone che le fermate di prima nominano.
+     * stessa lettura di `chiHaLaCoppia`, per le persone che le fermate di prima nominano; con le successioni in catena (Coda 350) al posto di ogni defunto della
+     * catena ci sono gli eredi di oggi: anche al posto di Ugo, erede di Mario e morto a sua volta, che una fermata può nominare (la sua successione).
      *
      * @param array{righe: array<int, int>, saldi: array<int, list<int>>} $c
      * @return array<int, list<int>> defunto → eredi
@@ -455,14 +711,31 @@ final class FermataDopoScrivi
     {
         $out = [];
         foreach ($c['saldi'] as $anagraficaId => $ids) {
-            $successione = Subentro::successioneCheLeggeISaldi($ids, $condominioId);
-            $eredi = $successione !== null && $successione->arretratoAgliEredi() ? array_keys(self::quoteDegliEredi($successione)) : [];
-            if ($eredi !== [] && isset($c['righe'][$anagraficaId])) {
-                $out[(int) $anagraficaId] = $eredi;
+            foreach (self::catena((int) $anagraficaId, (int) $c['righe'][$anagraficaId], $ids, $condominioId) as $x) {
+                foreach ($x['defunti'] as $defunto) {
+                    $out[$defunto] = array_values(array_unique([...($out[$defunto] ?? []), $x['chi']]));
+                }
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Chi ha preso il posto dei defunti nelle righe della coppia di una fine, su un'unità e una gestione (la lettura di `alPostoDeiDefunti`): per i testi che nominano chi ha pagato
+     * i giorni dopo l'uscita, come il pannello dell'inizio di una locazione, dove chi è morto con l'arretrato agli eredi ha lasciato loro la sua riga.
+     *
+     * @return array<int, list<int>> defunto → eredi di oggi
+     */
+    public static function eredi(Subentro $fine, int $immobileId, int $gestioneId): array
+    {
+        $righe = Saldo::where('subentro_id', $fine->id)->where('immobile_id', $immobileId)->where('gestione_id', $gestioneId)->where('saldo_iniziale', '!=', 0)
+            ->where('anagrafica_id', '!=', (int) $fine->anagrafica_uscente_id)->get(['id', 'anagrafica_id', 'saldo_iniziale'])->groupBy(fn (Saldo $r) => (int) $r->anagrafica_id);
+
+        return self::alPostoDeiDefunti([
+            'righe' => $righe->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->all(),
+            'saldi' => $righe->map(fn ($g) => $g->pluck('id')->map(fn ($id) => (int) $id)->all())->all(),
+        ], (int) $fine->condominio_id);
     }
 
     /**
@@ -490,26 +763,33 @@ final class FermataDopoScrivi
     }
 
     /**
-     * La successione con l'arretrato agli eredi che ha passato all'erede la sua parte della coppia (decisione 65), con il defunto che aveva la riga: la
-     * stessa lettura di `chiHaLaCoppia`, dalle righe della coppia. Null se l'erede non ha preso la coppia da nessuna successione.
+     * La successione con l'arretrato agli eredi che ha passato all'erede la sua parte della coppia (decisione 65), con il defunto che aveva la riga e la parte: la
+     * stessa lettura di `chiHaLaCoppia`, dalle righe della coppia, con le successioni in catena (Coda 350: l'ultima, quella che ha aperto la riga dell'erede). Null se
+     * l'erede non ha preso la coppia da nessuna successione.
      *
-     * @return array{0: Subentro, 1: int}|null la successione e l'id del defunto
+     * @return array{0: Subentro, 1: int, 2: int}|null la successione, l'id del defunto che aveva la riga e la parte dell'erede
      */
     private static function successioneDellErede(array $c, int $erede, int $condominioId): ?array
     {
         foreach ($c['saldi'] as $anagraficaId => $ids) {
-            $successione = Subentro::successioneCheLeggeISaldi($ids, $condominioId);
-            if ($successione !== null && $successione->arretratoAgliEredi()
-                && collect($successione->destinatari())->contains(fn (array $e) => (int) $e['anagrafica_id'] === $erede)) {
-                return [$successione, (int) $anagraficaId];
+            $suoi = array_values(array_filter(self::catena((int) $anagraficaId, (int) $c['righe'][$anagraficaId], $ids, $condominioId),
+                fn (array $x) => $x['chi'] === $erede && $x['successione'] !== null));
+            if ($suoi !== []) {
+                return [$suoi[0]['successione'], (int) $anagraficaId, (int) array_sum(array_column($suoi, 'cifra'))];
             }
         }
 
         return null;
     }
 
+    /** La fermata di prima è a carico solo di chi esce (il defunto di cui è l'unico erede): la sua parte è già sua, e non c'è niente da regolare con nessuno. */
+    private static function tuttaDiChiEsce(array $fermata, int $chi): bool
+    {
+        return ! in_array(null, $fermata['persone_ids'], true) && array_values(array_unique($fermata['persone_ids'])) === [$chi];
+    }
+
     /**
-     * Chi riceve con un passaggio, e quanto: ogni persona diversa da chi esce (e da chi ha già le righe della coppia, `$esclusi`) di cui il
+     * Chi riceve con un passaggio, e quanto: ogni persona diversa da chi esce (e da chi ha già preso quei giorni, `$esclusi`) di cui il
      * passaggio cambia il peso e la parte, non i conduttori. La parte è «dopo − prima», con il segno.
      *
      * Giro stretto della .50 (G1): con i pezzi con il segno (R3) la parte di chi entra può essere negativa (un'entrata che nei suoi giorni
@@ -550,21 +830,108 @@ final class FermataDopoScrivi
         if ($daLui === null) {
             return [];
         }
-        [$successione, $defuntoId] = $daLui;
-        $sua = MoneyHelper::ripartisciPerQuote((int) ($c['righe'][$defuntoId] ?? 0), self::quoteDegliEredi($successione))[$erede] ?? 0;
+        [$successione, $defuntoId, $sua] = $daLui;
+        // Coda 357: l'erede che ha avuto con le successioni più righe della coppia (quella di Mario, e quella di Ugo che gliel'aveva lasciata) le dice tutte: chi le
+        // aveva prese e la loro somma, perché la parte passata all'erede non sia più grande di quella che la frase dice presa.
+        $da = [];
+        $coppia = 0;
+        foreach ($c['saldi'] as $anagraficaId => $ids) {
+            $suoi = array_filter(self::catena((int) $anagraficaId, (int) $c['righe'][$anagraficaId], $ids, $condominioId), fn (array $x) => $x['chi'] === $erede && $x['successione'] !== null);
+            if ($suoi !== []) {
+                $da[] = (string) Anagrafica::whereKey((int) $anagraficaId)->value('nome');
+                $coppia += (int) $c['righe'][$anagraficaId];
+            }
+        }
 
-        return ['ereditata' => ['da' => (string) Anagrafica::whereKey($defuntoId)->value('nome'), 'coppia' => (int) ($c['righe'][$defuntoId] ?? 0),
+        return ['ereditata' => ['da' => self::elenco($da), 'coppia' => $coppia, 'piu' => count($da) > 1,
             'passaggio' => self::passaggioInParole($successione), 'sua' => (int) $sua]];
     }
 
     /**
-     * Decisione 81.2: le fermate registrate che hanno detto a chi esce una sua parte della coppia, dall'ultima: una per passaggio, con il passaggio e la cifra per le
-     * frasi, il passaggio padre (`capo_id`), se è la fermata della fine di un conduttore (`del_conduttore`) e chi è rimasto a carico (`persona_id` se è
-     * uno; `persone_ids` tutti, o `[null]` se una fermata di prima della 1.11.0-beta.53 ha più persone senza i loro ids).
+     * Coda 346: la successione della catena con cui la parte del defunto è passata ai suoi eredi, e a chi («la successione del 15 ottobre 2026 a Bruno e Dora»); se
+     * uno di loro è morto a sua volta, anche la sua («e con la successione del … a …»).
      *
-     * @return list<array{passaggio: string, cifra: int, persona_id: ?int, capo_id: int, del_conduttore: bool, persone_ids: list<?int>}>
+     * @param list<int> $passaggi i passaggi della catena della riga di chi esce (`passaggiDellaRiga`)
      */
-    private function fermateDi(array $c, int $anagraficaId): array
+    private static function passataAgliEredi(int $defunto, array $passaggi): string
+    {
+        $successioni = self::successioniDellaCatena($passaggi);
+        $parole = [];
+        $chi = [$defunto];
+        while (($s = $successioni->first(fn (Subentro $x) => in_array((int) $x->anagrafica_uscente_id, $chi, true))) !== null) {
+            $successioni = $successioni->reject(fn (Subentro $x) => (int) $x->id === (int) $s->id);
+            $chi = array_map(fn (array $e) => (int) $e['anagrafica_id'], $s->destinatari());
+            $parole[] = sprintf('%s %s', self::passaggioInParole($s), FrasiObbligati::a(self::elenco(Anagrafica::whereIn('id', $chi)->pluck('nome', 'id')->only($chi)->values()->all())));
+        }
+
+        return implode(' e con ', $parole);
+    }
+
+    /**
+     * Le successioni della catena della riga di chi esce (`passaggiDellaRiga`): la catena arriva a una successione solo se ha aperto una riga di chi esce, o la riga di
+     * un defunto che gli ha lasciato la sua posizione.
+     *
+     * @param list<int> $passaggi
+     * @return Collection<int, Subentro>
+     */
+    private static function successioniDellaCatena(array $passaggi): Collection
+    {
+        return Subentro::whereIn('id', $passaggi)->where('tipo_passaggio', 'successione')->orderBy('id')->get();
+    }
+
+    /**
+     * I defunti delle successioni della catena: le quote che hanno lasciato a chi esce sono sue con la loro storia, comprese le fermate dove il defunto riceveva (la riga
+     * nata da un'estinzione, o dall'acquisto della quota di un altro).
+     *
+     * @param list<int> $passaggi
+     * @return list<int> gli id dei defunti
+     */
+    private static function defuntiDellaCatena(array $passaggi): array
+    {
+        return array_values(array_unique(self::successioniDellaCatena($passaggi)->map(fn (Subentro $s) => (int) $s->anagrafica_uscente_id)->all()));
+    }
+
+    /**
+     * I defunti che hanno lasciato la parte di chi esce con una successione della sua catena senza fermata: il conguaglio non è stato scritto («Non scriverlo», che si
+     * chiede solo con l'arretrato a nome del defunto), quindi la posizione del defunto è com'era e la sua riga della coppia è ancora sua. Con l'arretrato agli eredi la
+     * riga è passata a loro, e con «Scrivi» la successione ha la sua fermata: né l'uno né l'altro caso sono qui.
+     *
+     * @param list<int> $passaggi i passaggi della catena della riga di chi esce (`passaggiDellaRiga`)
+     * @return list<int> gli id dei defunti
+     */
+    private static function defuntiSenzaFermata(array $passaggi): array
+    {
+        return array_values(array_unique(self::successioniDellaCatena($passaggi)
+            ->filter(fn (Subentro $s) => ($s->registro['conguaglio']['scelta'] ?? null) === Subentro::CONGUAGLIO_NON_SCRITTO)
+            ->map(fn (Subentro $s) => (int) $s->anagrafica_uscente_id)->all()));
+    }
+
+    /**
+     * Le successioni della catena senza fermata dei defunti dati (`defuntiSenzaFermata`), dalla più vecchia: la successione in parole e il defunto, a carico del quale è rimasta la
+     * parte che chi esce ha avuto con lei. Per la frase e il motivo della rivendita dell'erede.
+     *
+     * @param list<int> $passaggi i passaggi della catena della riga di chi esce (`passaggiDellaRiga`)
+     * @param list<int> $defunti
+     * @return list<array{passaggio: string, di: string}>
+     */
+    private static function successioniSenzaFermata(array $passaggi, array $defunti): array
+    {
+        return self::successioniDellaCatena($passaggi)
+            ->filter(fn (Subentro $s) => in_array((int) $s->anagrafica_uscente_id, $defunti, true) && ($s->registro['conguaglio']['scelta'] ?? null) === Subentro::CONGUAGLIO_NON_SCRITTO)
+            ->map(fn (Subentro $s) => ['passaggio' => self::passaggioInParole($s), 'di' => (string) ($s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? '?'))])
+            ->values()->all();
+    }
+
+    /**
+     * Decisione 81.2: le fermate registrate che hanno detto a chi esce una sua parte della coppia (o, passata con una successione, a chi è morto prima di lui e gli ha
+     * lasciato la sua posizione: `$anagraficaIds`), dall'ultima: una per passaggio, con il passaggio e la cifra per le
+     * frasi, il passaggio padre (`capo_id`), se è la fermata della fine di un conduttore (`del_conduttore`), chi è rimasto a carico (`persona_id` se è
+     * uno; `persone_ids` tutti, o `[null]` se una fermata di prima della 1.11.0-beta.53 ha più persone senza i loro ids) e chi aveva ricevuto (`ricevuto_da`:
+     * chi esce, o il defunto che gli ha lasciato la parte).
+     *
+     * @return list<array{passaggio: string, cifra: int, ricevuto_da: int, persona_id: ?int, capo_id: int, del_conduttore: bool, persone_ids: list<?int>}>
+     */
+    private function fermateDi(array $c, array $anagraficaIds): array
     {
         $out = [];
         foreach (Subentro::where('immobile_id', $c['immobile_id'])->whereNull('annullato_il')->orderByDesc('id')->get() as $qui) {
@@ -573,18 +940,25 @@ final class FermataDopoScrivi
                 continue;
             }
             foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $f) {
-                $parte = collect($f['parti'] ?? [])->first(fn ($p) => (int) ($p['anagrafica_id'] ?? 0) === $anagraficaId);
+                $parte = collect($f['parti'] ?? [])->first(fn ($p) => in_array((int) ($p['anagrafica_id'] ?? 0), $anagraficaIds, true));
                 if ($parte !== null && (int) ($f['fine_id'] ?? 0) === (int) $c['fine']->id && (int) ($f['immobile_id'] ?? 0) === (int) $c['immobile_id']
                     && (int) ($f['gestione_id'] ?? 0) === (int) $c['gestione_id']) {
-                    $out[(int) $s->id] = ['passaggio' => self::passaggioInParole($s), 'cifra' => (int) $parte['cifra'],
+                    $persone = match (true) {
+                        empty($f['piu_persone']) => [isset($f['persona_id']) ? (int) $f['persona_id'] : null],
+                        isset($f['persone_ids']) => array_map('intval', (array) $f['persone_ids']),
+                        default => [null],
+                    };
+                    // Coda 354: due fermate dello stesso passaggio verso la stessa persona (la parte dalla riga di chi esce e quella dalla quota di una fermata che lui aveva
+                    // ricevuto) sono una fermata sola, a carico delle persone di tutte e due.
+                    if (isset($out[(int) $s->id]) && $out[(int) $s->id]['ricevuto_da'] === (int) $parte['anagrafica_id']) {
+                        $out[(int) $s->id]['cifra'] += (int) $parte['cifra'];
+                        $out[(int) $s->id]['persone_ids'] = array_values(array_unique([...$out[(int) $s->id]['persone_ids'], ...$persone], SORT_REGULAR));
+                        $out[(int) $s->id]['persona_id'] = count($out[(int) $s->id]['persone_ids']) === 1 ? $out[(int) $s->id]['persone_ids'][0] : null;
+                        continue;
+                    }
+                    $out[(int) $s->id] ??= ['passaggio' => self::passaggioInParole($s), 'cifra' => (int) $parte['cifra'], 'ricevuto_da' => (int) $parte['anagrafica_id'],
                         'persona_id' => empty($f['piu_persone']) && isset($f['persona_id']) ? (int) $f['persona_id'] : null, 'capo_id' => (int) $s->id,
-                        'del_conduttore' => isset($f['conduttore_uscente']),
-                        'persone_ids' => match (true) {
-                            empty($f['piu_persone']) => [isset($f['persona_id']) ? (int) $f['persona_id'] : null],
-                            isset($f['persone_ids']) => array_map('intval', (array) $f['persone_ids']),
-                            default => [null],
-                        }];
-                    break;
+                        'del_conduttore' => isset($f['conduttore_uscente']), 'persone_ids' => $persone];
                 }
             }
         }
@@ -603,7 +977,9 @@ final class FermataDopoScrivi
      * I passaggi da cui viene la parte che una persona ha oggi su un'unità, dalla sua riga: il passaggio che l'ha aperta (o che ci ha sommato una quota,
      * lo stesso giorno) e, se per aprirla ha chiuso una riga di prima della stessa persona (chi compra l'altra metà: la riga si chiude e se ne apre una
      * con la somma), i passaggi di quella riga, e così indietro, come li scrive il registro di ogni passaggio (`righe`). Le parti avute prima di
-     * un'uscita non ci sono: la loro riga l'ha chiusa la rivendita, non un acquisto. I passaggi padre, dal primo; vuoto se la riga non si trova.
+     * un'uscita non ci sono: la loro riga l'ha chiusa la rivendita, non un acquisto. Se la riga l'ha aperta una successione, la riga che il defunto aveva e che si è
+     * chiusa con lei è di chi eredita: si segue anche quella, con i passaggi che l'hanno aperta (l'estinzione dell'usufrutto che l'ha fatto tornare proprietario pieno,
+     * l'acquisto della quota di un altro). I passaggi padre, dal primo; vuoto se la riga non si trova.
      *
      * @return list<int>
      */
@@ -613,7 +989,8 @@ final class FermataDopoScrivi
             return [];
         }
         $passaggi = Subentro::where('immobile_id', $immobileId)->orderBy('id')->get();
-        $sue = array_flip(TitolaritaImmobile::where('immobile_id', $immobileId)->where('anagrafica_id', $anagraficaId)->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $righeSu = fn (int $persona): array => TitolaritaImmobile::where('immobile_id', $immobileId)->where('anagrafica_id', $persona)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $sue = array_flip($righeSu($anagraficaId));
         $origini = [];
         $daLeggere = [$rigaId];
         $lette = [];
@@ -629,6 +1006,11 @@ final class FermataDopoScrivi
                     continue;
                 }
                 $origini[(int) $p->capo()->id] = true;
+                // La successione passa a chi eredita le quote del defunto con la loro storia, qualunque sia la sorte dell'arretrato: le righe del defunto che si chiudono con
+                // lei (quella nata da un'estinzione, o da un acquisto) si seguono come le righe di chi esce.
+                if ($p->capo()->successione()) {
+                    $sue += array_flip($righeSu((int) $p->capo()->anagrafica_uscente_id));
+                }
                 foreach ($operazioni as $o) {
                     if (($o['operazione'] ?? null) === 'chiusa' && isset($sue[(int) ($o['id'] ?? 0)])) {
                         $daLeggere[] = (int) $o['id'];
@@ -656,7 +1038,8 @@ final class FermataDopoScrivi
         $out = [];
         $annullabile = [];
         foreach ($this->coppieScritte((int) $entrante->id, $immobileIds, alPosto: false) as $c) {
-            if ((int) $c['fine']->anagrafica_uscente_id !== (int) $entrante->id) {
+            // Coda 245: sull'anello di una fine con la regola del piano la parte di chi rientra la dice la regola del piano (`RegolaDelPiano::dopoUnaFine`).
+            if ((int) $c['fine']->anagrafica_uscente_id !== (int) $entrante->id || self::gruppoDelPiano($c['fine'], (int) $c['immobile_id'], (int) $c['gestione_id'], $c['esercizio_id']) !== null) {
                 continue;
             }
             $righe = $this->chiPaga->righe($c['immobile_id']);
@@ -706,8 +1089,10 @@ final class FermataDopoScrivi
         foreach ($righe->groupBy(fn (Saldo $r) => $r->subentro_id . '|' . $r->immobile_id . '|' . $r->gestione_id . '|' . ($r->esercizio_id ?? '')) as $gruppo) {
             $r = $gruppo->first();
             $fine = Subentro::with('padre')->find((int) $r->subentro_id)?->capo();
-            // Chi rientra lo dice `rientro`.
-            if ($fine === null || ! self::fineScritta($fine) || (int) $fine->anagrafica_uscente_id === (int) $entrante->id) {
+            // Chi rientra lo dice `rientro`. Coda 245: sull'anello di una fine con la regola del piano la parte di chi entra la dice la regola del
+            // piano (`RegolaDelPiano::dopoUnaFine`), anche quella dei giorni che nessun conduttore copriva.
+            if ($fine === null || ! self::fineScritta($fine) || (int) $fine->anagrafica_uscente_id === (int) $entrante->id
+                || self::gruppoDelPiano($fine, (int) $r->immobile_id, (int) $r->gestione_id, $r->esercizio_id !== null ? (int) $r->esercizio_id : null) !== null) {
                 continue;
             }
             $c = $this->coppia($fine, (int) $r->subentro_id, (int) $r->immobile_id, (int) $r->gestione_id, $r->esercizio_id !== null ? (int) $r->esercizio_id : null);
@@ -722,7 +1107,7 @@ final class FermataDopoScrivi
             if ($cifra !== 0) {
                 $out[] = ['fine_id' => (int) $fine->id, 'immobile_id' => (int) $c['immobile_id'], 'gestione_id' => (int) $c['gestione_id'], 'cifra' => $cifra]
                     + ['fine_il' => $fine->decorrenza->toDateString(), 'unita' => $c['unita'], 'gestione' => $c['gestione'], 'esercizio_id' => $c['esercizio_id'],
-                        'pagato_da' => self::chiHaPagato($c, $prima, $dopo, $cifra)];
+                        'pagato_da' => $this->conChiNeRisponde(self::chiHaPagato($c, $prima, $dopo, $cifra), $fine, $c, $righeUnita, $decorrenza)];
             }
         }
 
@@ -746,6 +1131,38 @@ final class FermataDopoScrivi
         $pagatoDa = array_keys(array_filter($c['righe'], fn (int $riga, int $id) => in_array($id, $calano, true) || ($senzaRighe && ($riga - ($prima[$id] ?? 0)) * $cifra > 0), ARRAY_FILTER_USE_BOTH));
 
         return Anagrafica::whereIn('id', $pagatoDa)->pluck('nome')->map(fn ($n) => (string) $n)->values()->all();
+    }
+
+    /**
+     * Coda 352 (decisione 112.1): fra chi ha pagato i giorni del nuovo conduttore c'è anche chi è rimasto a carico di una fermata, per la quota che la
+     * fermata ha passato a chi riceve (`chiHaPagatoIlTratto`, sui giorni della coppia dal giorno dell'inizio): la stessa lettura del prospetto.
+     *
+     * @param list<string> $nomi chi ha pagato, da `chiHaPagato`
+     * @param array<string, mixed> $c la coppia (`coppia`)
+     * @param Collection<int, object> $righeUnita
+     * @return list<string>
+     */
+    private function conChiNeRisponde(array $nomi, Subentro $fine, array $c, Collection $righeUnita, CarbonImmutable $decorrenza): array
+    {
+        $giorni = null;
+        foreach ($c['pezzi'] as $pz) {
+            foreach ($pz['tratti']->periodi() as $t) {
+                $x = $t->al->lt($decorrenza) ? null : $t->intersezione(new PeriodoCompetenza($decorrenza, $t->al));
+                if ($x !== null) {
+                    $giorni = $giorni === null ? InsiemePeriodi::uno($x) : $giorni->unione(InsiemePeriodi::uno($x));
+                }
+            }
+        }
+        if ($giorni === null) {
+            return $nomi;
+        }
+        foreach ($this->chiHaPagatoIlTratto($fine, (int) $c['immobile_id'], (int) $c['gestione_id'], $righeUnita, $giorni)['fermate'] as $x) {
+            foreach (Anagrafica::whereIn('id', $x['persone'])->pluck('nome') as $nome) {
+                $nomi[] = (string) $nome;
+            }
+        }
+
+        return array_values(array_unique($nomi));
     }
 
     /**
@@ -801,6 +1218,9 @@ final class FermataDopoScrivi
      * persona sulla stessa coppia (Ugo e Anna vendono a Elsa in due date), il conduttore toglie a quella persona i suoi giorni una volta sola,
      * e la voce è una: la cifra è la somma delle fermate, il residuo quello che resta di quella somma (`residuiDelleFermate`).
      *
+     * Decisione 112.1 (1.11.0-beta.55): se chi riceve ha anche una sua parte della coppia, il conduttore toglie alla fermata solo i giorni della quota
+     * che la fermata gli ha passato, non quelli della sua riga; una fermata che per questa via non è più azzerata torna a essere un motivo del cancello.
+     *
      * @return list<array<string, mixed>>
      */
     public function fermateRidotte(?Anagrafica $entrante, float $quota, array $immobileIds, CarbonImmutable $decorrenza): array
@@ -827,6 +1247,51 @@ final class FermataDopoScrivi
                 'parti_prima' => self::partiDeiRiceventi($g, $ora),
                 'conduttore' => (string) $entrante->nome, 'dal' => $decorrenza->toDateString(),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Coda 351 (1.11.0-beta.55): un passaggio che riporta i giorni di chi esce all'unica persona a carico di quei giorni (Elsa rivende a Ugo, che le aveva venduto
+     * tutto; l'erede unico che ricompra; l'usufrutto che Ugo aveva costituito a Elsa si estingue) non fa nascere una fermata, perché quei giorni stanno già nella riga
+     * di chi li riceve; ma la fermata di prima, che li aveva lasciati a suo carico verso chi esce, si riduce ai giorni che chi esce ha avuto. Si dice come la riduce
+     * l'inizio di una locazione (`fermateRidotte`): quanto ne resta, con la spunta del cancello e, con le righe legate, la strada per correggerle dal Wallet. La
+     * voce porta chi ricompra (`ricompra`) e il giorno (`dal`) al posto del conduttore.
+     *
+     * Coda 356 (1.11.0-beta.55): lo stesso con la successione di chi riceveva, quando l'erede è l'unica persona a carico (Elsa compra da Ugo e muore, erede Ugo). Con
+     * l'arretrato a nome di chi muore restano a suo carico i suoi giorni fino alla morte; con l'arretrato agli eredi la sua posizione, con la sua parte della fermata,
+     * passa all'erede, che è la persona a carico, e non resta niente. La voce porta chi muore (`erede_di`) e, agli eredi, `agli_eredi`.
+     *
+     * @param array<string, mixed> $c la coppia (`coppia`)
+     * @param Collection<int, object> $righe le righe dell'unità di adesso
+     * @param Collection<int, object> $righeDopo le righe con il passaggio (`conIlPassaggio`)
+     * @return list<array<string, mixed>>
+     */
+    private function ridottaDaChiRicompra(array $c, int $chi, int $persona, Collection $righe, Collection $righeDopo, CarbonImmutable $decorrenza, bool $successione = false,
+        bool $agliEredi = false): array
+    {
+        $out = [];
+        foreach ($this->gruppiDiFermate([(int) $c['immobile_id']]) as $g) {
+            if ((int) $g['c']['fine']->id !== (int) $c['fine']->id || (int) $g['c']['gestione_id'] !== (int) $c['gestione_id'] || ($g['c']['esercizio_id'] ?? null) !== ($c['esercizio_id'] ?? null)
+                || ! collect($g['riceventi'])->contains(fn (array $r) => (int) $r['anagrafica_id'] === $chi)) {
+                continue;
+            }
+            $ora = $this->residuiDelleFermate($g, $righe);
+            $con = $this->residuiDelleFermate($g, $righe, $righeDopo);
+            if ($agliEredi) {
+                $con[$chi] = 0;
+            }
+            if ((int) array_sum($con) === (int) array_sum($ora)) {
+                continue;
+            }
+            $out[] = self::voceDelGruppo($g) + [
+                'dal_wallet' => self::saldiDalWallet($g),
+                'prima' => (int) array_sum($ora), 'residuo' => (int) array_sum($con),
+                'parti' => array_values(array_filter(self::partiDeiRiceventi($g, $con), fn (array $p) => $p['cifra'] !== 0)),
+                'parti_prima' => self::partiDeiRiceventi($g, $ora),
+                'ricompra' => (string) Anagrafica::whereKey($persona)->value('nome'), 'dal' => $decorrenza->toDateString(),
+            ] + ($successione ? ['erede_di' => (string) Anagrafica::whereKey($chi)->value('nome')] : []) + ($agliEredi ? ['agli_eredi' => true] : []);
         }
 
         return $out;
@@ -901,6 +1366,11 @@ final class FermataDopoScrivi
      * spostato, non un giorno suo. Con una parte negativa (un credito di chi ha ricevuto) la riduzione va verso lo zero
      * dall'altra parte, e la cifra che resta ha il suo segno (G1).
      *
+     * Decisione 112.1 (1.11.0-beta.55): chi riceve e ha anche una sua parte della coppia (Ugo con la sua riga che ricompra da Elsa la quota di Anna; Anna, Zeno
+     * o l'altro erede che comprano dall'erede; Anna che compra la metà di Ugo) si divide in due, la parte che aveva e la quota che gli hanno passato i passaggi
+     * delle fermate (`quoteDelleFermate`, dalle righe del loro registro): il conduttore toglie alla fermata solo i giorni della quota (`laQuota`). Prima toglieva
+     * la differenza della parte intera, anche dei giorni della sua riga, che con la fermata non c'entrano: la fermata risultava azzerata, o ridotta troppo.
+     *
      * @param array{c: array<string, mixed>, fermate: list<array{s: Subentro, f: array<string, mixed>}>, riceventi: list<array{anagrafica_id: int, nome: string}>} $g
      * @param Collection<int, object> $righe le righe dell'unità di adesso: da qui si ricavano le basi (senza i conduttori entrati dopo ogni fermata)
      * @param Collection<int, object>|null $target le righe da valutare (un nuovo conduttore, la fine di uno): senza, quelle di adesso
@@ -910,21 +1380,38 @@ final class FermataDopoScrivi
     {
         $c = $g['c'];
         $u = (int) $g['immobile_id'];
+        $quote = $this->quoteDelleFermate($g, $righe);
+        // Le righe senza i conduttori entrati con un passaggio registrato dopo quello dato: quei conduttori hanno già tolto i loro giorni. A pari resto il
+        // centesimo a chi è uscito con la fermata, come nella fermata: dopo una fermata (decisione 81.2) non ha righe nella coppia, e lo dice `uscente_id`.
+        $base = function (int $dopo, int $chi) use ($righe, $u, $c): array {
+            $entratiDopo = Subentro::where('immobile_id', $u)->whereIn('tipo_passaggio', ['inizio_locazione', 'fine_locazione'])->where('id', '>', $dopo)
+                ->whereNotNull('riga_entrante_id')->pluck('riga_entrante_id')->map(fn ($id) => (int) $id)->all();
+            $senza = $righe->reject(fn ($r) => in_array((int) $r->id, $entratiDopo, true))->values();
+            $pesi = $this->pesi($senza, $c['pezzi']);
+
+            return ['righe' => $senza, 'pesi' => $pesi, 'parti' => $this->chiPaga->dividi($c['totale'], $pesi, $chi)];
+        };
         $basi = [];
         foreach ($g['fermate'] as $k => $x) {
-            // I conduttori entrati con un passaggio registrato dopo la fermata hanno già tolto i loro giorni: si parte dalle righe senza di loro.
-            $entratiDopo = Subentro::where('immobile_id', $u)->whereIn('tipo_passaggio', ['inizio_locazione', 'fine_locazione'])->where('id', '>', $x['s']->id)
-                ->whereNotNull('riga_entrante_id')->pluck('riga_entrante_id')->map(fn ($id) => (int) $id)->all();
-            // A pari resto il centesimo a chi è uscito con quel passaggio, come nella fermata: dopo una fermata (decisione 81.2) non ha righe
-            // nella coppia, e lo dice `uscente_id`.
-            $chi = (int) ($x['f']['uscente_id'] ?? $x['f']['persona_id']);
-            $pesi = $this->pesi($righe->reject(fn ($r) => in_array((int) $r->id, $entratiDopo, true))->values(), $c['pezzi']);
-            $basi[$k] = ['pesi' => $pesi, 'parti' => $this->chiPaga->dividi($c['totale'], $pesi, $chi)];
+            $basi[$k] = $base((int) $x['s']->id, (int) ($x['f']['uscente_id'] ?? $x['f']['persona_id']));
+        }
+        // Coda 351, la forma piena (decisione 113.1): una ricompera registrata dopo una fermata del gruppo (`fermata_ridotta` con `ricompra`) ha già detto
+        // quanto ne restava a ognuno di chi riceveva, con i giorni tornati a chi ricompra: da lì si riparte, con le righe senza i conduttori entrati dopo di lei.
+        // È la stessa voce che legge lo storico (`tornateDopo`). Ogni ricompera sta, nell'ordine di registrazione, dopo le fermate registrate prima di lei.
+        $ricompere = [];
+        foreach ($this->ricompereDelGruppo($g) as $r) {
+            $prima = array_values(array_filter(array_keys($g['fermate']), fn (int $k) => (int) $g['fermate'][$k]['s']->id < $r['id']));
+            $k = end($prima);
+            $ricompere[$k][] = $r + ['base' => $base($r['id'], (int) ($g['fermate'][$k]['f']['uscente_id'] ?? $g['fermate'][$k]['f']['persona_id']))];
         }
         $pesiOra = $this->pesi($target ?? $righe, $c['pezzi']);
-        $ora = $this->chiPaga->dividi($c['totale'], $pesiOra, (int) ($g['fermate'][0]['f']['uscente_id'] ?? $g['fermate'][0]['f']['persona_id']));
-        // Quanto un cambio di righe toglie a una persona: la differenza delle sue parti, solo se il suo peso cala.
-        $tolto = fn (int $id, array $da, array $a): int => abs($a['pesi'][$id] ?? 0.0) >= abs($da['pesi'][$id] ?? 0.0) - 1e-9 ? 0 : ($da['parti'][$id] ?? 0) - ($a['parti'][$id] ?? 0);
+        $ora = ['righe' => $target ?? $righe, 'pesi' => $pesiOra,
+            'parti' => $this->chiPaga->dividi($c['totale'], $pesiOra, (int) ($g['fermate'][0]['f']['uscente_id'] ?? $g['fermate'][0]['f']['persona_id']))];
+        // Quanto un cambio di righe toglie a una persona: la differenza delle sue parti, solo se il suo peso cala. Per chi si divide (decisione 112.1), la
+        // differenza della parte della quota: è la parte dei suoi giorni al centesimo più vicino, e un centesimo non si sposta senza un giorno.
+        $tolto = fn (int $id, array $da, array $a, array $quota): int => $quota === []
+            ? (abs($a['pesi'][$id] ?? 0.0) >= abs($da['pesi'][$id] ?? 0.0) - 1e-9 ? 0 : ($da['parti'][$id] ?? 0) - ($a['parti'][$id] ?? 0))
+            : $this->laQuota($da['righe'], $id, $quota, $c) - $this->laQuota($a['righe'], $id, $quota, $c);
         $riduci = fn (int $somma, int $togli): int => $somma >= 0 ? max(0, $somma - max(0, $togli)) : min(0, $somma - min(0, $togli));
 
         $out = [];
@@ -932,18 +1419,294 @@ final class FermataDopoScrivi
             $id = (int) $r['anagrafica_id'];
             $somma = 0;
             $ultima = null;
+            $da = null;
             foreach ($g['fermate'] as $k => $x) {
                 if ($ultima !== null) {
-                    $somma = $riduci($somma, $tolto($id, $basi[$ultima], $basi[$k]));
+                    $somma = $riduci($somma, $tolto($id, $da, $basi[$k], $quote[$id][$ultima] ?? []));
                 }
                 $parte = collect($x['f']['parti'])->first(fn (array $p) => (int) $p['anagrafica_id'] === $id);
                 $somma += (int) ($parte['cifra'] ?? 0);
                 $ultima = $k;
+                $da = $basi[$k];
+                foreach ($ricompere[$k] ?? [] as $q) {
+                    if (array_key_exists($id, $q['prima'])) {
+                        $somma = (int) ($q['parti'][$id] ?? 0);
+                        $da = $q['base'];
+                    }
+                }
             }
-            $out[$id] = $riduci($somma, $tolto($id, $basi[$ultima], ['pesi' => $pesiOra, 'parti' => $ora]));
+            $out[$id] = $riduci($somma, $tolto($id, $da, $ora, $quote[$id][$ultima] ?? []));
         }
 
         return $out;
+    }
+
+    /**
+     * Coda 351, la forma piena: le ricompere registrate dopo le fermate di un gruppo, non annullate, sulla stessa coppia, la cui voce `fermata_ridotta` con `ricompra`
+     * nomina una fermata del gruppo (`passaggio_id`, o fra i `passaggi_ids`). Per ognuna, chi riceveva allora (`prima`, la parte di prima della ricompera) e quanto
+     * gliene restava (`parti`).
+     *
+     * @return list<array{id: int, prima: array<int, int>, parti: array<int, int>}>
+     */
+    private function ricompereDelGruppo(array $g): array
+    {
+        $fermate = array_map(fn (array $x) => (int) $x['s']->id, $g['fermate']);
+        $c = $g['c'];
+        $out = [];
+        foreach (Subentro::where('immobile_id', (int) $g['immobile_id'])->where('id', '>', min($fermate))->orderBy('id')->get()->map(fn (Subentro $s) => $s->capo())->unique('id') as $s) {
+            foreach ($s->registro['fermata_ridotta'] ?? [] as $v) {
+                if (! isset($v['ricompra']) || (int) ($v['fine_id'] ?? 0) !== (int) $c['fine']->id || (int) ($v['immobile_id'] ?? 0) !== (int) $g['immobile_id']
+                    || (int) ($v['gestione_id'] ?? 0) !== (int) $c['gestione_id']
+                    || array_intersect($fermate, [(int) ($v['passaggio_id'] ?? 0), ...array_map('intval', (array) ($v['passaggi_ids'] ?? []))]) === []) {
+                    continue;
+                }
+                $out[] = ['id' => (int) $s->id,
+                    'prima' => collect((array) ($v['parti_prima'] ?? []))->mapWithKeys(fn (array $p) => [(int) $p['anagrafica_id'] => (int) $p['cifra']])->all(),
+                    'parti' => collect((array) ($v['parti'] ?? []))->mapWithKeys(fn (array $p) => [(int) $p['anagrafica_id'] => (int) $p['cifra']])->all()];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Decisione 112.1: per chi riceve in un gruppo di fermate e ha anche una sua parte della coppia, la quota che gli hanno passato i passaggi di quelle fermate,
+     * riga per riga, da ognuna delle fermate in poi (persona → fermata del gruppo → riga → quota: la somma delle fermate fino a quella). La quota di una fermata è
+     * quella che il suo passaggio ha aperto a chi riceve, come la scrive il registro del passaggio (`righe`): la riga che gli apre, meno la sua riga dello stesso
+     * ruolo che il passaggio chiude per sommarla (chi ha già il 75 % e compra il 25 % ha una riga sola da 100; il nudo che torna pieno e lo era già di un'altra parte),
+     * o la quota che somma alla sua riga nata lo stesso giorno. Un passaggio dopo che chiude una riga con una quota e ne apre o cambia una a chi riceve (un altro
+     * acquisto, che somma) le porta la quota. Chi riceve senza una sua parte della coppia non si divide: quello che ha viene tutto dalle fermate, come prima.
+     *
+     * @param array{immobile_id: int, c: array<string, mixed>, fermate: list<array{s: Subentro, f: array<string, mixed>}>, riceventi: list<array{anagrafica_id: int, nome: string}>} $g
+     * @param Collection<int, object> $righe le righe dell'unità
+     * @return array<int, array<int, array<int, float>>>
+     */
+    private function quoteDelleFermate(array $g, Collection $righe): array
+    {
+        $hanno = $this->chiHaLaCoppia($g['c'], (int) $g['c']['fine']->condominio_id);
+        // Coda 352 oltre la successione: chi riceveva ed è morto con l'arretrato agli eredi ha lasciato loro la sua riga della coppia, con le quote delle fermate.
+        $defunti = self::alPostoDeiDefunti($g['c'], (int) $g['c']['fine']->condominio_id);
+        $passaggi = null;
+        $out = [];
+        foreach ($g['riceventi'] as $r) {
+            $persona = (int) $r['anagrafica_id'];
+            if (! isset($hanno[$persona]) && ! isset($defunti[$persona])) {
+                continue;
+            }
+            // Le fermate del gruppo in cui riceve questa persona, per passaggio padre.
+            $diQuale = [];
+            $tetti = [];
+            foreach ($g['fermate'] as $k => $x) {
+                if (collect($x['f']['parti'])->contains(fn (array $p) => (int) $p['anagrafica_id'] === $persona)) {
+                    $diQuale[(int) $x['s']->id] ??= $k;
+                    if (isset($x['f']['quota_della_riga'])) {
+                        $tetti[$k] = (float) $x['f']['quota_della_riga'];
+                    }
+                }
+            }
+            $passaggi ??= Subentro::where('immobile_id', (int) $g['immobile_id'])->orderBy('id')->get();
+            $perRiga = self::quotePerOrigine($righe, $passaggi, $persona, $diQuale, $tetti);
+            foreach (array_keys($g['fermate']) as $k) {
+                $out[$persona][$k] = array_filter(array_map(fn (array $perFermata) => (float) array_sum(array_filter($perFermata, fn (int $j) => $j <= $k, ARRAY_FILTER_USE_KEY)), $perRiga),
+                    fn (float $q) => $q > 1e-9);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Le quote che i passaggi hanno dato a una persona, riga per riga, per origine: la lettura di `quoteDelleFermate`, che qui ha l'origine (l'indice di una fermata del gruppo) e che
+     * `cifrePerPersona` usa con il passaggio stesso. La quota di un passaggio è quella che ha aperto alla persona, come la scrive il registro (`righe`), meno la sua riga dello
+     * stesso ruolo che chiude per sommarla, o la quota che somma alla sua riga nata lo stesso giorno; le quote delle righe che chiude passano alla prima riga che le apre o le cambia.
+     * I passaggi che non sono origini passano le quote delle righe che chiudono, senza aggiungerne. Coda 354: un passaggio con più fermate verso la stessa persona (la parte
+     * dalla riga di chi esce e quella da una fermata che lui aveva ricevuto) ha più origini, con un peso ciascuna: la quota si divide fra loro in proporzione.
+     *
+     * @param Collection<int, object> $righe le righe dell'unità
+     * @param Collection<int, Subentro> $passaggi i passaggi dell'unità, dal primo
+     * Decisione 112.1: una voce della quota di una fermata nella riga di chi esce (`dallaFermataNellaRiga`) passa a chi riceve solo quella quota (`quota_della_riga`), anche se il
+     * passaggio gli apre una riga più grande (l'erede che prende tutta la riga del defunto con l'arretrato agli eredi, Coda 355): `$tetti` dice, per origine, la quota più grande.
+     *
+     * @param array<int, int|array<int, float>> $origini passaggio padre → origine (o origine → peso)
+     * @param array<int|string, float> $tetti origine → la quota più grande che il passaggio le dà
+     * @return array<int, array<int, float>> riga → origine → quota
+     */
+    private static function quotePerOrigine(Collection $righe, Collection $passaggi, int $persona, array $origini, array $tetti = []): array
+    {
+        $perId = $righe->keyBy(fn ($r) => (int) $r->id);
+        // Coda 352 oltre la successione (1.11.0-beta.55): con l'arretrato agli eredi la riga di chi muore passa agli eredi con la sua storia (decisione 65), e con lei le
+        // quote che le fermate le avevano dato: da lì si seguono anche le righe degli eredi, in proporzione alla quota che ognuno riceve.
+        $seguite = [$persona => true];
+        $sua = function ($id) use ($perId, &$seguite): bool {
+            return isset($seguite[(int) ($perId[(int) $id]->anagrafica_id ?? 0)]);
+        };
+        $perRiga = [];
+        foreach ($passaggi as $s) {
+            $k = $origini[(int) $s->capo()->id] ?? null;
+            $operazioni = collect((array) ($s->registro['righe'] ?? []));
+            $chiuse = $operazioni->filter(fn ($o) => ($o['operazione'] ?? null) === 'chiusa' && $sua($o['id'] ?? 0))->values();
+            $portate = [];
+            foreach ($chiuse as $o) {
+                foreach ($perRiga[(int) $o['id']] ?? [] as $j => $q) {
+                    $portate[$j] = ($portate[$j] ?? 0.0) + $q;
+                }
+            }
+            $agliEredi = $portate !== [] && $s->capo()->successione() && $s->capo()->arretratoAgliEredi() && isset($seguite[(int) $s->capo()->anagrafica_uscente_id]);
+            $eredi = $agliEredi ? array_fill_keys(array_map(fn (array $e) => (int) $e['anagrafica_id'], $s->capo()->eredi()), true) : [];
+            $seguite += $eredi;
+            $aperte = $operazioni->filter(fn ($o) => ($o['operazione'] ?? null) === 'aperta' && isset($seguite[(int) ($o['dopo']['anagrafica_id'] ?? 0)]))->values();
+            $cambiate = $operazioni->filter(fn ($o) => ($o['operazione'] ?? null) === 'modificata' && $sua($o['id'] ?? 0))->values();
+            // Con l'arretrato agli eredi le quote portate vanno alle righe degli eredi, in proporzione a quanto ognuna riceve; altrimenti alla prima riga.
+            $aChi = [];
+            foreach ($aperte as $i => $o) {
+                if ($agliEredi && isset($eredi[(int) ($o['dopo']['anagrafica_id'] ?? 0)])) {
+                    $aChi[$i] = (float) ($o['dopo']['quota'] ?? 0);
+                }
+            }
+            $aChi = array_filter($aChi, fn (float $q) => $q > 1e-9);
+            foreach ([...$aperte, ...$cambiate] as $i => $o) {
+                $id = (int) $o['id'];
+                $mappa = $perRiga[$id] ?? [];
+                // Le quote delle righe che il passaggio chiude a chi riceve passano alla prima riga che gli apre o gli cambia.
+                if ($aChi !== [] ? isset($aChi[$i]) : $i === 0) {
+                    foreach ($portate as $j => $q) {
+                        $mappa[$j] = ($mappa[$j] ?? 0.0) + ($aChi !== [] ? $q * $aChi[$i] / (float) array_sum($aChi) : $q);
+                    }
+                }
+                if ($k !== null) {
+                    $nuova = ($o['operazione'] ?? null) === 'aperta'
+                        ? (float) ($o['dopo']['quota'] ?? 0) - (float) $chiuse->filter(fn ($x) => ($perId[(int) $x['id']]->tipologia ?? null) === ($o['dopo']['tipologia'] ?? null))
+                            ->sum(fn ($x) => (float) $perId[(int) $x['id']]->quota)
+                        // La riga cambiata sul posto: la quota sommata alla sua riga nata lo stesso giorno.
+                        : (float) ($o['dopo']['quota'] ?? 0) - (float) ($o['prima']['quota'] ?? 0);
+                    $pesi = is_array($k) ? $k : [$k => 1.0];
+                    $somma = (float) array_sum($pesi);
+                    foreach ($nuova > 1e-9 && $somma > 0.0 ? $pesi : [] as $j => $peso) {
+                        $parte = $nuova * (float) $peso / $somma;
+                        $mappa[$j] = ($mappa[$j] ?? 0.0) + (isset($tetti[$j]) ? min($parte, (float) $tetti[$j]) : $parte);
+                    }
+                }
+                if ($mappa !== []) {
+                    $perRiga[$id] = $mappa;
+                }
+            }
+        }
+
+        return $perRiga;
+    }
+
+    /**
+     * Decisione 112.1: la parte della coppia della quota passata con le fermate a chi riceve (`quoteDelleFermate`), con le righe date. Le righe della
+     * quota si dividono in due, la quota con una chiave sua e il resto a chi riceve, con le stesse date: la regola della decorrenza (D7) le legge come la riga intera.
+     * La parte è quella dei giorni della quota, al centesimo più vicino; a pari resto il centesimo non va alla quota, come nella fermata, dove a pari resto va a chi
+     * esce e non a chi riceve. Il resto della ripartizione non cambia.
+     *
+     * @param Collection<int, object> $righe
+     * @param array<int, float> $quota riga → quota
+     * @param array{totale: int, pezzi: list<array{tratti: InsiemePeriodi, importo: int}>} $c la coppia
+     * @return int la parte della quota, in centesimi
+     */
+    private function laQuota(Collection $righe, int $persona, array $quota, array $c): int
+    {
+        // Coda 352 oltre la successione: la quota segue anche le righe degli eredi (`quotePerOrigine`), che non sono di chi riceve.
+        $divise = $righe->flatMap(function ($r) use ($quota) {
+            $q = min((float) ($quota[(int) $r->id] ?? 0.0), (float) $r->quota);
+            if ($q <= 1e-9) {
+                return [$r];
+            }
+
+            return [(object) array_replace((array) $r, ['anagrafica_id' => self::QUOTA_DELLA_FERMATA, 'quota' => $q]),
+                ...((float) $r->quota - $q > 1e-9 ? [(object) array_replace((array) $r, ['quota' => (float) $r->quota - $q])] : [])];
+        })->values();
+        $pesi = $this->pesi($divise, $c['pezzi']);
+        // I pezzi della coppia sono i giorni che qualcuno copriva alla fine (`ChiPagaAlPostoDellInquilino::dividiLaCoppia`): la somma dei pesi non è zero.
+        $esatto = $c['totale'] * (float) ($pesi[self::QUOTA_DELLA_FERMATA] ?? 0.0) / array_sum($pesi);
+
+        return (int) (($esatto <=> 0) * ceil(abs($esatto) - 0.5 - 1e-9));
+    }
+
+    /**
+     * Coda 352 (decisione 112.1, la forma piena): chi ha pagato i giorni di un tratto dopo l'uscita, per la coppia di una fine (unità e gestione). I giorni
+     * li paga chi sta al posto dell'inquilino in quel tratto, con la regola della coppia (`ChiPagaAlPostoDellInquilino::pesi`); ma la quota che una
+     * fermata ha passato a chi riceve (le righe dei registri dei passaggi, `quotePerOrigine`) sta nella riga di chi è rimasto a carico della fermata, che
+     * con la coppia l'ha pagata: ha una chiave sua (negativa), con chi è rimasto a carico e la catena delle fermate (dalla prima: se chi la passa l'aveva
+     * avuta con un'altra fermata, anche quella), per le alternative di chi ha ricevuto se le parti le hanno regolate. Dopo che chi riceve la riporta a chi
+     * ne risponde (la ricompera, Coda 351) la riga della quota è chiusa, e nei giorni dopo non pesa.
+     *
+     * @param Collection<int, object> $righe le righe dell'unità
+     * @return array{pesi: array<int, float>, fermate: array<int, array{persone: list<int>, passaggi: list<int>}>} per chiave (l'anagrafica, o la quota di una
+     *                                                                                                      fermata) il peso nel tratto; per le chiavi delle fermate chi
+     *                                                                                                      ne risponde e i passaggi della catena
+     */
+    public function chiHaPagatoIlTratto(Subentro $fine, int $immobileId, int $gestioneId, Collection $righe, InsiemePeriodi $tratto): array
+    {
+        $passaggi = Subentro::where('immobile_id', $immobileId)->orderBy('id')->get();
+        $fermate = [];
+        foreach ($passaggi->map(fn (Subentro $s) => $s->capo())->unique('id')->sortBy('id') as $s) {
+            foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $f) {
+                if ((int) ($f['fine_id'] ?? 0) === (int) $fine->id && (int) ($f['immobile_id'] ?? 0) === $immobileId && (int) ($f['gestione_id'] ?? 0) === $gestioneId && ! empty($f['parti'])) {
+                    $fermate[] = ['s' => $s, 'f' => $f];
+                }
+            }
+        }
+        $dal = $tratto->dal()->toDateString();
+        $fermate = array_values(array_filter($fermate, fn (array $x) => substr((string) $x['f']['dal'], 0, 10) <= $dal));
+        $chiavi = [];
+        $divise = $righe;
+        if ($fermate !== []) {
+            $riceventi = [];
+            foreach ($fermate as $k => $x) {
+                foreach ($x['f']['parti'] as $p) {
+                    // Coda 354: un passaggio con due fermate verso la stessa persona (la parte dalla riga di chi esce, e quella dalla quota di una fermata che lui aveva
+                    // ricevuto) le passa la quota in proporzione alle loro cifre.
+                    $riceventi[(int) $p['anagrafica_id']][(int) $x['s']->id][$k] = abs((float) $p['cifra']);
+                }
+            }
+            $riceventi = array_map(fn (array $perPassaggio) => array_map(fn (array $pesi) => count($pesi) === 1 ? (int) array_key_first($pesi) : $pesi, $perPassaggio), $riceventi);
+            $tetti = [];
+            foreach ($fermate as $k => $x) {
+                if (isset($x['f']['quota_della_riga'])) {
+                    $tetti[$k] = (float) $x['f']['quota_della_riga'];
+                }
+            }
+            $perRiga = [];
+            foreach ($riceventi as $persona => $origini) {
+                foreach (self::quotePerOrigine($righe, $passaggi, $persona, $origini, $tetti) as $riga => $quote) {
+                    $perRiga[(int) $riga] = $quote;
+                }
+            }
+            $divise = $righe->flatMap(function ($r) use ($perRiga) {
+                $resta = (float) $r->quota;
+                $pezzi = [];
+                foreach ($perRiga[(int) $r->id] ?? [] as $k => $q) {
+                    $q = min((float) $q, $resta);
+                    if ($q > 1e-9) {
+                        $pezzi[] = (object) array_replace((array) $r, ['anagrafica_id' => self::QUOTA_DELLA_FERMATA - 1 - (int) $k, 'quota' => $q]);
+                        $resta -= $q;
+                    }
+                }
+
+                return $pezzi === [] ? [$r] : [...$pezzi, ...($resta > 1e-9 ? [(object) array_replace((array) $r, ['quota' => $resta])] : [])];
+            })->values();
+            // La catena di una fermata: se chi ha passato la quota l'aveva avuta con un'altra fermata dello stesso tratto, anche quella, dalla prima.
+            $catena = function (int $k) use (&$catena, $fermate): array {
+                $uscente = (int) ($fermate[$k]['f']['uscente_id'] ?? 0);
+                foreach (array_keys($fermate) as $j) {
+                    if ($j < $k && $uscente !== 0 && collect($fermate[$j]['f']['parti'])->contains(fn (array $p) => (int) $p['anagrafica_id'] === $uscente)) {
+                        return [...$catena($j), (int) $fermate[$k]['s']->id];
+                    }
+                }
+
+                return [(int) $fermate[$k]['s']->id];
+            };
+            foreach (array_keys($fermate) as $k) {
+                $f = $fermate[$k]['f'];
+                $chiavi[self::QUOTA_DELLA_FERMATA - 1 - $k] = ['persone' => array_values(array_map('intval', (array) ($f['persone_ids'] ?? [$f['persona_id']]))), 'passaggi' => $catena($k)];
+            }
+        }
+        $pesi = $this->chiPaga->pesi($divise, $tratto);
+
+        return ['pesi' => $pesi, 'fermate' => array_intersect_key($chiavi, array_filter($pesi, fn (float $p) => $p > 1e-9))];
     }
 
     /**
@@ -973,6 +1736,9 @@ final class FermataDopoScrivi
             $voce += ['uscente_id' => (int) $uscito['uscente_id'], 'uscente' => (string) ($uscito['uscente'] ?? '?'), 'dopo_la_fermata' => $uscito['dopo_la_fermata'] ?? null];
         }
         if (count($g['fermate']) === 1) {
+            // Coda 353: la fermata che non sa nella riga di chi stavano i giorni lo dice anche all'inizio di un conduttore.
+            $voce += ! empty($f['riga_non_nota']) ? ['riga_non_nota' => true] : [];
+
             // Una fermata con più persone a carico insieme (decisione 81.2) le porta tutte, con i loro ids.
             return isset($f['persone'], $f['persone_ids']) ? $voce + ['persone' => array_values((array) $f['persone']), 'persone_ids' => array_values(array_map('intval', (array) $f['persone_ids']))] : $voce;
         }
@@ -997,8 +1763,9 @@ final class FermataDopoScrivi
             // La cifra che ogni persona a carico aveva lasciato con le sue fermate: il residuo è uno solo per tutte, e la parte di ognuna la decide l'amministratore.
             'a_carico' => array_values($aCarico),
             'verso' => array_column($g['riceventi'], 'nome'),
-            'passaggi_ids' => array_map(fn (array $x) => (int) $x['s']->id, $g['fermate']),
-            'passaggi' => array_map(fn (array $x) => self::passaggioInParole($x['s']), $g['fermate']),
+            // Coda 354: due fermate dello stesso passaggio (la parte dalla riga di chi esce e quella dalla quota di una fermata ricevuta) sono un passaggio solo.
+            'passaggi_ids' => array_values(array_unique(array_map(fn (array $x) => (int) $x['s']->id, $g['fermate']))),
+            'passaggi' => array_values(array_unique(array_map(fn (array $x) => self::passaggioInParole($x['s']), $g['fermate']))),
         ]);
     }
 
@@ -1088,7 +1855,7 @@ final class FermataDopoScrivi
         return array_intersect_key($f, array_flip(['fine_id', 'fine_il', 'inquilino', 'saldo_id', 'persona_id', 'persona', 'immobile_id', 'unita', 'gestione_id', 'gestione',
             'esercizio_id', 'coppia', 'cifra', 'dal', 'assorbita', 'verso', 'parti', 'wallet', 'strada', 'passaggio_id', 'passaggio', 'prima', 'residuo', 'conduttore',
             'uscente_id', 'uscente', 'dopo_la_fermata', 'piu_persone', 'ereditata', 'passaggi_ids', 'passaggi', 'persone', 'persone_ids', 'dopo', 'conduttore_uscente', 'conduttore_uscente_id',
-            'parti_prima', 'parti_dopo']));
+            'parti_prima', 'parti_dopo', 'ricompra', 'erede_di', 'agli_eredi', 'cifre_per_persona', 'riga_non_nota', 'quota_della_riga']));
     }
 
     /**
@@ -1102,11 +1869,15 @@ final class FermataDopoScrivi
         }
         $frase = isset($f['uscente_id'])
             ? self::frasePannelloDopoUnaFermata($f)
-            : sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla %s (%s).%s Con questo passaggio la parte di quei giorni dal %s tocca %s, ma il programma non la sposta: %s. %s',
+            : sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla %s (%s)%s.%s Con questo passaggio la parte di quei giorni dal %s tocca %s, ma il programma non la sposta: %s. %s',
                 $f['inquilino'], self::data($f['fine_il']),
                 // Giro stretto della .50 (G13): l'erede non ha preso la coppia, gli è arrivata con la successione; la frase dice chi l'ha presa.
-                isset($f['ereditata']) ? self::presa((string) $f['ereditata']['da'], (int) $f['ereditata']['coppia']) : self::presa((string) $f['persona'], (int) $f['coppia']),
+                isset($f['ereditata']) ? self::presa((string) $f['ereditata']['da'], (int) $f['ereditata']['coppia'], ! empty($f['ereditata']['piu'])) : self::presa((string) $f['persona'], (int) $f['coppia']),
                 FrasiObbligati::gestione($f['gestione']), $f['unita'],
+                // Coda 245: la parte del piano di chi sta al posto dell'inquilino, con il resto che la coppia ha lasciato fuori (`coppia`).
+                isset($f['resto_del_ripiego']) ? sprintf('; con la regola del piano la sua parte è %s, e %s %s fuori dal conguaglio, da regolare con %s', self::cifraInParole((int) $f['resto_del_ripiego']['piano']),
+                    MoneyHelper::format(abs((int) $f['resto_del_ripiego']['cifra'])), (int) $f['resto_del_ripiego']['cifra'] > 0 ? 'sono rimasti' : 'di credito sono rimasti',
+                    self::elenco((array) $f['resto_del_ripiego']['con']) ?: 'chi era già uscito') : '',
                 isset($f['ereditata']) ? sprintf(' Con %s una parte, %s, è passata %s.', $f['ereditata']['passaggio'], self::cifraInParole((int) $f['coppia']), FrasiObbligati::a((string) $f['persona'])) : '',
                 self::data($f['dal']), FrasiObbligati::a(self::elenco($f['verso'])),
                 (int) $f['cifra'] < 0 ? 'in quei giorni l\'entrata supera la spesa, e ' . self::aCarico((int) $f['cifra'], '', (string) $f['persona']) : self::aCarico((int) $f['cifra'], '', (string) $f['persona']),
@@ -1145,13 +1916,15 @@ final class FermataDopoScrivi
         return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla %s (%s). %s Con questo passaggio la parte di quei giorni dal %s tocca %s, ma il programma non la sposta: %s. Se vanno %s, la parte si regola fra le parti: chi la restituisce dipende da come è stata regolata %s, e il programma non lo sa.',
             $f['inquilino'], self::data($f['fine_il']), self::presa((string) $f['persona'], (int) $f['coppia'], ! empty($f['piu_persone'])), FrasiObbligati::gestione($f['gestione']), $f['unita'],
             match (true) {
-                $prima !== null && (int) $prima['cifra'] < 0 => sprintf('%s non ha spostato la parte di %s, un credito di %s, rimasto %s da regolare a mano.', ucfirst((string) $prima['passaggio']), $f['uscente'], MoneyHelper::format(-(int) $prima['cifra']), FrasiObbligati::a((string) $f['persona'])),
-                $prima !== null => sprintf('%s non ha spostato la parte di %s, %s, rimasta a carico di %s da regolare a mano.', ucfirst((string) $prima['passaggio']), $f['uscente'], MoneyHelper::format((int) $prima['cifra']), $f['persona']),
+                // Come nella frase dell'erede: se a ricevere era il defunto che ha lasciato la parte a chi esce, la frase dice la parte del defunto e la successione che l'ha passata.
+                $prima !== null => self::laFermataDiPrima($prima + ['persona' => ! empty($f['riga_non_nota']) ? self::chiResta($f) : (string) $f['persona']], (string) $f['uscente']) . self::nonSaNellaRigaDiChi($f),
+                // Coda 353: non si sa nella riga di chi stanno i giorni di chi esce, e la frase non nomina nessuno fra chi è a carico.
+                ! empty($f['riga_non_nota']) => self::nonSaNellaRigaDiChi($f, false),
                 (int) $f['cifra'] < 0 => sprintf('La parte di %s non è passata con la coppia, ed è rimasta %s.', $f['uscente'], FrasiObbligati::a((string) $f['persona'])),
                 default => sprintf('La parte di %s non è passata con la coppia, ed è rimasta a carico di %s.', $f['uscente'], $f['persona']),
             },
             self::data($f['dal']), FrasiObbligati::a(self::elenco($f['verso'])),
-            self::aCarico((int) $f['cifra'], '', (string) $f['persona'], oppure: $f['uscente'] . ' se ' . self::regolataPrima($f)),
+            self::aCarico((int) $f['cifra'], '', self::chiResta($f), oppure: self::oppureChi($f)),
             FrasiObbligati::a(self::elenco($f['verso'])), $prima !== null ? 'la fermata ' . self::di((string) $prima['passaggio']) : 'la parte di ' . $f['uscente']);
     }
 
@@ -1166,17 +1939,52 @@ final class FermataDopoScrivi
         $prima = $f['dopo_la_fermata'] ?? null;
 
         return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla %s (%s), e con %s una parte, %s, è passata %s.%s Con questo passaggio la parte di quei giorni dal %s tocca %s, ma il programma non la sposta: %s. Se vanno %s, la parte si regola fra le parti: chi la restituisce dipende da come è stata regolata %s, e il programma non lo sa.',
-            $f['inquilino'], self::data($f['fine_il']), self::presa((string) $f['ereditata']['da'], (int) $f['ereditata']['coppia']), FrasiObbligati::gestione($f['gestione']), $f['unita'],
+            $f['inquilino'], self::data($f['fine_il']), self::presa((string) $f['ereditata']['da'], (int) $f['ereditata']['coppia'], ! empty($f['ereditata']['piu'])), FrasiObbligati::gestione($f['gestione']), $f['unita'],
             $f['ereditata']['passaggio'], self::cifraInParole((int) ($f['ereditata']['sua'] ?? 0)), FrasiObbligati::a((string) $f['uscente']),
-            self::lePartiDiPrima($f),
+            self::lePartiDiPrima($f) . self::leSuccessioniSenzaFermata($f),
             self::data($f['dal']), FrasiObbligati::a(self::elenco($f['verso'])),
             self::aCarico((int) $f['cifra'], '', (string) $f['persona'], oppure: $f['uscente'] . ' se ' . self::regolataPrima($f)),
             FrasiObbligati::a(self::elenco($f['verso'])), $prima !== null ? 'la fermata ' . self::di((string) $prima['passaggio']) : 'la parte di ' . $f['uscente']);
     }
 
     /**
-     * Le fermate di prima che non hanno spostato a chi esce la parte che aveva comprato, ognuna con la sua cifra e di chi è rimasta: la frase dice perché fra le
-     * persone a carico ci sono anche loro. Una sola è `dopo_la_fermata`; con più acquisti sono `dopo_le_fermate`, dalla più vecchia.
+     * Coda 353: la fermata di chi esce che il registro non sa nella riga di chi stava (`riga_non_nota`: nessuna origine registrata che dica le persone, e più di una ha la coppia).
+     * Con `$conSpazio` la frase segue un'altra («La vendita … non ha spostato la parte di Elsa …»).
+     */
+    private static function nonSaNellaRigaDiChi(array $f, bool $conSpazio = true): string
+    {
+        if (empty($f['riga_non_nota'])) {
+            return '';
+        }
+
+        // Con la fermata di prima nominata (il suo registro è di una beta che non diceva le persone) la frase dice che è quel registro a non dirlo.
+        $prima = $f['dopo_la_fermata'] ?? null;
+
+        return ($conSpazio ? ' ' : '') . ($prima !== null
+            ? sprintf('Il registro %s non dice in quale riga stanno i giorni di %s, e il programma non lo sa.', self::di((string) $prima['passaggio']), $f['uscente'])
+            : sprintf('La parte di %s non viene da un passaggio registrato che dica in quale riga stanno i suoi giorni, e il programma non lo sa.', $f['uscente']));
+    }
+
+    /**
+     * Coda 353: l'avviso dove chi compra ha una riga della coppia e il programma non sa se i giorni di chi esce stanno nella sua o in quella di un'altra persona: non c'è una fermata da
+     * dire (sarebbe una cifra inventata), ma il silenzio sarebbe una scelta. Un'informazione, senza la spunta del cancello.
+     *
+     * @param array<string, mixed> $a l'avviso di `dopoUnaFermata`
+     */
+    public static function fraseSenzaRiga(array $a): string
+    {
+        $chiCompra = (string) $a['verso'][0];
+
+        return sprintf('La fine locazione di %s del %s ha scritto il conguaglio: dei giorni dopo la sua uscita %s sulla %s (%s). La parte di %s non viene da un passaggio registrato che dica in '
+            . 'quale riga stanno i suoi giorni, e il programma non lo sa. Con questo passaggio la parte di quei giorni dal %s tocca %s, che ha già una sua riga della coppia, e il programma non sposta niente: '
+            . 'se i giorni di %s stanno nella riga di un\'altra persona, fino a %s si regolano a mano con %s: da chi li ha nella sua riga, o da %s se la parte di %s è già stata regolata; se stanno nella riga di %s, non c\'è niente da regolare.',
+            $a['inquilino'], self::data($a['fine_il']), self::presa((string) $a['persona'], (int) $a['coppia'], true), FrasiObbligati::gestione($a['gestione']), $a['unita'], $a['uscente'],
+            self::data($a['dal']), FrasiObbligati::a($chiCompra), $a['uscente'], MoneyHelper::format(abs((int) $a['cifra'])), $chiCompra, $a['uscente'], $a['uscente'], $chiCompra);
+    }
+
+    /**
+     * Le fermate di prima che non hanno spostato a chi esce la parte avuta con quei passaggi, ognuna con la sua cifra e di chi è rimasta: la frase dice perché fra le
+     * persone a carico ci sono anche loro. Una sola è `dopo_la_fermata`; con più fermate sono `dopo_le_fermate`, dalla più vecchia.
      */
     private static function lePartiDiPrima(array $f): string
     {
@@ -1185,16 +1993,31 @@ final class FermataDopoScrivi
         return implode('', array_map(fn (array $prima) => ' ' . self::laFermataDiPrima($prima, (string) $f['uscente']), $fermate));
     }
 
-    /** La fermata di prima che non ha spostato a chi esce la parte che aveva comprato, con di chi era rimasta quando il registro lo dice; un credito si dice con le parole. */
+    /** Le successioni senza fermata fra le origini della parte che chi esce vende: la parte avuta con ognuna è rimasta a carico del defunto, che ha ancora la sua riga della coppia. */
+    private static function leSuccessioniSenzaFermata(array $f): string
+    {
+        return implode('', array_map(fn (array $s) => sprintf(' La parte avuta con %s, senza il conguaglio scritto, è rimasta a carico di %s.', $s['passaggio'], $s['di']), (array) ($f['dopo_le_successioni'] ?? [])));
+    }
+
+    /**
+     * La fermata di prima che non ha spostato a chi esce la parte avuta con quel passaggio, con di chi era rimasta quando il registro lo dice; un credito si dice con le parole.
+     * Coda 346: se a ricevere era il defunto che gli ha lasciato la parte, la frase dice la parte del defunto e la successione che l'ha passata (`di`, `passata`).
+     */
     private static function laFermataDiPrima(array $prima, string $uscente): string
     {
         $rimasta = isset($prima['persona']) ? (string) $prima['persona'] : null;
 
         return (int) $prima['cifra'] < 0
-            ? sprintf('%s non ha spostato la parte di %s, un credito di %s, rimasto%s da regolare a mano.', ucfirst((string) $prima['passaggio']), $uscente, MoneyHelper::format(-(int) $prima['cifra']),
-                $rimasta !== null ? ' ' . FrasiObbligati::a($rimasta) : '')
-            : sprintf('%s non ha spostato la parte di %s, %s,%s da regolare a mano.', ucfirst((string) $prima['passaggio']), $uscente, MoneyHelper::format((int) $prima['cifra']),
-                $rimasta !== null ? ' rimasta a carico di ' . $rimasta : '');
+            ? sprintf('%s non ha spostato la parte di %s, un credito di %s,%s rimasto%s da regolare a mano.', ucfirst((string) $prima['passaggio']), $prima['di'] ?? $uscente,
+                MoneyHelper::format(-(int) $prima['cifra']), self::passataCon($prima), $rimasta !== null ? ' ' . FrasiObbligati::a($rimasta) : '')
+            : sprintf('%s non ha spostato la parte di %s, %s,%s%s da regolare a mano.', ucfirst((string) $prima['passaggio']), $prima['di'] ?? $uscente, MoneyHelper::format((int) $prima['cifra']),
+                self::passataCon($prima), $rimasta !== null ? ' rimasta a carico di ' . $rimasta : '');
+    }
+
+    /** « passata con la successione del 15 ottobre 2026 a Bruno e Dora,» se la parte della fermata di prima era del defunto (Coda 346); niente altrimenti. */
+    private static function passataCon(array $prima): string
+    {
+        return isset($prima['passata']) ? sprintf(' passata con %s,', $prima['passata']) : '';
     }
 
     /** Decisione 81.2: «la fermata della vendita del 1 settembre 2026 è già stata regolata», o la parte di chi esce. */
@@ -1205,22 +2028,42 @@ final class FermataDopoScrivi
         return $prima !== null ? sprintf('la fermata %s è già stata regolata', self::di((string) $prima['passaggio'])) : sprintf('la parte di %s è già stata regolata', $f['uscente']);
     }
 
+    /**
+     * Decisione 81.2: chi risponde della parte se la fermata di prima è già stata regolata: «Elsa se la fermata della vendita del 1 ottobre 2026 è già stata regolata». Con
+     * l'arretrato agli eredi (Coda 355) chi esce è morto e la sua posizione, con quel che gli spetta, è passata a chi riceve i giorni: l'alternativa è la loro.
+     */
+    private static function oppureChi(array $f): string
+    {
+        if (empty($f['agli_eredi'])) {
+            return $f['uscente'] . ' se ' . self::regolataPrima($f);
+        }
+
+        return sprintf('%s, che %s la posizione di %s, se %s', self::elenco($f['verso']), count($f['verso']) > 1 ? 'hanno' : 'ha', $f['uscente'], self::regolataPrima($f));
+    }
+
     /** Il motivo del cancello: corto, con la persona e la cifra. */
     public static function motivoCancello(array $f, bool $seScrivi = false): string
     {
         // Decisione 81.2: dopo una fermata la parte è a carico di chi ha le righe della coppia, o di chi esce se la fermata di prima è regolata, come nel pannello.
         $motivo = sprintf('%s (%s): il conguaglio scritto alla fine locazione del %s non passa %s %s',
-            self::aCarico((int) $f['cifra'], 'dei giorni dopo l\'uscita di ' . $f['inquilino'], (string) $f['persona'], oppure: isset($f['uscente_id']) ? $f['uscente'] . ' se ' . self::regolataPrima($f) : null),
+            self::aCarico((int) $f['cifra'], 'dei giorni dopo l\'uscita di ' . $f['inquilino'], self::chiResta($f), oppure: isset($f['uscente_id']) ? self::oppureChi($f) : null),
             FrasiObbligati::gestione($f['gestione']), self::data($f['fine_il']), FrasiObbligati::a(self::elenco($f['verso'])),
             self::conQuestoPassaggio($f));
         if (isset($f['uscente_id'])) {
             // Decisione 81.2: come non era passato a chi esce con il passaggio fermato prima.
-            $motivo .= match (true) {
-                isset($f['dopo_la_fermata']['passaggio']) => sprintf(', come non era passato %s con %s', FrasiObbligati::a((string) $f['uscente']), $f['dopo_la_fermata']['passaggio']),
-                // L'erede che ha comprato da più persone: la parte avuta con la successione gli è passata, sono le parti comprate che no.
-                isset($f['ereditata']) => sprintf(', come non erano passate %s le parti che aveva comprato', FrasiObbligati::a((string) $f['uscente'])),
-                default => sprintf(', come non era passato %s', FrasiObbligati::a((string) $f['uscente'])),
-            };
+            // L'erede con più fermate di prima: la parte avuta con la successione gli è passata, sono le parti dei passaggi che le fermate nominano (una vendita, ma anche
+            // l'estinzione di un usufrutto) che no. Coda 346: ogni fermata a chi aveva ricevuto, chi esce o il defunto che gli ha lasciato la parte.
+            $fermate = isset($f['dopo_la_fermata']['passaggio']) ? [$f['dopo_la_fermata']] : (array) ($f['dopo_le_fermate'] ?? []);
+            $perChi = [];
+            foreach ($fermate as $prima) {
+                $perChi[(string) ($prima['di'] ?? $f['uscente'])][] = 'con ' . $prima['passaggio'];
+            }
+            // Le successioni senza fermata fra le origini: la parte avuta con loro non è passata a chi esce con questo passaggio.
+            foreach ((array) ($f['dopo_le_successioni'] ?? []) as $successione) {
+                $perChi[(string) $f['uscente']][] = 'con ' . $successione['passaggio'];
+            }
+            $motivo .= $perChi === [] ? sprintf(', come non era passato %s', FrasiObbligati::a((string) $f['uscente']))
+                : ', come non era passato ' . self::elenco(array_map(fn (string $chi, array $con) => FrasiObbligati::a($chi) . ' ' . self::elenco($con), array_keys($perChi), array_values($perChi)));
         }
 
         return $seScrivi ? 'se scrivi il conguaglio, ' . $motivo : $motivo;
@@ -1229,24 +2072,60 @@ final class FermataDopoScrivi
     /**
      * La frase dello storico, dal registro: anni dopo, «perché Ugo ha ancora quella parte?» ha una risposta. Decisione 82.2: se chi ha
      * ricevuto è uscito a sua volta con un passaggio fermato dopo (la seconda vendita), la frase dice la parte passata con quel passaggio
-     * (`$passate`, da `passateDopo`), come un nuovo inquilino riduce una fermata.
+     * (`$passate`, da `passateDopo`), come un nuovo inquilino riduce una fermata. Coda 351: se un passaggio dopo ha riportato i giorni a chi li aveva
+     * nella sua riga (chi ricompra la sua stessa parte), la frase lo ricorda, con quanto ne resta (`$tornate`, da `tornateDopo`).
      *
      * @param list<array{cifra: int, verso: list<string>, passaggio: string}> $passate
+     * @param list<array{passaggio: string, ricompra: string, dal: string, residuo: int}> $tornate
      */
-    public static function fraseStorico(array $f, array $passate = []): string
+    public static function fraseStorico(array $f, array $passate = [], array $tornate = []): string
     {
         $verso = self::elenco($f['verso'] ?? []) ?: 'chi è entrato';
         $frase = sprintf('Il conguaglio scritto alla fine locazione di %s del %s non è passato %s: %s sulla %s (%s), da regolare a mano con %s%s.',
-            $f['inquilino'] ?? 'l\'inquilino', self::data($f['fine_il']), self::conQuestoPassaggio($f), self::aCarico((int) $f['cifra'], 'dei giorni dal ' . self::data($f['dal']), (string) ($f['persona'] ?? '?'), passato: true),
+            $f['inquilino'] ?? 'l\'inquilino', self::data($f['fine_il']), self::conQuestoPassaggio($f), self::aCarico((int) $f['cifra'], 'dei giorni dal ' . self::data($f['dal']), self::chiResta($f, passato: true), passato: true),
             FrasiObbligati::gestione($f['gestione'] ?? '?'), $f['unita'] ?? '', $verso,
-            // Decisione 81.2: o fra chi esce e chi entra, se la fermata di prima era già stata regolata.
-            isset($f['uscente_id']) ? sprintf(', o fra %s e %s se %s', $f['uscente'] ?? '?', $verso, str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f))) : '');
-        if ($passate === []) {
+            // Decisione 81.2: o fra chi esce e chi entra, se la fermata di prima era già stata regolata. Con l'arretrato agli eredi (Coda 355) chi esce è morto e la sua posizione è
+            // passata a chi entra: se la fermata è regolata non resta niente da regolare.
+            ! empty($f['agli_eredi']) && isset($f['uscente_id'])
+                ? sprintf('; se %s, non resta niente da regolare: la posizione di %s è passata %s', str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)), $f['uscente'] ?? '?', FrasiObbligati::a($verso))
+                : (isset($f['uscente_id']) ? sprintf(', o fra %s e %s se %s', $f['uscente'] ?? '?', $verso, str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f))) : ''));
+        if ($passate === [] && $tornate === []) {
             return $frase;
         }
 
-        return rtrim($frase, '.') . sprintf('; di questi, %s.', self::elenco(array_map(fn (array $p) => sprintf('%s %s passati %s con %s',
-            self::soldi((int) $p['cifra']), abs((int) $p['cifra']) === 1 ? 'è' : 'sono', FrasiObbligati::a(self::elenco($p['verso'])), $p['passaggio']), $passate)));
+        return rtrim($frase, '.')
+            . ($passate === [] ? '' : sprintf('; di questi, %s', self::elenco(array_map(fn (array $p) => sprintf('%s %s passati %s con %s',
+                self::soldi((int) $p['cifra']), abs((int) $p['cifra']) === 1 ? 'è' : 'sono', FrasiObbligati::a(self::elenco($p['verso'])), $p['passaggio']), $passate))))
+            . implode('', array_map(fn (array $t) => match (true) {
+                // Coda 356: la successione di chi riceveva, con l'erede che era a carico.
+                ! empty($t['agli_eredi']) => sprintf('; con %s la posizione di %s è passata %s, e non resta niente da regolare', $t['passaggio'], $t['erede_di'] ?? '?', FrasiObbligati::a($t['ricompra'])),
+                isset($t['erede_di']) => sprintf('; con %s i giorni dal %s sono passati %s, e ne restano da regolare %s', $t['passaggio'], self::data($t['dal']),
+                    FrasiObbligati::a($t['ricompra']), self::cifraInParole((int) $t['residuo'])),
+                default => sprintf('; con %s i giorni dal %s sono tornati %s, e ne restano da regolare %s', $t['passaggio'], self::data($t['dal']),
+                    FrasiObbligati::a($t['ricompra']), self::cifraInParole((int) $t['residuo'])),
+            }, $tornate)) . '.';
+    }
+
+    /**
+     * Coda 351: le fermate ridotte dopo da un passaggio che ha riportato i giorni all'unica persona a carico (`ridottaDaChiRicompra`), per lo storico del passaggio che le
+     * aveva lasciate: i passaggi registrati dopo (un passaggio annullato non si legge: lo toglie lo scope del modello), sulla stessa coppia, la cui voce nomina questo
+     * passaggio (`passaggio_id`, o fra i `passaggi_ids` di una voce di più fermate).
+     *
+     * @return list<array{passaggio: string, ricompra: string, dal: string, residuo: int}>
+     */
+    public static function tornateDopo(Subentro $passaggio, array $f): array
+    {
+        $questo = (int) $passaggio->capo()->id;
+
+        return Subentro::where('immobile_id', (int) ($f['immobile_id'] ?? 0))->where('id', '>', $passaggio->id)->orderBy('id')->get()
+            ->map(fn (Subentro $s) => $s->capo())->unique('id')
+            ->flatMap(fn (Subentro $s) => collect($s->registro['fermata_ridotta'] ?? [])
+                ->filter(fn ($g) => isset($g['ricompra']) && in_array($questo, [(int) ($g['passaggio_id'] ?? 0), ...array_map('intval', (array) ($g['passaggi_ids'] ?? []))], true)
+                    && (int) ($g['fine_id'] ?? 0) === (int) ($f['fine_id'] ?? 0) && (int) ($g['immobile_id'] ?? 0) === (int) ($f['immobile_id'] ?? 0)
+                    && (int) ($g['gestione_id'] ?? 0) === (int) ($f['gestione_id'] ?? 0))
+                ->map(fn ($g) => ['passaggio' => self::passaggioInParole($s), 'ricompra' => (string) $g['ricompra'], 'dal' => (string) $g['dal'], 'residuo' => (int) $g['residuo']]
+                    + array_intersect_key($g, array_flip(['erede_di', 'agli_eredi']))))
+            ->values()->all();
     }
 
     /**
@@ -1295,7 +2174,7 @@ final class FermataDopoScrivi
 
         return sprintf('Il conguaglio scritto alla fine locazione di %s del %s è stato annullato dopo questo passaggio: la sua fermata (%s dei giorni dal %s, rimasti %s da regolare a mano con %s) non vale più.',
             $f['inquilino'] ?? 'l\'inquilino', self::data($f['fine_il']), self::soldi($cifra), self::data($f['dal']),
-            self::diChiResta($cifra, (string) ($f['persona'] ?? '?'), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) . ',' : null),
+            self::diChiResta($cifra, self::chiResta($f, passato: true), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) . ',' : null),
             self::elenco($f['verso'] ?? []) ?: 'chi è entrato');
     }
 
@@ -1304,11 +2183,11 @@ final class FermataDopoScrivi
     {
         $piu = count(self::passaggiDellaVoce($f)) > 1;
 
-        return sprintf('Il conguaglio scritto alla fine locazione di %s è stato annullato dopo questo inizio: %s %s (%s rimasti %s), che con questo inizio %s da regolare per %s, %s.',
-            $f['inquilino'] ?? 'l\'inquilino', $piu ? 'le fermate' : 'la fermata', self::elenco(array_map(fn (string $p) => self::di($p), self::passaggiDellaVoce($f, 'un passaggio di prima'))),
+        return sprintf('Il conguaglio scritto alla fine locazione di %s è stato annullato dopo %s: %s %s (%s rimasti %s), che %s %s da regolare per %s, %s.',
+            $f['inquilino'] ?? 'l\'inquilino', isset($f['ricompra']) ? 'questo passaggio' : 'questo inizio', $piu ? 'le fermate' : 'la fermata', self::elenco(array_map(fn (string $p) => self::di($p), self::passaggiDellaVoce($f, 'un passaggio di prima'))),
             self::soldi((int) ($f['cifra'] ?? 0)),
-            self::diChiResta((int) ($f['cifra'] ?? 0), (string) ($f['persona'] ?? '?'), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) : null),
-            $piu ? 'restavano' : 'restava',
+            self::diChiResta((int) ($f['cifra'] ?? 0), self::chiResta($f, passato: true), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) : null),
+            self::conQuesto($f), $piu ? 'restavano' : 'restava',
             self::cifraInParole((int) ($f['residuo'] ?? 0)), $piu ? 'non valgono più' : 'non vale più');
     }
 
@@ -1349,7 +2228,22 @@ final class FermataDopoScrivi
                             passaggiDellaVoce: self::passaggiIds($f))
                         : 'se per questo hai registrato un saldo manuale dal Wallet, o le parti hanno regolato la differenza fra loro, rivedilo, perché l\'annullamento non lo toglie.');
             }
-            foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $f) {
+            // Coda 245: un passaggio dopo sullo stesso anello che ha letto questa fine con la regola del piano (la fine di chi restava, il cambio).
+            // La sua coppia resta; annullato questo conguaglio, il prospetto dice le cifre del piano di oggi.
+            foreach ($s->registro['conguaglio']['piano'] ?? [] as $g) {
+                if (is_array($g) && (int) ($g['segue_fine_id'] ?? 0) === (int) $capo->id) {
+                    $avvisi[] = RegolaDelPiano::avvisoDelConguaglio($s, $g);
+                }
+            }
+            // I saldi del Wallet legati al passaggio sono del passaggio, non di una voce: con più voci sulla stessa unità e gestione i loro fatti si dicono una volta, sotto la
+            // prima (la sua è la voce con il Wallet: l'altra, della quota che una fermata aveva lasciato nella riga di un altro, non lo ha).
+            $primaVoce = [];
+            foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $i => $f) {
+                if ((int) ($f['fine_id'] ?? 0) === (int) $capo->id) {
+                    $primaVoce[(int) ($f['immobile_id'] ?? 0) . '|' . (int) ($f['gestione_id'] ?? 0)] ??= $i;
+                }
+            }
+            foreach ($s->registro['fermata_dopo_scrivi'] ?? [] as $i => $f) {
                 if ((int) ($f['fine_id'] ?? 0) !== (int) $capo->id) {
                     continue;
                 }
@@ -1360,10 +2254,11 @@ final class FermataDopoScrivi
                 // del Wallet legati a quel passaggio, che restano (sono del passaggio, che c'è ancora): senza il conguaglio la parte della fermata è
                 // zero. Senza saldi legati, per un registro di prima che indicava il Wallet la frase di allora, al condizionale, altrimenti l'accordo
                 // fra le parti da rivedere.
-                $righe = self::righeDellaVoce(['passaggio_id' => (int) $s->id] + array_intersect_key($f, array_flip(['immobile_id', 'gestione_id'])));
+                $righe = $primaVoce[(int) ($f['immobile_id'] ?? 0) . '|' . (int) ($f['gestione_id'] ?? 0)] === $i
+                    ? self::righeDellaVoce(['passaggio_id' => (int) $s->id] + array_intersect_key($f, array_flip(['immobile_id', 'gestione_id']))) : collect();
                 $avvisi[] = sprintf('%s si è %s su questo conguaglio: %s sulla %s, da regolare a mano con %s. Annullato il conguaglio, quella fermata non vale più%s',
                     ucfirst($parole), str_starts_with($parole, 'il ') ? 'fermato' : 'fermata',
-                    self::aCarico((int) $f['cifra'], 'dei giorni dal ' . self::data($f['dal']), (string) ($f['persona'] ?? '?'), passato: true,
+                    self::aCarico((int) $f['cifra'], 'dei giorni dal ' . self::data($f['dal']), self::chiResta($f, passato: true), passato: true,
                         oppure: isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . str_replace('è già stata regolata', 'era già stata regolata', self::regolataPrima($f)) . ',' : null),
                     FrasiObbligati::gestione($f['gestione'] ?? '?'), $verso,
                     match (true) {
@@ -1425,6 +2320,16 @@ final class FermataDopoScrivi
                 && (int) ($f['gestione_id'] ?? 0) === $gestioneId)->map(fn (array $f) => [$k, $f]))->values();
         $quale = 'la parte della fermata di questo passaggio';
         if ($fermate->isEmpty()) {
+            // Coda 245 (decisione 95.6 b): il resto della regola del piano che questo passaggio ha lasciato fuori dal conguaglio, con la strada del
+            // Wallet: è la parte che le righe legate portano, per persona. È la differenza del piano del passaggio (decisione 111.3): «Annulla il
+            // conguaglio» della fine di prima non la cambia.
+            $resto = collect($capo->registro['resto_del_piano'] ?? [])->first(fn ($r) => is_array($r) && (int) ($r['immobile_id'] ?? 0) === $immobileId
+                && (int) ($r['gestione_id'] ?? 0) === $gestioneId && ! empty($r['wallet']));
+            if ($resto !== null) {
+                return ['parti' => array_map(fn (array $p) => ['ids' => [(int) $p['anagrafica_id']], 'nomi' => [(string) $p['nome']], 'cifra' => (int) $p['cifra']], (array) $resto['parti']),
+                    'quale' => 'il resto della regola del piano di questo passaggio', 'perche' => null];
+            }
+
             return ['parti' => [], 'quale' => 'la parte da regolare a mano con questo passaggio', 'perche' => 'non ha una fermata su questa gestione' . ($piuUnita ? ' e su questa unità' : '')];
         }
         $dopo = Subentro::where('condominio_id', $capo->condominio_id)->whereNull('subentro_padre_id')->where('id', '>', $capo->id)->orderBy('id')->get();
@@ -1471,7 +2376,10 @@ final class FermataDopoScrivi
                 return null;
             }
 
-            return self::partiConChiLePorta($f, self::partiDeiRiceventi($g, $this->residuiDelleFermate($g, $this->chiPaga->righe((int) $g['immobile_id']))));
+            // Dopo una ricompera (Coda 351) `residuiDelleFermate` riparte da quanto ne restava allora.
+            $residui = $this->residuiDelleFermate($g, $this->chiPaga->righe((int) $g['immobile_id']));
+
+            return self::partiConChiLePorta($f, self::partiDeiRiceventi($g, $residui));
         }
 
         return null;
@@ -1583,6 +2491,9 @@ final class FermataDopoScrivi
      */
     private static function partiConChiLePorta(array $f, array $parti): ?array
     {
+        if (! empty($f['riga_non_nota'])) {
+            return null;
+        }
         $fermate = self::fermateDellaVoce($f);
         $uscito = self::uscitoDelleFermate($fermate);
         if ($uscito === null && array_filter($fermate, fn (array $x) => isset($x['uscente_id'])) !== []) {
@@ -1931,8 +2842,8 @@ final class FermataDopoScrivi
      */
     public static function avvisoRidottaAnnullando(array $f): string
     {
-        $testa = sprintf('Con questo inizio la parte verso %s %s è scesa da %s a %s: annullandolo torna da %s a %s.',
-            self::elenco($f['verso'] ?? []) ?: 'chi riceve', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? $f['cifra'] ?? 0)), self::cifraInParole((int) ($f['residuo'] ?? 0)),
+        $testa = sprintf('%s la parte verso %s %s è scesa da %s a %s: annullandolo torna da %s a %s.',
+            ucfirst(self::conQuesto($f)), self::elenco($f['verso'] ?? []) ?: 'chi riceve', self::dellaFermata($f), self::cifraInParole((int) ($f['prima'] ?? $f['cifra'] ?? 0)), self::cifraInParole((int) ($f['residuo'] ?? 0)),
             self::cifraInParole((int) ($f['residuo'] ?? 0)), self::cifraInParole((int) ($f['prima'] ?? $f['cifra'] ?? 0)));
         if (($righe = self::righeDellaVoce($f))->isNotEmpty()) {
             return $testa . ' Se le parti hanno già regolato la differenza fra loro, quell\'accordo va rivisto. '
@@ -1968,7 +2879,7 @@ final class FermataDopoScrivi
      * La frase del pannello dopo una fermata: quanto ne resta da regolare con l'inizio di questa locazione. Con più fermate sulla stessa persona
      * (decisione 86.1) è una frase sola, che le nomina tutte e dice il residuo vero.
      */
-    public static function fraseRidotta(array $f): string
+    public static function fraseRidotta(array $f, bool $seScrivi = false): string
     {
         $verso = self::elenco($f['verso']);
         $resta = match (true) {
@@ -1988,26 +2899,33 @@ final class FermataDopoScrivi
         // regolata; il programma non sa quale, e la frase non ne nomina uno solo.
         $dopoUnaFermata = isset($f['uscente_id']);
 
-        return sprintf('%s %s lasciato %s %s%s dei giorni dopo l\'uscita di %s, da regolare a mano con %s%s. Con questo inizio %s: %s. Se %s hanno già regolato %s, %s vanno restituiti %s.%s',
+        // Coda 356: con l'arretrato agli eredi la posizione di chi riceveva è passata a chi era a carico: non c'è niente da restituire a nessuno.
+        $regolata = ! empty($f['agli_eredi']) ? '' : sprintf(' Se %s hanno già regolato %s, %s vanno restituiti %s.', $dopoUnaFermata ? 'chi ne risponde e ' . $verso : self::fraLeParti($f),
+            MoneyHelper::format(abs($prima)), MoneyHelper::format(abs($prima - (int) $f['residuo'])),
+            $credito ? ($dopoUnaFermata ? 'a chi ne risponde' : FrasiObbligati::a((string) $f['persona'])) : FrasiObbligati::a($verso));
+
+        return sprintf('%s %s lasciato %s %s%s dei giorni dopo l\'uscita di %s, da regolare a mano con %s%s. %s%s %s: %s.%s%s',
             ucfirst(self::elenco(self::passaggiDellaVoce($f))), count(self::passaggiDellaVoce($f)) > 1 ? 'hanno' : 'ha',
-            self::diChiResta((int) $f['cifra'], (string) $f['persona'], $dopoUnaFermata ? $f['uscente'] . ' se ' . self::regolataPrima($f) : null) . ($dopoUnaFermata ? ',' : ''),
+            self::diChiResta((int) $f['cifra'], self::chiResta($f), $dopoUnaFermata ? $f['uscente'] . ' se ' . self::regolataPrima($f) : null) . ($dopoUnaFermata ? ',' : ''),
             MoneyHelper::format(abs((int) $f['cifra'])), $credito ? ' di credito' : '', $f['inquilino'], $verso,
-            $prima !== (int) $f['cifra'] ? sprintf(' (con le locazioni registrate da allora, %s)', MoneyHelper::format(abs($prima))) : '',
-            self::giorniDelConduttore($f), $resta, $dopoUnaFermata ? 'chi ne risponde e ' . $verso : self::fraLeParti($f), MoneyHelper::format(abs($prima)), MoneyHelper::format(abs($prima - (int) $f['residuo'])),
-            $credito ? ($dopoUnaFermata ? 'a chi ne risponde' : FrasiObbligati::a((string) $f['persona'])) : FrasiObbligati::a($verso), self::codaDellePersoneACarico($f) . self::codaDelWallet($f));
+            // Coda 351: dopo una ricompera la cifra di prima non è cambiata per una locazione, ma per chi ha ricomprato: «i passaggi» dice tutti e due.
+            $prima !== (int) $f['cifra'] ? sprintf(' (con i passaggi registrati da allora, %s)', MoneyHelper::format(abs($prima))) : '',
+            // Coda 356: nella successione con l'arretrato a nome di chi muore, finché la scelta manca, la riduzione vale se il conguaglio si scrive.
+            $seScrivi ? 'Se scrivi il conguaglio, ' : '', $seScrivi ? self::conQuesto($f) : ucfirst(self::conQuesto($f)), self::giorniDelConduttore($f), $resta,
+            $regolata, self::codaDellePersoneACarico($f) . self::codaDelWallet($f));
     }
 
     /** Il motivo del cancello dopo una fermata: la cifra che resta da regolare, al posto di quella detta dal passaggio. */
-    public static function motivoRidotta(array $f): string
+    public static function motivoRidotta(array $f, bool $seScrivi = false): string
     {
-        // Giro stretto della .50 (G1): una fermata negativa è un credito, e si dice con le parole.
-        return (int) $f['cifra'] < 0
+        // Giro stretto della .50 (G1): una fermata negativa è un credito, e si dice con le parole. Coda 356: «se scrivi il conguaglio» finché la scelta manca.
+        return ($seScrivi ? 'se scrivi il conguaglio, ' : '') . ((int) $f['cifra'] < 0
             ? sprintf('%s resta da regolare fra %s un credito di %s, non più di %s: %s',
                 self::dellaFermata($f), self::fraLeParti($f), MoneyHelper::format(abs((int) $f['residuo'])), MoneyHelper::format(abs((int) ($f['prima'] ?? $f['cifra']))),
                 self::giorniDelConduttore($f))
             : sprintf('%s restano da regolare fra %s %s, non più %s: %s',
                 self::dellaFermata($f), self::fraLeParti($f), MoneyHelper::format((int) $f['residuo']), MoneyHelper::format((int) ($f['prima'] ?? $f['cifra'])),
-                self::giorniDelConduttore($f));
+                self::giorniDelConduttore($f)));
     }
 
     /**
@@ -2073,9 +2991,9 @@ final class FermataDopoScrivi
         // Decisione 86.2: se l'inizio ha azzerato la fermata non resta niente da regolare, e lo storico lo ricorda con la cifra di prima.
         $azzerata = self::azzerata($f);
 
-        return sprintf('Con questo inizio, %s (%s rimasti %s) %s fra %s%s: %s.',
-            self::dellaFermata($f, 'di un passaggio di prima'), self::soldi((int) ($f['cifra'] ?? 0)),
-            self::diChiResta((int) ($f['cifra'] ?? 0), (string) ($f['persona'] ?? '?'), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . self::regolataPrima($f) : null),
+        return sprintf('%s, %s (%s rimasti %s) %s fra %s%s: %s.',
+            ucfirst(self::conQuesto($f)), self::dellaFermata($f, 'di un passaggio di prima'), self::soldi((int) ($f['cifra'] ?? 0)),
+            self::diChiResta((int) ($f['cifra'] ?? 0), self::chiResta($f, passato: true), isset($f['uscente_id']) ? ($f['uscente'] ?? '?') . ' se ' . self::regolataPrima($f) : null),
             $azzerata ? 'non resta niente da regolare' : ($credito ? 'resta da regolare' : 'restano da regolare'), self::fraLeParti($f, false),
             $azzerata ? '' : ' ' . ($credito ? 'un credito di ' . MoneyHelper::format(abs((int) ($f['residuo'] ?? 0))) : MoneyHelper::format((int) ($f['residuo'] ?? 0))),
             self::giorniDelConduttore($f));
@@ -2115,7 +3033,7 @@ final class FermataDopoScrivi
         if (isset($f['uscente_id'])) {
             $riceve = self::elenco((array) ($f['verso'] ?? [])) ?: 'chi è entrato';
 
-            return $diChi ? sprintf('chi ne risponde (%s, o %s se %s) e %s', $f['persona'] ?? '?', $f['uscente'] ?? '?', self::regolataPrima($f), $riceve) : 'chi ne risponde e ' . $riceve;
+            return $diChi ? sprintf('chi ne risponde (%s, o %s se %s) e %s', self::chiResta($f), $f['uscente'] ?? '?', self::regolataPrima($f), $riceve) : 'chi ne risponde e ' . $riceve;
         }
         $persone = array_values(array_filter((array) ($f['persone'] ?? []), fn ($p) => is_string($p) && $p !== ''));
         $verso = (array) ($f['verso'] ?? []);
@@ -2130,11 +3048,28 @@ final class FermataDopoScrivi
      */
     private static function giorniDelConduttore(array $f): string
     {
+        // Coda 351: la fermata ridotta da chi ricompra la sua stessa parte: i giorni tornano nella sua riga, e non c'è un conduttore.
+        if (isset($f['ricompra'])) {
+            // Coda 356: con la successione di chi riceveva i giorni passano all'erede; con l'arretrato agli eredi passa tutta la sua posizione.
+            return match (true) {
+                ! empty($f['agli_eredi']) => sprintf('la posizione di %s, con l\'arretrato, passa %s, che ha già i suoi giorni nella sua parte della coppia', (string) ($f['erede_di'] ?? '?'),
+                    FrasiObbligati::a((string) $f['ricompra'])),
+                isset($f['erede_di']) => sprintf('i giorni dal %s passano con la successione di %s %s, che li ha già nella sua parte della coppia', self::data((string) $f['dal']),
+                    (string) $f['erede_di'], FrasiObbligati::a((string) $f['ricompra'])),
+                default => sprintf('i giorni dal %s tornano %s, che li ha già nella sua parte della coppia', self::data((string) $f['dal']), FrasiObbligati::a((string) $f['ricompra'])),
+            };
+        }
         $conduttore = (string) ($f['conduttore'] ?? 'il conduttore');
 
         return (int) ($f['prima'] ?? $f['cifra'] ?? 0) - (int) ($f['residuo'] ?? 0) < 0
             ? sprintf('il credito dei giorni dal %s lo riceve %s con il prospetto degli oneri accessori', self::data((string) $f['dal']), $conduttore)
             : sprintf('i giorni dal %s li rimborsa %s con il prospetto degli oneri accessori', self::data((string) $f['dal']), $conduttore);
+    }
+
+    /** «con questo inizio», o per la fermata ridotta da chi ricompra la sua stessa parte (Coda 351) «con questo passaggio». */
+    private static function conQuesto(array $f): string
+    {
+        return isset($f['ricompra']) ? 'con questo passaggio' : 'con questo inizio';
     }
 
     // --- Il calcolo --------------------------------------------------------------------------------------------------------------
@@ -2212,8 +3147,26 @@ final class FermataDopoScrivi
         $righe = Saldo::with('gestione')->where('subentro_id', $subentroId)->where('immobile_id', $immobileId)->where('gestione_id', $gestioneId)
             ->when($esercizioId !== null, fn ($q) => $q->where('esercizio_id', $esercizioId))->where('saldo_iniziale', '!=', 0)
             ->where('anagrafica_id', '!=', (int) $fine->anagrafica_uscente_id)->get();
-        $totale = (int) $righe->sum('saldo_iniziale');
-        if ($totale === 0) {
+        // Coda 245 (1.11.0-beta.55): una coppia della regola del piano (la fine con un coinquilino che resta, o un passaggio dopo sullo stesso
+        // anello) ha le righe dei conduttori, che non sono giorni dopo l'uscita: dalla parte del proprietario contano solo le righe di chi sta al
+        // posto dell'inquilino nei giorni che nessun conduttore copre (il ripiego), con i loro giorni, che il registro ha nei periodi della coppia.
+        $delPiano = self::gruppoDelPiano($fine, $immobileId, $gestioneId, $esercizioId);
+        $restoDelRipiego = 0;
+        $conChi = [];
+        if ($delPiano !== null) {
+            $ripiego = array_map('intval', (array) ($delPiano['ripiego'] ?? []));
+            $righe = $righe->filter(fn (Saldo $r) => in_array((int) $r->anagrafica_id, $ripiego, true))->values();
+            // Il resto della regola del piano (decisione 95.6 b): la coppia di un passaggio dopo può scrivere a chi sta al posto dell'inquilino meno della sua parte
+            // del piano (la fine di Dora dopo quella di Ines: Ugo 7875 di 9074), e la differenza è fra lui e chi era già uscito, con il Wallet o con il prospetto, che la
+            // dice «da restituire». La parte dei giorni che una vendita gli toglie è quella del piano: ciò che ha pagato con la coppia e ciò che deve con il resto. I pezzi dei
+            // periodi portano la parte scritta (`RegolaDelPiano::fotografia`, in proporzione alla differenza del piano): pesano fra loro come la parte del piano.
+            $resto = array_map('intval', (array) ($delPiano['resto'] ?? []));
+            $restoDelRipiego = (int) array_sum(array_intersect_key($resto, array_flip($ripiego)));
+            $conChi = array_filter(array_diff_key($resto, array_flip($ripiego)));
+        }
+        $scritto = (int) $righe->sum('saldo_iniziale');
+        $totale = $scritto + $restoDelRipiego;
+        if ($scritto === 0 || $totale === 0) {
             return null;
         }
         $voce = collect($fine->registro['conguaglio']['periodi'] ?? [])->first(fn (array $v) => (int) $v['gestione_id'] === $gestioneId && (int) $v['immobile_id'] === $immobileId
@@ -2235,11 +3188,38 @@ final class FermataDopoScrivi
 
         return [
             'fine' => $fine, 'totale' => $totale, 'pezzi' => $pezzi,
+            // Le altre persone del resto, con il loro nome e la loro cifra: la frase dice con chi si regola chi ha un resto di verso opposto (`chiSiRegola`).
+            ...($restoDelRipiego !== 0 ? ['resto_del_ripiego' => ['per' => array_filter(array_intersect_key($resto, array_flip($ripiego))),
+                'altri' => Anagrafica::whereIn('id', array_keys($conChi) ?: [0])->pluck('nome', 'id')->map(fn ($n, $id) => ['nome' => (string) $n, 'cifra' => (int) $conChi[$id]])->all()]] : []),
             'righe' => $righe->groupBy(fn (Saldo $r) => (int) $r->anagrafica_id)->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->all(),
             'saldi' => $righe->groupBy(fn (Saldo $r) => (int) $r->anagrafica_id)->map(fn ($g) => $g->pluck('id')->map(fn ($id) => (int) $id)->all())->all(),
             'immobile_id' => $immobileId, 'unita' => $unita === null ? '' : (trim((string) $unita->nome) !== '' ? (string) $unita->nome : (string) $unita->etichetta),
             'gestione_id' => $gestioneId, 'gestione' => (string) ($righe->first()?->gestione?->nome ?? '?'), 'esercizio_id' => $esercizioId,
         ];
+    }
+
+    /**
+     * Con chi si regola un resto: le persone del resto fuori dal ripiego che hanno la cifra di verso opposto (chi ha un credito si regola con chi ha un debito, e
+     * viceversa). Chi ha anche lui un credito non deve niente a chi lo ha.
+     *
+     * @param array<int, array{nome: string, cifra: int}> $altri
+     * @return list<string>
+     */
+    private static function chiSiRegola(array $altri, int $cifra): array
+    {
+        return array_values(array_map(fn (array $x) => $x['nome'], array_filter($altri, fn (array $x) => $x['cifra'] !== 0 && ($x['cifra'] > 0) !== ($cifra > 0))));
+    }
+
+    /**
+     * Coda 245 (1.11.0-beta.55): la voce della regola del piano di una fine (`conguaglio.piano`) per un gruppo (unità, gestione, esercizio), o
+     * null se la fine lì non l'ha: la sua coppia è dei giorni dopo l'uscita, come nella .50.
+     *
+     * @return ?array<string, mixed>
+     */
+    private static function gruppoDelPiano(Subentro $fine, int $immobileId, int $gestioneId, ?int $esercizioId): ?array
+    {
+        return collect($fine->registro['conguaglio']['piano'] ?? [])->first(fn ($g) => is_array($g) && (int) ($g['immobile_id'] ?? 0) === $immobileId
+            && (int) ($g['gestione_id'] ?? 0) === $gestioneId && (($g['esercizio_id'] ?? null) === null ? null : (int) $g['esercizio_id']) === $esercizioId);
     }
 
     /**
@@ -2323,8 +3303,10 @@ final class FermataDopoScrivi
                 $apri($chi, 'nuda_proprietario', $quota, $r->data_fine);
                 $entrante && $apri((int) $entrante->id, 'usufruttuario', $quota, $r->data_fine);
             } elseif ($tipo === 'usufrutto' && ! $accrescimento) {
-                // L'estinzione: i nudi che tornano pieni, ciascuno con la sua quota. Con l'accrescimento restano gli altri usufruttuari.
-                foreach ($righe->filter(fn ($n) => $n->tipologia === 'nuda_proprietario' && in_array((int) $n->anagrafica_id, $nudiIds, true) && self::inCorso($n, $giornoPrima)) as $n) {
+                // L'estinzione: i nudi che tornano pieni, ciascuno con la sua quota. Con l'accrescimento restano gli altri usufruttuari. Coda 354: anche il nudo la cui
+                // riga comincia il giorno del passaggio (la nuda comprata il giorno dell'estinzione).
+                foreach ($righe->filter(fn ($n) => $n->tipologia === 'nuda_proprietario' && in_array((int) $n->anagrafica_id, $nudiIds, true)
+                    && (self::inCorso($n, $giornoPrima) || self::inCorso($n, $decorrenza))) as $n) {
                     $chiuse[(int) $n->id] = true;
                     $apri((int) $n->anagrafica_id, 'proprietario', (float) $n->quota, $n->data_fine);
                 }
@@ -2364,16 +3346,58 @@ final class FermataDopoScrivi
     private function dopoIlConduttore(Collection $righe, int $immobileId, int $anagraficaId, float $quota, CarbonImmutable $decorrenza, ?TitolaritaImmobile $chiFinisce): Collection
     {
         if ($chiFinisce !== null && (string) $chiFinisce->tipologia === 'inquilino') {
-            $giornoPrima = $decorrenza->subDay();
-            $rigaQui = $immobileId === (int) $chiFinisce->immobile_id ? (int) $chiFinisce->id : self::rigaDellaPertinenza($immobileId, (int) $chiFinisce->anagrafica_id, 'inquilino', $giornoPrima);
-            $sua = $righe->first(fn ($x) => $rigaQui !== null && (int) $x->id === $rigaQui);
+            [$righe, $sua] = $this->conLaFine($righe, $immobileId, $chiFinisce, $decorrenza);
             if ($sua !== null) {
-                $righe = $righe->map(fn ($x) => (int) $x->id === $rigaQui ? (object) array_replace((array) $x, ['data_fine' => $giornoPrima->toDateString()]) : $x)->values();
                 $quota = $immobileId === (int) $chiFinisce->immobile_id ? $quota : (float) $sua->quota;
             }
         }
 
         return $quota > 0.0 ? $this->conIlConduttore($righe, $immobileId, $anagraficaId, $quota, $decorrenza) : $righe;
+    }
+
+    /**
+     * Coda 245 (1.11.0-beta.55): le righe dell'unità dopo la fine della locazione di chi esce, senza un nuovo inquilino, come le lascia la
+     * registrazione: la sua riga chiusa il giorno prima, sulla pertinenza quella che la registrazione chiude (decisione 81.3). È la forma di
+     * `dopoIlConduttore` senza chi entra: la regola del piano le legge da qui, non da una sua copia.
+     *
+     * @param Collection<int, object> $righe
+     * @return Collection<int, object>
+     */
+    public function righeDopoLaFine(Collection $righe, int $immobileId, TitolaritaImmobile $uscente, CarbonImmutable $decorrenza): Collection
+    {
+        return $this->conLaFine($righe, $immobileId, $uscente, $decorrenza)[0];
+    }
+
+    /**
+     * Coda 245 (1.11.0-beta.55): le righe dell'unità dopo l'inizio di un conduttore (`conIlConduttore`), o dopo il cambio d'inquilino in un passo
+     * (`$chiFinisce`: la sua locazione chiusa il giorno prima, chi entra con la sua quota, `dopoIlConduttore`), come le lascia la registrazione. La
+     * regola del piano le legge da qui.
+     *
+     * @param Collection<int, object> $righe
+     * @return Collection<int, object>
+     */
+    public function righeConIlConduttore(Collection $righe, int $immobileId, int $anagraficaId, float $quota, CarbonImmutable $decorrenza, ?TitolaritaImmobile $chiFinisce = null): Collection
+    {
+        return $this->dopoIlConduttore($righe, $immobileId, $anagraficaId, $quota, $decorrenza, $chiFinisce);
+    }
+
+    /**
+     * La locazione di chi esce chiusa il giorno prima, come la chiude la registrazione: sull'unità la riga del modulo, sulla pertinenza quella che
+     * chi esce ha lì (decisione 81.3). Le righe, e la riga chiusa (null se sull'unità chi esce non ne ha una).
+     *
+     * @param Collection<int, object> $righe
+     * @return array{0: Collection<int, object>, 1: ?object}
+     */
+    private function conLaFine(Collection $righe, int $immobileId, TitolaritaImmobile $chiFinisce, CarbonImmutable $decorrenza): array
+    {
+        $giornoPrima = $decorrenza->subDay();
+        $rigaQui = $immobileId === (int) $chiFinisce->immobile_id ? (int) $chiFinisce->id : self::rigaDellaPertinenza($immobileId, (int) $chiFinisce->anagrafica_id, 'inquilino', $giornoPrima);
+        $sua = $righe->first(fn ($x) => $rigaQui !== null && (int) $x->id === $rigaQui);
+        if ($sua === null) {
+            return [$righe, null];
+        }
+
+        return [$righe->map(fn ($x) => (int) $x->id === $rigaQui ? (object) array_replace((array) $x, ['data_fine' => $giornoPrima->toDateString()]) : $x)->values(), $sua];
     }
 
     /**
@@ -2581,6 +3605,22 @@ final class FermataDopoScrivi
         return $cifra < 0
             ? FrasiObbligati::a($chi) . ($oppure !== null ? ', o ' . FrasiObbligati::a($oppure) : '')
             : 'a carico di ' . $chi . ($oppure !== null ? ', o di ' . $oppure : '');
+    }
+
+    /**
+     * Chi è rimasto a carico di una fermata, per le frasi che ne dicono la cifra: le persone, ognuna con la sua parte dove il programma la sa (`cifre_per_persona`: chi riceve è
+     * una delle persone a carico, e una parte dei giorni sta già nella sua riga); dove non sa nella riga di chi stanno i giorni (`riga_non_nota`, Coda 353) chi li ha nella sua
+     * riga, senza nominare nessuno.
+     */
+    private static function chiResta(array $f, bool $passato = false): string
+    {
+        if (! empty($f['riga_non_nota'])) {
+            return sprintf('chi %s nella sua riga i giorni di %s', $passato ? 'aveva' : 'ha', $f['uscente']);
+        }
+        $cifre = (array) ($f['cifre_per_persona'] ?? []);
+
+        return $cifre === [] ? (string) ($f['persona'] ?? '?')
+            : self::elenco(array_map(fn (array $p) => sprintf('%s (%s)', $p['nome'], MoneyHelper::format(abs((int) $p['cifra']))), $cifre));
     }
 
     /** «Ugo ha preso € 181,48», o per una coppia a credito «Ugo ha avuto un credito di € 29,26». */

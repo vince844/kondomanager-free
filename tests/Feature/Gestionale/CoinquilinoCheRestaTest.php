@@ -1,28 +1,22 @@
 <?php
 
 /**
- * 1.11.0-beta.50 — la fine di una locazione in cui resta un coinquilino (decisioni 79, punto 2, e 80).
+ * 1.11.0-beta.50 — la fine di una locazione in cui resta un coinquilino (decisioni 79, punto 2, e 80); dalla 1.11.0-beta.55 con la regola
+ * del piano (Coda 245).
  *
- * Ines e Dora sono inquiline dell'Interno 1 al 50 %; il 1/7 Ines esce e Dora resta. Nessun documento dice a chi vanno i giorni dopo
- * l'uscita di Ines (il coinquilino che resta, il proprietario, le parti): il programma non lo indovina. Alla fine locazione la scelta
- * del conguaglio non c'è: nessuna coppia, nessuna scelta, e un `conguaglio` mandato a mano si rifiuta. Il pannello lo dice, con la
- * cifra e la persona (decisione 80), e indica il Wallet, con i saldi legati al passaggio, anche se Ines ha già un saldo su quella
- * gestione: dalla 1.11.0-beta.53 il posto del Wallet non conta le righe legate a un passaggio (prima diceva «fra le parti»). Il pannello
- * non dice le due frasi che lo contraddirebbero, segnalate dalla revisione della Fase 1 e tolte: la riga «credito € 90,74 a Ines,
- * debito € 90,74 a Ugo» e «resteranno intestate a Ines e si conguagliano qui».
+ * Ines e Dora sono inquiline dell'Interno 1 al 50 %; il 1/7 Ines esce e Dora resta. Fino alla .54 la scelta del conguaglio non c'era: nessuna
+ * coppia, la fermata del coinquilino con la cifra dei giorni dopo l'uscita di Ines (€ 90,74) e la strada a mano del Wallet. ➕ Dalla .55 la
+ * parte dell'inquilino che il piano ha congelato si ridivide per quota e per giorni fra chi è stato conduttore (decisione 29.1, la regola del
+ * piano), e la scelta c'è come nelle altre fini, senza preselezione: con «Scrivi il conguaglio» le righe portano ognuno alla sua parte, con
+ * «Non scriverlo» nessuna riga, e le parti regolano con il prospetto. I test qui sotto erano della fermata: si cambiano, dicendo il perché.
  *
- * Le cifre a mano: «Spese generali» € 1.200,00, 30 % «Inquilino» = 36000, diviso per quota fra le inquiline: Ines 18000, Dora 18000;
- * 70 % «Proprietario» = 84000 a Ugo. La parte di Ines dopo l'uscita, con la regola della coppia: 18000 × [181, 184] = 8926,03 /
- * 9073,97 → parti intere 8926 + 9073 = 17999, il centesimo al resto più grande (,97) → 9074, cioè € 90,74, sulla gestione «Ordinaria
- * 2026». Il denaro non cambia: Ines 18000, Dora 18000, Ugo 84000.
+ * Le cifre a mano: «Spese generali» € 1.200,00, 30 % «Inquilino» = 36000, congelato per quota: Ines 18000, Dora 18000; 70 % «Proprietario» =
+ * 84000 a Ugo. Con la regola del piano, dopo l'uscita: Ines 50 × 181 = 9050, Dora 50 × 365 = 18250 (somma 27300); 36000 × 9050/27300 =
+ * 11934,07 → Ines 11934, Dora 24066 (il centesimo al resto più grande, ,93): la coppia è Ines − € 60,66, Dora + € 60,66, sulla gestione
+ * «Ordinaria 2026». (Con la regola dei giorni della .50, la parte di Ines dopo l'uscita era 18000 × 184/365 = 9074, € 90,74: non c'è più.)
  *
- * ➕ 11/10/2026 notte, revisione dei test della Fase 1: la frase con la cifra non può essere la riga «credito/debito € 90,74» del
- *   conguaglio che non si scrive (con quella riga una cifra sbagliata nella frase della fermata passava), e la fine non prende piani
- *   (decisione 47).
- *
- * Cosa NON copre: il coinquilino con la regola del piano (Coda 245, dopo la 1.11); il coinquilino solo sul box o solo sull'unità con il
- * box spuntato; più coinquilini che restano; il prospetto con il coinquilino (area del prospetto: Ines e Dora restano a 365 giorni); il
- * registro e lo storico della fermata (in `RevisioneBeta50FrasiTest`, R12); la pagina Vue; MySQL.
+ * Cosa NON copre: le cifre della regola del piano negli altri casi (`Beta55RegolaDelPianoTest`) e la registrazione per intero
+ * (`Beta55CoinquilinoCoppiaDelPianoTest`); il prospetto; la pagina Vue; MySQL.
  */
 
 use App\Models\Gestionale\Subentro;
@@ -64,79 +58,71 @@ function ccrScenario($test, bool $riporto = false): array
     return $s;
 }
 
-it('controllo — con Dora che resta non c\'è nessuna coppia e nessuna scelta: la fine di Ines si registra senza il campo, e il denaro non cambia', function () {
-    // Decisione 79 (2): «la scelta del conguaglio non c'è». Controllo, già giusto prima della .50: fissa che il codice nuovo non dia
-    // la coppia a Ugo (la misura della 0.2 dava € 90,74 a Ugo) né a Dora.
+it('con Dora che resta la coppia è della regola del piano e la scelta c\'è: senza la scelta la registrazione si ferma sul campo; con «Scrivi» Ines 11934, Dora 24066', function () {
+    // Coda 245 (1.11.0-beta.55): prima «nessuna coppia, nessuna scelta», la fine registrata senza il campo, 0 righe, i piani non presi e i netti
+    // 18000 / 18000 / 84000. Ora la coppia [Dora + 6066] e la scelta; la fine prende il piano (decisione 47, la fine con la scelta).
     $s = ccrScenario($this);
     expect(fclNetti($s))->toBe(['Dora' => 18000, 'Ines' => 18000, 'Ugo' => 84000]);
 
-    expect(fclCoppie(fclAnteprima($this, $s, fclModulo($s))))->toBe([]);
-    $fine = fclRegistra($this, $s, fclModulo($s))->fresh();
+    $a = fclAnteprima($this, $s, fclModulo($s));
+    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Dora', 6066]])
+        ->and($a['rate']['scelta_del_conguaglio'])->toBeTrue();
+    fclStore($this, $s, fclModulo($s))->assertSessionHasErrors(['conguaglio' => 'Scegli se scrivere il conguaglio: il programma non lo sceglie al posto tuo.']);
 
-    expect(fclRigheDeiPassaggi($s))->toBe(0)
-        ->and($fine->registro)->not->toHaveKey('conguaglio')
-        // Decisione 47: senza conguaglio nessun piano preso; altrimenti il piano a giornale resterebbe fermo «per il conguaglio» di una
-        // fine che non ne ha (aggiunto nella revisione dei test della Fase 1).
-        ->and($fine->registro['piani_presi'] ?? null)->toBe([])
-        ->and(fclNetti($s))->toBe(['Dora' => 18000, 'Ines' => 18000, 'Ugo' => 84000]);
+    $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi'])->fresh();
+
+    expect(fclSaldi($s))->toBe(['Dora' => 6066, 'Ines' => -6066])
+        ->and($fine->registro['conguaglio']['scelta'])->toBe(Subentro::CONGUAGLIO_SCRITTO)
+        ->and($fine->registro['conguaglio']['piano'][0]['parti'])->toBe([(int) $s['persone']['Ines']->id => -6066, (int) $s['persone']['Dora']->id => 6066])
+        ->and($fine->registro['piani_presi'] ?? null)->toBe([(int) $s['piano']->id])
+        ->and(fclNetti($s))->toBe(['Dora' => 24066, 'Ines' => 11934, 'Ugo' => 84000]);
 });
 
-it('controllo — un «conguaglio» mandato a mano con Dora che resta si rifiuta sul campo, e non scrive niente', function (string $scelta) {
-    // Decisione 79 (2) e rilievo SIC-2 della .48: un valore mandato a mano dove la scelta non c'è si rifiuta, non si ignora. Prima
-    // della .50 dava lo stesso esito (il campo era vietato fuori dalla successione).
+it('il campo «conguaglio» con Dora che resta si accetta: «Scrivi» scrive le due righe, «Non scriverlo» nessuna, e il registro dice ciò che le parti regolano', function (string $scelta) {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 il campo si rifiutava («La locazione continua con un coinquilino…») e nessun passaggio si scriveva.
     $s = ccrScenario($this);
 
-    fclStore($this, $s, fclModulo($s) + ['conguaglio' => $scelta])->assertSessionHasErrors('conguaglio');
+    $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => $scelta])->fresh();
 
-    expect(Subentro::where('immobile_id', $s['unita']->id)->count())->toBe(0)
-        ->and(fclRigheDeiPassaggi($s))->toBe(0);
+    expect(fclSaldi($s))->toBe($scelta === 'scrivi' ? ['Dora' => 6066, 'Ines' => -6066] : [])
+        ->and($fine->registro['conguaglio']['scelta'])->toBe($scelta === 'scrivi' ? Subentro::CONGUAGLIO_SCRITTO : Subentro::CONGUAGLIO_NON_SCRITTO);
+    if ($scelta === 'non_scrivere') {
+        expect(collect($fine->registro['regolato_fuori'][0]['persone'])->map(fn ($p) => [$p['nome'], (int) $p['importo']])->all())->toBe([['Ines', -6066], ['Dora', 6066]]);
+    }
 })->with(['scrivi', 'non_scrivere']);
 
-it('il rifiuto del «conguaglio» mandato a mano con Dora che resta non dice che la scelta c\'è solo nella successione, che dalla .50 è falso', function () {
-    // Dalla .50 la scelta c'è anche nella fine locazione (decisione 77): la ragione del rifiuto è il coinquilino che resta.
-    $s = ccrScenario($this);
-
-    $errore = (string) (fclStore($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi'])->getSession()->get('errors')?->first('conguaglio') ?? '');
-
-    expect($errore)->not->toBe('')
-        ->and($errore)->not->toContain('solo nella successione');
-});
-
-it('il pannello dice la fermata con la cifra e la persona: € 90,74 dei giorni dopo l\'uscita di Ines sulla gestione Ordinaria 2026, e il saldo manuale dal Wallet, perché Ines non ha già un saldo lì', function () {
-    // Decisioni 79 (2) e 80.
+it('il pannello dice la regola del piano con le cifre di ognuno sulla gestione Ordinaria 2026, le righe di «Scrivi» e chi rimborsa chi con «Non scriverlo»; non dice più € 90,74', function () {
+    // Coda 245 (1.11.0-beta.55): prima la frase della fermata, con € 90,74, Ines, la gestione e il Wallet.
     $s = ccrScenario($this);
 
     $frasi = fclFrasi(fclAnteprima($this, $s, fclModulo($s)));
 
-    // La cifra: 9074 → € 90,74 (vedi la testa del file); la persona: Ines; la gestione; la strada a mano. La frase della fermata, non
-    // la riga «credito € 90,74 a Ines, debito € 90,74 a Ugo» del conguaglio che non si scrive (la revisione dei test della Fase 1:
-    // con quella riga ancora nel pannello, una cifra sbagliata nella frase della fermata passava).
-    $conLaCifra = array_values(array_filter(fclPeriodi($frasi), fn ($p) => str_contains($p, '€ 90,74') && ! str_contains($p, 'credito € 90,74') && ! str_contains($p, 'debito € 90,74')));
-    expect($conLaCifra)->not->toBe([])
-        ->and(collect($conLaCifra)->contains(fn ($p) => str_contains($p, 'Ines') && str_contains($p, 'Ordinaria 2026')))->toBeTrue(implode(' | ', $conLaCifra))
-        ->and($frasi)->toContain('Wallet');
+    expect($frasi)->toContain('Sulla gestione Ordinaria 2026 Ines € 119,34 per i suoi 181 giorni e Dora € 240,66 per i suoi 365 giorni')
+        ->and($frasi)->toContain('le righe nei saldi sono € 60,66 a credito di Ines e € 60,66 a debito di Dora')
+        ->and($frasi)->toContain('il prospetto degli oneri accessori dice che Dora rimborsa a Ines € 60,66')
+        ->and($frasi)->not->toContain('€ 90,74');
 });
 
-it('con un saldo di Ines già sulla gestione il pannello dice la cifra e indica lo stesso il Wallet, con i saldi legati al passaggio, non «fra le parti»', function () {
-    // Dalla 1.11.0-beta.53 la riga legata non occupa il posto, e il Wallet c'è anche per chi ha già un saldo (prima: «fra le parti», senza il Wallet).
+it('con un saldo di Ines già sulla gestione il pannello dice le stesse cifre: il riporto non entra nella regola del piano', function () {
+    // Coda 245 (1.11.0-beta.55): prima il test diceva che la frase della fermata indicava il Wallet anche con il riporto di Ines; il riporto
+    // è un saldo pregresso, fuori dalla quota pura (`quota_pura_gestione`), e l'anello non lo vede.
     $s = ccrScenario($this, riporto: true);
 
     $frasi = fclFrasi(fclAnteprima($this, $s, fclModulo($s)));
 
-    expect(collect(fclPeriodi($frasi))->contains(fn ($p) => str_contains($p, '€ 90,74') && str_contains($p, 'Ines') && ! str_contains($p, 'credito € 90,74') && ! str_contains($p, 'debito € 90,74')))->toBeTrue($frasi)
-        ->and($frasi)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga')
+    expect($frasi)->toContain('le righe nei saldi sono € 60,66 a credito di Ines e € 60,66 a debito di Dora')
+        ->and($frasi)->not->toContain('€ 90,74')
         ->and($frasi)->not->toContain('fra le parti: Ines ha già un saldo');
 });
 
-it('il pannello con Dora che resta non dice le due frasi che contraddicono la fermata: nessuna riga «credito/debito € 90,74», nessun «si conguagliano qui»', function () {
-    // Correzione della revisione della Fase 1 (tema «il coinquilino che resta», strada b): nessuna coppia si scrive, quindi il pannello
-    // non deve proporla né dire che le quote «si conguagliano qui». Controllo, già giusto prima della .50 (il codice di prima non
-    // calcolava nessun conguaglio).
+it('il pannello con Dora che resta dice le righe della regola del piano e, delle 6 bozze, che «se scrivi il conguaglio» si conguagliano qui; nessun € 90,74', function () {
+    // Coda 245 (1.11.0-beta.55): l'asserzione di prima si capovolge. Senza coppia il pannello non doveva dire «si conguagliano qui»; con la coppia
+    // della regola del piano le bozze del piano fermo sono comprese nel conguaglio, se lo si scrive.
     $s = ccrScenario($this);
 
     $frasi = fclFrasi(fclAnteprima($this, $s, fclModulo($s)));
 
-    expect($frasi)->not->toContain('credito € 90,74')
-        ->and($frasi)->not->toContain('debito € 90,74')
-        ->and($frasi)->not->toContain('si conguagliano qui');
+    expect($frasi)->not->toContain('€ 90,74')
+        ->and($frasi)->toContain('€ 60,66 a credito di Ines')
+        ->and($frasi)->toContain('e, se scrivi il conguaglio, si conguagliano qui');
 });

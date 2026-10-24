@@ -114,70 +114,88 @@ function rbfStoricoSenzaAnnullabile(array $s, Subentro $passaggio): array
 // La fermata del coinquilino: la frase (R9, R20) e lo storico (R12)
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('R20 — Ines esce mentre restano Dora e Pia: la frase del coinquilino non dice «Se li paga Dora e Pia», con il verbo al singolare', function (array $riporti) {
-    // Ines al 50 %, Dora e Pia al 25 %: la parte dell'inquilino di Ines è 36000 × 50 % = 18000, e i giorni dopo l'uscita 18000 × 184/365 =
-    // 9073,97 → 9074 (€ 90,74). La frase è `AnteprimaPassaggio::fraseDelCoinquilino`: «Se li paga %s». Dalla 1.11.0-beta.53 il Wallet, con i
-    // saldi legati al passaggio, anche con il riporto di Ines (la riga legata non occupa il posto).
+it('R20 — Ines esce mentre restano Dora e Pia: con la regola del piano la coppia è Ines − € 60,66, Dora e Pia + € 30,33 ciascuna, e la frase non mette al singolare un verbo con due soggetti', function (array $riporti) {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 qui c'era la fermata del coinquilino (€ 90,74, «Se li paga …»). Ora la regola del piano: Ines al
+    // 50 %, Dora e Pia al 25 %, l'anello 36000 congelato 18000, 9000, 9000; dopo l'uscita i pesi 9050, 9125, 9125 (somma 27300): 11934,07,
+    // 12032,97, 12032,97 → 11934 + 12032 + 12032 = 35998, i due ,97 a Dora e Pia → Ines − 6066, Dora + 3033, Pia + 3033. Il riporto di Ines è un
+    // saldo pregresso, fuori dall'anello: le cifre non cambiano.
     $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 25], ['Pia', 25]]], riporti: $riporti);
 
     $a = fclAnteprima($this, $s, fclModulo($s));
     $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora e Pia')) ?? '';
 
-    // Controlli: la fermata c'è, con la cifra e chi resta, e la frase la dice, nel ramo giusto.
-    expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
-        ->and(collect($a['rate']['fermata_coinquilino'])->pluck('restano')->flatten()->all())->toBe(['Dora', 'Pia'])
-        ->and($frase)->toContain('€ 90,74')
-        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio')
-        ->and($frase)->not->toContain('la parte si regola fra le parti');
+    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Dora', 3033], [(int) $s['unita']->id, 'Pia', 3033]])
+        ->and($frase)->toContain('Ines € 119,34 per i suoi 181 giorni, Dora € 120,33 per i suoi 365 giorni e Pia € 120,33 per i suoi 365 giorni')
+        ->and($frase)->toContain('il prospetto degli oneri accessori dice che Dora (€ 30,33) e Pia (€ 30,33) rimborsano a Ines € 60,66')
+        ->and($frase)->not->toContain('€ 90,74');
 
-    expect(preg_match('/\bli paga \p{Lu}\p{L}* e \p{Lu}/u', $frase))->toBe(0, 'Il verbo è al singolare con due soggetti: ' . $frase);
+    expect(preg_match('/\b(?:rimborsa|paga) \p{Lu}\p{L}* e \p{Lu}/u', $frase))->toBe(0, 'Il verbo è al singolare con due soggetti: ' . $frase);
 })->with([
-    'il ramo del Wallet' => [[]],
-    'con il riporto di Ines, lo stesso Wallet' => [['Ines' => 5000]],
+    'senza riporti' => [[]],
+    'con il riporto di Ines' => [['Ines' => 5000]],
 ]);
 
-it('R9 — la fermata del coinquilino quando chi potrebbe pagare ha già un saldo sulla gestione (il riporto di Ugo o di Dora): la frase indica a tutti il Wallet, con i saldi legati al passaggio, e le due righe legate si scrivono accanto al riporto', function (string $conIlSaldo) {
-    // Fino alla .52 la frase diceva «fra le parti» per chi aveva già un saldo (il Wallet rifiutava la sua riga). Dalla 1.11.0-beta.53 la riga
-    // legata al passaggio non occupa il posto: il Wallet c'è per tutti i candidati. La cifra: 18000 × 184/365 = 9073,97 → 9074.
+it('R9 — il resto della regola del piano alla fine di Dora, dopo la fine di Ines, quando una persona ha già un saldo sulla gestione (il riporto di Ugo o di Dora): la frase indica il Wallet, con i saldi legati al passaggio, e le due righe legate si scrivono accanto al riporto', function (string $conIlSaldo) {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 qui c'era la fermata del coinquilino della fine di Ines (€ 90,74, «una riga a credito di Ines e una a
+    // debito di chi li paga»). Ora la fine di Ines con Dora che resta ha la scelta, e non c'è più quella fermata; la strada a mano del Wallet, con i saldi
+    // legati al passaggio, è quella del resto della fine di Dora dopo una fine con la regola del piano (decisione 95.6 b). Le cifre di C4: dopo la fine
+    // di Ines con «Scrivi» Ines 11934 e Dora 24066; Dora esce il 1/10, e la regola del piano dà Ines 10735, Dora 16191, Ugo 9074; la fine di Dora scrive
+    // solo la sua coppia, Dora − 7875 → Ugo, e restano fuori Ines − 1199 e Ugo + 1199. La riga legata non occupa il posto: il Wallet c'è anche per chi
+    // ha già il riporto (prima della .53 la frase diceva «fra le parti»).
     $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], riporti: [$conIlSaldo => 5000]);
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
+    $mod = ['quota' => 50] + fclModulo($s, null, '2026-10-01', [], 'Dora');
 
-    $a = fclAnteprima($this, $s, fclModulo($s));
-    $frase = collect($a['rate']['frasi'])->first(fn (string $f) => str_contains($f, 'continua con Dora')) ?? '';
+    $a = fclAnteprima($this, $s, $mod);
+    $frase = $a['rate']['frasi'][0] ?? '';
 
-    expect(collect($a['rate']['fermata_coinquilino'])->sum('cifra'))->toBe(9074)
-        ->and($frase)->toContain('€ 90,74')
-        ->and($frase)->toContain('registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga')
+    expect(collect($a['rate']['resto_del_piano'])->sum('cifra'))->toBe(1199)
+        ->and($frase)->toContain('Se le parti la vogliono al piano, registra dal Wallet i saldi legati a questo passaggio, sulla gestione Ordinaria 2026: € 11,99 a credito di Ines e € 11,99 a debito di Ugo.')
         ->and($frase)->not->toContain('fra le parti');
 
-    // Controllo: una riga non legata di chi ha già il riporto il Wallet la rifiuta ancora (il posto è occupato); quella legata al passaggio no.
-    $fine = fclRegistra($this, $s, fclModulo($s));
+    // Controllo: una riga non legata di chi ha già il riporto il Wallet la rifiuta ancora (il posto è occupato); quelle legate al passaggio no.
+    $fine = fclRegistra($this, $s, $mod + ['conguaglio' => 'scrivi']);
     $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
-        'anagrafica_id' => $s['persone'][$conIlSaldo]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 9074,
+        'anagrafica_id' => $s['persone'][$conIlSaldo]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 1199,
     ])->assertSessionHasErrors(['anagrafica_id' => 'Esiste già un saldo per questa anagrafica in questa gestione.']);
-    foreach ([['Ines', -9074], [$conIlSaldo, 9074]] as [$nome, $importo]) {
+    foreach ([['Ines', -1199], ['Ugo', 1199]] as [$nome, $importo]) {
         $this->actingAs($this->user)->post(route('admin.gestionale.saldi.store', [$s['c']]), [
             'anagrafica_id' => $s['persone'][$nome]->id, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => $importo, 'passaggio_id' => $fine->id,
         ])->assertSessionHasNoErrors();
     }
 })->with(['il riporto di Ugo' => ['Ugo'], 'il riporto di Dora' => ['Dora']]);
 
-it('R12 — la fine di Ines con Dora che resta: il registro conserva la fermata del coinquilino (€ 90,74), e lo storico la dice con la cifra, la persona e la strada a mano', function () {
-    // Condizione 2 di `decide_l_amministratore.md` e scelta di progetto della .50: la fermata che ha chiesto la spunta lascia traccia nello
-    // storico, come la fermata dopo «Scrivi». `StoricoTitolarita` costruisce le fermate solo da `fermata_dopo_scrivi` e `fermata_ridotta`:
-    // di `fermata_coinquilino` restano solo gli avvisi dell'annullamento (`annullabile`), finché il passaggio si può annullare.
+it('R12 — una fine con la fermata del coinquilino registrata da una beta (dalla .50 alla .53): lo storico la dice ancora con la cifra, la persona e la strada a mano', function () {
+    // Coda 245 (1.11.0-beta.55): la registrazione non scrive più la fermata del coinquilino; il registro di quelle beta si scrive qui a mano, come
+    // lo scriveva allora (niente scelta, i piani non presi, la fermata: 18000 × 184/365 = 9073,97 → 9074), e lo storico lo legge com'era.
     $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
+    $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere'])->fresh();
+    $registro = $fine->registro;
+    unset($registro['conguaglio'], $registro['regolato_fuori'], $registro['coinquilini_letti']);
+    $registro['piani_presi'] = [];
+    $registro['fermata_coinquilino'] = [['immobile_id' => (int) $s['unita']->id, 'unita' => 'Interno 1', 'gestione_id' => (int) $s['g']->id, 'gestione' => 'Ordinaria 2026',
+        'esercizio_id' => (int) $s['e']->id, 'cifra' => 9074, 'persona_id' => (int) $s['persone']['Ines']->id, 'persona' => 'Ines', 'restano' => ['Dora'], 'al_posto' => ['Ugo'],
+        'wallet' => true, 'strada' => 'legata']];
+    $fine->registro = $registro;
+    $fine->save();
 
-    $fine = fclRegistra($this, $s, fclModulo($s));
-
-    // Controllo: il registro ha la fermata, con la cifra e chi resta.
-    expect(collect($fine->registro['fermata_coinquilino'] ?? [])->sum('cifra'))->toBe(9074)
-        ->and(collect($fine->registro['fermata_coinquilino'] ?? [])->pluck('restano')->flatten()->all())->toBe(['Dora']);
-
-    // La strada a mano: il Wallet, «fra le parti», o «da regolare a mano» come la frase dello storico della fermata dopo «Scrivi».
-    $conLaCifra = fds50Con(rbfStoricoSenzaAnnullabile($s, $fine), '€ 90,74');
+    $conLaCifra = fds50Con(rbfStoricoSenzaAnnullabile($s, $fine->fresh()), '€ 90,74');
     expect($conLaCifra)->not->toBe([], 'Lo storico della fine non dice la fermata del coinquilino (€ 90,74).')
         ->and(collect($conLaCifra)->contains(fn (string $t) => str_contains($t, 'Ines') && str_contains($t, 'Dora') && preg_match('/Wallet|le parti|a mano/u', $t) === 1))
         ->toBeTrue('La frase dello storico con € 90,74 non dice Ines, Dora e la strada a mano: ' . implode(' | ', $conLaCifra));
+});
+
+it('R12 — la fine di Ines con Dora che resta, registrata con la regola del piano: lo storico dice «proposto», € 60,66 a debito di Dora, e il registro la regola del piano, non la fermata', function () {
+    $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
+
+    $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi'])->fresh();
+    $voce = rbfStoricoSenzaAnnullabile($s, $fine);
+
+    expect($fine->registro)->not->toHaveKey('fermata_coinquilino')
+        ->and(collect($fine->registro['conguaglio']['piano'] ?? [])->pluck('immobile_id')->all())->toBe([(int) $s['unita']->id])
+        ->and($voce['conguaglio']['stato'])->toBe('proposto')
+        ->and($voce['conguaglio']['per_entrante'])->toBe(['€ 60,66 a debito di Dora'])
+        ->and(fds50Con($voce, '€ 90,74'))->toBe([]);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -516,41 +534,26 @@ function rbfRegolatoFuori(Subentro $passaggio): array
 // R14: Dora resta sull'Interno 1, il box è spuntato: le bozze dell'Interno 1 non sono «comprese nel conguaglio»
 // ---------------------------------------------------------------------------------------------------------------------
 
-it('R14 — Ines e Dora inquiline dell\'Interno 1 al 50 %, il box di Ines spuntato: il cancello e «Chi resta obbligato» non dicono tutte le quote non emesse di Ines «comprese nel conguaglio, se lo scrivi»; quelle dell\'Interno 1 restano sue, senza conguaglio, perché lì la locazione continua con Dora', function () {
-    // `AnteprimaPassaggio::cancello` usa la scelta (`sceltaQui`) per tutto il passaggio: le bozze dell'unità con il coinquilino non hanno una
-    // categoria loro e finiscono fra quelle «comprese»; `FrasiObbligati` dice la scelta prima dei coinquilini. Il box spuntato a mano: dal
-    // modulo ci si arriverà con la scheda delle pertinenze della decisione 83.4.
-    // Le cifre: Interno 1, 900 millesimi, 120000 × 0,9 × 30 % = 32400, Ines al 50 % 16200, 1350 a rata, sei bozze 8100 (€ 81,00); Box 12,
-    // 100 millesimi, 3600, 300 a rata, sei bozze 1800 (€ 18,00). Il conguaglio è solo quello del box: 3600 × [181, 184] / 365 = 1785,21 /
-    // 1814,79 → 1785 + 1814 = 3599, il centesimo al resto più grande (,79) → 1815 (€ 18,15). Sull'Interno 1 la fermata del coinquilino:
-    // 16200 × [181, 184] / 365 = 8033,42 / 8166,58 → 8033 + 8166 = 16199, il centesimo al resto più grande (,58) → 8167 (€ 81,67).
+it('R14 — Ines e Dora inquiline dell\'Interno 1 al 50 %, il box di Ines spuntato: una scelta sola, la regola del piano sull\'Interno 1 e i giorni sul box; le 12 quote non emesse sono comprese nel conguaglio, se lo scrivi', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 sull'Interno 1 c'era la fermata del coinquilino (€ 81,67) e le sue 6 bozze restavano a Ines «senza
+    // conguaglio». Ora l'Interno 1 ha la coppia della regola del piano e la scelta vale per le due unità. Le cifre: Interno 1, 900 millesimi,
+    // anello 120000 × 0,9 × 30 % = 32400, congelato 16200 e 16200, dopo 32400 × 9050/27300 = 10740,66 → Ines 10741, Dora 21659: ∓ 5459; Box 12,
+    // 100 millesimi, 3600 × [181, 184] / 365 = 1785,21 / 1814,79 → 1815 a Ugo.
     $s = rbfScenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]], 'box' => [['Ugo', 'proprietario', 100], ['Ines', 'inquilino', 100]]]);
     $modulo = fclModulo($s, null, '2026-07-01', [$s['box']]);
 
     $a = fclAnteprima($this, $s, $modulo);
     $motivi = $a['cancello']['motivi'];
-    $obbligati = $a['obbligati']['frasi'];
     fclRegistra($this, $s, $modulo + ['conguaglio' => 'scrivi']);
 
-    // Controlli: la coppia è solo quella del box; sull'Interno 1 la fermata del coinquilino; registrato con «Scrivi», nessuna riga
-    // sull'Interno 1 e la coppia del box.
-    expect(fclCoppie($a))->toBe([[(int) $s['box']->id, 'Ugo', 1815]])
-        ->and(collect($a['rate']['fermata_coinquilino'])->map(fn ($f) => [(int) $f['immobile_id'], (int) $f['cifra']])->all())->toBe([[(int) $s['unita']->id, 8167]])
-        ->and(fclSaldi($s))->toBe([])
+    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Dora', 5459], [(int) $s['box']->id, 'Ugo', 1815]])
+        ->and($a['rate']['scelta_del_conguaglio'])->toBeTrue()
+        ->and(fclSaldi($s))->toBe(['Dora' => 5459, 'Ines' => -5459])
         ->and(fclSaldi($s, $s['box']))->toBe(['Ines' => -1815, 'Ugo' => 1815]);
-
-    // Nessuna frase dice «comprese nel conguaglio» per le 12 quote insieme, e nessuna dice che «Scrivi il conguaglio» porta le bozze
-    // dell'Interno 1 a chi paga al posto dell'inquilino senza dire l'unità. Come per l'unità senza nessuno al posto dell'inquilino
-    // (punto 4 della ripresa), il piano si può dividere nella stessa frase: «12 quote …, 6 restano sue e sono comprese nel conguaglio, se
-    // lo scrivi …; 6 restano sue, senza conguaglio: nell'unità «Interno 1» …», e «Chi resta obbligato» può nominare il box o l'Interno 1.
-    $tutteComprese = array_values(array_filter($motivi, fn (string $m) => str_contains($m, 'comprese nel conguaglio') && ! str_contains($m, 'senza conguaglio')));
-    $obbligatiScelta = array_values(array_filter($obbligati, fn (string $f) => str_contains($f, '«Scrivi il conguaglio» li porta') && ! str_contains($f, 'Box 12') && ! str_contains($f, 'Interno 1')));
-    expect($tutteComprese)->toBe([], 'Il cancello dice comprese nel conguaglio tutte le 12 quote: ' . implode(' | ', $motivi))
-        ->and($obbligatiScelta)->toBe([], '«Chi resta obbligato» dice la scelta per tutte le bozze: ' . implode(' | ', $obbligati))
-        // Fra i motivi o fra le informazioni: la correzione lo può dire nell'uno o nell'altro posto, come le quote emesse dell'unità
-        // senza nessuno al posto dell'inquilino, passate alle informazioni.
-        ->and(collect([...$motivi, ...($a['cancello']['informazioni'] ?? [])])->contains(fn (string $m) => str_contains($m, 'senza conguaglio')))
-        ->toBeTrue('Il cancello non dice che le 6 quote dell\'Interno 1 restano a Ines senza conguaglio: ' . implode(' | ', [...$motivi, ...($a['cancello']['informazioni'] ?? [])]));
+    // Le 12 bozze di Ines sono comprese nel conguaglio, se lo scrivi: nessuna resta «senza conguaglio» per il coinquilino.
+    expect(collect($motivi)->contains(fn (string $m) => str_contains($m, 'comprese nel conguaglio, se lo scrivi')))->toBeTrue(implode(' | ', $motivi))
+        ->and(collect([...$motivi, ...($a['cancello']['informazioni'] ?? [])])->contains(fn (string $m) => str_contains($m, 'senza conguaglio')))->toBeFalse(implode(' | ', $motivi))
+        ->and(implode(' ', $a['obbligati']['frasi']))->not->toContain('lo decidono le parti');
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

@@ -68,6 +68,13 @@ const haCoppie = computed(() => (conguaglio.value?.coppie.length ?? 0) > 0);
 const pianoDaRicalcolare = computed(() => props.dati?.rate.piano_da_ricalcolare ?? null);
 // Le coppie hanno più di un «chi entra» (S8-30): si elencano con il nome, perché la tabella per gestione non lo dice.
 const piuEntranti = computed(() => new Set((conguaglio.value?.coppie ?? []).map(c => c.anagrafica_entrante_id)).size > 1);
+// Coda 245 (1.11.0-beta.55): alla fine di una locazione con un coinquilino che resta la coppia è della regola del piano (`piano`, o `piano_coppia`
+// quando lascia fuori una parte), o lo è solo su alcune unità (`misto`): le voci della scelta e il piede lo dicono, e le righe per persona ci sono anche
+// con un ricevente solo.
+const regola = computed(() => conguaglio.value?.regola ?? 'giorni');
+const conLaRegolaDelPiano = computed(() => props.tipo === 'fine_locazione' && regola.value !== 'giorni');
+// Nel cambio d'inquilino chi riceve è chi entra: la riga per persona serve dove nessuno entra e la coppia va a chi sta al posto dell'inquilino o a chi resta.
+const righePerPersona = computed(() => piuEntranti.value || (conLaRegolaDelPiano.value && props.senzaSuccessore === true));
 const notaTroppoCorta = computed(() => rinuncia.value && notaRinuncia.value.trim().length < 10);
 // Decisione 25 (B3a): le bozze che passano a chi entra, e la coppia che con loro può rovesciarsi.
 const riassegnazione = computed(() => conguaglio.value?.riassegnazione ?? []);
@@ -80,12 +87,20 @@ const arretrato = computed(() => props.dati?.rate.arretrato ?? null);
 const arretratoAgliEredi = computed(() => arretrato.value?.scelta === 'eredi');
 // Rilievo X11 della Fase 1-bis: con l'arretrato agli eredi la spunta rimasta da «a nome del defunto» non vale, e i badge non la seguono.
 // Decisione 72: con l'arretrato a nome del defunto la casella non c'è più, c'è la scelta. Decisione 77 (1.11.0-beta.50): la scelta c'è
-// anche alla fine di una locazione, con un nuovo inquilino o senza, quando il pannello propone coppie; con un coinquilino che resta le
-// coppie non ci sono (decisione 79), e né la scelta né la casella. L'arretrato c'è solo nella successione: senza il tipo, dice lui.
+// anche alla fine di una locazione, con un nuovo inquilino o senza, quando il pannello propone coppie, anche con un coinquilino che resta
+// (Coda 245, la regola del piano). L'arretrato c'è solo nella successione: senza il tipo, dice lui.
 const tipoPassaggio = computed(() => props.tipo ?? (arretrato.value ? 'successione' : undefined));
 const locazione = computed(() => props.tipo === 'fine_locazione');
 // Giro stretto della .50 (G5): i piani su cui il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto non va oltre.
 const prospettoRegolato = computed(() => props.dati?.rate.prospetto_regolato ?? []);
+// Coda 245: con la regola del piano nel cambio d'inquilino, le unità per cui il prospetto lascia fuori un piano della 1.10 (il box spuntato), una frase per unità.
+const esclusiDove = computed(() => {
+  const perUnita = new Map<string, string[]>();
+  for (const d of props.dati?.rate.prospetto_esclude_dove ?? []) {
+    perUnita.set(d.unita, [...(perUnita.get(d.unita) ?? []), d.piano]);
+  }
+  return [...perUnita.entries()].map(([unita, piani]) => `Per «${unita}» il prospetto degli oneri accessori lascia fuori ${piani.length === 1 ? 'il piano' : 'i piani'} «${piani.join('», «')}», generat${piani.length === 1 ? 'o' : 'i'} da una versione precedente: lì chi entra glieli rimborsa fra le parti.`).join(' ');
+});
 const sceltaRichiesta = computed(() => sceltaConguaglioDelPassaggio(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta));
 const nonScritto = computed(() => conguaglioNonScrittoNelPassaggio(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, sceltaConguaglio.value));
 const rinunciaVale = computed(() => coppieNonScritte(tipoPassaggio.value, conguaglio.value?.coppie.length ?? 0, arretrato.value?.scelta, rinuncia.value, sceltaConguaglio.value));
@@ -288,7 +303,9 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <!-- Straordinario: il gradino è quello congelato sulle righe (dichiarata sulla fattura, o la delibera), non un'etichetta fissa (S8-4). -->
                   <!-- Decisione 26 (1.11.0-beta.35): anche sull'ordinaria, una voce del piano rate straordinario con la competenza dichiarata sulla fattura mostra le sue date;
                        con voci miste la colonna dice «voce per voce» (R5 della Fase 1-bis, `competenzaDellaGestione`). -->
-                  <template v-else-if="g.natura === 'straordinaria' || g.gradino.includes('dichiarata')">{{ competenzaDellaGestione(g, GRADINI).etichetta }}<span v-if="competenzaDellaGestione(g, GRADINI).intervallo" class="block">{{ competenzaDellaGestione(g, GRADINI).intervallo }}<template v-if="g.giorni_uscente !== null && g.giorni_uscente !== undefined"> · giorni {{ g.giorni_uscente }} / {{ g.giorni_entrante }}</template></span><span v-else-if="competenzaDellaGestione(g, GRADINI).giorno"> · {{ competenzaDellaGestione(g, GRADINI).giorno }}</span></template>
+                  <template v-else-if="g.natura === 'straordinaria' || g.gradino.includes('dichiarata')">{{ competenzaDellaGestione(g, GRADINI).etichetta }}<span v-if="competenzaDellaGestione(g, GRADINI).intervallo" class="block">{{ competenzaDellaGestione(g, GRADINI).intervallo }}<template v-if="g.regola !== 'piano' && g.giorni_uscente !== null && g.giorni_uscente !== undefined"> · giorni {{ g.giorni_uscente }} / {{ g.giorni_entrante }}</template></span><span v-else-if="competenzaDellaGestione(g, GRADINI).giorno"> · {{ competenzaDellaGestione(g, GRADINI).giorno }}</span></template>
+                  <!-- Coda 245: con la regola del piano la cifra non nasce dai giorni di chi esce e di chi entra, ma dalla parte dell'inquilino divisa per quota e per giorni fra chi è stato conduttore. -->
+                  <template v-else-if="g.regola === 'piano'">regola del piano<span class="block">per quota e per giorni</span></template>
                   <template v-else>giorni {{ g.giorni_uscente ?? '—' }} / {{ g.giorni_entrante ?? '—' }}<span v-if="g.gradino[0]" class="block">{{ GRADINI[g.gradino[0]] ?? g.gradino[0] }}</span></template>
                   <span v-if="g.bozze_passate > 0" class="block">intero piano <span class="whitespace-nowrap">{{ g.importo_lordo_formattato }}</span> − bozze <span class="whitespace-nowrap">{{ g.bozze_passate_formattato }}</span></span>
                 </td>
@@ -298,7 +315,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               </tr>
             </tbody>
             <!-- Più nudi proprietari all'estinzione dell'usufrutto: una coppia per nudo, con il nome (S8-30). -->
-            <tbody v-if="piuEntranti" class="border-t border-indigo-200 dark:border-indigo-800/60 divide-y divide-indigo-100 dark:divide-indigo-900/40">
+            <tbody v-if="righePerPersona" class="border-t border-indigo-200 dark:border-indigo-800/60 divide-y divide-indigo-100 dark:divide-indigo-900/40">
               <tr v-for="(c, i) in conguaglio.coppie" :key="`coppia-${i}`" class="align-top text-[11px]">
                 <td class="px-3 py-1 text-slate-500 dark:text-slate-400 truncate">{{ c.gestione ?? 'gestione' }}</td>
                 <td class="px-3 py-1 text-slate-700 dark:text-slate-300 truncate">{{ aChi(c.entrante_nome ?? 'chi entra') }}</td>
@@ -312,6 +329,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                   <template v-if="haCoppie && nonScritto">Non scritte: nessuna riga in saldi</template>
                   <template v-else-if="haCoppie && arretrato && piuEntranti">{{ legato ? 'Somma delle coppie' : 'Somma delle coppie degli eredi' }}</template>
                   <!-- Decisione 77 (1.11.0-beta.50): alla fine di una locazione senza un nuovo inquilino nessuno entra. -->
+                  <!-- Coda 245: con la regola del piano chi riceve può avere un credito e chi esce un debito; le righe qui sopra dicono il verso di ognuno. -->
+                  <template v-else-if="haCoppie && senzaSuccessore && conLaRegolaDelPiano">{{ rovesciato ? 'Debito a chi esce, credito a chi riceve' : 'Credito a chi esce, debito a chi riceve' }}</template>
                   <template v-else-if="haCoppie && senzaSuccessore">{{ rovesciato ? 'Credito a chi paga dopo l\'uscita, debito a chi esce' : 'Debito a chi paga dopo l\'uscita, credito a chi esce' }}</template>
                   <template v-else-if="haCoppie && rovesciato">Credito a chi entra, debito a chi esce</template>
                   <template v-else-if="haCoppie">Debito a chi entra, credito a chi esce</template>
@@ -335,7 +354,14 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
               <input type="radio" value="scrivi" v-model="sceltaConguaglio" class="mt-0.5 accent-indigo-600" />
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
                 <span class="font-medium">Scrivi il conguaglio</span>
-                <span v-if="locazione && senzaSuccessore" class="block text-[11px] text-slate-500">I giorni dopo l'uscita passano a chi paga al posto dell'inquilino{{ piuEntranti ? ', a ognuno per la sua parte' : '' }}: le righe in saldi rimettono ognuno ai suoi giorni.</span>
+                <span v-if="locazione && senzaSuccessore && regola === 'piano'" class="block text-[11px] text-slate-500">La parte dell'inquilino si ridivide per quota e per giorni fra chi è stato conduttore, come in un piano generato dopo l'uscita: le righe in saldi portano ognuno alla sua parte.</span>
+                <!-- Coda 245: nel cambio d'inquilino la coppia è la differenza del piano, non i giorni: le righe portano ognuno alla sua parte. -->
+                <span v-else-if="locazione && regola === 'piano'" class="block text-[11px] text-slate-500">I giorni dopo l'uscita passano a chi entra, e la parte dell'inquilino si ridivide con la regola del piano: le righe in saldi portano ognuno alla sua parte.</span>
+                <!-- Coda 245: la coppia della regola del piano che lascia fuori una parte (la fine di chi restava dopo un'altra fine, il conduttore senza quote, i giorni che non copre nessuno). -->
+                <span v-else-if="locazione && regola === 'piano_coppia'" class="block text-[11px] text-slate-500">Le righe in saldi sono quelle della regola del piano fra chi esce e chi riceve i suoi giorni: ciò che resta fuori il pannello lo dice, con la persona e la cifra.</span>
+                <span v-else-if="locazione && regola === 'misto'" class="block text-[11px] text-slate-500">Le righe in saldi portano ognuno alla sua parte: dove la locazione continua con un coinquilino la voce si ridivide per quota e per giorni fra i conduttori, altrove i giorni dopo l'uscita passano {{ senzaSuccessore ? 'a chi paga al posto dell\'inquilino' : 'a chi entra' }}.</span>
+                <span v-else-if="locazione && regola === 'misto_coppia'" class="block text-[11px] text-slate-500">Dove la locazione continua con un coinquilino le righe in saldi sono quelle della regola del piano, e ciò che resta fuori il pannello lo dice, con la persona e la cifra; altrove i giorni dopo l'uscita passano {{ senzaSuccessore ? 'a chi paga al posto dell\'inquilino' : 'a chi entra' }}.</span>
+                <span v-else-if="locazione && senzaSuccessore" class="block text-[11px] text-slate-500">I giorni dopo l'uscita passano a chi paga al posto dell'inquilino{{ piuEntranti ? ', a ognuno per la sua parte' : '' }}: le righe in saldi rimettono ognuno ai suoi giorni.</span>
                 <span v-else-if="locazione" class="block text-[11px] text-slate-500">I giorni dopo l'uscita passano a chi entra: le righe in saldi rimettono ognuno ai suoi giorni.</span>
                 <span v-else class="block text-[11px] text-slate-500">Le righe in saldi rimettono ognuno ai suoi giorni{{ piuEntranti ? (legato ? ', una coppia per ognuno' : ', una coppia per ogni erede') : '' }}.</span>
               </span>
@@ -347,9 +373,10 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
                 <span class="block text-[11px] text-slate-500">
                   <!-- Decisione 77, strada A′: senza righe in saldi i giorni dopo l'uscita restano nelle rate di chi esce, e il prospetto degli
                        oneri accessori dice chi li rimborsa. -->
-                  <template v-if="locazione && senzaSuccessore">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce, e le parti li regolano fra loro con il prospetto degli oneri accessori.</template>
+                  <template v-if="locazione && conLaRegolaDelPiano">Nessuna riga in saldi: le rate restano come sono, e le parti regolano la differenza fra loro con il prospetto degli oneri accessori.<template v-if="esclusiDove">{{ ' ' + esclusiDove }}</template></template>
+                  <template v-else-if="locazione && senzaSuccessore">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce, e le parti li regolano fra loro con il prospetto degli oneri accessori.</template>
                   <!-- R10 della Fase 1-bis della .50: un piano della 1.10 il prospetto lo lascia fuori dopo il cambio, e lì il rimborso si regola fra le parti. -->
-                  <template v-else-if="locazione && (dati?.rate.prospetto_esclude?.length ?? 0) > 0">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce. Il prospetto degli oneri accessori lascia fuori {{ dati!.rate.prospetto_esclude!.length === 1 ? 'il piano' : 'i piani' }} «{{ dati!.rate.prospetto_esclude!.join('», «') }}», generat{{ dati!.rate.prospetto_esclude!.length === 1 ? 'o' : 'i' }} da una versione precedente: lì chi entra glieli rimborsa fra le parti.<template v-if="prospettoRegolato.length"> {{ prospettoRegolato.length === 1 ? 'Sul piano' : 'Sui piani' }} «{{ prospettoRegolato.join('», «') }}» il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto non va oltre quell'accordo: anche lì il rimborso di chi entra si regola fra le parti.</template></template>
+                  <template v-else-if="locazione && (dati?.rate.prospetto_esclude?.length ?? 0) > 0">Nessuna riga in saldi: i giorni dopo l'uscita restano nelle rate di chi esce. Il prospetto degli oneri accessori lascia fuori {{ dati!.rate.prospetto_esclude!.length === 1 ? 'il piano' : 'i piani' }} «{{ dati!.rate.prospetto_esclude!.join('», «') }}», generat{{ dati!.rate.prospetto_esclude!.length === 1 ? 'o' : 'i' }} da una versione precedente: lì chi entra glieli rimborsa fra le parti.<template v-if="prospettoRegolato.length">{{ ' ' + (prospettoRegolato.length === 1 ? 'Sul piano' : 'Sui piani') }} «{{ prospettoRegolato.join('», «') }}» il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto non va oltre quell'accordo: anche lì il rimborso di chi entra si regola fra le parti.</template></template>
                   <!-- Giro stretto della .50 (G5): dopo un cambio d'inquilino regolato fra le parti, senza una fine «Scrivi» dopo, il prospetto non
                        segue la catena (decisione 83.3): il rimborso di chi entra a chi esce si regola fra le parti. -->
                   <template v-else-if="locazione && prospettoRegolato.length > 0">Nessuna riga in saldi. {{ prospettoRegolato.length === 1 ? 'Sul piano' : 'Sui piani' }} «{{ prospettoRegolato.join('», «') }}» il cambio d'inquilino di prima è stato regolato fra le parti, e il prospetto degli oneri accessori non va oltre quell'accordo: il rimborso di chi entra a chi esce si regola fra le parti.</template>

@@ -95,19 +95,23 @@ function sl53fCoinquilino($test, bool $riporto): array
     return $s;
 }
 
-it('coinquilino che resta, con il saldo di Ines che esce: il pannello indica il Wallet legato a tutti i candidati, non «fra le parti»', function () {
-    // Il caso di `CoinquilinoCheRestaTest`: € 90,74 dei giorni dopo l'uscita di Ines restano nelle sue rate; chi li paga lo decidono le parti.
+it('coinquilino che resta, con il saldo di Ines: il resto della regola del piano alla fine di Dora indica il Wallet legato, non «fra le parti»', function () {
+    // Coda 245 (1.11.0-beta.55): fino alla .54 la prova era sulla fermata del coinquilino della fine di Ines (€ 90,74 rimasti nelle sue rate, «chi li
+    // paga lo decidono le parti»), che non c'è più: la fine di Ines con Dora che resta ha la scelta, con la regola del piano. La stessa prova, con il
+    // riporto di Ines, sta sul resto della fine di Dora dopo la fine di Ines con «Scrivi» (decisione 95.6 b): Dora − 7875 → Ugo, e restano fuori
+    // Ines − 1199 e Ugo + 1199, con la strada dei saldi del Wallet legati al passaggio anche per Ines, che ha già un saldo.
     $s = sl53fCoinquilino($this, riporto: true);
+    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
 
-    $a = fclAnteprima($this, $s, fclModulo($s));
+    $a = fclAnteprima($this, $s, ['quota' => 50] + fclModulo($s, null, '2026-10-01', [], 'Dora'));
     $frasi = fclFrasi($a);
-    $f = $a['rate']['fermata_coinquilino'][0] ?? [];
+    $r = $a['rate']['resto_del_piano'][0] ?? [];
 
-    expect(str_contains($frasi, 'registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga'))->toBeTrue($frasi)
+    expect(str_contains($frasi, 'registra dal Wallet i saldi legati a questo passaggio, sulla gestione Ordinaria 2026: € 11,99 a credito di Ines e € 11,99 a debito di Ugo'))->toBeTrue($frasi)
         ->and(str_contains($frasi, 'fra le parti: Ines ha già un saldo'))->toBeFalse($frasi)
         ->and(str_contains($frasi, 'il programma non ne registra un secondo'))->toBeFalse($frasi)
-        ->and($f['wallet'] ?? null)->toBeTrue()
-        ->and($f['strada'] ?? null)->toBe('legata');
+        ->and($r['wallet'] ?? null)->toBeTrue()
+        ->and($r['strada'] ?? null)->toBe('legata');
 });
 
 it('lo storico del coinquilino: un registro nuovo dice la strada dei saldi legati, uno di prima la dice com\'era', function () {

@@ -264,45 +264,34 @@ it('rientro della stessa persona il 1/10, dopo la fine del 1/7, con le due voci:
 
 // --- (7) Il coinquilino che resta (decisione 79.2) ----------------------------------------------------------------------------
 
-it('coinquilino che resta: Ines e Dora inquiline al 50 %, Ines esce il 1/7 senza scelta: i giorni dopo l\'uscita restano nelle rate di Ines (€ 180,00, nulla da rimborsare), non vanno a Dora né a Ugo né sotto «giorni senza conduttore», e la nota «chi li paga lo decidono le parti» non nomina nessuno', function () {
+it('coinquilino che resta: Ines e Dora inquiline al 50 %, Ines esce il 1/7: il prospetto divide la parte dell\'inquilino con la regola del piano, € 119,34 e € 240,66, e dice chi rimborsa chi, senza «lo decidono le parti»', function (string $scelta) {
+    // Coda 245 (1.11.0-beta.55): con un coinquilino che resta la fine ha la scelta e la regola del piano (prima: nessuna scelta, i € 90,74 dopo l'uscita nelle rate
+    // di Ines con la nota «chi li paga lo decidono le parti», e Ines e Dora a € 180,00 ciascuna). Le cifre: pesi Ines 50 × 181 = 9050, Dora 50 × 365 = 18250;
+    // 36000 × 9050/27300 = 11934,07 → Ines 11934, Dora 24066. Nelle loro rate 18000 ciascuna. Con «Scrivi» la coppia (Ines − 6066, Dora + 6066) porta ognuna
+    // alla sua parte: niente da rimborsare. Con «Non scriverlo» Ines ha pagato 6066 più della sua parte, e Dora glieli rimborsa.
     $s = pflScenario(inquilini: [['Ines Moretti', 50], ['Dora Conti', 50]]);
     pflSeiRateEmesse($this, $s);
-    // La parte dell'inquilino, 36000, per quota: 18000 a testa.
     expect(pflNetti($s))->toBe(['Dora Conti' => 18000, 'Ines Moretti' => 18000, 'Ugo Rinaldi' => 84000]);
-
-    // La scelta non c'è: il modulo non manda il campo.
-    pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', null);
-    expect(pflNetti($s))->toBe(['Dora Conti' => 18000, 'Ines Moretti' => 18000, 'Ugo Rinaldi' => 84000]);
+    pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', $scelta);
 
     $p = pflProspetto($s);
     $ines = pflSezione($p, 'Ines Moretti');
-    // Ines: 18000 × 181 / 365 = 8926,03 e 18000 × 184 / 365 = 9073,97 → 8926 + 9073 = 17999, il centesimo al resto ,97: i suoi 181
-    // giorni valgono 8926, i 184 dopo l'uscita 9074. La scelta del verbale (11/10/2026 notte, «Le scelte di progetto sulle questioni
-    // aperte dai test»): i giorni dopo l'uscita restano nelle rate di Ines con la nota «chi li paga lo decidono le parti». Il totale della
-    // sua sezione è 8926 + 9074 = 18000 (€ 180,00), tutto nelle sue rate, niente da rimborsare; le sue voci contano 181 + 184 = 365
-    // giorni; nessuna è «pagata da» qualcuno.
-    expect(pflConduttori($p)['Ines Moretti'])->toBe([18000, 18000, 0, 365])
-        ->and(pflPagatori($ines['voci']))->toBe([])
-        // Dora: i suoi 18000 per 365 giorni, nelle sue rate; i giorni dopo l'uscita di Ines non le si dividono (decisione 79).
-        ->and(pflConduttori($p)['Dora Conti'])->toBe([18000, 18000, 0, 365])
-        ->and(pflPagatori(pflSezione($p, 'Dora Conti')['voci']))->toBe([])
-        // Non stanno sotto «giorni senza conduttore»: c'è Dora. E nessuno «paga al posto dell'inquilino»: il programma non indovina a
-        // chi vanno.
+    $dora = pflSezione($p, 'Dora Conti');
+    // I giorni sono quelli di conduzione: Ines 181, Dora 365.
+    expect(pflConduttori($p))->toBe($scelta === 'scrivi'
+            ? ['Dora Conti' => [24066, 18000, 0, 365], 'Ines Moretti' => [11934, 18000, 0, 181]]
+            : ['Dora Conti' => [24066, 18000, 6066, 365], 'Ines Moretti' => [11934, 18000, -6066, 181]])
+        ->and([(int) $ines['con_il_conguaglio'], (int) $dora['con_il_conguaglio']])->toBe($scelta === 'scrivi' ? [-6066, 6066] : [0, 0])
+        ->and(collect($dora['regola_del_piano']['rimborsi'])->map(fn ($r) => [$r['verso'], $r['nome'], (int) $r['importo']])->all())->toBe($scelta === 'scrivi' ? [] : [['a', 'Ines Moretti', 6066]])
+        // Nessuno paga «al posto dell'inquilino»: c'è Dora tutto l'anno.
         ->and($p['senza_conduttore']['totale'])->toBe(0)
-        ->and($p['senza_conduttore']['voci'])->toBe([])
-        ->and($p['totale_inquilino'])->toBe(36000);
-
-    // La nota: chi paga i € 90,74 dopo l'uscita lo decidono le parti — senza nomi (decisione 79). Dove il servizio la mette (la testa o
-    // la voce) non si fissa: si cerca fra tutte le frasi del prospetto.
-    $frasi = collect(pflFrasi($p))->filter(fn (string $f) => str_contains($f, 'lo decidono le parti'))->values();
-    expect($frasi->all())->not->toBe([], 'nessuna frase del prospetto dice che chi paga i giorni dopo l\'uscita lo decidono le parti');
-    foreach ($frasi as $f) {
-        expect($f)->not->toContain('Ugo')->not->toContain('Dora');
+        ->and($p['totale_inquilino'])->toBe(36000)
+        ->and(pflPagatori($ines['voci']))->toBe([])
+        ->and(pflPagatori($dora['voci']))->toBe([]);
+    foreach (pflFrasi($p) as $f) {
+        expect($f)->not->toContain('lo decidono le parti');
     }
-    // I € 90,74 si vedono: una voce di Ines da 9074, o la nota che li dice.
-    expect(collect($ines['voci'])->contains(fn ($v) => (int) $v['importo'] === 9074) || $frasi->contains(fn (string $f) => str_contains($f, '90,74')))
-        ->toBeTrue('il prospetto non dice i € 90,74 dopo l\'uscita di Ines');
-});
+})->with(['Scrivi' => 'scrivi', 'Non scriverlo' => 'non_scrivere']);
 
 // --- (8) Le fini senza la scelta nel registro --------------------------------------------------------------------------------
 

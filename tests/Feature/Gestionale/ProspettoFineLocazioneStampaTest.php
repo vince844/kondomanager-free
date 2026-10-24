@@ -135,25 +135,32 @@ it('stampa, cambio d\'inquilino in un passo con «Non scriverlo»: Luca rimborsa
         ->and(str_contains($testo, 'con il conguaglio del cambio d\'inquilino del 01/07/2026'))->toBeFalse('la stampa dice che Luca ha pagato con il conguaglio');
 });
 
-it('stampa, coinquilino che resta (Ines e Dora al 50 %, Ines esce il 1/7): nessuno paga «al posto dell\'inquilino», Dora non rimborsa Ines, i giorni dopo l\'uscita restano nelle rate di Ines (€ 180,00, nulla da rimborsare, niente «giorni senza conduttore») e la stampa dice i € 90,74 e che lo decidono le parti', function () {
+it('stampa, coinquilino che resta (Ines e Dora al 50 %, Ines esce il 1/7): la regola del piano, «con il conguaglio della fine locazione del 01/07/2026», Ines € 119,34 e Dora € 240,66; con «Non scriverlo» € 60,66 da restituire a Ines; mai «lo decidono le parti»', function (string $scelta) {
+    // Coda 245 (1.11.0-beta.55): la fine con un coinquilino che resta ha la scelta e la regola del piano. Prima la stampa diceva i € 90,74 dopo l'uscita nelle rate di
+    // Ines, «lo decidono le parti», e «Totale a carico di Ines Moretti € 180,00». Le cifre: Ines 36000 × 9050/27300 = 11934,07 → € 119,34, Dora € 240,66; la coppia
+    // € 60,66 (con «Scrivi» scritta, con «Non scriverlo» Dora la rimborsa a Ines). Nessuno paga «al posto dell'inquilino»: niente «Giorni senza conduttore».
     $s = pflScenario(inquilini: [['Ines Moretti', 50], ['Dora Conti', 50]]);
     pflSeiRateEmesse($this, $s);
-    pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', null);
+    pflFine($this, $s, 'Ines Moretti', null, '2026-07-01', $scelta);
 
     $testo = pflStampa($this, $s);
     $ines = pflSezioneNellaStampa($testo, 'Ines Moretti');
-    // 18000 × 184 / 365 = 9073,97 → 9074 = € 90,74 dopo l'uscita di Ines (8926 + 9074 = 18000). Scelta del verbale: restano nelle
-    // rate di Ines con la nota «chi li paga lo decidono le parti»; il totale della sua sezione è € 180,00 e non c'è niente da
-    // rimborsare; non sono «giorni senza conduttore», perché c'è Dora.
+    $dora = pflSezioneNellaStampa($testo, 'Dora Conti');
     expect(pflPagataDaSenzaNome($testo))->toBe([])
-        ->and(str_contains($testo, 'pagata da Ugo Rinaldi'))->toBeFalse('la stampa fa pagare a Ugo i giorni dopo l\'uscita')
-        ->and(str_contains($testo, 'pagata da Ines Moretti'))->toBeFalse('la stampa fa rimborsare a Dora (o a qualcuno) i giorni di Ines')
-        ->and($testo)->toContain('€ 90,74')
-        ->and($testo)->toContain('lo decidono le parti')
-        ->and($ines)->toContain('Totale a carico di Ines Moretti € 180,00')
-        ->and(str_contains($ines, 'di cui da rimborsare'))->toBeFalse('la sezione di Ines dice che c\'è da rimborsare')
-        ->and(str_contains($testo, 'Giorni senza conduttore'))->toBeFalse('la stampa mette i giorni dopo l\'uscita sotto «Giorni senza conduttore», con Dora');
-});
+        ->and($ines)->toContain('Totale a carico di Ines Moretti € 119,34')
+        ->and($dora)->toContain('Totale a carico di Dora Conti € 240,66')
+        ->and($testo)->toContain('con la regola del piano')
+        ->and($testo)->not->toContain('lo decidono le parti')
+        ->and($testo)->not->toContain('€ -')
+        ->and(str_contains($testo, 'Giorni senza conduttore'))->toBeFalse('la stampa mette dei giorni senza conduttore, con Dora');
+    if ($scelta === 'scrivi') {
+        expect($ines)->toContain('con il conguaglio della fine locazione del 01/07/2026, a suo credito € 60,66')
+            ->and($dora)->toContain('con il conguaglio della fine locazione del 01/07/2026, a suo debito € 60,66');
+    } else {
+        expect($ines)->toContain('da restituire a Ines Moretti da Dora Conti: la fine della locazione del 01/07/2026 non ha scritto il conguaglio € 60,66')
+            ->and($dora)->toContain('da rimborsare a Ines Moretti: la fine della locazione del 01/07/2026 non ha scritto il conguaglio € 60,66');
+    }
+})->with(['Scrivi' => 'scrivi', 'Non scriverlo' => 'non_scrivere']);
 
 it('stampa, fine senza la scelta nel registro (piano emesso dopo la fine, senza ricalcolo): dice «nessun conguaglio», non «non è stato scritto», e non le cose false sulla restituzione', function () {
     $s = pflScenario();

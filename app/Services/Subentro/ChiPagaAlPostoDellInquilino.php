@@ -125,6 +125,87 @@ final class ChiPagaAlPostoDellInquilino
     }
 
     /**
+     * Coda 245 (1.11.0-beta.55): i pesi della parte «Inquilino» di una voce sull'unità, come li dà il motore (`CalcoloQuoteService::
+     * distribuisciSuTabelle`, `pesiPerGiorni`, `ripiegoGiorniScoperti`), sulle righe date. Se nessuna riga d'inquilino entra o esce nella
+     * competenza (`RisolutoreTitolari::cambiaTitolaritaNelPeriodo`) i pesi sono le quote, come nel motore: è la sua garanzia d'identità, e
+     * con le quote un pari resto cade sulla stessa persona. Altrimenti ogni riga pesa quota × giorni sulla frazione dei giorni che gli
+     * inquilini coprono, e i giorni che nessun inquilino copre vanno alla catena del ripiego (`pesiEScoperti`, con il ruolo gemello
+     * dell'unità mista). I pesi sono in giorni: le parti si arrotondano una volta sola, sull'anello (`RegolaDelPiano::ridividi`).
+     *
+     * Nell'ordine delle chiavi: gli inquilini nell'ordine delle loro righe, poi le persone del ripiego, poi `nessuno` (i giorni che neanche
+     * il ripiego copre, che la generazione lascerebbe scoperti: la loro parte resta a chi esce). La catena del ripiego di `pesi()` parte
+     * dall'usufruttuario e non pesa l'inquilino (`RuoloAnagraficaImmobile::catenaRipiego`): per questo serve questa funzione.
+     *
+     * @param Collection<int, object> $righeUnita le righe dell'unità (`righe()`), o quelle di dopo un passaggio non ancora registrato
+     * @return array{pesi: array<int|string, float>, giorni: array<int, int>, ripiego: list<int>, scoperti: ?InsiemePeriodi, di_nessuno: ?InsiemePeriodi, cambia: bool}
+     */
+    public function pesiDelPiano(Collection $righeUnita, InsiemePeriodi $competenza): array
+    {
+        $inquilini = $righeUnita->filter(fn ($r) => ($r->tipologia ?? null) === RuoloAnagraficaImmobile::INQUILINO->value && (bool) ($r->attivo ?? false))->values();
+        $giorni = [];
+        $pesiRighe = [];
+        foreach ($inquilini as $riga) {
+            if ((float) ($riga->quota ?? 0) <= 0.0) {
+                continue;
+            }
+            $g = $this->titolari->giorniDiTitolarita($riga, $competenza, $inquilini);
+            if ($g > 0) {
+                $pesiRighe[] = ['anagrafica_id' => (int) $riga->anagrafica_id, 'quota' => (float) $riga->quota, 'giorni' => $g];
+                $giorni[(int) $riga->anagrafica_id] = ($giorni[(int) $riga->anagrafica_id] ?? 0) + $g;
+            }
+        }
+        $cambia = $this->titolari->cambiaTitolaritaNelPeriodo($inquilini, $competenza);
+        $pesi = [];
+        $scoperti = null;
+        if (! $cambia && $pesiRighe !== []) {
+            foreach ($pesiRighe as $r) {
+                $pesi[$r['anagrafica_id']] = ($pesi[$r['anagrafica_id']] ?? 0.0) + $r['quota'];
+            }
+
+            return ['pesi' => $pesi, 'giorni' => $giorni, 'ripiego' => [], 'scoperti' => null, 'di_nessuno' => null, 'cambia' => false];
+        }
+        $scopertiInquilini = $this->titolari->giorniScoperti($inquilini, $competenza);
+        $coperti = $competenza->giorni() - ($scopertiInquilini?->giorni() ?? 0);
+        $somma = array_sum(array_map(fn (array $r) => $r['quota'] * $r['giorni'], $pesiRighe));
+        foreach ($pesiRighe as $r) {
+            $pesi[$r['anagrafica_id']] = ($pesi[$r['anagrafica_id']] ?? 0.0) + ($somma > 0 ? $r['quota'] * $r['giorni'] / $somma * $coperti : 0.0);
+        }
+        $ripiego = [];
+        $diNessuno = null;
+        if ($scopertiInquilini !== null) {
+            [$suoi, $restano] = $this->pesiEScoperti($righeUnita, $scopertiInquilini);
+            foreach ($suoi as $anagraficaId => $peso) {
+                $pesi[$anagraficaId] = ($pesi[$anagraficaId] ?? 0.0) + $peso;
+                $ripiego[] = (int) $anagraficaId;
+            }
+            if ($restano !== null) {
+                $pesi[RegolaDelPiano::NESSUNO] = (float) $restano->giorni();
+                $diNessuno = $restano;
+            }
+            $scoperti = $scopertiInquilini;
+        }
+
+        return ['pesi' => $pesi, 'giorni' => $giorni, 'ripiego' => $ripiego, 'scoperti' => $scoperti, 'di_nessuno' => $diNessuno, 'cambia' => true];
+    }
+
+    /**
+     * Coda 245 (1.11.0-beta.55): la fine di una locazione con un coinquilino che resta registrata con la regola del piano, per un'unità:
+     * la voce di `conguaglio.piano` del registro (scritta da `RegistraSubentroAction`), o null per le fini senza (registrate prima della
+     * 1.11.0-beta.55, con la fermata del coinquilino, o senza un coinquilino). Chi decide la strada (lo storico, il pannello dell'inizio, il
+     * prospetto) guarda prima questa.
+     *
+     * @return ?array<string, mixed>
+     */
+    public static function fineDelPiano(Subentro $capo, int $immobileId): ?array
+    {
+        if ($capo->tipo_passaggio !== 'fine_locazione' || $capo->annullato()) {
+            return null;
+        }
+
+        return collect($capo->registro['conguaglio']['piano'] ?? [])->first(fn ($g) => (int) ($g['immobile_id'] ?? 0) === $immobileId);
+    }
+
+    /**
      * La coppia della fine di una locazione senza un nuovo inquilino, divisa fra chi paga al posto dell'inquilino. La coppia può essere
      * fatta di più pezzi, uno per competenza (più piani con competenze diverse sulla stessa gestione, o le voci a tratti per capitolo):
      * ogni pezzo pesa con il suo importo, **con il segno** — un capitolo di entrata toglie dalla parte di chi ha i suoi giorni, e non pesa

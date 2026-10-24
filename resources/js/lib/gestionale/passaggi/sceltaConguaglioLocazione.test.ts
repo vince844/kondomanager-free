@@ -5,8 +5,8 @@
  * Alla fine di una locazione, con un nuovo inquilino (il cambio d'inquilino) o senza, la casella «Le parti hanno regolato il conguaglio
  * fra loro» lascia il posto alle due voci della successione della .48, «Scrivi il conguaglio» e «Non scriverlo», senza nessuna già
  * scelta: un vocabolario solo per tutta la locazione, una scelta sola per l'appartamento e le pertinenze spuntate. La scelta si chiede
- * quando il pannello propone delle coppie (un piano che non si riscrive più); con un coinquilino che resta il pannello non ne propone
- * (decisione 79: nessuna coppia e nessuna scelta). La vendita e l'usufrutto tengono la casella con la nota obbligatoria.
+ * quando il pannello propone delle coppie (un piano che non si riscrive più); dalla 1.11.0-beta.55 anche con un coinquilino che resta, dove
+ * la coppia è della regola del piano (Coda 245). La vendita e l'usufrutto tengono la casella con la nota obbligatoria.
  *
  * Le funzioni nuove di `rinunciaConguaglio.ts`, le stesse per il modulo e per il pannello «Cosa cambierà»:
  * `passaggioConLaScelta(tipo)`, `sceltaConguaglioDelPassaggio(tipo, coppie, arretrato)`, `conguaglioNonScrittoNelPassaggio`,
@@ -45,7 +45,8 @@ describe('la scelta sul conguaglio alla fine di una locazione (1.11.0-beta.50, d
         expect(sceltaConguaglioDelPassaggio('fine_locazione', 3, undefined)).toBe(true);
     });
 
-    test('senza coppie la scelta non c\'è: un piano che si riscrive ancora, o un coinquilino che resta (decisione 79)', () => {
+    // Coda 245 (1.11.0-beta.55): il titolo non dice più «o un coinquilino che resta»: con il coinquilino le coppie ci sono (la regola del piano).
+    test('senza coppie la scelta non c\'è: un piano che si riscrive ancora', () => {
         expect(sceltaConguaglioDelPassaggio('fine_locazione', 0, null)).toBe(false);
     });
 
@@ -59,7 +60,7 @@ describe('la scelta sul conguaglio alla fine di una locazione (1.11.0-beta.50, d
         expect(conguaglioNonScrittoNelPassaggio('fine_locazione', 1, null, 'non_scrivere')).toBe(true);
         expect(conguaglioNonScrittoNelPassaggio('fine_locazione', 1, null, 'scrivi')).toBe(false);
         expect(conguaglioNonScrittoNelPassaggio('fine_locazione', 1, null, null)).toBe(false);
-        // Un valore rimasto nel modulo dopo che le coppie sono sparite (il coinquilino, un'altra data) non vale.
+        // Un valore rimasto nel modulo dopo che le coppie sono sparite (un'altra data) non vale.
         expect(conguaglioNonScrittoNelPassaggio('fine_locazione', 0, null, 'non_scrivere')).toBe(false);
     });
 

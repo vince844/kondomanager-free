@@ -4,6 +4,7 @@ namespace App\Actions\Subentro;
 
 use App\Models\Gestionale\Subentro;
 use App\Models\Saldo;
+use App\Services\Subentro\FermataDopoScrivi;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -56,10 +57,8 @@ final class AnnullaConguaglioAction
 
             // Decisione 67 (3), rilievo X6 della Fase 1-bis: le righe di questo conguaglio sono fra le fonti dell'arretrato agli eredi di una
             // successione dopo. Toglierle lascerebbe al defunto un credito finto e agli eredi un debito calcolato su righe che non ci sono più.
-            if (($successione = Subentro::successioneCheLeggeISaldi($righe->pluck('id')->all(), (int) $padre->condominio_id)) !== null) {
-                // Rilievo GC12 del giro: le righe degli eredi possono essere un credito, e conta la riga del defunto, non tutte e due.
-                throw ValidationException::withMessages(['conguaglio' => sprintf('Una riga di questo conguaglio è fra le cifre da cui è calcolato l\'arretrato di %s, passato agli eredi con la successione del %s: annullarlo lascerebbe sbagliate le righe degli eredi. Annulla prima la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione; se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale legato al passaggio di questo conguaglio, dal Wallet.',
-                    $successione->uscente?->nome ?? 'questa persona', \Carbon\CarbonImmutable::parse($successione->decorrenza)->locale('it')->translatedFormat('j F Y'))]);
+            if (($successione = self::successioneCheLeggeLaCoppia($padre)) !== null) {
+                throw ValidationException::withMessages(['conguaglio' => self::fraseDellaSuccessione($successione)]);
             }
 
             $assorbite = $righe->filter(fn (Saldo $s) => (bool) $s->is_applicato);
@@ -80,16 +79,21 @@ final class AnnullaConguaglioAction
             $nomiPersone = DB::table('anagrafiche')->whereIn('id', $entranti->pluck('anagrafica_id')->unique())->pluck('nome', 'id');
             // Decisione 77 (1.11.0-beta.50): nella locazione anche chi esce, con il segno dei saldi, come alla registrazione.
             $conChiEsce = $padre->tipo_passaggio === 'fine_locazione';
+            $delCambio = $conChiEsce && $padre->anagrafica_entrante_id !== null;
             $nomeUscente = $conChiEsce ? (string) (DB::table('anagrafiche')->where('id', $uscenteId)->value('nome') ?? ($padre->registro['nomi']['uscente'] ?? '?')) : '';
+            $persone = fn ($g) => [
+                ...($conChiEsce ? [['anagrafica_id' => $uscenteId, 'nome' => $nomeUscente, 'importo' => -(int) $g->sum('saldo_iniziale')]] : []),
+                ...$g->groupBy('anagrafica_id')
+                    ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($nomiPersone[$aid] ?? '?'), 'importo' => (int) $p->sum('saldo_iniziale')])
+                    ->values()->all(),
+            ];
             $regolato = $entranti->groupBy('gestione_id')
                 ->map(fn ($g, $id) => ['gestione_id' => (int) $id, 'gestione' => (string) ($nomi[$id] ?? '?'), 'importo' => (int) $g->sum('saldo_iniziale'),
                     // P3 della 1.11.0-beta.48: la cifra di ciascuna persona, come alla registrazione (`Subentro::regolatoFuoriDalleCoppie`).
-                    'persone' => [
-                        ...($conChiEsce ? [['anagrafica_id' => $uscenteId, 'nome' => $nomeUscente, 'importo' => -(int) $g->sum('saldo_iniziale')]] : []),
-                        ...$g->groupBy('anagrafica_id')
-                            ->map(fn ($p, $aid) => ['anagrafica_id' => (int) $aid, 'nome' => (string) ($nomiPersone[$aid] ?? '?'), 'importo' => (int) $p->sum('saldo_iniziale')])
-                            ->values()->all(),
-                    ]])
+                    'persone' => $persone($g)]
+                    // Coda 245 (1.11.0-beta.55): nel cambio d'inquilino le stesse cifre unità per unità (l'unità e le pertinenze spuntate), per il prospetto
+                    // degli oneri accessori, che è di un'unità sola (`RegolaDelPiano::regolatiDelCambio`).
+                    + ($delCambio ? ['per_unita' => $g->groupBy('immobile_id')->map(fn ($u, $iid) => ['immobile_id' => (int) $iid, 'persone' => $persone($u)])->values()->all()] : []))
                 ->values()->all();
 
             // Rilievo X8 della Fase 1-bis: con l'arretrato a nome del defunto la cifra che resta a lui era la sua posizione meno la coppia;
@@ -105,6 +109,34 @@ final class AnnullaConguaglioAction
 
             return $tolte;
         });
+    }
+
+    /**
+     * La successione con l'arretrato agli eredi che ha preso fra le sue fonti una riga di questo conguaglio (anche delle pertinenze, che vanno con il padre), se c'è.
+     * È la regola che `execute` applica e che lo storico dell'unità mostra: dove c'è, il conguaglio non si annulla, e lo storico non offre il comando.
+     */
+    public static function successioneCheLeggeLaCoppia(Subentro $padre): ?Subentro
+    {
+        $ids = $padre->pertinenze()->pluck('id')->push($padre->id)->all();
+
+        return Subentro::successioneCheLeggeISaldi(Saldo::whereIn('subentro_id', $ids)->pluck('id')->all(), (int) $padre->condominio_id);
+    }
+
+    /** Perché il conguaglio non si annulla se una successione ha letto la sua coppia, e la strada: prima la successione. */
+    public static function fraseDellaSuccessione(Subentro $successione): string
+    {
+        // Coda 357 (1.11.0-beta.55): la successione non si annulla finché sulla sua unità c'è un passaggio registrato dopo (l'ultimo registrato si annulla per primo): la
+        // strada li dice, dall'ultimo, e vanno registrati di nuovo anche loro.
+        $dopo = Subentro::where('immobile_id', (int) $successione->immobile_id)->whereNull('subentro_padre_id')->where('id', '>', (int) $successione->id)->orderByDesc('id')->get()
+            ->map(fn (Subentro $s) => FermataDopoScrivi::passaggioInParole($s))->values()->all();
+        $elenco = count($dopo) <= 1 ? (string) ($dopo[0] ?? '') : implode(', ', array_slice($dopo, 0, -1)) . ' e ' . end($dopo);
+        $strada = $dopo === []
+            ? 'Annulla prima la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione'
+            : sprintf('Annulla prima %s%s, poi la successione dallo storico dell\'unità, poi questo conguaglio, e registra di nuovo la successione e %s', $elenco, count($dopo) > 1 ? ' (dall\'ultimo)' : '', $elenco);
+
+        // Le righe degli eredi possono essere un credito, e conta la riga del defunto, non tutte e due.
+        return sprintf('Una riga di questo conguaglio è fra le cifre da cui è calcolato l\'arretrato di %s, passato agli eredi con la successione del %s: annullarlo lascerebbe sbagliate le righe degli eredi. %s; se la successione non si può più annullare, il conguaglio resta, e un accordo diverso fra le parti si scrive con un saldo manuale legato al passaggio di questo conguaglio, dal Wallet.',
+            $successione->uscente?->nome ?? 'questa persona', \Carbon\CarbonImmutable::parse($successione->decorrenza)->locale('it')->translatedFormat('j F Y'), $strada);
     }
 
     /**

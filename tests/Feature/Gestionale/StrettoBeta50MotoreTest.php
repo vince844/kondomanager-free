@@ -578,8 +578,12 @@ it('G4 (b) — Dora associata dal 1/3 al 30/6 prima della fine, la fine di Ines 
     $this->travel(30)->minutes();
     $fine = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'scrivi']);
 
-    // Controlli: alla registrazione Dora non restava, e la fine si legge così.
-    expect($fine->registro['fermata_coinquilino'] ?? [])->toBe([])
+    // Controlli: alla registrazione Dora non restava, e la fine si legge così. Dalla 1.11.0-beta.55 la fermata del coinquilino non si scrive più (`fermata_coinquilino`
+    // non c'è mai, e il controllo di prima era sempre vero): chi restava lo dicono `coinquilini_letti` (qui l'unità letta, e nessuno che restava) e la regola del piano di `conguaglio.piano`
+    // (assente).
+    expect($fine->registro['coinquilini_letti'] ?? null)->toBe([['immobile_id' => (int) $s['unita']->id, 'restano' => []]])
+        ->and($fine->registro['conguaglio'] ?? [])->not->toHaveKey('piano')
+        ->and($fine->registro['conguaglio']['scelta'])->toBe(Subentro::CONGUAGLIO_SCRITTO)
         ->and((int) $fine->registro['riga_max_id'])->toBeGreaterThanOrEqual($rigaDiDora);
     sbmComeAllaRegistrazione($s, $fine);
 

@@ -7,6 +7,30 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.55] - Il coinquilino che resta
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi e i passaggi già registrati
+restano com'erano.
+
+**Che cosa fa la beta.**
+- **La fine di una locazione con un coinquilino che resta chiede se scrivere il conguaglio, e lo calcola con la regola del piano.** Le
+  due scelte «Scrivi il conguaglio» e «Non scriverlo» ci sono anche quando esce uno solo dei conduttori e l'altro resta, se la regola del
+  piano cambia le parti: la parte dell'inquilino si ridivide per quota e per giorni fra chi è stato conduttore nell'anno, come in un piano
+  generato dopo l'uscita.
+- **I passaggi che vengono dopo, sulla stessa unità, dicono la loro differenza del piano:** la fine di un altro conduttore, il cambio
+  d'inquilino, l'inizio di un nuovo conduttore e una vendita. Dove una parte resta fuori dalle righe in saldi, il pannello «Cosa
+  cambierà» la dice con la persona e la cifra.
+- **Dove la locazione è continuata con un coinquilino, il prospetto degli oneri accessori divide con la regola del piano le voci che i
+  passaggi hanno cambiato,** anche sui preventivi generati dalla 1.10, e dice per ogni conduttore ciò che ha nelle sue rate, ciò che un
+  passaggio ha scritto in saldi e chi rimborsa chi. Dopo una fermata dice chi ha pagato i giorni della quota. Nel cambio d'inquilino non
+  fa dividere i giorni di chi esce a chi non li ha presi, e la sua testa non dice «vuoto» quando un piano approvato è rimasto fuori.
+- **Le fermate dicono la parte da regolare anche dove prima il programma taceva:** chi ha già la sua parte della coppia e compra
+  un'altra quota, chi ricompra la sua stessa parte, la nuda proprietà comprata il giorno in cui si estingue l'usufrutto, la successione di
+  chi aveva ricevuto una fermata, le righe aperte a mano. Le successioni di fila e la rivendita dell'erede dicono le cifre giuste.
+- **Guida.** La «Guida: registrare un passaggio» dice il comportamento di adesso.
+
+---
+
 ## [1.11.0-beta.54] - Le catene delle fermate
 
 **Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi e i passaggi già registrati

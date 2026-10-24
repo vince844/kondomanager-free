@@ -398,7 +398,8 @@ class PianoRate extends Model
             // Decisione 72 (1.11.0-beta.48): il conguaglio non scritto della successione non è un accordo fra le parti. Dalla .50 anche
             // quello della locazione (decisione 77): la frase dice di quale passaggio è.
             if ($p->conguaglioNonScritto() && ! $p->conguaglioAnnullato()) {
-                $nonScritti[$p->conguaglioInParole()][] = $cifra;
+                // Coda 245 (1.11.0-beta.55): con la regola del piano il ricalcolo addebita a ciascun conduttore la sua parte, per quota e per giorni.
+                $nonScritti[$p->conguaglioInParole() . '|' . (($p->registro['conguaglio']['piano'] ?? []) !== [] ? $p->aChiVannoIGiorni() : 'a ciascuno i suoi giorni')][] = $cifra;
             } else {
                 // R11 della Fase 1-bis della .50: alla fine senza un nuovo inquilino nessuno entra.
                 $parti[$p->aChiVannoIGiorni()][] = $cifra;
@@ -409,8 +410,9 @@ class PianoRate extends Model
         foreach ($parti as $aChi => $cifre) {
             $frasi[] = sprintf('Le parti hanno già regolato fra loro %s: ricalcolando, il condominio addebita %s, e quell\'accordo va rifatto fra le parti.', implode('; ', $cifre), $aChi);
         }
-        foreach ($nonScritti as $diChe => $cifre) {
-            $frasi[] = sprintf('Il conguaglio %s non è stato scritto (%s): ricalcolando, il condominio addebita a ciascuno i suoi giorni, e la posizione lasciata com\'era cambia.', $diChe, implode('; ', $cifre));
+        foreach ($nonScritti as $chiave => $cifre) {
+            [$diChe, $aChi] = explode('|', (string) $chiave, 2);
+            $frasi[] = sprintf('Il conguaglio %s non è stato scritto (%s): ricalcolando, il condominio addebita %s, e la posizione lasciata com\'era cambia.', $diChe, implode('; ', $cifre), $aChi);
         }
 
         return $frasi === [] ? null : implode(' ', $frasi);

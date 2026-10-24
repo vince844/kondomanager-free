@@ -73,8 +73,8 @@ export function passaggioConLaScelta(tipo: string | null | undefined): boolean {
 
 /**
  * Decisione 77 (1.11.0-beta.50): quando il modulo chiede la scelta. Alla fine di una locazione basta una coppia proposta (un piano che
- * non si riscrive più), e la scelta è una sola per l'appartamento e le pertinenze spuntate; con un coinquilino che resta il pannello non
- * propone coppie (decisione 79), e la scelta non c'è. Negli altri passaggi la regola della .48, `sceltaConguaglioRichiesta`: la
+ * non si riscrive più), e la scelta è una sola per l'appartamento e le pertinenze spuntate; dalla 1.11.0-beta.55 anche con un coinquilino che
+ * resta, dove la coppia è della regola del piano (Coda 245). Negli altri passaggi la regola della .48, `sceltaConguaglioRichiesta`: la
  * successione e il legato con l'arretrato a nome del defunto (l'arretrato c'è solo lì). La stessa regola del server
  * (`AnteprimaPassaggio::sceltaDelConguaglio`, `RegistraSubentroAction`).
  */

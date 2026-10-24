@@ -58,8 +58,14 @@ describe('la strada a mano nelle guide: il Wallet, con i saldi legati al passagg
         expect(testo(PassaggioProprietaGuide)).toContain('In ognuno di questi casi, se serve un conguaglio, si scrive dal Wallet con saldi legati al passaggio, sulla stessa gestione: non occupano il posto di un riporto e si tolgono se annulli il passaggio.');
     });
 
-    test('PassaggioProprietaGuide — il coinquilino che resta: la strada della fermata, i saldi legati al passaggio', () => {
-        expect(testo(PassaggioProprietaGuide)).toContain('la strada a mano è quella della fermata qui sopra: i saldi dal Wallet legati al passaggio, una riga a credito di chi esce e una a debito di chi li paga.');
+    // 1.11.0-beta.55, Coda 245: con un coinquilino che resta il conguaglio si sceglie (la regola del piano), e non c'è più la fermata del coinquilino.
+    // La strada a mano resta il Wallet con i saldi legati al passaggio, per il resto della regola del piano dei passaggi dopo (la parte di chi era già
+    // uscito che la fine di un altro conduttore non scrive): la guida lo dice lì, non più «quella della fermata qui sopra».
+    test('PassaggioProprietaGuide — il coinquilino che resta: il resto dei passaggi dopo, i saldi legati al passaggio', () => {
+        const t = testo(PassaggioProprietaGuide);
+
+        expect(t).toContain('chiede la spunta; la strada a mano sono i saldi dal Wallet legati al passaggio');
+        expect(t).not.toContain('la strada a mano è quella della fermata qui sopra: i saldi dal Wallet legati al passaggio, una riga a credito di chi esce e una a debito di chi li paga.');
     });
 
     test('PassaggioProprietaGuide — il cancello del defunto: i saldi legati alla successione o di prima che sono la parte ci sono già; con saldi di altra cifra, o con il piano che non li applica, il programma non sa', () => {

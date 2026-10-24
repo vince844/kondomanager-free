@@ -6,8 +6,9 @@
  *
  * Alla fine di una locazione, senza un nuovo inquilino o con uno (il cambio d'inquilino), quando il pannello propone coppie ci sono
  * le due voci della successione della .48, «Scrivi il conguaglio» e «Non scriverlo», senza nessuna già scelta, al posto della casella
- * «Le parti hanno regolato il conguaglio fra loro». Con un coinquilino che resta il pannello non propone coppie: né la scelta né la
- * casella, e la frase della fermata (decisioni 79 e 80) arriva dal server fra le frasi del blocco 2.
+ * «Le parti hanno regolato il conguaglio fra loro». Con un coinquilino che resta, dalla 1.11.0-beta.55 (Coda 245), il pannello propone la
+ * coppia della regola del piano e la scelta c'è anche lì (i testi in `AnteprimaPassaggioCoinquilinoPiano.test.ts`); la fermata del coinquilino
+ * delle beta .50–.53 non arriva più dal server.
  *
  * I JSON sono quelli dell'anteprima vera, ricavati con uno script PHP sugli scenari di `ScenariFineLocazione.php` (prefisso `fcl`: Ugo
  * proprietario dell'Interno 1, Ines inquilina dal 2019, «Spese generali» € 1.200,00 con il 30 % all'inquilino, le rate gennaio–giugno
@@ -19,8 +20,8 @@
  * Presidia: le due voci senza preselezione e senza la casella, nella fine senza un nuovo inquilino e nel cambio d'inquilino; i testi
  * delle due voci per la locazione (chi paga al posto dell'inquilino o chi entra; la strada A′ con il prospetto degli oneri accessori);
  * il riquadro «da scegliere», «proposto», «non scritto» e il piede della tabella che segue la scelta; le frasi del calcolo che
- * spariscono con «Non scriverlo»; la tabella delle coppie per persona con due persone al posto dell'inquilino; il coinquilino senza
- * scelta né casella, con la frase della fermata. Controllo: la vendita tiene la casella.
+ * spariscono con «Non scriverlo»; la tabella delle coppie per persona con due persone al posto dell'inquilino; il coinquilino con la
+ * scelta, senza la casella. Controllo: la vendita tiene la casella.
  *
  * Cosa NON copre: il server (le frasi, le cifre, il cancello: i test PHP della .50); il modulo `PassaggioNew.vue` (la conferma spenta
  * finché la scelta manca, la scelta che si rifà quando cambia chi esce o chi entra, la scelta mandata con l'anteprima); il modo scuro
@@ -92,7 +93,6 @@ function fineSenza(rita = false): any {
                 ...(rita ? ['Sulla gestione Ordinaria 2026 il debito di € 181,48 si divide fra chi paga al posto dell\'inquilino nei giorni dopo l\'uscita, per quota e per giorni: € 108,89 a Ugo, € 72,59 a Rita.'] : []),
             ],
             scelta_del_conguaglio: true,
-            fermata_coinquilino: [],
         },
         cancello: { richiesto: true, motivi: ['6 quote di rate già emesse a Ines su questa unità'], informazioni: [], avvisi: [] },
     };
@@ -111,25 +111,16 @@ function cambio(): any {
 }
 
 /**
- * La fermata del coinquilino (Ines e Dora al 50 %, Ines esce, Dora resta): nessuna coppia, la frase con la cifra e la persona; la strada a mano
- * sono i saldi dal Wallet legati al passaggio, come la frase che il server manda (`Beta53FrasiStradaLegataTest.php`).
+ * Il coinquilino che resta (Ines e Dora al 50 %, Ines esce, Dora resta), dalla 1.11.0-beta.55: la coppia della regola del piano, Ines − € 60,66 e
+ * Dora + € 60,66 (`Beta55CoinquilinoCoppiaDelPianoTest`). Prima della .55 il server non proponeva coppie e mandava la fermata del coinquilino.
  */
-const FERMATA = 'La locazione continua con Dora: il programma non propone il conguaglio dei giorni dopo l\'uscita di Ines (€ 90,74 sulla gestione Ordinaria 2026), che restano nelle rate di Ines, e non sceglie chi li paga: lo decidono le parti. Se li paga Dora, o il proprietario, registra dal Wallet i saldi legati a questo passaggio, sulla stessa gestione: una riga a credito di Ines e una a debito di chi li paga.';
 function coinquilino(): any {
     const dati = fineSenza();
-    dati.rate.emesse = emesse(1500, '€ 15,00');
-    dati.rate.totale_emesso = 9000;
-    dati.rate.totale_emesso_formattato = '€ 90,00';
-    dati.rate.morosita = { importo: 9000, importo_formattato: '€ 90,00', intestatario: 'Ines' };
-    dati.rate.conguaglio = null;
-    dati.rate.frasi = [
-        'Le rate già emesse non si toccano: le 6 quote intestate a Ines (€ 90,00) restano sue.',
-        'Ines ha € 90,00 scaduti e non pagati. Restano suoi: il conguaglio si calcola sulla competenza, non sui pagamenti.',
-        FERMATA,
-    ];
-    dati.rate.frasi_del_conguaglio = [];
-    dati.rate.scelta_del_conguaglio = false;
-    dati.rate.fermata_coinquilino = [{ immobile_id: 1, unita: 'Interno 1', gestione_id: 1, gestione: 'Ordinaria 2026', esercizio_id: 1, cifra: 9074, persona_id: 2, persona: 'Ines', restano: ['Dora'], wallet: true }];
+    dati.rate.conguaglio.coppie = [{ ...coppia(4, 'Dora', 6066, '€ 60,66'), regola: 'piano' }];
+    dati.rate.conguaglio.regola = 'piano';
+    dati.rate.conguaglio.totale_entrante = 6066;
+    dati.rate.conguaglio.totale_entrante_assoluto_formattato = '€ 60,66';
+    dati.rate.frasi_del_conguaglio = ['Sulla gestione Ordinaria 2026, con la regola del piano: € 60,66 a credito di Ines e € 60,66 a debito di Dora.'];
 
     return dati;
 }
@@ -241,17 +232,21 @@ describe('AnteprimaPassaggio — il cambio d\'inquilino (1.11.0-beta.50, decisio
     });
 });
 
-describe('AnteprimaPassaggio — il coinquilino che resta (1.11.0-beta.50, decisioni 79 e 80)', () => {
-    test('nessuna scelta e nessuna casella: il pannello non propone coppie', () => {
+describe('AnteprimaPassaggio — il coinquilino che resta (Coda 245, 1.11.0-beta.55)', () => {
+    // Prima della .55 qui c'erano «nessuna scelta e nessuna casella» e la frase della fermata del coinquilino (decisioni 79 e 80): la Coda 245
+    // le toglie, la scelta c'è come nelle altre fini. I testi delle voci e del piede sono in `AnteprimaPassaggioCoinquilinoPiano.test.ts`.
+    test('le due voci, nessuna già scelta, e nessuna casella: la scelta c\'è anche con il coinquilino', () => {
         const w = monta(coinquilino());
-        expect(radio(w)).toHaveLength(0);
+        expect(radio(w).map((r) => r.checked)).toEqual([false, false]);
         expect(w.text()).not.toContain(CASELLA);
-        expect(w.text()).not.toContain('Scegli se scrivere il conguaglio.');
-        expect(w.text()).not.toMatch(/conguaglio (da scegliere|proposto|non scritto)/);
+        expect(w.text()).toContain('conguaglio da scegliere');
+        expect(w.text()).toContain('La parte dell\'inquilino si ridivide per quota e per giorni fra chi è stato conduttore');
     });
 
-    test('la frase della fermata si vede, con la cifra, la persona e la strada a mano', () => {
-        expect(monta(coinquilino()).text()).toContain(FERMATA);
+    test('il piede dice credito a chi esce e debito a chi riceve, con la riga di Dora', () => {
+        const w = monta(coinquilino(), 'scrivi');
+        expect(w.text()).toContain('Credito a chi esce, debito a chi riceve');
+        expect(w.findAll('td').map((td) => td.text())).toContain('a Dora');
     });
 });
 

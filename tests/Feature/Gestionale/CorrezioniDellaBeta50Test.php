@@ -103,17 +103,22 @@ it('rilievo 2 — il cambio in due passi nello stesso giorno (fine di Ines il 1/
 ]);
 
 it('rilievo 2, la guardia — un coinquilino vero resta coinquilino: Dora, inquilina con Ines dal 2019, c\'è il giorno prima dell\'uscita e il giorno stesso, e lo storico della fine di Ines dice «la locazione continua con Dora»', function (bool $seiRate) {
-    // Con le sei rate il pannello scrive nel registro la fermata del coinquilino; con il piano non emesso non c'è niente da fermare e
-    // il registro non la porta: la regola guarda le righe. In tutti e due i casi Dora resta coinquilina.
+    // Con le sei rate il pannello propone la coppia della regola del piano e la scelta (Coda 245, 1.11.0-beta.55: fino alla .54 scriveva nel
+    // registro la fermata del coinquilino), e il registro conserva i coinquilini letti; con il piano non emesso non c'è niente da conguagliare e
+    // il registro non li porta: la regola guarda le righe. In tutti e due i casi Dora resta coinquilina.
     $s = cdb50Scenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]], $seiRate);
-    $fine = fclRegistra($this, $s, fclModulo($s));
+    $fine = fclRegistra($this, $s, fclModulo($s) + ($seiRate ? ['conguaglio' => 'scrivi'] : []));
 
     expect(fclStorico($s, $fine))->toContain('Dal 1 luglio 2026 la locazione continua con Dora:');
     if ($seiRate) {
-        // Il registro e il prospetto, la strada C: la parte di Ines dopo l'uscita, 18000 × [181, 184] / 365 = 8926,03 / 9073,97 →
-        // 9074, resta nelle sue rate e chi la paga lo decidono le parti.
-        expect(collect($fine->registro['fermata_coinquilino'] ?? [])->pluck('immobile_id')->all())->toBe([(int) $s['unita']->id])
-            ->and(cdb50VociDelProspetto($s, 'Ines')->contains(fn ($v) => ($v['strada'] ?? null) === 'C' && (int) $v['importo'] === 9074))->toBeTrue();
+        // Il registro: la regola del piano (Ines − 6066, Dora + 6066), nessuna fermata del coinquilino. Il prospetto la legge con la regola del piano (Coda 245,
+        // 1.11.0-beta.55): Ines 36000 × 9050/27300 = 11934,07 → 11934 per i suoi 181 giorni, con € 180,00 nelle sue rate; prima diceva la strada C della fermata del
+        // coinquilino (la parte di Ines dopo l'uscita, 9074, nelle sue rate, «lo decidono le parti»).
+        expect(collect($fine->registro['conguaglio']['piano'] ?? [])->pluck('immobile_id')->all())->toBe([(int) $s['unita']->id])
+            ->and($fine->registro)->not->toHaveKey('fermata_coinquilino')
+            ->and(collect($fine->registro['coinquilini_letti'] ?? [])->pluck('restano')->flatten()->all())->toBe(['Dora'])
+            ->and(cdb50VociDelProspetto($s, 'Ines')->map(fn ($v) => [$v['modo'], $v['strada'] ?? null, (int) $v['importo'], (int) ($v['nelle_rate'] ?? 0), $v['giorni']])->values()->all())
+                ->toBe([['piano', 'P', 11934, 18000, 181]]);
     }
 })->with([
     'sei rate a giornale, il registro ha la fermata del coinquilino' => [true],
@@ -126,17 +131,34 @@ it('rilievo 2, con il registro — Dora esce il 1/7 mentre Ines resta, poi Ines 
     // strada C. Lo storico ricalcolava sulle righe correnti: chiusa la riga di Ines al 30/6, il 1/7 Ines «non c'era» e la frase della
     // fine di Dora diventava «tornano a Ugo», il contrario di ciò che aveva detto il pannello quando la fine è stata registrata; ora
     // legge il registro.
+    // Coda 245 (1.11.0-beta.55): la fine di Dora, con Ines che resta, ha la scelta (la regola del piano): qui «Scrivi», Dora − 6066 e Ines + 6066.
+    // Fino alla .54 la fine di Dora non aveva scelta e scriveva nel registro la fermata del coinquilino.
     $s = cdb50Scenario($this, [['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
-    $dora = fclRegistra($this, $s, fclModulo($s, null, '2026-07-01', [], 'Dora'));
+    $dora = fclRegistra($this, $s, fclModulo($s, null, '2026-07-01', [], 'Dora') + ['conguaglio' => 'scrivi']);
     $prima = fclStorico($s, $dora);
-    fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere']);
+    // Coda 245 (1.11.0-beta.55): la fine di Ines lo stesso giorno sta sull'anello della fine di Dora (decisione 95.6 b): la differenza del piano del
+    // passaggio, Dora 11934 e Ines 24066 prima, Dora 8926, Ines 8926 e Ugo 18148 dopo, cioè Ines − 15140 → Ugo, e restano fuori Dora − 3008 e Ugo + 3008
+    // (C6.5a a parti scambiate). Con «Non scriverlo» nessuna riga e nessun resto nel registro: il prospetto dice chi rimborsa chi.
+    $ines = fclAnteprima($this, $s, fclModulo($s));
+    expect(fclCoppie($ines))->toBe([[(int) $s['unita']->id, 'Ugo', 15140]])
+        ->and(collect($ines['rate']['resto_del_piano'][0]['parti'] ?? [])->pluck('cifra', 'nome')->all())->toBe(['Dora' => -3008, 'Ugo' => 3008]);
+    $fineInes = fclRegistra($this, $s, fclModulo($s) + ['conguaglio' => 'non_scrivere'])->fresh();
+    expect(fds50Coppia($s, $fineInes))->toBe([])
+        ->and($fineInes->registro)->not->toHaveKey('resto_del_piano');
 
     // Controlli: prima dell'uscita di Ines lo storico dice che la locazione continua con lei; il registro della fine di Dora
-    // porta la fermata del coinquilino, e il prospetto, registrata anche l'uscita di Ines, dà a Dora la strada C: la sua parte dopo
-    // l'uscita, 18000 × 184/365 = 9073,97 → 9074, resta nelle sue rate.
+    // porta i coinquilini letti (Ines) e la regola del piano. Il prospetto, registrata anche l'uscita di Ines, la legge con la regola del piano (Coda 245,
+    // 1.11.0-beta.55): Dora e Ines 36000 × 90,5/365 = 8926,03 → 8926 ciascuna per i loro 181 giorni, Ugo i 184 giorni dopo, 18148; con la coppia di Dora (− 6066)
+    // e la fine di Ines non scritta Ugo restituisce 3008 a Dora e 15140 a Ines. Prima dava a Dora la strada C della fermata del coinquilino (9074 nelle sue rate).
     expect($prima)->toContain('Dal 1 luglio 2026 la locazione continua con Ines:')
-        ->and(collect($dora->registro['fermata_coinquilino'] ?? [])->pluck('restano')->flatten()->all())->toBe(['Ines'])
-        ->and(cdb50VociDelProspetto($s, 'Dora')->contains(fn ($v) => ($v['strada'] ?? null) === 'C' && (int) $v['importo'] === 9074))->toBeTrue();
+        ->and(collect($dora->registro['coinquilini_letti'] ?? [])->pluck('restano')->flatten()->all())->toBe(['Ines'])
+        ->and(collect($dora->registro['conguaglio']['piano'][0]['parti'] ?? [])->sort()->values()->all())->toBe([-6066, 6066])
+        ->and(cdb50VociDelProspetto($s, 'Dora')->map(fn ($v) => [$v['modo'], (int) $v['importo'], (int) ($v['nelle_rate'] ?? 0), $v['giorni']])->values()->all())->toBe([['piano', 8926, 18000, 181]]);
+    $prospetto = app(\App\Services\Riparto\ProspettoOneriAccessori::class)->calcola($s['unita']->fresh(), $s['e']);
+    expect(collect(collect($prospetto['conduttori'])->firstWhere('nome', 'Dora')['regola_del_piano']['rimborsi'])->map(fn ($r) => [$r['verso'], $r['nome'], (int) $r['importo']])->all())->toBe([['da', 'Ugo', 3008]])
+        ->and(collect($prospetto['senza_conduttore']['regola_del_piano']['rimborsi'])->map(fn ($r) => [$r['chi'], $r['verso'], $r['nome'], (int) $r['importo']])->sortBy(fn ($r) => $r[2])->values()->all())
+            ->toBe([['Ugo', 'a', 'Dora', 3008], ['Ugo', 'a', 'Ines', 15140]])
+        ->and((int) $prospetto['senza_conduttore']['totale'])->toBe(18148);
 
     $dopo = fclStorico($s, $dora);
     expect($dopo)->not->toContain('tornano a Ugo')

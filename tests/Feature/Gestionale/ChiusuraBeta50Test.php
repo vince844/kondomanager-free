@@ -609,24 +609,27 @@ it('punto 3, il ripiego su chi pagava prima — la coppia di segno misto, Elsa v
         ->and(cb50RimborsatiDaLuca($rate))->toBe(['Elsa'], 'Il pannello non fa rimborsare a Luca solo Elsa: ' . $rate);
 });
 
-it('punto 3, il confine della strada A′ — Ines e Dora coinquiline al 50 %, l\'«Affitto antenna» € 400,00 a competenza 1/10–31/12, Ines esce il 1/7 e Dora resta: la voce tutta dopo l\'uscita resta nelle rate di Ines, senza restituzione e senza nessuno che la paghi', function () {
-    // Decisione 79: con un coinquilino che resta la scelta del conguaglio non c'è, i giorni dopo l'uscita restano nelle rate di chi esce, e
-    // chi li paga lo decidono le parti. La parte di Ines è metà: le spese 18000, prima dell'uscita 18000 × 181/365 = 8926,03 → 8926, dopo
-    // 9074; l'antenna 12000 / 2 = 6000, tutta dopo l'uscita. Ines: totale e nelle sue rate 8926 + 9074 − 6000 = 12000, da rimborsare 0; Dora
-    // 18000 − 6000 = 12000. È il confine della correzione del punto 2: la strada A′ per la voce tutta dopo l'uscita non vale per il
-    // coinquilino (strada C), che lascia il denaro dov'è.
+it('punto 3, il confine della strada A′ — Ines e Dora coinquiline al 50 %, l\'«Affitto antenna» € 400,00 a competenza 1/10–31/12, Ines esce il 1/7 e Dora resta: la voce tutta dopo l\'uscita la regola del piano la dà a Dora, e il prospetto non fa restituire niente a Ines', function () {
+    // Coda 245 (1.11.0-beta.55): con un coinquilino che resta la fine ha la scelta e la regola del piano (prima: decisione 79, nessuna scelta, la voce
+    // dopo l'uscita nelle rate di Ines, «lo decidono le parti»). Qui «Scrivi». Le spese, 36000 (congelate 18000 e 18000): Ines 50 × 181 = 9050, Dora 50 × 365 = 18250,
+    // 36000 × 9050/27300 = 11934,07 → Ines 11934, Dora 24066 (∓ 6066). L'antenna, − 12000 (congelata − 6000 e − 6000), tutta dopo l'uscita: nella sua competenza
+    // c'è solo Dora, − 12000 (Ines + 6000, Dora − 6000). La coppia Ines − 66, Dora + 66. Il prospetto: Ines 11934 + 0 = 11934, nelle sue rate 18000 − 6000 = 12000, con
+    // il conguaglio − 66, niente da rimborsare né da restituire; Dora 24066 − 12000 = 12066, nelle sue rate 12000, con il conguaglio + 66. È ancora il confine della
+    // correzione del punto 2: la voce tutta dopo l'uscita non va «da restituire» a chi è uscito.
     $s = fclScenario([['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 50], ['Dora', 50]]]);
     cb50Capitolo($s, 'Affitto antenna', 'entrata', 40000, '2026-10-01', '2026-12-31');
     fclGenera($s);
     fclEmetti($this, $s, '2026-06-30');
-    $s['fine'] = fclRegistra($this, $s, fclModulo($s));
+    $s['fine'] = fclRegistra($this, $s, ['quota' => 50] + fclModulo($s) + ['conguaglio' => 'scrivi']);
     fclEmetti($this, $s, '2026-09-30');
     $p = pflProspetto($s);
 
-    expect(fclSaldi($s))->toBe([])
-        ->and(cb50Voci($p, 'Ines'))->toBe([['Affitto antenna', 'rate', null, -6000, 92], ['Spese generali', 'rate', null, 8926, 181], ['Spese generali', 'rate', null, 9074, 184]])
-        ->and(cb50Totali($p, 'Ines'))->toBe([12000, 12000, 0])
-        ->and(cb50Totali($p, 'Dora'))->toBe([12000, 12000, 0])
+    expect(fclSaldi($s))->toBe(['Dora' => 66, 'Ines' => -66])
+        ->and(cb50Voci($p, 'Ines'))->toBe([['Spese generali', 'piano', null, 11934, 181]])
+        ->and(cb50Voci($p, 'Dora'))->toBe([['Affitto antenna', 'piano', null, -12000, 92], ['Spese generali', 'piano', null, 24066, 365]])
+        ->and(cb50Totali($p, 'Ines'))->toBe([11934, 12000, 0])
+        ->and(cb50Totali($p, 'Dora'))->toBe([12066, 12000, 0])
+        ->and(collect(pflSezione($p, 'Ines')['voci'])->firstWhere('conto', 'Affitto antenna')['nelle_rate'] ?? null)->toBe(-6000)
         ->and(cb50Senza($p))->toBe([]);
 });
 
