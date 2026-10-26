@@ -45,7 +45,7 @@ use Illuminate\Support\Facades\DB;
  * Dalla 1.11.0-beta.50 (decisioni 32, 77 e 79) il prospetto legge anche la fine di una locazione senza un nuovo inquilino e il cambio
  * d'inquilino con «Non scriverlo»: con «Scrivi il conguaglio» i giorni dopo l'uscita li ha pagati chi sta al posto dell'inquilino; con
  * «Non scriverlo», o senza la scelta (le fini registrate prima), restano nelle rate di chi esce e gli si restituiscono (strada A′); con
- * un coinquilino che resta, nelle fini registrate dalle beta .50–.53 con la fermata del coinquilino, restano nelle rate di chi esce, e chi
+ * un coinquilino che resta, nelle fini registrate dalle beta .50–.54 con la fermata del coinquilino, restano nelle rate di chi esce, e chi
  * li paga lo decidono le parti (strada C). Dopo «Annulla il conguaglio» le parti hanno regolato fra loro, e il prospetto non li tocca
  * (decisioni 43 e 46). Nel cambio d'inquilino con «Non scriverlo» i giorni di chi esce li rimborsa chi è entrato, non un coinquilino che
  * restava (Coda 358).
@@ -346,8 +346,8 @@ final class ProspettoOneriAccessori
         $frasiDellUscita = [...$this->frasiDellUscita($voci, $senza, (int) $unita->id, count($pianiLetti) > 1), ...$frasiDelPiano];
         // Il «pagata da …» della fine di una locazione: chi è uscito (strada A′) o chi paga al posto dell'inquilino (strada B).
         $pagateAllaFine = collect([...array_merge([], ...array_values($voci)), ...$senza])->contains(fn ($v) => in_array($v['strada'] ?? null, ['A', 'B'], true) && ! empty($v['pagato_da']));
-        // Coda 364: e chi è entrato con il conguaglio di un cambio d'inquilino, per i giorni di un conduttore entrato dopo.
-        $pagateDopoIlCambio = collect(array_merge([], ...array_values($voci)))->contains(fn ($v) => ($v['modo'] ?? null) === 'entrato_dopo');
+        // Coda 364: e chi è entrato con il conguaglio di un cambio d'inquilino, per i giorni di un conduttore entrato dopo. Coda 366: o con la parte regolata fra le parti.
+        $pagateDopoIlCambio = self::modiDegliEntratiDopo(array_merge([], ...array_values($voci)));
 
         return [
             'unita'         => ['id' => (int) $unita->id, 'etichetta' => $unita->etichetta_estesa],
@@ -435,6 +435,8 @@ final class ProspettoOneriAccessori
      *
      * Decisioni 32, 77 e 79 (1.11.0-beta.50): anche la fine di una locazione senza un nuovo inquilino, e il cambio d'inquilino con «Non
      * scriverlo», spezzano la voce: il pezzo «uscita» di `catenaDeiConduttori` lo divide `dividiDopoLUscita`, con la strada della fine.
+     * Coda 369: dopo un cambio della catena, dei giorni dopo l'uscita di chi era entrato che restano a lui (la strada A′, e nella B i giorni che nessuno copriva) il
+     * già versato gli va accanto, e la riga «già versato» di chi ha la riga lo toglie.
      *
      * @param Collection<int, array<string,mixed>> $gruppo
      * @param array<string, int> $spostato
@@ -478,15 +480,18 @@ final class ProspettoOneriAccessori
                     continue;
                 }
                 $voci[$pz['anagrafica_id']][] = $base($r, $competenza) + ['importo' => $suo, 'giorni' => $pz['giorni'], 'tratti' => $pz['tratti'], 'modo' => $pz['modo'], 'pagato_da' => null, 'conguaglio_del' => $pz['conguaglio_del']];
-                if ($pz['modo'] === 'conguaglio') {
+                // Coda 366: anche il pezzo «regolato fra le parti» della catena della decisione 83.3 (il conguaglio annullato, poi l'uscita «Scrivi» di chi era entrato):
+                // chi è stato conduttore nei suoi giorni li divide come nel cambio scritto, e le due catene danno gli stessi numeri (decisione 84.1).
+                if ($pz['modo'] === 'conguaglio' || $pz['modo'] === 'regolato') {
                     $this->chiEntraDopoIlCambio($pz, $r, $competenza, (int) $partiNette[$i][$j], $immobileId, $base, $partecipanti, $righeInquilino, $voci);
                 }
             }
         }
         foreach ($lordi as $i => $pz) {
+            $passa = $i > 0 ? (int) $pz['importo'] - (int) $netti[$i]['importo'] : 0;
             if (isset($pz['uscita'])) {
                 // Strada B: la parte del già versato «dell'unità» dei giorni dopo l'uscita è passata con la coppia, e la riga «già versato»
-                // di chi esce la toglie. Strada A′ e coinquilino: resta sua (le rate sono sue), e la restituzione è già al netto.
+                // di chi ha la riga la toglie. Strada A′ e coinquilino: resta a chi esce, e la restituzione è già al netto.
                 if ($pz['uscita']['strada'] === 'B') {
                     $chiave = $anagraficaId . '|' . (int) ($primo['conto_id'] ?? 0);
                     // R2: dei giorni che nessuno copriva il già versato resta a chi esce, come nella strada A′.
@@ -494,12 +499,17 @@ final class ProspettoOneriAccessori
                     $passato = $scoperti === null ? (int) $pz['importo'] - (int) $netti[$i]['importo']
                         : self::copertaEScoperta((int) $pz['importo'], $pz['tratti'], $scoperti)[0] - self::copertaEScoperta((int) $netti[$i]['importo'], $pz['tratti'], $scoperti)[0];
                     $spostato[$chiave] = ($spostato[$chiave] ?? 0) + $passato;
+                    $passa -= $passato;
                 }
-                continue;
+                // Coda 369: se chi esce ha la riga, la parte che gli resta è già nella sua riga «già versato» (le rate sono sue). Se era entrato con il conguaglio di un
+                // cambio della catena, o con la parte regolata fra le parti, quei giorni li ha pagati con la coppia, al netto: la parte gli va accanto, come per il suo
+                // pezzo prima dell'uscita, e la riga di chi ha la riga la toglie.
+                if ($pz['modo'] === 'rate') {
+                    continue;
+                }
             }
             // Decisione 84.1: anche il pezzo «regolato fra le parti» (83.3) si porta la parte del già versato dei suoi giorni, come nel cambio
             // scritto: le due catene danno gli stessi numeri.
-            $passa = $i > 0 ? (int) $pz['importo'] - (int) $netti[$i]['importo'] : 0;
             if ($passa === 0) {
                 continue;
             }
@@ -521,6 +531,9 @@ final class ProspettoOneriAccessori
      * ricevere, o da restituire se in quei giorni l'entrata supera la spesa (`entrato_dopo`). La sua voce «con il conguaglio» resta quella della coppia.
      * Come nella strada A′ (Code 358 e 360) non dividono i coinquilini di chi aveva la riga al primo cambio della catena, né chi ne ha preso il posto:
      * i loro giorni sono nelle loro rate. Senza nessun altro nei giorni del pezzo la voce resta com'è; una parte da zero non è una voce.
+     * Coda 366: anche il pezzo «regolato fra le parti» della decisione 83.3, che chi è entrato ha pagato con l'accordo fra le parti e non con il conguaglio:
+     * le voci che scrive lo portano (`regolato`), e la stampa non dice «con il conguaglio».
+     * Coda 367: un pezzo con `regolato_il` (un passaggio di chi è entrato regolato fra le parti, senza una fine «Scrivi» dopo) si divide solo nei giorni prima di quel giorno.
      *
      * @param array<string, mixed> $pz il pezzo di `catenaDeiConduttori`, con `cambio`
      * @param array<string, mixed> $r la riga del riparto
@@ -530,9 +543,20 @@ final class ProspettoOneriAccessori
         $chi = (int) $pz['anagrafica_id'];
         $cambio = $pz['cambio'];
         $restano = $this->uscite['restano|' . $cambio['passaggio']->id] ??= $this->coinquiliniEChiNeHaPresoIlPosto($immobileId, (int) $cambio['uscente'], $cambio['passaggio']);
+        $modo = $pz['modo'] === 'regolato' ? ['regolato' => true] : [];
+        // Coda 367 (decisioni 43, 46 e 83.3): dal giorno di un passaggio di chi è entrato che le parti hanno regolato fra loro (`regolato_il`: il conguaglio annullato, o la
+        // casella di prima della .50), senza una fine «Scrivi» dopo, il prospetto non va oltre l'accordo: si divide solo la parte dei giorni prima, e il resto resta nella voce.
+        $tratti = $pz['tratti'];
+        if (isset($pz['regolato_il'])) {
+            if ($pz['regolato_il'] <= $tratti->dal()->toDateString()) {
+                return;
+            }
+            $netto = (int) ProRataTemporis::dividi($netto, $tratti, $pz['regolato_il'])['uscente'];
+            $tratti = $tratti->intersezione(new PeriodoCompetenza($tratti->dal(), CarbonImmutable::parse($pz['regolato_il'])->subDay()));
+        }
         $v = [];
         $sc = [];
-        $this->dividiSuiConduttori($netto, $pz['tratti'], (string) Anagrafica::whereKey($chi)->value('nome'), $base($r, $competenza) + ['conguaglio_del' => $pz['conguaglio_del']],
+        $this->dividiSuiConduttori($netto, $tratti, (string) Anagrafica::whereKey($chi)->value('nome'), $base($r, $competenza) + ['conguaglio_del' => $pz['conguaglio_del']] + $modo,
             $partecipanti->reject(fn ($p) => in_array((int) $p->anagrafica_id, $restano, true))->values(), $righeInquilino, $v, $sc);
         unset($v[$chi]);
         // I giorni senza nessun conduttore restano nella voce di chi ha il conguaglio, come prima.
@@ -543,7 +567,7 @@ final class ProspettoOneriAccessori
             }
             $voci[$anagraficaId] = [...($voci[$anagraficaId] ?? []), ...$lista];
             $voci[$chi][] = array_replace($base($r, $competenza), ['importo' => -$parte, 'giorni' => null, 'tratti' => null, 'modo' => 'entrato_dopo', 'pagato_da' => null,
-                'conguaglio_del' => $pz['conguaglio_del'], 'da_chi' => (string) Anagrafica::whereKey((int) $anagraficaId)->value('nome')]);
+                'conguaglio_del' => $pz['conguaglio_del'], 'da_chi' => (string) Anagrafica::whereKey((int) $anagraficaId)->value('nome')] + $modo);
         }
     }
 
@@ -1025,6 +1049,9 @@ final class ProspettoOneriAccessori
      * con «Scrivi» nell'ultimo giro, con ogni scelta dalla chiusura della .50); allora il primo pezzo non ha giorni né importo, e la voce è
      * tutta il pezzo dopo l'uscita.
      *
+     * Coda 379: dopo un passaggio che le parti hanno regolato fra loro (decisioni 43 e 46), senza la catena della 83.3, il pezzo che resta va fino alla prossima uscita di chi lo ha,
+     * con un conguaglio suo (`uscitaDopoLAccordo`), e la catena riparte da lì; prima andava sempre fino alla fine della voce.
+     *
      * @return list<array{anagrafica_id: int, importo: int, giorni: int, modo: string, conguaglio_del: ?string, tratti: ?InsiemePeriodi}>
      */
     private function catenaDeiConduttori(PianoRate $piano, int $anagraficaId, int $immobileId, InsiemePeriodi $periodo, int $importo): array
@@ -1043,10 +1070,12 @@ final class ProspettoOneriAccessori
         // Coda 364 (1.11.0-beta.55): il primo cambio d'inquilino della catena, con chi aveva la riga: i pezzi dopo lo portano, perché chi entra dopo divida
         // i giorni di chi è entrato con il conguaglio senza i coinquilini di chi aveva la riga (`chiEntraDopoIlCambio`).
         $cambio = [];
+        // Coda 370: l'uscita di chi è uscito con la strada A′ dopo il suo rientro, con la coppia scritta o (Coda 375) regolata fra le parti: la catena riparte da lì (sotto).
+        $riuscita = null;
         while (true) {
             // Decisioni 32 e 77 (1.11.0-beta.50): anche la fine senza un nuovo inquilino. Sul box il passaggio trovato è il figlio, e la
             // scelta sta nel registro del padre (`capo()`).
-            $passaggio = Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')
+            $passaggio = $riuscita ?? Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')
                 ->where('anagrafica_uscente_id', $chi)->whereNotIn('id', $visti)
                 ->whereDate('decorrenza', '>', $restante->dal()->toDateString())->whereDate('decorrenza', '<=', $restante->al()->toDateString())
                 ->orderBy('decorrenza')->orderBy('id')->first();
@@ -1056,6 +1085,7 @@ final class ProspettoOneriAccessori
             // Coda 252.1: a ogni passo della catena, non solo al primo. Una voce con la competenza tutta dopo un cambio d'inquilino in un passo non è di chi è
             // uscito: con «Scrivi» (e il piano preso dalla coppia) è di chi è entrato, e la fine di chi è entrato, se viene prima della voce,
             // è la prossima da seguire.
+            $riuscita = null;
             if ($passaggio === null) {
                 $passaggio = $this->finePrimaDellaVoce($piano, $chi, $immobileId, $restante, $visti, $dopoIl);
             }
@@ -1064,6 +1094,25 @@ final class ProspettoOneriAccessori
             // annullato) seguito da una fine di chi era entrato con la coppia scritta su questa unità: la catena continua, e il pezzo di chi
             // era entrato è «regolato fra le parti». Senza una fine scritta dopo resta la lettura delle decisioni 43 e 46.
             $regolato = $passaggio !== null && $this->regolatoConUnaFineDopo($passaggio, $capo, $piano, $immobileId, $restante);
+            // Coda 379 (decisioni 43, 46 e 83.3): l'accordo fra le parti di un passaggio regolato fra loro (il conguaglio annullato, o la casella di prima della .50 nel cambio), senza
+            // la catena della 83.3, non va oltre la prossima uscita di chi ha il pezzo, dopo un suo rientro, con il conguaglio (`uscitaDopoLAccordo`): il pezzo dell'accordo finisce il
+            // giorno prima, con `regolato_il`, e la catena riparte da quell'uscita, che legge come ogni uscita (la strada B o la A′, il cambio, o un altro accordo). Prima la catena si
+            // fermava all'accordo e il pezzo andava fino alla fine della voce: chi entrava dopo non rimborsava i giorni che chi paga al posto dell'inquilino aveva preso con la coppia di
+            // quell'uscita, o che erano rimasti nelle rate di chi è uscito con «Non scriverlo».
+            $dopoLAccordo = $passaggio !== null && ! $regolato && self::regolatoFraLeParti($passaggio, $capo)
+                ? $this->uscitaDopoLAccordo($chi, $immobileId, $restante, $passaggio, $visti) : null;
+            if ($dopoLAccordo !== null) {
+                $d = ProRataTemporis::dividi($resto, $restante, $dopoLAccordo->decorrenza);
+                $pezzi[] = ['anagrafica_id' => $chi, 'importo' => (int) $d['uscente'], 'giorni' => (int) $d['giorni_uscente'], 'modo' => $modo, 'conguaglio_del' => $del,
+                    'tratti' => $restante->intersezione(new PeriodoCompetenza($restante->dal(), $dopoLAccordo->decorrenza->toImmutable()->subDay())),
+                    'regolato_il' => $passaggio->decorrenza->toDateString()] + $cambio;
+                $visti[] = (int) $passaggio->id;
+                $dopoIl = $passaggio->decorrenza->toDateString();
+                $resto = (int) $d['entrante'];
+                $restante = $restante->intersezione(new PeriodoCompetenza($dopoLAccordo->decorrenza->toImmutable(), $restante->al()));
+                $riuscita = $dopoLAccordo;
+                continue;
+            }
             if ($passaggio === null || ($capo->conguaglioAnnullato() && ! $regolato)) {
                 // Dopo «Annulla il conguaglio» le parti hanno regolato fra loro (decisioni 43 e 46): il pezzo che resta lo dice, per il pannello.
                 if ($passaggio !== null) {
@@ -1076,6 +1125,15 @@ final class ProspettoOneriAccessori
                 $this->uscite[$chiave] = $this->uscitaDellaLocazione($piano, $passaggio, $capo, $immobileId, $chi);
             }
             $uscita = $this->uscite[$chiave];
+            // Coda 365: dopo un cambio d'inquilino della catena, il cambio con «Non scriverlo» di chi è entrato lascia i giorni dopo la sua uscita nel conguaglio del
+            // primo cambio, e chi non li divide si legge lì, come per il pezzo di chi è entrato (`chiEntraDopoIlCambio`): i coinquilini di chi aveva la riga, e chi ne ha
+            // preso il posto. Chi è entrato dopo il primo cambio con un inizio (o chi rientra) non è un coinquilino di chi aveva la riga, e divide anche questi giorni.
+            // Su una copia: la cache è per passaggio e persona, e una catena che parte da chi esce tiene chi non divide del suo cambio.
+            if ($uscita !== null && $cambio !== [] && $uscita['strada'] === 'A' && $passaggio->anagrafica_entrante_id !== null) {
+                $restano = $this->uscite['restano|' . $cambio['cambio']['passaggio']->id]
+                    ??= $this->coinquiliniEChiNeHaPresoIlPosto($immobileId, (int) $cambio['cambio']['uscente'], $cambio['cambio']['passaggio']);
+                $uscita = array_diff_key($uscita, ['restano' => true]) + ($restano !== [] ? ['restano' => $restano] : []);
+            }
             if ($uscita !== null) {
                 $d = ProRataTemporis::dividi($resto, $restante, $passaggio->decorrenza);
                 // Con la fine prima della voce, o nel suo primo giorno, il pezzo prima dell'uscita non ha giorni: tiene il posto, a zero.
@@ -1095,6 +1153,26 @@ final class ProspettoOneriAccessori
                         $uscita['scoperti'] = $scoperti;
                         $uscita['pagatori'] = $coperti === null ? [] : ($this->uscite[implode('|', ['pagatori', $piano->gestione_id, $capo->id, $immobileId, json_encode($coperti->toArray())])]
                             ??= $this->pagatoriDopoLUscita($piano, $capo, $immobileId, $coperti));
+                    }
+                    // Coda 370: con la strada A′ i giorni dopo l'uscita restano a chi esce solo fino alla sua uscita dopo il rientro, se quella ha scritto la coppia su
+                    // questa unità e gestione (una fine o un cambio «Scrivi»): i giorni dopo li ha presi con la coppia chi paga al posto dell'inquilino, o chi entra, e la
+                    // catena riparte da quell'uscita (la strada B della fine, con i pagatori dal suo registro, o il pezzo «con il conguaglio» di chi entra). Prima il pezzo
+                    // andava fino alla fine della voce, e il prospetto restituiva a chi era uscito, o faceva rimborsare da chi entrava dopo, i giorni che il Wallet gli
+                    // aveva già tolto con la coppia: una seconda volta. Coda 375: anche se le parti hanno regolato fra loro quell'uscita («Annulla il conguaglio»): la catena
+                    // riparte da lì e la legge come ogni passaggio regolato fra le parti (con la fine «Scrivi» dopo di chi era entrato la segue, decisione 83.3; altrimenti i
+                    // giorni restano dov'erano fino alla prossima uscita di chi è uscito con un conguaglio suo, Coda 379, o fino alla fine della voce). Con «Non scriverlo» no: i
+                    // giorni dopo restano nella strada A′ della prima uscita.
+                    $riuscita = $uscita['strada'] === 'A' ? $this->riuscitaCheChiudeIlPezzo($piano, $chi, $immobileId, $dopo, [...$visti, (int) $passaggio->id]) : null;
+                    if ($riuscita !== null) {
+                        $e = ProRataTemporis::dividi((int) $d['entrante'], $dopo, $riuscita->decorrenza);
+                        $primaDellaRiuscita = $dopo->intersezione(new PeriodoCompetenza($dopo->dal(), $riuscita->decorrenza->toImmutable()->subDay()));
+                        $pezzi[] = ['anagrafica_id' => $chi, 'importo' => (int) $e['uscente'], 'giorni' => $primaDellaRiuscita->giorni(), 'modo' => $modo, 'conguaglio_del' => $del,
+                            'tratti' => $primaDellaRiuscita, 'uscita' => $uscita];
+                        $visti[] = (int) $passaggio->id;
+                        $dopoIl = $passaggio->decorrenza->toDateString();
+                        $resto = (int) $e['entrante'];
+                        $restante = $dopo->intersezione(new PeriodoCompetenza($riuscita->decorrenza->toImmutable(), $dopo->al()));
+                        continue;
                     }
                     $pezzi[] = ['anagrafica_id' => $chi, 'importo' => (int) $d['entrante'], 'giorni' => $dopo->giorni(), 'modo' => $modo, 'conguaglio_del' => $del, 'tratti' => $dopo,
                         'uscita' => $uscita];
@@ -1144,12 +1222,16 @@ final class ProspettoOneriAccessori
      * resta nelle rate di chi è uscito e gli si restituisce (Ines restituisce € 29,26 a Luca, non Luca le rimborsa € 90,74); con un
      * coinquilino che resta (strada C) resta nelle sue rate, con la nota. Fino all'ultimo giro si chiamava `fineScrittaPrimaDellaVoce` e
      * valeva solo con la strada B: con le altre la voce restava «nelle rate» di chi è uscito senza la restituzione. L'ultima fine prima
-     * della voce; null se non c'è o se il suo conguaglio è stato annullato, e la voce resta com'era.
+     * della voce; null se non c'è (e la voce resta com'era). Il conguaglio annullato dava null fino alla Coda 367: vedi sotto.
      *
      * Coda 252.1 (1.11.0-beta.51): anche il cambio d'inquilino in un passo (la fine con chi entra) se la voce è tutta dopo. Con «Scrivi» e il
-     * piano preso dalla coppia la voce è di chi è entrato; con «Non scriverlo» resta nelle rate di chi è uscito (la strada A′); regolata fra le
-     * parti, o su un piano che la coppia non ha preso, resta com'è (decisioni 43 e 46). `$visti` e `$dopoIl` fanno proseguire la ricerca su chi
-     * è entrato: i passaggi già seguiti non tornano, e si cerca dopo il giorno dell'ultimo.
+     * piano preso dalla coppia la voce è di chi è entrato; con «Non scriverlo» resta nelle rate di chi è uscito (la strada A′); su un piano che la
+     * coppia non ha preso resta com'è (decisione 43); regolata fra le parti la legge `catenaDeiConduttori` (Code 367 e 371, sotto). `$visti` e
+     * `$dopoIl` fanno proseguire la ricerca su chi è entrato: i passaggi già seguiti non tornano, e si cerca dopo il giorno dell'ultimo.
+     *
+     * Coda 367: anche il passaggio regolato fra le parti, il conguaglio annullato o la casella di prima della .50: `catenaDeiConduttori` lo legge come quando cade
+     * nella voce, e la voce non passa a chi è entrato dopo l'accordo. Coda 371: a ogni passo della catena, anche sul primo pezzo (chi aveva la riga): con una fine
+     * «Scrivi» dopo di chi era entrato la catena la segue (decisione 83.3), e la voce che comincia dopo il cambio va a chi ha la coppia, come le voci di tutto l'anno.
      *
      * @param list<int> $visti
      */
@@ -1160,7 +1242,17 @@ final class ProspettoOneriAccessori
             ->whereDate('decorrenza', '<=', $periodo->dal()->toDateString())
             ->orderByDesc('decorrenza')->orderByDesc('id')->first();
         $capo = $fine?->capo();
-        if ($fine === null || $capo->conguaglioAnnullato()) {
+        // Coda 367 (decisioni 43, 46 e 83.3): il passaggio che le parti hanno regolato fra loro (il conguaglio annullato di un cambio d'inquilino o di una fine, o la
+        // casella di prima della .50) torna alla catena, che lo legge come quando cade nella voce: un cambio con una fine «Scrivi» dopo di chi era entrato la segue,
+        // altrimenti si ferma e il pezzo porta `regolato_il`, perché chi è entrato dopo non divida i giorni dell'accordo (`chiEntraDopoIlCambio`). La casella di prima
+        // della .50 alla fine senza chi entra la leggeva già (la strada A′, `rinunciato`). Coda 371: anche sul primo pezzo, quello di chi aveva la riga. Senza una fine
+        // «Scrivi» dopo la voce resta com'era, nelle sue rate (decisioni 43 e 46), e il pezzo porta `regolato_il` per il pannello; con la fine la coppia ha portato
+        // la voce a chi paga al posto dell'inquilino, e chi entra dopo gliela rimborsa: altrimenti la voce restava «nelle rate» di chi aveva la riga, e chi l'ha
+        // presa con la coppia non la riaveva da nessuno.
+        if ($fine !== null && ($capo->conguaglioAnnullato() || ($capo->conguaglioRinunciato() && ! $capo->conguaglioNonScritto()))) {
+            return $fine;
+        }
+        if ($fine === null) {
             return null;
         }
         $chiave = implode('|', ['uscita', $piano->id, $fine->id, $immobileId, $chi]);
@@ -1375,6 +1467,73 @@ final class ProspettoOneriAccessori
     }
 
     /**
+     * Coda 370: la prima uscita di chi è uscito con la strada A′, dentro i giorni dopo quell'uscita (quindi dopo il suo rientro), che chiude il pezzo A′. Lo chiude
+     * l'uscita che ha scritto la coppia su questa unità e gestione: le righe in `saldi` con l'id del capo, come per la strada B (`uscitaDellaLocazione`) e per la
+     * decisione 83.3 (`regolatoConUnaFineDopo`).
+     *
+     * Coda 375: lo chiude anche l'uscita che le parti hanno regolato fra loro: il conguaglio annullato, o la casella di prima della .50 (la rinuncia senza la scelta),
+     * lette come nella catena e in `finePrimaDellaVoce`. I giorni dopo sono dell'accordo, e la catena riparte da quell'uscita e la legge come ogni passaggio regolato
+     * fra le parti: un cambio seguito dalla fine «Scrivi» di chi era entrato (o da un altro cambio regolato, Coda 372) lo segue, decisione 83.3; altrimenti il pezzo
+     * porta `regolato_il`, e i giorni restano dov'erano, senza restituzione, e chi entra dopo non li divide (decisioni 43 e 46), fino alla prossima uscita di chi è uscito
+     * con un conguaglio suo, che la catena legge come ogni uscita (Coda 379, `uscitaDopoLAccordo`), o fino alla fine della voce. Come nella catena, l'accordo vale per il
+     * passaggio, non per l'unità: anche sul box dove la fine non aveva scritto righe (nessuno stava al posto dell'inquilino), come la fine annullata senza il rientro
+     * (decisione 46, la nota del 12/10, punto 4). Prima la seconda uscita regolata fra le parti non chiudeva il pezzo, e il prospetto restituiva a chi era uscito, o
+     * faceva rimborsare da chi entrava dopo, i giorni che le parti avevano regolato fra loro.
+     *
+     * Null se non c'è: la seconda uscita con «Non scriverlo», o con «Scrivi» e senza righe su questa unità e gestione (dopo il rientro con un inizio la fine non scrive
+     * la coppia della parte che chi esce ha già ceduto; sul box dove nessuno sta al posto dell'inquilino non la scrive): i giorni dopo restano nella strada A′ della
+     * prima uscita.
+     *
+     * @param list<int> $visti
+     */
+    private function riuscitaCheChiudeIlPezzo(PianoRate $piano, int $chi, int $immobileId, InsiemePeriodi $dopo, array $visti): ?Subentro
+    {
+        return Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->where('anagrafica_uscente_id', $chi)->whereNotIn('id', $visti)
+            ->whereDate('decorrenza', '>', $dopo->dal()->toDateString())->whereDate('decorrenza', '<=', $dopo->al()->toDateString())
+            ->orderBy('decorrenza')->orderBy('id')->get()
+            ->first(function (Subentro $s) use ($immobileId, $piano) {
+                $capo = $s->capo();
+                // Coda 375: regolata fra le parti.
+                if ($capo->conguaglioAnnullato() || ($capo->conguaglioRinunciato() && ! $capo->conguaglioNonScritto())) {
+                    return true;
+                }
+
+                return DB::table('saldi')->where('subentro_id', $capo->id)->where('immobile_id', $immobileId)->where('gestione_id', $piano->gestione_id)->exists();
+            });
+    }
+
+    /**
+     * Coda 379: la prossima uscita di chi ha il pezzo dopo un passaggio che le parti hanno regolato fra loro (quindi dopo un suo rientro), dentro i giorni che restano, con un conguaglio
+     * suo: la scelta nel registro («Scrivi», anche se poi annullato, o «Non scriverlo»), o la casella di prima della .50 nel cambio. La catena riparte da lì e la legge come ogni uscita: la
+     * strada B dove la coppia ha le righe su questa unità e gestione, la strada A′ dove non le ha (il box dove nessuno sta al posto dell'inquilino) o con «Non scriverlo», il cambio con la
+     * coppia scritta che segue, e l'uscita regolata fra le parti anche lei come un altro accordo (con la decisione 83.3 se chi è entrato esce poi con la coppia scritta). La scelta vale per
+     * il passaggio, non per l'unità, come l'accordo (Coda 375): sul box dove la fine «Scrivi» non scrive la coppia i giorni dopo restano nelle rate di chi esce, e chi entra dopo glieli
+     * rimborsa, come senza l'accordo prima. L'accordo vale per le parti di quel passaggio: non per chi paga al posto dell'inquilino e ha preso i giorni dopo con la coppia di un'uscita
+     * successiva, né per chi entra dopo quell'uscita.
+     *
+     * Null se non c'è, o se c'è solo la fine senza la scelta: dopo il rientro con un inizio, o dopo la fine annullata, la parte dell'unità chi esce l'aveva già ceduta, la fine non ha un
+     * conguaglio suo, e i giorni dopo restano nell'accordo (decisioni 43 e 46).
+     *
+     * @param list<int> $visti
+     */
+    private function uscitaDopoLAccordo(int $chi, int $immobileId, InsiemePeriodi $restante, Subentro $accordo, array $visti): ?Subentro
+    {
+        // Dopo l'accordo e dentro i giorni che restano: con l'accordo prima della voce (`finePrimaDellaVoce`) le uscite fino al primo giorno della voce le ha già lette la ricerca dell'ultima.
+        $dopo = max($accordo->decorrenza->toDateString(), $restante->dal()->toDateString());
+
+        return Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->where('anagrafica_uscente_id', $chi)->whereNotIn('id', [...$visti, (int) $accordo->id])
+            ->whereDate('decorrenza', '>', $dopo)->whereDate('decorrenza', '<=', $restante->al()->toDateString())
+            ->orderBy('decorrenza')->orderBy('id')->get()
+            ->first(fn (Subentro $s) => isset($s->capo()->registro['conguaglio']['scelta']) || self::regolatoFraLeParti($s, $s->capo()));
+    }
+
+    /** Coda 379: il passaggio che le parti hanno regolato fra loro, come lo legge la catena: il conguaglio annullato, o nel cambio d'inquilino la casella di prima della .50 (la rinuncia senza la scelta). */
+    private static function regolatoFraLeParti(Subentro $passaggio, Subentro $capo): bool
+    {
+        return $capo->conguaglioAnnullato() || ($passaggio->anagrafica_entrante_id !== null && $capo->conguaglioRinunciato() && ! $capo->conguaglioNonScritto());
+    }
+
+    /**
      * Decisione 83.3: un cambio d'inquilino «regolato fra le parti» — la casella di prima della .50 (la rinuncia senza la scelta) o il
      * conguaglio annullato — dopo il quale chi era entrato è uscito a sua volta, nei giorni del pezzo, con una fine che ha scritto la coppia
      * su questa unità e gestione (righe in saldi, conguaglio non annullato). Allora i giorni dopo la sua uscita li ha pagati chi ha la
@@ -1382,6 +1541,11 @@ final class ProspettoOneriAccessori
      *
      * Le righe della coppia si scrivono con l'id del padre (`RegistraSubentroAction::scriviCoppie`): sulla pertinenza la fine trovata è il
      * figlio, e le righe si cercano con il suo capo, come in `uscitaDellaLocazione` (giro stretto della .50, G3).
+     *
+     * Coda 372: di cambio in cambio. Se chi era entrato è uscito con un altro cambio d'inquilino regolato fra le parti, la 83.3 vale per quel cambio: la catena
+     * li segue tutti e due se chi è entrato con il secondo è uscito con la coppia scritta (o con un altro cambio regolato, e così via). Prima la ricerca guardava
+     * un passo solo: con i due cambi annullati e la fine «Scrivi» dopo, la catena si fermava su chi aveva la riga, mentre il Wallet aveva già dato i giorni dopo
+     * la fine a chi paga al posto dell'inquilino, e chi entrava dopo non glieli rimborsava. Le date crescono a ogni passo: la ricerca finisce.
      */
     private function regolatoConUnaFineDopo(Subentro $passaggio, Subentro $capo, PianoRate $piano, int $immobileId, InsiemePeriodi $restante): bool
     {
@@ -1391,11 +1555,12 @@ final class ProspettoOneriAccessori
 
         return Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->where('anagrafica_uscente_id', (int) $passaggio->anagrafica_entrante_id)
             ->whereDate('decorrenza', '>', $passaggio->decorrenza->toDateString())->whereDate('decorrenza', '<=', $restante->al()->toDateString())
-            ->get()->contains(function (Subentro $fine) use ($immobileId, $piano) {
+            ->get()->contains(function (Subentro $fine) use ($immobileId, $piano, $restante) {
                 $capoDellaFine = $fine->capo();
 
-                return ! $capoDellaFine->conguaglioAnnullato()
-                    && DB::table('saldi')->where('subentro_id', $capoDellaFine->id)->where('immobile_id', $immobileId)->where('gestione_id', $piano->gestione_id)->exists();
+                return (! $capoDellaFine->conguaglioAnnullato()
+                    && DB::table('saldi')->where('subentro_id', $capoDellaFine->id)->where('immobile_id', $immobileId)->where('gestione_id', $piano->gestione_id)->exists())
+                    || $this->regolatoConUnaFineDopo($fine, $capoDellaFine, $piano, $immobileId, $restante);
             });
     }
 
@@ -1405,7 +1570,7 @@ final class ProspettoOneriAccessori
      * passaggio registrato prima della .50, decisioni 43 e 46).
      * - `P` (Coda 245, 1.11.0-beta.55): la fine con la regola del piano nel registro (`conguaglio.piano`) per l'unità e il piano, con qualunque scelta:
      *   la parte dell'inquilino si legge con la regola del piano (`ProspettoRegolaDelPiano`), non per giorni dopo l'uscita.
-     * - `C`: resta un coinquilino (decisione 79), nelle fini registrate dalle beta .50–.53 con la fermata del coinquilino: nessuna coppia e
+     * - `C`: resta un coinquilino (decisione 79), nelle fini registrate dalle beta .50–.54 con la fermata del coinquilino: nessuna coppia e
      *   nessuna scelta, i giorni restano nelle rate di chi esce e chi li paga lo decidono le parti. Vale per l'unità, anche quando la scelta c'è
      *   per le altre del passaggio.
      * - `B`: «Scrivi il conguaglio» su un piano che la coppia ha preso, con le righe della coppia sull'unità: i giorni li ha pagati chi sta
@@ -1934,7 +2099,23 @@ final class ProspettoOneriAccessori
             // Coda 364 (1.11.0-beta.55): di chi è entrato con il cambio d'inquilino, la parte dei conduttori entrati dopo nei giorni che ha pagato con il conguaglio,
             // per persona: negativa la riceve da loro, positiva (un'entrata che in quei giorni supera la spesa) la restituisce. È dentro «da rimborsare».
             'entrati_dopo' => collect($voci)->where('modo', 'entrato_dopo')->groupBy('da_chi')->map(fn (Collection $g) => (int) $g->sum('importo'))->all(),
+            // Coda 366: per persona, come chi è entrato con il cambio ha pagato quei giorni (`conguaglio`, `regolato`, o tutti e due), perché il piede lo dica.
+            'entrati_dopo_modi' => collect($voci)->where('modo', 'entrato_dopo')->groupBy('da_chi')->map(fn (Collection $g) => self::modiDegliEntratiDopo($g->all()))->all(),
         ] + ($delPiano !== null ? ['regola_del_piano' => $delPiano] : []);
+    }
+
+    /**
+     * Coda 366: i modi delle voci `entrato_dopo` date — `conguaglio` (il conguaglio scritto del cambio), `regolato` (la parte regolata fra le parti, decisione 83.3) —,
+     * una volta ciascuno e in quest'ordine; vuoto se non ce ne sono.
+     *
+     * @param list<array<string, mixed>> $voci
+     * @return list<string>
+     */
+    private static function modiDegliEntratiDopo(array $voci): array
+    {
+        $modi = collect($voci)->where('modo', 'entrato_dopo')->map(fn (array $v) => empty($v['regolato']) ? 'conguaglio' : 'regolato')->unique()->all();
+
+        return array_values(array_intersect(['conguaglio', 'regolato'], $modi));
     }
 
     /**
@@ -2019,16 +2200,20 @@ final class ProspettoOneriAccessori
     /**
      * Le frasi in testa: cosa il documento non è, su quali numeri si regge, come divide, come si legge. Con `$conLaFine` (1.11.0-beta.50)
      * il «pagata da …» non è solo il ripiego: è anche chi è uscito o chi paga al posto dell'inquilino alla fine di una locazione; con `$dopoIlCambio`
-     * (Coda 364) chi è entrato con il conguaglio di un cambio d'inquilino, per i giorni di un conduttore entrato dopo.
+     * (Coda 364) chi è entrato con il conguaglio di un cambio d'inquilino, per i giorni di un conduttore entrato dopo, o (Coda 366) con un cambio regolato fra le parti:
+     * i modi delle voci `entrato_dopo` (`modiDegliEntratiDopo`).
      *
      * @param list<array{nome: string, fonte: string}> $piani
      * @param list<array{nome: string, motivo: string}> $esclusi
+     * @param list<string> $dopoIlCambio
      * @return list<string>
      */
-    private function intestazione(array $piani, array $esclusi, bool $conLaFine = false, bool $conIlPiano = false, bool $soloIlPiano = false, array $approvatiFuori = [], bool $dopoIlCambio = false): array
+    private function intestazione(array $piani, array $esclusi, bool $conLaFine = false, bool $conIlPiano = false, bool $soloIlPiano = false, array $approvatiFuori = [], array $dopoIlCambio = []): array
     {
-        // Coda 364 (1.11.0-beta.55): chi ha pagato i giorni di un conduttore entrato dopo un cambio d'inquilino con il conguaglio scritto.
-        $altri = ($dopoIlCambio ? ', oppure chi è entrato con il conguaglio di un cambio d\'inquilino, per i giorni di un conduttore entrato dopo' : '')
+        // Coda 364 (1.11.0-beta.55): chi ha pagato i giorni di un conduttore entrato dopo un cambio d'inquilino con il conguaglio scritto. Coda 366: o con il cambio
+        // d'inquilino regolato fra le parti (decisione 83.3), detto solo se c'è; con tutti e due i modi la frase li dice tutti e due.
+        $comeSonoEntrati = array_map(fn (string $m) => $m === 'regolato' ? 'con un cambio d\'inquilino regolato fra le parti' : 'con il conguaglio di un cambio d\'inquilino', $dopoIlCambio);
+        $altri = ($dopoIlCambio !== [] ? ', oppure chi è entrato ' . implode(' o ', $comeSonoEntrati) . ', per i giorni di un conduttore entrato dopo' : '')
             . ($conLaFine ? ', oppure, alla fine di una locazione, chi è uscito o chi paga al posto dell\'inquilino, come dicono le frasi qui sotto' : '');
         $fuori = implode('», «', $approvatiFuori);
         $unoFuori = count($approvatiFuori) === 1;

@@ -314,6 +314,29 @@ it('Coda 245 (prospetto) — il cambio Dora → Luca il 1/10 con «Scrivi» dopo
             ->toBe([['cambio', '2026-10-01', 6066]]);
 });
 
+it('Coda 245 (prospetto) — il cambio Dora → Luca il 1/10 con «Scrivi» dopo la fine di Ines, poi «Annulla il conguaglio» del cambio: la stampa dice «regolata fra le parti al cambio d\'inquilino», non «alla fine della locazione»', function () {
+    // Le cifre del test di prima: la coppia del cambio Dora − 6066 → Luca, che l'annullamento toglie dai saldi e scrive regolata fra le parti (Dora − 6066, Luca + 6066, il registro
+    // `regolato_fuori`). Nel piede della regola del piano la riga di un conguaglio annullato diceva sempre «alla fine della locazione del …», anche per un cambio d'inquilino; le righe dei
+    // conguagli scritti, subito sopra, dicevano già il tipo del passaggio.
+    $s = cprScenario($this);
+    cprFine($this, $s, 'Ines', '2026-07-01', 'scrivi');
+    $cambio = cprFine($this, $s, 'Dora', '2026-10-01', 'scrivi', 'Luca');
+    sl53AnnullaConguaglio($this, $s, $cambio)->assertStatus(302);
+    $p = cprProspetto($s);
+
+    expect(fclSaldi($s))->toBe(['Dora' => 6066, 'Ines' => -6066])
+        ->and(cprSezione($p, 'Ines'))->toBe([11934, 18000, -6066, 0])
+        ->and(cprSezione($p, 'Dora'))->toBe([18000, 18000, 6066, 0])
+        ->and(cprSezione($p, 'Luca'))->toBe([6066, 0, 0, 0])
+        ->and(collect(collect($p['conduttori'])->firstWhere('nome', 'Luca')['regola_del_piano']['regolati'])->map(fn ($c) => [$c['tipo'], $c['del'], (int) $c['importo']])->all())
+            ->toBe([['cambio', '2026-10-01', 6066]]);
+    $stampa = fclStampa($s);
+    expect($stampa)->toContain('regolata fra le parti al cambio d\'inquilino del 01/10/2026, a suo credito € 60,66')
+        ->and($stampa)->toContain('regolata fra le parti al cambio d\'inquilino del 01/10/2026, a suo debito € 60,66')
+        ->and($stampa)->toContain('con il conguaglio della fine locazione del 01/07/2026, a suo debito € 60,66')
+        ->and($stampa)->not->toContain('regolata fra le parti alla fine della locazione del 01/10/2026');
+});
+
 it('Coda 245 (prospetto) — C5a-Luca: la fine di Luca, che non ha quote, è un\'informazione; nel prospetto Luca rimborsa in tutto € 51,43: € 34,38 a Dora e € 17,05 a Ines', function () {
     $s = cprScenario($this);
     cprFine($this, $s, 'Ines', '2026-07-01', 'scrivi');

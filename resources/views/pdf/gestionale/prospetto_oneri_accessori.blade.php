@@ -19,6 +19,11 @@
     };
     // Coda 245 (1.11.0-beta.55): la parte con la regola del piano, e accanto ciò che ne è nelle rate; un credito si dice a parole, senza «€ -».
     $nelleRate = fn (array $v) => (int) ($v['nelle_rate'] ?? 0) === 0 ? '' : ((int) $v['nelle_rate'] < 0 ? '; a credito nelle sue rate ' : '; nelle sue rate ') . $euro(abs((int) $v['nelle_rate']));
+    // Coda 366: chi è entrato con il cambio d'inquilino ha pagato i giorni del suo pezzo con il conguaglio scritto, o con il cambio regolato fra le parti (decisione 83.3):
+    // le voci che il pezzo scrive per un conduttore entrato dopo lo portano (`regolato`). Con le parole della testa: «regolato fra le parti» è del cambio, non della parte
+    // di chi è entrato dopo.
+    $conIlCambio = fn (array $v) => empty($v['regolato']) ? 'con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null)
+        : 'con il cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null) . ' regolato fra le parti';
     $come = fn (array $v) => match (true) {
         $v['modo'] === 'piano' && ! empty($v['chi']) => 'con la regola del piano, a chi sta al posto dell\'inquilino (' . $v['chi'] . ')' . $nelleRate($v),
         $v['modo'] === 'piano' => 'con la regola del piano' . $nelleRate($v),
@@ -29,8 +34,8 @@
         $v['modo'] === 'restituzione' => 'da restituire a ' . ($v['a_chi'] ?? 'chi è uscito') . ' (' . $allaFine($v) . ')',
         $v['modo'] === 'da_restituire' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . '): si restituisce a chi l\'ha pagata, fra le parti',
         // Coda 364 (1.11.0-beta.55): i giorni di un conduttore entrato dopo un cambio d'inquilino, che chi è entrato con il cambio ha pagato con il conguaglio.
-        $v['modo'] === 'entrato_dopo' => ((int) $v['importo'] < 0 ? 'da ricevere da ' : 'da restituire a ') . $v['da_chi'] . ': la parte di ' . $v['da_chi'] . ' dei giorni presi con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null),
-        $v['modo'] === 'proprietario' && ! empty($v['conguaglio_del']) => 'pagata da ' . $v['pagato_da'] . ' con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del']),
+        $v['modo'] === 'entrato_dopo' => ((int) $v['importo'] < 0 ? 'da ricevere da ' : 'da restituire a ') . $v['da_chi'] . ': la parte di ' . $v['da_chi'] . ' dei giorni presi ' . $conIlCambio($v),
+        $v['modo'] === 'proprietario' && ! empty($v['conguaglio_del']) => 'pagata da ' . $v['pagato_da'] . ' ' . $conIlCambio($v),
         ($v['strada'] ?? null) === 'A' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . ')',
         ($v['strada'] ?? null) === 'B' => 'pagata da ' . $v['pagato_da'] . ' con il conguaglio della fine locazione del ' . $data($v['uscita_del'] ?? null) . (! empty($v['oppure']) ? ', o da ' . $v['oppure'] : ''),
         default => 'pagata da ' . $v['pagato_da'],
@@ -124,8 +129,9 @@
                     @foreach($rp['conguagli'] as $x)
                         @php($dettaglio[] = ['con il conguaglio ' . (($x['tipo'] ?? 'fine') === 'cambio' ? 'del cambio d\'inquilino del ' : 'della fine locazione del ') . $data($x['del']) . ((int) $x['importo'] < 0 ? ', a suo credito' : ', a suo debito'), abs((int) $x['importo'])])
                     @endforeach
+                    {{-- Il conguaglio annullato di un cambio d'inquilino o di una fine, con il tipo del passaggio come le righe qui sopra. --}}
                     @foreach($rp['regolati'] as $x)
-                        @php($dettaglio[] = ['regolata fra le parti alla fine della locazione del ' . $data($x['del']) . ((int) $x['importo'] < 0 ? ', a suo credito' : ', a suo debito'), abs((int) $x['importo'])])
+                        @php($dettaglio[] = ['regolata fra le parti ' . (($x['tipo'] ?? 'fine') === 'cambio' ? 'al cambio d\'inquilino del ' : 'alla fine della locazione del ') . $data($x['del']) . ((int) $x['importo'] < 0 ? ', a suo credito' : ', a suo debito'), abs((int) $x['importo'])])
                     @endforeach
                     @php($diChi = 0)
                     @foreach($rp['rimborsi'] as $x)
@@ -186,11 +192,18 @@
                         <td></td>
                     </tr>
                 @endif
+                {{-- Coda 366: la riga somma le voci della persona; dice come chi è entrato con il cambio ha pagato quei giorni, e con tutti e due i modi li dice tutti e due,
+                     ognuno per una parte. --}}
                 @foreach($entratiDopo as $nome => $cifra)
+                    @php($comeHaPagato = match ($c['entrati_dopo_modi'][$nome]) {
+                        ['regolato'] => 'con il cambio d\'inquilino regolato fra le parti',
+                        ['conguaglio', 'regolato'] => 'in parte con il conguaglio e in parte con il cambio d\'inquilino regolato fra le parti',
+                        default => 'con il conguaglio',
+                    })
                     <tr>
                         <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $cifra < 0
-                            ? 'a favore di ' . $c['nome'] . ': da ricevere da ' . $nome . ', la parte di ' . $nome . ' dei giorni che ha pagato con il conguaglio'
-                            : 'da restituire da ' . $c['nome'] . ' a ' . $nome . ': la parte di ' . $nome . ' dei giorni presi con il conguaglio, in cui l\'entrata supera la spesa' }}</td>
+                            ? 'a favore di ' . $c['nome'] . ': da ricevere da ' . $nome . ', la parte di ' . $nome . ' dei giorni che ha pagato ' . $comeHaPagato
+                            : 'da restituire da ' . $c['nome'] . ' a ' . $nome . ': la parte di ' . $nome . ' dei giorni presi ' . $comeHaPagato . ', in cui l\'entrata supera la spesa' }}</td>
                         <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($cifra)) }}</td>
                         <td></td>
                     </tr>
@@ -265,7 +278,7 @@
                         <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs((int) $x['importo'])) }}</td><td></td></tr>
                 @endforeach
                 @foreach($rp['regolati'] as $x)
-                    <tr><td colspan="2" style="padding: 2px 5px; font-size: 7.5pt;">{{ 'regolata fra le parti alla fine della locazione del ' . $data($x['del']) . ', ' . ((int) $x['importo'] < 0 ? 'a credito di ' : 'a debito di ') . $x['chi'] }}</td>
+                    <tr><td colspan="2" style="padding: 2px 5px; font-size: 7.5pt;">{{ 'regolata fra le parti ' . (($x['tipo'] ?? 'fine') === 'cambio' ? 'al cambio d\'inquilino del ' : 'alla fine della locazione del ') . $data($x['del']) . ', ' . ((int) $x['importo'] < 0 ? 'a credito di ' : 'a debito di ') . $x['chi'] }}</td>
                         <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs((int) $x['importo'])) }}</td><td></td></tr>
                 @endforeach
                 @foreach($rp['rimborsi'] as $x)

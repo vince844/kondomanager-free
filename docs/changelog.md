@@ -7,6 +7,22 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.56] - Chi rimborsa chi
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi, i saldi già scritti e i passaggi
+già registrati restano com'erano.
+
+**Che cosa fa la beta.**
+- **Il conguaglio di un secondo passaggio con una voce di entrata è giusto.** Con un'entrata nel piano (l'affitto dell'antenna, per
+  esempio), il secondo passaggio con «Scrivi il conguaglio» sulla stessa quota scrive nel Wallet la parte dell'entrata dei soli giorni dopo
+  l'uscita, e il pannello «Cosa cambierà» dice la cifra giusta.
+- **Il prospetto degli oneri accessori dice chi rimborsa chi anche nelle storie con più passaggi:** due cambi d'inquilino in fila con le due
+  scelte, un conduttore entrato fra i due, un conguaglio annullato seguito dall'uscita di chi era entrato, chi esce, rientra ed esce di
+  nuovo, una voce che matura tutta dopo un passaggio, il già versato registrato a «l'unità (senza persona)». Dove un conduttore entrato dopo rimborsa i giorni di un cambio che le parti hanno regolato fra loro, la sua voce dice «con il cambio
+  d'inquilino del … regolato fra le parti».
+
+---
+
 ## [1.11.0-beta.55] - Il coinquilino che resta
 
 **Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi e i passaggi già registrati

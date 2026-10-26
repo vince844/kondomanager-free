@@ -134,9 +134,14 @@ it('sentinella — O-252.1-NP: se il cambio con «Scrivi» non ha preso il piano
         ->and($p['Luca']['tot'])->toBe([9074, 0, 9074]);
 });
 
-it('sentinella — O-252.1-R: il cambio «regolato fra le parti» (conguaglio annullato) e poi la fine di Marco: la voce resta com\'è oggi, nelle rate di Ines (decisioni 43 e 46)', function () {
-    // Fonte: decisioni 43 e 46. Misurato su TEST: Ines [20877, 20877, 0] con la «Voce dopo» 12000 per 92 giorni; Marco 8975 «regolato»;
-    // Luca [9074, 0, 9074] con le sole spese generali.
+it('O-252.1-R: il cambio «regolato fra le parti» (conguaglio annullato) e poi la fine di Marco «Scrivi»: la «Voce dopo» segue la catena della decisione 83.3, e Luca la rimborsa a Ugo (€ 210,74)', function () {
+    // Fonte: decisione 83.3, con la 121.1 (Coda 371). Fino alla Coda 371 questo test era una sentinella del comportamento di allora, con la fonte «decisioni 43 e 46. Misurato su TEST»: Ines
+    // [20877, 20877, 0] con la «Voce dopo» 12000 per 92 giorni «nelle sue rate», Luca [9074, 0, 9074] con le sole spese generali. Non era una decisione: la 83.3 dice che dopo un cambio regolato fra
+    // le parti seguito da una fine «Scrivi» di chi era entrato il prospetto segue la catena, e non fa eccezione per una voce che comincia dopo il cambio (le 43 e 46 valgono senza una fine «Scrivi»
+    // dopo). La coppia della fine di Marco ha portato a Ugo anche la voce (Marco − 30148, Ugo + 30148), e il pannello dell'inizio di Luca dice che Luca la rimborsa a Ugo: con la lettura di prima
+    // € 120,00 restavano a carico di Ugo.
+    // A mano: Ines 36000 × 90/365 = 8876,71 → 8877; il pezzo dal 1/4 27123, Marco 27123 × 91/275 = 8975,25 → 8975 regolato fra le parti; dopo la fine 18148, luglio–settembre senza conduttore
+    // 9074 e Luca 9074; la «Voce dopo», 40000 × 30 % = 12000, tutta nei giorni di Luca, «pagata da Ugo»: Luca 9074 + 12000 = 21074. Controllo: 8877 + 8975 + 21074 + 9074 = 48000.
     $s = fclScenario([['Ugo', 'proprietario', 100]]);
     b51aPersone($s, ['Marco', 'Luca']);
     b51aCapitolo($s, 'Voce dopo', 'spesa', 40000, '2026-10-01', '2026-12-31');
@@ -146,14 +151,17 @@ it('sentinella — O-252.1-R: il cambio «regolato fra le parti» (conguaglio an
     $this->actingAs($this->user)->deleteJson(route('admin.gestionale.immobili.passaggi.annulla-conguaglio', [$s['c'], $s['unita'], $cambio]), ['nota_annullamento_conguaglio' => 'Le parti hanno regolato fra loro'])->assertStatus(302);
     fclEmetti($this, $s, '2026-06-30');
     fclRegistra($this, $s, fclModulo($s, null, '2026-07-01', [], 'Marco') + ['conguaglio' => 'scrivi']);
+    expect(fclSaldi($s))->toBe(['Marco' => -30148, 'Ugo' => 30148]);
     fclEmetti($this, $s, '2026-09-30');
-    fds50Registra($this, $s, fds50ModuloInizio($s, 'Luca', '2026-10-01'));
+    $luca = fds50Registra($this, $s, fds50ModuloInizio($s, 'Luca', '2026-10-01'));
+    expect(fclFrasi($luca['anteprima']))->toContain('e li rimborsa Luca a Ugo, con il prospetto degli oneri accessori');
 
     $p = b51aProspettoInBreve($s);
-    expect($p['Ines']['tot'])->toBe([20877, 20877, 0])
-        ->and(collect($p['Ines']['voci'])->filter(fn ($v) => $v[0] === 'Voce dopo')->map(fn ($v) => [$v[1], $v[3], $v[4]])->values()->all())->toBe([['rate', 12000, 92]])
+    expect($p['Ines']['tot'])->toBe([8877, 8877, 0])
+        ->and(collect($p['Ines']['voci'])->filter(fn ($v) => $v[0] === 'Voce dopo')->all())->toBe([])
         ->and($p['Marco']['tot'])->toBe([8975, 0, 0])
-        ->and($p['Luca']['tot'])->toBe([9074, 0, 9074]);
+        ->and($p['Luca']['tot'])->toBe([21074, 0, 21074])
+        ->and(collect($p['Luca']['voci'])->filter(fn ($v) => $v[0] === 'Voce dopo')->values()->all())->toBe([['Voce dopo', 'proprietario', 'Ugo', 12000, 92]]);
 });
 
 // --- 252.2 e 251-b: il piede della stampa ----------------------------------------------------------------------------------------------------

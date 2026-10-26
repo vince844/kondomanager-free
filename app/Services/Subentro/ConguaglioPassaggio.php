@@ -2108,9 +2108,12 @@ final class ConguaglioPassaggio
                 if ($arrivoPerParte && isset($primo->legame)) {
                     $famiglie[$chiave($primo, false)][] = ['indice' => count($conti), 'netto' => $lordo - $nu, 'acquisto' => (int) $acquisto['entrante'], 'competenza' => $competenzaRiga];
                 }
+                // Coda 368: con il segno. Un'entrata (o un netto negativo) si confronta sul valore assoluto, come una spesa: a chi entra non più di
+                // quanto era arrivato a chi esce, a chi esce non meno di zero, nel verso della voce.
+                $segno = $lordo - $nu < 0 ? -1 : 1;
                 $parti = [
-                    'uscente'         => max(0, $acquisto['entrante'] - $adesso['entrante']),
-                    'entrante'        => min($adesso['entrante'], $acquisto['entrante']),
+                    'uscente'         => $segno * max(0, $segno * ($acquisto['entrante'] - $adesso['entrante'])),
+                    'entrante'        => $segno * min($segno * $adesso['entrante'], $segno * $acquisto['entrante']),
                     'giorni_uscente'  => max(0, $acquisto['giorni_entrante'] - $adesso['giorni_entrante']),
                     'giorni_entrante' => min($adesso['giorni_entrante'], $acquisto['giorni_entrante']),
                     'giorni_periodo'  => $acquisto['giorni_entrante'],
@@ -2184,8 +2187,10 @@ final class ConguaglioPassaggio
             foreach ($famiglia as $j => $m) {
                 $c = &$conti[$m['indice']];
                 $prima = (int) $c['entrante'];
-                $c['entrante'] = min((int) $quote[$j], $m['acquisto']);
-                $c['uscente'] = max(0, $m['acquisto'] - $c['entrante']);
+                // Coda 368: con il segno, come nel ramo del predecessore (la guardia qui sopra vuole le parti della famiglia di segno concorde).
+                $segno = $m['netto'] < 0 ? -1 : 1;
+                $c['entrante'] = $segno * min($segno * (int) $quote[$j], $segno * $m['acquisto']);
+                $c['uscente'] = $segno * max(0, $segno * ($m['acquisto'] - $c['entrante']));
                 $c['entrante_formattato'] = MoneyHelper::format($c['entrante']);
                 if ($c['pesi_nudo'] !== null && $prima !== 0) {
                     $c['pesi_nudo'] = array_map(fn ($w) => $w * $c['entrante'] / $prima, $c['pesi_nudo']);

@@ -291,3 +291,20 @@ describe('PassaggioProprietaGuide — la successione di chi aveva ricevuto e chi
             + 'quota resta a carico di chi era a carico di quella fermata, o di chi vende se è già stata regolata, senza il Wallet.');
     });
 });
+
+/**
+ * Coda 366: dopo «Annulla il conguaglio» di un cambio d'inquilino e l'uscita «Scrivi» di chi era entrato, il conduttore entrato dopo rimborsa a chi è entrato
+ * con il cambio la sua parte dei giorni, come dopo un cambio con il conguaglio scritto (Coda 364); la stampa dice «con il cambio d'inquilino del … regolato fra le parti».
+ * Prima la guida non diceva la voce di chi entra dopo un cambio.
+ */
+describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'inquilino (Code 364 e 366)', () => {
+    test('la guida dice chi rimborsa i giorni di un cambio d\'inquilino, con il conguaglio e regolato fra le parti, e quando non li rimborsa nessuno', () => {
+        expect(testoDellaGuida()).toContain('Dopo un cambio d\'inquilino con «Scrivi il conguaglio», un conduttore entrato dopo, anche chi era uscito e rientra, rimborsa a chi è entrato con il cambio '
+            + 'la sua parte dei giorni che questi ha pagato con il conguaglio, e la sua voce dice «pagata da … con il conguaglio del cambio d\'inquilino del …»; non i coinquilini di chi è uscito, '
+            + 'né chi ne ha preso il posto, che hanno i loro giorni nelle loro rate. Lo stesso se le parti avevano regolato quel cambio fra loro e chi era entrato è poi uscito con «Scrivi il '
+            + 'conguaglio»: la voce dice «pagata da … con il cambio d\'inquilino del … regolato fra le parti». Senza quell\'uscita le parti hanno regolato fra loro, e non rimborsa nessuno; con '
+            + '«Non scriverlo» i giorni sono rimasti nelle rate di chi è uscito, e li rimborsa a lui.');
+        // La forma di prima diceva una regola per tutti i cambi, falsa con «Non scriverlo», senza un'uscita dopo l'annullamento e per chi ha preso il posto di un coinquilino.
+        expect(testoDellaGuida()).not.toContain('rimborsa a chi è entrato con il cambio la sua parte di quei giorni:');
+    });
+});
