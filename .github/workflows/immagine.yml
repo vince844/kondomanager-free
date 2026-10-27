@@ -44,6 +44,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Le librerie con vulnerabilità note: il controllo segnala e non blocca. Un avviso uscito il
+      # giorno del tag fermerebbe il rilascio di una correzione che con quella libreria non c'entra;
+      # le avvertenze restano nel riepilogo del job, e gli aggiornamenti li propone Dependabot.
+      - name: Librerie con vulnerabilità note (segnala, non blocca)
+        continue-on-error: true
+        run: |
+          esito=0
+          composer audit --locked --no-interaction || { echo "::warning::composer audit: librerie PHP con vulnerabilità note"; esito=1; }
+          npm audit --omit=dev --audit-level=high || { echo "::warning::npm audit: librerie JavaScript con vulnerabilità note"; esito=1; }
+          exit $esito
+
       - name: Tag dell'immagine
         id: tag
         run: |

@@ -2,10 +2,8 @@
 
 namespace App\Http\Requests\Documento\Utenti;
 
-use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Auth;
 use App\Support\LimiteCaricamento;
 
 /**
@@ -31,9 +29,9 @@ class UpdateDocumentoRequest extends FormRequest
         return [
             'name'            => ['sometimes', 'required', 'string'],
             'description'     => ['sometimes', 'nullable', 'string'],
-            'created_by'      => ['sometimes', 'required', 'exists:users,id'],
-            'is_approved'     => ['sometimes', 'required', 'boolean'],
-            'is_published'    => ['sometimes', 'required', 'boolean'],
+            // Coda 303: niente `created_by`, `is_approved`, `is_published`. Sono dati della
+            // creazione: chi modifica il documento di un altro con un ruolo su misura non ne
+            // diventa l'autore, e la modifica non lo approva né lo ritira (decisione 127.2).
             // ⚠️ **Almeno una, dalla 1.11.0-beta.10.** Un documento d'archivio senza categoria non
             // compare in nessuna vista per categoria e si trova solo cercandolo per nome: è il modo
             // in cui i documenti si perdono. L'obbligo vive **qui**, nei moduli dell'archivio, e non
@@ -42,20 +40,37 @@ class UpdateDocumentoRequest extends FormRequest
             // quei caricamenti.
             'categorie'       => ['sometimes', 'required', 'array', 'min:1'],
             'categorie.*'     => ['integer', 'exists:categorie_documento,id'],
+            // Coda 307: il segno che la richiesta viene dal modulo, con il suo elenco delle categorie
+            // (vedi `prepareForValidation()` qui sotto).
+            'categorie_nel_modulo' => ['sometimes', 'boolean'],
             'file'            => ['nullable', 'file', 'mimes:pdf', 'max:'.LimiteCaricamento::regolaMax()],
         ];
     }
 
-    public function prepareForValidation(): void
+    /**
+     * L'elenco delle categorie che con un file nuovo non arriva (Coda 307).
+     *
+     * Con un file la pagina di modifica del portale (`documenti/user/DocumentiEdit.vue`) manda FormData,
+     * e lì un elenco vuoto **non si scrive affatto**: «tolte tutte» arriva uguale a «campo non mandato»,
+     * che per questa richiesta vuol dire «non toccare». Il modulo però le categorie le ha sempre, e lo
+     * dice con il segno `categorie_nel_modulo`: con il segno a vero, l'elenco assente è un elenco vuoto,
+     * come nel corpo JSON che la stessa pagina manda senza file, e la regola «almeno una» scatta con o
+     * senza file. È la stessa regola della modifica dal pannello
+     * (`Documento\UpdateDocumentoRequest::prepareForValidation()`), con un segno suo: la pagina del
+     * portale non ha palazzi né destinatari, e il segno del pannello li varrebbe vuoti.
+     *
+     * Senza il segno, o con il segno a falso, niente cambia: una richiesta che non viene dalla pagina
+     * e non porta le categorie non le tocca.
+     */
+    protected function prepareForValidation(): void
     {
+        if (! in_array($this->input('categorie_nel_modulo'), [true, 1, '1'], true)) {
+            return;
+        }
 
-        $user = Auth::user();
-
-        $this->merge([
-            'created_by'   => $user->id,
-            'is_approved'  => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
-            'is_published' => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
-        ]);
+        if (! $this->has('categorie')) {
+            $this->merge(['categorie' => []]);
+        }
     }
 
     public function attributes()

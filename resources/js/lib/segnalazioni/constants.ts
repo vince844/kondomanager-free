@@ -48,17 +48,19 @@ import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazion
       colorClass: 'text-gray-500 bg-transparent'
     },
   ];
-  
+
+  // Coda 306: la tendina e il filtro di `is_published` dicono la pubblicazione («Bozza» o
+  // la pubblicazione), non la privacy, che è un'indicazione a parte (`is_private`).
   export const publishedConstants: PublishedType[] = [
     { 
       value: false, 
-      label: 'segnalazioni.visibility.private',
+      label: 'segnalazioni.publication.draft',
       icon: CircleX, 
       colorClass: 'text-red-500 bg-transparent'
     },
     { 
       value: true, 
-      label: 'segnalazioni.visibility.public',
+      label: 'segnalazioni.publication.published',
       icon: CircleCheck, 
       colorClass: 'text-green-500 bg-transparent'
     }

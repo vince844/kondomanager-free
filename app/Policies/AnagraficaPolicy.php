@@ -7,48 +7,69 @@ use App\Models\Anagrafica;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
+/**
+ * Le anagrafiche del pannello (`Anagrafiche\AnagraficaController`): l'elenco, la scheda e i moduli mostrano codici
+ * fiscali, telefoni e indirizzi email, e le azioni scrivono l'archivio delle persone. Ogni azione chiede il suo
+ * permesso delle anagrafiche (decisione 137): entrare nel pannello non basta.
+ *
+ * I ruoli di serie (`App\Enums\Role::permissions()`): l'amministratore li ha tutti; il collaboratore ha
+ * «Visualizza», «Crea» e «Modifica anagrafiche», non «Elimina anagrafiche».
+ *
+ * Un permesso che manca dal database vale «no» (`checkPermissionTo`, non `hasPermissionTo`, che solleva
+ * un'eccezione): la policy risponde anche dopo una scrittura, quando, registrato un passaggio, il server decide se
+ * mandare alla pagina il collegamento al modulo di modifica (`PassaggioController::store`), e lì un errore cadrebbe
+ * su un passaggio già registrato.
+ */
 class AnagraficaPolicy
 {
     /**
-     * Determine whether the user can view any models.
+     * L'elenco: «Visualizza anagrafiche», il permesso con cui il menù mostra la voce.
      */
-    public function viewAny(User $user): bool
+    public function viewAny(User $user): Response
     {
-        return false;
+        return $user->checkPermissionTo(Permission::VIEW_ANAGRAFICHE->value)
+            ? Response::allow()
+            : Response::deny(__('anagrafiche.permessi.view'));
     }
 
     /**
-     * Determine whether the user can view the model.
+     * La scheda: lo stesso permesso dell'elenco.
      */
     public function view(User $user, Anagrafica $anagrafica): Response
     {
-        return $user->hasPermissionTo(Permission::VIEW_USERS->value)  
-        ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per visualizzare le anagrafiche registrate!');
+        return $user->checkPermissionTo(Permission::VIEW_ANAGRAFICHE->value)
+            ? Response::allow()
+            : Response::deny(__('anagrafiche.permessi.view'));
     }
 
     /**
-     * Determine whether the user can create models.
+     * Il modulo nuovo e il salvataggio: «Crea anagrafiche».
      */
-    public function create(User $user): bool
+    public function create(User $user): Response
     {
-        return false;
+        return $user->checkPermissionTo(Permission::CREATE_ANAGRAFICHE->value)
+            ? Response::allow()
+            : Response::deny(__('anagrafiche.permessi.create'));
     }
 
     /**
-     * Determine whether the user can update the model.
+     * Il modulo di modifica e il salvataggio: «Modifica anagrafiche».
      */
-    public function update(User $user, Anagrafica $anagrafica): bool
+    public function update(User $user, Anagrafica $anagrafica): Response
     {
-        return false;
+        return $user->checkPermissionTo(Permission::EDIT_ANAGRAFICHE->value)
+            ? Response::allow()
+            : Response::deny(__('anagrafiche.permessi.update'));
     }
 
     /**
-     * Determine whether the user can delete the model.
+     * L'eliminazione: «Elimina anagrafiche».
      */
-    public function delete(User $user, Anagrafica $anagrafica): bool
+    public function delete(User $user, Anagrafica $anagrafica): Response
     {
-        return false;
+        return $user->checkPermissionTo(Permission::DELETE_ANAGRAFICHE->value)
+            ? Response::allow()
+            : Response::deny(__('anagrafiche.permessi.delete'));
     }
 
     /**

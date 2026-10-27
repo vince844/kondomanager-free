@@ -91,6 +91,8 @@ return [
         'permissions_count'            => ':count permissões',
         'invite_emails' => 'Endereços de email',
         'invite_buildings' => 'Condomínios',
+        // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
+        'fuori_portata' => 'Só um administrador gere esta conta: tem um papel diferente de «utente» e «fornitore», ou permissões adicionais que não tem.',
     ],
 
     /* ------------------------------------------------------------------
@@ -124,7 +126,7 @@ return [
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'role_line_1' => 'Selecione o papel a atribuir ao utilizador. Escolha entre os papéis predefinidos ou um criado por si.',
+        'role_line_1' => 'Selecione o papel a atribuir ao utilizador. Um administrador escolhe entre todos os papéis, incluindo os personalizados; quem não é administrador atribui só «utente» e «fornitore».',
         'role_line_2' => 'As permissões associadas ao papel serão herdadas automaticamente.',
         'resident'    => 'Selecione o registo a associar ao utilizador. O registo associado poderá aceder ao sistema com as credenciais do utilizador criado e consultar os seus dados e os relacionados.',
         'permissions' => 'Selecione permissões específicas a atribuir ao utilizador além das herdadas do papel selecionado.',

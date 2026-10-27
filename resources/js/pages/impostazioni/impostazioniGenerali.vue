@@ -82,7 +82,15 @@ const {
   roles,
   default_per_page,
   per_page_disponibili,
+  ruolo_registrazione_modificabile,
 } = page.props
+
+/**
+ * Il ruolo predefinito dei nuovi utenti lo cambia solo un amministratore (Coda 258, decisione 134.1): a chi
+ * non lo è la tendina si mostra senza farsi cambiare, con la nota che dice perché, e il modulo lo rimanda
+ * com'era.
+ */
+const ruoloRegistrazioneBloccato = ruolo_registrazione_modificabile !== true
 
 /* -------------------------------------------------
  * Form
@@ -276,7 +284,7 @@ const submit = () => {
               </div>
 
               <div class="w-full sm:w-[240px] shrink-0">
-                <Select v-model="form.default_user_role">
+                <Select v-model="form.default_user_role" :disabled="ruoloRegistrazioneBloccato">
                   <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_user_role }">
                     <SelectValue :placeholder="trans('impostazioni.placeholder.select_role')" />
                   </SelectTrigger>
@@ -290,6 +298,9 @@ const submit = () => {
                 </Select>
                 <p v-if="form.errors.default_user_role" class="text-sm text-red-500 mt-1">
                   {{ form.errors.default_user_role }}
+                </p>
+                <p v-else-if="ruoloRegistrazioneBloccato" data-test="ruolo-registrazione-bloccato" class="text-xs text-muted-foreground mt-1">
+                  {{ trans('impostazioni.ruolo_registrazione.solo_amministratore') }}
                 </p>
               </div>
             </div>

@@ -7,9 +7,9 @@ use App\Services\Documenti\ArchivioDocumenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
 use App\Http\Requests\Documento\Utenti\UpdateDocumentoRequest;
-use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Portale\CondominioPortaleResource;
+use App\Http\Resources\Portale\DocumentoPortaleResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
-use App\Http\Resources\Documenti\DocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Models\Documento;
 use App\Services\DocumentoService;
@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
 
@@ -52,7 +53,8 @@ class DocumentoController extends Controller
         $condomini = $anagrafica->condomini;
 
         return Inertia::render('documenti/user/DocumentiNew', [
-            'condomini' => CondominioResource::collection($condomini),
+            // Coda 260: i propri condomìni con id e nome, senza le note dell'amministratore.
+            'condomini' => CondominioPortaleResource::collection($condomini),
             'categoria' => (int) $validated['categoria'],
             // ⚠️ **L'elenco completo, dalla 1.11.0-beta.10.** Prima non serviva: la categoria era
             // una sola e arrivava dall'indirizzo, invisibile. Ora il condòmino può aggiungerne —
@@ -164,7 +166,7 @@ class DocumentoController extends Controller
         $documento->loadMissing('categorie');
 
         return Inertia::render('documenti/user/DocumentiEdit', [
-            'documento'   => new DocumentoResource($documento),
+            'documento'   => new DocumentoPortaleResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             // Il limite lo decide il server, non noi.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
@@ -204,9 +206,11 @@ class DocumentoController extends Controller
                 'path'         => $documento->path,
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
-                'created_by'   => $validated['created_by'] ?? $documento->created_by,
-                'is_published' => $validated['is_published'],
-                'is_approved'  => $validated['is_approved'],
+                // Coda 303: autore, pubblicazione e approvazione non cambiano in modifica. Chi
+                // modifica il documento di un altro (con un ruolo su misura) non ne diventa l'autore,
+                // e la modifica non lo approva né lo ritira: l'approvazione cambia solo
+                // dall'interruttore dell'amministratore (decisione 127.2).
+                'updated_by'   => Auth::id(),
             ]);
 
             // ⚠️ **Solo se il modulo le ha mandate, ed è la protezione che conta di più qui.**

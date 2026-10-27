@@ -30,6 +30,20 @@ class ComunicazionePolicy
     }
 
     /**
+     * L'elenco del portale (decisione 134.4): si apre a chi ha «Visualizza comunicazioni» o
+     * «Visualizza proprie comunicazioni», e mostra ciò che la regola del portale gli concede
+     * (`Comunicazione::scopeVisibiliNelPortale()`). Gemella di `SegnalazionePolicy::elencoNelPortale()`:
+     * `view()` guarda solo il primo permesso, e a chi vede solo le proprie rifiutava l'elenco intero.
+     */
+    public function elencoNelPortale(User $user): Response
+    {
+        return $user->hasPermissionTo(Permission::VIEW_COMUNICAZIONI->value)
+            || $user->hasPermissionTo(Permission::VIEW_OWN_COMUNICAZIONI->value)
+            ? Response::allow()
+            : Response::deny(__('policies.view_communications'));
+    }
+
+    /**
      * Determine whether the user can view the specified comunicazione.
      *
      * This method checks the user's permissions and determines whether they can view a specific 
@@ -53,10 +67,18 @@ class ComunicazionePolicy
             return Response::allow();
         }
 
-        // Grant access if the user can view comunicazioni and is assigned to it or their condominio
+        // Fuori dal pannello vale la regola sola di `Comunicazione::scopeVisibiliNelPortale()`, la
+        // stessa dell'elenco: pubblicata e approvata (o propria), e indirizzata all'utente; una
+        // privata solo all'autore e alle persone collegate (Code 198 e 304). Il palazzo da solo non
+        // basta: una bozza o una comunicazione in moderazione la apre solo il suo autore, anche
+        // chiesta per id.
+        //
+        // La regola si chiede al database e non alle relazioni del modello: così le relazioni
+        // (`anagrafiche`, `condomini`) non si caricano qui e non arrivano alla pagina con il modello
+        // (Coda 260).
         if (
-            $user->hasPermissionTo(Permission::VIEW_COMUNICAZIONI->value) && 
-            $this->isAssignedToUserOrCondominio($user, $comunicazione)
+            $user->hasPermissionTo(Permission::VIEW_COMUNICAZIONI->value) &&
+            $comunicazione->visibileNelPortaleA($user)
         ) {
             return Response::allow();
         }
@@ -156,37 +178,6 @@ class ComunicazionePolicy
         return $user->hasPermissionTo(Permission::APPROVE_COMUNICAZIONI->value)  
         ? Response::allow() 
         : Response::deny(__('policies.approve_communication'));
-    }
-
-    /**
-     * Verifica se l'utente è assegnato alla comunicazione o al suo condominio.
-     *
-     * @param \App\Models\User $user
-     * @param \App\Models\Comunicazione $comunicazione
-     * @return bool
-     */
-    private function isAssignedToUserOrCondominio(User $user, Comunicazione $comunicazione): bool
-    {
-        $anagrafica = $user->anagrafica;
-
-        if (!$anagrafica) {
-            return false;
-        }
-
-        // Assigned directly to the user
-        if ($comunicazione->anagrafiche->contains($anagrafica->id)) {
-            return true;
-        }
-
-        // If it is assigned to any anagrafiche, do NOT allow access via condominio
-        if ($comunicazione->anagrafiche->isNotEmpty()) {
-            return false;
-        }
-
-        // Otherwise, allow via matching condominio
-        $condominioIds = $anagrafica->condomini->pluck('id');
-
-        return $comunicazione->condomini->pluck('id')->intersect($condominioIds)->isNotEmpty();
     }
 
 }

@@ -6,6 +6,8 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use App\Rules\UniqueEmailAcrossTables;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 /**
@@ -17,11 +19,13 @@ use Illuminate\Support\Str;
 class UpdateAnagraficaRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Il permesso prima delle regole (decisione 137): chi non può modificare l'anagrafica della rotta riceve il rifiuto
+     * di `AnagraficaPolicy::update`, con la sua frase, e nessun esito delle regole, nemmeno di quelle di unicità.
+     * `AnagraficaController::update()` lo chiede di nuovo.
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('update', $this->route('anagrafica'));
     }
 
     /**

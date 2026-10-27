@@ -7,10 +7,10 @@ use App\Http\Requests\Evento\EventoIndexRequest;
 use App\Http\Requests\Evento\Utenti\CreateEventoRequest;
 use App\Http\Requests\Evento\Utenti\EditEventoRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
-use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Portale\CondominioPortaleResource;
+use App\Http\Resources\Portale\EventoPortaleResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
 use App\Http\Resources\Evento\EditEventoResource;
-use App\Http\Resources\Evento\EventoResource;
 use App\Models\CategoriaEvento;
 use App\Models\EccezioneEvento;
 use App\Models\Evento;
@@ -115,7 +115,8 @@ class EventoController extends Controller
 
         return Inertia::render('eventi/user/EventiList', [
             'eventi' => [
-                'data' => EventoResource::collection($events->items()),
+                // Coda 260: la risorsa minima del portale.
+                'data' => EventoPortaleResource::collection($events->items()),
                 'current_page' => $events->currentPage(),
                 'last_page' => $events->lastPage(),
                 'per_page' => $events->perPage(),
@@ -137,7 +138,8 @@ class EventoController extends Controller
         $condomini = $anagrafica->condomini;
 
         return Inertia::render('eventi/user/EventiNew', [
-            'condomini'   => CondominioResource::collection($condomini),
+            // Coda 260: i propri condomìni con id e nome, senza le note dell'amministratore.
+            'condomini'   => CondominioPortaleResource::collection($condomini),
             'categorie'   => CategoriaEventoResource::collection(CategoriaEvento::all()),
         ]);
     }

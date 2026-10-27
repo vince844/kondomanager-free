@@ -10,6 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -32,7 +33,7 @@ class InstallaCommand extends Command
     protected $signature = 'kondomanager:installa
         {--admin-nome= : nome dell\'amministratore (default INSTALL_ADMIN_NAME)}
         {--admin-email= : email dell\'amministratore (default INSTALL_ADMIN_EMAIL)}
-        {--admin-password= : password iniziale, almeno 6 caratteri (default INSTALL_ADMIN_PASSWORD)}
+        {--admin-password= : password iniziale, almeno 10 caratteri (default INSTALL_ADMIN_PASSWORD)}
         {--nome= : nome dell\'applicazione (default APP_NAME)}
         {--lingua= : lingua dell\'interfaccia, fra quelle disponibili (default APP_LOCALE)}
         {--attendi=120 : quanti secondi aspettare che il database risponda}';
@@ -85,7 +86,7 @@ class InstallaCommand extends Command
         try {
             Validator::make(
                 ['name' => trim($adminNome), 'email' => trim($adminEmail), 'password' => $adminPassword],
-                ['name' => 'required|string|min:2', 'email' => 'required|email', 'password' => 'required|min:6'],
+                ['name' => 'required|string|min:2', 'email' => 'required|email', 'password' => ['required', Password::defaults()]],
                 [],
                 ['name' => 'INSTALL_ADMIN_NAME', 'email' => 'INSTALL_ADMIN_EMAIL', 'password' => 'INSTALL_ADMIN_PASSWORD'],
             )->validate();

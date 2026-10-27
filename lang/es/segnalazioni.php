@@ -209,8 +209,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Envía un correo a todos los propietarios de la comunidad que tienen las notificaciones activas para decirles que la incidencia ha cambiado. Déjala desactivada si estás corrigiendo una errata.",
-        'visibility' => 'If set to private, only administrators will be able to view the ticket.',
+        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que la incidencia ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora la recibirá igualmente, porque para él es nueva. Mientras sea un borrador o esté pendiente de aprobación no se envía nada; cuando esté publicada y aprobada, la recibirán todos los destinatarios.",
+        'visibility' => 'Un borrador, o una incidencia pendiente de aprobación, no se muestra a los vecinos; una vez publicada y aprobada, la ven los vecinos a los que va dirigida.',
         'priority'   => 'Set the priority level for this ticket to help administrators manage it accordingly.',
         'status'     => 'Set the current status of the ticket to track progress.',
         'comments'   => 'Allow users to add comments to this ticket.',
@@ -250,5 +250,41 @@ return [
         'location_desc'    => 'Accurately indicate the affected building and associate the residents\' records to facilitate communication and inspections.',
         'settings_title'   => 'Operational Parameters',
         'settings_desc'    => 'Define the level of urgency, update the processing status of the file, and adjust the visibility permissions on the bulletin board.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Code 304 e 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'Pendiente de aprobación',
+        'draft'     => 'Borrador',
+        'published' => 'Publicada',
+        'needs_approval' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando esté aprobada, con el escudo junto al título en la lista de incidencias.',
+        'waiting_approver' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando la apruebe quien aprueba las incidencias.',
+    ],
+
+    'privacy' => [
+        'private'                 => 'Privada',
+        'private_hint'            => 'Solo la ven el autor, las personas vinculadas y el administrador',
+        'guide_title'             => 'Quién la ve',
+        'guide_private'           => 'Esta incidencia es privada: solo la ven quien la abrió, las personas a las que va dirigida y el administrador.',
+        'guide_not_private'       => 'Esta incidencia no es privada: la ven los vecinos a los que va dirigida (toda la comunidad, si no va dirigida a nadie en concreto) y el administrador.',
+        'guide_private_pending'   => 'Esta incidencia es privada. Por ahora no la ve nadie más, aparte del administrador: las personas a las que va dirigida la verán cuando esté publicada y aprobada.',
+        'guide_not_private_pending' => 'Esta incidencia no es privada. Por ahora no la ve nadie más, aparte del administrador: la verán los vecinos a los que va dirigida (toda la comunidad, si no va dirigida a nadie en concreto) cuando esté publicada y aprobada.',
+        'make_public'             => 'Hacer pública',
+        'make_public_title'       => '¿Hacer pública la incidencia?',
+        'make_public_description' => 'La verán todos los vecinos de :condominio, con el nombre de :autore, y quienes no la veían recibirán el aviso de una nueva incidencia. :autore recibirá un aviso. No hay ningún comando para volver a hacerla privada.',
+        'make_public_description_pending' => 'La verán todos los vecinos de :condominio, con el nombre de :autore, cuando esté publicada y aprobada: ahora no lo está. :autore recibirá un aviso. No hay ningún comando para volver a hacerla privada.',
+        'make_public_author_loses_access' => 'Después, :autore ya no la verá en el portal: no figura entre los vecinos de :condominio.',
+        'make_public_confirm'     => 'Hacer pública',
+        'already_public'          => 'La incidencia ya es pública.',
+        'success_make_public'     => 'La incidencia ahora es pública.',
+        'success_make_public_pending' => 'La incidencia ya no es privada: la verán todos los vecinos cuando esté publicada y aprobada.',
+        'error_make_public'       => 'No se ha podido hacer pública la incidencia.',
+        'error_notify_author'     => 'La incidencia ya no es privada, pero el aviso al autor no se ha enviado.',
+        'error_notify_residents'  => 'La incidencia ya no es privada, pero el aviso a los vecinos que no la veían no se ha enviado.',
+        'error_notify_both'       => 'La incidencia ya no es privada, pero no se han enviado ni el aviso al autor ni el de los vecinos que no la veían.',
+        'residents_required'      => 'Una incidencia privada debe seguir dirigida al menos a un residente. Para hacerla visible a toda la comunidad, usa «Hacer pública» en la ficha de la incidencia.',
+        'residents_required_ask_approver' => 'Una incidencia privada debe seguir dirigida al menos a un residente. Para hacerla visible a toda la comunidad, puede hacerla pública quien aprueba las incidencias.',
+    ],
 ];

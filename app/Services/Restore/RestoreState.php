@@ -119,6 +119,23 @@ class RestoreState
         return $token;
     }
 
+    /**
+     * Sposta la scadenza del token a `$ttlSeconds` da adesso, senza cambiarlo: lo fa ogni passo del ripristino, così il
+     * token dura dall'ultimo passo e non dall'avvio. Senza un token nello stato non fa niente.
+     */
+    public function extendToken(int $ttlSeconds): void
+    {
+        $state = $this->get();
+        $hash = $state['token_hash'] ?? null;
+
+        if (! is_string($hash) || $hash === '') {
+            return;
+        }
+
+        $state['token_expires_at'] = time() + $ttlSeconds;
+        $this->put($state);
+    }
+
     public function validateToken(?string $token): bool
     {
         if ($token === null || $token === '') {

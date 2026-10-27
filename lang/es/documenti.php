@@ -200,8 +200,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que el documento ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora lo recibirá igualmente, porque para él es nuevo.",
-        'visibility' => 'If set to private, only administrators will be able to view the document.',
+        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que el documento ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora lo recibirá igualmente, porque para él es nuevo. Mientras sea un borrador o esté pendiente de aprobación no se envía nada; cuando esté publicado y aprobado, lo recibirán todos los destinatarios.",
+        'visibility' => 'Un documento en borrador o pendiente de aprobación no se muestra a los vecinos; una vez publicado y aprobado, lo ven los vecinos a los que va dirigido.',
         'category'   => 'Un documento puede estar en varias categorías, y se encuentra dentro de cada una. Selecciona al menos una, o crea una nueva.',
     ],
 
@@ -313,4 +313,13 @@ return [
         'usata'  => '{0} Ninguno|{1} 1 documento|[2,*] :count documentos',
     ],
 
+    /* ------------------------------------------------------------------
+     | Pubblicazione (Coda 306): i documenti non hanno la privacy
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'draft'     => 'Borrador',
+        'published' => 'Publicado',
+        'needs_approval' => 'Está pendiente de aprobación: elegir «Publicado» no basta para mostrarlo a los vecinos. Lo verán cuando esté aprobado, con el escudo junto al nombre en la lista de documentos.',
+        'waiting_approver' => 'Está pendiente de aprobación: elegir «Publicado» no basta para mostrarlo a los vecinos. Lo verán cuando lo apruebe quien aprueba los documentos.',
+    ],
 ];

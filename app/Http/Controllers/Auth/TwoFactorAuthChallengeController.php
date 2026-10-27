@@ -7,7 +7,9 @@ use App\Actions\TwoFactorAuth\ProcessRecoveryCode;
 use App\Actions\TwoFactorAuth\VerifyTwoFactorCode;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureTwoFactorChallengeSession;
 use App\Models\User;
+use App\Support\IndirizzoDeiLimiti;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +17,16 @@ use Illuminate\Support\Str;
 
 class TwoFactorAuthChallengeController extends Controller
 {
+    /** Codici sbagliati ammessi: per utente e indirizzo in un minuto, per utente in cinque minuti, per sessione. */
+    private const TENTATIVI = 5;
+
+    /**
+     * Il limite per utente, senza l'indirizzo (Coda 259): vale da qualunque indirizzo arrivino i
+     * codici, quindi non dipende da come sono configurati i proxy fidati. Il prezzo: quando scatta,
+     * anche il titolare aspetta cinque minuti.
+     */
+    private const SECONDI_PER_UTENTE = 300;
+
     /**
      * Attempt to authenticate a new session using the two factor authentication code.
      *
@@ -35,7 +47,7 @@ class TwoFactorAuthChallengeController extends Controller
         // una sessione iniziata **prima** della sospensione, quindi la guardia del login non la
         // copre. Un codice giusto su un account sospeso resta un accesso negato.
         if ($user->suspended()) {
-            $request->session()->forget(['login.id', 'login.remember']);
+            $request->session()->forget(EnsureTwoFactorChallengeSession::CHIAVI);
 
             return to_route('login')->withErrors(['email' => __('auth.suspended')]);
         }
@@ -65,17 +77,16 @@ class TwoFactorAuthChallengeController extends Controller
      */
     protected function authenticateUsingCode(Request $request, User $user)
     {
-        $secret = decrypt($user->two_factor_secret);
-        $valid = app(VerifyTwoFactorCode::class)($secret, $request->code);
+        // Finestra di ±30 secondi e niente riuso: `VerifyTwoFactorCode` (Coda 259).
+        $valid = app(VerifyTwoFactorCode::class)($user, $request->code);
         
         if ($valid) {
             app(CompleteTwoFactorAuthentication::class)($user);
-            RateLimiter::clear($this->throttleKey($user));
+            $this->azzeraLimiti($user);
             return redirect()->intended(RedirectHelper::userHomeRoute());
         }
         
-        RateLimiter::hit($this->throttleKey($user));
-        return back()->withErrors(['code' => __('auth.invalid_2fa_code')]);
+        return $this->tentativoFallito($request, $user, ['code' => __('auth.invalid_2fa_code')]);
     }
 
     /**
@@ -94,8 +105,7 @@ class TwoFactorAuthChallengeController extends Controller
         
         // If ProcessRecoveryCode returns false, the code was invalid
         if ($updatedCodes === false) {
-            RateLimiter::hit($this->throttleKey($user));
-            return back()->withErrors(['recovery_code' => __('auth.invalid_2fa_recovery_code')]);
+            return $this->tentativoFallito($request, $user, ['recovery_code' => __('auth.invalid_2fa_recovery_code')]);
         }
         
         // Update the user's recovery codes, removing the used code
@@ -106,7 +116,7 @@ class TwoFactorAuthChallengeController extends Controller
         app(CompleteTwoFactorAuthentication::class)($user);
         
         // Clear rate limiter after successful authentication
-        RateLimiter::clear($this->throttleKey($user));
+        $this->azzeraLimiti($user);
         
         // Redirect to the intended page
         return redirect()->intended(RedirectHelper::userHomeRoute());
@@ -122,15 +132,54 @@ class TwoFactorAuthChallengeController extends Controller
      */
     protected function ensureIsNotRateLimited(User $user): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey($user), 5)) {
-            return;
+        foreach ([$this->throttleKey($user), $this->chiaveUtente($user)] as $chiave) {
+            if (! RateLimiter::tooManyAttempts($chiave, self::TENTATIVI)) {
+                continue;
+            }
+
+            $seconds = RateLimiter::availableIn($chiave);
+
+            throw ValidationException::withMessages([
+                'code' => __('auth.too_many_2fa_attempts', ['seconds' => $seconds]),
+            ]);
+        }
+    }
+
+    /**
+     * Un codice sbagliato conta sui due limiti e sulla sessione: al quinto lo stato «password giusta»
+     * si chiude e si ricomincia dalla password, che ha il suo limite (Coda 259).
+     */
+    private function tentativoFallito(Request $request, User $user, array $errore)
+    {
+        RateLimiter::hit($this->throttleKey($user));
+        RateLimiter::hit($this->chiaveUtente($user), self::SECONDI_PER_UTENTE);
+
+        $tentativi = (int) $request->session()->get('login.tentativi', 0) + 1;
+
+        if ($tentativi >= self::TENTATIVI) {
+            $request->session()->forget(EnsureTwoFactorChallengeSession::CHIAVI);
+
+            // Nel riquadro dei rifiuti del login, come la scadenza (`EnsureTwoFactorChallengeSession`).
+            return to_route('login')->with('avviso', __('auth.two_factor_restart'));
         }
 
-        $seconds = RateLimiter::availableIn($this->throttleKey($user));
+        $request->session()->put('login.tentativi', $tentativi);
 
-        throw ValidationException::withMessages([
-            'code' => __('auth.too_many_2fa_attempts', ['seconds' => $seconds]),
-        ]);
+        return back()->withErrors($errore);
+    }
+
+    private function azzeraLimiti(User $user): void
+    {
+        RateLimiter::clear($this->throttleKey($user));
+        RateLimiter::clear($this->chiaveUtente($user));
+    }
+
+    /**
+     * La chiave del limite per utente, uguale da ogni indirizzo.
+     */
+    private function chiaveUtente(User $user): string
+    {
+        return $user->id.'|2fa';
     }
 
     /**
@@ -141,6 +190,7 @@ class TwoFactorAuthChallengeController extends Controller
      */
     protected function throttleKey(User $user): string
     {
-        return Str::transliterate($user->id . '|2fa|' . request()->ip());
+        // Un IPv6 conta per la sua rete /64, come in ogni limite per indirizzo (`IndirizzoDeiLimiti`).
+        return Str::transliterate($user->id . '|2fa|' . IndirizzoDeiLimiti::di(request()->ip()));
     }
 }

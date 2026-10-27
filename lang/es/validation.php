@@ -169,11 +169,16 @@ return [
 
     'custom' => [
         'roles' => [
-            'not_allowed' => 'No puedes asignar este rol: los roles administrativos los concede un administrador.',
+            'not_allowed' => 'No puedes asignar este rol: quien no es administrador asigna solo los roles «utente» y «fornitore».',
             'last_admin' => 'Este es el último administrador activo: cambiar su rol dejaría la instalación sin nadie que pueda gestionarla.',
+            'privileged_target' => 'Solo un administrador puede cambiar los roles de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
         ],
         'permissions' => [
             'not_allowed' => 'No puedes conceder un permiso que tú mismo no tienes.',
+            'privileged_target' => 'Solo un administrador puede cambiar los permisos adicionales de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
+        ],
+        'default_user_role' => [
+            'only_admin' => 'Solo un administrador puede cambiar el rol predeterminado para nuevos usuarios.',
         ],
         'email' => [
             'required' => 'The :attribute field is required.',
@@ -181,6 +186,8 @@ return [
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.',
             'unique_email_across_tables' => 'This email address is already in use.',
+            'privileged_target' => 'Solo un administrador puede cambiar el email de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
+            'own_from_profile' => 'Tu email no se cambia aquí: cámbialo desde tu perfil, donde hace falta la contraseña actual.',
             'unique_email_across_tables_in' => 'Esta dirección de email ya está en uso: figura en :dove.',
             'sorgenti' => [
                 'anagrafiche' => 'una ficha de persona',

@@ -4,6 +4,7 @@ namespace App\Notifications\Documenti;
 
 use App\Helpers\RouteHelper;
 use App\Models\Documento;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +14,7 @@ use Illuminate\Support\Str;
 class ApprovedDocumentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public $documento;
     public $user;
@@ -46,13 +48,13 @@ class ApprovedDocumentoNotification extends LocalizedNotification implements Sho
         return (new MailMessage)
             ->subject(__('notifications.approved_document.subject'))
             ->greeting(__('notifications.approved_document.greeting', [
-                'name' => $notifiable->name ?? $notifiable->nome
+                'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome)
             ]))
             ->line(__('notifications.approved_document.line_1', [
-                'user' => $this->user->name
+                'user' => self::nomeComeTesto($this->user->name)
             ]))
-            ->line('**' . __('notifications.approved_document.title') . ':** ' . $this->documento->name)
-            ->line('**' . __('notifications.approved_document.description') . ':** ' . Str::ucfirst($this->documento->description))
+            ->line('**' . __('notifications.approved_document.title') . ':** ' . self::testoComeTesto($this->documento->name))
+            ->line('**' . __('notifications.approved_document.description') . ':** ' . Str::ucfirst(self::testoComeTesto($this->documento->description)))
             ->action(__('notifications.approved_document.action'), RouteHelper::urlArchivioDocumenti($notifiable));
     }
 

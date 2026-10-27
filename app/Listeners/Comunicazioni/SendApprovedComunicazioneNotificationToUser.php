@@ -8,6 +8,7 @@ use App\Models\Anagrafica;
 use App\Models\User;
 use App\Notifications\Comunicazioni\ApprovedComunicazioneNotification;
 use App\Notifications\Comunicazioni\NewComunicazioneNotification;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Traits\FilterByNotificationPreference;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -29,12 +30,14 @@ class SendApprovedComunicazioneNotificationToUser implements ShouldQueue
                 Notification::send($creator, new ApprovedComunicazioneNotification($comunicazione, $user));
             }
 
-            if (!$comunicazione->is_private && $comunicazione->is_approved) {
-                $condominioIds = $comunicazione->condomini->pluck('id')->toArray();
+            // Coda 302 (e 198): la platea è quella di `DestinatariNotifica`, la stessa dell'elenco
+            // del portale: le persone collegate se è indirizzata a qualcuno, i condomìni collegati
+            // se non lo è a nessuno, l'autore e le persone collegate se è privata. Il creatore
+            // riceve l'avviso «approvata» qui sopra.
+            $platea = app(DestinatariNotifica::class)->perModello($comunicazione);
 
-                $query = Anagrafica::whereHas('condomini', fn ($q) =>
-                    $q->whereIn('condominio_id', $condominioIds)
-                );
+            if ($platea->isNotEmpty()) {
+                $query = Anagrafica::whereIn('id', $platea);
 
                 $anagrafiche = $this->filterByNotificationPreference($query, NotificationType::NEW_COMMUNICATION->value)
                     ->get()

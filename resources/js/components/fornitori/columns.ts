@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import DropdownAction from '@/components/fornitori/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/fornitori/DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import { Badge }  from '@/components/ui/badge';
 import { trans } from 'laravel-vue-i18n';
 import AnagraficheStack from '@/components/AnagraficheStack.vue';
@@ -10,7 +11,7 @@ import { Truck, MapPin, ArrowRight } from 'lucide-vue-next';
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Fornitore } from '@/types/fornitori';
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 
 export const columns: ColumnDef<Fornitore>[] = [
   {
@@ -156,7 +157,8 @@ export const columns: ColumnDef<Fornitore>[] = [
         // `AnagraficaController::show()` aveva il corpo vuoto e rispondeva 200 con niente dentro,
         // cioe' pagina bianca. La scheda dell'anagrafica e' stata costruita nella stessa beta,
         // proprio perche' seguendo questo collegamento nuovo si e' svegliato quel difetto vecchio.)*
-        url: route(generateRoute('anagrafiche.show'), { anagrafica: r.id }),
+        // La scheda chiede «Visualizza anagrafiche» (decisioni 137 e 138.1): senza, il nome resta, senza collegamento.
+        url: hasPermission([Permission.VIEW_ANAGRAFICHE]) ? route(generateRoute('anagrafiche.show'), { anagrafica: r.id }) : undefined,
       }));
 
       /*

@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { MoreHorizontal } from 'lucide-vue-next'
 import { Trash2, FilePenLine } from 'lucide-vue-next'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { trans } from 'laravel-vue-i18n'
 import type { Role } from '@/types/roles';
 
 interface Props {
@@ -17,12 +18,14 @@ const props = defineProps<Props>()
 const roleID = ref('');
 const isAlertOpen = ref(false)
 const isProtectedDialogOpen = ref(false)
+const isRegistrationDialogOpen = ref(false)
 const isDropdownOpen = ref(false)
 const protectedDialogType = ref<'edit' | 'delete'>('edit')
 
 // Computed properties
 const userCount = computed(() => props.role.users_count || 0)
 const isProtected = computed(() => props.role.is_protected || false)
+const isRegistrationRole = computed(() => props.role.is_registration_role || false)
 
 function handleDelete(role: Role) {
   roleID.value = role.id;
@@ -32,6 +35,10 @@ function handleDelete(role: Role) {
     if (isProtected.value) {
       protectedDialogType.value = 'delete'
       isProtectedDialogOpen.value = true
+    } else if (isRegistrationRole.value) {
+      // Il ruolo dei nuovi iscritti il server non lo elimina (Coda 258): la finestra lo dice prima dell'invio,
+      // invece della conferma dell'eliminazione.
+      isRegistrationDialogOpen.value = true
     } else {
       isAlertOpen.value = true 
     }
@@ -115,10 +122,17 @@ const protectedDialogDescription = computed(() => {
           Sei sicuro di volere eliminare il ruolo <strong class="font-semibold">"{{ role.name }}"</strong>?
         </AlertDialogTitle>
         <AlertDialogDescription>
-          <div v-if="userCount > 0" class="mt-2">
-            Il ruolo <strong class="font-semibold">"{{ role.name }}"</strong> ha 
-            <strong class="font-semibold">{{ userCount }}</strong> utenti associati che verranno automaticamente 
-            assegnati al ruolo utente default.
+          <!-- Come fa il server (`RoleController::destroy`): il ruolo si toglie a tutti i suoi utenti, e «utente» lo
+               riceve solo chi resta senza ruoli. `userCount` conta tutti gli utenti del ruolo, anche chi ne ha due. -->
+          <div v-if="userCount === 1" class="mt-2">
+            Il ruolo <strong class="font-semibold">"{{ role.name }}"</strong> ha
+            <strong class="font-semibold">1</strong> utente associato: lo perderà, e se non ha un altro ruolo
+            riceverà il ruolo «utente».
+          </div>
+          <div v-else-if="userCount > 1" class="mt-2">
+            Il ruolo <strong class="font-semibold">"{{ role.name }}"</strong> ha
+            <strong class="font-semibold">{{ userCount }}</strong> utenti associati: lo perderanno, e chi non ha un
+            altro ruolo riceverà il ruolo «utente».
           </div>
           <div v-else class="mt-2">
             Questa azione non è reversibile. Eliminerà il ruolo 
@@ -129,6 +143,23 @@ const protectedDialogDescription = computed(() => {
       <AlertDialogFooter>
         <AlertDialogCancel>Annulla</AlertDialogCancel>
         <AlertDialogAction @click="deleteRole">Elimina</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
+  <!-- Il ruolo dei nuovi iscritti: il nome è testo, non HTML (lo sceglie chi crea il ruolo) -->
+  <AlertDialog v-model:open="isRegistrationDialogOpen">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>
+          {{ trans('ruoli.registration_role_dialog_title') }}
+        </AlertDialogTitle>
+        <AlertDialogDescription>
+          {{ trans('ruoli.cannot_delete_registration_role', { role: role.name }) }}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogAction @click="isRegistrationDialogOpen = false">{{ trans('ruoli.registration_role_dialog_close') }}</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

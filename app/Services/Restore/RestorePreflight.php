@@ -51,9 +51,7 @@ class RestorePreflight
         $format = (int) ($manifest['manifest_format'] ?? 0);
 
         if (! in_array($format, self::SUPPORTED_MANIFEST_FORMATS, true)) {
-            throw new IncompatibleBackupException(
-                "Formato del backup non supportato (manifest_format {$format}): l'archivio è stato creato da una versione non compatibile."
-            );
+            throw new IncompatibleBackupException(MessaggiDelRipristino::di('format_unsupported', ['format' => $format]));
         }
 
         $sourceVersion = $manifest['app']['version'] ?? null;
@@ -62,27 +60,23 @@ class RestorePreflight
         // Downgrade non supportato: un backup di una versione PIÙ NUOVA del
         // codice attuale contiene schemi/dati che questo codice non conosce.
         if (is_string($sourceVersion) && version_compare($sourceVersion, $currentVersion, '>')) {
-            throw new IncompatibleBackupException(
-                "Il backup proviene da una versione più recente ({$sourceVersion}) di quella installata ({$currentVersion}). "
-                .'Aggiorna prima KondoManager, poi riprova il ripristino.'
-            );
+            throw new IncompatibleBackupException(MessaggiDelRipristino::di('newer_version', [
+                'source' => $sourceVersion, 'current' => $currentVersion,
+            ]));
         }
 
         $driver = $manifest['database']['driver'] ?? null;
         $currentDriver = $this->currentDriver();
 
         if (is_string($driver) && ! in_array($driver, BackupPreflight::SUPPORTED_DRIVERS, true)) {
-            throw new IncompatibleBackupException(
-                "Il backup usa un driver di database non supportato ({$driver})."
-            );
+            throw new IncompatibleBackupException(MessaggiDelRipristino::di('driver_unsupported', ['driver' => $driver]));
         }
 
         // Cambio di famiglia di driver (es. sqlite → mysql): fuori scope v1.
         if (is_string($driver) && $this->driverFamily($driver) !== $this->driverFamily($currentDriver)) {
-            throw new IncompatibleBackupException(
-                "Il backup è stato creato con {$driver}, ma questa installazione usa {$currentDriver}: "
-                .'il ripristino tra database diversi non è supportato.'
-            );
+            throw new IncompatibleBackupException(MessaggiDelRipristino::di('driver_mismatch', [
+                'driver' => $driver, 'current' => $currentDriver,
+            ]));
         }
 
         $free = @disk_free_space(storage_path('app/backups'));

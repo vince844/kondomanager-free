@@ -39,8 +39,8 @@
  * ## Cosa NON copre
  *
  * - **Non prova che dietro un proxy vero gli indirizzi arrivino giusti**: quello dipende dalla rete
- *   dell'hosting e non è riproducibile qui. Si prova che il valore scritto è quello che il framework
- *   sa espandere.
+ *   dell'hosting e non è riproducibile qui. Si prova che il valore scritto è quello che la nostra
+ *   configurazione espande nelle sole reti private, e che il middleware lo riceve.
  * - **Non tocca mai il `.env` del progetto**: ogni prova lavora su un file temporaneo. È il motivo
  *   per cui `sistemaIlFileEnv()` prende il percorso come argomento.
  */
@@ -82,6 +82,29 @@ function assegnazioniTrustedProxies(string $contenuto): array
         array_map('trim', explode("\n", $contenuto)),
         fn ($riga) => str_starts_with($riga, 'TRUSTED_PROXIES=')
     ));
+}
+
+/**
+ * Il valore di `trustedproxy.proxies` come lo carica Laravel quando nel `.env` c'è `TRUSTED_PROXIES=$valore`:
+ * il file di configurazione vero, letto con la variabile impostata, e la variabile rimessa com'era.
+ * Attraversa il tratto `.env` → configurazione, che `config()->set()` scavalcherebbe.
+ */
+function proxiesDaConfigurazione(string $valore): mixed
+{
+    $prima = [$_SERVER['TRUSTED_PROXIES'] ?? null, $_ENV['TRUSTED_PROXIES'] ?? null];
+    $_SERVER['TRUSTED_PROXIES'] = $_ENV['TRUSTED_PROXIES'] = $valore;
+
+    try {
+        return (require dirname(__DIR__, 3).'/config/trustedproxy.php')['proxies'];
+    } finally {
+        foreach (['_SERVER' => $prima[0], '_ENV' => $prima[1]] as $dove => $era) {
+            if ($era === null) {
+                unset($GLOBALS[$dove]['TRUSTED_PROXIES']);
+            } else {
+                $GLOBALS[$dove]['TRUSTED_PROXIES'] = $era;
+            }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,41 +287,61 @@ it('e non scrive più «*» da nessuna parte', function () {
     }
 });
 
-it('il valore scritto è quello che il framework sa espandere davvero', function () {
-    // ⚠️ **Non è pignoleria: è l'unico anello che lega la nostra stringa al comportamento reale.**
-    // `PRIVATE_SUBNETS` non è una convenzione nostra, è un token di Symfony. Se un aggiornamento del
-    // framework lo togliesse, scriveremmo nel `.env` una parola che nessuno interpreta e i proxy non
-    // sarebbero fidati **in silenzio**: nessun errore, solo indirizzi sbagliati.
-    $richiesta = Request::create('/');
-    $richiesta->server->set('REMOTE_ADDR', '10.1.2.3');
+it('il valore scritto è quello che la nostra configurazione sa espandere', function () {
+    // ⚠️ **È l'anello che lega la nostra stringa al comportamento reale.** Il segno `PRIVATE_SUBNETS` lo espande
+    // `config/trustedproxy.php` nell'elenco delle sole reti da cui non si arriva da internet, e allo stesso modo
+    // per chi ha già quel valore nel `.env`; non arriva così com'è a Symfony, che con lo stesso nome ha un
+    // elenco diverso (Code 262 e 259: i limiti per indirizzo contano l'indirizzo di chi si connette,
+    // salvo un proxy di una rete privata).
+    $proxies = proxiesDaConfigurazione(UpgradePatchServiceProvider::VALORE);
+    expect($proxies)->toBeArray()->not->toContain(UpgradePatchServiceProvider::VALORE);
 
-    Request::setTrustedProxies([UpgradePatchServiceProvider::VALORE], Request::HEADER_X_FORWARDED_FOR);
-
-    $richiesta->headers->set('X-Forwarded-For', '203.0.113.9');
+    Request::setTrustedProxies($proxies, Request::HEADER_X_FORWARDED_FOR);
 
     // Il proxy sta su rete privata: gli si crede, e l'indirizzo del visitatore è quello inoltrato.
+    $richiesta = Request::create('/');
+    $richiesta->server->set('REMOTE_ADDR', '10.1.2.3');
+    $richiesta->headers->set('X-Forwarded-For', '203.0.113.9');
     expect($richiesta->getClientIp())->toBe('203.0.113.9');
 
-    // Controprova, che è il senso di tutta la correzione: se la stessa richiesta arriva da un
-    // indirizzo **pubblico**, l'intestazione non viene creduta e non si può falsificare il proprio IP.
+    // Controprova: da un indirizzo pubblico l'intestazione non è creduta.
     $daInternet = Request::create('/');
-    $daInternet->server->set('REMOTE_ADDR', '198.51.100.7');
+    $daInternet->server->set('REMOTE_ADDR', '8.8.8.8');
     $daInternet->headers->set('X-Forwarded-For', '203.0.113.9');
-
-    expect($daInternet->getClientIp())->toBe('198.51.100.7');
+    expect($daInternet->getClientIp())->toBe('8.8.8.8');
 
     Request::setTrustedProxies([], Request::HEADER_X_FORWARDED_FOR);
 });
 
-it('e le reti private che il token espande sono quelle che ci aspettiamo', function () {
-    // Se un giorno l'elenco cambiasse — per esempio perdendo la CGNAT `100.64/10`, che molti
-    // hosting condivisi usano — il valore scritto continuerebbe a sembrare giusto e coprirebbe meno.
-    expect(IpUtils::PRIVATE_SUBNETS)->toContain('127.0.0.0/8')
-        ->and(IpUtils::PRIVATE_SUBNETS)->toContain('10.0.0.0/8')
-        ->and(IpUtils::PRIVATE_SUBNETS)->toContain('172.16.0.0/12')
-        ->and(IpUtils::PRIVATE_SUBNETS)->toContain('192.168.0.0/16')
-        ->and(IpUtils::PRIVATE_SUBNETS)->toContain('100.64.0.0/10')
-        ->and(IpUtils::PRIVATE_SUBNETS)->toContain('::1/128');
+it('e le reti in cui il valore si espande sono le private davvero, senza le reti speciali di Symfony', function () {
+    // Se un giorno l'elenco perdesse una rete — per esempio la CGNAT `100.64/10`, che molti hosting condivisi
+    // usano — il valore scritto continuerebbe a sembrare giusto e coprirebbe meno. E non deve ritrovarsi reti
+    // da cui si arriva da internet.
+    $proxies = proxiesDaConfigurazione(UpgradePatchServiceProvider::VALORE);
+
+    foreach (['127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10',
+        '169.254.0.0/16', 'fe80::/10', 'fc00::/7'] as $rete) {
+        expect($proxies)->toContain($rete);
+    }
+
+    foreach (['2002::/16', '2001::/32', '::ffff:0:0/96', '::/96', '64:ff9b::/96', '2001:db8::/32', '192.0.2.0/24',
+        '198.51.100.0/24', '203.0.113.0/24', '0.0.0.0/8', '240.0.0.0/4'] as $rete) {
+        expect($proxies)->not->toContain($rete);
+    }
+});
+
+it('gli altri valori di TRUSTED_PROXIES restano com\'erano', function () {
+    // Solo il segno delle reti private cambia significato; il jolly e le liste esplicite arrivano al
+    // middleware come prima, e il segno accanto a un indirizzo esplicito tiene l'indirizzo.
+    expect(proxiesDaConfigurazione('*'))->toBe('*')
+        ->and(proxiesDaConfigurazione('10.0.0.1,10.0.0.2'))->toBe('10.0.0.1,10.0.0.2');
+
+    $insieme = proxiesDaConfigurazione('PRIVATE_SUBNETS, 203.0.113.5');
+    expect($insieme)->toContain('203.0.113.5')->toContain('10.0.0.0/8')->not->toContain('PRIVATE_SUBNETS')->not->toContain('2002::/16');
+
+    // Il sinonimo che Symfony accetta per lo stesso segno vale lo stesso elenco, il nostro: non arriva così com'è
+    // a Symfony, che ha un elenco più largo.
+    expect(proxiesDaConfigurazione('private_ranges'))->toBe(proxiesDaConfigurazione(UpgradePatchServiceProvider::VALORE));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,20 +351,16 @@ it('e le reti private che il token espande sono quelle che ci aspettiamo', funct
 it("⚠️ il valore arriva davvero al middleware, non solo a Symfony", function () {
     // ⚠️ **Il buco che avevo lasciato**, e che Vincenzo ha chiesto di chiudere il 22/08/2026.
     // Le prove qui sopra chiamano `Request::setTrustedProxies()` direttamente: dimostrano che
-    // Symfony sa espandere il token, **non** che la nostra catena glielo consegni.
+    // l'elenco si sa usare, **non** che la nostra catena lo consegni al middleware.
     //
-    // ⚠️ **Questo test copre METÀ catena, e va detto.** `config()->set()` scavalca il file di
-    // configurazione, quindi qui si prova il tratto *chiave di config → middleware*: che
-    // `TrustProxies` legga `trustedproxy.proxies` e sappia farci qualcosa. Provato rompendo di
-    // proposito il file di config: **questo test resta verde**, perché non lo attraversa.
-    //
-    // L'altro tratto — *`.env` → chiave di config* — non si può esercitare senza rifare il boot
-    // dell'applicazione, ed è coperto dall'asserzione strutturale qui sotto. Sono due prove
-    // diverse per due tratti diversi, e tenerle separate è più onesto di una che sembra coprire
-    // tutto e non lo fa.
+    // Il segno grezzo messo con `config()->set()` scavalcherebbe il
+    // file di configurazione e proverebbe solo il tratto *chiave di config → middleware*. Qui il valore è quello
+    // che esce dal file di configurazione letto con la variabile del `.env` (`proxiesDaConfigurazione()`),
+    // perché è il file a espandere il segno delle reti private: la catena è attraversata dal `.env` in poi.
+    // Resta fuori solo la lettura del `.env` stesso da parte di Dotenv, che non è nostra.
     //
     // Qui si fa una richiesta HTTP vera attraverso lo stack, con il valore che il provider scrive.
-    config()->set('trustedproxy.proxies', \App\Providers\UpgradePatchServiceProvider::VALORE);
+    config()->set('trustedproxy.proxies', proxiesDaConfigurazione(\App\Providers\UpgradePatchServiceProvider::VALORE));
 
     Route::get('/_prova-ip', fn () => request()->ip())->middleware('web');
 
@@ -336,22 +375,81 @@ it("⚠️ il valore arriva davvero al middleware, non solo a Symfony", function
     );
 });
 
-it('e una richiesta da internet non riesce a falsificare il proprio indirizzo', function () {
+it('e una richiesta da internet non riesce a falsificare il proprio indirizzo', function (string $remoto) {
     // ⚠️ **La controprova, ed è il senso di tutta la correzione della coda ㉞.** Con `*` questa
     // asserzione fallirebbe: l'indirizzo sarebbe quello inoltrato, cioè scelto dal client, e con
     // esso le chiavi di throttle di accesso e doppia autenticazione.
-    config()->set('trustedproxy.proxies', \App\Providers\UpgradePatchServiceProvider::VALORE);
+    //
+    // Anche da IPv6, e da indirizzi pubblici scritti in forme particolari (6to4, Teredo, un IPv4 scritto come
+    // IPv6, come lo riporta un server a doppio stack): nessuno è in una rete privata (Code 262 e 259). Gli altri
+    // stanno appena fuori da una rete privata scritta come IPv6, uno appena prima e uno appena dopo: una maschera
+    // più larga anche di un bit solo si allarga verso il basso o verso l'alto, secondo la rete, e ne prende uno.
+    config()->set('trustedproxy.proxies', proxiesDaConfigurazione(\App\Providers\UpgradePatchServiceProvider::VALORE));
 
     Route::get('/_prova-ip-pubblico', fn () => request()->ip())->middleware('web');
 
-    $daInternet = $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+    $daInternet = $this->withServerVariables(['REMOTE_ADDR' => $remoto])
         ->get('/_prova-ip-pubblico', ['X-Forwarded-For' => '203.0.113.9']);
 
-    expect($daInternet->getContent())->toBe('198.51.100.7',
+    expect($daInternet->getContent())->toBe($remoto,
         "Una richiesta arrivata da un indirizzo pubblico è riuscita a farsi credere un altro IP.\n".
         'È esattamente ciò che `*` permetteva e che questa beta ha chiuso.'
     );
-});
+})->with([
+    'IPv4 pubblico'                    => ['8.8.8.8'],
+    'IPv6 pubblico'                    => ['2a01:4f8:1:2::1'],
+    '6to4'                             => ['2002:c000:204::1'],
+    'Teredo'                           => ['2001:0:4136:e378:8000:63bf:3fff:fdd2'],
+    'IPv4 pubblico scritto come IPv6'  => ['::ffff:8.8.8.8'],
+    'appena prima di 127/8, scritto come IPv6'     => ['::ffff:126.255.255.255'],
+    'appena dopo 127/8, scritto come IPv6'         => ['::ffff:128.0.0.0'],
+    'appena prima di 10/8, scritto come IPv6'      => ['::ffff:9.255.255.255'],
+    'appena dopo 10/8, scritto come IPv6'          => ['::ffff:11.0.0.0'],
+    'appena prima di 172.16/12, scritto come IPv6' => ['::ffff:172.15.255.255'],
+    'appena dopo 172.16/12, scritto come IPv6'     => ['::ffff:172.32.0.1'],
+    'appena prima di 192.168/16, scritto come IPv6' => ['::ffff:192.167.255.255'],
+    'appena dopo 192.168/16, scritto come IPv6'    => ['::ffff:192.169.0.0'],
+    'appena prima della CGNAT, scritto come IPv6'  => ['::ffff:100.63.255.255'],
+    'appena dopo la CGNAT, scritto come IPv6'      => ['::ffff:100.128.0.1'],
+    'appena prima di 169.254/16, scritto come IPv6' => ['::ffff:169.253.255.255'],
+    'appena dopo 169.254/16, scritto come IPv6'    => ['::ffff:169.255.0.0'],
+]);
+
+it('e un proxy su una rete privata vera è creduto, in IPv4, in IPv6 e scritto come IPv6', function (string $proxy) {
+    // Per chi ha il proxy su una rete privata non cambia niente: è creduto come prima.
+    config()->set('trustedproxy.proxies', proxiesDaConfigurazione(\App\Providers\UpgradePatchServiceProvider::VALORE));
+
+    Route::get('/_prova-ip-proxy', fn () => request()->ip())->middleware('web');
+
+    $daProxy = $this->withServerVariables(['REMOTE_ADDR' => $proxy])
+        ->get('/_prova-ip-proxy', ['X-Forwarded-For' => '9.9.9.9']);
+
+    expect($daProxy->getContent())->toBe('9.9.9.9');
+})->with([
+    'loopback'                       => ['127.0.0.1'],
+    'loopback IPv6'                  => ['::1'],
+    'RFC 1918 (10/8)'                => ['10.1.2.3'],
+    'RFC 1918 (172.16/12, Docker)'   => ['172.18.0.2'],
+    'RFC 1918 (192.168/16)'          => ['192.168.1.10'],
+    'CGNAT'                          => ['100.64.0.1'],
+    'link-local'                     => ['169.254.10.20'],
+    'ULA'                            => ['fd00::1'],
+    'link-local IPv6'                => ['fe80::1'],
+    'Docker scritto come IPv6'       => ['::ffff:172.18.0.2'],
+    // Ogni rete privata IPv4 anche nella forma che riporta un server a doppio stack: l'elenco le ha una per
+    // una (`::ffff:0:0/96` comprenderebbe internet), e una che mancasse toglierebbe la fiducia a quel proxy.
+    'loopback scritto come IPv6'     => ['::ffff:127.0.0.1'],
+    'loopback scritto come IPv6, ultimo indirizzo' => ['::ffff:127.255.255.254'],
+    '10/8 scritto come IPv6'         => ['::ffff:10.1.2.3'],
+    '10/8 scritto come IPv6, ultimo indirizzo' => ['::ffff:10.255.255.254'],
+    '172.16/12 scritto come IPv6, ultimo indirizzo' => ['::ffff:172.31.255.254'],
+    '192.168/16 scritto come IPv6'   => ['::ffff:192.168.1.10'],
+    '192.168/16 scritto come IPv6, ultimo indirizzo' => ['::ffff:192.168.255.254'],
+    'CGNAT scritto come IPv6'        => ['::ffff:100.64.0.1'],
+    'CGNAT scritto come IPv6, ultimo indirizzo' => ['::ffff:100.127.255.254'],
+    'link-local scritto come IPv6'   => ['::ffff:169.254.10.20'],
+    'link-local scritto come IPv6, ultimo indirizzo' => ['::ffff:169.254.255.254'],
+]);
 
 it('con «*» invece la falsificazione riesce — la prova che il valore conta', function () {
     // Non è un test del prodotto: è la **misura del difetto**, tenuta accanto alla sua correzione.
@@ -367,21 +465,19 @@ it('con «*» invece la falsificazione riesce — la prova che il valore conta',
 });
 
 it("⚠️ e la chiave di config è legata alla variabile giusta del .env", function () {
-    // ⚠️ **L'altra metà della catena**, che il test qui sopra non può attraversare: `config()->set()`
-    // scavalca il file, e rifare il boot dell'applicazione in un test è più fragile di quello che
-    // proverebbe. Si guarda quindi il sorgente della configurazione.
+    // ⚠️ **L'altra metà della catena**: che il file di configurazione legga la variabile giusta.
     //
     // Il tratto esiste per una ragione precisa, raccontata nel blocco in testa a
     // `config/trustedproxy.php`: leggere `env('TRUSTED_PROXIES')` dentro `bootstrap/app.php`
     // restituiva **sempre `null`**, perché quel punto del ciclo di vita precede il caricamento del
     // `.env`. I proxy non venivano configurati **mai**, qualunque cosa ci fosse scritto — e nessun
     // errore lo diceva. Se qualcuno riportasse la lettura là, tornerebbe lo stesso silenzio.
-    $sorgente = file_get_contents(dirname(__DIR__, 3).'/config/trustedproxy.php');
-
-    // ⚠️ `str_contains(...)->toBeTrue()` e non `toContain(...)`: in Pest `toContain` è **variadico**
-    // e il secondo argomento non è un messaggio, è un secondo termine da cercare. Ci sono già
-    // inciampato nella beta.63 — vale la pena scriverlo dove ricapita.
-    expect(str_contains($sorgente, "'proxies' => env('TRUSTED_PROXIES')"))->toBeTrue(
+    //
+    // Non basta cercare nel sorgente la riga `'proxies' => env('TRUSTED_PROXIES')`: il
+    // file non copia il valore così com'è (espande il segno delle reti private): lo si carica con la
+    // variabile impostata e si guarda che cosa ne esce. Un valore che il file non trasforma deve uscire
+    // uguale, cioè letto dalla variabile giusta.
+    expect(proxiesDaConfigurazione('192.0.2.10,192.0.2.11'))->toBe('192.0.2.10,192.0.2.11',
         "`config/trustedproxy.php` non lega più `proxies` alla variabile `TRUSTED_PROXIES` del\n".
         "`.env`. Il provider continuerebbe a scriverla e nessuno la leggerebbe: i proxy non\n".
         'sarebbero fidati, senza nessun errore da nessuna parte.'

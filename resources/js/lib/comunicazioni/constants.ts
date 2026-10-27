@@ -27,17 +27,19 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
       colorClass: 'text-red-500 bg-transparent'
     }
   ];
-  
+
+  // Coda 306: la tendina e il filtro di `is_published` dicono la pubblicazione («Bozza» o
+  // la pubblicazione), non la privacy, che è un'indicazione a parte (`is_private`).
   export const publishedConstants: PublishedType[] = [
     { 
       value: false, 
-      label: 'comunicazioni.visibility.private',
+      label: 'comunicazioni.publication.draft',
       icon: CircleX, 
       colorClass: 'text-red-500 bg-transparent'
     },
     { 
       value: true, 
-      label: 'comunicazioni.visibility.public',
+      label: 'comunicazioni.publication.published',
       icon: CircleCheck, 
       colorClass: 'text-green-500 bg-transparent'
     }

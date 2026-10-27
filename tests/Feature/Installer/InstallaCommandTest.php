@@ -12,6 +12,10 @@ use Spatie\Permission\Models\Role;
 /*
  * `kondomanager:installa` (alias `km:install`), 1.11.0-beta.32: l'installazione senza wizard.
  *
+ * Le password dell'amministratore hanno dieci caratteri o più: dalla Coda 262 (decisione 127.1) è
+ * il minimo anche qui, e le password dei test lo rispettano (`segreta-10`, dieci caratteri; nove
+ * caratteri sono il caso rifiutato).
+ *
  * Il database della suite è già migrato da RefreshDatabase, e un'installazione vera parte dal
  * vuoto: i test che contano girano su un file sqlite nuovo, reso connessione predefinita per la
  * durata del test. La transazione della suite resta sulla connessione `sqlite` e non c'entra.
@@ -67,7 +71,7 @@ it('installa da un database vuoto con i dati dell\'amministratore, senza l\'uten
     $this->artisan('kondomanager:installa', $this->attendi + [
         '--admin-nome' => 'Mario Rossi',
         '--admin-email' => 'mario@esempio.it',
-        '--admin-password' => 'segreta1',
+        '--admin-password' => 'segreta-01',
         '--nome' => 'Studio Rossi',
         '--lingua' => 'it',
     ])->assertSuccessful();
@@ -75,7 +79,7 @@ it('installa da un database vuoto con i dati dell\'amministratore, senza l\'uten
     $admin = User::where('email', 'mario@esempio.it')->first();
     expect($admin)->not->toBeNull()
         ->and($admin->name)->toBe('Mario Rossi')
-        ->and(Hash::check('segreta1', $admin->password))->toBeTrue()
+        ->and(Hash::check('segreta-01', $admin->password))->toBeTrue()
         ->and($admin->email_verified_at)->not->toBeNull()
         ->and($admin->hasRole('amministratore'))->toBeTrue()
         ->and(User::where('email', 'admin@km.com')->exists())->toBeFalse()
@@ -89,7 +93,7 @@ it('legge i dati dell\'amministratore dalle variabili INSTALL_* quando mancano l
     $this->dbFile = databaseVuotoPerInstallazione();
 
     $vecchie = [];
-    foreach (['INSTALL_ADMIN_NAME' => 'Anna Bianchi', 'INSTALL_ADMIN_EMAIL' => 'anna@esempio.it', 'INSTALL_ADMIN_PASSWORD' => 'segreta2'] as $k => $v) {
+    foreach (['INSTALL_ADMIN_NAME' => 'Anna Bianchi', 'INSTALL_ADMIN_EMAIL' => 'anna@esempio.it', 'INSTALL_ADMIN_PASSWORD' => 'segreta-02'] as $k => $v) {
         $vecchie[$k] = $_ENV[$k] ?? null;
         $_ENV[$k] = $_SERVER[$k] = $v;
     }
@@ -108,7 +112,7 @@ it('legge i dati dell\'amministratore dalle variabili INSTALL_* quando mancano l
 
     $admin = User::where('email', 'anna@esempio.it')->first();
     expect($admin?->name)->toBe('Anna Bianchi')
-        ->and(Hash::check('segreta2', $admin->password))->toBeTrue()
+        ->and(Hash::check('segreta-02', $admin->password))->toBeTrue()
         ->and(User::count())->toBe(1);
 });
 
@@ -137,9 +141,29 @@ it('rifiuta una password corta prima di scrivere e non la stampa', function () {
     expect(Schema::hasTable('users'))->toBeFalse();
 });
 
+it('Coda 262 — rifiuta una password di nove caratteri prima di scrivere, e ne accetta una di dieci', function () {
+    // Decisione 127.1: il minimo di dieci caratteri vale anche per l'amministratore dell'installazione.
+    $this->dbFile = databaseVuotoPerInstallazione();
+
+    $this->artisan('kondomanager:installa', $this->attendi + [
+        '--admin-email' => 'mario@esempio.it',
+        '--admin-password' => 'segreta-1',
+    ])->assertExitCode(2);
+
+    expect(Schema::hasTable('users'))->toBeFalse()
+        ->and(Schema::hasTable('migrations'))->toBeFalse();
+
+    $this->artisan('kondomanager:installa', $this->attendi + [
+        '--admin-email' => 'mario@esempio.it',
+        '--admin-password' => 'segreta-10',
+    ])->assertSuccessful();
+
+    expect(Hash::check('segreta-10', User::where('email', 'mario@esempio.it')->first()?->password))->toBeTrue();
+});
+
 it('una seconda esecuzione non fa nulla: il lock la ferma', function () {
     $this->dbFile = databaseVuotoPerInstallazione();
-    $opzioni = $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta1'];
+    $opzioni = $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta-01'];
 
     $this->artisan('kondomanager:installa', $opzioni)->assertSuccessful();
     $primaScrittura = filemtime($this->lock);
@@ -149,7 +173,7 @@ it('una seconda esecuzione non fa nulla: il lock la ferma', function () {
         ->assertSuccessful();
 
     $admin = User::where('email', 'mario@esempio.it')->firstOrFail();
-    expect(Hash::check('segreta1', $admin->password))->toBeTrue()
+    expect(Hash::check('segreta-01', $admin->password))->toBeTrue()
         ->and(User::count())->toBe(1)
         ->and(filemtime($this->lock))->toBe($primaScrittura);
 });
@@ -162,7 +186,7 @@ it('su un database già installato senza lock scrive solo il lock', function () 
 
     $this->artisan('kondomanager:installa', $this->attendi + [
         '--admin-email' => 'nuovo@esempio.it',
-        '--admin-password' => 'segreta1',
+        '--admin-password' => 'segreta-01',
     ])
         ->expectsOutputToContain('esiste un amministratore')
         ->assertSuccessful();
@@ -184,7 +208,7 @@ it('se il database non risponde non scrive nulla ed esce con errore', function (
 
     $this->artisan('kondomanager:installa', $this->attendi + [
         '--admin-email' => 'mario@esempio.it',
-        '--admin-password' => 'segreta1',
+        '--admin-password' => 'segreta-01',
     ])
         ->expectsOutputToContain('non risponde')
         ->assertFailed();
@@ -194,7 +218,7 @@ it('se il database non risponde non scrive nulla ed esce con errore', function (
 
 it('un errore dopo la creazione dell\'amministratore non lascia niente: il secondo avvio rifà tutto', function () {
     $this->dbFile = databaseVuotoPerInstallazione();
-    $opzioni = $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta1'];
+    $opzioni = $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta-01'];
 
     // Un seeder che esplode dopo che l'amministratore è stato creato.
     config(['installer.requirements.seeding.classes' => [SeederCheEsplode::class]]);
@@ -233,7 +257,7 @@ it('un lock rimasto su un database vuoto non vale: si installa', function () {
     $this->dbFile = databaseVuotoPerInstallazione();
     file_put_contents($this->lock, now()->toDateTimeString());
 
-    $this->artisan('kondomanager:installa', $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta1'])
+    $this->artisan('kondomanager:installa', $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta-01'])
         ->expectsOutputToContain('database vuoto')
         ->assertSuccessful();
 
@@ -246,7 +270,7 @@ it('INSTALL_ADMIN_NAME vuota vale come assente', function () {
     $_ENV['INSTALL_ADMIN_NAME'] = $_SERVER['INSTALL_ADMIN_NAME'] = '';
 
     try {
-        $this->artisan('kondomanager:installa', $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta1'])
+        $this->artisan('kondomanager:installa', $this->attendi + ['--admin-email' => 'mario@esempio.it', '--admin-password' => 'segreta-01'])
             ->assertSuccessful();
     } finally {
         if ($vecchio === null) {

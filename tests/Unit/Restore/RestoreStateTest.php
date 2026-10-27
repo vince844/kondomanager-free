@@ -112,3 +112,27 @@ test('la scrittura crea le cartelle mancanti e non lascia file temporanei', func
     $state->clear();
     @rmdir(dirname($path));
 });
+
+test('la scadenza del token si sposta senza cambiare il token, e solo dove un token c\'è: senza lo stato non si crea niente', function () {
+    $path = restoreStatePath();
+    $state = new RestoreState($path);
+
+    // Senza lo stato: nessun file nuovo.
+    $state->extendToken(3600);
+    expect($state->exists())->toBeFalse();
+
+    // Uno stato senza token resta senza.
+    $state->put(['uuid' => 'abc-123', 'phase' => 'pending']);
+    $state->extendToken(3600);
+    expect($state->get())->not->toHaveKey('token_expires_at');
+
+    // Con il token: la scadenza va avanti, il token resta quello.
+    $token = $state->issueToken(-10);
+    expect($state->validateToken($token))->toBeFalse();
+    $state->extendToken(3600);
+    expect($state->validateToken($token))->toBeTrue()
+        ->and($state->get()['token_expires_at'])->toBeGreaterThanOrEqual(time() + 3599);
+
+    $state->clear();
+    @rmdir(dirname($path));
+});

@@ -39,14 +39,11 @@ class UserCreateSegnalazioneRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $regole = [
             'subject'       => 'required|string|max:255',
             'description'   => 'required|string',
             'priority'      => 'required|string',
             'stato'         => 'required|string',
-            'created_by'    => 'required|exists:users,id',
-            'is_approved'   => 'required|boolean',
-            'is_published'  => 'required|boolean',
             'is_private'    => 'sometimes|boolean',
             'condominio_id' => [
                 'required',
@@ -78,6 +75,26 @@ class UserCreateSegnalazioneRequest extends FormRequest
                 },
             ],
         ];
+
+        // Coda 303: autore, approvazione e pubblicazione si calcolano solo alla creazione, dal
+        // permesso di chi crea. In modifica le tre chiavi non hanno regola e non entrano in
+        // `validated()`: chi modifica la segnalazione di un altro (con un ruolo su misura) non ne
+        // diventa l'autore, e la modifica non la approva né la ritira (decisione 127.2). Qui anche
+        // la pubblicazione, perché dal portale non arriva dal modulo: è lo stesso calcolo
+        // dell'approvazione.
+        if (! $this->inModifica()) {
+            $regole['created_by'] = 'required|exists:users,id';
+            $regole['is_approved'] = 'required|boolean';
+            $regole['is_published'] = 'required|boolean';
+        }
+
+        return $regole;
+    }
+
+    /** La stessa richiesta serve la creazione e la modifica: in modifica la rotta porta il record. */
+    private function inModifica(): bool
+    {
+        return $this->route('segnalazione') instanceof Segnalazione;
     }
 
     /**
@@ -87,6 +104,9 @@ class UserCreateSegnalazioneRequest extends FormRequest
      */
     public function prepareForValidation(): void
     {
+        if ($this->inModifica()) {
+            return;
+        }
 
         $user = Auth::user();
 

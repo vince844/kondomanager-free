@@ -7,7 +7,7 @@ use App\Actions\Subentro\AnnullaConguaglioAction;
 use App\Actions\Subentro\AnnullaPassaggioAction;
 use App\Actions\Subentro\RegistraSubentroAction;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Anagrafica\CreateAnagraficaRequest;
+use App\Http\Requests\Gestionale\Immobile\Anagrafica\CreaAnagraficaNelPassaggioRequest;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\AnteprimaPassaggioRequest;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Models\Anagrafica;
@@ -219,7 +219,10 @@ class PassaggioController extends Controller
                 'al_posto'    => $alPosto,
                 'azioni'      => [
                     'estratto_conto' => $entranteId ? route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => $entranteId]) : null,
-                    'anagrafe'       => $entranteId ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,
+                    // Il collegamento apre il modulo di modifica dell'anagrafica, che chiede «Modifica anagrafiche» (decisioni
+                    // 137 e 138.1): a chi non lo ha non si manda, e la pagina non mostra né il pulsante né la frase che lo accompagna.
+                    'anagrafe'       => $entranteId && $request->user()->can('update', $subentro->entrante)
+                        ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,
                 ],
             ]);
     }
@@ -386,12 +389,12 @@ class PassaggioController extends Controller
     /**
      * «Crea nuova anagrafica» dal dialogo inline di «Registra passaggio», senza lasciare la pagina.
      *
-     * Stessa richiesta di validazione di `AnagraficaController::store()` — le regole sono una volta
-     * sola — ma risposta JSON e persona **già associata al condominio**: è la ragione per cui esiste
+     * Stesse regole di validazione di `AnagraficaController::store()` — sono una volta sola, la richiesta le eredita
+     * (`CreaAnagraficaNelPassaggioRequest`) — ma risposta JSON e persona **già associata al condominio**: è la ragione per cui esiste
      * (`anagrafica_condominio` è dove il gestionale legge chi appartiene allo stabile, vedi la nota in
      * `ImmobileAnagraficaController::store()`).
      */
-    public function creaAnagrafica(CreateAnagraficaRequest $request, Condominio $condominio, Immobile $immobile): JsonResponse
+    public function creaAnagrafica(CreaAnagraficaNelPassaggioRequest $request, Condominio $condominio, Immobile $immobile): JsonResponse
     {
         $this->assicuraUnitaDelCondominio($condominio, $immobile);
         $dati = collect($request->validated())->except('condomini')->all();

@@ -21,6 +21,8 @@ import axios from 'axios';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
 import { publishedConstants } from '@/lib/documenti/constants';
+import { rigaServeApprovazione } from '@/lib/pubblicazione';
+import { Permission } from '@/enums/Permission';
 import { formatBytes } from '@/utils/formatBytes'; 
 import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
@@ -39,7 +41,7 @@ const props = defineProps<{
   anagrafiche: Anagrafica[];
 }>()
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
 const { toast } = useToast();
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
@@ -102,7 +104,16 @@ const form = useForm({
   file: null as File | null,
   // Parte sempre spenta — vedi la nota gemella in `comunicazioni/ComunicazioniEdit.vue`.
   avvisa_destinatari: false,
+  // ⚠️ Il segno che questo modulo ha il campo dei destinatari (Coda 307). Con un file nuovo il
+  // modulo parte come FormData, e lì un elenco vuoto non si scrive affatto: senza questo segno il
+  // server non distinguerebbe «tolti tutti» da «campo non mandato», e terrebbe i destinatari.
+  anagrafiche_nel_modulo: true,
 });
+
+// La modifica non approva (decisione 127.2): su un documento non approvato la riga sotto la tendina
+// dice che «Pubblicato» da solo non lo mostra ai condòmini; a chi approva i documenti dice dove si
+// approva (lo scudo nell'elenco, che vede solo lui), agli altri chi lo approva.
+const rigaApprovazione = computed(() => rigaServeApprovazione('documenti', props.documento?.is_approved, hasPermission([Permission.APPROVE_ARCHIVE_DOCUMENTS])));
 
 // Validazione file
 //
@@ -545,6 +556,7 @@ const submit = (): void => {
                             </template>
                         </v-select>
                         <InputError :message="form.errors.is_published" />
+                        <p v-if="rigaApprovazione" class="mt-1.5 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{{ trans(rigaApprovazione) }}</p>
                     </div>
 
                 </div>

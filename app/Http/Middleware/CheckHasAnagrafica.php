@@ -2,30 +2,47 @@
 
 namespace App\Http\Middleware;
 
+use App\Helpers\RouteHelper;
+use App\Traits\HandleFlashMessages;
 use Closure;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Auth;
-use App\Enums\Role;
+use Symfony\Component\HttpFoundation\Response;
 
 class CheckHasAnagrafica
 {
+    use HandleFlashMessages;
+
     /**
-     * This middleware checks if the user has an anagrafica and if not redirects to the create anagrafica page.
+     * Le pagine del portale leggono i palazzi dall'anagrafica collegata all'account: senza, gli elenchi
+     * e la dashboard andavano in errore 500 (decisione 134.4). Chi non ce l'ha non arriva alle pagine, e
+     * una frase dice perché:
+     * - chi ha il pannello (l'amministratore, il collaboratore, un ruolo su misura con l'accesso) va alla
+     *   dashboard del pannello, la sua casa, che non chiede un'anagrafica;
+     * - gli altri vanno alla pagina dove completano i loro dati, la stessa dove li manda l'accesso
+     *   (`RedirectHelper::userHomeRoute`).
+     * Chi ha il pannello **e** un'anagrafica passa come chiunque abbia un'anagrafica.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     * @return \Symfony\Component\HttpFoundation\Response
+     * «Ha il pannello» è la stessa domanda che sceglie il prefisso degli indirizzi e dei pulsanti delle
+     * mail (`RouteHelper::getRoutePrefixForUser`): un pulsante che porta al portale lo riceve solo chi
+     * questo middleware non rimanda al pannello.
      */
     public function handle(Request $request, Closure $next): Response
     {
-
         $user = Auth::user();
 
-        if (Auth::check() && !$user->anagrafica && !$user->hasRole(Role::AMMINISTRATORE->value)) {
-            return redirect()->route('user.anagrafiche.create');
+        if ($user === null || $user->anagrafica) {
+            return $next($request);
         }
 
-        return $next($request);
+        if (RouteHelper::getRoutePrefixForUser($user) === 'admin') {
+            return redirect()->route('admin.dashboard')->with(
+                $this->flashWarning(__('anagrafiche.panel_without_anagrafica'))
+            );
+        }
+
+        return redirect()->route('user.anagrafiche.create')->with(
+            $this->flashWarning(__('anagrafiche.account_without_anagrafica'))
+        );
     }
 }

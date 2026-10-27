@@ -40,12 +40,30 @@ class SegnalazionePolicy
     }
 
     /**
+     * L'elenco del portale (decisione 134.4): si apre a chi ha «Visualizza segnalazioni» o «Visualizza
+     * proprie segnalazioni», e mostra ciò che la regola del portale gli concede
+     * (`Segnalazione::scopeVisibiliNelPortale()`, che guarda quale dei due permessi ha).
+     *
+     * Non è `view()`: quella, chiesta con il modello vuoto dell'elenco, per chi vede solo le proprie
+     * confrontava l'autore di nessuna segnalazione con l'utente e rifiutava l'elenco intero, mentre la
+     * scheda gli apre le sue. L'elenco del pannello resta su `view()`: mostra tutte le segnalazioni.
+     */
+    public function elencoNelPortale(User $user): Response
+    {
+        return $user->hasPermissionTo(Permission::VIEW_SEGNALAZIONI->value)
+            || $user->hasPermissionTo(Permission::VIEW_OWN_SEGNALAZIONI->value)
+            ? Response::allow()
+            : Response::deny(__('policies.view_tickets'));
+    }
+
+    /**
      * Verifica se l'utente ha i permessi per visualizzare una segnalazione specifica.
      *
      * La funzione gestisce i permessi in base ai seguenti criteri:
      * - Gli utenti con il permesso "Accesso pannello amministratore" hanno accesso completo.
-     * - Gli utenti con il permesso "Visualizza segnalazioni" possono vedere le segnalazioni a loro assegnate
-     *   o quelle assegnate al loro condominio (se non ci sono assegnazioni dirette).
+     * - Gli utenti con il permesso "Visualizza segnalazioni" vedono quelle che la regola del portale
+     *   mostra loro (`Segnalazione::scopeVisibiliNelPortale()`: pubblicate e approvate o proprie, e
+     *   indirizzate a loro; le private solo all'autore e alle persone collegate).
      * - Gli utenti con il permesso "Visualizza proprie segnalazioni" possono vedere solo le segnalazioni che hanno creato.
      * - Se nessuna di queste condizioni è soddisfatta, l'accesso viene negato.
      *
@@ -59,18 +77,16 @@ class SegnalazionePolicy
             return Response::allow();
         } 
 
-        if ($user->hasPermissionTo(Permission::VIEW_SEGNALAZIONI->value)) {
-            $anagrafica = $user->anagrafica;
-            $condominioIds = $anagrafica->condomini->pluck('id')->toArray();
-        
-            $isAssignedToUser = $segnalazione->anagrafiche->contains($anagrafica);
-            $isAssignedToCondominio = in_array($segnalazione->condominio_id, $condominioIds)
-                && $segnalazione->anagrafiche->isEmpty();
-        
-            if ($isAssignedToUser || $isAssignedToCondominio) {
-                return Response::allow();
-            }
-        } 
+        // Fuori dal pannello vale la regola sola di `Segnalazione::scopeVisibiliNelPortale()`, la
+        // stessa dell'elenco: pubblicata e approvata (o propria), e indirizzata all'utente; una
+        // privata solo all'autore e alle persone collegate (Code 263 e 304). Il palazzo da solo non
+        // basta: una segnalazione in moderazione o una bozza la apre solo il suo autore, e una
+        // privata senza residenti resta sua, anche chieste per id. Per un utente senza anagrafica
+        // la regola risponde lo stesso, senza errori.
+        if ($user->hasPermissionTo(Permission::VIEW_SEGNALAZIONI->value)
+            && $segnalazione->visibileNelPortaleA($user)) {
+            return Response::allow();
+        }
 
         if ($user->hasPermissionTo(Permission::VIEW_OWN_SEGNALAZIONI->value)) {
             if ($segnalazione->created_by === $user->id) {
@@ -183,6 +199,21 @@ class SegnalazionePolicy
         return $user->hasPermissionTo(Permission::APPROVE_SEGNALAZIONI->value)  
         ? Response::allow() 
         : Response::deny(__('policies.approve_ticket'));
+    }
+
+    /**
+     * «Rendi pubblica» una segnalazione privata (Coda 304, decisione 127.4).
+     *
+     * Lo dà chi può approvare le segnalazioni: è il permesso che decide già quando una segnalazione
+     * diventa visibile al condominio (l'interruttore di approvazione la pubblica). `PUBLISH_*` dice
+     * un'altra cosa — che le proprie escono senza moderazione — e il collaboratore di serie, che ce
+     * l'ha senza `APPROVE_SEGNALAZIONI`, non rende pubblica la privata di un condòmino.
+     */
+    public function rendiPubblica(User $user, Segnalazione $segnalazione): Response
+    {
+        return $user->hasPermissionTo(Permission::APPROVE_SEGNALAZIONI->value)
+            ? Response::allow()
+            : Response::deny(__('policies.approve_ticket'));
     }
 
     /**

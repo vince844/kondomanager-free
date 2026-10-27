@@ -3,18 +3,23 @@
 namespace App\Http\Controllers\Segnalazioni\Utenti;
 
 use App\Enums\Permission;
+use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
 use App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
-use App\Http\Resources\Segnalazioni\SegnalazioneResource;
+use App\Http\Resources\Portale\SegnalazionePortaleResource;
+use App\Models\Anagrafica;
+use App\Models\Commento;
 use App\Models\Segnalazione;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
 use App\Traits\PaginaElenco;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
@@ -51,8 +56,9 @@ class SegnalazioneController extends Controller
      */
     public function index(SegnalazioneIndexRequest $request, Segnalazione $segnalazione): Response
     {
-
-        Gate::authorize('view', $segnalazione);  
+        // Decisione 134.4: l'elenco si apre anche a chi vede solo le proprie, e il servizio gli mostra
+        // ciò che la regola del portale gli concede.
+        Gate::authorize('elencoNelPortale', Segnalazione::class);
 
         $validated = $request->validated();
 
@@ -84,7 +90,8 @@ class SegnalazioneController extends Controller
         return Inertia::render('segnalazioni/user/SegnalazioniList', [
 
             'segnalazioni' => [
-                'data' => SegnalazioneResource::collection($segnalazioni)->resolve(),
+                // Coda 260: la risorsa minima del portale.
+                'data' => SegnalazionePortaleResource::collection($segnalazioni)->resolve(),
                 'current_page' => $segnalazioni->currentPage(),
                 'last_page' => $segnalazioni->lastPage(),
                 'per_page' => $segnalazioni->perPage(),
@@ -200,11 +207,10 @@ class SegnalazioneController extends Controller
 
         $user = request()->user();
 
+        // Coda 260: niente assegnatario né persone collegate, che la pagina non mostra.
         $segnalazioneCaricata = Segnalazione::with([
             'createdBy.anagrafica',
-            'assignedTo',
             'condominio',
-            'anagrafiche',
             'commenti.autore.anagrafica',
             'commentiInAttesa' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)->with('autore.anagrafica');
@@ -212,10 +218,14 @@ class SegnalazioneController extends Controller
         ])->findOrFail($segnalazione->id);
 
         return Inertia::render('segnalazioni/user/SegnalazioniView', [
-            'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
+            'segnalazione' => new SegnalazionePortaleResource($segnalazioneCaricata),
             'commenti_config' => [
                 'can_comment'  => (bool) $segnalazione->can_comment,
-                'can_create'   => $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value),
+                // Coda 305: il campo del commento c'è solo se il commento sarebbe accettato, cioè la
+                // stessa domanda della rotta (`CommentoPolicy::create`: permesso, discussione aperta,
+                // palazzo, scheda). Guardare il solo permesso lo offriva a chi poi se lo vedeva
+                // rifiutare, come l'autore di una privata che non è più nel palazzo.
+                'can_create'   => Gate::forUser($user)->allows('create', [Commento::class, $segnalazione]),
                 'can_moderate' => false,
                 'can_publish'  => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
             ],
@@ -244,10 +254,10 @@ class SegnalazioneController extends Controller
         $anagrafica = $this->getUserAnagrafica();
         $condomini = $anagrafica->condomini;
         
-        $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+        $segnalazione->loadMissing(['createdBy.anagrafica', 'condominio']);
 
         return Inertia::render('segnalazioni/user/SegnalazioniEdit', [
-            'segnalazione'  => new SegnalazioneResource($segnalazione),
+            'segnalazione'  => new SegnalazionePortaleResource($segnalazione),
             'condomini'     => CondominioOptionsResource::collection($condomini)
         ]);
     }
@@ -273,13 +283,36 @@ class SegnalazioneController extends Controller
 
         $validated = $request->validated(); 
 
+        // Coda 304: togliere «privata» dal portale la rende di chi è indirizzata. Il collegamento
+        // dell'autore l'ha messo la creazione di una privata (`store`), e tenuto la lascerebbe
+        // indirizzata a lui solo: la vedrebbe solo lui, mentre la guida «Chi la vede» e il lucchetto
+        // che sparisce dicono il condominio. Si toglie come lo toglie «Rendi pubblica»; le persone a
+        // cui l'amministratore l'ha indirizzata restano. Un autore che non è nel palazzo lo tiene:
+        // senza, non la vedrebbe più nemmeno lui.
+        $togliePrivata = $segnalazione->is_private
+            && array_key_exists('is_private', $validated)
+            && ! $validated['is_private'];
+
+        // Chi la vede prima del salvataggio, solo quando «privata» si toglie: per chi non la vedeva è
+        // come una prima pubblicazione (decisione 134.5, la stessa regola di «Rendi pubblica»).
+        $destinatariPrima = $togliePrivata
+            ? app(DestinatariNotifica::class)->perModello($segnalazione)
+            : null;
+
         try {
 
-            $segnalazione->update($validated);
+            DB::transaction(function () use ($segnalazione, $validated, $togliePrivata) {
+                // Coda 303: chi modifica sta in `updated_by`, non in `created_by` (che la richiesta di
+                // modifica non porta più).
+                $segnalazione->update($validated + ['updated_by' => Auth::id()]);
 
-            return to_route('user.segnalazioni.index')->with(
-                $this->flashSuccess(__('segnalazioni.success_update_ticket'))
-            );
+                $anagraficaAutore = $segnalazione->createdBy?->anagrafica;
+
+                if ($togliePrivata && $anagraficaAutore !== null
+                    && $anagraficaAutore->condomini()->whereKey($segnalazione->condominio_id)->exists()) {
+                    $segnalazione->anagrafiche()->detach($anagraficaAutore->id);
+                }
+            });
 
         } catch (\Exception $e) {
 
@@ -289,6 +322,47 @@ class SegnalazioneController extends Controller
                 $this->flashError(__('segnalazioni.error_update_ticket'))
             );
 
+        }
+
+        // L'avviso sta fuori dalla transazione, come negli altri controller: una mail che non parte non
+        // fa tornare indietro una modifica che il database ha accettato, e il messaggio lo dice.
+        if ($destinatariPrima !== null) {
+            try {
+                $this->avvisaChiNonLaVedeva($segnalazione, $destinatariPrima);
+            } catch (\Throwable $e) {
+                Log::error('Error notifying residents of segnalazione ID ' . $segnalazione->id . ' no longer private: ' . $e->getMessage());
+
+                return to_route('user.segnalazioni.index')->with(
+                    $this->flashWarning(__('segnalazioni.privacy.error_notify_residents'))
+                );
+            }
+        }
+
+        return to_route('user.segnalazioni.index')->with(
+            $this->flashSuccess(__('segnalazioni.success_update_ticket'))
+        );
+    }
+
+    /**
+     * «Nuova segnalazione» a chi la vede per la prima volta dopo che l'autore ha tolto «privata»: la
+     * platea dopo il salvataggio meno quella di prima, come in `SegnalazioneRendiPubblicaController`.
+     * L'autore non è mai fra i nuovi: è lui che l'ha resa visibile, e non riceve né l'annuncio della
+     * propria né «resa pubblica». Il listener filtra preferenze e permesso.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
+     */
+    private function avvisaChiNonLaVedeva(Segnalazione $segnalazione, $destinatariPrima): void
+    {
+        $destinatariDopo = app(DestinatariNotifica::class)->perModello($segnalazione->fresh());
+
+        $dellAutore = $segnalazione->created_by === null
+            ? collect()
+            : Anagrafica::where('user_id', $segnalazione->created_by)->pluck('id');
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->diff($dellAutore)->values()->all();
+
+        if ($nuovi !== []) {
+            DestinatariDaAvvisare::dispatch($segnalazione, $nuovi, 'nuovo');
         }
     }
 

@@ -91,6 +91,8 @@ return [
         'permissions_count'            => ':count permissions',
         'invite_emails' => 'Direcciones de correo electrónico',
         'invite_buildings' => 'Condominios',
+        // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
+        'fuori_portata' => 'Solo un administrador gestiona esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que no tienes.',
     ],
 
     /* ------------------------------------------------------------------
@@ -124,7 +126,7 @@ return [
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'role_line_1' => 'Select the role to assign to the user. Choose from default roles or one you created.',
+        'role_line_1' => 'Selecciona el rol que asignar al usuario. Un administrador elige entre todos los roles, también los personalizados; quien no es administrador asigna solo «utente» y «fornitore».',
         'role_line_2' => 'Permissions associated with the role will be inherited automatically.',
         'resident'    => 'Select the resident record to associate with the user. The associated resident record will be able to access the system with the credentials of the created user and view their data and related information.',
         'permissions' => 'Select specific permissions to assign to the user in addition to those inherited from the selected role.',

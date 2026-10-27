@@ -68,6 +68,7 @@ const submit = () => {
                         autofocus
                         :placeholder="trans('auth.placeholder.set_password.password')"
                     />
+                    <p class="text-xs text-muted-foreground">{{ trans('auth.hint.password_min') }}</p>
                     <InputError :message="form.errors.password" />
                 </div>
 

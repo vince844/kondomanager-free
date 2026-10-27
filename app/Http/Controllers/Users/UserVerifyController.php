@@ -2,18 +2,18 @@
 
 namespace App\Http\Controllers\Users;
 
-use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\HandleFlashMessages;
+use App\Traits\ValidaConcessioneRuoli;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 
 class UserVerifyController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, ValidaConcessioneRuoli;
+
     /**
      * Handle the incoming request.
      */
@@ -27,10 +27,10 @@ class UserVerifyController extends Controller
 
         // Togliere la verifica **chiude fuori**: il middleware `verified` sta su tutto il
         // programma, quindi un amministratore non verificato non arriva da nessuna parte. Chi non
-        // può concedere un ruolo privilegiato non deve poter spogliare chi ce l'ha.
-        if ($user->hasAnyRole(RoleEnum::privilegiati())
-            && ! Auth::user()?->hasRole(RoleEnum::AMMINISTRATORE->value)) {
-            abort(403, __('policies.edit_users'));
+        // può cambiare l'email e i ruoli di un utente non deve poter spogliarlo: la regola è quella
+        // della scheda (`User::haNellaPortata()`, Coda 258, decisione 134.1), e il rifiuto dice perché.
+        if ($this->bersaglioFuoriPortata($user)) {
+            abort(403, __('policies.users_privileged_target'));
         }
 
         try {

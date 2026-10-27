@@ -55,7 +55,8 @@ function elencoRotteSoloLogin(): array
     return [
         // --- account personale ------------------------------------------------------------
         'appearance'                           => $account,
-        'GET|POST|PUT|PATCH|DELETE|OPTIONS settings' => [ROTTA_ACCOUNT, 'redirect a settings/profile'],
+        // Il redirect risponde a tutti i metodi del router: da Laravel 13.38 fra questi c'è anche QUERY.
+        'GET|POST|PUT|PATCH|DELETE|OPTIONS|QUERY settings' => [ROTTA_ACCOUNT, 'redirect a settings/profile'],
         'POST confirm-password'                => $account,
         'password.confirm'                     => $account,
         'logout'                               => $account,
@@ -89,7 +90,7 @@ function elencoRotteSoloLogin(): array
         'user.anagrafiche.create' => [ROTTA_DA_VERIFICARE, 'primo accesso di chi non ha un\'anagrafica (CheckHasAnagrafica)'],
         'user.anagrafiche.store'  => [ROTTA_DA_VERIFICARE, 'CreateUserAnagraficaRequest::authorize() dà sempre true: chi ha già un\'anagrafica ne crea un\'altra'],
         'user.dashboard'          => [ROTTA_DA_VERIFICARE, 'manda segnalazioni, comunicazioni, documenti ed eventi del palazzo senza guardare i VIEW_*: la pagina nasconde le schede, ma i dati arrivano nelle props'],
-        'segnalazioni.stats'      => [ROTTA_DA_VERIFICARE, 'hasRole/hasPermissionTo scelgono la query, non autorizzano: niente VIEW_SEGNALAZIONI, e 500 senza anagrafica'],
+        'segnalazioni.stats'      => [ROTTA_DA_VERIFICARE, 'hasRole/hasPermissionTo scelgono la query, non autorizzano: niente VIEW_SEGNALAZIONI (i conteggi seguono la regola dell\'elenco; senza anagrafica non va più in errore)'],
 
         // --- impostazioni, utenti, ruoli, inviti: gestione dell'installazione ------------------
         'impostazioni'                         => $gestione,

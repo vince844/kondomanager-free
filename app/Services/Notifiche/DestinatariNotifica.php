@@ -10,7 +10,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
 /**
- * Chi riceverebbe **oggi** la notifica di creazione di un oggetto.
+ * Chi riceverebbe **oggi** la notifica di creazione di un oggetto: la platea, l'unica fonte per gli
+ * avvisi di creazione, modifica e approvazione di segnalazioni, comunicazioni e documenti.
  *
  * ## Perché serve, e perché sta qui e non nei listener
  *
@@ -25,15 +26,22 @@ use Illuminate\Support\Collection;
  * solo se entravano a guardare. Non era «non li avvisiamo di una modifica»: a loro la
  * comunicazione non era mai arrivata.
  *
- * ## Le due forme, e perché non sono la stessa cosa
+ * ## La platea è chi trova l'oggetto nell'elenco del portale
  *
- * - **Comunicazioni e documenti** hanno una platea *scelta*: o un elenco esplicito di anagrafiche,
- *   oppure — se l'elenco è vuoto — tutte le anagrafiche dei condomìni collegati. È la stessa
- *   cascata che i listener di creazione applicano ai dati del modulo, riletta dalle pivot.
- * - **Le segnalazioni** hanno una platea *derivata*: il condominio della segnalazione, e basta.
- *   La pivot `anagrafiche` che pure esiste su di esse **non decide chi riceve la notifica** — se
- *   ne fosse dedotto il contrario, modificare quella lista manderebbe mail a gente a cui il
- *   listener di creazione non le avrebbe mai mandate.
+ * - **Nessuno finché l'oggetto non è pubblicato e approvato** (Coda 198): una bozza o un oggetto in
+ *   moderazione non avvisa. Alla prima pubblicazione la platea passa da vuota a piena, e la modifica
+ *   (`avvisaDopoLaModifica`) manda a tutti l'avviso «nuovo», come l'approvazione. Senza memoria:
+ *   rimesso in bozza e ripubblicato, l'avviso riparte (nessuna colonna «già avvisato»).
+ * - **Poi, a chi è indirizzato** (decisione Q1 del 17/10/2026, Coda 302): le anagrafiche collegate,
+ *   oppure — se non ce ne sono — tutte quelle dei condomìni (o del condominio, per le segnalazioni).
+ *   Una segnalazione o comunicazione **privata** va solo all'autore e alle persone collegate, anche
+ *   se i collegamenti sono stati tolti. La pivot decide la platea anche per le segnalazioni, come
+ *   per le comunicazioni: la regola è quella dell'elenco del portale, per tutte e due, private
+ *   comprese.
+ *
+ * Per segnalazioni e comunicazioni la regola sta nel modello (`anagraficheCheLaVedono()`), accanto a
+ * quella dell'elenco (`scopeVisibiliNelPortale()`), perché dicano la stessa cosa. I documenti non
+ * salvano `is_private`: per loro la regola è qui.
  *
  * ⚠️ **Questa classe non filtra per preferenza di notifica**, ed è voluto: dice chi è *destinatario*,
  * non chi *vuole la mail*. Il filtro delle preferenze resta dov'era, nel listener che invia — se
@@ -49,11 +57,16 @@ class DestinatariNotifica
      */
     public function perModello(Model $modello): Collection
     {
-        if ($modello instanceof Segnalazione) {
-            return $this->anagraficheDeiCondomini([$modello->condominio_id]);
+        if ($modello instanceof Segnalazione || $modello instanceof Comunicazione) {
+            return $modello->anagraficheCheLaVedono();
         }
 
-        if ($modello instanceof Comunicazione || $modello instanceof Documento) {
+        if ($modello instanceof Documento) {
+            // Coda 198: un documento in bozza o in moderazione non avvisa nessuno.
+            if (! ($modello->is_published && $modello->is_approved)) {
+                return collect();
+            }
+
             $esplicite = $modello->anagrafiche()->get()->pluck('id');
 
             if ($esplicite->isNotEmpty()) {

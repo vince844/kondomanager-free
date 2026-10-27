@@ -49,4 +49,13 @@ describe('NewUserCreatePassword', () => {
         expect(post).toHaveBeenCalledTimes(1);
         expect(post.mock.calls[0][0]).toBe(azione);
     });
+
+    test('Coda 262 — accanto alla password la pagina dice la lunghezza minima', () => {
+        const wrapper = mount(NewUserCreatePassword, {
+            props: { email: 'nuovo@example.com', azione: '/password/new?signature=x' },
+            global: { stubs },
+        });
+
+        expect(wrapper.text()).toContain('auth.hint.password_min');
+    });
 });

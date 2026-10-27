@@ -59,7 +59,9 @@ it('anche la doppia autenticazione lo scrive, ed è la porta che salta il modulo
         'two_factor_confirmed_at' => now(),
     ]);
 
-    $this->withSession(['login.id' => $utente->id, 'login.remember' => false])
+    // `login.at`: lo stato «password giusta» vale dieci minuti dall'ora in cui è nato (Coda 259), e
+    // uno stato senza l'ora vale come scaduto; il login vero la scrive (AuthenticatedSessionController).
+    $this->withSession(['login.id' => $utente->id, 'login.remember' => false, 'login.at' => now()->getTimestamp()])
         ->post('/two-factor-challenge', ['code' => (new Google2FA)->getCurrentOtp($segreto)]);
 
     $this->assertAuthenticated();

@@ -200,8 +200,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Sends an email to those who were already recipients, telling them the document has changed. Leave it off if you are fixing a typo: anyone added now receives it anyway, because for them it is new.",
-        'visibility' => 'If set to private, only administrators will be able to view the document.',
+        'notify_update' => "Sends an email to those who were already recipients, telling them the document has changed. Leave it off if you are fixing a typo: anyone added now receives it anyway, because for them it is new. While it is a draft or awaiting approval nothing is sent; once it is published and approved, all recipients receive it.",
+        'visibility' => 'A draft document, or one awaiting approval, is not shown to residents; once published and approved, the residents it is addressed to can see it.',
         'category'   => 'A document can belong to several categories, and it is found inside each of them. Select at least one, or create a new one.',
     ],
 
@@ -313,4 +313,13 @@ return [
         'usata'  => '{0} None|{1} 1 document|[2,*] :count documents',
     ],
 
+    /* ------------------------------------------------------------------
+     | Pubblicazione (Coda 306): i documenti non hanno la privacy
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'draft'     => 'Draft',
+        'published' => 'Published',
+        'needs_approval' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved, with the shield next to the name in the list of documents.',
+        'waiting_approver' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved by whoever approves documents.',
+    ],
 ];

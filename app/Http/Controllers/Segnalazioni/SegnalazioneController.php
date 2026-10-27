@@ -14,6 +14,7 @@ use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
+use App\Models\Commento;
 use App\Models\Condominio;
 use App\Models\Evento;
 use App\Models\Segnalazione;
@@ -204,9 +205,15 @@ class SegnalazioneController extends Controller
             'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
             'commenti_config' => [
                 'can_comment'     => (bool) $segnalazione->can_comment,
-                'can_create'      => $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value),
+                // Coda 305: la stessa domanda della rotta del commento, come nella scheda del portale.
+                'can_create'      => Gate::forUser($user)->allows('create', [Commento::class, $segnalazione]),
                 'can_moderate'    => $canModerate,
                 'can_publish'     => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
+            ],
+            // Coda 304: la conferma di «Rendi pubblica» dice, prima del comando, se l'autore non la
+            // vedrà più dal portale (non è più nel palazzo); la mail che riceve lo dice anche a lui.
+            'rendi_pubblica' => [
+                'autore_perde_la_scheda' => $segnalazioneCaricata->autorePerdeLaSchedaConRendiPubblica(),
             ],
         ]);
     }
@@ -259,8 +266,13 @@ class SegnalazioneController extends Controller
             // ⚠️ `updated_by` non arriva dal modulo: lo mette il server. Un campo che decide
             // «chi ha fatto questo» non si accetta mai da chi manda la richiesta.
             $segnalazione->update($validated + ['updated_by' => Auth::id()]);
-            
-            $segnalazione->anagrafiche()->sync($validated['anagrafiche']);
+
+            // Coda 307: i destinatari si toccano solo se il modulo li manda («senza campo = non
+            // toccare», la stessa regola delle categorie dei documenti). La chiave presente e vuota
+            // vuol dire «nessuno».
+            if (array_key_exists('anagrafiche', $validated)) {
+                $segnalazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+            }
 
             DB::commit();
 
@@ -300,7 +312,9 @@ class SegnalazioneController extends Controller
      *
      * Gemella di `Comunicazioni\ComunicazioneController::avvisaDopoLaModifica()`, dove sta la
      * spiegazione per esteso: i nuovi arrivati ricevono l'avviso di *creazione* sempre, chi c'era
-     * già riceve quello di *modifica* solo se l'amministratore spunta la casella.
+     * già riceve quello di *modifica* solo se l'amministratore spunta la casella. L'autore non è mai
+     * fra i nuovi arrivati: non riceve «nuova segnalazione» della propria, come all'approvazione
+     * (`SendApprovedSegnalazioneNotificationToUser`).
      *
      * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
      * @param  array<string, mixed>  $validated
@@ -309,7 +323,11 @@ class SegnalazioneController extends Controller
     {
         $destinatariDopo = app(DestinatariNotifica::class)->perModello($oggetto->fresh());
 
-        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+        $dellAutore = $oggetto->created_by === null
+            ? collect()
+            : Anagrafica::where('user_id', $oggetto->created_by)->pluck('id');
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->diff($dellAutore)->values()->all();
 
         if ($nuovi !== []) {
             DestinatariDaAvvisare::dispatch($oggetto, $nuovi, 'nuovo');

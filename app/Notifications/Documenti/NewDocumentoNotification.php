@@ -4,6 +4,7 @@ namespace App\Notifications\Documenti;
 
 use App\Helpers\RouteHelper;
 use App\Models\Documento;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +14,7 @@ use Illuminate\Support\Str;
 class NewDocumentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public $documento;
 
@@ -44,13 +46,13 @@ class NewDocumentoNotification extends LocalizedNotification implements ShouldQu
         return (new MailMessage)
             ->subject(__('notifications.new_document.subject'))
             ->greeting(__('notifications.new_document.greeting', [
-                'name' => $notifiable->name ?? $notifiable->nome
+                'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome)
             ]))
             ->line(__('notifications.new_document.line_1', [
-                'user' => $this->documento->createdBy->name
+                'user' => self::nomeComeTesto($this->documento->createdBy->name)
             ]))
-            ->line('**' . __('notifications.new_document.title') . ':** ' . $this->documento->name)
-            ->line('**' . __('notifications.new_document.description') . ':** ' . Str::ucfirst($this->documento->description))
+            ->line('**' . __('notifications.new_document.title') . ':** ' . self::testoComeTesto($this->documento->name))
+            ->line('**' . __('notifications.new_document.description') . ':** ' . Str::ucfirst(self::testoComeTesto($this->documento->description)))
             ->action(__('notifications.new_document.action'), RouteHelper::urlArchivioDocumenti($notifiable));
 
     }

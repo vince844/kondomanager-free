@@ -14,6 +14,10 @@ return [
     'error_regenerate_cron_token' => 'Si è verificato un errore durante la rigenerazione del token',
     'success_save_mail_settings' => 'Configurazione email salvata con successo',
     'error_save_mail_settings' => 'Errore durante il salvataggio della configurazione email',
+    // Coda 311: la password SMTP salvata vale solo verso il server per cui è stata salvata.
+    'error_test_mail_password_required' => 'Il server, la porta o la crittografia sono diversi da quelli salvati: per la prova riscrivi la password SMTP. La password salvata si usa solo con il server per cui è stata salvata.',
+    'error_save_mail_password_required' => 'Il server, la porta o la crittografia sono cambiati: riscrivi la password SMTP. La password salvata vale solo per il server per cui è stata salvata.',
+    'error_test_mail_too_many' => 'Troppe prove in poco tempo: attendi un minuto e riprova.',
     'success_save_print_settings' => 'Impostazioni di stampa salvate con successo',
     'success_save_backup_settings' => 'Impostazioni di backup salvate con successo',
     'error_save_backup_settings' => 'Si è verificato un errore durante il salvataggio delle impostazioni di backup',
@@ -28,6 +32,9 @@ return [
     'backup_success_completed' => 'Backup completato con successo. Scaricalo e conservalo in un luogo sicuro.',
 
     'restore_error_generic' => 'Si è verificato un errore durante il ripristino. Riprova.',
+    'restore_error_account_password' => 'La password del tuo account non è corretta.',
+    'restore_error_too_many' => 'Troppi tentativi in poco tempo: riprova fra un minuto.|Troppi tentativi in poco tempo: riprova fra :count minuti.',
+    'restore_error_too_many_later' => 'Troppi tentativi in poco tempo: riprova più tardi.',
 
     'restore_result' => [
         'page_title' => 'Esito ripristino',
@@ -43,9 +50,12 @@ return [
         'title_none' => 'Nessun ripristino recente',
         'subtitle_none' => 'Non risulta alcun ripristino in corso o appena concluso.',
         'go_to_login' => 'Vai al login',
+        'details_after_login' => 'I dettagli tecnici del ripristino (backup di origine, versioni, eventuale errore) li vede l\'amministratore su questa pagina, dopo l\'accesso.',
     ],
     'restore_recovery' => [
         'auth_failed' => 'Password non corretta.',
+        // Le ore sono `backup.stale_after_hours`, la durata del token della finestra dei backup (dall'avvio, e da ogni passo).
+        'auth_unavailable' => 'Per questo ripristino la password non si può verificare: copia il log e inviacelo per l\'assistenza. Se la finestra dei backup da cui è partito è ancora aperta, e dall\'avvio non è passata più di un\'ora, puoi riprenderlo o sbloccare l\'applicazione da lì.|Per questo ripristino la password non si può verificare: copia il log e inviacelo per l\'assistenza. Se la finestra dei backup da cui è partito è ancora aperta, e dall\'avvio non sono passate più di :ore ore, puoi riprenderlo o sbloccare l\'applicazione da lì.',
         'failed_title' => 'Ripristino non riuscito',
         'failed_body' => 'Il ripristino si è interrotto prima di completarsi. Il database potrebbe essere incompleto: puoi provare a riprenderlo o sbloccare l\'applicazione.',
         'details' => 'Dettagli tecnici',
@@ -55,6 +65,8 @@ return [
         'resume' => 'Riprendi il ripristino',
         'unlock' => 'Sblocca l\'applicazione',
         'unlock_note' => 'Il database potrebbe restare incompleto.',
+        // Sotto «Sblocca» al posto di `unlock_note`, quando il ripristino si è fermato nel backup di sicurezza.
+        'database_untouched' => 'Il ripristino non ha toccato il database: sbloccando, il gestionale riparte con i dati che aveva.',
         'working' => 'Attendere…',
         'resume_progress' => 'Ripristino in corso…',
     ],
@@ -68,6 +80,33 @@ return [
         'finalizing' => 'Finalizzazione…',
         'completed' => 'Completato',
         'failed' => 'Non riuscito',
+    ],
+
+    // I messaggi del motore del ripristino che la finestra dei backup mostra (`MessaggiDelRipristino`).
+    'restore_engine' => [
+        'archive_password' => 'Archivio cifrato: password mancante o errata.',
+        'archive_not_zip' => 'L\'archivio non si apre: il file è corrotto o non è uno zip.',
+        'archive_no_manifest' => 'L\'archivio non contiene un manifest.json leggibile: non è un backup di KondoManager.',
+        'archive_bad_manifest' => 'Il manifest.json dell\'archivio è corrotto: non è JSON valido.',
+        'entry_unreadable_index' => 'La voce n. :index dell\'archivio non si legge: l\'archivio è corrotto.',
+        'entry_unreadable' => 'La voce ":name" dell\'archivio non si legge: l\'archivio è corrotto.',
+        'entry_illegal_name' => 'Una voce dell\'archivio ha un nome non valido: l\'archivio potrebbe essere stato manomesso.',
+        'entry_absolute_path' => 'La voce ":name" dell\'archivio ha un percorso assoluto: l\'archivio potrebbe essere stato manomesso.',
+        'entry_traversal' => 'La voce ":name" dell\'archivio ha un percorso non valido, con un segmento "." o "..": l\'archivio potrebbe essere stato manomesso.',
+        'entry_unexpected' => 'La voce ":name" non può stare in un backup di KondoManager.',
+        'entry_symlink' => 'La voce ":name" dell\'archivio è un collegamento simbolico: l\'archivio potrebbe essere stato manomesso.',
+        'entry_incomplete' => 'La voce ":name" dell\'archivio è uscita incompleta: attesi :size byte.',
+        'format_unsupported' => 'Formato del backup non supportato (manifest_format :format): l\'archivio è stato creato da una versione non compatibile.',
+        'newer_version' => 'Il backup proviene da una versione più recente (:source) di quella installata (:current). Aggiorna prima KondoManager, poi riprova il ripristino.',
+        'driver_unsupported' => 'Il backup usa un tipo di database non supportato (:driver).',
+        'driver_mismatch' => 'Il backup è stato creato con :driver, ma questa installazione usa :current: il ripristino fra database diversi non è supportato.',
+        'restore_running' => 'Un ripristino è già in corso.',
+        'backup_running' => 'Un backup è in esecuzione: attendi che finisca prima di ripristinare.',
+        'restore_busy' => 'Un\'altra richiesta sta avviando un ripristino: riprova fra qualche secondo.',
+        'archive_missing' => 'Dopo l\'avvio del ripristino l\'archivio del backup non si trova più sul server: controlla che non sia stato spostato o eliminato.',
+        'extract_write_failed' => 'I file dell\'archivio non si possono scrivere nella cartella temporanea del ripristino: controlla lo spazio libero e i permessi di scrittura sul server.',
+        'dump_unreadable' => 'Il dump del database, estratto dall\'archivio nella cartella temporanea del ripristino, non si trova più o non si legge.',
+        'safety_backup_failed' => 'Il backup di sicurezza non è riuscito: il ripristino si è fermato prima di toccare il database. «Riprendi il ripristino» prova di nuovo il backup di sicurezza; per ripristinare senza, sblocca l\'applicazione e avvia di nuovo il ripristino togliendo la spunta da «:casella».',
     ],
 
     /* ------------------------------------------------------------------
@@ -236,7 +275,7 @@ return [
         'user_registration_title' => 'Abilita registrazione utenti',
         'user_registration_description' => 'Se attivato, gli utenti possono registrarsi dalla home page',
         'default_role_title' => 'Ruolo predefinito nuovi utenti',
-        'default_role_description' => 'Scegli quale ruolo assegnare automaticamente agli utenti che si registrano dal frontend.',
+        'default_role_description' => 'Il ruolo che ricevono automaticamente gli utenti che si registrano dal sito. Chi accetta un invito lo riceve solo se è «utente» o «fornitore»; altrimenti riceve «utente».',
         'default_per_page_title' => 'Righe per pagina negli elenchi',
         'default_per_page_description' => 'Quante righe mostrano le tabelle a chi non ha ancora scelto. Resta la scelta di ciascuno, elenco per elenco: chi la cambia se la ritrova al rientro.',
         'force_comment_moderation_title' => 'Forza moderazione commenti',
@@ -402,5 +441,10 @@ return [
         'documenti_effimeri' => 'sul disco locale',
         'versione' => 'Versione',
         'gestione_piano' => 'Gestisci il tuo piano',
+    ],
+
+    // Coda 258, decisione 134.1: la nota accanto al ruolo predefinito dei nuovi utenti, per chi non è amministratore.
+    'ruolo_registrazione' => [
+        'solo_amministratore' => 'Il ruolo predefinito dei nuovi utenti lo cambia solo un amministratore.',
     ],
 ];

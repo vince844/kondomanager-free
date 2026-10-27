@@ -67,6 +67,25 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * La password per i controlli del framework: una stringa vuota quando l'account non ne ha una
+     * (creato e in attesa del primo accesso, o dopo «reinvia»), mai `null`.
+     *
+     * Il cookie «ricordami» vale solo se l'impronta della password che porta è quella dell'account
+     * (`SessionGuard::userFromRecaller`). Con Laravel 13.30 il confronto (`hash_equals`) riceveva
+     * `null` e finiva in un errore a ogni pagina di quel browser; dalla 13.38 il framework scarta da sé
+     * una password che non è una stringa, prima del confronto, e il browser torna a essere quello di un
+     * ospite anche con `null`. La stringa vuota resta come difesa che non dipende dalla versione del
+     * framework: con lei il confronto fallisce e basta. Per gli altri lettori non cambia niente: il login
+     * e la conferma della password rifiutano una password vuota come rifiutavano `null` (i
+     * `Hasher::check` del framework), e `AuthenticateSession` la tratta come prima, «nessuna
+     * password» (Coda 202, punto 1).
+     */
+    public function getAuthPassword()
+    {
+        return parent::getAuthPassword() ?? '';
+    }
+
+    /**
      * Get the anagrafica associated with the user.
      */
     public function anagrafica()
@@ -80,6 +99,67 @@ class User extends Authenticatable implements MustVerifyEmail
     public function suspended(): bool
     {
         return !is_null($this->suspended_at);
+    }
+
+    /**
+     * Chi può toccare chi (Coda 258, decisione 134.1): questo utente può agire sull'account `$bersaglio`?
+     *
+     * È la regola sola di tutte le porte che toccano un altro account — la scheda (email, ruoli, permessi
+     * diretti), «reinvia», la verifica dell'email, la revoca di un permesso, sospendere, riattivare,
+     * eliminare — e delle pagine che lo dicono prima (l'elenco e la scheda degli utenti):
+     *
+     * - l'amministratore agisce su tutti; le invarianti «non sé stessi» e «mai senza amministratori»
+     *   stanno a parte, dove servono;
+     * - chi non è amministratore agisce solo su un account con i soli ruoli `utente` e `fornitore` (o
+     *   nessuno) e senza permessi diretti che lui non ha. Un ruolo diverso porta poteri sull'installazione,
+     *   e quei poteri li gestisce solo l'amministratore; un permesso diretto che lui non ha non saprebbe
+     *   rimetterlo.
+     *
+     * I permessi che vengono dai ruoli del bersaglio non contano: con i soli ruoli `utente` e `fornitore`
+     * sono quelli del portale, e chi gestisce gli utenti non deve averli per gestire un condòmino. Non
+     * contano nemmeno i permessi diretti sui propri contenuti (gli `*_OWN_*`): non danno potere su nessun
+     * altro.
+     */
+    public function haNellaPortata(User $bersaglio): bool
+    {
+        if ($this->hasRole(\App\Enums\Role::AMMINISTRATORE->value)) {
+            return true;
+        }
+
+        $soloRuoliDelPortale = $bersaglio->getRoleNames()
+            ->diff(\App\Enums\Role::concedibiliDaTutti())
+            ->isEmpty();
+
+        if (! $soloRuoliDelPortale) {
+            return false;
+        }
+
+        return $bersaglio->getDirectPermissions()
+            ->pluck('name')
+            ->diff($this->getAllPermissions()->pluck('name'))
+            ->diff(static::permessiSulProprioContenuto())
+            ->isEmpty();
+    }
+
+    /**
+     * I permessi sui propri contenuti (gli `*_OWN_*` dell'enum): danno a chi li ha poteri sui contenuti che ha
+     * scritto lui — comunicazioni (anche pubblicarle), segnalazioni, commenti alle segnalazioni, documenti
+     * dell'archivio, scadenze in agenda — e su nessun altro.
+     *
+     * La portata non li conta (`haNellaPortata()`), un account nella portata li perde anche da chi non li ha
+     * (`RevokePermissionFromUserController`), concederli non chiede la password, e nemmeno cambiare l'email di chi
+     * ha soltanto questi come permessi aggiuntivi (Coda 261, `ValidaConcessioneRuoli`): una definizione sola per
+     * tutti questi posti.
+     *
+     * @return array<int, string> I nomi dei permessi.
+     */
+    public static function permessiSulProprioContenuto(): array
+    {
+        return collect(\App\Enums\Permission::cases())
+            ->filter(fn (\App\Enums\Permission $permesso) => str_contains($permesso->name, '_OWN_'))
+            ->map(fn (\App\Enums\Permission $permesso) => $permesso->value)
+            ->values()
+            ->all();
     }
 
     /**

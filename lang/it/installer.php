@@ -100,7 +100,7 @@ return [
         'mail_from_name' => ['label' => 'Nome mittente', 'tooltip' => "Il nome visualizzato accanto all'indirizzo mittente nelle email."],
         'admin_name' => ['label' => 'Nome completo', 'tooltip' => "Il nome dell'amministratore principale di Kondomanager."],
         'admin_email' => ['label' => 'Indirizzo email', 'tooltip' => 'Userai questo indirizzo per accedere come amministratore.'],
-        'admin_password' => ['label' => 'Password', 'tooltip' => 'Almeno 6 caratteri. Scegli una password sicura.'],
+        'admin_password' => ['label' => 'Password', 'tooltip' => 'Almeno 10 caratteri. Scegli una password sicura.'],
         'admin_password_confirmation' => ['label' => 'Conferma password', 'tooltip' => 'Ripeti la password per conferma.'],
     ],
 

@@ -30,11 +30,15 @@ return [
     'suspend_users'             => "You don't have sufficient permissions to suspend users.",
     'users_self_action'         => "You cannot suspend or delete your own account.",
     'users_last_admin'          => "This is the last active administrator: without them nobody could manage this installation.",
+    'users_last_admin_self'     => "You are the last active administrator: without your account nobody could manage this installation. To delete it, another active administrator is needed first.",
+    'users_privileged_target'   => 'Only an administrator manages this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
+    'users_own_from_profile'    => 'Only an administrator manages your account from here: change your name and email in your settings, under «Profile», and your password under «Password».',
+    'users_revoke_not_owned'    => 'You cannot remove a permission you do not have yourself.',
     // Roles
-    'view_roles'                => "You don't have sufficient permissions to view roles.",
-    'create_roles'              => "You don't have sufficient permissions to create a new role.",
-    'edit_roles'                => "You don't have sufficient permissions to edit roles.",
-    'delete_roles'              => "You don't have sufficient permissions to delete roles.",
+    'view_roles'                => 'Roles are managed only by an administrator.',
+    'create_roles'              => 'Only an administrator can create a role.',
+    'edit_roles'                => 'Only an administrator can edit a role.',
+    'delete_roles'              => 'Only an administrator can delete a role.',
     // Permissions
     'view_permissions'          => "You don't have sufficient permissions to view permissions.",
     // Archive documents

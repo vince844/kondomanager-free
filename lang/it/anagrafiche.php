@@ -9,6 +9,18 @@ return [
     'error_delete_anagrafica'   => 'Si è verificato un errore durante l\'eliminazione dell\'anagrafica.',
     'anagrafica_has_building'   => 'L\'anagrafica non può essere eliminata perché è associata a dei condomini',
 
+    // Il portale di un account senza anagrafica (CheckHasAnagrafica): la pagina dei propri dati dice perché ci si arriva.
+    'account_without_anagrafica' => 'Il tuo account non è ancora collegato a un\'anagrafica: per usare il portale compila qui i tuoi dati.',
+    'panel_without_anagrafica' => 'Il portale dei condòmini si apre solo con un\'anagrafica collegata all\'account, e il tuo non ne ha una: usa il pannello.',
+
+    // Le pagine e le azioni delle anagrafiche del pannello, a chi non ha il permesso (AnagraficaPolicy).
+    'permessi' => [
+        'view' => "Non hai permessi sufficienti per visualizzare le anagrafiche registrate!",
+        'create' => "Non hai permessi sufficienti per creare anagrafiche!",
+        'update' => "Non hai permessi sufficienti per modificare le anagrafiche registrate!",
+        'delete' => "Non hai permessi sufficienti per eliminare le anagrafiche registrate!",
+    ],
+
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -50,6 +62,7 @@ return [
         'delete_resident' => 'Elimina',
         'save_resident'   => 'Salva',
         'list_residents'  => 'Elenco',
+        'back_to_dashboard' => 'Torna alla dashboard',
     ],
 
     /* ------------------------------------------------------------------

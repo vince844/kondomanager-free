@@ -15,7 +15,7 @@ import Alert from '@/components/Alert.vue'
 import BackupGuide from '@/components/guides/BackupGuide.vue'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { trans } from 'laravel-vue-i18n'
+import { trans, transChoice } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
 import type { BackupItem, BackupPreflight } from '@/types/backups'
 import {
@@ -251,6 +251,11 @@ const restorePhase = ref<string | null>(null)
 const restoreErrorMessage = ref<string | null>(null)
 const restoreUuid = ref<string | null>(null)
 const restoreFailedPhase = ref<string | null>(null)
+// Vero solo quando l'ultima risposta del server (uno step o «Riprendi») dice che il ripristino si è fermato. Un passo
+// che non risponde viene sempre dopo una risposta «in corso»: resta falso, perché la finestra non sa fin dove il
+// ripristino è arrivato. Per la stessa ragione torna falso quando «Riprendi» non riceve risposta, o riceve un errore del
+// server.
+const restoreFailedOnServer = ref(false)
 const restoreFailedAt = ref<number | null>(null)
 const restoreAppVersion = ref<string | null>(null)
 const restoreRecovering = ref(false)
@@ -270,6 +275,16 @@ const askRestore = (backup: BackupItem) => {
 const restorePhaseLabel = computed(() =>
   restorePhase.value ? trans(`impostazioni.restore_phase.${restorePhase.value}`) : ''
 )
+
+// I minuti da aspettare vengono dal server (`Retry-After`, in secondi); senza, il testo non promette un tempo.
+function troppeProveDellaPassword(retryAfter: unknown): string {
+  const secondi = Number(retryAfter)
+  if (!Number.isFinite(secondi) || secondi <= 0) return trans('impostazioni.restore_error_too_many_later')
+
+  const minuti = Math.ceil(secondi / 60)
+
+  return transChoice('impostazioni.restore_error_too_many', minuti, { count: String(minuti) })
+}
 
 async function submitRestore() {
   if (!backupToRestore.value || restoreSubmitting.value) return
@@ -300,6 +315,10 @@ async function submitRestore() {
       restoreErrors.value = Object.fromEntries(
         Object.entries(errs).map(([k, v]) => [k, Array.isArray(v) ? v[0] : String(v)])
       )
+    } else if (error?.response?.status === 429) {
+      // L'avvio conta fra le prove della password attuale (Coda 261): oltre il limite il messaggio del server
+      // è quello del framework, in inglese. Va sotto la password dell'account, il campo che si sta provando.
+      restoreErrors.value = { account_password: troppeProveDellaPassword(error.response.headers?.['retry-after']) }
     } else {
       restoreErrors.value = { archive: error?.response?.data?.message || trans('impostazioni.restore_error_generic') }
     }
@@ -320,6 +339,7 @@ async function pollRestore() {
       restoreErrorMessage.value = state?.error ?? null
       restoreUuid.value = state?.uuid ?? restoreUuid.value
       restoreFailedPhase.value = state?.failed_phase ?? null
+      restoreFailedOnServer.value = restorePhase.value === 'failed'
       restoreFailedAt.value = state?.failed_at ?? null
       restoreAppVersion.value = state?.app_version ?? null
 
@@ -336,13 +356,29 @@ async function pollRestore() {
 
       await sleep(1200)
     } catch (error: any) {
-      // 403 = token scaduto/non valido: interrompe il polling mostrando errore
+      // 403 = token scaduto/non valido: interrompe il polling mostrando errore. Il log dice la fase in cui la finestra
+      // ha perso il contatto, non quella di un fallimento di prima.
       restoreErrorMessage.value = error?.response?.data?.message || trans('impostazioni.restore_error_generic')
+      restoreFailedPhase.value = restorePhase.value
       restorePhase.value = 'failed'
       return
     }
   }
 }
+
+// Fermo nel backup di sicurezza, detto dal server: il database non è stato toccato. Senza la risposta del server la
+// finestra non lo sa (il passo può essere andato oltre), e resta sulle frasi generiche.
+const restoreStoppedBeforeDatabase = computed(() =>
+  restoreFailedOnServer.value && restoreFailedPhase.value === 'safety_backup',
+)
+
+// Fermo prima del database, al posto della frase generica («il database potrebbe essere incompleto») la finestra dice
+// la frase del server, con il perché e che cosa fare. Nelle altre fasi l'errore resta nei dettagli tecnici.
+const restoreFailedBody = computed(() =>
+  restoreStoppedBeforeDatabase.value && restoreErrorMessage.value
+    ? restoreErrorMessage.value
+    : trans('impostazioni.restore_recovery.failed_body'),
+)
 
 // Log tecnico compatto da copiare e inviare all'assistenza
 const restoreSupportLog = computed(() => [
@@ -372,7 +408,12 @@ async function resumeRestore() {
     })
     if (data.token) restoreToken.value = data.token
     restorePhase.value = data.restore?.phase ?? 'pending'
-    restoreErrorMessage.value = null
+    // Un ripristino che si ferma di nuovo subito (il backup di sicurezza che non riesce ancora) porta il suo errore:
+    // la finestra lo mostra come dopo uno step.
+    restoreErrorMessage.value = data.restore?.error ?? null
+    restoreFailedPhase.value = data.restore?.failed_phase ?? null
+    restoreFailedOnServer.value = restorePhase.value === 'failed'
+    restoreFailedAt.value = data.restore?.failed_at ?? null
     if (restorePhase.value === 'completed') {
       window.location.href = route('ripristino.result')
       return
@@ -380,8 +421,12 @@ async function resumeRestore() {
     if (restorePhase.value && RESTORE_RUNNING_PHASES.includes(restorePhase.value)) {
       pollRestore()
     }
-  } catch {
-    // resta sullo stato fallito, l'utente può riprovare o sbloccare
+  } catch (error: any) {
+    // Resta sullo stato fallito: l'utente può riprovare o sbloccare. Una sola richiesta di «Riprendi» rifà il backup di
+    // sicurezza e può arrivare a togliere il database: senza risposta, o con un errore del server, la finestra non sa fin
+    // dove è arrivata, e torna alle frasi generiche (la fase resta nel log). Un 4xx viene prima di ogni azione.
+    const stato = error?.response?.status
+    if (!stato || stato >= 500) restoreFailedOnServer.value = false
   } finally {
     restoreRecovering.value = false
   }
@@ -1217,7 +1262,7 @@ const statusBadgeClass = (status: string) => {
         <template v-else>
           <XCircle class="w-10 h-10 mx-auto mb-4 text-red-600" />
           <h2 class="text-lg font-bold text-red-700 dark:text-red-400">{{ trans('impostazioni.label.restore_failed') }}</h2>
-          <p class="mt-2 text-sm text-muted-foreground">{{ trans('impostazioni.restore_recovery.failed_body') }}</p>
+          <p class="mt-2 text-sm text-muted-foreground">{{ restoreFailedBody }}</p>
 
           <!-- Dettagli tecnici + log copiabile per l'assistenza -->
           <details class="mt-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-left">
@@ -1239,7 +1284,7 @@ const statusBadgeClass = (status: string) => {
             <Button type="button" variant="outline" class="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400" :disabled="restoreRecovering" @click="abortRestore">
               {{ trans('impostazioni.restore_recovery.unlock') }}
             </Button>
-            <p class="text-[11px] text-muted-foreground">{{ trans('impostazioni.restore_recovery.unlock_note') }}</p>
+            <p class="text-[11px] text-muted-foreground">{{ restoreStoppedBeforeDatabase ? trans('impostazioni.restore_recovery.database_untouched') : trans('impostazioni.restore_recovery.unlock_note') }}</p>
           </div>
         </template>
       </div>

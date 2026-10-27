@@ -7,6 +7,7 @@ use App\Actions\TwoFactorAuth\GenerateNewRecoveryCodes;
 use App\Actions\TwoFactorAuth\GenerateQrCodeAndSecretKey;
 use App\Actions\TwoFactorAuth\VerifyTwoFactorCode;
 use App\Http\Controllers\Controller;
+use App\Services\Notifiche\AvvisiDiSicurezza;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -46,6 +47,15 @@ class TwoFactorAuthController extends Controller
      */
     public function enable(Request $request)
     {
+        // Una 2FA già confermata non si sostituisce con un segreto nuovo: prima si disattiva, e la
+        // disattivazione avvisa il titolare (Code 261 e 267). La pagina non chiama mai questa rotta con
+        // la 2FA attiva.
+        if (! is_null($request->user()->two_factor_confirmed_at)) {
+            return response()->json([
+                'message' => __('settings.two_factor.already_enabled'),
+            ], 409);
+        }
+
         [$qrCode, $secret] = app(GenerateQrCodeAndSecretKey::class)($request->user());
         
         $request->user()->forceFill([
@@ -71,11 +81,9 @@ class TwoFactorAuthController extends Controller
             'code' => 'required|string',
         ]);
 
-        // Get the secret key from the user's record
-        $secret = decrypt($request->user()->two_factor_secret);
-        
-        // Verify the code
-        $valid = app(VerifyTwoFactorCode::class)($secret, $request->code);
+        // Verify the code: la stessa finestra di ±30 secondi della sfida, e un codice usato qui non
+        // vale una seconda volta al login (Coda 259).
+        $valid = app(VerifyTwoFactorCode::class)($request->user(), $request->code);
 
         if ($valid) {
             // Generate recovery codes when confirming 2FA
@@ -86,6 +94,9 @@ class TwoFactorAuthController extends Controller
                 'two_factor_recovery_codes' => encrypt(json_encode($recoveryCodes)),
                 'two_factor_confirmed_at' => now()
             ])->save();
+
+            // Coda 267: la 2FA si dice attivata qui, alla conferma, non quando nasce il segreto.
+            app(AvvisiDiSicurezza::class)->avvisa($request->user(), AvvisiDiSicurezza::DUE_FATTORI_ATTIVATA);
             
             return response()->json([
                 'status' => 'two-factor-authentication-confirmed',
@@ -113,6 +124,9 @@ class TwoFactorAuthController extends Controller
         $request->user()->forceFill([
             'two_factor_recovery_codes' => encrypt(json_encode($codes))
         ])->save();
+
+        // Coda 267: i codici di prima non valgono più, e il titolare deve saperlo.
+        app(AvvisiDiSicurezza::class)->avvisa($request->user(), AvvisiDiSicurezza::CODICI_RIGENERATI);
         
         return response()->json([
             'recovery_codes' => $codes
@@ -128,7 +142,15 @@ class TwoFactorAuthController extends Controller
      */
     public function disable(Request $request)
     {
+        $eraAttiva = ! is_null($request->user()->two_factor_confirmed_at);
+
         $disableTwoFactorAuthentication = app(DisableTwoFactorAuthentication::class);
         $disableTwoFactorAuthentication($request->user());
+
+        // Coda 267: si avvisa solo se c'era qualcosa da togliere. Annullare una configurazione mai
+        // confermata non cambia la sicurezza dell'account.
+        if ($eraAttiva) {
+            app(AvvisiDiSicurezza::class)->avvisa($request->user(), AvvisiDiSicurezza::DUE_FATTORI_DISATTIVATA);
+        }
     }
 }

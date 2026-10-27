@@ -83,8 +83,10 @@ it('la sfida 2FA rifiuta un utente sospeso anche con il codice giusto', function
     ]);
 
     // Si entra nella sfida come se il login l'avesse aperta: è lo stato che il
-    // middleware `ensure-two-factor-challenge-session` si aspetta di trovare.
-    $this->withSession(['login.id' => $utente->id, 'login.remember' => false])
+    // middleware `ensure-two-factor-challenge-session` si aspetta di trovare. Con `login.at`: uno
+    // stato senza l'ora in cui è nato vale come scaduto (Coda 259), e il test passerebbe per quello
+    // invece che per la guardia sulla sospensione.
+    $this->withSession(['login.id' => $utente->id, 'login.remember' => false, 'login.at' => now()->getTimestamp()])
         ->post('/two-factor-challenge', [
             'code' => (new Google2FA)->getCurrentOtp($segreto),
         ]);

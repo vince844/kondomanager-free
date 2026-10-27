@@ -91,6 +91,8 @@ return [
         'permissions_count'            => ':count permissions',
         'invite_emails' => 'Email addresses',
         'invite_buildings' => 'Buildings',
+        // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
+        'fuori_portata' => 'Only an administrator manages this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
     ],
 
     /* ------------------------------------------------------------------
@@ -124,7 +126,7 @@ return [
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'role_line_1' => 'Select the role to assign to the user. Choose from default roles or one you created.',
+        'role_line_1' => 'Select the role to assign to the user. An administrator chooses from all roles, custom ones included; anyone else assigns only «utente» and «fornitore».',
         'role_line_2' => 'Permissions associated with the role will be inherited automatically.',
         'resident'    => 'Select the resident record to associate with the user. The associated resident record will be able to access the system with the credentials of the created user and view their data and related information.',
         'permissions' => 'Select specific permissions to assign to the user in addition to those inherited from the selected role.',

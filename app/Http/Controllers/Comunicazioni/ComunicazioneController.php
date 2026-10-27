@@ -264,8 +264,14 @@ class ComunicazioneController extends Controller
 
             $comunicazione->condomini()->sync($validated['condomini_ids'] ?? []);
 
-            $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
-    
+            // Coda 307: i destinatari si toccano solo se il modulo li manda («senza campo = non
+            // toccare», la stessa regola delle categorie dei documenti): una richiesta senza il
+            // campo lascia la comunicazione indirizzata a chi lo era. La chiave presente e vuota
+            // vuol dire «nessuno».
+            if (array_key_exists('anagrafiche', $validated)) {
+                $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+            }
+
             DB::commit();
 
         } catch (\Exception $e) {
@@ -311,6 +317,10 @@ class ComunicazioneController extends Controller
      * - **Chi c'era già** riceve l'avviso di *modifica*, e **solo se l'amministratore lo chiede**.
      *   Mandare una mail a tutto il condominio perché si è corretto un refuso sarebbe la prima
      *   lamentela: l'ultima parola resta a chi firma la comunicazione.
+     * - **L'autore** non è mai un nuovo arrivato: la comunicazione l'ha scritta lui. Entra nella platea
+     *   quando la modifica la sposta nel suo palazzo o pubblica una bozza già approvata, e lì non
+     *   riceve l'annuncio della propria; come all'approvazione, dove riceve «approvata» e non «nuova»
+     *   (`SendApprovedComunicazioneNotificationToUser`).
      *
      * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
      * @param  array<string, mixed>  $validated
@@ -319,7 +329,11 @@ class ComunicazioneController extends Controller
     {
         $destinatariDopo = app(DestinatariNotifica::class)->perModello($comunicazione->fresh());
 
-        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+        $dellAutore = $comunicazione->created_by === null
+            ? collect()
+            : Anagrafica::where('user_id', $comunicazione->created_by)->pluck('id');
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->diff($dellAutore)->values()->all();
 
         if ($nuovi !== []) {
             DestinatariDaAvvisare::dispatch($comunicazione, $nuovi, 'nuovo');

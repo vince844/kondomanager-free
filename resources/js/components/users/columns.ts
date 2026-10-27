@@ -7,6 +7,8 @@ import { ShieldCheck, UserX, ShieldX } from 'lucide-vue-next'
 import { roleClasses, defaultRoleClass, statusClasses } from '@/composables/useBadges'
 import { useBadges } from '@/composables/useBadges'
 import { usePermissionsList } from '@/composables/usePermissionsList'
+import { usePermission } from '@/composables/permissions'
+import { Permission } from '@/enums/Permission'
 import { trans } from 'laravel-vue-i18n'
 import AnagraficheStack from '@/components/AnagraficheStack.vue'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +16,8 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
 import { format, formatDistanceToNow } from 'date-fns';
 import { it } from 'date-fns/locale';
+
+const { hasPermission } = usePermission()
 
 const ROLE_I18N_KEY_BY_NAME: Record<string, string> = {
   amministratore: 'admin',
@@ -39,25 +43,27 @@ function getTranslatedRoleLabel(roleValue: unknown): string {
   return translated === key ? rawRoleName : translated
 }
 
-// Dialog per visualizzare i permessi dell'utente
+/**
+ * Il pulsante con il numero dei permessi e la finestra che li elenca, per l'utente della riga.
+ *
+ * ⚠️ **L'utente si legge dalle props a ogni disegno, non una volta sola nel `setup`.** Ordinare, filtrare,
+ * cercare o cambiare pagina ricaricano l'elenco tenendo la tabella (`preserveState`), e una cella può ricevere
+ * un altro utente: una copia fatta all'inizio mostrava ancora i permessi e il ruolo di quello di prima, in un
+ * elenco che si apre per controllare chi può fare che cosa (decisione 135.1). Le righe hanno anche l'id per
+ * chiave (`DataTable.vue`), ma la cella non deve dipendere da quello.
+ */
 const UserPermissionsDialog = {
   props: ['user'],
   setup(props: { user: User }) {
-    const user = props.user
     const { createRoleBadges } = useBadges()
     const { extractRoleNames } = usePermissionsList()
-    
-    const permissions = user.permissions || []
-    const roles = user.roles || []
-    const roleNames = extractRoleNames(roles)
-    const badges = createRoleBadges(roleNames)
-    
+
     return () => h(PermissionsDialog, {
-      permissions,
+      permissions: props.user.permissions || [],
       title: 'users.label.permissions_assigned',
       subtitle: 'users.label.permissions_assigned_to_user',
-      user: user.name,
-      badges
+      user: props.user.name,
+      badges: createRoleBadges(extractRoleNames(props.user.roles || [])),
     })
   }
 }
@@ -85,11 +91,16 @@ export const columns: ColumnDef<User>[] = [
         ? trans('users.table.verified_tooltip')
         : trans('users.table.unverified_tooltip')
 
+      // Togliere o rimettere la verifica vale solo per un account nella portata di chi guarda (Coda 258), e
+      // chiede «Modifica utenti», come la sua rotta (decisione 136.3): altrimenti lo scudo resta
+      // un'indicazione, senza il clic che il server rifiuterebbe.
+      const gestibile = user.gestibile === true && hasPermission([Permission.EDIT_USERS])
+
       return h('div', { class: 'flex items-center space-x-3' }, [
         h('div', {
-          class: 'cursor-pointer shrink-0 mt-0.5 self-start',
+          class: gestibile ? 'cursor-pointer shrink-0 mt-0.5 self-start' : 'shrink-0 mt-0.5 self-start',
           title: tooltip,
-          onClick: toggleVerification,
+          onClick: gestibile ? toggleVerification : undefined,
         }, [
           h(ShieldCheck, {
             class: user.email_verified_at ? 'w-4 h-4 text-emerald-500' : 'w-4 h-4 text-slate-300 dark:text-slate-600',

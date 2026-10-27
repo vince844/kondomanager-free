@@ -46,11 +46,13 @@ test('password can be reset with valid token', function () {
     $this->post('/forgot-password', ['email' => $user->email]);
 
     Notification::assertSentTo($user, CustomResetPasswordNotification::class, function ($notification) use ($user) {
+        // Dieci caratteri: dalla Coda 262 (decisione 127.1) è il minimo di ogni password nuova, e la
+        // password del test lo rispetta.
         $response = $this->post('/reset-password', [
             'token' => $notification->token,
             'email' => $user->email,
-            'password' => 'password',
-            'password_confirmation' => 'password',
+            'password' => 'password-nuova',
+            'password_confirmation' => 'password-nuova',
         ]);
 
         $response

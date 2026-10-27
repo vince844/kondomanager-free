@@ -6,6 +6,7 @@ use App\Enums\NotificationType;
 use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
 use App\Models\Anagrafica;
 use App\Notifications\Segnalazioni\NewSegnalazioneNotification;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Traits\FilterByNotificationPreference;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
@@ -18,9 +19,10 @@ class SendNewSegnalazioneNotificationToUser implements ShouldQueue
     /**
      * Handle the event of a new "Segnalazione" being created by notifying eligible users.
      *
-     * This method retrieves all users associated with the same "condominio" as the new
-     * segnalazione, filters them by their notification preferences for new tickets,
-     * ensures email uniqueness, and sends them a notification. Errors are logged.
+     * La platea è quella di `DestinatariNotifica` (Code 302 e 198): chi trova la segnalazione
+     * nell'elenco del portale. Nessuno se è una bozza; le persone collegate se è indirizzata a
+     * qualcuno; il condominio solo se non lo è e non è privata. Poi il filtro delle preferenze e
+     * dei permessi.
      *
      * @param NotifyUserOfCreatedSegnalazione $event The event containing the newly created segnalazione.
      *
@@ -30,13 +32,22 @@ class SendNewSegnalazioneNotificationToUser implements ShouldQueue
     {
         try {
 
-            $query = Anagrafica::with('condomini')
-            ->whereHas('condomini', function ($query) use ($event) {
-                $query->where('condominio_id', $event->segnalazione->condominio_id);
-            });
+            $platea = app(DestinatariNotifica::class)->perModello($event->segnalazione);
+
+            if ($platea->isEmpty()) {
+                return;
+            }
+
+            $query = Anagrafica::whereIn('id', $platea);
+
+            // Chi lo crea non riceve l'annuncio della propria (Coda 302): la creazione dal pannello passa di
+            // qui, e chi ha anche un'anagrafica nel palazzo era nella platea. L'approvazione e la
+            // creazione dal portale lo escludono già (`SendApprovedSegnalazioneNotificationToUser`).
+            $creatore = $event->segnalazione->created_by;
 
             $anagrafiche = $this->filterByNotificationPreference($query, NotificationType::NEW_TICKET->value)
                 ->get()
+                ->reject(fn (Anagrafica $a) => $creatore !== null && (int) $a->user_id === (int) $creatore)
                 ->unique('email')
                 ->values();
 

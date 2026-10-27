@@ -24,18 +24,22 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
-
-        $updateService = app(UpdateService::class);
-
         return [
             ...parent::share($request),
             'name' => config('app.name'),
-            'version' => config('app.version'),
+
+            // La versione, lo stato degli aggiornamenti (più giù) e la mappa delle funzioni vanno solo
+            // a chi ha fatto l'accesso: le pagine per ospiti (pagina iniziale, login, registrazione,
+            // «password dimenticata», reset) non li portano, nemmeno nel sorgente: da queste pagine la
+            // versione di un'installazione non si legge senza accesso. Per un ospite `null`; chi li legge
+            // (piè di pagina, intestazione, impostazioni, aggiornamento) sta dietro l'accesso (Coda 342,
+            // decisione 127.6).
+            'version' => fn () => $request->user() ? config('app.version') : null,
             'is_demo' => env('IS_DEMO', false),
 
             // Cosa questa installazione sa fare (aggiornamenti in app, pianificatore esterno,
             // backup, archiviazione esterna): una mappa sola, vedi App\Support\FunzioniInstallazione.
-            'funzioni' => fn () => FunzioniInstallazione::mappa(),
+            'funzioni' => fn () => $request->user() ? FunzioniInstallazione::mappa() : null,
             
             // Dati per Vue I18n
             'locale' => app()->getLocale(),
@@ -106,14 +110,22 @@ class HandleInertiaRequests extends Middleware
                     ->count();
             }) : 0,
 
-            // Aggiungiamo stato aggiornamenti sistema
-            'system_update' => [
-                'available' => $updateService->isAutoUpdateEnabled() 
-                    ? $updateService->hasUpdateAvailable() 
-                    : false,
-                'new_version' => $updateService->getRemoteVersion(),
-                'current_version' => config('app.version'),
-            ],
+            // Stato degli aggiornamenti: solo con l'accesso, come la versione (Coda 342).
+            'system_update' => function () use ($request) {
+                if (! $request->user()) {
+                    return null;
+                }
+
+                $updateService = app(UpdateService::class);
+
+                return [
+                    'available' => $updateService->isAutoUpdateEnabled()
+                        ? $updateService->hasUpdateAvailable()
+                        : false,
+                    'new_version' => $updateService->getRemoteVersion(),
+                    'current_version' => config('app.version'),
+                ];
+            },
 
         ];
     }

@@ -222,8 +222,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che il documento è cambiato. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso lo riceve comunque, perché per lui è nuovo.",
-        'visibility' => 'Se impostata su privata, solo gli amministratori potranno visualizzare il documento.',
+        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che il documento è cambiato. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso lo riceve comunque, perché per lui è nuovo. Finché è una bozza o è in attesa di approvazione non parte niente; quando è pubblicato e approvato, lo ricevono tutti i destinatari.",
+        'visibility' => 'Un documento in bozza o in attesa di approvazione non compare ai condòmini; pubblicato e approvato, lo vedono i condòmini a cui è indirizzato.',
         'category'   => 'Un documento può stare in più categorie, e si trova dentro ognuna. Selezionane almeno una, oppure creane una nuova.',
     ],
 
@@ -335,4 +335,13 @@ return [
         'usata'  => '{0} Nessuno|{1} 1 documento|[2,*] :count documenti',
     ],
 
+    /* ------------------------------------------------------------------
+     | Pubblicazione (Coda 306): i documenti non hanno la privacy
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'draft'     => 'Bozza',
+        'published' => 'Pubblicato',
+        'needs_approval' => 'È in attesa di approvazione: scegliere «Pubblicato» non basta a mostrarlo ai condòmini. Lo vedranno quando sarà approvato, con lo scudo accanto al nome nell\'elenco dei documenti.',
+        'waiting_approver' => 'È in attesa di approvazione: scegliere «Pubblicato» non basta a mostrarlo ai condòmini. Lo vedranno quando sarà approvato da chi approva i documenti.',
+    ],
 ];

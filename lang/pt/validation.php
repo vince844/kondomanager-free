@@ -175,11 +175,16 @@ return [
 
     'custom' => [
         'roles' => [
-            'not_allowed' => 'Não podes atribuir este perfil: os perfis administrativos são concedidos por um administrador.',
+            'not_allowed' => 'Não podes atribuir este perfil: quem não é administrador atribui só os perfis «utente» e «fornitore».',
             'last_admin' => 'Este é o último administrador ativo: mudar o perfil deixaria a instalação sem ninguém que a possa gerir.',
+            'privileged_target' => 'Só um administrador pode alterar os perfis desta conta: tem um perfil diferente de «utente» e «fornitore», ou permissões adicionais que tu não tens.',
         ],
         'permissions' => [
             'not_allowed' => 'Não podes conceder uma permissão que tu próprio não tens.',
+            'privileged_target' => 'Só um administrador pode alterar as permissões adicionais desta conta: tem um perfil diferente de «utente» e «fornitore», ou permissões adicionais que tu não tens.',
+        ],
+        'default_user_role' => [
+            'only_admin' => 'Só um administrador pode alterar a função padrão para novos usuários.',
         ],
         'email' => [
             'required' => 'O campo :attribute é obrigatório',
@@ -187,6 +192,8 @@ return [
             'lowercase' => 'O campo :attribute deve estar em minúsculas',
             'email' => 'O campo :attribute deve ser um endereço de email válido',
             'unique_email_across_tables' => 'Este endereço de email já está em uso.',
+            'privileged_target' => 'Só um administrador pode alterar o email desta conta: tem um perfil diferente de «utente» e «fornitore», ou permissões adicionais que tu não tens.',
+            'own_from_profile' => 'O teu email não se altera aqui: altera-o nas definições, em «Perfil», onde é pedida a palavra-passe atual.',
             'unique_email_across_tables_in' => 'Este endereço de email já está em uso: consta em :dove.',
             'sorgenti' => [
                 'anagrafiche' => 'uma ficha de pessoa',

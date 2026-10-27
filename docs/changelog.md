@@ -7,6 +7,39 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.57] - Tutto al suo posto
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: utenti, ruoli, segnalazioni, comunicazioni, documenti e contabilità
+restano com'erano. Una beta di sicurezza: corregge alcune falle e rivede intorno l'accesso, i permessi fra gli utenti, il portale dei condòmini, le pagine
+pubbliche e il ripristino dei backup. Conviene aggiornare chi ha l'installazione raggiungibile da internet. I dettagli delle falle escono con la 1.11.0
+stabile, negli avvisi di sicurezza del repository.
+
+**Che cosa fa la beta.**
+- **L'accesso.** Le password nuove hanno almeno 10 caratteri. Il limite ai tentativi vale per ogni account, e c'è un tetto per
+  indirizzo. Le azioni delicate (la 2FA, lo scarico di un backup, le impostazioni della posta, dare poteri a un account) chiedono di ridigitare la password, se
+  non lo si è fatto negli ultimi 15 minuti. Cambiare la password chiude le sessioni sugli altri dispositivi. Il titolare di un account riceve una mail quando
+  cambiano la sua password, la sua email o la sua 2FA.
+- **Utenti e ruoli.** Chi non è amministratore concede solo i ruoli «utente» e «fornitore», e gestisce solo gli account che hanno questi ruoli. Gli altri
+  account, le pagine dei ruoli e il «Ruolo predefinito nuovi utenti» li gestisce l'amministratore. Un invito dà il ruolo predefinito solo se è «utente» o
+  «fornitore». Nell'elenco utenti ogni comando compare solo a chi lo può usare, e il numero dei permessi resta quello della riga.
+- **Il portale dei condòmini.** Bozze e oggetti in attesa di approvazione li apre solo chi li ha scritti, e gli avvisi di una segnalazione o di una
+  comunicazione nuova partono solo a chi la può aprire. Su una segnalazione privata, «Rendi pubblica» la mostra a tutto il condominio, con una conferma. Gli
+  stati dicono «In attesa di approvazione», «Bozza», «Pubblicata» e, a parte, «Privata». Modificare una segnalazione, una comunicazione o un documento
+  dell'archivio non ne cambia l'autore né l'approvazione. Nelle mail i testi scritti dagli utenti arrivano come testo semplice.
+- **Il pannello.** Le anagrafiche seguono i loro permessi, e il collaboratore di serie non le elimina. Ogni riquadro della dashboard segue il permesso
+  del suo elenco. La pagina dei ruoli dice che cosa apre l'accesso al pannello.
+- **Pagine pubbliche e impostazioni.** Le pagine pubbliche non dicono la versione installata. Le pagine del gestionale non si aprono dentro un riquadro di un
+  altro sito. Nelle impostazioni della posta, se cambiano il server, la porta o la crittografia, la password SMTP va riscritta.
+- **Il ripristino dei backup** non si ferma più a metà con le sessioni nel database, si riprende con la password anche a metà import e dal punto in cui si era
+  fermato, e si ferma prima di toccare il database se il backup di sicurezza non riesce. I suoi messaggi più comuni sono nella lingua dell'installazione, e gli
+  errori dei backup non mostrano le cartelle dell'installazione, dei temporanei e degli archivi. Se la risposta a «Riprendi il ripristino» non arriva, la finestra e la pagina di attesa tornano alla frase prudente.
+- **L'installazione a mano** su un server, descritta nel README, usa il comando `kondomanager:installa` e parte in produzione. Chi ha già installato a mano
+  controlli che nel file `.env` ci siano `APP_ENV=production` e `APP_DEBUG=false`, e cambi la password di `admin@km.com` se è ancora quella del README.
+- **Le librerie** sono aggiornate, Laravel compreso, senza cambi di versione maggiore; la costruzione dell'immagine Docker segnala quelle con
+  vulnerabilità note.
+
+---
+
 ## [1.11.0-beta.56] - Chi rimborsa chi
 
 **Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi, i saldi già scritti e i passaggi

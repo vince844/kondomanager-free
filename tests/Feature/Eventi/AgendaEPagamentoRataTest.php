@@ -279,17 +279,22 @@ test('un utente senza VIEW_EVENTS non può segnalare, anche se è il titolare', 
     $response->assertForbidden();
 });
 
-test('un utente senza anagrafica riceve un rifiuto, non un errore del server', function () {
+test('un utente senza anagrafica non segnala il pagamento e non riceve un errore del server', function () {
+    // Decisione 134.4: il portale manda chi non ha un'anagrafica a completare i suoi dati, con la
+    // frase che dice perché (`CheckHasAnagrafica`); dalla 1.11.0-beta.39 fino a qui era un 403. La
+    // rata non cambia.
     $condominio = Condominio::factory()->create();
     $altro = Anagrafica::factory()->create();
     $rata = creaRataCondomino($altro, $condominio, $this->staff);
+    $prima = $rata->fresh()->meta;
 
     $user = User::factory()->create(['email_verified_at' => now()]);
     $user->assignRole(Role::UTENTE->value);
 
     $response = $this->actingAs($user)->post(route('user.eventi.report_payment', $rata));
 
-    $response->assertForbidden();
+    $response->assertRedirect(route('user.anagrafiche.create'));
+    expect($rata->fresh()->meta)->toBe($prima);
 });
 
 test('il titolare scollegato dal condominio segnala ancora la sua rata', function () {

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Impostazioni;
 
+use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ConfermaPasswordRecente;
 use App\Http\Requests\Settings\CreateImpostazioniGeneraliRequest;
 use App\Models\Condominio;
 use App\Settings\GeneralSettings;
@@ -14,6 +16,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class ImpostazioniGeneraliController extends Controller
 {
@@ -48,16 +51,34 @@ class ImpostazioniGeneraliController extends Controller
                 fn (int $v) => $v <= 50,
             )),
             'roles'                    => $roles,
+            // Coda 258, decisione 134.1: il ruolo della registrazione lo cambia solo un amministratore, e la
+            // pagina lo dice a chi non lo è invece di lasciarglielo scegliere.
+            'ruolo_registrazione_modificabile' => $user->hasRole(RoleEnum::AMMINISTRATORE->value),
         ]);
     }
 
     /**
      * Store updated settings
      */
-    public function store(CreateImpostazioniGeneraliRequest $request, GeneralSettings $settings): RedirectResponse
+    public function store(CreateImpostazioniGeneraliRequest $request, GeneralSettings $settings): RedirectResponse|SymfonyResponse
     {
 
         Gate::authorize('manage', $settings);
+
+        // Coda 261, decisione 134.1: cambiare il ruolo della registrazione pubblica vale quanto concederlo a
+        // chiunque si registri, e chiede la password ridigitata da poco. Lo stesso vale per accendere la
+        // registrazione quando quel ruolo non è `utente` né `fornitore`: da lì chiunque si registra riceve
+        // i suoi poteri. Salvare il resto con lo stesso ruolo, spegnere la registrazione o lasciarla accesa
+        // non chiede niente.
+        $ruolo = $request->validated('default_user_role');
+        $accendeConPoteri = $request->validated('user_frontend_registration')
+            && ! $settings->user_frontend_registration
+            && ! in_array($ruolo, RoleEnum::concedibiliDaTutti(), true);
+
+        if (($ruolo !== $settings->default_user_role || $accendeConPoteri)
+            && ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'impostazioni.generali');
+        }
 
         try {
 

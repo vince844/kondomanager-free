@@ -8,6 +8,7 @@ use App\Support\ModuloFirmato;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules;
 
 /**
  * Le due rotte sono firmate (`routes/web.php`): la firma la verifica il middleware `signed` prima di
@@ -39,8 +40,10 @@ class NewUserPasswordController extends Controller
             return $rifiuto;
         }
 
+        // La stessa regola delle altre password nuove (Coda 262): `Password::defaults()`, non un
+        // minimo scritto qui, così il primo accesso non ha una regola sua.
         $request->validate([
-            'password' => 'required|min:8|confirmed',
+            'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
         $user->update([

@@ -38,6 +38,12 @@ class AuthenticatedSessionController extends Controller
      */
     public function store(LoginRequest $request): RedirectResponse
     {
+        // Il limite dei tentativi si guarda prima della password, anche per gli account con la 2FA
+        // (Coda 259): il ramo qui sotto confronta la password da sé, e a blocco scattato non deve
+        // rispondere in modo diverso alla password giusta. Le password sbagliate le conta
+        // `authenticate()`, dove cade anche quel ramo quando la password non è quella giusta.
+        $request->ensureIsNotRateLimited();
+
         $user = User::where('email', $request->email)->first();
 
         // If this user exists, password is correct, and 2FA is enabled, we want to redirect to the 2FA challenge
@@ -52,10 +58,13 @@ class AuthenticatedSessionController extends Controller
                 ]);
             }
 
-            // Store the user ID and remember preference in the session
+            // Lo stato «password giusta» per la sfida: chi, se ricordarlo, da quando (vale dieci minuti,
+            // `EnsureTwoFactorChallengeSession`) e quanti codici sbagliati ha già speso (cinque lo chiudono).
             $request->session()->put([
                 'login.id' => $user->getKey(),
-                'login.remember' => $request->boolean('remember')
+                'login.remember' => $request->boolean('remember'),
+                'login.at' => now()->getTimestamp(),
+                'login.tentativi' => 0,
             ]);
 
             return redirect()->route('two-factor.challenge');

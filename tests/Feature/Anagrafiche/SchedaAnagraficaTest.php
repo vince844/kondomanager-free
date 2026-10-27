@@ -82,9 +82,11 @@ function creaDocumento(string $nome, int $utente, ?CategoriaDocumento $categoria
 
 beforeEach(function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    // La scheda chiede «Visualizza anagrafiche» (decisione 137): entrare nel pannello non basta.
+    Permission::firstOrCreate(['name' => 'Visualizza anagrafiche', 'guard_name' => 'web']);
 
     $this->user = User::factory()->create();
-    $this->user->givePermissionTo('Accesso pannello amministratore');
+    $this->user->givePermissionTo('Accesso pannello amministratore', 'Visualizza anagrafiche');
     $this->actingAs($this->user);
 });
 

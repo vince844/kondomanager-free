@@ -32,6 +32,12 @@ beforeEach(function () {
 
     $this->admin = User::factory()->create();
     $this->admin->assignRole($ruolo);
+
+    // Il ruolo predefinito dei nuovi utenti, che il modulo rimanda com'è: chi salva qui non è
+    // amministratore, e il ruolo della registrazione lo cambia solo un amministratore (Coda 258,
+    // decisione 134.1). Il modulo mandava «admin» al posto di «utente», un cambio che questo file non
+    // voleva provare: c'era solo perché nel database di questo file «utente» non esisteva.
+    Role::firstOrCreate(['name' => 'utente', 'guard_name' => 'web']);
 });
 
 /** Il modulo completo: le impostazioni si salvano tutte insieme, non una per volta. */
@@ -44,7 +50,7 @@ function moduloImpostazioni(array $modifiche = []): array
         'app_name'                   => 'Kondomanager',
         'open_condominio_on_login'   => false,
         'default_condominio_id'      => null,
-        'default_user_role'          => 'admin',
+        'default_user_role'          => 'utente',
         'default_per_page'           => 30,
     ], $modifiche);
 }

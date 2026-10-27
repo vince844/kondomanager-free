@@ -202,8 +202,10 @@ const handleRevokeAdminPermission = () => {
                         <h4 class="text-sm font-semibold">
                             Accesso layout amministratore
                         </h4>
+                        <!-- Che cosa apre davvero l'accesso al pannello (decisione 138.2): la frase la fissa dalla
+                             rotta AccessoAlPannelloDelRuoloTest.php, e va cambiata con le pagine che descrive. -->
                         <p class="text-sm">
-                            Se selezionata questa opzione permette di mostrare il layout amministratore con funzioni avanzate per il nuovo ruolo creato.
+                            Se selezionata, chi ha questo ruolo entra nel pannello amministratore. Alcune pagine del pannello non hanno permessi propri e si aprono con il solo accesso: fra queste il gestionale di ogni condominio (contabilità, unità, titolari e i loro dati) e i fornitori. Altre sezioni, come comunicazioni, segnalazioni, agenda e l'elenco delle anagrafiche, chiedono anche i loro permessi, da scegliere in «Permessi».
                         </p>
                     </div>
                 </div>

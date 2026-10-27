@@ -13,11 +13,24 @@ use App\Http\Controllers\Segnalazioni\CommentoController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
+
+    // La pagina dove chi non ha ancora un'anagrafica completa i suoi dati, e le preferenze delle
+    // notifiche: restano fuori dal gruppo qui sotto, che ci rimanda chi non ce l'ha.
+    Route::resource('anagrafiche', AnagraficaController::class);
+
+    Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
+        ->name('settings.notifications.index');
     
+    Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
+        ->name('settings.notifications.update');
+
+    // Il portale legge i palazzi dall'anagrafica collegata all'account: senza, le pagine andavano in
+    // errore 500. Chi non ce l'ha (e non ha il pannello) va a completare i suoi dati, con la frase
+    // che dice perché (decisione 134.4, `CheckHasAnagrafica`).
+    Route::middleware('CheckHasAnagrafica')->group(function () {
+
     Route::get('/dashboard', UserDashboardController::class)
         ->name('dashboard');
-    
-    Route::resource('anagrafiche', AnagraficaController::class);
     
     Route::resource('segnalazioni', SegnalazioneController::class)
         ->parameters([
@@ -81,10 +94,6 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
         ])
         ->only(['index', 'show']);
 
-    Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
-        ->name('settings.notifications.index');
-    
-    Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
-        ->name('settings.notifications.update');
+    }); // fine del gruppo con CheckHasAnagrafica
 
 });

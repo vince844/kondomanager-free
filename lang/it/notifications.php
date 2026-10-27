@@ -124,6 +124,28 @@ return [
         'action'      => 'Visualizza segnalazione',
     ],
 
+    // Segnalazione privata resa pubblica (SegnalazioneResaPubblicaNotification)
+    'ticket_made_public' => [
+        'subject'  => 'La tua segnalazione ora è pubblica',
+        'subject_pending' => 'La tua segnalazione non è più privata',
+        'greeting' => 'Salve :name',
+        'line_1'   => ':user ha reso pubblica la tua segnalazione.',
+        'line_1_pending' => ':user ha deciso che la tua segnalazione non è più privata.',
+        'object'   => 'Oggetto',
+        'line_2'   => 'Ora la vedono tutti i condòmini di :condominio, con il tuo nome.',
+        'line_2_pending' => 'La vedranno tutti i condòmini di :condominio, con il tuo nome, quando sarà pubblicata e approvata.',
+        'action'   => 'Visualizza segnalazione',
+    ],
+
+    // Il motivo per cui una mail all'autore parte senza il pulsante verso la scheda (PulsanteSoloSeLaApre)
+    'author_cannot_open' => [
+        'outside_building' => 'Non la vedi più nel portale: non risulti fra i condòmini di :condominio.',
+        'no_permission'    => 'Non la vedi nel portale: il tuo account non ha il permesso di aprirla.',
+        'not_published'    => 'Non la vedi nel portale: in questo momento non è pubblicata e approvata.',
+        'not_addressed'    => 'Non la vedi più nel portale: non è più indirizzata a te.',
+        'no_anagrafica'    => 'Non la vedi nel portale: il tuo account non è collegato a un\'anagrafica. Per usare il portale accedi e compila i tuoi dati.',
+    ],
+
     // Approvazione ticket (ApproveSegnalazioneNotification)
     'approve_ticket' => [
         'subject'     => 'Nuova segnalazione da approvare',
@@ -172,7 +194,7 @@ return [
     ],
 
     // Commento eliminato
-    'ddeleted_ticket_comment' => [
+    'deleted_ticket_comment' => [
         'subject' => 'Un tuo commento è stato rimosso',
         'line_1'  => 'Il tuo commento sulla :entity è stato rimosso o nascosto da un amministratore.',
     ],
@@ -215,5 +237,45 @@ return [
         'title'       => 'Titolo',
         'description' => 'Descrizione',
         'action'      => 'Visualizza documenti',
+    ],
+
+    // ─── Avvisi di sicurezza al titolare dell'account (Coda 267) ───────────────
+    // Partono sempre: le preferenze di notifica scelgono i destinatari degli avvisi del portale, e
+    // questi non passano di lì. Nel testo data e ora, mai l'indirizzo IP. L'avviso dell'email cambiata
+    // va al vecchio indirizzo, con il nuovo mascherato.
+    'security_alert' => [
+        'greeting' => 'Salve :name,',
+        'autore'   => 'La modifica è stata fatta da :autore.',
+        'sempre'   => 'Questo avviso parte a ogni modifica della sicurezza del tuo account e non si può disattivare.',
+        'password_cambiata' => [
+            'subject'   => 'La password del tuo account è stata cambiata',
+            'line_1'    => 'Il :data alle :ora la password del tuo account su :appName è stata cambiata.',
+            'consiglio' => "Se la modifica non l'hai fatta tu, reimposta subito la password con «Password dimenticata?» nella pagina di accesso e avvisa l'amministratore.",
+        ],
+        'password_reimpostata' => [
+            'subject'   => 'La password del tuo account è stata reimpostata',
+            'line_1'    => 'Il :data alle :ora la password del tuo account su :appName è stata reimpostata con il link «Password dimenticata?».',
+            'consiglio' => "Se la modifica non l'hai fatta tu, reimposta subito la password con «Password dimenticata?» nella pagina di accesso e avvisa l'amministratore.",
+        ],
+        'email_cambiata' => [
+            'subject'   => "L'indirizzo email del tuo account è stato cambiato",
+            'line_1'    => "Il :data alle :ora l'indirizzo email del tuo account su :appName è stato cambiato in :email. Da adesso per accedere si usa il nuovo indirizzo, e i link per reimpostare la password arrivano lì.",
+            'consiglio' => "Se la modifica non l'hai chiesta tu, contatta subito l'amministratore.",
+        ],
+        'due_fattori_attivata' => [
+            'subject'   => 'Autenticazione a due fattori attivata',
+            'line_1'    => "Il :data alle :ora è stata attivata l'autenticazione a due fattori del tuo account su :appName.",
+            'consiglio' => "Se la modifica non l'hai fatta tu, cambia subito la password e avvisa l'amministratore.",
+        ],
+        'due_fattori_disattivata' => [
+            'subject'   => 'Autenticazione a due fattori disattivata',
+            'line_1'    => "Il :data alle :ora è stata disattivata l'autenticazione a due fattori del tuo account su :appName: per accedere adesso basta la password.",
+            'consiglio' => "Se la modifica non l'hai fatta tu, cambia subito la password, riattiva l'autenticazione a due fattori e avvisa l'amministratore.",
+        ],
+        'codici_rigenerati' => [
+            'subject'   => 'Nuovi codici di recupero',
+            'line_1'    => "Il :data alle :ora sono stati generati nuovi codici di recupero per l'autenticazione a due fattori del tuo account su :appName: quelli di prima non valgono più.",
+            'consiglio' => "Se la modifica non l'hai fatta tu, cambia subito la password e avvisa l'amministratore.",
+        ],
     ],
 ];

@@ -7,12 +7,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Il passo «amministratore» del wizard, senza il wizard: le stesse regole di `CreateAdmin`
- * (nome di almeno due caratteri, email unica, password di almeno sei), lo stesso utente
- * (verificato se la configurazione lo chiede), lo stesso ruolo se esiste a database.
+ * (nome di almeno due caratteri, email unica, password con la regola di tutte le password nuove,
+ * cioè almeno dieci caratteri dalla Coda 262), lo stesso utente (verificato se la configurazione lo
+ * chiede), lo stesso ruolo se esiste a database.
  */
 class CreaAmministratore
 {
@@ -44,7 +46,7 @@ class CreaAmministratore
             [
                 'name' => 'required|string|min:2',
                 'email' => 'required|email|unique:users,email',
-                'password' => 'required|min:6',
+                'password' => ['required', Password::defaults()],
             ],
         )->validate();
 

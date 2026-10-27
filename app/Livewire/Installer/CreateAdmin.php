@@ -3,6 +3,7 @@
 namespace App\Livewire\Installer;
 
 use App\Services\Installer\CreaAmministratore;
+use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -21,7 +22,8 @@ class CreateAdmin extends Component
         return [
             'name' => 'required|string|min:2',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6|confirmed',
+            // La regola di tutte le password nuove (Coda 262): almeno dieci caratteri.
+            'password' => ['required', 'confirmed', Password::defaults()],
         ];
     }
 
@@ -56,7 +58,7 @@ class CreateAdmin extends Component
                 return;
             } else {
                 $this->resetErrorBag('password');
-                $this->validate(['password' => 'required|min:6']);
+                $this->validate(['password' => ['required', Password::defaults()]]);
                 $this->dispatch('wizard.canProceed');
 
                 return;

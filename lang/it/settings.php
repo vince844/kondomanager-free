@@ -36,6 +36,10 @@ return [
         'verification_sent'     => 'Un nuovo link di verifica è stato inviato al tuo indirizzo email',
         'save'                  => 'Salva profilo',
         'saved'                 => 'Profilo salvato',
+        // Coda 261: la password attuale, solo quando l'email cambia.
+        'current_password' => 'Password attuale',
+        'current_password_placeholder' => 'Inserisci la password attuale',
+        'current_password_hint' => "Per cambiare l'indirizzo email serve la password attuale.",
     ],
 
     'password' => [
@@ -64,6 +68,8 @@ return [
     ],
 
     'two_factor' => [
+        // Coda 261: `enable` con la 2FA già confermata.
+        'already_enabled' => "L'autenticazione a due fattori è già attiva: per cambiarla, prima disattivala.",
         'title'                 => 'Autenticazione a due fattori',
         'heading'               => 'Autenticazione a due fattori',
         'description'           => 'Gestione delle impostazioni per l\'autenticazione a due fattori (2FA)',

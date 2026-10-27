@@ -266,7 +266,7 @@ Route::get('/password/new', [NewUserPasswordController::class, 'showResetForm'])
 // sceglieva l'utente dall'email del corpo (Coda 222, 1.11.0-beta.45).
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])
     ->name('password.create')
-    ->middleware(['guest', 'signed', 'throttle:6,1']);
+    ->middleware(['guest', 'signed', 'throttle:modulo']);
 
 /*
 |--------------------------------------------------------------------------

@@ -14,6 +14,9 @@ return [
     'error_regenerate_cron_token' => 'Ocorreu um erro ao regenerar o token.',
     'success_save_mail_settings' => 'Configuração de email guardada com sucesso.',
     'error_save_mail_settings' => 'Erro ao guardar a configuração de email.',
+    'error_test_mail_password_required' => 'O servidor, a porta ou a encriptação são diferentes dos guardados: para o teste, volte a escrever a palavra-passe SMTP. A palavra-passe guardada só é usada com o servidor para o qual foi guardada.',
+    'error_save_mail_password_required' => 'O servidor, a porta ou a encriptação mudaram: volte a escrever a palavra-passe SMTP. A palavra-passe guardada só vale para o servidor para o qual foi guardada.',
+    'error_test_mail_too_many' => 'Demasiados testes em pouco tempo: aguarde um minuto e tente novamente.',
     'success_save_print_settings' => 'Configurações de impressão guardadas com sucesso.',
     'success_save_backup_settings' => 'Configurações de backup guardadas com sucesso.',
     'error_save_backup_settings' => 'Ocorreu um erro ao guardar as configurações de backup.',
@@ -28,6 +31,9 @@ return [
     'backup_success_completed' => 'Backup concluído com sucesso. Descarregue-o e guarde-o num local seguro.',
 
     'restore_error_generic' => 'Ocorreu um erro durante o restauro. Tente novamente.',
+    'restore_error_account_password' => 'A palavra-passe da sua conta não está correta.',
+    'restore_error_too_many' => 'Demasiadas tentativas em pouco tempo: tente novamente dentro de um minuto.|Demasiadas tentativas em pouco tempo: tente novamente dentro de :count minutos.',
+    'restore_error_too_many_later' => 'Demasiadas tentativas em pouco tempo: tente novamente mais tarde.',
 
     'restore_result' => [
         'page_title' => 'Resultado do restauro',
@@ -43,9 +49,11 @@ return [
         'title_none' => 'Nenhum restauro recente',
         'subtitle_none' => 'Não existe nenhum restauro em curso ou recém-concluído.',
         'go_to_login' => 'Ir para o login',
+        'details_after_login' => 'O administrador vê os detalhes técnicos do restauro (backup de origem, versões, eventual erro) nesta página, depois de iniciar sessão.',
     ],
     'restore_recovery' => [
         'auth_failed' => 'Palavra-passe incorreta.',
+        'auth_unavailable' => 'Não é possível verificar a palavra-passe para este restauro: copie o registo e envie-nos para suporte. Se a janela das cópias de segurança onde foi iniciado ainda estiver aberta, e não tiver passado mais de uma hora desde o início, pode retomá-lo ou desbloquear a aplicação a partir daí.|Não é possível verificar a palavra-passe para este restauro: copie o registo e envie-nos para suporte. Se a janela das cópias de segurança onde foi iniciado ainda estiver aberta, e não tiverem passado mais de :ore horas desde o início, pode retomá-lo ou desbloquear a aplicação a partir daí.',
         'failed_title' => 'O restauro falhou',
         'failed_body' => 'O restauro parou antes de concluir. A base de dados pode ficar incompleta: pode tentar retomá-lo ou desbloquear a aplicação.',
         'details' => 'Detalhes técnicos',
@@ -55,6 +63,7 @@ return [
         'resume' => 'Retomar o restauro',
         'unlock' => 'Desbloquear a aplicação',
         'unlock_note' => 'A base de dados pode ficar incompleta.',
+        'database_untouched' => 'O restauro não alterou a base de dados: ao desbloquear, a aplicação volta com os dados que tinha.',
         'working' => 'Aguarde…',
         'resume_progress' => 'Restauro em curso…',
     ],
@@ -68,6 +77,33 @@ return [
         'finalizing' => 'A finalizar…',
         'completed' => 'Concluído',
         'failed' => 'Falhado',
+    ],
+
+    // As mensagens do motor do restauro que a janela das cópias de segurança mostra (`MessaggiDelRipristino`).
+    'restore_engine' => [
+        'archive_password' => 'Arquivo cifrado: a palavra-passe está em falta ou errada.',
+        'archive_not_zip' => 'Não é possível abrir o arquivo: o ficheiro está corrompido ou não é um zip.',
+        'archive_no_manifest' => 'O arquivo não contém um manifest.json legível: não é uma cópia de segurança do KondoManager.',
+        'archive_bad_manifest' => 'O manifest.json do arquivo está corrompido: não é JSON válido.',
+        'entry_unreadable_index' => 'Não é possível ler a entrada n.º :index do arquivo: o arquivo está corrompido.',
+        'entry_unreadable' => 'Não é possível ler a entrada ":name" do arquivo: o arquivo está corrompido.',
+        'entry_illegal_name' => 'Uma entrada do arquivo tem um nome inválido: o arquivo pode ter sido adulterado.',
+        'entry_absolute_path' => 'A entrada ":name" do arquivo tem um caminho absoluto: o arquivo pode ter sido adulterado.',
+        'entry_traversal' => 'A entrada ":name" do arquivo tem um caminho inválido, com um segmento "." ou "..": o arquivo pode ter sido adulterado.',
+        'entry_unexpected' => 'A entrada ":name" não pode fazer parte de uma cópia de segurança do KondoManager.',
+        'entry_symlink' => 'A entrada ":name" do arquivo é uma ligação simbólica: o arquivo pode ter sido adulterado.',
+        'entry_incomplete' => 'A entrada ":name" do arquivo ficou incompleta: eram esperados :size bytes.',
+        'format_unsupported' => 'Formato da cópia de segurança não suportado (manifest_format :format): o arquivo foi criado por uma versão incompatível.',
+        'newer_version' => 'A cópia de segurança vem de uma versão mais recente (:source) do que a instalada (:current). Atualize primeiro o KondoManager e depois tente novamente o restauro.',
+        'driver_unsupported' => 'A cópia de segurança usa um tipo de base de dados não suportado (:driver).',
+        'driver_mismatch' => 'A cópia de segurança foi criada com :driver, mas esta instalação usa :current: o restauro entre bases de dados diferentes não é suportado.',
+        'restore_running' => 'Já está em curso um restauro.',
+        'backup_running' => 'Está em curso uma cópia de segurança: aguarde que termine antes de restaurar.',
+        'restore_busy' => 'Outro pedido está a iniciar um restauro: tente novamente dentro de alguns segundos.',
+        'archive_missing' => 'Depois do início do restauro, o arquivo da cópia de segurança já não se encontra no servidor: verifique se não foi movido ou eliminado.',
+        'extract_write_failed' => 'Não é possível escrever os ficheiros do arquivo na pasta temporária do restauro: verifique o espaço livre e as permissões de escrita no servidor.',
+        'dump_unreadable' => 'O dump da base de dados, extraído do arquivo para a pasta temporária do restauro, já não se encontra ou não é possível lê-lo.',
+        'safety_backup_failed' => 'A cópia de segurança prévia não foi concluída: o restauro parou antes de alterar a base de dados. «Retomar o restauro» tenta de novo essa cópia de segurança; para restaurar sem ela, desbloqueie a aplicação e inicie de novo o restauro desmarcando «:casella».',
     ],
 
     /* ------------------------------------------------------------------
@@ -236,7 +272,7 @@ return [
         'user_registration_title' => 'Ativar registo de utilizadores',
         'user_registration_description' => 'Se ativado, os utilizadores podem registar-se a partir da página inicial.',
         'default_role_title' => 'Função padrão para novos usuários',
-        'default_role_description' => 'Escolha qual função atribuir automaticamente aos usuários que se registram pelo frontend.',
+        'default_role_description' => 'A função atribuída automaticamente aos usuários que se registram pelo site. Quem aceita um convite só a recebe se for «utente» ou «fornitore»; caso contrário, recebe «utente».',
         'default_per_page_title' => 'Linhas por página nas listas',
         'default_per_page_description' => 'Quantas linhas as tabelas mostram a quem ainda não escolheu. A escolha de cada um continua a valer, lista a lista: quem a alterar volta a encontrá-la ao regressar.',
         'force_comment_moderation_title' => 'Forçar moderação de comentários',
@@ -408,5 +444,10 @@ return [
         'documenti_effimeri' => 'no disco local',
         'versione' => 'Versão',
         'gestione_piano' => 'Gerir o teu plano',
+    ],
+
+    // Coda 258, decisione 134.1: la nota accanto al ruolo predefinito dei nuovi utenti, per chi non è amministratore.
+    'ruolo_registrazione' => [
+        'solo_amministratore' => 'Só um administrador pode alterar a função padrão para novos usuários.',
     ],
 ];

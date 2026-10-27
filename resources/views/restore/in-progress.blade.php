@@ -7,9 +7,25 @@
   Due volti, decisi da $stuck (calcolato dal middleware leggendo lo stato su
   file): ripristino in corso (spinner + meta-refresh) oppure ripristino
   fallito/in stallo (pagina di recupero con log copiabile e pulsanti).
+
+  Il log della pagina non ha la versione né il messaggio d'errore: la pagina è
+  per chiunque. Arrivano con la risposta di «Riprendi» (password giusta) e degli
+  step (token), e la pagina li scrive nel log se il ripristino si ferma di nuovo
+  (Coda 343).
+
+  Fermo nel backup di sicurezza il ripristino non ha toccato il database: la
+  frase sotto il titolo e la nota sotto «Sblocca» lo dicono, al posto di «il
+  database potrebbe essere incompleto». Se dopo «Riprendi» il ripristino si
+  ferma di nuovo, lo script le riscrive con la fase nuova; se la risposta di
+  «Riprendi» non arriva, o è un errore del server, tornano quelle generiche.
 --}}
 @php
     $locale = $locale ?? 'it';
+    // La durata del token della finestra dei backup (`backup.stale_after_hours`): la nomina la frase della password
+    // che non si può verificare, come la risposta del recupero.
+    $ore = (int) ($oreDelToken ?? 2);
+    // Fermo (o in stallo) nel backup di sicurezza: il database non è stato toccato.
+    $fermoPrimaDelDatabase = ($failedPhase ?? null) === 'safety_backup';
 
     $T = [
         'it' => [
@@ -18,6 +34,7 @@
             'running_hint' => 'Questa pagina si aggiorna da sola ogni 30 secondi. Non chiudere né ricaricare manualmente il ripristino.',
             'failed_title' => 'Ripristino non riuscito',
             'failed_body' => "Il ripristino del backup si è interrotto prima di completarsi. Il database potrebbe trovarsi in uno stato incompleto: puoi provare a completarlo oppure sbloccare l'applicazione.",
+            'failed_body_untouched' => "Il ripristino del backup si è fermato durante il backup di sicurezza, prima di toccare il database: puoi provare a riprenderlo oppure sbloccare l'applicazione.",
             'details' => 'Dettagli tecnici',
             'copy' => 'Copia log',
             'copied' => 'Copiato negli appunti',
@@ -27,12 +44,15 @@
             'resume' => 'Riprendi il ripristino',
             'abort' => "Sblocca l'applicazione",
             'abort_note' => 'Il database potrebbe restare incompleto. Sblocca solo se sai come sistemarlo (es. un nuovo ripristino).',
+            'abort_note_untouched' => "Il ripristino non ha toccato il database: sbloccando, il gestionale riparte con i dati che aveva.",
             'working' => 'Attendere…',
             'need_password' => 'Inserisci la password del tuo account.',
             'auth_failed' => 'Password non corretta.',
+            'auth_unavailable' => "Per questo ripristino la password non si può verificare: copia il log e inviacelo per l'assistenza. Se la finestra dei backup da cui è partito è ancora aperta, e dall'avvio ".($ore === 1 ? "non è passata più di un'ora" : "non sono passate più di {$ore} ore").", puoi riprenderlo o sbloccare l'applicazione da lì.",
             'generic_error' => 'Operazione non riuscita. Riprova.',
             'too_many' => 'Troppi tentativi: attendi un minuto e riprova.',
             'resume_progress' => 'Ripristino in corso…',
+            'failed_again' => "Il ripristino si è fermato di nuovo. Nei dettagli tecnici ora trovi anche la versione e il messaggio d'errore.",
         ],
         'en' => [
             'running_title' => 'Restore in progress',
@@ -40,6 +60,7 @@
             'running_hint' => 'This page refreshes every 30 seconds. Do not close or reload the restore manually.',
             'failed_title' => 'Restore failed',
             'failed_body' => 'The backup restore stopped before completing. The database may be in an incomplete state: you can try to finish it or unlock the application.',
+            'failed_body_untouched' => 'The backup restore stopped during the safety backup, before touching the database: you can try to resume it or unlock the application.',
             'details' => 'Technical details',
             'copy' => 'Copy log',
             'copied' => 'Copied to clipboard',
@@ -49,12 +70,15 @@
             'resume' => 'Resume the restore',
             'abort' => 'Unlock the application',
             'abort_note' => 'The database may stay incomplete. Only unlock if you know how to fix it (e.g. a new restore).',
+            'abort_note_untouched' => 'The restore did not touch the database: unlocking brings the application back with the data it had.',
             'working' => 'Please wait…',
             'need_password' => 'Enter your account password.',
             'auth_failed' => 'Wrong password.',
+            'auth_unavailable' => 'The password cannot be checked for this restore: copy the log and send it to us for support. If the backups window it was started from is still open, and no more than '.($ore === 1 ? 'an hour has' : "{$ore} hours have").' passed since it started, you can resume it or unlock the application from there.',
             'generic_error' => 'The operation failed. Please try again.',
             'too_many' => 'Too many attempts: wait a minute and try again.',
             'resume_progress' => 'Restore in progress…',
+            'failed_again' => 'The restore stopped again. The technical details now also show the version and the error message.',
         ],
         'es' => [
             'running_title' => 'Restauración en curso',
@@ -62,6 +86,7 @@
             'running_hint' => 'Esta página se actualiza sola cada 30 segundos. No cierres ni recargues la restauración manualmente.',
             'failed_title' => 'La restauración ha fallado',
             'failed_body' => 'La restauración de la copia se detuvo antes de completarse. La base de datos podría quedar incompleta: puedes intentar terminarla o desbloquear la aplicación.',
+            'failed_body_untouched' => 'La restauración de la copia se detuvo durante la copia de seguridad previa, antes de modificar la base de datos: puedes intentar reanudarla o desbloquear la aplicación.',
             'details' => 'Detalles técnicos',
             'copy' => 'Copiar registro',
             'copied' => 'Copiado al portapapeles',
@@ -71,12 +96,15 @@
             'resume' => 'Reanudar la restauración',
             'abort' => 'Desbloquear la aplicación',
             'abort_note' => 'La base de datos podría quedar incompleta. Desbloquea solo si sabes cómo arreglarlo (p. ej. una nueva restauración).',
+            'abort_note_untouched' => 'La restauración no modificó la base de datos: al desbloquear, la aplicación vuelve con los datos que tenía.',
             'working' => 'Espera…',
             'need_password' => 'Introduce la contraseña de tu cuenta.',
             'auth_failed' => 'Contraseña incorrecta.',
+            'auth_unavailable' => 'No se puede verificar la contraseña para esta restauración: copia el registro y envíanoslo para soporte. Si la ventana de copias de seguridad donde se inició sigue abierta, y no '.($ore === 1 ? 'ha pasado más de una hora' : "han pasado más de {$ore} horas").' desde el inicio, puedes reanudarla o desbloquear la aplicación desde allí.',
             'generic_error' => 'La operación ha fallado. Inténtalo de nuevo.',
             'too_many' => 'Demasiados intentos: espera un minuto y vuelve a intentarlo.',
             'resume_progress' => 'Restauración en curso…',
+            'failed_again' => 'La restauración se ha detenido de nuevo. Los detalles técnicos ahora también muestran la versión y el mensaje de error.',
         ],
         'pt' => [
             'running_title' => 'Restauro em curso',
@@ -84,6 +112,7 @@
             'running_hint' => 'Esta página atualiza-se sozinha a cada 30 segundos. Não feche nem recarregue o restauro manualmente.',
             'failed_title' => 'O restauro falhou',
             'failed_body' => 'O restauro do backup parou antes de concluir. A base de dados pode ficar incompleta: pode tentar terminá-lo ou desbloquear a aplicação.',
+            'failed_body_untouched' => 'O restauro do backup parou durante a cópia de segurança prévia, antes de alterar a base de dados: pode tentar retomá-lo ou desbloquear a aplicação.',
             'details' => 'Detalhes técnicos',
             'copy' => 'Copiar registo',
             'copied' => 'Copiado para a área de transferência',
@@ -93,12 +122,15 @@
             'resume' => 'Retomar o restauro',
             'abort' => 'Desbloquear a aplicação',
             'abort_note' => 'A base de dados pode ficar incompleta. Desbloqueie apenas se souber como resolver (ex. um novo restauro).',
+            'abort_note_untouched' => 'O restauro não alterou a base de dados: ao desbloquear, a aplicação volta com os dados que tinha.',
             'working' => 'Aguarde…',
             'need_password' => 'Introduza a palavra-passe da sua conta.',
             'auth_failed' => 'Palavra-passe incorreta.',
+            'auth_unavailable' => 'Não é possível verificar a palavra-passe para este restauro: copie o registo e envie-nos para suporte. Se a janela das cópias de segurança onde foi iniciado ainda estiver aberta, e não '.($ore === 1 ? 'tiver passado mais de uma hora' : "tiverem passado mais de {$ore} horas").' desde o início, pode retomá-lo ou desbloquear a aplicação a partir daí.',
             'generic_error' => 'A operação falhou. Tente novamente.',
             'too_many' => 'Demasiadas tentativas: aguarde um minuto e tente novamente.',
             'resume_progress' => 'Restauro em curso…',
+            'failed_again' => 'O restauro parou novamente. Os detalhes técnicos mostram agora também a versão e a mensagem de erro.',
         ],
     ];
 
@@ -107,10 +139,8 @@
     $failedAtStr = ! empty($failedAt) ? date('Y-m-d H:i:s', (int) $failedAt) : '—';
     $log = "KondoManager restore log\n"
         ."uuid: ".($restoreUuid ?? '—')."\n"
-        ."version: ".($appVersion ?? '—')."\n"
         ."failed_phase: ".($failedPhase ?? '—')."\n"
-        ."failed_at: ".$failedAtStr."\n"
-        ."error: ".($error ?? '—');
+        ."failed_at: ".$failedAtStr;
 @endphp
 <!DOCTYPE html>
 <html lang="{{ $locale }}">
@@ -192,7 +222,7 @@
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="8" x2="12" y2="13"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
       </div>
       <h1 class="failed">{{ $t['failed_title'] }}</h1>
-      <p>{{ $t['failed_body'] }}</p>
+      <p id="failedBody">{{ $fermoPrimaDelDatabase ? $t['failed_body_untouched'] : $t['failed_body'] }}</p>
 
       <details>
         <summary>{{ $t['details'] }}</summary>
@@ -211,7 +241,7 @@
       <div class="actions">
         <button type="button" class="btn btn-primary" id="resumeBtn">{{ $t['resume'] }}</button>
         <button type="button" class="btn btn-ghost" id="abortBtn">{{ $t['abort'] }}</button>
-        <p class="abort-note">{{ $t['abort_note'] }}</p>
+        <p class="abort-note" id="abortNote">{{ $fermoPrimaDelDatabase ? $t['abort_note_untouched'] : $t['abort_note'] }}</p>
       </div>
 
       <div class="msg" id="msg" role="status"></div>
@@ -237,10 +267,36 @@
       var resumeBtn = document.getElementById('resumeBtn');
       var abortBtn = document.getElementById('abortBtn');
       var copyBtn = document.getElementById('copyBtn');
+      var logEl = document.getElementById('restoreLog');
+      var bodyEl = document.getElementById('failedBody');
+      var noteEl = document.getElementById('abortNote');
       var token = null;
 
       function setMsg(text, kind) { msg.textContent = text || ''; msg.className = 'msg' + (kind ? ' ' + kind : ''); }
       function busy(on) { resumeBtn.disabled = on; abortBtn.disabled = on; }
+
+      // Il log completo, dalla risposta di chi ha il token o la password: versione ed errore compresi.
+      function scriviLog(r) {
+        if (!r || !logEl) return;
+        var at = r.failed_at ? new Date(r.failed_at * 1000).toISOString().replace('T', ' ').slice(0, 19) : '—';
+        logEl.textContent = 'KondoManager restore log\n'
+          + 'uuid: ' + (r.uuid || '—') + '\n'
+          + 'version: ' + (r.app_version || '—') + '\n'
+          + 'failed_phase: ' + (r.failed_phase || r.phase || '—') + '\n'
+          + 'failed_at: ' + at + '\n'
+          + 'error: ' + (r.error || '—');
+        var dettagli = logEl.closest('details');
+        if (dettagli) dettagli.open = true;
+      }
+
+      // La frase sotto il titolo e la nota sotto «Sblocca» seguono lo stato che il server ha appena dato: «il database
+      // non è stato toccato» solo per un ripristino fermo nel backup di sicurezza; in corso, o fermo più avanti, le
+      // frasi generiche.
+      function scriviTesti(r) {
+        var fermoPrima = !!r && r.phase === 'failed' && r.failed_phase === 'safety_backup';
+        bodyEl.textContent = fermoPrima ? T.failed_body_untouched : T.failed_body;
+        noteEl.textContent = fermoPrima ? T.abort_note_untouched : T.abort_note;
+      }
 
       copyBtn && copyBtn.addEventListener('click', function () {
         var txt = document.getElementById('restoreLog').textContent;
@@ -266,7 +322,9 @@
         }).then(function (data) {
           var phase = data && data.restore && data.restore.phase;
           if (phase === 'completed') { window.location.assign(URL_RESULT); return; }
-          if (phase === 'failed' || !phase) { window.location.reload(); return; }
+          // Fermo di nuovo: la pagina resta, con il log completo, invece di ricaricarsi senza.
+          if (phase === 'failed') { scriviLog(data.restore); scriviTesti(data.restore); busy(false); setMsg(T.failed_again, 'err'); return; }
+          if (!phase) { window.location.reload(); return; }
           setMsg(T.resume_progress, 'ok');
           setTimeout(drive, 1200);
         }).catch(function () { window.location.reload(); });
@@ -277,15 +335,21 @@
         busy(true); setMsg(T.working, null);
         post(URL_RESUME, { account_password: pwd.value }).then(function (r) {
           if (r.status === 429) { busy(false); setMsg(T.too_many, 'err'); return null; }
+          // 409: per questo ripristino la password non si può verificare (resta la finestra dei backup, con il token).
+          if (r.status === 409) { busy(false); setMsg(T.auth_unavailable, 'err'); return null; }
           if (r.status === 422 || r.status === 403) { busy(false); setMsg(T.auth_failed, 'err'); return null; }
-          if (!r.ok) { busy(false); setMsg(T.generic_error, 'err'); return null; }
+          // Una sola richiesta di «Riprendi» rifà il backup di sicurezza e può arrivare a togliere il database: con un
+          // errore del server, o senza una risposta leggibile (sotto), la pagina non sa fin dove è arrivata, e torna alle
+          // frasi generiche. Un 4xx viene prima di ogni azione: le frasi restano.
+          if (!r.ok) { busy(false); if (r.status >= 500) scriviTesti(null); setMsg(T.generic_error, 'err'); return null; }
           return r.json();
         }).then(function (data) {
           if (!data) return;
           token = data.token;
+          scriviTesti(data.restore);
           setMsg(T.resume_progress, 'ok');
           drive();
-        }).catch(function () { busy(false); setMsg(T.generic_error, 'err'); });
+        }).catch(function () { busy(false); scriviTesti(null); setMsg(T.generic_error, 'err'); });
       });
 
       abortBtn.addEventListener('click', function () {
@@ -293,6 +357,7 @@
         busy(true); setMsg(T.working, null);
         post(URL_ABORT, { account_password: pwd.value }).then(function (r) {
           if (r.status === 429) { busy(false); setMsg(T.too_many, 'err'); return; }
+          if (r.status === 409) { busy(false); setMsg(T.auth_unavailable, 'err'); return; }
           if (r.status === 422 || r.status === 403) { busy(false); setMsg(T.auth_failed, 'err'); return; }
           if (!r.ok) { busy(false); setMsg(T.generic_error, 'err'); return; }
           window.location.assign('/');

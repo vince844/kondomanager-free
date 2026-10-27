@@ -221,7 +221,8 @@ export const columns: ColumnDef<Documento>[] = [
        */
       const anagrafiche = (row.original.anagrafiche ?? []).map((persona: any) => ({
         ...persona,
-        url: route(generateRoute('anagrafiche.show'), { anagrafica: persona.id }),
+        // La scheda chiede «Visualizza anagrafiche» (decisioni 137 e 138.1): senza, il nome resta, senza collegamento.
+        url: hasPermission([Permission.VIEW_ANAGRAFICHE]) ? route(generateRoute('anagrafiche.show'), { anagrafica: persona.id }) : undefined,
       }));
 
       return h(AnagraficheStack, {
@@ -244,6 +245,8 @@ export const columns: ColumnDef<Documento>[] = [
      * la validazione la rifiuta, la tabella torna identica.
      */
     enableSorting: false,
+    // Coda 306: «Bozza» o «Pubblicato» (le etichette di `publishedConstants`); i documenti la privacy
+    // non la salvano, quindi qui non si dice mai «Privato».
     cell: ({ row }) => {
 
       const value = Boolean(row.getValue('is_published'));

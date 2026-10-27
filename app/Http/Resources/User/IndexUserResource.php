@@ -30,6 +30,10 @@ class IndexUserResource extends JsonResource
             // L'id arriva dal controller, risolto una volta per l'intera pagina.
             'is_ultimo_amministratore' => $request->attributes->get('unico_amministratore_id') === $this->id,
             'is_self'                  => $request->user()?->is($this->resource) ?? false,
+            // Coda 258, decisione 134.1: l'account è nella portata di chi guarda l'elenco? Se no, il menù
+            // non offre i comandi che il server rifiuterebbe (sospendere, riattivare, reinvitare,
+            // eliminare, la verifica dell'email).
+            'gestibile'                => (bool) $request->user()?->haNellaPortata($this->resource),
         ];
     }
 }

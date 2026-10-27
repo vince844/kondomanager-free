@@ -6,9 +6,10 @@
  * ## Perché questo file esiste
  *
  * `Route::resource('/inviti')` monta solo `auth` e `verified`, e fino alla 1.10.0-beta.55
- * `InvitoController` non conteneva **nessun** `Gate::authorize`. Un invito non è una scalata di privilegi — chi accetta si registra
- * con il ruolo predefinito delle impostazioni, e la tabella `inviti` non ha nemmeno una colonna
- * per il ruolo — ma restano tre azioni di governo alla portata di chiunque:
+ * `InvitoController` non conteneva **nessun** `Gate::authorize`. Un invito non dà poteri — chi accetta riceve
+ * il ruolo predefinito dei nuovi iscritti solo se è «utente» o «fornitore», altrimenti «utente» (Coda 258,
+ * `RuoloDiChiAccettaUnInvitoTest.php`), e la tabella `inviti` non ha nemmeno una colonna per il ruolo — ma
+ * restano tre azioni di governo alla portata di chiunque:
  *
  * 1. **leggere** l'elenco degli invitati, cioè gli indirizzi email di persone in ingresso;
  * 2. **spedire** email di invito a indirizzi scelti da chi vuole, con il nostro dominio;

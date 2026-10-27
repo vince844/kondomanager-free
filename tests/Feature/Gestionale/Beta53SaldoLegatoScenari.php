@@ -34,6 +34,10 @@ function sl53Amministratore($test): User
     $permesso = Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
     $ruolo = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
     $ruolo->givePermissionTo($permesso);
+    // Le anagrafiche del pannello chiedono i loro permessi (decisione 137): l'amministratore del test li ha, come quello di serie.
+    foreach (['Visualizza anagrafiche', 'Crea anagrafiche', 'Modifica anagrafiche', 'Elimina anagrafiche'] as $nome) {
+        $ruolo->givePermissionTo(Permission::firstOrCreate(['name' => $nome, 'guard_name' => 'web']));
+    }
     $test->user = User::factory()->create();
     $test->user->assignRole($ruolo);
 

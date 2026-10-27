@@ -306,11 +306,12 @@ class DocumentoController extends Controller
                 'path'         => $documento->path,
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
-                'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                // Coda 303: né l'autore né l'approvazione cambiano in modifica. L'autore resta chi
+                // ha caricato il documento; l'approvazione cambia solo dall'interruttore, che avvisa
+                // il creatore (decisione 127.2).
                 // ⚠️ Lo mette il server, non il modulo: vedi la nota gemella negli altri due.
                 'updated_by'   => Auth::id(),
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
-                'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
             ]);
 
             // ⚠️ `sync` **solo se il modulo le ha mandate**: un `sync([])` su una richiesta che non
@@ -324,7 +325,19 @@ class DocumentoController extends Controller
                 $documento->condomini()->sync($validated['condomini_ids']);
             }
 
-            $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+            // Coda 307: come le categorie qui sopra, i destinatari si toccano solo se il modulo li
+            // manda. Una richiesta senza il campo lascia il documento indirizzato a chi lo era, con
+            // gli stessi destinatari di prima del salvataggio. La chiave presente e vuota vuol dire
+            // «nessuno».
+            //
+            // ⚠️ Con un file nuovo il modulo parte come FormData, e lì un elenco vuoto non si scrive
+            // affatto: quando la richiesta porta il segno della pagina (`anagrafiche_nel_modulo`),
+            // `UpdateDocumentoRequest::prepareForValidation()` rimette vuoti i tre elenchi assenti,
+            // quindi qui la chiave c'è e vale «nessuno», come l'elenco vuoto in JSON. Senza il segno
+            // (una richiesta che non viene dalla pagina) resta «non toccare».
+            if (array_key_exists('anagrafiche', $validated)) {
+                $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+            }
 
             DB::commit();
 
@@ -361,7 +374,9 @@ class DocumentoController extends Controller
      *
      * Gemella di `Comunicazioni\ComunicazioneController::avvisaDopoLaModifica()`, dove sta la
      * spiegazione per esteso: i nuovi arrivati ricevono l'avviso di *creazione* sempre, chi c'era
-     * già riceve quello di *modifica* solo se l'amministratore spunta la casella.
+     * già riceve quello di *modifica* solo se l'amministratore spunta la casella, e l'autore non è
+     * mai un nuovo arrivato del proprio documento (come all'approvazione,
+     * `SendApprovedDocumentoNotificationToUser`).
      *
      * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
      * @param  array<string, mixed>  $validated
@@ -370,7 +385,11 @@ class DocumentoController extends Controller
     {
         $destinatariDopo = app(DestinatariNotifica::class)->perModello($documento->fresh());
 
-        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+        $dellAutore = $documento->created_by === null
+            ? collect()
+            : Anagrafica::where('user_id', $documento->created_by)->pluck('id');
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->diff($dellAutore)->values()->all();
 
         if ($nuovi !== []) {
             DestinatariDaAvvisare::dispatch($documento, $nuovi, 'nuovo');

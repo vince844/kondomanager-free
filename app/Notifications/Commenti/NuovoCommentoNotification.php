@@ -6,6 +6,7 @@ use App\Models\Commento;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Support\Str;
 use App\Helpers\RouteHelper;
@@ -13,6 +14,7 @@ use App\Helpers\RouteHelper;
 class NuovoCommentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public function __construct(public Commento $commento) {
         parent::__construct();
@@ -47,8 +49,8 @@ class NuovoCommentoNotification extends LocalizedNotification implements ShouldQ
         return (new MailMessage)
             ->subject(__($subjectKey, ['entity' => $titoloEntita]))
             ->greeting(__($greetingKey))
-            ->line(__($line1Key, ['user' => $autoreNome]))
-            ->line(Str::limit($this->commento->corpo, 200))
+            ->line(__($line1Key, ['user' => self::nomeComeTesto($autoreNome)]))
+            ->line(Str::limit(self::testoComeTesto($this->commento->corpo), 200))
             ->action(__($actionKey), $url)
             ->line(__($line2Key));
     }

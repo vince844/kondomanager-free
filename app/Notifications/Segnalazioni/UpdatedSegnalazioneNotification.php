@@ -4,6 +4,7 @@ namespace App\Notifications\Segnalazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Segnalazione;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,6 +15,7 @@ use Illuminate\Support\Str;
 class UpdatedSegnalazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public $segnalazione;
 
@@ -36,12 +38,12 @@ class UpdatedSegnalazioneNotification extends LocalizedNotification implements S
         return (new MailMessage)
             ->subject(__('notifications.updated_ticket.subject'))
             ->greeting(__('notifications.updated_ticket.greeting', [
-                'name' => $notifiable->name ?? $notifiable->nome,
+                'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome),
             ]))
             ->line(__('notifications.updated_ticket.line_1', [
-                'user' => $this->segnalazione->updatedBy?->name ?? $this->segnalazione->createdBy->name,
+                'user' => self::nomeComeTesto($this->segnalazione->updatedBy?->name ?? $this->segnalazione->createdBy->name),
             ]))
-            ->line('**' . __('notifications.updated_ticket.object') . ':** ' . $this->segnalazione->subject)
+            ->line('**' . __('notifications.updated_ticket.object') . ':** ' . self::testoComeTesto($this->segnalazione->subject))
             ->line('**' . __('notifications.updated_ticket.status') . ':** ' . Str::ucfirst($this->segnalazione->stato))
             ->action(
                 __('notifications.updated_ticket.action'),

@@ -25,6 +25,7 @@ import AnagraficaLayout from '@/layouts/anagrafiche/AnagraficaLayout.vue';
 import Alert from '@/components/Alert.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Building2, CalendarClock, Contact, FilePenLine, IdCard, Info, Mail, MapPin, Phone, ShieldCheck,
@@ -62,7 +63,7 @@ const props = defineProps<{
   documenti_count: number;
 }>();
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -145,7 +146,10 @@ function etichettaRuolo(tipologia: string | null): string {
         back-text="Indietro"
       >
         <template #actions>
+          <!-- Il modulo di modifica chiede «Modifica anagrafiche» (`AnagraficaPolicy::update`); la scheda la legge anche
+               chi ha la sola consultazione. -->
           <Link
+            v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])"
             :href="route(generateRoute('anagrafiche.edit'), { anagrafica: anagrafica.id })"
             class="inline-flex items-center justify-center gap-2 rounded-md bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-sm font-medium text-white px-3 py-1.5 h-8 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
           >

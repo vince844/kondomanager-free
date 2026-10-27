@@ -9,15 +9,20 @@ use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\SegnalazionePolicy;
 use App\Settings\GeneralSettings;
+use App\Support\IndirizzoDeiLimiti;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Events\MigrationsEnded;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -41,6 +46,57 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->suppressReadonlyTouchWarning();
+
+        // ====================================================================
+        // LA LUNGHEZZA MINIMA DELLE PASSWORD (Coda 262, decisione 127.1)
+        // ====================================================================
+        // Dieci caratteri per ogni password nuova o cambiata: registrazione, invito, primo accesso,
+        // «password dimenticata», cambio dal profilo e l'amministratore dell'installazione (wizard e
+        // `kondomanager:installa`), che usano tutti `Password::defaults()`. Nessun controllo presso un
+        // servizio esterno: il programma non chiama nessuno per validare una password. Le password
+        // già salvate restano buone: la regola si applica quando se ne sceglie una.
+        Password::defaults(fn () => Password::min(10));
+
+        // ====================================================================
+        // I LIMITI DI ROTTA, CON NOME (Code 259 e 202)
+        // ====================================================================
+        // `throttle:6,1` senza nome conta con una chiave sola per indirizzo (per un ospite) o per
+        // utente (per chi è collegato), qualunque sia la rotta: le richieste di «password dimenticata»
+        // consumavano il limite di chi apriva un invito dallo stesso indirizzo. `modulo` ha lo stesso
+        // limite, sei al minuto, ma con la rotta nella chiave.
+        //
+        // `accesso` e `due-fattori` sono tetti alti sul login e sulla sfida 2FA: i limiti veri stanno
+        // in `LoginRequest` e in `TwoFactorAuthChallengeController`, che rispondono con un errore sul
+        // modulo; il tetto di rotta risponde 429, senza pagina, solo a chi insiste oltre quei limiti.
+        //
+        // L'indirizzo è quello dei limiti (`IndirizzoDeiLimiti`): un IPv6 conta per la sua rete /64, che chi
+        // ce l'ha riempie come vuole, e i tetti valgono per la rete.
+        RateLimiter::for('modulo', fn (Request $request) => Limit::perMinute(6)->by(
+            'modulo|'.$request->route()?->uri().'|'.($request->user()?->getAuthIdentifier() ?? IndirizzoDeiLimiti::di($request->ip()))
+        ));
+        // Le prove della password attuale di chi è collegato (Coda 261): la conferma della password, il
+        // cambio della password, il profilo (cambio dell'email ed eliminazione dell'account) e l'avvio
+        // del ripristino. Un conto solo per utente, qualunque sia la rotta: sei prove al minuto e trenta
+        // all'ora in tutto, ognuno dei due limiti con il suo contatore. Le rotte per gli ospiti restano su
+        // `modulo`.
+        //
+        // ⚠️ L'ora prima del minuto. Il framework controlla i limiti in quest'ordine e risponde con l'attesa
+        // (`Retry-After`) del primo che trova esaurito: è quella che dicono la pagina del 429 e la finestra dei
+        // backup. Quando finiscono insieme si dice l'attesa dell'ora, che è quella vera tranne nell'ultimo minuto
+        // della finestra dell'ora: lì il minuto finisce dopo l'ora, e `Retry-After` è più corto dell'attesa vera di
+        // meno di un minuto; le due frasi, che arrotondano i minuti per eccesso, dicono «fra un minuto» e restano
+        // vere. Quando è finito solo il minuto, l'ora ha ancora posto (una richiesta fermata non conta) e l'attesa
+        // del minuto è quella vera.
+        RateLimiter::for('password-attuale', function (Request $request) {
+            $chi = $request->user()?->getAuthIdentifier() ?? IndirizzoDeiLimiti::di($request->ip());
+
+            return [
+                Limit::perHour(30)->by('password-attuale|ora|'.$chi),
+                Limit::perMinute(6)->by('password-attuale|minuto|'.$chi),
+            ];
+        });
+        RateLimiter::for('accesso', fn (Request $request) => Limit::perMinute(60)->by('accesso|'.IndirizzoDeiLimiti::di($request->ip())));
+        RateLimiter::for('due-fattori', fn (Request $request) => Limit::perMinute(30)->by('due-fattori|'.IndirizzoDeiLimiti::di($request->ip())));
 
         // ====================================================================
         // IL LIMITE VERO DI CARICAMENTO NEL MESSAGGIO D'ERRORE

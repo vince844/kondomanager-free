@@ -61,7 +61,7 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">I quattro ruoli di sistema</h3>
             <p class="mb-3">
-              Il ruolo è il pacchetto di permessi che una persona si porta dietro. Quelli di sistema non si possono modificare né cancellare — è voluto: sono il pavimento su cui poggia tutto il resto. Puoi però creare ruoli tuoi e comporli permesso per permesso.
+              Il ruolo è il pacchetto di permessi che una persona si porta dietro. Quelli di sistema non si possono modificare né cancellare — è voluto: sono il pavimento su cui poggia tutto il resto. L'amministratore può però creare ruoli su misura e comporli permesso per permesso: le pagine dei ruoli sono solo sue.
             </p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -76,7 +76,7 @@ defineEmits(['update:open']);
                   <ShieldCheck class="w-4 h-4" />
                   <h4 class="font-bold">Collaboratore</h4>
                 </div>
-                <p class="text-[13px] text-slate-600 dark:text-slate-400">Lavora nello studio: crea e corregge utenti, anagrafiche, condomìni, comunicazioni.</p>
+                <p class="text-[13px] text-slate-600 dark:text-slate-400">Lavora nello studio: crea e corregge le utenze di condòmini e fornitori, anagrafiche, condomìni, comunicazioni.</p>
               </div>
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                 <div class="flex items-center gap-2 mb-1 text-slate-600 dark:text-slate-400">
@@ -99,7 +99,16 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Chi può concedere quale ruolo</h3>
             <p class="mb-3">
-              I ruoli <strong>amministratore</strong> e <strong>collaboratore</strong> li assegna solo un amministratore: sono ruoli che governano l'installazione, non semplici etichette. Un collaboratore continua a creare e correggere le utenze dei condòmini — che è il suo mestiere — ma nella sua tendina quei due non compaiono.
+              Chi non è amministratore — il collaboratore, o un ruolo su misura con i permessi degli utenti — assegna solo i ruoli <strong>utente</strong> e <strong>fornitore</strong>: creare e correggere le utenze dei condòmini e dei fornitori è il suo mestiere. Gli altri ruoli — amministratore, collaboratore e i ruoli su misura — governano l'installazione: li assegna solo un amministratore, e nella tendina degli altri non compaiono.
+            </p>
+            <p class="mb-3">
+              Per lo stesso motivo chi non è amministratore gestisce solo gli account che hanno i ruoli utente e fornitore e nessun permesso aggiuntivo che lui non ha. Gli altri account li gestisce solo l'amministratore: chi non lo è non ne apre la scheda e non li sospende, non li riattiva, non li reinvita, non li elimina e non ne cambia la verifica dell'email, e nell'elenco quei comandi non compaiono. Vale anche per il proprio account del collaboratore: nome ed email si cambiano nelle impostazioni, in «Profilo», e la password in «Password».
+            </p>
+            <p class="mb-3">
+              Dare poteri chiede la password: concedere un ruolo diverso da utente e fornitore o un permesso aggiuntivo (tranne quelli sui propri contenuti), cambiare l'email di un account che non è solo utente o fornitore o che ha un permesso aggiuntivo (tranne quelli sui propri contenuti), creare o modificare un ruolo su misura, cambiare il ruolo predefinito dei nuovi utenti e accendere la registrazione pubblica quando quel ruolo non è utente o fornitore ti chiedono di ridigitarla, se non l'hai fatto negli ultimi quindici minuti.
+            </p>
+            <p class="mb-3">
+              Un invito del modulo «Inviti» non dà poteri: chi lo accetta riceve il ruolo predefinito dei nuovi utenti solo se è utente o fornitore, altrimenti riceve utente. L'email di attivazione di un account già creato, anche quella di «Reinvita», non cambia il ruolo: l'account tiene quello che ha. Un altro ruolo si assegna dalla sua scheda, con le regole qui sopra.
             </p>
             <div class="flex gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
               <KeyRound class="w-5 h-5 text-amber-600 shrink-0" />

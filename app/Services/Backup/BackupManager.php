@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Backup\Destinations\DestinationManager;
 use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\Backup\Support\StepBudget;
+use App\Services\Restore\MessaggiDelRipristino;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -459,7 +460,9 @@ class BackupManager
 
         $backup->forceFill([
             'status' => BackupStatus::FAILED,
-            'error' => mb_substr($e->getMessage(), 0, 1000),
+            // L'errore arriva alla finestra dei backup e alla pagina dell'aggiornamento: senza le cartelle del server. Il
+            // messaggio intero, con il percorso, è nel log del server (`report` qui sopra).
+            'error' => mb_substr(MessaggiDelRipristino::senzaPercorsi($e->getMessage()), 0, 1000),
             // Un backup fallito non è riprendibile: il checkpoint (con
             // l'eventuale password cifrata) non deve restare nel database
             'checkpoint' => null,

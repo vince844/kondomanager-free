@@ -124,6 +124,28 @@ return [
         'action'      => 'View report',
     ],
 
+    // Segnalazione privata resa pubblica (SegnalazioneResaPubblicaNotification)
+    'ticket_made_public' => [
+        'subject'  => 'Tu incidencia ahora es pública',
+        'subject_pending' => 'Tu incidencia ya no es privada',
+        'greeting' => 'Hola :name',
+        'line_1'   => ':user ha hecho pública tu incidencia.',
+        'line_1_pending' => ':user ha decidido que tu incidencia ya no es privada.',
+        'object'   => 'Asunto',
+        'line_2'   => 'Ahora la ven todos los vecinos de :condominio, con tu nombre.',
+        'line_2_pending' => 'La verán todos los vecinos de :condominio, con tu nombre, cuando esté publicada y aprobada.',
+        'action'   => 'Ver incidencia',
+    ],
+
+    // Por qué un correo al autor no lleva el botón a la ficha (PulsanteSoloSeLaApre)
+    'author_cannot_open' => [
+        'outside_building' => 'Ya no la ves en el portal: no figuras entre los vecinos de :condominio.',
+        'no_permission'    => 'No la ves en el portal: tu cuenta no tiene permiso para abrirla.',
+        'not_published'    => 'No la ves en el portal: en este momento no está publicada y aprobada.',
+        'not_addressed'    => 'Ya no la ves en el portal: ya no va dirigida a ti.',
+        'no_anagrafica'    => 'No la ves en el portal: tu cuenta no está vinculada a una ficha. Para usar el portal, accede y rellena tus datos.',
+    ],
+
     // Ticket approval (ApproveSegnalazioneNotification)
     'approve_ticket' => [
         'subject'     => 'New ticket pending approval',
@@ -212,5 +234,42 @@ return [
         'title'       => 'Título',
         'description' => 'Descripción',
         'action'      => 'Ver documentos',
+    ],
+
+    // ─── Avisos de seguridad al titular de la cuenta (Coda 267) ────────────────
+    'security_alert' => [
+        'greeting' => 'Hola :name,',
+        'autore'   => 'El cambio lo ha hecho :autore.',
+        'sempre'   => 'Este aviso se envía con cada cambio de la seguridad de tu cuenta y no se puede desactivar.',
+        'password_cambiata' => [
+            'subject'   => 'La contraseña de tu cuenta ha cambiado',
+            'line_1'    => 'El :data a las :ora se cambió la contraseña de tu cuenta en :appName.',
+            'consiglio' => 'Si no has hecho tú este cambio, restablece ya la contraseña con «Password dimenticata?» en la página de acceso y avisa al administrador.',
+        ],
+        'password_reimpostata' => [
+            'subject'   => 'La contraseña de tu cuenta se ha restablecido',
+            'line_1'    => 'El :data a las :ora se restableció la contraseña de tu cuenta en :appName con el enlace «Password dimenticata?».',
+            'consiglio' => 'Si no has hecho tú este cambio, restablece ya la contraseña con «Password dimenticata?» en la página de acceso y avisa al administrador.',
+        ],
+        'email_cambiata' => [
+            'subject'   => 'La dirección de email de tu cuenta ha cambiado',
+            'line_1'    => 'El :data a las :ora se cambió la dirección de email de tu cuenta en :appName por :email. Desde ahora se accede con la nueva dirección, y los enlaces para restablecer la contraseña llegan allí.',
+            'consiglio' => 'Si no has pedido tú este cambio, contacta ya con el administrador.',
+        ],
+        'due_fattori_attivata' => [
+            'subject'   => 'Autenticación de dos factores activada',
+            'line_1'    => 'El :data a las :ora se activó la autenticación de dos factores de tu cuenta en :appName.',
+            'consiglio' => 'Si no has hecho tú este cambio, cambia ya la contraseña y avisa al administrador.',
+        ],
+        'due_fattori_disattivata' => [
+            'subject'   => 'Autenticación de dos factores desactivada',
+            'line_1'    => 'El :data a las :ora se desactivó la autenticación de dos factores de tu cuenta en :appName: ahora basta la contraseña para entrar.',
+            'consiglio' => 'Si no has hecho tú este cambio, cambia ya la contraseña, vuelve a activar la autenticación de dos factores y avisa al administrador.',
+        ],
+        'codici_rigenerati' => [
+            'subject'   => 'Nuevos códigos de recuperación',
+            'line_1'    => 'El :data a las :ora se generaron nuevos códigos de recuperación de la autenticación de dos factores de tu cuenta en :appName: los anteriores ya no valen.',
+            'consiglio' => 'Si no has hecho tú este cambio, cambia ya la contraseña y avisa al administrador.',
+        ],
     ],
 ];

@@ -11,7 +11,9 @@ use App\Models\Backup;
 use App\Models\User;
 use App\Services\Backup\BackupManager;
 use App\Services\Backup\Support\StepBudget;
+use App\Services\Restore\Exceptions\ImportInterruptedException;
 use App\Services\Restore\Exceptions\RestoreInProgressException;
+use App\Services\Restore\Exceptions\SafetyBackupFailedException;
 use App\Services\System\SystemFinalizer;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +61,7 @@ class RestoreManager
         $this->failStale();
 
         if ($this->isRunning()) {
-            throw new RestoreInProgressException('Un ripristino è già in corso.');
+            throw new RestoreInProgressException(MessaggiDelRipristino::di('restore_running'));
         }
 
         // Mutua esclusione col backup. Interroga il database, che potrebbe non
@@ -72,7 +74,7 @@ class RestoreManager
         }
 
         if ($backupRunning) {
-            throw new RestoreInProgressException('Un backup è in esecuzione: attendi che finisca prima di ripristinare.');
+            throw new RestoreInProgressException(MessaggiDelRipristino::di('backup_running'));
         }
 
         $reader = new ArchiveReader($archivePath, $password);
@@ -82,7 +84,7 @@ class RestoreManager
         $reader->close();
 
         if (! $this->lock->acquire()) {
-            throw new RestoreInProgressException('Impossibile acquisire il lock di ripristino.');
+            throw new RestoreInProgressException(MessaggiDelRipristino::di('restore_busy'));
         }
 
         $uuid = (string) Str::uuid();
@@ -100,6 +102,10 @@ class RestoreManager
             'checkpoint' => [],
             'outcome' => [],
             'created_by' => $user?->id,
+            // L'impronta della password di chi avvia (è già un hash): «Riprendi» e «Annulla» dalla pagina 503 la
+            // verificano qui, perché durante l'import la tabella degli utenti è a metà. Si toglie quando il
+            // ripristino si chiude, completato o annullato.
+            'created_by_password_hash' => $user?->getAuthPassword(),
             'locale' => app()->getLocale(),
             'started_at' => time(),
         ]);
@@ -143,10 +149,31 @@ class RestoreManager
         } catch (Throwable $e) {
             $state = $this->fail($state, $e);
         } finally {
+            $this->prolungaIlToken($state);
             $this->lock->release();
         }
 
         return $state;
+    }
+
+    /**
+     * Il token della finestra dei backup dura `stale_after_hours` dall'ultimo passo, non dall'avvio: un ripristino che
+     * avanza, anche per più ore, non si ferma per il token. Uno che resta fermo per quel tempo lo perde, nello stesso
+     * momento in cui la pagina 503 lo dà per fermo e offre il recupero con la password. Si sposta anche dopo il passo
+     * che fallisce: «Riprendi» e «Sblocca» della finestra valgono per lo stesso tempo. Dentro il blocco del passo, perché
+     * lo stato si riscrive per intero: fuori, una scrittura concorrente perderebbe il punto di ripresa.
+     */
+    private function prolungaIlToken(?array $state): void
+    {
+        if (($state['phase'] ?? null) === RestoreStatus::COMPLETED->value) {
+            return;
+        }
+
+        try {
+            $this->state->extendToken($this->staleSeconds());
+        } catch (Throwable) {
+            // Lo stato non si scrive: il passo ha già detto com'è andato, il token resta com'era.
+        }
     }
 
     public function current(): ?array
@@ -182,8 +209,12 @@ class RestoreManager
             $this->mode->enter($state['uuid'] ?? (string) Str::uuid(), $state['locale'] ?? null);
         }
 
+        // Ripreso, il ripristino non è più fermo: la fase del fallimento si azzera con l'errore. La finestra dei backup
+        // e la pagina 503 la leggono per dire dove si è fermato (e, nel backup di sicurezza, che il database non è stato
+        // toccato): se si ferma di nuovo, la scrive `fail()`; se resta fermo senza errore, conta la fase in cui è.
         $this->state->merge([
             'phase' => $state['failed_phase'] ?? RestoreStatus::PENDING->value,
+            'failed_phase' => null,
             'error' => null,
             'failed_at' => null,
             'resumed_at' => time(),
@@ -213,6 +244,7 @@ class RestoreManager
                     'phase' => RestoreStatus::FAILED->value,
                     'aborted' => true,
                     'aborted_at' => time(),
+                    'created_by_password_hash' => null,
                 ]);
             }
         } catch (Throwable) {
@@ -264,10 +296,14 @@ class RestoreManager
                 ? Backup::TYPE_DB_ONLY
                 : Backup::TYPE_FULL;
 
-            $backup = $this->backupManager->start(
-                $uuid ? null : User::find($state['created_by'] ?? null),
-                ['type' => $safetyType]
-            );
+            try {
+                $backup = $this->backupManager->start(
+                    $uuid ? null : User::find($state['created_by'] ?? null),
+                    ['type' => $safetyType]
+                );
+            } catch (Throwable $e) {
+                throw $this->backupDiSicurezzaNonRiuscito(null, $e);
+            }
             $state = $this->patchCheckpoint($state, ['safety_uuid' => $backup->uuid]);
         }
 
@@ -281,7 +317,25 @@ class RestoreManager
             return $this->state->get(); // riprende al prossimo step
         }
 
+        // Il ripristino tocca il database solo dopo un backup di sicurezza riuscito: è la via di ritorno che la casella
+        // spuntata promette. Senza, si ferma qui, con il database com'era. Il punto di ripresa dimentica il backup non
+        // riuscito: «Riprendi» ne fa uno nuovo.
+        if ($backup->status !== BackupStatus::COMPLETED) {
+            $this->patchCheckpoint($state, ['safety_uuid' => null]);
+
+            throw $this->backupDiSicurezzaNonRiuscito($backup->uuid);
+        }
+
         return $this->transition($state, RestoreStatus::EXTRACTING);
+    }
+
+    private function backupDiSicurezzaNonRiuscito(?string $backup, ?Throwable $precedente = null): SafetyBackupFailedException
+    {
+        return new SafetyBackupFailedException(
+            MessaggiDelRipristino::di('safety_backup_failed', ['casella' => (string) __('impostazioni.label.restore_safety_backup')]),
+            $backup,
+            $precedente,
+        );
     }
 
     private function advanceExtracting(array $state, StepBudget $budget): array
@@ -336,7 +390,16 @@ class RestoreManager
 
         // 2) Import a step dal checkpoint
         $dumpPath = $this->extractDir($state).'/db/database.sql';
-        $result = $this->importer->importStep($dumpPath, $state['checkpoint']['import'] ?? [], $budget);
+
+        try {
+            $result = $this->importer->importStep($dumpPath, $state['checkpoint']['import'] ?? [], $budget);
+        } catch (ImportInterruptedException $e) {
+            // Il punto di ripresa si salva anche sull'errore, all'istruzione che non è riuscita: «Riprendi»
+            // riparte da lì e non riesegue quelle già scritte. Il ripristino fallisce con l'errore vero.
+            $this->patchCheckpoint($state, ['import' => $e->checkpoint]);
+
+            throw $e->getPrevious() ?? $e;
+        }
 
         $state = $this->patchCheckpoint($state, ['import' => $result['checkpoint']]);
 
@@ -430,6 +493,7 @@ class RestoreManager
             'phase' => RestoreStatus::COMPLETED->value,
             'outcome' => $outcome,
             'completed_at' => time(),
+            'created_by_password_hash' => null,
         ]);
 
         $this->mode->exit();
@@ -773,7 +837,9 @@ class RestoreManager
             // La fase in cui eravamo, per poter riprendere da lì (il checkpoint
             // di quella fase è già salvato: offset import, indice file, ecc.).
             'failed_phase' => $state['phase'] ?? null,
-            'error' => mb_substr($e->getMessage(), 0, 1000),
+            // L'errore arriva alla finestra dei backup e al log della pagina 503: senza le cartelle del server. Il
+            // messaggio intero, con il percorso, è nel log del server (`report` qui sopra).
+            'error' => mb_substr(MessaggiDelRipristino::senzaPercorsi($e->getMessage()), 0, 1000),
             'failed_at' => time(),
         ]);
 

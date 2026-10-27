@@ -92,6 +92,7 @@ const updatePassword = () => {
                             autocomplete="new-password"
                             :placeholder="trans('settings.password.new_password_placeholder')"
                         />
+                        <p class="text-xs text-muted-foreground">{{ trans('auth.hint.password_min') }}</p>
                         <InputError :message="form.errors.password" />
                     </div>
 

@@ -78,8 +78,24 @@ return [
     // 'backups' contiene i checkpoint dei backup in corso (inclusa la
     // password di cifratura, cifrata con APP_KEY) e righe che comunque
     // punterebbero ad archivi inesistenti dopo un ripristino.
+    // Sessioni e cache: dopo un ripristino la finalizzazione le svuota
+    // comunque, una sessione nell'archivio è un accesso aperto scritto in un
+    // file, e una riga con la stessa chiave scritta durante l'import fermava
+    // l'import per chiave doppia (gli archivi già fatti li salta l'importatore,
+    // DatabaseImporter::TABELLE_SENZA_DATI).
+    // La coda e i token per reimpostare la password: anche questi la
+    // finalizzazione li svuota, e i lavori del backup riscritti durante
+    // l'import si eseguirebbero sul database a metà dove la coda gira
+    // (l'importatore salta anche questi negli archivi già fatti).
     'dump_exclude_data' => [
         'backups',
+        'sessions',
+        'cache',
+        'cache_locks',
+        'jobs',
+        'job_batches',
+        'failed_jobs',
+        'password_reset_tokens',
     ],
 
     // File di sistema del sistema operativo, inutili al ripristino:

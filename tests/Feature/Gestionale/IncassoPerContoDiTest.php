@@ -343,6 +343,10 @@ function utenteDellEstrattoPerConto(): \App\Models\User
     $permesso = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
     $ruolo = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'amministratore', 'guard_name' => 'web']);
     $ruolo->givePermissionTo($permesso);
+    // Le anagrafiche del pannello chiedono i loro permessi (decisione 137): l'amministratore del test li ha, come quello di serie.
+    foreach (['Visualizza anagrafiche', 'Crea anagrafiche', 'Modifica anagrafiche', 'Elimina anagrafiche'] as $nome) {
+        $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nome, 'guard_name' => 'web']));
+    }
     $utente = \App\Models\User::factory()->create();
     $utente->assignRole($ruolo);
 

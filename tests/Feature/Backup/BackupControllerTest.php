@@ -6,9 +6,12 @@ use App\Enums\Permission;
 use App\Models\Backup;
 use App\Models\User;
 use App\Services\Backup\BackupPasswordStore;
+use App\Services\Backup\Support\StepBudget;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\ParallelTesting;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\Support\FakeBackupDumper;
 
 /**
@@ -111,8 +114,10 @@ test('il flusso completo store → step → download funziona', function () {
 
     $backup = Backup::where('uuid', $uuid)->firstOrFail();
 
-    // Download consentito all'amministratore
+    // Download consentito all'amministratore, con la password ridigitata da poco: lo scarico
+    // la chiede (Coda 261, decisione 127.7; vedi `ConfermaPasswordESessioniTest.php`).
     $this->actingAs($admin)
+        ->withSession(['auth.password_confirmed_at' => time()])
         ->get("/impostazioni/backups/{$uuid}/download")
         ->assertOk()
         ->assertDownload($backup->filename);
@@ -210,6 +215,10 @@ test('la validazione del tipo di backup rifiuta valori sconosciuti', function ()
 test('la password di protezione viene validata, salvata e rimossa', function () {
     $admin = backupAdmin();
     $store = app(BackupPasswordStore::class);
+
+    // Impostare e togliere la password dei backup chiede la password dell'account ridigitata da poco
+    // (Coda 261, decisione 127.7; vedi `ConfermaPasswordESessioniTest.php`): qui è già confermata.
+    $this->withSession(['auth.password_confirmed_at' => time()]);
 
     // La password si imposta insieme alle altre impostazioni (un solo
     // pulsante "Salva impostazioni" per tutta la card). Troppo corta:
@@ -342,3 +351,98 @@ test('le impostazioni di retention vengono validate e salvate', function () {
 
     expect(app(BackupSettings::class)->retention_keep_last)->toBe(10);
 });
+
+test('un errore del backup che porta un percorso del server arriva alla finestra dei backup senza il percorso, che resta nel log del server', function (string $caso) {
+    $log = storage_path('framework/testing/log-errori-backup-'.(ParallelTesting::token() ?: 'serial').'.log');
+    @unlink($log);
+    config(['logging.channels.backup_di_prova' => ['driver' => 'single', 'path' => $log, 'level' => 'debug'], 'logging.default' => 'backup_di_prova']);
+    // I temporanei e gli archivi si possono spostare fuori dalla cartella dell'installazione (`BACKUP_TMP_PATH`, `BACKUP_ROOT`).
+    $fuori = sys_get_temp_dir().'/kondo-backup-'.Str::lower(Str::random(8));
+    File::ensureDirectoryExists($fuori);
+    if ($caso === 'un file nella cartella dei temporanei, fuori dall\'installazione') {
+        config(['backup.tmp_path' => $fuori]);
+    }
+    if ($caso === 'un file nella cartella dei backup, fuori dall\'installazione') {
+        config(['filesystems.disks.backups.root' => $fuori]);
+        Storage::set('backups', Storage::build(['driver' => 'local', 'root' => $fuori]));
+    }
+    $percorso = match ($caso) {
+        'un file dell\'installazione' => backupFixture('manca.sql'),
+        'un file nella cartella dei temporanei, fuori dall\'installazione' => $fuori.'/manca/database.sql',
+        'un file nella cartella dei backup, fuori dall\'installazione' => $fuori.'/manca.zip',
+    };
+    // Il dump si ferma sull'avviso del sistema su quel file: l'errore è l'avviso di PHP, con il percorso.
+    $this->app->bind(DatabaseDumperInterface::class, fn () => new class($percorso) implements DatabaseDumperInterface
+    {
+        public function __construct(private readonly string $percorso) {}
+
+        public function dumpFilename(): string
+        {
+            return 'database.sql';
+        }
+
+        public function dump(string $targetPath, array &$state, StepBudget $budget): bool
+        {
+            return file_get_contents($this->percorso) !== false;
+        }
+    });
+
+    try {
+        $avvio = $this->actingAs(backupAdmin())->postJson('/impostazioni/backups', ['type' => 'db_only']);
+        $pagina = $this->actingAs(backupAdmin())->get('/impostazioni/backups');
+    } finally {
+        File::deleteDirectory($fuori);
+    }
+
+    $errore = (string) $avvio->json('backup.error');
+    expect($avvio->json('backup.status'))->toBe('failed')
+        ->and($errore)->toContain(basename($percorso))
+        ->and($errore)->not->toContain(dirname($percorso))
+        ->and($errore)->not->toMatch('#(^|[\s(\'":,=])/\w#')
+        ->and(File::get($log))->toContain($percorso);
+    $pagina->assertInertia(fn ($page) => $page->where('backups.data.0.error', $errore));
+    @unlink($log);
+})->with([
+    'un file dell\'installazione',
+    'un file nella cartella dei temporanei, fuori dall\'installazione',
+    'un file nella cartella dei backup, fuori dall\'installazione',
+]);
+
+test('la cartella dei backup fuori dall\'installazione che non si crea: l\'errore arriva alla finestra dei backup senza la cartella, anche quando chiude la frase, e la cartella resta nel log del server', function () {
+    $log = storage_path('framework/testing/log-errori-backup-'.(ParallelTesting::token() ?: 'serial').'.log');
+    @unlink($log);
+    config(['logging.channels.backup_di_prova' => ['driver' => 'single', 'path' => $log, 'level' => 'debug'], 'logging.default' => 'backup_di_prova']);
+    // Una cartella che non si può creare: dentro /dev/null, che non è una cartella.
+    $radice = '/dev/null/kondo-archivi';
+    config(['filesystems.disks.backups.root' => $radice]);
+    Storage::forgetDisk('backups');
+
+    $avvio = $this->actingAs(backupAdmin())->postJson('/impostazioni/backups', ['type' => 'db_only']);
+    $pagina = $this->actingAs(backupAdmin())->get('/impostazioni/backups');
+
+    $errore = (string) $avvio->json('backup.error');
+    expect($avvio->json('backup.status'))->toBe('failed')
+        ->and($errore)->not->toBe('')
+        ->and($errore)->not->toContain($radice)
+        ->and($errore)->not->toMatch('#(^|[\s(\'":,=;])/\w#')
+        ->and(File::get($log))->toContain($radice);
+    $pagina->assertInertia(fn ($page) => $page->where('backups.data.0.error', $errore));
+    @unlink($log);
+});
+
+test('l\'errore di un backup fallito salvato con il percorso del server, prima di questa versione, arriva alla finestra dei backup senza il percorso', function (?string $salvato, ?string $mostrato) {
+    config(['backup.tmp_path' => '/var/tmp/kondo-temporanei', 'filesystems.disks.backups.root' => '/mnt/archivi-kondo']);
+    $salvato = $salvato === null ? null : str_replace('{installazione}', base_path(), $salvato);
+    Backup::create(['uuid' => (string) Str::uuid(), 'disk' => 'backups', 'status' => BackupStatus::FAILED, 'type' => 'db_only', 'error' => $salvato]);
+
+    $this->actingAs(backupAdmin())
+        ->get('/impostazioni/backups')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('backups.data.0.error', $mostrato));
+})->with([
+    'un file dell\'installazione' => ['file_get_contents({installazione}/storage/app/backups/tmp/b-1/database.sql): Failed to open stream: No such file or directory', 'file_get_contents(…/storage/app/backups/tmp/b-1/database.sql): Failed to open stream: No such file or directory'],
+    'la cartella dei temporanei, fuori dall\'installazione' => ['mkdir(): Permission denied (/var/tmp/kondo-temporanei)', 'mkdir(): Permission denied (…)'],
+    'un archivio, nella cartella dei backup fuori dall\'installazione' => ['Impossibile spostare l\'archivio di backup in /mnt/archivi-kondo/kondomanager-backup-prova.zip', 'Impossibile spostare l\'archivio di backup in …/kondomanager-backup-prova.zip'],
+    'un errore senza percorsi' => ['Un altro backup è già in esecuzione.', 'Un altro backup è già in esecuzione.'],
+    'nessun errore salvato' => [null, null],
+]);

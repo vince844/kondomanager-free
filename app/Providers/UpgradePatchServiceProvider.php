@@ -35,9 +35,11 @@ use Illuminate\Support\ServiceProvider;
  *
  * ## La correzione: un valore che va bene ovunque, quindi niente da indovinare
  *
- * Si scrive **`TRUSTED_PROXIES=PRIVATE_SUBNETS`**, che è un token riconosciuto da Symfony
- * (`Request::setTrustedProxies()` lo sostituisce con `IpUtils::PRIVATE_SUBNETS`: loopback, le reti
- * RFC1918, la CGNAT `100.64/10` e gli equivalenti IPv6).
+ * Si scrive **`TRUSTED_PROXIES=PRIVATE_SUBNETS`**, un segno che `config/trustedproxy.php` sostituisce
+ * con l'elenco delle reti private davvero: loopback, le reti RFC1918, la CGNAT `100.64/10`, link-local
+ * e le reti IPv6 locali, cioè solo reti da cui non si arriva da internet. Il segno non arriva così
+ * com'è a Symfony (`IpUtils::PRIVATE_SUBNETS`): l'elenco è il nostro, e il commento di quel file dice
+ * il perché.
  *
  * - **È sicuro su qualunque host.** Chi arriva da internet ha per forza un `REMOTE_ADDR` pubblico,
  *   quindi non rientra in quelle reti e i suoi `X-Forwarded-*` non vengono mai creduti.

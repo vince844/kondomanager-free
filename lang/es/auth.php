@@ -22,6 +22,8 @@ return [
     'invalid_2fa_code'          => 'The provided two-factor authentication code is invalid.',
     'invalid_2fa_recovery_code' => 'The provided two-factor authentication recovery code is invalid.',
     'too_many_2fa_attempts'     => 'Too many two-factor authentication attempts. Try again in :seconds seconds.',
+    'two_factor_expired'        => 'La verificación del código ha caducado: introduce de nuevo email y contraseña.',
+    'two_factor_restart'        => 'Demasiados códigos erróneos: introduce de nuevo email y contraseña.',
     
     /* ------------------------------------------------------------------
      | Headers, Titles and Descriptions
@@ -184,6 +186,14 @@ return [
             'toggle_recovery_code'       => 'sign in using a recovery code',
             'or'                         => 'or you can',
         ],
+    ],
+
+    /* ------------------------------------------------------------------
+     | Hints next to form fields
+     | ------------------------------------------------------------------ */
+    'hint' => [
+        // La lunghezza minima di ogni password nuova (Coda 262): `Password::defaults()`.
+        'password_min' => 'Al menos 10 caracteres.',
     ],
 
     /* ------------------------------------------------------------------

@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Restore\RestoreMode;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -65,4 +66,18 @@ if (config('app.scheduler_queue_worker')) {
             '--backoff' => 10,
         ]);
     })->name('sync-queue-worker')->everyMinute()->withoutOverlapping();
+}
+
+// ============================================================================
+// 5. NIENTE DURANTE UN RIPRISTINO
+// ============================================================================
+// Mentre un ripristino è in corso il database è a metà import. La modalità ripristino ferma le
+// richieste HTTP, compreso il webhook /system/run-scheduler; gli eventi lanciati da riga di comando
+// (`schedule:run` del cron, `schedule:work` nell'immagine Docker) li ferma questo blocco, per ogni
+// evento registrato sopra, compreso il worker degli hosting condivisi. Il filtro controlla solo un file
+// (`RestoreMode`), niente database; il comando `schedule:run` invece, prima dei filtri, legge la cache per
+// sapere se il pianificatore è in pausa, e con la cache nel database legge la tabella a metà import (Coda 400).
+// Un evento nuovo va scritto PRIMA di questo blocco.
+foreach (Schedule::events() as $evento) {
+    $evento->skip(fn () => app(RestoreMode::class)->active());
 }

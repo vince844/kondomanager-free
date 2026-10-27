@@ -315,8 +315,9 @@ test('round-trip MySQL: il database di sviluppo reale si reimporta con gli stess
 
     // Tabelle che l'applicazione può toccare mentre il test gira (es. il dev
     // server attivo scrive sessioni/cache/job): escluse dal confronto per non
-    // rendere il test intermittente.
-    $volatile = ['sessions', 'cache', 'cache_locks', 'jobs', 'failed_jobs', 'job_batches', 'mail_logs', 'backups'];
+    // rendere il test intermittente. I token per reimpostare la password non viaggiano nel dump
+    // (`backup.dump_exclude_data`): una riga nel database di sviluppo non arriva nella copia.
+    $volatile = ['sessions', 'cache', 'cache_locks', 'jobs', 'failed_jobs', 'job_batches', 'mail_logs', 'backups', 'password_reset_tokens'];
 
     foreach ($baseTables as $table) {
         if (in_array($table, $volatile, true)) {

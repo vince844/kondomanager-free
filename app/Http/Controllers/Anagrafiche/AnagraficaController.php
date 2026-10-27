@@ -18,9 +18,14 @@ use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Response;
 
+/**
+ * Le anagrafiche del pannello. Ogni azione chiede la sua abilità ad `AnagraficaPolicy` (decisione 137): il gruppo delle
+ * rotte chiede solo di entrare nel pannello, e queste pagine mostrano codici fiscali, telefoni e indirizzi email.
+ */
 class AnagraficaController extends Controller
 {
     use OrdinaElenco;
@@ -45,7 +50,9 @@ class AnagraficaController extends Controller
      * @return \Illuminate\Http\Response
      */
     public function index(AnagraficaIndexRequest $request): Response
-    {   
+    {
+        Gate::authorize('viewAny', Anagrafica::class);
+
         $validated = $request->validated();
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
@@ -96,6 +103,8 @@ class AnagraficaController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', Anagrafica::class);
+
         return Inertia::render('anagrafiche/AnagraficheNew', [
             'condomini' => CondominioResource::collection(Condominio::all())
         ]);
@@ -109,7 +118,7 @@ class AnagraficaController extends Controller
      * - Creates a new `Anagrafica` record and attaches related condomini (buildings).
      * - Wraps the operation in a database transaction to ensure atomicity.
      * - Logs errors and rolls back in case of failure.
-     * - Redirects to the anagrafiche index with a success or error flash message.
+     * - Torna, con il messaggio, dove dice `dopoIlSalvataggio()`: l'elenco a chi lo consulta, se no un modulo.
      *
      * @param  \App\Http\Requests\Anagrafica\CreateAnagraficaRequest  $request
      * @return \Illuminate\Http\RedirectResponse
@@ -118,6 +127,7 @@ class AnagraficaController extends Controller
      */
     public function store(CreateAnagraficaRequest $request): RedirectResponse
     {
+        Gate::authorize('create', Anagrafica::class);
 
         $validated = $request->validated(); 
 
@@ -130,7 +140,7 @@ class AnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio($anagrafica)->with(
                 $this->flashSuccess(__('anagrafiche.success_create_anagrafica'))
             );
 
@@ -140,12 +150,35 @@ class AnagraficaController extends Controller
 
             Log::error('Error creating anagrafica: ' . $e->getMessage());
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio(null)->with(
                 $this->flashError(__('anagrafiche.error_create_anagrafica'))
             );
 
         }
 
+    }
+
+    /**
+     * Dove torna chi ha salvato: una pagina che può aprire, perché un salvataggio riuscito non finisca in un rifiuto.
+     *
+     * L'elenco chiede «Visualizza anagrafiche», i moduli «Crea» o «Modifica anagrafiche» (`AnagraficaPolicy`): un ruolo
+     * su misura può salvare senza consultare l'elenco. A chi lo consulta si torna all'elenco, come prima; agli altri il
+     * modulo della persona salvata, quello di modifica se la può modificare, se no un modulo nuovo (chi arriva qui ha
+     * appena creato o modificato, quindi uno dei due gli si apre). Il messaggio, di riuscita o d'errore, va con lui.
+     */
+    private function dopoIlSalvataggio(?Anagrafica $anagrafica): \Illuminate\Http\RedirectResponse
+    {
+        $utente = request()->user();
+
+        if ($utente->can('viewAny', Anagrafica::class)) {
+            return to_route('admin.anagrafiche.index');
+        }
+
+        if ($anagrafica !== null && $utente->can('update', $anagrafica)) {
+            return to_route('admin.anagrafiche.edit', $anagrafica);
+        }
+
+        return to_route('admin.anagrafiche.create');
     }
 
     /**
@@ -177,6 +210,8 @@ class AnagraficaController extends Controller
      */
     public function show(Anagrafica $anagrafica): Response
     {
+        Gate::authorize('view', $anagrafica);
+
         $anagrafica->loadMissing([
             'condomini',
             'user',
@@ -225,7 +260,8 @@ class AnagraficaController extends Controller
      */
     public function edit(Anagrafica $anagrafica): Response
     {
-        
+       Gate::authorize('update', $anagrafica);
+
        $anagrafica->loadMissing(['condomini']);
 
        return Inertia::render('anagrafiche/AnagraficheEdit', [
@@ -252,6 +288,7 @@ class AnagraficaController extends Controller
      */
     public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafica): RedirectResponse
     {
+        Gate::authorize('update', $anagrafica);
 
         $validated = $request->validated(); 
 
@@ -260,11 +297,11 @@ class AnagraficaController extends Controller
             DB::beginTransaction();
 
             $anagrafica->update($validated);
-            $anagrafica->condomini()->sync($validated['condomini']); 
+            $anagrafica->condomini()->sync($validated['condomini']);
 
             DB::commit();
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio($anagrafica)->with(
                 $this->flashSuccess(__('anagrafiche.success_update_anagrafica'))
             );
 
@@ -274,7 +311,7 @@ class AnagraficaController extends Controller
 
             Log::error('Error updating anagrafica: ' . $e->getMessage());
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio($anagrafica)->with(
                 $this->flashError(__('anagrafiche.error_update_anagrafica'))
             );
         }
@@ -296,6 +333,8 @@ class AnagraficaController extends Controller
      */
     public function destroy(Anagrafica $anagrafica): RedirectResponse
     {
+        Gate::authorize('delete', $anagrafica);
+
         // Check if the anagrafica has any condomini associated with it
         if ($anagrafica->condomini()->exists()) {
             return back()->with(

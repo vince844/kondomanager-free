@@ -17,14 +17,17 @@ use App\Services\Restore\RestoreMode;
 use App\Services\Restore\RestorePreflight;
 use App\Services\Restore\RestoreState;
 use App\Settings\BackupSettings;
+use App\Support\IndirizzoDeiLimiti;
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
+use Throwable;
 
 /**
  * Ripristino di un backup dall'interfaccia amministrativa.
@@ -36,6 +39,9 @@ use Inertia\Response as InertiaResponse;
  */
 class RestoreController extends Controller
 {
+    /** Quanto resta la parte pubblica della pagina dell'esito dopo la chiusura: 24 ore (decisione 127.5). */
+    public const ESITO_PUBBLICO_SECONDI = 86400;
+
     private function ensureEnabled(): void
     {
         abort_unless((bool) config('backup.enabled', true), 404);
@@ -89,7 +95,7 @@ class RestoreController extends Controller
         // anche da una sessione lasciata aperta su un computer condiviso.
         if (! Hash::check($validated['account_password'], $request->user()->password)) {
             throw ValidationException::withMessages([
-                'account_password' => 'La password del tuo account non è corretta.',
+                'account_password' => __('impostazioni.restore_error_account_password'),
             ]);
         }
 
@@ -143,11 +149,33 @@ class RestoreController extends Controller
      * Pagina di esito, raggiungibile dopo il ripristino (la modalità è già
      * spenta se completato). Legge lo stato su file: nessuna dipendenza dal
      * database, che potrebbe richiedere un nuovo login.
+     *
+     * Si apre senza accesso, perché dopo il ripristino le sessioni sono azzerate. Chi gestisce i
+     * backup, con l'accesso, vede tutto lo stato; a chiunque altro la pagina dà solo l'esito e che
+     * cosa riconfigurare (`presentPubblico`), e niente 24 ore dopo la chiusura. Un ospite che la vede
+     * torna qui dopo l'accesso: è così che l'amministratore arriva ai dettagli (Coda 343, decisione
+     * 127.5).
      */
-    public function result(RestoreManager $manager): InertiaResponse
+    public function result(Request $request, RestoreManager $manager): InertiaResponse
     {
+        $state = $manager->current();
+
+        if ($state !== null && $this->vedeIlDettaglio($request)) {
+            return Inertia::render('impostazioni/RestoreResult', [
+                'restore' => $this->present($state),
+                'dettaglio' => true,
+            ]);
+        }
+
+        $pubblico = $this->presentPubblico($state);
+
+        if ($pubblico !== null && $request->user() === null && ! app(RestoreMode::class)->active()) {
+            redirect()->setIntendedUrl(route('ripristino.result'));
+        }
+
         return Inertia::render('impostazioni/RestoreResult', [
-            'restore' => $this->present($manager->current()),
+            'restore' => $pubblico,
+            'dettaglio' => false,
         ]);
     }
 
@@ -191,6 +219,15 @@ class RestoreController extends Controller
      * Due vie: (1) il token del ripristino, che chi ha ancora aperta la pagina
      * admin conserva in memoria; (2) la password dell'account che ha avviato
      * il ripristino, per chi arriva dalla pagina di blocco 503.
+     *
+     * La password si verifica sull'impronta che l'avvio ha salvato nello stato,
+     * non nella tabella degli utenti: durante l'import quella tabella manca, è
+     * vuota o ha già i dati del backup, dove lo stesso id può essere di un'altra
+     * persona con un'altra password. L'impronta si toglie quando il ripristino
+     * si chiude (completato o annullato), e da lì la rotta risponde 404. Per un
+     * ripristino avviato prima di questa versione vedi `improntaDiChiHaAvviato`.
+     * Senza un'impronta la password non si può verificare: la risposta (409) lo
+     * dice, invece di «Password non corretta.», e resta la via del token.
      */
     private function authorizeRecovery(Request $request, RestoreManager $manager, RestoreState $stateStore): void
     {
@@ -200,10 +237,11 @@ class RestoreController extends Controller
 
         // Il recupero ha senso solo mentre l'applicazione è bloccata: la pagina 503 e i pulsanti
         // dell'overlay esistono solo con la modalità ripristino attiva (un ripristino fallito la
-        // lascia accesa). Fino alla 1.11.0-beta.38 lo stato restava su file anche dopo un ripristino
-        // completato o annullato, e questa rotta — senza login, senza CSRF — diventava per sempre un
-        // modo per provare la password dell'amministratore aggirando il blocco del login e il
-        // secondo fattore (giro di sicurezza della 1.11.0-beta.39).
+        // lascia accesa). Lo stato resta su file anche dopo un ripristino completato o annullato
+        // (lo legge la pagina dell'esito), ma la rotta — senza login, senza CSRF — prova una password
+        // solo finché la modalità è attiva, e con il suo limite qui sotto. Fuori dal ripristino
+        // risponde 404: lì la password dell'account passa dal login, con il suo blocco e il secondo
+        // fattore.
         abort_unless(app(RestoreMode::class)->active(), 404);
 
         // Via 1 — token valido (overlay admin ancora aperto)
@@ -218,18 +256,28 @@ class RestoreController extends Controller
         // (1.11.0-beta.39). Il tentativo si conta PRIMA della verifica e si restituisce se la
         // password è giusta: contandolo dopo, dieci richieste in parallelo provavano dieci password
         // mentre il contatore era ancora a zero.
-        $chiaveLimite = 'ripristino-recupero|'.$request->ip();
+        // Un IPv6 conta per la sua rete /64, come in ogni limite per indirizzo (`IndirizzoDeiLimiti`).
+        $chiaveLimite = 'ripristino-recupero|'.IndirizzoDeiLimiti::di($request->ip());
+        $limitatore = $this->limitatoreDelRecupero();
 
-        if (RateLimiter::hit($chiaveLimite, 60) > 5) {
+        if ($limitatore->hit($chiaveLimite, 60) > 5) {
             abort(429);
         }
 
         $password = (string) $request->input('account_password', '');
-        $userId = $state['created_by'] ?? null;
-        $user = $userId ? User::find($userId) : null;
+        $impronta = $this->improntaDiChiHaAvviato($state);
 
-        if ($password !== '' && $user !== null && Hash::check($password, $user->password)) {
-            RateLimiter::decrement($chiaveLimite, 60);
+        if ($impronta === null) {
+            // La frase dice quando la finestra dei backup può ancora riprenderlo con il suo token: il token dura
+            // `stale_after_hours` dall'avvio, e da ogni passo, quindi entro quelle ore dall'avvio vale sempre; un
+            // ripristino fermo da quelle ore ha il token scaduto, e lì la frase non promette niente.
+            $ore = (int) config('backup.stale_after_hours', 2);
+
+            abort(409, trans_choice('impostazioni.restore_recovery.auth_unavailable', $ore, ['ore' => $ore]));
+        }
+
+        if ($password !== '' && Hash::check($password, $impronta)) {
+            $limitatore->decrement($chiaveLimite, 60);
 
             return;
         }
@@ -237,6 +285,47 @@ class RestoreController extends Controller
         throw ValidationException::withMessages([
             'account_password' => __('impostazioni.restore_recovery.auth_failed'),
         ]);
+    }
+
+    /**
+     * L'impronta della password di chi ha avviato il ripristino, o `null` se non c'è. L'avvio la
+     * salva nello stato, e lo stato ha sempre la chiave: con l'impronta, o vuota quando il ripristino si chiude. Lo
+     * stato di un ripristino avviato con una versione precedente, e rimasto aperto durante l'aggiornamento, non ha la
+     * chiave: per quello la password si cerca nella tabella degli utenti. A metà import
+     * la tabella può mancare o non avere ancora l'account: allora l'impronta non c'è.
+     */
+    private function improntaDiChiHaAvviato(array $state): ?string
+    {
+        if (array_key_exists('created_by_password_hash', $state)) {
+            $impronta = $state['created_by_password_hash'];
+        } else {
+            try {
+                $impronta = User::find($state['created_by'] ?? null)?->getAuthPassword();
+            } catch (Throwable) {
+                $impronta = null;
+            }
+        }
+
+        return is_string($impronta) ? $impronta : null;
+    }
+
+    /**
+     * Il conto delle prove della password del recupero. Con la cache nel database (`CACHE_STORE=database`, come
+     * nell'immagine Docker) il conto starebbe nella tabella `cache`, che l'import toglie e ricrea: a metà import ogni
+     * prova finiva in un errore 500, e il recupero con la password non poteva riuscire. Lì il conto sta su file,
+     * accanto allo stato del ripristino; con ogni altra cache resta dove stanno i limiti delle altre rotte.
+     */
+    private function limitatoreDelRecupero(): RateLimiter
+    {
+        $cache = config('cache.limiter') ?: config('cache.default');
+
+        if (config("cache.stores.{$cache}.driver") !== 'database') {
+            return app(RateLimiter::class);
+        }
+
+        $statoSuFile = (string) (config('backup.restore.state_file') ?: storage_path('app/backups/.restore-state.json'));
+
+        return new RateLimiter(Cache::build(['driver' => 'file', 'path' => dirname($statoSuFile).'/.restore-limiter']));
     }
 
     private function archivePath(Backup $backup, DestinationManager $destinations): string
@@ -251,8 +340,77 @@ class RestoreController extends Controller
     }
 
     /**
+     * Chi ha l'accesso e può gestire i backup (lo stesso controllo dell'avvio del ripristino). Dopo
+     * un ripristino fallito il database può essere a metà: se il controllo non si riesce a fare, la
+     * pagina resta quella pubblica.
+     */
+    private function vedeIlDettaglio(Request $request): bool
+    {
+        try {
+            $utente = $request->user();
+
+            return $utente !== null && Gate::forUser($utente)->allows('manage', BackupSettings::class);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Ciò che la pagina dell'esito dice a chi non vede il dettaglio: la fase, se è stato annullato, e
+     * che cosa riconfigurare (quanti utenti hanno la 2FA azzerata, se la password SMTP è stata tolta,
+     * se è stata adottata la chiave del backup). Niente manifest (nome e indirizzo dell'installazione,
+     * versioni, righe per tabella), niente errore (un messaggio del database può contenere dati di
+     * persone), niente identificativo né versione (Coda 343, decisione 127.5).
+     *
+     * Con la modalità ripristino spenta, la parte pubblica vale 24 ore dall'ultima chiusura
+     * (completato, annullato o fallito); dopo, o senza l'ora di chiusura, la pagina è quella di
+     * nessun ripristino. Con la modalità attiva lo stato resta: la 503 e il recupero ne hanno bisogno.
+     */
+    private function presentPubblico(?array $state): ?array
+    {
+        if ($state === null) {
+            return null;
+        }
+
+        if (! app(RestoreMode::class)->active()) {
+            $chiusoAlle = max(array_map('intval', array_filter([
+                $state['completed_at'] ?? null,
+                $state['aborted_at'] ?? null,
+                $state['failed_at'] ?? null,
+            ], fn ($ora) => is_numeric($ora))) ?: [0]);
+
+            // Senza nessuna ora di chiusura il massimo è 0, e lo stato conta come vecchio.
+            if (time() - $chiusoAlle > self::ESITO_PUBBLICO_SECONDI) {
+                return null;
+            }
+        }
+
+        $outcome = $state['outcome'] ?? [];
+        $daRiconfigurare = [];
+
+        $pulizia = array_intersect_key(
+            (array) ($outcome['cleanup'] ?? []),
+            array_flip(['two_factor_reset_users', 'smtp_password_cleared'])
+        );
+        if ($pulizia !== []) {
+            $daRiconfigurare['cleanup'] = $pulizia;
+        }
+        if (array_key_exists('app_key_adopted', $outcome)) {
+            $daRiconfigurare['app_key_adopted'] = $outcome['app_key_adopted'];
+        }
+
+        return [
+            'phase' => $state['phase'] ?? null,
+            'outcome' => $daRiconfigurare,
+            'aborted' => (bool) ($state['aborted'] ?? false),
+        ];
+    }
+
+    /**
      * Proietta lo stato del ripristino per il frontend, SENZA mai esporre
-     * segreti (token, password cifrata).
+     * segreti (token, password cifrata). È la vista completa: la ricevono chi ha
+     * il token del ripristino (step, stato), chi ha messo la password giusta
+     * («riprendi», «annulla») e, sulla pagina dell'esito, chi gestisce i backup.
      */
     private function present(?array $state): ?array
     {

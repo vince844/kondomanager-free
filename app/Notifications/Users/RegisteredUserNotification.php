@@ -2,6 +2,7 @@
 
 namespace App\Notifications\Users;
 
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,6 +11,9 @@ use Illuminate\Notifications\Notification;
 class RegisteredUserNotification extends Notification
 {
     use Queueable;
+    // Il nome dell'amministratore nel saluto, che può aver scritto un altro amministratore: arriva come testo, come
+    // nelle altre mail (decisione 136.3).
+    use TestoScrittoDaAltri;
 
     /**
      * Create a new notification instance.
@@ -34,7 +38,7 @@ class RegisteredUserNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $name = $notifiable->name ?? $notifiable->nome ?? '';
+        $name = self::nomeComeTesto($notifiable->name ?? $notifiable->nome ?? '');
 
         return (new MailMessage)
         

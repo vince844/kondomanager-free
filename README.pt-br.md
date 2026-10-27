@@ -201,7 +201,9 @@ O atualizador limpa a cache da configuração mas não a das rotas: sem este pas
 
 Se deseja contribuir para o código ou tem acesso SSH completo ao servidor.
 
-### Primeira Instalação
+### Primeira instalação num servidor
+
+O `.env.example` já traz os valores para um servidor: `APP_ENV=production` e `APP_DEBUG=false`. Não ative o debug numa instalação que outros possam alcançar: as páginas de erro mostrariam o código, as consultas e o corpo dos pedidos.
 
 1. **Clone o repositório**
 ```bash
@@ -209,27 +211,57 @@ git clone https://github.com/vince844/kondomanager-free.git
 cd kondomanager-free
 ```
 
-2. **Instale as dependências**
+2. **Instale as dependências e compile a interface**
 ```bash
-composer install
+composer install --no-dev --optimize-autoloader
 npm install
+npm run build
 ```
 
 3. **Configure o ambiente**
 ```bash
 cp .env.example .env
+php artisan key:generate --force
+```
+
+Edite o ficheiro `.env` com o endereço da instalação (`APP_URL`) e os parâmetros da sua base de dados (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`).
+
+4. **Instale, com o seu administrador**
+```bash
+php artisan kondomanager:installa --admin-nome="Mario Rossi" --admin-email=mario@exemplo.pt --admin-password="uma-palavra-passe-com-pelo-menos-10-caracteres"
+```
+
+O comando cria as tabelas, os perfis, o administrador com os dados que lhe passa, os dados iniciais e as configurações; numa instalação já feita não faz nada. Os dados do administrador também podem ser passados com as variáveis `INSTALL_ADMIN_NAME`, `INSTALL_ADMIN_EMAIL` e `INSTALL_ADMIN_PASSWORD` (veja o `.env.example`), para que a palavra-passe não fique no histórico do terminal.
+
+5. **Publique e inicie os processos em segundo plano**
+
+O servidor web deve servir a pasta `public/`. Configure o CronJob (veja a secção do CronJob acima) e o worker das filas (veja o passo 3 da atualização manual abaixo).
+
+### Primeira instalação para desenvolver localmente
+
+1. **Clone o repositório e instale as dependências**
+```bash
+git clone https://github.com/vince844/kondomanager-free.git
+cd kondomanager-free
+composer install
+npm install
+```
+
+2. **Configure o ambiente de desenvolvimento**
+```bash
+cp .env.example .env
 php artisan key:generate
 ```
 
-Edite o ficheiro `.env` inserindo os parâmetros da sua base de dados (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`).
+No ficheiro `.env` defina `APP_ENV=local` e `APP_DEBUG=true`, e os parâmetros da sua base de dados (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`).
 
-4. **Configuração da Base de Dados**
+3. **Configuração da Base de Dados**
 ```bash
 php artisan migrate
 php artisan db:seed
 ```
 
-5. **Iniciar**
+4. **Iniciar**
 ```bash
 npm run dev
 php artisan serve
@@ -237,7 +269,7 @@ php artisan serve
 
 Visite http://localhost:8000.
 
-**Credenciais Predefinidas:** `admin@km.com` / `password` (Lembre-se de alterá-las imediatamente indo ao seu perfil `/settings/profile`).
+**Credenciais de desenvolvimento:** `admin@km.com` / `password`, só com `APP_ENV=local`. Noutro ambiente o `db:seed` cria o administrador com uma palavra-passe aleatória e mostra-a uma única vez. Para desenvolver com Docker veja [docs/docker_local_dev.pt.md](docs/docker_local_dev.pt.md).
 
 ---
 

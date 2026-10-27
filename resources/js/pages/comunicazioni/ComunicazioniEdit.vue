@@ -13,6 +13,8 @@ import { LoaderCircle, Pencil, Info, Megaphone, Users, BellRing } from 'lucide-v
 import vSelect from "vue-select";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
+import { rigaServeApprovazione } from '@/lib/pubblicazione';
+import { Permission } from '@/enums/Permission';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -24,7 +26,7 @@ import type { Anagrafica } from '@/types/anagrafiche';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
 
 const props = defineProps<{
   comunicazione: Comunicazione;
@@ -82,9 +84,12 @@ const form = useForm({
     avvisa_destinatari: false
 });
 
+// All'apertura l'elenco dei destinatari si restringe alle anagrafiche dei palazzi della comunicazione,
+// ma i destinatari salvati restano scelti, anche quelli che nel frattempo non sono più nel palazzo:
+// aperta e salvata senza toccare niente, la comunicazione resta indirizzata a chi lo era. Il
+// montaggio carica solo l'elenco, senza filtrare i destinatari scelti (`filtraScelti` falso).
 onMounted(() => {
-  form.condomini_ids = props.comunicazione?.condomini?.options?.map(c => c.value) ?? [];
-  form.anagrafiche = (props.comunicazione?.anagrafiche ?? []).map(a => a.id);
+  caricaAnagrafiche(form.condomini_ids, false);
 });
 
 watch(
@@ -104,31 +109,74 @@ watch(
   { deep: true }
 );
 
-const fetchAnagrafiche = async (newCondominiIds: number[]) => {
-  if (newCondominiIds.length > 0) {
+/** Gli stessi palazzi, in qualunque ordine: riassegnarli (il `watch` delle props) non è cambiarli. */
+const stessiPalazzi = (nuovi: number[], vecchi: number[] | undefined): boolean =>
+  vecchi !== undefined && nuovi.length === vecchi.length && nuovi.every((id) => vecchi.includes(id));
+
+/** I palazzi e i destinatari che la comunicazione ha salvati (quelli che il server manda alla pagina). */
+const palazziSalvati = (): number[] => props.comunicazione?.condomini?.options?.map(c => c.value) ?? [];
+const destinatariSalvati = () => (props.comunicazione?.anagrafiche ?? []).map(a => a.id);
+
+/**
+ * Le anagrafiche dei palazzi scelti, per l'elenco dei destinatari. Con `filtraScelti` (i palazzi sono
+ * cambiati) i destinatari che non sono fra quelle anagrafiche si tolgono, tranne, quando i palazzi sono
+ * di nuovo quelli salvati, i destinatari salvati: tornare ai palazzi salvati non è sceglierne altri, e
+ * succede anche quando il server rimanda la pagina dopo un salvataggio rifiutato (Inertia tiene lo
+ * stato e il `watch` delle props riscrive palazzi e destinatari). Senza `filtraScelti` (all'apertura)
+ * i destinatari restano. Un destinatario scelto che non è fra le anagrafiche dei palazzi resta
+ * nell'elenco, con il nome che la comunicazione ha salvato, così si vede come scelto.
+ */
+const caricaAnagrafiche = async (condominiIds: number[], filtraScelti: boolean) => {
+  let deiPalazzi: Anagrafica[] = [];
+
+  if (condominiIds.length > 0) {
     try {
       const response = await axios.get(generatePath('fetch-anagrafiche'), {
-        params: { condomini_ids: newCondominiIds }
+        params: { condomini_ids: condominiIds }
       });
 
-      anagraficheOptions.value = response.data.map((item: { id: number, nome: string }) => ({
+      deiPalazzi = response.data.map((item: { id: number, nome: string }) => ({
         id: item.id,
         nome: item.nome,
       }));
-
-      const validIds = response.data.map((a: Anagrafica) => a.id);
-      form.anagrafiche = form.anagrafiche.filter((id) => validIds.includes(id));
-
     } catch (error) {
       console.error('Error fetching anagrafiche:', error);
+      return;
     }
-  } else {
-    anagraficheOptions.value = [];
-    form.anagrafiche = [];
   }
+
+  // La risposta vale solo per i palazzi di adesso: se nel frattempo sono cambiati (chi modifica ne ha
+  // scelti altri, o il server ha rimandato la pagina), conta la risposta della richiesta che è partita dopo.
+  if (!stessiPalazzi(condominiIds, form.condomini_ids)) {
+    return;
+  }
+
+  const validIds = deiPalazzi.map((a) => a.id);
+
+  if (filtraScelti) {
+    const salvatiCheRestano = stessiPalazzi(condominiIds, palazziSalvati()) ? destinatariSalvati() : [];
+    form.anagrafiche = form.anagrafiche.filter((id) => validIds.includes(id) || salvatiCheRestano.includes(id));
+  }
+
+  const sceltiFuori = (props.comunicazione?.anagrafiche ?? [])
+    .filter((a) => form.anagrafiche.includes(a.id) && !validIds.includes(a.id))
+    .map((a) => ({ id: a.id, nome: a.nome }) as Anagrafica);
+
+  anagraficheOptions.value = [...deiPalazzi, ...sceltiFuori];
 };
 
-watch(() => form.condomini_ids, fetchAnagrafiche);
+watch(() => form.condomini_ids, (nuovi: number[], vecchi: number[] | undefined) => {
+  if (stessiPalazzi(nuovi, vecchi)) {
+    return;
+  }
+
+  caricaAnagrafiche(nuovi, true);
+});
+
+// La modifica non approva (decisione 127.2): su una comunicazione non approvata la riga sotto la
+// tendina dice che «Pubblicata» da sola non la mostra ai condòmini; a chi approva le comunicazioni dice
+// dove si approva (lo scudo nell'elenco, che vede solo lui), agli altri chi la approva.
+const rigaApprovazione = computed(() => rigaServeApprovazione('comunicazioni', props.comunicazione?.is_approved, hasPermission([Permission.APPROVE_COMUNICAZIONI])));
 
 const submit = () => {
     form.put(route(generateRoute('comunicazioni.update'), { id: props.comunicazione.id }), {
@@ -282,6 +330,7 @@ const submit = () => {
                                 </template>
                             </v-select>
                             <InputError :message="form.errors.is_published" />
+                            <p v-if="rigaApprovazione" class="mt-1.5 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{{ trans(rigaApprovazione) }}</p>
                         </div>
 
                         <div class="sm:col-span-3">

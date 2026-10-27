@@ -50,4 +50,13 @@ describe('RegisterFromInvite', () => {
         expect(post).toHaveBeenCalledTimes(1);
         expect(post.mock.calls[0][0]).toBe(azione);
     });
+
+    test('Coda 262 — accanto alla password la pagina dice la lunghezza minima', () => {
+        const wrapper = mount(RegisterFromInvite, {
+            props: { email: 'invitato@example.com', azione: '/invito/register?signature=x' },
+            global: { stubs, mocks: { route: (nome: string) => `/${nome}` } },
+        });
+
+        expect(wrapper.text()).toContain('auth.hint.password_min');
+    });
 });

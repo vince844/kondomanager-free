@@ -10,6 +10,8 @@ import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue'
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
 import EventiList from '@/components/eventi/EventiList.vue';
 import BuildingsDropdown from '@/components/BuildingsDropdown.vue';
+import Alert from '@/components/Alert.vue';
+import type { Flash } from '@/types/flash';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
@@ -25,6 +27,10 @@ const page = usePage();
 
 const inboxCount = computed(() => (page.props as any).inbox_count || 0);
 
+// Chi apre una pagina del portale senza un'anagrafica collegata all'account, e ha il pannello, arriva
+// qui con la frase che dice perché (decisione 134.4, `CheckHasAnagrafica`): la pagina la mostra.
+const flashMessage = computed(() => (page.props as { flash?: { message?: Flash | null } }).flash?.message ?? null);
+
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
 
 interface DashboardStats {
@@ -39,12 +45,14 @@ interface DashboardStats {
     };
 }
 
+// I quattro blocchi arrivano solo a chi può aprire il loro elenco nel pannello (decisione 137, `DashboardController`):
+// un blocco che manca si mostra come un riquadro che non si può vedere.
 const props = defineProps<{
     stats: DashboardStats;
-    segnalazioni: Segnalazione[];
-    comunicazioni: Comunicazione[];
-    documenti: Documento[];
-    eventi: {          
+    segnalazioni?: Segnalazione[];
+    comunicazioni?: Comunicazione[];
+    documenti?: Documento[];
+    eventi?: {
         total: number;
         data: Evento[];
     };
@@ -162,6 +170,8 @@ const navigateToDocumenti = () => {
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="px-6 py-8 space-y-6">
+
+            <Alert v-if="flashMessage" :message="flashMessage.message" :type="flashMessage.type" />
 
             <!-- ── TOP BAR ── -->
             <div class="flex flex-col-reverse md:flex-row justify-between items-stretch md:items-center gap-3">
@@ -404,7 +414,7 @@ const navigateToDocumenti = () => {
                     </div>
                     <div class="p-2">
                         <ComunicazioniList
-                            v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])"
+                            v-if="hasPermission([Permission.VIEW_COMUNICAZIONI]) && comunicazioni"
                             :comunicazioni="comunicazioni"
                             :routeName="'comunicazioni.show'"
                         />
@@ -444,7 +454,7 @@ const navigateToDocumenti = () => {
                     </div>
                     <div class="p-2">
                         <SegnalazioniList
-                            v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
+                            v-if="hasPermission([Permission.VIEW_SEGNALAZIONI]) && segnalazioni"
                             :segnalazioni="segnalazioni"
                             :routeName="'segnalazioni.show'"
                         />
@@ -471,7 +481,7 @@ const navigateToDocumenti = () => {
                     </div>
                     <div class="p-2">
                         <DocumentiList
-                            v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])"
+                            v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS]) && documenti"
                             :documenti="documenti"
                         />
                         <div v-else class="flex items-center gap-2 px-4 py-6 text-xs text-slate-400">
@@ -496,7 +506,7 @@ const navigateToDocumenti = () => {
                         </Link>
                     </div>
                     <div class="p-2 max-h-[420px] overflow-y-auto custom-scrollbar">
-                        <template v-if="hasPermission([Permission.VIEW_EVENTS])">
+                        <template v-if="hasPermission([Permission.VIEW_EVENTS]) && eventi">
                             <InfiniteScroll data="eventi" preserve-url>
                                 <EventiList :eventi="eventi.data" />
                                 <template #loading>

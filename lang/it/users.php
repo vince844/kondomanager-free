@@ -88,6 +88,8 @@ return [
         'permissions_count'            => ':count permessi',
         'invite_emails' => 'Indirizzi email',
         'invite_buildings' => 'Condomini',
+        // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
+        'fuori_portata' => 'Questo account lo gestisce solo un amministratore: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
     ],
     /* ------------------------------------------------------------------
      | Placeholders
@@ -118,7 +120,7 @@ return [
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'role_line_1' => 'Seleziona il ruolo da assegnare all\'utente, scegli tra i ruoli di default oppure uno di quelli da te creati.',
+        'role_line_1' => 'Seleziona il ruolo da assegnare all\'utente. L\'amministratore sceglie fra tutti i ruoli, compresi quelli su misura; chi non è amministratore assegna solo «utente» e «fornitore».',
         'role_line_2' => 'I permessi associati al ruolo verranno ereditati automaticamente.',
         'resident'    => 'Seleziona l\'anagrafica da associare all\'utente. L\'anagrafica associata potrà accedere al sistema con le credenziali dell\'utente creato e consultare i propri dati e quelli a lui collegati.',
         'permissions' => 'Seleziona permessi specifici da assegnare all\'utente oltre a quelli ereditati dal ruolo selezionato.',

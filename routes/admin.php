@@ -25,6 +25,7 @@ use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\CommentoController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
+use App\Http\Controllers\Segnalazioni\SegnalazioneRendiPubblicaController;
 use App\Http\Middleware\CheckForPendingUpdates;
 use Illuminate\Support\Facades\Route;
 
@@ -217,6 +218,11 @@ Route::prefix('admin')->as('admin.')
     Route::put('segnalazioni/{segnalazione}/toggle-approval', SegnalazioneApprovalController::class)
         ->name('segnalazioni.toggle-approval');
 
+    // «Rendi pubblica» una segnalazione privata: un comando a sé, con la conferma nella pagina
+    // (Coda 304, decisione 127.4). Il contrario non esiste.
+    Route::put('segnalazioni/{segnalazione}/rendi-pubblica', SegnalazioneRendiPubblicaController::class)
+        ->name('segnalazioni.rendi-pubblica');
+
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])
         ->name('segnalazioni.toggleResolve');
 
@@ -226,8 +232,13 @@ Route::prefix('admin')->as('admin.')
     Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('settings.notifications.update');
 
-    // Rotta di TEST per sviluppatori: Verifica Quadratura Partita Doppia
-    Route::get('/test-quadratura/{condominio}', [TestContabilitaController::class, 'checkQuadratura']);
+    // Il controllo di quadratura del giornale (bilancio di verifica in JSON, nessuna pagina lo
+    // chiama) è uno strumento di sviluppo: esiste solo in `local` e in `testing`, dove lo usano i
+    // test del giornale (`phpunit.xml` mette `APP_ENV=testing`). In produzione la rotta non è
+    // registrata, e nemmeno nella cache delle rotte che l'immagine scrive all'avvio (Coda 312).
+    if (app()->environment(['local', 'testing'])) {
+        Route::get('/test-quadratura/{condominio}', [TestContabilitaController::class, 'checkQuadratura']);
+    }
 
     require __DIR__.'/gestionale.php';
 });

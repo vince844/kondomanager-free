@@ -1,15 +1,18 @@
 <?php
 
 use App\Http\Controllers\System\SaluteController;
+use App\Http\Middleware\AutenticaSessione;
 use App\Http\Middleware\CheckForPendingUpdates;
 use App\Http\Middleware\CheckHasAnagrafica;
 use App\Http\Middleware\CheckRestoreMode;
 use App\Http\Middleware\CheckSuspendedUser;
+use App\Http\Middleware\ConfermaPasswordRecente;
 use App\Http\Middleware\CheckUserRegistration;
 use App\Http\Middleware\EnsureAutoUpdateEnabled;
 use App\Http\Middleware\EnsureCondominioHasEsercizio;
 use App\Http\Middleware\EnsureTwoFactorChallengeSession;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\IntestazioniDiSicurezza;
 use App\Http\Middleware\SetAppNameMiddleware;
 use App\Http\Middleware\SetLocaleMiddleware;
 use Illuminate\Foundation\Application;
@@ -19,6 +22,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Route;
@@ -61,6 +65,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // che `public/index.php` legge prima di avviare l'applicazione (1.11.0-beta.46, Coda 224).
         $middleware->preventRequestsDuringMaintenance(except: ['up']);
 
+        // Le intestazioni di sicurezza (Coda 264), in testa alla pila globale: le riceve ogni risposta,
+        // anche `/up` (fuori dal gruppo `web`), la 503 del ripristino, la manutenzione e le pagine
+        // d'errore, che passano tutte da qui all'uscita.
+        $middleware->prepend(IntestazioniDiSicurezza::class);
+
         // CheckRestoreMode va per PRIMO: se un ripristino è in corso deve
         // bloccare tutto (update check incluso) senza toccare DB/sessione.
         $middleware->web(prepend: [
@@ -81,7 +90,31 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
         ]);
 
+        // La lingua dell'installazione prima dei limiti di rotta (Coda 261). Il router riordina i middleware con la
+        // sua lista delle priorità, che porta davanti al gruppo i limiti, la sessione dell'utente e la ricerca dei
+        // modelli della rotta: senza un posto nella lista, la lingua scelta nelle impostazioni generali arrivava
+        // dopo di loro, e le loro risposte (il 429, la scheda che non c'è) restavano nella lingua del `.env`. Lo
+        // stesso il rimando di chi è sospeso, per un'altra ragione: `CheckSuspendedUser` non è nella lista, e la
+        // lingua gli veniva dopo per l'ordine del gruppo qui sopra. Nella lista la lingua sta dopo
+        // l'autenticazione e prima dei limiti, e passa davanti anche a lui, che nel gruppo segue la ricerca dei
+        // modelli; `CheckRestoreMode` resta il primo del gruppo. `SetLocaleMiddleware` legge il database con un
+        // ripiego: sulle rotte del ripristino a token, a metà dell'import, non ferma niente.
+        $middleware->prependToPriorityList(ThrottleRequests::class, SetLocaleMiddleware::class);
+
+        // Le altre sessioni di un utente si chiudono quando la sua password cambia (Coda 261):
+        // `AuthenticateSession` confronta a ogni richiesta la password con cui la sessione è nata con
+        // quella dell'account, e vale anche per il cookie «ricordami». Funziona con ogni driver di
+        // sessione (`file`, `database`, `redis`), perché non cerca le righe di `sessions`: è ogni
+        // sessione che, alla richiesta dopo, si accorge di essere vecchia. Chi cambia la password resta
+        // dentro: la sua sessione riceve la password nuova alla fine della stessa richiesta.
+        // `auth.session` è la nostra sottoclasse (alias qui sotto): chiude anche le sessioni di un
+        // account senza password, cioè rimesso in attesa del primo accesso da «reinvia» (Coda 202).
+        $middleware->authenticateSessions();
+
         $middleware->alias([
+            'auth.session' => AutenticaSessione::class,
+            // La password ridigitata da non più di quindici minuti (Coda 261).
+            'password.recente' => ConfermaPasswordRecente::class,
             'CheckSuspendedUser' => CheckSuspendedUser::class,
             'CheckHasAnagrafica' => CheckHasAnagrafica::class,
             'CheckUserRegistration' => CheckUserRegistration::class,

@@ -17,7 +17,8 @@ class DatabaseSeeder extends Seeder
         // 1. Sempre per primo: Sincronizza Ruoli e Permessi
         $this->call(RolesAndPermissionsSeeder::class);
 
-        // 2. Controllo SICURO per lo UserSeeder
+        // 2. Controllo SICURO per lo UserSeeder. L'amministratore che crea ha la password nota
+        //    del README solo in `local`; altrove una casuale, stampata una volta (Coda 266).
         if (!config('installer.run_installer')) {
             // Verifichiamo che il ruolo esista fisicamente nel DB prima di usarlo per evitare crash "RoleDoesNotExist"
             $adminRoleExists = Role::where('name', RoleEnum::AMMINISTRATORE->value)->exists();

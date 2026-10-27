@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Documenti\Utenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
-use App\Http\Resources\Documenti\DocumentoResource;
+use App\Http\Resources\Portale\DocumentoPortaleResource;
 use App\Models\CategoriaDocumento;
 use App\Services\DocumentoService;
 use App\Traits\HandlesUserCondominioData;
@@ -51,7 +51,7 @@ class CategoriaDocumentoController extends Controller
 
         return Inertia::render('documenti/user/CategorieList', [
             'categorie' => $categorie,
-            'documenti' => DocumentoResource::collection($documenti),
+            'documenti' => DocumentoPortaleResource::collection($documenti),
         ]);
     }
 
@@ -76,7 +76,7 @@ class CategoriaDocumentoController extends Controller
 
         return Inertia::render('documenti/user/DocumentiList', [
             'documenti' => [
-                'data' => DocumentoResource::collection($documenti)->resolve(),
+                'data' => DocumentoPortaleResource::collection($documenti)->resolve(),
                 'current_page' => $documenti->currentPage(),
                 'last_page' => $documenti->lastPage(),
                 'per_page' => $documenti->perPage(),

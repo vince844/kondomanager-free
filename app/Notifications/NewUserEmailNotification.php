@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -12,6 +13,8 @@ use Illuminate\Support\Carbon;
 class NewUserEmailNotification extends Notification 
 {
     use Queueable;
+    // Il nome nel saluto lo scrive chi crea l'account, e la mail va al titolare: arriva come testo (decisione 136.3).
+    use TestoScrittoDaAltri;
 
     protected $user;
 
@@ -44,7 +47,7 @@ class NewUserEmailNotification extends Notification
         return (new MailMessage)
 
             ->subject(__('notifications.new_user_created.subject', ['appName' => config('app.name')]))
-            ->greeting(__('notifications.new_user_created.greeting', ['name' => $this->user->name]))
+            ->greeting(__('notifications.new_user_created.greeting', ['name' => self::nomeComeTesto($this->user->name)]))
             ->line(__('notifications.new_user_created.line_1'))
             ->action(__('notifications.new_user_created.action'), $resetUrl)
             ->line(__('notifications.new_user_created.line_2'));

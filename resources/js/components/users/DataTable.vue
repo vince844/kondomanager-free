@@ -45,6 +45,10 @@ const table = useVueTable({
   manualPagination: true,
   // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
   manualSorting: true,
+  // La riga ha per chiave l'id dell'utente, non la posizione: ordinamento, filtri e pagine ricaricano l'elenco
+  // tenendo la tabella, e con la posizione la prima riga restava la stessa riga con un altro utente dentro
+  // (decisione 135.1).
+  getRowId: (utente) => String(utente.id),
   onPaginationChange: updater => {
     const stato = table.getState().pagination
     const p = typeof updater === 'function' ? updater(stato) : updater

@@ -209,8 +209,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Envia um email a todos os condóminos com notificações ligadas, a dizer que a ocorrência mudou. Deixe-a desligada se estiver a corrigir uma gralha.",
-        'visibility' => 'Se definida como privada, apenas os administradores poderão visualizar a sinalização.',
+        'notify_update' => "Envia um email a quem já era destinatário, a dizer que a ocorrência mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-a de qualquer forma, porque para ele é nova. Enquanto for um rascunho ou estiver a aguardar aprovação não é enviado nada; quando estiver publicada e aprovada, recebem-na todos os destinatários.",
+        'visibility' => 'Um rascunho, ou uma sinalização a aguardar aprovação, não aparece aos condóminos; depois de publicada e aprovada, veem-na os condóminos a quem se dirige.',
         'priority'   => 'Defina o nível de prioridade desta sinalização para ajudar os administradores a gerirem-na adequadamente.',
         'status'     => 'Defina o estado atual da sinalização para acompanhar o progresso.',
         'comments'   => 'Quando selecionada, permite que os utilizadores adicionem comentários a esta sinalização.',
@@ -250,5 +250,41 @@ return [
         'location_desc'    => 'Indique com precisão o condomínio afetado e associe os registos dos residentes para facilitar as comunicações e as inspeções.',
         'settings_title'   => 'Parâmetros Operativos',
         'settings_desc'    => 'Defina o nível de urgência, atualize o estado de processamento da ocorrência e ajuste as permissões de visibilidade no quadro.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Code 304 e 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'A aguardar aprovação',
+        'draft'     => 'Rascunho',
+        'published' => 'Publicada',
+        'needs_approval' => 'Está a aguardar aprovação: escolher «Publicada» não basta para a mostrar aos condóminos. Vão vê-la quando estiver aprovada, com o escudo ao lado do título na lista de sinalizações.',
+        'waiting_approver' => 'Está a aguardar aprovação: escolher «Publicada» não basta para a mostrar aos condóminos. Vão vê-la quando for aprovada por quem aprova as sinalizações.',
+    ],
+
+    'privacy' => [
+        'private'                 => 'Privada',
+        'private_hint'            => 'Visível apenas para o autor, as pessoas associadas e o administrador',
+        'guide_title'             => 'Quem a vê',
+        'guide_private'           => 'Esta sinalização é privada: só a veem quem a abriu, as pessoas a quem se dirige e o administrador.',
+        'guide_not_private'       => 'Esta sinalização não é privada: veem-na os condóminos a quem se dirige (todo o condomínio, se não se dirigir a ninguém em particular) e o administrador.',
+        'guide_private_pending'   => 'Esta sinalização é privada. Por agora mais ninguém a vê, além do administrador: as pessoas a quem se dirige vão vê-la quando estiver publicada e aprovada.',
+        'guide_not_private_pending' => 'Esta sinalização não é privada. Por agora mais ninguém a vê, além do administrador: os condóminos a quem se dirige (todo o condomínio, se não se dirigir a ninguém em particular) vão vê-la quando estiver publicada e aprovada.',
+        'make_public'             => 'Tornar pública',
+        'make_public_title'       => 'Tornar pública a sinalização?',
+        'make_public_description' => 'Todos os condóminos de :condominio a vão ver, com o nome de :autore, e quem não a via vai receber o aviso de uma nova sinalização. :autore vai receber um aviso. Não existe um comando para a tornar novamente privada.',
+        'make_public_description_pending' => 'Todos os condóminos de :condominio a vão ver, com o nome de :autore, quando estiver publicada e aprovada: agora não está. :autore vai receber um aviso. Não existe um comando para a tornar novamente privada.',
+        'make_public_author_loses_access' => 'Depois, :autore deixará de a ver no portal: não consta entre os condóminos de :condominio.',
+        'make_public_confirm'     => 'Tornar pública',
+        'already_public'          => 'A sinalização já é pública.',
+        'success_make_public'     => 'A sinalização agora é pública.',
+        'success_make_public_pending' => 'A sinalização já não é privada: todos os condóminos a vão ver quando estiver publicada e aprovada.',
+        'error_make_public'       => 'Não foi possível tornar pública a sinalização.',
+        'error_notify_author'     => 'A sinalização já não é privada, mas o aviso ao autor não foi enviado.',
+        'error_notify_residents'  => 'A sinalização já não é privada, mas o aviso aos condóminos que não a viam não foi enviado.',
+        'error_notify_both'       => 'A sinalização já não é privada, mas não foram enviados nem o aviso ao autor nem o dos condóminos que não a viam.',
+        'residents_required'      => 'Uma sinalização privada tem de continuar dirigida a pelo menos um residente. Para a tornar visível a todo o condomínio, use «Tornar pública» na ficha da sinalização.',
+        'residents_required_ask_approver' => 'Uma sinalização privada tem de continuar dirigida a pelo menos um residente. Para a tornar visível a todo o condomínio, pode torná-la pública quem aprova as sinalizações.',
+    ],
 ];

@@ -12,6 +12,18 @@ return [
     'error_delete_anagrafica'   => 'Ocorreu um erro durante a eliminação do registo.',
     'anagrafica_has_building'   => 'O registo não pode ser eliminado porque está associado a um ou mais condomínios',
 
+    // O portal de uma conta sem registo (CheckHasAnagrafica): a página dos próprios dados diz porque se chega lá.
+    'account_without_anagrafica' => 'A sua conta ainda não está associada a um registo: para usar o portal, preencha aqui os seus dados.',
+    'panel_without_anagrafica' => 'O portal dos condóminos só abre com um registo associado à conta, e a sua não tem nenhum: use o painel de administração.',
+
+    // As páginas e as ações dos registos do painel, para quem não tem a permissão (AnagraficaPolicy).
+    'permessi' => [
+        'view' => "Não tem permissões suficientes para ver os registos.",
+        'create' => "Não tem permissões suficientes para criar registos.",
+        'update' => "Não tem permissões suficientes para modificar os registos.",
+        'delete' => "Não tem permissões suficientes para eliminar os registos.",
+    ],
+
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -54,6 +66,7 @@ return [
         'delete_resident' => 'Eliminar',
         'save_resident'   => 'Guardar',
         'list_residents'  => 'Lista',
+        'back_to_dashboard' => 'Voltar ao painel',
     ],
 
     /* ------------------------------------------------------------------

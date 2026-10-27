@@ -14,16 +14,19 @@ use Spatie\Permission\Models\Role;
 /*
  * I servizi estratti dal wizard (1.11.0-beta.32): li usano sia il wizard sia `km:install`.
  * Qui si fissa che facciano esattamente ciò che i passi del wizard facevano.
+ *
+ * Le password hanno dieci caratteri o più: dalla Coda 262 (decisione 127.1) è il minimo anche per
+ * l'amministratore dell'installazione, e le password dei test lo rispettano.
  */
 
 it('crea l\'amministratore con le regole del wizard, verificato e con il ruolo', function () {
     Role::findOrCreate('amministratore', 'web');
 
-    $user = app(CreaAmministratore::class)->esegui('  Mario Rossi ', ' mario@esempio.it ', 'segreta1');
+    $user = app(CreaAmministratore::class)->esegui('  Mario Rossi ', ' mario@esempio.it ', 'segreta-01');
 
     expect($user->name)->toBe('Mario Rossi')
         ->and($user->email)->toBe('mario@esempio.it')
-        ->and(Hash::check('segreta1', $user->password))->toBeTrue()
+        ->and(Hash::check('segreta-01', $user->password))->toBeTrue()
         ->and($user->email_verified_at)->not->toBeNull()
         ->and($user->hasRole('amministratore'))->toBeTrue();
 });
@@ -32,10 +35,10 @@ it('rifiuta nome corto, email doppia e password corta senza creare nulla', funct
     User::factory()->create(['email' => 'gia@esempio.it']);
 
     foreach ([
-        ['M', 'nuovo@esempio.it', 'segreta1'],
-        ['Mario Rossi', 'gia@esempio.it', 'segreta1'],
+        ['M', 'nuovo@esempio.it', 'segreta-01'],
+        ['Mario Rossi', 'gia@esempio.it', 'segreta-01'],
         ['Mario Rossi', 'nuovo@esempio.it', 'corta'],
-        ['Mario Rossi', 'non-una-email', 'segreta1'],
+        ['Mario Rossi', 'non-una-email', 'segreta-01'],
     ] as [$name, $email, $password]) {
         expect(fn () => app(CreaAmministratore::class)->esegui($name, $email, $password))
             ->toThrow(ValidationException::class);
@@ -45,7 +48,7 @@ it('rifiuta nome corto, email doppia e password corta senza creare nulla', funct
 });
 
 it('se il ruolo non esiste a database l\'utente nasce senza ruolo, come nel wizard', function () {
-    $user = app(CreaAmministratore::class)->esegui('Mario Rossi', 'mario@esempio.it', 'segreta1');
+    $user = app(CreaAmministratore::class)->esegui('Mario Rossi', 'mario@esempio.it', 'segreta-01');
 
     expect($user->roles)->toHaveCount(0);
 });

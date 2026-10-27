@@ -59,7 +59,9 @@ class InvitoRegisteredUserController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        $user = $this->registrationService->register($validated);
+        // Un account nato da un invito riceve il ruolo dei nuovi iscritti solo se è `utente` o `fornitore`
+        // (Coda 258): la regola sta nel servizio.
+        $user = $this->registrationService->register($validated, daUnInvito: true);
 
         $invito->accept();
 

@@ -82,7 +82,9 @@ FROM node:20-bookworm-slim AS assets
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# --ignore-scripts: nessuno script di installazione dei pacchetti gira durante la build (lo stesso
+# vale per chi sviluppa, con .npmrc). La compilazione non ne ha bisogno.
+RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 COPY --from=vendor /var/www/vendor/tightenco/ziggy ./vendor/tightenco/ziggy
 RUN npm run build

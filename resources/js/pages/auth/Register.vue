@@ -73,6 +73,7 @@ const submit = () => {
                         v-model="form.password"
                         :placeholder="trans('auth.placeholder.register.password')"
                     />
+                    <p class="text-xs text-muted-foreground">{{ trans('auth.hint.password_min') }}</p>
                     <InputError :message="form.errors.password" />
                 </div>
 

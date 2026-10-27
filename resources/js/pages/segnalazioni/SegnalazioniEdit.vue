@@ -14,6 +14,8 @@ import { LoaderCircle, Pencil, Info, AlertTriangle, Building2, SlidersHorizontal
 import vSelect from "vue-select";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import { rigaServeApprovazione } from '@/lib/pubblicazione';
+import { Permission } from '@/enums/Permission';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
 import { trans } from 'laravel-vue-i18n';
@@ -30,7 +32,7 @@ const props = defineProps<{
   anagrafiche: Anagrafica[];
 }>();  
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
@@ -107,6 +109,11 @@ watch(
     },
     { deep: true }
 )  
+
+// La modifica non approva (decisione 127.2): su una segnalazione non approvata la riga sotto la
+// tendina dice che «Pubblicata» da sola non la mostra ai condòmini; a chi approva le segnalazioni dice
+// dove si approva (lo scudo nell'elenco, che vede solo lui), agli altri chi la approva.
+const rigaApprovazione = computed(() => rigaServeApprovazione('segnalazioni', props.segnalazione?.is_approved, hasPermission([Permission.APPROVE_SEGNALAZIONI])));
 
 const submit = () => {
     form.put(route(generateRoute('segnalazioni.update'), {id: props.segnalazione.id}), {
@@ -340,6 +347,7 @@ const submit = () => {
                                 </template>
                             </v-select>
                             <InputError :message="form.errors.is_published" />
+                            <p v-if="rigaApprovazione" class="mt-1.5 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{{ trans(rigaApprovazione) }}</p>
                         </div>
 
                         <div class="sm:col-span-6 mt-2 mb-2 border-t border-dashed"></div>

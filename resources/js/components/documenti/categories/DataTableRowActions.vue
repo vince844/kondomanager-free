@@ -23,9 +23,11 @@ const props = defineProps<{
   categoria: Categoria;
 }>();  
 
+// I campi si riempiono quando si apre «Modifica» (`handleEdit`), non qui: l'elenco ricarica tenendo la tabella
+// (`preserveState`), e la riga può ricevere un'altra categoria dopo un ordinamento, un filtro o una pagina nuova.
 const form = useForm({
-  name:  props.categoria.name ?? '',
-  description: props.categoria.description ?? '',
+  name: '',
+  description: '',
 })
 
 const categoriaID = ref<number | null>(null)
@@ -39,6 +41,13 @@ const { generateRoute } = usePermission()
 
 function handleEdit(categoria: Categoria) {
   categoriaID.value = categoria.id
+  // Il modulo prende la categoria della riga adesso, anche dopo un salvataggio (`form.reset()` torna qui).
+  form.defaults({
+    name: categoria.name ?? '',
+    description: categoria.description ?? '',
+  })
+  form.reset()
+  form.clearErrors()
   isEditCategorySheetOpen.value = false
   setTimeout(() => {
     isEditCategorySheetOpen.value = true

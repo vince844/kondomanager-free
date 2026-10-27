@@ -200,8 +200,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Envia um email a quem já era destinatário, a dizer que o documento mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-o de qualquer forma, porque para ele é novo.",
-        'visibility' => 'Se definida como privada, apenas os administradores poderão visualizar o documento.',
+        'notify_update' => "Envia um email a quem já era destinatário, a dizer que o documento mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-o de qualquer forma, porque para ele é novo. Enquanto for um rascunho ou estiver a aguardar aprovação não é enviado nada; quando estiver publicado e aprovado, recebem-no todos os destinatários.",
+        'visibility' => 'Um documento em rascunho ou a aguardar aprovação não aparece aos condóminos; depois de publicado e aprovado, veem-no os condóminos a quem se dirige.',
         'category'   => 'Um documento pode estar em várias categorias, e encontra-se dentro de cada uma. Selecione pelo menos uma, ou crie uma nova.',
     ],
 
@@ -313,4 +313,13 @@ return [
         'usata'  => '{0} Nenhum|{1} 1 documento|[2,*] :count documentos',
     ],
 
+    /* ------------------------------------------------------------------
+     | Pubblicazione (Coda 306): i documenti non hanno la privacy
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'draft'     => 'Rascunho',
+        'published' => 'Publicado',
+        'needs_approval' => 'Está a aguardar aprovação: escolher «Publicado» não basta para o mostrar aos condóminos. Vão vê-lo quando estiver aprovado, com o escudo ao lado do nome na lista de documentos.',
+        'waiting_approver' => 'Está a aguardar aprovação: escolher «Publicado» não basta para o mostrar aos condóminos. Vão vê-lo quando for aprovado por quem aprova os documentos.',
+    ],
 ];

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 
 import { watch, onMounted, computed } from "vue";
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import Alert from '@/components/Alert.vue';
 import { Button } from '@/components/ui/button';
 import { LoaderCircle, Info, User, MapPin, ShieldCheck, Save } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -18,7 +19,10 @@ import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
 import { trans } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
+import { useGiroFlash } from '@/composables/useGiroFlash';
+import { Permission } from '@/enums/Permission';
 import type { BreadcrumbItem } from '@/types';
+import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica, DocumentType } from '@/types/anagrafiche'; 
 
@@ -27,7 +31,20 @@ const props = defineProps<{
   condomini: Building[];
 }>();  
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+
+// L'elenco chiede «Visualizza anagrafiche», questo modulo «Modifica anagrafiche» (`AnagraficaPolicy`): un ruolo su
+// misura può avere il modulo senza l'elenco. «Indietro», «Annulla» e la briciola portano all'elenco solo a chi lo può
+// consultare; agli altri «Indietro» e «Annulla» portano alla dashboard del pannello, e la briciola dell'elenco non c'è.
+const consultaElenco = computed(() => hasPermission([Permission.VIEW_ANAGRAFICHE]));
+const ritorno = computed(() => route(generateRoute(consultaElenco.value ? 'anagrafiche.index' : 'dashboard')));
+const testoRitorno = computed(() => consultaElenco.value ? "Indietro all'elenco" : trans('anagrafiche.actions.back_to_dashboard'));
+
+// Dopo «Salva», chi non consulta l'elenco torna qui con il messaggio (`AnagraficaController::dopoIlSalvataggio`). Il modulo
+// resta montato fra due salvataggi: l'avviso si rimonta a ogni visita riuscita, perché il secondo messaggio compaia.
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash?.message);
+const giroFlash = useGiroFlash();
 
 const form = useForm({
     nome:  props.anagrafica?.nome,
@@ -59,10 +76,10 @@ watch(
 ) 
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  {
+  ...(consultaElenco.value ? [{
     title: trans('anagrafiche.header.list_residents_title'),
     href: route(generateRoute('anagrafiche.index')),
-  },
+  }] : []),
   {
     title: 'Modifica Anagrafica',
     href: '#',
@@ -103,7 +120,9 @@ const documents = computed(() => [
 
 const submit = () => {
     form.put(route(generateRoute('anagrafiche.update'), {id: props.anagrafica.id}), {
-        preserveScroll: true
+        // «Salva» sta in fondo e il messaggio in testa: dopo un salvataggio la pagina torna in cima, dove si legge l'esito
+        // (anche quando si torna a questo stesso modulo); con un errore di validazione resta dov'è, accanto ai campi.
+        preserveScroll: 'errors'
     });
 };
 
@@ -122,9 +141,13 @@ const submit = () => {
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :video-url="null"
-        :back-url="route(generateRoute('anagrafiche.index'))"
-        back-text="Indietro all'elenco"
+        :back-url="ritorno"
+        :back-text="testoRitorno"
       />
+
+      <div v-if="flashMessage" class="py-3">
+        <Alert :key="giroFlash" :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
 
       <form @submit.prevent="submit" class="space-y-6">
 
@@ -425,7 +448,7 @@ const submit = () => {
 
         <div class="flex items-center justify-end gap-3 mt-6">
             <Link
-                :href="route(generateRoute('anagrafiche.index'))"
+                :href="ritorno"
                 class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
             >
                 Annulla

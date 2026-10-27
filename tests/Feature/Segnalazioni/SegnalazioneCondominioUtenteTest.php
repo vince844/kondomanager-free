@@ -107,7 +107,10 @@ test('il condòmino di due condomìni può usare entrambi', function () {
     expect(Segnalazione::where('condominio_id', $condominioB->id)->count())->toBe(1);
 });
 
-test('un utente senza anagrafica riceve un errore di validazione, non un 500', function () {
+test('un utente senza anagrafica non crea la segnalazione e non riceve un 500', function () {
+    // Decisione 134.4: il portale manda chi non ha un'anagrafica a completare i suoi dati, con la
+    // frase che dice perché (`CheckHasAnagrafica`); dalla 1.11.0-beta.39 fino a qui era l'errore di
+    // validazione sul condominio, che non diceva perché.
     $condominio = Condominio::factory()->create();
     $user = User::factory()->create(['email_verified_at' => now()]);
     $user->assignRole(Role::UTENTE->value);
@@ -117,7 +120,7 @@ test('un utente senza anagrafica riceve un errore di validazione, non un 500', f
         payloadSegnalazione($condominio->id)
     );
 
-    $response->assertSessionHasErrors('condominio_id');
+    $response->assertRedirect(route('user.anagrafiche.create'));
     expect(Segnalazione::count())->toBe(0);
 });
 

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from '@inertiajs/vue3';
 import { UsersRound, Drama, KeyRound, Mails, ShieldCheck, Mail, Users } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
+import { usePermission } from '@/composables/permissions';
 import type { LinkItem, BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
@@ -43,6 +44,14 @@ const sidebarNavItems: LinkItem[] = [
     }
 ];
 
+const { hasRole } = usePermission();
+
+/**
+ * Le pagine dei ruoli sono dell'amministratore (Coda 258, decisione 134.1): a chi non lo è la voce non
+ * compare, e il server rifiuta le pagine con il perché.
+ */
+const vociVisibili = computed(() => sidebarNavItems.filter(item => item.href !== '/ruoli' || hasRole(['amministratore'])));
+
 const currentPath = window.location.pathname;
 
 // La guida di sezione sta nel layout e non nella singola pagina: le quattro schermate — utenti,
@@ -51,7 +60,7 @@ const currentPath = window.location.pathname;
 const mostraGuida = ref(false);
 
 /** I titoli qui sono chiavi di lingua: il componente mostra il testo che riceve, quindi si traduce prima. */
-const vociNav = computed(() => sidebarNavItems.map(item => ({ ...item, title: trans(item.title) })));
+const vociNav = computed(() => vociVisibili.value.map(item => ({ ...item, title: trans(item.title) })));
 
 /**
  * ⚠️ **`computed`, non `const`.** Le tre schede mostravano `users.guides.users_title` al posto del

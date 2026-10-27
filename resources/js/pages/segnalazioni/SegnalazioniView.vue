@@ -1,11 +1,11 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Lock, LockOpen, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, MessageSquare } from 'lucide-vue-next';
+import { Lock, LockOpen, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, MessageSquare, Globe } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { Permission } from '@/enums/Permission';
@@ -14,6 +14,9 @@ import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 import ListaCommenti from '@/components/commenti/ListaCommenti.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
+import { argomentiConfermaRendiPubblica, chiaveAutorePerdeLaScheda, chiaveConfermaRendiPubblica, offreRendiPubblica } from '@/lib/segnalazioni/privacy';
 
 const props = defineProps<{
   segnalazione: Segnalazione | any;
@@ -22,6 +25,10 @@ const props = defineProps<{
     can_create: boolean;
     can_moderate: boolean;
     can_publish: boolean;
+  };
+  /** Coda 304: se con «Rendi pubblica» l'autore non la vedrà più dal portale (lo calcola il server). */
+  rendi_pubblica?: {
+    autore_perde_la_scheda: boolean;
   };
 }>();  
 
@@ -38,6 +45,48 @@ const priorityItem = computed(() => {
 const statusItem = computed(() => {
   return statoConstants.find(p => p.value === props.segnalazione.stato);
 });
+
+// Coda 306: lo stato di pubblicazione e la privacy sono due indicazioni distinte.
+const statoPubblicazioneCorrente = computed(() =>
+  statoPubblicazione(props.segnalazione.is_published, props.segnalazione.is_approved)
+);
+const etichettaPrivata = computed(() => etichettaPrivacy('segnalazioni', props.segnalazione.is_private));
+
+// Coda 304: «Rendi pubblica», con la conferma che dice chi la vedrà e con quale nome (decisione
+// 129.2). Il pulsante c'è solo su una privata e per chi approva le segnalazioni, come il server. Su
+// una privata non ancora pubblicata e approvata la conferma dice che la vedranno quando lo sarà.
+const mostraRendiPubblica = computed(() =>
+  offreRendiPubblica(props.segnalazione, hasPermission([Permission.APPROVE_SEGNALAZIONI]))
+);
+const confermaRendiPubblica = ref(false);
+const invioRendiPubblica = ref(false);
+
+// Se l'autore non è più nel palazzo, la conferma dice anche che dopo non la vedrà più dal portale.
+const descrizioneRendiPubblica = computed(() => {
+  const argomenti = argomentiConfermaRendiPubblica(props.segnalazione, {
+    condominio: trans('segnalazioni.label.building'),
+    autore: trans('segnalazioni.details.admin_sender'),
+  });
+  const frasi = [trans(chiaveConfermaRendiPubblica(props.segnalazione), argomenti)];
+  const autoreFuori = chiaveAutorePerdeLaScheda(props.rendi_pubblica?.autore_perde_la_scheda);
+
+  if (autoreFuori) {
+    frasi.push(trans(autoreFuori, argomenti));
+  }
+
+  return frasi.join(' ');
+});
+
+const rendiPubblica = () => {
+  router.put(route(generateRoute('segnalazioni.rendi-pubblica'), { segnalazione: props.segnalazione.id }), {}, {
+    preserveScroll: true,
+    onStart: () => { invioRendiPubblica.value = true; },
+    onFinish: () => {
+      invioRendiPubblica.value = false;
+      confermaRendiPubblica.value = false;
+    },
+  });
+};
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
@@ -105,8 +154,28 @@ const pageGuides = computed(() => [
                         }}
                     </span>
                 </Link>
+
+                <button
+                    v-if="mostraRendiPubblica"
+                    type="button"
+                    @click="confermaRendiPubblica = true"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-sm font-medium text-slate-700 dark:text-slate-300 px-3 py-1.5 h-8 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                    <Globe class="w-4 h-4 text-sky-500" />
+                    <span>{{ trans('segnalazioni.privacy.make_public') }}</span>
+                </button>
             </template>
         </PageHeaderGuide>
+
+        <ConfirmDialog
+            v-model="confermaRendiPubblica"
+            :title="trans('segnalazioni.privacy.make_public_title')"
+            :description="descrizioneRendiPubblica"
+            :confirm-text="trans('segnalazioni.privacy.make_public_confirm')"
+            :loading="invioRendiPubblica"
+            variant="warning"
+            @confirm="rendiPubblica"
+        />
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
             
@@ -220,10 +289,14 @@ const pageGuides = computed(() => [
                                     {{ trans('segnalazioni.details.visibility_status') }}
                                 </p>
                                 <div class="flex items-center gap-2 shrink-0">
-                                    <div class="w-2 h-2 rounded-full shrink-0" :class="props.segnalazione.is_published ? 'bg-emerald-500' : 'bg-amber-500'"></div>
+                                    <div class="w-2 h-2 rounded-full shrink-0" :class="colorePubblicazione(statoPubblicazioneCorrente)"></div>
                                     <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                                        {{ props.segnalazione.is_published ? trans('segnalazioni.visibility.public') : trans('segnalazioni.visibility.private') }}
+                                        {{ trans(etichettaStatoPubblicazione('segnalazioni', props.segnalazione.is_published, props.segnalazione.is_approved)) }}
                                     </span>
+                                </div>
+                                <div v-if="etichettaPrivata" class="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500" :title="trans('segnalazioni.privacy.private_hint')">
+                                    <Lock class="w-3 h-3 shrink-0" />
+                                    <span>{{ trans(etichettaPrivata) }}</span>
                                 </div>
                             </div>
                         </div>

@@ -7,22 +7,25 @@ import { useBadges } from '@/composables/useBadges'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Role } from '@/types/roles'
 
-// Dialog per visualizzare i permessi del ruolo
+/**
+ * Il pulsante con il numero dei permessi e la finestra che li elenca, per il ruolo della riga.
+ *
+ * ⚠️ **Il ruolo si legge dalle props a ogni disegno, non una volta sola nel `setup`.** Quando l'elenco cambia
+ * sotto la tabella (un ruolo eliminato o creato) una cella può ricevere un altro ruolo, e una copia fatta
+ * all'inizio mostrava ancora i permessi e gli utenti di quello di prima (decisione 135.1). Le righe hanno anche
+ * l'id per chiave (`DataTable.vue`), ma la cella non deve dipendere da quello.
+ */
 const RolePermissionsDialog = {
   props: ['role'],
   setup(props: { role: Role }) {
-    const role = props.role
     const { createUserCountBadge } = useBadges()
-    
-    const permissions = role.permissions || []
-    const badges = role.users_count !== undefined ? [createUserCountBadge(role.users_count)] : []
-    
+
     return () => h(PermissionsDialog, {
-      permissions,
+      permissions: props.role.permissions || [],
       title: 'Permessi del ruolo',
-      entityName: role.name,
-      entityDescription: role.description,
-      badges
+      entityName: props.role.name,
+      entityDescription: props.role.description,
+      badges: props.role.users_count !== undefined ? [createUserCountBadge(props.role.users_count)] : [],
     })
   }
 }

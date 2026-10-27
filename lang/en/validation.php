@@ -171,11 +171,16 @@ return [
 
     'custom' => [
         'roles' => [
-            'not_allowed' => 'You cannot assign this role: administrative roles are granted by an administrator.',
+            'not_allowed' => 'You cannot assign this role: anyone who is not an administrator assigns only the «utente» and «fornitore» roles.',
             'last_admin' => 'This is the last active administrator: changing this role would leave the installation with nobody able to manage it.',
+            'privileged_target' => 'Only an administrator can change the roles of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
         ],
         'permissions' => [
             'not_allowed' => 'You cannot grant a permission you do not have yourself.',
+            'privileged_target' => 'Only an administrator can change the additional permissions of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
+        ],
+        'default_user_role' => [
+            'only_admin' => 'Only an administrator can change the default role for new users.',
         ],
         'email' => [
             'required' => 'The :attribute field is required.',
@@ -183,6 +188,8 @@ return [
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.',
             'unique_email_across_tables' => 'This email address is already in use.',
+            'privileged_target' => 'Only an administrator can change the email of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
+            'own_from_profile' => 'Your own email cannot be changed here: change it from your profile, where your current password is required.',
             'unique_email_across_tables_in' => 'This email address is already in use: it is recorded on :dove.',
             'sorgenti' => [
                 'anagrafiche' => 'a contact record',

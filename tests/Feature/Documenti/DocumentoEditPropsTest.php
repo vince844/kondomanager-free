@@ -14,6 +14,7 @@
 
 use App\Enums\Permission;
 use App\Enums\Role;
+use App\Models\Anagrafica;
 use App\Models\Documento;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -30,6 +31,9 @@ test('la pagina di modifica documento non manda più condomini né anagrafiche',
         Permission::CREATE_ARCHIVE_DOCUMENTS->value,
         Permission::EDIT_OWN_ARCHIVE_DOCUMENTS->value,
     ]);
+    // Il portale lo apre solo chi ha un'anagrafica (decisione 134.4, `CheckHasAnagrafica`): senza, la
+    // pagina rimanda a completare i dati e non si arriva alle props che il test guarda.
+    Anagrafica::factory()->create(['user_id' => $user->id]);
 
     $documento = Documento::create([
         'name'         => 'Verbale di prova',

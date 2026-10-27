@@ -19,19 +19,20 @@ enum Role: string
     case UTENTE = 'utente';
 
     /**
-     * I ruoli che solo un amministratore può concedere.
+     * I soli ruoli che concede anche chi non è amministratore, e i soli che un account può avere per
+     * restare nella sua portata (decisione 134.1).
      *
-     * Governano l'installazione — pannello amministratore, gestione utenti — quindi assegnarli è
-     * un atto di governo, non una modifica anagrafica. Il collaboratore continua a creare le
-     * utenze dei condòmini con `utente` e `fornitore`, che è il suo mestiere.
+     * Sono i ruoli del portale: creare e correggere le utenze dei condòmini e dei fornitori è il mestiere
+     * del collaboratore. Ogni altro ruolo — `amministratore`, `collaboratore`, un ruolo su misura — dà
+     * poteri sull'installazione, e lo concede, lo toglie e lo gestisce solo un amministratore.
      *
      * @return array<int, string>
      */
-    public static function privilegiati(): array
+    public static function concedibiliDaTutti(): array
     {
         return [
-            self::AMMINISTRATORE->value,
-            self::COLLABORATORE->value,
+            self::UTENTE->value,
+            self::FORNITORE->value,
         ];
     }
 

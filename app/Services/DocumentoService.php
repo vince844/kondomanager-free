@@ -80,6 +80,13 @@ class DocumentoService
             return Documento::query()->whereRaw('0 = 1'); // empty result set
         }
 
+        // L'elenco mostra ciò che lo scaricamento lascia aprire (decisione 134.4): senza «Visualizza
+        // documenti archivio» `DocumentoPolicy::view` nega ogni documento, e la dashboard del portale,
+        // che non passa dalla policy delle categorie, segue qui la stessa regola.
+        if (! $anagrafica->user?->hasPermissionTo(Permission::VIEW_ARCHIVE_DOCUMENTS->value)) {
+            return Documento::query()->whereRaw('0 = 1');
+        }
+
         return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categorie'])
             ->where('is_published', true)
             ->where('is_approved', true)

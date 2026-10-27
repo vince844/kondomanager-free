@@ -8,6 +8,7 @@ use App\Models\Anagrafica;
 use App\Models\User;
 use App\Notifications\Documenti\ApprovedDocumentoNotification;
 use App\Notifications\Documenti\NewDocumentoNotification;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Traits\FilterByNotificationPreference;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Notification;
@@ -34,12 +35,16 @@ class SendApprovedDocumentoNotificationToUser implements ShouldQueue
                 Notification::send($creator, new ApprovedDocumentoNotification($documento, $user));
             }
 
-            if (!$documento->is_private && $documento->is_approved) {
-                $condominioIds = $documento->condomini->pluck('id')->toArray();
+            // Coda 198: la platea è quella di `DestinatariNotifica`, la stessa della creazione e della
+            // modifica: le persone collegate se il documento è indirizzato a qualcuno, altrimenti i
+            // condomìni collegati.
+            // Il creatore riceve l'avviso «approvato» qui sopra.
+            $platea = ! $documento->is_private
+                ? app(DestinatariNotifica::class)->perModello($documento)
+                : collect();
 
-                $query = Anagrafica::whereHas('condomini', fn ($q) =>
-                    $q->whereIn('condominio_id', $condominioIds)
-                );
+            if ($platea->isNotEmpty()) {
+                $query = Anagrafica::whereIn('id', $platea);
 
                 $anagrafiche = $this->filterByNotificationPreference($query, NotificationType::NEW_ARCHIVE_DOCUMENT->value)
                     ->get()

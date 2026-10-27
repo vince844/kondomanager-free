@@ -4,6 +4,7 @@ namespace App\Notifications\Comunicazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Comunicazione;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -36,6 +37,7 @@ use Illuminate\Support\Str;
 class UpdatedComunicazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public $comunicazione;
 
@@ -58,12 +60,12 @@ class UpdatedComunicazioneNotification extends LocalizedNotification implements 
         return (new MailMessage)
             ->subject(__('notifications.updated_communication.subject'))
             ->greeting(__('notifications.updated_communication.greeting', [
-                'name' => $notifiable->name ?? $notifiable->nome,
+                'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome),
             ]))
             ->line(__('notifications.updated_communication.line_1', [
-                'user' => $this->comunicazione->updatedBy?->name ?? $this->comunicazione->createdBy->name,
+                'user' => self::nomeComeTesto($this->comunicazione->updatedBy?->name ?? $this->comunicazione->createdBy->name),
             ]))
-            ->line('**' . __('notifications.updated_communication.object') . ':** ' . $this->comunicazione->subject)
+            ->line('**' . __('notifications.updated_communication.object') . ':** ' . self::testoComeTesto($this->comunicazione->subject))
             ->line('**' . __('notifications.updated_communication.priority') . ':** ' . Str::ucfirst($this->comunicazione->priority))
             ->action(
                 __('notifications.updated_communication.action'),

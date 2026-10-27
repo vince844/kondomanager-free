@@ -14,7 +14,8 @@ import { useComunicazioni } from '@/composables/useComunicazioni';
 import { usePermission } from '@/composables/permissions';
 import { Permission } from '@/enums/Permission';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { Pencil, Trash2, Loader2, SearchX, Plus, Megaphone } from 'lucide-vue-next';
+import { Pencil, Trash2, Loader2, SearchX, Plus, Megaphone, Lock } from 'lucide-vue-next';
+import { etichettaPrivacy } from '@/lib/pubblicazione';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { getPriorityMeta } from '@/types/comunicazioni';
 import type { PaginationMeta } from '@/types/pagination';
@@ -294,6 +295,15 @@ async function confirmDelete(): Promise<void> {
                     :class="getPriorityMeta(comunicazione.priority).colorClass"
                   />
                   {{ comunicazione.subject }}
+                  <!-- Coda 306: «Privata» è un'indicazione a parte, da `is_private`. -->
+                  <span
+                    v-if="etichettaPrivacy('comunicazioni', comunicazione.is_private)"
+                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500"
+                    :title="trans('comunicazioni.privacy.private_hint')"
+                  >
+                    <Lock class="w-3.5 h-3.5" />
+                    {{ trans(etichettaPrivacy('comunicazioni', comunicazione.is_private) ?? '') }}
+                  </span>
                 </Link>
 
                 <div class="flex items-center gap-1">

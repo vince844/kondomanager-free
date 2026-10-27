@@ -24,7 +24,16 @@ const props = defineProps<{
   permissions: Permission[];
   anagrafiche: Anagrafica[];
   roles: Role[];
+  /**
+   * L'account è nella portata di chi apre la scheda (Coda 258, decisione 134.1)? Dalla decisione 136.1 la
+   * scheda di un account fuori portata la apre solo l'amministratore, per cui è sempre nella sua: il server
+   * risponde 403 agli altri e qui arriva vero. Il ramo con il valore falso resta come difesa: email, ruolo e
+   * permessi aggiuntivi si mostrano senza farli cambiare.
+   */
+  gestibile: boolean;
 }>();
+
+const fuoriPortata = computed(() => props.gestibile !== true);
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Impostazioni', href: '/impostazioni' },
@@ -142,6 +151,13 @@ const submit = () => {
   <AppLayout :breadcrumbs="breadcrumbs">
     <UtentiLayout>
       <form @submit.prevent="submit">
+        <p
+          v-if="fuoriPortata"
+          data-test="fuori-portata"
+          class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+        >
+          {{ trans('users.label.fuori_portata') }}
+        </p>
         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
           <div class="sm:col-span-3">
             <Label for="name">{{ trans('users.label.name') }}</Label>
@@ -160,6 +176,7 @@ const submit = () => {
             <Input
               id="email"
               class="mt-1 block w-full"
+              :disabled="fuoriPortata"
               v-model="form.email"
               @focus="form.clearErrors('email')"
               autocomplete="email"
@@ -175,6 +192,7 @@ const submit = () => {
             <v-select
               :options="roles"
               label="name"
+              :disabled="fuoriPortata"
               v-model="form.roles"
               :reduce="(option: Role) => option.id"
               @update:modelValue="form.clearErrors('roles')"
@@ -209,6 +227,7 @@ const submit = () => {
             :options="selectablePermissions"
             label="name"
             :close-on-select="false"
+            :disabled="fuoriPortata"
             v-model="form.permissions"
             :placeholder="trans('users.placeholder.permissions')"
           >
@@ -219,6 +238,8 @@ const submit = () => {
               </div>
             </template>
           </v-select>
+          <!-- Un rifiuto del server sui permessi aggiuntivi si vede sotto la loro tendina, come per gli altri campi. -->
+          <InputError class="mt-2" :message="form.errors.permissions" />
           <p class="mt-1 text-sm text-gray-500">
             {{ trans('users.label.permission_notice') }}
           </p>
@@ -259,7 +280,7 @@ const submit = () => {
               </div>
               <ItemDescription>{{ permission.description }}</ItemDescription>
             </ItemContent>
-            <ItemActions>
+            <ItemActions v-if="!fuoriPortata">
               <Link
                 :href="route('users.permissions.destroy', [user.id, permission.id])"
                 method="delete"

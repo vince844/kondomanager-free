@@ -165,3 +165,58 @@ it('nel container con i documenti su S3 l\'installazione è sana', function () {
 
     $this->get('/up')->assertOk()->assertJsonPath('documenti', 'esterni');
 });
+
+/*
+ * Coda 268 — la versione nel dettaglio. Il dettaglio di `/up` dice anche quale versione gira, perché
+ * chi orchestra le istanze la legge da lì, dalla rete interna, anche da una risposta 503
+ * (`kondocloud_avviso_saas_versione_e_novita.md` §1). Il dettaglio va solo a chi chiama direttamente:
+ * una richiesta che porta intestazioni di inoltro è passata da un proxy, e dietro un proxy sulla
+ * stessa macchina senza `TRUSTED_PROXIES` l'indirizzo è 127.0.0.1 per chiunque arrivi da internet.
+ */
+it('Coda 268 — dalla rete privata il dettaglio dice la versione, sana o no', function () {
+    config(['app.version' => '9.9.9-prova']);
+
+    $this->withServerVariables(['REMOTE_ADDR' => '10.0.1.5'])
+        ->get('/up')
+        ->assertStatus(503)
+        ->assertJsonPath('versione', '9.9.9-prova');
+
+    file_put_contents($this->lock, now()->toDateTimeString());
+
+    $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])
+        ->get('/up')
+        ->assertOk()
+        ->assertJsonPath('versione', '9.9.9-prova');
+});
+
+it('Coda 268 — la chiamata dell\'orchestratore sulla rete interna, senza inoltro, riceve la versione', function () {
+    // Come il SaaS: `http://<nome del container>/up` dalla rete di Coolify, nessuna intestazione di
+    // inoltro, un indirizzo della rete dei container.
+    config(['app.version' => '9.9.9-prova']);
+    file_put_contents($this->lock, now()->toDateTimeString());
+
+    $this->call('GET', 'http://k3m9x2c8v7b1n4q6/up', [], [], [], ['REMOTE_ADDR' => '10.0.2.15'])
+        ->assertOk()
+        ->assertJsonPath('stato', 'ok')
+        ->assertJsonPath('versione', '9.9.9-prova')
+        ->assertJsonPath('installata', true);
+});
+
+it('Coda 268 — una richiesta passata da un proxy non riceve il dettaglio, nemmeno da loopback', function (string $intestazione, string $valore) {
+    config(['app.version' => '9.9.9-prova']);
+    file_put_contents($this->lock, now()->toDateTimeString());
+
+    $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])
+        ->withHeaders([$intestazione => $valore])
+        ->get('/up')
+        ->assertOk()
+        ->assertExactJson(['stato' => 'ok']);
+})->with([
+    'X-Forwarded-For' => ['X-Forwarded-For', '8.8.8.8'],
+    'Forwarded' => ['Forwarded', 'for=8.8.8.8;proto=https'],
+    'X-Forwarded-Proto' => ['X-Forwarded-Proto', 'https'],
+    'X-Forwarded-Host' => ['X-Forwarded-Host', 'condominio.example.it'],
+    'X-Forwarded-Port' => ['X-Forwarded-Port', '443'],
+    'X-Forwarded-Prefix' => ['X-Forwarded-Prefix', '/gestionale'],
+    'X-Real-IP' => ['X-Real-IP', '8.8.8.8'],
+]);

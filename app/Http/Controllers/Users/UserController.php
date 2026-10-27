@@ -30,7 +30,10 @@ use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
+use App\Traits\ValidaConcessioneRuoli;
+use App\Http\Middleware\ConfermaPasswordRecente;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class UserController extends Controller
 {
@@ -70,7 +73,7 @@ class UserController extends Controller
         ];
     }
 
-    use HandleFlashMessages;
+    use HandleFlashMessages, ValidaConcessioneRuoli;
 
     /**
      * Create a new controller instance.
@@ -214,10 +217,19 @@ class UserController extends Controller
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to create users.
      */
-    public function store(CreateUserRequest $request): RedirectResponse
+    public function store(CreateUserRequest $request): RedirectResponse|SymfonyResponse
     {
 
         Gate::authorize('create', User::class);
+
+        // Coda 261, decisione 134.1: concedere un ruolo diverso da `utente` e `fornitore`, o un permesso aggiuntivo
+        // che non è sui propri contenuti, chiede la password ridigitata da poco. Dopo la conferma si torna al
+        // modulo, che si compila di nuovo.
+        if (($this->concedeUnRuoloOltreIlPortale(null, $request->validated('roles'))
+                || $this->concedeUnPermessoAggiuntivo(null, $request->validated('permissions')))
+            && ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'utenti.create');
+        }
 
         try {
 
@@ -274,15 +286,25 @@ class UserController extends Controller
      */
     public function edit(User $utenti): Response
     {
-        Gate::authorize('update', User::class);
+        // Sull'istanza: la scheda di un account fuori dalla portata di chi non è amministratore è solo
+        // dell'amministratore (Coda 258, decisione 136.1).
+        Gate::authorize('update', $utenti);
 
         $utenti->load(['roles.permissions', 'permissions', 'anagrafica']);
 
+        // I ruoli che chi modifica può assegnare, più quelli che l'utente ha già: fuori dalla portata la tendina
+        // è bloccata, ma deve mostrare il ruolo che c'è, con i permessi che porta, e non un numero e «nessun
+        // permesso ereditato» (Coda 258). Rimandarlo com'è non concede niente.
+        $ruoli = $this->ruoliAssegnabili()->merge($utenti->roles)->unique('id')->values();
+
         return Inertia::render('utenti/ModificaUtente', [
             'user'        => new EditUserResource($utenti),
-            'roles'       => RoleResource::collection($this->ruoliAssegnabili()),
+            'roles'       => RoleResource::collection($ruoli),
             'permissions' => PermissionResource::collection($this->permessiAssegnabili()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            // Coda 258: chi arriva qui ha l'account nella sua portata (la policy sopra), quindi è vero. Resta come
+            // difesa: con il valore falso la pagina blocca email, ruolo e permessi aggiuntivi.
+            'gestibile'   => (bool) Auth::user()?->haNellaPortata($utenti),
         ]);
     }
 
@@ -302,10 +324,21 @@ class UserController extends Controller
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update users.
      */
-    public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
+    public function update(UpdateUserRequest $request, User $utenti): RedirectResponse|SymfonyResponse
     {
 
-        Gate::authorize('update', User::class);
+        // La richiesta l'ha già autorizzata sull'istanza (`UpdateUserRequest::authorize`); qui resta come difesa.
+        Gate::authorize('update', $utenti);
+
+        // Coda 261, decisione 134.1: come in creazione, e in più cambiare l'email di un account che non ha soltanto
+        // i ruoli `utente` e `fornitore`, o che ha un permesso aggiuntivo fuori da quelli sui propri contenuti.
+        // Rimandare i ruoli e i permessi che l'utente ha già, o togliergliene, non concede niente e non chiede niente.
+        if (($this->concedeUnRuoloOltreIlPortale($utenti, $request->validated('roles'))
+                || $this->concedeUnPermessoAggiuntivo($utenti, $request->validated('permissions'))
+                || $this->cambiaLEmailDiChiHaPoteri($utenti, $request->validated('email')))
+            && ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'utenti.edit', ['utenti' => $utenti->getKey()]);
+        }
 
         try {
 
@@ -348,6 +381,7 @@ class UserController extends Controller
      * della beta.53): finché la tendina offriva «amministratore» a chiunque avesse `EDIT_USERS`,
      * un collaboratore si promuoveva in tre clic. Ora la lista è filtrata qui e la stessa regola
      * è ripetuta lato server in `ValidaConcessioneRuoli` — questo è comodità, quella è la difesa.
+     * Chi non è amministratore assegna solo `utente` e `fornitore` (decisione 134.1).
      */
     private function ruoliAssegnabili()
     {
@@ -357,7 +391,7 @@ class UserController extends Controller
             return $ruoli;
         }
 
-        return $ruoli->reject(fn ($ruolo) => in_array($ruolo->name, RoleEnum::privilegiati(), true))->values();
+        return $ruoli->filter(fn ($ruolo) => in_array($ruolo->name, RoleEnum::concedibiliDaTutti(), true))->values();
     }
 
     /**

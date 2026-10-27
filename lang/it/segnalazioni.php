@@ -211,8 +211,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Manda una mail a tutti i condòmini del condominio che hanno le notifiche accese, per dirgli che la segnalazione è cambiata. Lasciala spenta se stai correggendo un refuso.",
-        'visibility' => 'Se impostata su privata, solo gli amministratori potranno visualizzare la segnalazione.',
+        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che la segnalazione è cambiata. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso la riceve comunque, perché per lui è nuova. Finché è una bozza o è in attesa di approvazione non parte niente; quando è pubblicata e approvata, la ricevono tutti i destinatari.",
+        'visibility' => 'Una bozza, o una segnalazione in attesa di approvazione, non compare ai condòmini; pubblicata e approvata, la vedono i condòmini a cui è indirizzata.',
         'priority'   => 'Imposta il livello di priorità per questa segnalazione in modo da aiutare gli amministratori a gestirla di conseguenza.',
         'status'     => 'Imposta lo stato attuale della segnalazione per tenere traccia dei progressi.',
         'comments'   => 'Consenti agli utenti di aggiungere commenti a questa segnalazione.',
@@ -252,5 +252,41 @@ return [
         'location_desc'    => 'Indica con precisione il condominio interessato e associa le anagrafiche dei residenti per facilitare le comunicazioni e i sopralluoghi.',
         'settings_title'   => 'Parametri Operativi',
         'settings_desc'    => 'Definisci il livello di urgenza, aggiorna lo stato di lavorazione della pratica e regola i permessi di visibilità sulla bacheca.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Code 304 e 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'In attesa di approvazione',
+        'draft'     => 'Bozza',
+        'published' => 'Pubblicata',
+        'needs_approval' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata, con lo scudo accanto al titolo nell\'elenco delle segnalazioni.',
+        'waiting_approver' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata da chi approva le segnalazioni.',
+    ],
+
+    'privacy' => [
+        'private'                 => 'Privata',
+        'private_hint'            => 'La vedono solo l\'autore, le persone collegate e l\'amministratore',
+        'guide_title'             => 'Chi la vede',
+        'guide_private'           => 'Questa segnalazione è privata: la vedono solo chi l\'ha aperta, le persone a cui è indirizzata e l\'amministratore.',
+        'guide_not_private'       => 'Questa segnalazione non è privata: la vedono i condòmini a cui è indirizzata (tutto il condominio, se non è indirizzata a persone) e l\'amministratore.',
+        'guide_private_pending'   => 'Questa segnalazione è privata. Per ora non la vede nessun altro, a parte l\'amministratore: le persone a cui è indirizzata la vedranno quando sarà pubblicata e approvata.',
+        'guide_not_private_pending' => 'Questa segnalazione non è privata. Per ora non la vede nessun altro, a parte l\'amministratore: la vedranno i condòmini a cui è indirizzata (tutto il condominio, se non è indirizzata a persone) quando sarà pubblicata e approvata.',
+        'make_public'             => 'Rendi pubblica',
+        'make_public_title'       => 'Rendere pubblica la segnalazione?',
+        'make_public_description' => 'La vedranno tutti i condòmini di :condominio, con il nome di :autore, e chi non la vedeva riceverà l\'avviso di una nuova segnalazione. :autore riceverà un avviso. Non c\'è un comando per renderla di nuovo privata.',
+        'make_public_description_pending' => 'La vedranno tutti i condòmini di :condominio, con il nome di :autore, quando sarà pubblicata e approvata: adesso non lo è. :autore riceverà un avviso. Non c\'è un comando per renderla di nuovo privata.',
+        'make_public_author_loses_access' => 'Dopo, :autore non la vedrà più nel portale: non risulta fra i condòmini di :condominio.',
+        'make_public_confirm'     => 'Rendi pubblica',
+        'already_public'          => 'La segnalazione è già pubblica.',
+        'success_make_public'     => 'La segnalazione ora è pubblica.',
+        'success_make_public_pending' => 'La segnalazione non è più privata: la vedranno tutti i condòmini quando sarà pubblicata e approvata.',
+        'error_make_public'       => 'Non è stato possibile rendere pubblica la segnalazione.',
+        'error_notify_author'     => 'La segnalazione non è più privata, ma l\'avviso all\'autore non è partito.',
+        'error_notify_residents'  => 'La segnalazione non è più privata, ma l\'avviso ai condòmini che non la vedevano non è partito.',
+        'error_notify_both'       => 'La segnalazione non è più privata, ma non sono partiti né l\'avviso all\'autore né quello ai condòmini che non la vedevano.',
+        'residents_required'      => 'Una segnalazione privata resta indirizzata ad almeno un residente. Per renderla visibile a tutto il condominio usa «Rendi pubblica» nella scheda della segnalazione.',
+        'residents_required_ask_approver' => 'Una segnalazione privata resta indirizzata ad almeno un residente. Per renderla visibile a tutto il condominio, la può rendere pubblica chi approva le segnalazioni.',
+    ],
 ];

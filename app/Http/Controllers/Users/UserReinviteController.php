@@ -2,19 +2,19 @@
 
 namespace App\Http\Controllers\Users;
 
-use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Notifications\NewUserEmailNotification;
 use App\Traits\HandleFlashMessages;
+use App\Traits\ValidaConcessioneRuoli;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class UserReinviteController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, ValidaConcessioneRuoli;
 
     /**
      * Reinvites a user by sending a new invitation email.
@@ -44,17 +44,22 @@ class UserReinviteController extends Controller
         // difetto — il rifiuto travestito da guasto — già pagato nelle beta.43, .48 e .49.
         //
         // Reinvitare **è** un modo di estromettere: la password del destinatario viene azzerata
-        // subito sotto. Chi non può concedere un ruolo privilegiato non deve poter chiudere fuori
-        // chi ce l'ha, altrimenti la regola sui ruoli si aggira di lato.
-        if ($user
-            && $user->hasAnyRole(RoleEnum::privilegiati())
-            && ! Auth::user()?->hasRole(RoleEnum::AMMINISTRATORE->value)) {
-            abort(403, __('policies.edit_users'));
+        // subito sotto. Chi non può cambiare l'email e i ruoli di un utente non lo chiude fuori
+        // nemmeno da qui: la regola è quella della scheda, la stessa da ogni porta
+        // (`User::haNellaPortata()`, Coda 258, decisione 134.1), e il rifiuto dice perché.
+        if ($this->bersaglioFuoriPortata($user)) {
+            abort(403, __('policies.users_privileged_target'));
         }
 
         try {
 
             $user = $user ?? User::where('email', $email)->firstOrFail();
+
+            // Un `remember_token` nuovo: il cookie «ricordami» degli altri dispositivi non riconosce più
+            // l'utente, e quel browser torna a essere quello di un ospite che può aprire il link nuovo.
+            // Con il token di prima e la password vuota il controllo del cookie finiva in un errore a
+            // ogni pagina di quel browser, compreso il link (Coda 202, punto 1).
+            $user->setRememberToken(Str::random(60));
 
             // Svuota la password fittizia (se presente) per i vecchi utenti inviati prima della modifica
             $user->update(['password' => null]);

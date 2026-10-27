@@ -10,6 +10,7 @@ use App\Models\Segnalazione;
 use App\Models\User;
 use App\Notifications\Segnalazioni\ApproveSegnalazioneNotification;
 use App\Notifications\Segnalazioni\NewSegnalazioneNotification;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Traits\FilterByNotificationPreference;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
@@ -79,9 +80,9 @@ class SendNewSegnalazioneNotificationToAdmin implements ShouldQueue
     /**
      * Retrieve a filtered collection of Anagrafica records related to the given Segnalazione.
      *
-     * This method selects all Anagrafica entries associated with the same Condominio
-     * as the Segnalazione, filters them by notification preferences for the NEW_TICKET type,
-     * removes the creator of the Segnalazione, and ensures uniqueness by email.
+     * La platea è quella di `DestinatariNotifica` (Coda 302): chi trova la segnalazione nell'elenco
+     * del portale, filtrata per le preferenze del tipo NEW_TICKET, senza il creatore e senza
+     * indirizzi doppi, con la stessa regola dell'elenco.
      *
      * @param  \App\Models\Segnalazione $segnalazione The Segnalazione instance to base the filtering on.
      * @return \Illuminate\Support\Collection A collection of filtered Anagrafica models.
@@ -89,10 +90,7 @@ class SendNewSegnalazioneNotificationToAdmin implements ShouldQueue
     private function getAnagrafiche(Segnalazione $segnalazione): Collection
     {
 
-        $anagraficheQuery = Anagrafica::with('condomini')
-            ->whereHas('condomini', function ($query) use ($segnalazione) {
-                $query->where('condominio_id', $segnalazione->condominio_id);
-            });
+        $anagraficheQuery = Anagrafica::whereIn('id', app(DestinatariNotifica::class)->perModello($segnalazione));
 
         $filtered = $this->filterByNotificationPreference($anagraficheQuery, NotificationType::NEW_TICKET->value)->get();
 

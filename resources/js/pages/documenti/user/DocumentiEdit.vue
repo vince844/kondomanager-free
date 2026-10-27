@@ -41,6 +41,10 @@ const form = useForm({
   // ha tre **ne cancellerebbe due**, senza errore e senza messaggio.
   categorie: (props.documento?.categorie ?? []).map((c: Categoria) => c.id),
   file: null as File | null,
+  // ⚠️ Il segno che questo modulo ha il campo delle categorie (Coda 307). Con un file nuovo il modulo
+  // parte come FormData, e lì un elenco vuoto non si scrive affatto: senza questo segno il server non
+  // distinguerebbe «tolte tutte» da «campo non mandato», e terrebbe le categorie senza dirlo.
+  categorie_nel_modulo: true,
 });
 
 /*

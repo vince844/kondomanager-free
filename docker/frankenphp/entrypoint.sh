@@ -2,7 +2,14 @@
 set -e
 
 # Configurazione .env
-if [ ! -f ".env" ]; then cp .env.example .env; fi
+# `.env.example` porta i valori per un server (produzione, debug spento). Questo contenitore è di
+# sviluppo: quando crea il `.env` lo rimette in ambiente locale con il debug acceso, e il seeder
+# crea l'amministratore delle guide. Un `.env` che c'è già non si tocca.
+if [ ! -f ".env" ]; then
+    cp .env.example .env
+    sed -i 's/^APP_ENV=.*/APP_ENV=local/' .env
+    sed -i 's/^APP_DEBUG=.*/APP_DEBUG=true/' .env
+fi
 sed -i 's/^#\?\s*DB_HOST=.*/DB_HOST=db/' .env
 sed -i 's/^#\?\s*DB_PORT=.*/DB_PORT=3306/' .env
 sed -i 's/^#\?\s*DB_DATABASE=.*/DB_DATABASE=kondomanager_dev/' .env

@@ -30,11 +30,15 @@ return [
     'suspend_users'             => "Não tens permissões suficientes para suspender utilizadores.",
     'users_self_action'         => "Não podes suspender nem eliminar a tua própria conta.",
     'users_last_admin'          => "Este é o último administrador ativo: sem essa conta ninguém poderia gerir a instalação.",
+    'users_last_admin_self'     => "És o último administrador ativo: sem a tua conta ninguém poderia gerir a instalação. Para a eliminar, é preciso primeiro outro administrador ativo.",
+    'users_privileged_target'   => 'Só um administrador gere esta conta: tem um perfil diferente de «utente» e «fornitore», ou permissões adicionais que tu não tens.',
+    'users_own_from_profile'    => 'Só um administrador gere a tua conta a partir daqui: o nome e o email alteram-se nas definições, em «Perfil», e a palavra-passe em «Palavra-passe».',
+    'users_revoke_not_owned'    => 'Não podes retirar uma permissão que tu próprio não tens.',
     // Roles
-    'view_roles'                => "You don't have sufficient permissions to view roles.",
-    'create_roles'              => "You don't have sufficient permissions to create a new role.",
-    'edit_roles'                => "You don't have sufficient permissions to edit roles.",
-    'delete_roles'              => "You don't have sufficient permissions to delete roles.",
+    'view_roles'                => 'Os perfis são geridos só por um administrador.',
+    'create_roles'              => 'Só um administrador pode criar um perfil.',
+    'edit_roles'                => 'Só um administrador pode alterar um perfil.',
+    'delete_roles'              => 'Só um administrador pode eliminar um perfil.',
     // Permissions
     'view_permissions'          => "You don't have sufficient permissions to view permissions.",
     // Archive documents
