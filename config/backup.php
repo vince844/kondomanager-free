@@ -155,6 +155,12 @@ return [
         // tutta l'app tranne le rotte di ripristino. In storage/framework
         // perché deve esistere anche se storage/app/backups viene ricreata.
         'marker_file' => env('BACKUP_RESTORE_MARKER_FILE', storage_path('framework/restore.lock')),
+        // Byte di istruzioni INSERT che l'import conferma insieme, in una
+        // transazione, prima di salvare il punto di ripresa: un passo che
+        // muore a metà lascia nel database solo i gruppi confermati, e la
+        // ripresa rifà al massimo un gruppo. Piccolo abbastanza per i limiti
+        // delle transazioni dei server in replica (Group Replication: 150 MB).
+        'import_group_bytes' => 8 * 1024 * 1024,
     ],
 
     'filename_prefix' => 'kondomanager-backup',

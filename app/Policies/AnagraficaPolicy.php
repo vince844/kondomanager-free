@@ -73,6 +73,27 @@ class AnagraficaPolicy
     }
 
     /**
+     * La tendina «Destinatari» dei moduli di comunicazioni, scadenze in agenda e documenti dell'archivio
+     * (`FetchAnagraficheController`, Coda 402): la chiede chi apre una di quelle pagine, cioè chi crea o modifica
+     * comunicazioni, scadenze in agenda o documenti dell'archivio, anche soltanto i propri. La tendina mostra il nome
+     * delle persone, non la rubrica: «Visualizza anagrafiche» da solo non basta e non serve.
+     */
+    public function sceglieDestinatari(User $user): Response
+    {
+        foreach ([
+            Permission::CREATE_COMUNICAZIONI, Permission::EDIT_COMUNICAZIONI, Permission::EDIT_OWN_COMUNICAZIONI,
+            Permission::CREATE_EVENTS, Permission::EDIT_EVENTS, Permission::EDIT_OWN_EVENTS,
+            Permission::CREATE_ARCHIVE_DOCUMENTS, Permission::EDIT_ARCHIVE_DOCUMENTS, Permission::EDIT_OWN_ARCHIVE_DOCUMENTS,
+        ] as $permesso) {
+            if ($user->checkPermissionTo($permesso->value)) {
+                return Response::allow();
+            }
+        }
+
+        return Response::deny(__('anagrafiche.permessi.destinatari'));
+    }
+
+    /**
      * Determine whether the user can restore the model.
      */
     public function restore(User $user, Anagrafica $anagrafica): bool

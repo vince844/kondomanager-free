@@ -137,17 +137,22 @@ it('Coda 261 — il login non vale come conferma', function () {
     $this->get(route('two-factor.show'))->assertRedirect(route('password.confirm'));
 });
 
-it('Coda 261 — dopo un 423 la conferma riporta alla pagina da cui partiva la richiesta', function () {
-    // Il 423 lo ricevono le chiamate della pagina della 2FA aperta da più di quindici minuti: dopo
-    // la conferma si torna lì, non alla dashboard.
+it('Coda 404 — dopo un 423 non resta un indirizzo di ritorno: la pagina conferma in JSON e rifà la chiamata, il server non ricorda dove tornare', function () {
+    // Il 423 lo ricevono le chiamate della pagina della 2FA aperta da più di quindici minuti. Con la Coda 261
+    // restava il ritorno alla pagina della 2FA per la conferma come pagina; dalla Coda 404 la finestra della
+    // pagina conferma in JSON (`ConfermaPasswordNellaPaginaTest`) e rifà la chiamata, e un indirizzo rimasto
+    // in sessione deciderebbe il rimando di una conferma qualunque.
     $this->actingAs($this->conDueFattori)
         ->withHeader('Referer', route('two-factor.show'))
         ->deleteJson(route('two-factor.disable'))
         ->assertStatus(423);
 
-    $this->actingAs($this->conDueFattori)
-        ->post('/confirm-password', ['password' => 'password'])
-        ->assertRedirect(route('two-factor.show'));
+    $this->assertFalse(session()->has('url.intended'));
+
+    // Una conferma come pagina, senza ritorno, va alla pagina di casa come dopo l'accesso.
+    $risposta = $this->actingAs($this->conDueFattori)->post('/confirm-password', ['password' => 'password']);
+
+    expect($risposta->headers->get('Location'))->not->toContain('two-factor');
 });
 
 it('Coda 261 — dopo un 423 una pagina di un altro sito non diventa la destinazione della conferma', function () {

@@ -5,11 +5,12 @@ import { watchDebounced } from '@vueuse/core'
 import { Link, usePage } from '@inertiajs/vue3'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CircleCheck, CircleX, Settings, UserPlus, X } from 'lucide-vue-next';
+import { CircleCheck, CircleX, Settings, ShieldCheck, ShieldOff, UserPlus, X } from 'lucide-vue-next';
 import DataTableFacetedFilter from '@/components/users/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { trans } from 'laravel-vue-i18n';
+import type { Component } from 'vue'
 import type { Table } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
 
@@ -25,7 +26,21 @@ const { table } = defineProps<{
   table: Table<User>
 }>();
 
-const page = usePage();
+const page = usePage<{ filters?: FiltriDalServer }>();
+
+/**
+ * I filtri che il server ha già applicato, come li rimanda dopo averli validati.
+ *
+ * ⚠️ Sono la fonte dello stato della barra all'apertura (vedi sotto): l'elenco arriva già filtrato
+ * quando l'indirizzo li porta (un segnalibro, la pagina ricaricata, una card), e una barra vuota
+ * sopra un elenco filtrato mente.
+ */
+type FiltriDalServer = {
+  name?: string | null
+  roles?: string[] | null
+  stato?: string[] | null
+  verifica?: string[] | null
+}
 
 const nameFilter = ref('')
 
@@ -41,8 +56,38 @@ const statiDisponibili = computed<Opzione[]>(() => [
   { value: 'sospeso', label: 'users.table.suspended', icon: CircleX },
 ])
 
+// La verifica dell'email è un filtro come lo stato: il valore sta in `email_verified_at`, che per la
+// barra è una colonna nascosta (lo scudo si vede già nella cella del nome).
+const verificaDisponibili = computed<(Opzione & { icon: Component })[]>(() => [
+  { value: 'verificato', label: 'users.table.verified', icon: ShieldCheck },
+  { value: 'non_verificato', label: 'users.table.unverified', icon: ShieldOff },
+])
+
 const ruoliColumn = table.getColumn('roles')
 const statoColumn = table.getColumn('suspended_at')
+const verificaColumn = table.getColumn('email_verified_at')
+
+/**
+ * La barra nasce allineata a ciò che il server ha già applicato: la ricerca, i badge dei filtri e il pulsante
+ * «Rimuovi filtri» sono quelli dell'elenco che si vede.
+ *
+ * ⚠️ **Prima** dell'osservatore che manda i filtri al server, così nasce già allineato e non vede nessun
+ * cambiamento: nessuna richiesta di rimbalzo. E non azzera niente: un filtro assente lascia lo stato com'è.
+ * Così il primo filtro toccato manda al server anche gli altri, quelli che l'elenco ha già applicato: nessuno si toglie.
+ */
+const filtriDelServer = page.props.filters
+if (filtriDelServer?.name) {
+  nameFilter.value = filtriDelServer.name
+}
+if (filtriDelServer?.roles?.length) {
+  ruoliColumn?.setFilterValue(filtriDelServer.roles)
+}
+if (filtriDelServer?.stato?.length) {
+  statoColumn?.setFilterValue(filtriDelServer.stato)
+}
+if (filtriDelServer?.verifica?.length) {
+  verificaColumn?.setFilterValue(filtriDelServer.verifica)
+}
 
 const ruoliFilter = computed(() => {
   const val = ruoliColumn?.getFilterValue()
@@ -54,12 +99,17 @@ const statoFilter = computed(() => {
   return Array.isArray(val) ? val : []
 })
 
+const verificaFilter = computed(() => {
+  const val = verificaColumn?.getFilterValue()
+  return Array.isArray(val) ? val : []
+})
+
 const { filtra } = useTabellaServer(() => route('utenti.index'));
 
 // Debounce search input (300ms delay)
 watchDebounced(
-  [nameFilter, ruoliFilter, statoFilter],
-  ([name, roles, stato]) => {
+  [nameFilter, ruoliFilter, statoFilter, verificaFilter],
+  ([name, roles, stato, verifica]) => {
     // Ogni filtro va passato anche quando è vuoto: `null` significa **togli**. La richiesta
     // riparte da ciò che c'è nell'URL, quindi un filtro omesso resterebbe quello di prima e non
     // si potrebbe più svuotare. Per i filtri a scelta multipla il vuoto è l'array senza elementi.
@@ -67,6 +117,7 @@ watchDebounced(
       name: name || null,
       roles: roles.length > 0 ? roles : null,
       stato: stato.length > 0 ? stato : null,
+      verifica: verifica.length > 0 ? verifica : null,
     })
   },
   { debounce: 300 }
@@ -76,6 +127,7 @@ const rimuoviFiltri = () => {
   nameFilter.value = ''
   ruoliColumn?.setFilterValue(undefined)
   statoColumn?.setFilterValue(undefined)
+  verificaColumn?.setFilterValue(undefined)
 }
 
 </script>
@@ -111,8 +163,18 @@ const rimuoviFiltri = () => {
           class="w-full lg:w-auto"
         />
 
+        <DataTableFacetedFilter
+          v-if="verificaColumn"
+          :column="verificaColumn"
+          :title="trans('users.table.verification')"
+          :options="verificaDisponibili"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
+        />
+
         <Button
-          v-if="nameFilter || ruoliFilter.length || statoFilter.length"
+          v-if="nameFilter || ruoliFilter.length || statoFilter.length || verificaFilter.length"
           variant="ghost"
           class="h-8 px-2 lg:px-3"
           @click="rimuoviFiltri"

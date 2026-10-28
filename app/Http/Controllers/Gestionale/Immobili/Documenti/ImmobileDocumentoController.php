@@ -16,15 +16,17 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\OrdinaElenco;
 use App\Traits\PaginaElenco;
 use App\Traits\HasEsercizio;
+use App\Traits\ScaricaEApprovaDocumento;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 class ImmobileDocumentoController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, OrdinaElenco, PaginaElenco;
+    use HandleFlashMessages, HasEsercizio, OrdinaElenco, PaginaElenco, ScaricaEApprovaDocumento;
 
     /**
      * Display a paginated listing of documents for the specified immobile.
@@ -228,40 +230,21 @@ class ImmobileDocumentoController extends Controller
     }
 
     /**
-     * Show the form for editing the first document of the specified immobile.
+     * Il modulo di modifica del documento dell'indirizzo.
      *
-     * This method displays the document editing form for the first document
-     * associated with a specific immobile within a condominio context.
-     * It prepares the necessary data for the frontend form including the current
-     * esercizio for navigation context and transforms the models into API resources.
-     *
-     * Note: This method retrieves only the first document of the immobile.
-     * For editing specific documents, consider adding a document parameter.
+     * Il menù della riga apre il modulo con l'unità e il documento, e il modulo salva sul documento che riceve
+     * (`DocumentiEdit.vue`, `props.documento.id`): si apre quel documento, anche quando l'unità ne ha più d'uno. Il
+     * documento di un'altra unità, da questo indirizzo, non c'è (404): le rotte annidate del gestionale cercano il
+     * documento dentro l'unità (`scopeBindings()` del gruppo, `Immobile` mappa `documento` sulla relazione `documenti`).
      *
      * @param Condominio $condominio The condominio instance (from route binding)
-     * @param Immobile $immobile The immobile instance (from route binding) whose first document will be edited
-     * 
+     * @param Immobile $immobile The immobile instance (from route binding)
+     * @param Documento $documento The documento of the immobile to edit (from the scoped route binding)
+     *
      * @return Response Returns an Inertia.js response rendering the document editing form
-     * 
-     * @uses Condominio To establish the current condominio context
-     * @uses Immobile To access the immobile's documents relationship
-     * @uses DocumentoResource For transforming document data for the frontend
-     * @uses ImmobileResource For transforming immobile data for the frontend
-     * 
-     * @example
-     * // Typical request: GET /condomini/1/immobili/5/documenti/edit
-     * // Returns the document editing form for the first document of immobile ID 5 in condominio ID 1
-     * 
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If condominio or immobile not found
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If no documents exist for the immobile
-     * 
-     * @todo Consider adding a $documento parameter to edit specific documents instead of first()
      */
-    public function edit(Condominio $condominio, Immobile $immobile): Response
+    public function edit(Condominio $condominio, Immobile $immobile, Documento $documento): Response
     {
-
-        $documento = $immobile->documenti()->first();
-
         // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
 
@@ -464,5 +447,34 @@ class ImmobileDocumentoController extends Controller
             ])->with($this->flashSuccess(__('documenti.error_delete_document')));
 
         }   
+    }
+
+    /**
+     * Scarica un documento dell'unità, dalla sua scheda: con «Visualizza documenti archivio», come gli allegati delle
+     * fatture (`FatturaPassivaController::download`). Il documento di un'altra unità, da questo indirizzo, non c'è (404).
+     *
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse|\Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse
+     */
+    public function download(Condominio $condominio, Immobile $immobile, Documento $documento)
+    {
+        // L'unità è del condominio dell'indirizzo (le rotte annidate del gruppo lo cercano già lì: qui resta come difesa).
+        abort_unless((int) $immobile->condominio_id === (int) $condominio->id, 404);
+
+        Gate::authorize('view', $documento);
+
+        return $this->scaricaIlDocumento($documento);
+    }
+
+    /**
+     * Approva un documento dell'unità, o ne toglie l'approvazione, dalla sua scheda: con «Approva documenti archivio», il
+     * permesso dell'interruttore. Il documento di un'altra unità, da questo indirizzo, non c'è (404).
+     */
+    public function approvazione(Condominio $condominio, Immobile $immobile, Documento $documento): RedirectResponse
+    {
+        abort_unless((int) $immobile->condominio_id === (int) $condominio->id, 404);
+
+        Gate::authorize('approve', $documento);
+
+        return $this->alternaLApprovazione($documento);
     }
 }

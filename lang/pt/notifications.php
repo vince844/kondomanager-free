@@ -40,7 +40,7 @@ return [
         'account_exists' => 'Já existe uma conta com este email: inicie sessão ou recupere a senha se não se lembrar dela.',
     ],
 
-    // Novo usuário criado pelo administrador (NewUserEmailNotification)
+    // Novo utilizador criado pelo administrador (NewUserEmailNotification)
     'new_user_created' => [
         'subject'   => 'Bem-vindo ao :appName',
         'greeting'  => 'Olá :name,',

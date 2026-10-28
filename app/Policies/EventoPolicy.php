@@ -106,6 +106,19 @@ class EventoPolicy
             : Response::deny(__('policies.report_payment_events'));
     }
 
+    /**
+     * «Rifiuta» e «Completa» della casella delle attività del pannello (`Dashboard\ActionInboxController`, Coda 402): un
+     * compito della casella è una scadenza in agenda, e chiuderlo la modifica. Chiede «Modifica scadenza in agenda»;
+     * la casella si legge con `viewAny`, come le scadenze della dashboard del pannello. Che cosa è un compito della
+     * casella lo decide il controller.
+     */
+    public function chiudiCompito(User $user): Response
+    {
+        return $user->hasPermissionTo(Permission::EDIT_EVENTS->value)
+            ? Response::allow()
+            : Response::deny(__('policies.edit_events'));
+    }
+
     public function approve(User $user, Evento $evento): Response
     {
         return $user->hasPermissionTo(Permission::APPROVE_EVENTS->value)  

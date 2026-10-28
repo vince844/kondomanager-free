@@ -14,6 +14,19 @@ return [
     'error_detach_anagrafica'            => "An error occurred while detaching the record from the supplier.",
     'error_delete_has_invoices'          => "Unable to delete: the supplier has invoices registered in the system. To avoid compromising the accounting, we recommend changing the \"Status\" to \"Inactive\".",
 
+    // La página de las deudas anteriores de un proveedor.
+    'situazione_debitoria' => [
+        'debito_estinto' => "{1} Esta deuda no se puede eliminar: la usa la factura anterior :fatture, registrada para saldarla. Mientras exista la factura, la deuda se queda.|[2,*] Esta deuda no se puede eliminar: la usan las facturas anteriores :fatture, registradas para saldarla. Mientras existan las facturas, la deuda se queda.",
+    ],
+
+    // Las páginas y las acciones de los proveedores del panel, para quien no tiene el permiso (FornitorePolicy, con los permisos de las fichas).
+    'permessi' => [
+        'view' => "No tienes permisos suficientes para ver los proveedores registrados.",
+        'create' => "No tienes permisos suficientes para crear proveedores.",
+        'update' => "No tienes permisos suficientes para modificar los proveedores registrados.",
+        'delete' => "No tienes permisos suficientes para eliminar los proveedores registrados.",
+    ],
+
     /* ------------------------------------------------------------------
      | Headings, Titles and Descriptions
      | ------------------------------------------------------------------ */
@@ -95,6 +108,12 @@ return [
      | Categorías de proveedor (1.11.0-beta.9)
      | ------------------------------------------------------------------ */
     'categorie' => [
+        // La página y las acciones de las categorías, para quien no tiene el permiso (CategoriaFornitorePolicy).
+        'permessi' => [
+            'view' => "No tienes permisos suficientes para ver las categorías de proveedores.",
+            'create' => "No tienes permisos suficientes para crear las categorías de proveedores.",
+            'update' => "No tienes permisos suficientes para renombrar o eliminar las categorías de proveedores.",
+        ],
         'success_create'      => "La categoría se ha creado correctamente.",
         'error_create'        => "Se ha producido un error al crear la categoría.",
         'success_update'      => "La categoría se ha actualizado correctamente.",

@@ -409,7 +409,7 @@ test('riprendi e annulla rispondono al token anche con la sessione di prima di u
 
     $admin->forceFill(['password' => $password()])->save();
 
-    // «Riprendi» emette un token nuovo, che sostituisce il primo.
+    // «Riprendi» con il token risponde con lo stesso token (Coda 400), quello con cui la finestra poi annulla.
     $token = $this->withSession($sessione)
         ->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token])
         ->assertOk()

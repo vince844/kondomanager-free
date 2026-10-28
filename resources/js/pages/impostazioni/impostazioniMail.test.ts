@@ -1,18 +1,20 @@
 // @vitest-environment jsdom
 
 /**
- * Coda 261 — la prova della posta, a conferma della password scaduta, porta alla pagina della
- * conferma invece di mostrare un errore di connessione.
+ * Coda 261 e 404 — la prova della posta, a conferma della password scaduta, apre la finestra della
+ * conferma invece di mostrare un errore di connessione, e dopo la conferma rifà la stessa prova.
  *
  * Salvare e provare la posta chiede la password ridigitata da non più di quindici minuti. Il
- * salvataggio è un modulo Inertia, e il server lo rimanda da solo alla conferma; la prova è una
- * chiamata `axios`, che riceve un 423 in JSON. Senza questo passaggio la pagina lo mostrava come un
- * errore del server di posta («Password confirmation required.»), che non lo è.
+ * salvataggio è un modulo Inertia; la prova è una chiamata `axios`, che riceve un 423 in JSON. Senza questo
+ * passaggio la pagina lo mostrava come un errore del server di posta («Password confirmation required.»), che
+ * non lo è. Con la Coda 261 la pagina lasciava il posto alla schermata della conferma e il modulo intero (server,
+ * utente, password, indirizzo di prova) si perdeva; ora la finestra si apre sopra il modulo e la prova riparte
+ * con gli stessi dati.
  */
 
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { reactive } from 'vue';
-import { shallowMount } from '@vue/test-utils';
+import { flushPromises, shallowMount } from '@vue/test-utils';
 
 const visit = vi.fn();
 const post = vi.fn();
@@ -31,8 +33,10 @@ vi.mock('axios', () => ({ default: { post } }));
 (globalThis as Record<string, unknown>).route = (nome: string) => `/${nome}`;
 
 const PaginaPosta = (await import('./impostazioniMail.vue')).default;
+const { annullaConferma, confermaPasswordAperta, confermaRiuscita } = await import('@/composables/useConfermaPassword');
 
 type Stato = {
+    isTesting: boolean;
     testEmail: string;
     testStatus: string | null;
     errorMessage: string;
@@ -47,17 +51,57 @@ function monta(settings: Record<string, unknown> = { mail_driver: 'smtp' }, pass
 }
 
 describe('impostazioniMail', () => {
-    test('Coda 261 — la prova con il 423 porta alla conferma della password, senza errore', async () => {
+    beforeEach(() => annullaConferma());
+
+    test('Coda 404 — la prova con il 423 apre la finestra della conferma, senza lasciare la pagina e senza errore', async () => {
         visit.mockClear();
-        post.mockRejectedValueOnce({ response: { status: 423, data: { message: 'Password confirmation required.' } } });
+        post.mockReset();
+        post.mockRejectedValueOnce({ response: { status: 423, data: { message: 'Password confirmation required.', conferma_password: true } } });
         const stato = monta();
         stato.testEmail = 'prova@example.com';
 
         await stato.runTest();
 
-        expect(visit).toHaveBeenCalledWith('/password.confirm');
+        expect(confermaPasswordAperta.value).toBe(true);
+        expect(visit).not.toHaveBeenCalled();
         expect(stato.testStatus).toBeNull();
         expect(stato.errorMessage).toBe('');
+        // Il pulsante non resta bloccato sotto la finestra.
+        expect(stato.isTesting).toBe(false);
+    });
+
+    test('Coda 404 — dopo la conferma la prova riparte con gli stessi dati, anche se il modulo nel frattempo è cambiato', async () => {
+        post.mockReset();
+        post.mockRejectedValueOnce({ response: { status: 423, data: { message: 'Password confirmation required.', conferma_password: true } } });
+        post.mockResolvedValueOnce({ data: { success: true } });
+        const stato = monta({ mail_driver: 'smtp', mail_host: 'smtp.esempio.it' });
+        stato.testEmail = 'prova@esempio.it';
+        await stato.runTest();
+
+        stato.testEmail = 'altra@esempio.it';
+        confermaRiuscita();
+        await flushPromises();
+
+        expect(post).toHaveBeenCalledTimes(2);
+        expect(post.mock.calls[1]).toEqual(post.mock.calls[0]);
+        expect(post.mock.calls[1][1]).toMatchObject({ mail_host: 'smtp.esempio.it', test_email: 'prova@esempio.it' });
+        expect(stato.testStatus).toBe('success');
+        expect(confermaPasswordAperta.value).toBe(false);
+    });
+
+    test('Coda 404 — con «Annulla» la prova non riparte e la pagina resta com\'era', async () => {
+        post.mockReset();
+        post.mockRejectedValueOnce({ response: { status: 423, data: { message: 'Password confirmation required.', conferma_password: true } } });
+        const stato = monta();
+        stato.testEmail = 'prova@example.com';
+        await stato.runTest();
+
+        annullaConferma();
+        confermaRiuscita();
+        await flushPromises();
+
+        expect(post).toHaveBeenCalledTimes(1);
+        expect(stato.testStatus).toBeNull();
     });
 
     test('Coda 261 — un errore vero del server di posta resta un errore della pagina', async () => {

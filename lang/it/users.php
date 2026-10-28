@@ -72,6 +72,23 @@ return [
         'no_permissions'     => 'Nessun permesso',
         'verified_tooltip'   => 'Utente verificato - clicca per revocare verifica',
         'unverified_tooltip' => 'Utente non verificato - clicca per verificare',
+        'verified_label'     => 'Utente verificato',
+        'unverified_label'   => 'Utente non verificato',
+        // Coda 398: il filtro «Verifica» accanto a «Stato».
+        'verification'       => 'Verifica',
+        'verified'           => 'Verificati',
+        'unverified'         => 'Non verificati',
+    ],
+    /* ------------------------------------------------------------------
+     | Stats: le card sopra l'elenco (Coda 398)
+     | ------------------------------------------------------------------ */
+    'stats' => [
+        'total'          => 'Totale utenti',
+        'to_verify'      => 'Da verificare',
+        'suspended'      => 'Sospesi',
+        'total_hint'     => 'Mostra tutti gli utenti, senza filtri',
+        'to_verify_hint' => 'Mostra gli utenti con l\'email da verificare',
+        'suspended_hint' => 'Mostra gli utenti sospesi',
     ],
     /* ------------------------------------------------------------------
      | Labels for fields

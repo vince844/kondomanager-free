@@ -16,3 +16,18 @@ export interface User {
     roles: Role[] 
     permissions: Permission[] 
   }
+
+/** I tre numeri sopra l'elenco: contano l'archivio intero, non le righe filtrate (Coda 398). */
+export interface StatisticheUtenti {
+    totale: number
+    da_verificare: number
+    sospesi: number
+}
+
+/** I filtri dell'elenco come li manda la barra: `null` significa «togli questo filtro». */
+export interface FiltriElencoUtenti {
+    name: string | null
+    roles: string[] | null
+    stato: string[] | null
+    verifica: string[] | null
+}

@@ -17,9 +17,10 @@
  * - accendere la registrazione pubblica quando il ruolo dei nuovi iscritti non è `utente` né `fornitore`.
  *
  * Solo quando l'azione lo chiede: la scheda aperta e inviata, un permesso tolto, l'email di un condòmino, la
- * registrazione accesa con il ruolo dei condòmini non chiedono niente. Ogni richiesta è mandata come la manda
- * la sua pagina, e dopo la conferma si torna alla pagina del modulo, con il meccanismo delle altre azioni della
- * Coda 261 (`ConfermaPasswordRecente`, 423 a chi chiede JSON).
+ * registrazione accesa con il ruolo dei condòmini non chiedono niente. Ogni richiesta è un modulo mandato dal
+ * browser, senza le intestazioni di Inertia: riceve il rimando alla pagina di conferma, e dopo la conferma si torna
+ * alla pagina del modulo (Coda 261, `ConfermaPasswordRecente`). Chi chiede JSON riceve un 423, e le richieste
+ * Inertia della pagina anche (Coda 404, `ConfermaPasswordNellaPaginaTest.php`).
  *
  * ## Cosa questo file NON copre
  *

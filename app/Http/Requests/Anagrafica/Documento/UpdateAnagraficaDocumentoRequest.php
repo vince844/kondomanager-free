@@ -3,7 +3,9 @@
 namespace App\Http\Requests\Anagrafica\Documento;
 
 use App\Support\LimiteCaricamento;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * La modifica di un documento sulla scheda di un'anagrafica.
@@ -14,9 +16,14 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class UpdateAnagraficaDocumentoRequest extends FormRequest
 {
-    public function authorize(): bool
+    /**
+     * Il permesso prima delle regole (Coda 402): la modifica di un documento della persona chiede la `update` di
+     * `AnagraficaPolicy` sulla persona della rotta, come il suo modulo di modifica. Chi non la ha riceve il rifiuto
+     * con la sua frase e nessun esito delle regole. `AnagraficaDocumentoController` la chiede di nuovo.
+     */
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('update', $this->route('anagrafica'));
     }
 
     public function rules(): array

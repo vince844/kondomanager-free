@@ -36,6 +36,11 @@ const { generateRoute, hasPermission } = usePermission();
 // consultare; agli altri «Indietro» e «Annulla» portano alla dashboard del pannello, e la briciola dell'elenco non c'è.
 const consultaElenco = computed(() => hasPermission([Permission.VIEW_ANAGRAFICHE]));
 const ritorno = computed(() => route(generateRoute(consultaElenco.value ? 'anagrafiche.index' : 'dashboard')));
+
+// «Vai in gestione condomini per registrarlo» porta all'elenco dei condomìni, che chiede «Visualizza condomini», e da lì
+// la registrazione chiede «Crea condomini» (`CondominioPolicy`, Coda 403): il collegamento e «per registrarlo» compaiono
+// solo con tutti e due i permessi; senza, la frase dice soltanto quali condomìni compaiono nella tendina.
+const puoRegistrareCondomini = computed(() => hasPermission([Permission.VIEW_CONDOMINI]) && hasPermission([Permission.CREATE_CONDOMINI]));
 const testoRitorno = computed(() => consultaElenco.value ? "Indietro all'elenco" : trans('anagrafiche.actions.back_to_dashboard'));
 
 // Dopo «Salva», chi non consulta l'elenco torna qui con il messaggio (`AnagraficaController::dopoIlSalvataggio`). Il modulo
@@ -183,7 +188,12 @@ const submit = () => {
                                             
                                             <div class="text-xs">
                                                 <span class="font-semibold text-slate-700 dark:text-slate-300">Manca un condominio?</span><br>
-                                                Vai in <Link :href="route('condomini.index')" class="text-indigo-600 dark:text-indigo-400 hover:underline">gestione condomini</Link> per registrarlo a sistema.
+                                                <template v-if="puoRegistrareCondomini">
+                                                    Vai in <Link :href="route('condomini.index')" class="text-indigo-600 dark:text-indigo-400 hover:underline">gestione condomini</Link> per registrarlo a sistema.
+                                                </template>
+                                                <template v-else>
+                                                    {{ trans('anagrafiche.tooltip.buildings_missing_registered_only') }}
+                                                </template>
                                             </div>
                                         </div>
                                     </div>

@@ -394,8 +394,9 @@ class RestoreManager
         try {
             $result = $this->importer->importStep($dumpPath, $state['checkpoint']['import'] ?? [], $budget);
         } catch (ImportInterruptedException $e) {
-            // Il punto di ripresa si salva anche sull'errore, all'istruzione che non è riuscita: «Riprendi»
-            // riparte da lì e non riesegue quelle già scritte. Il ripristino fallisce con l'errore vero.
+            // Il punto di ripresa si salva anche sull'errore, dove finisce l'ultima istruzione confermata nel
+            // database: «Riprendi» riparte da lì e non riesegue quelle già scritte. Il ripristino fallisce con
+            // l'errore vero.
             $this->patchCheckpoint($state, ['import' => $e->checkpoint]);
 
             throw $e->getPrevious() ?? $e;

@@ -197,6 +197,21 @@ return [
     ],
 
     /* ------------------------------------------------------------------
+     | La finestra che chiede di nuovo la password (Coda 404): compare sopra la
+     | pagina quando un'azione sensibile la richiede, e l'azione riparte da sola.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Conferma la tua password',
+        'description'    => 'Per continuare ridigita la tua password. Dopo la conferma l\'azione che hai chiesto riparte da sola, senza bisogno di riscrivere niente. Se annulli, non viene eseguita e quello che hai scritto resta com\'è.',
+        'cancel'         => 'Annulla',
+        'confirm'        => 'Conferma',
+        'too_many'       => 'Troppi tentativi in poco tempo: riprova fra un minuto.|Troppi tentativi in poco tempo: riprova fra :count minuti.',
+        'too_many_later' => 'Troppi tentativi in poco tempo: riprova più tardi.',
+        'error_generic'  => 'Non è stato possibile controllare la password. Riprova.',
+        'session_ended'  => 'La sessione è scaduta: ricarica la pagina e, se serve, accedi di nuovo.',
+    ],
+
+    /* ------------------------------------------------------------------
      | Status Messages
      | ------------------------------------------------------------------ */
     'status' => [

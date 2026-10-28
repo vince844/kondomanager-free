@@ -271,12 +271,12 @@ return [
         'select_building_description' => 'Selecione o condomínio a abrir automaticamente após o início de sessão.',
         'user_registration_title' => 'Ativar registo de utilizadores',
         'user_registration_description' => 'Se ativado, os utilizadores podem registar-se a partir da página inicial.',
-        'default_role_title' => 'Função padrão para novos usuários',
-        'default_role_description' => 'A função atribuída automaticamente aos usuários que se registram pelo site. Quem aceita um convite só a recebe se for «utente» ou «fornitore»; caso contrário, recebe «utente».',
+        'default_role_title' => 'Perfil padrão para novos utilizadores',
+        'default_role_description' => 'O perfil atribuído automaticamente aos utilizadores que se registram pelo site. Quem aceita um convite só o recebe se for «utente» ou «fornitore»; caso contrário, recebe «utente».',
         'default_per_page_title' => 'Linhas por página nas listas',
         'default_per_page_description' => 'Quantas linhas as tabelas mostram a quem ainda não escolheu. A escolha de cada um continua a valer, lista a lista: quem a alterar volta a encontrá-la ao regressar.',
         'force_comment_moderation_title' => 'Forçar moderação de comentários',
-        'force_comment_moderation_description' => 'Se ativado, todos os comentários de usuários normais exigirão aprovação de um administrador antes de serem publicados e visíveis.',
+        'force_comment_moderation_description' => 'Se ativado, todos os comentários de utilizadores normais exigirão aprovação de um administrador antes de serem publicados e visíveis.',
 
         'mail_settings_title' => 'Configuração de email',
         'mail_settings_description' => 'Escolha o método de envio, configure as credenciais e teste a ligação.',
@@ -351,7 +351,7 @@ return [
         'restore_account_password' => 'A sua palavra-passe de acesso',
         'mail_from_address' => 'ex: geral@seu-dominio.pt',
         'test_recipient' => 'Inserir e-mail para o teste',
-        'select_role' => 'Selecione uma função',
+        'select_role' => 'Selecione um perfil',
         'print_legal_note' => 'Ex: Profissão exercida nos termos da lei de 14 de janeiro de 2013, n.4 - NIF 01234567890 - Apólice RC n. XYZ',
 
         'language' => [
@@ -448,6 +448,6 @@ return [
 
     // Coda 258, decisione 134.1: la nota accanto al ruolo predefinito dei nuovi utenti, per chi non è amministratore.
     'ruolo_registrazione' => [
-        'solo_amministratore' => 'Só um administrador pode alterar a função padrão para novos usuários.',
+        'solo_amministratore' => 'Só um administrador pode alterar o perfil padrão para novos utilizadores.',
     ],
 ];

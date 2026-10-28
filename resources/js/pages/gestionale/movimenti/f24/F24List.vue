@@ -27,6 +27,7 @@ import {
     AlertTriangle, BookOpen, CalendarClock, CheckCircle2, Landmark, RefreshCw, Receipt,
 } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
@@ -63,7 +64,10 @@ const props = defineProps<{
     fornitori_da_classificare: { id: number | null; ragione_sociale: string }[];
 }>();
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
+// La scheda di modifica del fornitore chiede «Modifica anagrafiche» (`FornitorePolicy::update`, Coda 402): senza, il
+// nome del fornitore da classificare resta, senza il collegamento.
+const puoModificareFornitori = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 const { euro } = useCurrencyFormatter();
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -213,7 +217,7 @@ const calcola = () => {
                         <ul class="space-y-1 pt-1">
                             <li v-for="f in daClassificare" :key="f.id ?? f.ragione_sociale">
                                 <Link
-                                    v-if="f.id"
+                                    v-if="f.id && puoModificareFornitori"
                                     :href="route(generateRoute('fornitori.edit'), { fornitore: f.id })"
                                     target="_blank"
                                     class="font-bold underline underline-offset-2"

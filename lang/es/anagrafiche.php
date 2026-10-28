@@ -22,6 +22,8 @@ return [
         'create' => "No tienes permisos suficientes para crear fichas.",
         'update' => "No tienes permisos suficientes para modificar las fichas registradas.",
         'delete' => "No tienes permisos suficientes para eliminar las fichas registradas.",
+        // La lista «Destinatarios» de comunicados, vencimientos y documentos (AnagraficaPolicy::sceglieDestinatari).
+        'destinatari' => "No tienes permisos suficientes para elegir los destinatarios entre las fichas.",
     ],
 
     /* ------------------------------------------------------------------
@@ -118,6 +120,7 @@ return [
     'tooltip' => [
         'buildings_header'      => 'Select and associate buildings',
         'buildings_description' => 'You can select one or more buildings to associate with this resident record. This will allow the resident to view data related to the associated buildings.',
+        'buildings_missing_registered_only' => "Aquí solo aparecen los condominios ya registrados en el sistema.",
         'system_notifications'  => 'System notifications',
         'primary_email_desc'    => 'All system notifications for this resident (e.g. new tickets) will be sent to this address. The email address the associated user uses to log in may be different.',
         'secondary_email_desc'  => 'Additional address to receive a copy of system notifications sent to this resident.',

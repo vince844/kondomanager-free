@@ -184,7 +184,7 @@ return [
             'privileged_target' => 'Só um administrador pode alterar as permissões adicionais desta conta: tem um perfil diferente de «utente» e «fornitore», ou permissões adicionais que tu não tens.',
         ],
         'default_user_role' => [
-            'only_admin' => 'Só um administrador pode alterar a função padrão para novos usuários.',
+            'only_admin' => 'Só um administrador pode alterar o perfil padrão para novos utilizadores.',
         ],
         'email' => [
             'required' => 'O campo :attribute é obrigatório',

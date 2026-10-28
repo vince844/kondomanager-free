@@ -655,8 +655,8 @@ it('DS1 con il box, il rifiuto dell\'accrescimento sulla pertinenza — dopo la 
 
 // Rilievo basso «Rifiuto dell'accrescimento con il registro (DA_REGISTRO) e più nudi» (secondo giro, lente testi). NON copre: la riserva
 // seguita dalla successione del nudo (nudi dal registro con la consolida per quota, variante 2 della sonda), la pertinenza, la guida
-// (PassaggioProprietaGuide.vue:118), la scheda (dove con più nudi la casella non c'è); non rimette in discussione il rifiuto (decisione
-// 67.2), né registra l'estinzione.
+// (PassaggioProprietaGuide.vue, scheda «Usufrutto», sezione «Quando il programma si ferma»), la scheda (dove con più nudi la casella
+// non c'è); non rimette in discussione il rifiuto (decisione 67.2), né registra l'estinzione.
 it('DS1, il rifiuto dell\'accrescimento con l\'usufrutto nato da una riserva registrata — Piero e Rita pieni al 50 % riservano l\'usufrutto il 1/6/2025, donando la nuda ad Anna e a Bruno: il rifiuto non dice che il programma non sa quale usufrutto stia sopra quale nuda, e la parte di Piero torna piena ad Anna, come dice il passaggio da cui è nato il suo usufrutto', function () {
     $s = ruScenario('prima_rata', 0, soggetto: 'usufruttuario', genera: false);
     $s['v']->forceFill(['nome' => 'Piero Usufruttuario'])->save();

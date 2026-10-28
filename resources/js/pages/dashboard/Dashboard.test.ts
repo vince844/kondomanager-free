@@ -5,13 +5,18 @@
  * pagina del portale senza un'anagrafica collegata all'account (decisione 134.4, `CheckHasAnagrafica`).
  * Chi ci arriva dall'accesso, senza avviso, la vede come prima. Il server:
  * `tests/Feature/Portale/PortaleSenzaAnagraficaTest.php`.
+ *
+ * E il pulsante della casella delle attività compare a chi la può aprire, con «Visualizza scadenze in agenda» (Coda 402,
+ * `tests/Feature/CasellaDelleAttivitaPermessiTest.php`).
  */
 
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
 import Alert from '@/components/Alert.vue';
 
 const pagina = vi.hoisted(() => ({ props: {} as Record<string, unknown> }));
+// I permessi di chi apre la pagina: `null` = tutti (l'amministratore), altrimenti l'elenco dei concessi.
+const permessi = vi.hoisted(() => ({ concessi: null as string[] | null }));
 
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
@@ -21,12 +26,19 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     usePage: () => pagina,
 }));
 vi.mock('@/composables/permissions', () => ({
-    usePermission: () => ({ generatePath: (p: string) => `/admin/${p}`, generateRoute: (n: string) => `admin.${n}`, hasRole: () => true, hasPermission: () => true }),
+    usePermission: () => ({
+        generatePath: (p: string) => `/admin/${p}`, generateRoute: (n: string) => `admin.${n}`, hasRole: () => true,
+        hasPermission: (chiesti: string[]) => permessi.concessi === null || chiesti.some((p) => permessi.concessi!.includes(p)),
+    }),
 }));
 vi.mock('laravel-vue-i18n', () => ({ trans: (chiave: string) => chiave }));
 (globalThis as Record<string, unknown>).route = (nome: string) => `/${nome}`;
 
 const Dashboard = (await import('./Dashboard.vue')).default;
+
+beforeEach(() => {
+    permessi.concessi = null;
+});
 
 function monta(flash: Record<string, unknown>) {
     pagina.props = { auth: { user: { id: 1, email: 'studio@example.com', roles: ['amministratore'], permissions: [] } }, inbox_count: 0, is_demo: true, flash };
@@ -117,5 +129,24 @@ describe('Dashboard del pannello — un blocco che il server non manda', () => {
 
     test('con i quattro blocchi la pagina disegna i quattro elenchi, come prima', async () => {
         expect((await montaCon(blocchi)).elenchi).toEqual({ segnalazioni: true, comunicazioni: true, documenti: true, eventi: true });
+    });
+});
+
+describe('Dashboard del pannello — il pulsante della casella delle attività (Coda 402)', () => {
+    // `shallowMount` mette uno stub al posto del collegamento e ne disegna il contenuto: il pulsante c'è se c'è il suo testo.
+    const pulsante = (w: ReturnType<typeof monta>) => w.text().split('Action inbox').length - 1;
+
+    test('con «Visualizza scadenze in agenda», come i ruoli di serie, il pulsante porta alla casella', () => {
+        permessi.concessi = null;
+        expect(pulsante(monta({}))).toBe(1);
+
+        permessi.concessi = ['Accesso pannello amministratore', 'Visualizza scadenze in agenda'];
+        expect(pulsante(monta({}))).toBe(1);
+    });
+
+    test('senza «Visualizza scadenze in agenda» il pulsante non c\'è: la casella non si aprirebbe', () => {
+        permessi.concessi = ['Accesso pannello amministratore', 'Visualizza segnalazioni', 'Modifica scadenza in agenda'];
+
+        expect(pulsante(monta({}))).toBe(0);
     });
 });

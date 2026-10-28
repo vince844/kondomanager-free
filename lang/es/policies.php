@@ -29,6 +29,8 @@ return [
     'delete_users'              => "You don't have sufficient permissions to delete users.",
     'suspend_users'             => "No tienes permisos suficientes para suspender usuarios.",
     'users_self_action'         => "No puedes suspender ni eliminar tu propia cuenta.",
+    'users_self_reinvite'       => "No puedes reinvitar tu propia cuenta: la contraseña se cambia en la configuración, en «Password».",
+    'users_self_unverify'       => "No puedes quitar la verificación del correo a tu propia cuenta.",
     'users_last_admin'          => "Este es el último administrador activo: sin esa cuenta nadie podría gestionar la instalación.",
     'users_last_admin_self'     => "Eres el último administrador activo: sin tu cuenta nadie podría gestionar la instalación. Para eliminarla, primero hace falta otro administrador activo.",
     'users_privileged_target'   => 'Solo un administrador gestiona esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
@@ -53,6 +55,6 @@ return [
     'delete_events'             => "You don't have sufficient permissions to delete events.",
     'edit_events'               => "You don't have sufficient permissions to edit events.",
     'approve_events'            => "ou don't have sufficient permissions to approve events.",
-    'report_payment_events'     => "You can't report the payment for this event.",
+    'report_payment_events'     => "No puedes informar del pago de este vencimiento.",
 
 ];

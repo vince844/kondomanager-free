@@ -17,6 +17,19 @@ return [
     'error_detach_anagrafica'            => "Ocorreu um erro ao desassociar o registo do fornecedor.",
     'error_delete_has_invoices'          => "Impossível eliminar: o fornecedor tem faturas registadas no sistema. Para não comprometer a contabilidade, recomendamos alterar o \"Estado\" para \"Inativo\".",
 
+    // A página das dívidas anteriores de um fornecedor.
+    'situazione_debitoria' => [
+        'debito_estinto' => "{1} Esta dívida não pode ser removida: usa-a a fatura anterior :fatture, registada para a saldar. Enquanto a fatura existir, a dívida fica.|[2,*] Esta dívida não pode ser removida: usam-na as faturas anteriores :fatture, registadas para a saldar. Enquanto as faturas existirem, a dívida fica.",
+    ],
+
+    // As páginas e as ações dos fornecedores do painel, para quem não tem a permissão (FornitorePolicy, com as permissões dos registos).
+    'permessi' => [
+        'view' => "Não tem permissões suficientes para ver os fornecedores.",
+        'create' => "Não tem permissões suficientes para criar fornecedores.",
+        'update' => "Não tem permissões suficientes para modificar os fornecedores.",
+        'delete' => "Não tem permissões suficientes para eliminar os fornecedores.",
+    ],
+
     /* ------------------------------------------------------------------
      | Cabeçalhos, Títulos e Descrições
      | ------------------------------------------------------------------ */
@@ -98,6 +111,12 @@ return [
      | Categorias de fornecedor (1.11.0-beta.9)
      | ------------------------------------------------------------------ */
     'categorie' => [
+        // A página e as ações das categorias, para quem não tem a permissão (CategoriaFornitorePolicy).
+        'permessi' => [
+            'view' => "Não tem permissões suficientes para ver as categorias de fornecedores.",
+            'create' => "Não tem permissões suficientes para criar as categorias de fornecedores.",
+            'update' => "Não tem permissões suficientes para mudar o nome ou eliminar as categorias de fornecedores.",
+        ],
         'success_create'      => "A categoria foi criada com sucesso.",
         'error_create'        => "Ocorreu um erro ao criar a categoria.",
         'success_update'      => "A categoria foi atualizada com sucesso.",

@@ -152,9 +152,13 @@ class BackupSettingsController extends Controller
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
 
-        // Il backup contiene tutto: chiede la password ridigitata da poco (Coda 261). Dopo la conferma
-        // si torna alla pagina dei backup e non all'indirizzo del file, che dentro il modulo Inertia
-        // della conferma non si scaricherebbe.
+        // Il backup contiene tutto: chiede la password ridigitata da poco (Coda 261). Dalla pagina dei backup
+        // il clic sull'icona di scarico chiede prima lo stato della conferma (`GET confirm-password/stato`): se
+        // è scaduta apre la finestra della password sulla stessa pagina, e a conferma data il file parte da
+        // solo. Il rimando alla pagina della conferma, qui sotto, vale per il collegamento aperto senza la
+        // pagina (tasto centrale, senza JavaScript) e per uno stato che la pagina non ha potuto leggere; dopo
+        // quella conferma si torna alla pagina dei backup e non all'indirizzo del file, che dentro il modulo
+        // Inertia della conferma non si scaricherebbe.
         if (ConfermaPasswordRecente::scaduta($request)) {
             return ConfermaPasswordRecente::richiedi($request, 'impostazioni.backups');
         }

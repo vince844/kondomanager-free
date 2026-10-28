@@ -59,6 +59,7 @@ function elencoRotteSoloLogin(): array
         'GET|POST|PUT|PATCH|DELETE|OPTIONS|QUERY settings' => [ROTTA_ACCOUNT, 'redirect a settings/profile'],
         'POST confirm-password'                => $account,
         'password.confirm'                     => $account,
+        'password.confirm.stato'               => [ROTTA_ACCOUNT, 'dice solo se la propria sessione ha la password ridigitata da poco'],
         'logout'                               => $account,
         'password.edit'                        => $account,
         'password.update'                      => $account,

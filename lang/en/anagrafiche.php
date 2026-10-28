@@ -22,6 +22,8 @@ return [
         'create' => "You don't have sufficient permissions to create resident records.",
         'update' => "You don't have sufficient permissions to edit resident records.",
         'delete' => "You don't have sufficient permissions to delete resident records.",
+        // The «Recipients» list of notices, deadlines and documents (AnagraficaPolicy::sceglieDestinatari).
+        'destinatari' => "You don't have sufficient permissions to choose recipients among the resident records.",
     ],
 
     /* ------------------------------------------------------------------
@@ -118,6 +120,7 @@ return [
     'tooltip' => [
         'buildings_header'      => 'Select and associate buildings',
         'buildings_description' => 'You can select one or more buildings to associate with this resident record. This will allow the resident to view data related to the associated buildings.',
+        'buildings_missing_registered_only' => "Only the buildings already registered in the system appear here.",
         'system_notifications'  => 'System notifications',
         'primary_email_desc'    => 'All system notifications for this resident (e.g. new tickets) will be sent to this address. The email address the associated user uses to log in may be different.',
         'secondary_email_desc'  => 'Additional address to receive a copy of system notifications sent to this resident.',

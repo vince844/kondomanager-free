@@ -14,6 +14,8 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 
 // --- PROPS ---
 const props = defineProps<{
@@ -25,6 +27,12 @@ const props = defineProps<{
 }>();
 
 const isLoading = ref(false);
+
+// La casella si legge con «Visualizza scadenze in agenda»; «Rifiuta» e «Completa» chiudono un compito, che è una scadenza
+// in agenda, e chiedono «Modifica scadenza in agenda» (`EventoPolicy::chiudiCompito`, Coda 402): senza il permesso i due
+// comandi non compaiono, e restano «Registra» e «Risolvi», che portano alla pagina del compito.
+const { hasPermission } = usePermission();
+const puoChiudere = computed(() => hasPermission([Permission.EDIT_EVENTS]));
 const isRejectModalOpen = ref(false);
 const taskToReject = ref<any>(null);
 const isCondominioDropdownOpen = ref(false);
@@ -445,6 +453,7 @@ const getDateLabel = (dateStr: string | null) => {
                                 <!-- Verifica pagamento (segnalazione condòmino) -->
                                 <template v-if="task.type === 'verifica_pagamento'">
                                     <button
+                                        v-if="puoChiudere"
                                         size="sm"
                                         class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-red-600 hover:border-red-200 hover:bg-red-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700"
                                         title="Rifiuta segnalazione"
@@ -461,9 +470,10 @@ const getDateLabel = (dateStr: string | null) => {
                                     </a>
                                 </template>
 
-                                <!-- Tutti gli altri: bottone completa (sempre) + link risolvi (se action_url) -->
+                                <!-- Tutti gli altri: bottone completa (con il permesso) + link risolvi (se action_url) -->
                                 <template v-else>
                                     <button
+                                        v-if="puoChiudere"
                                         @click="completeTask(task.id)"
                                         title="Segna come completato"
                                         class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700"

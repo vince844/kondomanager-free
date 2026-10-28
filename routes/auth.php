@@ -68,6 +68,10 @@ Route::middleware('auth')->group(function () {
     Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
         ->name('password.confirm');
 
+    // Lo stato della conferma della propria sessione, per lo scarico di un backup (Coda 404): sola lettura.
+    Route::get('confirm-password/stato', [ConfirmablePasswordController::class, 'stato'])
+        ->name('password.confirm.stato');
+
     // Conta fra le prove della password attuale: un conto per utente con il cambio della password, il
     // profilo e l'avvio del ripristino (`password-attuale`, Coda 261).
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store'])

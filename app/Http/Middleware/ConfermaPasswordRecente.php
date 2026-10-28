@@ -16,17 +16,26 @@ use Symfony\Component\HttpFoundation\Response;
  * ruolo diverso da `utente` e `fornitore` o un permesso aggiuntivo che non è sui propri contenuti, cambiare
  * l'email di un account che non ha soltanto quei due ruoli o che ha un permesso aggiuntivo così, creare o
  * modificare un ruolo su misura, cambiare il ruolo della registrazione pubblica o accenderla quando quel ruolo
- * non è uno dei due. La conferma vale quindici minuti e si dà alla pagina `password.confirm` di sempre
- * (`ConfirmablePasswordController`, che scrive `auth.password_confirmed_at`); il login non la scrive, quindi
- * non vale come conferma.
+ * non è uno dei due. La conferma vale quindici minuti e la scrive `ConfirmablePasswordController`
+ * (`auth.password_confirmed_at`); il login non la scrive, quindi non vale come conferma.
  *
- * Perché non il `password.confirm` di Laravel (`RequirePassword::using('password.confirm', 900)`):
- * dopo la conferma riporta all'indirizzo della richiesta, e per due delle nostre richieste è il posto
- * sbagliato. Lo scarico di un backup è un collegamento al file: la conferma è un modulo Inertia, e il
- * file come risposta finirebbe dentro la finestra della pagina invece di scaricarsi. Le chiamate
- * della pagina della 2FA e la prova della posta ricevono un 423 senza che la destinazione venga
- * ricordata, e la conferma riporterebbe alla dashboard. Qui la rotta dice dove tornare
- * (`password.recente:<nome della rotta>`); senza, una pagina (`GET`) torna a sé stessa.
+ * ## Come si chiede la password (Coda 404)
+ *
+ * - Le richieste che la pagina manda da sé, quelle Inertia (`X-Inertia`) e quelle JSON (`fetch`, `axios`),
+ *   ricevono un 423 con `conferma_password: true`, prima di qualunque scrittura. La pagina apre una finestra
+ *   sulla stessa pagina, manda la password in JSON a `POST /confirm-password` e rifà la stessa richiesta con
+ *   gli stessi dati: il modulo non si perde. Per il 423 non resta un indirizzo di ritorno in sessione, e
+ *   quello eventuale si toglie: la conferma in JSON non rimanda da nessuna parte.
+ * - Una pagina aperta dal browser, un collegamento e un modulo senza JavaScript ricevono il rimando alla
+ *   pagina `password.confirm` con il ritorno (`password.recente:<rotta>`; senza, una pagina `GET` torna a
+ *   sé stessa). È anche la rete di sicurezza se la finestra non c'è.
+ * - Lo scarico di un backup è un collegamento, non una richiesta della pagina: prima di seguirlo la pagina
+ *   chiede lo stato della conferma a `GET /confirm-password/stato`.
+ *
+ * Perché non il `password.confirm` di Laravel (`RequirePassword::using('password.confirm', 900)`): dopo la
+ * conferma riporta all'indirizzo della richiesta, e per lo scarico di un backup è il posto sbagliato: la
+ * conferma è un modulo Inertia, e il file come risposta finirebbe dentro la finestra della pagina invece di
+ * scaricarsi. Qui la rotta dice dove tornare.
  */
 class ConfermaPasswordRecente
 {
@@ -53,23 +62,31 @@ class ConfermaPasswordRecente
     }
 
     /**
-     * La risposta che chiede la password: la pagina della conferma, o un 423 a chi chiede JSON.
+     * La risposta che chiede la password: un 423 alla pagina che l'ha chiesta da sé (Inertia o JSON), il
+     * rimando alla pagina della conferma a tutto il resto.
      *
-     * @param  string|null  $ritorno  La rotta dove tornare dopo la conferma; senza, una pagina torna a sé.
+     * @param  string|null  $ritorno  La rotta dove tornare dopo la conferma come pagina; senza, una pagina torna a sé.
      * @param  array<string, mixed>  $parametri  I parametri della rotta di ritorno (la scheda da riaprire).
      */
     public static function richiedi(Request $request, ?string $ritorno = null, array $parametri = []): Response
     {
+        if ($request->expectsJson() || $request->header('X-Inertia')) {
+            // La finestra della pagina rifà la richiesta dopo la conferma: nessun ritorno da ricordare, e quello
+            // rimasto da un'altra richiesta non deve decidere dove andrà la prossima conferma come pagina.
+            $request->session()->forget('url.intended');
+
+            return response()->json([
+                'message' => __('auth.header.confirm_password.description'),
+                'conferma_password' => true,
+            ], 423);
+        }
+
         if ($ritorno !== null) {
             redirect()->setIntendedUrl(route($ritorno, $parametri));
-        } elseif ($request->isMethod('GET') && ! $request->expectsJson()) {
+        } elseif ($request->isMethod('GET')) {
             redirect()->setIntendedUrl($request->fullUrl());
         } else {
             $request->session()->forget('url.intended');
-        }
-
-        if ($request->expectsJson()) {
-            return response()->json(['message' => __('auth.header.confirm_password.description')], 423);
         }
 
         return redirect()->route('password.confirm');

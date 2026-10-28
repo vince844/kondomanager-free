@@ -58,7 +58,8 @@ class UserPolicy
      * account fuori dalla portata di chi non è amministratore è solo dell'amministratore, pagina e salvataggio,
      * nome e anagrafica compresi (Coda 258, decisione 136.1). Anche la propria, per un collaboratore: i propri
      * dati si correggono dal profilo. Senza il bersaglio (`Gate::authorize('update', User::class)`, le chiamate
-     * di «reinvia», della verifica e della revoca, che guardano la portata da sé) vale il solo permesso.
+     * della verifica e della revoca, che guardano la portata da sé) vale il solo permesso. «Reinvia» ha la sua
+     * abilità, `reinvite()`.
      *
      * @param  \App\Models\User $user The user making the authorization request.
      * @param  \App\Models\User|null $target The user whose card is opened or saved.
@@ -120,6 +121,49 @@ class UserPolicy
     }
 
     /**
+     * «Reinvia»: azzera la password del bersaglio e gli manda un nuovo link del primo accesso.
+     *
+     * Il permesso è quello della scheda, «Modifica utenti» (decisione 136.3). Reinvitare chiude fuori il bersaglio
+     * finché non apre il link, come sospendere: valgono le stesse guardie di sospensione ed eliminazione (Coda 399).
+     * Non su sé stessi, non sull'ultimo amministratore attivo (l'installazione resta governabile anche se la posta non
+     * parte), e chi non è amministratore solo su un account nella sua portata.
+     *
+     * @param  \App\Models\User $user The user making the authorization request.
+     * @param  \App\Models\User|null $target The user being reinvited; without it only the permission counts.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
+     */
+    public function reinvite(User $user, ?User $target = null): Response
+    {
+        if (! $user->hasPermissionTo(Permission::EDIT_USERS->value)) {
+            return Response::deny(__('policies.edit_users'));
+        }
+
+        return $target ? $this->guardieDiIntegrita($user, $target, 'policies.users_self_reinvite') : Response::allow();
+    }
+
+    /**
+     * Togliere la verifica dell'email: con il middleware `verified` su tutto il programma, l'account non arriva più da
+     * nessuna parte finché non apre il link che riceve per posta, come dopo «Reinvia».
+     *
+     * Il permesso è quello della scheda, «Modifica utenti» (decisione 136.3), e valgono le guardie di sospensione ed
+     * eliminazione (Coda 399): non sul proprio account, non sull'ultimo amministratore attivo (l'installazione resta
+     * governabile anche se la posta non parte), e chi non è amministratore solo su un account nella sua portata.
+     * Rimettere la verifica non chiude fuori nessuno: la chiede `update`.
+     *
+     * @param  \App\Models\User $user The user making the authorization request.
+     * @param  \App\Models\User $target The user whose email verification is removed.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
+     */
+    public function revocaVerifica(User $user, User $target): Response
+    {
+        if (! $user->hasPermissionTo(Permission::EDIT_USERS->value)) {
+            return Response::deny(__('policies.edit_users'));
+        }
+
+        return $this->guardieDiIntegrita($user, $target, 'policies.users_self_unverify');
+    }
+
+    /**
      * Determine whether the user can lift a suspension.
      *
      * Riattivare non può chiudere fuori nessuno, quindi non porta le due invarianti di sospensione ed
@@ -145,21 +189,25 @@ class UserPolicy
     }
 
     /**
-     * Le guardie comuni a sospensione ed eliminazione.
+     * Le guardie comuni a sospensione, eliminazione, «Reinvia» e alla verifica tolta.
+     *
+     * Sul proprio account il rifiuto nomina l'azione chiesta (`$suSeStessi`): sospendere o eliminare, reinvitare,
+     * togliere la verifica.
      *
      * Non sono permessi: un permesso risponde a «questa persona può fare questa cosa?», queste
      * rispondono a «l'installazione resta governabile dopo?» e «questo bersaglio è alla sua portata?».
      *
-     * Sospendere ed eliminare sono i due modi più forti di chiudere fuori qualcuno, e i loro permessi
+     * Sospendere ed eliminare sono i due modi più forti di chiudere fuori qualcuno (e «Reinvia», che azzera la
+     * password, lo chiude fuori finché non apre il link), e i loro permessi
      * l'amministratore li può dare a un ruolo su misura: chi non è amministratore li usa solo su un
      * account nella sua portata (i soli ruoli `utente` e `fornitore`, nessun permesso diretto che lui non
      * ha). È la regola della scheda utenti, di «reinvia» e della verifica (Coda 258, decisione 134.1),
      * presa dallo stesso posto.
      */
-    private function guardieDiIntegrita(User $user, User $target): Response
+    private function guardieDiIntegrita(User $user, User $target, string $suSeStessi = 'policies.users_self_action'): Response
     {
         if ($user->is($target)) {
-            return Response::deny(__('policies.users_self_action'));
+            return Response::deny(__($suSeStessi));
         }
 
         if ($target->isUltimoAmministratoreAttivo()) {

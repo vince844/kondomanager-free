@@ -5,13 +5,14 @@ namespace App\Http\Controllers\Fornitori\Anagrafiche;
 use App\Enums\RuoloRappresentanteFornitore;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\Anagrafica\CreateFornitoreAnagraficaRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
 use App\Models\Anagrafica;
 use App\Models\Fornitore;
 use App\Traits\HandleFlashMessages;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -37,6 +38,9 @@ class FornitoreAnagraficaController extends Controller
      */
     public function index(Fornitore $fornitore): Response
     {
+        // I referenti si leggono con la scheda del fornitore, e si aggiungono e si tolgono modificandolo (Coda 402).
+        Gate::authorize('view', $fornitore);
+
         $fornitore->loadMissing(['referenti' => function($query) use ($fornitore) {
             $query->where('fornitore_id', $fornitore->id);
         }]);
@@ -58,14 +62,17 @@ class FornitoreAnagraficaController extends Controller
      */
     public function create(Fornitore $fornitore): Response
     {
+        Gate::authorize('update', $fornitore);
+
         // Get all anagrafiche that are NOT associated with this supplier
         $availableAnagrafiche = Anagrafica::whereDoesntHave('fornitori', function($query) use ($fornitore) {
             $query->where('fornitore_id', $fornitore->id);
-        })->get();
+        })->get(['id', 'nome', 'indirizzo']);
 
         return Inertia::render('fornitori/anagrafiche/AnagraficheNew', [
             'fornitore'   => $fornitore,
-            'anagrafiche' => AnagraficaResource::collection($availableAnagrafiche),
+            // La tendina mostra il nome e, sotto, l'indirizzo (Coda 408).
+            'anagrafiche' => AnagraficaConIndirizzoResource::collection($availableAnagrafiche),
             // Dall'enum e non da una lista scritta a mano nella pagina: la stessa lista serve anche
             // alla creazione del fornitore, e due copie che divergono le nota qualcuno, tre no.
             'ruoli'       => RuoloRappresentanteFornitore::opzioni(),
@@ -85,6 +92,8 @@ class FornitoreAnagraficaController extends Controller
      */
     public function store(CreateFornitoreAnagraficaRequest $request, Fornitore $fornitore): RedirectResponse
     {
+        Gate::authorize('update', $fornitore);
+
         $data = $request->validated();
 
         try {
@@ -123,6 +132,8 @@ class FornitoreAnagraficaController extends Controller
      */
     public function destroy(Fornitore $fornitore, Anagrafica $anagrafica): RedirectResponse
     {
+        Gate::authorize('update', $fornitore);
+
         try {
 
             $fornitore->referenti()->detach($anagrafica->id);

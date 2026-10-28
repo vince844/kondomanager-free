@@ -10,11 +10,12 @@
  * pagina metteva ogni errore che non fosse 422 sotto il campo dell'archivio, con quel messaggio.
  */
 
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { reactive } from 'vue';
 import { flushPromises, shallowMount } from '@vue/test-utils';
 
 const post = vi.fn();
+const get = vi.fn();
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: { template: '<div />' },
@@ -29,11 +30,12 @@ vi.mock('laravel-vue-i18n', () => ({
     trans: (chiave: string) => chiave,
     transChoice: (chiave: string, quanti: number, valori?: Record<string, unknown>) => `${chiave} ${quanti} ${JSON.stringify(valori ?? {})}`,
 }));
-vi.mock('axios', () => ({ default: { post } }));
+vi.mock('axios', () => ({ default: { post, get } }));
 
 (globalThis as Record<string, unknown>).route = (nome: string, parametro?: string) => (parametro ? `/${nome}/${parametro}` : `/${nome}`);
 
 const PaginaBackup = (await import('./impostazioniBackups.vue')).default;
+const { annullaConferma, confermaPasswordAperta, confermaRiuscita } = await import('@/composables/useConfermaPassword');
 
 type Stato = {
     askRestore: (backup: Record<string, unknown>) => void;
@@ -306,4 +308,93 @@ describe('impostazioniBackups — il ripristino fermo nel backup di sicurezza', 
             expect(pagina.text()).not.toContain('impostazioni.restore_recovery.unlock_note');
         });
     }
+});
+
+describe('impostazioniBackups — lo scarico di un backup', () => {
+    type StatoDelloScarico = Stato & { scarica: (backup: Record<string, unknown>) => Promise<void> };
+
+    const INDIRIZZO = '/impostazioni.backups.download/b-1';
+    let indirizzoAperto: string | null = null;
+    let posizionePrima: PropertyDescriptor | undefined;
+
+    function montaPerLoScarico(): StatoDelloScarico {
+        const pagina = shallowMount(PaginaBackup, {
+            props: {
+                backups: { data: [BACKUP] },
+                runningBackup: null,
+                preflight: { encryption_supported: true, checks: [] },
+                retention_keep_last: 5,
+                backup_has_password: false,
+            },
+        });
+
+        return (pagina.vm as unknown as { $: { setupState: StatoDelloScarico } }).$.setupState;
+    }
+
+    beforeEach(() => {
+        get.mockReset();
+        annullaConferma();
+        indirizzoAperto = null;
+        // La navigazione verso il file: l'indirizzo che il browser aprirebbe.
+        posizionePrima = Object.getOwnPropertyDescriptor(window, 'location');
+        Object.defineProperty(window, 'location', {
+            configurable: true,
+            value: { set href(valore: string) { indirizzoAperto = valore; } },
+        });
+    });
+
+    afterEach(() => {
+        if (posizionePrima) Object.defineProperty(window, 'location', posizionePrima);
+    });
+
+    test('Coda 404 — con la password già ridigitata lo scarico va all\'indirizzo del file, senza finestra', async () => {
+        get.mockResolvedValueOnce({ data: { confermata: true } });
+
+        await montaPerLoScarico().scarica(BACKUP);
+
+        expect(get).toHaveBeenCalledWith('/password.confirm.stato');
+        expect(indirizzoAperto).toBe(INDIRIZZO);
+        expect(confermaPasswordAperta.value).toBe(false);
+    });
+
+    test('Coda 404 — senza la password ridigitata apre la finestra e non scarica; dopo la conferma va all\'indirizzo del file', async () => {
+        get.mockResolvedValueOnce({ data: { confermata: false } });
+
+        await montaPerLoScarico().scarica(BACKUP);
+
+        expect(confermaPasswordAperta.value).toBe(true);
+        expect(indirizzoAperto).toBeNull();
+
+        confermaRiuscita();
+
+        expect(indirizzoAperto).toBe(INDIRIZZO);
+    });
+
+    test('Coda 404 — una risposta che non dice «confermata» non vale come conferma: si apre la finestra, non si scarica', async () => {
+        get.mockResolvedValueOnce({ data: {} });
+
+        await montaPerLoScarico().scarica(BACKUP);
+
+        expect(confermaPasswordAperta.value).toBe(true);
+        expect(indirizzoAperto).toBeNull();
+    });
+
+    test('Coda 404 — con «Annulla» lo scarico non parte', async () => {
+        get.mockResolvedValueOnce({ data: { confermata: false } });
+        await montaPerLoScarico().scarica(BACKUP);
+
+        annullaConferma();
+        confermaRiuscita();
+
+        expect(indirizzoAperto).toBeNull();
+    });
+
+    test('Coda 404 — se lo stato non si legge lo scarico va comunque all\'indirizzo: ci pensa il server', async () => {
+        get.mockRejectedValueOnce(new Error('Network Error'));
+
+        await montaPerLoScarico().scarica(BACKUP);
+
+        expect(indirizzoAperto).toBe(INDIRIZZO);
+        expect(confermaPasswordAperta.value).toBe(false);
+    });
 });

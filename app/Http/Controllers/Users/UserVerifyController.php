@@ -33,6 +33,12 @@ class UserVerifyController extends Controller
             abort(403, __('policies.users_privileged_target'));
         }
 
+        // Togliere la verifica chiude fuori come sospendere: non sul proprio account, non sull'ultimo amministratore
+        // attivo (`UserPolicy::revocaVerifica`, Coda 399). Rimetterla non chiude fuori nessuno.
+        if ($user->email_verified_at !== null) {
+            Gate::authorize('revocaVerifica', $user);
+        }
+
         try {
 
             // Toggle verifica

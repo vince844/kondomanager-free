@@ -115,6 +115,14 @@ Route::prefix('admin')->as('admin.')
 
         ]);
 
+    // Scaricare e approvare un documento del fornitore si fa dalla sua scheda, con i permessi del fornitore: le rotte
+    // dell'archivio (`documenti.download`, `documenti.toggle-approval`) lavorano solo sui documenti dell'archivio.
+    Route::get('fornitori/{fornitore}/documenti/{documento}/download', [FornitoreDocumentoController::class, 'download'])
+        ->name('fornitori.documenti.download');
+
+    Route::put('fornitori/{fornitore}/documenti/{documento}/toggle-approval', [FornitoreDocumentoController::class, 'approvazione'])
+        ->name('fornitori.documenti.toggle-approval');
+
     /*
     |--------------------------------------------------------------------------
     | Situazione Debitoria Fornitori (Double Lock Engine)

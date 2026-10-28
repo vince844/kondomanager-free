@@ -1704,9 +1704,13 @@ it('Coda 371 — al posto della fine il cambio Sara → Pia «Scrivi» il 1/10: 
 it('Coda 371 — il rientro di Ines il 1/11 all\'80 % al posto dell\'inizio di Teo: Ines rimborsa a Ugo i giorni dal 1/11 che lui ha preso con la coppia, anche la voce, € 240,16', function () {
     // Le cifre del primo test, con Ines al posto di Teo: i giorni dal 1/11 sono nelle sue rate per le «Spese generali», ma la fine «Scrivi» di Sara li ha portati a Ugo; Ines gli rimborsa 6016 +
     // 18000 = 24016, e nelle sue rate restano i 17852 dei suoi 181 giorni. Era: da rimborsare 6016, e il «Riscaldamento» nelle sue rate.
+    // Coda 377: il pannello del rientro lo dice come dopo una fine «Scrivi» di chi rientra (decisione 45, nota del 12/10): «è già nelle rate di Ines» sarebbe falso, i giorni dal 1/11 li ha presi
+    // Ugo con la coppia della fine di Sara, e Ines glieli rimborsa. Era: «La parte a carico dell'inquilino dal 1 novembre 2026 è già nelle rate di Ines».
     $s = pcc371Scenario($this);
     pcc371Storia($this, $s, 'scrivi', null);
-    pcc361Inizio($this, $s, 'Ines', '2026-11-01', 80);
+    $frasi = pcc361Inizio($this, $s, 'Ines', '2026-11-01', 80);
+    expect($frasi)->toContain('La parte a carico dell\'inquilino dal 1 novembre 2026 l\'ha presa Ugo con il conguaglio scritto alla fine locazione di Sara del 1 ottobre 2026, e Ines gliela rimborsa con il prospetto degli oneri accessori.')
+        ->and($frasi)->not->toContain('è già nelle rate di Ines');
     expect(fclProspetto($s))->toBe(['conduttori' => [
         'ines' => [41868, 17852, 24016, 303],
         'sara' => [9074, 0, 0, 92],
@@ -1990,6 +1994,14 @@ function pcc370Senza(array $s): array
     return collect($p['senza_conduttore']['voci'])->map(fn ($v) => [(int) $v['importo'], $v['giorni'] ?? null, $v['modo'], $v['pagato_da'] ?? null, $v['uscita_del'] ?? null, $v['strada'] ?? null])->all();
 }
 
+/** Coda 376: le note delle voci di un conduttore che vengono dalla sua uscita del giorno dato (i giorni dopo l'uscita), una volta ciascuna. */
+function pcc376Note(array $s, string $nome, string $uscita): array
+{
+    $c = collect(app(\App\Services\Riparto\ProspettoOneriAccessori::class)->calcola($s['unita']->fresh(), $s['e'])['conduttori'])->firstWhere('nome', $nome);
+
+    return collect($c['voci'] ?? [])->where('uscita_del', $uscita)->pluck('nota')->unique()->values()->all();
+}
+
 it('Coda 370 — Ines → Sara «Scrivi» il 1/7, Sara → Pia «Non scriverlo» il 1/9, Pia → Sara il 1/10, la fine di Sara «Scrivi» il 1/11: i giorni dopo la seconda uscita li ha presi Ugo con la coppia, e Sara non li riceve due volte', function () {
     // La fine del 1/11 scrive la coppia: 36000 × 61/365 = 6016,44 → 6016 (Sara − 6016, Ugo + 6016); il Wallet di Sara 18148 − 6016 = 12132. Il pezzo di Sara al 1/9: 18148 × 62/184 = 6115,07 →
     // 6115, e 12033 dopo. La strada A′ del cambio «Non scriverlo» arriva fino alla seconda uscita: 12033 su 61 + 61 giorni, 6016,5 → 6017 fino al 31/10 (a pari resto chi esce) e 6016 dal 1/11, che
@@ -2011,6 +2023,10 @@ it('Coda 370 — Ines → Sara «Scrivi» il 1/7, Sara → Pia «Non scriverlo»
         ->and($stampa)->toContain('Totale che resta a chi ha pagato € 60,16')
         ->and($stampa)->not->toContain('si restituisce a chi l\'ha pagata')
         ->and($stampa)->not->toContain('€ 89,75');
+    // Coda 376: la voce del pezzo A′ chiuso alla seconda uscita dice fino a quando, dal giorno dell'uscita con «Non scriverlo» al giorno prima della fine di Sara. Era: «giorni dopo l'uscita,
+    // dal 01/09/2026», come se il pezzo arrivasse alla fine della voce.
+    expect($stampa)->toContain('giorni dopo l\'uscita, dal 01/09/2026 al 31/10/2026')
+        ->and(pcc376Note($s, 'Sara', '2026-09-01'))->toBe(['giorni dopo l\'uscita, dal 01/09/2026 al 31/10/2026']);
 });
 
 it('Coda 370 — lo stesso senza il primo cambio (Ines → Pia «Non scriverlo» il 1/9, Pia → Ines il 1/10, la fine di Ines «Scrivi» il 1/11): Ines riceve da Pia € 29,59, non € 89,75', function () {
@@ -2132,6 +2148,8 @@ it('Coda 375 — la storia della Coda 370 con «Annulla il conguaglio» della fi
         ->and($stampa)->toContain('da restituire a Sara: i giorni dopo la sua uscita, che ha pagato € 29,59')
         ->and($stampa)->not->toContain('si restituisce a chi l\'ha pagata')
         ->and($stampa)->not->toContain('€ 89,75');
+    // Coda 376: anche qui il pezzo A′ si chiude alla seconda uscita, e la voce dice fino a quando. Era: «giorni dopo l'uscita, dal 01/09/2026».
+    expect(pcc376Note($s, 'Sara', '2026-09-01'))->toBe(['giorni dopo l\'uscita, dal 01/09/2026 al 31/10/2026']);
 });
 
 it('Coda 375 — lo stesso con Teo dal 1/12 all\'80 %: Teo non rimborsa a Sara i giorni regolati fra le parti, € 30,57, e il pannello del suo inizio lo dice', function () {
@@ -2813,4 +2831,809 @@ it('Coda 379 — le guardie dei due rientri: la seconda uscita una fine annullat
     expect(fclProspetto($s)['conduttori']['sara'])->toBe([8976, 0, -3057, 91])
         ->and(pcc366Sezione($s, 'Zoe'))->toBe([3058, 3058, []])
         ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 3057]);
+});
+
+// --- Coda 380: dopo il cambio «Non scriverlo» di chi era entrato con il cambio «Scrivi», l'uscita con la coppia di chi rientra ------------------------------------------
+
+it('Coda 380 — Ines → Sara «Scrivi» il 1/7, Sara → Ines «Non scriverlo» il 1/9 (Ines rientra), la fine di Ines «Scrivi» il 1/12 e Teo dal 1/12: Teo rimborsa a Ugo dicembre, e Ines rimborsa a Sara € 120,33', function () {
+    // Il cambio del 1/7 dà a Sara 36000 × 184/365 = 18147,95 → 18148 (Ines − 18148, Sara + 18148). Al 1/9 «Non scriverlo»: i giorni dopo l'uscita di Sara, 18148 su 62 + 122 giorni, 6115,07 e
+    // 12032,93 → 6115 e 12033, restano a Sara, e Ines glieli rimborsa (il registro del cambio: Sara − 12033, Ines + 12033). La fine di Ines del 1/12 «Scrivi» scrive la coppia 36000 × 31/365 =
+    // 3057,53 → 3058 (Ines − 3058, Ugo + 3058): dicembre l'ha preso Ugo, e Teo glielo rimborsa (decisione 45, nota del 12/10, e 77.4), come dice il registro del suo inizio. Quella coppia dà a Ines
+    // a credito dicembre, che aveva già dato a Sara: Ines rimborsa a Sara tutti i 12033, 8975 dei suoi 91 giorni (12033 × 91/122 = 8975,43) e 3058 di dicembre. Ines 17852 + 8975 = 26827 per 272
+    // giorni, nelle sue rate 36000 − 18148 − 3058 = 14794 (il Wallet), da rimborsare 12033; Sara 6115 per 62 giorni con il conguaglio 18148; Teo 3058 «pagata da Ugo»; il controllo 26827 + 6115 +
+    // 3058 = 36000. Era: Ines nelle sue rate 17852 (la coppia del 1/12 non c'era), da rimborsare 8975, e Teo 3058 «pagata da Sara»: Ugo non riaveva i € 30,58 della coppia, e Ines ne pagava
+    // € 30,58 in meno dei suoi giorni.
+    [$s, $frasi] = pcc379Rientro($this, 'mai');
+    expect($frasi)->toContain('e li rimborsa Teo a Ugo, con il prospetto degli oneri accessori')
+        ->and($frasi)->not->toContain('li rimborsa Teo a Sara')
+        ->and(fclSaldi($s))->toBe(['Ines' => -21206, 'Sara' => 18148, 'Ugo' => 3058])
+        ->and(fclNetti($s)['Ines'])->toBe(14794)
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [26827, 14794, 12033, 272],
+            'sara' => [6115, 0, -12033, 62],
+            'teo' => [3058, 0, 3058, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([6115, 18148, []])
+        ->and(pcc360PagateDa($s, 'Ines'))->toBe(['Sara' => 12033])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 3058])
+        ->and(pcc379GiorniDelConduttore($s))->toBe([[3058, ['Ugo']]]);
+    $stampa = fclStampa($s);
+    expect($stampa)->toContain('Totale a carico di Ines € 268,27 di cui già nelle sue rate € 147,94')
+        ->and($stampa)->toContain('pagata da Ugo con il conguaglio della fine locazione del 01/12/2026')
+        ->and($stampa)->not->toContain('di cui già nelle sue rate € 178,52');
+});
+
+it('Coda 380 — la stessa storia con Teo dal 15/12, senza Teo, con la terza uscita il cambio Ines → Teo «Scrivi» e con il box: Ines rimborsa a Sara € 120,33, e dicembre segue la coppia del 1/12', function () {
+    // Teo dal 15/12: i 3058 di dicembre su 14 + 17 giorni, 1381,03 e 1676,97 → 1381 senza conduttore e Teo 1677, tutti e due «pagata da Ugo» con la strada B (il registro dell'inizio di Teo dice
+    // 1677). Era: Teo 1677 «pagata da Sara» e i 1381 «da restituire» a Sara, che Ugo aveva già pagato con la coppia.
+    [$s] = pcc379Rientro($this, 'mai', teo: '2026-12-15');
+    expect(fclProspetto($s))->toBe(['conduttori' => [
+        'ines' => [26827, 14794, 12033, 272],
+        'sara' => [6115, 0, -12033, 62],
+        'teo' => [1677, 0, 1677, 17],
+    ], 'senza' => [1381, 14]])
+        ->and(pcc370Senza($s))->toBe([[1381, 14, 'proprietario', 'Ugo', '2026-12-01', 'B']])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 1677])
+        ->and(pcc379GiorniDelConduttore($s))->toBe([[1677, ['Ugo']]]);
+
+    // Senza Teo: dicembre resta a Ugo, che l'ha pagato con la coppia («senza conduttore», strada B), e non si restituisce a Sara. Era: 3058 «da restituire» a Sara fra le parti.
+    [$s] = pcc379Rientro($this, 'mai', teo: null);
+    expect(fclProspetto($s))->toBe(['conduttori' => [
+        'ines' => [26827, 14794, 12033, 272],
+        'sara' => [6115, 0, -12033, 62],
+    ], 'senza' => [3058, 31]])
+        ->and(pcc370Senza($s))->toBe([[3058, 31, 'proprietario', 'Ugo', '2026-12-01', 'B']]);
+
+    // Il cambio Ines → Teo «Scrivi» il 1/12 scrive la coppia 3058 (Ines − 3058, Teo + 3058): Teo ha dicembre «con il conguaglio», come nel Wallet, e non rimborsa nessuno. Era: Teo 3058 «pagata
+    // da Sara», cioè dicembre due volte, dal Wallet e dal prospetto.
+    [$s] = pcc379Rientro($this, 'mai', verso: 'Teo');
+    expect(fclSaldi($s))->toBe(['Ines' => -21206, 'Sara' => 18148, 'Teo' => 3058])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [26827, 14794, 12033, 272],
+            'sara' => [6115, 0, -12033, 62],
+            'teo' => [3058, 0, 0, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Teo'))->toBe([3058, 3058, []])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe([]);
+
+    // Con il box (l'anello 32400 sull'Interno 1 e 3600 sul box): sull'Interno 1 la coppia del 1/12, 32400 × 31/365 = 2751,78 → 2752 (Ines − 2752, Ugo + 2752), e la storia di sopra: Ines rimborsa a
+    // Sara 10829 (8077 + 2752), Teo 2752 «pagata da Ugo». Sul box nessuno sta al posto dell'inquilino e la fine non scrive righe: dicembre resta nei giorni dopo l'uscita di Sara, come prima.
+    $s = pcc375ConIlBox($this);
+    pcc375ConIlBoxPassaggio($this, $s, 'Ines', 'Sara', '2026-07-01');
+    pcc375ConIlBoxPassaggio($this, $s, 'Sara', 'Ines', '2026-09-01', 'non_scrivere');
+    pcc375ConIlBoxPassaggio($this, $s, 'Ines', null, '2026-12-01');
+    pcc375ConIlBoxTeo($this, $s);
+    expect(fclSaldi($s))->toBe(['Ines' => -19085, 'Sara' => 16333, 'Ugo' => 2752])
+        ->and(fclSaldi($s, $s['box']))->toBe(['Ines' => -1815, 'Sara' => 1815])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [24144, 13315, 10829, 272],
+            'sara' => [5504, 0, -10829, 62],
+            'teo' => [2752, 0, 2752, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 2752])
+        ->and(fclProspetto($s, $s['box'])['conduttori']['sara'])->toBe([612, 0, -1203, 62]);
+});
+
+it('Coda 380 — le guardie: la fine di Ines o il cambio Ines → Teo con «Non scriverlo», il rientro con un inizio e un altro conduttore al posto di Sara restano come prima', function () {
+    // Con «Non scriverlo» alla fine di Ines (o nel cambio Ines → Teo) nel Wallet non c'è la coppia del 1/12: dicembre resta nei giorni dopo l'uscita di Sara, e Teo lo rimborsa a lei. Ines 17852
+    // nelle sue rate, 8975 a Sara; Teo 3058 «pagata da Sara».
+    foreach ([null, 'Teo'] as $verso) {
+        [$s] = pcc379Rientro($this, 'mai', scelta: 'non_scrivere', verso: $verso);
+        expect(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 18148])
+            ->and(fclProspetto($s)['conduttori'])->toBe([
+                'ines' => [26827, 17852, 8975, 272],
+                'sara' => [6115, 0, -12033, 62],
+                'teo' => [3058, 0, 3058, 31],
+            ])
+            ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Sara' => 3058], (string) $verso);
+    }
+
+    // Il rientro di Ines con la fine di Sara «Non scriverlo» e un inizio: la fine di Ines del 1/12 non chiede la scelta (la parte l'ha già ceduta con il cambio del 1/7) e non scrive la coppia.
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-09-01', 'non_scrivere');
+    pcc361Inizio($this, $s, 'Ines', '2026-09-01', 80);
+    pcc379Passaggio($this, $s, 'Ines', null, '2026-12-01');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 18148])
+        ->and(fclProspetto($s)['conduttori'])->toBe(['ines' => [26827, 17852, 8975, 272], 'sara' => [6115, 0, -12033, 62], 'teo' => [3058, 0, 3058, 31]])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Sara' => 3058]);
+
+    // Pia al posto di Sara con «Non scriverlo» e la fine di Pia il 1/12: Pia non ha rate, la fine non chiede la scelta e non scrive la coppia.
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc379Passaggio($this, $s, 'Sara', 'Pia', '2026-09-01', 'non_scrivere');
+    pcc379Passaggio($this, $s, 'Pia', null, '2026-12-01');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect(fclProspetto($s)['conduttori'])->toBe(['ines' => [17852, 17852, 0, 181], 'pia' => [8975, 0, 8975, 91], 'sara' => [6115, 0, -12033, 62], 'teo' => [3058, 0, 3058, 31]])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Sara' => 3058]);
+});
+
+it('Coda 380 — i due rientri senza l\'annullamento: Sara → Zoe «Scrivi» il 1/10, Zoe → Sara «Non scriverlo» il 1/11, la fine di Sara «Scrivi» il 1/12 e Teo dal 1/12: Teo rimborsa a Ugo, e Sara rimborsa a Zoe € 60,16', function () {
+    // Sara 18148 dal 1/7 (36000 × 184/365); al 1/8 «Non scriverlo», 3058 e 15090; il pezzo A′ si chiude al cambio Sara → Zoe del 1/10 (Coda 370): 15090 su 61 + 92, 6016 e 9074; i 6016 fra Pia
+    // (agosto) e Sara (settembre), 3057 e 2959. Il cambio del 1/10 scrive la coppia 9074 (Sara − 9074, Zoe + 9074); al 1/11 «Non scriverlo»: 9074 su 31 + 61, 3058 e 6016, restano a Zoe, e
+    // Sara glieli rimborsa (il registro del cambio: Zoe − 6016, Sara + 6016). La fine di Sara del 1/12 scrive la coppia 18148 × 31/184 = 3057,54 → 3058 (Sara − 3058, Ugo + 3058): dicembre l'ha
+    // preso Ugo, e Teo glielo rimborsa; la coppia dà a Sara a credito dicembre, che aveva già dato a Zoe, e Sara rimborsa a Zoe i 6016, novembre 2959 e dicembre 3057 (6016 su 30 + 31 giorni). Sara
+    // 3058 + 2959 + 2959 = 8976 per 91 giorni, con il conguaglio 6017, da rimborsare 2959 (6016 a Zoe, 3057 da Pia); Zoe 3058 per ottobre; Teo 3057 «pagata da Ugo». Il centesimo: la coppia della fine
+    // è 3058 e la catena divide i 6016 di Zoe in 2959 e 3057, quindi Teo 3057 contro i 3058 della coppia e Sara con il conguaglio 6017 contro i 6016 del Wallet, € 0,01 (il centesimo in due passi,
+    // come nelle guardie della Coda 379). Era: Teo 3057 «pagata da Zoe», Sara con il conguaglio 9074 e da rimborsare − 98: Ugo non riaveva i € 30,58 della coppia, e Sara ne pagava € 30,58 in meno.
+    [$s, $frasi] = pcc379DueRientri($this, 'mai');
+    expect($frasi)->toContain('e li rimborsa Teo a Ugo, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 6016, 'Ugo' => 3058, 'Zoe' => 9074])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [17852, 17852, 0, 181],
+            'pia' => [3057, 0, 3057, 31],
+            'sara' => [8976, 0, 2959, 91],
+            'teo' => [3057, 0, 3057, 31],
+            'zoe' => [3058, 0, -6016, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([8976, 6017, []])
+        ->and(pcc360PagateDa($s, 'Sara'))->toBe(['Zoe' => 6016])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 3057]);
+
+    // La terza uscita il cambio Sara → Teo «Scrivi»: Teo ha dicembre con il conguaglio (3057 contro i 3058 del Wallet, il centesimo) e non rimborsa nessuno. Era: Teo 3057 «pagata da Zoe».
+    [$s] = pcc379DueRientri($this, 'mai', verso: 'Teo');
+    expect(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 6016, 'Teo' => 3058, 'Zoe' => 9074])
+        ->and(fclProspetto($s)['conduttori']['teo'])->toBe([3057, 0, 0, 31])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe([])
+        ->and(pcc360PagateDa($s, 'Sara'))->toBe(['Zoe' => 6016]);
+
+    // Con «Non scriverlo» alla fine di Sara la coppia del 1/12 non c'è: come prima, Teo 3057 «pagata da Zoe», Sara con il conguaglio 9074.
+    [$s] = pcc379DueRientri($this, 'mai', scelta: 'non_scrivere');
+    expect(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 9074, 'Zoe' => 9074])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([8976, 9074, []])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Zoe' => 3057]);
+});
+
+/**
+ * La storia della Coda 380 (Ines sola all'80 %, Ines → Sara «Scrivi» il 1/7, Sara → Ines «Non scriverlo» il 1/9, il 1/12 la terza uscita di Ines «Scrivi»: la fine senza chi entra, con
+ * Teo dal 1/12 all'80 %, o il cambio verso `$verso`) con € 120,00 di già versato «dell'unità» sulla «Spese generali», registrato prima della generazione. Lo scenario e le frasi del
+ * pannello dell'inizio di Teo.
+ */
+function pcc380ConIlVersato($test, ?string $verso = null): array
+{
+    $s = fclScenario([['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 80]]]);
+    $contoId = (int) DB::table('conti')->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')->where('piani_conti.gestione_id', $s['g']->id)->where('conti.nome', 'Spese generali')->value('conti.id');
+    DB::table('contributi_versati')->insert(['condominio_id' => $s['c']->id, 'target_type' => \App\Models\Gestionale\Conto::class, 'target_id' => $contoId, 'immobile_id' => $s['unita']->id,
+        'anagrafica_id' => null, 'importo_cents' => 12000, 'natura' => 'avanzo', 'origine' => 'migrazione', 'created_at' => now(), 'updated_at' => now()]);
+    fclGenera($s);
+    fclEmetti($test, $s, '2026-06-30');
+    fclPersona($s, 'Sara');
+    pcc379Passaggio($test, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc379Passaggio($test, $s, 'Sara', 'Ines', '2026-09-01', 'non_scrivere');
+    pcc379Passaggio($test, $s, 'Ines', $verso, '2026-12-01', 'scrivi');
+    $frasi = $verso === null ? pcc361Inizio($test, $s, 'Teo', '2026-12-01', 80) : '';
+
+    return [$s, $frasi];
+}
+
+it('Coda 380 — la stessa storia con € 120,00 di già versato «dell\'unità»: il già versato dei giorni che Ines ha ripreso è di Sara, che li ha pagati con il conguaglio; Sara € 55,04 con il conguaglio € 163,33 e Ines € 241,44 con € 133,15 nelle sue rate, come nel Wallet', function () {
+    // Il già versato «dell'unità» (decisione 17, D8), 12000 sulla «Spese generali»: all'inquilino 12000 × 36000/120000 = 3600, l'anello al lordo 36000 e al netto 32400, la rata di Ines; il
+    // conguaglio scrive il netto. Il cambio del 1/7 (77.3): 32400 × 184/365 = 16333,15 → 16333 (Ines − 16333, Sara + 16333); al lordo 18148, e a Ines 17852 per 181 giorni, al netto 16067. Al 1/9
+    // «Non scriverlo» (46, nota del 12/10, la strada A′): i giorni dopo l'uscita di Sara restano suoi, e Ines glieli rimborsa: al netto 16333 su 62 + 122 giorni, 5503,60 → 5504 a Sara e 10829
+    // dal 1/9; al lordo 6115 e 12033. La fine di Ines del 1/12 «Scrivi» (45, nota del 12/10) scrive 32400 × 31/365 = 2751,78 → 2752 (Ines − 2752, Ugo + 2752), e Teo lo rimborsa a Ugo. Per la
+    // decisione 145 quella coppia dà a Ines a credito dicembre, che aveva ripreso da Sara, e Ines rimborsa a Sara tutti i 10829: 8077 dei suoi 91 giorni (10829 × 91/122 = 8077,39) e 2752 di
+    // dicembre. A carico, dal Wallet: Ines 32400 − 16333 − 2752 = 13315 nelle sue rate + 10829 a Sara = 24144 (16067 + 8077); Sara 16333 − 10829 = 5504, con il conguaglio 16333; Teo 2752; il
+    // controllo 24144 + 5504 + 2752 = 32400. La forma (decisione 150.2, trappola 7 della catena del prospetto): i giorni di dicembre di Sara al lordo, 3058 (12033 − 8975), con accanto la riga
+    // «— già versato», − 306, come il pezzo dei giorni dopo la sua uscita (8975 e − 898) e quello prima (6115 e − 611): in tutto − 1815; la restituzione al netto, − 10829; il credito di Ines al
+    // netto, − 2752, come la coppia nel Wallet. Con il credito al lordo (− 3058) e senza la riga, Sara € 58,10 con il conguaglio € 166,39 e Ines € 238,38 con € 130,09 nelle sue rate: i € 3,06 del
+    // già versato di dicembre a carico di Sara.
+    [$s, $frasi] = pcc380ConIlVersato($this);
+    expect($frasi)->toContain('e li rimborsa Teo a Ugo, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -19085, 'Sara' => 16333, 'Ugo' => 2752])
+        ->and(fclNetti($s)['Ines'])->toBe(13315)
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [24144, 13315, 10829, 272],
+            'sara' => [5504, 0, -10829, 62],
+            'teo' => [2752, 0, 2752, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([5504, 16333, []])
+        ->and(pcc360PagateDa($s, 'Ines'))->toBe(['Sara' => 10829])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 2752])
+        ->and(pcc379GiorniDelConduttore($s))->toBe([[2752, ['Ugo']]]);
+    $voci = fn (array $s, string $nome) => collect(collect(app(\App\Services\Riparto\ProspettoOneriAccessori::class)->calcola($s['unita']->fresh(), $s['e'])['conduttori'])->firstWhere('nome', $nome)['voci'])
+        ->map(fn ($v) => [$v['conto'], (int) $v['importo'], $v['modo']])->sortBy([[0, 'asc'], [2, 'asc'], [1, 'asc']])->values()->all();
+    expect($voci($s, 'Sara'))->toBe([
+        ['Spese generali', 6115, 'conguaglio'],
+        ['Spese generali', 12033, 'conguaglio'],
+        ['Spese generali', -10829, 'restituzione'],
+        ['Spese generali — già versato', -1815, 'conguaglio'],
+    ])
+        ->and($voci($s, 'Ines'))->toBe([
+            ['Spese generali', 2752, 'proprietario'],
+            ['Spese generali', 8077, 'proprietario'],
+            ['Spese generali', -2752, 'rate'],
+            ['Spese generali', 17852, 'rate'],
+            ['Spese generali — già versato', -1785, 'rate'],
+        ]);
+    $stampa = fclStampa($s);
+    expect($stampa)->toContain('Totale a carico di Sara € 55,04 con il conguaglio del cambio d\'inquilino € 163,33')
+        ->and($stampa)->toContain('Totale a carico di Ines € 241,44 di cui già nelle sue rate € 133,15 di cui da rimborsare a chi le ha pagate € 108,29')
+        ->and($stampa)->toContain('a suo credito nel Wallet Proprietà1.000 su 1.000 millesimi 30 % 01/01/2026–31/12/2026 — € -27,52 nelle sue rate')
+        ->and($stampa)->toContain('Spese generali — già versato — — — — € -18,15 con il conguaglio del cambio d\'inquilino del 01/07/2026')
+        ->and($stampa)->not->toContain('€ 166,39');
+
+    // Il cambio Ines → Teo «Scrivi» il 1/12 al posto della fine: la coppia 2752 (Ines − 2752, Teo + 2752); Teo ha dicembre con il conguaglio al lordo, 3058, con accanto il suo già versato, − 306:
+    // € 27,52, come nel Wallet. Ines e Sara come sopra.
+    [$s] = pcc380ConIlVersato($this, 'Teo');
+    expect(fclSaldi($s))->toBe(['Ines' => -19085, 'Sara' => 16333, 'Teo' => 2752])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [24144, 13315, 10829, 272],
+            'sara' => [5504, 0, -10829, 62],
+            'teo' => [2752, 0, 0, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([5504, 16333, []])
+        ->and(pcc361Sezione($s, 'Teo'))->toBe([2752, 2752, []]);
+
+    // Senza il già versato lordo e netto sono uguali: le voci della prima storia della Coda 380, senza una riga «— già versato» e con il credito di Ines − 3058.
+    [$s] = pcc379Rientro($this, 'mai');
+    expect($voci($s, 'Sara'))->toBe([
+        ['Spese generali', 6115, 'conguaglio'],
+        ['Spese generali', 12033, 'conguaglio'],
+        ['Spese generali', -12033, 'restituzione'],
+    ])
+        ->and($voci($s, 'Ines'))->toBe([
+            ['Spese generali', 3058, 'proprietario'],
+            ['Spese generali', 8975, 'proprietario'],
+            ['Spese generali', -3058, 'rate'],
+            ['Spese generali', 17852, 'rate'],
+        ]);
+});
+
+// --- Coda 405: una voce che comincia dopo il passaggio prima della voce, e un'altra uscita di chi ha il pezzo dentro la voce (decisioni 43, 46, 83.3 e 145) -----------
+
+/**
+ * Ines sola all'80 % con il «Riscaldamento» € 600,00 dal giorno dato (`pcc371Scenario`); Ines → Sara «Scrivi» il 1/7, Sara → Zoe «Scrivi» il 1/10 con «Annulla il conguaglio» (senza con
+ * `$annulla` falso), Zoe → Sara il 1/11 con la scelta data, la fine di Sara «Scrivi» il 1/12 e Teo dal 1/12 all'80 %.
+ */
+function pccVoceDopoLAccordo($test, string $dal, string $rientro = 'non_scrivere', bool $annulla = true): array
+{
+    $s = pcc371Scenario($test, $dal);
+    pcc379Passaggio($test, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    $cambio = pcc379Passaggio($test, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi');
+    if ($annulla) {
+        pcc366Annulla($test, $s, $cambio);
+    }
+    pcc379Passaggio($test, $s, 'Zoe', 'Sara', '2026-11-01', $rientro);
+    pcc379Passaggio($test, $s, 'Sara', null, '2026-12-01', 'scrivi');
+    pcc361Inizio($test, $s, 'Teo', '2026-12-01', 80);
+
+    return $s;
+}
+
+/** Una voce del piano nella sezione di un conduttore: [la somma, chi ha pagato i giorni che rimborsa → la cifra]. */
+function pccVoceDelConduttore(array $s, string $nome, string $conto): array
+{
+    $c = collect(app(\App\Services\Riparto\ProspettoOneriAccessori::class)->calcola($s['unita']->fresh(), $s['e'])['conduttori'])->firstWhere('nome', $nome);
+    $voci = collect($c['voci'] ?? [])->where('conto', $conto);
+
+    return [(int) $voci->sum('importo'), $voci->filter(fn ($v) => ! empty($v['pagato_da']))->groupBy('pagato_da')->map(fn ($g) => (int) $g->sum('importo'))->sortKeys()->all()];
+}
+
+it('Coda 405 — il «Riscaldamento» dal 15/10: Sara → Zoe «Scrivi» il 1/10 annullato, Zoe → Sara «Non scriverlo» il 1/11, la fine di Sara «Scrivi» il 1/12 e Teo dal 1/12: Zoe non rimborsa a Sara i giorni che hanno regolato fra loro, € 39,23', function () {
+    // Il «Riscaldamento», 18000, ha la competenza dal 15/10 al 31/12, 78 giorni. Il cambio del 1/7 porta a Sara le «Spese generali» dopo il 1/7, 36000 × 184/365 = 18147,95 → 18148, e tutto il
+    // «Riscaldamento», 18000: la coppia 36148. Il cambio Sara → Zoe del 1/10 (9074 + 18000) le parti l'hanno regolato fra loro (decisioni 43 e 46): i giorni di Zoe restano dov'erano, a Sara, e Zoe
+    // non li rimborsa (Code 367 e 375). La fine di Sara del 1/12 scrive la coppia di dicembre, 18148 × 31/184 = 3057,54 → 3058 e 18000 × 31/78 = 7153,85 → 7154: 10212 a Ugo, e Teo glieli
+    // rimborsa. Sara 15090 per 153 giorni e 10846 per 47, 25936 «con il conguaglio», la cifra del Wallet (36148 − 10212); il controllo 17852 + 25936 + 10212 = 54000. Era: la ricerca prendeva la
+    // fine di Sara dentro la voce e saltava l'accordo, che cade prima della voce, e Zoe rimborsava a Sara 10846 × (80 × 17)/(80 × 17 + 80 × 30) = 3923,0 → 3923 del «Riscaldamento», mentre le
+    // «Spese generali» dello stesso prospetto leggevano l'accordo.
+    $s = pccVoceDopoLAccordo($this, '2026-10-15');
+    expect(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => 25936, 'Ugo' => 10212])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [25936, 0, 0, 200],
+            'teo' => [10212, 0, 10212, 62],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([25936, 25936, []])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 10212]);
+
+    // La voce dal 1/10, il giorno dell'accordo: 18000 su 92 giorni, dicembre 18000 × 31/92 = 6065,22 → 6065 (la coppia 3058 + 6065 = 9123). Sara 15090 + 11935 = 27025, il Wallet; Teo 9123 «pagata
+    // da Ugo». Era: Zoe rimborsava a Sara 11935 × 31/61 = 6065,41 → 6065.
+    $s = pccVoceDopoLAccordo($this, '2026-10-01');
+    expect(fclProspetto($s))->toBe(['conduttori' => [
+        'ines' => [17852, 17852, 0, 181],
+        'sara' => [27025, 0, 0, 214],
+        'teo' => [9123, 0, 9123, 62],
+    ], 'senza' => [0, 0]]);
+
+    // Zoe → Sara «Scrivi» il 1/11: il cambio regolato fra le parti e l'uscita di Zoe con la coppia scritta, la catena la segue (decisione 83.3), come per le «Spese generali»: i giorni di Zoe,
+    // 18000 × 17/78 = 3923,08 → 3923, sono «regolata fra le parti», e novembre è di Sara con il conguaglio del 1/11, 18000 × 30/78 = 6923,08 → 6923. Zoe 3058 + 3923 = 6981 regolata, niente da
+    // rimborsare. Era: Zoe rimborsava a Sara 3923 del «Riscaldamento», e novembre era di Sara con il conguaglio del 1/7.
+    $s = pccVoceDopoLAccordo($this, '2026-10-15', 'scrivi');
+    expect(pcc366Sezione($s, 'Zoe'))->toBe([6981, 6981, []])
+        ->and(fclProspetto($s)['conduttori']['zoe'])->toBe([6981, 0, 0, 48])
+        ->and(fclProspetto($s)['conduttori']['sara'])->toBe([18956, 0, 0, 152]);
+
+    // La fine di Ines «Scrivi» il 1/10 annullata (l'accordo di tutto il passaggio), Teo dal 15/10, Teo → Ines il 1/11 e la fine di Ines il 1/12, che non chiede la scelta: come per la voce di
+    // tutto l'anno, i giorni restano nell'accordo, Ines 36000 + 18000 = 54000 nelle sue rate, niente da restituire. Era: dicembre del «Riscaldamento», 7154, «da restituire» a Ines, senza conduttore.
+    $s = pcc371Scenario($this, '2026-10-15');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Ines', null, '2026-10-01', 'scrivi'));
+    pcc361Inizio($this, $s, 'Teo', '2026-10-15', 80);
+    pcc379Passaggio($this, $s, 'Teo', 'Ines', '2026-11-01');
+    pcc379Passaggio($this, $s, 'Ines', null, '2026-12-01');
+    expect(fclSaldi($s))->toBe([])
+        ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [54000, 54000, 0, 443]], 'senza' => [0, 0]]);
+});
+
+it('Coda 405 — le guardie: senza l\'uscita di Sara dentro la voce, e con la voce dopo l\'uscita di Zoe, il prospetto resta com\'era', function () {
+    // Senza la fine di Sara: la catena trovava già l'accordo prima della voce (`finePrimaDellaVoce`), Sara 18148 + 18000 = 36148, Zoe senza sezione.
+    $s = pcc371Scenario($this, '2026-10-15');
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    pcc379Passaggio($this, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    expect(fclProspetto($s))->toBe(['conduttori' => ['ines' => [17852, 17852, 0, 181], 'sara' => [36148, 0, 0, 262]], 'senza' => [0, 0]]);
+
+    // La voce dal 15/11, dopo il rientro di Sara: 18000 su 47 giorni, dicembre 18000 × 31/47 = 11872,34 → 11872 a Ugo; Sara 15090 + 6128, Teo 3058 + 11872 «pagata da Ugo».
+    $s = pccVoceDopoLAccordo($this, '2026-11-15');
+    expect(fclProspetto($s))->toBe(['conduttori' => [
+        'ines' => [17852, 17852, 0, 181],
+        'sara' => [21218, 0, 0, 169],
+        'teo' => [14930, 0, 14930, 62],
+    ], 'senza' => [0, 0]]);
+});
+
+it('Coda 405 — la stessa storia voce per voce: le «Spese generali» e il «Riscaldamento» leggono l\'accordo allo stesso modo, e dicembre di tutte e due lo rimborsa Teo a Ugo', function () {
+    // «Spese generali»: Sara 18148 − 3058 = 15090 dal 1/7 al 30/11, nessun rimborso; Teo 3058 «pagata da Ugo». «Riscaldamento»: Sara 18000 − 7154 = 10846 dal 15/10 al 30/11, nessun rimborso
+    // (i giorni di Zoe sono nell'accordo, decisioni 43 e 46); Teo 7154 «pagata da Ugo», la coppia della fine di Sara (decisione 45, nota del 12/10). Zoe senza sezione. Era: il «Riscaldamento» di
+    // Zoe 3923 «pagata da Sara», e Sara 10846 − 3923 = 6923.
+    $s = pccVoceDopoLAccordo($this, '2026-10-15');
+    expect(pccVoceDelConduttore($s, 'Sara', 'Spese generali'))->toBe([15090, []])
+        ->and(pccVoceDelConduttore($s, 'Sara', 'Riscaldamento'))->toBe([10846, []])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Spese generali'))->toBe([3058, ['Ugo' => 3058]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([7154, ['Ugo' => 7154]])
+        ->and(array_keys(fclProspetto($s)['conduttori']))->toBe(['ines', 'sara', 'teo']);
+});
+
+it('Coda 405 — la stessa storia senza «Annulla il conguaglio»: il «Riscaldamento» l\'ha preso tutto Zoe con la coppia del 1/10, e Sara le rimborsa novembre e dicembre, € 140,77; Teo rimborsa dicembre a Ugo', function () {
+    // Il cambio Sara → Zoe del 1/10 con «Scrivi» scrive la coppia 18148 × 92/184 = 9074 delle «Spese generali» e tutto il «Riscaldamento», che comincia dopo il cambio (Coda 252.1): 18000; Zoe
+    // + 27074. Al 1/11 Zoe → Sara «Non scriverlo»: i giorni dopo l'uscita di Zoe restano a lei, e Sara glieli rimborsa (decisioni 46, nota del 12/10, e 77): «Spese generali» 9074 su 31 + 61 giorni,
+    // 3057,54 e 6016,46 → 3058 e 6016; «Riscaldamento» 18000 su 17 + 61, 3923,08 e 14076,92 → 3923 e 14077. La fine di Sara del 1/12 scrive la coppia di dicembre, 3058 + 7154 (18148 × 31/184 e
+    // 18000 × 31/78): Sara − 10212, Ugo + 10212. Dicembre l'ha preso Ugo, e Teo glielo rimborsa; la coppia dà a Sara a credito dicembre, che aveva già dato a Zoe, e Sara rimborsa a Zoe tutti i
+    // giorni dopo la sua uscita (decisione 145, la lettura P): «Riscaldamento» 14077, novembre 6923 e dicembre 7154 (su 30 + 31: 6923,11 e 7153,89); «Spese generali» 6016, 2959 e 3057. A carico:
+    // Sara 9074 + 2959 + 6923 = 18956, Zoe 3058 + 3923 = 6981, Teo 7154 + 3057. Il centesimo in due passi: la coppia delle «Spese generali» di dicembre è 3058, e la catena divide i 6016 di Zoe in
+    // 2959 e 3057, quindi Teo 3057 e Sara con il conguaglio − 1137 contro i − 1138 del Wallet (36148 − 27074 − 10212), € 0,01 come nelle guardie della Coda 379. Era: la ricerca prendeva la fine di
+    // Sara dentro il «Riscaldamento» e saltava il cambio, che cade prima della voce: la voce restava a Sara «con il conguaglio del 1/7», 10846, e Zoe le rimborsava 3923, mentre l'aveva pagata
+    // tutta con la coppia: € 180,00 a Zoe.
+    $s = pccVoceDopoLAccordo($this, '2026-10-15', annulla: false);
+    expect(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => -1138, 'Ugo' => 10212, 'Zoe' => 27074])
+        ->and(pccVoceDelConduttore($s, 'Zoe', 'Riscaldamento'))->toBe([3923, []])
+        ->and(pccVoceDelConduttore($s, 'Zoe', 'Spese generali'))->toBe([3058, []])
+        ->and(pccVoceDelConduttore($s, 'Sara', 'Riscaldamento'))->toBe([6923, ['Zoe' => 14077]])
+        ->and(pccVoceDelConduttore($s, 'Sara', 'Spese generali'))->toBe([12033, ['Zoe' => 6016]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([7154, ['Ugo' => 7154]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Spese generali'))->toBe([3057, ['Ugo' => 3057]])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [18956, 0, 20093, 152],
+            'teo' => [10211, 0, 10211, 62],
+            'zoe' => [6981, 0, -20093, 48],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Zoe'))->toBe([6981, 27074, []])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([18956, -1137, []]);
+});
+
+it('Coda 405 — la voce che comincia dopo la fine «Scrivi» di Sara (il 1/10), Teo dal 15/10, Teo → Sara il 1/11 e la fine di Sara il 1/12: il «Riscaldamento» l\'ha preso Ugo con la coppia, e Teo e Sara glielo rimborsano', function () {
+    // La fine di Sara del 1/10 con «Scrivi» scrive la coppia 18148 × 92/184 = 9074 delle «Spese generali» e tutto il «Riscaldamento», 18000, che comincia dopo: Sara − 27074, Ugo + 27074. I
+    // giorni dopo l'uscita li ha presi Ugo, e chi entra glieli rimborsa (decisione 45, nota del 12/10, e 77.4): il «Riscaldamento», 78 giorni, Teo dal 15/10 al 31/10, 17 giorni, 18000 × 17/78 =
+    // 3923,08 → 3923; Sara rientrata dal 1/11 al 30/11, 30 giorni, 6923,08 → 6923; dicembre senza conduttore, 7154, resta a Ugo (la fine del 1/12 non chiede la scelta: la parte l'aveva già ceduta).
+    // Le «Spese generali» dal 1/10, 9074 su 92 giorni: Teo 1676,72 → 1677, Sara 2958,91 → 2959, senza conduttore il resto. Sara 9074 + 2959 + 6923 = 18956, con il conguaglio 9074 (il Wallet), da
+    // rimborsare a Ugo 9882; Teo 1677 + 3923 = 5600. Era: la ricerca prendeva la fine di Sara del 1/12 dentro la voce e saltava quella del 1/10: il «Riscaldamento» restava a Sara «con il
+    // conguaglio», e la fine senza la scelta glielo restituiva.
+    $s = pcc371Scenario($this, '2026-10-15');
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-10-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Teo', '2026-10-15', 80);
+    pcc379Passaggio($this, $s, 'Teo', 'Sara', '2026-11-01');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-12-01');
+    expect(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => 9074, 'Ugo' => 27074])
+        ->and(pccVoceDelConduttore($s, 'Sara', 'Riscaldamento'))->toBe([6923, ['Ugo' => 6923]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([3923, ['Ugo' => 3923]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([18956, 9074, []])
+        ->and(pcc360PagateDa($s, 'Sara'))->toBe(['Ugo' => 9882])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 5600])
+        ->and(fclProspetto($s)['senza'][0])->toBe(11592);
+});
+
+// --- Coda 406: chi entra nei giorni del rientro di chi ha il pezzo, dopo un accordo fra le parti (decisione 144) ---------------------------------------------------------
+
+/**
+ * Ines sola all'80 %; Ines → Sara «Scrivi» il 1/7, Sara → Zoe «Scrivi» il 1/10 con «Annulla il conguaglio», Zoe → Sara «Non scriverlo» il 1/11 (Sara rientra); Elsa dal giorno dato al 20 %, con
+ * la sua fine il giorno dato (la scelta non si chiede: Elsa non ha rate); con `$fine` la fine di Sara «Scrivi» il 1/12 e Teo dal 1/12 all'80 %. Lo scenario e le frasi del pannello dell'inizio di Elsa.
+ */
+function pccElsaNelRientro($test, bool $fine = true, string $dal = '2026-11-01', string $esce = '2026-11-20'): array
+{
+    $s = pcc358Scenario($test, [['Ines', 80]]);
+    pcc379Passaggio($test, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($test, $s, pcc379Passaggio($test, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    // I passaggi nell'ordine delle date: Elsa nei giorni di Zoe prima del rientro di Sara.
+    if ($dal >= '2026-11-01') {
+        pcc379Passaggio($test, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    }
+    $frasi = pcc361Inizio($test, $s, 'Elsa', $dal, 20);
+    pcc379Passaggio($test, $s, 'Elsa', null, $esce);
+    if ($dal < '2026-11-01') {
+        pcc379Passaggio($test, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    }
+    if ($fine) {
+        pcc379Passaggio($test, $s, 'Sara', null, '2026-12-01', 'scrivi');
+        pcc361Inizio($test, $s, 'Teo', '2026-12-01', 80);
+    }
+
+    return [$s, $frasi];
+}
+
+it('Coda 406 — dopo l\'accordo fra Sara e Zoe, Sara rientra il 1/11 ed Elsa entra il 1/11 al 20 % fino al 19/11: Elsa rimborsa a Sara la sua parte dei giorni di Sara, € 4,51, come se l\'accordo non ci fosse', function () {
+    // Il cambio del 1/7 dà a Sara 36000 × 184/365 = 18147,95 → 18148. Il cambio Sara → Zoe del 1/10 le parti l'hanno regolato fra loro (decisioni 43 e 46), e l'accordo copre solo i giorni della
+    // parte con cui è fatto, Zoe, dal 1/10 al 31/10 (decisione 144). La fine di Sara del 1/12 scrive la coppia di dicembre, 18148 × 31/184 = 3057,54 → 3058 (Sara − 3058, Ugo + 3058), e Teo la
+    // rimborsa a Ugo; il pezzo di Sara è 15090 dal 1/7 al 30/11. Fuori dall'accordo, dal 1/7 al 30/9 e dal 1/11 al 30/11, 122 giorni su 153: 15090 × 122/153 = 12032,55 → 12033. Elsa, che
+    // dell'accordo non è parte, divide quella parte con Sara per quota e per giorni, come chi entra nei giorni di chi ha il conguaglio (decisione 117, Coda 364): Sara 80 × 122 = 9760, Elsa 20 × 19
+    // = 380, 12033 × 380/10140 = 450,94 → 451 «pagata da Sara». Sara 15090 − 451 = 14639, con il conguaglio 15090 (il Wallet), da ricevere 451; il controllo 17852 + 14639 + 451 + 3058 = 36000.
+    // Il pannello dell'inizio di Elsa lo dice come il prospetto. Era: dal giorno dell'accordo il prospetto non divideva più nessuno, ed Elsa non rimborsava niente.
+    [$s, $frasi] = pccElsaNelRientro($this);
+    expect($frasi)->toContain('i giorni dopo la sua uscita li ha presi con il conguaglio Sara, e li rimborsa Elsa a Sara, con il prospetto degli oneri accessori')
+        ->and($frasi)->not->toContain('le parti lo hanno regolato fra loro')
+        ->and(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 15090, 'Ugo' => 3058])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'elsa' => [451, 0, 451, 19],
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [14639, 0, -451, 153],
+            'teo' => [3058, 0, 3058, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([14639, 15090, ['Elsa' => -451]])
+        ->and(pcc360PagateDa($s, 'Elsa'))->toBe(['Sara' => 451])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 3058]);
+
+    // Senza la terza uscita: il pezzo di Sara è 18148 dal 1/7 al 31/12; fuori dall'accordo 153 giorni su 184, 18148 × 153/184 = 15090,46 → 15090; Sara 80 × 153 = 12240 ed Elsa 380, 15090 ×
+    // 380/12620 = 454,37 → 454. Sara 18148 − 454 = 17694, con il conguaglio 18148. Era: Elsa niente.
+    [$s] = pccElsaNelRientro($this, fine: false);
+    expect(fclProspetto($s))->toBe(['conduttori' => [
+        'elsa' => [454, 0, 454, 19],
+        'ines' => [17852, 17852, 0, 181],
+        'sara' => [17694, 0, -454, 184],
+    ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([17694, 18148, ['Elsa' => -454]]);
+});
+
+it('Coda 406 — le guardie: chi entra nei giorni di Zoe, la parte con cui è fatto l\'accordo, non li divide (Coda 367), chi resta dopo il rientro divide i giorni dopo, e senza il cambio con Zoe Elsa divide tutto il pezzo di Sara', function () {
+    // Elsa dal 15/10 al 24/10, nei giorni di Zoe: sono i giorni dell'accordo (decisioni 43, 46 e 144), ed Elsa non rimborsa niente. Sara 15090, con il conguaglio 15090; Teo 3058 «pagata da Ugo».
+    [$s, $frasi] = pccElsaNelRientro($this, dal: '2026-10-15', esce: '2026-10-25');
+    expect($frasi)->toContain('le parti lo hanno regolato fra loro')
+        ->and(fclProspetto($s)['conduttori'])->toBe([
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [15090, 0, 0, 153],
+            'teo' => [3058, 0, 3058, 31],
+        ]);
+
+    // Elsa dal 15/10 al 19/11, a cavallo del rientro di Sara, registrata dopo il cambio Zoe → Sara: divide solo i giorni dal 1/11, come chi entra il 1/11 senza la terza uscita, 15090 × 380/12620
+    // = 454,37 → 454; il pannello del suo inizio non dice più che le parti hanno regolato tutto, ma che chi rimborsa chi lo dice il prospetto (i giorni nell'accordo e quelli dopo).
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    pcc379Passaggio($this, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    $frasi = pcc361Inizio($this, $s, 'Elsa', '2026-10-15', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    expect($frasi)->toContain('per i giorni dopo la sua uscita il prospetto degli oneri accessori dice chi rimborsa chi')
+        ->and($frasi)->not->toContain('le parti lo hanno regolato fra loro')
+        ->and(pcc360PagateDa($s, 'Elsa'))->toBe(['Sara' => 454]);
+
+    // Senza il cambio con Zoe (né l'accordo né il rientro), con la fine di Sara e Teo: il pezzo di Sara è 15090 dal 1/7 al 30/11, ed Elsa lo divide tutto con lei (decisione 117, Coda 364): Sara
+    // 80 × 153 = 12240, Elsa 380, 15090 × 380/12620 = 454,37 → 454. Con l'accordo i 31 giorni di Zoe ne restano fuori, e la parte di Elsa è 451.
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Elsa', '2026-11-01', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-12-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect(pcc360PagateDa($s, 'Elsa'))->toBe(['Sara' => 454])
+        ->and(fclProspetto($s)['conduttori']['sara'])->toBe([14636, 0, -454, 153]);
+});
+
+it('Coda 406 — l\'accordo finisce con l\'uscita di Zoe, non con il rientro di Sara: Zoe esce con la sua fine il 1/11 («Non scriverlo»), Elsa entra il 5/11 al 20 % fino al 19/11 e Sara rientra il 15/11; Elsa rimborsa a Sara € 3,86', function () {
+    // L'accordo fra Sara e Zoe copre i giorni di Zoe, dal 1/10 al 31/10 (decisione 144): dal 1/11 i giorni sono di nuovo di Sara, con il conguaglio del 1/7, anche prima che rientri. Il pezzo di
+    // Sara è 18148 dal 1/7 al 31/12; fuori dall'accordo 153 giorni su 184, 15090,46 → 15090. Dei 153 giorni, quattro (dal 1/11 al 4/11) non hanno un conduttore e restano a Sara (Coda 364): 15090
+    // su 149 + 4, 14695,49 e 394,51 → 14695 ai conduttori. Sara 80 × 139 = 11120 (dal 1/7 al 30/9 e dal 15/11), Elsa 20 × 15 = 300: 14695 × 300/11420 = 386,03 → 386 «pagata da Sara». Sara 18148 −
+    // 386 = 17762, con il conguaglio 18148. Il pannello dell'inizio di Elsa lo dice. Era: Elsa niente.
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    pcc379Passaggio($this, $s, 'Zoe', null, '2026-11-01', 'non_scrivere');
+    $frasi = pcc361Inizio($this, $s, 'Elsa', '2026-11-05', 20);
+    pcc361Inizio($this, $s, 'Sara', '2026-11-15', 80);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    expect($frasi)->toContain('li rimborsa Elsa a Sara, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 18148])
+        ->and(fclProspetto($s)['conduttori'])->toBe([
+            'elsa' => [386, 0, 386, 15],
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [17762, 0, -386, 184],
+        ])
+        ->and(pcc360PagateDa($s, 'Elsa'))->toBe(['Sara' => 386]);
+});
+
+it('Coda 406 — la fine di Sara del 1/10 annullata (l\'accordo senza chi entra), Teo dal 15/10, Teo → Sara il 1/11 (Sara rientra), Elsa dal 15/11 al 19/11 al 20 %: l\'accordo finisce al rientro di Sara (decisione 148.2), ed Elsa le rimborsa € 1,22, Teo niente', function () {
+    // Il cambio del 1/7 dà a Sara 36000 × 184/365 = 18147,95 → 18148 (Ines − 18148, Sara + 18148). La fine di Sara del 1/10 «Scrivi» e poi «Annulla il conguaglio»: le parti hanno regolato fra
+    // loro i giorni dopo l'uscita (decisioni 43 e 46), e l'accordo finisce quando Sara rientra, come per il cambio annullato (decisione 148.2): copre dal 1/10 al 31/10. Teo, entrato il 15/10 in quei
+    // giorni, non divide (Coda 367). Il pezzo di Sara è 18148 dal 1/7 al 31/12; fuori dall'accordo 153 giorni su 184, 18148 × 153/184 = 15090,46 → 15090. Elsa, entrata dopo il rientro, divide
+    // quella parte con Sara per quota e per giorni (decisione 117, Coda 364): Sara 80 × 153 = 12240, Elsa 20 × 5 = 100, 15090 × 100/12340 = 122,28 → 122 «pagata da Sara». Sara 18148 − 122 =
+    // 18026, con il conguaglio 18148 (il Wallet); il controllo 17852 + 18026 + 122 = 36000. Il pannello dell'inizio di Teo dice l'accordo, quello di Elsa il rimborso a Sara.
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', null, '2026-10-01', 'scrivi'));
+    $teo = pcc361Inizio($this, $s, 'Teo', '2026-10-15', 80);
+    pcc379Passaggio($this, $s, 'Teo', 'Sara', '2026-11-01');
+    $elsa = pcc361Inizio($this, $s, 'Elsa', '2026-11-15', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    expect($teo)->toContain('le parti lo hanno regolato fra loro')
+        ->and($elsa)->toContain('li rimborsa Elsa a Sara, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 18148])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'elsa' => [122, 0, 122, 5],
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [18026, 0, -122, 184],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([18026, 18148, ['Elsa' => -122]])
+        ->and(pcc360PagateDa($s, 'Elsa'))->toBe(['Sara' => 122])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe([]);
+
+    // Sara rientra con un inizio il 1/11, senza Teo: lo stesso rientro, le stesse cifre (Sara 80 × 153, Elsa 20 × 5).
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', null, '2026-10-01', 'scrivi'));
+    pcc361Inizio($this, $s, 'Sara', '2026-11-01', 80);
+    pcc361Inizio($this, $s, 'Elsa', '2026-11-15', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    expect(pcc360PagateDa($s, 'Elsa'))->toBe(['Sara' => 122])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([18026, 18148, ['Elsa' => -122]]);
+});
+
+it('Coda 406 — due voci, le «Spese generali» e il «Riscaldamento» € 600,00 dal 15/10: l\'accordo fra Sara e Zoe vale per ogni voce nei suoi giorni, ed Elsa rimborsa a Sara € 4,51 e € 9,46, come dice il pannello del suo inizio; Teo rimborsa a Ugo dicembre di tutte e due', function () {
+    // La storia della Coda 406 (`pccElsaNelRientro`) con una seconda voce, il «Riscaldamento», 18000 all'inquilino, competenza dal 15/10 al 31/12 (78 giorni). Il cambio del 1/7 dà a Sara le
+    // «Spese generali» dopo il 1/7, 18148, e tutto il «Riscaldamento», 18000 (Coda 252.1): Sara + 36148. La fine di Sara del 1/12 «Scrivi» scrive dicembre, 18148 × 31/184 = 3057,54 → 3058 e
+    // 18000 × 31/78 = 7153,85 → 7154: Sara − 10212, Ugo + 10212, e Teo li rimborsa a Ugo (decisione 45, nota del 12/10). Il pezzo di Sara, fino al 30/11: 15090 e 10846. L'accordo con Zoe copre i
+    // giorni di Zoe, dal 1/10 al 31/10 (decisione 144), dentro i giorni di ogni voce: per le «Spese generali» 31 giorni su 153, fuori 15090 × 122/153 = 12032,55 → 12033, Elsa 12033 × 380/10140 =
+    // 450,94 → 451 (Sara 80 × 122, Elsa 20 × 19); per il «Riscaldamento» 17 giorni (dal 15/10) su 47, fuori 10846 × 30/47 = 6922,98 → 6923, Elsa 6923 × 380/2780 = 946,29 → 946 (Sara 80 × 30). Sara
+    // 25936 − 451 − 946 = 24539, con il conguaglio 25936 (il Wallet); Teo 3058 + 7154 = 10212; il controllo 17852 + 24539 + 1397 + 10212 = 54000. Zoe non ha voci: i suoi giorni sono l'accordo.
+    $s = pcc371Scenario($this, '2026-10-15');
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    pcc379Passaggio($this, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    $frasi = pcc361Inizio($this, $s, 'Elsa', '2026-11-01', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-12-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect($frasi)->toContain('li rimborsa Elsa a Sara, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => 25936, 'Ugo' => 10212])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'elsa' => [1397, 0, 1397, 38],
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [24539, 0, -1397, 200],
+            'teo' => [10212, 0, 10212, 62],
+        ], 'senza' => [0, 0]])
+        ->and(pccVoceDelConduttore($s, 'Elsa', 'Spese generali'))->toBe([451, ['Sara' => 451]])
+        ->and(pccVoceDelConduttore($s, 'Elsa', 'Riscaldamento'))->toBe([946, ['Sara' => 946]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Spese generali'))->toBe([3058, ['Ugo' => 3058]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([7154, ['Ugo' => 7154]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([24539, 25936, ['Elsa' => -1397]]);
+
+    // Senza il rientro: Zoe esce con la sua fine il 1/11, e l'accordo finisce lì (decisione 144); Elsa entra il 5/11 al 20 % ed esce il 20/11, unica conduttrice dal 1/11. Il pezzo di Sara, 18148 e
+    // 18000, fino al 31/12. «Riscaldamento»: fuori dall'accordo dal 1/11, 18000 × 61/78 = 14076,92 → 14077; i giorni di Elsa 15 su 61, 14077 × 15/61 = 3461,59 → 3462, tutti suoi; gli altri 46 restano a
+    // Sara. «Spese generali»: fuori 15090 (153 giorni su 184), con un conduttore 107 giorni (Sara dal 1/7 al 30/9 e i 15 di Elsa), 15090 × 107/153 = 10553,14 → 10553; Elsa 10553 × 300/7660 = 413,30 → 413
+    // (Sara 80 × 92 = 7360). Sara 36148 − 3875 = 32273, con il conguaglio 36148 (il Wallet).
+    $s = pcc371Scenario($this, '2026-10-15');
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    pcc379Passaggio($this, $s, 'Zoe', null, '2026-11-01', 'non_scrivere');
+    $frasi = pcc361Inizio($this, $s, 'Elsa', '2026-11-05', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    expect($frasi)->toContain('li rimborsa Elsa a Sara, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => 36148])
+        ->and(pccVoceDelConduttore($s, 'Elsa', 'Riscaldamento'))->toBe([3462, ['Sara' => 3462]])
+        ->and(pccVoceDelConduttore($s, 'Elsa', 'Spese generali'))->toBe([413, ['Sara' => 413]])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([32273, 36148, ['Elsa' => -3875]]);
+});
+
+it('Coda 406 — con il box: l\'accordo e il rientro valgono unità per unità; sull\'Interno 1 Elsa rimborsa a Sara € 4,09, e sul box, dove Elsa non entra, Sara tiene i suoi giorni', function () {
+    // L'Interno 1 900 millesimi e il «Box 12» 100: l'anello 32400 e 3600, Ines all'80 % su tutti e due. I passaggi con il box spuntato: Ines → Sara «Scrivi» il 1/7 (32400 × 184/365 = 16333,15 →
+    // 16333 e 3600 × 184/365 = 1814,79 → 1815), Sara → Zoe «Scrivi» il 1/10 annullato, Zoe → Sara «Non scriverlo» il 1/11. Elsa entra il 1/11 al 20 % sul solo Interno 1 (con il box spuntato la
+    // registrazione si rifiuta: la pertinenza la prenderebbe tutta, e le quote degli inquilini sul box farebbero 180) ed esce il 20/11. Sull'Interno 1, fuori dall'accordo 153 giorni su 184:
+    // 16333 × 153/184 = 13581,17 → 13581; Elsa 13581 × 380/12620 = 408,93 → 409 (Sara 80 × 153, Elsa 20 × 19); Sara 16333 − 409 = 15924, con il conguaglio 16333 (il Wallet). Sul box nessuno entra:
+    // Sara 1815 con il conguaglio, Ines 3600 − 1815 = 1785.
+    $s = pcc375ConIlBox($this);
+    fclPersona($s, 'Sara');
+    pcc375ConIlBoxPassaggio($this, $s, 'Ines', 'Sara', '2026-07-01');
+    pcc366Annulla($this, $s, pcc375ConIlBoxPassaggio($this, $s, 'Sara', 'Zoe', '2026-10-01'));
+    pcc375ConIlBoxPassaggio($this, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    $frasi = pcc361Inizio($this, $s, 'Elsa', '2026-11-01', 20);
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-11-20');
+    expect($frasi)->toContain('li rimborsa Elsa a Sara, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe(['Ines' => -16333, 'Sara' => 16333])
+        ->and(fclSaldi($s, $s['box']))->toBe(['Ines' => -1815, 'Sara' => 1815])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'elsa' => [409, 0, 409, 19],
+            'ines' => [16067, 16067, 0, 181],
+            'sara' => [15924, 0, -409, 184],
+        ], 'senza' => [0, 0]])
+        ->and(fclProspetto($s, $s['box']))->toBe(['conduttori' => [
+            'ines' => [1785, 1785, 0, 181],
+            'sara' => [1815, 0, 0, 184],
+        ], 'senza' => [0, 0]]);
+});
+
+// --- La voce che comincia il giorno dell'ultima uscita di chi ha il pezzo, o dopo (decisioni 45, 77, 145; Code 252.1, 380 e 405) ---------------------------------------
+
+/**
+ * Ines sola all'80 % con il «Riscaldamento» € 600,00 dal giorno dato (`pcc371Scenario`), e la storia data, tutta prima della voce o nel suo primo giorno: `b0` Ines → Sara «Scrivi» il 1/7,
+ * Sara → Ines «Non scriverlo» il 1/9, la fine di Ines «Scrivi» il 1/12, Teo dal 1/12 all'80 %; `rientri` Ines → Sara «Scrivi» il 1/7, Sara → Zoe «Scrivi» il 1/10, Zoe → Sara «Non scriverlo» il
+ * 1/11, la fine di Sara «Scrivi» il 1/12, Teo dal 1/12; `fine` Ines → Sara «Scrivi» il 1/7, la fine di Sara «Scrivi» il 1/10, Teo dal 15/10, Teo → Sara il 1/11, la fine di Sara il 1/12 (la
+ * scelta non si chiede), Elsa dal 5/12 all'80 %.
+ */
+function pccVoceDopoIPassaggi($test, string $storia, string $dal = '2026-12-01'): array
+{
+    $s = pcc371Scenario($test, $dal);
+    pcc379Passaggio($test, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    if ($storia === 'b0') {
+        pcc379Passaggio($test, $s, 'Sara', 'Ines', '2026-09-01', 'non_scrivere');
+        pcc379Passaggio($test, $s, 'Ines', null, '2026-12-01', 'scrivi');
+        pcc361Inizio($test, $s, 'Teo', '2026-12-01', 80);
+    } elseif ($storia === 'rientri') {
+        pcc379Passaggio($test, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi');
+        pcc379Passaggio($test, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+        pcc379Passaggio($test, $s, 'Sara', null, '2026-12-01', 'scrivi');
+        pcc361Inizio($test, $s, 'Teo', '2026-12-01', 80);
+    } else {
+        pcc379Passaggio($test, $s, 'Sara', null, '2026-10-01', 'scrivi');
+        pcc361Inizio($test, $s, 'Teo', '2026-10-15', 80);
+        pcc379Passaggio($test, $s, 'Teo', 'Sara', '2026-11-01');
+        pcc379Passaggio($test, $s, 'Sara', null, '2026-12-01');
+        pcc361Inizio($test, $s, 'Elsa', '2026-12-05', 80);
+    }
+
+    return $s;
+}
+
+it('La voce che comincia il giorno della fine di Ines, dopo Ines → Sara «Scrivi» e Sara → Ines «Non scriverlo»: Teo la rimborsa a Ugo, e Ines la rimborsa a Sara, € 180,00', function () {
+    // Il «Riscaldamento», 18000, dal 1/12 al 31/12. Il cambio del 1/7 porta a Sara le «Spese generali» dopo il 1/7, 18148, e tutto il «Riscaldamento», che comincia dopo (Coda 252.1): Ines −
+    // 36148, Sara + 36148. Al 1/9 «Non scriverlo»: la voce resta a Sara, e Ines gliela rimborsa (decisione 46, nota del 12/10, e 77.4). La fine di Ines del 1/12 «Scrivi» scrive la coppia dei
+    // giorni dopo l'uscita, 3058 delle «Spese generali» (36000 × 31/365) e tutto il «Riscaldamento», 18000: Ines − 21058, Ugo + 21058. Ugo ha preso la voce con la coppia, e Teo, conduttore
+    // di tutti i suoi giorni, gliela rimborsa (decisione 45, nota del 12/10); la coppia ha dato a Ines a credito la voce che era di Sara, e Ines la rimborsa a Sara (decisione 145, la lettura P).
+    // «Riscaldamento»: Sara 18000 con il conguaglio e 18000 da ricevere da Ines; Ines − 18000 nelle sue rate e 18000 «pagata da Sara»; Teo 18000 «pagata da Ugo». Le «Spese generali» come nella
+    // storia della Coda 380. Ines: nelle sue rate 14794 − 18000 = − 3206 (il Wallet: 54000 di rate e − 57206 di saldi), da rimborsare 12033 + 18000 = 30033; Sara con il conguaglio 36148 (il
+    // Wallet). Era: la voce c'era solo nella sezione di Teo, e nessuno rimborsava a Sara i € 180,00 che aveva pagato con la coppia del 1/7.
+    // Con la voce dal 15/12 la coppia del 1/12 la prende ancora tutta, e Teo ne ha i 17 giorni.
+    foreach (['2026-12-01' => 31, '2026-12-15' => 17] as $dal => $giorni) {
+        $s = pccVoceDopoIPassaggi($this, 'b0', $dal);
+        expect(fclSaldi($s))->toBe(['Ines' => -57206, 'Sara' => 36148, 'Ugo' => 21058], $dal)
+            ->and(fclNetti($s)['Ines'])->toBe(-3206)
+            ->and(fclProspetto($s))->toBe(['conduttori' => [
+                'ines' => [26827, -3206, 30033, 272],
+                'sara' => [6115, 0, -30033, 62],
+                'teo' => [21058, 0, 21058, 31 + $giorni],
+            ], 'senza' => [0, 0]], $dal)
+            ->and(pccVoceDelConduttore($s, 'Ines', 'Riscaldamento'))->toBe([0, ['Sara' => 18000]], $dal)
+            ->and(pccVoceDelConduttore($s, 'Sara', 'Riscaldamento'))->toBe([0, []], $dal)
+            ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([18000, ['Ugo' => 18000]], $dal)
+            ->and(pcc361Sezione($s, 'Sara'))->toBe([6115, 36148, []], $dal)
+            ->and(pcc360PagateDa($s, 'Ines'))->toBe(['Sara' => 30033], $dal);
+    }
+});
+
+it('La voce che comincia il giorno della terza uscita di Sara, dopo Sara → Zoe «Scrivi» e Zoe → Sara «Non scriverlo»: Teo la rimborsa a Ugo, e Sara la rimborsa a Zoe, € 180,00', function () {
+    // Il cambio Sara → Zoe del 1/10 con «Scrivi» porta a Zoe 9074 delle «Spese generali» e tutto il «Riscaldamento», 18000 (Coda 252.1): Zoe + 27074. Al 1/11 Zoe → Sara «Non scriverlo»: la voce
+    // resta a Zoe, e Sara gliela rimborsa (decisioni 46, nota del 12/10, e 77.4). La fine di Sara del 1/12 «Scrivi» scrive la coppia 3058 + 18000 (Sara − 21058, Ugo + 21058): Teo rimborsa a Ugo
+    // la voce (decisione 45, nota del 12/10), e Sara, che l'ha avuta a credito, la rimborsa a Zoe (decisione 145). Le «Spese generali» come nella storia della Coda 405 senza l'annullamento: Sara
+    // 9074 + 2959 + 3057 − 3057, con il conguaglio 6017 (il centesimo in due passi), da rimborsare a Zoe 6016; Teo 3057 «pagata da Ugo». Zoe: con il conguaglio 9074 + 18000 = 27074 (il Wallet),
+    // da ricevere 6016 + 18000 = 24016. Sara: con il conguaglio 6017 − 18000 = − 11983 (il Wallet − 11984, il centesimo). Era: Zoe aveva pagato la voce con la coppia del 1/10, e nessuno gliela
+    // rimborsava.
+    $s = pccVoceDopoIPassaggi($this, 'rientri');
+    expect(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => -11984, 'Ugo' => 21058, 'Zoe' => 27074])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [12033, 0, 24016, 122],
+            'teo' => [21057, 0, 21057, 62],
+            'zoe' => [3058, 0, -24016, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pccVoceDelConduttore($s, 'Zoe', 'Riscaldamento'))->toBe([0, []])
+        ->and(pccVoceDelConduttore($s, 'Sara', 'Riscaldamento'))->toBe([0, ['Zoe' => 18000]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([18000, ['Ugo' => 18000]])
+        ->and(pcc361Sezione($s, 'Zoe'))->toBe([3058, 27074, []])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([12033, -11983, []]);
+});
+
+it('La voce che comincia il giorno della seconda fine di Sara, dopo la sua fine «Scrivi» del 1/10 e il rientro: l\'ha presa Ugo con quella coppia, ed Elsa gliela rimborsa, € 156,77', function () {
+    // La fine di Sara del 1/10 «Scrivi» scrive la coppia 9074 delle «Spese generali» e tutto il «Riscaldamento», 18000, che comincia dopo: Sara − 27074, Ugo + 27074. La fine del 1/12, dopo il
+    // rientro con il cambio Teo → Sara, non chiede la scelta (la parte l'aveva già ceduta) e non scrive niente. I giorni della voce li ha presi Ugo con la coppia del 1/10, e chi entra glieli
+    // rimborsa (decisione 45, nota del 12/10, e 77.4): Elsa dal 5/12, 27 giorni su 31, 18000 × 27/31 = 15677,42 → 15677 «pagata da Ugo»; dal 1/12 al 4/12 nessun conduttore, 2322,58 → 2323, resta a
+    // Ugo, che li ha pagati («senza conduttore», la strada B). Le «Spese generali», 9074 su 92 giorni: Teo 17 giorni 1676,76 → 1677, Sara 30 giorni 2958,89 → 2959, Elsa 27 giorni 2663,02 → 2663,
+    // senza conduttore 18 giorni 1775,32 → 1775, tutti «pagata da Ugo». Sara 9074 + 2959 = 12033, con il conguaglio 9074 (il Wallet), da rimborsare 2959. Era: la catena leggeva la fine del
+    // 1/12 (senza la scelta, la strada A′): la voce restava a Sara «con il conguaglio», Elsa la rimborsava a Sara e i 4 giorni senza conduttore si restituivano a Sara, mentre l'aveva pagata Ugo.
+    $s = pccVoceDopoIPassaggi($this, 'fine');
+    expect(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => 9074, 'Ugo' => 27074])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'elsa' => [18340, 0, 18340, 54],
+            'ines' => [17852, 17852, 0, 181],
+            'sara' => [12033, 0, 2959, 122],
+            'teo' => [1677, 0, 1677, 17],
+        ], 'senza' => [4098, 22]])
+        ->and(pcc360PagateDa($s, 'Elsa'))->toBe(['Ugo' => 18340])
+        ->and(pcc360PagateDa($s, 'Sara'))->toBe(['Ugo' => 2959])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([12033, 9074, []])
+        ->and(collect(pcc370Senza($s))->map(fn ($v) => [$v[3], $v[5]])->unique()->values()->all())->toBe([['Ugo', 'B']]);
+});
+
+it('La voce che comincia dopo i passaggi — le guardie: con l\'accordo fra Sara e Zoe, e con la seconda uscita di Sara «Non scriverlo» poi la fine «Scrivi», la voce la rimborsa Teo a Ugo, come prima', function () {
+    // L'accordo (il cambio Sara → Zoe del 1/10 annullato): la voce è di Sara con la coppia del 1/7 (+ 18000) e la fine del 1/12 la passa a Ugo (− 18000): Sara non ha niente della voce, Teo 18000
+    // «pagata da Ugo» (decisioni 43, 46 e la Coda 379).
+    $s = pcc371Scenario($this, '2026-12-01');
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    pcc379Passaggio($this, $s, 'Zoe', 'Sara', '2026-11-01', 'non_scrivere');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-12-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect(fclProspetto($s)['conduttori'])->toBe(['ines' => [17852, 17852, 0, 181], 'sara' => [15090, 0, 0, 153], 'teo' => [21058, 0, 21058, 62]])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([18000, ['Ugo' => 18000]]);
+
+    // La Coda 370: Sara → Pia «Non scriverlo» il 1/9, Pia → Sara il 1/10, la fine di Sara «Scrivi» il 1/11 (la coppia 6016 + 18000 a Ugo), Teo dal 1/12: la voce la rimborsa Teo a Ugo.
+    $s = pcc371Scenario($this, '2026-12-01');
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc379Passaggio($this, $s, 'Sara', 'Pia', '2026-09-01', 'non_scrivere');
+    pcc379Passaggio($this, $s, 'Pia', 'Sara', '2026-10-01');
+    pcc379Passaggio($this, $s, 'Sara', null, '2026-11-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect(fclSaldi($s))->toBe(['Ines' => -36148, 'Sara' => 12132, 'Ugo' => 24016])
+        ->and(pccVoceDelConduttore($s, 'Teo', 'Riscaldamento'))->toBe([18000, ['Ugo' => 18000]])
+        ->and(pccVoceDelConduttore($s, 'Sara', 'Riscaldamento'))->toBe([0, []]);
+});
+
+it('Coda 406 — dopo l\'accordo fra Sara e Zoe, Zoe esce con il cambio Zoe → Elsa «Non scriverlo»: Sara non rientra, e il prospetto non va oltre l\'accordo, come dice il pannello del cambio', function () {
+    // Il cambio Sara → Zoe del 1/10 le parti l'hanno regolato fra loro (decisioni 43 e 46). Il 1/11 Zoe esce con il cambio Zoe → Elsa «Non scriverlo»: nei saldi non si scrive niente, e il
+    // pannello del cambio dice che il rimborso di Elsa a Zoe si regola fra le parti e che il prospetto non va oltre l'accordo (la lettura delle decisioni 43 e 46 senza una fine «Scrivi» dopo,
+    // decisione 83.3). La decisione 144 fa finire l'accordo dove chi ha il pezzo torna ad avere i suoi giorni (il suo rientro, o la fine di Zoe senza chi entra), non quando Zoe passa i suoi
+    // giorni a chi ne prende il posto: Sara 18148 con il conguaglio, Elsa senza sezione; con la fine di Elsa il 1/12 e Teo dal 1/12, lo stesso, e il pannello di Teo dice l'accordo.
+    $s = pcc358Scenario($this, [['Ines', 80]]);
+    pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    fclPersona($s, 'Elsa');
+    $dati = ['quota' => (float) DB::table('anagrafica_immobile')->where('id', fclRiga($s, 'Zoe'))->value('quota')] + fclModulo($s, $s['persone']['Elsa'], '2026-11-01', [], 'Zoe');
+    $frasi = fclFrasi(fclAnteprima($this, $s, $dati));
+    fclRegistra($this, $s, $dati + ['conguaglio' => 'non_scrivere']);
+    expect($frasi)->toContain('il rimborso di Elsa a Zoe si regola fra le parti')
+        ->and($frasi)->toContain('il prospetto degli oneri accessori non va oltre quell\'accordo')
+        ->and(fclSaldi($s))->toBe(['Ines' => -18148, 'Sara' => 18148])
+        ->and(fclProspetto($s)['conduttori'])->toBe(['ines' => [17852, 17852, 0, 181], 'sara' => [18148, 0, 0, 184]]);
+
+    pcc379Passaggio($this, $s, 'Elsa', null, '2026-12-01');
+    $teo = pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect($teo)->toContain('le parti lo hanno regolato fra loro')
+        ->and(fclProspetto($s)['conduttori'])->toBe(['ines' => [17852, 17852, 0, 181], 'sara' => [18148, 0, 0, 184]]);
+});
+
+it('Coda 380 — chi riprende i giorni li aveva con il conguaglio (Ines → Pia «Scrivi» il 1/4, Pia → Sara «Scrivi» il 1/7, Sara → Pia «Non scriverlo» il 1/9, la fine di Pia «Scrivi» il 1/12, Teo dal 1/12) con € 120,00 di già versato «dell\'unità»: il credito di Pia è al netto e «con il conguaglio», Pia € 53,26 con il conguaglio come nel Wallet', function () {
+    // Il già versato «dell'unità» (decisione 17, D8): 3600 all'inquilino, l'anello al lordo 36000 e al netto 32400. Il cambio del 1/4 (77.3): 32400 × 275/365 = 24410,96 → 24411 a Pia (al lordo
+    // 27123); il cambio del 1/7: 24411 × 184/275 = 16333,06 → 16333 a Sara (al lordo 18148), a Pia restano 8078 per 91 giorni (al lordo 8975, il già versato 897). Al 1/9 «Non scriverlo» (46, nota del
+    // 12/10): i giorni dopo l'uscita di Sara restano suoi, 5504 e 10829 al netto. La fine di Pia del 1/12 «Scrivi» (45, nota del 12/10) scrive dicembre, 2752 (Pia − 2752, Ugo + 2752), e Teo lo rimborsa
+    // a Ugo; per la decisione 145 Pia rimborsa a Sara tutti i 10829: 8077 dei suoi 91 giorni e 2752 di dicembre. Il credito di Pia è al netto, come la coppia nel Wallet, e ha il suo modo, «con il
+    // conguaglio del cambio d'inquilino del 01/04/2026» (decisione 150.2). Pia: 8975 − 897 + 8077 = 16155, con il conguaglio 8975 − 897 − 2752 = 5326 (il Wallet: 24411 − 16333 − 2752); Sara 5504 con
+    // il conguaglio 16333; Ines 7989; Teo 2752; il controllo 7989 + 16155 + 5504 + 2752 = 32400. Con il credito di Pia al lordo (− 3058) Pia ha 15849 e 5020 con il conguaglio.
+    $s = fclScenario([['Ugo', 'proprietario', 100]], ['inquilini' => [['Ines', 80]]]);
+    $contoId = (int) DB::table('conti')->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')->where('piani_conti.gestione_id', $s['g']->id)->where('conti.nome', 'Spese generali')->value('conti.id');
+    DB::table('contributi_versati')->insert(['condominio_id' => $s['c']->id, 'target_type' => \App\Models\Gestionale\Conto::class, 'target_id' => $contoId, 'immobile_id' => $s['unita']->id,
+        'anagrafica_id' => null, 'importo_cents' => 12000, 'natura' => 'avanzo', 'origine' => 'migrazione', 'created_at' => now(), 'updated_at' => now()]);
+    fclGenera($s);
+    fclEmetti($this, $s, '2026-03-31');
+    pcc379Passaggio($this, $s, 'Ines', 'Pia', '2026-04-01', 'scrivi');
+    pcc379Passaggio($this, $s, 'Pia', 'Sara', '2026-07-01', 'scrivi');
+    pcc379Passaggio($this, $s, 'Sara', 'Pia', '2026-09-01', 'non_scrivere');
+    pcc379Passaggio($this, $s, 'Pia', null, '2026-12-01', 'scrivi');
+    pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    expect(fclSaldi($s))->toBe(['Ines' => -24411, 'Pia' => 5326, 'Sara' => 16333, 'Ugo' => 2752])
+        ->and(fclProspetto($s))->toBe(['conduttori' => [
+            'ines' => [7989, 7989, 0, 90],
+            'pia' => [16155, 0, 10829, 182],
+            'sara' => [5504, 0, -10829, 62],
+            'teo' => [2752, 0, 2752, 31],
+        ], 'senza' => [0, 0]])
+        ->and(pcc361Sezione($s, 'Pia'))->toBe([16155, 5326, []])
+        ->and(pcc361Sezione($s, 'Sara'))->toBe([5504, 16333, []])
+        ->and(pcc360PagateDa($s, 'Pia'))->toBe(['Sara' => 10829])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 2752]);
 });

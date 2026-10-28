@@ -19,9 +19,10 @@ const { hasPermission } = usePermission()
 /**
  * Il menù offre solo ciò che il server accetterebbe.
  *
- * Sospendere ed eliminare hanno due invarianti oltre al permesso — non sé stessi, non l'ultimo
- * amministratore attivo — e il server le fa rispettare comunque: qui si evita di proporre un
- * comando che finirebbe in un errore, che è la trappola descritta nella lezione della beta.53.
+ * Sospendere, eliminare e reinvitare hanno due invarianti oltre al permesso — non sé stessi, non
+ * l'ultimo amministratore attivo (Coda 399 per «Reinvita») — e il server le fa rispettare comunque:
+ * qui si evita di proporre un comando che finirebbe in un errore, che è la trappola descritta nella
+ * lezione della beta.53.
  *
  * Ogni comando vale solo per un account nella portata di chi guarda l'elenco (Coda 258, decisione 134.1):
  * `gestibile` lo calcola il server con la stessa regola che usa per rifiutare. Anche «Modifica»: la scheda
@@ -39,7 +40,9 @@ const puoSospendere = computed(
 
 const puoRiattivare = computed(() => gestibile.value && hasPermission([Permission.SUSPEND_USERS]))
 
-const puoReinvitare = computed(() => gestibile.value && hasPermission([Permission.EDIT_USERS]))
+const puoReinvitare = computed(
+  () => gestibile.value && hasPermission([Permission.EDIT_USERS]) && !props.user.is_self && !props.user.is_ultimo_amministratore
+)
 
 const puoEliminare = computed(
   () => gestibile.value && hasPermission(['Elimina utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore

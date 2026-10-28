@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { richiediConferma } from '@/composables/useConfermaPassword'
 import Alert from '@/components/Alert.vue'
 import BackupGuide from '@/components/guides/BackupGuide.vue'
 import { Separator } from '@/components/ui/separator'
@@ -275,6 +276,27 @@ const askRestore = (backup: BackupItem) => {
 const restorePhaseLabel = computed(() =>
   restorePhase.value ? trans(`impostazioni.restore_phase.${restorePhase.value}`) : ''
 )
+
+// Lo scarico chiede la password ridigitata da poco (Coda 261). Il collegamento non è una richiesta della pagina e non può
+// ricevere il 423 senza scaricare il file in memoria: prima si chiede lo stato della conferma. Senza conferma si apre la
+// finestra e lo scarico parte da solo dopo; se lo stato non si legge si va comunque al file, e il server rimanda alla
+// conferma come pagina (Coda 404).
+async function scarica(backup: { uuid: string }) {
+  const indirizzo = route('impostazioni.backups.download', backup.uuid)
+  const vai = () => { window.location.href = indirizzo }
+
+  let confermata: boolean
+  try {
+    const { data } = await axios.get(route('password.confirm.stato'))
+    confermata = data?.confermata === true
+  } catch {
+    vai()
+    return
+  }
+
+  if (confermata) vai()
+  else richiediConferma(vai)
+}
 
 // I minuti da aspettare vengono dal server (`Retry-After`, in secondi); senza, il testo non promette un tempo.
 function troppeProveDellaPassword(retryAfter: unknown): string {
@@ -874,6 +896,7 @@ const statusBadgeClass = (status: string) => {
                     :href="route('impostazioni.backups.download', backup.uuid)"
                     class="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted text-slate-600 dark:text-slate-300"
                     :title="trans('impostazioni.actions.download_backup')"
+                    @click.exact.prevent="scarica(backup)"
                   >
                     <Download class="w-4 h-4" />
                   </a>

@@ -29,6 +29,8 @@ return [
     'delete_users'              => "Non hai permessi sufficienti per eliminare gli utenti!",
     'suspend_users'             => "Non hai permessi sufficienti per sospendere gli utenti!",
     'users_self_action'         => "Non puoi sospendere o eliminare il tuo stesso account.",
+    'users_self_reinvite'       => "Non puoi reinvitare il tuo stesso account: la password si cambia nelle impostazioni, in «Password».",
+    'users_self_unverify'       => "Non puoi togliere la verifica dell'email al tuo stesso account.",
     'users_last_admin'          => "Questo è l'ultimo amministratore attivo: senza, nessuno potrebbe più governare l'installazione.",
     'users_last_admin_self'     => "Sei l'ultimo amministratore attivo: senza il tuo account nessuno potrebbe più governare l'installazione. Per eliminarlo serve prima un altro amministratore attivo.",
     'users_privileged_target'   => 'Questo account lo gestisce solo un amministratore: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',

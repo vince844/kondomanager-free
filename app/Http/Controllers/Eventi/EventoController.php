@@ -8,7 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Evento\CreateEventoRequest;
 use App\Http\Requests\Evento\EditEventoRequest;
 use App\Http\Requests\Evento\EventoIndexRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
@@ -235,12 +235,14 @@ class EventoController extends Controller
         $mode = $request->query('mode', 'only_this');
         $occurrenceDate = $request->query('occurrence_date', null);
 
-        $evento->loadMissing(['createdBy.anagrafica', 'condomini', 'anagrafiche', 'ricorrenza', 'categoria']); 
+        // Delle persone la pagina legge soltanto id e nome, nell'elenco e nei destinatari già scelti (Coda 408): il resto
+        // resta nella scheda della persona.
+        $evento->loadMissing(['createdBy.anagrafica', 'condomini', 'anagrafiche:id,nome', 'ricorrenza', 'categoria']); 
 
         return Inertia::render('eventi/EventiEdit', [
          'evento'        => new EditEventoResource($evento),
          'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
-         'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all()),
+         'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
          'categorie'     => CategoriaEventoResource::collection(CategoriaEvento::all()),
          'mode' => $mode,
          'occurrenceDate' => $occurrenceDate,

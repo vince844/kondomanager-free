@@ -12,7 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
 use App\Http\Requests\Fornitore\FornitoreIndexRequest;
 use App\Http\Requests\Fornitore\UpdateFornitoreRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
 use App\Http\Resources\Fornitore\Categorie\CategoriaFornitoreResource;
 use App\Http\Resources\Fornitore\EditFornitoreResource;
 use App\Http\Resources\Fornitore\FornitoreResource;
@@ -27,7 +27,12 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
+/**
+ * I fornitori del pannello. Ogni azione chiede il suo permesso a `FornitorePolicy`, con i permessi delle anagrafiche
+ * (Coda 402): leggere «Visualizza», creare «Crea», modificare «Modifica», eliminare «Elimina anagrafiche».
+ */
 class FornitoreController extends Controller
 {
     use OrdinaElenco;
@@ -46,6 +51,8 @@ class FornitoreController extends Controller
      */
     public function index(FornitoreIndexRequest $request): Response
     {
+        Gate::authorize('viewAny', Fornitore::class);
+
         $validated = $request->validated();
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
@@ -101,8 +108,12 @@ class FornitoreController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', Fornitore::class);
+
         return Inertia::render('fornitori/FornitoriNew', [
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            // La tendina «Rappresentante» mostra il nome e, sotto, l'indirizzo (Coda 408): il resto della persona sta nella
+            // sua scheda, che chiede «Visualizza anagrafiche».
+            'anagrafiche' => AnagraficaConIndirizzoResource::collection(Anagrafica::get(['id', 'nome', 'indirizzo'])),
             'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
             // I sei ruoli vengono dall'enum, non da una lista scritta a mano nella pagina: erano
             // già duplicati fra `CreateFornitoreAnagraficaRequest` e `AnagraficheNew.vue`.
@@ -136,6 +147,9 @@ class FornitoreController extends Controller
      */
     public function store(CreateFornitoreRequest $request): RedirectResponse|JsonResponse
     {
+        // Anche dalla registrazione della fattura: il rifiuto arriva come 403 con la frase della policy, in JSON alla
+        // finestra che crea il fornitore letto dall'XML.
+        Gate::authorize('create', Fornitore::class);
 
         // Otteniamo i dati validati.
         // Assicurati che CreateFornitoreRequest accetti e validi anche iban_principale
@@ -211,6 +225,7 @@ class FornitoreController extends Controller
      */
     public function show(Fornitore $fornitore): Response
     {
+        Gate::authorize('view', $fornitore);
 
         $fornitore->loadMissing('referenti', 'categoria');
 
@@ -230,6 +245,8 @@ class FornitoreController extends Controller
      */
     public function edit(Fornitore $fornitore): Response
     {
+        Gate::authorize('update', $fornitore);
+
         RedirectHelper::rememberUrl();
 
         return Inertia::render('fornitori/FornitoriEdit', [
@@ -267,6 +284,8 @@ class FornitoreController extends Controller
      */
     public function update(UpdateFornitoreRequest $request, Fornitore $fornitore): RedirectResponse
     {
+        Gate::authorize('update', $fornitore);
+
         $validated = $request->validated(); 
 
         try {
@@ -344,6 +363,9 @@ class FornitoreController extends Controller
      */
     public function destroy(Fornitore $fornitore): RedirectResponse
     {
+        // Fuori dal `try`: il `catch (\Throwable)` qui sotto trasformerebbe il rifiuto in un messaggio d'errore generico.
+        Gate::authorize('delete', $fornitore);
+
         try {
             // 1. CONTROLLO CONTABILE (Fondamentale!)
             if ($fornitore->fatture()->exists()) {

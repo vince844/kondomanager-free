@@ -58,6 +58,15 @@ class PdoDelRipristinoDiProva extends PDO
     /** Il numero d'ordine (dall'inizio dell'import) dell'istruzione che fallisce, una volta sola. */
     public static ?int $guastoAllIstruzione = null;
 
+    /**
+     * Prima di quale istruzione il processo dell'import muore senza un errore che il codice possa prendere (la memoria
+     * esaurita, il tempo massimo di PHP, il limite del PHP-FPM): riceve l'istruzione, una volta sola.
+     */
+    public static ?Closure $morte = null;
+
+    /** @var array<string, string|null>|null i file su disco nel momento in cui il processo è morto */
+    public static ?array $immagine = null;
+
     private static ?StepBudget $budget = null;
 
     public static function azzera(): void
@@ -68,6 +77,8 @@ class PdoDelRipristinoDiProva extends PDO
         self::$eseguite = 0;
         self::$passi = [];
         self::$guastoAllIstruzione = null;
+        self::$morte = null;
+        self::$immagine = null;
         self::$budget = null;
     }
 
@@ -87,6 +98,21 @@ class PdoDelRipristinoDiProva extends PDO
 
         if (preg_match('/^\s*SET\s/i', $statement)) {
             return 0;
+        }
+
+        if (self::$morte !== null && (self::$morte)($statement)) {
+            // Il processo muore qui: del passo resta solo ciò che è già su disco. L'eccezione serve solo a chiudere la
+            // richiesta della prova; quello che succede dopo si butta, rimettendo l'immagine.
+            self::$morte = null;
+            self::$immagine = rdmImmagineDelDisco();
+
+            throw new PDOException('Il processo dell\'import si ferma qui');
+        }
+
+        // MySQL conferma da sé le scritture aperte prima di un'istruzione che non scrive dati (CREATE, DROP, …); sqlite
+        // no, e qui si fa come MySQL.
+        if ($this->inTransaction() && ! preg_match('/^\s*INSERT\s/i', $statement)) {
+            $this->commit();
         }
 
         if (self::$guastoAllIstruzione !== null && self::$eseguite + 1 === self::$guastoAllIstruzione) {
@@ -416,6 +442,59 @@ function rdmTempiIndietro(int $secondi): void
         }
     }
     File::put($file, json_encode($json));
+}
+
+/** I file che un processo morto lascia su disco: il database dell'installazione, con il suo giornale, e lo stato del ripristino. */
+function rdmImmagineDelDisco(): array
+{
+    $database = rdmCartella().'/installazione.sqlite';
+    $file = [$database, $database.'-journal', $database.'-wal', $database.'-shm', (string) config('backup.restore.state_file')];
+
+    return array_combine($file, array_map(fn (string $f) => is_file($f) ? file_get_contents($f) : null, $file));
+}
+
+/** Dopo il processo morto: la sua connessione si chiude, e sul disco resta l'immagine del momento in cui è morto. */
+function rdmRimettiLImmagine(): void
+{
+    expect(PdoDelRipristinoDiProva::$immagine)->not->toBeNull();
+    DB::purge('installazione_di_prova');
+
+    foreach (PdoDelRipristinoDiProva::$immagine as $file => $contenuto) {
+        $contenuto === null ? @unlink($file) : file_put_contents($file, $contenuto);
+    }
+
+    rdmNuovaRichiesta();
+}
+
+/** Quante righe di `aa_righe` il dump del ripristino in corso scrive prima del punto di ripresa. */
+function rdmRigheDelDumpPrimaDi(int $offset): int
+{
+    $righe = 0;
+
+    foreach ((new SqlDumpTokenizer(rdmCartellaDelRipristino().'/extracted/db/database.sql'))->statements() as $s) {
+        if ($s['nextOffset'] > $offset) {
+            break;
+        }
+        if (str_starts_with(ltrim($s['sql']), 'INSERT INTO `aa_righe`')) {
+            $righe++;
+        }
+    }
+
+    return $righe;
+}
+
+/** Dopo «Riprendi»: i passi della finestra finché il ripristino finisce o si ferma, con l'errore se si ferma. */
+function rdmDopoRiprendi($test, $riprendi): array
+{
+    $fase = $riprendi->json('restore.phase');
+
+    if (in_array($fase, ['completed', 'failed'], true)) {
+        return ['200 '.$fase.($fase === 'failed' ? ': '.rdmErrore() : '')];
+    }
+
+    $dopo = rdmGuida($test, (string) $riprendi->json('token'));
+
+    return end($dopo) === '200 failed' ? [...$dopo, rdmErrore()] : $dopo;
 }
 
 afterEach(function () {
@@ -1001,10 +1080,11 @@ test('l\'impronta della password di chi avvia sta nello stato solo mentre il rip
 })->with(['completato', 'annullato']);
 
 // --- «Riprendi» dopo un errore a metà di un passo dei dati --------------------------------------------------------
-// Le istruzioni del dump si scrivono una per una, fuori da una transazione: il punto di ripresa si salva anche
-// sull'errore, all'istruzione che non è riuscita, e «Riprendi» riparte da lì invece di rieseguire quelle già fatte.
+// Il punto di ripresa si salva anche sull'errore, dove finisce l'ultima istruzione confermata nel database (le righe si
+// confermano a gruppi, e il gruppo dell'errore si annulla: Coda 400), e «Riprendi» riparte da lì invece di rieseguire
+// quelle già scritte.
 
-test('un errore a metà di un passo dei dati: «Riprendi» con il token riparte dall\'istruzione che non è riuscita e arriva in fondo', function () {
+test('un errore a metà di un passo dei dati: «Riprendi» con il token riparte dall\'ultima istruzione confermata e arriva in fondo', function () {
     rdmInstallazione('file');
     $admin = rdmAmministratore();
     rdmRiempi(400);
@@ -1042,6 +1122,246 @@ test('un errore nel passo del wipe, prima dei dati: «Riprendi» riparte e arriv
     expect($prima)->toBe(['200 failed'])
         ->and($riprendi->json('restore.phase'))->toBe('completed')
         ->and(DB::table('aa_righe')->count())->toBe(100);
+});
+
+// --- Un passo dei dati che si ferma senza errore (Coda 400) -------------------------------------------------------
+// Il processo dell'import può morire a metà di un passo senza un errore che il codice possa prendere: la memoria
+// esaurita, il tempo massimo di PHP, il limite del PHP-FPM dell'hosting. Restano il database e lo stato del ripristino
+// com'erano su disco in quel momento. Il punto di ripresa salvato dice fin dove il dump è nel database: le righe nel
+// database sono quelle prima del punto, nessun'altra, e «Riprendi» scrive le altre una volta sola.
+
+test('Coda 400 — un passo dei dati che si ferma senza errore lascia nel database le righe prima del punto di ripresa, nessun\'altra: «Riprendi» arriva in fondo, senza righe doppie né perse', function (string $passo, string $contenuto, string $sessioni, string $via) {
+    rdmInstallazione($sessioni);
+    $admin = rdmAmministratore();
+    rdmRiempi(400);
+    $utenti = DB::table('users')->count();
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    app(RestoreState::class)->merge(['manifest' => ['contents' => $contenuto]]);
+    // Il primo passo arriva alle prime righe dei dati; ognuno dei passi dopo esegue cento istruzioni.
+    rdmImportatore($pos['primo_dato'] + 20);
+    $riga = ['primo' => 10, 'secondo' => 70, 'terzo' => 170][$passo];
+    PdoDelRipristinoDiProva::$morte = fn (string $sql) => str_starts_with($sql, 'INSERT INTO `aa_righe`') && str_contains($sql, "VALUES ('{$riga}',");
+
+    $passi = rdmGuida($this, $token, 80, function () {
+        PdoDelRipristinoDiProva::$perPasso = 100;
+    });
+    // La risposta del passo che muore non arriva alla finestra, che offre «Riprendi».
+    rdmRimettiLImmagine();
+    $stato = app(RestoreState::class)->get();
+    $nelDatabase = DB::table('aa_righe')->count();
+    $primaDelPunto = rdmRigheDelDumpPrimaDi((int) $stato['checkpoint']['import']['offset']);
+    if ($via === 'la password dalla 503') {
+        rdmFermoDaTreOre();
+    }
+    rdmNuovaRichiesta();
+    $riprendi = $via === 'il token della finestra'
+        ? $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token])
+        : $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password']);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect(count($passi))->toBe(['primo' => 1, 'secondo' => 2, 'terzo' => 3][$passo])
+        ->and($stato['phase'])->toBe('importing_database')
+        ->and($nelDatabase)->toBe($primaDelPunto)
+        ->and($riprendi->status())->toBe(200)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(400)
+        ->and(DB::table('aa_righe')->distinct()->count('id'))->toBe(400)
+        ->and((int) DB::table('aa_righe')->max('id'))->toBe(400)
+        ->and(DB::table('users')->count())->toBe($utenti);
+})->with([
+    'nel primo passo dei dati' => ['primo', 'db_only', 'file', 'il token della finestra'],
+    'nel secondo passo dei dati' => ['secondo', 'db_only', 'file', 'il token della finestra'],
+    'nel terzo passo dei dati' => ['terzo', 'db_only', 'file', 'il token della finestra'],
+    'nel secondo passo, con un archivio completo' => ['secondo', 'full', 'file', 'il token della finestra'],
+    'nel secondo passo, con le sessioni nel database' => ['secondo', 'db_only', 'database', 'il token della finestra'],
+    'nel secondo passo, «Riprendi» dalla 503 con la password' => ['secondo', 'db_only', 'file', 'la password dalla 503'],
+    'nel terzo passo, «Riprendi» dalla 503 con la password' => ['terzo', 'full', 'database', 'la password dalla 503'],
+]);
+
+test('Coda 400 — dopo i dati, le viste: il passo che scrive le ultime righe e le viste e si ferma senza errore dopo la prima vista lascia il punto di ripresa dopo le righe, e «Riprendi» arriva in fondo', function () {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(400);
+    [$token] = rdmRipristinoAvviato($admin);
+    // Dopo i dati, il dump di MySqlDumper scrive le viste: istruzioni di struttura, prima delle quali MySQL conferma da sé
+    // le scritture aperte.
+    $dump = rdmCartellaDelRipristino().'/extracted/db/database.sql';
+    File::put($dump, str_replace("\nSET FOREIGN_KEY_CHECKS=1;",
+        "\n-- Viste\nDROP VIEW IF EXISTS `aa_vista`;\nCREATE VIEW `aa_vista` AS SELECT `id` FROM `aa_righe`;\n\nSET FOREIGN_KEY_CHECKS=1;", File::get($dump)));
+    $pos = rdmPosizioni($dump);
+    rdmImportatore($pos['primo_dato'] + 20);
+    PdoDelRipristinoDiProva::$morte = fn (string $sql) => str_starts_with($sql, 'CREATE VIEW');
+
+    // Il secondo passo scrive tutte le altre righe e arriva alle viste.
+    $passi = rdmGuida($this, $token, 80, function () {
+        PdoDelRipristinoDiProva::$perPasso = PHP_INT_MAX;
+    });
+    rdmRimettiLImmagine();
+    $stato = app(RestoreState::class)->get();
+    $nelDatabase = DB::table('aa_righe')->count();
+    $primaDelPunto = rdmRigheDelDumpPrimaDi((int) $stato['checkpoint']['import']['offset']);
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect(count($passi))->toBe(2)
+        ->and($nelDatabase)->toBe($primaDelPunto)
+        ->and($riprendi->status())->toBe(200)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(400)
+        ->and(DB::table('aa_righe')->distinct()->count('id'))->toBe(400)
+        ->and(DB::table('aa_vista')->count())->toBe(400);
+});
+
+test('Coda 400 — un passo che scrive più righe di un gruppo le conferma nel database a gruppi, e dopo ogni gruppo salva il punto di ripresa: fermo senza errore, restano i gruppi confermati e il punto è dopo di loro', function () {
+    rdmInstallazione('file');
+    // Un gruppo di circa trenta righe di `aa_righe` (una sessantina di byte ciascuna).
+    config(['backup.restore.import_group_bytes' => 2000]);
+    $admin = rdmAmministratore();
+    rdmRiempi(400);
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    rdmImportatore($pos['primo_dato'] + 20);
+    PdoDelRipristinoDiProva::$morte = fn (string $sql) => str_starts_with($sql, 'INSERT INTO `aa_righe`') && str_contains($sql, "VALUES ('300',");
+
+    $primo = rdmGuida($this, $token, 1);
+    $righeDelPrimo = DB::table('aa_righe')->count();
+    PdoDelRipristinoDiProva::$perPasso = PHP_INT_MAX;
+    $secondo = rdmGuida($this, $token);
+    rdmRimettiLImmagine();
+    $stato = app(RestoreState::class)->get();
+    $nelDatabase = DB::table('aa_righe')->count();
+    $primaDelPunto = rdmRigheDelDumpPrimaDi((int) $stato['checkpoint']['import']['offset']);
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect($primo)->toBe(['200 importing_database'])
+        ->and(count($secondo))->toBe(1)
+        ->and($righeDelPrimo)->toBeLessThan(30)
+        ->and($nelDatabase)->toBe($primaDelPunto)
+        ->and($nelDatabase)->toBeGreaterThan(250)
+        ->and($nelDatabase)->toBeLessThan(300)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(400)
+        ->and(DB::table('aa_righe')->distinct()->count('id'))->toBe(400);
+});
+
+test('Coda 400 — un errore a metà di un gruppo di righe: le righe del gruppo non restano nel database, il punto di ripresa è prima di loro, e «Riprendi» arriva in fondo', function () {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(400);
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    $perPasso = $pos['primo_dato'] + 20;
+    rdmImportatore($perPasso);
+    PdoDelRipristinoDiProva::$guastoAllIstruzione = $perPasso + 50;
+
+    $prima = rdmGuida($this, $token);
+    $stato = app(RestoreState::class)->get();
+    $nelDatabase = DB::table('aa_righe')->count();
+    $primaDelPunto = rdmRigheDelDumpPrimaDi((int) $stato['checkpoint']['import']['offset']);
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect($prima)->toBe(['200 importing_database', '200 failed'])
+        ->and($nelDatabase)->toBe($primaDelPunto)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(400)
+        ->and(DB::table('aa_righe')->distinct()->count('id'))->toBe(400);
+});
+
+// --- «Riprendi» con il token (Coda 400) ----------------------------------------------------------------------------
+// «Riprendi» con il token della finestra dei backup risponde con lo stesso token: se la risposta non arriva alla finestra
+// (la rete, il 502 del proxy), il token che la finestra ha in memoria vale ancora, per «Riprendi», «Sblocca» e i passi.
+// Con la password (la pagina 503, che non ha un token) la risposta porta un token nuovo, con cui la pagina guida i passi.
+
+test('Coda 400 — «Riprendi» con il token della finestra risponde con lo stesso token: se la risposta non arriva, con quel token «Riprendi», «Sblocca» e il passo rispondono', function (string $poi) {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(30);
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    rdmImportatore($pos['primo_dato'] + 5);
+    PdoDelRipristinoDiProva::$guastoAllIstruzione = $pos['primo_dato'] + 2;
+    $prima = rdmGuida($this, $token, 1);
+    // Dopo la ripresa, passi di poche istruzioni: il ripristino resta in corso.
+    PdoDelRipristinoDiProva::$perPasso = 5;
+    rdmNuovaRichiesta();
+    // La risposta non arriva alla finestra: della risposta la finestra non ha niente, e tiene il suo token.
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $puntoDopoLaRipresa = app(RestoreState::class)->get()['checkpoint']['import'];
+    rdmNuovaRichiesta();
+    $risposta = match ($poi) {
+        'riprendi' => $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]),
+        'sblocca' => $this->postJson('/ripristino/annulla', [], ['X-Restore-Token' => $token]),
+        'passo' => $this->postJson('/ripristino/step', [], ['X-Restore-Token' => $token]),
+    };
+    $stato = app(RestoreState::class)->get();
+
+    expect($prima)->toBe(['200 failed'])
+        ->and($riprendi->status())->toBe(200)
+        ->and($riprendi->json('restore.phase'))->toBe('importing_database')
+        ->and($riprendi->json('token'))->toBe($token)
+        ->and($risposta->status())->toBe(200);
+
+    if ($poi === 'sblocca') {
+        expect(app(RestoreMode::class)->active())->toBeFalse()
+            ->and($stato['aborted'] ?? false)->toBeTrue();
+
+        return;
+    }
+
+    PdoDelRipristinoDiProva::$perPasso = PHP_INT_MAX;
+    $dopo = $risposta->json('restore.phase') === 'completed' ? ['200 completed'] : rdmGuida($this, $token);
+
+    expect($stato['checkpoint']['import'])->not->toBe($puntoDopoLaRipresa)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(30);
+})->with(['riprendi', 'sblocca', 'passo']);
+
+test('Coda 400 — «Riprendi» con la password dalla 503 risponde con un token nuovo, che guida i passi fino in fondo', function () {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(30);
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    rdmImportatore($pos['primo_dato'] + 5);
+    PdoDelRipristinoDiProva::$guastoAllIstruzione = $pos['primo_dato'] + 2;
+    $prima = rdmGuida($this, $token, 1);
+    PdoDelRipristinoDiProva::$perPasso = 5;
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password']);
+    $nuovo = (string) $riprendi->json('token');
+    PdoDelRipristinoDiProva::$perPasso = PHP_INT_MAX;
+    $dopo = rdmGuida($this, $nuovo);
+
+    expect($prima)->toBe(['200 failed'])
+        ->and($riprendi->status())->toBe(200)
+        ->and($riprendi->json('restore.phase'))->toBe('importing_database')
+        ->and($nuovo)->toHaveLength(64)
+        ->and($nuovo)->not->toBe($token)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(30);
+});
+
+test('Coda 400 — «Riprendi» con un token che non vale più e la password giusta risponde con un token nuovo, che guida i passi, e non con quello mandato', function () {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(30);
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    rdmImportatore($pos['primo_dato'] + 5);
+    PdoDelRipristinoDiProva::$guastoAllIstruzione = $pos['primo_dato'] + 2;
+    $prima = rdmGuida($this, $token, 1);
+    PdoDelRipristinoDiProva::$perPasso = 5;
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'], ['X-Restore-Token' => str_repeat('0', 64)]);
+    $nuovo = (string) $riprendi->json('token');
+    rdmNuovaRichiesta();
+    $passo = $this->postJson('/ripristino/step', [], ['X-Restore-Token' => $nuovo]);
+
+    expect($prima)->toBe(['200 failed'])
+        ->and($riprendi->status())->toBe(200)
+        ->and($nuovo)->not->toBe(str_repeat('0', 64))
+        ->and($nuovo)->not->toBe($token)
+        ->and($passo->status())->toBe(200);
 });
 
 // --- I percorsi del server nei messaggi del ripristino ------------------------------------------------------------
@@ -1357,6 +1677,39 @@ test('il backup di sicurezza che non parte, perché un altro backup risulta in c
         ->and(File::get($log))->toContain('Un altro backup è già in esecuzione.');
 });
 
+test('Coda 400 — il backup di sicurezza con la cartella dei temporanei che non si crea ferma il ripristino prima del database e non resta in corso: a cartella sistemata, «Riprendi» rifà il backup di sicurezza e il ripristino va in fondo', function () {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(30);
+    [$backup] = rdmArchivioNelDisco();
+    DB::table('aa_righe')->insert(['id' => 31, 'valore' => 'scritta dopo il backup']);
+    rdmImportatore(PHP_INT_MAX);
+    app()->bind(DatabaseDumperInterface::class, fn () => app(SqliteDumper::class));
+    $temporanei = config('backup.tmp_path');
+    // Una cartella che non si può creare: dentro /dev/null, che non è una cartella.
+    config(['backup.tmp_path' => '/dev/null/kondo-temporanei']);
+
+    $token = rdmAvviaDallaFinestra($this, $admin, $backup, true)->json('token');
+    $prima = rdmGuida($this, $token);
+    $fermo = app(RestoreState::class)->get();
+    $inCorso = Backup::running()->count();
+    $sicurezza = Backup::where('uuid', '!=', $backup->uuid)->orderBy('id')->get()->map(fn (Backup $b) => $b->status->value)->all();
+    // La cartella è sistemata.
+    config(['backup.tmp_path' => $temporanei]);
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect($prima)->toBe(['200 failed'])
+        ->and($fermo['failed_phase'])->toBe('safety_backup')
+        ->and($fermo['checkpoint'])->not->toHaveKey('wiped')
+        ->and($inCorso)->toBe(0)
+        ->and($sicurezza)->toBe(['failed'])
+        ->and($riprendi->status())->toBe(200)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(30);
+});
+
 /** Il testo che la 503 mostra, senza lo script: lo script porta tutte le frasi, per quando il ripristino si ferma di nuovo. */
 function rdmTestoVisibile(string $html): string
 {
@@ -1540,6 +1893,8 @@ test('fermo nel backup di sicurezza, una sola richiesta di «Riprendi» arriva a
     app()->bind(DatabaseDumperInterface::class, fn () => app(SqliteDumper::class));
     if ($caso === 'errore del server') {
         // Il token nuovo non si scrive (il disco di nuovo pieno): la risposta è un errore, dopo che la ripresa ha lavorato.
+        // Un token nuovo lo scrive «Riprendi» con la password, dalla 503: con il token della finestra la risposta porta lo
+        // stesso token (Coda 400).
         app()->bind(RestoreState::class, fn () => new class extends RestoreState
         {
             public function issueToken(int $ttlSeconds): string
@@ -1549,7 +1904,9 @@ test('fermo nel backup di sicurezza, una sola richiesta di «Riprendi» arriva a
         });
     }
     rdmNuovaRichiesta();
-    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $riprendi = $caso === 'errore del server'
+        ? $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'])
+        : $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
     $dopo = app(RestoreState::class)->get();
 
     expect($prima)->toBe(['200 failed'])
@@ -1613,3 +1970,82 @@ function rdmCacheNelDatabase(): void
     \Illuminate\Support\Facades\Cache::clearResolvedInstances();
     \Illuminate\Support\Facades\RateLimiter::clearResolvedInstances();
 }
+
+test('Coda 400 — un passo che finisce per il tempo fra la rimozione e la creazione di una tabella, poi un passo che muore senza errore prima di salvare il punto di ripresa: «Riprendi» arriva in fondo, senza righe doppie né perse', function (string $tabella) {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(400);
+    $utenti = DB::table('users')->count();
+    [$token, $pos] = rdmRipristinoAvviato($admin);
+    // Il primo passo finisce per il tempo subito dopo `DROP TABLE IF EXISTS` della tabella, prima del suo `CREATE TABLE`
+    // (nel dump la creazione segue la rimozione). Il conto del passo comprende il `PRAGMA` della connessione nuova.
+    rdmImportatore($pos['crea_'.$tabella]);
+    // Il passo dopo ricrea le tabelle che restano, comincia i dati e muore senza errore prima della prima conferma.
+    PdoDelRipristinoDiProva::$morte = fn (string $sql) => str_starts_with($sql, 'INSERT INTO `aa_righe`') && str_contains($sql, "VALUES ('10',");
+
+    $passi = rdmGuida($this, $token, 80, function () {
+        PdoDelRipristinoDiProva::$perPasso = PHP_INT_MAX;
+    });
+    rdmRimettiLImmagine();
+    $stato = app(RestoreState::class)->get();
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect(count($passi))->toBe(2)
+        ->and($stato['phase'])->toBe('importing_database')
+        ->and($riprendi->status())->toBe(200)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(400)
+        ->and(DB::table('aa_righe')->distinct()->count('id'))->toBe(400)
+        ->and(DB::table('users')->count())->toBe($utenti);
+})->with(['users', 'aa_righe', 'sessions']);
+
+test('Coda 400 — le viste del dump: un passo che finisce per il tempo dopo la prima rimozione della vista, poi un passo che ne ricrea la tabella provvisoria e muore senza errore: «Riprendi» arriva in fondo, con la vista', function () {
+    rdmInstallazione('file');
+    $admin = rdmAmministratore();
+    rdmRiempi(400);
+    [$token] = rdmRipristinoAvviato($admin);
+    // Le viste come le scrive MySqlDumper, dopo i dati: prima la tabella provvisoria (`DROP TABLE`, `DROP VIEW`,
+    // `CREATE TABLE`), poi la vista (`DROP TABLE`, `CREATE VIEW`).
+    $dump = rdmCartellaDelRipristino().'/extracted/db/database.sql';
+    File::put($dump, str_replace("\nSET FOREIGN_KEY_CHECKS=1;",
+        "\n-- Viste\nDROP TABLE IF EXISTS `aa_vista`;\nDROP VIEW IF EXISTS `aa_vista`;\nCREATE TABLE `aa_vista` (`id` tinyint NOT NULL);\n"
+        ."DROP TABLE IF EXISTS `aa_vista`;\nCREATE VIEW `aa_vista` AS SELECT `id` FROM `aa_righe`;\n\nSET FOREIGN_KEY_CHECKS=1;", File::get($dump)));
+    // Il passo che arriva alle viste ha il tempo per la connessione nuova e la prima rimozione, poi il budget è finito.
+    $primaDelleViste = 0;
+    foreach ((new SqlDumpTokenizer($dump))->statements() as $istruzione) {
+        if (str_starts_with($istruzione['sql'], 'INSERT')) {
+            $primaDelleViste = $istruzione['nextOffset'];
+        }
+    }
+    rdmImportatore(PHP_INT_MAX);
+    app()->instance(DatabaseImporter::class, new class($primaDelleViste) extends ImportatoreDelRipristinoDiProva
+    {
+        public function __construct(private int $primaDelleViste) {}
+
+        public function importStep(string $dumpPath, array $checkpoint, StepBudget $budget): array
+        {
+            PdoDelRipristinoDiProva::$perPasso = (int) ($checkpoint['offset'] ?? 0) === $this->primaDelleViste ? 2 : PHP_INT_MAX;
+
+            return parent::importStep($dumpPath, $checkpoint, $budget);
+        }
+    });
+    // Il passo dopo ricrea la tabella provvisoria e muore prima di toglierla per la vista.
+    $rimozioni = 0;
+    PdoDelRipristinoDiProva::$morte = function (string $sql) use (&$rimozioni) {
+        return str_starts_with($sql, 'DROP TABLE IF EXISTS `aa_vista`') && ++$rimozioni === 2;
+    };
+
+    $passi = rdmGuida($this, $token);
+    rdmRimettiLImmagine();
+    rdmNuovaRichiesta();
+    $riprendi = $this->postJson('/ripristino/riprendi', [], ['X-Restore-Token' => $token]);
+    $dopo = rdmDopoRiprendi($this, $riprendi);
+
+    expect(count($passi))->toBe(2)
+        ->and($riprendi->status())->toBe(200)
+        ->and(end($dopo))->toBe('200 completed')
+        ->and(DB::table('aa_righe')->count())->toBe(400)
+        ->and(DB::table('aa_vista')->count())->toBe(400);
+});

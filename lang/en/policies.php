@@ -29,6 +29,8 @@ return [
     'delete_users'              => "You don't have sufficient permissions to delete users.",
     'suspend_users'             => "You don't have sufficient permissions to suspend users.",
     'users_self_action'         => "You cannot suspend or delete your own account.",
+    'users_self_reinvite'       => "You cannot reinvite your own account: change your password in your settings, under «Password».",
+    'users_self_unverify'       => "You cannot remove the email verification from your own account.",
     'users_last_admin'          => "This is the last active administrator: without them nobody could manage this installation.",
     'users_last_admin_self'     => "You are the last active administrator: without your account nobody could manage this installation. To delete it, another active administrator is needed first.",
     'users_privileged_target'   => 'Only an administrator manages this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',

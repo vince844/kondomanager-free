@@ -42,6 +42,9 @@ const table = useVueTable({
       return ordinamento.value
     },
   },
+  // `email_verified_at` è la colonna del filtro «Verifica»: la barra ne ha bisogno per tenere lo stato del
+  // filtro, l'elenco non la mostra (lo scudo della verifica sta nella cella del nome).
+  initialState: { columnVisibility: { email_verified_at: false } },
   manualPagination: true,
   // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
   manualSorting: true,
@@ -90,7 +93,7 @@ const table = useVueTable({
         </template>
         <template v-else>
           <TableRow>
-            <TableCell :colspan="columns.length" class="h-24 text-center">
+            <TableCell :colspan="table.getVisibleLeafColumns().length" class="h-24 text-center">
               {{ trans('users.dialogs.no_users_created') }}
             </TableCell>
           </TableRow>

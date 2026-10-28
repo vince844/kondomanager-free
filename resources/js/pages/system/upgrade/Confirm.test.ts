@@ -19,9 +19,17 @@
  * arrivato con la beta.35, e il limite si chiude qui.
  */
 
-import { describe, expect, test } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, expect, test, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import Confirm from './Confirm.vue';
+
+const axiosPost = vi.hoisted(() => vi.fn());
+const formPost = vi.hoisted(() => vi.fn());
+vi.mock('axios', () => ({ default: { post: axiosPost } }));
+vi.mock('@inertiajs/vue3', async (originale) => ({
+    ...(await originale<typeof import('@inertiajs/vue3')>()),
+    useForm: () => ({ post: formPost }),
+}));
 
 // Ziggy espone `route()` come globale dell'applicazione: nel template Vue lo risolve
 // sul contesto del componente, quindi non basta assegnarlo su `globalThis`.
@@ -203,5 +211,30 @@ describe("il messaggio dopo un aggiornamento fallito", () => {
 
         expect(testo).toContain('riprende da dove si era interrotto');
         expect(testo).toContain("non è un'interruzione");
+    });
+});
+
+/**
+ * Coda 400 — il backup di sicurezza che non può partire, perché la cartella dei suoi temporanei non si crea, risulta
+ * fallito al primo passo con la sua ragione (`PreUpgradeBackupTest`): la pagina la mostra, e le migrazioni non partono.
+ */
+describe('il backup di sicurezza che fallisce al primo passo', () => {
+    test('Coda 400 — la pagina mostra la ragione del backup fallito e non avvia l\'aggiornamento', async () => {
+        axiosPost.mockReset();
+        formPost.mockReset();
+        // Il codice dello script chiama `route()` come globale di Ziggy, non dal contesto del template.
+        (globalThis as Record<string, unknown>).route = mocks.route;
+        axiosPost
+            .mockResolvedValueOnce({ data: { backup: { uuid: 'b-1', status: 'pending', percent: 0, error: null } } })
+            .mockResolvedValueOnce({ data: { backup: { uuid: 'b-1', status: 'failed', percent: 0, error: 'mkdir(): Permission denied' } } });
+        const wrapper = render({ canBackup: true, currentVersion: '1.10.0' });
+
+        await primaryButton(wrapper).trigger('click');
+        await flushPromises();
+
+        expect(axiosPost).toHaveBeenCalledTimes(2);
+        expect(wrapper.text()).toContain('mkdir(): Permission denied');
+        expect(formPost).not.toHaveBeenCalled();
+        expect(primaryButton(wrapper).attributes('disabled')).toBeUndefined();
     });
 });

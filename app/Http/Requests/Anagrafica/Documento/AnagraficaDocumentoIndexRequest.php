@@ -3,7 +3,9 @@
 namespace App\Http\Requests\Anagrafica\Documento;
 
 use App\Traits\OrdinaElenco;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * L'elenco dei documenti di una singola anagrafica.
@@ -27,9 +29,14 @@ class AnagraficaDocumentoIndexRequest extends FormRequest
         ];
     }
 
-    public function authorize(): bool
+    /**
+     * Il permesso prima delle regole (Coda 402): l'elenco dei documenti della persona chiede la `view` di
+     * `AnagraficaPolicy` sulla persona della rotta, come la sua scheda. Chi non la ha riceve il rifiuto con la sua
+     * frase e nessun esito delle regole. `AnagraficaDocumentoController::index()` la chiede di nuovo.
+     */
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('view', $this->route('anagrafica'));
     }
 
     public function rules(): array

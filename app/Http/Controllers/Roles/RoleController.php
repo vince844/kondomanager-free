@@ -94,7 +94,8 @@ class RoleController extends Controller
         Gate::authorize('create', Role::class);
 
         // Coda 261, decisione 134.1: un ruolo nuovo è un pacchetto di poteri, e crearlo chiede la password
-        // ridigitata da poco. Dopo la conferma si torna al modulo, che si compila di nuovo.
+        // ridigitata da poco. La pagina apre la finestra della conferma e rifà la richiesta con il modulo
+        // già compilato (Coda 404).
         if (ConfermaPasswordRecente::scaduta($request)) {
             return ConfermaPasswordRecente::richiedi($request, 'ruoli.create');
         }

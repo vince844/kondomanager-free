@@ -78,8 +78,10 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
     cell: ({ row, table }) => {
       const documento = row.original;
 
+      // Scaricare e approvare passano dalla scheda dell'unità: le rotte dell'archivio lavorano solo sui documenti
+      // dell'archivio.
       const toggleApproval = () => {
-        router.put(route(generateRoute('documenti.toggle-approval'), { id: documento.id }), {}, {
+        router.put(route(generateRoute('gestionale.immobili.documenti.toggle-approval'), { condominio: condominio.id, immobile: immobile.id, documento: documento.id }), {}, {
           preserveScroll: true,
           only: ['stats', 'documenti'],
           onSuccess: () => {
@@ -106,7 +108,7 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
         h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
             renderApprovalDot(documento, canApprove, toggleApproval),
             h('a', {
-                href: route(generateRoute('documenti.download'), { documento: documento.id }),
+                href: route(generateRoute('gestionale.immobili.documenti.download'), { condominio: condominio.id, immobile: immobile.id, documento: documento.id }),
                 class: 'font-semibold text-sm text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate leading-tight',
             }, documento.name),
         ]),

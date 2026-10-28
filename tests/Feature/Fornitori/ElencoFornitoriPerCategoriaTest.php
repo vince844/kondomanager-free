@@ -34,9 +34,12 @@ use Spatie\Permission\Models\Permission;
  */
 beforeEach(function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    // L'elenco dei fornitori chiede «Visualizza anagrafiche» (Coda 402); chi non lo ha è in
+    // `FornitoriPermessiDelPannelloTest.php`.
+    Permission::firstOrCreate(['name' => 'Visualizza anagrafiche', 'guard_name' => 'web']);
 
     $this->user = User::factory()->create();
-    $this->user->givePermissionTo('Accesso pannello amministratore');
+    $this->user->givePermissionTo('Accesso pannello amministratore', 'Visualizza anagrafiche');
     $this->actingAs($this->user);
 });
 

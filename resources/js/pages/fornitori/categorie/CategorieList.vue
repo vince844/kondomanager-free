@@ -34,6 +34,7 @@ import {
 import { ArrowLeft, ChevronRight, FilePenLine, MoreHorizontal, Plus, ShieldCheck, Tags, Trash2, Wrench } from 'lucide-vue-next';
 import { trans, transChoice } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useConfermaEliminazione } from '@/composables/useConfermaEliminazione';
 import type { Flash } from '@/types/flash';
 import type { BreadcrumbItem } from '@/types';
@@ -52,7 +53,11 @@ const props = defineProps<{ categorie: CategoriaFornitore[] }>();
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
-const { generateRoute } = usePermission();
+// Una categoria si crea con «Crea» o con «Modifica anagrafiche» (come dal «+» del modulo «Nuovo fornitore»); si rinomina
+// e si elimina con «Modifica anagrafiche» (`CategoriaFornitorePolicy`, Coda 402): senza il permesso i comandi non compaiono.
+const { generateRoute, hasPermission } = usePermission();
+const puoCreare = computed(() => hasPermission([Permission.CREATE_ANAGRAFICHE, Permission.EDIT_ANAGRAFICHE]));
+const puoModificare = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: trans('fornitori.header.list_fornitori_head'), href: route(generateRoute('fornitori.index')) },
@@ -205,7 +210,7 @@ function eliminaCategoria() {
             class="h-8 w-full sm:max-w-xs"
           />
 
-          <Button size="sm" class="h-8 shrink-0" @click="apriNuova">
+          <Button v-if="puoCreare" size="sm" class="h-8 shrink-0" @click="apriNuova">
             <!-- Icona verde, come il «+» di «Crea fornitori»: è la convenzione delle azioni che
                  creano qualcosa. -->
             <Plus class="w-4 h-4 text-green-500" />
@@ -220,7 +225,7 @@ function eliminaCategoria() {
                 <TableHead>{{ trans('fornitori.categorie.name') }}</TableHead>
                 <TableHead>{{ trans('fornitori.categorie.description_label') }}</TableHead>
                 <TableHead class="w-32">{{ trans('fornitori.categorie.used_by') }}</TableHead>
-                <TableHead class="w-16 text-right">{{ trans('fornitori.categorie.actions') }}</TableHead>
+                <TableHead v-if="puoModificare" class="w-16 text-right">{{ trans('fornitori.categorie.actions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -261,7 +266,7 @@ function eliminaCategoria() {
                     :description="trans('fornitori.categorie.suppliers_desc', { categoria: categoria.name })"
                   />
                 </TableCell>
-                <TableCell class="text-right whitespace-nowrap">
+                <TableCell v-if="puoModificare" class="text-right whitespace-nowrap">
                   <!--
                     Tre puntini e menù a tendina, non due icone in fila: è la forma che hanno tutte
                     le altre tabelle del programma, e un'eccezione qui si leggerebbe come «questa
@@ -303,7 +308,7 @@ function eliminaCategoria() {
               </TableRow>
 
               <TableRow v-if="elenco.length === 0">
-                <TableCell colspan="4" class="h-24 text-center text-slate-500">
+                <TableCell :colspan="puoModificare ? 4 : 3" class="h-24 text-center text-slate-500">
                   {{ categorie.length === 0
                     ? trans('fornitori.categorie.empty')
                     : trans('fornitori.categorie.no_results') }}

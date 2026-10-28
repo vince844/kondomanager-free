@@ -66,7 +66,8 @@ Route::middleware('auth')->group(function () {
             ->name('impostazioni.mail');
 
         // La posta in uscita porta anche i link di «password dimenticata»: salvarla e provarla chiede
-        // la password ridigitata da poco (Coda 261, decisione 127.7).
+        // la password ridigitata da poco (Coda 261, decisione 127.7). Il modulo e la prova ricevono un 423 e
+        // la pagina rifà la richiesta con gli stessi dati dopo la conferma (Coda 404).
         Route::post('impostazioni/mail', [MailSettingsController::class, 'update'])
             ->middleware('password.recente:impostazioni.mail')
             ->name('admin.settings.mail.update');
@@ -149,8 +150,9 @@ Route::middleware('auth')->group(function () {
         ->name('password.update');
 
     // La 2FA chiede la password ridigitata da poco, anche la pagina, che mostra i codici di recupero
-    // (Coda 261). Le quattro chiamate della pagina, scaduta la conferma, ricevono un 423 e dopo la
-    // conferma si torna alla pagina.
+    // (Coda 261). Le quattro chiamate della pagina, scaduta la conferma, ricevono un 423: la pagina apre la
+    // finestra della conferma e rifà la stessa chiamata (Coda 404). La pagina aperta dal browser si rimanda
+    // alla conferma e poi torna a sé.
     Route::get('settings/two-factor', [TwoFactorAuthController::class, 'show'])
         ->middleware('password.recente')
         ->name('two-factor.show');

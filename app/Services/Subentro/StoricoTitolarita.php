@@ -131,7 +131,7 @@ class StoricoTitolarita
                     'copia_autentica_il' => $s->copia_autentica_il?->toDateString(),
                     'copia_autentica_a_parole' => $s->copia_autentica_il ? $this->data($s->copia_autentica_il) : null,
                     'copia_autentica_attesa' => $s->tipo_passaggio === 'vendita' && $s->copia_autentica_il === null,
-                    'documento_url' => $s->documento_id ? route('admin.documenti.download', ['documento' => $s->documento_id]) : null,
+                    'documento_url' => $this->urlDelTitolo($s),
                     'pertinenze' => $s->pertinenze->map(fn (Subentro $p) => $p->immobile?->nome)->filter()->values()->all(),
                     'conguaglio' => [
                         'stato' => $conguaglio,
@@ -243,7 +243,7 @@ class StoricoTitolarita
                 'copia_autentica_il' => $subentro->copia_autentica_il ? $this->data($subentro->copia_autentica_il) : null,
                 'ruolo_nel_passaggio' => $comeUscente ? 'uscente' : ($comeEntrante ? 'entrante' : 'continuazione'),
                 // S5: il PDF del titolo (solo per l'amministratore) e la rinuncia al conguaglio, se c'è stata.
-                'documento_url' => $subentro->documento_id ? route('admin.documenti.download', ['documento' => $subentro->documento_id]) : null,
+                'documento_url' => $this->urlDelTitolo($subentro),
                 // Rilievo R4 della Fase 1-bis della .48: la scelta e la nota stanno sul passaggio padre, e la riga di una pertinenza
                 // (il box) le legge da lì, come quella dell'unità.
                 'nota_conguaglio' => ($subentro->padre ?? $subentro)->nota_conguaglio,
@@ -432,5 +432,21 @@ class StoricoTitolarita
     private function giornoUtente(\DateTimeInterface $d): string
     {
         return CarbonImmutable::instance($d)->setTimezone(config('app.user_timezone', 'Europe/Rome'))->locale('it')->translatedFormat('j F Y');
+    }
+
+    /**
+     * Il PDF del titolo allegato a «Registra passaggio» è un documento dell'unità del passaggio
+     * (`RegistraSubentroAction::salvaDocumento`): si scarica dalla scheda dell'unità, perché le rotte dell'archivio lavorano
+     * solo sui documenti dell'archivio.
+     */
+    private function urlDelTitolo(Subentro $subentro): ?string
+    {
+        return $subentro->documento_id
+            ? route('admin.gestionale.immobili.documenti.download', [
+                'condominio' => $subentro->condominio_id,
+                'immobile'   => $subentro->immobile_id,
+                'documento'  => $subentro->documento_id,
+            ])
+            : null;
     }
 }

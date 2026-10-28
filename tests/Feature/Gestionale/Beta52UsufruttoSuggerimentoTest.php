@@ -1,10 +1,12 @@
 <?php
 
 /**
- * Cosa resta scoperto: la traduzione spagnola è la copia dell'inglese, come per i testi vicini di `lang/` (le righe di `es` qui sotto
- * cercano il testo inglese: se si traduce, cambiano insieme); i tre modali scrivono le etichette dei campi con le chiavi `labels` (`owner_percent`,
- * `tenant_percent`, `usufructuary_percent`) e questo test confronta il testo con quelle chiavi, lingua per lingua: che i modali le leggano, e che il
- * testo compaia solo con «Entrata», è in `SuggerimentoEntrataUsufrutto.test.ts`.
+ * Coda 397: il testo è tradotto anche in `es`. Le etichette dei campi di `es` (le chiavi `labels`) sono ancora quelle dell'inglese, come il resto di quel
+ * file, e il testo spagnolo le cita come la schermata le mostra («Usufructuary %», «Owner %»): se si traducono, cambiano insieme.
+ *
+ * Cosa resta scoperto: i tre modali scrivono le etichette dei campi con le chiavi `labels` (`owner_percent`, `tenant_percent`, `usufructuary_percent`) e
+ * questo test confronta il testo con quelle chiavi, lingua per lingua: che i modali le leggano, e che il testo compaia solo con «Entrata», è in
+ * `SuggerimentoEntrataUsufrutto.test.ts`.
  *
  * Il testo che i tre modali di una voce di entrata mostrano sull'art. 984 c.c.: un'unica chiave in `lang/`, letta dai tre punti dove si
  * scrivono le percentuali (nuova voce, modifica, tabella collegata) e solo con il tipo «Entrata».
@@ -27,16 +29,9 @@
 
 const B52_CHIAVE_984 = 'gestionale.list_pages.piani_conti.show.new_entry_modal.help.income_usufruct';
 
-/** I pezzi che il testo di ogni lingua deve contenere, nell'ordine in cui li dice; `es` è la copia dell'inglese. */
+/** I pezzi che il testo di ogni lingua deve contenere, nell'ordine in cui li dice. */
 function b52SuggerimentoPezzi(): array
 {
-    $inglese = [
-        'Rent or a fee collected by the condominium is a civil fruit and belongs to the usufructuary (art. 984 of the Italian Civil Code); if the title of the usufruct says otherwise, that applies between the parties',
-        'On units under usufruct this entry decides: with «Usufructuary %» at 100 the income goes to the usufructuary, with «Owner %» at 100 to the bare owner',
-        'a mid-year start date does not split the income day by day, unless a usufruct row ends the day before; an end date does',
-        '«Registra passaggio» splits the days',
-    ];
-
     return [
         'it' => [
             'Un affitto o un canone che il condominio incassa è un frutto civile',
@@ -46,14 +41,24 @@ function b52SuggerimentoPezzi(): array
             'una data di inizio a metà anno non divide l\'entrata giorno per giorno, salvo una riga di usufrutto chiusa il giorno prima; una data di fine sì',
             '«Registra passaggio» divide i giorni',
         ],
-        'en' => $inglese,
+        'en' => [
+            'Rent or a fee collected by the condominium is a civil fruit and belongs to the usufructuary (art. 984 of the Italian Civil Code); if the title of the usufruct says otherwise, that applies between the parties',
+            'On units under usufruct this entry decides: with «Usufructuary %» at 100 the income goes to the usufructuary, with «Owner %» at 100 to the bare owner',
+            'a mid-year start date does not split the income day by day, unless a usufruct row ends the day before; an end date does',
+            '«Registra passaggio» splits the days',
+        ],
         'pt' => [
             'Uma renda ou taxa que o condomínio recebe é um fruto civil e cabe ao usufrutuário (art. 984 do Código Civil italiano); se o título do usufruto disser outra coisa, vale entre as partes',
             'Nas unidades em usufruto decide esta rubrica: com «Usufrutuário %» a 100 a receita vai para o usufrutuário, com «Proprietário %» a 100 para o nu-proprietário',
             'uma data de início a meio do ano não divide a receita dia a dia, salvo uma linha de usufruto terminada na véspera; uma data de fim divide',
             '«Registra passaggio» divide os dias',
         ],
-        'es' => $inglese,
+        'es' => [
+            'Un alquiler o un canon que el condominio cobra es un fruto civil y corresponde al usufructuario (art. 984 del Código Civil italiano); si el título del usufructo dice otra cosa, vale entre las partes',
+            'En las unidades en usufructo decide esta partida: con «Usufructuary %» a 100 el ingreso va al usufructuario, con «Owner %» a 100 al nudo propietario',
+            'una fecha de inicio a mitad de año no divide el ingreso día a día, salvo una línea de usufructo cerrada el día anterior; una fecha de fin sí',
+            '«Registra passaggio» divide los días',
+        ],
     ];
 }
 
@@ -83,7 +88,7 @@ it('le etichette del testo sono quelle delle chiavi `labels` della stessa lingua
 });
 
 it('nessun testo del prodotto attribuisce all\'art. 984 c.c. la riserva «salvo diverso titolo», in nessuna lingua', function () {
-    $clausola = '/984.{0,200}?(salvo diverso titolo|unless the title provides otherwise|salvo título em contrário)/su';
+    $clausola = '/984.{0,200}?(salvo diverso titolo|unless the title provides otherwise|salvo título em contrário|salvo título en contrario)/su';
     $trovati = [];
     foreach (['app', 'lang', 'resources/js', 'resources/views'] as $cartella) {
         foreach (\Illuminate\Support\Facades\File::allFiles(base_path($cartella)) as $file) {
@@ -102,10 +107,12 @@ it('nessun testo del prodotto attribuisce all\'art. 984 c.c. la riserva «salvo 
 });
 
 it('controprova — la guardia riconosce la riserva attribuita all\'art. 984 c.c. nelle forme di prima, e non la frase che la tiene fuori dalle parentesi dell\'articolo', function (string $testo, bool $segnalata) {
-    expect(preg_match('/984.{0,200}?(salvo diverso titolo|unless the title provides otherwise|salvo título em contrário)/su', $testo) === 1)->toBe($segnalata);
+    expect(preg_match('/984.{0,200}?(salvo diverso titolo|unless the title provides otherwise|salvo título em contrário|salvo título en contrario)/su', $testo) === 1)->toBe($segnalata);
 })->with([
     'it, di prima' => ['è un frutto civile: per l\'art. 984 c.c. spetta all\'usufruttuario, salvo diverso titolo.', true],
     'en, di prima' => ['under art. 984 of the Italian Civil Code it belongs to the usufructuary, unless the title provides otherwise.', true],
     'pt, di prima' => ['pelo art. 984 do Código Civil italiano cabe ao usufrutuário, salvo título em contrário.', true],
+    'es, di prima' => ['según el art. 984 del Código Civil italiano corresponde al usufructuario, salvo título en contrario.', true],
     'it, di adesso' => ['spetta all\'usufruttuario (art. 984 c.c.); se il titolo dell\'usufrutto dice altro, vale fra le parti.', false],
+    'es, di adesso' => ['corresponde al usufructuario (art. 984 del Código Civil italiano); si el título del usufructo dice otra cosa, vale entre las partes.', false],
 ]);

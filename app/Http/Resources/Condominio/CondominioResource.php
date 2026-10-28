@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Condominio;
 
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
 use App\Http\Resources\Gestionale\Esercizi\EsercizioResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -39,7 +40,9 @@ class CondominioResource extends JsonResource
             'sezione_catasto'       => $this->sezione_catasto ? Str::upper($this->sezione_catasto) : null,
             'foglio_catasto'        => $this->foglio_catasto ? Str::upper($this->foglio_catasto) : null,
             'particella_catasto'    => $this->particella_catasto ? Str::upper($this->particella_catasto) : null,
-            'anagrafiche'           => $this->whenLoaded('anagrafiche'),
+            // Le persone del palazzo: l'elenco condomìni le mostra con il nome e, nel pannello, l'indirizzo (Coda 408). Il resto
+            // della persona sta nella sua scheda, che chiede «Visualizza anagrafiche».
+            'anagrafiche'           => AnagraficaConIndirizzoResource::collection($this->whenLoaded('anagrafiche')),
             'esercizio_aperto'      => new EsercizioResource(
                 $this->esercizi()
                     ->where('stato', 'aperto')

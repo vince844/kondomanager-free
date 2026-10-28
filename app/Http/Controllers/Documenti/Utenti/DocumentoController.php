@@ -157,6 +157,8 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
+        $this->soloDellArchivio($documento);
+
         // Fino alla 1.11.0-beta.39 questa pagina mandava anche 'condomini' (l'elenco intero,
         // Condominio::all()) e 'anagrafiche' (Anagrafica::all(), con codice fiscale, email, PEC e
         // telefono di tutti) — nessuno dei due era nella dichiarazione dei props di
@@ -179,6 +181,8 @@ class DocumentoController extends Controller
     public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
         Gate::authorize('update',$documento);
+
+        $this->soloDellArchivio($documento);
 
         $validated = $request->validated();
 
@@ -246,6 +250,8 @@ class DocumentoController extends Controller
     {
         Gate::authorize('delete', $documento);
 
+        $this->soloDellArchivio($documento);
+
         try {
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
@@ -296,6 +302,8 @@ class DocumentoController extends Controller
     {
         Gate::authorize('view',$documento);
 
+        $this->soloDellArchivio($documento);
+
         try {
 
             if (!app(ArchivioDocumenti::class)->esiste($documento->path)) {
@@ -318,5 +326,16 @@ class DocumentoController extends Controller
             );
 
         }
+    }
+
+    /**
+     * Le rotte dei documenti del portale lavorano sui documenti dell'archivio, quelli senza un proprietario, come li
+     * mostra il suo elenco (`DocumentoService::getUserBaseQuery`), anche per chi ha il pannello: un documento di una
+     * persona, di un fornitore, di un'unità o di una fattura per queste rotte non c'è (404). Si apre e si cambia dalla
+     * pagina del proprietario, con il suo permesso.
+     */
+    private function soloDellArchivio(Documento $documento): void
+    {
+        abort_unless($documento->documentable_type === null, 404);
     }
 }

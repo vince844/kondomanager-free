@@ -8,7 +8,8 @@ use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\CreateImmobileAnagraficaRequest;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\UpdateImmobileAnagraficaRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
@@ -153,14 +154,14 @@ class ImmobileAnagraficaController extends Controller
         $anagraficheDisponibili = $condominio->anagrafiche()
             ->whereNotIn('anagrafiche.id', $idsGiaAssociati)
             ->orderBy('nome') // Opzionale: per averle in ordine alfabetico
-            ->get();
+            ->get(['anagrafiche.id', 'anagrafiche.nome', 'anagrafiche.indirizzo']);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheNew', [
             'condominio'  => $condominio,
             'esercizio'   => $esercizio,
             'immobile'    => $immobile,
-            // Passiamo solo quelle filtrate
-            'anagrafiche' => AnagraficaResource::collection($anagraficheDisponibili)
+            // Passiamo solo quelle filtrate, con il nome e l'indirizzo che la tendina mostra (Coda 408).
+            'anagrafiche' => AnagraficaConIndirizzoResource::collection($anagraficheDisponibili)
         ]);
     }
 
@@ -266,8 +267,14 @@ class ImmobileAnagraficaController extends Controller
             'condominio'    => $condominio,
             'esercizio'     => $esercizio,
             'immobile'      => new ImmobileResource($immobile),
-            'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all()),
-            'anagrafica'    => $anagraficaPivot,
+            // La tendina (bloccata: la persona non si cambia da qui) mostra il nome, e il modulo legge della riga l'id della
+            // persona e il legame con l'unità (Coda 408): il resto della persona sta nella sua scheda.
+            'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
+            'anagrafica'    => [
+                'id'    => $anagraficaPivot->id,
+                'nome'  => $anagraficaPivot->nome,
+                'pivot' => $anagraficaPivot->pivot->toArray(),
+            ],
             // Decisione 24: la riga fa parte di un passaggio registrato → il ruolo non si cambia da qui.
             'agganciata_a_passaggio' => $titolarita->faParteDiUnPassaggio(),
         ]);

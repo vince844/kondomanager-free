@@ -5,8 +5,10 @@
  * (decisione 138.2).
  *
  * L'accesso al pannello non è solo il menù: alcune pagine del pannello non hanno permessi propri e si aprono con il
- * solo accesso (il gestionale di ogni condominio, i fornitori), altre chiedono anche i loro permessi. La frase lo dice
- * nelle due pagine; che sia vera lo fissa dalla rotta `tests/Feature/Users/AccessoAlPannelloDelRuoloTest.php`.
+ * solo accesso (il gestionale di ogni condominio, con i fornitori delle sue fatture e dei suoi pagamenti: Coda 110),
+ * altre chiedono anche i loro permessi, e fra queste i fornitori, con i permessi delle anagrafiche (Coda 402): la
+ * scheda, l'elenco e i moduli del fornitore. La frase lo dice nelle due pagine; che sia vera lo fissa dalla rotta
+ * `tests/Feature/Users/AccessoAlPannelloDelRuoloTest.php`.
  *
  * Le due pagine sono scritte in italiano nel codice, e la frase con loro. I test cercano i pezzi della frase, non la
  * frase intera.
@@ -44,17 +46,27 @@ function testoDi(pagina: 'NuovoRuolo' | 'ModificaRuolo'): string {
 }
 
 describe.each(['NuovoRuolo', 'ModificaRuolo'] as const)('%s — che cosa apre l\'accesso al pannello (decisione 138.2)', (pagina) => {
-    test('dice che alcune pagine del pannello si aprono con il solo accesso: il gestionale di ogni condominio e i fornitori', () => {
+    test('dice che alcune pagine del pannello si aprono con il solo accesso: il gestionale di ogni condominio e i fornitori delle sue fatture e dei suoi pagamenti, con i loro dati (Coda 110)', () => {
         const testo = testoDi(pagina);
 
         expect(testo).toContain('Alcune pagine del pannello non hanno permessi propri e si aprono con il solo accesso');
-        expect(testo).toContain('il gestionale di ogni condominio (contabilità, unità, titolari e i loro dati) e i fornitori');
+        expect(testo).toContain(
+            'fra queste il gestionale di ogni condominio (contabilità, unità, titolari e i loro dati) e i fornitori delle fatture e dei pagamenti, con i loro dati.',
+        );
     });
 
-    test('dice che altre sezioni chiedono anche i loro permessi, nel campo «Permessi» della pagina', () => {
+    test('non dice che i fornitori in quanto sezione si aprono con il solo accesso: la scheda e l\'elenco chiedono i permessi delle anagrafiche (Coda 402)', () => {
+        const prima = testoDi(pagina).split('Altre sezioni')[0];
+
+        // Fra le pagine che si aprono con il solo accesso i fornitori compaiono solo come quelli delle fatture e dei pagamenti.
+        expect(prima.replace('i fornitori delle fatture e dei pagamenti', '')).not.toContain('fornitori');
+    });
+
+    test('dice che altre sezioni chiedono anche i loro permessi, fra queste i fornitori con quelli delle anagrafiche, nel campo «Permessi» della pagina', () => {
         const testo = testoDi(pagina);
 
-        expect(testo).toContain('Altre sezioni, come comunicazioni, segnalazioni, agenda e l\'elenco delle anagrafiche, chiedono anche i loro permessi');
+        expect(testo).toContain('Altre sezioni, come comunicazioni, segnalazioni, agenda, le anagrafiche e i fornitori, chiedono anche i loro permessi');
+        expect(testo).toContain('(per i fornitori quelli delle anagrafiche)');
         expect(testo).toContain('da scegliere in «Permessi»');
         expect(testo).toContain('Permessi');
     });

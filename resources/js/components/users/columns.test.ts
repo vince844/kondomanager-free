@@ -5,8 +5,9 @@
  *
  * Lo scudo della verifica dell'email, nella colonna del nome (Coda 258, decisioni 134.1 e 136.3): togliere o
  * rimettere la verifica vale solo per un account nella portata di chi guarda l'elenco, e chiede «Modifica
- * utenti», come la sua rotta. Altrimenti lo scudo resta un'indicazione e il clic non manda la richiesta che il
- * server rifiuterebbe.
+ * utenti», come la sua rotta. Togliere la verifica ha anche le guardie di sospensione ed eliminazione (Coda 399):
+ * non sulla propria riga, non su quella dell'ultimo amministratore attivo. Altrimenti lo scudo resta
+ * un'indicazione e il clic non manda la richiesta che il server rifiuterebbe.
  *
  * La finestra dei permessi, nella colonna dei permessi (decisione 135.1): il pulsante con il numero e la
  * finestra che apre mostrano i permessi e il ruolo dell'utente della riga **adesso**. Ordinare, filtrare o
@@ -35,10 +36,10 @@ const { columns } = await import('./columns');
 const PermissionsDialog = (await import('@/components/PermissionsDialog.vue')).default;
 
 /** La cella del nome, montata come la monta la tabella. */
-function cellaDelNome(gestibile: boolean) {
+function cellaDelNome(gestibile: boolean, riga: Record<string, unknown> = {}) {
     const utente = {
         id: '5', name: 'Anna', email: 'anna@example.com', suspended_at: null, email_verified_at: '2026-10-01',
-        roles: [], permissions: [], anagrafica: null, gestibile,
+        roles: [], permissions: [], anagrafica: null, gestibile, ...riga,
     };
     const cella = columns[0].cell as (contesto: unknown) => ReturnType<typeof h>;
 
@@ -80,6 +81,63 @@ describe('columns degli utenti — lo scudo della verifica segue la portata e il
         expect(scudo.classes()).not.toContain('cursor-pointer');
         await scudo.trigger('click');
         expect(inertia.put).not.toHaveBeenCalled();
+    });
+});
+
+describe('columns degli utenti — togliere la verifica ha le guardie di sospensione ed eliminazione (Coda 399)', () => {
+    test('sulla propria riga lo scudo di un account verificato non manda niente', async () => {
+        const scudo = cellaDelNome(true, { is_self: true }).find('[title]');
+
+        expect(scudo.classes()).not.toContain('cursor-pointer');
+        await scudo.trigger('click');
+        expect(inertia.put).not.toHaveBeenCalled();
+    });
+
+    test('sulla riga dell\'ultimo amministratore attivo lo scudo non manda niente', async () => {
+        const scudo = cellaDelNome(true, { is_ultimo_amministratore: true, roles: ['amministratore'] }).find('[title]');
+
+        expect(scudo.classes()).not.toContain('cursor-pointer');
+        await scudo.trigger('click');
+        expect(inertia.put).not.toHaveBeenCalled();
+    });
+
+    test('un account non verificato riprende la verifica dallo scudo', async () => {
+        const scudo = cellaDelNome(true, { email_verified_at: null, is_ultimo_amministratore: true }).find('[title]');
+
+        expect(scudo.classes()).toContain('cursor-pointer');
+        await scudo.trigger('click');
+        expect(inertia.put).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('columns degli utenti — il titolo dello scudo invita al clic solo dove il clic c\'è (Coda 258, 399)', () => {
+    // Dove lo scudo non si clicca (`gestibile` falso) il titolo dice lo stato e basta: la frase con «clicca per…» promette un'azione che non parte.
+    test.each([
+        ['verificato, nella portata, con «Modifica utenti»', true, { email_verified_at: '2026-10-01' }, 'users.table.verified_tooltip'],
+        ['non verificato, nella portata, con «Modifica utenti»', true, { email_verified_at: null }, 'users.table.unverified_tooltip'],
+        ['non verificato sulla propria riga: la verifica si rimette sempre', true, { email_verified_at: null, is_self: true }, 'users.table.unverified_tooltip'],
+        ['verificato, fuori portata', false, { email_verified_at: '2026-10-01' }, 'users.table.verified_label'],
+        ['non verificato, fuori portata', false, { email_verified_at: null }, 'users.table.unverified_label'],
+        ['verificato, sulla propria riga', true, { email_verified_at: '2026-10-01', is_self: true }, 'users.table.verified_label'],
+        ['verificato, sull\'ultimo amministratore attivo', true, { email_verified_at: '2026-10-01', is_ultimo_amministratore: true }, 'users.table.verified_label'],
+    ])('%s', (_caso, gestibile, riga, titolo) => {
+        const scudo = cellaDelNome(gestibile, riga).find('[title]');
+
+        expect(scudo.attributes('title')).toBe(titolo);
+        // Il titolo e il clic vanno insieme: dove c'è l'invito il clic parte, dove non c'è lo scudo non è cliccabile.
+        expect(scudo.classes().includes('cursor-pointer')).toBe(titolo.endsWith('_tooltip'));
+    });
+
+    test.each([
+        ['verificato', { email_verified_at: '2026-10-01' }, 'users.table.verified_label'],
+        ['non verificato', { email_verified_at: null }, 'users.table.unverified_label'],
+    ])('senza «Modifica utenti» il titolo dello scudo %s non invita al clic', (_stato, riga, titolo) => {
+        chiGuarda.permessi = ['Visualizza utenti', 'Sospendi utenti'];
+
+        const scudo = cellaDelNome(true, riga).find('[title]');
+
+        expect(scudo.attributes('title')).toBe(titolo);
+        expect(scudo.classes()).not.toContain('cursor-pointer');
     });
 });
 

@@ -8,6 +8,7 @@ use App\Http\Requests\Fornitore\Categoria\UpdateCategoriaFornitoreRequest;
 use App\Models\CategoriaFornitore;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -40,6 +41,13 @@ use Inertia\Response;
  * risorgere** al primo `db:seed`. Le nove sono state spostate nella migrazione
  * `seed_categorie_fornitore`, che per costruzione gira una volta sola. Vedi la Coda 103: le altre
  * tre tabelle master hanno ancora quel difetto, e quella dei documenti è già cancellabile.
+ *
+ * ## Chi la apre (Coda 402)
+ *
+ * `CategoriaFornitorePolicy`, con i permessi delle anagrafiche come i fornitori: l'elenco «Visualizza anagrafiche»;
+ * creare «Crea anagrafiche» o «Modifica anagrafiche» (il «+» del modulo «Nuovo fornitore» si apre con il primo);
+ * rinominare ed eliminare «Modifica anagrafiche». Per creare e rinominare lo chiede anche la richiesta, prima della
+ * validazione.
  */
 class CategoriaFornitoreController extends Controller
 {
@@ -47,6 +55,8 @@ class CategoriaFornitoreController extends Controller
 
     public function index(): Response
     {
+        Gate::authorize('viewAny', CategoriaFornitore::class);
+
         return Inertia::render('fornitori/categorie/CategorieList', [
             // ⚠️ **I fornitori arrivano con l'elenco, non solo il loro numero.**
             //
@@ -96,6 +106,8 @@ class CategoriaFornitoreController extends Controller
 
     public function store(CreateCategoriaFornitoreRequest $request): RedirectResponse
     {
+        Gate::authorize('create', CategoriaFornitore::class);
+
         try {
             CategoriaFornitore::create($request->validated());
 
@@ -109,6 +121,8 @@ class CategoriaFornitoreController extends Controller
 
     public function update(UpdateCategoriaFornitoreRequest $request, CategoriaFornitore $categoria): RedirectResponse
     {
+        Gate::authorize('update', $categoria);
+
         try {
             $categoria->update($request->validated());
 
@@ -130,6 +144,9 @@ class CategoriaFornitoreController extends Controller
      */
     public function destroy(CategoriaFornitore $categoria): RedirectResponse
     {
+        // Fuori dal `try`: il `catch (\Throwable)` qui sotto trasformerebbe il rifiuto in un messaggio d'errore generico.
+        Gate::authorize('delete', $categoria);
+
         try {
             $quanti = $categoria->fornitori()->count();
 

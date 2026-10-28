@@ -10,7 +10,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
 use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Requests\Comunicazione\CreateComunicazioneRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -204,7 +204,7 @@ class ComunicazioneController extends Controller
      * Show the form for editing the specified Comunicazione.
      *
      * Authorizes the user to edit the comunicazione and loads the necessary relationships
-     * such as createdBy, condomini, and anagrafiche. The method then renders the edit view
+     * such as condomini and anagrafiche (id and nome only). The method then renders the edit view
      * using Inertia with the data required for the form.
      *
      * @param  \App\Models\Comunicazione $comunicazione
@@ -216,12 +216,14 @@ class ComunicazioneController extends Controller
     {
         Gate::authorize('update', $comunicazione);
 
-        $comunicazione->loadMissing(['createdBy.anagrafica', 'condomini', 'anagrafiche']);
+        // Delle persone la pagina legge soltanto id e nome, nell'elenco e nei destinatari già scelti (Coda 408): il resto
+        // resta nella scheda della persona.
+        $comunicazione->loadMissing(['condomini', 'anagrafiche:id,nome']);
 
         return Inertia::render('comunicazioni/ComunicazioniEdit', [
          'comunicazione' => new ComunicazioneResource($comunicazione),
          'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
-         'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
+         'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome']))
         ]);
     }
 

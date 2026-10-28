@@ -4,6 +4,7 @@ import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { etichettaFabbisogno } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import { Badge } from '@/components/ui/badge';
@@ -90,7 +91,12 @@ const props = defineProps<{
   widgets?: Record<string, any>;
 }>()
 
-const { generatePath } = usePermission();
+const { generatePath, hasPermission } = usePermission();
+
+// «Rifiuta» e «Completa» dei compiti chiudono una scadenza in agenda, e le loro rotte (`admin.inbox.reject`,
+// `admin.inbox.complete`) chiedono «Modifica scadenza in agenda» (`EventoPolicy::chiudiCompito`, Coda 402): senza il
+// permesso i due comandi non compaiono, e restano «Registra» e «Risolvi».
+const puoChiudereCompiti = computed(() => hasPermission([Permission.EDIT_EVENTS]));
 const { euro } = useCurrencyFormatter();
 const showOrphansModal = ref(false);
 
@@ -609,7 +615,7 @@ onUnmounted(() => {
                                                 <div class="shrink-0 flex items-center gap-2">
     
                                                     <template v-if="task.type === 'verifica_pagamento'">
-                                                        <button @click="openRejectModal(task)" title="Rifiuta segnalazione"
+                                                        <button v-if="puoChiudereCompiti" @click="openRejectModal(task)" title="Rifiuta segnalazione"
                                                             class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-red-600 hover:border-red-200 hover:bg-red-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
                                                             <XCircle class="w-4 h-4" />
                                                         </button>
@@ -621,7 +627,7 @@ onUnmounted(() => {
                                                     </template>
 
                                                     <template v-else>
-                                                        <button @click="completeTask(task.id)" title="Segna come completato"
+                                                        <button v-if="puoChiudereCompiti" @click="completeTask(task.id)" title="Segna come completato"
                                                             class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
                                                             <CheckCircle2 class="w-4 h-4" />
                                                         </button>

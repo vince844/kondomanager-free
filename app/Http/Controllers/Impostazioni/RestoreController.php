@@ -186,14 +186,14 @@ class RestoreController extends Controller
      */
     public function resume(Request $request, RestoreManager $manager, RestoreState $stateStore): JsonResponse
     {
-        $this->authorizeRecovery($request, $manager, $stateStore);
+        $tokenValido = $this->authorizeRecovery($request, $manager, $stateStore);
 
         $state = $manager->resume();
 
-        // Riemetti un token: la pagina di recupero (senza sessione) può così
-        // guidare gli step successivi come l'overlay admin, senza ridigitare la
-        // password a ogni passo.
-        $token = $stateStore->issueToken((int) config('backup.stale_after_hours', 2) * 3600);
+        // Con la password, un token nuovo: la pagina di recupero (senza sessione) guida così gli step successivi come
+        // la finestra dei backup, senza ridigitare la password a ogni passo. Con il token, lo stesso: se la risposta non
+        // arriva, la finestra ha ancora quello buono.
+        $token = $tokenValido ?? $stateStore->issueToken((int) config('backup.stale_after_hours', 2) * 3600);
 
         return response()->json([
             'restore' => $this->present($state),
@@ -228,8 +228,10 @@ class RestoreController extends Controller
      * ripristino avviato prima di questa versione vedi `improntaDiChiHaAvviato`.
      * Senza un'impronta la password non si può verificare: la risposta (409) lo
      * dice, invece di «Password non corretta.», e resta la via del token.
+     *
+     * Restituisce il token quando autorizza con il token, `null` con la password.
      */
-    private function authorizeRecovery(Request $request, RestoreManager $manager, RestoreState $stateStore): void
+    private function authorizeRecovery(Request $request, RestoreManager $manager, RestoreState $stateStore): ?string
     {
         $state = $manager->current();
 
@@ -247,7 +249,7 @@ class RestoreController extends Controller
         // Via 1 — token valido (overlay admin ancora aperto)
         $token = $request->header('X-Restore-Token') ?? $request->input('token');
         if ($token !== null && $stateStore->validateToken($token)) {
-            return;
+            return $token;
         }
 
         // Via 2 — password dell'account che ha avviato il ripristino. Senza login e senza CSRF: al
@@ -279,7 +281,7 @@ class RestoreController extends Controller
         if ($password !== '' && Hash::check($password, $impronta)) {
             $limitatore->decrement($chiaveLimite, 60);
 
-            return;
+            return null;
         }
 
         throw ValidationException::withMessages([

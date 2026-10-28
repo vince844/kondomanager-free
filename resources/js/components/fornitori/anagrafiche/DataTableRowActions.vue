@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Unplug, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
+import { Permission } from '@/enums/Permission'
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Fornitore } from '@/types/fornitori';
 
@@ -15,7 +16,9 @@ const props = defineProps<{
   anagrafica: Anagrafica
 }>()
 
-const { generateRoute } = usePermission()
+// Dissociare un referente è una modifica del fornitore: la rotta chiede «Modifica anagrafiche» (`FornitorePolicy::update`,
+// Coda 402), e senza il permesso il menù non compare.
+const { generateRoute, hasPermission } = usePermission()
 
 const anagraficaID = ref('');
 const isAlertOpen = ref(false)
@@ -47,7 +50,7 @@ const deleteAnagrafica = () => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])">
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>

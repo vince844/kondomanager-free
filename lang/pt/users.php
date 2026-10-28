@@ -56,7 +56,7 @@ return [
     'table' => [
         'name'               => 'Nome e apelido',
         'email'              => 'Endereço de correio eletrónico',
-        'role'               => 'Função',
+        'role'               => 'Perfil',
         'permissions'        => 'Permissões',
         'anagrafica'         => 'Registo',
         'no_anagrafica'      => 'Sem registo',
@@ -74,6 +74,23 @@ return [
         'no_permissions'     => 'Nenhuma permissão',
         'verified_tooltip'   => 'Utilizador verificado - clique para revogar verificação',
         'unverified_tooltip' => 'Utilizador não verificado - clique para verificar',
+        'verified_label'     => 'Utilizador verificado',
+        'unverified_label'   => 'Utilizador não verificado',
+        // Coda 398: il filtro «Verifica» accanto a «Stato».
+        'verification'       => 'Verificação',
+        'verified'           => 'Verificados',
+        'unverified'         => 'Não verificados',
+    ],
+    /* ------------------------------------------------------------------
+     | Stats: le card sopra l'elenco (Coda 398)
+     | ------------------------------------------------------------------ */
+    'stats' => [
+        'total'          => 'Total de utilizadores',
+        'to_verify'      => 'Por verificar',
+        'suspended'      => 'Suspensos',
+        'total_hint'     => 'Mostrar todos os utilizadores, sem filtros',
+        'to_verify_hint' => 'Mostrar os utilizadores com o correio eletrónico por verificar',
+        'suspended_hint' => 'Mostrar os utilizadores suspensos',
     ],
 
     /* ------------------------------------------------------------------

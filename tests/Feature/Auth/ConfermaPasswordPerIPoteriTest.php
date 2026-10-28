@@ -17,7 +17,9 @@
  *
  * Solo quando l'azione lo chiede: salvare un condòmino, la scheda di un amministratore senza cambiargli i
  * ruoli o le impostazioni generali con lo stesso ruolo della registrazione non chiedono niente. Ogni
- * richiesta è mandata come la manda la sua pagina, e dopo la conferma si torna alla pagina del modulo.
+ * richiesta è un modulo mandato dal browser, senza le intestazioni di Inertia: riceve il rimando alla pagina di
+ * conferma, e dopo la conferma si torna alla pagina del modulo. Le richieste che la pagina manda da sé, Inertia e
+ * JSON, ricevono invece un 423 (Coda 404, `ConfermaPasswordNellaPaginaTest.php`).
  *
  * ## Cosa questo file NON copre
  *

@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources\Evento;
 
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
 use App\Http\Resources\User\UserResource;
@@ -88,7 +88,8 @@ class EventoResource extends JsonResource
             // Relazioni
             'categoria'       => new CategoriaEventoResource($this->whenLoaded('categoria')),
             'condomini'       => CondominioResource::collection($this->whenLoaded('condomini')),
-            'anagrafiche'     => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
+            // I destinatari: l'elenco e la dashboard ne leggono id e nome (Coda 408).
+            'anagrafiche'     => AnagraficaNomeResource::collection($this->whenLoaded('anagrafiche')),
             
             // Configurazione
             'timezone'        => $this->timezone,
@@ -101,7 +102,7 @@ class EventoResource extends JsonResource
                                     return [
                                         'user'       => new UserResource($this->createdBy),
                                         'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
-                                            ? new AnagraficaResource($this->createdBy->anagrafica)
+                                            ? new AnagraficaNomeResource($this->createdBy->anagrafica)
                                             : null,
                                     ];
                                  }),

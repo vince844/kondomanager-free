@@ -133,7 +133,9 @@ test('un backup interrotto riparte dal checkpoint e si completa', function () {
     $manager = makeManager();
     $backup = $manager->start();
 
-    // Primo avanzamento parziale: solo il passaggio PENDING → DUMPING
+    // Primo avanzamento parziale: solo il passo PENDING → DUMPING, con la cartella dei temporanei che crea (Coda 400: la
+    // crea il primo passo, non l'avvio)
+    File::ensureDirectoryExists(config('backup.tmp_path').'/'.$backup->uuid);
     $backup->forceFill(['status' => BackupStatus::DUMPING_DATABASE])->save();
 
     // Simula la ripresa dopo un'interruzione (nuova richiesta HTTP)
@@ -264,7 +266,9 @@ test('un backup cifrato interrotto riprende e resta cifrato per intero', functio
     $manager = makeManager();
     $backup = $manager->start(null, ['password' => 'chiave-super-segreta', 'type' => Backup::TYPE_FULL]);
 
-    // Simula l'interruzione dopo il passaggio a DUMPING (nuova richiesta HTTP)
+    // Simula l'interruzione dopo il passo a DUMPING (nuova richiesta HTTP), con la cartella dei temporanei che crea
+    // (Coda 400: la crea il primo passo, non l'avvio)
+    File::ensureDirectoryExists(config('backup.tmp_path').'/'.$backup->uuid);
     $backup->forceFill(['status' => BackupStatus::DUMPING_DATABASE])->save();
     $resumed = runToCompletion($manager, Backup::where('uuid', $backup->uuid)->firstOrFail());
 

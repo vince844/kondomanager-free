@@ -133,8 +133,8 @@ function pulisciFiltri() {
       La porta d'ingresso alle categorie, dalla 1.11.0-beta.9. Senza un collegamento qui la pagina
       esisterebbe solo per chi ne conosce l'URL: è la stessa forma con cui si arriva alle categorie
       dei documenti dall'archivio.
-      Nessuna guardia di permesso, come la rotta: chi è entrato in questa schermata ha già superato
-      il filtro del pannello di amministrazione, che è lo stesso che protegge quella.
+      Nessuna guardia di permesso: l'elenco dei fornitori e quello delle categorie chiedono lo stesso
+      permesso, «Visualizza anagrafiche», quindi chi è entrato in questa schermata lo ha già.
     -->
     <!--
       ⚠️ Stesso stile del pulsante «Categorie» dell'archivio documenti — scuro con l'icona
@@ -153,7 +153,7 @@ function pulisciFiltri() {
 
     <Link
       as="button"
-      v-if="hasPermission([Permission.CREATE_USERS])"
+      v-if="hasPermission([Permission.CREATE_ANAGRAFICHE])"
       :href="route(generateRoute('fornitori.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >

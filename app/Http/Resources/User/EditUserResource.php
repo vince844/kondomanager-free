@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources\User;
 
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
 use Illuminate\Http\Request;
@@ -23,7 +23,8 @@ class EditUserResource extends JsonResource
             'email'       => $this->email,
             'roles'       => RoleResource::collection($this->whenLoaded('roles')),
             'permissions' => PermissionResource::collection($this->whenLoaded('permissions')),
-            'anagrafica'  => new AnagraficaResource($this->whenLoaded('anagrafica')),
+            // La scheda dell'utente legge l'id della persona collegata, per la tendina (Coda 408).
+            'anagrafica'  => new AnagraficaNomeResource($this->whenLoaded('anagrafica')),
         ];
     }
 }

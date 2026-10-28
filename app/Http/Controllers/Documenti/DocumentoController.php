@@ -10,7 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
 use App\Http\Requests\Documento\UpdateDocumentoRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
@@ -22,6 +22,7 @@ use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
+use App\Traits\ScaricaEApprovaDocumento;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -33,7 +34,7 @@ use Illuminate\Support\Facades\Gate;
 
 class DocumentoController extends Controller
 {
-    use HandleFlashMessages, PaginaElenco;
+    use HandleFlashMessages, PaginaElenco, ScaricaEApprovaDocumento;
 
     /**
      * Create a new controller instance.
@@ -245,13 +246,17 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
-        $documento->loadMissing(['categorie', 'condomini', 'anagrafiche']);
+        $this->soloDellArchivio($documento);
+
+        // Delle persone la pagina legge soltanto id e nome, nell'elenco e nei destinatari già scelti (Coda 408): il resto
+        // resta nella scheda della persona.
+        $documento->loadMissing(['categorie', 'condomini', 'anagrafiche:id,nome']);
 
         return Inertia::render('documenti/DocumentiEdit', [
             'documento'   => new DocumentoResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            'anagrafiche' => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
             // Il limite lo decide il server, non noi: la schermata scriveva un numero fisso
             // (o non ne scriveva nessuno) mentre la regola ne accettava un altro.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
@@ -272,6 +277,8 @@ class DocumentoController extends Controller
     public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
         Gate::authorize('update',$documento);
+
+        $this->soloDellArchivio($documento);
 
         $validated = $request->validated();
 
@@ -420,6 +427,8 @@ class DocumentoController extends Controller
     {
         Gate::authorize('delete',$documento);
 
+        $this->soloDellArchivio($documento);
+
         try {
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
@@ -467,27 +476,20 @@ class DocumentoController extends Controller
     {
         Gate::authorize('view', $documento);
 
-        try {
+        $this->soloDellArchivio($documento);
 
-            if (!app(ArchivioDocumenti::class)->esiste($documento->path)) {
-                return redirect()->back()->with(
-                    $this->flashError(__('documenti.file_not_found'))
-                );
-            }
+        return $this->scaricaIlDocumento($documento);
+    }
 
-            return app(ArchivioDocumenti::class)->scarica($documento->path, $documento->nomeDiScaricamento());
-
-        } catch (\Exception $e) {
-
-            Log::error('Error downloading documento archivio', [
-                'document_id' => $documento->id,
-                'message'     => $e->getMessage(),
-            ]);
-
-            return redirect()->back()->with(
-                $this->flashError(__('documenti.error_downloading_document'))
-            );
-        }
+    /**
+     * Le rotte dell'archivio lavorano sui documenti dell'archivio: quelli senza un proprietario, come li mostrano
+     * l'elenco (`DocumentoService::getAdminBaseQuery`) e la dashboard. Un documento di una persona, di un fornitore, di
+     * un'unità o di una fattura per queste rotte non c'è (404): si apre e si cambia dalla pagina del proprietario, con il
+     * suo permesso.
+     */
+    private function soloDellArchivio(Documento $documento): void
+    {
+        abort_unless($documento->documentable_type === null, 404);
     }
 
 }

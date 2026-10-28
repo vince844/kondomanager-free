@@ -95,11 +95,8 @@ class IncassoRateController extends Controller
             ->through(fn($mov) => $this->incassoService->formatMovimentoForFrontend($mov));
 
         $listaPalazzi = CondominioResource::collection($this->getCondomini())->resolve();
-        
-        $soggettiList = Anagrafica::whereHas('immobili', fn($q) => 
-            $q->where('condominio_id', $condominio->id)
-        )->orderBy('nome')->get();
-        
+
+        // Nessuna persona della rubrica: la pagina dell'elenco non ne legge (Coda 408).
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         $esercizi = $condominio->esercizi()
@@ -130,7 +127,6 @@ class IncassoRateController extends Controller
             'condominio' => $condominio,
             'movimenti'  => $movimenti,
             'condomini'  => $listaPalazzi, 
-            'soggetti'   => $soggettiList, 
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
             'stats'      => $stats,

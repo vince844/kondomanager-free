@@ -205,7 +205,7 @@ const handleRevokeAdminPermission = () => {
                         <!-- Che cosa apre davvero l'accesso al pannello (decisione 138.2): la frase la fissa dalla
                              rotta AccessoAlPannelloDelRuoloTest.php, e va cambiata con le pagine che descrive. -->
                         <p class="text-sm">
-                            Se selezionata, chi ha questo ruolo entra nel pannello amministratore. Alcune pagine del pannello non hanno permessi propri e si aprono con il solo accesso: fra queste il gestionale di ogni condominio (contabilità, unità, titolari e i loro dati) e i fornitori. Altre sezioni, come comunicazioni, segnalazioni, agenda e l'elenco delle anagrafiche, chiedono anche i loro permessi, da scegliere in «Permessi».
+                            Se selezionata, chi ha questo ruolo entra nel pannello amministratore. Alcune pagine del pannello non hanno permessi propri e si aprono con il solo accesso: fra queste il gestionale di ogni condominio (contabilità, unità, titolari e i loro dati) e i fornitori delle fatture e dei pagamenti, con i loro dati. Altre sezioni, come comunicazioni, segnalazioni, agenda, le anagrafiche e i fornitori, chiedono anche i loro permessi (per i fornitori quelli delle anagrafiche), da scegliere in «Permessi».
                         </p>
                     </div>
                 </div>

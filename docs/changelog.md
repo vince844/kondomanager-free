@@ -7,6 +7,29 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.58] - La modifica non si perde
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: utenti, ruoli, anagrafiche, documenti e contabilità
+restano com'erano. L'unica aggiunta è una chiave di configurazione dei backup, con il suo valore di serie, che non chiede niente a chi aggiorna.
+
+**Che cosa fa la beta.**
+- **La password si ridigita in una finestra sulla stessa pagina.** Quando un'azione delicata (la 2FA, lo scarico di un backup, le impostazioni
+  della posta, dare poteri a un account) chiede di ridigitare la password, la finestra compare sopra il modulo: quello che hai scritto resta lì e,
+  dopo la conferma, il salvataggio riparte da solo. Dopo l'aggiornamento le pagine già aperte vanno ricaricate.
+- **I permessi del pannello.** I fornitori e le loro categorie chiedono i permessi delle anagrafiche; i documenti di una persona, di un fornitore o
+  di un'unità si gestiscono dalla loro scheda; la casella delle attività chiede i permessi dell'agenda; le tendine che scelgono persone mostrano
+  solo ciò che serve. Il collaboratore di serie non elimina i fornitori, e «Reinvita» e il ritiro della verifica dell'email non si fanno sul proprio account
+  né sull'ultimo amministratore attivo. I dettagli di sicurezza escono con la 1.11.0 stabile, negli avvisi di sicurezza del repository.
+- **Il prospetto degli oneri accessori** dice chi rimborsa chi in altre storie rare con più passaggi (chi esce, rientra ed esce di nuovo; una voce
+  che comincia dopo un accordo fra le parti; chi entra nei giorni di un rientro) e mostra il già versato dell'unità accanto alla voce di chi
+  restituisce i giorni ripresi; il pannello del rientro e la nota dei giorni dopo l'uscita dicono la cosa giusta.
+- **L'elenco utenti** ha tre card cliccabili (totale, da verificare, sospesi) e il filtro «Verifica».
+- **La guida «Registrare un passaggio»** ha sei schede e si apre su quella del passaggio scelto.
+- **Il ripristino dei backup** riparte dal punto giusto anche se un passo si ferma senza un errore, e un backup che non riesce a partire non resta
+  «in corso».
+
+---
+
 ## [1.11.0-beta.57] - Tutto al suo posto
 
 **Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: utenti, ruoli, segnalazioni, comunicazioni, documenti e contabilità

@@ -16,6 +16,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\OrdinaElenco;
 use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -50,6 +51,13 @@ use Inertia\Response;
  *
  * Se un giorno servirà anche quella vista, è una **scheda in più**: il layout è costruito per
  * aggiungerne.
+ *
+ * ## Chi la apre (Coda 402)
+ *
+ * I permessi delle anagrafiche, con `AnagraficaPolicy` sulla persona: l'elenco la `view` («Visualizza anagrafiche»,
+ * come la scheda della persona); il modulo nuovo, quello di modifica, il caricamento, la modifica e l'eliminazione la
+ * `update` («Modifica anagrafiche», come il modulo della persona). Entrare nel pannello non basta. Nei tre metodi con
+ * una richiesta dedicata il permesso lo chiede anche la richiesta, prima della validazione.
  */
 class AnagraficaDocumentoController extends Controller
 {
@@ -59,6 +67,8 @@ class AnagraficaDocumentoController extends Controller
 
     public function index(AnagraficaDocumentoIndexRequest $request, Anagrafica $anagrafica): Response
     {
+        Gate::authorize('view', $anagrafica);
+
         $validated = $request->validated();
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
@@ -111,6 +121,8 @@ class AnagraficaDocumentoController extends Controller
      */
     public function create(Anagrafica $anagrafica): Response
     {
+        Gate::authorize('update', $anagrafica);
+
         return Inertia::render('anagrafiche/documenti/DocumentiNew', [
             'anagrafica' => new AnagraficaResource($anagrafica),
             // Il limite lo decide il server, non noi.
@@ -120,6 +132,8 @@ class AnagraficaDocumentoController extends Controller
 
     public function edit(Anagrafica $anagrafica, Documento $documento): Response
     {
+        Gate::authorize('update', $anagrafica);
+
         // ⚠️ Vale anche qui la guardia dell'`update`: senza, cambiando l'id nell'indirizzo si
         // aprirebbe il modulo di modifica del documento di un'altra persona, con i suoi dati dentro.
         abort_unless($this->appartiene($documento, $anagrafica), 404);
@@ -133,6 +147,8 @@ class AnagraficaDocumentoController extends Controller
 
     public function store(CreateAnagraficaDocumentoRequest $request, Anagrafica $anagrafica): RedirectResponse
     {
+        Gate::authorize('update', $anagrafica);
+
         $validated = $request->validated();
 
         // ⚠️ La guardia c'è anche se la regola dichiara `required|file`: un caricamento troncato da
@@ -174,6 +190,8 @@ class AnagraficaDocumentoController extends Controller
         Anagrafica $anagrafica,
         Documento $documento
     ): RedirectResponse {
+        Gate::authorize('update', $anagrafica);
+
         // ⚠️ **Il documento deve essere di questa persona.** Il binding di rotta risolve i due
         // parametri in modo indipendente: senza questa riga, cambiando l'id nell'indirizzo si
         // modificherebbe il documento di un'altra anagrafica passando da questa schermata.
@@ -219,6 +237,8 @@ class AnagraficaDocumentoController extends Controller
 
     public function destroy(Anagrafica $anagrafica, Documento $documento): RedirectResponse
     {
+        Gate::authorize('update', $anagrafica);
+
         abort_unless($this->appartiene($documento, $anagrafica), 404);
 
         try {

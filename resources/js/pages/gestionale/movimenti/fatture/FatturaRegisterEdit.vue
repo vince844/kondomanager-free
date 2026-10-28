@@ -14,6 +14,7 @@ import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useFattureSimili } from '@/composables/useFattureSimili';
 import { watchDebounced } from '@vueuse/core';
@@ -31,7 +32,11 @@ import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 // Interfaces & Props
 // ---------------------------------------------------------------------------
 const { euro } = useCurrencyFormatter();
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+
+// La scheda di modifica del fornitore chiede «Modifica anagrafiche» (`FornitorePolicy::update`, Coda 402): senza, il
+// modulo non offre il collegamento che risponderebbe 403.
+const puoModificareFornitori = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 
 const moneyOptions = ref({
     prefix: '€ ',
@@ -1048,8 +1053,11 @@ const pageGuides = [
                             <div v-if="codiceTributoIndeterminabile" class="p-3 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30 space-y-2">
                                 <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
                                     <strong>Codice tributo indeterminabile.</strong> Manca la natura del percipiente sull'anagrafica di {{ selectedFornitore?.ragione_sociale }}: il sistema non può decidere se il codice è 1019 o 1020.
-                                    <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
-                                    oppure conferma per procedere comunque.
+                                    <template v-if="puoModificareFornitori">
+                                        <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
+                                        oppure conferma per procedere comunque.
+                                    </template>
+                                    <template v-else>Conferma per procedere comunque.</template>
                                 </p>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" v-model="form.dati_extra.fiscal.conferma_codice_tributo_mancante"

@@ -113,10 +113,6 @@ const RUOLI_USCENTE: Record<TipoPassaggio, string[]> = {
 };
 const proprietari = computed(() => props.titolari.filter(t => ['proprietario', 'nuda_proprietario'].includes(t.tipologia)));
 const nudoProprietario = computed(() => props.titolari.find(t => t.tipologia === 'nuda_proprietario'));
-// Con più nudi proprietari tornano pieni, ciascuno alla sua quota, e il conguaglio si divide fra loro (S8-30). Decisione 57
-// (1.11.0-beta.43, D2): con un altro usufrutto in corso solo i nudi dell'usufrutto che finisce, non chi esce; senza, tutti,
-// chi esce compreso (la sua parte resta a suo nome).
-const nudiProprietari = computed(() => props.titolari.filter(t => t.tipologia === 'nuda_proprietario'));
 
 // --- Il modulo -----------------------------------------------------------------------------------
 
@@ -433,7 +429,6 @@ const candidatiEntrante = computed(() => {
   if (props.tipo !== 'vendita') props.titolari.forEach(t => esclusi.add(t.anagrafica.id));
   return props.anagrafiche.filter(a => !esclusi.has(a.id));
 });
-const entrante = computed(() => props.anagrafiche.find(a => a.id === form.anagrafica_entrante_id) ?? null);
 
 // Nella vendita chi entra è proprietario o nudo proprietario: gli altri due ruoli hanno il loro tipo di
 // passaggio, e il server lo pretende (`AnteprimaPassaggioRequest::ruoliEntrante()`).
@@ -617,12 +612,6 @@ const informazioniCancello = computed(() => anteprima.value?.cancello.informazio
 /** Rilievo T4 della Fase 1-bis della .43: gli avvisi senza spunta che non riguardano quote lasciate dov'erano (decisione 58). */
 const avvisiCancello = computed(() => anteprima.value?.cancello.avvisi ?? []);
 const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_letto && form.nota_cancello.trim().length >= 10));
-// La rinuncia al conguaglio vale solo se c'è una coppia proposta, e vuole la sua ragione.
-// La rinuncia vale solo se il pannello propone una coppia: se sparisce (cambio di controparte o di data) la
-// spunta non blocca il pulsante e non parte col modulo; se ricompare, la spunta è ancora lì (verifica S5, R13). Lo stesso con
-// l'arretrato agli eredi, dove il server la rifiuta (rilievo X11 della Fase 1-bis della .44): `form.arretrato`, il campo che il
-// server controlla.
-const coppieProposte = computed(() => (anteprima.value?.rate.conguaglio?.coppie.length ?? 0) > 0);
 // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si sceglie
 // al posto della casella, e «Non scriverlo» non chiede una nota (se c'è, almeno dieci caratteri, come sul server). Decisione 77
 // (1.11.0-beta.50): lo stesso alla fine di una locazione, con un nuovo inquilino o senza, quando il pannello propone coppie.
@@ -1532,7 +1521,7 @@ function urlTipo(t: TipoPassaggio) {
     </div>
   </GestionaleLayout>
 
-  <PassaggioProprietaGuide v-model:open="showGuide" />
+  <PassaggioProprietaGuide v-model:open="showGuide" :tipo="tipo" />
 
   <!-- «Crea nuova anagrafica», senza lasciare la pagina -->
   <Dialog :open="nuovaAperta" @update:open="nuovaAperta = $event">

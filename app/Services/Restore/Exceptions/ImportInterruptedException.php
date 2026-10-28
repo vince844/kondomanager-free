@@ -6,9 +6,9 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Un'istruzione del dump non è riuscita a metà di un passo dell'import. Porta il punto di ripresa (l'istruzione
- * che non è riuscita: le precedenti sono già scritte) e, come eccezione precedente, l'errore vero, con il suo
- * messaggio.
+ * Un'istruzione del dump non è riuscita a metà di un passo dell'import. Porta il punto di ripresa (dove finisce
+ * l'ultima istruzione confermata nel database: il gruppo di righe aperto è annullato, e le istruzioni dopo il punto
+ * non sono scritte) e, come eccezione precedente, l'errore vero, con il suo messaggio.
  */
 class ImportInterruptedException extends RuntimeException
 {

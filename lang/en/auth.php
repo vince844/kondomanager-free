@@ -197,6 +197,21 @@ return [
     ],
 
     /* ------------------------------------------------------------------
+     | The window that asks for the password again (Coda 404): it appears over
+     | the page when a sensitive action requires it, and the action restarts by itself.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Confirm your password',
+        'description'    => 'To continue, enter your password again. After you confirm, the action you asked for restarts by itself, with nothing to retype. If you cancel, it is not carried out and what you wrote stays as it is.',
+        'cancel'         => 'Cancel',
+        'confirm'        => 'Confirm',
+        'too_many'       => 'Too many attempts in a short time: try again in a minute.|Too many attempts in a short time: try again in :count minutes.',
+        'too_many_later' => 'Too many attempts in a short time: try again later.',
+        'error_generic'  => 'The password could not be checked. Try again.',
+        'session_ended'  => 'Your session has expired: reload the page and, if needed, sign in again.',
+    ],
+
+    /* ------------------------------------------------------------------
      | Status Messages
      | ------------------------------------------------------------------ */
     'status' => [

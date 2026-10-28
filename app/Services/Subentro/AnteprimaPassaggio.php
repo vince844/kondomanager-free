@@ -1445,6 +1445,10 @@ class AnteprimaPassaggio
      * @param list<array{periodo: \App\Support\InsiemePeriodi, importo: int}> $righe le righe di chi rientra, con l'importo
      * Con due cambi in fila (Ines → Sara, poi Sara → Pia) i giorni del rientro li ha presi Pia, con il cambio di Sara: la frase dice quel cambio (`chi_esce`).
      *
+     * Coda 377: anche dopo la catena della decisione 83.3 (il cambio regolato fra le parti, poi la fine «Scrivi» di chi era entrato): i giorni del rientro li ha presi con la coppia
+     * di quella fine chi paga al posto dell'inquilino (`fini_scritte`), e chi rientra glieli rimborsa con il prospetto, come dopo una sua fine «Scrivi» (decisione 45, nota del 12/10).
+     * Prima la frase guardava solo i cambi con il conguaglio scritto, e diceva «è già nelle rate di …».
+     *
      * @return array{propri_scritto?: array{pagato_da: list<string>, fine_il: string, chi_esce: string, cifra: int}}
      */
     private function rientroDopoUnCambio(int $immobileId, int $anagraficaId, string $giorno, int $pianoId, \App\Support\InsiemePeriodi $periodo, array $righe): array
@@ -1452,12 +1456,13 @@ class AnteprimaPassaggio
         $piano = \App\Models\Gestionale\PianoRate::findOrFail($pianoId);
         $prospetto = app(\App\Services\Riparto\ProspettoOneriAccessori::class);
         $esito = $prospetto->chiHaPagatoDopo($piano, $anagraficaId, $immobileId, $periodo, CarbonImmutable::parse($giorno));
-        if ($esito['cambi_scritti'] === []) {
+        $da = $esito['cambi_scritti'][0] ?? $esito['fini_scritte'][0] ?? null;
+        if ($da === null || ($esito['per_modo']['scritto'] ?? []) === []) {
             return [];
         }
 
-        return ['propri_scritto' => ['pagato_da' => $esito['per_modo']['scritto'], 'fine_il' => $esito['cambi_scritti'][0]['del'], 'chi_esce' => $esito['cambi_scritti'][0]['chi_esce'],
-            'cifra' => (int) round($prospetto->partiDopo($piano, $anagraficaId, $immobileId, $righe, CarbonImmutable::parse($giorno))['scritto'])]];
+        return ['propri_scritto' => ['pagato_da' => $esito['per_modo']['scritto'], 'fine_il' => (string) $da['del']] + (($da['chi_esce'] ?? null) !== null ? ['chi_esce' => (string) $da['chi_esce']] : [])
+            + ['cifra' => (int) round($prospetto->partiDopo($piano, $anagraficaId, $immobileId, $righe, CarbonImmutable::parse($giorno))['scritto'])]];
     }
 
     /**

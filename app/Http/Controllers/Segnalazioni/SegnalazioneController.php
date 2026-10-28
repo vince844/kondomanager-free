@@ -9,7 +9,7 @@ use App\Enums\Permission;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
@@ -103,9 +103,11 @@ class SegnalazioneController extends Controller
     {
         Gate::authorize('create', $segnalazione);
 
+        // Della rubrica la tendina «Anagrafiche» legge l'id e il nome (Coda 408): il resto della persona sta nella sua
+        // scheda, che chiede «Visualizza anagrafiche».
         return Inertia::render('segnalazioni/SegnalazioniNew',[
             'condomini'   => CondominioResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+            'anagrafiche' => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome']))
         ]); 
     }
 
@@ -231,10 +233,11 @@ class SegnalazioneController extends Controller
         
         $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
+        // Della rubrica la tendina e i destinatari già scelti leggono l'id e il nome (Coda 408).
         return Inertia::render('segnalazioni/SegnalazioniEdit', [
             'segnalazione'  => new SegnalazioneResource($segnalazione),
             'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
+            'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome']))
         ]);
     }
 

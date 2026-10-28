@@ -34,9 +34,13 @@ use Spatie\Permission\Models\Permission;
  */
 beforeEach(function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    // L'elenco delle categorie chiede «Visualizza anagrafiche», crearle, rinominarle ed eliminarle «Modifica anagrafiche»
+    // (Coda 402); chi non li ha è in `CategorieFornitorePermessiTest.php`.
+    Permission::firstOrCreate(['name' => 'Visualizza anagrafiche', 'guard_name' => 'web']);
+    Permission::firstOrCreate(['name' => 'Modifica anagrafiche', 'guard_name' => 'web']);
 
     $this->user = User::factory()->create();
-    $this->user->givePermissionTo('Accesso pannello amministratore');
+    $this->user->givePermissionTo('Accesso pannello amministratore', 'Visualizza anagrafiche', 'Modifica anagrafiche');
     $this->actingAs($this->user);
 });
 

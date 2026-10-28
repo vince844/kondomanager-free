@@ -13,7 +13,8 @@
  * La scelta (tabella delle scelte tecniche, 260): al portale una risorsa minima — autore e
  * condominio con id e nome; il nome dell'autore dall'anagrafica, con il ripiego sull'utente, come
  * nei commenti; le persone a cui un avviso è indirizzato non si mostrano; le «note» del condominio e
- * dell'esercizio non arrivano ai condòmini. Il pannello dell'amministratore resta com'è.
+ * dell'esercizio non arrivano ai condòmini. Il pannello dell'amministratore riceve le persone per nome, come le sue
+ * pagine le mostrano; la scheda completa di una persona sta nella sua pagina, che chiede «Visualizza anagrafiche» (Coda 408).
  *
  * Il controllo legge le props della pagina Inertia, senza quelle condivise (`auth` porta l'utente
  * stesso, che i suoi dati li può vedere).
@@ -248,13 +249,18 @@ test('Coda 260 — i moduli del condòmino ricevono i propri condomìni con id e
     expect($evento)->toContain('Condominio Aurora');
 });
 
-test('Coda 260 — il pannello dell\'amministratore riceve ancora i dati completi', function () {
+test('Coda 260 — il pannello dell\'amministratore riceve l\'autore con la sua persona per nome; la scheda completa sta nella pagina della persona (Coda 408)', function () {
     $s = viciniSegnalazione($this->condominio, $this->luigi);
 
     $props = $this->actingAs($this->admin)->get(route('admin.segnalazioni.show', $s))->assertOk()->viewData('page')['props'];
     $json = json_encode($props['segnalazione'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    expect($json)->toContain('VCNLGU80A01H501X')->toContain('luigi.anagrafica@example.test');
+    // La segnalazione mostra l'autore per nome: della sua persona arrivano id e nome, il resto sta nella sua scheda, che
+    // chiede «Visualizza anagrafiche».
+    expect($props['segnalazione']['created_by']['anagrafica'])->toBe(['id' => $this->luigi->anagrafica->id, 'nome' => $this->luigi->anagrafica->nome])
+        ->and($json)->not->toContain('VCNLGU80A01H501X')->not->toContain('luigi.anagrafica@example.test');
+    $this->actingAs($this->admin)->get(route('admin.anagrafiche.show', $this->luigi->anagrafica))->assertOk()
+        ->assertSee('VCNLGU80A01H501X')->assertSee('luigi.anagrafica@example.test');
 });
 
 // ─── Le pagine di modifica del portale: aperte e salvate senza toccare niente ───────────────

@@ -1115,7 +1115,7 @@ return [
                     ],
                     'help' => [
                         'supplier_prefill' => 'Will be prefilled in invoices.',
-                        'income_usufruct' => 'Rent or a fee collected by the condominium is a civil fruit and belongs to the usufructuary (art. 984 of the Italian Civil Code); if the title of the usufruct says otherwise, that applies between the parties. On units under usufruct this entry decides: with «Usufructuary %» at 100 the income goes to the usufructuary, with «Owner %» at 100 to the bare owner. With the usufructuary entered by hand on the unit\'s page, a mid-year start date does not split the income day by day, unless a usufruct row ends the day before; an end date does. «Registra passaggio» splits the days.',
+                        'income_usufruct' => 'Un alquiler o un canon que el condominio cobra es un fruto civil y corresponde al usufructuario (art. 984 del Código Civil italiano); si el título del usufructo dice otra cosa, vale entre las partes. En las unidades en usufructo decide esta partida: con «Usufructuary %» a 100 el ingreso va al usufructuario, con «Owner %» a 100 al nudo propietario. Con el usufructuario introducido a mano en la ficha de la unidad, una fecha de inicio a mitad de año no divide el ingreso día a día, salvo una línea de usufructo cerrada el día anterior; una fecha de fin sí. «Registra passaggio» divide los días.',
                     ],
                     'actions' => [
                         'saving' => 'Saving...',

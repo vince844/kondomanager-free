@@ -27,9 +27,13 @@ use Spatie\Permission\Models\Permission;
  */
 beforeEach(function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    // Creare un fornitore chiede «Crea anagrafiche», salvarne la scheda «Modifica anagrafiche» (Coda 402); chi non li ha
+    // è in `FornitoriPermessiDelPannelloTest.php`.
+    Permission::firstOrCreate(['name' => 'Crea anagrafiche', 'guard_name' => 'web']);
+    Permission::firstOrCreate(['name' => 'Modifica anagrafiche', 'guard_name' => 'web']);
 
     $this->user = User::factory()->create();
-    $this->user->givePermissionTo('Accesso pannello amministratore');
+    $this->user->givePermissionTo('Accesso pannello amministratore', 'Crea anagrafiche', 'Modifica anagrafiche');
     $this->actingAs($this->user);
 });
 

@@ -181,7 +181,8 @@ const navigateToDocumenti = () => {
                 </div>
                 <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto sm:justify-end">
                     <BuildingsDropdown class="w-full sm:w-auto" />
-                    <Link :href="route('admin.inbox')" class="w-full sm:w-auto">
+                    <!-- La casella delle attività si apre con «Visualizza scadenze in agenda», come il riquadro delle scadenze (Coda 402). -->
+                    <Link v-if="hasPermission([Permission.VIEW_EVENTS])" :href="route('admin.inbox')" class="w-full sm:w-auto">
                         <Button
                             variant="outline"
                             size="sm"

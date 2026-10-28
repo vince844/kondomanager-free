@@ -14,6 +14,19 @@ return [
     'error_detach_anagrafica'            => "Si è verificato un errore durante la dissociazione dell'anagrafica dal fornitore.",
     'error_delete_has_invoices'          => "Impossibile eliminare: il fornitore ha fatture registrate a sistema. Per non compromettere la contabilità, ti consigliamo di modificare lo \"Stato\" in \"Cessato\".",
 
+    // La pagina dei debiti pregressi di un fornitore.
+    'situazione_debitoria' => [
+        'debito_estinto' => "{1} Questa pendenza non si può rimuovere: la usa la fattura pregressa :fatture, registrata per estinguerla. Finché la fattura c'è, la pendenza resta.|[2,*] Questa pendenza non si può rimuovere: la usano le fatture pregresse :fatture, registrate per estinguerla. Finché le fatture ci sono, la pendenza resta.",
+    ],
+
+    // Le pagine e le azioni dei fornitori del pannello, a chi non ha il permesso (FornitorePolicy, con i permessi delle anagrafiche).
+    'permessi' => [
+        'view' => "Non hai permessi sufficienti per visualizzare i fornitori registrati!",
+        'create' => "Non hai permessi sufficienti per creare fornitori!",
+        'update' => "Non hai permessi sufficienti per modificare i fornitori registrati!",
+        'delete' => "Non hai permessi sufficienti per eliminare i fornitori registrati!",
+    ],
+
     /* ------------------------------------------------------------------
      | Intestazioni, Titoli e Descrizioni
      | ------------------------------------------------------------------ */
@@ -98,6 +111,12 @@ return [
      | modificabili da nessuna schermata.
      | ------------------------------------------------------------------ */
     'categorie' => [
+        // La pagina e le azioni delle categorie, a chi non ha il permesso (CategoriaFornitorePolicy).
+        'permessi' => [
+            'view' => "Non hai permessi sufficienti per visualizzare le categorie dei fornitori!",
+            'create' => "Non hai permessi sufficienti per creare le categorie dei fornitori!",
+            'update' => "Non hai permessi sufficienti per rinominare o eliminare le categorie dei fornitori!",
+        ],
         'success_create'      => "La categoria è stata creata con successo.",
         'error_create'        => "Si è verificato un errore durante la creazione della categoria.",
         'success_update'      => "La categoria è stata aggiornata con successo.",

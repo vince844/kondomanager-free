@@ -87,14 +87,18 @@ export const columns: ColumnDef<User>[] = [
         })
       }
 
-      const tooltip = user.email_verified_at
-        ? trans('users.table.verified_tooltip')
-        : trans('users.table.unverified_tooltip')
-
       // Togliere o rimettere la verifica vale solo per un account nella portata di chi guarda (Coda 258), e
       // chiede «Modifica utenti», come la sua rotta (decisione 136.3): altrimenti lo scudo resta
       // un'indicazione, senza il clic che il server rifiuterebbe.
+      // Togliere la verifica chiude fuori come sospendere: non sulla propria riga, non sull'ultimo amministratore attivo
+      // (Coda 399, `UserPolicy::revocaVerifica`). Rimetterla si può sempre.
       const gestibile = user.gestibile === true && hasPermission([Permission.EDIT_USERS])
+        && (!user.email_verified_at || (!user.is_self && !user.is_ultimo_amministratore))
+
+      // Il titolo invita al clic solo dove il clic c'è: altrove dice lo stato e basta.
+      const tooltip = user.email_verified_at
+        ? trans(gestibile ? 'users.table.verified_tooltip' : 'users.table.verified_label')
+        : trans(gestibile ? 'users.table.unverified_tooltip' : 'users.table.unverified_label')
 
       return h('div', { class: 'flex items-center space-x-3' }, [
         h('div', {
@@ -225,6 +229,13 @@ export const columns: ColumnDef<User>[] = [
       ]) 
       
     }
+  },
+  {
+    // Non si vede: è la colonna su cui la barra tiene lo stato del filtro «Verifica» (`DataTable.vue` la
+    // nasconde). Lo scudo della verifica sta già nella cella del nome.
+    accessorKey: 'email_verified_at',
+    enableSorting: false,
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.verification') }),
   },
   {
     accessorKey: 'last_login_at',

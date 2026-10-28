@@ -130,6 +130,31 @@ test('il flusso completo store → step → download funziona', function () {
         ->assertForbidden();
 });
 
+test('Coda 400 — la cartella dei temporanei che non si crea: il backup risulta fallito, con la ragione, e non resta in corso; a cartella sistemata, il backup dopo parte e arriva in fondo', function () {
+    $admin = backupAdmin();
+    $temporanei = config('backup.tmp_path');
+    // Una cartella che non si può creare: dentro /dev/null, che non è una cartella.
+    config(['backup.tmp_path' => '/dev/null/kondo-temporanei']);
+
+    $primo = $this->actingAs($admin)->postJson('/impostazioni/backups', ['type' => 'db_only']);
+    $righe = Backup::orderBy('id')->get()->map(fn (Backup $b) => $b->status->value)->all();
+    // La cartella è sistemata.
+    config(['backup.tmp_path' => $temporanei]);
+    $secondo = $this->actingAs($admin)->postJson('/impostazioni/backups', ['type' => 'db_only']);
+    $stato = $secondo->json('backup.status');
+    for ($i = 0; $i < 10 && ! in_array($stato, ['completed', 'failed', null], true); $i++) {
+        $stato = $this->actingAs($admin)->postJson('/impostazioni/backups/'.$secondo->json('backup.uuid').'/step')->json('backup.status');
+    }
+
+    expect($primo->status())->toBe(200)
+        ->and($primo->json('backup.status'))->toBe('failed')
+        ->and((string) $primo->json('backup.error'))->not->toBe('')
+        ->and((string) $primo->json('backup.error'))->not->toContain('/dev/null')
+        ->and($righe)->toBe(['failed'])
+        ->and($secondo->status())->toBe(200)
+        ->and($stato)->toBe('completed');
+});
+
 test('un secondo store mentre un backup è in corso restituisce 409', function () {
     $admin = backupAdmin();
 

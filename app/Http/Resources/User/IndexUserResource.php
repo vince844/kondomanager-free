@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\User;
 
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
 use App\Http\Resources\PermissionResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,7 +25,8 @@ class IndexUserResource extends JsonResource
             'last_login_at'      => $this->last_login_at,
             'roles'              => $this->getRoleNames(),
             'permissions'        => PermissionResource::collection($this->getAllPermissions()),
-            'anagrafica'         => $this->whenLoaded('anagrafica'),
+            // La colonna «Anagrafica» mostra la persona collegata con il nome e, nel pannello, l'indirizzo (Coda 408).
+            'anagrafica'         => new AnagraficaConIndirizzoResource($this->whenLoaded('anagrafica')),
             // Serve all'elenco per non offrire due comandi che il server rifiuterebbe:
             // sospendere o eliminare l'ultimo amministratore attivo, e sé stessi.
             // L'id arriva dal controller, risolto una volta per l'intera pagina.

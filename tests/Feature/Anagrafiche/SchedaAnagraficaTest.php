@@ -84,9 +84,12 @@ beforeEach(function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
     // La scheda chiede «Visualizza anagrafiche» (decisione 137): entrare nel pannello non basta.
     Permission::firstOrCreate(['name' => 'Visualizza anagrafiche', 'guard_name' => 'web']);
+    // I moduli, il caricamento, la modifica e l'eliminazione dei documenti della persona chiedono «Modifica anagrafiche»
+    // (Coda 402); chi ha soltanto «Visualizza anagrafiche» è in `DocumentiDellaPersonaPermessiTest.php`.
+    Permission::firstOrCreate(['name' => 'Modifica anagrafiche', 'guard_name' => 'web']);
 
     $this->user = User::factory()->create();
-    $this->user->givePermissionTo('Accesso pannello amministratore', 'Visualizza anagrafiche');
+    $this->user->givePermissionTo('Accesso pannello amministratore', 'Visualizza anagrafiche', 'Modifica anagrafiche');
     $this->actingAs($this->user);
 });
 

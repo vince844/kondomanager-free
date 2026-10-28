@@ -42,7 +42,8 @@ class SaldoInizialeController extends Controller
 
         $immobili = $condominio->immobili()
             ->with([
-                'anagrafiche',
+                // Dei titolari la pagina legge id, nome e il legame con l'unità (Coda 408).
+                'anagrafiche:id,nome',
                 'saldi' => function ($q) use ($esercizioAttivo) {
                     $q->where('esercizio_id', $esercizioAttivo->id)
                       // pianoRate serve alla UI per dire QUALE piano tiene il lucchetto,

@@ -18,6 +18,7 @@ import {
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Flash } from '@/types/flash';
@@ -45,7 +46,11 @@ const props = defineProps<{
 }>();
 
 const { euro } = useCurrencyFormatter();
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
+
+// Registrare e togliere un debito pregresso sono scritture sul fornitore: le rotte chiedono «Modifica anagrafiche»
+// (`FornitorePolicy::update`, Coda 402), e senza il permesso i comandi non compaiono.
+const puoModificare = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
@@ -111,7 +116,7 @@ const submit = () => {
 
 const deleteDebito = (id: number) => {
     if (confirm('Rimuovere questa pendenza? L\'operazione inciderà sulla quadratura del bilancio di apertura.')) {
-        form.delete(route('admin.fornitori.situazione-debitoria.destroy' as any, { fornitore: props.fornitore.id, debito: id } as any));
+        form.delete(route('admin.fornitori.situazione-debitoria.destroy' as any, { fornitore: props.fornitore.id, saldo: id } as any));
     }
 };
 </script>
@@ -135,7 +140,7 @@ const deleteDebito = (id: number) => {
         back-text="Torna ai dettagli"
       >
         <template #actions>
-          <Button @click="showAddModal = true" size="sm" class="h-8 text-xs gap-2 bg-slate-800 hover:bg-slate-700">
+          <Button v-if="puoModificare" @click="showAddModal = true" size="sm" class="h-8 text-xs gap-2 bg-slate-800 hover:bg-slate-700">
             <Plus class="w-3.5 h-3.5" /> Aggiungi pendenza
           </Button>
         </template>
@@ -174,7 +179,7 @@ const deleteDebito = (id: number) => {
                       <th class="px-6 py-4">Esercizio</th>
                       <th class="px-6 py-4">Descrizione / Titolo Debito</th>
                       <th class="px-6 py-4 text-right">Importo Lordo</th>
-                      <th class="px-6 py-4 text-center">Azioni</th>
+                      <th v-if="puoModificare" class="px-6 py-4 text-center">Azioni</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -197,14 +202,14 @@ const deleteDebito = (id: number) => {
                       <td class="px-6 py-4 text-right font-black text-rose-600 dark:text-rose-400">
                         {{ euro(debito.importo) }}
                       </td>
-                      <td class="px-6 py-4 text-center">
+                      <td v-if="puoModificare" class="px-6 py-4 text-center">
                         <Button variant="ghost" size="icon" @click="deleteDebito(debito.id)" class="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-rose-600">
                           <Trash2 class="w-4 h-4" />
                         </Button>
                       </td>
                     </tr>
                     <tr v-if="debiti.length === 0">
-                      <td colspan="5" class="px-6 py-16 text-center">
+                      <td :colspan="puoModificare ? 5 : 4" class="px-6 py-16 text-center">
                         <div class="max-w-xs mx-auto flex flex-col items-center gap-3">
                           <div class="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                             <Info class="w-6 h-6 text-slate-300" />

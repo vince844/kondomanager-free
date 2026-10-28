@@ -131,7 +131,9 @@ class BackupManager
             $startLock->release();
         }
 
-        File::ensureDirectoryExists($this->tmpDir($backup));
+        // La cartella dei temporanei la crea il primo passo (`advance`, PENDING): se non si crea, il backup risulta
+        // fallito con la sua ragione, come per ogni passo che non riesce, e non resta «in corso» a fermare i backup
+        // dopo, fra cui quello di sicurezza del ripristino.
 
         event(new BackupStarted($backup));
 

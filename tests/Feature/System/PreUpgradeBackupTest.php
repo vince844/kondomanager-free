@@ -117,6 +117,39 @@ test('il backup pre-aggiornamento è di tipo solo-database e arriva a completame
     expect(Backup::firstWhere('uuid', $uuid)->status->value)->toBe('completed');
 });
 
+test('Coda 400 — il backup prima dell\'aggiornamento con la cartella dei temporanei che non si crea risulta fallito, con la ragione, e non resta in corso; a cartella sistemata, l\'avvio dopo fa un backup nuovo che arriva in fondo', function () {
+    $admin = upgradeAdmin();
+    $temporanei = config('backup.tmp_path');
+    // Una cartella che non si può creare: dentro /dev/null, che non è una cartella.
+    config(['backup.tmp_path' => '/dev/null/kondo-temporanei']);
+
+    // La pagina di conferma avvia il backup e guida i passi finché è in corso; fallito, non va avanti (`Confirm.vue`, con
+    // `axios`: richieste JSON).
+    $guida = function ($avvio) use ($admin) {
+        $backup = $avvio->json('backup');
+        for ($i = 0; $i < 50 && in_array($backup['status'] ?? null, ['pending', 'dumping_database', 'archiving_files', 'finalizing'], true); $i++) {
+            $backup = $this->actingAs($admin)->postJson("/system/upgrade/backup/{$backup['uuid']}/step")->json('backup');
+        }
+
+        return $backup ?? [];
+    };
+    $primoAvvio = $this->actingAs($admin)->postJson('/system/upgrade/backup');
+    $primo = $guida($primoAvvio);
+    $inCorso = Backup::running()->count();
+    // La cartella è sistemata.
+    config(['backup.tmp_path' => $temporanei]);
+    $secondoAvvio = $this->actingAs($admin)->postJson('/system/upgrade/backup');
+    $secondo = $guida($secondoAvvio);
+
+    expect($primoAvvio->status())->toBe(200)
+        ->and($primo['status'] ?? null)->toBe('failed')
+        ->and((string) ($primo['error'] ?? ''))->not->toBe('')
+        ->and($inCorso)->toBe(0)
+        ->and($secondoAvvio->status())->toBe(200)
+        ->and($secondo['uuid'] ?? null)->not->toBe($primo['uuid'] ?? null)
+        ->and($secondo['status'] ?? null)->toBe('completed');
+});
+
 test('un secondo avvio riusa il backup di sicurezza già in corso', function () {
     $admin = upgradeAdmin();
 

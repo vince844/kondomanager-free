@@ -12,6 +12,8 @@ import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 import type { Fornitore } from '@/types/fornitori';
 
+// Caricare un documento del fornitore è una modifica del fornitore: la rotta chiede «Modifica anagrafiche»
+// (`FornitorePolicy::update`, Coda 402), non i permessi dell'archivio dei documenti.
 const { generateRoute, hasPermission, generatePath } = usePermission();
 
 // Change this to allow table reset when filter cleared
@@ -62,7 +64,7 @@ watchDebounced(
   <div class="flex items-center space-x-2">
     <Link 
       as="button"
-      v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
+      v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])"
        :href="route(generateRoute('fornitori.documenti.create'), { fornitore: page.props.fornitore.id })"
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
     >

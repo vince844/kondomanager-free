@@ -197,6 +197,21 @@ return [
     ],
 
     /* ------------------------------------------------------------------
+     | A janela que volta a pedir a senha (Coda 404): aparece sobre a página
+     | quando uma ação sensível a exige, e a ação recomeça sozinha.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Confirme a sua senha',
+        'description'    => 'Para continuar, introduza novamente a sua senha. Depois de confirmar, a ação que pediu recomeça sozinha, sem ter de reescrever nada. Se cancelar, não é executada e o que escreveu fica como está.',
+        'cancel'         => 'Cancelar',
+        'confirm'        => 'Confirmar',
+        'too_many'       => 'Demasiadas tentativas em pouco tempo: tente novamente dentro de um minuto.|Demasiadas tentativas em pouco tempo: tente novamente dentro de :count minutos.',
+        'too_many_later' => 'Demasiadas tentativas em pouco tempo: tente novamente mais tarde.',
+        'error_generic'  => 'Não foi possível verificar a senha. Tente novamente.',
+        'session_ended'  => 'A sessão expirou: recarregue a página e, se necessário, inicie sessão novamente.',
+    ],
+
+    /* ------------------------------------------------------------------
      | Status Messages
      | ------------------------------------------------------------------ */
     'status' => [

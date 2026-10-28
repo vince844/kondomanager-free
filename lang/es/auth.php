@@ -197,6 +197,21 @@ return [
     ],
 
     /* ------------------------------------------------------------------
+     | La ventana que vuelve a pedir la contraseña (Coda 404): aparece sobre la
+     | página cuando una acción sensible la exige, y la acción se reanuda sola.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Confirma tu contraseña',
+        'description'    => 'Para continuar, vuelve a escribir tu contraseña. Tras confirmar, la acción que pediste se reanuda sola, sin tener que reescribir nada. Si cancelas, no se ejecuta y lo que escribiste queda como está.',
+        'cancel'         => 'Cancelar',
+        'confirm'        => 'Confirmar',
+        'too_many'       => 'Demasiados intentos en poco tiempo: vuelve a intentarlo en un minuto.|Demasiados intentos en poco tiempo: vuelve a intentarlo en :count minutos.',
+        'too_many_later' => 'Demasiados intentos en poco tiempo: vuelve a intentarlo más tarde.',
+        'error_generic'  => 'No se pudo comprobar la contraseña. Inténtalo de nuevo.',
+        'session_ended'  => 'La sesión ha caducado: recarga la página y, si hace falta, inicia sesión de nuevo.',
+    ],
+
+    /* ------------------------------------------------------------------
      | Status Messages
      | ------------------------------------------------------------------ */
     'status' => [

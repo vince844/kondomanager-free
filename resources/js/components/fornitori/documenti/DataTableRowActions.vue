@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
+import { Permission } from '@/enums/Permission'
 import { useDocumenti } from '@/composables/useDocumenti'
 import type { Documento } from '@/types/documenti'
 import type { Fornitore } from '@/types/fornitori'
@@ -22,7 +23,9 @@ const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 const { removeDocumento } = useDocumenti()
-const { generateRoute } = usePermission()
+// Modificare ed eliminare un documento del fornitore sono modifiche del fornitore: le rotte chiedono «Modifica anagrafiche»
+// (`FornitorePolicy::update`, Coda 402), e senza il permesso il menù non compare.
+const { generateRoute, hasPermission } = usePermission()
 
 function handleDelete(documento: Documento) {
   documentoID.value = documento.id
@@ -67,7 +70,7 @@ function deleteDocumento() {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])">
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />

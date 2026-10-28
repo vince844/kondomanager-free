@@ -204,6 +204,15 @@ Route::prefix('/gestionale/{condominio}')
             'documenti' => 'documento'
         ]);
 
+    // Scaricare e approvare un documento dell'unità si fa dalla sua scheda: le rotte dell'archivio
+    // (`documenti.download`, `documenti.toggle-approval`) lavorano solo sui documenti dell'archivio. Il documento si
+    // cerca dentro l'unità, come per le altre rotte annidate del gruppo.
+    Route::get('immobili/{immobile}/documenti/{documento}/download', [ImmobileDocumentoController::class, 'download'])
+        ->name('immobili.documenti.download');
+
+    Route::put('immobili/{immobile}/documenti/{documento}/toggle-approval', [ImmobileDocumentoController::class, 'approvazione'])
+        ->name('immobili.documenti.toggle-approval');
+
     // Le pertinenze di un'unità: sola lettura. Il legame si dichiara dalla scheda della
     // **pertinenza**, non da qui — è la pertinenza che punta al principale, e un secondo punto di
     // scrittura sullo stesso dato sarebbe due verità con due regole.

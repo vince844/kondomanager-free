@@ -8,7 +8,8 @@
  * «Sospendi» e «Attiva» «Sospendi utenti», «Elimina» «Elimina utenti». E vale solo per un account nella
  * portata di chi guarda: `gestibile` lo calcola il server con la stessa regola che usa per rifiutare. Fuori
  * portata anche la scheda è solo dell'amministratore (decisione 136.1), quindi il menù non offre niente e non
- * compare.
+ * compare. «Sospendi», «Elimina» e «Reinvita» hanno anche le due invarianti del server: non su sé stessi, non
+ * sull'ultimo amministratore attivo (Coda 399 per «Reinvita»).
  *
  * Le traduzioni non sono caricate: `trans()` restituisce la chiave.
  */
@@ -111,5 +112,30 @@ describe('DataTableRowActions degli utenti — ogni comando chiede il permesso d
 
         expect(riga.findAll('.voce')).toHaveLength(0);
         expect(riga.find('.menu').exists()).toBe(false);
+    });
+});
+
+describe('DataTableRowActions degli utenti — «Reinvita» ha le invarianti di sospensione ed eliminazione (Coda 399)', () => {
+    test('sulla propria riga il menù non offre «Reinvita», come non offre sospendere né eliminare; «Modifica» resta', () => {
+        const menu = voci({ gestibile: true, is_self: true });
+
+        expect(menu).not.toContain('users.actions.invite_user');
+        expect(menu).not.toContain('users.actions.suspend_user');
+        expect(menu).not.toContain('users.actions.delete_user');
+        expect(menu).toContain('users.actions.edit_user');
+    });
+
+    test('sulla riga dell\'ultimo amministratore attivo il menù non offre «Reinvita»', () => {
+        expect(voci({ gestibile: true, is_ultimo_amministratore: true })).not.toContain('users.actions.invite_user');
+    });
+
+    test('sulla riga di un altro account nella portata c\'è «Reinvita»', () => {
+        expect(voci({ gestibile: true, is_self: false, is_ultimo_amministratore: false })).toContain('users.actions.invite_user');
+    });
+
+    test('con il solo «Modifica utenti», sulla propria riga resta soltanto «Modifica»', () => {
+        chiGuarda.permessi = ['Modifica utenti'];
+
+        expect(voci({ gestibile: true, is_self: true })).toBe('users.actions.edit_user');
     });
 });

@@ -14,6 +14,19 @@ return [
     'error_detach_anagrafica'            => "An error occurred while detaching the record from the supplier.",
     'error_delete_has_invoices'          => "Unable to delete: the supplier has invoices registered in the system. To avoid compromising the accounting, we recommend changing the \"Status\" to \"Inactive\".",
 
+    // The page of a supplier's prior debts.
+    'situazione_debitoria' => [
+        'debito_estinto' => "{1} This debt cannot be removed: the prior invoice :fatture, registered to settle it, uses it. As long as the invoice exists, the debt stays.|[2,*] This debt cannot be removed: the prior invoices :fatture, registered to settle it, use it. As long as the invoices exist, the debt stays.",
+    ],
+
+    // The panel's supplier pages and actions, for those without the permission (FornitorePolicy, with the resident record permissions).
+    'permessi' => [
+        'view' => "You don't have sufficient permissions to view suppliers.",
+        'create' => "You don't have sufficient permissions to create suppliers.",
+        'update' => "You don't have sufficient permissions to edit suppliers.",
+        'delete' => "You don't have sufficient permissions to delete suppliers.",
+    ],
+
     /* ------------------------------------------------------------------
      | Headings, Titles and Descriptions
      | ------------------------------------------------------------------ */
@@ -95,6 +108,12 @@ return [
      | Supplier categories (1.11.0-beta.9)
      | ------------------------------------------------------------------ */
     'categorie' => [
+        // The category page and actions, for those without the permission (CategoriaFornitorePolicy).
+        'permessi' => [
+            'view' => "You don't have sufficient permissions to view supplier categories.",
+            'create' => "You don't have sufficient permissions to create supplier categories.",
+            'update' => "You don't have sufficient permissions to rename or delete supplier categories.",
+        ],
         'success_create'      => "The category was created successfully.",
         'error_create'        => "An error occurred while creating the category.",
         'success_update'      => "The category was updated successfully.",

@@ -19,6 +19,8 @@ return [
         'create' => "Non hai permessi sufficienti per creare anagrafiche!",
         'update' => "Non hai permessi sufficienti per modificare le anagrafiche registrate!",
         'delete' => "Non hai permessi sufficienti per eliminare le anagrafiche registrate!",
+        // La tendina «Destinatari» di comunicazioni, scadenze e documenti (AnagraficaPolicy::sceglieDestinatari).
+        'destinatari' => "Non hai permessi sufficienti per scegliere i destinatari fra le anagrafiche!",
     ],
 
     /* ------------------------------------------------------------------
@@ -115,6 +117,7 @@ return [
     'tooltip' => [
         'buildings_header'      => 'Seleziona e associa condomini',
         'buildings_description' => 'Puoi selezionare uno o più di un condominio da associare all\'anagrafica, questo permetterà all\'anagrafica di visualizzare i dati dei condomini associati ad essa',
+        'buildings_missing_registered_only' => "Qui compaiono solo i condomini già registrati a sistema.",
         'system_notifications'  => 'Notifiche di sistema',
         'primary_email_desc'    => 'A questo indirizzo verranno inviate tutte le notifiche del sistema per questa anagrafica (es. nuove segnalazioni). L\'indirizzo email che l\'utente associato utilizza per accedere al portale può essere diverso.',
         'secondary_email_desc'  => 'Indirizzo aggiuntivo per ricevere una copia delle notifiche di sistema inviate a questa anagrafica.',

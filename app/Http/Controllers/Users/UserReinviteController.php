@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Notifications\NewUserEmailNotification;
 use App\Traits\HandleFlashMessages;
-use App\Traits\ValidaConcessioneRuoli;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +13,7 @@ use Illuminate\Support\Str;
 
 class UserReinviteController extends Controller
 {
-    use HandleFlashMessages, ValidaConcessioneRuoli;
+    use HandleFlashMessages;
 
     /**
      * Reinvites a user by sending a new invitation email.
@@ -32,24 +31,20 @@ class UserReinviteController extends Controller
      */
     public function reinviteUser(string $email): RedirectResponse
     {
-        // Reinvitare azzera la password del destinatario: è a tutti gli effetti una modifica
-        // dell'utente, e va autorizzata come tale.
-        Gate::authorize('update', User::class);
-
         $user = User::where('email', $email)->first();
 
         // ⚠️ La guardia sta **fuori** dal `try`, e non è pignoleria: il `catch (\Exception)` qui
-        // sotto cattura anche `HttpException`, quindi un `abort(403)` scritto dentro tornerebbe
-        // all'utente come un messaggio d'errore generico invece che come un divieto. È lo stesso
-        // difetto — il rifiuto travestito da guasto — già pagato nelle beta.43, .48 e .49.
+        // sotto cattura anche il rifiuto, quindi scritto dentro tornerebbe all'utente come un
+        // messaggio d'errore generico invece che come un divieto. È lo stesso difetto — il rifiuto
+        // travestito da guasto — già pagato nelle beta.43, .48 e .49.
         //
         // Reinvitare **è** un modo di estromettere: la password del destinatario viene azzerata
-        // subito sotto. Chi non può cambiare l'email e i ruoli di un utente non lo chiude fuori
-        // nemmeno da qui: la regola è quella della scheda, la stessa da ogni porta
-        // (`User::haNellaPortata()`, Coda 258, decisione 134.1), e il rifiuto dice perché.
-        if ($this->bersaglioFuoriPortata($user)) {
-            abort(403, __('policies.users_privileged_target'));
-        }
+        // subito sotto. `UserPolicy::reinvite()` chiede «Modifica utenti» e, sul bersaglio, le
+        // guardie di sospensione ed eliminazione (Coda 399): non sé stessi, non l'ultimo
+        // amministratore attivo, e chi non è amministratore solo un account nella sua portata
+        // (`User::haNellaPortata()`, Coda 258, decisione 134.1). Il rifiuto dice perché. Un'email che
+        // non è di nessuno ha il solo permesso, e finisce nel messaggio d'errore qui sotto.
+        Gate::authorize('reinvite', $user ?? User::class);
 
         try {
 

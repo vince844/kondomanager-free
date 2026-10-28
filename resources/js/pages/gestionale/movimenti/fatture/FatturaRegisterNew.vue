@@ -17,6 +17,7 @@ import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOc
 import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useFattureSimili } from '@/composables/useFattureSimili';
 import { useFattureRettificabili } from '@/composables/useFattureRettificabili';
 import { dettaglioCandidata, esitoCorrente, etichettaBreve, etichettaCandidata, righeNotaPerCandidate, statoScelta, testoEsitoXml, type FatturaRettificabile, type FatturaRettificataDaXml } from '@/lib/gestionale/fatture/fatturaRettificata';
@@ -43,7 +44,13 @@ import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 // Interfaces & Props
 // ---------------------------------------------------------------------------
 const { euro } = useCurrencyFormatter();
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+
+// Le pagine del fornitore chiedono i permessi delle anagrafiche (`FornitorePolicy`, Coda 402): la scheda di modifica
+// «Modifica anagrafiche», la creazione dal file «Crea anagrafiche». Senza, il modulo non offre i collegamenti e il
+// pulsante che risponderebbero 403, e le frasi dicono soltanto che cosa manca.
+const puoModificareFornitori = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
+const puoCreareFornitori = computed(() => hasPermission([Permission.CREATE_ANAGRAFICHE]));
 
 const moneyOptions = ref({
     prefix: '€ ',
@@ -2385,8 +2392,11 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                             <div v-if="codiceTributoIndeterminabile" class="p-3 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30 space-y-2">
                                 <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
                                     <strong>Codice tributo indeterminabile.</strong> Manca la natura del percipiente sull'anagrafica di {{ selectedFornitore?.ragione_sociale }}: il sistema non può decidere se il codice è 1019 o 1020.
-                                    <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
-                                    oppure conferma per procedere comunque.
+                                    <template v-if="puoModificareFornitori">
+                                        <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
+                                        oppure conferma per procedere comunque.
+                                    </template>
+                                    <template v-else>Conferma per procedere comunque.</template>
                                 </p>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" v-model="form.dati_extra.fiscal.conferma_codice_tributo_mancante"
@@ -2649,10 +2659,10 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                     <span class="text-[11px] text-slate-600 dark:text-slate-400">
                                         Nessun fornitore trovato per <strong>{{ esitoFornitoreXml.letto_da_xml.denominazione }}</strong>
                                         <template v-if="esitoFornitoreXml.letto_da_xml.partita_iva"> (P.IVA {{ esitoFornitoreXml.letto_da_xml.partita_iva }})</template>.
-                                        Puoi selezionarlo qui sopra se esiste già con un altro nome, o crearlo ora senza lasciare questa pagina.
+                                        Puoi selezionarlo qui sopra se esiste già con un altro nome<template v-if="puoCreareFornitori">, o crearlo ora senza lasciare questa pagina</template>.
                                     </span>
                                 </div>
-                                <button type="button" @click="showCreaFornitoreModal = true"
+                                <button v-if="puoCreareFornitori" type="button" @click="showCreaFornitoreModal = true"
                                     class="self-start ml-5 text-[11px] font-bold px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                                     Crea fornitore da questo file
                                 </button>
@@ -2763,7 +2773,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                         Nessuno dei due valori viene cambiato in automatico. Se il regime in anagrafica è sbagliato correggilo
                                         prima di registrare; se è giusto, registra pure: il documento resta quello che è.
                                     </p>
-                                    <Link v-if="selectedFornitore" :href="route(generateRoute('fornitori.edit'), { fornitore: selectedFornitore.id })"
+                                    <Link v-if="selectedFornitore && puoModificareFornitori" :href="route(generateRoute('fornitori.edit'), { fornitore: selectedFornitore.id })"
                                           target="_blank" class="inline-block font-bold underline underline-offset-2">Apri l'anagrafica del fornitore</Link>
                                 </div>
                             </div>
@@ -2806,7 +2816,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                         sul fornitore sia completo.
                                     </p>
 
-                                    <Link v-if="selectedFornitore" :href="route(generateRoute('fornitori.edit'), { fornitore: selectedFornitore.id })"
+                                    <Link v-if="selectedFornitore && puoModificareFornitori" :href="route(generateRoute('fornitori.edit'), { fornitore: selectedFornitore.id })"
                                           target="_blank" class="inline-block font-bold underline underline-offset-2">Apri l'anagrafica del fornitore</Link>
                                 </div>
                             </div>

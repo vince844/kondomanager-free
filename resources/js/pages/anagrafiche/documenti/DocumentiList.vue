@@ -36,6 +36,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useConfermaEliminazione } from '@/composables/useConfermaEliminazione';
 import {
   ChevronLeft, ChevronRight, FilePenLine, FileText, Inbox, MoreHorizontal, Trash2, UploadCloud,
@@ -52,7 +53,12 @@ const props = defineProps<{
   limiteFile: string;
 }>();
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
+
+// L'elenco si legge con la scheda della persona («Visualizza anagrafiche»); caricare, modificare ed eliminare un suo
+// documento chiedono «Modifica anagrafiche», come il modulo della persona (`AnagraficaPolicy::update`, Coda 402): senza
+// il permesso i comandi non compaiono.
+const puoModificare = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -152,6 +158,7 @@ function eliminaDocumento() {
                 stesso modo.
               -->
               <Link
+                v-if="puoModificare"
                 :href="route(generateRoute('anagrafiche.documenti.create'), { anagrafica: anagrafica.id })"
                 class="inline-flex items-center gap-2 rounded-md bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm px-3 py-1.5 h-8 text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
               >
@@ -170,7 +177,7 @@ function eliminaDocumento() {
                     <TableHead class="w-24">Tipo</TableHead>
                     <TableHead class="w-40">Caricato</TableHead>
                     <TableHead class="w-36">Stato</TableHead>
-                    <TableHead class="w-16 text-right">Azioni</TableHead>
+                    <TableHead v-if="puoModificare" class="w-16 text-right">Azioni</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -193,7 +200,7 @@ function eliminaDocumento() {
                         class="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-400"
                       >Non pubblicato</span>
                     </TableCell>
-                    <TableCell class="text-right">
+                    <TableCell v-if="puoModificare" class="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger as-child>
                           <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Azioni">
@@ -218,11 +225,11 @@ function eliminaDocumento() {
                   </TableRow>
 
                   <TableRow v-if="documenti.length === 0">
-                    <TableCell colspan="5" class="h-28 text-center">
+                    <TableCell :colspan="puoModificare ? 5 : 4" class="h-28 text-center">
                       <div class="flex flex-col items-center gap-2 text-slate-400">
                         <Inbox class="w-6 h-6" />
                         <span class="text-sm">Nessun documento archiviato su questa persona.</span>
-                        <span class="text-xs">Il pulsante «Carica documento» qui sopra ne aggiunge uno.</span>
+                        <span v-if="puoModificare" class="text-xs">Il pulsante «Carica documento» qui sopra ne aggiunge uno.</span>
                       </div>
                     </TableCell>
                   </TableRow>
