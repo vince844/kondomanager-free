@@ -57,8 +57,10 @@ Route::middleware('auth')->group(function () {
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');
 
+    // La firma è quella del percorso: il link della mail porta davanti l'indirizzo configurato
+    // dell'installazione (`CustomVerifyEmailNotification`, `RadiceDeiLink`).
     Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
-        ->middleware(['signed', 'throttle:modulo'])
+        ->middleware(['signed:relative', 'throttle:modulo'])
         ->name('verification.verify');
 
     Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])

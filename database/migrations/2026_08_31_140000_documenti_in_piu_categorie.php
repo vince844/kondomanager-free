@@ -48,7 +48,15 @@ use Illuminate\Support\Facades\Schema;
  * soggetto — due unità e un fornitore — e i due d'archivio ce l'hanno entrambi. Non c'è niente da
  * sanare.)*
  *
- * Va nel dataset di `tests/Feature/System/UpgradeMigrationsRerunTest.php`.
+ * ## Rieseguibile
+ *
+ * Il legame si travasa con `insertOrIgnore`; la chiave esterna e la colonna si tolgono con due
+ * guardie separate, perché su MySQL sono due statement e il DDL non è transazionale (vedi il passo
+ * 3). Una riesecuzione dopo un'interruzione, o su un'installazione dove la colonna è già sparita,
+ * riprende da dove era arrivata.
+ *
+ * Nel dataset di `tests/Feature/System/UpgradeMigrationsRerunTest.php`, con il test della ripresa
+ * dopo l'interruzione fra la chiave e la colonna.
  */
 return new class extends Migration
 {
@@ -126,14 +134,36 @@ return new class extends Migration
                         DB::table(self::PONTE)->insertOrIgnore($righe);
                     }
                 });
+        }
 
-            // ── 3. via la colonna ───────────────────────────────────────────────────────────
-            // ⚠️ Da qui in poi, ogni punto del codice non convertito **fallisce forte**. È voluto:
-            // vedi il blocco in testa al file.
+        // ── 3. via la chiave esterna, poi la colonna ────────────────────────────────────────
+        // ⚠️ Da qui in poi, ogni punto del codice non convertito **fallisce forte**. È voluto:
+        // vedi il blocco in testa al file.
+        //
+        // **Due guardie separate, una per la chiave e una per la colonna.** Su MySQL sono due
+        // statement e il DDL non è transazionale: un'esecuzione morta fra i due lascia la chiave
+        // tolta e la colonna ancora lì, e al secondo tentativo un `DROP FOREIGN KEY` su una chiave
+        // che non c'è dà l'errore 1091 e blocca anche le migrazioni che seguono. La chiave si toglie
+        // solo se esiste, la colonna solo se esiste.
+        $mysql = DB::getDriverName() === 'mysql';
+        $chiave = $this->foreignKeyEsiste('documenti', 'category_id');
+
+        if ($mysql && $chiave) {
             Schema::table('documenti', function (Blueprint $tabella) {
-                // La chiave esterna va tolta prima della colonna: su MySQL sono due statement
-                // distinti, e togliere la colonna con il vincolo ancora attaccato fallisce.
-                $tabella->dropConstrainedForeignId('category_id');
+                $tabella->dropForeign(['category_id']);
+            });
+        }
+
+        if (Schema::hasColumn('documenti', 'category_id')) {
+            Schema::table('documenti', function (Blueprint $tabella) use ($mysql, $chiave) {
+                // Su SQLite la chiave si nomina nello stesso blueprint della colonna: è così che
+                // Laravel sa escluderla dalla tabella che ricostruisce. Solo se c'è: senza chiave la
+                // tabella non va ricostruita, e la colonna si toglie da sola.
+                if (! $mysql && $chiave) {
+                    $tabella->dropForeign(['category_id']);
+                }
+
+                $tabella->dropColumn('category_id');
             });
         }
     }
@@ -176,5 +206,33 @@ return new class extends Migration
 
             Schema::dropIfExists(self::PONTE);
         }
+    }
+
+    /** Esiste una chiave esterna su questa colonna? Su SQLite si legge `PRAGMA foreign_key_list`. */
+    private function foreignKeyEsiste(string $tabella, string $colonna): bool
+    {
+        if (DB::getDriverName() !== 'mysql') {
+            return Schema::hasColumn($tabella, $colonna) && $this->sqliteHaForeign($tabella, $colonna);
+        }
+
+        return DB::selectOne('
+            SELECT COUNT(*) AS n
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+              AND column_name = ?
+              AND referenced_table_name IS NOT NULL
+        ', [$tabella, $colonna])->n > 0;
+    }
+
+    private function sqliteHaForeign(string $tabella, string $colonna): bool
+    {
+        foreach (DB::select("PRAGMA foreign_key_list({$tabella})") as $fk) {
+            if (($fk->from ?? null) === $colonna) {
+                return true;
+            }
+        }
+
+        return false;
     }
 };

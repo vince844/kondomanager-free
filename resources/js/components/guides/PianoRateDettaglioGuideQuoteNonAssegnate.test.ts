@@ -10,6 +10,8 @@
  * `PianoRateQuoteService::statoAllineamento`), e il confronto è fra i totali, quindi una tabella cambiata a totale uguale non lo accende; il preventivo
  * della voce cambiato dopo di solito nemmeno, perché il piano chiede l'importo della sua riga (`Beta59PianoQuoteNonAssegnateTest`), salvo su una voce
  * con del già versato (`Beta59PianoQuoteNonAssegnateCasiTest`). Ora dice i tre stati.
+ * Coda 433 (decisioni 162 e 163): il badge «Quota aperta» dice la cifra con il segno e conta le unità, e il riquadro in cima raggruppa le quote per
+ * causa: la guida lo dice, e non dice più «con la cifra e l'unità» né «voce per voce».
  * La guida «Ruoli e usufrutto» (`RipartoUsufruttoGuide.vue`) diceva «recupera la quota con un addebito manuale», che il programma non ha (D143).
  *
  * I test che cominciano con «controprova» sono verdi prima e dopo la correzione.
@@ -18,6 +20,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import { mount } from '@vue/test-utils';
+import type { Component } from 'vue';
 
 import PianoRateDettaglioGuide from './PianoRateDettaglioGuide.vue';
 import RipartoUsufruttoGuide from './RipartoUsufruttoGuide.vue';
@@ -27,15 +30,20 @@ const STUBS = {
     SheetTitle: { template: '<div><slot /></div>' }, SheetDescription: { template: '<div><slot /></div>' },
 };
 
-const testo = (guida: unknown) => mount(guida as never, { props: { open: true }, global: { stubs: STUBS } }).text().replace(/\s+/g, ' ');
+const testo = (guida: Component) => mount(guida, { props: { open: true }, global: { stubs: STUBS } }).text().replace(/\s+/g, ' ');
 
 describe('PianoRateDettaglioGuide — i tre stati di «Copertura spese» (Coda 414)', () => {
     test('dice i tre casi: nessun badge, «Quota aperta» in ambra con cifra e unità, «Disallineato: ricalcola!» in rosso', () => {
         const t = testo(PianoRateDettaglioGuide);
 
         expect(t).toContain('nessun badge: le due cifre coincidono;');
-        expect(t).toContain('«Quota aperta», in ambra, con la cifra e l\'unità: la differenza sono le quote non assegnate che hai accettato con «Procedi comunque»');
+        // Coda 433: la cifra con il segno, e l'unità se è una sola, se no quante sono (decisioni 162 e 163)
+        expect(t).toContain('«Quota aperta», in ambra, con la cifra (le entrate con il segno meno) e dove sta: l\'unità, se è una sola, o quante sono le unità; '
+            + 'la voce, o quante sono le voci, quando la quota non è di un\'unità. La differenza sono le quote non assegnate che hai accettato con «Procedi comunque»');
         expect(t).toContain('Ricalcola da solo non le assegna a nessuno: prima va sistemata la causa');
+        // Coda 433: il riquadro raggruppa per causa
+        expect(t).toContain('prima va sistemata la causa, che il riquadro in cima alla pagina dice causa per causa, con le unità e le voci;');
+        expect(t).not.toContain('voce per voce');
         expect(t).toContain('«Disallineato: ricalcola!», in rosso: la differenza è un\'altra, per esempio un già versato registrato dopo la generazione o una voce che ha cambiato tipo.');
         expect(t).toContain('Se il piano non si ricalcola più (rate emesse, incassi, il conguaglio di un passaggio) il badge dice solo «Disallineato»');
     });

@@ -219,13 +219,12 @@ class GeneratePianoRateAction
                     // affidabile della catena gestione->esercizio (Gestione ha solo
                     // esercizi(), plurale: un ->esercizio singolare non esiste).
                     $condominioIdEccedenze = $pianoRate->condominio_id;
-                    // REVISIONE AVVERSARIALE: senza fallback, una gestione senza
-                    // alcun esercizio con pivot attiva=true produceva un segmento
-                    // vuoto nell'URL ("/esercizi//piani-rate/12") — 404 al click.
-                    // Stesso fallback già usato da PianoRateQuoteService.
-                    $esercizioAttivoId = $pianoRate->gestione
-                        ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
-                        ?? $pianoRate->gestione?->esercizi()->first()?->id;
+                    // Coda 75: il collegamento porta al piano dentro il suo esercizio, quello con cui il piano è generato (`piani_rate.esercizio_id`,
+                    // scritto qui sopra e alla creazione del piano), non nel «primo attivo» del pivot: la gestione riusata su più esercizi li ha
+                    // attivi tutti. Solo un piano senza esercizio scritto lo deduce (`CompetenzaDelPiano::esercizioDelPiano`): quello che contiene la
+                    // data di creazione, o il più recente fra gli attivi, o il più recente. Una gestione con degli esercizi dà sempre un esercizio:
+                    // l'indirizzo non ha un segmento vuoto.
+                    $esercizioAttivoId = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate)?->id;
 
                     $immobiliNomiEcc = Immobile::whereIn('id', array_column($eccedenze, 'immobile_id'))
                         ->pluck('nome', 'id')
@@ -336,9 +335,8 @@ class GeneratePianoRateAction
             // catena di relazioni; per l'esercizio si riusa il fallback già collaudato sopra.
             $condominioId = $pianoRate->condominio_id;
 
-            $esercizioIdScoperti = $pianoRate->gestione
-                ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
-                ?? $pianoRate->gestione?->esercizi()->first()?->id;
+            // Coda 75: l'esercizio del piano, come per il collegamento delle eccedenze.
+            $esercizioIdScoperti = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate)?->id;
 
             // ⚠️ Il testo diceva una causa sola — «unità senza anagrafiche attive» — che dalla
             // beta.48 non è più l'unica, e dalla .61 nemmeno la più frequente. Ora nomina le cause

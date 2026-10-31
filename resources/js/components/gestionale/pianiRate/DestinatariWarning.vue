@@ -19,7 +19,9 @@
  * - `defunto_nel_piano` (1.11.0-beta.51, §6.2): dopo una successione con l'arretrato agli eredi, il piano calcola ancora per il
  *   defunto i suoi giorni fino al decesso, e nessuna riga li passa agli eredi. Come la pregressa non è una coppia che cambia: il
  *   server porta la frase già scritta (chi, quanto, a chi tocca, la strada del Wallet) e le cifre già formattate; il componente le
- *   mostra con la tabella erede / quota / parte, non le ricalcola e non le conta fra le unità del titolo.
+ *   mostra con la tabella erede / quota / parte, non le ricalcola e non le conta fra le unità del titolo. Se qualcuno ha la parte due
+ *   volte (decisione 170), la frase dice i nomi e la strada e, subito sotto, una tabella dice per persona le due serie (`due_serie`); sotto la
+ *   larghezza `sm` (640 px) la tabella lascia il posto a una scheda per persona, con gli stessi valori uno sotto l'altro (decisione 171).
  *
  * Tema **chiaro** come `ScopertoWarning` (nessuna classe `dark:`), e per la stessa ragione: il badge
  * dei ruoli viaggia con `tema="chiaro"`.
@@ -31,6 +33,15 @@ import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
 import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CalendarClock, ExternalLink } from 'lucide-vue-next';
+
+/** Una delle due serie di chi ha la parte due volte (`DefuntoNelPiano::dueSerie`): la cifra già detta con il verso («€ 394,52 a credito»). */
+export interface SerieDellaParte {
+  cifra_formattata: string;
+  /** I nomi degli esercizi delle sue righe, in ordine di data. */
+  esercizi: string[];
+  /** Tutte le sue righe stanno nell'esercizio che il Wallet mostra, e da lì si toglie. */
+  nel_wallet: boolean;
+}
 
 export interface DestinatarioCambiato {
   immobile_id: number | null;
@@ -59,7 +70,7 @@ export interface DestinatarioCambiato {
    * Solo per `defunto_nel_piano` (`DefuntoNelPiano`): il defunto, il decesso, la cifra che il piano calcola ancora per lui (con il segno:
    * positivo = debito) e la parte di ogni erede per la sua quota ereditata sull'unità, già formattate; se il Wallet è libero per passare la
    * parte agli eredi, se il piano applica i saldi, chi ha già un saldo; la frase con la strada. Il componente legge `frase`, `eredi`,
-   * `immobile_id` e `defunto.id`: le altre chiavi servono ai test e al laboratorio. Con più successioni dello stesso defunto sull'unità la cifra
+   * `due_serie`, `immobile_id` e `defunto.id`: le altre chiavi servono ai test e al laboratorio. Con più successioni dello stesso defunto sull'unità la cifra
    * si divide per ruolo; se non si può dividere (`parti_da_decidere`) gli eredi hanno la quota e nessuna parte (`cifra` nulla).
    */
   passaggio_id?: number;
@@ -72,6 +83,12 @@ export interface DestinatarioCambiato {
   piano_applica_saldi?: boolean;
   con_un_saldo?: string[];
   parti_da_decidere?: boolean;
+  /**
+   * Decisioni 170 e 171: chi ha la parte due volte, una riga per persona, con la serie legata alla successione e quella non legata; `esercizio` quando
+   * le due stanno in un solo esercizio, lo stesso (altrimenti null). Il componente ne fa una tabella, e sotto `sm` una scheda per persona con gli
+   * stessi valori. Vuota, o assente, se nessuno ha la parte due volte.
+   */
+  due_serie?: { id: number; nome: string; legata: SerieDellaParte; non_legata: SerieDellaParte; esercizio: string | null }[];
   frase?: string;
 }
 
@@ -122,6 +139,26 @@ const persone = computed(() => new Set(defunti.value.map(d => d.defunto?.id)).si
 
 // La quota ereditata, come si legge: «60 %», «33,34 %».
 const quotaInParole = (q: number) => `${Number(q).toLocaleString('it-IT', { maximumFractionDigits: 4 })} %`;
+
+// Decisioni 170 e 171, le due serie, in tabella e in schede (le stesse cose). L'esercizio è una colonna della tabella, e una riga della scheda, quando
+// ogni persona ha le sue due serie in un esercizio solo (lo dice il server, riga per riga); altrimenti sta sotto la cifra di ogni serie. «Nel Wallet»
+// dice quale serie il Wallet mostra, dai due valori del server. I nomi degli esercizi sono liberi: «ed» davanti a un nome che comincia per «e»
+// («Esercizio 2025 ed Esercizio 2026»), «e» davanti al resto («2025/2026 e 2026/2027»).
+type RigaDueSerie = NonNullable<DestinatarioCambiato['due_serie']>[number];
+const esercizioPerRiga = (d: DestinatarioCambiato) => (d.due_serie ?? []).every(r => r.esercizio !== null);
+const esercizi = (nomi: string[]) => {
+  if (nomi.length < 2) return nomi[0] ?? '—';
+  const ultimo = nomi[nomi.length - 1];
+
+  return `${nomi.slice(0, -1).join(', ')} ${/^e/i.test(ultimo) ? 'ed' : 'e'} ${ultimo}`;
+};
+const nelWallet = (r: RigaDueSerie) => {
+  if (r.legata.nel_wallet && r.non_legata.nel_wallet) return 'tutte e due';
+  if (r.legata.nel_wallet) return 'solo la legata';
+  if (r.non_legata.nel_wallet) return 'solo la non legata';
+
+  return 'no';
+};
 
 // La fattura di una pregressa, in una finestra: il numero da solo non basta a riconoscerla (Vincenzo a video, 27/09/2026).
 type FatturaDelCancello = NonNullable<DestinatarioCambiato['fattura']>;
@@ -192,6 +229,58 @@ const esempioNota = computed(() => {
       <div v-for="d in defunti" :key="`${d.immobile_id}-${d.defunto?.id}`" data-defunto class="space-y-2">
         <!-- Fino a cinque importi: il simbolo e la cifra non si separano a capo (Coda 255). -->
         <p class="text-sm text-amber-900 leading-relaxed"><FraseConImporti :testo="d.frase ?? ''" /></p>
+        <!-- Decisioni 170 e 171: chi ha la parte due volte. La strada la dice la frase sopra; qui le due serie di ognuno, con le cifre del server. Sotto `sm`
+             (640 px) la tabella delle cinque colonne non ci sta: una scheda per persona, con gli stessi valori uno sotto l'altro; da `sm` in su la tabella
+             (se ancora non ci sta, scorre in orizzontale come quella degli eredi). Le cifre passano da `FraseConImporti`: il simbolo e la cifra non vanno a capo. -->
+        <div v-if="d.due_serie?.length" data-due-serie>
+          <ul data-due-serie-schede class="space-y-2 sm:hidden">
+            <li v-for="r in d.due_serie" :key="r.id" data-scheda class="rounded-md border border-amber-200 bg-white/50 p-3">
+              <div data-persona class="font-medium text-slate-900">{{ r.nome }}</div>
+              <dl class="mt-2 grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1.5 text-sm">
+                <dt class="text-xs text-slate-500">Legata alla successione</dt>
+                <dd class="font-semibold text-slate-900 tabular-nums">
+                  <FraseConImporti :testo="r.legata.cifra_formattata" />
+                  <div v-if="!esercizioPerRiga(d)" data-esercizi class="text-[11px] font-normal text-slate-500">{{ esercizi(r.legata.esercizi) }}</div>
+                </dd>
+                <dt class="text-xs text-slate-500">Non legata</dt>
+                <dd class="font-semibold text-slate-900 tabular-nums">
+                  <FraseConImporti :testo="r.non_legata.cifra_formattata" />
+                  <div v-if="!esercizioPerRiga(d)" data-esercizi class="text-[11px] font-normal text-slate-500">{{ esercizi(r.non_legata.esercizi) }}</div>
+                </dd>
+                <template v-if="esercizioPerRiga(d)">
+                  <dt class="text-xs text-slate-500">Esercizio</dt>
+                  <dd class="text-slate-700">{{ r.esercizio }}</dd>
+                </template>
+                <dt class="text-xs text-slate-500">Nel Wallet</dt>
+                <dd class="text-slate-700">{{ nelWallet(r) }}</dd>
+              </dl>
+            </li>
+          </ul>
+          <div data-due-serie-tabella class="hidden sm:block overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-amber-100/30 text-amber-900 text-xs uppercase font-semibold">
+                <tr>
+                  <th class="px-4 py-2">Persona</th>
+                  <th class="px-4 py-2 text-right">Legata alla successione</th>
+                  <th class="px-4 py-2 text-right">Non legata</th>
+                  <th v-if="esercizioPerRiga(d)" class="px-4 py-2">Esercizio</th>
+                  <th class="px-4 py-2">Nel Wallet</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-amber-100 bg-white/50">
+                <tr v-for="r in d.due_serie" :key="r.id" class="align-top">
+                  <td class="px-4 py-2 font-medium text-slate-900">{{ r.nome }}</td>
+                  <td v-for="(s, i) in [r.legata, r.non_legata]" :key="i" class="px-4 py-2 text-right text-slate-900 font-semibold tabular-nums">
+                    <FraseConImporti :testo="s.cifra_formattata" />
+                    <div v-if="!esercizioPerRiga(d)" data-esercizi class="text-[11px] font-normal text-slate-500">{{ esercizi(s.esercizi) }}</div>
+                  </td>
+                  <td v-if="esercizioPerRiga(d)" class="px-4 py-2 text-slate-700">{{ r.esercizio }}</td>
+                  <td class="px-4 py-2 text-slate-700">{{ nelWallet(r) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm text-left">
             <thead class="bg-amber-100/30 text-amber-900 text-xs uppercase font-semibold">

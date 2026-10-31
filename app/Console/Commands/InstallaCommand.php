@@ -19,10 +19,15 @@ use Illuminate\Validation\ValidationException;
  * codice è in sola lettura e il `.env` non esiste — e a chi vuole un'installazione ripetibile.
  * Usa gli stessi servizi del wizard (App\Services\Installer): una logica sola.
  *
- * Idempotente per costruzione: su un'installazione già fatta non fa nulla e non fallisce, così
- * l'entrypoint di un container può lanciarlo a ogni avvio. E prima di scrivere qualunque cosa
- * verifica di avere tutto: su un database vuoto senza le credenziali dell'amministratore si ferma
- * con un errore chiaro, senza creare nemmeno una tabella.
+ * Idempotente per costruzione: su un'installazione già fatta, con il database che risponde, non
+ * fa nulla e non fallisce, così l'entrypoint di un container può lanciarlo a ogni avvio. E prima
+ * di scrivere qualunque cosa verifica di avere tutto: su un database vuoto senza le credenziali
+ * dell'amministratore si ferma con un errore chiaro, senza creare nemmeno una tabella.
+ *
+ * «Già fatta» lo dice il database. Se la lettura che lo dice non riesce, il comando esce con
+ * errore senza scrivere, come quando il database non risponde: «non so» non vale «no», e chi lo
+ * lancia a ogni avvio riprova all'avvio dopo. Della cache si toglie solo quella dei permessi: su
+ * un database che ha già le tabelle, il resto è dell'installazione che gira.
  *
  * Ordine dei passi, ed è un ordine che conta: migrazioni → ruoli → amministratore → seeder. Il
  * DatabaseSeeder, quando il wizard è spento, crea un amministratore di comodo con password nota
@@ -66,7 +71,15 @@ class InstallaCommand extends Command
             $this->components->warn('File di lock presente ma database vuoto: si installa.');
         }
 
-        if ($creaAmministratore->esisteUnAmministratore()) {
+        try {
+            $esisteUnAmministratore = $creaAmministratore->esisteUnAmministratore();
+        } catch (\Throwable $e) {
+            $this->components->error('Non si riesce a leggere dal database se KondoManager è già installato: nessuna scrittura. '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if ($esisteUnAmministratore) {
             // Installazione fatta da un'altra strada (wizard senza lock, sorgente): si chiude solo.
             $chiudi->esegui();
             $this->components->info('Installazione già presente (esiste un amministratore): scritto il file di lock, nessun\'altra modifica.');

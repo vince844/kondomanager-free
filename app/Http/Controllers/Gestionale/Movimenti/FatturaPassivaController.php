@@ -28,6 +28,7 @@ use App\Models\Saldo;
 use App\Services\Gestionale\Duplicati\CollisioneUnicaFattura;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Services\Gestionale\PagamentoFornitoreService;
+use App\Services\Gestionale\RegolazioniSuVoceDiEntrata;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
@@ -186,6 +187,9 @@ class FatturaPassivaController extends Controller
             'fatture' => $fatture,
             'stats' => $stats,
             'regolazioniImmediate' => $regolazioniImmediate,
+            // Coda 287: le regolazioni immediate non stornate scritte su una voce che oggi non è di spesa, di tutto il condominio della rotta
+            // (anche degli esercizi chiusi: lo storno passa e si registra nell'esercizio aperto). La pagina le mostra in un blocco a sé finché ce n'è una.
+            'regolazioniSuVoceDiEntrata' => app(RegolazioniSuVoceDiEntrata::class)->delCondominio($condominio->id),
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             'statiPagamento' => collect(StatoPagamentoFattura::cases())->map(fn ($c) => [

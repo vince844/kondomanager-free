@@ -7,6 +7,8 @@ assignees: ''
 
 ---
 
+> **Security vulnerability?** Do not open an issue: issues are public. Report it privately, as described in the [security policy](https://github.com/vince844/kondomanager-free/security/policy).
+
 **Describe the bug**
 A clear and concise description of what the bug is.
 

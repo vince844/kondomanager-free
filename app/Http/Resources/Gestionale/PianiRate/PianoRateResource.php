@@ -49,11 +49,14 @@ class PianoRateResource extends JsonResource
         $statoValue = $this->stato instanceof \UnitEnum ? $this->stato->value : $this->stato;
 
         // Coda 414: le quote non assegnate dell'ultima generazione, e per ogni voce del piano la loro somma (anche quelle dei suoi sottoconti).
+        // Coda 433: e le loro chiavi, con cui la pagina nomina le unità sotto la voce anche quando la quota è di un sottoconto.
         $quoteNonAssegnate = $this->conQuoteNonAssegnate && is_array($this->quote_non_assegnate) ? $this->quote_non_assegnate : null;
         $nonAssegnatePerConto = [];
+        $chiaviPerConto = [];
         foreach ($quoteNonAssegnate['voci'] ?? [] as $voce) {
             if (! empty($voce['conto_id'])) {
                 $nonAssegnatePerConto[(int) $voce['conto_id']] = ($nonAssegnatePerConto[(int) $voce['conto_id']] ?? 0) + (int) ($voce['importo_cents'] ?? 0);
+                $chiaviPerConto[(int) $voce['conto_id']][] = (string) $voce['chiave'];
             }
         }
 
@@ -124,8 +127,8 @@ class PianoRateResource extends JsonResource
                         ];
                     });
                 })
-                : $this->whenLoaded('capitoli', function() use ($nonAssegnatePerConto) {
-                    return $this->capitoli->map(function ($c) use ($nonAssegnatePerConto) {
+                : $this->whenLoaded('capitoli', function() use ($nonAssegnatePerConto, $chiaviPerConto) {
+                    return $this->capitoli->map(function ($c) use ($nonAssegnatePerConto, $chiaviPerConto) {
 
                         $isParent = $c->sottoconti->isNotEmpty();
 
@@ -155,10 +158,9 @@ class PianoRateResource extends JsonResource
 
                         // La cifra per voce la legge la pagina del piano; l'elenco non la riceve (come la colonna `quote_non_assegnate`).
                         if ($this->conQuoteNonAssegnate) {
-                            $voce['non_assegnati_cents'] = $nonAssegnatePerConto === [] ? 0 : array_sum(array_map(
-                                fn (int $id) => $nonAssegnatePerConto[$id] ?? 0,
-                                self::contoESottoconti($c),
-                            ));
+                            $sotto = $nonAssegnatePerConto === [] ? [] : self::contoESottoconti($c);
+                            $voce['non_assegnati_cents'] = array_sum(array_map(fn (int $id) => $nonAssegnatePerConto[$id] ?? 0, $sotto));
+                            $voce['non_assegnati_chiavi'] = array_merge(...array_map(fn (int $id) => $chiaviPerConto[$id] ?? [], $sotto));
                         }
 
                         return $voce;

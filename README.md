@@ -223,16 +223,16 @@ La configurazione salvata dal pannello ha **precedenza** sul file `.env` e può 
 
 ---
 
-### 3. Aggiornamento manuale dalla versione 1.9.1 alla 1.10.0
+### 3. Aggiornamento manuale (con il file di installazione)
 
 I passaggi non dipendono dalla versione di partenza: sono gli stessi per qualunque aggiornamento manuale dalla 1.8.0 in avanti.
 
 1. Assicurati di avere un backup del `database` e dei file della cartella `storage`
 2. Scarica il [file di aggiornamento](https://kondomanager.short.gy/km-installer) dal sito ufficiale di Kondomanager
-3. Carica il file `index.php` nella root del tuo server
+3. Estrai e carica il file `index.php` nella root del tuo server
 4. Apri il browser all'indirizzo: `https://tuosito.com/index.php`
 5. Il sistema rileverà automaticamente la versione precedente installata.
-6. Clicca su **"Aggiorna adesso"** e segui i passaggi guidati.
+6. Clicca su **"Aggiorna ora"** e segui i passaggi guidati.
 
 **Cosa fa il sistema automaticamente:**
 
@@ -242,7 +242,7 @@ I passaggi non dipendono dalla versione di partenza: sono gli stessi per qualunq
 - Esecuzione delle migrazioni del database
 - Pulizia e ottimizzazione cache
 
-**Importante:** Non chiudere la pagina del browser durante il processo di aggiornamento. Il file `index.php` si auto-eliminerà al termine dell'operazione per sicurezza.
+**Importante:** Non chiudere la pagina del browser durante il processo di aggiornamento. Al termine il file `index.php` che hai caricato si cancella da solo, per sicurezza; se non ci riesce, resta un file che risponde «410 Gone» e puoi eliminarlo a mano. Se l'aggiornamento si interrompe con un errore, il file `index.php` può restare sul server: eliminalo a mano.
 
 **Se in passato hai lanciato `php artisan optimize` sul tuo server**, dopo l'aggiornamento lancia anche:
 
@@ -406,7 +406,7 @@ Il forum è il posto giusto per:
 
 Chi volesse contribuire a far crescere il progetto è sempre il benvenuto!
 
-Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). 
+Per poter contribuire, si consiglia di seguire le indicazioni descritte nella [guida per chi contribuisce](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING.md). Alla tua prima pull request ti verrà chiesto di firmare il [Contributor License Agreement](https://cla-assistant.io/vince844/kondomanager-free): lo propone in automatico CLA assistant, e si firma una volta sola.
 Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte oppure apri un nuovo argomento sul [Forum ufficiale KondoManager](https://kondomanager.short.gy/km-forum)
 
 ---
@@ -423,6 +423,7 @@ Sviluppare un software open source richiede molto impegno e dedizione. Ti sarò 
 
 - **Community:** Unisciti al [forum ufficiale](https://kondomanager.short.gy/km-forum) per confrontarti con altri utenti e ricevere supporto dalla community.
 - **Bug e richieste:** Usa la sezione ["Issues" o "Discussions"](https://github.com/vince844/kondomanager-free/issues) di questa repository.
+- **Vulnerabilità di sicurezza:** Non aprire una issue pubblica; segnalale in privato come spiegato in [SECURITY.md](https://github.com/vince844/kondomanager-free/blob/main/SECURITY.md).
 - **Supporto dedicato:** Per richieste di personalizzazione o supporto professionale, usa il [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) sul sito ufficiale.
 
 ---
@@ -439,13 +440,15 @@ Questo progetto è rilasciato sotto licenza [AGPL-3.0](https://github.com/vince8
 - [Vincenzo Vecchio](https://github.com/vince844) - Project founder and main developer
 
 ### Contributors:
-- [Amnit Haldar](https://github.com/amit-eiitech) - Per il suo prezioso contributo sulla creazione dell'installazione guidata
-- [k3ntinhu](https://github.com/k3ntinhu) - Per il suo prezioso contributo sulla configurazione di Docker container e la comunità portoghese
-- [Stefano B](https://github.com/borghiste) - Per aver segnalato e risolto un bug di sicurezza
-- Tutti i contributori e sviluppatori della community open source.
+
+[![Contributori di KondoManager](https://contrib.rocks/image?repo=vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/graphs/contributors)
+
+### Stelle su GitHub:
+Grazie a tutte le persone che hanno messo una stella al progetto!
+
+[![Chi ha messo una stella a KondoManager](https://kondomanager.com/assets/img/stargazers.svg)](https://github.com/vince844/kondomanager-free/stargazers)
 
 ### Sostenitori Patreon:
-- **[Fabio Lembo Luscari]** — grazie per il tuo supporto e per credere nel progetto! 
 - **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — grazie per il tuo supporto e per credere nel progetto! 
 
 ---

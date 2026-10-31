@@ -60,6 +60,9 @@ use Illuminate\Support\ServiceProvider;
  * - Il blocco che avevamo scritto noi si riconosce dal suo commento, e si sostituisce **solo se è
  *   ancora esattamente come l'avevamo lasciato**. Se qualcuno ci ha messo mano dentro — anche solo
  *   cambiando il valore — quella è diventata una sua scelta e resta.
+ * - I blocchi nostri da migrare sono due: quello che questo provider scriveva nella v1.9
+ *   (`BLOCCO_VECCHIO`) e quello che il ponte dell'aggiornamento di una versione già installata può
+ *   aver scritto (`BLOCCO_DEL_PONTE`), riconosciuto come righe intere.
  * - Il blocco nuovo **dice cosa è successo, quando e come tornare indietro**, perché modificare
  *   un'impostazione di sicurezza sul server di qualcun altro senza dirglielo non si fa.
  * - Non si cancella mai niente: si sostituisce un blocco nostro o si aggiunge in coda.
@@ -79,8 +82,10 @@ use Illuminate\Support\ServiceProvider;
  * appena `TRUSTED_PROXIES` compare nel `.env`. La condizione resta perché protegge le installazioni
  * con l'aggiornamento automatico spento, che sono quelle in cui questo codice non ha niente da fare.
  *
- * TODO: togliere questo provider (e la sua riga in `bootstrap/providers.php`) nella v1.11, quando
- * si potrà dare per scontato che nessuno aggiorni più da una v1.8.
+ * TODO: togliere questo provider (e la sua riga in `bootstrap/providers.php`) solo quando nessuno
+ * aggiorna più da una versione il cui ponte dell'aggiornamento scrive il blocco `BLOCCO_DEL_PONTE`:
+ * il ponte che esegue l'aggiornamento è quello della versione installata, e la migrazione di quel
+ * blocco la fa soltanto questo provider.
  */
 class UpgradePatchServiceProvider extends ServiceProvider
 {
@@ -89,6 +94,20 @@ class UpgradePatchServiceProvider extends ServiceProvider
 
     /** L'intestazione del blocco scritto dalla v1.9, quella che va migrata. */
     private const BLOCCO_VECCHIO = "# --- AUTO-PATCH v1.9 (Proxy Fix) ---\nTRUSTED_PROXIES=*";
+
+    /**
+     * Le tre righe (intestazione, commento, valore) che il ponte dell'aggiornamento di una versione già
+     * installata può aver aggiunto in coda a un `.env` senza `TRUSTED_PROXIES`. Il ponte di questa
+     * versione (`resources/installer/index.php`) scrive invece lo stesso blocco di `bloccoNuovo()`.
+     * Si migrano come il blocco qui sopra, e solo come righe intere.
+     *
+     * Le riconosce il provider e non il ponte perché il ponte che esegue un aggiornamento è quello
+     * della versione installata: il provider gira dopo, con il codice nuovo.
+     *
+     * Su una riga sola e fra virgolette doppie, come `BLOCCO_VECCHIO`: è un testo da riconoscere, non
+     * un valore da scrivere (vedi il test «e non scrive più «*» da nessuna parte»).
+     */
+    private const BLOCCO_DEL_PONTE = "# --- AUTO-CONFIGURED BY V1.9 UPGRADER ---\n# Fix per HTTPS e Cron Job su Hosting Condivisi/Proxy\nTRUSTED_PROXIES=*";
 
     /** L'intestazione del blocco nuovo, che serve anche a riconoscerlo la prossima volta. */
     private const INTESTAZIONE_NUOVA = '# --- KondoManager: proxy fidati (scritto automaticamente) ---';
@@ -152,12 +171,20 @@ class UpgradePatchServiceProvider extends ServiceProvider
 
         $contenuto = (string) file_get_contents($percorso);
 
-        // 1. Il blocco che avevamo scritto noi, ancora intatto: si migra a PRIVATE_SUBNETS.
-        if (str_contains($contenuto, self::BLOCCO_VECCHIO)) {
-            file_put_contents(
-                $percorso,
-                str_replace(self::BLOCCO_VECCHIO, $this->bloccoNuovo(migrazione: true), $contenuto)
-            );
+        // 1. I blocchi che avevamo scritto noi, ancora intatti: si migrano a PRIVATE_SUBNETS, tutti
+        //    nello stesso passaggio. Quello del ponte vale solo come righe intere (`^…$` con `m`):
+        //    un valore allungato a mano (`*,10.0.0.1`) è una scelta di chi amministra e resta.
+        //    Se l'espressione non si può valutare (`preg_replace_callback` restituisce null) quel
+        //    blocco resta com'è: il file non si riscrive mai con un contenuto che non si è calcolato.
+        $migrato = str_replace(self::BLOCCO_VECCHIO, $this->bloccoNuovo(migrazione: true), $contenuto);
+        $migrato = preg_replace_callback(
+            '/^'.preg_quote(self::BLOCCO_DEL_PONTE, '/').'$/m',
+            fn () => $this->bloccoNuovo(migrazione: true),
+            $migrato
+        ) ?? $migrato;
+
+        if ($migrato !== $contenuto) {
+            file_put_contents($percorso, $migrato);
 
             return 'migrato';
         }

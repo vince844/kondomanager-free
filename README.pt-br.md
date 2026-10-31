@@ -1,7 +1,7 @@
 [![Read in English](https://img.shields.io/badge/Read_in-English-red.svg)](README.en.md)
 [![Leggi in Italiano](https://img.shields.io/badge/Leggi_in-Italiano-green.svg)](README.md)
 [![Leia em Português](https://img.shields.io/badge/Leia_em-Português-yellow.svg)](README.pt-br.md)
-[![Generic badge](https://img.shields.io/badge/Version-1.9.1-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
+[![Generic badge](https://img.shields.io/badge/Version-1.11.0-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 
 # KondoManager - Software Gratuito e de Código Aberto para Gestão de Condomínios
@@ -165,16 +165,16 @@ Certifique-se de usar o caminho absoluto para o executável PHP 8.4+, por exempl
 
 No exemplo anterior, substitua "ea-php99" pela versão PHP atribuída ao domínio que deseja utilizar. Verifique no MultiPHP Manager a versão PHP efetivamente atribuída a um domínio.
 
-### 3. Atualização da Versão 1.9.1 para 1.10.0
+### 3. Atualização manual (com o ficheiro de instalação)
 
 As atualizações automáticas estão disponíveis a partir da versão 1.9.0. Os passos abaixo não dependem da versão de origem: são os mesmos para qualquer atualização manual a partir da 1.8.0.
 
 1. Certifique-se de ter uma cópia de segurança da `base de dados` e dos ficheiros da pasta `storage`
 2. Descarregue o [ficheiro de atualização](https://kondomanager.short.gy/km-installer) do site oficial do Kondomanager
-3. Carregue o ficheiro `index.php` na raiz do seu servidor
+3. Extraia e carregue o ficheiro `index.php` na raiz do seu servidor
 4. Abra o navegador no endereço: `https://seusite.com/index.php`.
 5. O sistema detetará automaticamente a versão anterior instalada.
-6. Clique em **"Atualizar agora"** e siga os passos guiados.
+6. Clique em **"Update now"** (em inglês; em italiano, **"Aggiorna ora"**) e siga os passos guiados.
 
 **O que o sistema faz automaticamente:**
 
@@ -184,7 +184,7 @@ As atualizações automáticas estão disponíveis a partir da versão 1.9.0. Os
 - Execução das migrações da base de dados.
 - Limpeza e otimização da cache.
 
-**Importante:** Não feche a página do navegador durante o processo de atualização. O ficheiro `index.php` eliminar-se-á automaticamente no final da operação por segurança.
+**Importante:** Não feche a página do navegador durante o processo de atualização. Ao terminar, o ficheiro `index.php` que carregou elimina-se a si próprio, por segurança; se não conseguir, fica um ficheiro que responde «410 Gone» e pode eliminá-lo manualmente. Se a atualização for interrompida por um erro, o ficheiro `index.php` pode ficar no servidor: elimine-o manualmente.
 
 **Se alguma vez executou `php artisan optimize` no seu servidor**, execute também, depois da atualização:
 
@@ -334,7 +334,7 @@ php artisan tinker
 
 Quem quiser contribuir para fazer crescer o projeto é sempre bem-vindo!
 
-Para poder contribuir, recomenda-se seguir as indicações descritas na [documentação oficial](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). Se quiser contribuir ativamente com melhorias simples ou correções, pode [procurar entre as issues](https://github.com/vince844/kondomanager-free/issues) abertas.
+Para poder contribuir, recomenda-se seguir as indicações descritas no [guia de contribuição](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING.md). No seu primeiro pull request, ser-lhe-á pedido que assine o [Contributor License Agreement](https://cla-assistant.io/vince844/kondomanager-free): o CLA assistant pede-o automaticamente e só é preciso assiná-lo uma vez. Se quiser contribuir ativamente com melhorias simples ou correções, pode [procurar entre as issues](https://github.com/vince844/kondomanager-free/issues) abertas.
 
 ---
 
@@ -349,6 +349,7 @@ Desenvolver software de código aberto requer muito empenho e dedicação. Ficar
 ## Feedback & Suporte
 
 - **Feedback:** Utilize a secção ["Issues" ou "Discussions"](https://github.com/vince844/kondomanager-free/issues) deste repositório.
+- **Vulnerabilidades de segurança:** Não abra uma issue pública; comunique-as em privado, como explicado em [SECURITY.md](https://github.com/vince844/kondomanager-free/blob/main/SECURITY.md).
 - **Suporte:** Para pedidos de personalização ou suporte dedicado, utilize o [formulário de contacto](https://dev.karibusana.org/gestionale-condominio-contatti.html) no site oficial.
 
 ---
@@ -365,13 +366,15 @@ Este projeto é lançado sob a licença [AGPL-3.0](https://github.com/vince844/k
 - [Vincenzo Vecchio](https://github.com/vince844) - Fundador do projeto e programador principal
 
 ### Contribuidores:
-- [Amnit Haldar](https://github.com/amit-eiitech) - Pela sua valiosa contribuição na criação da instalação guiada
-- [k3ntinhu](https://github.com/k3ntinhu) - Pela sua valiosa contribuição na configuração de contentores Docker e pela comunidade portuguesa
-- [Stefano B](https://github.com/borghiste) - Por ter reportado e corrigido um erro de segurança
-- Todos os contribuidores e programadores da comunidade de código aberto.
+
+[![Contribuidores do KondoManager](https://contrib.rocks/image?repo=vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/graphs/contributors)
+
+### Estrelas no GitHub:
+Obrigado a todos os que deram uma estrela ao projeto!
+
+[![Quem deu uma estrela ao KondoManager](https://kondomanager.com/assets/img/stargazers.svg)](https://github.com/vince844/kondomanager-free/stargazers)
 
 ### Apoiadores do Patreon:
-- **[Fabio Lembo Luscari]** — obrigado pelo seu apoio e por acreditar no projeto!
 - **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — obrigado pelo seu apoio e por acreditar no projeto!
 
 ---

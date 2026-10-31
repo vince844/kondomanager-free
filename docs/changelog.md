@@ -7,6 +7,33 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.60] - Ogni piano nel suo anno
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione nuova: una migrazione che c'era (i documenti in più categorie) toglie ora la
+vecchia colonna della categoria, con il suo vincolo, dopo averne travasato il valore nei legami fra documenti e categorie; lo fa con due controlli separati, e dove è già
+girata non fa niente. Dopo l'aggiornamento cambiano due file: il blocco
+`TRUSTED_PROXIES=*` che il motore dell'aggiornamento di una versione precedente aggiungeva al `.env` diventa `TRUSTED_PROXIES=PRIVATE_SUBNETS` (una riga scritta a mano
+non si tocca), e un `update_bridge.json` rimasto nella cartella principale dell'installazione si toglie. Nessun permesso nuovo.
+
+**Che cosa fa la beta.**
+- **I link delle mail del reset della password e della verifica dell'email** portano l'indirizzo scritto in `APP_URL` (se è ancora il valore di serie, quello della richiesta): dopo l'aggiornamento controlla che sia
+  l'indirizzo con cui apri il gestionale, con `https://` se il gestionale è in https. I link di verifica già spediti non valgono più, e se ne chiede uno nuovo dalla
+  pagina della verifica.
+- **L'aggiornamento dal pannello**, per gli aggiornamenti che partono da questa versione, tiene il suo file di scambio in `storage/app`, parte solo con il token del
+  lancio e, se si ferma con un errore, si chiude e dice da dove ripartire. Il comando di installazione dell'immagine Docker, se non riesce a leggere dal database se
+  l'installazione c'è già, si ferma senza scrivere. Gli avvisi di sicurezza della 1.11.0 escono con la stabile, negli avvisi di sicurezza del repository.
+- **Il piano rate sulla gestione usata in più esercizi.** La pagina del piano, «Sposta spesa» e i collegamenti dei compiti seguono l'esercizio del piano; il cancello
+  della successione conta i saldi di ogni esercizio, come la generazione, e si ferma se la parte di un erede, o quella tolta al defunto, entrerebbe due volte; i messaggi che fermano un piano dicono
+  il fatto senza indicare strade che la pagina non offre.
+- **La quota aperta con tante unità**: il badge conta le unità e dice la cifra con il segno, il riquadro raggruppa le quote per causa con «Mostra tutte», e la riga
+  sotto la voce nomina le prime unità.
+- **Le regolazioni immediate registrate su una voce di entrata** con le versioni di prima compaiono in un riquadro della pagina «Fatture passive», con la strada
+  dello storno.
+- **La politica di sicurezza del repository**: una vulnerabilità si segnala in privato, dalla scheda Security, non in una issue. Il README spiega meglio
+  l'aggiornamento manuale.
+
+---
+
 ## [1.11.0-beta.59] - I conti tornano
 
 **Tocca il database.** Una colonna nuova nei piani rate (`quote_non_assegnate`), che l'aggiornamento crea da sola e lascia vuota nei piani che ci sono già; nessun dato esistente viene riscritto.

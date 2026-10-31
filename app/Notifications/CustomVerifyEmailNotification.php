@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Support\RadiceDeiLink;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
@@ -81,14 +82,19 @@ class CustomVerifyEmailNotification extends Notification
             return call_user_func(static::$createUrlCallback, $notifiable);
         }
 
-        return URL::temporarySignedRoute(
+        // La firma copre il percorso, i parametri e la scadenza, e la rotta la controlla così
+        // (`signed:relative`, `routes/auth.php`). Il link porta l'indirizzo configurato dell'installazione
+        // (`APP_URL`), qualunque sia l'host della richiesta; con il valore di serie, quello della richiesta
+        // (`RadiceDeiLink`).
+        return RadiceDeiLink::url(URL::temporarySignedRoute(
             'verification.verify',
             Carbon::now()->addMinutes(Config::get('auth.passwords.users.expire', 60)),
             [
                 'id' => $notifiable->getKey(),
                 'hash' => sha1($notifiable->getEmailForVerification()),
-            ]
-        );
+            ],
+            absolute: false,
+        ));
     }
 
     /**

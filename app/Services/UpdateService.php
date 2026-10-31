@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Auth;
  *   - Manuale      (run_installer = false): questo service è disabilitato,
  *                                           l'utente aggiorna via FTP/setup.php
  *
- * @see resources/installer/index.php  Bridge installer (v13.2)
+ * @see resources/installer/index.php  Bridge installer (v14.1)
  * @see SystemUpgradeController        Controller post-update
  */
 class UpdateService
@@ -49,11 +49,23 @@ class UpdateService
     private const UPDATE_URL = 'https://kondomanager.com/packages/latest.json';
 
     /**
-     * Percorso relativo alla root del progetto del file bridge.
-     * Viene scritto da prepareForUpgrade() e letto dall'installer PHP.
-     * Viene cancellato dall'installer al termine dell'aggiornamento.
+     * Percorso relativo alla root del progetto del file di scambio.
+     * Viene scritto da prepareForUpgrade() e letto dall'installer PHP, che lo
+     * cerca solo qui. Viene cancellato dall'installer al termine dell'aggiornamento.
+     *
+     * Contiene il token del ponte, quindi sta sotto storage/: l'.htaccess del
+     * setup nega storage/, e con la radice del sito su public/ è fuori dal web.
+     * Non in storage/app/public, che public/storage rende pubblica.
      */
-    private const BRIDGE_FILE = 'update_bridge.json';
+    private const BRIDGE_FILE = 'storage/app/update_bridge.json';
+
+    /**
+     * Un file con il nome del file di scambio nella radice del progetto non vale:
+     * l'installer non lo legge e isUpgradeInProgress() non lo conta.
+     * prepareForUpgrade(), isUpgradeInProgress() e la finalizzazione dell'aggiornamento
+     * (SystemUpgradeController::run, che gira anche per chi aggiorna a mano) lo tolgono.
+     */
+    private const ROOT_BRIDGE_FILE = 'update_bridge.json';
 
     /**
      * Percorso del file installer master, versionato in Git.
@@ -246,12 +258,13 @@ class UpdateService
      *   1. Verifica che gli auto-update siano abilitati
      *   2. Verifica presenza hash SHA256 nel pacchetto remoto
      *   3. Verifica compatibilità versione PHP (blocca prima di toccare file)
-     *   4. Genera token CSRF monouso (validità 10 minuti)
-     *   5. Scrive update_bridge.json con tutti i parametri per l'installer
-     *   6. Copia l'installer master in root (sovrascrive index.php temporaneamente)
+     *   4. Genera il token del ponte (il file di scambio vale 10 minuti)
+     *   5. Scrive il file di scambio (BRIDGE_FILE) con tutti i parametri per
+     *      l'installer, e toglie un update_bridge.json dalla radice del progetto
+     *   6. Copia l'installer master in public/ (vedi INSTALLER_FILE)
      *
-     * Il controller chiamerà poi redirect('/index.php?token=...') per avviare
-     * il Bridge installer nel browser dell'utente.
+     * Il controller mostra poi la pagina di lancio, che invia il token
+     * all'installer con un POST.
      *
      * @param array $release  Array della release (da checkRemoteVersion())
      * @return array          ['token' => string, 'url' => string] per la pagina di lancio
@@ -287,7 +300,7 @@ class UpdateService
             );
         }
 
-        // Token monouso: valida sia lato session (UI) sia lato bridge (redirect diretto)
+        // Il token che il ponte accetta: lo legge dal file di scambio, insieme alla scadenza.
         $token = bin2hex(random_bytes(32));
 
         $bridgeData = [
@@ -302,13 +315,13 @@ class UpdateService
                 'hash'    => $release['hash'],
                 // Lista file/cartelle da NON sovrascrivere durante il deploy.
                 // Se non specificata nel JSON remoto, usa i default sicuri.
+                // Il file di scambio sta sotto storage/: lo copre la voce 'storage'.
                 'exclude' => $release['exclude'] ?? [
                     '.env',
                     'storage',
                     'public/uploads',
                     'public/storage',
                     'install.log',
-                    'update_bridge.json',
                     'bootstrap/cache',
                 ],
             ],
@@ -335,6 +348,8 @@ class UpdateService
         // Scrive il bridge — da questo momento l'installer ha tutto il necessario
         File::put(base_path(self::BRIDGE_FILE), json_encode($bridgeData, JSON_PRETTY_PRINT));
         chmod(base_path(self::BRIDGE_FILE), 0644);
+
+        $this->removeRootBridgeFile();
 
         // Copia il bridge dentro public/ (vedi INSTALLER_FILE)
         $this->activateInstaller();
@@ -396,9 +411,10 @@ class UpdateService
      * Usato dal middleware/controller per mostrare una schermata di attesa
      * e impedire operazioni concorrenti durante il deploy.
      *
-     * Controlla **un** segnale: la presenza di un `update_bridge.json` con un token non ancora
-     * scaduto. Un bridge scaduto viene ignorato e cancellato, così un lancio non andato a buon
-     * fine non blocca la pagina per sempre.
+     * Controlla **un** segnale: la presenza del file di scambio (BRIDGE_FILE) con un token non
+     * ancora scaduto. Un bridge scaduto viene ignorato e cancellato, così un lancio non andato a
+     * buon fine non blocca la pagina per sempre. Un `update_bridge.json` nella radice del progetto
+     * non conta e si toglie (ROOT_BRIDGE_FILE).
      *
      * *(Fino al 27/08/2026 i segnali erano due: il secondo cercava dei file di lock temporanei
      * «creati dall'installer». Non li creava nessuno — vedi il commento nel corpo.)*
@@ -407,6 +423,8 @@ class UpdateService
      */
     public function isUpgradeInProgress(): bool
     {
+        $this->removeRootBridgeFile();
+
         $bridge = base_path(self::BRIDGE_FILE);
 
         if (File::exists($bridge)) {
@@ -449,5 +467,26 @@ class UpdateService
         // dice il controllo qui sopra, che ha una scadenza dichiarata ed è l'unico che il codice
         // di questo prodotto alimenta davvero.
         return false;
+    }
+
+    /**
+     * Toglie un `update_bridge.json` dalla radice del progetto (vedi ROOT_BRIDGE_FILE): il file
+     * di scambio sta in BRIDGE_FILE, e nella radice un file con quel nome non serve a niente.
+     * Il registro dice «tolto» solo se il file è stato tolto davvero; se resta (proprietario
+     * diverso, cartella non scrivibile) lo dice con un avviso.
+     */
+    public function removeRootBridgeFile(): void
+    {
+        $fileNellaRadice = base_path(self::ROOT_BRIDGE_FILE);
+
+        if (! File::exists($fileNellaRadice)) {
+            return;
+        }
+
+        if (File::delete($fileNellaRadice)) {
+            Log::info('Update bridge file in the project root removed');
+        } else {
+            Log::warning('Update bridge file in the project root could not be removed');
+        }
     }
 }

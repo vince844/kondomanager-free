@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
@@ -230,6 +232,9 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_10_18_100000_add_passaggio_id_to_saldi_table',
     // Beta.59 (Coda 414): una colonna JSON nullable su `piani_rate`, senza chiave esterna e senza travaso — la guardia è una, sulla colonna.
     '2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table',
+    // Beta.10, in dataset dalla beta.60 (Coda 436): la tabella dei legami documento-categoria, il travaso e poi la chiave esterna e la colonna `documenti.category_id`
+    // tolte con due guardie separate (su MySQL sono due statement). Lo stato a metà, con il suo travaso, lo prova il test sotto.
+    '2026_08_31_140000_documenti_in_piu_categorie',
 ]);
 
 it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {
@@ -282,4 +287,75 @@ it('Coda 414 — la migrazione delle quote non assegnate rieseguita dopo un\'int
     $migration->up();
     $migration->up();
     expect($colonne())->toBe(1);
+});
+
+it('Coda 436 — la migrazione dei documenti in più categorie ripresa dopo l\'interruzione fra la chiave esterna e la colonna (chiave tolta, colonna ancora lì) travasa la categoria nei legami e toglie la colonna, e rieseguita non cambia niente', function () {
+    $path = database_path('migrations/2026_08_31_140000_documenti_in_piu_categorie.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_08_31_140000_documenti_in_piu_categorie');
+    $migration = require $path;
+
+    // Lo stato di prima della migrazione: il ritorno indietro rimette la colonna con la sua chiave e toglie la tabella dei legami.
+    $migration->down();
+    $chiave = fn () => collect(Schema::getForeignKeys('documenti'))->filter(fn ($k) => $k['columns'] === ['category_id'])->count();
+    expect(Schema::hasColumn('documenti', 'category_id'))->toBeTrue()
+        ->and($chiave())->toBe(1)
+        ->and(Schema::hasTable('documento_categoria'))->toBeFalse();
+
+    $categoria = DB::table('categorie_documento')->orderBy('id')->value('id');
+    $documento = DB::table('documenti')->insertGetId([
+        'name' => 'Verbale', 'description' => '', 'created_by' => User::factory()->create()->id, 'path' => 'documenti/verbale.pdf',
+        'category_id' => $categoria, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    // L'interruzione fra i due statement di MySQL: la chiave è già tolta, la colonna c'è ancora.
+    Schema::table('documenti', fn ($table) => $table->dropForeign(['category_id']));
+    expect($chiave())->toBe(0)
+        ->and(Schema::hasColumn('documenti', 'category_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect(Schema::hasColumn('documenti', 'category_id'))->toBeFalse()
+        ->and($chiave())->toBe(0)
+        ->and(DB::table('documento_categoria')->where('documento_id', $documento)->pluck('categoria_documento_id')->all())->toBe([$categoria]);
+});
+
+it('Coda 436 — l\'interruzione dopo il travaso, con la chiave già tolta e la colonna ancora lì, si riprende senza duplicare i legami già scritti', function () {
+    $path = database_path('migrations/2026_08_31_140000_documenti_in_piu_categorie.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_08_31_140000_documenti_in_piu_categorie');
+    $migration = require $path;
+
+    // Il ritorno indietro toglie la tabella dei legami e rimette la colonna con la sua chiave.
+    $migration->down();
+    $categorie = DB::table('categorie_documento')->orderBy('id')->limit(2)->pluck('id')->all();
+    $autore = User::factory()->create()->id;
+    $documento = fn (string $nome, ?int $categoria) => DB::table('documenti')->insertGetId([
+        'name' => $nome, 'description' => '', 'created_by' => $autore, 'path' => "documenti/{$nome}.pdf",
+        'category_id' => $categoria, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    // Due documenti nella stessa categoria, uno in un'altra, uno senza: lo stato che il travaso legge.
+    $a = $documento('A', $categorie[0]);
+    $b = $documento('B', $categorie[0]);
+    $c = $documento('C', $categorie[1]);
+    $documento('D', null);
+
+    // L'interruzione fra i due statement di MySQL: la chiave è già tolta, la colonna c'è ancora.
+    Schema::table('documenti', fn ($table) => $table->dropForeign(['category_id']));
+
+    // E il travaso è già avvenuto, a metà: la tabella dei legami c'è e ha già la riga del primo documento.
+    Schema::create('documento_categoria', function ($tabella) {
+        $tabella->id();
+        $tabella->foreignId('documento_id')->constrained('documenti')->cascadeOnDelete();
+        $tabella->foreignId('categoria_documento_id')->constrained('categorie_documento')->cascadeOnDelete();
+        $tabella->unique(['documento_id', 'categoria_documento_id'], 'documento_categoria_unico');
+        $tabella->timestamps();
+    });
+    DB::table('documento_categoria')->insert(['documento_id' => $a, 'categoria_documento_id' => $categorie[0], 'created_at' => now(), 'updated_at' => now()]);
+
+    $migration->up();
+    $migration->up();
+
+    expect(Schema::hasColumn('documenti', 'category_id'))->toBeFalse()
+        ->and(DB::table('documento_categoria')->orderBy('documento_id')->get()->map(fn ($r) => [$r->documento_id, $r->categoria_documento_id])->all())
+        ->toBe([[$a, $categorie[0]], [$b, $categorie[0]], [$c, $categorie[1]]]);
 });

@@ -35,7 +35,7 @@ onMounted(() => {
                 <h2 class="text-2xl font-bold">Avvio Aggiornamento v{{ version }}</h2>
                 <p class="text-slate-400">
                     Stiamo trasferendo il controllo all'installer sicuro.<br>
-                    Il sistema entrerà in modalità manutenzione.
+                    L'aggiornamento richiede qualche minuto: non chiudere la pagina.
                 </p>
             </div>
 

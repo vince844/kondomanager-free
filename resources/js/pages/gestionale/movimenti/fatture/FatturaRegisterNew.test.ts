@@ -7,8 +7,14 @@
  * grande e non toccato da questa beta se non nel punto preciso dell'importazione.
  */
 
-import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
+
+// Ogni pagina montata si smonta alla fine del suo test: una risposta che arriva dopo non tocca più il documento del test successivo.
+enableAutoUnmount(afterEach);
+
+// La prova che lo smontaggio c'è: ogni test parte con il documento vuoto. Senza, i teleport dei test precedenti restano nel body.
+beforeEach(() => { expect(document.body.childElementCount).toBe(0); });
 
 const axios = vi.hoisted(() => ({ get: vi.fn(async () => ({ data: [] })), post: vi.fn() }));
 vi.mock('axios', () => ({ default: axios }));

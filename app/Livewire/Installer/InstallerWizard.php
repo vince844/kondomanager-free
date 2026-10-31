@@ -240,7 +240,7 @@ class InstallerWizard extends Component
             // database che dichiara vuoto.
             $prepara = app(PreparaDatabase::class);
             $prepara->migra(fresh: true);
-            $prepara->pulisciCache();
+            $prepara->pulisciCache(fresh: true);
             $prepara->seed();
         }
 

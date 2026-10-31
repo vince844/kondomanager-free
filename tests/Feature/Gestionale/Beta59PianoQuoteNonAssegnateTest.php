@@ -332,7 +332,7 @@ it('Coda 414 — la tolleranza resta zero: un già versato di € 0,01 scritto d
     expect(b59pPagina($this, $s, $piano)['allineamento'])->toMatchArray(['stato' => 'disallineato', 'scarto_cents' => 7499, 'scarto_registrato_cents' => 7500]);
 });
 
-it('Coda 414 — una quota non assegnata su un sottoconto si conta sotto il capitolo che il piano ha nella sua riga', function () {
+it('Coda 414 e Coda 433 — una quota non assegnata su un sottoconto si conta sotto il capitolo che il piano ha nella sua riga, con la sua chiave', function () {
     $s = b59pScenarioV34($this);
     b59pPulizie($this, $s);
     $piano = b59pPianoV34($this, $s, procedi: false, extra: ['capitoli_ids' => [$s['pulizie']->id], 'capitoli_config' => [['id' => $s['pulizie']->id, 'importo' => '1.000,00', 'note' => '']]]);
@@ -352,6 +352,11 @@ it('Coda 414 — una quota non assegnata su un sottoconto si conta sotto il capi
     $capitoli = collect(b59pPagina($this, $s, $piano)['pianoRate']['capitoli'])->keyBy('nome');
     expect($capitoli['Manutenzione']['non_assegnati_cents'])->toBe(3000)
         ->and($capitoli['Pulizie']['non_assegnati_cents'])->toBe(0);
+
+    // Coda 433: accanto alla cifra, le chiavi delle stesse quote, dalla stessa regola (la voce e i suoi sottoconti): la pagina trova con
+    // queste la quota del sottoconto e nomina la sua unità sotto il capitolo
+    expect($capitoli['Manutenzione']['non_assegnati_chiavi'])->toBe([$voce['chiave']])
+        ->and($capitoli['Pulizie']['non_assegnati_chiavi'])->toBe([]);
 });
 
 it('Coda 414 — controprova: un piano senza rate non è disallineato (non è ancora generato)', function () {
@@ -370,7 +375,7 @@ it('Coda 414 — un piano senza rate è allineato anche per lo stato a tre valor
     expect(b59pPagina($this, $s, $piano)['allineamento'])->toBe(['stato' => 'allineato', 'atteso_cents' => 250000, 'generato_cents' => 0, 'scarto_cents' => 250000, 'scarto_registrato_cents' => null]);
 });
 
-it('Coda 414 — l\'elenco dei piani non riceve le quote non assegnate né la cifra per voce, che legge solo la pagina del piano; la pagina del piano le riceve', function () {
+it('Coda 414 e Coda 433 — l\'elenco dei piani non riceve le quote non assegnate né la cifra e le chiavi per voce, che legge solo la pagina del piano; la pagina del piano le riceve', function () {
     $s = b59pScenarioV34($this);
     $piano = b59pPianoV34($this, $s);
 
@@ -381,10 +386,13 @@ it('Coda 414 — l\'elenco dei piani non riceve le quote non assegnate né la ci
     expect($riga['capitoli'])->not->toBeEmpty();
     foreach ($riga['capitoli'] as $voce) {
         expect($voce)->not->toHaveKey('non_assegnati_cents');
+        expect($voce)->not->toHaveKey('non_assegnati_chiavi'); // Coda 433: nemmeno le chiavi per voce
     }
 
-    // controprova: la pagina del piano le riceve, con la cifra per voce (€ 75,00 sulla voce «Riscaldamento»)
+    // controprova: la pagina del piano le riceve, con la cifra per voce (€ 75,00 sulla voce «Riscaldamento») e, Coda 433, la chiave della Cantina 1
     $p = b59pPagina($this, $s, $piano)['pianoRate'];
     expect($p['quote_non_assegnate']['scarto_cents'])->toBe(7500);
-    expect(collect($p['capitoli'])->firstWhere('id', $s['riscaldamento']->id)['non_assegnati_cents'])->toBe(7500);
+    $riscaldamento = collect($p['capitoli'])->firstWhere('id', $s['riscaldamento']->id);
+    expect($riscaldamento['non_assegnati_cents'])->toBe(7500);
+    expect($riscaldamento['non_assegnati_chiavi'])->toBe([$p['quote_non_assegnate']['voci'][0]['chiave']]);
 });

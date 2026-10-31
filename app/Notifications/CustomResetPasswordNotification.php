@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Support\RadiceDeiLink;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -98,7 +99,9 @@ class CustomResetPasswordNotification extends Notification
             return call_user_func(static::$createUrlCallback, $notifiable, $this->token);
         }
 
-        return url(route('password.reset', [
+        // Il link porta l'indirizzo configurato dell'installazione (`APP_URL`), qualunque sia l'host della
+        // richiesta; con il valore di serie, quello della richiesta (`RadiceDeiLink`).
+        return RadiceDeiLink::url(route('password.reset', [
             'token' => $this->token,
             'email' => $notifiable->getEmailForPasswordReset(),
         ], false));

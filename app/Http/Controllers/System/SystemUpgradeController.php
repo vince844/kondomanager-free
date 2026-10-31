@@ -283,7 +283,7 @@ class SystemUpgradeController extends Controller
      * tutte le cache di sistema per evitare inconsistenze e infine rimuove i file
      * temporanei creati durante il processo di aggiornamento.
      */
-    public function run(SystemFinalizer $finalizer)
+    public function run(SystemFinalizer $finalizer, UpdateService $updateService)
     {
         try {
             Log::info('Upgrade finalization started');
@@ -297,6 +297,8 @@ class SystemUpgradeController extends Controller
 
             // Cleanup specifici del processo di auto-update
             $this->cleanupInstallerJunk();
+            // Un update_bridge.json nella radice non vale: si toglie anche con l'aggiornamento automatico spento.
+            $updateService->removeRootBridgeFile();
             $this->cleanupOldBackups();
 
             Log::info('Upgrade completed successfully', [

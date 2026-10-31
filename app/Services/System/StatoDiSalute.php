@@ -42,8 +42,14 @@ class StatoDiSalute
     public function rileva(): array
     {
         // Il lock lo scrivono il wizard e `kondomanager:installa`; chi ha installato dai sorgenti
-        // non ce l'ha, ma ha un amministratore: anche quella è un'installazione fatta.
-        $installata = $this->installazione->installata() || $this->amministratore->esisteUnAmministratore();
+        // non ce l'ha, ma ha un amministratore: anche quella è un'installazione fatta. Una lettura
+        // che non riesce non dice «installata»: qui vale «non installata», e lo stato del database
+        // si misura qui sotto, da sé.
+        try {
+            $installata = $this->installazione->installata() || $this->amministratore->esisteUnAmministratore();
+        } catch (\Throwable) {
+            $installata = false;
+        }
         $database = 'ok';
         $pendenti = null;
         $senzaFile = null;

@@ -1,13 +1,35 @@
 <?php
 /**
- * KondoManager Auto-Update Engine - v14.0 Bridge (Root Aware)
+ * KondoManager Auto-Update Engine - v14.1 Bridge (Root Aware)
  * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
  * Funziona SOLO in modalità aggiornamento automatico via Laravel bridge
  * Posizione: resources/installer/index.php
  * Attivazione: copiato in public/km-update.php da UpdateService quando necessario
- * @version 14.0.0
+ * @version 14.1.0
  * @author KondoManager Team
- * @date 16 Agosto 2026
+ * @date 31 Ottobre 2026
+ *
+ * IL FILE DI SCAMBIO
+ * - Laravel lo scrive in storage/app/update_bridge.json della radice del progetto:
+ *   contiene il token, e sta sotto storage/, che l'.htaccess del setup nega e che
+ *   con la radice del sito su public/ è fuori dal web.
+ * - Questo file lo cerca solo lì, nella radice del progetto: la cartella che
+ *   contiene artisan, cioè la sua stessa dove la cartella pubblica coincide con la
+ *   radice, altrimenti quella sopra. Un file con lo stesso nome in qualunque altra
+ *   posizione non vale.
+ *
+ * CHI AVVIA L'AGGIORNAMENTO
+ * - Lo avvia solo un invio (POST) con il token che Laravel ha scritto nel file di
+ *   scambio, confrontato con hash_equals, finché il file di scambio non è scaduto
+ *   (security.expires_at, letto una volta prima dello scarico).
+ *   Un invio con un altro token riceve una pagina 403 e non tocca né il file di
+ *   scambio, né questo file, né i file di lavoro di un aggiornamento in corso.
+ * - La pagina aperta senza invio non avvia niente: rimanda alla dashboard e
+ *   all'installatore a file singolo.
+ * - Un errore durante l'aggiornamento chiude il ponte: il file di scambio si
+ *   cancella, questo file si riduce alla firma 410 Gone che la finalizzazione
+ *   riconosce, e la schermata indica l'installatore a file singolo. Si riparte
+ *   dalla dashboard, che prepara un ponte nuovo.
  *
  * NOVITÀ v14.0 (rispetto alla v13.2 "Proxy Aware")
  * 1. La radice del progetto non è più __DIR__ ma arriva da paths.base dentro
@@ -19,8 +41,8 @@
  *    container, vhost Apache, l'immagine Docker standard) il POST di avvio
  *    finiva sul front controller di Laravel e l'aggiornamento non partiva.
  *    Ora il file vive in public/km-update.php e sa dove sta il progetto.
- * 2. Il JSON viene cercato accanto al file e poi un livello sopra, perché è
- *    scritto nella radice e deve restare fuori dal web (contiene il token).
+ * 2. La radice si cerca in due cartelle esplicite, non con una ricerca, e il
+ *    JSON in una posizione sola (vedi «Il file di scambio», sopra).
  * 3. Eliminati i percorsi relativi: backup, ripristino e patch del .env usavano
  *    la cartella di lavoro del processo, che ora non è più la radice — con il
  *    file in public/ avrebbero lavorato in silenzio sulla cartella sbagliata.
@@ -81,6 +103,72 @@ $footer = <<<HTML
 </p>
 HTML;
 
+// Il rimando all'installatore a file singolo: la ripresa che vale anche quando il
+// gestionale non risponde. Lo mostrano la schermata senza file di scambio, la
+// pagina aperta senza invio, il rifiuto del token e la schermata d'errore.
+$rimandoInstallatore = <<<HTML
+<div class="hint">
+    <strong>L'aggiornamento non riparte?</strong>
+    <p>Puoi aggiornare con il <a href="https://kondomanager.short.gy/km-installer" target="_blank" rel="noopener">file standalone di setup</a>
+    (sempre l'ultima versione ufficiale): va bene sia per una nuova installazione sia per
+    aggiornarne una esistente &mdash; riconosce da solo il caso dalla presenza del file
+    <span class="code">.env</span> e, in aggiornamento, <strong>preserva database, storage
+    e configurazione</strong>, sostituendo i soli file di sistema. Al termine ti riporta su
+    <span class="code">/system/upgrade/finalize</span>.</p>
+</div>
+HTML;
+
+// Ciò che resta di questo file quando il ponte si chiude e non si può cancellare:
+// le due firme che SystemUpgradeController::cleanupInstallerJunk() riconosce.
+const PONTE_NEUTRALIZZATO = "<?php // KondoManager Auto-Update Engine\nheader('HTTP/1.1 410 Gone');\n";
+
+/**
+ * La pagina che non avvia niente: dice da dove si avvia l'aggiornamento e indica
+ * l'installatore a file singolo, poi chiude la risposta.
+ *
+ * @param int    $codice codice HTTP della risposta
+ * @param string $avviso il riquadro in testa (HTML già pronto)
+ */
+function paginaDiRimando(int $codice, string $avviso): void
+{
+    global $css, $logo, $footer, $rimandoInstallatore;
+
+    http_response_code($codice);
+
+    echo <<<HTML
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>KondoManager &mdash; Motore di aggiornamento</title>
+        <style>{$css}</style>
+    </head>
+    <body>
+        <div class="installer-card">
+            <div class="header">
+                {$logo}
+                <h1>Motore di aggiornamento</h1>
+                <p class="tagline">Questo file funziona solo in modalità aggiornamento automatico.</p>
+            </div>
+
+            {$avviso}
+
+            <p class="tagline" style="text-align:center">
+                Avvia l'aggiornamento dalla <a href="/system/upgrade">dashboard di Kondomanager</a>.
+            </p>
+
+            {$rimandoInstallatore}
+
+            {$footer}
+        </div>
+    </body>
+    </html>
+    HTML;
+
+    exit;
+}
+
 $css = <<<CSS
 :root { --primary: #030712; --danger: #dc2626; --success: #22c55e; --warning: #f59e0b; --info: #3b82f6; --bg: #030712; --card: #ffffff; --text: #374151; }
 body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; margin: 0; }
@@ -127,65 +215,32 @@ function logTech(string $msg) {
 }
 
 // CRITICAL: This file REQUIRES a bridge to operate.
-// Il file JSON lo scrive Laravel nella radice del progetto (fuori dal web), e
-// questo file dalla 1.10 vive dentro public/: lo si cerca quindi prima accanto
-// a sé (installazioni dove le due cartelle coincidono, cioè gli hosting
-// condivisi) e poi un livello sopra. Nessun'altra posizione: due tentativi
-// espliciti, non una ricerca.
-$bridgeFile = null;
+// Il file di scambio sta in FILE_DI_SCAMBIO della radice del progetto (vedi
+// «Il file di scambio» in testa), e si cerca solo lì. La radice è la cartella
+// che contiene artisan: quella di questo file, dove la cartella pubblica
+// coincide con la radice, altrimenti quella sopra (di solito questo file vive
+// dentro public/, dove artisan non c'è). Due cartelle esplicite, non una ricerca.
+const FILE_DI_SCAMBIO = 'storage/app/update_bridge.json';
 
-foreach ([__DIR__ . '/update_bridge.json', dirname(__DIR__) . '/update_bridge.json'] as $candidato) {
-    if (file_exists($candidato)) {
-        $bridgeFile = $candidato;
+$radiceDelProgetto = null;
+
+foreach ([__DIR__, dirname(__DIR__)] as $radiceCandidata) {
+    if (is_file($radiceCandidata . '/artisan')) {
+        $radiceDelProgetto = $radiceCandidata;
         break;
     }
 }
 
-$bridgeFile = $bridgeFile ?? __DIR__ . '/update_bridge.json';
+$bridgeFile = $radiceDelProgetto !== null ? $radiceDelProgetto . '/' . FILE_DI_SCAMBIO : null;
+
+if ($radiceDelProgetto === null) {
+    logTech("FATAL: Project root not found - no artisan next to this file or in the folder above");
+    paginaDiRimando(503, '<div class="error-alert">Radice del progetto non trovata: manca <span class="code">artisan</span> in questa cartella e in quella sopra.</div>');
+}
 
 if (!file_exists($bridgeFile)) {
     logTech("FATAL: Bridge file missing - cannot proceed");
-    http_response_code(503);
-    die(<<<HTML
-    <!DOCTYPE html>
-    <html lang="it">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>KondoManager &mdash; Motore di aggiornamento</title>
-        <style>{$css}</style>
-    </head>
-    <body>
-        <div class="installer-card">
-            <div class="header">
-                {$logo}
-                <h1>Motore di aggiornamento</h1>
-                <p class="tagline">Questo file funziona solo in modalità aggiornamento automatico.</p>
-            </div>
-
-            <div class="error-alert">
-                File mancante: <span class="code">update_bridge.json</span>
-            </div>
-
-            <p class="tagline" style="text-align:center">
-                Avvia l'aggiornamento dalla <a href="/system/upgrade">dashboard di Kondomanager</a>.
-            </p>
-
-            <div class="hint">
-                <strong>L'aggiornamento non riparte?</strong>
-                <p>Puoi aggiornare con il <a href="https://kondomanager.short.gy/km-installer" target="_blank" rel="noopener">file standalone di setup</a>
-                (sempre l'ultima versione ufficiale): va bene sia per una nuova installazione sia per
-                aggiornarne una esistente &mdash; riconosce da solo il caso dalla presenza del file
-                <span class="code">.env</span> e, in aggiornamento, <strong>preserva database, storage
-                e configurazione</strong>, sostituendo i soli file di sistema. Al termine ti riporta su
-                <span class="code">/system/upgrade/finalize</span>.</p>
-            </div>
-
-            {$footer}
-        </div>
-    </body>
-    </html>
-    HTML);
+    paginaDiRimando(503, '<div class="error-alert">File mancante: <span class="code">' . FILE_DI_SCAMBIO . '</span></div>');
 }
 
 $bridge = json_decode(file_get_contents($bridgeFile), true);
@@ -204,17 +259,16 @@ if (empty($bridge['package']['version'])) {
 // l'unico a saperla con certezza (base_path()). Le altre due possibilità sono
 // ripieghi in ordine di attendibilità:
 //   1. paths.base dal JSON, se punta ancora a un'installazione vera
-//   2. la cartella che contiene il JSON — che Laravel scrive nella radice
+//   2. la radice con artisan in cui si è trovato il JSON ($radiceDelProgetto, sopra)
 // Il controllo su artisan serve al caso in cui l'installazione sia stata
 // spostata dopo che il bridge era già stato preparato: meglio la posizione
 // reale di un percorso assoluto ormai vecchio.
 $rootFromBridge = $bridge['paths']['base'] ?? null;
-$rootFromJson   = dirname($bridgeFile);
 
 if (is_string($rootFromBridge) && is_file(rtrim($rootFromBridge, '/') . '/artisan')) {
     define('KM_ROOT', rtrim($rootFromBridge, '/'));
 } else {
-    define('KM_ROOT', $rootFromJson);
+    define('KM_ROOT', $radiceDelProgetto);
 }
 
 define('PACKAGE_URL',     $bridge['package']['url']);
@@ -223,13 +277,13 @@ define('APP_VERSION',     $bridge['package']['version']);
 define('MIN_PHP_VERSION', $bridge['requirements']['php'] ?? '8.4.0');
 
 // Exclude items (preserved on server - NOT touched)
+// Il file di scambio sta sotto storage/: lo copre la voce 'storage'.
 $excludeItems = $bridge['package']['exclude'] ?? [
     '.env',
     'storage',
     'public/uploads',
     'public/storage',
     'install.log',
-    'update_bridge.json',
     'bootstrap/cache',
     '_km_safe_zone'
 ];
@@ -241,7 +295,7 @@ define('BACKUP_DIR', KM_ROOT . '/_km_safe_zone');
 
 $bridgeToken = $bridge['security']['token'] ?? null;
 
-logTech("=== AUTO-UPDATE ENGINE v14.0 ===");
+logTech("=== AUTO-UPDATE ENGINE v14.1 ===");
 logTech("Project root: " . KM_ROOT);
 logTech("Target version: " . APP_VERSION);
 logTech("Package URL: " . PACKAGE_URL);
@@ -272,6 +326,7 @@ $langs = [
         'step_rollback' => 'ERRORE! Ripristino backup...',
         'err_generic' => 'Errore: %s',
         'err_csrf' => 'Token di sicurezza non valido.',
+        'err_expired' => "L'avvio dell'aggiornamento è scaduto: riavvialo dalla dashboard.",
         'err_php' => 'Richiesto PHP %s o superiore (rilevato %s). Aggiorna PHP dal pannello hosting.',
         'msg_rollback_ok' => 'Backup ripristinato correttamente.',
         'msg_rollback_ko' => 'ATTENZIONE: Rollback fallito. Verifica manualmente.',
@@ -295,6 +350,7 @@ $langs = [
         'step_rollback' => 'ERROR! Restoring backup...',
         'err_generic' => 'Error: %s',
         'err_csrf' => 'Invalid security token.',
+        'err_expired' => 'The update launch has expired: start it again from the dashboard.',
         'err_php' => 'PHP %s or higher is required (detected %s). Please upgrade PHP.',
         'msg_rollback_ok' => 'Backup restored successfully.',
         'msg_rollback_ko' => 'WARNING: Rollback failed. Check manually.',
@@ -392,55 +448,60 @@ function sendProgress(float|int $pct, string $msg, string $status='current', boo
     flush();
 }
 
-// FIX: Correzione per hosting con session.gc_divisor = 0
-if ((int)ini_get('session.gc_divisor') === 0) {
-    @ini_set('session.gc_divisor', 1000);
-    @ini_set('session.gc_probability', 1);
-}
+/**
+ * Chiude il ponte: cancella il file di scambio e riduce questo file alla firma
+ * 410 Gone, che la finalizzazione riconosce e rimuove. Da qui l'aggiornamento
+ * riparte solo dalla dashboard, che prepara un ponte nuovo, o dall'installatore
+ * a file singolo.
+ */
+function chiudiIlPonte(string $bridgeFile): void
+{
+    if (file_exists($bridgeFile) && @unlink($bridgeFile)) {
+        logTech("Bridge file removed");
+    }
 
-session_start();
+    if (@file_put_contents(__FILE__, PONTE_NEUTRALIZZATO) !== false) {
+        // La versione compilata di questo file esce dalla cache degli script
+        // (OPcache), anche dove i file non si ricontrollano.
+        if (function_exists('opcache_invalidate')) {
+            @opcache_invalidate(__FILE__, true);
+        }
+        logTech("Installer closed: neutralised in place (410 Gone)");
+    } else {
+        logTech("WARNING: Installer could not be neutralised");
+    }
+}
 
 // ============================================================================
 // 6. UI (GET Request)
 // ============================================================================
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    if (empty($_SESSION['token'])) $_SESSION['token'] = bin2hex(random_bytes(32));
-?>
-<!DOCTYPE html>
-<html lang="<?= getLang() ?>">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= t('title') ?></title>
-    <style><?= $css ?></style>
-</head>
-<body>
-    <div class="installer-card">
-        <div class="header">
-            <?= $logo ?>
-            <h1><?= t('welcome') ?></h1>
-            <p class="tagline"><?= t('tagline', APP_VERSION) ?></p>
-        </div>
+    $avviso = version_compare(PHP_VERSION, MIN_PHP_VERSION, '<')
+        ? '<div class="error-alert">' . t('err_php', MIN_PHP_VERSION, PHP_VERSION) . '</div>'
+        : '<div class="update-alert">' . t('tagline', APP_VERSION) . '</div>';
 
-        <?php if (version_compare(PHP_VERSION, MIN_PHP_VERSION, '<')): ?>
-            <div class="error-alert"><?= t('err_php', MIN_PHP_VERSION, PHP_VERSION) ?></div>
-            <button class="btn" disabled><?= t('btn_text') ?></button>
-        <?php else: ?>
-            <div class="update-alert">
-                Verranno sostituiti i file di sistema. Database, documenti e configurazione restano al sicuro.
-            </div>
-            <form method="post">
-                <input type="hidden" name="token" value="<?= $_SESSION['token'] ?>">
-                <button type="submit" class="btn"><?= t('btn_text') ?></button>
-            </form>
-        <?php endif; ?>
+    paginaDiRimando(200, $avviso);
+}
 
-        <?= $footer ?>
-    </div>
-</body>
-</html>
-<?php exit; }
+// ============================================================================
+// 6-bis. IL TOKEN (POST Request)
+// ============================================================================
+// Il ponte accetta solo il token che Laravel ha scritto nel file di scambio.
+// Il confronto vuole due stringhe (hash_equals solleva TypeError su un array) e
+// un token del file di scambio non vuoto. Un invio rifiutato riceve la pagina di
+// rimando con 403 e non tocca nessun file: né il file di scambio, né questo, né
+// i file di lavoro di un aggiornamento in corso.
+$postedToken = $_POST['token'] ?? null;
+
+$tokenValido = is_string($bridgeToken) && $bridgeToken !== ''
+    && is_string($postedToken)
+    && hash_equals($bridgeToken, $postedToken);
+
+if (!$tokenValido) {
+    logTech("Rejected: token does not match the bridge file");
+    paginaDiRimando(403, '<div class="error-alert">' . t('err_csrf') . '</div>');
+}
 
 // ============================================================================
 // 7. EXECUTION (POST Request) - UI AGGIORNATA STYLE V12.4
@@ -505,6 +566,11 @@ function showFinal(url) {
     el.style.display = 'block';
     el.innerHTML = '<p style="color:#16a34a; font-weight:bold;">Operazione completata.</p><p>Reindirizzamento in corso...<br>Se non vieni reindirizzato, <a href="'+url+'">clicca qui</a>.</p>';
 }
+function showFailure(html) {
+    const el = document.getElementById('final-msg');
+    el.style.display = 'block';
+    el.innerHTML = html;
+}
 </script>
 
 <?php
@@ -513,13 +579,14 @@ flush();
 $backupCreated = false;
 
 try {
-    // CSRF Validation (accept both session and bridge token)
-    $postedToken = $_POST['token'] ?? '';
-    $sessionToken = $_SESSION['token'] ?? '';
-    $isValid = ($postedToken === $sessionToken) || ($bridgeToken && $postedToken === $bridgeToken);
+    // La scadenza del file di scambio si legge una volta, qui, prima dello scarico:
+    // l'esecuzione può durare fino a 15 minuti (set_time_limit) e il file di scambio
+    // ne vale 10, quindi rileggerla durante la corsa fermerebbe un aggiornamento
+    // partito in tempo. Senza scadenza leggibile il file di scambio vale come scaduto.
+    $scadenza = $bridge['security']['expires_at'] ?? null;
 
-    if (!$isValid) {
-        throw new Exception(t('err_csrf'));
+    if (!is_int($scadenza) || time() > $scadenza) {
+        throw new Exception(t('err_expired'));
     }
 
     sendProgress(5, t('step_start'));
@@ -859,11 +926,12 @@ try {
         logTech("Restored: .env");
 
         // ------------------------------------------------------------------
-        // SMART PATCH v1.9: INIEZIONE AUTOMATICA PROXY
+        // PROXY FIDATI
         // ------------------------------------------------------------------
-        // Poiché stiamo aggiornando da v1.8, il .env non ha TRUSTED_PROXIES.
-        // Dobbiamo rilevarlo e aggiungerlo se necessario.
-        
+        // Un .env che non nomina TRUSTED_PROXIES riceve lo stesso blocco che
+        // scrive UpgradePatchServiceProvider: TRUSTED_PROXIES=PRIVATE_SUBNETS,
+        // che config/trustedproxy.php espande nelle sole reti private e loopback.
+
         $envContent = file_get_contents(KM_ROOT . '/.env');
         
         // Verifica se la variabile manca (evita duplicati)
@@ -884,11 +952,14 @@ try {
                              !empty($_SERVER['HTTP_CF_CONNECTING_IP']);
 
             if ($isRestricted || $isBehindProxy) {
-                logTech("Upgrade Patch: Proxy environment detected ($host) - Injecting TRUSTED_PROXIES=*");
-                
-                $patch  = "\n\n# --- AUTO-CONFIGURED BY V1.9 UPGRADER ---\n";
-                $patch .= "# Fix per HTTPS e Cron Job su Hosting Condivisi/Proxy\n";
-                $patch .= "TRUSTED_PROXIES=*\n";
+                logTech("Upgrade Patch: Proxy environment detected ($host) - Writing TRUSTED_PROXIES=PRIVATE_SUBNETS");
+
+                $patch  = "\n\n# --- KondoManager: proxy fidati (scritto automaticamente) ---\n";
+                $patch .= "# Serve dietro un reverse proxy (hosting condiviso, nginx/apache davanti a php-fpm)\n";
+                $patch .= "# perché Laravel riconosca https e l'indirizzo IP reale di chi visita.\n";
+                $patch .= "# PRIVATE_SUBNETS si fida solo di proxy su reti private o loopback: da internet non è\n";
+                $patch .= "# falsificabile. Se il tuo proxy ha un IP pubblico, scrivi qui la sua lista esplicita.\n";
+                $patch .= "TRUSTED_PROXIES=PRIVATE_SUBNETS\n";
                 
                 // Opzionale: Fix DB se mancano le definizioni moderne
                 if (strpos($envContent, 'DB_ENGINE') === false) {
@@ -927,7 +998,7 @@ try {
         // schermata "bridge mancante". Lo si neutralizza sul posto, e la firma
         // qui sotto è quella che SystemUpgradeController::cleanupInstallerJunk()
         // cerca per rimuoverlo alla finalizzazione.
-        @file_put_contents(__FILE__, "<?php // KondoManager Auto-Update Engine\nheader('HTTP/1.1 410 Gone');\n");
+        @file_put_contents(__FILE__, PONTE_NEUTRALIZZATO);
         logTech("Installer self-destruct failed: neutralised in place (410 Gone)");
     });
 
@@ -959,6 +1030,16 @@ try {
     if (isset($tempDir) && is_dir($tempDir)) {
         safeRmdir($tempDir);
     }
+
+    // Un errore chiude il ponte (vedi chiudiIlPonte) e la schermata dice da dove
+    // si riparte: la dashboard, o l'installatore a file singolo se il gestionale
+    // non risponde.
+    chiudiIlPonte($bridgeFile);
+
+    $ripresa = '<p class="tagline" style="text-align:center">Per riprovare, avvia di nuovo l\'aggiornamento dalla '
+        . '<a href="/system/upgrade">dashboard di Kondomanager</a>.</p>' . $rimandoInstallatore;
+    $ripresaJs = json_encode($ripresa, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    echo "<script nonce='{$nonce}'>showFailure({$ripresaJs});</script>";
 }
 ?>
 </body>

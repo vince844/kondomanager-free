@@ -250,6 +250,12 @@ class PianoRateController extends Controller
             // momento della creazione, congelato per le generazioni successive.)
             $pianoRate->applica_saldi = $applicareSaldi;
 
+            // Coda 75: il piano ricorda l'esercizio della pagina da cui nasce già alla creazione, non solo alla generazione. «Sposta spesa» (la sua rotta
+            // non ha l'esercizio) e le altre letture di `CompetenzaDelPiano::esercizioDelPiano` valgono anche per un piano creato senza «genera subito»:
+            // senza la colonna la deduzione dalla data di creazione dà l'anno dopo al piano dell'anno prima creato nell'anno dopo. La generazione la
+            // riscrive con l'esercizio da cui si genera.
+            $pianoRate->esercizio_id = $esercizio->id;
+
             // 1. Determiniamo la Genesi del Piano (Il Contesto)
             $pianoRate->contesto_creazione = match(true) {
                 $request->input('origine') === 'dashboard' => 'integrazione_dashboard',

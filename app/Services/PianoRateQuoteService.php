@@ -6,6 +6,7 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Saldo;
+use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\Riparto\QuotaDellaChiamata;
 use Illuminate\Support\Collection;
 
@@ -327,8 +328,9 @@ class PianoRateQuoteService
 
     public function quotePerAnagrafica(PianoRate $pianoRate): Collection
     {
-        $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 
-                     ?? $pianoRate->gestione->esercizi()->first();
+        // Coda 75: l'esercizio del piano, non «il primo attivo» del pivot. La stessa gestione ordinaria si aggancia a ogni esercizio
+        // (`CondominioService::createDefaultGestione`, l'importatore) e nessuno spegne le righe vecchie: senza un ordine il primo era a caso.
+        $esercizio = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
 
         $pianoUsaSaldi = $this->determinaSePianoUsaSaldi($pianoRate);
 
@@ -431,8 +433,8 @@ class PianoRateQuoteService
 
     public function quotePerImmobile(PianoRate $pianoRate): Collection
     {
-        $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 
-                     ?? $pianoRate->gestione->esercizi()->first();
+        // Coda 75: l'esercizio del piano, come in quotePerAnagrafica.
+        $esercizio = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
 
         $pianoUsaSaldi = $this->determinaSePianoUsaSaldi($pianoRate);
 

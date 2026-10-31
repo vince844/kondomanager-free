@@ -84,11 +84,13 @@ defineEmits(['update:open']);
                                 già versato che toglie — con quanto c'è nelle rate. Ci sono tre casi:</p>
                                 <ul class="ml-4 list-disc space-y-1">
                                     <li><strong>nessun badge</strong>: le due cifre coincidono;</li>
-                                    <li><strong>«Quota aperta»</strong>, in ambra, con la cifra e l'unità: la differenza sono le quote
-                                    non assegnate che hai accettato con «Procedi comunque» (un'unità senza titolare, una voce senza
-                                    tabella, una tabella senza millesimi), e il piano non è cambiato da allora. <strong>Ricalcola</strong>
-                                    da solo non le assegna a nessuno: prima va sistemata la causa, che il riquadro in cima alla pagina
-                                    dice voce per voce;</li>
+                                    <li><strong>«Quota aperta»</strong>, in ambra, con la cifra (le entrate con il segno meno) e dove
+                                    sta: l'unità, se è una sola, o quante sono le unità; la voce, o quante sono le voci, quando la quota
+                                    non è di un'unità. La differenza sono le quote non assegnate che hai accettato con «Procedi
+                                    comunque» (un'unità senza titolare, una voce senza tabella, una tabella senza millesimi), e il piano
+                                    non è cambiato da allora. <strong>Ricalcola</strong> da solo non le assegna a nessuno: prima va
+                                    sistemata la causa, che il riquadro in cima alla pagina dice causa per causa, con le unità e le
+                                    voci;</li>
                                     <li><strong>«Disallineato: ricalcola!»</strong>, in rosso: la differenza è un'altra, per esempio un
                                     già versato registrato dopo la generazione o una voce che ha cambiato tipo. <strong>Ricalcola</strong>
                                     rifà le rate con i dati di adesso. Se il piano non si ricalcola più (rate emesse, incassi, il

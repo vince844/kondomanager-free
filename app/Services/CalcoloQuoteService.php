@@ -425,7 +425,83 @@ class CalcoloQuoteService
             ]);
         }
 
+        // Decisione 166: un piano senza voci scelte, e tutte le voci della gestione già in altri piani attivi, fra cui uno di un altro esercizio (la
+        // gestione usata in più esercizi). La generazione si ferma comunque (`GeneratePianoRateAction`, nessuna quota calcolata): qui si ferma nello
+        // stesso punto, con la causa vera al posto delle tre verifiche che non c'entrano. Solo nella generazione: la lettura (`soloLettura`) non si ferma.
+        if (! $soloLettura && $pianoRate !== null && $totali === [] && $contiImpegnatiIds !== []
+            && $conti->every(fn ($conto) => in_array($conto->id, $contiImpegnatiIds))) {
+            $this->fermaSeLeVociSonoInUnAltroEsercizio($pianoRate, $gestione, $conti->pluck('id')->all());
+        }
+
         return $totali;
+    }
+
+    /**
+     * Decisione 166: le voci di un piano senza voci scelte sono tutte in altri piani attivi della stessa gestione (`calcolaPerGestione`, le voci
+     * impegnate, di ogni esercizio). Se fra quei piani ce n'è uno di un altro esercizio (`CompetenzaDelPiano::esercizioDelPiano`), il rifiuto dice la
+     * causa e nomina i piani; se sono tutti dello stesso esercizio, non dice niente qui e resta il rifiuto di sempre. Sulla gestione usata in più
+     * esercizi il programma non tiene separati i piani di esercizi diversi (né qui né nel modulo di creazione, che conta le voci impegnate allo stesso
+     * modo): il messaggio lo dice e non indica una strada che la pagina non offre. Se fra i piani nominati ce n'è anche uno dello stesso esercizio di
+     * questo piano, il messaggio lo dice: le voci non sarebbero libere nemmeno con gli esercizi tenuti separati.
+     *
+     * @param list<int> $vociIds le voci radice della gestione
+     * @throws \RuntimeException
+     */
+    private function fermaSeLeVociSonoInUnAltroEsercizio(PianoRate $pianoRate, Gestione $gestione, array $vociIds): void
+    {
+        $piani = PianoRate::whereIn('id', DB::table('piano_rate_capitoli')
+            ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
+            ->where('piani_rate.gestione_id', $gestione->id)
+            ->where('piani_rate.attivo', true)
+            ->where('piani_rate.id', '!=', $pianoRate->id)
+            ->whereIn('piano_rate_capitoli.conto_id', $vociIds)
+            ->distinct()->pluck('piani_rate.id')->all())->orderBy('id')->get();
+        $mio = $this->esercizioDi($pianoRate)?->id;
+        if (! $piani->contains(fn (PianoRate $p) => $this->esercizioDi($p)?->id !== $mio)) {
+            return;
+        }
+
+        $delMioEsercizio = $piani->filter(fn (PianoRate $p) => $this->esercizioDi($p)?->id === $mio)->values();
+
+        throw new \RuntimeException(sprintf(
+            'Impossibile generare il piano rate: tutte le voci di questa gestione sono già %s, %s sulla stessa gestione, e un piano creato senza scegliere le '
+            .'voci prende solo quelle che nessun altro piano attivo della gestione ha già, di qualunque esercizio.%s Sulla gestione usata in più esercizi il '
+            .'programma non tiene ancora separati i piani di esercizi diversi.',
+            $this->pianiInParole($piani), $piani->count() > 1 ? 'attivi' : 'attivo',
+            $delMioEsercizio->isEmpty() ? '' : sprintf(' Fra questi, %s dello stesso esercizio di questo piano.', $this->nomiDeiPiani($delMioEsercizio).($delMioEsercizio->count() > 1 ? ' sono' : ' è'))
+        ));
+    }
+
+    /**
+     * I nomi dei piani, fra virgolette: «A», «A e B», «A, B e C».
+     *
+     * @param Collection<int, PianoRate> $piani
+     */
+    private function nomiDeiPiani(Collection $piani): string
+    {
+        $nomi = $piani->map(fn (PianoRate $p) => '«' . $p->nome . '»')->values()->all();
+
+        return count($nomi) > 1 ? implode(', ', array_slice($nomi, 0, -1)) . ' e ' . $nomi[count($nomi) - 1] : ($nomi[0] ?? '');
+    }
+
+    /** L'esercizio di un piano, quello con cui è stato generato o, per i piani senza colonna, quello dedotto (`CompetenzaDelPiano::esercizioDelPiano`). */
+    private function esercizioDi(PianoRate $pianoRate): ?\App\Models\Esercizio
+    {
+        return app(\App\Services\Riparto\CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
+    }
+
+    /**
+     * I piani a parole, ognuno con il suo esercizio: «nel piano «Preventivo 2026» dell'esercizio «Esercizio 2026»», «nei piani «A» dell'esercizio
+     * «Esercizio 2025» e «B» dell'esercizio «Esercizio 2026»».
+     *
+     * @param Collection<int, PianoRate> $piani
+     */
+    private function pianiInParole(Collection $piani): string
+    {
+        $parti = $piani->map(fn (PianoRate $p) => '«' . $p->nome . '»' . (($e = $this->esercizioDi($p)) !== null ? ' dell\'esercizio «' . $e->nome . '»' : ''))->values()->all();
+        $elenco = count($parti) > 1 ? implode(', ', array_slice($parti, 0, -1)) . ' e ' . $parti[count($parti) - 1] : ($parti[0] ?? '');
+
+        return (count($parti) > 1 ? 'nei piani ' : 'nel piano ') . $elenco;
     }
 
     /**
@@ -481,16 +557,41 @@ class CalcoloQuoteService
             // prescindere dal pivot: qualunque frazione calcolata contro un
             // denominatore troppo piccolo è sbagliata, sia per eccesso che
             // per difetto.
-            $spesoReale = (int) DB::table('righe_fattura')
+            $spesePerEsercizio = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('righe_fattura.conto_id', $contoId)
                 ->where('fatture_passive.is_pregresso', false)
-                ->selectRaw('COALESCE(SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva), 0) as tot')
-                ->value('tot');
+                ->groupBy('fatture_passive.esercizio_id')
+                ->selectRaw('fatture_passive.esercizio_id as esercizio_id, SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as tot')
+                ->pluck('tot', 'esercizio_id')
+                ->map(fn ($tot) => (int) $tot);
+            $spesoReale = (int) $spesePerEsercizio->sum();
 
             $budgetConto = max(abs((int) $conto->importo), $spesoReale);
 
             if ($spesoReale > abs((int) $conto->importo)) {
+                // Decisione 168: le fatture sommate non sono tutte dell'esercizio del piano (la gestione usata in più esercizi: la voce è la stessa
+                // in tutti). Il rifiuto resta; il messaggio dice di quali esercizi sono le fatture e la somma, e che il già versato non si divide
+                // ancora fra gli esercizi, senza mandare ad alzare la voce: alzarla farebbe passare la guardia e toglierebbe il già versato solo in
+                // parte. Con le fatture tutte dell'esercizio del piano il messaggio di sempre: la voce è rimasta indietro rispetto a quell'esercizio.
+                $mio = $this->esercizioDi($pianoRate)?->id;
+                // Un piano senza esercizio (`null`, cioè 0) non ha fatture sue: nessun esercizio ha id 0.
+                $tutteDelPiano = $spesePerEsercizio->count() === 1 && (int) $spesePerEsercizio->keys()->first() === (int) $mio;
+                if (! $tutteDelPiano) {
+                    $esercizi = \App\Models\Esercizio::whereIn('id', $spesePerEsercizio->keys()->all())->orderBy('data_inizio')->orderBy('id')->get();
+                    $parti = $esercizi->map(fn (\App\Models\Esercizio $e) => '«' . $e->nome . '» (€ ' . number_format($spesePerEsercizio[$e->id] / 100, 2, ',', '.') . ')')->values()->all();
+                    $somma = number_format($spesoReale / 100, 2, ',', '.');
+                    $elenco = count($parti) > 1 ? implode(', ', array_slice($parti, 0, -1)) . ' e ' . $parti[count($parti) - 1] : ($parti[0] ?? '');
+
+                    throw new \RuntimeException(
+                        sprintf('Impossibile generare: la voce di spesa "%s" ha un già versato registrato, e le fatture reali registrate su questa voce sono ', $conto->nome)
+                        . ($spesePerEsercizio->count() > 1
+                            ? sprintf('di più esercizi: %s. La loro somma (€ %s) ', $elenco, $somma)
+                            : sprintf('di un esercizio diverso da quello di questo piano, «%s»: la loro somma (€ %s) ', $esercizi->first()?->nome ?? '', $somma))
+                        . sprintf('supera il budget della voce (€ %s), e sulla gestione usata in più esercizi il programma non divide ancora il già versato di una voce fra gli esercizi.',
+                            number_format(abs((int) $conto->importo) / 100, 2, ',', '.'))
+                    );
+                }
                 throw new \RuntimeException(
                     "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
                     ."ma risulta una fattura reale (€ ".number_format($spesoReale / 100, 2, ',', '.').") "
@@ -502,17 +603,36 @@ class CalcoloQuoteService
             }
 
             // Caso 1 — somma che eccede: come prima di questa correzione.
-            $altriPivot = (int) DB::table('piano_rate_capitoli')
+            $altri = DB::table('piano_rate_capitoli')
                 ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
                 ->where('piano_rate_capitoli.conto_id', $contoId)
                 ->where('piani_rate.attivo', true)
                 ->where('piani_rate.id', '!=', $pianoRate->id)
                 ->whereNotNull('piano_rate_capitoli.importo')
-                ->sum('piano_rate_capitoli.importo');
+                ->get(['piani_rate.id as piano_id', 'piano_rate_capitoli.importo as importo']);
+            $altriPivot = (int) $altri->sum(fn ($r) => (int) $r->importo);
 
             $totaleImpegnato = $altriPivot + $pivotImporto;
 
             if ($totaleImpegnato > $budgetConto) {
+                // Decisione 166: la somma supera la voce solo per i piani di un altro esercizio della stessa gestione (la gestione usata in più
+                // esercizi). Il rifiuto resta; il messaggio dice il fatto e non propone di alzare la voce né di disattivare un piano, che qui
+                // lascerebbero il già versato tolto in tutti i piani che hanno la voce. Nomina tutti quei piani, anche quelli dello stesso esercizio
+                // di questo, e dice «in tutti e due» solo se con questo sono due. Se la voce si supera già nell'esercizio del piano, il messaggio di sempre.
+                $mio = $this->esercizioDi($pianoRate)?->id;
+                $coiPiani = PianoRate::whereIn('id', $altri->pluck('piano_id')->unique()->all())->orderBy('id')->get();
+                $diAltriEsercizi = $coiPiani->filter(fn (PianoRate $p) => $this->esercizioDi($p)?->id !== $mio)->values();
+                $nelloStesso = (int) $altri->whereNotIn('piano_id', $diAltriEsercizi->pluck('id')->all())->sum(fn ($r) => (int) $r->importo);
+                if ($diAltriEsercizi->isNotEmpty() && $nelloStesso + $pivotImporto <= $budgetConto) {
+                    throw new \RuntimeException(sprintf(
+                        'Impossibile generare: la voce di spesa "%s" ha un già versato registrato ed è già %s, %s sulla stessa gestione: con questo piano la somma '
+                        .'degli importi richiesti sulla voce (€ %s) supera il suo budget (€ %s), e il già versato verrebbe tolto %s. Sulla gestione usata in più '
+                        .'esercizi il programma non divide ancora il già versato di una voce fra i piani di esercizi diversi.',
+                        $conto->nome, $this->pianiInParole($coiPiani), $coiPiani->count() > 1 ? 'attivi' : 'attivo',
+                        number_format($totaleImpegnato / 100, 2, ',', '.'), number_format($budgetConto / 100, 2, ',', '.'),
+                        $coiPiani->count() > 1 ? 'in ognuno' : 'in tutti e due'
+                    ));
+                }
                 throw new \RuntimeException(
                     "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
                     ."ma la somma degli importi richiesti dai piani rate attivi su questa voce (€ "

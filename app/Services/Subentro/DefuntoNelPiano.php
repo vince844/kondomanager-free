@@ -24,7 +24,7 @@ use Carbon\CarbonImmutable;
  * Una voce per defunto e unità, nella forma dei cambiamenti del motore (`motivo` = `defunto_nel_piano`), così il cancello, le tre rotte che
  * lo mostrano e il flash non cambiano. Le chiavi `passaggio_id`, `passaggi_ids`, `decesso`, `cifra`, `cifra_formattata` di testa, `wallet`,
  * `piano_applica_saldi`, `con_un_saldo`, `parti_da_decidere` e `defunto.nome` servono ai test e al laboratorio: la pagina legge `frase`, `eredi`,
- * `immobile_id` e `defunto.id`. Tre cose da tenere ferme:
+ * `due_serie`, `immobile_id` e `defunto.id`. Tre cose da tenere ferme:
  *
  * - **La condizione è la scelta, non le righe.** `capo()->registro['arretrato']['scelta']` è «agli eredi»: con l'ordinaria generata la
  *   prima volta dopo il decesso l'arretrato non scrive righe (non c'è niente di emesso), e `arretratoAgliEredi()` sarebbe falso. La
@@ -51,10 +51,22 @@ use Carbon\CarbonImmutable;
  *   piano dopo aver emesso quell'altro, quando le sue sono ferme). La regola della porta resta quella. Seguendola, nessuna parte entra due volte.
  *
  * I saldi «che entrano» sono quelli che la generazione assorbe (`GenerateSaldiAction`): liberi nel Wallet (non applicati, anche quelli della
- * 1.7.x e della 1.8.x, senza piano) o già di questo piano, sulla stessa gestione, unità ed esercizio, e solo se il piano applica i saldi. Non
+ * 1.7.x e della 1.8.x, senza piano) o già di questo piano, sulla stessa gestione e unità, di ogni esercizio (la generazione li prende per gestione:
+ * con la gestione riusata su più esercizi un piano assorbe anche i saldi di un altro anno, Coda 332), e solo se il piano applica i saldi. Non
  * contano le righe dei passaggi (`subentro_id`), le righe legate a un passaggio (`passaggio_id`, contate a parte) né un saldo che un altro
  * piano ha già assorbito. Le righe legate alla successione si leggono per gestione e unità, senza l'esercizio, come le assorbe la generazione;
- * quelle già in un altro piano, nell'esercizio aperto, dove la porta del Wallet guarda il doppione.
+ * quelle già in un altro piano, nell'esercizio aperto, dove la porta del Wallet guarda il doppione. Chi occupa il posto del Wallet
+ * (`FermataDopoScrivi::conUnSaldo`) resta per esercizio; chi resta senza la sua parte e ha saldi non legati che la generazione assorbe da un altro
+ * esercizio è incerto (V5) come chi occupa quel posto (decisione 164.3). Quando i saldi che il piano assorbe di chi ha già la sua parte, o degli
+ * incerti, stanno in un esercizio che non è quello aperto, la frase lo dice: il Wallet mostra un solo esercizio aperto.
+ *
+ * La parte due volte (decisione 164.1): chi ha le righe legate alla successione e, accanto, saldi non legati della stessa cifra della sua parte (la
+ * strada a mano di prima della 1.11.0-beta.53, o un saldo importato) la vede entrare due volte, perché la generazione le assorbe tutte e due. Il
+ * cancello lo dice al posto di «i saldi ci sono già», in una frase e in una tabella (decisione 170): la frase dice i nomi e quale serie si toglie
+ * dal Wallet, la tabella (`due_serie`) per persona le due serie, con la cifra, l'esercizio e se il Wallet le mostra; finché ci sono tutte e due, la
+ * voce torna a ogni generazione. Un riporto accanto alle righe legate che non è la parte continua a non contare. Con più
+ * defunti sulla stessa unità i saldi non legati di una persona sono gli stessi in ogni voce: sono la seconda serie in una voce sola, e in nessuna
+ * se in un'altra voce sono la sua parte (`secondaSerieAltrove`).
  *
  * Più successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà, due ruoli): la cifra del motore è per persona e
  * unità, e si divide per ruolo leggendo il dettaglio del riparto che il motore ha appena calcolato — la riga di titolarità di ogni riga di
@@ -122,10 +134,19 @@ final class DefuntoNelPiano
         $nomiUnita = Immobile::whereIn('id', array_map(fn (array $successioni) => (int) $successioni[0]->immobile_id, $gruppi))->pluck('nome', 'id');
 
         $voci = [];
-        foreach ($gruppi as $successioni) {
+        $serie = [];
+        foreach ($gruppi as $chiave => $successioni) {
             $cifra = $cifre[(int) $successioni[0]->anagrafica_uscente_id][(int) $successioni[0]->immobile_id];
-            $voci[] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all());
+            $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), [], $serie[$chiave]);
         }
+        // Decisione 164.1 con più defunti sulla stessa unità: i saldi non legati di una persona si leggono per unità, non per successione, e sono
+        // gli stessi in ogni voce. Sono la seconda serie in una voce sola, e in nessuna se in un'altra voce sono la sua parte.
+        foreach (self::secondaSerieAltrove($gruppi, $serie) as $chiave => $escludi) {
+            $successioni = $gruppi[$chiave];
+            $cifra = $cifre[(int) $successioni[0]->anagrafica_uscente_id][(int) $successioni[0]->immobile_id];
+            $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), $escludi);
+        }
+        $voci = array_values($voci);
         usort($voci, fn (array $a, array $b) => [$a['immobile_id'], $a['defunto']['id']] <=> [$b['immobile_id'], $b['defunto']['id']]);
 
         return $voci;
@@ -138,6 +159,36 @@ final class DefuntoNelPiano
     }
 
     /**
+     * Decisione 164.1, più defunti sulla stessa unità (due voci): i saldi non legati di una persona (`saldiCheEntrano`) sono gli stessi in ogni voce
+     * dell'unità. Se in una voce sono la sua parte (chi non ha righe legate e ha la parte nei saldi non legati), in nessun'altra sono la seconda
+     * serie; altrimenti lo sono nella prima voce, nell'ordine delle successioni, e non nelle altre. Per ogni voce da rileggere, chi non ha la parte
+     * due volte.
+     *
+     * @param array<string, list<Subentro>> $gruppi
+     * @param array<string, array{immobile_id: int, doppie: list<int>, parte_non_legata: list<int>}|null> $serie
+     * @return array<string, list<int>>
+     */
+    private static function secondaSerieAltrove(array $gruppi, array $serie): array
+    {
+        $escludi = [];
+        foreach (collect(array_keys($gruppi))->groupBy(fn (string $k) => (int) $gruppi[$k][0]->immobile_id) as $chiavi) {
+            if ($chiavi->count() < 2) {
+                continue;
+            }
+            $persone = $chiavi->flatMap(fn (string $k) => $serie[$k]['doppie'] ?? [])->unique();
+            foreach ($persone as $id) {
+                $doppie = $chiavi->filter(fn (string $k) => in_array($id, $serie[$k]['doppie'] ?? [], true))->values();
+                $parteAltrove = $chiavi->contains(fn (string $k) => in_array($id, $serie[$k]['parte_non_legata'] ?? [], true));
+                foreach ($parteAltrove ? $doppie : $doppie->slice(1) as $k) {
+                    $escludi[$k][] = (int) $id;
+                }
+            }
+        }
+
+        return $escludi;
+    }
+
+    /**
      * La voce di un defunto su un'unità, con le sue successioni (una, o più dello stesso defunto sulla stessa unità). `$cifra` ha il segno
      * (positivo = debito del defunto, negativo = un suo credito).
      *
@@ -145,9 +196,11 @@ final class DefuntoNelPiano
      * @param list<array<string, mixed>> $righeDettaglio
      * @param array<int, string> $nomiPersone
      * @param array<int, string> $nomiUnita
+     * @param list<int> $senzaSecondaSerie chi non ha la parte due volte in questa voce (`secondaSerieAltrove`)
+     * @param array{immobile_id: int, doppie: list<int>, parte_non_legata: list<int>}|null $serie chi ha la parte due volte e chi ce l'ha nei saldi non legati
      * @return array<string, mixed>
      */
-    private function voce(PianoRate $piano, array $successioni, int $cifra, bool $pianoApplicaSaldi, bool $allaCreazione, array $righeDettaglio, array $nomiPersone, array $nomiUnita): array
+    private function voce(PianoRate $piano, array $successioni, int $cifra, bool $pianoApplicaSaldi, bool $allaCreazione, array $righeDettaglio, array $nomiPersone, array $nomiUnita, array $senzaSecondaSerie = [], ?array &$serie = null): array
     {
         $s = $successioni[count($successioni) - 1];
         $defuntoId = (int) $s->anagrafica_uscente_id;
@@ -185,10 +238,20 @@ final class DefuntoNelPiano
         // Le righe legate già assorbite da un altro piano della stessa gestione che si riscrive ancora: questo piano non le assorbe, e la porta del
         // Wallet rifiuta una seconda riga per le stesse persone finché sono lì.
         $altrove = $perErede !== null ? self::saldiLegatiAltrove($persone, $piano, $immobileId, $passaggiIds) : [];
-        $saldiCheEntrano = $pianoApplicaSaldi && $perErede !== null ? self::saldiCheEntrano($persone, $piano, $immobileId, $esercizioId) : [];
-        $strada = self::chiHaLaParte($persone, $defuntoId, $cifra, $eredi, $legati, $saldiCheEntrano, $conUnSaldo, $pianoApplicaSaldi && $perErede !== null, $altrove)
+        // Coda 332: i saldi che la generazione assorbe, di ogni esercizio della gestione, come li prende `GenerateSaldiAction`.
+        $saldiCheEntrano = $pianoApplicaSaldi && $perErede !== null ? self::saldiCheEntrano($persone, $piano, $immobileId) : [];
+        $strada = self::chiHaLaParte($persone, $defuntoId, $cifra, $eredi, $legati, $saldiCheEntrano, $conUnSaldo, $pianoApplicaSaldi && $perErede !== null, $altrove, $senzaSecondaSerie)
             + ['successione' => self::allaSuccessione($decessi, count($successioni) > 1)];
         $partePassata = $strada['parte_passata'];
+        $serie = ['immobile_id' => $immobileId, 'doppie' => $strada['doppie'], 'parte_non_legata' => $strada['parte_non_legata']];
+        // Gli esercizi dei saldi che questa generazione assorbe di chi ha già la sua parte, e quelli non legati di chi è incerto (decisione 164.3),
+        // quando non sono quello aperto: il Wallet non li mostra, e la frase lo dice. Solo con il piano che applica i saldi: senza, questo piano non
+        // li assorbe. Senza nessuno con la sua parte né incerti (anche quando la cifra non si divide) non c'è nessuna riga da cercare. Le due serie di
+        // chi ha la parte due volte le dice `dueSerie`: la frase con i nomi e la strada, la tabella con ogni serie e il suo esercizio.
+        $fuoriDalWallet = $pianoApplicaSaldi
+            ? self::fuoriDalWallet($strada['ok_legati'], array_values(array_unique(array_merge(array_diff($strada['ok'], $strada['ok_legati']), $strada['incerti']))), $piano, $immobileId, $passaggiIds)
+            : ['righe' => 0, 'esercizi' => []];
+        $dueSerie = self::dueSerie($strada['doppie'], [$defuntoId => $defunto] + array_column($eredi, 'nome', 'id'), $piano, $immobileId, $passaggiIds);
 
         return [
             'immobile_id'         => $immobileId,
@@ -211,9 +274,11 @@ final class DefuntoNelPiano
             'piano_applica_saldi' => $pianoApplicaSaldi,
             'con_un_saldo'        => $nomiConUnSaldo,
             'parti_da_decidere'   => $perErede === null,
+            // Decisione 170: chi ha la parte due volte, una riga per persona (vuota se nessuno).
+            'due_serie'           => $dueSerie['righe'],
             'frase'               => $perErede === null
                 ? $this->fraseDaDecidere($defunto, $decessi, $unita, $cifra, $successioni, $nomiPersone)
-                : $this->frase($defunto, $decessi, $unita, $cifra, $eredi, $pianoApplicaSaldi, $allaCreazione, $strada, $partePassata, count($successioni) > 1 ? $this->divisionePerRuolo($successioni, $pezzi) : null),
+                : $this->frase($defunto, $decessi, $unita, $cifra, $eredi, $pianoApplicaSaldi, $allaCreazione, $strada, $partePassata, count($successioni) > 1 ? $this->divisionePerRuolo($successioni, $pezzi) : null, $fuoriDalWallet, $dueSerie['frase']),
         ];
     }
 
@@ -292,21 +357,32 @@ final class DefuntoNelPiano
     }
 
     /**
-     * I saldi che questa generazione assorbe nelle quote delle persone, sulla gestione, l'unità e l'esercizio del piano, per persona: la selezione
-     * di `GenerateSaldiAction` (liberi nel Wallet, o già di questo piano), senza le righe dei passaggi, le righe legate a un passaggio (le legge
-     * `saldiLegati`) e i debiti verso i fornitori. Un saldo della
+     * I saldi che questa generazione assorbe nelle quote delle persone, sulla gestione e l'unità del piano, di ogni esercizio, per persona: la
+     * selezione di `GenerateSaldiAction` (liberi nel Wallet, o già di questo piano, per gestione: Coda 332), senza le righe dei passaggi, le righe
+     * legate a un passaggio (le legge `saldiLegati`) e i debiti verso i fornitori. Un saldo della
      * 1.7.x o della 1.8.x, senza piano e con `is_applicato` falso, è libero come uno registrato adesso. Chi ha più saldi li somma.
      *
      * @param list<int> $persone
      * @return array<int, int> id della persona => centesimi (positivo = debito)
      */
-    private static function saldiCheEntrano(array $persone, PianoRate $piano, int $immobileId, ?int $esercizioId): array
+    private static function saldiCheEntrano(array $persone, PianoRate $piano, int $immobileId): array
+    {
+        return self::righeCheEntrano($persone, $piano, $immobileId)
+            ->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->mapWithKeys(fn (int $cents, $id) => [(int) $id => $cents])->all();
+    }
+
+    /**
+     * Le righe dei saldi non legati che questa generazione assorbe (vedi `saldiCheEntrano`).
+     *
+     * @param list<int> $persone
+     * @return \Illuminate\Support\Collection<int, Saldo>
+     */
+    private static function righeCheEntrano(array $persone, PianoRate $piano, int $immobileId): \Illuminate\Support\Collection
     {
         return Saldo::whereIn('anagrafica_id', $persone ?: [0])->where('gestione_id', $piano->gestione_id)->where('immobile_id', $immobileId)
             ->whereNull('subentro_id')->whereNull('passaggio_id')->whereNull('fornitore_id')->where('saldo_iniziale', '!=', 0)
-            ->when($esercizioId !== null, fn ($q) => $q->where('esercizio_id', $esercizioId))
             ->where(fn ($q) => $q->where('is_applicato', false)->orWhere('piano_rate_id', $piano->id))
-            ->get()->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->mapWithKeys(fn (int $cents, $id) => [(int) $id => $cents])->all();
+            ->get();
     }
 
     /**
@@ -319,10 +395,136 @@ final class DefuntoNelPiano
      */
     private static function saldiLegati(array $persone, PianoRate $piano, int $immobileId, array $passaggiIds): array
     {
+        return self::righeLegate($persone, $piano, $immobileId, $passaggiIds)
+            ->groupBy('anagrafica_id')->mapWithKeys(fn ($g, $id) => [(int) $id => ['cents' => (int) $g->sum('saldo_iniziale'), 'righe' => $g->count()]])->all();
+    }
+
+    /**
+     * Le righe legate alla successione che questa generazione assorbe (vedi `saldiLegati`).
+     *
+     * @param list<int> $persone
+     * @param list<int> $passaggiIds le successioni padre
+     * @return \Illuminate\Support\Collection<int, Saldo>
+     */
+    private static function righeLegate(array $persone, PianoRate $piano, int $immobileId, array $passaggiIds): \Illuminate\Support\Collection
+    {
         return Saldo::whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0])->where('gestione_id', $piano->gestione_id)
             ->where('immobile_id', $immobileId)->where('saldo_iniziale', '!=', 0)
             ->where(fn ($q) => $q->where('is_applicato', false)->orWhere('piano_rate_id', $piano->id))
-            ->get()->groupBy('anagrafica_id')->mapWithKeys(fn ($g, $id) => [(int) $id => ['cents' => (int) $g->sum('saldo_iniziale'), 'righe' => $g->count()]])->all();
+            ->get();
+    }
+
+    /**
+     * Coda 332: i saldi di chi ha già la sua parte — le righe legate di chi le ha, i saldi non legati che questa generazione assorbe degli altri — che
+     * stanno in un esercizio diverso da quello aperto. La pagina del Wallet mostra un solo esercizio aperto, il primo del condominio (`FermataDopoScrivi::fuoriDalWallet`),
+     * mentre la generazione li assorbe per gestione: la frase lo dice, con il nome degli esercizi in ordine di data.
+     *
+     * @param list<int> $conLegate chi ha la parte nelle righe legate alla successione
+     * @param list<int> $conNonLegati chi ha la parte nei saldi non legati
+     * @param list<int> $passaggiIds le successioni padre
+     * @return array{righe: int, esercizi: list<string>}
+     */
+    private static function fuoriDalWallet(array $conLegate, array $conNonLegati, PianoRate $piano, int $immobileId, array $passaggiIds): array
+    {
+        $righe = self::righeLegate($conLegate, $piano, $immobileId, $passaggiIds)->merge(self::righeCheEntrano($conNonLegati, $piano, $immobileId));
+        $fuori = FermataDopoScrivi::fuoriDalWallet($righe)->load('esercizio:id,nome,data_inizio');
+
+        return [
+            'righe' => $fuori->count(),
+            'esercizi' => $fuori->pluck('esercizio')->filter()->unique('id')->sortBy(fn ($e) => (string) $e->data_inizio)->pluck('nome')->map(fn ($n) => (string) $n)->values()->all(),
+        ];
+    }
+
+    /**
+     * La frase che chiude la voce quando i saldi di chi ha già la sua parte stanno in un esercizio che non è quello aperto: «I saldi dell'esercizio «Esercizio 2026»
+     * non compaiono nel Wallet, che mostra un solo esercizio aperto: il piano li assorbe lo stesso, perché prende i saldi della gestione di ogni
+     * esercizio.» Vuota se sono tutti nell'esercizio che il Wallet mostra.
+     *
+     * @param array{righe: int, esercizi: list<string>} $fuori
+     */
+    private static function nonNelWallet(array $fuori): string
+    {
+        if ($fuori['esercizi'] === []) {
+            return '';
+        }
+        $quali = sprintf('%s %s', count($fuori['esercizi']) > 1 ? 'degli esercizi' : 'dell\'esercizio', self::elenco(array_map(fn (string $n) => '«' . $n . '»', $fuori['esercizi'])));
+
+        return $fuori['righe'] === 1
+            ? sprintf('Il saldo %s non compare nel Wallet, che mostra un solo esercizio aperto: il piano lo assorbe lo stesso, perché prende i saldi della gestione di ogni esercizio.', $quali)
+            : sprintf('I saldi %s non compaiono nel Wallet, che mostra un solo esercizio aperto: il piano li assorbe lo stesso, perché prende i saldi della gestione di ogni esercizio.', $quali);
+    }
+
+    /**
+     * Coda 332, decisioni 164.1 e 170: le due serie di chi ha la parte due volte (`chiHaLaParte`, `doppie`), le righe legate alla successione e i saldi
+     * non legati della stessa cifra, che questa generazione assorbe tutte e due. La voce le dice in una frase e in una tabella.
+     *
+     * La tabella (`righe`, la chiave `due_serie` della voce), una riga per persona: la serie legata e quella non legata, ognuna con la cifra già detta
+     * con il verso (la somma delle sue righe, con il segno del Wallet: positivo = debito; la pagina legge il testo), gli esercizi in ordine di data
+     * (ogni saldo ha il suo) e se il Wallet la mostra; `esercizio` quando le due stanno in un solo esercizio, lo stesso, altrimenti null. Una serie è nel
+     * Wallet, e si toglie da lì, solo se tutte le sue righe stanno nell'esercizio che la pagina mostra, un solo esercizio aperto
+     * (`FermataDopoScrivi::fuoriDalWallet`), e la porta accetta l'eliminazione di una riga libera o di un piano che si riscrive ancora.
+     *
+     * La frase dice i nomi e la strada. A chi ne ha almeno una nel Wallet: «togline una», e il piano assorbe quella che resta; quale togliere lo decide
+     * l'amministratore, e la frase non sceglie fra due serie che stanno tutte e due nel Wallet. Se il Wallet non le mostra tutte, la frase lo dice: per
+     * chi ne mostra una sola, che è quella da togliere; per chi nessuna, e a lui non indica il Wallet né «quella che resta» (le sue serie restano due).
+     * Vuote se nessuno ha la parte due volte.
+     *
+     * @param list<int> $doppie
+     * @param array<int, string> $nomeDi id della persona => nome, come nella frase
+     * @param list<int> $passaggiIds le successioni padre
+     * @return array{frase: string, righe: list<array{id: int, nome: string, legata: array{cifra_formattata: string, esercizi: list<string>, nel_wallet: bool}, non_legata: array{cifra_formattata: string, esercizi: list<string>, nel_wallet: bool}, esercizio: string|null}>}
+     */
+    private static function dueSerie(array $doppie, array $nomeDi, PianoRate $piano, int $immobileId, array $passaggiIds): array
+    {
+        if ($doppie === []) {
+            return ['frase' => '', 'righe' => []];
+        }
+        $legate = self::righeLegate($doppie, $piano, $immobileId, $passaggiIds)->load('esercizio:id,nome,data_inizio')->groupBy('anagrafica_id');
+        $nonLegate = self::righeCheEntrano($doppie, $piano, $immobileId)->load('esercizio:id,nome,data_inizio')->groupBy('anagrafica_id');
+        // Gli esercizi delle righe di una serie, in ordine di data.
+        $esercizi = fn ($righe) => collect($righe)->pluck('esercizio')->filter()->unique('id')->sortBy(fn ($e) => (string) $e->data_inizio)->values();
+        // Una serie nella tabella: la somma delle sue righe detta con il verso, i nomi dei suoi esercizi, e se il Wallet la mostra.
+        $serie = fn ($righe): array => [
+            'cifra_formattata' => self::inVerso((int) collect($righe)->sum('saldo_iniziale')),
+            'esercizi'         => $esercizi($righe)->map(fn ($e) => (string) $e->nome)->all(),
+            'nel_wallet'       => FermataDopoScrivi::fuoriDalWallet(collect($righe))->isEmpty(),
+        ];
+
+        $righe = [];
+        $soloUna = [];
+        $nessuna = [];
+        foreach ($doppie as $id) {
+            $l = $legate->get($id, collect());
+            $n = $nonLegate->get($id, collect());
+            [$legata, $nonLegata] = [$serie($l), $serie($n)];
+            $unoSolo = $esercizi($l)->count() === 1 && $esercizi($l)->pluck('id')->all() === $esercizi($n)->pluck('id')->all();
+            $righe[] = ['id' => $id, 'nome' => $nomeDi[$id] ?? '', 'legata' => $legata, 'non_legata' => $nonLegata,
+                'esercizio' => $unoSolo ? (string) $esercizi($l)->first()->nome : null];
+            $quante = (int) $legata['nel_wallet'] + (int) $nonLegata['nel_wallet'];
+            if ($quante === 1) {
+                $soloUna[] = $id;
+            } elseif ($quante === 0) {
+                $nessuna[] = $id;
+            }
+        }
+
+        $nomi = fn (array $chi): string => self::elenco(array_map(fn (int $id) => $nomeDi[$id] ?? '', $chi));
+        $frasi = [count($doppie) > 1 ? sprintf('Le parti di %s entrano due volte.', $nomi($doppie)) : sprintf('La parte di %s entra due volte.', $nomi($doppie))];
+        // La strada, per chi ne ha almeno una nel Wallet: tutti, se il Wallet ne mostra almeno una di ognuno.
+        $daTogliere = array_values(array_diff($doppie, $nessuna));
+        if ($daTogliere !== []) {
+            $frasi[] = sprintf('%s una%s dal Wallet: il piano assorbe quella che resta alla prossima generazione.',
+                $nessuna === [] ? 'Togline' : 'Per ' . $nomi($daTogliere) . ' togline', count($daTogliere) > 1 ? ' per ognuno' : '');
+        }
+        $nelWallet = array_filter([
+            $soloUna === [] ? '' : sprintf('per %s ce n\'è solo una%s, ed è quella da togliere', $nomi($soloUna), count($soloUna) > 1 ? ' per ognuno' : ''),
+            $nessuna === [] ? '' : sprintf('per %s non ce n\'è nessuna', $nomi($nessuna)),
+        ], fn (string $x) => $x !== '');
+        if ($nelWallet !== []) {
+            $frasi[] = 'Il Wallet mostra un solo esercizio aperto: ' . implode('; ', $nelWallet) . '.';
+        }
+
+        return ['frase' => implode(' ', $frasi), 'righe' => $righe];
     }
 
     /**
@@ -383,15 +585,24 @@ final class DefuntoNelPiano
      * libere ma ne ha in un altro piano che si riscrive ancora (`$altrove`) non si confronta: le sue sono di quel piano, e la porta del Wallet non ne
      * accetta altre finché sono lì; la parte non è passata.
      *
+     * Coda 332, decisione 164: chi resta senza la sua parte è «incerto» anche se i saldi non legati che questa generazione assorbe stanno in un altro
+     * esercizio (la generazione li prende per gestione), non solo se occupa il posto del Wallet (`conUnSaldo`, per esercizio). E chi ha le righe legate
+     * che tornano e, accanto, saldi non legati che questa generazione assorbe e che tornano anch'essi ha la parte due volte (`doppie`): la generazione
+     * le assorbe tutte e due, e la parte non è passata finché una delle due serie non si toglie. Un riporto accanto che non è la parte non conta.
+     * Chi ha la parte due volte non è fra chi ce l'ha (`ok`, `ok_legati`). `parte_non_legata` dice, persona per persona, chi senza righe legate ha la
+     * sua parte nei saldi non legati, anche se a un altro manca ancora la sua: con più defunti sulla stessa unità quei saldi sono la sua parte in
+     * questa voce, e in un'altra non sono una seconda serie (`secondaSerieAltrove`). Con `$siLegge` falso `$saldiCheEntrano` arriva vuoto, e nessuno ce l'ha.
+     *
      * @param list<int> $persone il defunto e gli eredi, nell'ordine della frase
      * @param list<array<string, mixed>> $eredi
      * @param array<int, array{cents: int, righe: int}> $legati
      * @param array<int, int> $saldiCheEntrano
      * @param list<int> $conUnSaldo
      * @param array<int, array{cents: int, righe: int, piani: list<PianoRate>}> $altrove
-     * @return array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, altrove: list<int>, righe_altrove: int, piani_altrove: list<PianoRate>}
+     * @param list<int> $senzaSecondaSerie chi non ha la parte due volte qui, perché i suoi saldi non legati sono di un'altra voce della stessa unità
+     * @return array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, doppie: list<int>, parte_non_legata: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, altrove: list<int>, righe_altrove: int, piani_altrove: list<PianoRate>}
      */
-    private static function chiHaLaParte(array $persone, int $defuntoId, int $cifra, array $eredi, array $legati, array $saldiCheEntrano, array $conUnSaldo, bool $siLegge, array $altrove = []): array
+    private static function chiHaLaParte(array $persone, int $defuntoId, int $cifra, array $eredi, array $legati, array $saldiCheEntrano, array $conUnSaldo, bool $siLegge, array $altrove = [], array $senzaSecondaSerie = []): array
     {
         $attesi = self::attesi($defuntoId, $cifra, $eredi);
         $torna = fn (int $cents, int $id): bool => abs($cents - ($attesi[$id] ?? 0)) <= 1;
@@ -413,17 +624,25 @@ final class DefuntoNelPiano
         $senzaLegateOk = $siLegge && $senzaLegate !== []
             && collect($senzaLegate)->every(fn (int $id) => array_key_exists($id, $saldiCheEntrano) && $torna($saldiCheEntrano[$id], $id));
         $restano = $senzaLegateOk ? [] : $senzaLegate;
+        // La parte due volte: le righe legate tornano, e tornano anche i saldi non legati che questa generazione assorbe accanto a loro.
+        // Non chi ha quei saldi come seconda serie, o come parte, in un'altra voce della stessa unità (`secondaSerieAltrove`).
+        $doppie = array_values(array_filter($okLegati, fn (int $id) => ! in_array($id, $senzaSecondaSerie, true) && array_key_exists($id, $saldiCheEntrano) && $torna($saldiCheEntrano[$id], $id)));
+        $okLegati = array_values(array_diff($okLegati, $doppie));
+        // Chi ha saldi non legati: nel posto del Wallet (l'esercizio del piano) o fra quelli che questa generazione assorbe, di ogni esercizio.
+        $conSaldiNonLegati = array_merge($conUnSaldo, array_keys($saldiCheEntrano));
 
         return [
-            'parte_passata' => $siLegge && $daCorreggere === [] && $inUnAltroPiano === [] && ($senzaLegate === [] || $senzaLegateOk),
+            'parte_passata' => $siLegge && $daCorreggere === [] && $inUnAltroPiano === [] && $doppie === [] && ($senzaLegate === [] || $senzaLegateOk),
             'defunto_id' => $defuntoId,
             'altrove' => $inUnAltroPiano,
             'righe_altrove' => (int) array_sum(array_map(fn (int $id) => $altrove[$id]['righe'], $inUnAltroPiano)),
             'piani_altrove' => collect($inUnAltroPiano)->flatMap(fn (int $id) => $altrove[$id]['piani'])->unique('id')->values()->all(),
             'ok' => array_values(array_filter($persone, fn (int $id) => in_array($id, $okLegati, true) || ($senzaLegateOk && in_array($id, $senzaLegate, true)))),
             'ok_legati' => $okLegati,
-            'incerti' => array_values(array_filter($restano, fn (int $id) => in_array($id, $conUnSaldo, true))),
-            'mancanti' => array_values(array_filter($restano, fn (int $id) => ! in_array($id, $conUnSaldo, true))),
+            'doppie' => $doppie,
+            'parte_non_legata' => array_values(array_filter($senzaLegate, fn (int $id) => array_key_exists($id, $saldiCheEntrano) && $torna($saldiCheEntrano[$id], $id))),
+            'incerti' => array_values(array_filter($restano, fn (int $id) => in_array($id, $conSaldiNonLegati, true))),
+            'mancanti' => array_values(array_filter($restano, fn (int $id) => ! in_array($id, $conSaldiNonLegati, true))),
             'da_correggere' => $daCorreggere,
         ];
     }
@@ -496,8 +715,10 @@ final class DefuntoNelPiano
      * @param list<array{id: int, nome: string, cifra: int}> $eredi
      * @param list<string> $decessi
      * @param array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, successione: string} $strada
+     * @param array{righe: int, esercizi: list<string>} $fuoriDalWallet i saldi di chi ha già la sua parte, e degli incerti, che il Wallet non mostra (`fuoriDalWallet`)
+     * @param string $dueSerie la frase delle due serie di chi ha la parte due volte (`dueSerie`: i nomi e la strada; le serie sono nella tabella), vuota se nessuno
      */
-    private function frase(string $defunto, array $decessi, string $unita, int $cifra, array $eredi, bool $pianoApplicaSaldi, bool $allaCreazione, array $strada, bool $partePassata, ?string $perRuolo): string
+    private function frase(string $defunto, array $decessi, string $unita, int $cifra, array $eredi, bool $pianoApplicaSaldi, bool $allaCreazione, array $strada, bool $partePassata, ?string $perRuolo, array $fuoriDalWallet = ['righe' => 0, 'esercizi' => []], string $dueSerie = ''): string
     {
         $credito = $cifra < 0;
         $parteDegliEredi = self::elenco(array_map(fn (array $e) => sprintf('%s %s', $e['nome'], MoneyHelper::format(abs($e['cifra']))), $eredi));
@@ -580,6 +801,11 @@ final class DefuntoNelPiano
         $ok = $nomiDi($strada['ok']);
         $ciSonoGia = $ok === [] ? '' : sprintf('%s di %s %s già.', count($ok) > 1 ? 'Quelli' : 'Quello', self::elenco($ok), count($ok) > 1 ? 'ci sono' : 'c\'è');
         $poi = fn (string $prima): string => implode(' ', array_filter([$prima, $daCorreggere, $ciSonoGia], fn (string $x) => $x !== ''));
+        // Coda 332, decisione 164.1: qualcuno ha la parte due volte e a nessuno manca niente (né righe da registrare né saldi da leggere): le due serie
+        // aprono la strada, e di chi ha la sua parte una volta sola la frase lo dice dopo. Altrimenti le due serie seguono la variante. Dopo la strada
+        // delle due serie («quella che resta») la frase nomina la parte: «quella di …» si leggerebbe riferito alla serie (decisione 170).
+        $soloDueSerie = $dueSerie !== '' && $strada['altrove'] === [] && $incerti === [] && $mancanti === [];
+        $unaVoltaSola = $ok === [] ? '' : sprintf('%s di %s %s una volta sola.', count($ok) > 1 ? 'Le parti' : 'La parte', self::elenco($ok), count($ok) > 1 ? 'entrano' : 'entra');
 
         $variante = match (true) {
             // Le righe legate di qualcuno sono già in un altro piano che si riscrive ancora (prima delle V4: con loro la parte non è passata).
@@ -613,11 +839,16 @@ final class DefuntoNelPiano
             // V1 con qualcuno che ha già la sua parte: solo le righe che mancano.
             $mancanti !== [] => $poi(sprintf('Per passare la parte agli eredi registra dal Wallet %s, sulla stessa gestione: %s; il piano %s assorbe alla prossima generazione.',
                 $cheMancano, $righeDi($mancanti), $piuMancanti ? 'li' : 'lo')),
+            // Non manca niente, e qualcuno ha la parte due volte.
+            $soloDueSerie => $unite($dueSerie, $unaVoltaSola, $daCorreggere),
             // Non manca niente, ma una riga legata non è la parte.
             default => $poi(''),
         };
 
-        return $comune . ' ' . $variante;
+        // Le due serie di chi ha la parte due volte, dopo la variante che chiede ciò che manca. Poi, Coda 332: i saldi di chi ha già la sua parte stanno
+        // in un esercizio che non è quello aperto. Il Wallet non li mostra e la frase lo dice, in ogni variante: chi li cerca nel Wallet e non li trova li
+        // registrerebbe di nuovo. `voce()` li cerca solo con il piano che applica i saldi.
+        return $comune . ' ' . $unite($variante, $soloDueSerie ? '' : $dueSerie, self::nonNelWallet($fuoriDalWallet));
     }
 
     /**

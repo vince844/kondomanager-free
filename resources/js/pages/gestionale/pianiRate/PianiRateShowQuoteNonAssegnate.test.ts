@@ -13,6 +13,12 @@
  * - le sottrazioni in chiaro: la riga dello scarto (cifre del server), la riga di «Parziale» e la riga dei non assegnati sotto la voce;
  * - «1 voce inclusa» al singolare.
  *
+ * Coda 433 (decisioni 162 e 163): con tante unità il badge conta le unità e non le quote, con la cifra con il segno uguale allo scarto; la riga
+ * sotto la voce nomina le prime due unità e «altre N» e trova anche le quote dei sottoconti, con le chiavi che il server manda per la voce
+ * (`non_assegnati_chiavi`); il riquadro raggruppa per causa e mostra le prime cinque righe di ogni gruppo, con «Mostra tutte (N)» (e «N righe» quando
+ * le righe non sono le unità o le voci che l'intestazione conta). La frase del millesimo non compilato conta le unità, non le quote. Le frasi le fa
+ * `lib/gestionale/pianiRate/quoteNonAssegnate.ts`, che ha i suoi test; qui si prova che la pagina le usa.
+ *
  * Le cifre sono quelle del caso del v34 (regola del motore, `CalcoloQuoteService::distribuisciSuTabelle`): preventivo € 4.000,00, nel piano
  * € 2.500,00, Cantina 1 (30 su 1000 millesimi) € 75,00, nelle rate € 2.425,00.
  *
@@ -42,7 +48,8 @@ const PianiRateShow = (await import('@/pages/gestionale/pianiRate/PianiRateShow.
 
 let pagina: VueWrapper | null = null;
 
-const RISCALDAMENTO = { id: 1, nome: 'Riscaldamento', importo: 250000, importo_originale: 400000, is_parent: false, is_frazionato: true, tipo: 'spesa', non_assegnati_cents: 7500 };
+// Le chiavi delle quote sotto la voce, come le manda `PianoRateResource` accanto alla cifra.
+const RISCALDAMENTO = { id: 1, nome: 'Riscaldamento', importo: 250000, importo_originale: 400000, is_parent: false, is_frazionato: true, tipo: 'spesa', non_assegnati_cents: 7500, non_assegnati_chiavi: ['senza_titolare|3|1|2|proprietario|'] };
 const PULIZIE = { id: 2, nome: 'Pulizie', importo: 100000, importo_originale: 100000, is_parent: false, is_frazionato: false, tipo: 'spesa', non_assegnati_cents: 0 };
 const CANTINA = {
     chiave: 'senza_titolare|3|1|2|proprietario|', motivo: null, immobile_id: 3, immobile_nome: 'Cantina 1', conto_id: 1, conto_nome: 'Riscaldamento', tabella_id: 2,
@@ -78,11 +85,19 @@ async function monta(o: Opzioni = {}) {
 
 const pulisci = (t: string | null | undefined) => (t ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 const testo = () => pulisci(document.body.textContent);
-/** Il testo del riquadro, un blocco dopo l'altro (le righe sono blocchi a sé: il documento le attacca senza spazio, lo schermo le va a capo). */
+/**
+ * Il testo del riquadro, un blocco dopo l'altro (le righe sono blocchi a sé: il documento le attacca senza spazio, lo schermo le va a capo). Un
+ * gruppo per causa è un blocco con dentro l'intestazione, l'elenco e «Mostra tutte»: si legge anche lui un blocco dopo l'altro.
+ */
+const blocchi = (el: Element): string[] => [...el.children].flatMap((c) => {
+    if (c.tagName === 'UL') return [...c.children].map((li) => li.textContent ?? '');
+    if (c.tagName === 'DIV') return blocchi(c);
+    return [c.textContent ?? ''];
+});
 const riquadro = () => {
     const el = document.body.querySelector('[data-riquadro="quote-non-assegnate"]');
     if (!el) return '';
-    return pulisci([...el.children].map((c) => (c.tagName === 'UL' ? [...c.children].map((li) => li.textContent).join(' ') : c.textContent)).join(' '));
+    return pulisci(blocchi(el).join(' '));
 };
 /** Il badge accanto a «Copertura spese»: il titolo della sezione senza il suo nome. */
 const badge = () => {
@@ -109,28 +124,32 @@ afterEach(() => {
 });
 
 describe('il riquadro in cima: cifra, unità e perché (Coda 414)', () => {
+    // Coda 433 (decisione 162): la quota sta nel gruppo della sua causa, «Nessun proprietario — 1 unità», e la voce la dice l'intestazione.
     test('il v34: € 75,00, la Cantina 1 sulla voce del riscaldamento, nessun proprietario, la motivazione e la strada', async () => {
         await monta();
 
         expect(riquadro()).toBe('Questo piano rate contiene quote non assegnate: € 75,00. Le rate le hanno lasciate fuori: non sono addebitate a nessuno. '
-            + 'Cantina 1 · Riscaldamento: € 75,00 — nessun proprietario. Motivazione registrata: "Cantina 1 senza proprietario al rogito" '
+            + 'Nessun proprietario — 1 unità sulla voce Riscaldamento Cantina 1: € 75,00 Motivazione registrata: "Cantina 1 senza proprietario al rogito" '
             + '→ Censisci il titolare che manca, poi usa il tasto Ricalcola per includere la quota nel piano.');
     });
 
+    // Coda 433 (decisione 162): la voce senza tabella ha il suo gruppo, e la riga è la voce.
     test('una voce senza tabella: la quota è della voce, e la strada è collegare una tabella', async () => {
         await monta({ voci: [{ ...CANTINA, chiave: 'conto_senza_tabella||4|||', motivo: 'conto_senza_tabella', immobile_id: null, immobile_nome: null, conto_id: 4, conto_nome: 'Ascensore', tabella_id: null, tabella_nome: null, ruolo_richiesto: null, importo_cents: 60000 }], scarto: 60000,
             allineamento: { ...QUOTA_APERTA, scarto_cents: 60000, scarto_registrato_cents: 60000 } });
 
-        expect(riquadro()).toContain('Ascensore: € 600,00 — la voce non ha una tabella millesimale collegata.');
+        expect(riquadro()).toContain('La voce non ha una tabella millesimale collegata — 1 voce Ascensore: € 600,00');
         expect(riquadro()).toContain('→ Collega una tabella millesimale alla voce, poi usa il tasto Ricalcola');
     });
 
+    // Coda 433 (decisione 162): il millesimo non compilato resta nel suo gruppo, senza cifra.
     test('il solo millesimo non compilato non è una quota senza destinatario: lo dice, senza cifra', async () => {
         await monta({ voci: [{ ...CANTINA, motivo: 'millesimo_non_compilato', ruolo_richiesto: null, importo_cents: 0 }], scarto: 0,
             allineamento: { stato: 'allineato', atteso_cents: 250000, generato_cents: 250000, scarto_cents: 0, scarto_registrato_cents: null } });
 
         expect(riquadro()).toContain('Nessuna quota è rimasta senza destinatario, ma un\'unità non ha un millesimo: la sua parte l\'hanno pagata le altre.');
-        expect(riquadro()).toContain('Cantina 1 · Riscaldamento — non ha un millesimo nella tabella «Riscaldamento»: la sua parte è stata ripartita fra le altre unità.');
+        expect(riquadro()).toContain('Non ha un millesimo nella tabella «Riscaldamento»: la sua parte è stata ripartita fra le altre unità — 1 unità sulla voce Riscaldamento Cantina 1');
+        expect(riquadro()).not.toContain('Cantina 1:');
         expect(riquadro()).not.toContain('contiene quote non assegnate');
         expect(badge()).toBe('');
     });
@@ -193,11 +212,12 @@ describe('il badge di «Copertura spese»: tre casi (Coda 414)', () => {
         expect(testo()).not.toContain('ricalcola!');
     });
 
-    test('due quote: «2 quote» al posto dell\'unità', async () => {
+    // Coda 433 (decisione 162): il badge conta le unità, non le quote.
+    test('due unità: «2 unità» al posto dell\'unità', async () => {
         await monta({ voci: [CANTINA, { ...CANTINA, chiave: 'senza_titolare|9|1|2|proprietario|', immobile_id: 9, immobile_nome: 'Cantina 2', importo_cents: 5000 }], scarto: 12500,
             allineamento: { ...QUOTA_APERTA, generato_cents: 237500, scarto_cents: 12500, scarto_registrato_cents: 12500 } });
 
-        expect(badge()).toBe('Quota aperta · € 125,00 (2 quote)');
+        expect(badge()).toBe('Quota aperta · € 125,00 (2 unità)');
     });
 });
 
@@ -261,7 +281,7 @@ describe('«N voci incluse» (Coda 414)', () => {
 });
 
 describe('le quote delle voci di entrata contano con il loro segno (Coda 414)', () => {
-    const ANTENNA = { id: 2, nome: 'Antenna', importo: 100000, importo_originale: 100000, is_parent: false, is_frazionato: false, tipo: 'entrata', non_assegnati_cents: 3000 };
+    const ANTENNA = { id: 2, nome: 'Antenna', importo: 100000, importo_originale: 100000, is_parent: false, is_frazionato: false, tipo: 'entrata', non_assegnati_cents: 3000, non_assegnati_chiavi: ['senza_titolare|3|2|2|proprietario|'] };
     const CANTINA_ANTENNA = { ...CANTINA, chiave: 'senza_titolare|3|2|2|proprietario|', conto_id: 2, conto_nome: 'Antenna', importo_cents: 3000, segno: -1 };
 
     test('una sola quota su una voce di entrata: lo scarto è − € 30,00 e la quota lo spiega, senza nessun «arrotondamento»', async () => {
@@ -293,7 +313,7 @@ describe('le quote delle voci di entrata contano con il loro segno (Coda 414)', 
     });
 });
 describe('bassi della pagina del piano con le quote non assegnate (Coda 414)', () => {
-    const ANTENNA = { id: 2, nome: 'Antenna', importo: 100000, importo_originale: 100000, is_parent: false, is_frazionato: false, tipo: 'entrata', non_assegnati_cents: 3000 };
+    const ANTENNA = { id: 2, nome: 'Antenna', importo: 100000, importo_originale: 100000, is_parent: false, is_frazionato: false, tipo: 'entrata', non_assegnati_cents: 3000, non_assegnati_chiavi: ['senza_titolare|3|2|2|proprietario|'] };
     const CANTINA_ANTENNA = { ...CANTINA, chiave: 'senza_titolare|3|2|2|proprietario|', conto_id: 2, conto_nome: 'Antenna', importo_cents: 3000, segno: -1 };
 
     test('la quota di una voce di entrata non è «addebitata a nessuno»: è un credito che nessuno riceve', async () => {
@@ -328,11 +348,12 @@ describe('bassi della pagina del piano con le quote non assegnate (Coda 414)', (
         expect(riga('scarto')).toEqual(['Da mettere in rata € 75,00 − nelle rate € 0,00 = € 75,00: le quote non assegnate accettate.']);
     });
 
+    // Coda 433 (decisione 162): la causa, con i giorni quando sono gli stessi per tutte, la dice l'intestazione del gruppo.
     test('i giorni senza titolare: il rimedio è registrare il passaggio solo se qualcuno è entrato', async () => {
         const giorni = { ...CANTINA, motivo: 'giorni_senza_titolare', giorni: 184 };
         await monta({ voci: [giorni] });
 
-        expect(riquadro()).toContain('Cantina 1 · Riscaldamento: € 75,00 — per 184 giorni del periodo di competenza nessun titolare è in vigore.');
+        expect(riquadro()).toContain('Per 184 giorni del periodo di competenza nessun titolare è in vigore — 1 unità sulla voce Riscaldamento Cantina 1: € 75,00');
         expect(riquadro()).toContain('→ Registra il passaggio a chi è entrato (se qualcuno è entrato), poi usa il tasto Ricalcola per includere la quota nel piano.');
         pagina?.unmount();
         pagina = null;
@@ -344,3 +365,147 @@ describe('bassi della pagina del piano con le quote non assegnate (Coda 414)', (
     });
 });
 
+describe('la quota aperta con tante unità (Coda 433)', () => {
+    const ANTENNA = { id: 2, nome: 'Antenna', importo: 100000, importo_originale: 100000, is_parent: false, is_frazionato: false, tipo: 'entrata', non_assegnati_cents: 3000, non_assegnati_chiavi: ['senza_titolare|3|2|2|proprietario|'] };
+    const CANTINA_ANTENNA = { ...CANTINA, chiave: 'senza_titolare|3|2|2|proprietario|', conto_id: 2, conto_nome: 'Antenna', importo_cents: 3000, segno: -1 };
+    /** Le Cantine da 1 a 6 senza proprietario sulla voce del riscaldamento, € 75,00 ciascuna: € 450,00. */
+    const SEI = [1, 2, 3, 4, 5, 6].map((i) => ({ ...CANTINA, chiave: `senza_titolare|${10 + i}|1|2|proprietario|`, immobile_id: 10 + i, immobile_nome: `Cantina ${i}` }));
+    const RISCALDAMENTO_SEI = { ...RISCALDAMENTO, non_assegnati_cents: 45000, non_assegnati_chiavi: SEI.map((q) => q.chiave) };
+    const QUOTA_APERTA_SEI = { stato: 'quota_aperta', atteso_cents: 250000, generato_cents: 205000, scarto_cents: 45000, scarto_registrato_cents: 45000 };
+
+    // Decisione 163, D1: la cifra con il segno, uguale allo scarto.
+    test('una spesa da € 75,00 e un\'entrata da € 30,00: il badge e il riquadro dicono € 45,00, come lo scarto, non € 105,00', async () => {
+        await monta({
+            capitoli: [RISCALDAMENTO, ANTENNA], voci: [{ ...CANTINA, segno: 1 }, CANTINA_ANTENNA], scarto: 4500,
+            allineamento: { stato: 'quota_aperta', atteso_cents: 150000, generato_cents: 145500, scarto_cents: 4500, scarto_registrato_cents: 4500 },
+        });
+
+        expect(badge()).toBe('Quota aperta · € 45,00 (Cantina 1)');
+        expect(riquadro()).toContain('Questo piano rate contiene quote non assegnate: € 45,00.');
+        expect(riquadro()).toContain('Nessun proprietario — 1 unità Cantina 1 · Antenna: € -30,00 Cantina 1 · Riscaldamento: € 75,00');
+        expect(testo()).not.toContain('105,00');
+    });
+
+    // Decisione 162: un'unità su tre voci dice «(Cantina 1)», non «(3 quote)».
+    test('un\'unità su tre voci: il badge la nomina, con la somma (€ 75,00 + € 30,00 + € 18,00 = € 123,00)', async () => {
+        const pulizie = { ...CANTINA, chiave: 'senza_titolare|3|2|5|proprietario|', conto_id: 2, conto_nome: 'Pulizie', tabella_id: 5, tabella_nome: 'Generale', importo_cents: 3000 };
+        const ascensore = { ...CANTINA, chiave: 'senza_titolare|3|4|6|proprietario|', conto_id: 4, conto_nome: 'Ascensore', tabella_id: 6, tabella_nome: 'Scala A', importo_cents: 1800 };
+        await monta({ voci: [CANTINA, pulizie, ascensore], scarto: 12300, allineamento: { ...QUOTA_APERTA, atteso_cents: 400000, generato_cents: 387700, scarto_cents: 12300, scarto_registrato_cents: 12300 } });
+
+        expect(badge()).toBe('Quota aperta · € 123,00 (Cantina 1)');
+    });
+
+    // Decisione 162: il badge conta le unità; il riquadro raggruppa per causa e mostra le prime cinque righe, poi «Mostra tutte (N)».
+    test('sei unità sulla stessa voce: «(6 unità)», un gruppo «Nessun proprietario — 6 unità», cinque righe e «Mostra tutte (6)», che apre la sesta', async () => {
+        await monta({ capitoli: [RISCALDAMENTO_SEI], voci: SEI, scarto: 45000, allineamento: QUOTA_APERTA_SEI });
+
+        expect(badge()).toBe('Quota aperta · € 450,00 (6 unità)');
+        expect(riquadro()).toContain('Questo piano rate contiene quote non assegnate: € 450,00.');
+        expect(riquadro()).toContain('Nessun proprietario — 6 unità sulla voce Riscaldamento Cantina 1: € 75,00 Cantina 2: € 75,00 Cantina 3: € 75,00 Cantina 4: € 75,00 Cantina 5: € 75,00 Mostra tutte (6)');
+        expect(riquadro()).not.toContain('Cantina 6');
+
+        const mostra = [...document.body.querySelectorAll('[data-riquadro="quote-non-assegnate"] button')].find((b) => b.textContent?.includes('Mostra tutte')) as HTMLButtonElement;
+        mostra.click();
+        await flushPromises();
+
+        expect(riquadro()).toContain('Cantina 5: € 75,00 Cantina 6: € 75,00 Motivazione registrata');
+        expect(riquadro()).not.toContain('Mostra tutte');
+    });
+
+    // L'intestazione conta le unità, il pulsante le righe: con sei unità su tre voci sono 6 e 18, e il pulsante lo dice.
+    test('sei unità su tre voci: «6 unità» nell\'intestazione e «Mostra tutte (18 righe)» sul pulsante, che apre le altre', async () => {
+        const voce = (q: typeof SEI[number], conto: number, nome: string, cents: number) => ({ ...q, chiave: `${q.chiave}${conto}`, conto_id: conto, conto_nome: nome, importo_cents: cents });
+        // per unità: € 75,00 + € 30,00 + € 18,00 = € 123,00; sei unità: € 738,00
+        const voci = SEI.flatMap((q) => [q, voce(q, 2, 'Pulizie', 3000), voce(q, 3, 'Ascensore', 1800)]);
+        await monta({ capitoli: [RISCALDAMENTO_SEI], voci, scarto: 73800, allineamento: { stato: 'quota_aperta', atteso_cents: 400000, generato_cents: 326200, scarto_cents: 73800, scarto_registrato_cents: 73800 } });
+
+        expect(badge()).toBe('Quota aperta · € 738,00 (6 unità)');
+        expect(riquadro()).toContain('Nessun proprietario — 6 unità Cantina 1 · Ascensore: € 18,00 Cantina 1 · Pulizie: € 30,00 Cantina 1 · Riscaldamento: € 75,00 '
+            + 'Cantina 2 · Ascensore: € 18,00 Cantina 2 · Pulizie: € 30,00 Mostra tutte (18 righe)');
+
+        const mostra = [...document.body.querySelectorAll('[data-riquadro="quote-non-assegnate"] button')].find((b) => b.textContent?.includes('Mostra tutte')) as HTMLButtonElement;
+        mostra.click();
+        await flushPromises();
+
+        expect(riquadro()).toContain('Cantina 6 · Pulizie: € 30,00 Cantina 6 · Riscaldamento: € 75,00 Motivazione registrata');
+        expect(riquadro()).not.toContain('Mostra tutte');
+    });
+
+    // Il bersaglio di «Mostra tutte» è alto almeno 32 px, anche su un telefono.
+    test('«Mostra tutte» è un pulsante alto almeno 32 px', async () => {
+        await monta({ capitoli: [RISCALDAMENTO_SEI], voci: SEI, scarto: 45000, allineamento: QUOTA_APERTA_SEI });
+
+        const mostra = [...document.body.querySelectorAll('[data-riquadro="quote-non-assegnate"] button')].find((b) => b.textContent?.includes('Mostra tutte'));
+        expect(mostra?.getAttribute('type')).toBe('button');
+        expect(mostra?.classList.contains('min-h-[32px]')).toBe(true);
+    });
+
+    // Decisione 162: la riga della voce nomina le prime due unità e «altre N», con la causa quando è la stessa per tutte.
+    test('sotto la voce con sei unità: «Cantina 1, Cantina 2 e altre 4: nessun proprietario»', async () => {
+        await monta({ capitoli: [RISCALDAMENTO_SEI], voci: SEI, scarto: 45000, allineamento: QUOTA_APERTA_SEI });
+        await apriLeVoci();
+
+        expect(riga('non-assegnati')).toEqual(['Non assegnati € 450,00 (Cantina 1, Cantina 2 e altre 4: nessun proprietario): restano fuori dalle rate.']);
+    });
+
+    // La quota di un sottoconto sta sotto il capitolo del piano: la pagina la trova con le chiavi che il server manda per il capitolo.
+    test('sotto un capitolo con i sottoconti: la riga nomina l\'unità della quota registrata sul sottoconto', async () => {
+        const manutenzione = { id: 9, nome: 'Manutenzione', importo: 100000, importo_originale: 100000, is_parent: true, figli_names: 'Caldaia', is_frazionato: false, tipo: 'spesa', non_assegnati_cents: 3000, non_assegnati_chiavi: ['senza_titolare|3|7|2|proprietario|'] };
+        const caldaia = { ...CANTINA, chiave: 'senza_titolare|3|7|2|proprietario|', conto_id: 7, conto_nome: 'Caldaia', importo_cents: 3000 };
+        await monta({ capitoli: [manutenzione], voci: [caldaia], scarto: 3000, allineamento: { ...QUOTA_APERTA, atteso_cents: 100000, generato_cents: 97000, scarto_cents: 3000, scarto_registrato_cents: 3000 } });
+        await apriLeVoci();
+
+        expect(riga('non-assegnati')).toEqual(['Non assegnati € 30,00 (Cantina 1: nessun proprietario): restano fuori dalle rate.']);
+    });
+
+    // Il basso nato con la riga: sotto una voce di entrata la quota è un credito che nessuno riceve.
+    test('sotto una voce di entrata: la riga dice che nessuno riceve quel credito', async () => {
+        await monta({
+            capitoli: [ANTENNA], voci: [CANTINA_ANTENNA], scarto: -3000,
+            allineamento: { stato: 'quota_aperta', atteso_cents: -100000, generato_cents: -97000, scarto_cents: -3000, scarto_registrato_cents: -3000 },
+        });
+        await apriLeVoci();
+
+        expect(riga('non-assegnati')).toEqual(['Non assegnati € 30,00 (Cantina 1: nessun proprietario): restano fuori dalle rate, e nessuno li riceve come credito.']);
+        expect(badge()).toBe('Quota aperta · € -30,00 (Cantina 1)');
+    });
+
+    // La cifra del badge è la somma delle quote con il segno (`nonAssegnatoConSegno`); il centesimo dell'arrotondamento lo spiega la riga dello scarto.
+    test('due cantine da € 2,45 con uno scarto di € 4,89: il badge dice € 4,90 e «2 unità», la riga dello scarto dice l\'arrotondamento', async () => {
+        const k1 = { ...CANTINA, chiave: 'senza_titolare|21|1|2|proprietario|', immobile_id: 21, immobile_nome: 'Cantina K1', importo_cents: 245 };
+        const k2 = { ...CANTINA, chiave: 'senza_titolare|22|1|2|proprietario|', immobile_id: 22, immobile_nome: 'Cantina K2', importo_cents: 245 };
+        await monta({ voci: [k1, k2], scarto: 489, allineamento: { stato: 'quota_aperta', atteso_cents: 250368, generato_cents: 249879, scarto_cents: 489, scarto_registrato_cents: 489 } });
+
+        expect(badge()).toBe('Quota aperta · € 4,90 (2 unità)');
+        expect(riga('scarto')).toEqual(['Da mettere in rata € 2.503,68 − nelle rate € 2.498,79 = € 4,89: le quote non assegnate accettate (€ 4,90 le singole quote, la differenza è l\'arrotondamento).']);
+    });
+
+    test('cinque unità: tutte le righe, e nessun «Mostra tutte»', async () => {
+        const cinque = SEI.slice(0, 5);
+        await monta({ capitoli: [{ ...RISCALDAMENTO_SEI, non_assegnati_cents: 37500, non_assegnati_chiavi: cinque.map((q) => q.chiave) }], voci: cinque, scarto: 37500,
+            allineamento: { ...QUOTA_APERTA_SEI, generato_cents: 212500, scarto_cents: 37500, scarto_registrato_cents: 37500 } });
+
+        expect(riquadro()).toContain('Cantina 5: € 75,00 Motivazione registrata');
+        expect(riquadro()).not.toContain('Mostra tutte');
+    });
+
+    // La frase conta le unità distinte, come i gruppi che le stanno sotto: un'unità in due tabelle è un'unità.
+    test('il millesimo non compilato di un\'unità in due tabelle: la frase dice «un\'unità», come i due gruppi che le stanno sotto', async () => {
+        const senza = (tabella: string) => ({ ...CANTINA, chiave: `millesimo_non_compilato|3|1|${tabella}`, motivo: 'millesimo_non_compilato', ruolo_richiesto: null, tabella_nome: tabella, importo_cents: 0 });
+        await monta({ voci: [senza('Riscaldamento'), senza('Generale')], scarto: 0,
+            allineamento: { stato: 'allineato', atteso_cents: 250000, generato_cents: 250000, scarto_cents: 0, scarto_registrato_cents: null } });
+
+        expect(riquadro()).toContain('Nessuna quota è rimasta senza destinatario, ma un\'unità non ha un millesimo: la sua parte l\'hanno pagata le altre.');
+        expect(riquadro()).toContain('Non ha un millesimo nella tabella «Riscaldamento»: la sua parte è stata ripartita fra le altre unità — 1 unità sulla voce Riscaldamento Cantina 1');
+        expect(riquadro()).toContain('Non ha un millesimo nella tabella «Generale»: la sua parte è stata ripartita fra le altre unità — 1 unità sulla voce Riscaldamento Cantina 1');
+        expect(riquadro()).not.toContain('2 unità non hanno');
+    });
+
+    test('il millesimo non compilato di due unità: la frase dice «2 unità», anche se una è in due tabelle', async () => {
+        const senza = (immobile: number, nome: string, tabella: string) => ({ ...CANTINA, chiave: `millesimo_non_compilato|${immobile}|1|${tabella}`, motivo: 'millesimo_non_compilato', ruolo_richiesto: null, immobile_id: immobile, immobile_nome: nome, tabella_nome: tabella, importo_cents: 0 });
+        await monta({ voci: [senza(3, 'Cantina 1', 'Riscaldamento'), senza(3, 'Cantina 1', 'Generale'), senza(9, 'Cantina 2', 'Riscaldamento')], scarto: 0,
+            allineamento: { stato: 'allineato', atteso_cents: 250000, generato_cents: 250000, scarto_cents: 0, scarto_registrato_cents: null } });
+
+        expect(riquadro()).toContain('Nessuna quota è rimasta senza destinatario, ma 2 unità non hanno un millesimo: la loro parte l\'hanno pagata le altre.');
+    });
+});

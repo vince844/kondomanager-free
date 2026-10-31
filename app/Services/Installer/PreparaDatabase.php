@@ -40,17 +40,26 @@ class PreparaDatabase
     }
 
     /**
-     * Dopo migrate:fresh il database è vuoto ma la cache di Spatie contiene ancora i permessi di
-     * prima: senza questo purge il seeder trova dati stale e può fallire in silenzio (fix già
-     * proposto come PR al pacchetto eii/installer).
+     * La cache dei permessi di Spatie si toglie sempre: il seeder dei ruoli deve leggere i permessi
+     * dal database, non quelli rimasti in cache, o può fallire in silenzio (fix già proposto come
+     * PR al pacchetto eii/installer).
+     *
+     * Il resto della cache si svuota solo con `$fresh`, cioè dopo il `migrate:fresh` del wizard,
+     * quando il database è appena stato azzerato. `km:install` migra senza `fresh` e la chiama senza
+     * argomenti: il resto della cache non lo svuota mai, nemmeno su un database vuoto. Con la cache nel
+     * database (il container) nasce vuota con lo schema; con un negozio conservato fuori dal database
+     * può restare ciò che l'installazione di prima vi ha scritto (per esempio i conteggi dell'inbox o
+     * lo stato degli aggiornamenti).
      */
-    public function pulisciCache(): void
+    public function pulisciCache(bool $fresh = false): void
     {
         if (class_exists(PermissionRegistrar::class)) {
             app()[PermissionRegistrar::class]->forgetCachedPermissions();
         }
 
-        Artisan::call('cache:clear');
+        if ($fresh) {
+            Artisan::call('cache:clear');
+        }
     }
 
     /** I soli ruoli e permessi: serve a chi deve creare l'amministratore PRIMA del resto dei seeder. */

@@ -8,6 +8,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\BudgetMovement;
 use App\Models\Gestionale\PianoConto;
+use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\Riparto\SpeseNegativeNelPiano;
 use App\Services\Riparto\VoceDiSpesaNegativa;
 use Carbon\CarbonInterface;
@@ -775,7 +776,11 @@ class BudgetMovementService
     }
 
     /**
-     * Quanto è già stato speso su questa voce, letto dallo stesso posto del cruscotto.
+     * Quanto è già stato speso su questa voce, letto dallo stesso posto del cruscotto, nell'esercizio del piano.
+     *
+     * L'esercizio è quello del piano (`CompetenzaDelPiano::esercizioDelPiano`, Coda 75): la stessa gestione ordinaria si aggancia a ogni esercizio
+     * e il pivot resta attivo su tutti, quindi «il primo attivo» misurava a caso lo speso di un altro anno, e il limite di «Sposta spesa» rifiutava
+     * uno spostamento lecito o ne lasciava passare uno che scopre la voce.
      *
      * Nessun esercizio risolvibile (capita nei piani rate di test, o su una gestione senza
      * esercizio collegato) → nessuno speso conosciuto, non un blocco: è la stessa scelta che fa
@@ -783,8 +788,7 @@ class BudgetMovementService
      */
     private function spesoRegistratoSu(PianoRate $piano, int $contoId): int
     {
-        $esercizio = $piano->gestione->esercizi()->wherePivot('attiva', true)->first()
-            ?? $piano->gestione->esercizi()->first();
+        $esercizio = app(CompetenzaDelPiano::class)->esercizioDelPiano($piano);
 
         if (! $esercizio instanceof Esercizio) {
             return 0;

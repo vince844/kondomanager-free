@@ -57,7 +57,7 @@ function elencoRottePubblicheCheScrivono(): array
         'password.store'          => [PUBBLICA_GESTORE, 'il token del reset salvato da Laravel e mandato alla casella dell\'utente', 'Password::reset('],
         'POST two-factor-challenge' => [PUBBLICA_MIDDLEWARE, 'la sessione aperta dalla password giusta', \App\Http\Middleware\EnsureTwoFactorChallengeSession::class],
         'POST register'           => [PUBBLICA_MIDDLEWARE, 'registrazione pubblica: aperta solo se l\'amministratore l\'ha accesa, e l\'account nasce col ruolo predefinito', \App\Http\Middleware\CheckUserRegistration::class],
-        'password.email'          => [PUBBLICA_APERTA, 'manda il link del reset alla casella dell\'email indicata, e non dice se l\'account esiste; l\'host del link però viene dalla richiesta (Coda 239)'],
+        'password.email'          => [PUBBLICA_APERTA, 'manda il link del reset alla casella dell\'email indicata, e non dice se l\'account esiste; il link porta l\'indirizzo configurato dell\'installazione (APP_URL), o quello della richiesta se APP_URL è il valore di serie'],
 
         // --- recupero di un ripristino fallito: il login non c'è più, l'import l'ha azzerato ----
         'ripristino.step'         => [PUBBLICA_MIDDLEWARE, 'il token del ripristino', \App\Http\Middleware\EnsureRestoreToken::class],

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Exceptions\RoleDoesNotExist;
 
 /**
  * Il passo «amministratore» del wizard, senza il wizard: le stesse regole di `CreateAdmin`
@@ -20,18 +21,24 @@ class CreaAmministratore
 {
     /**
      * C'è già un amministratore? È il segno di un'installazione fatta, con o senza wizard e
-     * anche senza il file di lock (dai sorgenti: `migrate` + `db:seed`). Se le tabelle non ci
-     * sono ancora, o il database non risponde, la risposta è «no», senza eccezioni.
+     * anche senza il file di lock (dai sorgenti: `migrate` + `db:seed`).
+     *
+     * Risponde `false` solo quando il database dice che non c'è: mancano le tabelle, manca il
+     * ruolo, o nessun utente lo ha. Se non riesce a leggerlo, lo dice con l'eccezione della
+     * lettura: «non so» non vale «no», e ogni chiamante decide che cosa farne.
+     *
+     * @throws \Throwable se la lettura dal database non riesce
      */
     public function esisteUnAmministratore(): bool
     {
-        try {
-            if (! Schema::hasTable('users') || ! Schema::hasTable(config('permission.table_names.roles', 'roles'))) {
-                return false;
-            }
+        if (! Schema::hasTable('users') || ! Schema::hasTable(config('permission.table_names.roles', 'roles'))) {
+            return false;
+        }
 
+        try {
             return User::role(config('installer.spatie.admin_role', 'amministratore'))->exists();
-        } catch (\Throwable) {
+        } catch (RoleDoesNotExist) {
+            // Il database ha risposto: il ruolo non c'è, quindi nemmeno chi lo ha.
             return false;
         }
     }

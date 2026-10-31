@@ -2,7 +2,9 @@
 
 use App\Models\User;
 use App\Settings\GeneralSettings;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Seeder;
+use Illuminate\Foundation\MaintenanceModeManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
@@ -19,6 +21,13 @@ use Spatie\Permission\Models\Role;
  * Il database della suite è già migrato da RefreshDatabase, e un'installazione vera parte dal
  * vuoto: i test che contano girano su un file sqlite nuovo, reso connessione predefinita per la
  * durata del test. La transazione della suite resta sulla connessione `sqlite` e non c'entra.
+ *
+ * Un'installazione fatta resta com'è. Se la lettura che dice se c'è un amministratore non riesce,
+ * il comando esce con errore senza scrivere, come quando il database non risponde: «non so» non
+ * vale «no». E su un database che ha già le tabelle, della cache si toglie solo quella dei permessi.
+ * In questi test la manutenzione sta dove la tiene un'istanza in un container: nella cache, sulla
+ * tabella `cache` del database (`APP_MAINTENANCE_DRIVER=cache`, come lo imposta chi orchestra i
+ * container, sul negozio `database`, che è quello di serie; il Dockerfile mette `CACHE_STORE=database`).
  */
 
 function databaseVuotoPerInstallazione(): string
@@ -62,7 +71,79 @@ afterEach(function () {
     if (isset($this->dbFile)) {
         File::delete($this->dbFile);
     }
+    if (isset($this->storage)) {
+        File::deleteDirectory($this->storage);
+    }
 });
+
+/**
+ * L'istanza in manutenzione, con `artisan down` come la chiude chi la orchestra, e la manutenzione
+ * nella tabella `cache` della connessione della suite. `artisan down` scrive anche
+ * `framework/maintenance.php`: `storage` sta in una cartella temporanea, perché quella vera è
+ * dell'installazione che gira su questa macchina.
+ */
+function istanzaInManutenzioneNelDatabase($test): void
+{
+    $test->storage = sys_get_temp_dir().'/km-installa-storage-'.uniqid();
+    File::ensureDirectoryExists($test->storage.'/framework');
+    app()->useStoragePath($test->storage);
+
+    config([
+        'cache.default' => 'database',
+        'app.maintenance.driver' => 'cache',
+        'app.maintenance.store' => 'database',
+    ]);
+    app()->forgetInstance(MaintenanceModeManager::class);
+
+    $test->artisan('down', ['--redirect' => 'https://pagina.example/istanza-chiusa'])->assertSuccessful();
+
+    expect(app()->isDownForMaintenance())->toBeTrue();
+}
+
+/**
+ * La prossima interrogazione che contiene `$frammento` non riesce, una volta sola (senza frammento,
+ * la prossima qualunque): dopo, il database risponde come sempre. L'eccezione è quella che il
+ * database dà quando rifiuta una connessione in più.
+ */
+function letturaCheNonRiesceUnaVolta(?string $frammento): void
+{
+    $giaFallita = false;
+
+    DB::connection()->beforeExecuting(function (string $query) use (&$giaFallita, $frammento) {
+        if (! $giaFallita && ($frammento === null || str_contains($query, $frammento))) {
+            $giaFallita = true;
+
+            throw new QueryException(DB::getDefaultConnection(), $query, [], new PDOException('SQLSTATE[HY000] [1040] Too many connections'));
+        }
+    });
+}
+
+/** Esegue `$fai` con le variabili `INSTALL_*` date, come le trova il comando nel container, e le rimette com'erano. */
+function conLeVariabiliDiInstallazione(array $variabili, Closure $fai): void
+{
+    $vecchie = [];
+    foreach ($variabili as $k => $v) {
+        $vecchie[$k] = $_ENV[$k] ?? null;
+        $_ENV[$k] = $_SERVER[$k] = $v;
+    }
+
+    try {
+        $fai();
+    } finally {
+        foreach ($vecchie as $k => $v) {
+            if ($v === null) {
+                unset($_ENV[$k], $_SERVER[$k]);
+            } else {
+                $_ENV[$k] = $_SERVER[$k] = $v;
+            }
+        }
+    }
+}
+
+function nomeDelloStudioSalvato(): mixed
+{
+    return DB::table('settings')->where('group', 'general')->where('name', 'app_name')->value('payload');
+}
 
 it('installa da un database vuoto con i dati dell\'amministratore, senza l\'utente di comodo', function () {
     $this->dbFile = databaseVuotoPerInstallazione();
@@ -214,6 +295,69 @@ it('se il database non risponde non scrive nulla ed esce con errore', function (
         ->assertFailed();
 
     expect(file_exists($this->lock))->toBeFalse();
+});
+
+it('un errore di lettura ferma l\'installazione senza scrivere: la manutenzione, gli utenti e il nome restano quelli di prima', function (string $emailAmministratore, ?string $letturaCheNonRiesce) {
+    // Un'installazione già fatta, chiusa in manutenzione e senza il file di lock; le variabili `INSTALL_*` sono nell'ambiente.
+    Role::findOrCreate('amministratore', 'web');
+    User::factory()->create(['email' => $emailAmministratore])->assignRole('amministratore');
+    $utenti = User::count();
+    config(['app.name' => 'Nome del primo avvio']);
+    $nomeDelloStudio = nomeDelloStudioSalvato();
+    istanzaInManutenzioneNelDatabase($this);
+
+    letturaCheNonRiesceUnaVolta($letturaCheNonRiesce);
+
+    conLeVariabiliDiInstallazione([
+        'INSTALL_ADMIN_NAME' => 'Amministratore del primo avvio',
+        'INSTALL_ADMIN_EMAIL' => 'primo-avvio@esempio.it',
+        'INSTALL_ADMIN_PASSWORD' => 'segreta-01',
+    ], fn () => $this->artisan('kondomanager:installa', $this->attendi)
+        ->expectsOutputToContain('nessuna scrittura')
+        ->assertExitCode(1));
+
+    expect(app()->isDownForMaintenance())->toBeTrue()
+        ->and(User::count())->toBe($utenti)
+        ->and(User::role('amministratore')->pluck('email')->all())->toBe([$emailAmministratore])
+        ->and(nomeDelloStudioSalvato())->toBe($nomeDelloStudio)
+        ->and(file_exists($this->lock))->toBeFalse();
+})->with([
+    'la lettura dei ruoli, con l\'amministratore dell\'installazione' => ['primo-avvio@esempio.it', 'model_has_roles'],
+    'la lettura dei ruoli, con un altro amministratore' => ['studio@esempio.it', 'model_has_roles'],
+    'la lettura delle tabelle, con un altro amministratore' => ['studio@esempio.it', null],
+]);
+
+it('su un database installato la cache non si svuota: la manutenzione resta', function () {
+    Role::findOrCreate('amministratore', 'web');
+    User::factory()->create(['email' => 'gia@esempio.it'])->assignRole('amministratore');
+    istanzaInManutenzioneNelDatabase($this);
+
+    $this->artisan('kondomanager:installa', $this->attendi + [
+        '--admin-email' => 'nuovo@esempio.it',
+        '--admin-password' => 'segreta-01',
+    ])
+        ->expectsOutputToContain('esiste un amministratore')
+        ->assertSuccessful();
+
+    expect(app()->isDownForMaintenance())->toBeTrue()
+        ->and(User::where('email', 'nuovo@esempio.it')->exists())->toBeFalse()
+        ->and(file_exists($this->lock))->toBeTrue();
+});
+
+it('su un database con le tabelle e senza amministratore l\'installazione toglie solo la cache dei permessi: la manutenzione resta', function () {
+    // La lettura riesce e dice «nessun amministratore» (il ruolo c'è, nessun utente lo ha): il
+    // comando installa, e la cache che trova è quella dell'installazione che gira.
+    Role::findOrCreate('amministratore', 'web');
+    User::factory()->create(['email' => 'utente@esempio.it']);
+    istanzaInManutenzioneNelDatabase($this);
+
+    $this->artisan('kondomanager:installa', $this->attendi + [
+        '--admin-email' => 'mario@esempio.it',
+        '--admin-password' => 'segreta-01',
+    ])->assertSuccessful();
+
+    expect(app()->isDownForMaintenance())->toBeTrue()
+        ->and(User::role('amministratore')->pluck('email')->all())->toBe(['mario@esempio.it']);
 });
 
 it('un errore dopo la creazione dell\'amministratore non lascia niente: il secondo avvio rifà tutto', function () {
