@@ -387,7 +387,105 @@ class FatturaPassiva extends Model
                 ? 'dopo lo storno quelle rate la chiederebbero ancora'
                 : 'dopo lo storno le sue rate la chiederebbero ancora',
             'storna la fattura',
-        );
+        ) ?? $this->motivoSpesaAdPersonamGiaChiesta('storno', 'storna la fattura');
+    }
+
+    /**
+     * Perché lo storno o una nota di credito non tolgono la spesa ad personam di questa fattura (Coda 313, decisione 160) — o null: un piano
+     * che la contiene ha già emesso una rata che chiede quella spesa su un'unità della fattura (`RataQuote::rateEmesseConAdPersonam`, anche
+     * le emissioni scritte fino alla 1.11.0-beta.58, che non hanno la riga di chiusura). La chiusura dell'emissione e lo storno, o la nota,
+     * la toglierebbero due volte dall'unità; il programma non scrive un credito al posto delle persone. La strada passa dal piano: gli
+     * incassi stornati, le emissioni annullate, il piano in bozza ed eliminato (la scala di `viaDalPiano`), poi lo storno o la nota, e dal
+     * carrello un piano nuovo, che chiede la fattura al netto della nota.
+     *
+     * @param  'storno'|'nota'|'collega'  $come  lo storno della fattura, una nota collegata registrata o modificata, «Collega a una fattura»
+     * @param  list<int>|null  $unita  le unità che la nota riduce (null: tutte quelle della fattura)
+     */
+    public function motivoSpesaAdPersonamGiaChiesta(string $come, string $poi, ?array $unita = null): ?string
+    {
+        $sue = $this->righe->whereNotNull('immobile_id')->pluck('immobile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($unita !== null) {
+            $sue = array_values(array_intersect($sue, array_map('intval', $unita)));
+        }
+        $voci = $sue === [] ? [] : RataQuote::rateEmesseConAdPersonam($sue, $this->pianiRate->pluck('id')->map(fn ($id) => (int) $id)->all());
+        if ($voci === []) {
+            return null;
+        }
+        $una = array_sum(array_map(fn (array $v) => count($v['rate']), $voci)) === 1;
+        $chiesta = $una ? 'quella rata l\'ha chiesta ai condòmini' : 'quelle rate l\'hanno chiesta ai condòmini';
+        $toglie = match ($come) {
+            'storno' => 'lo storno la toglierebbe dall\'unità',
+            'collega' => 'collegata, la nota la toglierebbe dalla fattura',
+            default => 'la nota la toglierebbe dall\'unità',
+        };
+        $suUnita = RataQuote::elencoUnita(array_values(array_intersect($sue, array_merge(...array_column($voci, 'unita')))));
+        $pianiDelleVoci = array_map(fn (array $v) => collect($this->pianiRate)->firstWhere('id', $v['piano_id']), $voci);
+        if (count($voci) === 1) {
+            $piano = $pianiDelleVoci[0];
+            $via = ucfirst($piano?->stradaDelPianoConguagliato() ?? ($piano?->haIncassiRegistrati()
+                ? 'storna prima gli incassi registrati sulle sue rate, annulla le emissioni, riporta il piano in bozza ed eliminalo'
+                : 'annulla le emissioni, riporta il piano in bozza ed eliminalo'));
+        } else {
+            $via = 'Per ciascuno di quei piani storna prima gli incassi registrati sulle sue rate, se ce ne sono, annulla le emissioni, riportalo in bozza ed eliminalo'
+                . (($fermi = PianoRate::fraseDeiPianiConguagliati($pianiDelleVoci)) === null ? '' : '; ' . $fermi);
+        }
+        $dopo = $come === 'storno'
+            ? (count($voci) === 1 ? 'le altre fatture del piano, se ce ne sono, tornano disponibili per un piano nuovo.' : 'le altre fatture di quei piani, se ce ne sono, tornano disponibili per un piano nuovo.')
+            : 'nel carrello del piano nuovo la fattura compare al netto della nota.';
+
+        return ucfirst(RataQuote::fraseRateEmesse($voci)) . " con la spesa ad personam della fattura n. {$this->numero_documento} su {$suUnita}: "
+            . "{$toglie} dopo che {$chiesta}. {$via}, poi {$poi}; {$dopo}";
+    }
+
+    /**
+     * Perché una nota collegata a questa fattura non toglie da un'unità più di quanto la fattura le ha addebitato (Coda 313, decisione 160,
+     * limite L4 della forma semplice) — o null. Il giornale scrive la riga della nota sull'unità per intero, anche dove la fattura non ha
+     * righe o ne ha di meno (nel netto quell'eccedenza «non è attribuibile», decisione 26, punto 6): la parte in più toglie dall'unità
+     * l'anticipazione di un'altra spesa. Se su quell'unità una rata emessa, di qualunque piano, ha chiesto una spesa ad personam, le
+     * emissioni l'hanno già chiusa, e l'unità resterebbe a credito senza persona: la stessa guardia della nota senza fattura
+     * (`FatturaPassivaService::motivoNotaSenzaFatturaSuSpesaChiesta`), per la sola parte che la fattura non copre.
+     *
+     * Quanto la fattura ha sull'unità: le sue righe sull'unità (imponibile più IVA) meno le righe delle altre note collegate su quell'unità
+     * (anche le contestate: il giornale le scrive); `$escludi` è la nota che si modifica, che non conta fra le altre.
+     *
+     * @param  'nota'|'collega'  $come
+     * @param  array<int, int>  $riduzioni  quanto la nota toglie da ogni unità, in centesimi (positivo)
+     */
+    public function motivoNotaOltreLaFattura(string $come, array $riduzioni, ?int $escludi = null): ?string
+    {
+        foreach ($riduzioni as $unita => $toglie) {
+            $ha = (int) $this->righe->where('immobile_id', $unita)->sum(fn ($r) => (int) $r->importo_imponibile + (int) $r->importo_iva);
+            $altre = -(int) \Illuminate\Support\Facades\DB::table('righe_fattura as rf')->join('fatture_passive as n', 'n.id', '=', 'rf.fattura_passiva_id')
+                ->where('n.fattura_rettificata_id', $this->id)->where('n.tipo_documento', 'nota_credito')
+                ->when($escludi !== null, fn ($q) => $q->where('n.id', '!=', $escludi))->where('rf.immobile_id', $unita)
+                ->sum(\Illuminate\Support\Facades\DB::raw('rf.importo_imponibile + rf.importo_iva'));
+            $resta = max(0, $ha - $altre);
+            if ($toglie <= $resta) {
+                continue;
+            }
+            $voci = RataQuote::rateEmesseConAdPersonam([(int) $unita]);
+            if ($voci === []) {
+                continue;
+            }
+            $etichetta = RataQuote::elencoUnita([(int) $unita]);
+            $chiesta = array_sum(array_map(fn (array $v) => count($v['rate']), $voci)) === 1 ? 'quella rata l\'ha chiesta' : 'quelle rate l\'hanno chiesta';
+            $fattura = "la fattura n. {$this->numero_documento}";
+            $apre = $ha === 0
+                ? "La nota ha una riga su {$etichetta}, dove {$fattura} non ha righe"
+                : "La nota toglie da {$etichetta} " . MoneyHelper::format($toglie) . ", più " . ($resta === $ha ? 'di quanto' : 'di quanto, al netto delle altre note collegate,')
+                    . " {$fattura} ha su quell'unità (" . MoneyHelper::format($resta) . ')';
+            $dellaFattura = $this->righe->whereNotNull('immobile_id')->pluck('immobile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $metti = $ha === 0
+                ? ($dellaFattura === [] ? 'metti la riga senza l\'unità, su un capitolo'
+                    : 'metti la riga ' . (count($dellaFattura) === 1 ? 'sull\'unità' : 'su un\'unità') . ' della fattura, ' . RataQuote::elencoUnita($dellaFattura))
+                : ($resta === 0 ? 'togli la riga da ' . $etichetta : 'riduci la riga su ' . $etichetta . ' a non più di ' . MoneyHelper::format($resta));
+            $se = $come === 'collega' ? "Se la nota rettifica {$fattura}, modificala e {$metti}, poi collegala" : "Se la nota rettifica {$fattura}, {$metti}";
+
+            return "{$apre}, e su quell'unità " . RataQuote::fraseRateEmesse($voci) . ' con una spesa ad personam: ' . ($ha === 0 ? 'la nota' : 'la parte in più')
+                . " la toglierebbe dall'unità dopo che {$chiesta} ai condòmini. {$se}; se rettifica un'altra fattura, collegala a quella.";
+        }
+
+        return null;
     }
 
     /**
@@ -405,14 +503,16 @@ class FatturaPassiva extends Model
         if ($voce = $this->pianoAlGrado('emesso', 'approvato', 'bozza')) {
             $nome = $voce['piano']->nome;
             $perche = $conseguenza($voce['grado']);
+            // Un piano che un passaggio ha preso nel conguaglio non si elimina finché il passaggio c'è: i passi sono quelli del pulsante «Ricalcola».
+            $conguagliato = $voce['piano']->stradaDelPianoConguagliato();
 
             return match ($voce['grado']) {
                 'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse: {$perche}. "
-                    . "Annulla le emissioni, riporta il piano in bozza ed eliminalo, poi {$poi}; {$altre}",
+                    . ($conguagliato !== null ? ucfirst($conguagliato) : 'Annulla le emissioni, riporta il piano in bozza ed eliminalo') . ", poi {$poi}; {$altre}",
                 'approvato' => "La fattura è nel piano rate «{$nome}», approvato: {$perche}. "
-                    . "Riporta il piano in bozza ed eliminalo, poi {$poi}; {$altre}",
+                    . ($conguagliato !== null ? ucfirst($conguagliato) : 'Riporta il piano in bozza ed eliminalo') . ", poi {$poi}; {$altre}",
                 'bozza' => "La fattura è nel piano rate «{$nome}», in bozza: {$perche}. "
-                    . "Elimina prima il piano, poi {$poi}; {$altre}",
+                    . ($conguagliato !== null ? ucfirst($conguagliato) : 'Elimina prima il piano') . ", poi {$poi}; {$altre}",
             };
         }
 
@@ -655,10 +755,25 @@ class FatturaPassiva extends Model
                 . MoneyHelper::format($documento) . '. Controlla l\'importo della nota, o la fattura che rettifica.';
         }
 
+        // Coda 313 (decisione 160): la nota che toglie la spesa ad personam di questa fattura da un'unità a cui una rata emessa l'ha già
+        // chiesta. Anche la contestata: il giornale la scrive lo stesso. Senza le righe (la richiesta, prima del calcolo) la guarda il
+        // servizio, che le ha.
+        $unitaNota = [];
+        foreach ($righeNota ?? [] as $r) {
+            if (($r['immobile_id'] ?? null) !== null) {
+                $unitaNota[(int) $r['immobile_id']] = ($unitaNota[(int) $r['immobile_id']] ?? 0) + (int) $r['riduzione'];
+            }
+        }
+        $riduzioniNota = array_filter($unitaNota, fn (int $n) => $n > 0);
+        $unitaNota = array_keys($riduzioniNota);
+        $come = $poi === 'collega la nota' ? 'collega' : 'nota';
+        $adPersonam = fn () => $unitaNota === [] ? null
+            : ($this->motivoSpesaAdPersonamGiaChiesta($come, $poi, $unitaNota) ?? $this->motivoNotaOltreLaFattura($come, $riduzioniNota));
+
         // Una nota contestata non conta nel netto (`NettoNoteCollegate`): non cambia niente di quanto i piani chiedono, e
         // la scala non la riguarda. Il tetto qui sopra sì — vale per tutte le note (V3 della verifica delle correzioni).
         if ($notaContestata) {
-            return null;
+            return $adPersonam();
         }
 
         $inPiu = $righeNota === null || $this->chiestoNonCerto('emesso', 'approvato', 'bozza')
@@ -671,7 +786,7 @@ class FatturaPassiva extends Model
                     . ' chiederebbero ' . MoneyHelper::format($inPiu) . ' più di quanto resta della fattura'
                 : ($grado === 'emesso' ? 'quelle rate' : 'le sue rate') . ' sono già calcolate e non si aggiornano da sole',
             $poi,
-        );
+        ) ?? $adPersonam();
     }
 
     /**
@@ -679,8 +794,9 @@ class FatturaPassiva extends Model
      * `null`. Lo mostra la conferma, come per lo storno: le rate non si rettificano da sole.
      *
      * Con le righe della nota si sa dove riduce: se le rate chiedono più del netto, l'avviso dice di quanto; se la nota
-     * tocca la parte del piano senza cambiare il totale — la riga di un'unità, su un piano parziale — l'avviso c'è lo
-     * stesso, perché la parte di ciascuno non torna (R3 della Fase 1-bis); se la nota sta tutta sulla parte a preventivo,
+     * tocca la parte del piano senza cambiare il totale — la voce di una riga fuori preventivo, su un piano parziale — l'avviso c'è lo
+     * stesso, perché la parte di ciascuno non torna (Coda 165, 1.11.0-beta.36); la riga di un'unità su cui una rata emessa ha chiesto la spesa
+     * ad personam non arriva qui, si rifiuta prima (decisione 160, {@see motivoSpesaAdPersonamGiaChiesta()}); se la nota sta tutta sulla parte a preventivo,
      * il piano non c'entra e l'avviso non c'è (R4). Senza righe non si sa, e l'avviso c'è, senza cifra.
      *
      * @param  list<array{conto_id: ?int, immobile_id: ?int, riduzione: int}>|null  $righeNota

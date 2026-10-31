@@ -6,10 +6,13 @@ use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Gestionale\ContoContabile;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Models\Immobile;
 use App\Services\Riparto\CompetenzaDelPiano;
+use App\Services\Riparto\DettaglioRiparto;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -38,12 +41,18 @@ use Illuminate\Support\Facades\DB;
  * Restano come sono, e lo si dice (`restano`): le scritture in un esercizio chiuso (un bilancio chiuso non si tocca); le quote a
  * credito, o a zero, senza il dettaglio del calcolo (piani della 1.7.x: non si indovina quanta parte è spesa e quanta credito,
  * decisione 76.3, ritoccata l'11/10/2026: l'emissione le ferma da sole); le rate «emesse» senza righe che l'emissione non
- * porterebbe a giornale, perché il loro credito è già uscito tutto. La card le mostra in sola lettura, anche quando sono le sole
+ * porterebbe a giornale, perché il loro credito è già uscito tutto; la quota a credito rimasta fuori con una spesa ad personam che lo
+ * storno della fattura o una nota di credito delle versioni di prima hanno già tolto dall'unità (Coda 313, decisione 160, limite L1:
+ * `RataQuote::quoteFuoriConSpesaTolta`). La card le mostra in sola lettura, anche quando sono le sole
  * voci (rilievo LDA-8). Restano fuori in silenzio le quote gemelle (decisione 25, dati delle sole beta della 1.11) e la rata
  * «emessa» senza righe che un passaggio della .41 ha preso nel conguaglio (W1, 75.2: la ferma l'emissione).
  *
  * Una compensazione è DC1 solo per la parte riportata del credito (rilievo K2): la spesa negativa delle entrate dell'anno sta fra
  * i crediti verso condomini, e prelevata da lì era giusta anche con la 1.10.
+ *
+ * Che cosa elenca soltanto (Coda 313, decisione 153.1: il rilevamento nella 1.11, la scrittura con la 1.12): le emissioni già scritte
+ * con la spesa ad personam addebitata due volte (`ad_personam`), per rata e unità, e i piani senza il registro del riparto per i quali
+ * la cifra non si può calcolare (`ad_personam_non_calcolabili`). `esegui` non scrive niente per loro.
  */
 class RiallineaCreditiService
 {
@@ -61,7 +70,9 @@ class RiallineaCreditiService
      *     compensazioni: list<array{scrittura_id: int, protocollo: ?string, data: ?string, quota_id: int, rata_id: int, numero_rata: int, anagrafica_id: int, persona: string, immobile_id: ?int, importo: int, importo_formattato: string}>,
      *     rate: list<array<string, mixed>>,
      *     da_emettere: list<array{rata_id: int, numero_rata: int, piano: string, url: string}>,
-     *     restano: list<array{rata_id?: int, scrittura_id?: int, motivo: string}>
+     *     restano: list<array{rata_id?: int, scrittura_id?: int, motivo: string}>,
+     *     ad_personam: list<array{rata_id: int, numero_rata: int, piano_id: int, piano: string, immobile_id: int, unita: string, data: ?string, esercizio: ?string, esercizio_aperto: bool, importo: int, importo_formattato: string}>,
+     *     ad_personam_non_calcolabili: list<array{piano_id: int, piano: string, motivo: string}>
      * }
      */
     public function rileva(Condominio $condominio): array
@@ -73,18 +84,22 @@ class RiallineaCreditiService
             $inArrivo[$chiave] = ($inArrivo[$chiave] ?? 0) + $c['importo'];
         }
         [$rate, $daEmettere, $restanoR] = $this->rate($condominio, $inArrivo);
+        [$adPersonam, $nonCalcolabili] = $this->adPersonam($condominio);
 
-        return ['compensazioni' => $compensazioni, 'rate' => $rate, 'da_emettere' => $daEmettere, 'restano' => [...$restanoC, ...$restanoR]];
+        return ['compensazioni' => $compensazioni, 'rate' => $rate, 'da_emettere' => $daEmettere, 'restano' => [...$restanoC, ...$restanoR],
+            'ad_personam' => $adPersonam, 'ad_personam_non_calcolabili' => $nonCalcolabili];
     }
 
     /**
      * Niente da scrivere, niente da emettere e niente da dire: la card non compare. Le voci che restano come sono la tengono accesa,
      * in sola lettura (rilievo LDA-8 della Fase 1-bis e 76.3 ritoccata): che un credito resti com'è in un bilancio chiuso, o che una
-     * quota della 1.7.x sia rimasta fuori dall'emissione, lo deve dire la pagina, non solo il terminale.
+     * quota della 1.7.x sia rimasta fuori dall'emissione, lo deve dire la pagina, non solo il terminale. Così le emissioni con la
+     * spesa ad personam addebitata due volte e i piani per cui non si può calcolare (Coda 313).
      */
     public function vuoto(array $rilevato): bool
     {
-        return $this->daScrivere($rilevato) === 0 && $rilevato['da_emettere'] === [] && $rilevato['restano'] === [];
+        return $this->daScrivere($rilevato) === 0 && $rilevato['da_emettere'] === [] && $rilevato['restano'] === []
+            && ($rilevato['ad_personam'] ?? []) === [] && ($rilevato['ad_personam_non_calcolabili'] ?? []) === [];
     }
 
     /** Quante scritture il comando scriverebbe adesso. */
@@ -97,14 +112,18 @@ class RiallineaCreditiService
      * Scrive, ogni voce nella sua transazione, rileggendo lo stato sotto blocco: prima le rettifiche di DC1, poi le quote delle rate
      * miste (il credito già uscito si legge dopo le rettifiche). Senza il conto «Passate gestioni» non scrive niente.
      *
-     * @return array{rettifiche: list<string>, emissioni: list<string>, restano: list<array<string, mixed>>}
+     * Le emissioni con la spesa ad personam addebitata due volte non le scrive (Coda 313, decisione 153.1): tornano nell'esito come
+     * le ha trovate il rilevamento, perché la conferma lo dica.
+     *
+     * @return array{rettifiche: list<string>, emissioni: list<string>, restano: list<array<string, mixed>>, ad_personam: list<array<string, mixed>>, ad_personam_non_calcolabili: list<array<string, mixed>>}
      *
      * @throws ContoPassateGestioniMancanteException
      */
     public function esegui(Condominio $condominio, ?int $utenteId = null): array
     {
         $rilevato = $this->rileva($condominio);
-        $fatto = ['rettifiche' => [], 'emissioni' => [], 'restano' => $rilevato['restano']];
+        $fatto = ['rettifiche' => [], 'emissioni' => [], 'restano' => $rilevato['restano'],
+            'ad_personam' => $rilevato['ad_personam'], 'ad_personam_non_calcolabili' => $rilevato['ad_personam_non_calcolabili']];
         if ($this->daScrivere($rilevato) === 0) {
             return $fatto;
         }
@@ -174,6 +193,12 @@ class RiallineaCreditiService
                 DB::table('rate_quote')->where('rata_id', $voce['rata_id'])->lockForUpdate()->pluck('id');
                 $rata = Rata::with('rateQuote')->findOrFail($voce['rata_id']);
                 $quote = $rata->rateQuote->whereIn('id', $voce['quote'])->whereNull('scrittura_contabile_id')->values();
+                // Coda 313 (decisione 160, limite L1): riletto sotto blocco, dopo le scritture delle voci di prima sulla stessa unità.
+                $tolte = RataQuote::quoteFuoriConSpesaTolta($rata, $quote, (int) $passate->id);
+                foreach ($tolte as $motivo) {
+                    $fatto['restano'][] = ['rata_id' => (int) $rata->id, 'motivo' => $motivo];
+                }
+                $quote = $quote->reject(fn (RataQuote $q) => isset($tolte[(int) $q->id]))->values();
                 // Ricalcolate qui, dopo le rettifiche: il credito già uscito da «Passate gestioni» è cambiato.
                 $perQuota = array_filter(RataQuote::scritturaDiEmissione($quote, (int) $passate->id), fn (array $x) => $x['righe'] !== []);
                 if ($perQuota === []) {
@@ -218,6 +243,11 @@ class RiallineaCreditiService
                         continue;
                     }
                     $emissione->righe()->create(['conto_contabile_id' => $conto->id, 'tipo_riga' => $totale > 0 ? 'avere' : 'dare', 'importo' => abs($totale), 'note' => $nota]);
+                }
+                // Coda 313: la parte ad personam della quota chiude l'anticipazione della fattura, come nell'emissione (una riga per
+                // unità, con la rata e senza persona), invece di andare su «Gestione rate».
+                foreach (RataQuote::righeDiChiusura($perQuota, $quote, (int) $crediti->id, (int) $rata->id, (string) $rata->descrizione) as $riga) {
+                    $emissione->righe()->create($riga);
                 }
                 DoubleEntryValidator::validateOrFail($emissione->id);
                 $fatto['emissioni'][] = (string) $emissione->numero_protocollo;
@@ -351,6 +381,16 @@ class RiallineaCreditiService
                 if ($daScrivere->isEmpty()) {
                     continue;
                 }
+                // Coda 313 (decisione 160, limite L1): la quota con una spesa ad personam che lo storno della fattura o una nota di credito,
+                // passati con le versioni di prima, hanno già tolto dall'unità resta fuori, e la card dice perché e la strada.
+                $tolte = RataQuote::quoteFuoriConSpesaTolta($rata, $daScrivere, $passate === null ? null : (int) $passate);
+                foreach ($tolte as $motivo) {
+                    $restano[] = ['rata_id' => (int) $rata->id, 'motivo' => $motivo];
+                }
+                $daScrivere = $daScrivere->reject(fn (RataQuote $q) => isset($tolte[(int) $q->id]))->values();
+                if ($daScrivere->isEmpty()) {
+                    continue;
+                }
                 $sorella = ScritturaContabile::find($aGiornale->first()->scrittura_contabile_id);
                 $voce = [
                     'forma'       => 'mista',
@@ -442,6 +482,127 @@ class RiallineaCreditiService
         }
 
         return $calcolo;
+    }
+
+    /**
+     * Coda 313: le emissioni già scritte con la spesa ad personam addebitata due volte, in sola lettura. La fattura con una riga su una
+     * sola unità ha scritto DARE «Crediti verso condomini» con l'unità; le emissioni fino alla 1.11.0-beta.58 (e quelle della 1.9 e
+     * della 1.10) hanno scritto di nuovo DARE a nome della persona per la quota intera e la spesa intera su «Gestione rate», senza
+     * chiudere l'anticipazione.
+     *
+     * Per rata e unità: la parte ad personam delle quote a giornale (`RataQuote::partiAdPersonam`) meno le chiusure già scritte (le righe
+     * su «Crediti verso condomini» con l'unità e la rata, senza persona, AVERE meno DARE, in qualunque scrittura: l'emissione, una sua
+     * figlia, la correzione che verrà). Una voce se resta qualcosa. La data e l'esercizio sono quelli dell'emissione della rata.
+     *
+     * Da dove viene la parte ad personam: la chiave dello snapshot o il registro del riparto (`righe_riparto`). Un piano straordinario
+     * senza il registro (generato prima della 1.11.0-beta.29: le stabili 1.9 e 1.10) con una riga ad personam fra le sue fatture si
+     * ricostruisce (`DettaglioRiparto::perPiano`, con le titolarità di oggi) e si usa solo se la ricostruzione torna con le quote
+     * registrate, soggetto per soggetto (l'invariante di `RigaRiparto`); altrimenti il piano sta fra quelli che non si possono
+     * calcolare, con il perché.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: list<array{piano_id: int, piano: string, motivo: string}>} [voci, piani che non si possono calcolare]
+     */
+    private function adPersonam(Condominio $condominio): array
+    {
+        $crediti = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'crediti_condomini')->value('id');
+        if (! $crediti) {
+            return [[], []];
+        }
+        $piani = PianoRate::where('condominio_id', $condominio->id)
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('rate')->join('rate_quote', 'rate_quote.rata_id', '=', 'rate.id')
+                ->whereColumn('rate.piano_rate_id', 'piani_rate.id')->whereNotNull('rate_quote.scrittura_contabile_id'))
+            ->orderBy('id')->get();
+        if ($piani->isEmpty()) {
+            return [[], []];
+        }
+        $conRegistro = DB::table('righe_riparto')->whereIn('piano_rate_id', $piani->pluck('id'))->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->flip()->all();
+        $registro = RataQuote::registroAdPersonam($piani->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        $voci = [];
+        $nonCalcolabili = [];
+        foreach ($piani as $piano) {
+            $prefisso = $piano->id . '|';
+            if (isset($conRegistro[(int) $piano->id])) {
+                $suo = array_filter($registro, fn (string $k) => str_starts_with($k, $prefisso), ARRAY_FILTER_USE_KEY);
+            } elseif ($piano->tipo === 'straordinario' && DB::table('piano_rate_fatture as prf')
+                ->join('righe_fattura as rf', 'rf.fattura_passiva_id', '=', 'prf.fattura_passiva_id')
+                ->where('prf.piano_rate_id', $piano->id)->whereNotNull('rf.immobile_id')->exists()) {
+                $suo = RataQuote::registroRicostruito($piano);
+                if ($suo === null) {
+                    $nonCalcolabili[] = ['piano_id' => (int) $piano->id, 'piano' => (string) $piano->nome, 'motivo' => sprintf(
+                        'il piano «%s» non ha il registro del riparto (lo scrivono le versioni dalla 1.11.0-beta.29), e la ricostruzione con i '
+                        . 'titolari di oggi non torna con le sue quote: quanta parte delle sue emissioni è spesa ad personam addebitata due volte '
+                        . 'non si può calcolare. Si controlla nel libro giornale, sulle righe «Anticipazione spesa ad personam (Art. 63)» delle sue '
+                        . 'fatture e sulle emissioni delle sue rate', $piano->nome)];
+
+                    continue;
+                }
+            } else {
+                continue;
+            }
+            if ($suo === []) {
+                continue;
+            }
+            array_push($voci, ...$this->doppiDelPiano($piano, $suo, (int) $crediti));
+        }
+
+        return [$voci, $nonCalcolabili];
+    }
+
+    /**
+     * Le voci di un piano: per ogni rata con quote a giornale e unità, la parte ad personam a giornale meno le chiusure già scritte.
+     *
+     * @param array<string, int> $registro piano|persona|unità => centesimi
+     * @return list<array<string, mixed>>
+     */
+    private function doppiDelPiano(PianoRate $piano, array $registro, int $crediti): array
+    {
+        $rate = Rata::where('piano_rate_id', $piano->id)->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))
+            ->with(['rateQuote' => fn ($q) => $q->whereNotNull('scrittura_contabile_id')])->orderBy('numero_rata')->get();
+        $parti = RataQuote::partiAdPersonam($rate->flatMap(fn (Rata $r) => $r->rateQuote), $registro);
+
+        $voci = [];
+        foreach ($rate as $rata) {
+            $perUnita = [];
+            foreach ($rata->rateQuote as $quota) {
+                if (($parti[(int) $quota->id] ?? 0) > 0) {
+                    $perUnita[(int) $quota->immobile_id] = ($perUnita[(int) $quota->immobile_id] ?? 0) + $parti[(int) $quota->id];
+                }
+            }
+            if ($perUnita === []) {
+                continue;
+            }
+            $chiuse = DB::table('righe_scritture')->join('scritture_contabili as s', 's.id', '=', 'righe_scritture.scrittura_id')->whereNull('s.deleted_at')
+                ->where('righe_scritture.conto_contabile_id', $crediti)->where('righe_scritture.rata_id', $rata->id)
+                ->whereNull('righe_scritture.anagrafica_id')->whereNotNull('righe_scritture.immobile_id')
+                ->groupBy('righe_scritture.immobile_id')
+                ->selectRaw("righe_scritture.immobile_id as unita, SUM(CASE WHEN righe_scritture.tipo_riga = 'avere' THEN righe_scritture.importo ELSE -righe_scritture.importo END) as n")
+                ->pluck('n', 'unita')->map(fn ($n) => (int) $n)->all();
+            $emissione = ScritturaContabile::with('esercizio')->whereIn('id', $rata->rateQuote->pluck('scrittura_contabile_id')->unique()->values())->orderBy('id')->first();
+            $unita = Immobile::whereIn('id', array_keys($perUnita))->get()->keyBy('id');
+            ksort($perUnita);
+            foreach ($perUnita as $immobileId => $parte) {
+                $doppio = $parte - ($chiuse[$immobileId] ?? 0);
+                if ($doppio <= 0) {
+                    continue;
+                }
+                $voci[] = [
+                    'rata_id'            => (int) $rata->id,
+                    'numero_rata'        => (int) $rata->numero_rata,
+                    'piano_id'           => (int) $piano->id,
+                    'piano'              => (string) $piano->nome,
+                    'immobile_id'        => (int) $immobileId,
+                    'unita'              => (string) ($unita->get($immobileId)?->etichetta ?? ''),
+                    'data'               => $emissione?->data_competenza?->format('d/m/Y'),
+                    'esercizio'          => $emissione?->esercizio?->nome,
+                    'esercizio_aperto'   => ($emissione?->esercizio?->stato) === 'aperto',
+                    'importo'            => $doppio,
+                    'importo_formattato' => MoneyHelper::format($doppio),
+                ];
+            }
+        }
+
+        return $voci;
     }
 
     private static function gemelle(int $rataId, int $anagraficaId, ?int $immobileId): int

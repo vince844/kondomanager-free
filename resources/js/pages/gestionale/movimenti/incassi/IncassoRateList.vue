@@ -24,6 +24,10 @@ interface RiallineamentoCrediti {
   rate: Array<{ rata_id: number; numero_rata: number; piano: string; azione: 'scrivi' | 'esercizio_chiuso'; persone: Array<{ nome: string; spesa: number; credito: number }> }>;
   da_emettere: Array<{ rata_id: number; numero_rata: number; piano: string; url: string }>;
   restano: Array<{ motivo: string }>;
+  // Coda 313 (decisione 153.1): le emissioni con la spesa ad personam addebitata due volte, per rata e unità, e i piani per cui la
+  // cifra non si calcola. Solo elencate: la conferma non le scrive.
+  ad_personam?: Array<{ rata_id: number; numero_rata: number; piano: string; immobile_id: number; unita: string; data: string | null; esercizio: string | null; esercizio_aperto: boolean; importo: number }>;
+  ad_personam_non_calcolabili?: Array<{ piano_id: number; piano: string; motivo: string }>;
 }
 
 const props = defineProps<{
@@ -50,6 +54,10 @@ const riallineamento = computed(() => props.riallineamento_crediti ?? null);
 const rateDaScrivere = computed(() => (riallineamento.value?.rate ?? []).filter((r) => r.azione === 'scrivi'));
 const scrittureDaFare = computed(() => (riallineamento.value?.compensazioni.length ?? 0) + rateDaScrivere.value.length);
 const soloLettura = computed(() => scrittureDaFare.value === 0 && (riallineamento.value?.da_emettere.length ?? 0) === 0);
+const adPersonam = computed(() => riallineamento.value?.ad_personam ?? []);
+const adPersonamNonCalcolabili = computed(() => riallineamento.value?.ad_personam_non_calcolabili ?? []);
+// In sola lettura il paragrafo «Niente da scrivere…» parla delle voci che restano come sono; la spesa ad personam ha il suo.
+const restanoDiPrima = computed(() => (riallineamento.value?.restano.length ?? 0) > 0);
 
 /** Le parti della quota rimasta fuori: la spesa, le entrate dell'anno (una spesa negativa, rilievo K2), il credito riportato. */
 function partiDellaQuota(p: { spesa: number; credito: number }): string {
@@ -210,9 +218,21 @@ const pageGuides = [
                     «Passate gestioni», o sono rimasti fuori dall'emissione della loro rata (lo facevano le versioni fino alla 1.10).
                     Il riallineamento aggiunge le scritture che mancano: quelle già registrate non si toccano.
                   </p>
-                  <p v-else class="text-xs text-amber-700 mt-1 leading-relaxed">
+                  <p v-else-if="restanoDiPrima" class="text-xs text-amber-700 mt-1 leading-relaxed">
                     Niente da scrivere: il riallineamento lascia queste voci come sono. Qui sotto, per ognuna, il perché e,
                     dove c'è, la strada.
+                  </p>
+                  <!-- Coda 313: le emissioni con la spesa ad personam addebitata due volte. Solo elencate: la conferma non le scrive. La frase
+                       del doppio solo dove c'è una cifra: per i piani da controllare a mano il programma il doppio non l'ha misurato. -->
+                  <p v-if="adPersonam.length > 0" data-testid="riallineamento-ad-personam" class="text-xs text-amber-700 mt-1 leading-relaxed">
+                    Spesa ad personam addebitata due volte: la fattura l'ha già scritta su «Crediti verso condomini» con l'unità, e
+                    l'emissione della rata l'ha scritta di nuovo, contandola anche fra le entrate di «Gestione rate». Le rate dei
+                    condòmini sono giuste: nessuno deve pagare di più. Sono più alti, della stessa cifra, i crediti verso condomini e il
+                    risultato di gestione dell'esercizio dell'emissione. Il riallineamento non la corregge: qui è solo elencata.
+                  </p>
+                  <p v-else-if="adPersonamNonCalcolabili.length > 0" data-testid="riallineamento-ad-personam-da-controllare" class="text-xs text-amber-700 mt-1 leading-relaxed">
+                    Spesa ad personam da controllare: per i piani elencati nel dettaglio il programma non sa calcolare se le emissioni
+                    delle rate l'hanno addebitata due volte. Il riallineamento non li tocca: qui sono solo elencati, con il perché.
                   </p>
 
                   <Collapsible v-model:open="isRiallineamentoListOpen" class="mt-3">
@@ -257,6 +277,21 @@ const pageGuides = [
                           class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700"
                         >
                           Resta com'è: {{ r.motivo }}.
+                        </li>
+                        <li
+                          v-for="v in adPersonam"
+                          :key="`p-${v.rata_id}-${v.immobile_id}`"
+                          class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700"
+                        >
+                          Rata {{ v.numero_rata }} ({{ v.piano }}), {{ v.unita }}, emessa il {{ v.data ?? '—' }}:
+                          <strong>{{ euro(v.importo) }}</strong> di spesa ad personam addebitati due volte<template v-if="!v.esercizio_aperto"> (esercizio «{{ v.esercizio }}», chiuso)</template>.
+                        </li>
+                        <li
+                          v-for="p in adPersonamNonCalcolabili"
+                          :key="`n-${p.piano_id}`"
+                          class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700"
+                        >
+                          Da controllare a mano: {{ p.motivo }}.
                         </li>
                       </ul>
                     </CollapsibleContent>

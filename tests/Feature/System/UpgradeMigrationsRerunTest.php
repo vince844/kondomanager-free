@@ -228,6 +228,8 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // Beta.53 (Coda 244): il passaggio a cui l'amministratore lega una riga del Wallet — colonna più chiave esterna verso `subentri`, due
     // statement su MySQL. Nessun travaso: le righe di prima restano senza legame.
     '2026_10_18_100000_add_passaggio_id_to_saldi_table',
+    // Beta.59 (Coda 414): una colonna JSON nullable su `piani_rate`, senza chiave esterna e senza travaso — la guardia è una, sulla colonna.
+    '2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table',
 ]);
 
 it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {
@@ -261,4 +263,23 @@ it('la migrazione del passaggio delle righe del Wallet interrotta fra i due stat
         ->and($legame()->first()['foreign_table'])->toBe('subentri')
         ->and($legame()->first()['foreign_columns'])->toBe(['id'])
         ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('restrict');
+});
+
+it('Coda 414 — la migrazione delle quote non assegnate rieseguita dopo un\'interruzione lascia una colonna sola, e rifatta dopo il ritorno indietro la rimette', function () {
+    $path = database_path('migrations/2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table');
+    $migration = require $path;
+    $colonne = fn () => collect(Schema::getColumnListing('piani_rate'))->filter(fn ($c) => $c === 'quote_non_assegnate')->count();
+    expect($colonne())->toBe(1);
+
+    $migration->up();
+    expect($colonne())->toBe(1);
+
+    $migration->down();
+    $migration->down();
+    expect($colonne())->toBe(0);
+
+    $migration->up();
+    $migration->up();
+    expect($colonne())->toBe(1);
 });

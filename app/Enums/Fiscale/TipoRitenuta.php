@@ -19,23 +19,32 @@ use Illuminate\Support\Facades\Config;
  */
 enum TipoRitenuta: string
 {
-    /** Appalti di opere e servizi — art. 25-ter DPR 600/1973. 4%, plafond 500€/finestra. */
+    /** Appalti di opere e servizi — art. 25-ter DPR 600/1973 (dal 2027 art. 40 D.Lgs. 33/2025). 4%, plafond 500€/finestra. */
     case APPALTO_4 = 'appalto_4';
 
-    /** Redditi di lavoro autonomo (professionisti) — art. 25. 20%, plafond 100€/anno. */
+    /** Redditi di lavoro autonomo (professionisti) — art. 25 (dal 2027 art. 38 c. 1 D.Lgs. 33/2025). 20%, plafond 100€/anno. */
     case LAVORO_AUTONOMO_20 = 'lavoro_autonomo_20';
 
-    /** Provvigioni con diritto alla riduzione (percipiente con dipendenti/collaboratori) — art. 25-bis. 23% su base 50% = 11,5%. */
+    /**
+     * Provvigioni, base ordinaria — art. 25-bis c. 2 DPR 600/1973 (dal 2027 art. 39 c. 2 D.Lgs. 33/2025): la ritenuta è
+     * commisurata al 50% dell'ammontare. 23% sul 50% = 11,5%.
+     */
     case PROVVIGIONI_BASE_50 = 'provvigioni_base_50';
 
-    /** Provvigioni senza riduzione — art. 25-bis. 23% su base 20% = 4,6%. Richiede dichiarazione del percipiente. */
+    /**
+     * Provvigioni, base ridotta — stesso articolo: se il percipiente dichiara di avvalersi in via continuativa dell'opera
+     * di dipendenti o di terzi, la ritenuta è commisurata al 20% dell'ammontare. 23% sul 20% = 4,6%.
+     *
+     * ⚠️ Fino alla 1.11.0-beta.58 questi due commenti e le due etichette dicevano la riduzione al contrario (la base 50
+     * «con riduzione», la base 20 «senza»), Coda 325: il calcolo era giusto, sbagliava il nome che l'amministratore legge.
+     */
     case PROVVIGIONI_BASE_20 = 'provvigioni_base_20';
 
-    /** Compensi a non residenti — 30% A TITOLO D'IMPOSTA (non acconto: valorizza il punto 10 CU, non il 9). */
+    /** Compensi a non residenti — art. 25 (dal 2027 art. 38 c. 2 D.Lgs. 33/2025), 30% A TITOLO D'IMPOSTA (non acconto: valorizza il punto 10 CU, non il 9). */
     case NON_RESIDENTE_30 = 'non_residente_30';
 
     /**
-     * Lavoro dipendente — art. 23, cod. 1001, plafond SEMPRE mensile.
+     * Lavoro dipendente — art. 23 (dal 2027 art. 33 D.Lgs. 33/2025), cod. 1001, plafond SEMPRE mensile.
      * Il motore paghe è fuori scope in v1.10: questo case esiste solo per
      * blindare la regola — la facoltà di rinvio dei 100€ (D.Lgs. 1/2024)
      * riguarda SOLO gli artt. 25 e 25-bis. Applicarla qui sarebbe un
@@ -44,15 +53,23 @@ enum TipoRitenuta: string
      */
     case LAVORO_DIPENDENTE = 'lavoro_dipendente';
 
+    /**
+     * Il nome del regime come lo legge l'amministratore nella scheda del fornitore e nel modale dell'XML.
+     *
+     * ⚠️ **Senza l'articolo di legge** (decisione 154.4). Fino alla 1.11.0-beta.58 le etichette citavano l'articolo del DPR
+     * 600/1973 («art. 25-ter», «art. 25», «art. 25-bis», «art. 23»): dal 01/01/2027 quegli articoli sono abrogati dal testo
+     * unico dei versamenti (D.Lgs. 33/2025, art. 241 c. 1 lett. b) e un'etichetta non ha la data per dirlo. Il riferimento
+     * giusto, con la data, sta in `riferimentoNormativo()` e nella guida.
+     */
     public function label(): string
     {
         return match ($this) {
-            self::APPALTO_4 => "Appalto di opere/servizi — 4% (art. 25-ter)",
-            self::LAVORO_AUTONOMO_20 => 'Lavoro autonomo — 20% (art. 25)',
-            self::PROVVIGIONI_BASE_50 => 'Provvigioni con riduzione — 11,5% (art. 25-bis)',
-            self::PROVVIGIONI_BASE_20 => 'Provvigioni senza riduzione — 4,6% (art. 25-bis)',
+            self::APPALTO_4 => 'Appalto di opere/servizi — 4%',
+            self::LAVORO_AUTONOMO_20 => 'Lavoro autonomo — 20%',
+            self::PROVVIGIONI_BASE_50 => 'Provvigioni — base 50%, 11,5%',
+            self::PROVVIGIONI_BASE_20 => 'Provvigioni — base ridotta al 20% con la dichiarazione del percipiente, 4,6%',
             self::NON_RESIDENTE_30 => 'Compenso a non residente — 30% a titolo d\'imposta',
-            self::LAVORO_DIPENDENTE => 'Lavoro dipendente — art. 23 (fuori scope: nessun motore paghe)',
+            self::LAVORO_DIPENDENTE => 'Lavoro dipendente (fuori scope: nessun motore paghe)',
         };
     }
 
@@ -182,32 +199,54 @@ enum TipoRitenuta: string
         return $this === self::APPALTO_4;
     }
 
-    /** Causale CU associata al regime, dove applicabile (usata in Fase 5). */
+    /**
+     * La causale della Certificazione Unica che il regime basta a decidere, o `null` dove serve un dato sul percipiente.
+     *
+     * - **W** all'appalto: la decide il regime (corrispettivi del condominio all'appaltatore).
+     * - **A** al lavoro autonomo, che **presuppone l'esercizio abituale** di arte o professione: per la prestazione
+     *   occasionale la causale è M (art. 25 c. 1, «ancorché non esercitate abitualmente»; istruzioni della CU 2026, p. 82).
+     * - **null** alle due provvigioni (Coda 324): per le istruzioni della CU 2026 (p. 82-83) la lettera è Q, R, S, T o U
+     *   secondo il rapporto (agente monomandatario, plurimandatario, commissionario, mediatore, procacciatore) se la
+     *   prestazione non è occasionale, V1 se lo è; il regime (base 50% o 20%) non dice né il rapporto né l'abitualità.
+     *   Fino alla 1.11.0-beta.58 davano A.
+     * - **null** ai non residenti e al lavoro dipendente.
+     *
+     * Nessun chiamante, oggi: la userà la Certificazione Unica (Fase 5, Coda 115), con i due dati sul percipiente.
+     */
     public function causaleCU(): ?string
     {
         return match ($this) {
             self::APPALTO_4 => 'W',
-            self::LAVORO_AUTONOMO_20, self::PROVVIGIONI_BASE_50, self::PROVVIGIONI_BASE_20 => 'A',
+            self::LAVORO_AUTONOMO_20 => 'A',
             default => null,
         };
     }
 
-    /** Riferimento normativo vigente alla data (cambia dal 2027 per gli appalti). */
+    /**
+     * Riferimento normativo vigente alla data: dal 01/01/2027 l'articolo del D.Lgs. 33/2025 per ogni regime (Coda 326; le
+     * righe e la fonte della data in `config/fiscale.php`).
+     *
+     * ⚠️ **Si confronta il giorno, non l'istante.** Le righe di `config/fiscale.php` hanno date senza ora (`fino_al` 2026-12-31): confrontando
+     * gli istanti, un `Carbon` del 31/12/2026 a mezzogiorno è maggiore della mezzanotte dello stesso giorno, nessuna riga vale e il
+     * calcolo si ferma con un'eccezione. La pagina manda `Y-m-d`; chi chiama con un'ora non deve fermarsi per questo.
+     */
     public function riferimentoNormativo(CarbonInterface $data): string
     {
         $righe = Config::get("fiscale.riferimenti_normativi.{$this->value}", []);
+        $giorno = $data->toDateString();
 
         foreach ($righe as $riga) {
-            $dal = isset($riga['dal']) ? \Carbon\Carbon::parse($riga['dal']) : null;
-            $finoAl = isset($riga['fino_al']) ? \Carbon\Carbon::parse($riga['fino_al']) : null;
+            $dal = isset($riga['dal']) ? \Carbon\Carbon::parse($riga['dal'])->toDateString() : null;
+            $finoAl = isset($riga['fino_al']) ? \Carbon\Carbon::parse($riga['fino_al'])->toDateString() : null;
 
-            if (($dal === null || $data->greaterThanOrEqualTo($dal)) && ($finoAl === null || $data->lessThanOrEqualTo($finoAl))) {
+            // Stringhe `Y-m-d`: l'ordine alfabetico è quello dei giorni.
+            if (($dal === null || $giorno >= $dal) && ($finoAl === null || $giorno <= $finoAl)) {
                 return $riga['testo'];
             }
         }
 
         throw new \DomainException(
-            "Nessun riferimento normativo configurato per il regime «{$this->value}» alla data {$data->toDateString()}."
+            "Nessun riferimento normativo configurato per il regime «{$this->value}» alla data {$giorno}."
         );
     }
 

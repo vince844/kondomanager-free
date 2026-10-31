@@ -28,9 +28,9 @@ use Illuminate\Support\Facades\Log;
 
 class FatturaPassivaService
 {
-    public function registraFattura(array $data, int $condominioId, ?UploadedFile $file = null): FatturaPassiva
+    public function registraFattura(array $data, int $condominioId, ?UploadedFile $file = null, ?int $stornoDellaFatturaId = null): FatturaPassiva
     {
-        return DB::transaction(function () use ($data, $condominioId, $file) {
+        return DB::transaction(function () use ($data, $condominioId, $file, $stornoDellaFatturaId) {
 
             $fornitore = Fornitore::with('referenti')->findOrFail($data['fornitore_id']);
             $isNotaCredito = ($data['tipo_documento'] === 'nota_credito');
@@ -210,6 +210,14 @@ class FatturaPassivaService
                     && ($avviso = $rettificata->avvisoNotaCollegata($righeNota, $contestata))) {
                     throw new \App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException($avviso);
                 }
+            }
+
+            // Coda 313 (decisione 160): la nota del fornitore senza la fattura che rettifica, con una riga su un'unità a cui una rata emessa ha
+            // chiesto una spesa ad personam. La nota collegata ha la scala qui sopra, e la nota nata da uno storno la guardia dello storno
+            // (`$stornoDellaFatturaId`, lo passa `StornoFatturaController`).
+            if ($isNotaCredito && empty($data['fattura_rettificata_id']) && $stornoDellaFatturaId === null
+                && ($motivo = self::motivoNotaSenzaFatturaSuSpesaChiesta($righeProcessate, $moltiplicatore))) {
+                throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
             }
 
             // 3. Creazione Fattura
@@ -762,6 +770,71 @@ class FatturaPassivaService
     }
 
     /**
+     * Quanto le righe di una nota tolgono da ogni unità, in centesimi (positivo: la nota riduce l'anticipazione dell'unità). Le righe hanno
+     * il segno del documento, come `$righeProcessate` e come le righe salvate: con `$moltiplicatore` −1 la riduzione è il loro opposto.
+     *
+     * @param  iterable<array<string, mixed>>  $righe
+     * @return array<int, int> per unità
+     */
+    public static function riduzioniPerUnita(iterable $righe, int $moltiplicatore): array
+    {
+        $perUnita = [];
+        foreach ($righe as $riga) {
+            if (! empty($riga['immobile_id'])) {
+                $perUnita[(int) $riga['immobile_id']] = ($perUnita[(int) $riga['immobile_id']] ?? 0)
+                    + ((int) $riga['importo_imponibile'] + (int) $riga['importo_iva']) * $moltiplicatore;
+            }
+        }
+
+        return $perUnita;
+    }
+
+    /**
+     * Perché una nota del fornitore **senza la fattura che rettifica** non si registra, o non si modifica (Coda 313, decisione 160) — o
+     * null. Una sua riga toglie da un'unità a cui una rata emessa ha chiesto una spesa ad personam (`RataQuote::rateEmesseConAdPersonam`):
+     * se la nota rettifica quella spesa, la toglie dall'unità una seconda volta, dopo la chiusura delle emissioni, e l'unità resta a credito
+     * senza persona. Il programma non sa quale fattura la nota rettifica, e non la sceglie al posto dell'amministratore: la nota si registra
+     * collegata, e la scala della nota collegata dice la strada per quella fattura (`FatturaPassiva::motivoBloccoNotaCollegata`).
+     *
+     * Con `$prima` (le riduzioni per unità prima della modifica, {@see riduzioniPerUnita()}) si guardano solo le unità che la modifica riduce
+     * di più: correggere una data o una descrizione, o ridurre la nota, riscrive la stessa scrittura, o una che toglie meno.
+     *
+     * @param  list<array<string, mixed>>  $righeProcessate  le righe della nota, con il segno del documento
+     * @param  array<int, int>|null  $prima
+     */
+    public static function motivoNotaSenzaFatturaSuSpesaChiesta(array $righeProcessate, int $moltiplicatore, ?array $prima = null): ?string
+    {
+        $unita = array_keys(array_filter(self::riduzioniPerUnita($righeProcessate, $moltiplicatore),
+            fn (int $n, int $u) => $n > 0 && $n > ($prima[$u] ?? 0), ARRAY_FILTER_USE_BOTH));
+        $voci = \App\Models\Gestionale\RataQuote::rateEmesseConAdPersonam($unita);
+        if ($voci === []) {
+            return null;
+        }
+        $sue = array_values(array_intersect($unita, array_merge(...array_column($voci, 'unita'))));
+        $una = array_sum(array_map(fn (array $v) => count($v['rate']), $voci)) === 1;
+        $apre = 'La nota non dice quale fattura rettifica, e su ' . \App\Models\Gestionale\RataQuote::elencoUnita($sue) . ' '
+            . \App\Models\Gestionale\RataQuote::fraseRateEmesse($voci) . ' con una spesa ad personam: ';
+        $chiesta = ($una ? 'quella rata ha' : 'quelle rate hanno') . ' già chiesto ai condòmini.';
+        // Se la nota rettifica una fattura di quei piani, collegata si rifiuta finché il piano non è tolto (`FatturaPassiva::motivoSpesaAdPersonamGiaChiesta`):
+        // la strada lo dice subito, non al secondo rifiuto (FS-1 della forma semplice).
+        // Un piano che un passaggio di titolarità tiene fermo non si elimina finché il passaggio c'è: i passi sono quelli del pulsante «Ricalcola».
+        $piani = \App\Models\Gestionale\PianoRate::whereIn('id', array_column($voci, 'piano_id'))->orderBy('id')->get();
+        $sePiano = count($voci) === 1
+            ? '; se è una fattura del piano rate «' . $voci[0]['piano'] . '», prima ' . ($piani->first()?->stradaDelPianoConguagliato() ?? ($piani->first()?->haIncassiRegistrati()
+                ? 'storna gli incassi registrati sulle sue rate, annulla le emissioni, riporta il piano in bozza ed eliminalo'
+                : 'annulla le emissioni, riporta il piano in bozza ed eliminalo')) . '.'
+            : '; se è una fattura di uno di quei piani, prima per quel piano storna gli incassi registrati sulle sue rate, se ce ne sono, annulla le '
+                . 'emissioni, riportalo in bozza ed eliminalo'
+                . (($fermi = \App\Models\Gestionale\PianoRate::fraseDeiPianiConguagliati($piani)) === null ? '' : '; ' . $fermi) . '.';
+
+        return $prima === null
+            ? $apre . 'senza la fattura il programma non sa se la nota toglie dall\'unità una spesa che ' . $chiesta
+                . ' Scegli la fattura che la nota rettifica («Fattura che la nota rettifica») e registrala collegata a quella fattura' . $sePiano
+            : $apre . 'la modifica toglierebbe dall\'unità più di prima, e senza la fattura il programma non sa se toglie una spesa che ' . $chiesta
+                . ' Collega prima la nota alla fattura che rettifica («Collega a una fattura»), poi modificala' . $sePiano;
+    }
+
+    /**
      * L'eccedenza di una pregressa sulle coperture dichiarate, in centesimi: la parte che diventa una copertura
      * «sopravvenienza» e finisce in un piano (decisione 26, 1.11.0-beta.35). La stessa aritmetica di
      * `registraFattura()`: totale = imponibile + imposta (quella dichiarata vince sull'aliquota), meno le coperture.
@@ -919,6 +992,10 @@ class FatturaPassivaService
 
             // 1. Pulizia scritture esistenti (identico a destroy())
             $fattura->load('righe', 'documenti', 'scritture', 'coperture');
+            // Coda 313 (decisione 160): quanto la nota toglieva da ogni unità prima della modifica (la guardia della nota senza fattura, sotto).
+            $riduzioniPrima = $fattura->tipo_documento === 'nota_credito'
+                ? self::riduzioniPerUnita($fattura->righe->map(fn ($r) => $r->only(['immobile_id', 'importo_imponibile', 'importo_iva']))->all(), -1)
+                : [];
             $scritture = $fattura->scritture;
 
             $fattura->scritture()->detach();
@@ -1126,12 +1203,28 @@ class FatturaPassivaService
                 if ($rettificata && ($motivo = $rettificata->motivoBloccoModificaNota($nettoRettificataPrima, 'modifica la nota', $importoContestata, $importoContestata > 0 ? $importoNotaPrima : 0))) {
                     throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
                 }
+                // Coda 313 (decisione 160): la modifica che toglie di più da un'unità a cui una rata emessa ha chiesto la spesa ad personam
+                // della fattura. Le unità che la nota riduce come prima, o meno, non cambiano niente di quello che le rate hanno chiesto.
+                $piuDiPrima = array_filter(self::riduzioniPerUnita($righeProcessate, $moltiplicatore),
+                    fn (int $n, int $u) => $n > 0 && $n > ($riduzioniPrima[$u] ?? 0), ARRAY_FILTER_USE_BOTH);
+                // Limite L4: anche la parte che toglie da un'unità più di quanto la fattura le addebita (`FatturaPassiva::motivoNotaOltreLaFattura`).
+                if ($rettificata && $piuDiPrima !== [] && ($motivo = $rettificata->motivoSpesaAdPersonamGiaChiesta('nota', 'modifica la nota', array_keys($piuDiPrima))
+                    ?? $rettificata->motivoNotaOltreLaFattura('nota', $piuDiPrima, (int) $fattura->id))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
                 // Con un piano che ha incassato: la modifica si salva dopo una conferma, chiesta con un secondo invio —
                 // il numero «dopo» esiste solo qui, a righe scritte (R5 della Fase 1-bis).
                 if ($rettificata && ! filter_var($data['conferma_avviso_nota'] ?? false, FILTER_VALIDATE_BOOLEAN)
                     && ($avviso = $rettificata->avvisoModificaNota($nettoRettificataPrima))) {
                     throw new \App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException($avviso);
                 }
+            }
+
+            // Coda 313 (decisione 160): la nota senza fattura che, modificata, toglie di più da un'unità a cui una rata emessa ha chiesto una
+            // spesa ad personam. La nota nata da uno storno no: la sua guardia è quella dello storno.
+            if ($isNotaCredito && $fattura->fattura_rettificata_id === null && ! $fattura->eNataDaStorno()
+                && ($motivo = self::motivoNotaSenzaFatturaSuSpesaChiesta($righeProcessate, $moltiplicatore, $riduzioniPrima))) {
+                throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
             }
 
             // Coda 165: una fattura con note collegate non scende sotto quanto le note già rettificano — la stessa regola

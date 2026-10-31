@@ -30,6 +30,23 @@ class GenerateRateQuotesAction
      */
     public const TITOLARITA_ATEMPORALE = ['risoluzione' => 'atemporale'];
 
+    /**
+     * La fettina della rata `$rataAttuale` di `$totale` spalmato su `$numRate` rate, al centesimo: i centesimi del resto vanno
+     * sulle prime rate, con il segno del totale. È la regola di tutte le quote del piano, e della parte ad personam di ogni quota
+     * (Coda 313, `regole_calcolo.importi.addebito_diretto`): `RataQuote::partiAdPersonam` la rifà con la stessa funzione per le quote
+     * generate prima che la chiave ci fosse.
+     */
+    public static function fettina(int $totale, int $numRate, int $rataAttuale): int
+    {
+        if ($totale === 0 || $numRate <= 0) {
+            return 0;
+        }
+        $base = intdiv($totale, $numRate);
+        $resto = $totale % $numRate;
+
+        return $rataAttuale <= abs($resto) ? $base + ($totale < 0 ? -1 : 1) : $base;
+    }
+
     public function execute(
         PianoRate $pianoRate,
         array $totaliPerImmobile,
@@ -49,18 +66,17 @@ class GenerateRateQuotesAction
         // -----------------------------------------------------------------------------
         // HELPER: Divisione perfetta dei centesimi (Evita la perdita di decimali)
         // -----------------------------------------------------------------------------
-        $calcolaFettina = function($totale, $numRate, $rataAttuale) {
-            if ($totale == 0) return 0;
-            $base = intdiv($totale, $numRate);
-            $resto = $totale % $numRate; 
-            $segnoResto = $totale < 0 ? -1 : 1;
+        $calcolaFettina = fn ($totale, $numRate, $rataAttuale) => self::fettina((int) $totale, (int) $numRate, (int) $rataAttuale);
 
-            // Spalmiamo i "centesimi dispari" (resto) sulle prime rate
-            if ($rataAttuale <= abs($resto)) {
-                return $base + (1 * $segnoResto);
+        // Coda 313: la parte ad personam del totale di ogni soggetto (le righe `ad_personam` del dettaglio: la spesa di una sola
+        // unità, che la fattura ha già scritto su «Crediti verso condomini» con l'unità). Va nello snapshot di ogni sua quota, con
+        // la stessa fettina del totale, perché l'emissione chiuda l'anticipazione invece di contarla fra le entrate della gestione.
+        $adPersonam = [];
+        foreach ($dettaglio as $riga) {
+            if (($riga['tipo'] ?? null) === RigaRiparto::TIPO_AD_PERSONAM && ($riga['anagrafica_id'] ?? null) !== null && ($riga['immobile_id'] ?? null) !== null) {
+                $adPersonam[(int) $riga['anagrafica_id']][(int) $riga['immobile_id']] = ($adPersonam[(int) $riga['anagrafica_id']][(int) $riga['immobile_id']] ?? 0) + (int) $riga['importo'];
             }
-            return $base;
-        };
+        }
 
         DB::beginTransaction();
         try {
@@ -304,6 +320,13 @@ class GenerateRateQuotesAction
                             if ($pianoRate->metodo_distribuzione === 'tutte_rate') {
                                 $snapshot['note_saldo'] = "Quota saldo spalmata ({$numeroRata}/{$numeroRate})";
                             }
+                        }
+
+                        // Coda 313: la fettina della parte ad personam, solo per i soggetti che ne hanno una (le altre quote restano
+                        // identiche). È il fatto della generazione, con il suo segno; quanta parte chiude l'anticipazione lo dice
+                        // `RataQuote::partiAdPersonam`, che non la porta mai sotto zero.
+                        if (($adPersonam[$aid][$iid] ?? 0) !== 0) {
+                            $snapshot['importi']['addebito_diretto'] = $calcolaFettina($adPersonam[$aid][$iid], $numeroRate, $numeroRata);
                         }
 
                         // --- INIZIO NUOVA LOGICA EURISTICA ---

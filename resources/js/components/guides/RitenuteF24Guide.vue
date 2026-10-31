@@ -54,7 +54,8 @@ const soglia = (cents: number) =>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">La ritenuta nasce al pagamento</h3>
                             <p>
                                 Non alla registrazione della fattura: <strong>all'atto del pagamento</strong>
-                                (art. 25-ter DPR 600/1973). È la data in cui paghi il fornitore a decidere il
+                                (art. 25-ter DPR 600/1973; dal 1° gennaio 2027 art. 40 del D.Lgs. 33/2025). È la data in
+                                cui paghi il fornitore a decidere il
                                 mese di riferimento in F24 e la scadenza del versamento — non la data del
                                 documento, non quella di scadenza della fattura.
                             </p>
@@ -153,10 +154,34 @@ const soglia = (cents: number) =>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Aggiorna scadenze»</h3>
                             <p>
                                 Ricalcola le deleghe in bozza a partire dai pagamenti registrati. Le bozze non
-                                sono documenti: si rifanno da capo ogni volta, quindi premerlo non fa mai danni.
+                                sono documenti: si rifanno da capo ogni volta, e quelle di un esercizio chiuso passano
+                                all'esercizio corrente. Le deleghe confermate, versate, stornate o annullate non le tocca.
                                 Il pulsante <strong>diventa ambra con un numero</strong> quando ci sono ritenute
-                                operate che non stanno ancora in nessuna delega — cioè quando premerlo cambia
-                                davvero qualcosa.
+                                operate che non stanno ancora in nessuna delega.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Le ritenute non finiscono con l'esercizio</h3>
+                            <p>
+                                Lo scadenzario raccoglie le ritenute da versare e le deleghe non ancora versate di
+                                <strong>tutti gli esercizi</strong> del condominio: chiudere l'esercizio vecchio per aprire
+                                il nuovo non le toglie dall'elenco, e le ritenute di dicembre, che si versano entro il
+                                16 gennaio, restano in vista. Il cumulo delle soglie non si interrompe al cambio di esercizio.
+                            </p>
+                            <p class="mt-2">
+                                «Aggiorna scadenze» rifà tutte le bozze, di qualunque esercizio, e le fa nascere nell'esercizio
+                                corrente. Una delega di un altro esercizio ne porta il nome nell'elenco e nella sua scheda: se
+                                ne registri il versamento, la scrittura va in quell'esercizio. Le deleghe già versate, stornate
+                                o annullate dei vecchi esercizi restano nell'elenco, con il nome del loro esercizio; il totale
+                                «Versato» è quello dell'esercizio corrente.
+                            </p>
+                            <p class="mt-2">
+                                Le ritenute degli esercizi chiusi che non sono mai finite in una delega ricompaiono qui, con la
+                                loro scadenza di legge, anche se è già passata. Se una di queste l'hai già versata fuori dal
+                                programma, il programma non lo sa e non c'è un modo per dirglielo: non versarla una seconda volta.
+                                Annullare la delega la toglie da «Da versare» e da «Scadute», ma il pulsante «Aggiorna scadenze»
+                                continua a contarla e la rifà al prossimo ricalcolo, insieme alle ritenute che le stanno accanto.
                             </p>
                         </section>
 

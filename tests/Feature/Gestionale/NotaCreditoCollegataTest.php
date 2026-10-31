@@ -791,7 +791,11 @@ test('R2 [1-bis] — una nota su un\'unità oltre la sua riga: netto e motore le
         ->and($fattura->fresh()->chiestoDaiPiani())->toBe(5000);
 });
 
-test('R3 [1-bis] — con un piano parziale che ha incassato, la nota sull\'unità di una riga ad personam avvisa anche se i totali tornano', function () {
+test('R3 [1-bis] — con un piano parziale che ha incassato, la nota sulla voce di una riga fuori preventivo avvisa anche se i totali tornano; sull\'unità della riga ad personam si rifiuta', function () {
+    // Coda 313 (decisione 160): con una rata emessa che chiede la spesa ad personam della fattura, la nota sull'unità di quella riga non si
+    // registra più con l'avviso (decisione 26, punto 6): si rifiuta e dice la strada (`FatturaPassiva::motivoSpesaAdPersonamGiaChiesta`),
+    // perché toglierebbe dall'unità una spesa che l'emissione ha già chiuso. L'avviso della «parte precisa» resta per la voce della riga
+    // fuori preventivo: la nota da € 300,00 sulla voce non cambia il totale che il piano chiede (€ 700,00), ma la parte di ciascuno sì.
     $base = ncBase();
     $u = ncUtente();
     ncSecondaUnita($base);
@@ -801,14 +805,17 @@ test('R3 [1-bis] — con un piano parziale che ha incassato, la nota sull\'unit�
     ], 'FT-E');
     $piano = ncPiano($base, $fattura, 70000, 'incassato');
     $prima = ncTot($piano);
-    $righe = [['conto_id' => null, 'immobile_id' => $base['immobileId'], 'riduzione' => 30000]];
+    $sullUnita = [['conto_id' => null, 'immobile_id' => $base['immobileId'], 'riduzione' => 30000]];
+    $sullaVoce = [['conto_id' => $base['capitolo']->id, 'immobile_id' => null, 'riduzione' => 30000]];
 
-    expect($fattura->fresh()->motivoBloccoNotaCollegata(30000, 'registra la nota', $righe))->toBeNull()
-        ->and($fattura->fresh()->avvisoNotaCollegata($righe))->toContain('parte precisa')->toContain('«Cornicione 2026»')
+    expect($fattura->fresh()->motivoBloccoNotaCollegata(30000, 'registra la nota', $sullUnita))
+        ->toStartWith('Il piano rate «Cornicione 2026» ha già emesso la rata n. 1 con la spesa ad personam della fattura n. FT-E')
+        ->and($fattura->fresh()->motivoBloccoNotaCollegata(30000, 'registra la nota', $sullaVoce))->toBeNull()
+        ->and($fattura->fresh()->avvisoNotaCollegata($sullaVoce))->toContain('parte precisa')->toContain('«Cornicione 2026»')
             // Come si sistema di solito: deciso da Vincenzo il 27/09/2026 dopo la ricerca sulla legge.
             ->toContain('conguaglio del consuntivo')->toContain('non fra condòmini');
 
-    $corpo = ncCorpoNota($base, $fattura->id, 300, null, ['righe' => [0 => ['immobile_id' => $base['immobileId']]]]);
+    $corpo = ncCorpoNota($base, $fattura->id, 300);
     $this->actingAs($u)->post(route('admin.gestionale.fatture.store', $base['condominio']->id), $corpo)->assertSessionHasErrors('avviso_nota');
     $this->actingAs($u)->post(route('admin.gestionale.fatture.store', $base['condominio']->id), $corpo + ['conferma_avviso_nota' => true])
         ->assertSessionHasNoErrors();
@@ -1194,19 +1201,21 @@ test('X2 [quarto giro] — in un piano con una fattura rettificata tutto il pian
 });
 
 test('Quarto giro — in modifica l\'avviso non dice «riduce il debito»: le rate restano quelle già calcolate', function (int $pivot) {
+    // Coda 313 (decisione 160): la nota si sposta dall'unità della riga ad personam alla voce della riga fuori preventivo. Spostata su
+    // un'altra unità con una spesa ad personam che una rata emessa ha chiesto, la modifica si rifiuta (`Beta59313StornoFatturaTest`): qui si
+    // tiene l'avviso della modifica, su una riduzione che le emissioni non chiudono.
     $base = ncBase();
     $u = ncUtente();
-    $seconda = ncSecondaUnita($base);
     $fattura = ncFattura($base, [
         ['conto_id' => null, 'immobile_id' => $base['immobileId'], 'importo' => 10000],
-        ['conto_id' => null, 'immobile_id' => $seconda, 'importo' => 10000],
+        ['conto_id' => $base['capitolo']->id, 'importo' => 10000, 'is_sopravvenienza' => true],
     ], 'FT-M4');
     $this->actingAs($u)->post(route('admin.gestionale.fatture.store', $base['condominio']->id),
         ncCorpoNota($base, $fattura->id, 50, null, ['righe' => [0 => ['immobile_id' => $base['immobileId']]]]))->assertSessionHasNoErrors();
     $nota = FatturaPassiva::where('tipo_documento', 'nota_credito')->firstOrFail();
     ncPiano($base, $fattura, $pivot, 'incassato');
 
-    $sposta = ncCorpoNota($base, null, 50, null, ['numero_documento' => $nota->numero_documento, 'righe' => [0 => ['immobile_id' => $seconda]]]);
+    $sposta = ncCorpoNota($base, null, 50, null, ['numero_documento' => $nota->numero_documento]);
     unset($sposta['tipo_documento'], $sposta['stato_approvazione'], $sposta['fattura_rettificata_id']);
     $this->actingAs($u)->put(route('admin.gestionale.fatture.update', [$base['condominio']->id, $nota->id]), $sposta)->assertSessionHasErrors('avviso_nota');
 

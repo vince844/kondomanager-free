@@ -29,9 +29,13 @@ class RiallineaCreditiController extends Controller
             return back()->with($this->flashError($e->getMessage() . ' Niente è stato scritto.'));
         }
 
+        $adPersonam = self::fraseAdPersonam($fatto);
+
         if ($fatto['rettifiche'] === [] && $fatto['emissioni'] === []) {
-            if ($fatto['restano'] !== []) {
-                return back()->with($this->flashWarning('Niente scritto. Restano come sono: ' . implode('; ', array_column($fatto['restano'], 'motivo')) . '.'));
+            if ($fatto['restano'] !== [] || $adPersonam !== '') {
+                return back()->with($this->flashWarning('Niente scritto.'
+                    . ($fatto['restano'] !== [] ? ' Restano come sono: ' . implode('; ', array_column($fatto['restano'], 'motivo')) . '.' : '')
+                    . $adPersonam));
             }
 
             return back()->with($this->flashInfo('Niente da riallineare: i crediti sono già a posto.'));
@@ -49,6 +53,34 @@ class RiallineaCreditiController extends Controller
         }
 
         return back()->with($this->flashSuccess('Riallineamento fatto: ' . implode(' e ', $parti) . ' nel libro giornale.'
-            . ($fatto['restano'] !== [] ? ' Restano come sono: ' . implode('; ', array_column($fatto['restano'], 'motivo')) . '.' : '')));
+            . ($fatto['restano'] !== [] ? ' Restano come sono: ' . implode('; ', array_column($fatto['restano'], 'motivo')) . '.' : '')
+            . $adPersonam));
+    }
+
+    /**
+     * Coda 313 (decisione 153.1): la spesa ad personam addebitata due volte che la card elenca resta com'è, e i piani da controllare a
+     * mano; la conferma non la scrive, e lo dice. Vuota se non c'è niente da dire.
+     *
+     * @param array{ad_personam?: list<array{importo: int}>, ad_personam_non_calcolabili?: list<array{piano: string}>} $fatto
+     */
+    private static function fraseAdPersonam(array $fatto): string
+    {
+        $frase = '';
+        $voci = $fatto['ad_personam'] ?? [];
+        if ($voci !== []) {
+            $frase .= ' La spesa ad personam addebitata due volte (' . \App\Helpers\MoneyHelper::format(array_sum(array_column($voci, 'importo')))
+                . ' in tutto) resta com\'è: il riallineamento non la scrive.';
+        }
+        $piani = array_values(array_unique(array_column($fatto['ad_personam_non_calcolabili'] ?? [], 'piano')));
+        if ($piani !== []) {
+            $nomi = array_map(fn (string $p) => "«{$p}»", $piani);
+            // Il perché intero, come il motivo della card: senza il registro il piano si ricostruisce, e non si calcola solo se la
+            // ricostruzione non torna con le sue quote.
+            $frase .= count($nomi) === 1
+                ? " Il piano {$nomi[0]} va controllato a mano: non ha il registro del riparto, e la ricostruzione con i titolari di oggi non torna con le sue quote, quindi la cifra non si calcola."
+                : ' I piani ' . implode(', ', array_slice($nomi, 0, -1)) . ' e ' . end($nomi) . ' vanno controllati a mano: non hanno il registro del riparto, e la ricostruzione con i titolari di oggi non torna con le loro quote, quindi la cifra non si calcola.';
+        }
+
+        return $frase;
     }
 }

@@ -15,6 +15,9 @@ use Illuminate\Console\Command;
  * compensazioni di un credito riportato prelevate da «Crediti verso condomini» (DC1) e le quote a credito rimaste fuori dalle
  * rate miste (DC2-b); le rate di soli crediti segnate «emesse» senza righe le elenca, e le emette l'amministratore dalla pagina
  * del piano. Dice che cosa resta com'è e perché. Con --dry-run mostra che cosa scriverebbe, senza scrivere niente.
+ *
+ * Elenca anche, con e senza --dry-run, le emissioni con la spesa ad personam addebitata due volte e i piani per cui la cifra non si
+ * può calcolare (Coda 313, decisione 153.1): non le scrive.
  */
 class RiallineaCreditiCommand extends Command
 {
@@ -41,7 +44,7 @@ class RiallineaCreditiCommand extends Command
             $rilevato = $service->rileva($condominio);
             $daScrivere = $service->daScrivere($rilevato);
 
-            if ($daScrivere === 0 && $rilevato['da_emettere'] === [] && $rilevato['restano'] === []) {
+            if ($service->vuoto($rilevato)) {
                 $this->line("«{$condominio->nome}»: niente da riallineare.");
 
                 continue;
@@ -72,6 +75,22 @@ class RiallineaCreditiCommand extends Command
                 $this->line('  Restano come sono:');
                 foreach ($rilevato['restano'] as $r) {
                     $this->line('    ' . $r['motivo'] . '.');
+                }
+            }
+
+            if ($rilevato['ad_personam'] !== []) {
+                $this->line('  Spesa ad personam addebitata due volte su «Crediti verso condomini» (con la fattura e con l\'emissione) e contata fra le '
+                    . 'entrate di «Gestione rate»; le rate dei condòmini sono giuste. Resta com\'è: il riallineamento non la scrive.');
+                foreach ($rilevato['ad_personam'] as $v) {
+                    $this->line(sprintf('    rata %d (%s), %s, emessa il %s: %s%s', $v['numero_rata'], $v['piano'], $v['unita'], $v['data'] ?? '—', $v['importo_formattato'],
+                        $v['esercizio_aperto'] ? '' : " (esercizio «{$v['esercizio']}», chiuso)"));
+                }
+            }
+
+            if ($rilevato['ad_personam_non_calcolabili'] !== []) {
+                $this->line('  Da controllare a mano:');
+                foreach ($rilevato['ad_personam_non_calcolabili'] as $p) {
+                    $this->line('    ' . $p['motivo'] . '.');
                 }
             }
 

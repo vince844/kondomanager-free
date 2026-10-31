@@ -523,6 +523,8 @@ const getImportoStyle = (riga: any) => {
                                 </td>
                                 <td class="px-4 py-3 align-top">
                                     <div class="text-sm font-medium text-gray-700">{{ riga.data }}</div>
+                                    <!-- Coda 317: la data è quella del movimento (competenza); il giorno in cui è stato inserito arriva solo se è diverso, ed è per l'amministratore: il PDF non lo stampa. -->
+                                    <div v-if="riga.data_registrazione" class="text-[10px] text-gray-400 leading-tight mt-0.5">Registrata il {{ riga.data_registrazione }}</div>
                                     <div v-if="riga.protocollo" class="mt-1"><Badge variant="outline" class="text-[9px] px-1 h-4 tabular-nums text-gray-400 border-gray-200">{{ riga.protocollo }}</Badge></div>
                                 </td>
                                 <td class="px-4 py-3 align-top">

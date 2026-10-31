@@ -233,7 +233,7 @@ describe('AnteprimaPassaggio — le voci della scelta con la regola del piano (C
         dati.rate.prospetto_regolato = ['Integrativa 2026'];
         const testo = montaCambio(dati).text();
         expect(testo).toContain('generato da una versione precedente: lì chi entra glieli rimborsa fra le parti. Sul piano «Integrativa 2026» il cambio d\'inquilino di prima è stato regolato fra le parti, '
-            + 'e il prospetto non va oltre quell\'accordo: anche lì il rimborso di chi entra si regola fra le parti.');
+            + 'e per i giorni di quell\'accordo il prospetto non fa rimborsare nessuno: anche lì il rimborso di chi entra si regola fra le parti.');
         expect(testo).not.toContain('fra le parti.Sul piano');
         // Con due piani regolati la frase dice «Sui piani».
         dati.rate.prospetto_regolato = ['Integrativa 2026', 'Pulizie 2026'];

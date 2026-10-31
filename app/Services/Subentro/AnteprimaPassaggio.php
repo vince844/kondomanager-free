@@ -1343,10 +1343,13 @@ class AnteprimaPassaggio
      * unità con la stessa storia (l'appartamento e il box) restano una frase sola (`partiPerUnita`). La parte nella coppia di tutta la
      * gestione resta `usciti_parte`.
      *
+     * Coda 413: `usciti_regolati_da`, chi ha con il conguaglio scritto di un cambio i giorni che le parti hanno regolato alla sua uscita (`ProspettoOneriAccessori::chiHaPagatoDopo`), per la
+     * frase «regolato» (`dopoLUscitaDiPrima`); vuoto se anche un solo «regolato» è dell'uscita di chi ha le righe.
+     *
      * @param list<int> $anagraficaIds
      * @param array<int, \App\Support\InsiemePeriodi> $periodi i giorni delle righe di ciascuno, per il piano con il riparto
      * @param array<int, list<array{periodo: \App\Support\InsiemePeriodi, importo: int}>> $righe le righe di ciascuno, con l'importo
-     * @return array{usciti_come: string, usciti_pagato_da: list<string>, usciti_presi_da: list<string>, usciti_per_modo: array<string, list<string>>, usciti_fini: list<string>, usciti_parte: int, usciti_versi: array{scritto: int, non_scritto: int}, usciti_versi_per_nome: array<string, int>}
+     * @return array{usciti_come: string, usciti_pagato_da: list<string>, usciti_presi_da: list<string>, usciti_per_modo: array<string, list<string>>, usciti_fini: list<string>, usciti_parte: int, usciti_versi: array{scritto: int, non_scritto: int}, usciti_versi_per_nome: array<string, int>, usciti_regolati_da: list<string>}
      */
     private function comeSonoUsciti(int $immobileId, array $anagraficaIds, string $giorno, ?int $pianoId = null, array $periodi = [], array $righe = []): array
     {
@@ -1357,12 +1360,17 @@ class AnteprimaPassaggio
         $fini = [];
         $parti = ['scritto' => 0.0, 'non_scritto' => 0.0];
         $versiPerNome = [];
+        // Coda 413: chi ha con il conguaglio i giorni che le parti hanno regolato all'uscita sua (`ProspettoOneriAccessori::chiHaPagatoDopo`); null se un «regolato» non lo dice.
+        $regolatiDa = [];
         $piano = $pianoId !== null ? \App\Models\Gestionale\PianoRate::find($pianoId) : null;
         $prospetto = app(\App\Services\Riparto\ProspettoOneriAccessori::class);
         foreach (array_values(array_unique($anagraficaIds)) as $id) {
             if ($piano !== null && isset($periodi[$id])) {
                 $esito = $prospetto->chiHaPagatoDopo($piano, $id, $immobileId, $periodi[$id], CarbonImmutable::parse($giorno));
                 $modi[] = $esito['come'];
+                if ($esito['come'] === 'regolato') {
+                    $regolatiDa = $regolatiDa === null || ($esito['regolato_con_il_conguaglio'] ?? []) === [] ? null : [...$regolatiDa, ...$esito['regolato_con_il_conguaglio']];
+                }
                 $pagatoDa = [...$pagatoDa, ...$esito['pagato_da']];
                 $presi = [...$presi, ...$esito['presi_da']];
                 foreach ($esito['per_modo'] as $modo => $nomi) {
@@ -1402,6 +1410,9 @@ class AnteprimaPassaggio
                 default => 'non_scritto',
             };
             $modi[] = $modo;
+            if ($modo === 'regolato') {
+                $regolatiDa = null;
+            }
             if ($modo === 'scritto') {
                 $pagatoDa = [...$pagatoDa, ...$chiHaLaCoppia];
                 $presi = [...$presi, ...$chiHaLaCoppia];
@@ -1418,7 +1429,8 @@ class AnteprimaPassaggio
             'usciti_presi_da' => array_values(array_unique(array_filter($presi))),
             'usciti_per_modo' => array_map(fn (array $n) => array_values(array_unique(array_filter($n))), $perModo), 'usciti_fini' => array_values(array_unique($fini)),
             'usciti_parte' => $parte, 'usciti_versi' => array_map(fn (float $c) => (int) round($c) <=> 0, $parti),
-            'usciti_versi_per_nome' => array_filter(array_map(fn (float $c) => (int) round($c), $versiPerNome), fn (int $c) => $c !== 0)];
+            'usciti_versi_per_nome' => array_filter(array_map(fn (float $c) => (int) round($c), $versiPerNome), fn (int $c) => $c !== 0),
+            'usciti_regolati_da' => array_values(array_unique($regolatiDa ?? []))];
     }
 
     /**
@@ -1552,7 +1564,14 @@ class AnteprimaPassaggio
                 $pagatoDa !== '' => sprintf('i giorni dopo %s %s con il conguaglio %s, e li rimborsa %s %s%s', $uscita, $liHaPresi, $pagatoDa, $chi, $this->frasiObbligati->a($pagatoDa), $prospetto),
                 default => sprintf('i giorni dopo %s li ha presi con il conguaglio chi paga al posto dell\'inquilino, e %s glieli rimborsa%s', $uscita, $chi, $prospetto),
             },
-            'regolato' => sprintf('il conguaglio dei giorni dopo %s le parti lo hanno regolato fra loro', $uscita),
+            // Coda 413: se quei giorni li ha con il conguaglio scritto di un cambio chi è entrato (Sara, dopo Ines → Sara «Scrivi»), le parti hanno regolato la sua uscita, non quella di chi
+            // ha le righe: la frase dice chi ha i giorni e di chi è l'uscita regolata. Prima diceva «dopo la sua uscita» di chi ha le righe, il cui conguaglio è scritto.
+            // Se chi li ha presi è la stessa persona che ha le righe (Ines che rientra con il conguaglio e poi esce con l'accordo), nominarla due volte non dice altro: resta la frase di prima.
+            'regolato' => array_diff($p['usciti_regolati_da'] ?? [], $p['usciti']) !== []
+                ? sprintf('quei giorni %s con il conguaglio %s, e il conguaglio dei giorni dopo %s le parti lo hanno regolato fra loro',
+                    count($p['usciti_regolati_da']) > 1 ? 'li hanno presi' : 'li ha presi', $this->elenco($p['usciti_regolati_da']),
+                    count($p['usciti_regolati_da']) > 1 ? 'la loro uscita' : 'l\'uscita di ' . $p['usciti_regolati_da'][0])
+                : sprintf('il conguaglio dei giorni dopo %s le parti lo hanno regolato fra loro', $uscita),
             'coinquilino' => sprintf('chi paga i giorni dopo %s lo decidono le parti', $uscita),
             // Coda 245 (1.11.0-beta.55): la fine con il coinquilino che resta ha diviso quella parte con la regola del piano.
             'piano_scritto' => sprintf('la parte dopo %s l\'ha divisa con la regola del piano il conguaglio della fine locazione, fra chi era conduttore nell\'anno, e %s la rimborsa a chi l\'ha pagata%s', $uscita, $chi, $prospetto),
@@ -1745,7 +1764,7 @@ class AnteprimaPassaggio
 
     /**
      * G5: i piani delle coppie con le quote di chi era uscito prima (`ereditata_da`), per nome, senza quelli della 1.10 (`pianiSenzaRiparto`,
-     * che il prospetto lascia fuori comunque). Dopo un cambio regolato fra le parti il prospetto non va oltre quell'accordo.
+     * che il prospetto lascia fuori comunque). Dopo un cambio regolato fra le parti il prospetto non fa rimborsare nessuno per i giorni di quell'accordo.
      *
      * @return list<string>
      */
@@ -1766,7 +1785,7 @@ class AnteprimaPassaggio
     private function rimborsoDopoUnRegolato(array $conguaglio, string $uscente, string $entrante, array $regolati, Subentro $cambio): string
     {
         $tutti = collect($conguaglio['quote'] ?? [])->filter(fn ($q) => (int) ($q['entrante'] ?? 0) !== 0)->pluck('piano')->unique()->count();
-        $accordo = sprintf('il conguaglio del cambio d\'inquilino del %s %s e %s lo hanno regolato fra loro, e il prospetto degli oneri accessori non va oltre quell\'accordo',
+        $accordo = sprintf('il conguaglio del cambio d\'inquilino del %s %s e %s lo hanno regolato fra loro, e per i giorni di quell\'accordo il prospetto degli oneri accessori non fa rimborsare nessuno',
             $this->data(CarbonImmutable::parse($cambio->decorrenza->toDateString())), (string) ($cambio->registro['nomi']['uscente'] ?? $cambio->uscente?->nome ?? 'chi era uscito'), $uscente);
         $uno = count($regolati) === 1;
 

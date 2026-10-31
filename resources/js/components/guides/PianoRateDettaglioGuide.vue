@@ -80,10 +80,29 @@ defineEmits(['update:open']);
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <div class="space-y-1 text-xs text-amber-900 dark:text-amber-200">
-                                <p><strong>«Disallineato: ricalcola!»</strong> significa che qualcuno ha
-                                modificato un preventivo o una tabella millesimale dopo che questo piano è
-                                stato generato. Le quote mostrate non corrispondono più ai dati attuali finché
-                                non premi <strong>Ricalcola</strong>.</p>
+                                <p><strong>«Copertura spese»</strong> confronta quanto il piano chiede — le sue voci, meno il
+                                già versato che toglie — con quanto c'è nelle rate. Ci sono tre casi:</p>
+                                <ul class="ml-4 list-disc space-y-1">
+                                    <li><strong>nessun badge</strong>: le due cifre coincidono;</li>
+                                    <li><strong>«Quota aperta»</strong>, in ambra, con la cifra e l'unità: la differenza sono le quote
+                                    non assegnate che hai accettato con «Procedi comunque» (un'unità senza titolare, una voce senza
+                                    tabella, una tabella senza millesimi), e il piano non è cambiato da allora. <strong>Ricalcola</strong>
+                                    da solo non le assegna a nessuno: prima va sistemata la causa, che il riquadro in cima alla pagina
+                                    dice voce per voce;</li>
+                                    <li><strong>«Disallineato: ricalcola!»</strong>, in rosso: la differenza è un'altra, per esempio un
+                                    già versato registrato dopo la generazione o una voce che ha cambiato tipo. <strong>Ricalcola</strong>
+                                    rifà le rate con i dati di adesso. Se il piano non si ricalcola più (rate emesse, incassi, il
+                                    conguaglio di un passaggio) il badge dice solo «Disallineato», e il pulsante dice perché e come
+                                    riaprirlo.</li>
+                                </ul>
+                                <p>Un piano con quote non assegnate accettate prima di questo aggiornamento resta «Disallineato»: la
+                                cifra non era registrata. Al primo <strong>Ricalcola</strong>, se qualcosa resta senza destinatario, il
+                                programma chiede di nuovo la presa d'atto e la registra.</p>
+                                <p>Il confronto è fra i totali: un cambio di millesimi o di titolari a totale uguale non accende il
+                                badge, e di solito nemmeno il preventivo della voce cambiato dopo, perché il piano chiede l'importo che
+                                ha scritto quando è stato creato. Fa eccezione una voce con del già versato: la parte del già versato
+                                che il piano toglie dipende dal preventivo della voce, e un preventivo cambiato dopo può accendere
+                                «Disallineato»; <strong>Ricalcola</strong> rifà le rate.</p>
                                 <p>Le voci di entrata si contano con il segno meno, come fa il calcolo delle quote.</p>
                             </div>
                         </div>
@@ -183,8 +202,11 @@ defineEmits(['update:open']);
                                 <li><strong>Gruppo</strong> — è un capitolo che raggruppa più sottoconti.</li>
                                 <li><strong>Integra</strong> — ha ricevuto fondi da un'altra voce con «Sposta
                                     spesa», e li ha ancora: uno storno completo spegne questa etichetta.</li>
-                                <li><strong>Parziale</strong> — l'importo incluso è inferiore al preventivo
-                                    originale della voce.</li>
+                                <li><strong>Parziale</strong> — l'importo incluso è diverso dal preventivo della voce: una
+                                    riga sotto la voce dice il preventivo, la parte che non è in questo piano (e quanta ne ha
+                                    ceduta con «Sposta spesa», se ne ha ceduta) e la parte che c'è.</li>
+                                <li><strong>Non assegnati</strong> — una riga sotto la voce dice la cifra delle quote non
+                                    assegnate accettate su quella voce, e dove stanno: restano fuori dalle rate.</li>
                                 <li><strong>Standard</strong> — nessuna delle precedenti: la voce entra per
                                     l'intero preventivo.</li> <li><strong>Entrata</strong> — si aggiunge alle altre su una voce che il piano conta con il segno meno, come un affitto o un canone: l'importo compare con il meno e si sottrae alle spese. Con delle entrate la riga sotto il titolo della sezione dice quanto resta da ripartire, con le spese e le entrate fra parentesi, al posto del totale preventivo.</li>
                             </ul>

@@ -94,12 +94,14 @@ const NATURE_PERCIPIENTE = [
     { label: 'Persona fisica / ditta individuale (IRPEF) — 1019', value: 'persona_fisica_irpef' },
     { label: 'Società di persone (IRPEF) — 1019', value: 'societa_persone_irpef' },
     { label: 'Società di capitali / soggetto IRES — 1020', value: 'soggetto_ires' },
-    { label: 'Ente non commerciale — 1019', value: 'ente_non_commerciale' },
+    // Coda 316: l'ente non commerciale è soggetto IRES (art. 73 c. 1 lett. c TUIR), quindi 1020 (ris. 19/E del 5/2/2007).
+    { label: 'Ente non commerciale (IRES) — 1020', value: 'ente_non_commerciale' },
 ];
 
 const REGIMI_PROPONIBILI = [
-    { label: 'Appalto di opere/servizi — 4% (art. 25-ter)', value: 'appalto_4' },
-    { label: 'Lavoro autonomo — 20% (art. 25)', value: 'lavoro_autonomo_20' },
+    // Le stesse parole di `TipoRitenuta::label()`, senza l'articolo del DPR 600/1973 (abrogato dal 01/01/2027, decisione 154.4).
+    { label: 'Appalto di opere/servizi — 4%', value: 'appalto_4' },
+    { label: 'Lavoro autonomo — 20%', value: 'lavoro_autonomo_20' },
 ];
 
 const MODALITA_OPZIONI = [
@@ -454,7 +456,7 @@ async function salva() {
                                 <p v-if="erroriCampo.natura_percipiente" class="text-[11px] text-rose-600 font-medium mt-1">{{ erroriCampo.natura_percipiente[0] }}</p>
                                 <p v-if="naturaProposta" class="text-[10px] text-slate-500 mt-1">
                                     Proposta dal tipo <strong>{{ ritenuta?.tipo }}</strong> dichiarato dal file. Decide il codice tributo
-                                    dell'F24: controllala, soprattutto se il fornitore è un ente non commerciale o una società di persone.
+                                    dell'F24: controllala, soprattutto se il fornitore è una società di persone, che va a 1019.
                                 </p>
                                 <p v-else class="text-[10px] text-amber-700 dark:text-amber-500 mt-1">
                                     Il file non dice chi è il percipiente: sceglilo tu, altrimenti il codice tributo dell'F24 verrà

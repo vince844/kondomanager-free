@@ -375,8 +375,10 @@ const eliminaDocumento = () => {
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ritenuta d'Acconto</p>
                                 <p class="text-sm font-bold text-slate-800 dark:text-slate-200">
                                     Soggetto a ritenuta del {{ props.fattura.dati_extra.fiscal.ritenuta_details.aliquota }}% 
-                                    <span class="text-slate-500 font-normal ml-1">(Tributo: {{ props.fattura.dati_extra.fiscal.ritenuta_details.codice_tributo }})</span>
+                                    <span class="text-slate-500 font-normal ml-1">(Tributo alla registrazione: {{ props.fattura.dati_extra.fiscal.ritenuta_details.codice_tributo }})</span>
                                 </p>
+                                <!-- Coda 316: il codice è congelato alla registrazione; quello dell'F24 lo decide il regime della ritenuta (`TipoRitenuta::codiceTributo`) e, solo negli appalti, la natura del percipiente: per un ente non commerciale dalla 1.11.0-beta.59 è 1020 anche sulle fatture registrate con 1019. -->
+                                <p class="text-xs text-slate-500">Nell'F24 il codice lo decide il regime della ritenuta e, negli appalti, la natura del percipiente: non questo valore.</p>
                             </div>
                         </div>
                         

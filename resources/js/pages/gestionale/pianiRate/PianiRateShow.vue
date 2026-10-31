@@ -46,6 +46,11 @@ const props = defineProps<{
   quotePerAnagrafica: any[],
   /** Verdetto sull'allineamento, calcolato dal server. Vedi `isDisallineato`. */
   disallineato?: boolean,
+  /**
+   * Coda 414: lo stato a tre valori del piano (`PianoRateQuoteService::statoAllineamento`) e le cifre che lo spiegano, in centesimi. `disallineato`
+   * qui sopra vuol dire il terzo. `scarto_registrato_cents` è null se il piano non ha quote non assegnate registrate.
+   */
+  allineamento?: { stato: 'allineato' | 'quota_aperta' | 'disallineato'; atteso_cents: number; generato_cents: number; scarto_cents: number; scarto_registrato_cents: number | null } | null,
   quotePerImmobile: any[],
   ratePure: any[],
   needsMigration: boolean;
@@ -156,6 +161,132 @@ const isSpostaSpesaOpen = ref(false);
  * del giorno prima è stata cancellata da questa.
  */
 const isDisallineato = computed(() => props.disallineato === true);
+
+// ── Coda 414: le quote non assegnate accettate ─────────────────────────────────────────────────────────────────────────────
+
+/** Una quota non assegnata registrata alla generazione (`GeneratePianoRateAction::registraQuoteNonAssegnate`), in centesimi. */
+type QuotaNonAssegnata = {
+    chiave: string; motivo: string | null; immobile_nome: string | null; conto_id: number | null; conto_nome: string | null;
+    tabella_nome: string | null; ruolo_richiesto: string | null; importo_cents: number; giorni: number | null; riga_descrizione: string | null;
+    /** 1 per una voce di spesa, −1 per una voce di entrata (la sua quota è un credito che nessuno riceve). */
+    segno?: number;
+};
+
+/** «Quota aperta»: il piano ha una quota non assegnata accettata e non si è mosso da allora. Il server lo dice, la pagina non lo ricalcola. */
+const isQuotaAperta = computed(() => props.allineamento?.stato === 'quota_aperta');
+
+const quoteNonAssegnate = computed<QuotaNonAssegnata[]>(() => props.pianoRate?.quote_non_assegnate?.voci ?? []);
+/** Le quote con una cifra: il millesimo non compilato non ne ha, perché la sua parte è andata alle altre unità. */
+const quoteConCifra = computed(() => quoteNonAssegnate.value.filter((q) => q.importo_cents !== 0));
+const quoteSenzaMillesimo = computed(() => quoteNonAssegnate.value.filter((q) => q.motivo === 'millesimo_non_compilato'));
+const totaleNonAssegnato = computed(() => quoteConCifra.value.reduce((somma, q) => somma + q.importo_cents, 0));
+/** Che fine fanno le quote lasciate fuori: la spesa non è addebitata a nessuno, l'entrata è un credito che nessuno riceve. */
+const fraseLasciateFuori = computed(() => {
+    const spese = quoteConCifra.value.some((q) => (q.segno ?? 1) >= 0);
+    const entrate = quoteConCifra.value.some((q) => (q.segno ?? 1) < 0);
+    if (spese && entrate) {
+        return 'le spese non sono addebitate a nessuno e le entrate nessuno le riceve come credito';
+    }
+
+    return entrate ? 'nessuno le riceve come credito' : 'non sono addebitate a nessuno';
+});
+/** Una cifra dopo un «−»: se è negativa sta fra parentesi, per non scrivere due meni di fila. */
+const dopoIlMeno = (cents: number) => (cents < 0 ? `(${euro(cents)})` : euro(cents));
+/** Le quote con il segno della loro voce, come le conta lo scarto: quella di una voce di entrata con il meno. */
+const nonAssegnatoConSegno = computed(() => quoteConCifra.value.reduce((somma, q) => somma + ((q.segno ?? 1) < 0 ? -1 : 1) * Math.abs(q.importo_cents), 0));
+/** La nota c'è e l'elenco no: il piano è stato accettato prima che il programma registrasse cifra e unità. */
+const notaSenzaElenco = computed(() => !!props.pianoRate?.nota_scoperti && props.pianoRate?.quote_non_assegnate == null);
+const mostraRiquadroQuote = computed(() => !!props.pianoRate?.nota_scoperti || quoteNonAssegnate.value.length > 0);
+/** C'è una causa da sistemare: una quota registrata, o una nota di prima su un piano che le rate non coprono. */
+const haQualcosaDaSistemare = computed(() => quoteNonAssegnate.value.length > 0 || (notaSenzaElenco.value && isDisallineato.value));
+
+/** Dove sta la quota: l'unità, o la tabella, o la voce quando la quota è di tutta la voce. */
+const doveStaLaQuota = (q: QuotaNonAssegnata) => q.immobile_nome ?? (q.tabella_nome ? `tabella «${q.tabella_nome}»` : (q.conto_nome ?? q.riga_descrizione ?? 'una voce del piano'));
+
+const RUOLI: Record<string, string> = { proprietario: 'nessun proprietario', inquilino: 'nessun inquilino', usufruttuario: 'nessun usufruttuario', nuda_proprietario: 'nessun nudo proprietario' };
+
+/** Perché la quota non è di nessuno, con le parole della finestra «Procedi comunque» (`ScopertoWarning`). */
+const percheNonAssegnata = (q: QuotaNonAssegnata): string => {
+    switch (q.motivo) {
+        case 'conto_senza_tabella': return 'la voce non ha una tabella millesimale collegata';
+        case 'tabella_senza_millesimi': return q.tabella_nome ? `la tabella «${q.tabella_nome}» non ha millesimi utilizzabili` : 'la tabella collegata non ha millesimi utilizzabili';
+        case 'coefficienti_sotto_il_cento': return 'le tabelle collegate alla voce non arrivano al 100 %';
+        case 'ripartizioni_sotto_il_cento': return 'le percentuali fra proprietario, inquilino e usufruttuario non arrivano al 100 %';
+        case 'millesimo_non_compilato': return q.tabella_nome ? `non ha un millesimo nella tabella «${q.tabella_nome}»: la sua parte è stata ripartita fra le altre unità` : 'non ha un millesimo: la sua parte è stata ripartita fra le altre unità';
+        case 'ad_personam_senza_titolare': return 'una spesa a suo carico, senza proprietario, nudo proprietario o usufruttuario attivo';
+        case 'giorni_senza_titolare': return `per ${q.giorni ?? '?'} giorni del periodo di competenza nessun titolare è in vigore`;
+        case 'titolari_fuori_competenza': return 'nessun titolare del ruolo richiesto è in vigore nei giorni di competenza della voce';
+        default: return (q.ruolo_richiesto && RUOLI[q.ruolo_richiesto]) || 'nessun titolare';
+    }
+};
+
+/** Che cosa si sistema prima di «Ricalcola», una volta per ogni causa: [all'imperativo, all'infinito]. */
+const RIMEDI: Record<string, [string, string]> = {
+    conto_senza_tabella: ['collega una tabella millesimale alla voce', 'collegare una tabella millesimale alla voce'],
+    tabella_senza_millesimi: ['inserisci i millesimi della tabella', 'inserire i millesimi della tabella'],
+    coefficienti_sotto_il_cento: ['porta al 100 % le tabelle della voce', 'portare al 100 % le tabelle della voce'],
+    ripartizioni_sotto_il_cento: ['porta al 100 % le percentuali della voce', 'portare al 100 % le percentuali della voce'],
+    millesimo_non_compilato: ['compila il millesimo che manca', 'compilare il millesimo che manca'],
+    giorni_senza_titolare: ['registra il passaggio a chi è entrato (se qualcuno è entrato)', 'registrare il passaggio a chi è entrato (se qualcuno è entrato)'],
+    titolari_fuori_competenza: ['controlla le date dei titolari', 'controllare le date dei titolari'],
+};
+const RIMEDIO_TITOLARE: [string, string] = ['censisci il titolare che manca', 'censire il titolare che manca'];
+const RIMEDIO_SCONOSCIUTO: [string, string] = ['sistema ciò che manca (il titolare, la tabella o i millesimi)', 'sistemare ciò che manca (il titolare, la tabella o i millesimi)'];
+
+const elenco = (parti: string[]) => (parti.length === 1 ? parti[0] : `${parti.slice(0, -1).join(', ')} e ${parti[parti.length - 1]}`);
+const rimedi = computed<[string, string][]>(() => {
+    const visti = new Map<string, [string, string]>();
+    quoteNonAssegnate.value.forEach((q) => {
+        const r = (q.motivo && RIMEDI[q.motivo]) || RIMEDIO_TITOLARE;
+        visti.set(r[0], r);
+    });
+    return visti.size ? [...visti.values()] : [RIMEDIO_SCONOSCIUTO];
+});
+/** «Censisci il titolare che manca», con la maiuscola: apre la frase. */
+const rimedioImperativo = computed(() => {
+    const frase = elenco(rimedi.value.map((r) => r[0]));
+    return frase.charAt(0).toUpperCase() + frase.slice(1);
+});
+/** «censire il titolare che manca»: sta in mezzo alla frase. */
+const rimedioInfinito = computed(() => elenco(rimedi.value.map((r) => r[1])));
+
+/** Il badge della quota aperta: la cifra e l'unità, o quante sono. */
+const etichettaQuotaAperta = computed(() => {
+    const quote = quoteConCifra.value;
+    const dove = quote.length === 1 ? doveStaLaQuota(quote[0]) : `${quote.length} quote`;
+    return `Quota aperta · ${euro(totaleNonAssegnato.value)} (${dove})`;
+});
+
+/** «1 voce inclusa», «2 voci incluse». */
+const vociIncluse = computed(() => {
+    const n = props.pianoRate?.capitoli?.length ?? 0;
+    return n === 1 ? '1 voce inclusa' : `${n} voci incluse`;
+});
+
+/** Quanto una voce ha ceduto ad altre con «Sposta spesa», in questo piano (centesimi, zero se nulla). */
+const cedutoConSpostaSpesa = (capitoloId: number) => Math.max(0, -saldoNettoMovimenti(props.pianoRate?.budget_movements || [], Number(capitoloId)));
+
+/**
+ * La riga sotto una voce «Parziale»: il preventivo, la parte che non è in questo piano e la parte che c'è (`importo_originale` e `importo` del
+ * server). La parte ceduta con «Sposta spesa» si dice a parte; il resto può essere l'acconto scelto alla creazione o un preventivo cambiato dopo, e
+ * la pagina non sa quale dei due: non lo dice.
+ */
+const rigaParziale = (capitolo: { id: number; importo: number; importo_originale: number }) => {
+    const fuori = capitolo.importo_originale - capitolo.importo;
+    if (fuori < 0) {
+        return `Preventivo ${euro(capitolo.importo_originale)}, nel piano ${euro(capitolo.importo)}: il piano chiede ${euro(-fuori)} più del preventivo.`;
+    }
+    const ceduto = cedutoConSpostaSpesa(capitolo.id);
+    const diCui = ceduto > 0 ? ` (di cui ${euro(Math.min(ceduto, fuori))} ceduti ad altre voci con «Sposta spesa»)` : '';
+    return `Preventivo ${euro(capitolo.importo_originale)} − non in questo piano ${euro(fuori)}${diCui} = nel piano ${euro(capitolo.importo)}.`;
+};
+
+/** La riga sotto una voce con quote non assegnate: la cifra e, se la quota è una sola, dove sta e perché. */
+const rigaNonAssegnati = (capitolo: { id: number; non_assegnati_cents?: number }) => {
+    const sue = quoteConCifra.value.filter((q) => q.conto_id === capitolo.id);
+    const dove = sue.length === 1 ? ` (${doveStaLaQuota(sue[0])}: ${percheNonAssegnata(sue[0])})` : '';
+    return `Non assegnati ${euro(capitolo.non_assegnati_cents ?? 0)}${dove}: restano fuori dalle rate.`;
+};
 
 const confirmDetachItem = (capitolo: any) => {
     if (aggregates.value.totaleVersato > 0) {
@@ -909,23 +1040,57 @@ const printRipartoCapitoli = () => {
               </div>
           </div>
 
+          <!--
+            Coda 414: il riquadro dice la cifra e l'unità delle quote registrate alla generazione (`pianoRate.quote_non_assegnate`), non solo la
+            motivazione. D143: le strade sono quelle che esistono — annullare le emissioni (prima gli incassi), sistemare la causa, «Ricalcola» —, e il
+            programma non ha un addebito individuale: niente «addebito manuale», niente «conguaglio di fine anno».
+          -->
           <div
-              v-if="pianoRate.nota_scoperti"
+              v-if="mostraRiquadroQuote"
+              data-riquadro="quote-non-assegnate"
               class="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700
                      dark:bg-slate-900/30 px-4 py-3 text-xs text-slate-600 dark:text-slate-400"
           >
-              <span class="font-medium">Questo piano rate contiene quote non assegnate.</span>
-              <span class="ml-1">Motivazione registrata: "{{ pianoRate.nota_scoperti }}"</span>
+              <template v-if="quoteConCifra.length">
+                  <span class="font-medium">Questo piano rate contiene quote non assegnate: {{ euro(totaleNonAssegnato) }}.</span>
+                  <span class="block mt-0.5">Le rate le hanno lasciate fuori: {{ fraseLasciateFuori }}.</span>
+              </template>
+              <span v-else-if="quoteSenzaMillesimo.length" class="font-medium">
+                  Nessuna quota è rimasta senza destinatario, ma {{ quoteSenzaMillesimo.length === 1 ? 'un\'unità non ha un millesimo: la sua parte' : `${quoteSenzaMillesimo.length} unità non hanno un millesimo: la loro parte` }} l'hanno pagata le altre.
+              </span>
+              <span v-else-if="notaSenzaElenco && !isDisallineato" class="font-medium">Questo piano rate aveva quote non assegnate.</span>
+              <span v-else class="font-medium">Questo piano rate contiene quote non assegnate.</span>
+              <ul v-if="quoteNonAssegnate.length" class="mt-1 list-disc space-y-0.5 pl-4">
+                  <li v-for="q in quoteNonAssegnate" :key="q.chiave">
+                      <strong>{{ doveStaLaQuota(q) }}</strong><template v-if="q.conto_nome && q.immobile_nome"> · {{ q.conto_nome }}</template><template v-if="q.importo_cents !== 0">: {{ euro(q.importo_cents) }}</template> — {{ percheNonAssegnata(q) }}.
+                  </li>
+              </ul>
+              <span v-if="pianoRate.nota_scoperti" class="block mt-1">Motivazione registrata: "{{ pianoRate.nota_scoperti }}"</span>
+              <span v-if="notaSenzaElenco && isDisallineato" class="block mt-1">
+                  La cifra e le unità non sono registrate: il piano è stato accettato prima che il programma le salvasse, e il riquadro
+                  «Copertura spese» lo dice disallineato. «Ricalcola» non assegna queste quote a nessuno: se qualcosa resta senza destinatario
+                  chiede di nuovo la presa d'atto, e questa volta registra cifra e unità.
+              </span>
+              <!-- La nota di una generazione di prima dell'aggiornamento, su un piano che oggi mette in rata tutto: la quota non c'è più. -->
+              <span v-else-if="notaSenzaElenco" class="block mt-1">
+                  La motivazione è di una generazione di prima di questo aggiornamento: oggi le rate mettono in conto tutto quello che il piano
+                  chiede. Il riquadro si spegne al prossimo <strong>Ricalcola</strong>, se il piano si ricalcola ancora.
+              </span>
+              <template v-if="haQualcosaDaSistemare">
               <span v-if="!isRecalculateBlocked" class="block mt-1 text-blue-600 dark:text-blue-400">
-                  → Censisci le anagrafiche mancanti, poi usa il tasto <strong>Ricalcola</strong> per includere le unità nel piano.
+                  → {{ rimedioImperativo }}, poi usa il tasto <strong>Ricalcola</strong> per includere la quota nel piano.
               </span>
               <span v-else-if="props.ratePure?.some(r => r.is_emessa)" class="block mt-1 text-amber-600 dark:text-amber-500">
-                  → Le rate sono già emesse. La quota di questa unità dovrà essere recuperata con un addebito manuale o in sede di conguaglio di fine anno.
+                  → Le rate sono già emesse. Per includere la quota bisogna riaprire il piano con i passi elencati sul pulsante <strong>Ricalcola</strong>
+                  (annullare le emissioni, e prima stornare gli incassi se ce ne sono), poi {{ rimedioInfinito }} e premere <strong>Ricalcola</strong>.
+                  Il programma non ha un addebito individuale.
               </span>
               <!-- Fermo senza emissioni (un incasso, il conguaglio di un passaggio): «le rate sono già emesse» sarebbe falso. -->
               <span v-else class="block mt-1 text-amber-600 dark:text-amber-500">
-                  → Il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>. Finché resta così, la quota di questa unità dovrà essere recuperata con un addebito manuale o in sede di conguaglio di fine anno.
+                  → Il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>. Finché resta così, la quota
+                  non è addebitata a nessuno; il programma non ha un addebito individuale.
               </span>
+              </template>
           </div>
 
           <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 dark:bg-amber-950/40 dark:border-amber-800">
@@ -1357,12 +1522,17 @@ const printRipartoCapitoli = () => {
                         <div class="text-left">
                             <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2 dark:text-neutral-300">
                                 Copertura spese
-                                <Badge v-if="isDisallineato" variant="destructive" class="text-[10px] py-0 px-1.5">
-                                    <AlertTriangle class="w-3 h-3 mr-1" /> Disallineato: ricalcola!
+                                <!-- Coda 414: «ricalcola!» solo se il piano si ricalcola; fermo, il pulsante «Ricalcola» dice perché e come riaprirlo. -->
+                                <Badge v-if="isDisallineato" variant="destructive" class="text-[10px] py-0 px-1.5" data-badge="allineamento">
+                                    <AlertTriangle class="w-3 h-3 mr-1" /> {{ isRecalculateBlocked ? 'Disallineato' : 'Disallineato: ricalcola!' }}
                                 </Badge>
+                                <span v-else-if="isQuotaAperta" data-badge="allineamento"
+                                      class="text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0 rounded-md flex items-center gap-1 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
+                                    <AlertTriangle class="w-3 h-3" /> {{ etichettaQuotaAperta }}
+                                </span>
                             </h3>
                             <p class="text-[10px] text-gray-500">
-                                {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • 
+                                {{ vociIncluse }} •
                                 <span :class="{'text-red-600 font-bold dark:text-red-400': isDisallineato}">
                                     <template v-if="(props.pianoRate.totale_entrate ?? 0) > 0">
                                         da ripartire: {{ euro(props.pianoRate.totale_da_ripartire) }} (spese {{ euro(props.pianoRate.totale_spese) }}, entrate {{ euro(props.pianoRate.totale_entrate) }})
@@ -1371,6 +1541,11 @@ const printRipartoCapitoli = () => {
                                         totale preventivo: {{ euro(props.pianoRate.totale_da_ripartire) }}
                                     </template>
                                 </span>
+                            </p>
+                            <!-- Coda 414: le sottrazioni in chiaro, con le cifre del server (`allineamento`): quanto il piano chiede, quanto c'è nelle rate, e perché. -->
+                            <p v-if="props.allineamento && props.allineamento.stato !== 'allineato'" data-riga="scarto" class="text-[10px] mt-0.5"
+                               :class="isQuotaAperta ? 'text-amber-700 dark:text-amber-400' : 'text-red-600 dark:text-red-400'">
+                                Da mettere in rata {{ euro(props.allineamento.atteso_cents) }} − nelle rate {{ dopoIlMeno(props.allineamento.generato_cents) }} = {{ euro(props.allineamento.scarto_cents) }}<template v-if="isQuotaAperta">: le quote non assegnate accettate<template v-if="nonAssegnatoConSegno !== props.allineamento.scarto_cents"> ({{ euro(nonAssegnatoConSegno) }} le singole quote, la differenza è l'arrotondamento)</template>.</template><template v-else-if="notaSenzaElenco">: il piano ha quote non assegnate accettate prima che il programma ne registrasse la cifra, e altro non si sa.</template><template v-else-if="props.allineamento.scarto_registrato_cents !== null">: alla generazione erano {{ euro(props.allineamento.scarto_registrato_cents) }} di quote non assegnate accettate, e da allora qualcosa è cambiato.</template><template v-else>: le rate non corrispondono a quello che il piano chiede; «Ricalcola», se il piano si ricalcola ancora, le rifà con i dati di adesso e, se restano quote senza destinatario, ne chiede la presa d'atto.</template>
                             </p>
                         </div>
                     </div>
@@ -1416,6 +1591,13 @@ const printRipartoCapitoli = () => {
                                     </span>
                                 </div>
                                 <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">Include: {{ capitolo.figli_names }}</p>
+                                <!-- Coda 414: la riga di «Parziale» a vista, con la parte ceduta con «Sposta spesa» quando c'è. -->
+                                <p v-if="capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" data-riga="parziale" class="text-[10px] text-indigo-700 leading-tight max-w-md dark:text-indigo-300">
+                                    {{ rigaParziale(capitolo) }}
+                                </p>
+                                <p v-if="(capitolo.non_assegnati_cents ?? 0) !== 0" data-riga="non-assegnati" class="text-[10px] text-amber-700 leading-tight max-w-md dark:text-amber-400">
+                                    {{ rigaNonAssegnati(capitolo) }}
+                                </p>
                                 <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1 dark:text-amber-400">
                                     Include fondi spostati da altre voci 
                                     <span class="inline-flex items-center gap-0.5 whitespace-nowrap opacity-80">(vedi storico <History class="w-2.5 h-2.5" />)</span>

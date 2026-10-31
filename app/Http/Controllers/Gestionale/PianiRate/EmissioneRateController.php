@@ -127,6 +127,14 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
         }
 
+        // Coda 313 (decisione 160): la chiusura dell'anticipazione toglierebbe dall'unità una spesa ad personam che lo storno della fattura o
+        // una nota di credito ha già tolto (dati delle versioni di prima, o una nota senza fattura registrata prima delle emissioni). Prima di
+        // scrivere: il rifiuto dice la strada, e nessuna rata della richiesta va a giornale.
+        $rateRichieste = Rata::with('rateQuote')->where('piano_rate_id', $pianoRate->id)->whereIn('id', (array) $request->rate_ids)->orderBy('numero_rata')->get();
+        if ($motivoAdPersonam = RataQuote::motivoBloccoEmissioneAdPersonam($pianoRate, $rateRichieste, $contoPassateGestioni?->id)) {
+            return back()->with($this->flashError($motivoAdPersonam));
+        }
+
         // Decisione 34 (1.11.0-beta.42): «emessa» vuol dire a giornale. Le rate che vanno a giornale qui, e quelle che restano
         // fuori, ognuna con il numero per il messaggio: senza niente da portare a giornale (vuote, o con il credito già usato o
         // rimborsato per intero: rilievo LDA-3 della Fase 1-bis), già emesse, segnate «emesse» senza scritture e prese così da un
@@ -276,6 +284,15 @@ class EmissioneRateController extends Controller
                                 'importo'            => abs($totale),
                                 'note'               => $nota
                             ]);
+                        }
+
+                        // Coda 313 (decisione 153.1): la parte ad personam delle quote chiude l'anticipazione che la fattura ha scritto
+                        // su «Crediti verso condomini» con l'unità, una riga per unità, con la rata e senza persona: non va su «Gestione
+                        // rate» (`scritturaDiEmissione` la toglie dalla spesa). Il DARE a nome della persona resta la quota intera, quindi
+                        // estratto conto, quote e incassi non cambiano. La riga sta nella scrittura d'emissione: l'annullamento la porta
+                        // via con lei.
+                        foreach (RataQuote::righeDiChiusura($perQuota, $daEmettere, (int) $contoCrediti->id, (int) $rata->id, (string) $rata->descrizione) as $riga) {
+                            $scrittura->righe()->create($riga);
                         }
 
                     } else {

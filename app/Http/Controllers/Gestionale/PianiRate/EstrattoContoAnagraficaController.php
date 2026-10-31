@@ -26,6 +26,18 @@ class EstrattoContoAnagraficaController extends Controller
     use HasEsercizio;
 
     /**
+     * I mastri della posizione di condòmino (Code 288 e 317, decisione 153.2): l'estratto conto per persona conta solo le righe su questi
+     * conti, una lista che entra. «Crediti verso condomini» porta emissioni, incassi, compensazioni, storni e rimborsi; «Anticipi» l'eccedenza
+     * di un incasso senza una quota d'appoggio; «Passate gestioni» il rimborso e la compensazione di un credito riportato.
+     *
+     * Le altre righe con l'anagrafica della persona sono del ciclo passivo: la regolazione immediata, la fattura e il pagamento scrivono il
+     * primo rappresentante del fornitore sul costo, sui debiti verso fornitori e verso l'Erario (`RegistraRegolazioneImmediataAction`,
+     * `FatturaPassivaService`, `PagamentoFornitoreService`), e un condòmino che rappresenta un fornitore vedeva le fatture come versamenti e
+     * le regolazioni e i pagamenti come addebiti. Le righe già scritte restano come sono: si leggono giuste alla lettura.
+     */
+    private const MASTRI_DELLA_PERSONA = ['crediti_condomini', 'anticipi_condomini', 'passate_gestioni'];
+
+    /**
      * Genera l'Estratto Conto finanziario di una singola Anagrafica (vista Inertia).
      * Costruisce un "Ledger" (Libro Mastro) cronologico in Dare/Avere con saldo progressivo
      * "Waterfall" al centesimo, basato sul pattern Double-Entry.
@@ -199,6 +211,31 @@ class EstrattoContoAnagraficaController extends Controller
     // -------------------------------------------------------------------------
     // HELPER PRIVATO — Logica condivisa tra show() e print()
     // -------------------------------------------------------------------------
+
+    /**
+     * Il giorno in cui l'amministratore ha inserito il movimento, nel suo calendario, come `d/m/Y` (Coda 317, D6).
+     *
+     * Il programma scrive `data_registrazione` con `now()`, in UTC (`config('app.timezone')`), e la colonna è una DATE: tiene il giorno di
+     * Greenwich, che fra la mezzanotte e le 01:00 o le 02:00 di Roma è ancora ieri, e l'ora non si ricava più. L'ora esatta sta in
+     * `created_at`, un timestamp: se il giorno della registrazione è quello di Greenwich dell'inserimento (la scrittura è stata registrata
+     * con `now()`), il giorno vero è quello di `created_at` nel fuso dell'amministratore (`config('app.user_timezone')`, lo stesso con cui si
+     * controlla la data del movimento: `DateHelper::oggiUtente()`). Una registrazione con un altro giorno (scritta da chi sceglie il giorno,
+     * o già nel calendario di Roma) è un fatto della scrittura e si legge com'è.
+     */
+    private static function giornoDiRegistrazione(\App\Models\Gestionale\ScritturaContabile $scrittura): ?string
+    {
+        $registrazione = $scrittura->data_registrazione;
+        if ($registrazione === null) {
+            return null;
+        }
+
+        $inserita = $scrittura->created_at;
+        if ($inserita !== null && $inserita->format('Y-m-d') === $registrazione->format('Y-m-d')) {
+            return $inserita->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('d/m/Y');
+        }
+
+        return $registrazione->format('d/m/Y');
+    }
 
     /** Il tipo della scrittura di una riga, come stringa (`tipo_movimento` è un Backed Enum dalla v1.9.1). */
     private static function tipoDi($riga): ?string
@@ -386,11 +423,13 @@ class EstrattoContoAnagraficaController extends Controller
         // riconoscono dalla struttura, come le riconosce lo storno (`StornoIncassoRateAction::famiglia`), non cercando il marcatore
         // dentro la causale (rilievo S1 della Fase 1-bis): la causale di un incasso è la sua descrizione, quella di un rimborso
         // contiene il nome dell'anagrafica, e lo storno la ricopia; con il marcatore nel testo libero spariva lo storno vero.
+        // Solo le righe sui mastri della posizione di condòmino (Code 288 e 317): vedi MASTRI_DELLA_PERSONA.
         $movimenti = $anagrafica->movimenti()
             ->whereHas('scrittura', fn ($q) => $q->where('condominio_id', $condominio->id))
+            ->whereHas('contoContabile', fn ($q) => $q->whereIn('ruolo', self::MASTRI_DELLA_PERSONA))
             ->whereNotIn('scrittura_id', $this->rettificheDelRiallineamento($condominio))
             ->whereNull('cassa_id')
-            ->with(['scrittura.gestione', 'scrittura.padre:id,tipo_movimento,stato', 'rata', 'immobile']) 
+            ->with(['scrittura.gestione', 'scrittura.padre:id,tipo_movimento,stato,data_competenza', 'rata', 'immobile'])
             ->orderBy('created_at', 'asc') 
             ->orderBy('id', 'asc')
             ->get();
@@ -506,13 +545,32 @@ class EstrattoContoAnagraficaController extends Controller
             return false;
         })->values();
 
-        // --- STEP 3: ORDINAMENTO VISIVO INTELLIGENTE ---
-        $movimenti = $movimenti->sortBy(function($riga) {
-            // 1. Raggruppamento per scrittura contabile originaria
-            // 2. Dare (0) precede Avere (1) per garantire un flusso visivo lineare del Saldo Progressivo
-            // 3. A parità di riga, ordina per importo decrescente
-            $ordineRiga = $riga->tipo_riga === 'dare' ? 0 : 1; 
-            return [$riga->scrittura_id, $ordineRiga, -abs($riga->quotaPura)];
+        // --- STEP 3: L'ORDINE DEL LIBRO ---
+        // Coda 317 (decisione 153.6): per data di competenza, la data del fatto, come la Prima nota (D6 di `registri_contabili.md`); un incasso
+        // del 10/07 inserito il 18/10 sta al 10/07. Nello stesso giorno il dare prima dell'avere, anche fra scritture diverse: il saldo
+        // progressivo non scende sotto il vero dentro il giorno. Poi la scrittura, e a parità di riga l'importo decrescente. Lo storno sta
+        // alla sua data. Totali e saldo finale non dipendono dall'ordine. Fino alla 1.11.0-beta.58 l'ordine era per scrittura.
+        //
+        // Fa eccezione lo storno fatto lo stesso giorno della scrittura che annulla: la sua rettifica sta dopo di lei, perché prima di lei
+        // annullerebbe un movimento che nell'elenco non c'è ancora (con il dare prima dell'avere, lo storno di un incasso del giorno usciva
+        // prima dell'incasso). Si ancora in coda alle righe della scrittura madre (lato 1, la sua scrittura, fase 1); le altre righe hanno la
+        // fase 0 e l'ordine di sempre. Tra la madre e la sua rettifica possono esserci le righe in avere del giorno delle scritture inserite
+        // prima della madre (una madre con le sole righe in dare, come un rimborso, ha l'ancora al lato avere), mai quelle delle scritture
+        // inserite dopo. Una rettifica di una scrittura di un altro giorno resta nel suo giorno, con il dare prima dell'avere.
+        $movimenti = $movimenti->sortBy(function ($riga) {
+            $ordineRiga = $riga->tipo_riga === 'dare' ? 0 : 1;
+            $giorno = $riga->scrittura->data_competenza?->format('Y-m-d') ?? '';
+            $tipo = self::tipoDi($riga);
+            $padre = $tipo === 'rettifica' ? $riga->scrittura->padre : null;
+            // L'importo con cui la riga entra nel saldo progressivo: la quota pura per l'emissione, l'importo della scrittura per lo storno
+            // (la rettifica in dare di un incasso ha la quota pura della rata, uguale per tutte le righe, e non le ordinerebbe).
+            $peso = $riga->tipo_riga === 'dare' && in_array($tipo, ['rettifica', 'storno_credito', 'rimborso_condomino'], true) ? $riga->importo : $riga->quotaPura;
+
+            if ($padre !== null && $padre->data_competenza?->format('Y-m-d') === $giorno) {
+                return [$giorno, 1, (int) $padre->id, 1, $ordineRiga, (int) $riga->scrittura_id, -abs($peso)];
+            }
+
+            return [$giorno, $ordineRiga, (int) $riga->scrittura_id, 0, $ordineRiga, (int) $riga->scrittura_id, -abs($peso)];
         })->values();
 
         // --- STEP 4: CREAZIONE TIMELINE & CALCOLO SALDI PROGRESSIVI ---
@@ -724,9 +782,15 @@ class EstrattoContoAnagraficaController extends Controller
                 ];
             }
 
+            // Coda 317: la data della riga è la data di competenza, in pagina e nel PDF. La data di registrazione (il giorno in cui il movimento
+            // è stato inserito) va all'amministratore e solo quando è diversa (D6): la pagina la mostra, il PDF che si consegna alla persona no.
+            $dataCompetenza = $riga->scrittura->data_competenza?->format('d/m/Y');
+            $dataRegistrazione = self::giornoDiRegistrazione($riga->scrittura);
+
             return [
                 'id'          => $riga->id,
-                'data'        => $riga->scrittura->data_registrazione ? $riga->scrittura->data_registrazione->format('d/m/Y') : '-',
+                'data'        => $dataCompetenza ?? '-',
+                'data_registrazione' => $dataRegistrazione !== null && $dataRegistrazione !== $dataCompetenza ? $dataRegistrazione : null,
                 'protocollo'  => $riga->scrittura->numero_protocollo,
                 'descrizione' => $riga->scrittura->causale ?: 'Movimento Contabile',
                 'gestione'    => $riga->scrittura->gestione ? $riga->scrittura->gestione->nome : null,

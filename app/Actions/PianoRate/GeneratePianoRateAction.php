@@ -479,6 +479,10 @@ class GeneratePianoRateAction
             $titolaritaAlla
         );
 
+        // 5-bis. Le quote non assegnate di questa generazione, a rate scritte (Coda 414). Qui gli scoperti o non ci sono o sono accettati:
+        // senza la presa d'atto il cancello qui sopra si è già fermato.
+        $this->registraQuoteNonAssegnate($pianoRate, $scoperti, presaDAtto: $accettaScoperti && filled($notaScoperti));
+
         // 6. LUCCHETTO SALDI
         // Chi genera le quote è anche l'unico che chiude (o riapre) il lucchetto,
         // e lo fa a proprio nome: così lo stato del wallet non può divergere da
@@ -546,6 +550,99 @@ class GeneratePianoRateAction
             'piano_rate_id' => $pianoRate->id,
             'rate_create'   => $stats['rate_create'] ?? count($dateRate),
         ], $stats);
+    }
+
+    /**
+     * Le quote non assegnate dell'ultima generazione, in `piani_rate.quote_non_assegnate` (Coda 414, decisione 153.6).
+     *
+     * Si scrive a rate scritte, a ogni generazione, e dipende dagli scoperti, non dalla nota: «Rimuovi voce e ricalcola»
+     * (`PianoRateController::detachCapitolo`) rigenera accettando gli scoperti senza una nota nuova, e se la scrittura stesse sotto la nota
+     * la colonna terrebbe le quote della generazione di prima, anche una che con la voce tolta non c'è più. Senza scoperti la colonna e la
+     * nota si svuotano: il riquadro della pagina e lo «scoperto documentato» del cruscotto leggono la nota, e dopo il censimento e il
+     * ricalcolo direbbero una quota che non c'è più.
+     *
+     * Lo scarto registrato è quello vero, `atteso − generato` di `PianoRateQuoteService` letto sul piano appena scritto, e non la somma delle
+     * quote: il motore toglie dalla voce un arrotondamento solo e registra ogni quota con il suo, e le due cifre possono differire di un
+     * centesimo. È la fotografia di questa generazione: lo stato del piano la confronta con lo scarto di adesso.
+     *
+     * Le voci portano i nomi di unità, voce e tabella com'erano alla generazione, e una chiave stabile (motivo, unità, voce, tabella, ruolo,
+     * riga) a cui un addebito futuro possa riferirsi.
+     *
+     * Ogni voce porta il segno della sua voce del piano (`segno`: 1 spesa, −1 entrata): il motore registra la cifra in valore assoluto, e la
+     * quota di una voce di entrata è un credito che nessuno riceve, che lo scarto conta con il meno.
+     *
+     * Senza una presa d'atto in questa generazione («Rimuovi voce e ricalcola» accetta senza chiedere) una quota è accettata solo se la
+     * generazione di prima l'aveva già accettata, con la stessa chiave: una quota nuova (un titolare tolto dopo la generazione) porta
+     * `accettata` false, e il piano è disallineato finché «Ricalcola» non chiede la presa d'atto.
+     *
+     * @param list<array<string, mixed>> $scoperti gli scoperti del motore, con le righe senza millesimo (`importo` 0)
+     * @param bool $presaDAtto la generazione ha la presa d'atto dell'amministratore, con la nota
+     */
+    private function registraQuoteNonAssegnate(PianoRate $pianoRate, array $scoperti, bool $presaDAtto = true): void
+    {
+        if ($scoperti === []) {
+            if ($pianoRate->quote_non_assegnate !== null || $pianoRate->nota_scoperti !== null) {
+                $pianoRate->quote_non_assegnate = null;
+                $pianoRate->nota_scoperti = null;
+                $pianoRate->save();
+            }
+
+            return;
+        }
+
+        $immobiliNomi = Immobile::whereIn('id', array_filter(array_column($scoperti, 'immobile_id')))->pluck('nome', 'id')->all();
+        $conti = Conto::whereIn('id', array_filter(array_column($scoperti, 'conto_id')))->get(['id', 'nome', 'tipo'])->keyBy('id');
+        $contiNomi = $conti->map(fn (Conto $c) => $c->nome)->all();
+        $giaAccettate = $presaDAtto ? [] : collect($pianoRate->quote_non_assegnate['voci'] ?? [])
+            ->filter(fn ($v) => ($v['accettata'] ?? true) !== false)->pluck('chiave')->all();
+        $tabelleIds = array_filter(array_map(fn ($s) => $s['tabella_id'] ?? null, $scoperti));
+        $tabelleNomi = $tabelleIds === [] ? [] : Tabella::whereIn('id', $tabelleIds)->pluck('nome', 'id')->all();
+
+        $chiavi = [];
+        $voci = array_map(function (array $s) use ($immobiliNomi, $contiNomi, $tabelleNomi, $conti, $presaDAtto, $giaAccettate, &$chiavi) {
+            $immobileId = isset($s['immobile_id']) ? (int) $s['immobile_id'] : null;
+            $contoId = isset($s['conto_id']) ? (int) $s['conto_id'] : null;
+            $tabellaId = isset($s['tabella_id']) ? (int) $s['tabella_id'] : null;
+            $riga = $s['riga_descrizione'] ?? null;
+
+            $chiave = implode('|', [
+                $s['motivo'] ?? 'senza_titolare', $immobileId ?? '', $contoId ?? '', $tabellaId ?? '', $s['ruolo_richiesto'] ?? '',
+                $riga !== null ? substr(md5((string) $riga), 0, 10) : '',
+            ]);
+            // Due quote con gli stessi dati (due righe uguali di una fattura): la seconda porta il suo numero, e la chiave resta unica.
+            $chiavi[$chiave] = ($chiavi[$chiave] ?? 0) + 1;
+            if ($chiavi[$chiave] > 1) {
+                $chiave .= '#'.$chiavi[$chiave];
+            }
+
+            return [
+                'chiave'           => $chiave,
+                'motivo'           => $s['motivo'] ?? null,
+                'immobile_id'      => $immobileId,
+                'immobile_nome'    => $immobileId !== null ? ($immobiliNomi[$immobileId] ?? null) : null,
+                'conto_id'         => $contoId,
+                'conto_nome'       => $contoId !== null ? ($contiNomi[$contoId] ?? null) : null,
+                'tabella_id'       => $tabellaId,
+                'tabella_nome'     => $tabellaId !== null ? ($tabelleNomi[$tabellaId] ?? null) : null,
+                'ruolo_richiesto'  => $s['ruolo_richiesto'] ?? null,
+                'importo_cents'    => (int) ($s['importo'] ?? 0),
+                'giorni'           => isset($s['giorni']) ? (int) $s['giorni'] : null,
+                'riga_descrizione' => $riga,
+                'segno'            => $contoId !== null && isset($conti[$contoId]) ? Conto::segnoDelTipo((string) ($conti[$contoId]->tipo ?? 'spesa')) : 1,
+                'accettata'        => $presaDAtto || in_array($chiave, $giaAccettate, true),
+            ];
+        }, array_values($scoperti));
+
+        // Il piano riletto: le rate appena scritte, e nessuna relazione caricata prima della generazione.
+        $scritto = PianoRate::find($pianoRate->id);
+
+        $pianoRate->quote_non_assegnate = [
+            'voci'          => $voci,
+            'scarto_cents'  => app(\App\Services\PianoRateQuoteService::class)->scartoCents($scritto),
+            'registrate_il' => now()->toIso8601String(),
+            'registrate_da' => Auth::id(),
+        ];
+        $pianoRate->save();
     }
 
     /**

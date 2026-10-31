@@ -617,7 +617,8 @@ function categoriaCreata(nome: string) {
                                 <div class="flex items-center space-x-2">
                                     <Checkbox id="provvigioni_base_ridotta" v-model="form.provvigioni_base_ridotta" />
                                     <Label for="provvigioni_base_ridotta" class="cursor-pointer text-xs text-slate-600 dark:text-slate-400 max-w-md">
-                                        Il percipiente ha dichiarato di avvalersi in via continuativa di dipendenti/collaboratori (base ridotta al 50%)
+                                        Il percipiente ha dichiarato di avvalersi in via continuativa dell'opera di dipendenti o di terzi.
+                                        È un'annotazione: la ritenuta la calcola il regime, e con la dichiarazione il regime è «Provvigioni — base ridotta al 20% con la dichiarazione del percipiente, 4,6%».
                                     </Label>
                                 </div>
                                 <div class="flex-1 min-w-[180px]">

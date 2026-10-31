@@ -109,3 +109,95 @@ describe('la conferma del riallineamento, singolare e plurale del verbo', () => 
         expect(finestra(1, 1)).toContain('Prendono la data di competenza e l\'esercizio della scrittura che correggono');
     });
 });
+
+// ─── Coda 313 (1.11.0-beta.59): le emissioni con la spesa ad personam addebitata due volte ──────────────────────────────────────
+//
+// La decisione 153.1: dei dati già scritti, solo il rilevamento. La card elenca, per rata e unità, la cifra addebitata due volte, il
+// piano e la data, con frasi vere per costruzione (che cosa è doppio e dove; le rate dei condòmini sono giuste), e il pulsante non le
+// tocca: la conferma conta solo le scritture che fa. Le cifre e le frasi del server sono in `Beta59313AdPersonamRilevamentoTest`.
+
+type Riallineamento = Record<string, unknown>;
+
+function montaCon(riallineamento: Riallineamento) {
+    return shallowMount(IncassoRateList, {
+        props: {
+            condominio: { id: 28, nome: 'Condominio Demo KM' } as never,
+            condomini: [] as never,
+            esercizio: { id: 5, nome: 'Esercizio 2026' } as never,
+            esercizi: [] as never,
+            movimenti: { data: [], meta: {} },
+            stats: { totale_incassi: 0, incassi_mese: 0, stornati: 0 },
+            filters: {},
+            riallineamento_crediti: { compensazioni: [], rate: [], da_emettere: [], restano: [], ad_personam: [], ad_personam_non_calcolabili: [], ...riallineamento } as never,
+        },
+        global: { renderStubDefaultSlot: true, mocks: { route: (name: string) => `/${name}` } },
+    });
+}
+
+const voce = (extra: Record<string, unknown> = {}) => ({
+    rata_id: 7, numero_rata: 1, piano: 'Balcone interno 1', immobile_id: 3, unita: 'Int. 1', data: '01/04/2026', esercizio: 'Esercizio 2026',
+    esercizio_aperto: true, importo: 61000, ...extra,
+});
+
+/** Il testo della card con gli spazi normali al posto di quelli non divisibili dell'importo. */
+const testo = (w: ReturnType<typeof montaCon>) => w.text().replace(/ /g, ' ');
+
+describe('Coda 313 — la card elenca la spesa ad personam addebitata due volte, in sola lettura', () => {
+    test('con le sole voci della spesa ad personam: il perché in chiaro, la voce con la cifra, nessun pulsante', () => {
+        const w = montaCon({ ad_personam: [voce(), voce({ rata_id: 8, numero_rata: 2, data: '01/05/2026' })] });
+        const t = testo(w);
+
+        expect(w.find('[data-testid="riallineamento-ad-personam"]').exists()).toBe(true);
+        expect(t).toContain('Le rate dei condòmini sono giuste: nessuno deve pagare di più.');
+        expect(t).toContain('la fattura l\'ha già scritta su «Crediti verso condomini» con l\'unità');
+        expect(t).toContain('Il riallineamento non la corregge: qui è solo elencata.');
+        expect(t).toContain('Rata 1 (Balcone interno 1), Int. 1, emessa il 01/04/2026: € 610,00 di spesa ad personam addebitati due volte.');
+        expect(t).toContain('Rata 2 (Balcone interno 1), Int. 1, emessa il 01/05/2026: € 610,00 di spesa ad personam addebitati due volte.');
+        // Il pulsante si conta sulle scritture da fare: qui nessuna. E il paragrafo delle voci che restano non c'è, perché non ce ne sono.
+        expect(t).not.toContain('Scrivi le correzioni');
+        expect(t).not.toContain('Niente da scrivere: il riallineamento lascia queste voci come sono.');
+    });
+
+    test('un\'emissione in un esercizio chiuso lo dice nella voce', () => {
+        const t = testo(montaCon({ ad_personam: [voce({ esercizio_aperto: false })] }));
+
+        expect(t).toContain('€ 610,00 di spesa ad personam addebitati due volte (esercizio «Esercizio 2026», chiuso).');
+    });
+
+    test('il piano per cui la cifra non si calcola ha la sua voce, con il perché del server', () => {
+        const t = testo(montaCon({ ad_personam_non_calcolabili: [{ piano_id: 4, piano: 'Facciata 2025', motivo: 'il piano «Facciata 2025» non ha il registro del riparto' }] }));
+
+        expect(t).toContain('Da controllare a mano: il piano «Facciata 2025» non ha il registro del riparto.');
+        expect(t).not.toContain('Scrivi le correzioni');
+    });
+
+    test('con una compensazione da rettificare il pulsante c\'è, e la conferma conta solo la scrittura che fa', () => {
+        const w = montaCon({
+            compensazioni: [{ scrittura_id: 100, protocollo: '2026/100', data: '15/03/2026', quota_id: 10, numero_rata: 0, persona: 'Ugo Uno', importo: 5000 }],
+            ad_personam: [voce(), voce({ rata_id: 8, numero_rata: 2 })],
+        });
+        const conferma = w.findAllComponents({ name: 'DialogDescription' }).map((c) => c.text()).find((x) => x.includes('libro giornale')) ?? '';
+
+        expect(testo(w)).toContain('Scrivi le correzioni');
+        expect(conferma).toContain('Verrà scritta nel libro giornale 1 scrittura: la rettifica di una compensazione.');
+    });
+});
+
+describe('Coda 313 — con i soli piani da controllare a mano la card non dice che la spesa è addebitata due volte', () => {
+    test('niente frase del doppio, che il programma non ha misurato: la frase dei piani da controllare', () => {
+        const w = montaCon({ ad_personam_non_calcolabili: [{ piano_id: 4, piano: 'Facciata 2025', motivo: 'il piano «Facciata 2025» non ha il registro del riparto' }] });
+        const t = testo(w);
+
+        expect(w.find('[data-testid="riallineamento-ad-personam"]').exists()).toBe(false);
+        expect(t).not.toContain('Spesa ad personam addebitata due volte');
+        expect(w.find('[data-testid="riallineamento-ad-personam-da-controllare"]').exists()).toBe(true);
+        expect(t).toContain('per i piani elencati nel dettaglio il programma non sa calcolare se le emissioni delle rate l\'hanno addebitata due volte.');
+    });
+
+    test('con una voce e un piano da controllare resta la frase del doppio, e non quella dei soli piani', () => {
+        const w = montaCon({ ad_personam: [voce()], ad_personam_non_calcolabili: [{ piano_id: 4, piano: 'Facciata 2025', motivo: 'il piano «Facciata 2025» non ha il registro del riparto' }] });
+
+        expect(w.find('[data-testid="riallineamento-ad-personam"]').exists()).toBe(true);
+        expect(w.find('[data-testid="riallineamento-ad-personam-da-controllare"]').exists()).toBe(false);
+    });
+});

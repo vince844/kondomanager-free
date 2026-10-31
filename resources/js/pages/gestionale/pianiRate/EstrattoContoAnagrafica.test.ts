@@ -40,13 +40,13 @@ vi.mock('@/composables/permissions', () => ({
 
 const EstrattoContoAnagrafica = (await import('./EstrattoContoAnagrafica.vue')).default;
 
-function guide(): Array<{ title: string; description: string }> {
-    const w = shallowMount(EstrattoContoAnagrafica, {
+function monta(timeline: unknown[] = []) {
+    return shallowMount(EstrattoContoAnagrafica, {
         props: {
             condominio: { id: 28, nome: 'Condominio Demo KM' } as never,
             esercizio: { id: 5, nome: 'Esercizio 2026' } as never,
             anagrafica: { id: 7, nome: 'Giuseppe Rossi', codice_fiscale: null, immobili: [] } as never,
-            timeline: [],
+            timeline,
             stats: {
                 totale_addebiti: '€ 2.290,88', totale_versamenti: '€ 0,00', saldo_finale: '€ 2.290,88', saldo_raw: 229088,
                 saldo_iniziale: '€ 0,00', saldo_iniziale_raw: 0, credito_disponibile: '€ 0,00', credito_disponibile_raw: 0, credito_per_gestione: [],
@@ -57,8 +57,10 @@ function guide(): Array<{ title: string; description: string }> {
         // Il layout è un segnaposto che rende il suo contenuto: la card sta dentro il layout.
         global: { renderStubDefaultSlot: true, mocks: { route: (name: string) => `/${name}` } },
     });
+}
 
-    return w.findComponent(PageHeaderGuide).props('guides') as Array<{ title: string; description: string }>;
+function guide(): Array<{ title: string; description: string }> {
+    return monta().findComponent(PageHeaderGuide).props('guides') as Array<{ title: string; description: string }>;
 }
 
 describe('la card «Addebiti» dell\'estratto conto', () => {
@@ -82,5 +84,24 @@ describe('la card «Addebiti» e gli storni', () => {
     test('un incasso stornato e il suo storno restano nell\'elenco, non nel totale', () => {
         const addebiti = guide().find((g) => g.title === 'Addebiti');
         expect(addebiti!.description).toContain('Un incasso stornato e il suo storno restano nell\'elenco, non nel totale.');
+    });
+});
+
+// Coda 317 (1.11.0-beta.59): la colonna «Data» è la data del movimento (competenza); il giorno in cui il movimento è stato inserito il server
+// lo manda in `data_registrazione` solo quando è diverso (D6 di `registri_contabili.md`), e la pagina lo scrive sotto la data. Il PDF non lo
+// stampa (`Beta59EstrattoDataTest.php`).
+describe('la data di registrazione nella colonna «Data»', () => {
+    const riga = (id: number, data: string, dataRegistrazione: string | null) => ({
+        id, data, data_registrazione: dataRegistrazione, protocollo: null, descrizione: 'Movimento', gestione: null, dettagli: [], note: null,
+        tipo_icona: 'payment', dare: 0, avere: 50000, saldo: 0, breakdown: null, scrittura_id: id, tipo_movimento: 'incasso_rata',
+        stato_scrittura: 'registrata', stornabile: false, storna_annullata: false,
+    });
+
+    test('compare sotto la data quando il server la manda, e non compare quando non c\'è', () => {
+        const testo = monta([riga(1, '10/07/2026', '18/10/2026'), riga(2, '05/08/2026', null)]).text();
+
+        expect(testo).toContain('10/07/2026');
+        expect(testo).toContain('Registrata il 18/10/2026');
+        expect(testo.match(/Registrata il/g)).toHaveLength(1);
     });
 });

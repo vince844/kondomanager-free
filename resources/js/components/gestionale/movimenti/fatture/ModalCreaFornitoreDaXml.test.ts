@@ -127,3 +127,58 @@ describe('un rifiuto del server non può essere muto', () => {
         expect(bugiardi, `dichiarati stampati ma assenti dal template: ${bugiardi.join(', ')}`).toEqual([]);
     });
 });
+
+describe('Coda 316 — le nature del percipiente dicono il codice tributo dell\'appalto', () => {
+    test('ogni natura porta il codice che le dà la risoluzione 19/E del 5/2/2007: 1019 ai soggetti IRPEF, 1020 ai soggetti IRES, ente non commerciale compreso', async () => {
+        // Le cifre vengono dalla regola, non dal programma: l'ente non commerciale (art. 73 c. 1 lett. c TUIR) è IRES.
+        const attese: Record<string, string> = {
+            persona_fisica_irpef: '1019',
+            societa_persone_irpef: '1019',
+            soggetto_ires: '1020',
+            ente_non_commerciale: '1020',
+        };
+
+        const fs = await import('node:fs');
+        const sorgente = fs.readFileSync(
+            'resources/js/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue', 'utf8');
+        const blocco = sorgente.match(/const NATURE_PERCIPIENTE = \[([\s\S]*?)\];/)?.[1] ?? '';
+        const voci = [...blocco.matchAll(/label: '[^']*— (\d{4})', value: '([a-z_]+)'/g)]
+            .map((m) => [m[2], m[1]] as const);
+
+        expect(voci.length, 'l\'elenco delle nature non è stato trovato: il test sarebbe verde senza guardare').toBe(4);
+        expect(Object.fromEntries(voci)).toEqual(attese);
+    });
+
+    test('la frase sotto la natura proposta dal file non mette l\'ente non commerciale fra i casi in cui il codice cambia', async () => {
+        const fs = await import('node:fs');
+        const sorgente = fs.readFileSync(
+            'resources/js/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue', 'utf8');
+
+        expect(sorgente).not.toContain('soprattutto se il fornitore è un ente non commerciale');
+        expect(sorgente).toContain('soprattutto se il fornitore è una società di persone');
+    });
+
+    test('la frase sotto la natura proposta dal file non dice che la società di persone «è soggetto IRPEF»: la società di persone è trasparente (art. 5 TUIR) e l\'IRPEF la pagano i soci', async () => {
+        // Il codice resta 1019 (dossier normativo, scheda dei codici tributo); cambia solo la parte imprecisa della frase.
+        const fs = await import('node:fs');
+        const sorgente = fs.readFileSync(
+            'resources/js/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue', 'utf8').replace(/\s+/g, ' ');
+
+        expect(sorgente).not.toContain('che è soggetto IRPEF');
+        expect(sorgente).toContain('soprattutto se il fornitore è una società di persone, che va a 1019.');
+    });
+
+    test('le due voci dei regimi proponibili dal file non citano l\'articolo del DPR 600/1973 (decisione 154.4)', async () => {
+        const fs = await import('node:fs');
+        const sorgente = fs.readFileSync(
+            'resources/js/components/gestionale/movimenti/fatture/ModalCreaFornitoreDaXml.vue', 'utf8');
+        const blocco = sorgente.match(/const REGIMI_PROPONIBILI = \[([\s\S]*?)\];/)?.[1] ?? '';
+        const etichette = [...blocco.matchAll(/label: '([^']*)', value: '([a-z0-9_]+)'/g)].map((m) => m[1]);
+
+        expect(etichette.length, 'l\'elenco dei regimi non è stato trovato: il test sarebbe verde senza guardare').toBe(2);
+        expect(etichette).toEqual([
+            'Appalto di opere/servizi — 4%',
+            'Lavoro autonomo — 20%',
+        ]);
+    });
+});

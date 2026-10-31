@@ -167,7 +167,8 @@ const suggerimentoOperativo = computed(() => {
         }
     }
     if (statoCopertura.value === 'documented') {
-        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante: l'importo sarà recuperato a conguaglio o tramite addebito manuale.";
+        // D143: niente «conguaglio» né «addebito manuale», che il programma non ha. Le strade sono quelle della pagina del piano.
+        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante e ricalcola il piano; se le rate sono già emesse, prima vanno annullate le emissioni (e prima ancora stornati gli incassi). Il programma non ha un addebito individuale.";
     }
     if (statoCopertura.value === 'surplus') {
         return "Stai incassando più del necessario. Verifica se ci sono arrotondamenti eccessivi o voci duplicate nei piani rate. Se hai modificato il preventivo, ricorda di ricalcolare le rate per allineare tutto.";
@@ -472,8 +473,12 @@ onUnmounted(() => {
                                     </span>
                                 </div>
                                 
+                                <!--
+                                  Coda 414 (D138): la frase diceva «Hai modificato il preventivo spese… Ricalcola i seguenti piani», ma l'elenco ha anche piani
+                                  che non si ricalcolano più (rate emesse, incassi) e piani scostati per un'altra ragione. I piani in «quota aperta» non ci sono.
+                                -->
                                 <p class="text-[10px] text-red-800/80 dark:text-red-400 leading-tight mb-3">
-                                    Hai modificato il preventivo spese, ma le rate generate non sono più aggiornate. Ricalcola i seguenti piani:
+                                    Le rate di questi piani non corrispondono a quello che il piano chiede. Apri il piano: «Copertura spese» dice di quanto, e il pulsante «Ricalcola» dice se si ricalcola ancora.
                                 </p>
 
                                 <div class="space-y-1.5">

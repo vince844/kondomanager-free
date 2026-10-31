@@ -306,8 +306,8 @@ describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'in
             + 'l\'accordo copre i giorni di chi era entrato con il cambio, anche in una voce che comincia dopo. Se chi era uscito aveva quei giorni con il conguaglio di un cambio prima, l\'accordo '
             + 'finisce quando chi era entrato esce con la sua fine o con un cambio verso chi era uscito: da lì, anche prima del rientro di chi era uscito o senza rientro, chi entra rimborsa la sua '
             + 'parte a chi ha pagato quei giorni, e se chi era uscito rientra, chi entra nei suoi giorni gli rimborsa la sua parte come senza l\'accordo. Se invece chi era entrato con il cambio '
-            + 'passa i suoi giorni a un altro, l\'accordo prosegue con chi ne prende il posto, e il prospetto non va oltre: chi entra dopo non rimborsa niente, nemmeno dopo l\'uscita di chi ne ha '
-            + 'preso il posto o il rientro di chi era uscito. Se chi era uscito aveva quei giorni nelle sue rate, restano lì, e chi entra non li rimborsa. L\'uscita dopo di chi è rientrato, quando '
+            + 'passa i suoi giorni a un altro, l\'accordo prosegue con chi ne prende il posto, e finisce allo stesso modo quando questi esce con la sua fine o con un cambio verso chi era uscito: '
+            + 'chi entra nei giorni dell\'accordo non rimborsa niente, chi entra dopo sì. Se chi era uscito aveva quei giorni nelle sue rate, restano lì, e chi entra non li rimborsa. L\'uscita dopo di chi è rientrato, quando '
             + 'chiede la scelta del conguaglio, si legge come ogni uscita: chi entra dopo rimborsa chi ha pagato quei giorni. '
             + 'Con «Non scriverlo» i giorni sono rimasti a chi è uscito, nelle sue rate o con il conguaglio che aveva, e chi entra li rimborsa a lui; se chi è entrato con quel cambio li aveva ceduti con un cambio prima ed esce poi con '
             + '«Scrivi il conguaglio», chi entra dopo la sua uscita rimborsa chi ne ha preso la coppia, e lui rimborsa a chi era uscito con «Non scriverlo» tutti i giorni dopo quell\'uscita.');
@@ -316,14 +316,16 @@ describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'in
         // Code 379, 380, 405 e 406: «non rimborsa nessuno» da solo era vero per i giorni dell'accordo ma non diceva fin dove arriva. L'accordo copre i giorni di chi era entrato con il
         // cambio (decisione 144), anche in una voce che comincia dopo (Coda 405). Se chi era uscito li aveva con il conguaglio, finisce alla sua uscita (Coda 406, `Beta55ProspettoCambioCoinquilinoTest`:
         // la fine di Zoe il 1/11, Elsa dal 5/11 rimborsa a Sara anche prima del rientro), e chi entra nei giorni del rientro rimborsa come senza l'accordo; se chi era entrato passa i suoi
-        // giorni a un altro l'accordo prosegue con chi ne prende il posto (decisione 148.1, la storia Zoe → Elsa), e la guida dice ciò che il prospetto fa oggi (decisione 150.1, Coda 413):
-        // non va oltre, nemmeno dopo l'uscita di chi ne ha preso il posto o il rientro di chi era uscito. Se li aveva nelle sue rate, restano lì (il pezzo di chi ha la riga non si divide,
-        // `giorniDellaParte`). L'uscita dopo il rientro si legge come ogni uscita (Coda 379); dopo «Non scriverlo» i giorni restano a chi è uscito, nelle sue rate (Coda 358) o con il conguaglio
+        // giorni a un altro l'accordo prosegue con chi ne prende il posto (decisione 148.1, la storia Zoe → Elsa) e finisce con la sua uscita, come quella della parte: al rientro di chi era
+        // uscito (decisioni 144 e 148.2) e con la sua fine (decisione 153.3, Coda 413: `Beta59ProspettoAccordoTest`, Teo rimborsa a Sara € 7,19 e € 30,58). Se li aveva nelle sue rate, restano
+        // lì (il pezzo di chi ha la riga non si divide, `giorniDellaParte`; la domanda D-a, decisione 153.4, alla 1.12). L'uscita dopo il rientro si legge come ogni uscita (Coda 379); dopo «Non scriverlo» i giorni restano a chi è uscito, nelle sue rate (Coda 358) o con il conguaglio
         // che aveva (Code 365 e 380), e l'uscita «Scrivi» di chi aveva già ceduto quei giorni la segue il prospetto (Coda 380, decisione 145).
         expect(testoDellaGuida()).not.toContain('e non rimborsa nessuno; con «Non scriverlo»');
         // Le forme di prima: «Finito l'accordo» valeva anche per il cambio verso un altro e per chi aveva i giorni nelle sue rate; «nelle rate di chi è uscito» anche per chi li aveva con il conguaglio.
         expect(testoDellaGuida()).not.toContain('Finito l\'accordo');
         expect(testoDellaGuida()).not.toContain('i giorni sono rimasti nelle rate di chi è uscito');
+        // Coda 413: la forma della 1.11.0-beta.58 diceva che dopo il cambio verso un altro l'accordo non finiva più.
+        expect(testoDellaGuida()).not.toContain('nemmeno dopo l\'uscita di chi ne ha preso il posto o il rientro di chi era uscito');
     });
 
     test('la voce che matura dopo un cambio regolato fra le parti resta a chi era uscito fino alla sua prossima uscita con un conguaglio suo, nelle sue rate o con il conguaglio che aveva', () => {
@@ -340,5 +342,22 @@ describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'in
         expect(testoDellaGuida()).not.toContain('di chi era entrato, dove resta nelle sue rate.');
         // E diceva solo chi entra dopo il rientro.
         expect(testoDellaGuida()).not.toContain('chi entra dopo il suo rientro gli rimborsa');
+    });
+
+    test('la guida dice come il prospetto legge un piano che il cambio d\'inquilino non ha preso, e il credito nel Wallet di chi aveva il pezzo regolato fra le parti', () => {
+        // Coda 413 (`Beta59ProspettoAccordoTest`): il piano che il cambio non ha preso resta com'è (decisione 43); dopo un cambio regolato fra le parti la fine «Scrivi» di chi era entrato non ne ha la
+        // coppia (`ProspettoOneriAccessori::regolatoConUnaFineDopo`: Teo non rimborsa a Ugo € 9,30); se non si ricalcola più (`PianoRate::eImmutabile`: emesso o incassato senza essere ricalcolato dopo il cambio, o preso poi
+        // da un passaggio, anche di un altro) si legge come se il cambio non ci fosse (`ProspettoOneriAccessori::catenaDeiConduttori`, decisioni 156.2 e 158: Teo rimborsa a Ines € 9,30, o Luca € 4,20 e
+        // Pia € 5,10). Il credito della coppia di chi aveva il pezzo regolato fra le parti si chiama «a suo credito nel Wallet» (decisione 156.4).
+        expect(testoDellaGuida()).toContain('Un piano che il cambio d\'inquilino non ha preso, perché quel giorno si ricalcolava ancora, resta com\'è: le sue quote sono di chi le aveva, anche per i giorni '
+            + 'di chi è entrato. Se le parti hanno regolato il cambio fra loro, l\'uscita con «Scrivi il conguaglio» di chi era entrato non riguarda quel piano. Altrimenti, se il piano non si ricalcola '
+            + 'più (perché è stato emesso o incassato senza essere ricalcolato dopo il cambio, o perché l\'ha preso poi un passaggio, anche di un altro), il prospetto lo legge come se il cambio non ci fosse: le quote restano a chi le ha, e se chi le ha '
+            + 'esce, chi entra dopo quell\'uscita rimborsa chi ha pagato i suoi giorni.');
+        // Senza un'uscita di chi ha le quote nessuno rimborsa: «Un piano emesso in ottobre, che il cambio del 1/7 non aveva preso, con la fine di Sara» (`Beta59ProspettoAccordoTest`, «Coda 413 — dopo
+        // il cambio Ines → Sara annullato…» e «…le guardie del secondo piano…»). La forma di prima faceva rimborsare chi entra dopo l'uscita di chi ha le quote anche dove quell'uscita non c'è.
+        expect(testoDellaGuida()).not.toContain('come se il cambio non ci fosse, e chi entra dopo l\'uscita di chi ha quelle quote rimborsa');
+        // Il credito di chi ha ceduto i giorni si chiama «a suo credito nel Wallet» e, dove un'entrata supera la spesa, «a suo debito nel Wallet» (la stampa dice le due cose).
+        expect(testoDellaGuida()).toContain('«a suo credito nel Wallet»come sopra, se chi era entrato aveva ceduto quei giorni con un cambio e li aveva ripresi con «Non scriverlo»: la coppia '
+            + 'della sua uscita gli ha scritto a credito i giorni che rimborsa a chi li ha pagati. Se in quei giorni un\'entrata supera la spesa la riga dice «a suo debito nel Wallet».');
     });
 });

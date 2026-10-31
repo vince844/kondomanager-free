@@ -315,6 +315,8 @@ class DashboardController extends Controller
                 // la stessa domanda la fa anche la pagina del piano, e finché ognuna se la
                 // calcolava per conto proprio le due rispondevano in modo diverso — metodi
                 // diversi e tolleranze diverse (zero qui, € 2,00 di là). Vedi `eDisallineato()`.
+                // Coda 414: un piano in «quota aperta» (una quota non assegnata accettata, e il piano non si è mosso da allora) non è
+                // nell'elenco: «Ricalcola» non la assegna a nessuno. `eDisallineato()` vuol dire il terzo stato.
                 foreach ($pianiRate as $piano) {
                     if ($pianoRateQuoteService->eDisallineato($piano)) {
                         $pianiDisallineati[] = [

@@ -931,6 +931,11 @@ final class RegistraSubentroAction
             $regoleEntrante['riassegnazione'] = $traccia;
             if ($pregresso !== 0) {
                 $regoleEntrante['importi'] = ['quota_pura_gestione' => $quotaPura, 'saldo_usato' => 0, 'totale_calcolato' => $quotaPura];
+                // Coda 313: la parte ad personam è della spesa dell'anno, e segue la quota a chi entra. Senza la chiave (una quota generata
+                // prima che ci fosse) la ricava il registro del riparto di `righe_di` (`RataQuote::partiAdPersonam`).
+                if (array_key_exists('addebito_diretto', (array) ($regole['importi'] ?? []))) {
+                    $regoleEntrante['importi']['addebito_diretto'] = (int) $regole['importi']['addebito_diretto'];
+                }
                 unset($regoleEntrante['dettagli_saldo'], $regoleEntrante['note_saldo']);
             }
             $voce = ['id' => (int) $quota->id, 'rata_id' => (int) $quota->rata_id,
@@ -957,7 +962,8 @@ final class RegistraSubentroAction
                     'tipo'           => 'saldo_iniziale',
                     'regole_calcolo' => json_encode(array_filter([
                         'origine'        => $regole['origine'] ?? null,
-                        'importi'        => ['quota_pura_gestione' => 0, 'saldo_usato' => $pregresso, 'totale_calcolato' => $pregresso],
+                        // Coda 313: la quota del solo pregresso non ha spesa dell'anno, quindi nemmeno una parte ad personam da chiudere.
+                        'importi'        => ['quota_pura_gestione' => 0, 'saldo_usato' => $pregresso, 'totale_calcolato' => $pregresso, 'addebito_diretto' => 0],
                         'parametri'      => $regole['parametri'] ?? null,
                         'dettagli_saldo' => $regole['dettagli_saldo'] ?? null,
                         'note_saldo'     => $regole['note_saldo'] ?? null,

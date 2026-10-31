@@ -44,6 +44,8 @@ const props = defineProps<{
     motivo_blocco_modifica: string | null;
     /** I campi che il modello ministeriale vuole e che l'anagrafica non sa ancora. */
     campi_mancanti: string[];
+    /** Il nome dell'esercizio della delega quando non è quello corrente, altrimenti `null` (Coda 314). */
+    esercizio_non_corrente: string | null;
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -71,6 +73,34 @@ const totaleDiscorde = computed(() => totaleRighe.value !== Number(props.delega.
 const isVersata = computed(() => props.delega.stato === 'versata');
 const isChiusa = computed(() => ['stornata', 'annullata'].includes(props.delega.stato));
 const puoVersare = computed(() => ['bozza', 'confermata'].includes(props.delega.stato));
+
+/**
+ * Che cosa dice la scheda di una delega di un esercizio che non è il corrente (Coda 314).
+ *
+ * La scrittura del versamento e quella dello storno stanno nell'esercizio della delega (`ConfermaVersamentoF24Action`,
+ * `StornaVersamentoF24Action`), anche se quell'esercizio è chiuso. La frase lo dice dove c'è ancora qualcosa da registrare:
+ * il versamento su una delega in bozza o confermata, lo storno su una versata. Su una stornata o annullata non c'è più
+ * niente da registrare: dice solo di che esercizio è.
+ */
+const fraseEsercizio = computed(() => {
+    const nome = props.esercizio_non_corrente;
+
+    if (!nome) {
+        return null;
+    }
+
+    const base = `Delega dell'esercizio «${nome}», che non è quello corrente`;
+
+    if (puoVersare.value) {
+        return `${base}: la scrittura del versamento va in quell'esercizio, anche se è chiuso.`;
+    }
+
+    if (isVersata.value) {
+        return `${base}: se ne storni il versamento, la scrittura di storno va in quell'esercizio, anche se è chiuso.`;
+    }
+
+    return `${base}.`;
+});
 
 const dataIt = (d: string | null) =>
     d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('it-IT') : '—';
@@ -314,6 +344,13 @@ const storna = () => {
 
                 <p v-if="motivo" class="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
                     {{ motivo }}
+                </p>
+
+                <!-- Coda 314: lo scadenziario raccoglie le deleghe di tutti gli esercizi, e la scrittura del versamento (o
+                     quella dello storno) sta nell'esercizio della delega fino al modulo di chiusura. -->
+                <p v-if="fraseEsercizio" class="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+                    <Info class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{{ fraseEsercizio }}</span>
                 </p>
 
                 <!--

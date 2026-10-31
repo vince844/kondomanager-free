@@ -219,7 +219,9 @@ class StornoFatturaController extends Controller
             ];
 
             // GENERIAMO IL CLONE TRAMITE IL SERVICE
-            $notaCredito = $service->registraFattura($stornoData, $condominio->id);
+            // Coda 313 (decisione 160): la nota nasce da uno storno, non è una nota del fornitore senza fattura: la guardia della spesa
+            // ad personam dello storno è `FatturaPassiva::motivoBloccoStorno`, qui sopra.
+            $notaCredito = $service->registraFattura($stornoData, $condominio->id, null, (int) $fattura->id);
 
             // FIX 2: IL POST-PROCESSING CHIRURGICO
             // Il Service forza 'fattura_acquisto' e 'FTP-'. Noi li correggiamo all'istante.

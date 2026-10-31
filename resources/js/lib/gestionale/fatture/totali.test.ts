@@ -58,7 +58,7 @@ describe('calcolaTotali — arrotondamenti che il backend fa e il form non facev
     });
 
     it('arrotonda la base ridotta della ritenuta prima di applicare l\'aliquota', () => {
-        // Provvigioni con riduzione: base 50%, aliquota 23%.
+        // Provvigioni, base ordinaria del 50% (art. 25-bis c. 2 DPR 600/1973), aliquota 23%.
         // PHP:  round(100013 × 50/100) = 50007  →  round(50007 × 23/100) = 11502
         // In un passo solo: round(100013 × 0,115) = 11501.
         const totali = calcolaTotali({

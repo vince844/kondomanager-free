@@ -41,6 +41,11 @@ interface Delega {
     totale_debito: number;
     note: string | null;
     righe: { id: number; codice_tributo: string }[];
+    /**
+     * Il nome dell'esercizio della delega quando non è quello corrente, altrimenti `null` (Coda 314): l'elenco raccoglie
+     * le deleghe da versare di tutti gli esercizi.
+     */
+    esercizio_non_corrente: string | null;
 }
 
 const props = defineProps<{
@@ -273,6 +278,10 @@ const calcola = () => {
                                 <div>
                                     <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Versato</p>
                                     <p class="text-2xl font-black text-slate-900">{{ euro(riepilogo.versato_cents) }}</p>
+                                    <!-- Coda 314: l'elenco mostra anche le versate dei vecchi esercizi, ma il totale è solo quello dell'esercizio corrente. -->
+                                    <p v-if="esercizio" class="text-[11px] text-slate-400">
+                                        dell'esercizio «{{ esercizio.nome }}»
+                                    </p>
                                 </div>
                             </div>
                         </div>

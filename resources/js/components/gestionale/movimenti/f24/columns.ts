@@ -69,6 +69,15 @@ export const createColumns = (condominioId: number, oggi: Date): ColumnDef<any>[
                     }, testoScadenza(d.data_scadenza, oggi))
                     : h('span', { class: 'text-[11px] text-slate-400' },
                         d.data_versamento ? `versata il ${dataIt(d.data_versamento)}` : '—'),
+                // Coda 314: lo scadenziario raccoglie le deleghe da versare di tutti gli esercizi. Una delega di un
+                // esercizio che non è il corrente porta il suo nome (lo decide il server, `esercizio_non_corrente`):
+                // è l'esercizio in cui va la scrittura, se se ne registra il versamento.
+                d.esercizio_non_corrente
+                    ? h('span', {
+                        class: 'w-fit whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600',
+                        title: 'Delega di un esercizio diverso da quello corrente',
+                    }, d.esercizio_non_corrente)
+                    : null,
             ]);
         },
     },

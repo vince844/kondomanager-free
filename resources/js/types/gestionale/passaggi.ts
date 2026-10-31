@@ -176,7 +176,7 @@ export interface AnteprimaPassaggioDati {
     prospetto_esclude_dove?: { piano: string; unita: string }[];
     /**
      * Giro stretto della .50 (G5): nel cambio d'inquilino, i piani su cui il passaggio che ha dato i giorni a chi esce è stato regolato fra
-     * le parti (decisione 83.3): con «Non scriverlo» il prospetto non va oltre quell'accordo, e il rimborso si regola fra le parti.
+     * le parti (decisione 83.3): con «Non scriverlo» per i giorni di quell'accordo il prospetto non fa rimborsare nessuno, e il rimborso si regola fra le parti.
      */
     prospetto_regolato?: string[];
   };

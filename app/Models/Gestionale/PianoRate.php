@@ -52,6 +52,7 @@ class PianoRate extends Model
         'attivo',
         'note',
         'nota_scoperti',
+        // `quote_non_assegnate` (Coda 414) non è qui di proposito: la scrive solo la generazione (`GeneratePianoRateAction`), mai una richiesta.
         'stato',
         // --- CAMPI DELIBERA E AUDIT ---
         'data_delibera_assemblea',
@@ -76,6 +77,9 @@ class PianoRate extends Model
         'applica_saldi'           => 'boolean',
         // Riparto manuale dei saldi solidali (Art. 63) deciso alla creazione.
         'saldi_config'            => 'array',
+        // Coda 414: `{voci: [...], scarto_cents, registrate_il, registrate_da}`, o NULL se l'ultima generazione non aveva quote non
+        // assegnate (o se il piano è stato generato prima della 1.11.0-beta.59).
+        'quote_non_assegnate'     => 'array',
     ];
 
     /*
@@ -340,6 +344,48 @@ class PianoRate extends Model
                 'rimedi' => $piano->rimediDelFermo(inElenco: true),
             ];
         });
+    }
+
+    /**
+     * Il passo «riportalo in bozza ed eliminalo» delle frasi che mandano a eliminare il piano (Coda 313, decisione 160), quando un passaggio
+     * di titolarità lo ha preso nel conguaglio — o null. Con un passaggio così il piano non si elimina finché il passaggio c'è
+     * (decisione 38, `PianoRateController::destroy`), e con un passaggio di prima della 1.11.0-beta.42 neanche l'annullamento
+     * dell'emissione passa (decisione 49, `EmissioneRateController::destroy`): la frase non promette quei passi, rimanda a quelli che il
+     * pulsante «Ricalcola» elenca sulla pagina del piano (`rimediDelFermo`, `fermoPerLaPagina`), nell'ordine che passa e fino al piano riaperto.
+     * Senza passaggi la strada è quella di sempre, e la dice chi chiama.
+     */
+    public function stradaDelPianoConguagliato(): ?string
+    {
+        $passaggi = $this->passaggiDaAnnullare();
+        if ($passaggi === []) {
+            return null;
+        }
+
+        return 'riapri il piano con i passi che il pulsante «Ricalcola» elenca sulla sua pagina ('
+            . (count($passaggi) === 1 ? 'un passaggio di titolarità tiene fermo il piano, e finché c\'è non si elimina' : 'più passaggi di titolarità tengono fermo il piano, e finché ci sono non si elimina')
+            . '), riportalo in bozza ed eliminalo';
+    }
+
+    /**
+     * Per le frasi con più piani ({@see stradaDelPianoConguagliato()}): quali di quei piani un passaggio tiene fermo, e dove stanno i passi per
+     * riaprirli — o null se nessuno.
+     *
+     * @param iterable<self|null> $piani
+     */
+    public static function fraseDeiPianiConguagliati(iterable $piani): ?string
+    {
+        $fermi = collect($piani)->filter(fn (?self $p) => $p !== null && $p->stradaDelPianoConguagliato() !== null)->values();
+        if ($fermi->isEmpty()) {
+            return null;
+        }
+        $uno = $fermi->count() === 1;
+        $nomi = $fermi->map(fn (self $p) => '«' . $p->nome . '»');
+        $unPassaggio = $fermi->flatMap(fn (self $p) => array_map(fn (Subentro $s) => $s->id, $p->passaggiDaAnnullare()))->unique()->count() === 1;
+
+        return ($uno ? 'il piano rate ' . $nomi->first() : 'i piani rate ' . $nomi->slice(0, -1)->implode(', ') . ' e ' . $nomi->last())
+            . ($uno ? ', tenuto fermo da un passaggio di titolarità, non si elimina finché il passaggio c\'è: i passi per riaprirlo sono sul pulsante «Ricalcola» della sua pagina'
+                : ($unPassaggio ? ', tenuti fermi da un passaggio di titolarità, non si eliminano finché il passaggio c\'è' : ', tenuti fermi da passaggi di titolarità, non si eliminano finché i passaggi ci sono')
+                    . ': i passi per riaprirli sono sul pulsante «Ricalcola» della pagina di ciascuno');
     }
 
     /**

@@ -10,6 +10,18 @@ use Illuminate\Support\Facades\DB;
 
 class PianoRateResource extends JsonResource
 {
+    /**
+     * Le quote non assegnate le legge solo la pagina del piano (`PianiRateShow.vue`): l'elenco dei piani non le riceve, né la cifra per voce.
+     */
+    private bool $conQuoteNonAssegnate = false;
+
+    public function conQuoteNonAssegnate(): static
+    {
+        $this->conQuoteNonAssegnate = true;
+
+        return $this;
+    }
+
     public function toArray(Request $request): array
     {
         $isStraordinario = $this->tipo === 'straordinario';
@@ -36,6 +48,15 @@ class PianoRateResource extends JsonResource
         // Gestione Stato
         $statoValue = $this->stato instanceof \UnitEnum ? $this->stato->value : $this->stato;
 
+        // Coda 414: le quote non assegnate dell'ultima generazione, e per ogni voce del piano la loro somma (anche quelle dei suoi sottoconti).
+        $quoteNonAssegnate = $this->conQuoteNonAssegnate && is_array($this->quote_non_assegnate) ? $this->quote_non_assegnate : null;
+        $nonAssegnatePerConto = [];
+        foreach ($quoteNonAssegnate['voci'] ?? [] as $voce) {
+            if (! empty($voce['conto_id'])) {
+                $nonAssegnatePerConto[(int) $voce['conto_id']] = ($nonAssegnatePerConto[(int) $voce['conto_id']] ?? 0) + (int) ($voce['importo_cents'] ?? 0);
+            }
+        }
+
         return [
             'id'                            => $this->id,
             'tipo'                          => $this->tipo ?? 'ordinario',
@@ -56,6 +77,7 @@ class PianoRateResource extends JsonResource
             'numero_verbale'                => $this->numero_verbale,
             'nota_approvazione'             => $this->nota_approvazione,
             'nota_scoperti'                 => $this->nota_scoperti,
+            'quote_non_assegnate'           => $this->when($this->conQuoteNonAssegnate, $quoteNonAssegnate),
             'tipo_autorizzazione'           => $this->tipo_autorizzazione,
             'motivazione_autorizzazione'    => $this->motivazione_autorizzazione,
             'approvato_da_user_id'          => $this->approvato_da_user_id,
@@ -102,8 +124,8 @@ class PianoRateResource extends JsonResource
                         ];
                     });
                 })
-                : $this->whenLoaded('capitoli', function() {
-                    return $this->capitoli->map(function ($c) {
+                : $this->whenLoaded('capitoli', function() use ($nonAssegnatePerConto) {
+                    return $this->capitoli->map(function ($c) use ($nonAssegnatePerConto) {
 
                         $isParent = $c->sottoconti->isNotEmpty();
 
@@ -119,7 +141,7 @@ class PianoRateResource extends JsonResource
 
                         $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
 
-                        return [
+                        $voce = [
                             'id'                => $c->id,
                             'nome'              => $c->nome,
                             'importo'           => (int) $importoEffettivo,
@@ -130,8 +152,34 @@ class PianoRateResource extends JsonResource
                             'figli_names'       => $isParent ? $sottocontiSnapshot->pluck('nome')->join(', ') : '',
                             'tipo'              => $c->segno($this->created_at) < 0 ? 'entrata' : 'spesa',
                         ];
+
+                        // La cifra per voce la legge la pagina del piano; l'elenco non la riceve (come la colonna `quote_non_assegnate`).
+                        if ($this->conQuoteNonAssegnate) {
+                            $voce['non_assegnati_cents'] = $nonAssegnatePerConto === [] ? 0 : array_sum(array_map(
+                                fn (int $id) => $nonAssegnatePerConto[$id] ?? 0,
+                                self::contoESottoconti($c),
+                            ));
+                        }
+
+                        return $voce;
                     });
                 }),
         ];
+    }
+
+    /**
+     * La voce e i suoi sottoconti a ogni livello: le quote non assegnate di un capitolo senza tabelle stanno sui sottoconti a cui il motore
+     * passa la sua parte.
+     *
+     * @return list<int>
+     */
+    private static function contoESottoconti(\App\Models\Gestionale\Conto $conto): array
+    {
+        $ids = [(int) $conto->id];
+        foreach ($conto->sottoconti as $figlio) {
+            array_push($ids, ...self::contoESottoconti($figlio));
+        }
+
+        return $ids;
     }
 }

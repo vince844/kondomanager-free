@@ -266,6 +266,12 @@ class StornoIncassoRateAction
         if ($emissione === null) {
             return; // la rata è ancora in bozza
         }
+        // Coda 313 (decisione 160, limite L1): la quota con una spesa ad personam che lo storno della fattura o una nota di credito, passati
+        // con le versioni di prima, hanno già tolto dall'unità: la chiusura la toglierebbe una seconda volta. Basta lo specchio, come per una
+        // quota senza il dettaglio del calcolo, e la card «Crediti da riallineare» la elenca con la strada.
+        if (RataQuote::quoteFuoriConSpesaTolta($quota->rata, [$quota], $passate) !== []) {
+            return;
+        }
 
         $calcolo = RataQuote::scritturaDiEmissione([$quota], $passate)[(int) $quota->id];
         if ($calcolo['righe'] === []) {
@@ -311,6 +317,11 @@ class StornoIncassoRateAction
                 'importo'            => abs($totale),
                 'note'               => $nota . $descrizione,
             ]);
+        }
+        // Coda 313: la parte ad personam della quota chiude l'anticipazione della fattura, come nell'emissione (con l'unità e la rata,
+        // senza persona), invece di andare su «Gestione rate».
+        foreach (RataQuote::righeDiChiusura([(int) $quota->id => $calcolo], [$quota], (int) $crediti->id, (int) $rataId, (string) $descrizione) as $riga) {
+            $figlia->righe()->create($riga);
         }
         DoubleEntryValidator::validateOrFail($figlia->id);
         $quota->update(['scrittura_contabile_id' => $figlia->id]);

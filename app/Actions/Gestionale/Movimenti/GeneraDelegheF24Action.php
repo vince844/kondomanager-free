@@ -51,6 +51,7 @@ class GeneraDelegheF24Action
     public function __construct(private PlafondRitenuteService $plafond) {}
 
     /**
+     * @param  int  $esercizioId  l'esercizio in cui nascono le deleghe nuove (quello aperto): non filtra le ritenute
      * @return \Illuminate\Support\Collection<int,DelegaF24>
      */
     public function esegui(Condominio $condominio, int $esercizioId): \Illuminate\Support\Collection
@@ -58,12 +59,16 @@ class GeneraDelegheF24Action
         return DB::transaction(function () use ($condominio, $esercizioId) {
 
             // Le bozze si rifanno da zero: non sono documenti, sono una proposta.
+            //
+            // ⚠️ **Tutte le bozze del condominio, non solo quelle dell'esercizio** (Coda 314). Il cumulo dei
+            // € 500,00 è un monte unico del condominio, e le ritenute qui sotto vengono da tutti gli esercizi:
+            // una bozza del vecchio esercizio lasciata in piedi terrebbe fuori dal ricalcolo le sue ritenute
+            // (sono «già in una delega»), e il cumulo ripartirebbe da zero al confine dell'esercizio.
             DelegaF24::where('condominio_id', $condominio->id)
-                ->where('esercizio_id', $esercizioId)
                 ->where('stato', StatoDelegaF24::BOZZA->value)
                 ->each(fn (DelegaF24 $d) => $d->righe()->delete() && $d->delete());
 
-            $ritenute = $this->ritenuteDaVersare($condominio, $esercizioId);
+            $ritenute = $this->ritenuteDaVersare($condominio);
 
             if ($ritenute->isEmpty()) {
                 return collect();
@@ -95,9 +100,16 @@ class GeneraDelegheF24Action
      * domanda «c'è qualcosa che non ho ancora messo in nessuna delega?» senza duplicare
      * la definizione di «scoperta», che è la parte delicata.
      *
+     * ⚠️ **Di tutti gli esercizi del condominio** (Coda 314). Fino alla 1.11.0-beta.58 qui c'era il filtro
+     * sull'esercizio della scrittura del pagamento, e il chiamante passava quello corrente: quando
+     * l'amministratore chiudeva il vecchio esercizio per aprire il nuovo, le ritenute di dicembre — che si
+     * versano entro il 16 gennaio — sparivano dallo scadenzario, dal pulsante «Aggiorna scadenze» e
+     * dall'avviso dei fornitori da classificare, senza dirlo. Una ritenuta da versare è un debito verso
+     * l'Erario finché non è versata, qualunque sia l'esercizio in cui è nata.
+     *
      * @return \Illuminate\Support\Collection<int,array<string,mixed>>
      */
-    public function ritenuteDaVersare(Condominio $condominio, int $esercizioId): \Illuminate\Support\Collection
+    public function ritenuteDaVersare(Condominio $condominio): \Illuminate\Support\Collection
     {
         // Solo le deleghe ANCORA IN PIEDI bloccano un pagamento. Dopo uno storno le
         // ritenute tornano da versare, e devono rientrare nel calcolo: escluderle
@@ -115,9 +127,9 @@ class GeneraDelegheF24Action
         return PagamentoFornitore::query()
             ->with('fornitore')
             ->where('condominio_id', $condominio->id)
-            // L'esercizio non sta sul pagamento ma sulla sua scrittura: `pagamenti_fornitori`
-            // porta i dati documentali, la collocazione contabile vive nel giornale.
-            ->whereHas('scrittura', fn ($q) => $q->where('esercizio_id', $esercizioId))
+            // Resta la condizione di prima, che la scrittura del pagamento esista e non sia cancellata;
+            // cade solo il filtro sul suo esercizio.
+            ->whereHas('scrittura')
             ->where('importo_ritenuta', '>', 0)
             ->whereNull('pagamento_padre_id')
             ->where('stato', '!=', StatoPagamentoFornitore::STORNATO->value)
@@ -261,9 +273,9 @@ class GeneraDelegheF24Action
      *
      * @return array<int,array<string,mixed>>
      */
-    public function ritenuteInAttesa(Condominio $condominio, int $esercizioId): array
+    public function ritenuteInAttesa(Condominio $condominio): array
     {
-        return $this->ritenuteDaVersare($condominio, $esercizioId)->all();
+        return $this->ritenuteDaVersare($condominio)->all();
     }
 
     /**

@@ -31,6 +31,8 @@
         $v['modo'] === 'conguaglio' => 'con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null),
         // Decisione 83.3 (1.11.0-beta.50): il cambio d'inquilino che le parti hanno regolato fra loro, seguito da una fine scritta.
         $v['modo'] === 'regolato' => 'regolata fra le parti al cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null),
+        // Coda 413 (decisione 156.4): il credito della coppia dell'uscita di chi aveva il pezzo regolato fra le parti è nel Wallet, non nell'accordo.
+        $v['modo'] === 'credito' => (int) $v['importo'] > 0 ? 'a suo debito nel Wallet' : 'a suo credito nel Wallet',
         $v['modo'] === 'restituzione' => 'da restituire a ' . ($v['a_chi'] ?? 'chi è uscito') . ' (' . $allaFine($v) . ')',
         $v['modo'] === 'da_restituire' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . '): si restituisce a chi l\'ha pagata, fra le parti',
         // Coda 364 (1.11.0-beta.55): i giorni di un conduttore entrato dopo un cambio d'inquilino, che chi è entrato con il cambio ha pagato con il conguaglio.
@@ -158,26 +160,36 @@
                 @php($eUscito = (bool) ($c['e_uscito'] ?? false))
                 @php($restituire = $eUscito && $daRimborsare < 0)
                 @php($ricevera = ! $eUscito && $daRimborsare < 0)
-                @php($diCui = ! $restituire && $entratiDopo === [])
-                @php($parti = count(array_filter([$c['nelle_sue_rate'], $c['con_il_conguaglio'] ?? 0, $c['regolato_fra_le_parti'] ?? 0, $daRimborsare, ...array_values($entratiDopo)], fn ($x) => $x !== 0)))
+                {{-- Coda 413 (decisione 156.4): il credito nel Wallet della coppia di un'uscita ha la sua riga; con lui le righe non sono «di cui». --}}
+                @php($creditoNelWallet = (int) ($c['a_suo_credito_nel_wallet'] ?? 0))
+                {{-- Le righe sono «di cui» solo se sommano al totale come parti positive: con una parte a credito (un'entrata che nei giorni del conduttore supera la spesa) o con la riga del Wallet no. --}}
+                @php($diCui = ! $restituire && $entratiDopo === [] && $creditoNelWallet === 0 && min($c['nelle_sue_rate'], $c['con_il_conguaglio'] ?? 0, $c['regolato_fra_le_parti'] ?? 0) >= 0)
+                @php($parti = count(array_filter([$c['nelle_sue_rate'], $c['con_il_conguaglio'] ?? 0, $c['regolato_fra_le_parti'] ?? 0, $creditoNelWallet, $daRimborsare, ...array_values($entratiDopo)], fn ($x) => $x !== 0)))
                 @if($parti > 1 && $c['nelle_sue_rate'] !== 0)
                     <tr>
-                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $diCui ? 'di cui già nelle sue rate' : 'nelle sue rate' }}</td>
-                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['nelle_sue_rate']) }}</td>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $c['nelle_sue_rate'] < 0 ? 'a credito nelle sue rate' : ($diCui ? 'di cui già nelle sue rate' : 'nelle sue rate') }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($c['nelle_sue_rate'])) }}</td>
                         <td></td>
                     </tr>
                 @endif
                 @if($parti > 1 && ($c['con_il_conguaglio'] ?? 0) !== 0)
                     <tr>
-                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $diCui ? 'di cui con il conguaglio del cambio d\'inquilino' : 'con il conguaglio del cambio d\'inquilino' }}</td>
-                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['con_il_conguaglio']) }}</td>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ ($diCui ? 'di cui con il conguaglio del cambio d\'inquilino' : 'con il conguaglio del cambio d\'inquilino') . ($c['con_il_conguaglio'] < 0 ? ', a suo credito' : '') }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($c['con_il_conguaglio'])) }}</td>
                         <td></td>
                     </tr>
                 @endif
                 @if($parti > 1 && ($c['regolato_fra_le_parti'] ?? 0) !== 0)
                     <tr>
-                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $diCui ? 'di cui regolata fra le parti al cambio d\'inquilino' : 'regolata fra le parti al cambio d\'inquilino' }}</td>
-                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro($c['regolato_fra_le_parti']) }}</td>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ ($diCui ? 'di cui regolata fra le parti al cambio d\'inquilino' : 'regolata fra le parti al cambio d\'inquilino') . ($c['regolato_fra_le_parti'] < 0 ? ', a suo credito' : '') }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($c['regolato_fra_le_parti'])) }}</td>
+                        <td></td>
+                    </tr>
+                @endif
+                @if($parti > 1 && $creditoNelWallet !== 0)
+                    <tr>
+                        <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ $creditoNelWallet < 0 ? 'a suo credito nel Wallet, con il conguaglio della sua uscita' : 'a suo debito nel Wallet, con il conguaglio della sua uscita' }}</td>
+                        <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($creditoNelWallet)) }}</td>
                         <td></td>
                     </tr>
                 @endif
@@ -186,7 +198,7 @@
                         <td colspan="5" style="padding: 2px 5px; font-size: 7.5pt;">{{ match (true) {
                             $restituire => 'da restituire a ' . $c['nome'] . ': i giorni dopo la sua uscita, che ha pagato',
                             $ricevera => 'a favore di ' . $c['nome'] . ': da ricevere da chi ha pagato i suoi giorni',
-                            default => 'di cui da rimborsare a chi le ha pagate',
+                            default => $diCui ? 'di cui da rimborsare a chi le ha pagate' : 'da rimborsare a chi le ha pagate',
                         } }}</td>
                         <td style="padding: 2px 5px; text-align: right; font-size: 7.5pt; white-space: nowrap;">{{ $euro(abs($daRimborsare)) }}</td>
                         <td></td>

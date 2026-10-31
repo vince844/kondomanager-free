@@ -234,11 +234,14 @@ export function proponiRegimeDaRitenuta(
  *
  * ## ⚠️ Il limite, dichiarato
  *
- * `RT02` significa «non persona fisica», e nel nostro modello un **ente non commerciale**
- * (cooperativa, consorzio, associazione) è persona giuridica ma va a **1019**, non a 1020.
- * La proposta può quindi sbagliare — ma è **visibile e modificabile nel modale**, mentre il
- * ripiego che sostituisce è muto e sbaglia su *tutte* le società. Un'ipotesi che si vede
- * vale più di un default che non si vede.
+ * `RT02` significa «non persona fisica». Il codice tributo segue l'imposta dovuta dal
+ * percipiente (risoluzione 19/E del 5/2/2007: 1019 IRPEF, 1020 IRES), e sono soggetti IRES
+ * sia le società di capitali e le **cooperative** (art. 73 c. 1 lett. a TUIR) sia gli **enti
+ * non commerciali** (lett. c): per loro la proposta `soggetto_ires` dà il codice giusto, 1020
+ * (fino alla 1.11.0-beta.58 questo commento li metteva a 1019, Coda 316). Può sbagliare per una
+ * **società di persone**, che non è una persona fisica ma è soggetto IRPEF (1019) — ed è
+ * **visibile e modificabile nel modale**, mentre il ripiego che sostituisce è muto e sbaglia su
+ * *tutte* le società. Un'ipotesi che si vede vale più di un default che non si vede.
  */
 const NATURA_DA_TIPO_RITENUTA: Record<string, string> = {
     RT01: 'persona_fisica_irpef',

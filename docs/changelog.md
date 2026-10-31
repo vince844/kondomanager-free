@@ -7,6 +7,31 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0-beta.59] - I conti tornano
+
+**Tocca il database.** Una colonna nuova nei piani rate (`quote_non_assegnate`), che l'aggiornamento crea da sola e lascia vuota nei piani che ci sono già; nessun dato esistente viene riscritto.
+Le rate emesse da questa versione in poi con una spesa a carico di una sola unità scrivono nel giornale una riga in più per unità, che chiude l'anticipazione di quella spesa. Nessun permesso nuovo.
+Una libreria della posta (symfony/mime) è aggiornata alla versione 8.1.10, per un avviso di sicurezza di gravità media.
+
+**Che cosa fa la beta.**
+- **L'estratto conto per persona** conta solo le righe della posizione di condòmino e mette ogni movimento alla sua data di competenza, in ordine di data: un
+  condòmino che è anche referente di un fornitore non vede più le fatture del fornitore fra i versamenti. La data in cui il movimento è stato inserito compare in
+  pagina quando è diversa.
+- **Lo scadenziario F24** raccoglie le ritenute e le deleghe di tutti gli esercizi: quando si apre il nuovo esercizio, le ritenute di dicembre, da versare entro il
+  16 gennaio, restano in vista. Una delega di un esercizio diverso dal corrente porta il nome del suo esercizio.
+- **Le ritenute.** L'appalto di un ente non commerciale va sul codice tributo 1020; i due regimi delle provvigioni hanno nomi che dicono la riduzione nel verso
+  giusto; le etichette dei regimi non citano più l'articolo del DPR 600/1973, che dal 01/01/2027 è abrogato dal testo unico dei versamenti (D.Lgs. 33/2025).
+- **Le spese a carico di una sola unità nelle rate emesse** da questa versione in poi non sono più addebitate due volte; per le rate già emesse la card
+  «Crediti da riallineare» elenca la cifra addebitata due volte, senza correggerla. Lo storno di una fattura, o una nota di credito, che toglierebbe una
+  spesa già chiesta ai condòmini si rifiuta, e il messaggio dice la strada.
+- **Il piano rate con una quota senza destinatario** ha tre stati («Allineato», «Quota aperta», «Disallineato») e un riquadro che elenca le quote una per una, con il
+  perché e che cosa fare.
+- **La prima scadenza** scelta con le regole di ricorrenza avanzate è la prima rata del piano.
+- **Il prospetto degli oneri accessori** dice chi rimborsa chi in altre storie con un accordo fra le parti (l'uscita di chi ha preso il posto della parte, il rientro,
+  i piani emessi dopo un cambio), e le sue stampe usano parole più precise per i crediti.
+
+---
+
 ## [1.11.0-beta.58] - La modifica non si perde
 
 **Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: utenti, ruoli, anagrafiche, documenti e contabilità

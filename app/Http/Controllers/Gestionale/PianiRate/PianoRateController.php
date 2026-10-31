@@ -669,17 +669,30 @@ class PianoRateController extends Controller
             Log::warning("Sposta Spesa: Nessun Piano Conto trovato per la gestione {$pianoRate->gestione_id}");
         }
 
+        $atteso = $this->pianoRateQuoteService->totaleAttesoCents($pianoRate);
+        $generato = $this->pianoRateQuoteService->totalePuroGeneratoCents($pianoRate);
+        $allineamento = [
+            'stato'                   => $this->pianoRateQuoteService->statoAllineamento($pianoRate),
+            'atteso_cents'            => $atteso,
+            'generato_cents'          => $generato,
+            'scarto_cents'            => $atteso - $generato,
+            'scarto_registrato_cents' => $this->pianoRateQuoteService->scartoRegistratoCents($pianoRate),
+        ];
+
         return Inertia::render('gestionale/pianiRate/PianiRateShow', [
-            'condominio' => $condominio, 
+            'condominio' => $condominio,
             'esercizio' => $esercizio, 
-            'pianoRate' => new PianoRateResource($pianoRate),
+            'pianoRate' => (new PianoRateResource($pianoRate))->conQuoteNonAssegnate(),
             'ratePure' => $ratePure, 
             'quotePerAnagrafica' => $this->pianoRateQuoteService->quotePerAnagrafica($pianoRate),
             'quotePerImmobile' => $this->pianoRateQuoteService->quotePerImmobile($pianoRate),
             // Il verdetto sull'allineamento arriva dal server, calcolato dallo **stesso** metodo
             // che usa il cruscotto: fino all'11/08/2026 le due schermate se lo calcolavano da
             // sole, con metodi e tolleranze diverse, e potevano contraddirsi.
-            'disallineato' => $this->pianoRateQuoteService->eDisallineato($pianoRate),
+            'disallineato' => $allineamento['stato'] === PianoRateQuoteService::DISALLINEATO,
+            // Coda 414: lo stato a tre valori (allineato, quota aperta, disallineato) con le cifre che lo spiegano, in centesimi. Lo scarto
+            // registrato è null se il piano non ha quote non assegnate registrate, o se le voci registrate non lo spiegano.
+            'allineamento' => $allineamento,
             // Verifica a video della .42 (punto 8): il pulsante del ricalcolo dice la ragione vera per cui il piano è fermo, con il
             // rimedio — anche il conguaglio di un passaggio, che il calcolo della pagina (incassi, emissioni) non vede. Le ragioni, i
             // passaggi del conguaglio (sotto l'ultima ragione) e i rimedi uno per voce: l'avviso li mette in elenco, perché in una
