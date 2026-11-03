@@ -66,8 +66,20 @@ You can view a demo of the project at the following address:
 - Login with two-factor authentication
 - User registration invitation system
 - Installation language to choose among Italian, English, Portuguese and Spanish; the management pages are for the most part in Italian only
-- Import an entire condominium from another management program (first source: Danea Domustudio)
+- Import an entire condominium from another management program (first source: Danea Domustudio) or from an Excel template filled in by hand
 - Full backup and restore from the panel, resumable and encryptable in AES-256
+- Archive documents in one or more categories, including those uploaded by owners in the portal
+- Search for the ISTAT ATECO 2025 code in the supplier record, and supplier categories managed from the supplier list
+- Production Docker image (`ghcr.io/vince844/kondomanager-core`) that, at every start, installs on an empty database and brings an existing one up to date
+
+### Ownership Transfers, Leases and Successions
+
+- «Registra passaggio» (record transfer) from the unit's holders page, with five types: sale or donation, start of a lease, end of a lease, usufruct (creation or extinction) and succession
+- On ordinary expenses the unit's share is split by the days of ownership; on extraordinary ones the resolution decides
+- The «Cosa cambierà» (what will change) panel shows what will happen before recording; the last transfer can be undone from the unit's history
+- In a sale, draft instalments falling due from the transfer date move to the buyer; for instalments already issued the balancing adjustment is written, or left to the parties
+- Succession splits the deceased's share among the heirs by quota, legacy included; a sale can reserve the usufruct to the seller
+- Ancillary charges statement in PDF for each tenant, with who reimburses whom
 
 ### Accounting and Structure Module
 
@@ -97,7 +109,7 @@ You can view a demo of the project at the following address:
 - Treasury Guardian widget for 30-day predictive liquidity analysis
 - Dynamic cascading engine (Tenant → Usufructuary → Owner)
 - Smart management of documented shortfalls for vacant units
-- Browsable general ledger with search, period and status filters, and balance verification
+- Browsable general journal with search, period and status filters, and balance verification
 - Balance sheet with plain-language diagnosis of imbalances and on-the-spot correction
 - Transfers between bank accounts and funds, with protocol number, preview and reversal
 - Withholding tax and F24 tax form: threshold-based schedule, payment slip and double-entry closure
@@ -105,6 +117,12 @@ You can view a demo of the project at the following address:
 - Quick recording of petty expenses without opening a supplier account
 - Actual spend shown alongside the budget on every item, with the transactions that make it up
 - Configurable first-instalment due date on the payment plan
+- Purchase invoices recorded from the SdI XML file or the signed .p7m envelope, many at once, with the supplier created from the file if missing
+- Credit notes linked to the invoice they correct: from then on the invoice counts net of the credit note
+- Receipts with «Versato da» (paid by), when another person in the condominium made the transfer, and credit refunds from the account statement
+- Income items, such as the rent for an antenna, that reduce the expense to be allocated
+- Cash book (Prima nota) with a running balance, and the ledger of every account with the balance brought forward and the counter-entry of each line
+- Allocation detail recorded when the payment plan is generated, item by item and person by person
 
 ### Document Suite and PDF Reports
 
@@ -118,6 +136,8 @@ You can view a demo of the project at the following address:
 - **Allocation by Expense Chapter:** the reading by budget item, alongside the allocation by table
 - **Owner's Account Statement:** balances and the full sequence of the year's transactions
 - **F24 tax form and home-banking summary:** with the list of the payments each slip settles
+- **Ancillary Charges Statement:** for each tenant, the items charged to them split by the days of the lease, and who reimburses whom
+- **Cash Book, General Journal and General Ledger:** the accounting registers, with the ledger of every account
 
 ---
 
@@ -138,13 +158,13 @@ The complete KondoManager documentation is available at:
 
 **[www.kondomanager.com/docs](https://kondomanager.com/docs)**
 
-You will find detailed guides on:
+Some guides to get started (in Italian):
 
-- [Installation and initial configuration](https://kondomanager.com/docs/installation.html)
-- Email and cron job configuration
-- Accounting module and chart of accounts
-- Instalment plans and receipts
-- Updates and maintenance
+- **Installation:** [the four ways](https://kondomanager.com/docs/installation.html), [guided installation](https://kondomanager.com/docs/installation-wizard.html), [manual installation](https://kondomanager.com/docs/installation-manual.html), [Docker for development](https://kondomanager.com/docs/installation-docker.html), [proxy and HTTPS](https://kondomanager.com/docs/configurazione-proxy-https.html), [SMTP email](https://kondomanager.com/docs/configurazione-email-smtp.html), [backup and restore](https://kondomanager.com/docs/backup.html)
+- **First steps:** [financial years and managements](https://kondomanager.com/docs/esercizi-e-gestioni-condominio.html), [importing data from another program](https://kondomanager.com/docs/importare-dati-altro-gestionale.html), [millesimal tables](https://kondomanager.com/docs/tabelle-millesimali-condominio.html), [chart of accounts](https://kondomanager.com/docs/piano-dei-conti-condominio.html), [roles and permissions](https://kondomanager.com/docs/roles.html)
+- **Instalments and receipts:** [creating a payment plan](https://kondomanager.com/docs/creare-piano-rate-condominio.html), [instalment due dates](https://kondomanager.com/docs/quando-scadono-rate-condominio.html), [recording a receipt](https://kondomanager.com/docs/registrare-incasso-rate-condominio.html), [ownership transfer: sale and change of tenant](https://kondomanager.com/docs/subentro-condominio-vendita-cambio-inquilino.html)
+- **Invoices and withholding tax:** [recording a purchase invoice](https://kondomanager.com/docs/registrare-fattura-passiva-condominio.html), [importing an invoice from the XML file](https://kondomanager.com/docs/importare-fattura-xml-condominio.html), [paying the supplier](https://kondomanager.com/docs/pagare-fornitore-condominio.html), [withholding tax](https://kondomanager.com/docs/ritenuta-acconto-condominio.html), [paying withholding tax with the F24](https://kondomanager.com/docs/versare-ritenute-f24-condominio.html)
+- **Registers:** [cash book](https://kondomanager.com/docs/prima-nota-condominio.html), [general journal](https://kondomanager.com/docs/libro-giornale-condominio.html), [ledger of an account](https://kondomanager.com/docs/mastrino-conto-condominio.html), [balance sheet](https://kondomanager.com/docs/stato-patrimoniale-non-quadra.html), [all the reports](https://kondomanager.com/docs/stampe-condominio.html)
 
 ---
 

@@ -66,8 +66,20 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - Autenticação com proteção de dois fatores
 - Sistema de convites para registo de utilizadores
 - Idioma da instalação à escolha entre italiano, inglês, português e espanhol; as páginas de gestão estão na maior parte só em italiano
-- Importação de um condomínio inteiro a partir de outro programa de gestão (primeira fonte: Danea Domustudio)
+- Importação de um condomínio inteiro a partir de outro programa de gestão (primeira fonte: Danea Domustudio) ou de um modelo Excel preenchido à mão
 - Cópia de segurança completa e reposição a partir do painel, retomáveis e cifráveis em AES-256
+- Documentos do arquivo numa ou mais categorias, também os carregados pelo condómino no portal
+- Pesquisa do código ATECO 2025 do ISTAT na ficha do fornecedor, e categorias de fornecedores geridas a partir da lista de fornecedores
+- Imagem Docker de produção (`ghcr.io/vince844/kondomanager-core`), que em cada arranque instala numa base de dados vazia e atualiza a que já existe
+
+### Transmissões de Propriedade, Arrendamentos e Sucessões
+
+- «Registra passaggio» (registar transmissão) a partir da página dos titulares da fração, com cinco tipos: venda ou doação, início de arrendamento, fim de arrendamento, usufruto (constituição ou extinção) e sucessão
+- Nas despesas ordinárias a quota da fração divide-se pelos dias de titularidade; nas extraordinárias conta a deliberação
+- O painel «Cosa cambierà» (o que vai mudar) mostra o que acontece antes de registar; a última transmissão anula-se a partir do histórico da fração
+- Na venda, as prestações em rascunho que vencem a partir da data da transmissão passam para quem compra; para as prestações já emitidas o acerto escreve-se ou deixa-se às partes
+- A sucessão divide a parte do falecido entre os herdeiros por quota, legado incluído; a venda pode reservar o usufruto a quem vende
+- Mapa dos encargos acessórios em PDF para cada arrendatário, com quem reembolsa quem
 
 ### Módulo de Contabilidade de Gestão e Estrutura
 
@@ -105,6 +117,12 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - Registo rápido de pequenas despesas sem abrir uma conta de fornecedor
 - Valor realizado ao lado do orçamentado em cada rubrica, com o detalhe dos movimentos que o compõem
 - Data da primeira prestação configurável no plano de prestações
+- Registo de faturas de compra a partir do ficheiro XML ou do envelope assinado .p7m do SdI, também muitas de uma vez, com o fornecedor criado a partir do ficheiro se não existir
+- Notas de crédito ligadas à fatura que retificam: a partir daí, a fatura conta pelo valor líquido da nota
+- Recebimentos com «Versato da» (pago por), quando a transferência foi feita por outra pessoa do condomínio, e reembolso do crédito a partir do extrato de conta
+- Rubricas de receita, como o aluguer da antena, que reduzem a despesa a repartir
+- Diário de caixa (Prima nota) com saldo progressivo, e razão de cada conta com o saldo transportado e a contrapartida de cada linha
+- Detalhe do rateio registado na geração do plano de prestações, rubrica a rubrica e pessoa a pessoa
 
 ### Suíte de Documentos e Relatórios PDF
 
@@ -118,6 +136,8 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - **Rateio por Rubrica de Despesa:** a leitura por rubrica orçamental, a par do rateio por tabelas
 - **Extrato de Conta do Condómino:** saldos e sequência completa dos movimentos do exercício
 - **Modelo F24 e mapa para o home banking:** com a lista dos pagamentos que cada guia liquida
+- **Mapa dos Encargos Acessórios:** para cada arrendatário, as rubricas a seu cargo divididas pelos dias do arrendamento, e quem reembolsa quem
+- **Diário de Caixa, Livro Diário e Livro Razão:** os registos contabilísticos, com o razão de cada conta
 
 ---
 
@@ -138,13 +158,13 @@ A documentação completa do KondoManager está disponível em:
 
 **[www.kondomanager.com/docs](https://kondomanager.com/docs)**
 
-Encontra guias detalhados sobre:
+Alguns guias para começar (em italiano):
 
-- [Instalação e configuração inicial](https://kondomanager.com/docs/installation.html)
-- Configuração do email e do cron job
-- Módulo de contabilidade e plano de contas
-- Planos de prestações e recebimentos
-- Atualizações e manutenção
+- **Instalação:** [os quatro caminhos](https://kondomanager.com/docs/installation.html), [instalação guiada](https://kondomanager.com/docs/installation-wizard.html), [instalação manual](https://kondomanager.com/docs/installation-manual.html), [Docker para desenvolvimento](https://kondomanager.com/docs/installation-docker.html), [proxy e HTTPS](https://kondomanager.com/docs/configurazione-proxy-https.html), [email SMTP](https://kondomanager.com/docs/configurazione-email-smtp.html), [cópia de segurança e reposição](https://kondomanager.com/docs/backup.html)
+- **Primeiros passos:** [exercícios e gestões](https://kondomanager.com/docs/esercizi-e-gestioni-condominio.html), [importar os dados de outro programa](https://kondomanager.com/docs/importare-dati-altro-gestionale.html), [tabelas de permilagem](https://kondomanager.com/docs/tabelle-millesimali-condominio.html), [plano de contas](https://kondomanager.com/docs/piano-dei-conti-condominio.html), [funções e permissões](https://kondomanager.com/docs/roles.html)
+- **Prestações e recebimentos:** [criar um plano de prestações](https://kondomanager.com/docs/creare-piano-rate-condominio.html), [vencimentos das prestações](https://kondomanager.com/docs/quando-scadono-rate-condominio.html), [registar um recebimento](https://kondomanager.com/docs/registrare-incasso-rate-condominio.html), [transmissão: venda e mudança de inquilino](https://kondomanager.com/docs/subentro-condominio-vendita-cambio-inquilino.html)
+- **Faturas e retenções:** [registar uma fatura de compra](https://kondomanager.com/docs/registrare-fattura-passiva-condominio.html), [importar uma fatura do ficheiro XML](https://kondomanager.com/docs/importare-fattura-xml-condominio.html), [pagar ao fornecedor](https://kondomanager.com/docs/pagare-fornitore-condominio.html), [retenção na fonte](https://kondomanager.com/docs/ritenuta-acconto-condominio.html), [pagar as retenções com o F24](https://kondomanager.com/docs/versare-ritenute-f24-condominio.html)
+- **Registos:** [diário de caixa](https://kondomanager.com/docs/prima-nota-condominio.html), [livro diário](https://kondomanager.com/docs/libro-giornale-condominio.html), [razão de uma conta](https://kondomanager.com/docs/mastrino-conto-condominio.html), [balanço patrimonial](https://kondomanager.com/docs/stato-patrimoniale-non-quadra.html), [todos os mapas](https://kondomanager.com/docs/stampe-condominio.html)
 
 ---
 

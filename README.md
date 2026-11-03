@@ -66,8 +66,20 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Login con protezione a due fattori
 - Sistema di inviti per la registrazione utenti
 - Lingua dell'installazione a scelta fra italiano, inglese, portoghese e spagnolo; le pagine del gestionale sono in gran parte solo in italiano
-- Importazione di un condominio intero da un altro gestionale (prima sorgente: Danea Domustudio)
+- Importazione di un condominio intero da un altro gestionale (prima sorgente: Danea Domustudio) o da un modello Excel da compilare a mano
 - Backup completo e ripristino dal pannello, riprendibili e cifrabili in AES-256
+- Documenti dell'archivio in una o più categorie, anche quelli caricati dal condòmino nel portale
+- Ricerca del codice ATECO 2025 dell'ISTAT nella scheda fornitore, e categorie dei fornitori gestite dall'elenco dei fornitori
+- Immagine Docker di produzione (`ghcr.io/vince844/kondomanager-core`), che a ogni avvio installa su un database vuoto e allinea quello che c'è già
+
+### Passaggi di proprietà, locazioni e successioni
+
+- «Registra passaggio» dalla pagina dei titolari dell'unità, con cinque tipi: vendita o donazione, inizio locazione, fine locazione, usufrutto (costituzione o estinzione) e successione
+- Sulla gestione ordinaria la quota dell'unità si divide sui giorni di titolarità; sulla straordinaria conta la delibera
+- Il pannello «Cosa cambierà» mostra che cosa succede prima di registrare; dallo storico dell'unità si annulla l'ultimo passaggio
+- Nella vendita le rate in bozza che scadono dal giorno del passaggio passano a chi compra; per le rate già emesse il conguaglio si scrive, oppure si lascia alle parti
+- Successione con la parte del defunto divisa fra gli eredi per quota, legato compreso; vendita con l'usufrutto riservato a chi vende
+- Prospetto degli oneri accessori in PDF per ogni conduttore, con chi rimborsa chi
 
 ### Modulo contabilità gestionale e struttura
 
@@ -105,6 +117,12 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Registrazione rapida delle piccole spese senza aprire una partita fornitore
 - Consuntivo accanto al preventivo su ogni voce, con il dettaglio dei movimenti che lo compongono
 - Data di prima scadenza configurabile sul piano rate
+- Registrazione delle fatture passive dal file XML o dalla busta firmata .p7m dello SdI, anche molte insieme, con il fornitore creato dal file se non c'è
+- Note di credito collegate alla fattura che rettificano: da lì la fattura vale al netto della nota
+- Incassi con «Versato da», quando il bonifico l'ha fatto un'altra persona del condominio, e rimborso del credito dall'estratto conto
+- Voci di entrata, come l'affitto dell'antenna, che riducono la spesa da ripartire
+- Prima nota con il saldo progressivo, e mastrino di ogni conto con il riporto e la contropartita di ogni riga
+- Dettaglio del riparto registrato alla generazione del piano rate, voce per voce e persona per persona
 
 ### Suite documentale e Stampe PDF
 
@@ -118,6 +136,8 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - **Riparto per Capitolo di Spesa:** la lettura per voce di bilancio, affiancata al riparto per tabella
 - **Estratto Conto del Condòmino:** saldi e sequenza completa dei movimenti dell'esercizio
 - **Modello F24 e prospetto per l'home banking:** con l'elenco dei pagamenti che ogni delega versa
+- **Prospetto degli oneri accessori:** per ogni conduttore, le voci a suo carico divise sui giorni di conduzione, e chi rimborsa chi
+- **Prima nota, libro giornale e libro mastro:** i registri contabili, con il mastrino di ogni conto
 
 ---
 
@@ -138,13 +158,13 @@ La documentazione completa di KondoManager è disponibile all'indirizzo:
 
 **[www.kondomanager.com/docs](https://kondomanager.com/docs)**
 
-Trovi guide dettagliate su:
+Alcune guide per cominciare:
 
-- [Installazione e configurazione iniziale](https://kondomanager.com/docs/installation.html)
-- Configurazione email e cron job
-- Modulo contabilità e piano dei conti
-- Gestione piani rate e incassi
-- Aggiornamenti e manutenzione
+- **Installazione:** [le quattro strade](https://kondomanager.com/docs/installation.html), [installazione guidata](https://kondomanager.com/docs/installation-wizard.html), [installazione manuale](https://kondomanager.com/docs/installation-manual.html), [Docker per lo sviluppo](https://kondomanager.com/docs/installation-docker.html), [proxy e HTTPS](https://kondomanager.com/docs/configurazione-proxy-https.html), [email SMTP](https://kondomanager.com/docs/configurazione-email-smtp.html), [backup e ripristino](https://kondomanager.com/docs/backup.html)
+- **Primi passi:** [esercizi e gestioni](https://kondomanager.com/docs/esercizi-e-gestioni-condominio.html), [importare i dati da un altro gestionale](https://kondomanager.com/docs/importare-dati-altro-gestionale.html), [tabelle millesimali](https://kondomanager.com/docs/tabelle-millesimali-condominio.html), [piano dei conti](https://kondomanager.com/docs/piano-dei-conti-condominio.html), [ruoli e permessi](https://kondomanager.com/docs/roles.html)
+- **Rate e incassi:** [creare un piano rate](https://kondomanager.com/docs/creare-piano-rate-condominio.html), [scadenze delle rate](https://kondomanager.com/docs/quando-scadono-rate-condominio.html), [registrare un incasso](https://kondomanager.com/docs/registrare-incasso-rate-condominio.html), [subentro: vendita e cambio inquilino](https://kondomanager.com/docs/subentro-condominio-vendita-cambio-inquilino.html)
+- **Fatture e ritenute:** [registrare una fattura passiva](https://kondomanager.com/docs/registrare-fattura-passiva-condominio.html), [importare una fattura dal file XML](https://kondomanager.com/docs/importare-fattura-xml-condominio.html), [pagare il fornitore](https://kondomanager.com/docs/pagare-fornitore-condominio.html), [ritenuta d'acconto](https://kondomanager.com/docs/ritenuta-acconto-condominio.html), [versare le ritenute con l'F24](https://kondomanager.com/docs/versare-ritenute-f24-condominio.html)
+- **Registri:** [prima nota](https://kondomanager.com/docs/prima-nota-condominio.html), [libro giornale](https://kondomanager.com/docs/libro-giornale-condominio.html), [mastrino di un conto](https://kondomanager.com/docs/mastrino-conto-condominio.html), [stato patrimoniale](https://kondomanager.com/docs/stato-patrimoniale-non-quadra.html), [tutte le stampe](https://kondomanager.com/docs/stampe-condominio.html)
 
 ---
 
